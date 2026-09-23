@@ -62,5 +62,5 @@ plugins/burette-agent/browser-shell-dist/assets/molstar-F2uvN7Xl.js
 # Regenerated browser-shell bundles for molecular view icons.
 plugins/burette-agent/browser-shell-dist/assets/dist-ChRp6sLR.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-DkD0MHg7.js
-plugins/burette-agent/browser-shell-dist/assets/viewer-lL8v9O00.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-DBGdXR42.js
 plugins/burette-agent/browser-shell-dist/assets/scaffold.worker-CZm3QNgR.js

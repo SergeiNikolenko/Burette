@@ -51,6 +51,8 @@ state.activeTabId = 'other'; render(); effects.at(-1)();
 assert.equal(calls.at(-1)[4].shouldApply(), false, 'late native open must not replace another tab');
 state.activeTabId = 'tab'; state.activeDocument.renderer = 'grid2d'; options.gridMenuState = { hasMolecules: true, saveEnabled: true };
 render(); effects.at(-1)();
+state.activeDocument.renderer = 'molstar'; render();
+assert.equal(calls.at(-1)[4].shouldApply(), false, 'returning to the source must not revive a cancelled open');
 assert.equal(calls.filter(call => call[0] === 'dock').length, 1, 'cancel when leaving target tab');
 console.log('native collection analysis transition passed');
 

@@ -705,7 +705,8 @@ export function useAppNativeMenu({
   // Cancel if the user leaves the target tab while it is opening.
   useEffect(() => {
     if (!pendingAnalysis) return;
-    if ((state.activeTabId !== pendingAnalysis.tabId && !isGrid) || activeDocument?.path !== pendingAnalysis.path) {
+    if (state.activeTabId !== pendingAnalysis.tabId || activeDocument?.path !== pendingAnalysis.path) {
+      analysisRequestRef.current += 1;
       setPendingAnalysis(null);
       return;
     }

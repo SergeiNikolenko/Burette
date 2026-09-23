@@ -14522,7 +14522,15 @@ SOFTWARE.
   function spreadSdfCollectionMolecules(molecules) {
     const columns = Math.ceil(Math.sqrt(molecules.length));
     const rows = Math.ceil(molecules.length / columns);
-    const spacing = Math.max(3, ...molecules.map(molecule => Math.max(molecule.width, molecule.height))) + SDF_GRID_PADDING;
+    // Alignment replaces coordinates; parsed bounds can describe the old pose.
+    const bounds = molecules.map(molecule => {
+      const xs = molecule.atoms.map(atom => atom.x);
+      const ys = molecule.atoms.map(atom => atom.y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      return { centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2, size: Math.max(maxX - minX, maxY - minY) };
+    });
+    const spacing = Math.max(3, ...bounds.map(bound => bound.size)) + SDF_GRID_PADDING;
     return molecules.map((molecule, index) => {
       const x = (index % columns - (columns - 1) / 2) * spacing;
       const y = ((rows - 1) / 2 - Math.floor(index / columns)) * spacing;
@@ -14530,8 +14538,8 @@ SOFTWARE.
         ...molecule,
         atoms: molecule.atoms.map(atom => ({
           ...atom,
-          x: atom.x + x - molecule.centerX,
-          y: atom.y + y - molecule.centerY
+          x: atom.x + x - bounds[index].centerX,
+          y: atom.y + y - bounds[index].centerY
         }))
       };
     });

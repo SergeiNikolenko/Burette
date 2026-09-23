@@ -84,13 +84,16 @@ console.log('hidden WebKit canvas does not block viewer startup');
 {
   const names = ['buildSdfGrid', 'spreadSdfCollectionMolecules', 'parseV2000SdfRecord', 'parseV3000SdfRecord', 'parseSdfAtomLine', 'parseSdfBondLine', 'normalizeSdfElement', 'normalizeSdfBondOrder', 'formatV3000Coord'];
   const functions = names.map(name => source.match(new RegExp(`\\n  function ${name}\\([\\s\\S]*?\\n  \\}`, 'u'))[0]).join('\n');
-  const build = new Function(`const MAX_SDF_GRID_MOLECULES=64, MAX_SDF_GRID_ATOMS=900, MAX_SDF_GRID_BONDS=900, SDF_GRID_PADDING=4; ${functions}; return {buildSdfGrid,parseV3000SdfRecord};`)();
+  const build = new Function(`const MAX_SDF_GRID_MOLECULES=64, MAX_SDF_GRID_ATOMS=900, MAX_SDF_GRID_BONDS=900, SDF_GRID_PADDING=4; ${functions}; return {buildSdfGrid,parseV3000SdfRecord,spreadSdfCollectionMolecules};`)();
   const record = ['Example', '  Test', '', '  0  0  0     0  0            999 V3000', 'M  V30 BEGIN CTAB', 'M  V30 COUNTS 2 1 0 0 0', 'M  V30 BEGIN ATOM', 'M  V30 1 C 0 0 0 0', 'M  V30 2 O 1 0 0 0', 'M  V30 END ATOM', 'M  V30 BEGIN BOND', 'M  V30 1 2 1 2', 'M  V30 END BOND', 'M  V30 END CTAB', 'M  END'].join('\n');
   const prepared = build.buildSdfGrid([record, record], 'set.sdf');
   assert.equal(prepared.gridEntries.length, 2);
   const molecules = prepared.gridEntries.map(entry => build.parseV3000SdfRecord(entry.data));
   assert.deepEqual(molecules.map(m => [m.atomCount, m.bonds[0].order]), [[2, 2], [2, 2]]);
   assert.ok(molecules[1].centerX - molecules[0].centerX >= 4);
+  const aligned = molecules.map(m => ({ ...m, atoms: m.atoms.map(atom => ({ ...atom, x: atom.x + 1000, y: atom.y - 1000 })) }));
+  const spreadAgain = build.spreadSdfCollectionMolecules(aligned);
+  assert.deepEqual(spreadAgain.map(m => m.atoms), molecules.map(m => m.atoms), 'Spread uses current aligned coordinates, not stale parsed bounds');
   const loaded = [];
   const bindings = {
     cancelScheduledMolstarWaterRepresentation() {}, updateSdfPoseButton() {}, notifyStructureOverlayModeChanged() {},
