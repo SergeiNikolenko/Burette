@@ -241,3 +241,22 @@ the same scene import operation as Add to Scene. Trajectory pairing retains its
 separate document workflow. Combined scenes can be saved through Export → Scene.
 SSH requests wait for the shared native worker rather than treating contention
 as a connection failure; refreshing a remote project keeps its cached tree visible.
+
+### Native conformers in Mol* collections
+
+Generate 3D on an SDF/MOL document restores the native artifact coordinates
+into its source records by the artifact molecule ordinal. The active tab keeps
+the source name and SDF topology/properties, so Grid and pose alignment remain
+available. A single-conformer calculation replaces coordinates rather than
+appending the old geometry. Failed source records remain unchanged; ensemble
+mode retains multiple generated conformers per source. The durable compute
+artifact and report remain available separately.
+
+### Pose navigation camera
+
+Next/Prev, keyboard steps, slider and playback keep the current camera. Cached
+pose replacement temporarily suppresses Mol* automatic camera resets while
+removing and rebuilding the foreground, then restores its prior reset policy even if the replacement fails. Camera
+input remains live, and holding the viewport pointer does not pause playback. Initial loading and explicit focus
+retain their framing behavior. Unsupported Align controls are hidden; supported
+alignment remains visible, including its temporary busy state.

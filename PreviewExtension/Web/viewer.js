@@ -15010,38 +15010,56 @@ SOFTWARE.
 
   async function switchCachedPoseLayer(viewer, state, index, entry, applyStyle) {
     const plugin = viewer.plugin;
-    state.poseCache ||= new Map();
-    const previous = state.poseCache.get(state.activeIndex);
-    if (previous) {
-      // Retain parsed trajectories, never inactive structures: full exports and
-      // selections enumerate the live structure hierarchy.
-      const remove = plugin.state.data.build();
-      for (const trajectory of previous.trajectories) {
-        for (const child of plugin.state.data.tree.children.get(trajectory.ref) || []) remove.delete(child);
+    const canvas3d = plugin.canvas3d;
+    const cameraSnapshot = state.activeIndex >= 0 ? captureMolstarCameraSnapshot(viewer) : null;
+    const manualReset = canvas3d?.props?.camera?.manualReset === true;
+    // Removing the old foreground briefly empties the scene. Prevent Mol* from
+    // reframing that intermediate scene or fitting each replacement molecule.
+    if (cameraSnapshot) canvas3d.setProps({ camera: { manualReset: true } });
+    try {
+      state.poseCache ||= new Map();
+      const previous = state.poseCache.get(state.activeIndex);
+      if (previous) {
+        // Retain parsed trajectories, never inactive structures: full exports and
+        // selections enumerate the live structure hierarchy.
+        const remove = plugin.state.data.build();
+        for (const trajectory of previous.trajectories) {
+          for (const child of plugin.state.data.tree.children.get(trajectory.ref) || []) remove.delete(child);
+        }
+        await remove.commit();
       }
-      await remove.commit();
-    }
-    let cached = state.poseCache.get(index);
-    if (!cached || !plugin.state.data.cells.has(cached.raw.ref)) {
-      const normalized = normalizeFormat(entry.format);
-      const payload = normalized === 'cifCore' ? { data: coreCifToPdb(entry.data), format: 'pdb' } : { data: entry.data, format: normalized };
-      const raw = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
-      cached = { raw, trajectories: await parseMolstarStructureTrajectories(plugin, raw, payload.format), sourceBytes: (payload.data?.length || 0) * 2 };
-    }
-    state.poseCache.delete(index);
-    state.poseCache.set(index, cached);
-    const before = molstarStructureCellRefs(viewer);
-    for (const trajectory of cached.trajectories) await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', { representationPreset: 'empty' });
-    const structures = Array.from(molstarCurrentStructures(viewer)).filter(structure => !before.has(structure.cell.transform.ref));
-    await applyStyle(structures);
-    state.activeRefs = molstarStructureRefsOf(structures);
-    state.activeIndex = index;
-    let bytes = Array.from(state.poseCache.values()).reduce((sum, item) => sum + item.sourceBytes, 0);
-    while (state.poseCache.size > 1 && (state.poseCache.size > 4 || bytes > 16 * 1024 * 1024)) {
-      const [oldIndex, old] = state.poseCache.entries().next().value;
-      await plugin.state.data.build().delete(old.raw.ref).commit();
-      state.poseCache.delete(oldIndex);
-      bytes -= old.sourceBytes;
+      let cached = state.poseCache.get(index);
+      if (!cached || !plugin.state.data.cells.has(cached.raw.ref)) {
+        const normalized = normalizeFormat(entry.format);
+        const payload = normalized === 'cifCore' ? { data: coreCifToPdb(entry.data), format: 'pdb' } : { data: entry.data, format: normalized };
+        const raw = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
+        cached = { raw, trajectories: await parseMolstarStructureTrajectories(plugin, raw, payload.format), sourceBytes: (payload.data?.length || 0) * 2 };
+      }
+      state.poseCache.delete(index);
+      state.poseCache.set(index, cached);
+      const before = molstarStructureCellRefs(viewer);
+      for (const trajectory of cached.trajectories) await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', { representationPreset: 'empty' });
+      const structures = Array.from(molstarCurrentStructures(viewer)).filter(structure => !before.has(structure.cell.transform.ref));
+      await applyStyle(structures);
+      state.activeRefs = molstarStructureRefsOf(structures);
+      state.activeIndex = index;
+      let bytes = Array.from(state.poseCache.values()).reduce((sum, item) => sum + item.sourceBytes, 0);
+      while (state.poseCache.size > 1 && (state.poseCache.size > 4 || bytes > 16 * 1024 * 1024)) {
+        const [oldIndex, old] = state.poseCache.entries().next().value;
+        await plugin.state.data.build().delete(old.raw.ref).commit();
+        state.poseCache.delete(oldIndex);
+        bytes -= old.sourceBytes;
+      }
+    } finally {
+      if (cameraSnapshot) {
+        try {
+          canvas3d.commit(true);
+          // Camera input remains live during the async rebuild. Do not restore
+          // the old snapshot over a drag/zoom that happened while it ran.
+        } finally {
+          canvas3d.setProps({ camera: { manualReset } });
+        }
+      }
     }
   }
 
@@ -19028,15 +19046,6 @@ SOFTWARE.
     let loopTimer = null;
     let loopActive = Boolean(playbackRestore?.playing);
     let loopBusy = false;
-    // Every loop tick rebuilds the active layer through a Mol* state
-    // transaction, which starves camera drags of main-thread time; while the
-    // pointer is held down on the viewport the loop skips ticks (the elapsed-
-    // time frame math catches the playhead up afterwards).
-    let loopPointerHeld = false;
-    const onLoopPointerDown = (event) => {
-      if (event.target instanceof Element && event.target.closest('.msp-viewport')) loopPointerHeld = true;
-    };
-    const onLoopPointerUp = () => { loopPointerHeld = false; };
     let loopEpoch = 0;
     let loopStartedAt = 0;
     let loopStartPose = activePose;
@@ -19246,6 +19255,7 @@ SOFTWARE.
           : sdfCollectionAlignFrames
             ? 'Superimpose every molecule onto the first one by atom order'
             : 'Automatically superimpose every structure onto the first one';
+      align.hidden = !alignmentSupported;
       align.disabled = !alignmentSupported;
       align.setAttribute('aria-pressed', alignmentOn ? 'true' : 'false');
     }
@@ -19450,7 +19460,7 @@ SOFTWARE.
         if (!hostViewerVisible) {
           return;
         }
-        if (loopBusy || loopPointerHeld) {
+        if (loopBusy) {
           scheduleLoopStep(undefined, expectedLoopEpoch);
           return;
         }
@@ -19510,7 +19520,10 @@ SOFTWARE.
     const performSetPose = async (index, options = {}) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
-      const shouldFocus = options.focus === true || options.userStep === true;
+      const shouldFocus = options.focus === true;
+      // A normal step keeps the user's view. Cancel delayed focus retries from
+      // an earlier load/selection before replacing any scene layers.
+      if (!shouldFocus) molstarStructureFocusSerial += 1;
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
       previous.disabled = true;
       next.disabled = true;
@@ -19912,14 +19925,8 @@ SOFTWARE.
       }
     };
     window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('pointerdown', onLoopPointerDown, true);
-    window.addEventListener('pointerup', onLoopPointerUp, true);
-    window.addEventListener('pointercancel', onLoopPointerUp, true);
     dockingPoseKeydownDisposer = () => {
       window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('pointerdown', onLoopPointerDown, true);
-      window.removeEventListener('pointerup', onLoopPointerUp, true);
-      window.removeEventListener('pointercancel', onLoopPointerUp, true);
     };
     mainRow.append(animation, previous, label, next);
     const smoothAvailable = (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);

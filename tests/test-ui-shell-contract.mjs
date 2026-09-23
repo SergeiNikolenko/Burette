@@ -6875,9 +6875,8 @@ assert.match(previewViewer, /restoreSdfCollectionAlignment\(prepared\);/);
 // Loop ticks rebuild the active layer through Mol* state transactions, which
 // starves camera drags; while the pointer is held on the viewport the loop
 // skips ticks and the elapsed-time frame math catches up afterwards.
-assert.match(previewViewer, /let loopPointerHeld = false/);
-assert.match(previewViewer, /if \(loopBusy \|\| loopPointerHeld\) \{/);
-assert.match(previewViewer, /window\.addEventListener\('pointerdown', onLoopPointerDown, true\)/);
+assert.doesNotMatch(previewViewer, /loopPointerHeld|onLoopPointerDown/);
+assert.match(previewViewer, /if \(loopBusy\) \{/);
 // The playback row keeps max-content only while closed; open it must take the
 // control's width or the slider collapses to its 44px minimum.
 assert.match(previewRuntimeCss, /buret-docking-poses-animation-open \.buret-docking-pose-animation \{\s*position: static;[\s\S]*?width: auto;/);
@@ -7034,7 +7033,7 @@ assert.match(previewViewer, /let poseUpdateQueue = Promise\.resolve\(\)/);
 assert.match(previewViewer, /let loopEpoch = 0/);
 assert.match(previewViewer, /const setPose = \(index, options = \{\}\) => \{[\s\S]*?if \(options\.loopStep !== true && loopActive\) \{[\s\S]*?loopEpoch \+= 1;[\s\S]*?loopStartPose = requestedIndex;[\s\S]*?poseUpdateQueue = queued\.catch\(\(\) => \{\}\);[\s\S]*?return queued;[\s\S]*?\};/);
 assert.match(previewViewer, /const performSetPose = async \(index, options = \{\}\) => \{/);
-assert.match(previewViewer, /const shouldFocus = options\.focus === true \|\| options\.userStep === true;/);
+assert.match(previewViewer, /const shouldFocus = options\.focus === true;/);
 assert.match(previewViewer, /if \(shouldFocus\) scheduleMolstarStructureFocus\(viewer, \{ reason: 'pose-selection', durationMs: 180, force: true \}\);/);
 assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopNextDelay\(\), expectedLoopEpoch = loopEpoch\) => \{[\s\S]*?if \(!loopActive \|\| expectedLoopEpoch !== loopEpoch\) return;/);
 assert.match(previewViewer, /slider\.className = 'buret-docking-pose-slider'/);
