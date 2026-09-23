@@ -7598,7 +7598,7 @@ assert.match(derivedColumnsHook, /decomposeRGroupsInRuntime\(core, rows\)/);
 assert.match(derivedColumnsHook, /rgroupRuntimeStatus\(\)/);
 assert.match(appNativeMenuHook, /rgroupRuntimeAvailable: state\.rgroupRuntimeAvailable/);
 assert.match(nativeMenuTypes, /rgroupRuntimeAvailable: boolean/);
-assert.match(rgroupDialog, /most common scaffold/);
+assert.match(rgroupDialog, /all Murcko scaffold families/);
 assert.match(derivedColumnsHook, /computeDerivedValue\("inchikey", engines, row\)\.valueText/);
 assert.match(appNativeMenuHook, /actions\.deleteDuplicateGridRows\(activeDocument\.id\)/);
 assert.match(gridViewer, /raw === null \|\| raw === undefined \|\| raw === '' \? Number\.NaN : Number\(raw\)/);

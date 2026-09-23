@@ -1446,10 +1446,8 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
     })();
   }, [beginDerivedJob, documents, notifyGridDerivedRunFinished, pushStatus]);
 
-  // Decompose R-Groups: the core plus one column per substitution point. The
-  // core comes from the dialog, or - when the dialog left it blank - from the
-  // scaffold the collection has most of, computed with the same Murcko code
-  // Analyse Scaffolds uses.
+  // Empty core decomposes each Murcko family independently; R labels are scoped
+  // to the Series column, never aligned across unrelated scaffolds.
   const decomposeGridRGroups = useCallback((documentId: string, requestedCore: string) => {
     const targetDocument = documents.find((document) => document.id === documentId);
     if (!targetDocument) {
@@ -1467,9 +1465,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
     pushStatus(`Decomposing R-groups in ${targetDocument.title}`);
     void (async () => {
       try {
-        const engines = await loadDerivedEngines();
         const rows: Array<{ rowId: number; smiles: string | null; molblock: string | null }> = [];
-        const scaffoldCounts = new Map<string, number>();
         let afterSourceIndex = -1;
         for (;;) {
           const batch = await fetchDerivedSourceRows(documentId, afterSourceIndex, DERIVED_SOURCE_BATCH);
@@ -1477,10 +1473,6 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
           if (batch.rows.length === 0) break;
           for (const row of batch.rows) {
             rows.push({ rowId: row.rowId, smiles: row.smiles ?? null, molblock: row.molblock ?? null });
-            if (!requestedCore.trim()) {
-              const scaffold = computeDerivedValue("murcko-scaffold", engines, row).valueText;
-              if (scaffold) scaffoldCounts.set(scaffold, (scaffoldCounts.get(scaffold) ?? 0) + 1);
-            }
           }
           if (rows.length > RGROUP_ROW_LIMIT) {
             throw new Error(`R-group decomposition is limited to ${RGROUP_ROW_LIMIT.toLocaleString()} molecules.`);
@@ -1490,29 +1482,23 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
           await new Promise((resolve) => window.setTimeout(resolve, 0));
         }
         if (rows.length === 0) throw new Error("The collection has no molecules.");
-        let core = requestedCore.trim();
-        if (!core) {
-          const ranked = [...scaffoldCounts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
-          if (ranked.length === 0) throw new Error("No molecule has a ring system to use as a core.");
-          core = ranked[0][0];
-          pushStatus(`Using the collection's most common scaffold as the core: ${core}`);
-        }
+        const core = requestedCore.trim();
         const decomposition = await decomposeRGroupsInRuntime(core, rows);
         if (decomposition.rows.length === 0) {
           throw new Error(`No molecule matched the core ${core}.`);
         }
         await storeRGroupResults(documentId, rows, decomposition, { core, rdkitVersion: decomposition.rdkitVersion });
         notifyGridDerivedRunFinished(documentId);
-        const skipped = decomposition.unmatchedRows + decomposition.unparsedRows;
+        const skipped = decomposition.unmatchedRows + decomposition.unparsedRows + decomposition.noScaffoldRows;
         updateJob({
           status: "success",
           completedAt: Date.now(),
           processedRows: rows.length,
           failedRows: skipped,
         });
-        const positions = decomposition.labels.filter((label) => label !== "Core").length;
+        const positions = decomposition.labels.filter((label) => /^R\d+$/u.test(label)).length;
         pushStatus(
-          `Decomposed ${decomposition.rows.length.toLocaleString()} molecule${decomposition.rows.length === 1 ? "" : "s"} into ${positions} R position${positions === 1 ? "" : "s"}${skipped > 0 ? ` (${skipped.toLocaleString()} did not match the core)` : ""}`,
+          `Decomposed ${decomposition.rows.length.toLocaleString()} molecule${decomposition.rows.length === 1 ? "" : "s"} into ${positions} R position${positions === 1 ? "" : "s"}${skipped > 0 ? ` (${skipped.toLocaleString()} excluded; see Status)` : ""}`,
           "success",
         );
       } catch (error) {

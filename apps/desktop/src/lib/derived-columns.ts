@@ -151,6 +151,9 @@ export type RGroupDecomposition = {
   rows: Array<{ rowId: number; values: Record<string, string> }>;
   unmatchedRows: number;
   unparsedRows: number;
+  noScaffoldRows: number;
+  excludedRows: Array<{ rowId: number; status: string }>;
+  series: Array<{ id: string; core: string; query: string; matchedRows: number; labels: string[]; constantPositions: number }>;
 };
 
 // R-group decomposition is the one SAR tool that leaves the webview: RDKit's
@@ -218,6 +221,7 @@ export async function storeRGroupResults(
   parameters: Record<string, unknown>,
 ): Promise<void> {
   return invoke("rgroup_store_results", { request: {
-    documentId, sourceRows, labels: result.labels, rows: result.rows, parameters,
+    documentId, sourceRows, labels: result.labels,
+    rows: [...result.rows, ...result.excludedRows.map((row) => ({ rowId: row.rowId, values: { Status: row.status } }))], parameters,
   } });
 }

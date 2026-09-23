@@ -16,8 +16,7 @@ export function RGroupDecompositionDialog({
 }: {
   request: RGroupDecompositionRequest | null;
   onDismiss: () => void;
-  // An empty core means "work it out": the run takes the scaffold the
-  // collection has most of.
+  // An empty core decomposes every Murcko family independently.
   onRun: (documentId: string, core: string) => void;
 }) {
   const portalContainer = useAppShellPortalContainer();
@@ -48,7 +47,7 @@ export function RGroupDecompositionDialog({
                 value={core}
                 maxLength={400}
                 spellCheck={false}
-                placeholder="Auto: most common scaffold"
+                placeholder="Auto: all Murcko scaffold families"
                 onChange={(event) => setCore(event.target.value)}
               />
             </label>

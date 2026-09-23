@@ -229,3 +229,5 @@ in one SQLite transaction, preserving unrelated descriptors. Its bounded payload
 contains the source structures and the complete result. Applying results checks
 the source row IDs and structures again under the write transaction; a changed
 collection requires a new calculation. Failed writes preserve the previous run.
+See [Scaffold and R-group analysis](sar-analysis.md) for chemistry semantics,
+limits, result columns, and focused verification.
