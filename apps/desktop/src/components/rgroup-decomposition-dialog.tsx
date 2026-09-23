@@ -48,29 +48,26 @@ export function RGroupDecompositionDialog({ request, onDismiss, onRun }: {
   return <Dialog.Root open={request !== null} onOpenChange={(open) => { if (!open && busy !== "apply") onDismiss(); }}>
     <Dialog.Portal container={portalContainer}>
       <Dialog.Overlay className="radix-dialog-overlay" />
-      <Dialog.Content className="radix-dialog calculated-column-dialog rgroup-dialog" aria-describedby="rgroup-description">
+      <Dialog.Content className={`radix-dialog calculated-column-dialog rgroup-dialog${preview ? " rgroup-dialog-preview" : ""}`} aria-describedby={undefined}>
         <div className="radix-dialog-header">
           <Dialog.Title>Decompose R-Groups</Dialog.Title>
           <Dialog.Close asChild><button type="button" className="radix-dialog-close" disabled={busy === "apply"} aria-label="Close R-group decomposition"><CloseIcon size={14} /></button></Dialog.Close>
         </div>
         <div className="radix-dialog-body">
-          <p id="rgroup-description">Explore scaffold families and variable substituents in {request?.documentTitle}. Preview the full collection before changing its columns.</p>
-          <label className="calculated-column-field">Core selection
+          <label className="calculated-column-field">Core
             <NativeSelect value={mode} disabled={busy !== null} onChange={(event) => { setMode(event.target.value); invalidate(); }}>
-              <NativeSelectOption value="all">All Murcko scaffold families</NativeSelectOption>
-              <NativeSelectOption value="custom">Custom core (SMILES or SMARTS)</NativeSelectOption>
+              <NativeSelectOption value="all">All scaffolds</NativeSelectOption>
+              <NativeSelectOption value="custom">Custom core</NativeSelectOption>
             </NativeSelect>
           </label>
           {mode === "custom" && <label className="calculated-column-field">Core SMILES or SMARTS
             <input value={core} maxLength={4000} spellCheck={false} disabled={busy !== null} placeholder="e.g. c1ccccc1" onChange={(event) => { setCore(event.target.value); invalidate(); }} />
           </label>}
-          <p className="rgroup-note">Constant groups join the core. The largest component is analysed; other components are retained separately. R labels are local to each series.</p>
-          {busy === "preview" && <p role="status">Aligning molecules and comparing substituents…</p>}
+          {busy === "preview" && <p role="status">Analysing…</p>}
           {error && <p className="calculated-column-problem" role="alert">{error}</p>}
           {preview && <RGroupPreviewResults result={preview.result} total={preview.sourceRows.length} />}
         </div>
         <div className="radix-dialog-footer rgroup-footer">
-          <span>{preview ? "Apply replaces previous R-group columns." : "Your collection stays unchanged until Apply."}</span>
           <button type="button" className="dock-action" disabled={busy !== null || (mode === "custom" && !core.trim())} onClick={() => { void runPreview(); }}>Preview</button>
           <button type="button" className="dock-action calculate-properties-run" disabled={busy !== null || !preview} onClick={() => { void apply(); }}>{busy === "apply" ? "Applying…" : "Apply columns"}</button>
         </div>

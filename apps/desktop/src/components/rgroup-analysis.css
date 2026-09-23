@@ -1,17 +1,15 @@
-.radix-dialog.rgroup-dialog { width: min(760px, calc(100vw - 48px)); max-height: min(820px, calc(100vh - 48px)); }
+.radix-dialog.rgroup-dialog { width: min(480px, calc(100vw - 48px)); max-height: min(820px, calc(100vh - 48px)); }
+.radix-dialog.rgroup-dialog-preview { width: min(640px, calc(100vw - 48px)); }
 .rgroup-dialog .radix-dialog-body { overflow-y: auto; }
 .rgroup-dialog .radix-dialog-body > p { margin: 0 0 16px; }
-.rgroup-note, .rgroup-footer > span { color: var(--text-secondary); font-size: 12px; }
-.rgroup-footer { gap: 8px; flex-wrap: wrap; }
-.rgroup-footer > span { flex: 1; min-width: 160px; }
+.rgroup-footer { gap: 8px; justify-content: flex-end; }
 .rgroup-results { border-top: 1px solid var(--line-subtler); padding-top: 16px; }
 .rgroup-coverage { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
 .rgroup-coverage strong { font-size: 16px; }
 .rgroup-coverage span { color: var(--text-secondary); }
-.rgroup-core { display: grid; grid-template-columns: minmax(160px, 1fr) 1fr; align-items: center; gap: 16px; margin: 0 0 16px; }
-.rgroup-core p { color: var(--text-secondary); margin: 6px 0; }
-.rgroup-core code { overflow-wrap: anywhere; font-size: 11px; }
-.rgroup-structure { display: block; width: 100%; height: 150px; object-fit: contain; }
+.rgroup-core { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0 0 16px; }
+.rgroup-structure { display: block; width: 100%; height: 150px; }
+.rgroup-structure svg { display: block; width: 100%; height: 100%; }
 .rgroup-substituents { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .rgroup-substituents figure { margin: 0; padding: 6px; border: 1px solid var(--line-subtler); border-radius: 6px; overflow: hidden; }
 .rgroup-substituents .rgroup-structure { height: 90px; }

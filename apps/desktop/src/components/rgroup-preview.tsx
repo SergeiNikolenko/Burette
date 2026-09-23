@@ -15,20 +15,20 @@ function Structure({ smiles }: { smiles: string }) {
         if (!mol) return;
         try {
           mol.set_new_coords();
-          const dark = document.documentElement.dataset.effectiveTheme === "dark";
+          const dark = document.querySelector(".app-shell")?.getAttribute("data-effective-theme") === "dark";
           const ink = dark ? [0.87, 0.87, 0.87] : [0.12, 0.12, 0.12];
           const svg = mol.get_svg_with_highlights(JSON.stringify({ width: 260, height: 150,
             backgroundColour: [0, 0, 0, 0], atomColourPalette: { 0: ink, 1: ink, 6: ink }, padding: 0.1 }));
-          if (active && version === current) setImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+          if (active && version === current) setImage(svg);
         } finally { mol.delete(); }
       } catch { if (active) setImage(""); }
     };
     void draw();
     const observer = new MutationObserver(() => { void draw(); });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-effective-theme"] });
+    observer.observe(document.querySelector(".app-shell") ?? document.documentElement, { attributes: true, attributeFilter: ["data-effective-theme"] });
     return () => { active = false; observer.disconnect(); };
   }, [smiles]);
-  return image ? <img className="rgroup-structure" src={image} alt={smiles} title={smiles} /> : <code>{smiles}</code>;
+  return <div className="rgroup-structure" role="img" aria-label={smiles} title={smiles} dangerouslySetInnerHTML={{ __html: image }} />;
 }
 
 export function RGroupPreviewResults({ result, total }: { result: RGroupDecomposition; total: number }) {
@@ -54,21 +54,19 @@ export function RGroupPreviewResults({ result, total }: { result: RGroupDecompos
       result.unparsedRows && `${result.unparsedRows} invalid ${result.unparsedRows === 1 ? "structure" : "structures"}`,
       result.noScaffoldRows && `${result.noScaffoldRows} without rings`,
       result.unmatchedRows && `${result.unmatchedRows} without this core`,
-    ].filter(Boolean).join("; ")}. Each reason will be recorded in Status.</p>}
+    ].filter(Boolean).join("; ")}.</p>}
     {series && <>
-      <label className="calculated-column-field">Scaffold series
+      <label className="calculated-column-field">Series
         <NativeSelect value={series.id} onChange={(event) => { setSeriesId(event.target.value); setPosition(""); setPage(0); }}>
           {result.series.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.id} · {item.matchedRows} molecules · {item.labels.length} variable {item.labels.length === 1 ? "position" : "positions"}</NativeSelectOption>)}
         </NativeSelect>
       </label>
       <div className="rgroup-core"><Structure smiles={series.core} />
-        <div><strong>{series.id} {series.coreVariantCount > 1 ? `representative core (${series.coreVariantCount} variants)` : "core"}</strong><p>{series.constantPositions} constant positions incorporated.</p>
-          <p>{series.labels.length ? "R labels compare positions within this series." : "No variable substituents in this series."}</p>
-          <details><summary>Core query</summary><code>{series.query}</code></details>
-        </div>
+        {series.coreVariantCount > 1 && <span>{series.coreVariantCount} core variants</span>}
+        {!series.labels.length && <span>No variable substituents</span>}
       </div>
       {label && <>
-        <label className="calculated-column-field">Compare substituents
+        <label className="calculated-column-field">Position
           <NativeSelect value={label} onChange={(event) => { setPosition(event.target.value); setPage(0); }}>
             {series.labels.map((item) => <NativeSelectOption key={item} value={item}>{item}</NativeSelectOption>)}
           </NativeSelect>
