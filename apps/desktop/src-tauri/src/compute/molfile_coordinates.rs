@@ -1,4 +1,5 @@
 pub(crate) fn parse_molfile_positions(text: &str) -> Result<Vec<[f32; 4]>, String> {
+    require_spatial_input_header(text.lines().nth(1).unwrap_or(""))?;
     let lines = text.lines().collect::<Vec<_>>();
     if lines.len() < 4 {
         return Err("molfile header is truncated".into());
@@ -16,6 +17,16 @@ pub(crate) fn parse_molfile_positions(text: &str) -> Result<Vec<[f32; 4]>, Strin
         return Err("molfile coordinates must be finite".into());
     }
     Ok(positions)
+}
+
+pub(super) fn require_spatial_input_header(header: &str) -> Result<(), String> {
+    if header.split_whitespace().any(|word| word == "2D") || header.get(20..22) == Some("2D") {
+        return Err(
+            "This molecule contains a 2D drawing. Generate 3D coordinates before calculation"
+                .into(),
+        );
+    }
+    Ok(())
 }
 
 fn parse_v2000(lines: &[&str]) -> Result<Vec<[f32; 4]>, String> {
@@ -101,5 +112,8 @@ mod tests {
             [[1.25, -2.5, 3.75, 0.0]]
         );
         assert!(parse_molfile_positions(&mol.replace("    1.2500", "       NaN")).is_err());
+        assert!(
+            parse_molfile_positions(&mol.replace("  Burette", "  Burette          2D")).is_err()
+        );
     }
 }

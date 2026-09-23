@@ -581,7 +581,7 @@ impl ComputeCoordinator {
             } else {
                 None
             },
-            source_rows,
+            source_rows.clone(),
             request,
             queued.job_id,
             checkpoint,
@@ -723,6 +723,8 @@ impl ComputeCoordinator {
         result.report_path = Some(publication.report_path.clone());
         match apply_grid_semiempirical_result(
             source_lease.database_path_for_freeze(),
+            &queued.frozen_source,
+            &source_rows,
             &result,
             publication.artifact_id,
             &publication.artifact_manifest_sha256,
@@ -841,7 +843,7 @@ impl ComputeCoordinator {
         let result = execute_snapshot_alignment_with_run_id(
             runtime,
             ready.compute_service.as_ref(),
-            source_rows,
+            source_rows.clone(),
             request,
             queued.job_id,
             checkpoint,
@@ -911,6 +913,8 @@ impl ComputeCoordinator {
         result.report_path = Some(publication.report_path.clone());
         match apply_grid_alignment_result(
             source_lease.database_path_for_freeze(),
+            &queued.frozen_source,
+            &source_rows,
             &result,
             runtime,
             publication.artifact_id,
