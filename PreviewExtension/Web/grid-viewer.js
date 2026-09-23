@@ -2192,7 +2192,7 @@
   function remoteTableColumnFilters() {
     const filters = [];
     for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
-      if (!filter || columnId.startsWith('descriptor:') || columnId.startsWith('analysis:')) continue;
+      if (!filter || (columnId.startsWith('descriptor:') && filter.type !== 'text') || columnId.startsWith('analysis:')) continue;
       const row = { id: columnId, filterType: filter.type === 'number' ? 'number' : 'text' };
       if (row.filterType === 'number') {
         const min = Number(filter.min);
@@ -3780,6 +3780,25 @@
     handleTableColumnScroll(wrapper, cfg);
   }
 
+  // Invalid records remain source rows for tables, analysis and export. Only
+  // the molecular view omits them; raw paging offsets must never change.
+  const invalidCardSources = new WeakMap();
+
+  function omitInvalidCard(row) {
+    const source = row.molblock || row.smiles || '';
+    const changed = !invalidCardSources.has(row) || invalidCardSources.get(row) !== source;
+    invalidCardSources.set(row, source);
+    if (changed && state.viewMode !== 'table') {
+      requestAnimationFrame(() => { void renderVirtualWindow(safeConfig(), state.token, { force: true }); });
+    }
+  }
+
+  function cardViewRows(rows) {
+    if (state.viewMode === 'table') return rows;
+    return rows.filter(row => !invalidCardSources.has(row)
+      || invalidCardSources.get(row) !== (row.molblock || row.smiles || ''));
+  }
+
   async function renderVirtualWindow(cfg, token, options = {}) {
     const grid = document.getElementById('grid');
     if (!grid || token !== state.token) return;
@@ -3800,7 +3819,7 @@
       resetCardRenderQueues();
       const fragment = document.createDocumentFragment();
       const cards = [];
-      const rows = state.rows.slice(range.start, range.end);
+      const rows = cardViewRows(state.rows.slice(0, state.visibleCount)).slice(range.start, range.end);
       if (state.viewMode === 'table') {
         fragment.appendChild(gridTable(rows, cfg, range));
         grid.replaceChildren(fragment);
@@ -3908,14 +3927,14 @@
 
   function maybeLoadMoreForRenderedRange(cfg, range) {
     if (!hasMoreRows() || state.remoteLoading) return;
-    if (range.end >= Math.max(0, state.visibleCount - GRID_WINDOW_OVERSCAN_ROWS)) {
+    if (range.end >= Math.max(0, cardViewRows(state.rows.slice(0, state.visibleCount)).length - GRID_WINDOW_OVERSCAN_ROWS)) {
       window.setTimeout(() => loadMore(cfg), 0);
     }
   }
 
   function virtualWindowRange(grid) {
     updateVirtualGridMetrics();
-    const visibleRows = Math.min(state.visibleCount, state.rows.length);
+    const visibleRows = cardViewRows(state.rows.slice(0, state.visibleCount)).length;
     if (!visibleRows) return { start: 0, end: 0, topHeight: 0, bottomHeight: 0 };
     const columns = Math.max(1, state.estimatedColumnCount);
     const totalGridRows = Math.ceil(visibleRows / columns);
@@ -4101,7 +4120,7 @@
     const rows = state.rows || [];
     rail.hidden = gridRailTotalRows() < 2;
     if (rail.hidden) return;
-    const railRows = gridRailRows(rows);
+    const railRows = gridRailRows(rows).filter(({ row }) => !row || cardViewRows([row]).length > 0);
     ticks.innerHTML = railRows.map(({ row, position }, markerIndex) => {
       const index = row ? Number(row.index) : null;
       const title = escapeAttr(row?.name || `Molecule ${position + 1}`);
@@ -4301,7 +4320,7 @@
     if (rowIndex >= 0) {
       state.pendingGridScrollIndex = index;
       state.visibleCount = Math.min(state.rows.length, Math.max(state.visibleCount, rowIndex + 1));
-      scrollToEstimatedGridRow(rowIndex, behavior);
+      scrollToEstimatedGridRow(cardViewRows(state.rows.slice(0, rowIndex)).length, behavior);
       if (state.rendering) {
         state.pendingLoad = true;
         return;
@@ -4888,7 +4907,7 @@
       columns.push({
         id: `descriptor:${id}`,
         label,
-        type: 'number',
+        type: id.startsWith('RGroup_') || id === 'Scaffold' ? 'text' : 'number',
         kind: 'descriptor',
         title: descriptorHelpText(id, label),
         get: row => descriptorDisplayValue(row.descriptors?.[id])
@@ -7812,7 +7831,10 @@
     let html = '';
     try {
       mol = state.rdkit.get_mol(row.molblock || row.smiles || '');
-      if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
+      if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid()) || mol.get_num_atoms?.() === 0) {
+        omitInvalidCard(row);
+        return '';
+      }
       try {
         if (!useInputCoords) {
           try { mol.set_new_coords?.(); } catch (_) {}
@@ -7834,6 +7856,10 @@
       if (!html.includes('<svg')) throw new Error('empty drawing');
       if (isDegenerateMoleculeSVG(html)) throw new Error('invalid molecule drawing');
     } catch (error) {
+      if (!mol) {
+        omitInvalidCard(row);
+        return '';
+      }
       const label = row.smiles || row.name || 'Molecule';
       html = moleculeErrorHTML(label, error.message || String(error));
     } finally {
@@ -8770,12 +8796,13 @@
   }
 
   async function exportCSV(cfg) {
-    const rows = await collectExportRows(cfg);
+    let rows = await collectExportRows(cfg);
     if (!rows) return;
+    rows = withSarProperties(rows);
     const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
     const data = [
       ['index', 'name', 'smiles', ...props],
-      ...rows.map(row => [row.index, row.name || '', row.smiles || '', ...props.map(prop => (row.props || {})[prop] || '')])
+      ...rows.map(row => [row.index, row.name || '', row.smiles || '', ...props.map(prop => (row.props || {})[prop] ?? '')])
     ];
     download(data.map(row => row.map(csv).join(',')).join('\n') + '\n', baseName(cfg.label) + '.csv', 'text/csv');
   }
@@ -8874,6 +8901,16 @@
     };
   }
 
+  function withSarProperties(rows) {
+    return rows.map(row => {
+      const props = { ...row.props };
+      for (const [id, cell] of Object.entries(row.descriptors || {})) {
+        if (id.startsWith('RGroup_') || id === 'Scaffold' || id === 'ScaffoldCount') props[id] = cell.value ?? '';
+      }
+      return { ...row, props };
+    });
+  }
+
   function serializeSmilesRows(rows) {
     return rows
       .map(row => `${row.smiles || ''}\t${row.name || `mol_${Number(row.index) + 1}`}`.trim())
@@ -8882,6 +8919,7 @@
   }
 
   function serializeSdfRows(rows) {
+    rows = withSarProperties(rows);
     return rows.map(row => {
       const molblock = String(row.molblock || '').replace(/\n?\$\$\$\$\s*$/u, '').trimEnd();
       const props = {
@@ -8898,6 +8936,7 @@
   }
 
   function serializeDelimitedRows(rows, separator) {
+    rows = withSarProperties(rows);
     const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
     const data = [
       ['burette_encoding', 'index', 'name', 'smiles', 'molblock', ...props],
@@ -8907,7 +8946,7 @@
         row.name || '',
         row.smiles || '',
         row.molblock || '',
-        ...props.map(prop => (row.props || {})[prop] || '')
+        ...props.map(prop => (row.props || {})[prop] ?? '')
       ])
     ];
     return data.map(row => row.map(value => gridDelimitedCell(value, separator)).join(separator)).join('\n') + '\n';

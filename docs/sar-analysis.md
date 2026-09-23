@@ -45,3 +45,9 @@ substituent frequencies for each R position. It does not write to the collection
 Changing the query invalidates the preview; Apply commits exactly the inspected
 result. A failed application keeps the dialog open and requests a fresh preview.
 Substituent frequencies describe composition, not effects on activity.
+
+SAR text columns support table filtering and sorting. CSV and SDF exports carry
+`RGroup_*`, `Scaffold`, and `ScaffoldCount` values as properties. Reopening such
+an export restores data columns, not a live calculation. Invalid molecular
+records remain available in the table and exclusion report; the card view omits
+unparsable structures and the inspector suppresses their molecular preview.

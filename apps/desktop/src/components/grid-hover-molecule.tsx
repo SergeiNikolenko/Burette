@@ -137,6 +137,7 @@ export function GridHoverMoleculeCard({
   const theme = useEffectiveTheme();
   const [previewMode, setPreviewMode] = useState<"2d" | "3d">("2d");
   const [svg, setSvg] = useState<string | null>(null);
+  const [invalidSource, setInvalidSource] = useState<string | null>(null);
   // The well's real size, measured rather than assumed: the drawing is asked
   // for at these numbers so it fills the box at any drag height.
   const [wellSize, setWellSize] = useState<{ width: number; height: number } | null>(null);
@@ -149,6 +150,11 @@ export function GridHoverMoleculeCard({
   // the grid - DataWarrior does the same, and a flickering empty card would
   // make the preview useless while moving between rows.
   const shown = row ?? lastRowRef.current;
+
+  const molecularSource = showingScaffold && scaffold.kind === "found"
+    ? scaffold.smiles
+    : (shown?.molblock ?? "").trim() ? shown?.molblock ?? "" : (shown?.smiles ?? "").trim();
+  const hideMolecularPreview = !showingScaffold && (!molecularSource || invalidSource === molecularSource);
 
   // A callback ref, not a mount effect: the card is unmounted while nothing is
   // hovered and while it is collapsed, so an effect with an empty dependency
@@ -200,10 +206,13 @@ export function GridHoverMoleculeCard({
       try {
         const engines = await loadDerivedEngines();
         if (renderTokenRef.current !== token) return;
-        const mol = engines.rdkit.get_mol(source);
-        if (!mol) {
+        let mol;
+        try { mol = engines.rdkit.get_mol(source); } catch { mol = null; }
+        if (!mol || !mol.get_smiles()) {
+          mol?.delete();
           if (renderTokenRef.current === token) {
             setSvg(null);
+            setInvalidSource(source);
           }
           return;
         }
@@ -334,12 +343,12 @@ export function GridHoverMoleculeCard({
     <Card size="sm" className="structure-brief-card grid-hover-molecule">
       <header className="grid-hover-molecule-header">
         <span className="grid-hover-molecule-name" title={label}>{label}</span>
-        {!showingScaffold && <div className="grid-preview-mode" role="group" aria-label="Molecule preview mode">
+        {!showingScaffold && !hideMolecularPreview && <div className="grid-preview-mode" role="group" aria-label="Molecule preview mode">
           {(["2d", "3d"] as const).map(mode => <Button key={mode} size="xs" variant={previewMode === mode ? "secondary" : "ghost"} aria-pressed={previewMode === mode} onClick={() => setPreviewMode(mode)}>{mode.toUpperCase()}</Button>)}
         </div>}
         {badge ? <span className="grid-hover-molecule-index">{badge}</span> : null}
       </header>
-      {previewMode === "3d" && !showingScaffold ? <Suspense fallback={<div className="grid-molecule-3d" />}>
+      {!hideMolecularPreview && (previewMode === "3d" && !showingScaffold ? <Suspense fallback={<div className="grid-molecule-3d" />}>
         <GridMolecule3D key={documentId} molblock={shown?.molblock ?? ""} theme={theme} onOpen={() => { if (shown) postGridCommand(documentId, "structure.open-in-molstar", shown.index); }} />
       </Suspense> : <div
         ref={attachWell}
@@ -362,7 +371,7 @@ export function GridHoverMoleculeCard({
         ) : (
           <span className="grid-hover-molecule-empty">Structure preview unavailable</span>
         )}
-      </div>}
+      </div>)}
       {!showingScaffold && visibleProps.length ? (
         <>
           <div className="grid-hover-molecule-props-bar">

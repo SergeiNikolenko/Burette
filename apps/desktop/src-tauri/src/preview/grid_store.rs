@@ -1301,7 +1301,7 @@ fn page_sort_clause(
     PageSortClause {
         join_sql: "left join descriptor_values descriptor_sort on descriptor_sort.molecule_id = molecules.id and descriptor_sort.descriptor_id = ?",
         order_sql: format!(
-            "descriptor_sort.value_real is null asc, descriptor_sort.value_real {direction}, source_index asc"
+            "coalesce(descriptor_sort.value_real, descriptor_sort.value_text) is null asc, descriptor_sort.value_real {direction}, descriptor_sort.value_text collate nocase {direction}, source_index asc"
         ),
         params: vec![SqlValue::Text(sort.id.clone())],
     }
@@ -6916,3 +6916,7 @@ mod tests {
         assert_eq!(index, 3);
     }
 }
+
+#[cfg(test)]
+#[path = "grid_sar_tests.rs"]
+mod sar_tests;

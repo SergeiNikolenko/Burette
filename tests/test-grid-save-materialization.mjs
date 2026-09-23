@@ -116,7 +116,7 @@ const duplicate = { index: 1, name: "Base copy", smiles: "CC", props: {} };
 
 {
   const serializeDelimitedRows = new Function(
-    `${functionSource("serializeDelimitedRows")}\n${functionSource("gridDelimitedCell")}\n${functionSource("csv")}\nreturn serializeDelimitedRows;`,
+    `${functionSource("withSarProperties")}\n${functionSource("serializeDelimitedRows")}\n${functionSource("gridDelimitedCell")}\n${functionSource("csv")}\nreturn serializeDelimitedRows;`,
   )();
   const csv = serializeDelimitedRows([
     {
@@ -136,3 +136,57 @@ const duplicate = { index: 1, name: "Base copy", smiles: "CC", props: {} };
 }
 
 console.log("Grid save materialization behavior checks passed.");
+
+{
+  const save = new Function(`${functionSource("withSarProperties")}\n${functionSource("serializeDelimitedRows")}\n${functionSource("gridDelimitedCell")}\n${functionSource("csv")}\nreturn serializeDelimitedRows;`)();
+  const rows = [{index: 0, name: "Series member", smiles: "Cc1ccccc1", props: {R1: "user value"}, descriptors: {
+    RGroup_Core: {value: "c1ccc([*:1])cc1"}, RGroup_R1: {value: "C[*:1]"}, RGroup_Status: {value: "Matched"},
+  }}];
+  const text = save(rows, ",");
+  assert.match(text, /RGroup_Core,RGroup_R1,RGroup_Status/);
+  assert.match(text, /user value,c1ccc\(\[\*:1\]\)cc1,C\[\*:1\],Matched/);
+  assert.deepEqual(rows[0].props, {R1: "user value"}, "saving does not mutate original properties");
+}
+{
+  const filters = new Function("state", `${functionSource("remoteTableColumnFilters")}\nreturn remoteTableColumnFilters();`)({ tableColumnFilters: {
+    "descriptor:RGroup_Series": {type: "text", text: "S2"},
+    "descriptor:MW": {type: "number", min: 100},
+  }});
+  assert.deepEqual(filters, [{id: "descriptor:RGroup_Series", filterType: "text", text: "S2"}]);
+}
+
+{
+  // Rendering may discover an invalid structure after the page was loaded.
+  // Card compaction must not alter table/export rows or remote paging offsets.
+  const rows = [{ index: 0, smiles: 'CC' }, { index: 1, smiles: 'not-a-smiles((' }, { index: 2, smiles: 'CCC' }];
+  const current = { rows, visibleCount: 3, viewMode: 'cards' };
+  let scheduled = 0;
+  const { omit, visible } = new Function('state', 'requestAnimationFrame', `
+    const invalidCardSources = new WeakMap();
+    ${functionSource('omitInvalidCard')}
+    ${functionSource('cardViewRows')}
+    return { omit: omitInvalidCard, visible: cardViewRows };
+  `)(current, () => { scheduled++; });
+  omit(rows[1]); omit(rows[1]);
+  assert.equal(scheduled, 1, 'invalid cards request one compacting render');
+  assert.deepEqual(visible(rows).map(row => row.index), [0, 2]);
+  assert.equal(current.rows.length, 3, 'raw paging offset is unchanged');
+  current.viewMode = 'table';
+  assert.equal(visible(rows), rows, 'the table retains the original data');
+  current.viewMode = 'cards';
+  rows[1].smiles = 'CO';
+  assert.deepEqual(visible(rows).map(row => row.index), [0, 1, 2], 'editing a bad structure restores its card');
+}
+
+{
+  const { default: initRDKit } = await import('@rdkit/rdkit');
+  const rdkit = await initRDKit();
+  const omitted = [];
+  const current = { rdkit, smartsMatches: new Map(), svgCache: new Map(), rdkitUseInputCoords: false };
+  const draw = new Function('state', 'rowReactionText', 'rdkitCardKey', 'omitInvalidCard', `${functionSource('drawRdkit')} return drawRdkit;`)(
+    current, () => '', row => row.smiles, row => omitted.push(row.index),
+  );
+  assert.equal(draw({ index: 0, smiles: 'not-a-smiles((' }), '');
+  assert.equal(draw({ index: 1, smiles: '' }), '');
+  assert.deepEqual(omitted, [0, 1], 'real RDKit rejects invalid and empty structures without error cards');
+}
