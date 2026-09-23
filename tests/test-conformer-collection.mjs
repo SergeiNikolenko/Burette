@@ -22,6 +22,17 @@ assert.throws(() => conformerCollectionSdf(source, frame(2, 'C', 1)), /unknown s
 assert.throws(() => conformerCollectionSdf(source, frame(0, 'C', 'NaN')), /coordinates/);
 const v3 = '\n  Burette           2D\n\n  0  0  0     0  0            999 V3000\nM  V30 BEGIN CTAB\nM  V30 COUNTS 1 0 0 0 0\nM  V30 BEGIN ATOM\nM  V30 1 N 0 0 0 0 CHG=1\nM  V30 END ATOM\nM  V30 END CTAB\nM  END\n$$$$\n';
 assert.equal(conformerCollectionSdf(v3, frame(0, 'N', 1)), v3.replace('2D', '3D').replace('N 0 0 0 0 CHG=1', 'N 1 2 3 0 CHG=1'));
+assert.equal(conformerCollectionSdf(record('V2000 reference', 'C'), frame(0, 'C', 1)),
+  record('V2000 reference', 'C').replace('2D', '3D').replace('    0.0000    0.0000    0.0000 C', '    1.0000    2.0000    3.0000 C'));
+const continuedV3 = v3.replace('N 0 0 0 0 CHG=1', 'N 0 0 -\nM  V30 0 0 CHG=1');
+assert.equal(conformerCollectionSdf(continuedV3, frame(0, 'N', 1)),
+  v3.replace('2D', '3D').replace('N 0 0 0 0 CHG=1', 'N 1 2 3 0 CHG=1'));
+const attributes = ' CHG=1 MASS=15 ' + ' '.repeat(90) + 'CFG=1';
+const longV3 = v3.replace(' CHG=1', attributes);
+const continuedResult = conformerCollectionSdf(longV3, frame(0, 'N', 1));
+assert.ok(continuedResult.split('\n').every(line => line.length <= 80));
+assert.equal(continuedResult.replace(/-\nM  V30 /g, ''),
+  longV3.replace('2D', '3D').replace('N 0 0 0 0', 'N 1 2 3 0'));
 console.log('conformer collection preservation passed');
 
 // Exercise the native Generate 3D bridge: it must open SDF in the active tab,

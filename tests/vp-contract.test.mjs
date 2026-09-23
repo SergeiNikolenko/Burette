@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const contractScripts = {
   "test-pose-camera-stability.mjs": () => import("./test-pose-camera-stability.mjs"),
+  "test-collection-analysis-menu.mjs": () => import("./test-collection-analysis-menu.mjs"),
   "test-conformer-collection.mjs": () => import("./test-conformer-collection.mjs"),
   "test-burette-deep-links.mjs": () => import("./test-burette-deep-links.mjs"),
   "test-ketcher-import-readiness.mjs": () => import("./test-ketcher-import-readiness.mjs"),

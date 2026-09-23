@@ -30,7 +30,7 @@ export function conformerCollectionSdf(source: string, xyz: string, ensemble = f
     // Native artifacts rank each molecule's conformers by energy.
     if (!ensemble && results[index].length) continue;
     const output = record.split("\n");
-    const counts = output.findIndex(line => /\bV2000\b/u.test(line));
+    const counts = /\bV2000\b/u.test(output[3] ?? "") ? 3 : -1;
     if (counts >= 0) {
       if (Number(output[counts].slice(0, 3)) !== count) throw new Error("Conformer atom count differs from source");
       atoms.forEach(({ element, coordinates }, offset) => {
@@ -43,13 +43,33 @@ export function conformerCollectionSdf(source: string, xyz: string, ensemble = f
     } else {
       const start = output.findIndex(line => line.trim() === "M  V30 BEGIN ATOM");
       const end = output.findIndex(line => line.trim() === "M  V30 END ATOM");
-      if (start < 0 || end - start - 1 !== count) throw new Error("Unsupported conformer source atom block");
+      if (start < 0 || end <= start) throw new Error("Unsupported conformer source atom block");
+      const atomLines: string[] = [];
+      for (let row = start + 1; row < end; row++) {
+        let line = output[row];
+        while (line.endsWith("-")) {
+          if (++row >= end || !output[row].startsWith("M  V30 ")) {
+            throw new Error("Invalid continued V3000 atom record");
+          }
+          line = line.slice(0, -1) + output[row].slice(7);
+        }
+        atomLines.push(line);
+      }
+      if (atomLines.length !== count) throw new Error("Conformer atom count differs from source");
+      const replaced: string[] = [];
       atoms.forEach(({ element, coordinates }, offset) => {
-        const line = output[start + 1 + offset];
-        const match = /^(M  V30\s+\d+\s+)(\S+)(\s+)\S+\s+\S+\s+\S+(.*)$/u.exec(line);
+        const match = /^(M  V30\s+\d+\s+)(\S+)(\s+)\S+\s+\S+\s+\S+(.*)$/u.exec(atomLines[offset]);
         if (!match || match[2] !== element) throw new Error("Conformer atom order differs from source");
-        output[start + 1 + offset] = `${match[1]}${element}${match[3]}${coordinates.join(" ")}${match[4]}`;
+        let line = `${match[1]}${element}${match[3]}${coordinates.join(" ")}${match[4]}`;
+        // V3000 continuation removes the hyphen and the next line's prefix;
+        // wrapping the updated logical record preserves every atom attribute.
+        while (line.length > 80) {
+          replaced.push(`${line.slice(0, 79)}-`);
+          line = `M  V30 ${line.slice(79)}`;
+        }
+        replaced.push(line);
       });
+      output.splice(start + 1, end - start - 1, ...replaced);
     }
     // Molfile dimensional code belongs to the second header line.
     if (/[23]D\s*$/u.test(output[1] ?? "")) {

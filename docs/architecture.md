@@ -260,3 +260,10 @@ removing and rebuilding the foreground, then restores its prior reset policy eve
 input remains live, and holding the viewport pointer does not pause playback. Initial loading and explicit focus
 retain their framing behavior. Unsupported Align controls are hidden; supported
 alignment remains visible, including its temporary busy state.
+
+Native Analyze commands also accept a file-backed SDF opened in Mol*. The desktop
+menu's `canOpenCollectionAnalysis` capability enables these commands; choosing one
+opens the same file in Grid and dispatches the analysis only after its records
+are ready. Leaving the target tab cancels the pending analysis. Grid-specific
+selection, unsaved-edit, and Python RDKit requirements still apply. Opening all
+rows in Mol* keeps the collection title, and 2D alignment preserves SD properties.

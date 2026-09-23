@@ -30,6 +30,8 @@ pub(crate) struct NativeMenuState {
     can_export_external_preview: bool,
     document_dirty: bool,
     is_grid: bool,
+    #[serde(default)]
+    can_open_collection_analysis: bool,
     sidebar_open: bool,
     right_dock_open: bool,
     bottom_dock_open: bool,
@@ -797,21 +799,16 @@ pub(super) fn sync_native_menu<R: Runtime>(
     // re-checks its editing capability when the command arrives.
     set_enabled(&app, "collection.delete-columns", state.is_grid)?;
 
+    let can_analyze_collection =
+        state.is_grid && state.grid_has_molecules || state.can_open_collection_analysis;
+    let can_analyze_columns = can_add_derived_column || state.can_open_collection_analysis;
     set_enabled(&app, "analyze.menu", true)?;
-    set_enabled(
-        &app,
-        "analyze.chemical-space",
-        state.is_grid && state.grid_has_molecules,
-    )?;
-    set_enabled(
-        &app,
-        "analyze.correlation-matrix",
-        state.is_grid && state.grid_has_molecules,
-    )?;
+    set_enabled(&app, "analyze.chemical-space", can_analyze_collection)?;
+    set_enabled(&app, "analyze.correlation-matrix", can_analyze_collection)?;
     // Clustering runs inside the grid, which re-checks its own capability; the
     // menu only asks for a molecular grid to exist.
     for id in ["analyze.cluster", "analyze.diverse"] {
-        set_enabled(&app, id, state.is_grid && state.grid_has_molecules)?;
+        set_enabled(&app, id, can_analyze_collection)?;
     }
     // The SAR analyses all write derived columns, so they follow the same rule
     // Add Column does: a grid with molecules whose edits are already saved.
@@ -820,7 +817,7 @@ pub(super) fn sync_native_menu<R: Runtime>(
         "analyze.substructure-count",
         "analyze.find-similar",
     ] {
-        set_enabled(&app, id, can_add_derived_column)?;
+        set_enabled(&app, id, can_analyze_columns)?;
     }
     // R-group decomposition is the one analysis with an external dependency.
     // Rather than failing at click time, the item says what is missing and
@@ -828,7 +825,7 @@ pub(super) fn sync_native_menu<R: Runtime>(
     set_enabled(
         &app,
         "analyze.rgroups",
-        can_add_derived_column && state.rgroup_runtime_available,
+        can_analyze_columns && state.rgroup_runtime_available,
     )?;
     set_text(
         &app,

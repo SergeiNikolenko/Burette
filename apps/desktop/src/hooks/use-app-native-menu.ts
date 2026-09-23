@@ -97,6 +97,7 @@ export function useAppNativeMenu({
   sourceSaveEnabled,
   saveActiveSource,
 }: UseAppNativeMenuOptions) {
+  const [pendingAnalysis, setPendingAnalysis] = useState<{ command: string; path: string; tabId: string | null } | null>(null);
   const [shellEditingText, setShellEditingText] = useState(false);
   const activeDocument = state.activeDocument;
   const isGrid = activeDocument?.renderer === "grid2d";
@@ -104,6 +105,8 @@ export function useAppNativeMenu({
   const activeDocumentFileBacked = Boolean(activeDocument
     && fileBackedViewerDocumentPath(activeDocument));
   const activeDocumentReadable = activeDocumentFileBacked;
+  const canOpenCollectionAnalysis = Boolean(!isGrid && activeDocumentReadable
+    && (extension === "sdf" || extension === "sd"));
   const activeDocumentTabPath = state.activeTab?.location.kind === "document" && isAbsoluteNativeFilePath(state.activeTab.location.path)
     ? state.activeTab.location.path
     : null;
@@ -216,6 +219,7 @@ export function useAppNativeMenu({
     canExportExternalPreview: activeDocument?.renderer === "xyzrender-external",
     documentDirty: windowDocumentDirty,
     isGrid,
+    canOpenCollectionAnalysis,
     sidebarOpen: state.sidebarOpen,
     rightDockOpen: state.rightDockOpen,
     bottomDockOpen: state.bottomDockOpen,
@@ -248,7 +252,7 @@ export function useAppNativeMenu({
     rgroupRuntimeAvailable: state.rgroupRuntimeAvailable,
     openDocumentPaths,
     recentDocuments: null,
-  }), [activeDocument, activeTabClosable, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closableTabCount, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.rgroupRuntimeAvailable, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
+  }), [activeDocument, activeTabClosable, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closableTabCount, canOpenCollectionAnalysis, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.rgroupRuntimeAvailable, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
   const nativeStateRef = useRef<NativeMenuState>({ ...nativeState, recentDocuments });
   const closingWindowRef = useRef(false);
   const closeRequestInFlightRef = useRef(false);
@@ -418,6 +422,17 @@ export function useAppNativeMenu({
       const nextIndex = (currentIndex + offset + state.tabs.length) % state.tabs.length;
       actions.selectTab(state.tabs[nextIndex].id);
     };
+
+    if (command.startsWith("analyze.") && canOpenCollectionAnalysis && activeDocument) {
+      setPendingAnalysis({ command, path: activeDocument.path, tabId: state.activeTabId });
+      try {
+        await openDocuments([activeDocument.path], undefined, { rendererMode: "grid2d" }, { inActiveTab: true });
+      } catch (error) {
+        setPendingAnalysis(null);
+        await messageDialog(String(error), { title: "Cannot Open Collection Analysis", kind: "error" });
+      }
+      return;
+    }
 
     switch (command) {
       case "settings.open":
@@ -674,7 +689,22 @@ export function useAppNativeMenu({
       default:
         console.warn(`Unknown native menu command: ${command}`);
     }
-  }, [actions, activeDocument, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.tabs]);
+  }, [actions, activeDocument, canOpenCollectionAnalysis, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.tabs]);
+
+  // Grid commands need the mounted grid and its records, not just a new document.
+  // Cancel if the user leaves the target tab while it is opening.
+  useEffect(() => {
+    if (!pendingAnalysis) return;
+    if (state.activeTabId !== pendingAnalysis.tabId || activeDocument?.path !== pendingAnalysis.path) {
+      setPendingAnalysis(null);
+      return;
+    }
+    if (!isGrid || !gridMenuState) return;
+    setPendingAnalysis(null);
+    if (gridMenuState.hasMolecules) {
+      void handleNativeMenuCommand({ command: pendingAnalysis.command });
+    }
+  }, [pendingAnalysis, state.activeTabId, activeDocument?.path, isGrid, gridMenuState, handleNativeMenuCommand]);
 
   useMenuEvents({
     handleNativeMenuCommand,
