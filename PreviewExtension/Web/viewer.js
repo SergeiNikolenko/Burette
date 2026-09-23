@@ -1719,6 +1719,7 @@
   let pendingTrajectoryPlaybackRestore = null;
   let viewportTrajectoryAnimationEpoch = 0;
   let activeSdfPoseMode = 'single';
+  let activeSdfCollectionLayout = 'overlap';
   let activeSdfCollectionVisibilityState = null;
   let activeXyzFrameOverlayState = null;
   let xyzFrameAlignment = null;
@@ -3292,6 +3293,20 @@
     } catch (_) {}
   }
 
+  function sdfCollectionLayoutStorageKey(config) {
+    return `buret.sdfCollection.layout.${String(config?.documentId || config?.label || 'collection')}`;
+  }
+
+  function readSdfCollectionLayout(config) {
+    try { return window.localStorage?.getItem(sdfCollectionLayoutStorageKey(config)) === 'spread' ? 'spread' : 'overlap'; }
+    catch (_) { return 'overlap'; }
+  }
+
+  function setSdfCollectionLayout(layout) {
+    activeSdfCollectionLayout = layout === 'spread' ? 'spread' : 'overlap';
+    try { window.localStorage?.setItem(sdfCollectionLayoutStorageKey(activeConfig), activeSdfCollectionLayout); } catch (_) {}
+  }
+
   function notifyStructureOverlayModeChanged(prepared = activeMolstarPrepared) {
     if (!structureOverlayAvailable(prepared)) return;
     const documentId = String(activeConfig?.documentId || window.BuretteConfig?.documentId || '');
@@ -3346,6 +3361,12 @@
   }
 
   function updateStructureOverlayToggleButton(button, prepared = activeMolstarPrepared) {
+    const spread = document.querySelector('[data-buret-action="sdf-collection-spread"]');
+    if (spread) {
+      const active = activeSdfPoseMode === 'all' && activeSdfCollectionLayout === 'spread';
+      spread.classList.toggle('active', active);
+      spread.setAttribute('aria-pressed', active ? 'true' : 'false');
+    }
     if (!button) return;
     const available = structureOverlayToggleAvailable(prepared);
     button.classList.toggle('hidden', !available);
@@ -14353,45 +14374,20 @@ SOFTWARE.
     }
     if (molecules.length <= 1 || totalAtoms > 999 || totalBonds > 999) return null;
 
-    const columns = Math.max(1, Math.ceil(Math.sqrt(molecules.length)));
-    const rows = Math.ceil(molecules.length / columns);
-    const cellWidth = Math.max(2, ...molecules.map(m => Math.max(2, m.width))) + SDF_GRID_PADDING;
-    const cellHeight = Math.max(2, ...molecules.map(m => Math.max(2, m.height))) + SDF_GRID_PADDING;
-    const gridWidth = (columns - 1) * cellWidth;
-    const gridHeight = (rows - 1) * cellHeight;
-
-    const atoms = [];
-    const bonds = [];
-    let atomOffset = 0;
-    molecules.forEach((molecule, index) => {
-      const column = index % columns;
-      const row = Math.floor(index / columns);
-      const targetX = column * cellWidth - gridWidth / 2;
-      const targetY = gridHeight / 2 - row * cellHeight;
-      const dx = targetX - molecule.centerX;
-      const dy = targetY - molecule.centerY;
-      for (const atom of molecule.atoms) {
-        atoms.push(formatSdfAtomLine(atom, atom.x + dx, atom.y + dy, atom.z));
-      }
-      for (const bond of molecule.bonds) {
-        bonds.push(formatSdfBondLine(bond, atomOffset));
-      }
-      atomOffset += molecule.atomCount;
+    const spread = spreadSdfCollectionMolecules(molecules);
+    const gridEntries = spread.map((molecule, index) => {
+      const moleculeLabel = `Molecule ${index + 1}`;
+      return {
+        label: moleculeLabel,
+        data: sdfMoleculesToPdbStructure([molecule], moleculeLabel)
+      };
     });
 
     return {
-      data: [
-        'Burette SDF Grid',
-        '  Burette',
-        `${molecules.length} of ${records.length} SDF records`,
-        formatSdfCountsLine(totalAtoms, totalBonds),
-        ...atoms,
-        ...bonds,
-        'M  END',
-        '$$$$',
-        ''
-      ].join('\n'),
-      format: 'sdf',
+      kind: 'sdf-grid',
+      data: '',
+      gridEntries,
+      format: 'pdb',
       label: `${label} (grid: ${molecules.length}${records.length > molecules.length ? ` of ${records.length}` : ''} molecules)`,
       loadPreset: 'default'
     };
@@ -14514,6 +14510,24 @@ SOFTWARE.
     return { data: lines.join('\n'), residues, singlePdbs, molecules };
   }
 
+  function spreadSdfCollectionMolecules(molecules) {
+    const columns = Math.ceil(Math.sqrt(molecules.length));
+    const rows = Math.ceil(molecules.length / columns);
+    const spacing = Math.max(3, ...molecules.map(molecule => Math.max(molecule.width, molecule.height))) + SDF_GRID_PADDING;
+    return molecules.map((molecule, index) => {
+      const x = (index % columns - (columns - 1) / 2) * spacing;
+      const y = ((rows - 1) / 2 - Math.floor(index / columns)) * spacing;
+      return {
+        ...molecule,
+        atoms: molecule.atoms.map(atom => ({
+          ...atom,
+          x: atom.x + x - molecule.centerX,
+          y: atom.y + y - molecule.centerY
+        }))
+      };
+    });
+  }
+
   function sdfMoleculesToPdbStructure(molecules, label) {
     const totalAtoms = molecules.reduce((sum, molecule) => sum + molecule.atomCount, 0);
     if (totalAtoms <= 0 || totalAtoms > 99999) return null;
@@ -14542,14 +14556,6 @@ SOFTWARE.
     appendPdbConectLines(lines, adjacency);
     lines.push('END', '');
     return lines.join('\n');
-  }
-
-  function sdfCollectionBackgroundPdb(prepared, activeIndex) {
-    const molecules = Array.isArray(prepared?.collectionMolecules) ? prepared.collectionMolecules : [];
-    if (molecules.length <= 1) return null;
-    const background = molecules.filter((_, index) => index !== activeIndex);
-    if (background.length === 0) return null;
-    return sdfMoleculesToPdbStructure(background, `${prepared.label || 'Molecule collection'} background`);
   }
 
   function appendPdbConectLines(lines, adjacency) {
@@ -14746,6 +14752,7 @@ SOFTWARE.
       Number(prepared?.poseCount || prepared?.sdfPoseRecordCount || 0),
       style,
       allMode ? 'all' : 'single',
+      allMode ? activeSdfCollectionLayout : 'overlap',
       contextStyle,
     ].join('|');
   }
@@ -15100,7 +15107,10 @@ SOFTWARE.
       throw new Error('Mol* structure builders are not available in this runtime.');
     }
     const allMode = activeSdfPoseMode === 'all';
-    const singlePdbs = Array.isArray(prepared.collectionSinglePdbs) ? prepared.collectionSinglePdbs : [];
+    const spreadCollection = allMode && activeSdfCollectionLayout === 'spread'
+      ? sdfMoleculesToPdbCollection(spreadSdfCollectionMolecules(prepared.collectionMolecules), prepared.label)
+      : null;
+    const singlePdbs = spreadCollection?.singlePdbs || (Array.isArray(prepared.collectionSinglePdbs) ? prepared.collectionSinglePdbs : []);
     const activeIndex = Math.max(0, Math.min(singlePdbs.length - 1, Math.trunc(Number(activePose) || 0)));
     const activeData = singlePdbs[activeIndex];
     if (!activeData) throw new Error('Mol* collection molecule data is unavailable.');
@@ -15116,10 +15126,12 @@ SOFTWARE.
       resetDockingSceneVisibilityState(viewer);
       if (typeof plugin.clear === 'function') await plugin.clear();
       const backgroundStructures = [];
+      const allRefsByIndex = [];
       if (allMode) {
-        const backgroundData = sdfCollectionBackgroundPdb(prepared, -1);
-        if (backgroundData) {
-          backgroundStructures.push(...await loadSdfCollectionPdbLayer(viewer, backgroundData, `${prepared.label || 'Molecule collection'} (background)`));
+        for (const [index, data] of singlePdbs.entries()) {
+          const structures = await loadSdfCollectionPdbLayer(viewer, data, `Molecule ${index + 1}`);
+          backgroundStructures.push(...structures);
+          allRefsByIndex.push(molstarStructureRefsOf(structures));
         }
         if (backgroundStructures.length) {
           await applySdfCollectionMolstarStyle(
@@ -15130,13 +15142,17 @@ SOFTWARE.
             contextColor
           );
         }
+        const selected = molstarStructuresByRefs(viewer, allRefsByIndex[activeIndex]);
+        await applySdfCollectionMolstarStyle(viewer, style, selected, 1, 'colored');
       }
       state = {
         viewer,
         key: stateKey,
         backgroundRefs: molstarStructureRefsOf(backgroundStructures),
-        activeRefs: [],
-        activeIndex: -1
+        allRefsByIndex,
+        activeRefs: allMode ? allRefsByIndex[activeIndex] : [],
+        activeIndex: allMode ? activeIndex : -1,
+        appearanceKey: allMode ? `${contextOpacity}|${contextColor}` : undefined
       };
       activeSdfCollectionVisibilityState = state;
     }
@@ -15145,10 +15161,33 @@ SOFTWARE.
     if (state.appearanceKey !== appearanceKey) {
       const background = molstarStructuresByRefs(viewer, state.backgroundRefs);
       if (background.length) await applySdfCollectionMolstarStyle(viewer, contextStyle === 'match' ? style : contextStyle, background, contextOpacity, contextColor);
+      if (allMode) {
+        const selected = molstarStructuresByRefs(viewer, state.allRefsByIndex[activeIndex]);
+        await applySdfCollectionMolstarStyle(viewer, style, selected, 1, 'colored');
+      }
       state.appearanceKey = appearanceKey;
     }
 
     if (state.activeIndex === activeIndex && sdfCollectionVisibilityStateStillLoaded(viewer, state)) {
+      updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+      if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
+      return;
+    }
+
+    if (allMode) {
+      const canvas3d = plugin.canvas3d;
+      const manualReset = canvas3d?.props?.camera?.manualReset === true;
+      canvas3d?.setProps({ camera: { manualReset: true } });
+      try {
+        const previous = molstarStructuresByRefs(viewer, state.allRefsByIndex[state.activeIndex]);
+        if (previous.length) await applySdfCollectionMolstarStyle(viewer, contextStyle === 'match' ? style : contextStyle, previous, contextOpacity, contextColor);
+        const selected = molstarStructuresByRefs(viewer, state.allRefsByIndex[activeIndex]);
+        await applySdfCollectionMolstarStyle(viewer, style, selected, 1, 'colored');
+        state.activeRefs = state.allRefsByIndex[activeIndex];
+        state.activeIndex = activeIndex;
+      } finally {
+        canvas3d?.setProps({ camera: { manualReset } });
+      }
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
       return;
@@ -16875,6 +16914,15 @@ SOFTWARE.
     activeMolstarPrepared = prepared;
     updateSdfPoseButton(prepared);
     notifyStructureOverlayModeChanged(prepared);
+    if (prepared.kind === 'sdf-grid') {
+      activeDockingPrepared = null;
+      for (const entry of prepared.gridEntries) {
+        await loadSdfCollectionPdbLayer(viewer, entry.data, entry.label);
+      }
+      await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
+      installDockingPoseControls(viewer, null);
+      return;
+    }
     if (prepared.kind === 'docking') {
       await loadDockingPreparedStructure(viewer, prepared);
       return;
@@ -19019,6 +19067,35 @@ SOFTWARE.
     const controlLabelLower = controlLabel.toLowerCase();
     root.setAttribute('aria-label', `${controlLabel} controls`);
     const all = overlayToggleAvailable ? createStructureOverlayToggleButton(prepared) : null;
+    const spread = prepared.kind === 'sdf-collection' ? document.createElement('button') : null;
+    if (spread) {
+      spread.type = 'button';
+      spread.className = 'buret-docking-pose-align';
+      spread.dataset.buretAction = 'sdf-collection-spread';
+      spread.textContent = 'Spread';
+      spread.title = 'Arrange molecules separately without changing the SDF coordinates';
+      spread.setAttribute('aria-label', spread.title);
+      const syncSpread = () => {
+        const active = activeSdfPoseMode === 'all' && activeSdfCollectionLayout === 'spread';
+        spread.classList.toggle('active', active);
+        spread.setAttribute('aria-pressed', active ? 'true' : 'false');
+      };
+      syncSpread();
+      spread.addEventListener('click', () => {
+        if (!activeViewer || !activeMolstarPrepared) return;
+        setSdfCollectionLayout(activeSdfCollectionLayout === 'spread' && activeSdfPoseMode === 'all' ? 'overlap' : 'spread');
+        if (activeSdfPoseMode !== 'all') {
+          setSdfPoseMode('all');
+          notifyStructureOverlayModeChanged(activeMolstarPrepared);
+        }
+        syncSpread();
+        updateStructureOverlayToggleButton(all, activeMolstarPrepared);
+        spread.disabled = true;
+        void applySdfCollectionVisibility(activeViewer, activeMolstarPrepared, readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, activeMolstarPrepared.poseCount), { focus: true })
+          .catch(error => setStatus(`[web] Could not arrange molecules.\n\n${error?.message || String(error)}`, 'error'))
+          .finally(() => { spread.disabled = false; });
+      });
+    }
     if (prepared.overlayOnly === true && all) {
       root.classList.add('buret-docking-poses-overlay-only');
       root.setAttribute('aria-label', `${controlLabel} overlay controls`);
@@ -19936,9 +20013,11 @@ SOFTWARE.
       toggleRow.className = 'buret-docking-pose-toggles';
       if (story) toggleRow.append(story);
       if (align) toggleRow.append(align);
+      if (spread) toggleRow.append(spread);
       if (all) toggleRow.append(all);
     } else {
       if (align) mainRow.append(align);
+      if (spread) mainRow.append(spread);
       if (all) mainRow.append(all);
       animationRow.append(speed, loop, slider);
       if (smoothAvailable) animationRow.append(smooth);
@@ -26865,6 +26944,7 @@ SOFTWARE.
   async function startMolstar(config, cb) {
     disposeActiveMolstarViewer();
     activeSdfPoseMode = readSdfPoseMode(config);
+    activeSdfCollectionLayout = readSdfCollectionLayout(config);
     ensureMolstarStylesheet();
     const container = document.getElementById('app');
     if (container) container.innerHTML = '';
