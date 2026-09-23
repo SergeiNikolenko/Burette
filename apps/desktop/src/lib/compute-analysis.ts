@@ -9,7 +9,13 @@ type AnalysisProgress = {
   partialReportPath: string | null;
 };
 
-type AnalysisResult = { reportPath: string | null; backend: string };
+type AnalysisResult = {
+  reportPath: string | null;
+  backend: string;
+  gridApplied: boolean;
+  gridWarning?: string | null;
+  rows?: Array<{ converged: boolean; error?: string | null }>;
+};
 
 export async function runAnalysisWorkflow<T extends AnalysisResult>(
   command: "compute_evaluate_grid_semiempirical" | "compute_align_grid_poses",
@@ -36,9 +42,16 @@ export async function runAnalysisWorkflow<T extends AnalysisResult>(
   update({});
   try {
     const result = await invoke<T>(command, { request, onProgress });
-    update({ status: "success", cancelable: false, completedAt: Date.now(),
+    const failed = result.rows?.filter((row) => !row.converged || row.error).length ?? 0;
+    const allFailed = !!result.rows?.length && failed === result.rows.length;
+    const issue = allFailed ? "No molecules converged"
+      : failed ? `${failed} of ${result.rows!.length} molecules failed` : null;
+    update({ status: allFailed ? "failed" : issue || !result.gridApplied ? "recovered" : "success",
+      cancelable: false, completedAt: Date.now(),
       backend: result.backend === "nativeCpuReference" ? "referenceCpu" : "nativeMetal",
-      reportPath: result.reportPath, progress: "Calculation completed" });
+      reportPath: result.reportPath,
+      error: [issue, !result.gridApplied && (result.gridWarning || "Results saved; table was not updated")].filter(Boolean).join("; ") || null,
+      progress: issue || (result.gridApplied ? "Calculation completed" : "Results saved; table was not updated") });
     return result;
   } catch (error) {
     const latest = job.durableJobId

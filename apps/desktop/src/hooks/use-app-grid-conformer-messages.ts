@@ -16,7 +16,7 @@ type PushStatus = (message: string, kind?: "info" | "success" | "error", details
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 
 type UseAppGridConformerMessagesOptions = {
-  openDocumentsInActiveTab: (documents: ViewerDocument[]) => void;
+  addDocuments: (documents: ViewerDocument[]) => void;
   openDocuments: (paths: string[], reloadOptions?: ViewerReloadOptions, preferencesOverride?: Partial<ViewerPreferences>) => Promise<unknown> | void;
   openTextDocuments: (paths: string[], options?: { background?: boolean }) => void | Promise<unknown>;
   postMessageToViewerSource: PostMessageToViewerSource;
@@ -112,7 +112,7 @@ function standaloneGridConformerSource(
 
 export function useAppGridConformerMessages({
   openDocuments,
-  openDocumentsInActiveTab,
+  addDocuments,
   openTextDocuments,
   postMessageToViewerSource,
   preferences,
@@ -153,12 +153,9 @@ export function useAppGridConformerMessages({
           .catch((error) => pushErrorStatus(error, "Result saved; could not open report"));
         const converged = result.rows.filter((row) => row.converged).length;
         const failed = result.rows.length - converged;
-        const execution = result.backend === "nativeMetalScfHybrid"
-          ? `with Metal SCF kernels (${result.gpuTimeMs.toLocaleString()} ms GPU, ${result.hostTimeMs.toLocaleString()} ms host)`
-          : `on the CPU reference backend in ${result.hostTimeMs.toLocaleString()} ms`;
         pushStatus(
-          `Calculated native ${result.method} energies and charges for ${converged.toLocaleString()} molecule${converged === 1 ? "" : "s"} ${execution}${failed ? `; ${failed.toLocaleString()} failed` : ""}; ${result.gridApplied ? "results were written to Grid" : "results were saved but could not be applied to Grid"}.`,
-          failed || !result.gridApplied ? "error" : "success",
+          `${result.method}: ${converged.toLocaleString()} calculated${failed ? ` · ${failed.toLocaleString()} failed` : ""}${!result.gridApplied ? " · table not updated" : ""}`,
+          !converged || !result.gridApplied ? "error" : "success",
           result.gridWarning ? [result.gridWarning] : undefined,
         );
         reply("gridSemiempiricalFinished", {
@@ -204,20 +201,9 @@ export function useAppGridConformerMessages({
         }, "Grid selection");
         if (result.reportPath) void Promise.resolve().then(() => openTextDocuments([result.reportPath!], { background: true }))
           .catch((error) => pushErrorStatus(error, "Result saved; could not open report"));
-        const document = await invoke<ViewerDocument>("open_text_structure", {
-          request: {
-            title: result.title,
-            extension: "sdf",
-            text: result.alignedSdf,
-          },
-          preferences: { ...preferences, rendererMode: "molstar" },
-          reloadOptions: {},
-        });
-        openDocumentsInActiveTab([document]);
-        rememberRecentStructures([document]);
         const compared = Math.max(0, result.scores.length - 1);
         pushStatus(
-          `Aligned and scored ${compared.toLocaleString()} pose${compared === 1 ? "" : "s"} against the first selected row on Metal in ${result.gpuTimeMs.toLocaleString()} ms; ${result.gridApplied ? "scores were written to Grid" : "scores were saved but could not be applied to Grid"}.`,
+          `Aligned ${compared.toLocaleString()} pose${compared === 1 ? "" : "s"}${!result.gridApplied ? " · table not updated" : ""}`,
           result.gridApplied ? "success" : "error",
         );
         reply("gridAlignmentFinished", {
@@ -226,6 +212,22 @@ export function useAppGridConformerMessages({
           gpuTimeMs: result.gpuTimeMs,
           backend: result.backend,
         });
+        try {
+          const document = await invoke<ViewerDocument>("open_text_structure", {
+            request: {
+              title: result.title,
+              extension: "sdf",
+              text: result.alignedSdf,
+            },
+            preferences: { ...preferences, rendererMode: "molstar" },
+            reloadOptions: {},
+          });
+          addDocuments([document]);
+          rememberRecentStructures([document]);
+        } catch (error) {
+          pushErrorStatus(error, "Alignment saved; could not open result");
+        }
+
       })().catch((error) => {
         const message = statusErrorMessage(error);
         reply("gridAlignmentError", { error: message });
@@ -242,7 +244,13 @@ export function useAppGridConformerMessages({
         body: { type, ...payload },
       });
     };
-    if (!molecules.length) {
+    const documentId = bodyString(body.documentId).trim();
+    const sourceIndexes = Array.isArray(body.sourceIndexes)
+      ? [...new Set(body.sourceIndexes.filter((value): value is number => Number.isSafeInteger(value) && value >= 0))]
+      : [];
+    const gridSource = isTauriRuntime() && !!documentId && sourceIndexes.length > 0;
+    const moleculeCount = gridSource ? sourceIndexes.length : molecules.length;
+    if (!moleculeCount) {
       reply("gridGenerate3DError", { error: "Select one or more molecules before generating 3D." });
       pushStatus("Select one or more molecules before generating 3D.", "error");
       return true;
@@ -260,7 +268,7 @@ export function useAppGridConformerMessages({
       ? `Optimize geometry · ${mmffVariant}`
       : `Generate 3D · ${conformerVariant}`;
     const inputTitle = bodyString(body.title).trim()
-      || `${molecules.length.toLocaleString()} selected molecule${molecules.length === 1 ? "" : "s"}`;
+      || `${moleculeCount.toLocaleString()} selected molecule${moleculeCount === 1 ? "" : "s"}`;
     const updateGridJob = (patch: Partial<ConformerJob>) => {
       setConformerJobs((previous) => previous.map((job) => job.id === gridJobId ? { ...job, ...patch } : job));
     };
@@ -279,20 +287,15 @@ export function useAppGridConformerMessages({
     };
     setConformerJobs((previous) => [pendingJob, ...previous].slice(0, 20));
     showGridComputeJobs();
-    pushStatus(`${gridJobTitle} submitted for ${molecules.length.toLocaleString()} molecule${molecules.length === 1 ? "" : "s"}.`);
+    pushStatus(`${gridJobTitle} submitted for ${moleculeCount.toLocaleString()} molecule${moleculeCount === 1 ? "" : "s"}.`);
     reply("gridGenerate3DStarted", { jobId: gridJobId });
+    let gridApplied = false;
     void (async () => {
-      const documentId = bodyString(body.documentId).trim();
-      const sourceIndexes = Array.isArray(body.sourceIndexes)
-        ? [...new Set(body.sourceIndexes.filter((value): value is number => (
-            Number.isSafeInteger(value) && value >= 0
-          )))]
-        : [];
       if (isTauriRuntime()) {
         if (optimizeInputGeometry && (!documentId || !sourceIndexes.length)) {
           throw new Error("Input geometry optimization requires an open Grid selection.");
         }
-        const source = standaloneGridConformerSource(bodyString(body.title).trim() || "selected-molecules-3d.sdf", molecules);
+        const source = gridSource ? null : standaloneGridConformerSource(bodyString(body.title).trim() || "selected-molecules-3d.sdf", molecules);
         if (!source && (!documentId || !sourceIndexes.length)) {
           throw new Error("Mixed structure formats require an open Grid selection.");
         }
@@ -314,7 +317,7 @@ export function useAppGridConformerMessages({
           updateGridJob({ durableJobId: job.jobId, cancelable: true, progress, backend: "nativeMetal" });
           pushStatus(`${progress}...`);
         };
-        const result = optimizeInputGeometry || !source
+        const result = gridSource
           ? await runConformerWorkflow(documentId, sourceIndexes, onProgress, {
               variant: conformerVariant,
               initialization: optimizeInputGeometry ? "inputGeometry" : "generated",
@@ -328,22 +331,26 @@ export function useAppGridConformerMessages({
               mmffVariant,
               conformersPerMolecule: 1,
             });
+        gridApplied = result.gridApplied;
+        const inputFailures = result.failedSourceRecords ?? 0;
+        const failureMessage = [result.failedCount && `${result.failedCount} geometries failed validation`,
+          inputFailures && `${inputFailures} input molecules could not be prepared`].filter(Boolean).join("; ");
         updateGridJob({
-          status: result.failedCount ? "recovered" : "success",
+          status: !result.passedCount ? "failed" : result.failedCount || inputFailures || (gridSource && !result.gridApplied) ? "recovered" : "success",
+          cancelable: false,
           completedAt: Date.now(),
-          progress: `${result.passedCount.toLocaleString()} of ${result.conformerCount.toLocaleString()} geometries passed validation`,
+          progress: `${result.passedCount.toLocaleString()} of ${result.conformerCount.toLocaleString()} geometries passed validation${inputFailures ? `; ${inputFailures} input molecules failed` : ""}`,
           backend: "nativeMetal",
           durableJobId: result.job.jobId,
           reportPath: result.reportPath,
           primaryOpenPath: result.primaryOpenPath,
-          error: result.failedCount ? `${result.failedCount.toLocaleString()} geometries failed validation.` : null,
+          error: failureMessage || result.gridWarning,
         });
+        const failed = result.failedCount + inputFailures;
         pushStatus(
-          optimizeInputGeometry
-            ? `Processed and validated ${result.passedCount.toLocaleString()} input geometries with ${mmffVariant} via Metal GPU; per-row convergence status and energy were written to Grid.`
-            : `Generated and ${mmffVariant}-optimized ${result.passedCount.toLocaleString()} valid 3D geometries with ${conformerVariant} via Metal GPU and opened the generated conformer artifact.`,
-          optimizeInputGeometry ? (result.gridApplied ? "success" : "error") : (result.failedCount ? "error" : "success"),
-          result.gridWarning ? [result.gridWarning] : undefined,
+          `${optimizeInputGeometry ? "Optimized" : "Generated 3D for"} ${result.passedCount.toLocaleString()} molecule${result.passedCount === 1 ? "" : "s"}${failed ? ` · ${failed} failed` : ""}${gridSource && !result.gridApplied ? " · table not updated" : ""}`,
+          !result.passedCount || (gridSource && !result.gridApplied) ? "error" : "success",
+          [failureMessage, result.gridWarning].filter((message): message is string => Boolean(message)),
         );
         // Opening is presentation, not computation. Keep the published result
         // successful when a viewer cannot be created or restored.
@@ -425,7 +432,7 @@ export function useAppGridConformerMessages({
         generatedSdf,
         { ...preferences, rendererMode: "molstar", molstarStyle: "ball-and-stick" },
       );
-      openDocumentsInActiveTab([generatedDocument]);
+      addDocuments([generatedDocument]);
       rememberRecentStructures([generatedDocument]);
       const suffix = errors.length ? ` ${errors.length} failed.` : "";
       updateGridJob({
@@ -443,6 +450,7 @@ export function useAppGridConformerMessages({
         const cancelled = error instanceof Error && error.name === "AbortError";
         updateGridJob({
           status: cancelled ? "cancelled" : "failed",
+          cancelable: false,
           completedAt: Date.now(),
           progress: cancelled ? "Compute cancelled" : "Compute failed",
           error: message,
@@ -450,9 +458,9 @@ export function useAppGridConformerMessages({
         reply("gridGenerate3DError", { jobId: gridJobId, error: message });
         pushErrorStatus(error, "Grid 3D generation failed");
       })
-      .finally(() => reply("gridGenerate3DFinished", { jobId: gridJobId }));
+      .finally(() => reply("gridGenerate3DFinished", { jobId: gridJobId, gridApplied }));
     return true;
-  }, [openDocuments, openDocumentsInActiveTab, openTextDocuments, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setConformerJobs, showGridComputeJobs]);
+  }, [openDocuments, addDocuments, openTextDocuments, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setConformerJobs, showGridComputeJobs]);
 
   return { handleGridConformerMessage };
 }

@@ -1136,7 +1136,6 @@ export function useAppShellActions({
 }
 
 export function createJobHistoryShellActions({
-  pushStatus,
   setConformerJobs,
   setXtbJobs,
 }: {
@@ -1146,12 +1145,10 @@ export function createJobHistoryShellActions({
 }): Pick<ShellActions, "clearConformerJobs" | "clearXtbJobs"> {
   return {
     clearConformerJobs: () => {
-      setConformerJobs([]);
-      pushStatus("Job history cleared");
+      setConformerJobs((previous) => previous.filter((job) => job.status === "running"));
     },
     clearXtbJobs: () => {
-      setXtbJobs([]);
-      pushStatus("xTB job history cleared");
+      setXtbJobs((previous) => previous.filter((job) => job.status === "running" || job.status === "queued"));
     },
   };
 }

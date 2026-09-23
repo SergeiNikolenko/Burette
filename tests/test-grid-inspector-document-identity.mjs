@@ -40,3 +40,18 @@ for (const showingXyzrender of [false, true]) {
   assert.equal(engineUsed, false, "an unmounted inspector never computes for its previous document");
 }
 console.log("Inspector async-render disposal checks passed.");
+
+// Draw explicit hydrogens with the inspector's real palettes. Their atom labels
+// and half-bonds must both remain visible on the dark paper.
+const paletteExpression = hover.match(/const DARK_STRUCTURE_PALETTE = (\{[^]*?\n\});/)[1];
+const darkPalette = new Function(`return ${paletteExpression}`)();
+const rdkit = await (await import('@rdkit/rdkit')).default();
+const water = rdkit.get_mol('[H]O[H]', JSON.stringify({removeHs:false}));
+try {
+  const darkSvg = water.get_svg_with_highlights(JSON.stringify({width:240,height:160,atomColourPalette:darkPalette,backgroundColour:[0.067,0.067,0.067]}));
+  const lightSvg = water.get_svg_with_highlights(JSON.stringify({width:240,height:160}));
+  assert.ok(!darkSvg.includes('#000000'), 'dark inspector leaves no black hydrogen labels or bonds');
+  assert.ok(darkSvg.includes('#DDDDDD'), 'neutral atoms use light ink');
+  assert.ok(lightSvg.includes('#000000'), 'light inspector retains dark ink');
+} finally { water.delete(); }
+console.log('Explicit hydrogen labels and bonds have theme-appropriate contrast');

@@ -52,3 +52,33 @@ pub(crate) fn load_analysis_source_rows(
     }
     Ok(rows)
 }
+
+// Resolve transient database row IDs without replacing the hashes used by the
+// calculation. The apply transaction separately checks the frozen revision.
+pub(crate) fn resolve_analysis_source_rows(
+    database_path: &std::path::Path,
+    frozen_rows: &[GridAlignmentSourceRow],
+) -> ComputeResult<Vec<GridAlignmentSourceRow>> {
+    let indexes = frozen_rows
+        .iter()
+        .map(|row| usize::try_from(row.source_index))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| {
+            ComputeCoordinatorError::Validation("Analysis source index exceeds usize".into())
+        })?;
+    let current =
+        crate::preview::grid_store::alignment_source_rows_by_indices(database_path, &indexes)
+            .map_err(ComputeCoordinatorError::Validation)?;
+    if current.len() != frozen_rows.len()
+        || current.iter().zip(frozen_rows).any(|(a, b)| {
+            a.source_index != b.source_index
+                || a.molecule_content_sha256 != b.molecule_content_sha256
+        })
+    {
+        return Err(ComputeCoordinatorError::Validation(
+            "The collection changed during calculation. Results were saved but were not applied."
+                .into(),
+        ));
+    }
+    Ok(current)
+}

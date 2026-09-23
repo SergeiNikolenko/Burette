@@ -218,7 +218,7 @@ export function useAppViewerBridgeController({
   });
   const { handleGridConformerMessage } = useAppGridConformerMessages({
     openDocuments,
-    openDocumentsInActiveTab,
+    addDocuments,
     openTextDocuments,
     postMessageToViewerSource,
     preferences,

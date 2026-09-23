@@ -102,6 +102,7 @@ export type ConformerPublicationStep = {
 export type ConformerWorkflowPhase = "extracting" | "embedding" | "stereo" | "validation" | "publishing";
 
 export type ConformerWorkflowResult = ConformerPublicationStep & {
+  failedSourceRecords: number;
   conformerCount: number;
   passedCount: number;
   failedCount: number;
@@ -211,6 +212,7 @@ export async function runConformerWorkflow(
     }
     return {
       ...publication,
+      failedSourceRecords: distance.failedSourceRecords,
       conformerCount: stereo.conformerCount,
       passedCount: validation.passedCount,
       failedCount: validation.failedCount,

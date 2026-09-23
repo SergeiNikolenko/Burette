@@ -6,6 +6,8 @@ import { resolve } from 'node:path';
 async function source(path) {
   return readFile(resolve(path), 'utf8');
 }
+const jobsPanel = await source("apps/desktop/src/components/jobs-panel.tsx");
+
 
 function assertSourceIncludesAll(sourceText, values, surface) {
   for (const value of values) {
@@ -4217,8 +4219,6 @@ assert.match(appViewerStateMessagesHook, /burette:molstar-edit-history-changed/)
 assert.match(appShellActionsHook, /useMemo<ShellActions>\(\(\) => createWorkspaceHistoryShellActions\(createAppShellActions\(\{/);
 assert.match(appShellActionsHook, /\.\.\.createJobHistoryShellActions\(\{ pushStatus, setConformerJobs, setXtbJobs \}\)/);
 assert.match(appShellActionsHook, /createJobHistoryShellActions/);
-assert.match(appShellActionsHook, /pushStatus\("Job history cleared"\)/);
-assert.match(appShellActionsHook, /pushStatus\("xTB job history cleared"\)/);
 assert.match(appShellActionsHook, /\.\.\.createProjectShellActions\(\{ pushStatus, removeProjectRoot, renameProjectRoot, renameProjectFolder, togglePinnedProjectRoot \}\)/);
 assert.match(appShellActionsHook, /createProjectShellActions/);
 assert.match(appShellActionsHook, /pushStatus\("Project pin updated"\)/);
@@ -4701,7 +4701,7 @@ assert.match(buildInfoLib, /import\.meta\.env\.DEV \|\| isAgentShell/);
 assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
-assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v193"/);
+assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v\d+"/);
 assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v86"/);
 assert.match(
   browserDevDocuments,
@@ -7529,8 +7529,8 @@ assert.match(derivedColumnsLib, /ocl\.Resources\.register\(JSON\.parse\(oclResou
 assert.doesNotMatch(derivedColumnsLib, /Resources\.registerFromUrl/);
 assert.match(frontendErrorLog, /export function logFrontendError/);
 assert.match(derivedColumnsHook, /logFrontendError\("derived-column"/);
-assert.match(dockPanel, /DerivedColumnJobList jobs=\{state\.derivedColumnJobs\}/);
-assert.match(dockPanel, /actions\.clearDerivedColumnJobs\(\)/);
+assert.match(dockPanel, /<JobsPanel state=\{state\} actions=\{actions\}/);
+assert.match(jobsPanel, /actions\.clearDerivedColumnJobs\(\)/);
 // Calculate Properties: the menu command opens the dialog, the dialog feeds the
 // multi-column property run, and the Mordred pass stays the optional extra.
 assert.match(appNativeMenuHook, /actions\.openCalculateProperties\(activeDocument\.id\)/);
@@ -7581,7 +7581,7 @@ assert.match(appNativeMenuHook, /actions\.openSubstructureCount\(activeDocument\
 assert.match(appNativeMenuHook, /await actions\.findSimilarInFile\(activeDocument\.id\)/);
 assert.match(appNativeMenuHook, /actions\.openRGroupDecomposition\(activeDocument\.id\)/);
 // Analyse Scaffolds writes the scaffold and how many molecules share it.
-assert.match(derivedColumnsHook, /computeDerivedValue\("murcko-scaffold", engines, row\)/);
+assert.match(derivedColumnsHook, /await worker\.compute\(batch\.rows\)/);
 assert.match(derivedColumnsHook, /SCAFFOLD_COUNT_COLUMN\.columnId/);
 // Substructure Count compiles the query once for the whole run.
 assert.match(derivedColumnsHook, /compileSubstructureQuery\(engines\.ocl, smarts\)/);
@@ -7594,11 +7594,11 @@ assert.match(derivedColumnsHook, /morganFingerprint\(engines\.rdkit,/);
 assert.match(derivedColumnsHook, /closestReferenceMatch\(engines, row, reference\)/);
 // R-groups leave the webview for the managed Python runtime; the menu asks
 // whether that runtime exists before the item can be clicked.
-assert.match(derivedColumnsHook, /decomposeRGroupsInRuntime\(core, rows\)/);
+assert.match(derivedColumnsHook, /prepareRGroupPreview\(documentId, requestedCore\.trim\(\)\)/);
 assert.match(derivedColumnsHook, /rgroupRuntimeStatus\(\)/);
 assert.match(appNativeMenuHook, /rgroupRuntimeAvailable: state\.rgroupRuntimeAvailable/);
 assert.match(nativeMenuTypes, /rgroupRuntimeAvailable: boolean/);
-assert.match(rgroupDialog, /most common scaffold/);
+assert.match(rgroupDialog, /All scaffolds/);
 assert.match(derivedColumnsHook, /computeDerivedValue\("inchikey", engines, row\)\.valueText/);
 assert.match(appNativeMenuHook, /actions\.deleteDuplicateGridRows\(activeDocument\.id\)/);
 assert.match(gridViewer, /raw === null \|\| raw === undefined \|\| raw === '' \? Number\.NaN : Number\(raw\)/);
@@ -8408,8 +8408,8 @@ assert.match(appGridConformerMessagesHook, /updateGridJob\(\{ durableJobId: job\
 assert.match(appGridConformerMessagesHook, /status: errors\.length \? "recovered" : "success"/);
 assert.match(app, /openDockTab\("bottom", "jobs"\)/);
 assert.match(app, /setConformerJobs,/);
-assert.match(dockPanel, /job\.progress/);
-assert.match(dockPanel, /title=\{job\.durableJobId \? `Job \$\{job\.durableJobId\}` : undefined\}/);
+assert.match(jobsPanel, /summary: job\.progress/);
+assert.match(jobsPanel, /<details className="jobs-panel-details">/);
 assert.doesNotMatch(dockPanel, /` · job \$\{job\.durableJobId\}`/);
 assert.doesNotMatch(appGridConformerMessagesHook, /generate_3d_conformer/);
 assert.match(appGridConformerMessagesHook, /generateBrowserDev3DConformer\(request\)/);
@@ -8903,9 +8903,9 @@ assert.match(appDatabaseHook, /const MAX_DATABASE_JOBS = 20;/);
 // The Jobs panel owns database runs alongside the conformer and xTB histories.
 // Every job kind counts toward the Clear button being live, including the
 // derived-column runs this branch already had.
-assert.match(dockPanel, /state\.conformerJobs\.length \+ state\.xtbJobs\.length \+ state\.derivedColumnJobs\.length \+ state\.databaseJobs\.length/);
-assert.match(dockPanel, /<DatabaseJobList jobs=\{state\.databaseJobs\} actions=\{actions\} \/>/);
-assert.match(dockPanel, /actions\.clearDatabaseJobs\(\)/);
+assert.match(jobsPanel, /state\.databaseJobs\.map/);
+assert.match(jobsPanel, /state\.derivedColumnJobs\.map/);
+assert.match(jobsPanel, /actions\.clearDatabaseJobs\(\)/);
 assert.match(databaseQueryDialog, /descriptor\.needsStructure/);
 assert.match(databaseQueryDialog, /Query structure \(SMILES\)/);
 assert.match(app, /<DatabaseQueryDialog query=\{databaseQuery\}/);

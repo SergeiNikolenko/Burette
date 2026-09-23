@@ -54,3 +54,17 @@ assert.equal(state.saveAsPending, false);
 assert.equal(state.dirty, true, "cancel leaves the original draft unsaved");
 assert.equal(saveAs.capabilities({}).editing, true);
 console.log("Grid Save As lock/cancel checks passed.");
+
+// An applied R-group calculation is a collection edit and must enable Save.
+{
+  const start = source.indexOf("  function applyDescriptorGridRunFinished(");
+  const end = source.indexOf("\n  function ", start + 1);
+  const reasons = []; let refreshed = 0;
+  const run = new Function("state", "markGridDirty", "setStatus", "refreshRemote", "refresh",
+    source.slice(start, end) + "\nreturn applyDescriptorGridRunFinished;")(
+      { remoteMode: true }, reason => reasons.push(reason), () => {}, () => { refreshed++; }, () => {},
+    );
+  run({ resultKind: "rgroup", descriptorIdCount: 4 }, {});
+  assert.deepEqual(reasons, ["R-group analysis"]);
+  assert.equal(refreshed, 1);
+}

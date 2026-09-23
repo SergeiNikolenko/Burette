@@ -31,7 +31,7 @@ assert.match(viteConfig, /browserDevJobWasCancelled\(jobKey\)[\s\S]*status: 130/
 assert.match(chemistryJobsHook, /cancelledConformerJobIdsRef\.current\.delete\(jobId\)[\s\S]*status: "running"/);
 assert.match(conformerCommand, /Primary output: \{\}/);
 assert.match(viteConfig, /Primary output: \$\{result\.primaryOpenPath \?\? "None"\}/);
-assert.match(gridViewer, /sourceIndexes: rows\.map\(row => Number\(row\.index\)\)/);
+assert.match(gridViewer, /sourceIndexes: \[\.\.\.state\.selected\]/);
 assert.match(gridViewer, /CONFORMER_VARIANTS = \['DG', 'KDG', 'ETDG', 'ETDGv2', 'ETKDG', 'ETKDGv2', 'ETKDGv3', 'srETKDGv3'\]/);
 assert.match(gridViewer, /MMFF_VARIANTS = \['MMFF94', 'MMFF94s'\]/);
 assert.match(gridViewer, /optimizeGeometryGridSelection/);
@@ -50,7 +50,7 @@ assert.match(gridConformerMessages, /const sourceIndex = Number\(item\.sourceInd
 assert.match(gridConformerMessages, /openDocuments\(\[result\.primaryOpenPath\][\s\S]*rendererMode: "molstar"/);
 assert.match(gridConformerMessages, /openDocuments\(\[result\.primaryOpenPath\][\s\S]*molstarStyle: "ball-and-stick"/);
 assert.match(gridConformerMessages, /\{ \.\.\.preferences, rendererMode: "molstar", molstarStyle: "ball-and-stick" \}/);
-assert.match(gridConformerMessages, /openDocumentsInActiveTab\(\[generatedDocument\]\)/);
+assert.match(gridConformerMessages, /addDocuments\(\[generatedDocument\]\)/);
 assert.match(gridConformerMessages, /opened the generated conformer artifact/);
 assert.doesNotMatch(gridConformerMessages, /reply\("gridGenerate3DResult"/);
 assert.doesNotMatch(gridViewer, /body\.type === 'gridGenerate3DResult'/);

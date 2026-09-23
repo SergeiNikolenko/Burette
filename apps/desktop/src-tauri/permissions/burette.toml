@@ -20,6 +20,7 @@ commands.allow = [
   "descriptor_runtime_cancel_install",
   "rgroup_runtime_status",
   "rgroup_decompose",
+  "rgroup_store_results",
   "chemical_space_model_runtime_status",
   "chemical_space_model_runtime_install",
   "chemical_space_model_runtime_cancel_install",

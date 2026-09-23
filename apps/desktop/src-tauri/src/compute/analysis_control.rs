@@ -8,7 +8,8 @@ use serde_json::Value;
 use std::{
     fs::{File, OpenOptions},
     io::Write,
-    path::PathBuf,
+    os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
+    path::{Path, PathBuf},
     sync::Mutex,
 };
 use uuid::Uuid;
@@ -40,8 +41,28 @@ pub(crate) struct AnalysisControl<'a> {
 impl<'a> AnalysisControl<'a> {
     pub(crate) fn prepare(store: &ComputeStore) -> ComputeResult<PathBuf> {
         let directory = store.artifact_root()?.join("partial-analysis");
-        std::fs::create_dir_all(&directory)?;
+        match std::fs::DirBuilder::new().mode(0o700).create(&directory) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error.into()),
+        }
+        Self::validate_directory(&directory)?;
         Ok(directory)
+    }
+
+    pub(crate) fn validate_directory(directory: &Path) -> ComputeResult<()> {
+        let metadata = std::fs::symlink_metadata(directory)?;
+        // Older builds created this diagnostic directory as 0755, inside the
+        // private artifact root. It is not a published artifact or an orphan.
+        if !metadata.is_dir()
+            || metadata.uid() != rustix::process::geteuid().as_raw()
+            || metadata.mode() & 0o022 != 0
+        {
+            return Err(ComputeCoordinatorError::Filesystem(
+                "Partial analysis report directory is not an owned, non-writable directory".into(),
+            ));
+        }
+        Ok(())
     }
 
     pub(crate) fn new(
@@ -77,6 +98,7 @@ impl<'a> AnalysisControl<'a> {
                 let mut file = OpenOptions::new()
                     .create_new(true)
                     .write(true)
+                    .mode(0o600)
                     .open(&self.report_path)?;
                 let header = self.header.to_string();
                 writeln!(file, "{header}")?;

@@ -424,3 +424,25 @@ function gridState(overrides = {}) {
 }
 
 console.log("Grid table operation checks passed.");
+
+// Metadata order wins over alphabetical/sparse per-row analysis maps.
+{
+  const state = gridState({
+    remoteMode: true,
+    rows: [{analyses: {rm1AtomicCharges: {valueKind:'text'}, rm1TotalEnergyEv: {valueKind:'real'}}}],
+    remoteAnalysisColumns: [
+      {valueId:'rm1TotalEnergyEv',label:'RM1 energy (eV)',valueKind:'real'},
+      {valueId:'rm1AtomicCharges',label:'RM1 atomic charges (e)',valueKind:'text'},
+    ],
+  });
+  const grid = harness(state, ['tableColumnCatalog'], `
+    function tableColumnDiscoveryRows() { return state.rows; }
+    function tableColumnCatalogKey() { return 'test'; }
+    function effectiveMolecularGrid() { return true; }
+    function tableColumnPickerSearchText(column) { return column.label; }
+  `);
+  assert.deepEqual(grid.tableColumnCatalog().filter(column => column.kind === 'analysis').map(({id,label}) => ({id,label})), [
+    {id:'analysis:rm1TotalEnergyEv',label:'RM1 energy (eV)'},
+    {id:'analysis:rm1AtomicCharges',label:'RM1 atomic charges (e)'},
+  ]);
+}

@@ -1,3 +1,7 @@
+mod input_validation;
+#[cfg(test)]
+use crate::preview::grid_store::alignment_source_rows_by_indices;
+
 use std::path::Path;
 
 use burette_compute_core::{align_and_score, AlignmentAtom, AlignmentMode, AtomMapping};
@@ -5,9 +9,8 @@ use burette_compute_metal::{AlignmentPairDescriptor, MetalAlignmentBatch, MetalT
 use burette_compute_protocol::{
     AlignmentModeV1, AlignmentV1Parameters, AlignmentV1SubmitRequest, AnalysisResourceLimits,
     BackendPolicy, ComputeJobSchemaVersion, ExecutionPolicy, GridScope, GridSourceReference,
-    SchedulingPolicy, SelectedGridScope, WorkflowTemplateId,
+    MolecularSnapshotRef, SchedulingPolicy, SelectedGridScope, WorkflowTemplateId,
 };
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -16,9 +19,7 @@ use crate::preview::{
     grid_analysis::{
         apply_alignment_analysis_run, GridAlignmentAnalysisApplyInput, GridAlignmentAssignmentInput,
     },
-    grid_database::open_grid_database,
-    grid_identity,
-    grid_store::{alignment_source_rows_by_indices, GridAlignmentSourceRow},
+    grid_store::GridAlignmentSourceRow,
 };
 
 use super::error::{ComputeCoordinatorError, ComputeResult};
@@ -339,30 +340,20 @@ fn execute_alignment_rows(
 
 pub(crate) fn apply_grid_alignment_result(
     database_path: &Path,
+    snapshot: &MolecularSnapshotRef,
+    frozen_rows: &[GridAlignmentSourceRow],
     result: &GridAlignmentResult,
     runtime: &MetalTanimotoRuntime,
     artifact_id: Uuid,
     artifact_manifest_sha256: &str,
 ) -> ComputeResult<()> {
-    let indexes = result
-        .scores
-        .iter()
-        .map(|score| usize::try_from(score.source_index))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| {
-            ComputeCoordinatorError::Validation("Alignment source index exceeds usize".into())
-        })?;
-    let rows = alignment_source_rows_by_indices(database_path, &indexes)
-        .map_err(ComputeCoordinatorError::Validation)?;
-    if rows.len() != result.scores.len() {
-        return Err(ComputeCoordinatorError::Validation(
-            "One or more aligned Grid rows no longer exist".into(),
-        ));
-    }
+    let source_rows =
+        super::analysis_snapshot::resolve_analysis_source_rows(database_path, frozen_rows)?;
     apply_grid_scores(
         database_path,
         result.run_id,
-        &rows,
+        snapshot,
+        &source_rows,
         &result.scores,
         runtime,
         result.gpu_time_ms,
@@ -588,6 +579,10 @@ fn parse_row(row: &GridAlignmentSourceRow) -> ComputeResult<ParsedMolfile> {
         ComputeCoordinatorError::Validation(format!("{} has no molfile coordinates", row.name))
     })?;
     parse_molfile(molblock)
+        .and_then(|parsed| {
+            parsed.validate_spatial_input()?;
+            Ok(parsed)
+        })
         .map_err(|message| ComputeCoordinatorError::Validation(format!("{}: {message}", row.name)))
 }
 
@@ -943,6 +938,7 @@ fn sdf_record(
 fn apply_grid_scores(
     database_path: &Path,
     run_id: Uuid,
+    snapshot: &MolecularSnapshotRef,
     rows: &[GridAlignmentSourceRow],
     scores: &[GridAlignmentScore],
     runtime: &MetalTanimotoRuntime,
@@ -951,10 +947,6 @@ fn apply_grid_scores(
     artifact_id: Uuid,
     artifact_manifest_sha256: &str,
 ) -> ComputeResult<()> {
-    let connection: Connection =
-        open_grid_database(database_path).map_err(ComputeCoordinatorError::Validation)?;
-    let identity = grid_identity::read_source_identity(&connection)
-        .map_err(ComputeCoordinatorError::Validation)?;
     let settings = serde_json::json!({
         "mapping": "deterministicElementBondGraph",
         "shapeGaussian": "alpha=2.4179878/r_vdw^2; amplitude=1",
@@ -964,13 +956,6 @@ fn apply_grid_scores(
     let settings_bytes = serde_json::to_vec(&settings)
         .map_err(|error| ComputeCoordinatorError::Protocol(error.to_string()))?;
     let normalized_settings_sha256 = sha256(&settings_bytes);
-    let snapshot_sha256 = sha256(
-        rows.iter()
-            .flat_map(|row| row.molecule_content_sha256.as_bytes())
-            .copied()
-            .collect::<Vec<_>>()
-            .as_slice(),
-    );
     let assignments = rows
         .iter()
         .zip(scores)
@@ -989,10 +974,10 @@ fn apply_grid_scores(
         database_path,
         &GridAlignmentAnalysisApplyInput {
             run_id,
-            document_fingerprint_sha256: identity.document_fingerprint_sha256,
-            source_revision: identity.source_revision,
-            snapshot_id: Uuid::new_v4(),
-            snapshot_sha256,
+            document_fingerprint_sha256: snapshot.frozen_source.document_fingerprint_sha256.clone(),
+            source_revision: snapshot.frozen_source.source_revision,
+            snapshot_id: snapshot.snapshot_id,
+            snapshot_sha256: snapshot.snapshot_sha256.clone(),
             normalized_settings_sha256,
             provenance: serde_json::json!({
                 "backend": "nativeMetal",

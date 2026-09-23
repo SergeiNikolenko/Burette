@@ -1063,6 +1063,10 @@ pub(crate) fn reconcile_artifact_root(store: &ComputeStore) -> ComputeResult<()>
                 "compute artifact directory contains a non-UTF-8 entry".into(),
             )
         })?;
+        if leaf == "partial-analysis" {
+            super::analysis_control::AnalysisControl::validate_directory(&root.join(&leaf))?;
+            continue;
+        }
         let canonical = canonical_artifact_leaf(&leaf).ok_or_else(|| {
             ComputeCoordinatorError::Filesystem(format!(
                 "compute artifact directory contains an unknown entry: {leaf}"
@@ -2178,6 +2182,34 @@ fn hex_bytes(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod recovery_tests {
     use super::*;
+
+    #[test]
+    fn startup_preserves_partial_reports_and_rejects_symlinked_report_directories() {
+        let root = std::env::temp_dir()
+            .canonicalize()
+            .unwrap()
+            .join(format!("burette-partial-recovery-{}", Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let store = ComputeStore::initialize(root.join("compute")).unwrap();
+        let artifacts = store.artifact_root().unwrap();
+        initialize_artifact_root(&artifacts).unwrap();
+        let partial = artifacts.join("partial-analysis");
+        // Match the directory mode used by existing installations.
+        fs::create_dir(&partial).unwrap();
+        let report = partial.join(format!("{}.jsonl", Uuid::new_v4()));
+        fs::write(&report, "{\"status\":\"partial\"}\n").unwrap();
+        reconcile_artifact_root(&store).unwrap();
+        assert_eq!(
+            fs::read_to_string(&report).unwrap(),
+            "{\"status\":\"partial\"}\n"
+        );
+        fs::rename(&partial, root.join("saved-reports")).unwrap();
+        std::os::unix::fs::symlink(root.join("saved-reports"), &partial).unwrap();
+        assert!(reconcile_artifact_root(&store).is_err());
+        assert!(root.join("saved-reports").exists());
+        drop(store);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn startup_removes_only_canonical_uncommitted_artifact_directories() {

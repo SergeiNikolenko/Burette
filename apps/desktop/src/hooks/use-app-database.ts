@@ -109,9 +109,8 @@ export function useAppDatabase({
   }, []);
 
   const clearDatabaseJobs = useCallback(() => {
-    setDatabaseJobs([]);
-    pushStatus("Database job history cleared");
-  }, [pushStatus]);
+    setDatabaseJobs((previous) => previous.filter((job) => job.status === "running"));
+  }, []);
 
   const finishJob = useCallback((id: string, patch: Partial<DatabaseJob>) => {
     setDatabaseJobs((previous) => previous.map((job) => job.id === id

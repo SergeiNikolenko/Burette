@@ -257,7 +257,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
   const needs3d = !noSelection && !props.selectedInput3d;
   return (
     <>
-      <div className="ab-group">Compute · <span className="ab-group-accent">Metal GPU</span></div>
+      <div className="ab-group">Compute</div>
       <div className="ab-row">
         <button
           id="generate-3d-selected"
@@ -342,20 +342,6 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
         >
           {ICONS.align}
           <span className="ab-item-title">{props.aligningPoses ? "Aligning..." : "Align & compare"}</span>
-        </button>
-      </div>
-      <div className="ab-row">
-        <button
-          id="calculate-descriptors-selected"
-          className="ab-item"
-          type="button"
-          role="menuitem"
-          disabled={noSelection}
-          aria-description="Calculate Mordred descriptors for the selected molecules and write them to Grid"
-          onClick={() => props.onRun(props.onCalculateSelectedDescriptors)}
-        >
-          {ICONS.descriptors}
-          <span className="ab-item-title">Calculate descriptors</span>
         </button>
       </div>
     </>
@@ -642,7 +628,7 @@ function ActionsMenu(props: GridControlProps) {
               : "No molecules selected"}
           </div>
           <FileSection {...props} onRun={onRun} />
-          {/* Compute actions are temporarily hidden from the grid menu. */}
+          {props.clusterEnabled ? <ComputeSection {...props} onRun={onRun} /> : null}
           <CollectionSection {...props} onRun={onRun} />
           <SelectionSection {...props} onRun={onRun} />
         </div>

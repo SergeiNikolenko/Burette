@@ -221,3 +221,13 @@ render. Changing animation parameters invalidates only that item's frames.
 Decoded animation storage is reserved before rendering, with a shared limit of
 200 million RGBA pixels. New renders that exceed the budget ask for a smaller
 image or removal of another animation; existing movies are not evicted.
+
+### R-group result persistence
+
+`rgroup_store_results` replaces all columns owned by the `rgroup` calculation
+in one SQLite transaction, preserving unrelated descriptors. Its bounded payload
+contains the source structures and the complete result. Applying results checks
+the source row IDs and structures again under the write transaction; a changed
+collection requires a new calculation. Failed writes preserve the previous run.
+See [Scaffold and R-group analysis](sar-analysis.md) for chemistry semantics,
+limits, result columns, and focused verification.

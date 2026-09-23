@@ -16,131 +16,7 @@ const RGROUP_LABEL_LIMIT: usize = 40;
 // without rdRGroupDecomposition, so the managed Python runtime does the work.
 // The runner imports RDKit only - Mordred is the descriptor pipeline's
 // dependency, not this one - so a plain RDKit interpreter is enough.
-const RGROUP_RUNNER: &str = r#"
-import json
-import sys
-import traceback
-
-
-def emit(payload):
-    print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), flush=True)
-
-
-def import_engine():
-    try:
-        import rdkit
-        from rdkit import Chem, RDLogger
-        from rdkit.Chem import rdRGroupDecomposition
-
-        RDLogger.DisableLog("rdApp.*")
-        return {
-            "ok": True,
-            "Chem": Chem,
-            "rgd": rdRGroupDecomposition,
-            "rdkit_version": getattr(rdkit, "__version__", None),
-        }
-    except Exception as exc:
-        return {"ok": False, "error": str(exc)}
-
-
-def molecule_from_row(Chem, row):
-    molblock = row.get("molblock") or ""
-    if molblock.strip():
-        molecule = Chem.MolFromMolBlock(molblock, sanitize=True, removeHs=True)
-        if molecule is not None:
-            return molecule
-    smiles = (row.get("smiles") or "").strip()
-    if smiles:
-        return Chem.MolFromSmiles(smiles)
-    return None
-
-
-def core_from_text(Chem, text):
-    text = (text or "").strip()
-    if not text:
-        return None
-    core = Chem.MolFromSmarts(text)
-    if core is not None and core.GetNumAtoms():
-        return core
-    return Chem.MolFromSmiles(text)
-
-
-def decompose(payload, engine):
-    Chem = engine["Chem"]
-    rgd = engine["rgd"]
-    core = core_from_text(Chem, payload.get("core"))
-    if core is None or not core.GetNumAtoms():
-        emit({"ok": False, "error": "The core could not be read as SMILES or SMARTS"})
-        return
-    parameters = rgd.RGroupDecompositionParameters()
-    parameters.removeAllHydrogenRGroups = True
-    parameters.onlyMatchAtRGroups = False
-    decomposition = rgd.RGroupDecomposition(core, parameters)
-    matched_row_ids = []
-    unparsed = 0
-    unmatched = 0
-    for row in payload.get("rows") or []:
-        molecule = molecule_from_row(Chem, row)
-        if molecule is None:
-            unparsed += 1
-            continue
-        if decomposition.Add(molecule) < 0:
-            unmatched += 1
-            continue
-        matched_row_ids.append(row.get("rowId"))
-    if not matched_row_ids:
-        emit({
-            "ok": True,
-            "rdkitVersion": engine["rdkit_version"],
-            "labels": [],
-            "rows": [],
-            "unmatchedRows": unmatched,
-            "unparsedRows": unparsed,
-        })
-        return
-    decomposition.Process()
-    assignments = decomposition.GetRGroupsAsRows(asSmiles=True)
-    labels = []
-    for assignment in assignments:
-        for label in assignment:
-            if label not in labels:
-                labels.append(label)
-    rows = []
-    for row_id, assignment in zip(matched_row_ids, assignments):
-        rows.append({
-            "rowId": row_id,
-            "values": {label: assignment.get(label) or "" for label in labels},
-        })
-    emit({
-        "ok": True,
-        "rdkitVersion": engine["rdkit_version"],
-        "labels": labels,
-        "rows": rows,
-        "unmatchedRows": unmatched,
-        "unparsedRows": unparsed,
-    })
-
-
-def main():
-    payload = json.loads(sys.stdin.read() or "{}")
-    engine = import_engine()
-    if payload.get("mode") == "status":
-        if engine["ok"]:
-            emit({"ok": True, "rdkitVersion": engine["rdkit_version"]})
-        else:
-            emit({"ok": False, "error": engine["error"]})
-        return
-    if not engine["ok"]:
-        emit({"ok": False, "error": engine["error"]})
-        return
-    decompose(payload, engine)
-
-
-try:
-    main()
-except Exception as exc:
-    emit({"ok": False, "error": str(exc), "traceback": traceback.format_exc(limit=8)})
-"#;
+const RGROUP_RUNNER: &str = include_str!("rgroup_runner.py");
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -222,10 +98,16 @@ pub(crate) fn rgroup_runtime_status() -> RGroupRuntimeStatus {
 }
 
 #[tauri::command]
-pub(crate) fn rgroup_decompose(request: RGroupDecomposeRequest) -> Result<Value, String> {
+pub(crate) async fn rgroup_decompose(request: RGroupDecomposeRequest) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || run_decomposition(request))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn run_decomposition(request: RGroupDecomposeRequest) -> Result<Value, String> {
     let core = request.core.trim();
-    if core.is_empty() || core.len() > RGROUP_INPUT_LIMIT_BYTES {
-        return Err("R-group decomposition needs a core structure".into());
+    if core.len() > RGROUP_INPUT_LIMIT_BYTES {
+        return Err("R-group core is too large".into());
     }
     if request.rows.is_empty() {
         return Err("R-group decomposition needs at least one molecule".into());
