@@ -7581,7 +7581,7 @@ assert.match(appNativeMenuHook, /actions\.openSubstructureCount\(activeDocument\
 assert.match(appNativeMenuHook, /await actions\.findSimilarInFile\(activeDocument\.id\)/);
 assert.match(appNativeMenuHook, /actions\.openRGroupDecomposition\(activeDocument\.id\)/);
 // Analyse Scaffolds writes the scaffold and how many molecules share it.
-assert.match(derivedColumnsHook, /computeDerivedValue\("murcko-scaffold", engines, row\)/);
+assert.match(derivedColumnsHook, /await worker\.compute\(batch\.rows\)/);
 assert.match(derivedColumnsHook, /SCAFFOLD_COUNT_COLUMN\.columnId/);
 // Substructure Count compiles the query once for the whole run.
 assert.match(derivedColumnsHook, /compileSubstructureQuery\(engines\.ocl, smarts\)/);

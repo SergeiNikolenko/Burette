@@ -27,6 +27,7 @@ import {
   type PropertyRunOptions,
   type ReferenceFingerprint,
 } from "../lib/derived-columns";
+import { ScaffoldWorker } from "../lib/scaffold-worker";
 import { prepareRGroupPreview, type RGroupPreview } from "./rgroup-preview";
 import { compileFormula } from "../lib/formula-eval.mjs";
 import { logFrontendError } from "../lib/frontend-error-log";
@@ -1125,14 +1126,14 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
     const updateJob = beginDerivedJob(scaffoldColumn.label, targetDocument.title);
     pushStatus(`Analysing scaffolds in ${targetDocument.title}`);
     void (async () => {
+      let worker: ScaffoldWorker | null = null;
       try {
-        const engines = await loadDerivedEngines();
+        worker = new ScaffoldWorker();
         const counts = new Map<string, number>();
         const scaffolds: Array<{ rowId: number; scaffold: string | null; errorText: string | null }> = [];
         let processedRows = 0;
         let failedRows = 0;
-        const consider = (rowId: number, row: DerivedComputeRow) => {
-          const result = computeDerivedValue("murcko-scaffold", engines, row);
+        const consider = (rowId: number, result: Awaited<ReturnType<ScaffoldWorker["compute"]>>[number]) => {
           processedRows += 1;
           if (result.errorText) failedRows += 1;
           const scaffold = result.errorText ? null : result.valueText ?? "";
@@ -1146,8 +1147,9 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
             const batch = await fetchDerivedSourceRows(documentId, afterSourceIndex, DERIVED_SOURCE_BATCH);
             if (processedRows === 0) updateJob({ totalRows: batch.totalRows });
             if (batch.rows.length === 0) break;
-            const values: DerivedStoreValue[] = batch.rows.map((row) => {
-              const computed = consider(row.rowId, row);
+            const results = await worker.compute(batch.rows);
+            const values: DerivedStoreValue[] = batch.rows.map((row, index) => {
+              const computed = consider(row.rowId, results[index]);
               return {
                 rowId: row.rowId,
                 valueReal: null,
@@ -1180,7 +1182,12 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
         } else {
           const records = await requestGridRecords(documentId);
           updateJob({ totalRows: records.length });
-          for (const record of records) consider(record.index, record);
+          for (let start = 0; start < records.length; start += DERIVED_SOURCE_BATCH) {
+            const batch = records.slice(start, start + DERIVED_SOURCE_BATCH);
+            const results = await worker.compute(batch);
+            batch.forEach((record, index) => consider(record.index, results[index]));
+            updateJob({ processedRows, failedRows });
+          }
           activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
             source: "burette-grid-host",
             body: {
@@ -1220,6 +1227,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Analyse scaffolds failed: ${message}`, "error");
       } finally {
+        worker?.dispose();
         runningKeysRef.current.delete(runKey);
       }
     })();
