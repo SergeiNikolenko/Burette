@@ -6,7 +6,7 @@ const code = ts.transpile(readFileSync('apps/desktop/src/hooks/use-app-grid-conf
   module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
 });
 const calls = [];
-let native = true, fail = false, jobs = [];
+let native = true, fail = false, failViewer = false, jobs = [];
 const result = { passedCount: 1, failedCount: 0, conformerCount: 1, job: { jobId: 'metal-job' }, primaryOpenPath: '/result.sdf', reportPath: '/report.md', gridApplied: true, gridWarning: null };
 const run = kind => async (...args) => {
   calls.push([kind, ...args]);
@@ -16,7 +16,11 @@ const run = kind => async (...args) => {
 const exports = {};
 new Function('require', 'exports', code)(name => {
   if (name === 'react') return { useCallback: fn => fn };
-  if (name === '@tauri-apps/api/core') return { invoke: (...args) => { throw new Error(`Unexpected legacy command: ${args[0]}`); } };
+  if (name === '@tauri-apps/api/core') return { invoke: async (command) => {
+    if (command !== 'open_text_structure') throw new Error(`Unexpected legacy command: ${command}`);
+    if (failViewer) throw new Error('Viewer unavailable');
+    return {id:'aligned-result'};
+  } };
   if (name === '../lib/tauri') return { isTauriRuntime: () => native };
   if (name === '../lib/standalone-compute') return { runStandaloneConformerWorkflow: run('standalone') };
   if (name === '../lib/compute-conformer') return { runConformerWorkflow: run('grid') };
@@ -41,12 +45,12 @@ async function execute(body) {
   const done = new Promise(resolve => { finish = resolve; });
   const { handleGridConformerMessage } = exports.useAppGridConformerMessages({
     openDocuments: async paths => calls.push(['open', paths]),
-    openDocumentsInActiveTab() {}, openTextDocuments() {}, rememberRecentStructures() {},
+    addDocuments: documents => calls.push(["add", documents]), openTextDocuments() {}, rememberRecentStructures() {},
     pushErrorStatus() {}, pushStatus() {}, showGridComputeJobs() {}, preferences: {},
     setConformerJobs: update => { jobs = update(jobs); },
     postMessageToViewerSource: (_source, message) => {
       messages.push(message.body);
-      if (message.body.type === 'gridGenerate3DFinished') finish();
+      if (message.body.type.endsWith('Finished')) finish();
     },
   });
   assert.equal(handleGridConformerMessage(body, null), true);
@@ -90,6 +94,18 @@ assert.equal(calls[0][0], 'browserMetal');
 assert.equal(jobs[0].backend, 'nativeMetal');
 assert.equal(jobs[0].status, 'success');
 console.log('Grid Metal routing, mixed selection, optimization and failure checks passed');
+
+native = true;
+Object.assign(result, {scores:[{},{}], rows:[], gpuTimeMs:1, title:'aligned', alignedSdf:'sdf', backend:'nativeMetal'});
+await execute({type:'alignGridPoses',documentId:'grid-1',sourceIndexes:[0,1]});
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.ok(calls.some(call => call[0] === 'add'), 'alignment opens a separate tab instead of replacing the source collection');
+failViewer = true;
+const presentationFailure = await execute({type:'alignGridPoses',documentId:'grid-1',sourceIndexes:[0,1]});
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.ok(presentationFailure.some(message => message.type === 'gridAlignmentFinished'));
+assert.ok(!presentationFailure.some(message => message.type === 'gridAlignmentError'), 'viewer failures do not turn a saved calculation into a compute failure');
+failViewer = false;
 
 // Exercise the actual grid request handlers with a selection across pages.
 const viewer = readFileSync('PreviewExtension/Web/grid-viewer.js', 'utf8');

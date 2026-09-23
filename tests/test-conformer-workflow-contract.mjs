@@ -50,7 +50,7 @@ assert.match(gridConformerMessages, /const sourceIndex = Number\(item\.sourceInd
 assert.match(gridConformerMessages, /openDocuments\(\[result\.primaryOpenPath\][\s\S]*rendererMode: "molstar"/);
 assert.match(gridConformerMessages, /openDocuments\(\[result\.primaryOpenPath\][\s\S]*molstarStyle: "ball-and-stick"/);
 assert.match(gridConformerMessages, /\{ \.\.\.preferences, rendererMode: "molstar", molstarStyle: "ball-and-stick" \}/);
-assert.match(gridConformerMessages, /openDocumentsInActiveTab\(\[generatedDocument\]\)/);
+assert.match(gridConformerMessages, /addDocuments\(\[generatedDocument\]\)/);
 assert.match(gridConformerMessages, /opened the generated conformer artifact/);
 assert.doesNotMatch(gridConformerMessages, /reply\("gridGenerate3DResult"/);
 assert.doesNotMatch(gridViewer, /body\.type === 'gridGenerate3DResult'/);

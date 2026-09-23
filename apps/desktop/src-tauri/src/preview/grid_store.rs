@@ -1103,11 +1103,11 @@ fn attach_latest_analysis_run(
              order by value_id collate nocase",
         )
         .map_err(|error| error.to_string())?;
-    let columns = columns_statement
+    let mut columns = columns_statement
         .query_map([&run_id], |row| {
             let value_id = row.get::<_, String>(0)?;
             Ok(GridAnalysisColumn {
-                label: analysis_label(&value_id).into(),
+                label: analysis_label(&value_id),
                 run_id: run_id.clone(),
                 value_id,
                 value_kind: row.get(1)?,
@@ -1116,6 +1116,13 @@ fn attach_latest_analysis_run(
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
+    if workflow_template == "semiempirical.v1" {
+        columns.sort_by_key(|column| {
+            semiempirical_column(&column.value_id)
+                .map(|(_, rank)| rank)
+                .unwrap_or(usize::MAX)
+        });
+    }
     if page_rows.is_empty() {
         return Ok(columns);
     }
@@ -1177,7 +1184,42 @@ fn attach_latest_analysis_run(
     Ok(columns)
 }
 
-fn analysis_label(value_id: &str) -> &str {
+fn semiempirical_column(value_id: &str) -> Option<(String, usize)> {
+    for (rank, (suffix, label)) in [
+        ("TotalEnergyEv", "energy (eV)"),
+        ("Status", "status"),
+        ("Error", "error"),
+        ("ScfIterations", "SCF iterations"),
+        ("ElectronicEnergyEv", "electronic energy (eV)"),
+        ("NuclearEnergyEv", "nuclear energy (eV)"),
+        ("AtomicCharges", "atomic charges (e)"),
+    ]
+    .iter()
+    .enumerate()
+    {
+        let Some(prefix) = value_id.strip_suffix(suffix) else {
+            continue;
+        };
+        let method = match prefix {
+            "rm1" => "RM1",
+            "am1" => "AM1",
+            "pm3" => "PM3",
+            "pm6" => "PM6",
+            "pm6D" => "PM6-D",
+            "pm6D3H4" => "PM6-D3H4",
+            "pm6Sp" => "PM6-SP",
+            "am1Star" => "AM1*",
+            _ => continue,
+        };
+        return Some((format!("{method} {label}"), rank));
+    }
+    None
+}
+
+fn analysis_label(value_id: &str) -> String {
+    if let Some((label, _)) = semiempirical_column(value_id) {
+        return label;
+    }
     match value_id {
         "clusterId" => "Cluster ID",
         "isRepresentative" => "Representative",
@@ -1194,7 +1236,7 @@ fn analysis_label(value_id: &str) -> &str {
         "geometryInitialization" => "Geometry source",
         "bestEtkEnergy" => "Best ETK energy",
         "mmffVariant" => "MMFF variant",
-        "bestMmffEnergy" => "Best MMFF energy",
+        "bestMmffEnergy" => "MMFF energy (kcal/mol)",
         "mmffOptimizationStatus" => "MMFF status",
         "mmffOptimizationError" => "MMFF error",
         "conformerError" => "Conformer error",
@@ -1205,6 +1247,7 @@ fn analysis_label(value_id: &str) -> &str {
         "combinedPoseSimilarity" => "Pose similarity",
         _ => value_id,
     }
+    .into()
 }
 
 fn attach_descriptor_cells(
@@ -4280,7 +4323,7 @@ mod tests {
             (
                 WorkflowTemplateId::SemiempiricalV1,
                 "rm1TotalEnergyEv",
-                "rm1TotalEnergyEv",
+                "RM1 energy (eV)",
             ),
         ] {
             let runtime_dir = temp_runtime_dir();

@@ -16,7 +16,7 @@ type PushStatus = (message: string, kind?: "info" | "success" | "error", details
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 
 type UseAppGridConformerMessagesOptions = {
-  openDocumentsInActiveTab: (documents: ViewerDocument[]) => void;
+  addDocuments: (documents: ViewerDocument[]) => void;
   openDocuments: (paths: string[], reloadOptions?: ViewerReloadOptions, preferencesOverride?: Partial<ViewerPreferences>) => Promise<unknown> | void;
   openTextDocuments: (paths: string[], options?: { background?: boolean }) => void | Promise<unknown>;
   postMessageToViewerSource: PostMessageToViewerSource;
@@ -112,7 +112,7 @@ function standaloneGridConformerSource(
 
 export function useAppGridConformerMessages({
   openDocuments,
-  openDocumentsInActiveTab,
+  addDocuments,
   openTextDocuments,
   postMessageToViewerSource,
   preferences,
@@ -204,17 +204,6 @@ export function useAppGridConformerMessages({
         }, "Grid selection");
         if (result.reportPath) void Promise.resolve().then(() => openTextDocuments([result.reportPath!], { background: true }))
           .catch((error) => pushErrorStatus(error, "Result saved; could not open report"));
-        const document = await invoke<ViewerDocument>("open_text_structure", {
-          request: {
-            title: result.title,
-            extension: "sdf",
-            text: result.alignedSdf,
-          },
-          preferences: { ...preferences, rendererMode: "molstar" },
-          reloadOptions: {},
-        });
-        openDocumentsInActiveTab([document]);
-        rememberRecentStructures([document]);
         const compared = Math.max(0, result.scores.length - 1);
         pushStatus(
           `Aligned and scored ${compared.toLocaleString()} pose${compared === 1 ? "" : "s"} against the first selected row on Metal in ${result.gpuTimeMs.toLocaleString()} ms; ${result.gridApplied ? "scores were written to Grid" : "scores were saved but could not be applied to Grid"}.`,
@@ -226,6 +215,22 @@ export function useAppGridConformerMessages({
           gpuTimeMs: result.gpuTimeMs,
           backend: result.backend,
         });
+        try {
+          const document = await invoke<ViewerDocument>("open_text_structure", {
+            request: {
+              title: result.title,
+              extension: "sdf",
+              text: result.alignedSdf,
+            },
+            preferences: { ...preferences, rendererMode: "molstar" },
+            reloadOptions: {},
+          });
+          addDocuments([document]);
+          rememberRecentStructures([document]);
+        } catch (error) {
+          pushErrorStatus(error, "Alignment saved; could not open result");
+        }
+
       })().catch((error) => {
         const message = statusErrorMessage(error);
         reply("gridAlignmentError", { error: message });
@@ -431,7 +436,7 @@ export function useAppGridConformerMessages({
         generatedSdf,
         { ...preferences, rendererMode: "molstar", molstarStyle: "ball-and-stick" },
       );
-      openDocumentsInActiveTab([generatedDocument]);
+      addDocuments([generatedDocument]);
       rememberRecentStructures([generatedDocument]);
       const suffix = errors.length ? ` ${errors.length} failed.` : "";
       updateGridJob({
@@ -459,7 +464,7 @@ export function useAppGridConformerMessages({
       })
       .finally(() => reply("gridGenerate3DFinished", { jobId: gridJobId, gridApplied }));
     return true;
-  }, [openDocuments, openDocumentsInActiveTab, openTextDocuments, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setConformerJobs, showGridComputeJobs]);
+  }, [openDocuments, addDocuments, openTextDocuments, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setConformerJobs, showGridComputeJobs]);
 
   return { handleGridConformerMessage };
 }

@@ -76,7 +76,7 @@ export function useAppStatus() {
   const pushErrorStatus = useCallback((error: unknown, prefix?: string, details: string[] = []) => {
     const message = statusErrorMessage(error);
     trackWebDemoHandledError(error, prefix);
-    pushStatus(prefix ? `${prefix}: ${message}` : message, "error", details.length > 0 ? details : [message]);
+    pushStatus(prefix || message, "error", [message, ...details]);
   }, [pushStatus]);
 
   const dismissStatusDetails = useCallback(() => {
@@ -94,5 +94,6 @@ export function useAppStatus() {
 }
 
 function compactStatusMessage(message: string) {
-  return message.trim().split(/\r?\n| Error:| at /)[0]?.trim() || message;
+  const firstLine = message.trim().split(/\r?\n| Error:| at /)[0]?.trim() || message;
+  return firstLine.length > 140 ? `${firstLine.slice(0, 137)}…` : firstLine;
 }

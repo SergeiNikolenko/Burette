@@ -464,7 +464,7 @@
     });
   }
 
-  function setStatus(message, kind = 'info') {
+  function setStatus(message, kind = 'info', notifyHost = true) {
     const cfg = window.BuretteConfig && typeof window.BuretteConfig === 'object' ? window.BuretteConfig : {};
     if (status) {
       setStatusText(String(message || ''));
@@ -472,7 +472,7 @@
       status.classList.toggle('hidden', kind !== 'error' && !window.BuretteDebug);
       if (kind === 'error' && status && !window.BuretteDebug && cfg.appViewer === true) status.classList.add('hidden');
     }
-    if (kind === 'error' || window.BuretteDebug) post(kind === 'error' ? 'error' : 'status', message || '');
+    if (notifyHost && (kind === 'error' || window.BuretteDebug)) post(kind === 'error' ? 'error' : 'status', message || '');
   }
 
   function setStatusText(text) {
@@ -814,7 +814,7 @@
       if (body.type === 'gridAlignmentError') {
         state.aligningPoses = false;
         refreshGridControls(config());
-        setStatus(body.error || '[grid] Pose alignment failed.', 'error');
+        setStatus(body.error || '[grid] Pose alignment failed.', 'error', false);
         return;
       }
       if (body.type === 'gridSemiempiricalStarted') {
@@ -832,7 +832,7 @@
       if (body.type === 'gridSemiempiricalError') {
         state.evaluatingSemiempirical = false;
         refreshGridControls(config());
-        setStatus(body.error || '[grid] RM1 evaluation failed.', 'error');
+        setStatus(body.error || '[grid] RM1 evaluation failed.', 'error', false);
         return;
       }
       if (body.type === 'gridGenerate3DFinished') {
@@ -842,7 +842,7 @@
       }
       if (body.type === 'gridGenerate3DError') {
         setGridGenerate3DPending(false);
-        setStatus(body.error || '[grid] 3D generation failed.', 'error');
+        setStatus(body.error || '[grid] 3D generation failed.', 'error', false);
         return;
       }
       if (body.type === 'gridClusterStarted') {
@@ -4885,6 +4885,14 @@
     ];
     const descriptorColumns = new Map();
     const analysisColumns = new Map();
+    // Server metadata defines the result order; sparse row objects may arrive
+    // alphabetically and must not move primary energies behind charge arrays.
+    if (state.remoteMode) {
+      for (const column of state.remoteAnalysisColumns || []) {
+        const valueId = String(column?.valueId || '');
+        if (valueId) analysisColumns.set(valueId, column);
+      }
+    }
     const propColumns = new Set();
     for (const row of rows) {
       for (const [id, value] of Object.entries(row.descriptors || {})) {
@@ -4905,10 +4913,6 @@
     if (state.remoteMode) {
       for (const id of state.remoteDescriptorIds || []) {
         if (!descriptorColumns.has(id)) descriptorColumns.set(id, id);
-      }
-      for (const column of state.remoteAnalysisColumns || []) {
-        const valueId = String(column?.valueId || '');
-        if (valueId) analysisColumns.set(valueId, column);
       }
     }
     for (const key of propColumns) {
@@ -9170,7 +9174,7 @@
         pumpRdkitCardQueue();
       }
     } catch (error) {
-      const message = error && error.stack ? error.stack : String(error);
+      const message = error?.message || String(error);
       setStatus(message, 'error');
     }
   }

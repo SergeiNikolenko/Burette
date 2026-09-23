@@ -154,7 +154,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
     write_bytes_atomic(
         &runtime.join("index.html"),
-        grid_html(file_path, extension, &runtime, &assets, preferences).as_bytes(),
+        grid_html(file_path, extension, &assets, preferences, &config_text).as_bytes(),
     )?;
     write_bytes_atomic(
         &runtime.join("preview-config.js"),
@@ -186,9 +186,9 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
 fn grid_html(
     file_path: &Path,
     extension: &str,
-    runtime: &Path,
     assets: &Path,
     preferences: &ViewerPreferences,
+    config_text: &str,
 ) -> String {
     let title = escape_html(
         file_path
@@ -202,7 +202,12 @@ fn grid_html(
         "burette-opaque-background"
     };
     let grid_css = versioned_asset_url(&assets.join("grid.css"));
-    let config_js = asset_url(&runtime.join("preview-config.js"));
+    // Embed the small document configuration before external runtime scripts.
+    // Startup no longer depends on a second asset-protocol request succeeding.
+    let config_text = config_text
+        .replace('<', "\\u003c")
+        .replace('\u{2028}', "\\u2028")
+        .replace('\u{2029}', "\\u2029");
     let rdkit_wasm_js = versioned_asset_url(&assets.join("rdkit-wasm-data.js"));
     let rdkit_js = versioned_asset_url(&assets.join("rdkit").join("RDKit_minimal.js"));
     let openchemlib_js = versioned_asset_url(&assets.join("openchemlib").join("openchemlib.js"));
@@ -240,7 +245,7 @@ fn grid_html(
 <body class="{background_class}">
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
-  <script src="{config_js}"></script>
+  <script>window.BuretteConfig = {config_text};</script>
   <script src="{rdkit_wasm_js}"></script>
   {openchemlib_script}
   <script src="{rdkit_js}"></script>
@@ -252,7 +257,7 @@ fn grid_html(
 }
 
 fn versioned_asset_url(path: &Path) -> String {
-    format!("{}?v=grid-ui-v51", asset_url(path))
+    format!("{}?v=grid-ui-v52", asset_url(path))
 }
 
 fn grid_can_preview(extension: &str) -> bool {
@@ -749,6 +754,28 @@ fn is_molfile_counts_line(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn grid_boot_embeds_configuration_without_script_injection() {
+        let preferences: ViewerPreferences = serde_json::from_value(json!({
+            "theme":"light", "canvasBackground":"white", "rendererMode":"grid2d", "molstarStyle":"automatic"
+        })).unwrap();
+        let config =
+            json!({"documentId":"test", "label":"</script><script>bad()</script>"}).to_string();
+        let html = grid_html(
+            Path::new("test.csv"),
+            "csv",
+            Path::new("/tmp/assets"),
+            &preferences,
+            &config,
+        );
+        assert!(!html.contains("<script>bad()"));
+        assert!(html.contains("\\u003c/script>"));
+        assert!(!html.contains("src=\"preview-config.js\""));
+        assert!(
+            html.find("window.BuretteConfig =").unwrap() < html.find("grid-viewer.js").unwrap()
+        );
+    }
 
     #[test]
     fn parses_standard_multi_record_sdf_separator() {
