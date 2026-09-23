@@ -210,3 +210,14 @@ export async function storeDerivedValues(
     },
   });
 }
+
+export async function storeRGroupResults(
+  documentId: string,
+  sourceRows: Array<{ rowId: number; smiles: string | null; molblock: string | null }>,
+  result: RGroupDecomposition,
+  parameters: Record<string, unknown>,
+): Promise<void> {
+  return invoke("rgroup_store_results", { request: {
+    documentId, sourceRows, labels: result.labels, rows: result.rows, parameters,
+  } });
+}

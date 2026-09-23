@@ -205,6 +205,7 @@ pub fn run() {
             commands::derived::derived_store_values,
             commands::rgroups::rgroup_runtime_status,
             commands::rgroups::rgroup_decompose,
+            commands::rgroup_results::rgroup_store_results,
             commands::descriptors::descriptor_calculate,
             commands::descriptors::descriptor_calculate_grid,
             commands::descriptors::descriptor_start_grid,

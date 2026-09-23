@@ -19,6 +19,7 @@ pub(crate) mod preview_cache;
 pub(crate) mod pubchem;
 pub(crate) mod quicklook;
 pub(crate) mod recent_documents;
+pub(crate) mod rgroup_results;
 pub(crate) mod rgroups;
 pub(crate) mod runtime_doctor;
 pub(crate) mod shell;

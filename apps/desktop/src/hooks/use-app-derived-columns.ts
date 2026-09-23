@@ -20,6 +20,7 @@ import {
   rgroupRuntimeStatus,
   SCAFFOLD_COUNT_COLUMN,
   storeDerivedValues,
+  storeRGroupResults,
   type DerivedColumnKind,
   type DerivedComputeRow,
   type DerivedStoreValue,
@@ -1500,26 +1501,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
         if (decomposition.rows.length === 0) {
           throw new Error(`No molecule matched the core ${core}.`);
         }
-        const byRow = new Map(decomposition.rows.map((row) => [row.rowId, row.values]));
-        for (const label of decomposition.labels) {
-          const columnId = `RGroup_${label}`;
-          const values: DerivedStoreValue[] = rows
-            .filter((row) => byRow.has(row.rowId))
-            .map((row) => ({
-              rowId: row.rowId,
-              valueReal: null,
-              valueText: byRow.get(row.rowId)?.[label] ?? "",
-              errorText: null,
-            }));
-          for (let start = 0; start < values.length; start += DERIVED_STORE_BATCH) {
-            await storeDerivedValues(documentId, {
-              columnId,
-              label: label === "Core" ? "R-Group Core" : label,
-              kind: "rgroup",
-              paramsJson: JSON.stringify({ core, label }),
-            }, values.slice(start, start + DERIVED_STORE_BATCH));
-          }
-        }
+        await storeRGroupResults(documentId, rows, decomposition, { core, rdkitVersion: decomposition.rdkitVersion });
         notifyGridDerivedRunFinished(documentId);
         const skipped = decomposition.unmatchedRows + decomposition.unparsedRows;
         updateJob({
