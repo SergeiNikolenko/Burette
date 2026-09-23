@@ -7594,11 +7594,11 @@ assert.match(derivedColumnsHook, /morganFingerprint\(engines\.rdkit,/);
 assert.match(derivedColumnsHook, /closestReferenceMatch\(engines, row, reference\)/);
 // R-groups leave the webview for the managed Python runtime; the menu asks
 // whether that runtime exists before the item can be clicked.
-assert.match(derivedColumnsHook, /decomposeRGroupsInRuntime\(core, rows\)/);
+assert.match(derivedColumnsHook, /prepareRGroupPreview\(documentId, requestedCore\.trim\(\)\)/);
 assert.match(derivedColumnsHook, /rgroupRuntimeStatus\(\)/);
 assert.match(appNativeMenuHook, /rgroupRuntimeAvailable: state\.rgroupRuntimeAvailable/);
 assert.match(nativeMenuTypes, /rgroupRuntimeAvailable: boolean/);
-assert.match(rgroupDialog, /all Murcko scaffold families/);
+assert.match(rgroupDialog, /All Murcko scaffold families/);
 assert.match(derivedColumnsHook, /computeDerivedValue\("inchikey", engines, row\)\.valueText/);
 assert.match(appNativeMenuHook, /actions\.deleteDuplicateGridRows\(activeDocument\.id\)/);
 assert.match(gridViewer, /raw === null \|\| raw === undefined \|\| raw === '' \? Number\.NaN : Number\(raw\)/);

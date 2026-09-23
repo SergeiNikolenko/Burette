@@ -1,0 +1,9 @@
+name,smiles
+Benzene methyl chloro,Cc1ccc(Cl)cc1
+Benzene ethyl chloro,CCc1ccc(Cl)cc1
+Benzene methyl bromo,Cc1ccc(Br)cc1
+Benzene ethyl bromo,CCc1ccc(Br)cc1
+Pyridine methyl,Cc1ccncc1
+Pyridine ethyl,CCc1ccncc1
+Acyclic,CCCCCC
+Invalid,not-a-smiles((

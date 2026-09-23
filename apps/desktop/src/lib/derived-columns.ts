@@ -153,7 +153,7 @@ export type RGroupDecomposition = {
   unparsedRows: number;
   noScaffoldRows: number;
   excludedRows: Array<{ rowId: number; status: string }>;
-  series: Array<{ id: string; core: string; query: string; matchedRows: number; labels: string[]; constantPositions: number }>;
+  series: Array<{ id: string; core: string; query: string; matchedRows: number; labels: string[]; constantPositions: number; coreVariantCount: number }>;
 };
 
 // R-group decomposition is the one SAR tool that leaves the webview: RDKit's

@@ -38,3 +38,10 @@ reconstruction including stereo, hydrogen, bridging substituents and salts.
 `commands::rgroup_results::tests` exercises replacement, rollback and changed
 source rejection against SQLite. `tests/test-sar-analysis-compute.mjs` covers the
 scaffold implementation used by Analyse Scaffolds.
+
+The desktop dialog separates Preview from Apply columns. Preview shows actual
+coverage, exclusion reasons, a family selector, the labelled core, and
+substituent frequencies for each R position. It does not write to the collection.
+Changing the query invalidates the preview; Apply commits exactly the inspected
+result. A failed application keeps the dialog open and requests a fresh preview.
+Substituent frequencies describe composition, not effects on activity.

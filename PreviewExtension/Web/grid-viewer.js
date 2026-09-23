@@ -2106,6 +2106,7 @@
   // of handing them back row by row, so the columns only appear once a page is
   // re-read; descriptorIds ride along with the page payload.
   function applyDescriptorGridRunFinished(body, cfg) {
+    if (body.resultKind === 'rgroup') markGridDirty('R-group analysis');
     const added = Math.max(0, Number(body.descriptorIdCount || 0));
     setStatus(added > 0
       ? `[grid] Descriptors ready: ${added.toLocaleString()} column${added === 1 ? '' : 's'}.`
