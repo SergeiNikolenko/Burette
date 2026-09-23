@@ -242,7 +242,13 @@ export function useAppGridConformerMessages({
         body: { type, ...payload },
       });
     };
-    if (!molecules.length) {
+    const documentId = bodyString(body.documentId).trim();
+    const sourceIndexes = Array.isArray(body.sourceIndexes)
+      ? [...new Set(body.sourceIndexes.filter((value): value is number => Number.isSafeInteger(value) && value >= 0))]
+      : [];
+    const gridSource = isTauriRuntime() && !!documentId && sourceIndexes.length > 0;
+    const moleculeCount = gridSource ? sourceIndexes.length : molecules.length;
+    if (!moleculeCount) {
       reply("gridGenerate3DError", { error: "Select one or more molecules before generating 3D." });
       pushStatus("Select one or more molecules before generating 3D.", "error");
       return true;
@@ -260,7 +266,7 @@ export function useAppGridConformerMessages({
       ? `Optimize geometry · ${mmffVariant}`
       : `Generate 3D · ${conformerVariant}`;
     const inputTitle = bodyString(body.title).trim()
-      || `${molecules.length.toLocaleString()} selected molecule${molecules.length === 1 ? "" : "s"}`;
+      || `${moleculeCount.toLocaleString()} selected molecule${moleculeCount === 1 ? "" : "s"}`;
     const updateGridJob = (patch: Partial<ConformerJob>) => {
       setConformerJobs((previous) => previous.map((job) => job.id === gridJobId ? { ...job, ...patch } : job));
     };
@@ -279,20 +285,15 @@ export function useAppGridConformerMessages({
     };
     setConformerJobs((previous) => [pendingJob, ...previous].slice(0, 20));
     showGridComputeJobs();
-    pushStatus(`${gridJobTitle} submitted for ${molecules.length.toLocaleString()} molecule${molecules.length === 1 ? "" : "s"}.`);
+    pushStatus(`${gridJobTitle} submitted for ${moleculeCount.toLocaleString()} molecule${moleculeCount === 1 ? "" : "s"}.`);
     reply("gridGenerate3DStarted", { jobId: gridJobId });
+    let gridApplied = false;
     void (async () => {
-      const documentId = bodyString(body.documentId).trim();
-      const sourceIndexes = Array.isArray(body.sourceIndexes)
-        ? [...new Set(body.sourceIndexes.filter((value): value is number => (
-            Number.isSafeInteger(value) && value >= 0
-          )))]
-        : [];
       if (isTauriRuntime()) {
         if (optimizeInputGeometry && (!documentId || !sourceIndexes.length)) {
           throw new Error("Input geometry optimization requires an open Grid selection.");
         }
-        const source = standaloneGridConformerSource(bodyString(body.title).trim() || "selected-molecules-3d.sdf", molecules);
+        const source = gridSource ? null : standaloneGridConformerSource(bodyString(body.title).trim() || "selected-molecules-3d.sdf", molecules);
         if (!source && (!documentId || !sourceIndexes.length)) {
           throw new Error("Mixed structure formats require an open Grid selection.");
         }
@@ -314,7 +315,7 @@ export function useAppGridConformerMessages({
           updateGridJob({ durableJobId: job.jobId, cancelable: true, progress, backend: "nativeMetal" });
           pushStatus(`${progress}...`);
         };
-        const result = optimizeInputGeometry || !source
+        const result = gridSource
           ? await runConformerWorkflow(documentId, sourceIndexes, onProgress, {
               variant: conformerVariant,
               initialization: optimizeInputGeometry ? "inputGeometry" : "generated",
@@ -328,21 +329,26 @@ export function useAppGridConformerMessages({
               mmffVariant,
               conformersPerMolecule: 1,
             });
+        gridApplied = result.gridApplied;
+        const inputFailures = result.failedSourceRecords ?? 0;
+        const failureMessage = [result.failedCount && `${result.failedCount} geometries failed validation`,
+          inputFailures && `${inputFailures} input molecules could not be prepared`].filter(Boolean).join("; ");
         updateGridJob({
-          status: result.failedCount ? "recovered" : "success",
+          status: !result.passedCount ? "failed" : result.failedCount || inputFailures || (gridSource && !result.gridApplied) ? "recovered" : "success",
+          cancelable: false,
           completedAt: Date.now(),
-          progress: `${result.passedCount.toLocaleString()} of ${result.conformerCount.toLocaleString()} geometries passed validation`,
+          progress: `${result.passedCount.toLocaleString()} of ${result.conformerCount.toLocaleString()} geometries passed validation${inputFailures ? `; ${inputFailures} input molecules failed` : ""}`,
           backend: "nativeMetal",
           durableJobId: result.job.jobId,
           reportPath: result.reportPath,
           primaryOpenPath: result.primaryOpenPath,
-          error: result.failedCount ? `${result.failedCount.toLocaleString()} geometries failed validation.` : null,
+          error: failureMessage || result.gridWarning,
         });
         pushStatus(
           optimizeInputGeometry
-            ? `Processed and validated ${result.passedCount.toLocaleString()} input geometries with ${mmffVariant} via Metal GPU; per-row convergence status and energy were written to Grid.`
+            ? `Processed and validated ${result.passedCount.toLocaleString()} input geometries with ${mmffVariant} via Metal GPU; ${result.gridApplied ? "per-row status and energy were written to Grid" : "results were saved but the table was not updated"}.`
             : `Generated and ${mmffVariant}-optimized ${result.passedCount.toLocaleString()} valid 3D geometries with ${conformerVariant} via Metal GPU and opened the generated conformer artifact.`,
-          optimizeInputGeometry ? (result.gridApplied ? "success" : "error") : (result.failedCount ? "error" : "success"),
+          result.failedCount || inputFailures || (gridSource && !result.gridApplied) ? "error" : "success",
           result.gridWarning ? [result.gridWarning] : undefined,
         );
         // Opening is presentation, not computation. Keep the published result
@@ -443,6 +449,7 @@ export function useAppGridConformerMessages({
         const cancelled = error instanceof Error && error.name === "AbortError";
         updateGridJob({
           status: cancelled ? "cancelled" : "failed",
+          cancelable: false,
           completedAt: Date.now(),
           progress: cancelled ? "Compute cancelled" : "Compute failed",
           error: message,
@@ -450,7 +457,7 @@ export function useAppGridConformerMessages({
         reply("gridGenerate3DError", { jobId: gridJobId, error: message });
         pushErrorStatus(error, "Grid 3D generation failed");
       })
-      .finally(() => reply("gridGenerate3DFinished", { jobId: gridJobId }));
+      .finally(() => reply("gridGenerate3DFinished", { jobId: gridJobId, gridApplied }));
     return true;
   }, [openDocuments, openDocumentsInActiveTab, openTextDocuments, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setConformerJobs, showGridComputeJobs]);
 

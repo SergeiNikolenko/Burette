@@ -31,7 +31,7 @@ assert.match(viteConfig, /browserDevJobWasCancelled\(jobKey\)[\s\S]*status: 130/
 assert.match(chemistryJobsHook, /cancelledConformerJobIdsRef\.current\.delete\(jobId\)[\s\S]*status: "running"/);
 assert.match(conformerCommand, /Primary output: \{\}/);
 assert.match(viteConfig, /Primary output: \$\{result\.primaryOpenPath \?\? "None"\}/);
-assert.match(gridViewer, /sourceIndexes: rows\.map\(row => Number\(row\.index\)\)/);
+assert.match(gridViewer, /sourceIndexes: \[\.\.\.state\.selected\]/);
 assert.match(gridViewer, /CONFORMER_VARIANTS = \['DG', 'KDG', 'ETDG', 'ETDGv2', 'ETKDG', 'ETKDGv2', 'ETKDGv3', 'srETKDGv3'\]/);
 assert.match(gridViewer, /MMFF_VARIANTS = \['MMFF94', 'MMFF94s'\]/);
 assert.match(gridViewer, /optimizeGeometryGridSelection/);

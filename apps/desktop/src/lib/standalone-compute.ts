@@ -121,9 +121,10 @@ export async function runStandaloneConformerWorkflow(
     ));
     update({
       backend: result.backend,
-      status: result.failedCount ? "recovered" : "success",
+      status: !result.passedCount ? "failed" : result.failedCount || result.failedSourceRecords ? "recovered" : "success",
+      cancelable: false,
       completedAt: Date.now(),
-      progress: `${result.passedCount} validated conformers; ${result.failedCount} failed`,
+      progress: `${result.passedCount} validated conformers; ${result.failedCount} failed${result.failedSourceRecords ? `; ${result.failedSourceRecords} input molecules failed` : ""}`,
       primaryOpenPath: result.primaryOpenPath,
       reportPath: result.reportPath,
     });

@@ -837,6 +837,7 @@
       }
       if (body.type === 'gridGenerate3DFinished') {
         setGridGenerate3DPending(false);
+        if (body.gridApplied === true) void refreshRemote(config());
         return;
       }
       if (body.type === 'gridGenerate3DError') {
@@ -1034,6 +1035,7 @@
     const command = String(body?.command || '').trim();
     const caps = capabilities(cfgValue);
     const selectedStructureCount = selectedMolecularGridRowCount();
+    const selectedComputeCount = caps.cluster ? state.selected.size : selectedStructureCount;
     switch (command) {
       case 'file.save':
         if (!caps.export) return;
@@ -1150,7 +1152,7 @@
         return;
       }
       case 'structure.generate-3d':
-        if (!caps.selection || selectedStructureCount < 1 || selectedStructureCount > NATIVE_GENERATE_3D_SELECTION_LIMIT) return;
+        if (!caps.selection || selectedComputeCount < 1 || selectedComputeCount > NATIVE_GENERATE_3D_SELECTION_LIMIT) return;
         requestSelected3DGeneration(cfgValue);
         return;
       case 'structure.calculate-properties':
@@ -1176,6 +1178,7 @@
     const caps = capabilities(cfg);
     if (!caps.editing) return;
     const selectedStructureCount = selectedMolecularGridRowCount();
+    const selectedComputeCount = caps.cluster ? state.selected.size : selectedStructureCount;
     const selectedSourceIndexes = state.selected.size <= GRID_SELECTION_BRIDGE_LIMIT
       ? [...state.selected].map(Number).filter(index => Number.isSafeInteger(index) && index >= 0)
       : [];
@@ -1201,7 +1204,7 @@
       selectionEnabled: caps.selection,
       canOpenSelectedInMolstar: (caps.molstarOpen || caps.rendererSwitch) && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_MOLSTAR_SELECTION_LIMIT,
       canOpenSelectedInKetcher: caps.ketcherOpen && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_KETCHER_SELECTION_LIMIT,
-      canGenerate3dForSelection: caps.selection && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_GENERATE_3D_SELECTION_LIMIT,
+      canGenerate3dForSelection: caps.selection && selectedComputeCount > 0 && selectedComputeCount <= NATIVE_GENERATE_3D_SELECTION_LIMIT,
       supportsXyzrender: supportsXyzrenderCards(cfg),
       generating3d: state.generating3d
     };
@@ -2433,44 +2436,48 @@
 
   function selectedRowsHaveInput3dCoordinates() {
     const rows = selectedMolstarRows();
-    return rows.length > 0
-      && rows.length === state.selected.size
+    return state.selected.size > 0
+      && (capabilities(safeConfig()).cluster || rows.length === state.selected.size)
       && rows.every(row => hasMolblockInput3DCoordinates(row.molblock));
   }
 
   function requestSelected3DGeneration(cfg) {
     const rows = selectedMolstarRows();
-    if (!rows.length) {
+    if (!state.selected.size) {
       setStatus('[grid] Select one or more molecules before generating 3D.', 'error');
       return;
     }
-    request3DGenerationForRows(rows, cfg);
+    if (!capabilities(cfg).cluster && rows.length !== state.selected.size) {
+      setStatus('[grid] Load every selected molecule before generating 3D.', 'error');
+      return;
+    }
+    request3DGenerationForRows(rows, cfg, [...state.selected]);
   }
 
   function requestSelectedGeometryOptimization(cfg) {
     const rows = selectedMolstarRows();
-    if (!rows.length || !rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
+    if (!state.selected.size || !rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
       setStatus('[grid] Generate 3D coordinates for every selected molecule before optimizing geometry.', 'error');
       return;
     }
-    const molecules = rows.map(row => gridConformerGenerationInput(row)).filter(Boolean);
+    const molecules = capabilities(cfg).cluster ? [] : rows.map(row => gridConformerGenerationInput(row)).filter(Boolean);
     const title = `${cfg?.label || 'Molecules'} — optimized geometry`;
     setGridGenerate3DPending(true);
     post('optimizeGeometryGridSelection', '[grid] Optimize selected input geometry.', {
       documentId: cfg?.documentId || null,
       title,
-      sourceIndexes: rows.map(row => Number(row.index)),
+      sourceIndexes: [...state.selected].map(Number).sort((a, b) => a - b),
       molecules,
       conformerVariant: state.conformerVariant,
       mmffVariant: state.mmffVariant
     });
-    setStatus(`[grid] Optimizing ${molecules.length.toLocaleString()} input geometr${molecules.length === 1 ? 'y' : 'ies'}.`);
+    setStatus(`[grid] Optimizing ${state.selected.size.toLocaleString()} input geometr${state.selected.size === 1 ? 'y' : 'ies'}.`);
   }
 
   function requestSelectedPoseAlignment(cfg) {
     if (state.aligningPoses) return;
     const rows = selectedMolstarRows();
-    if (rows.length < 2) {
+    if (state.selected.size < 2) {
       setStatus('[grid] Select at least two 3D poses. The first selected row is the reference.', 'error');
       return;
     }
@@ -2482,16 +2489,16 @@
     refreshGridControls(cfg);
     post('alignGridPoses', '[grid] Align and compare selected poses.', {
       documentId: cfg?.documentId || null,
-      sourceIndexes: rows.map(row => Number(row.index))
+      sourceIndexes: [...state.selected].map(Number).sort((a, b) => a - b)
     });
-    setStatus(`[grid] Aligning ${rows.length.toLocaleString()} poses to the first selected row on Metal.`);
+    setStatus(`[grid] Aligning ${state.selected.size.toLocaleString()} poses to the first selected row on Metal.`);
   }
 
   function requestSelectedSemiempiricalEvaluation(cfg) {
     if (state.evaluatingSemiempirical) return;
     const rows = selectedMolstarRows();
     const methodLabel = state.semiempiricalMethod === 'AM1_STAR' ? 'AM1*' : state.semiempiricalMethod;
-    if (!rows.length || !rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
+    if (!state.selected.size || !rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
       setStatus(`[grid] Generate 3D coordinates for every selected molecule before calculating ${methodLabel}.`, 'error');
       return;
     }
@@ -2499,10 +2506,10 @@
     refreshGridControls(cfg);
     post('evaluateSemiempiricalGridSelection', `[grid] Calculate ${methodLabel} energies and charges.`, {
       documentId: cfg?.documentId || null,
-      sourceIndexes: rows.map(row => Number(row.index)),
+      sourceIndexes: [...state.selected].map(Number).sort((a, b) => a - b),
       method: state.semiempiricalMethod
     });
-    setStatus(`[grid] Calculating ${methodLabel} energies and charges for ${rows.length.toLocaleString()} selected molecule${rows.length === 1 ? '' : 's'}; execution provenance will identify Metal or CPU fallback.`);
+    setStatus(`[grid] Calculating ${methodLabel} energies and charges for ${state.selected.size.toLocaleString()} selected molecule${state.selected.size === 1 ? '' : 's'}; execution provenance will identify Metal or CPU fallback.`);
   }
 
   function requestSingle3DGeneration(row, cfg) {
@@ -2513,11 +2520,12 @@
     request3DGenerationForRows([row], cfg);
   }
 
-  function request3DGenerationForRows(rows, cfg) {
-    const molecules = rows
+  function request3DGenerationForRows(rows, cfg, sourceIndexes = rows.map(row => Number(row.index))) {
+    const nativeSource = capabilities(cfg).cluster && !!cfg.documentId;
+    const molecules = nativeSource ? [] : rows
       .map(row => gridConformerGenerationInput(row))
       .filter(Boolean);
-    if (!molecules.length) {
+    if (!nativeSource && !molecules.length) {
       setStatus('[grid] Selected molecules do not have SDF or SMILES structure data for 3D generation.', 'error');
       return;
     }
@@ -2528,12 +2536,12 @@
     post('generate3dGridSelection', '[grid] Generate 3D for selected molecules.', {
       documentId: cfg?.documentId || null,
       title,
-      sourceIndexes: rows.map(row => Number(row.index)),
+      sourceIndexes,
       molecules,
       conformerVariant: state.conformerVariant,
       mmffVariant: state.mmffVariant
     });
-    setStatus(`[grid] Generating 3D for ${molecules.length.toLocaleString()} molecule${molecules.length === 1 ? '' : 's'}.`);
+    setStatus(`[grid] Generating 3D for ${(nativeSource ? sourceIndexes.length : molecules.length).toLocaleString()} molecule${sourceIndexes.length === 1 ? '' : 's'}.`);
   }
 
   function gridConformerGenerationInput(row) {
