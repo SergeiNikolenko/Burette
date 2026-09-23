@@ -11,7 +11,7 @@ new Function('require', 'exports', ts.transpile(readFileSync('apps/desktop/src/h
   if (name === 'react') return {
     useState: initial => { const i = cursor++; if (!(i in stateValues)) stateValues[i] = initial; return [stateValues[i], value => { stateValues[i] = value; }]; },
     useEffect: effect => effects.push(effect), useMemo: callback => callback(), useCallback: callback => callback,
-    useRef: value => ({ current: value }),
+    useRef: value => { const i = cursor++; if (!(i in stateValues)) stateValues[i] = { current: value }; return stateValues[i]; },
   };
   if (name === './use-menu-events') return { useMenuEvents: options => { handler = options.handleNativeMenuCommand; } };
   if (name === '../lib/native-menu-paths') return { fileBackedViewerDocumentPath: doc => doc.path, isAbsoluteNativeFilePath: path => path.startsWith('/'), nativeOpenDocumentPaths: () => [] };
@@ -32,11 +32,15 @@ const options = {
 function render() { cursor = 0; effects = []; exports.useAppNativeMenu(options); }
 render();
 await handler({ command: 'analyze.chemical-space' });
-assert.deepEqual(calls, [['open', ['/collection.sdf'], undefined, { rendererMode: 'grid2d' }, { inActiveTab: true }]]);
+assert.deepEqual(calls, [['open', ['/collection.sdf'], undefined, { rendererMode: 'grid2d' }, { inActiveTab: true, shouldApply: calls[0][4].shouldApply }]]);
+assert.equal(calls[0][4].shouldApply(), true);
 state.activeDocument = { ...state.activeDocument, id: 'grid', renderer: 'grid2d' };
 render(); effects.at(-1)();
 assert.equal(calls.length, 1, 'wait for mounted grid records');
-options.gridMenuState = { hasMolecules: true };
+options.gridMenuState = { hasMolecules: true, saveEnabled: false };
+render(); effects.at(-1)();
+assert.equal(calls.length, 1, 'wait until collection indexing completes');
+options.gridMenuState.saveEnabled = true;
 render(); effects.at(-1)();
 assert.deepEqual(calls.at(-1), ['dock', 'bottom', 'chemical-space']);
 render(); effects.at(-1)();
@@ -44,7 +48,8 @@ assert.equal(calls.length, 2, 'dispatch only once');
 state.activeDocument.renderer = 'molstar'; options.gridMenuState = null;
 render(); await handler({ command: 'analyze.chemical-space' });
 state.activeTabId = 'other'; render(); effects.at(-1)();
-state.activeTabId = 'tab'; state.activeDocument.renderer = 'grid2d'; options.gridMenuState = { hasMolecules: true };
+assert.equal(calls.at(-1)[4].shouldApply(), false, 'late native open must not replace another tab');
+state.activeTabId = 'tab'; state.activeDocument.renderer = 'grid2d'; options.gridMenuState = { hasMolecules: true, saveEnabled: true };
 render(); effects.at(-1)();
 assert.equal(calls.filter(call => call[0] === 'dock').length, 1, 'cancel when leaving target tab');
 console.log('native collection analysis transition passed');

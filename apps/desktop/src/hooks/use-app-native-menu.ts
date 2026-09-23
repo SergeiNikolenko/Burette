@@ -59,7 +59,7 @@ type OpenDocuments = (
   paths: string[],
   reloadOptions?: ViewerReloadOptions,
   preferences?: Partial<ViewerPreferences>,
-  options?: { replace?: boolean; inActiveTab?: boolean },
+  options?: { replace?: boolean; inActiveTab?: boolean; shouldApply?: () => boolean },
 ) => void | Promise<unknown>;
 
 type UseAppNativeMenuOptions = {
@@ -100,6 +100,9 @@ export function useAppNativeMenu({
   const [pendingAnalysis, setPendingAnalysis] = useState<{ command: string; path: string; tabId: string | null } | null>(null);
   const [shellEditingText, setShellEditingText] = useState(false);
   const activeDocument = state.activeDocument;
+  const analysisRequestRef = useRef(0);
+  const analysisTargetRef = useRef({ tabId: state.activeTabId, documentId: activeDocument?.id });
+  analysisTargetRef.current = { tabId: state.activeTabId, documentId: activeDocument?.id };
   const isGrid = activeDocument?.renderer === "grid2d";
   const extension = activeDocument?.extension.trim().toLowerCase().replace(/^\./u, "") ?? "";
   const activeDocumentFileBacked = Boolean(activeDocument
@@ -424,11 +427,18 @@ export function useAppNativeMenu({
     };
 
     if (command.startsWith("analyze.") && canOpenCollectionAnalysis && activeDocument) {
+      const request = ++analysisRequestRef.current;
+      const target = analysisTargetRef.current;
       setPendingAnalysis({ command, path: activeDocument.path, tabId: state.activeTabId });
       try {
-        await openDocuments([activeDocument.path], undefined, { rendererMode: "grid2d" }, { inActiveTab: true });
+        await openDocuments([activeDocument.path], undefined, { rendererMode: "grid2d" }, {
+          inActiveTab: true,
+          shouldApply: () => analysisRequestRef.current === request
+            && analysisTargetRef.current.tabId === target.tabId
+            && analysisTargetRef.current.documentId === target.documentId,
+        });
       } catch (error) {
-        setPendingAnalysis(null);
+        if (analysisRequestRef.current === request) setPendingAnalysis(null);
         await messageDialog(String(error), { title: "Cannot Open Collection Analysis", kind: "error" });
       }
       return;
@@ -695,11 +705,11 @@ export function useAppNativeMenu({
   // Cancel if the user leaves the target tab while it is opening.
   useEffect(() => {
     if (!pendingAnalysis) return;
-    if (state.activeTabId !== pendingAnalysis.tabId || activeDocument?.path !== pendingAnalysis.path) {
+    if ((state.activeTabId !== pendingAnalysis.tabId && !isGrid) || activeDocument?.path !== pendingAnalysis.path) {
       setPendingAnalysis(null);
       return;
     }
-    if (!isGrid || !gridMenuState) return;
+    if (!isGrid || !gridMenuState?.saveEnabled) return;
     setPendingAnalysis(null);
     if (gridMenuState.hasMolecules) {
       void handleNativeMenuCommand({ command: pendingAnalysis.command });
