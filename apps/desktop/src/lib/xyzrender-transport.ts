@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
 import { isTauriRuntime } from './tauri';
-import { rotateXyzrenderReference } from './xyzrender-orientation';
+import { isPeriodicXyz, rotatePeriodicXyz, rotateXyzrenderReference } from './xyzrender-orientation';
 import { safeExportFileName } from './file-export';
 
 type RenderRequest = {
@@ -24,17 +24,39 @@ export type SavedXyzrenderFile = { name: string; path: string; downloadUrl?: str
 
 export async function renderXyzrender(request: RenderRequest, signal?: AbortSignal): Promise<Response> {
   signal?.throwIfAborted();
+  const fullTrajectory = request.animationSourcePath && ['trajectory', 'vibration'].includes(String(request.animation?.mode));
   // The sheet's inline input is a selected static frame. Motion needs the
   // original file, while synthetic/edited items keep their inline coordinates.
-  if (request.animationSourcePath && ['trajectory', 'vibration'].includes(String(request.animation?.mode))) {
+  if (fullTrajectory && request.animationSourcePath) {
     request = { ...request, path: request.animationSourcePath, inputDataBase64: undefined,
       inputExtension: request.animationSourceExtension };
   }
-  if (!isTauriRuntime()) return fetch('/__burette/xyzrender', {
+  const inlineXyz = request.orientation && request.inputDataBase64 && (request.inputExtension || request.path.split('.').pop())?.toLowerCase() === 'xyz'
+    ? atob(request.inputDataBase64)
+    : undefined;
+  const periodicInput = inlineXyz && isPeriodicXyz(inlineXyz) ? inlineXyz : undefined;
+  let periodicOrientationRef: string | undefined;
+  let baseOrientationRef = request.orientationRef;
+  if (request.orientation && periodicInput) {
+    baseOrientationRef = request.orientationRef && isPeriodicXyz(request.orientationRef) ? request.orientationRef : periodicInput;
+    periodicOrientationRef = rotatePeriodicXyz(baseOrientationRef, request.orientation);
+    request = { ...request, inputDataBase64: btoa(periodicOrientationRef), orientationRef: undefined, orientation: undefined };
+  } else if (request.orientationRef && isPeriodicXyz(request.orientationRef)) {
+    if (fullTrajectory) {
+      request = { ...request, orientationRef: undefined };
+    } else {
+      periodicOrientationRef = request.orientationRef;
+      request = { ...request, inputDataBase64: btoa(periodicOrientationRef), inputExtension: 'xyz', orientationRef: undefined };
+    }
+  }
+  if (!isTauriRuntime()) {
+    const response = await fetch('/__burette/xyzrender', {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, signal, body: JSON.stringify(request),
-  });
+    });
+    if (!periodicOrientationRef) return response;
+    return Response.json({ ...await response.json(), orientationRef: periodicOrientationRef, baseOrientationRef }, { status: response.status });
+  }
   try {
-    let baseOrientationRef = request.orientationRef;
     if (request.orientation) {
       if (!baseOrientationRef) {
         const base = await invoke<RenderResult>('render_xyzrender_editor', { request: { ...request, animation: undefined, saveReference: true } });
@@ -54,7 +76,7 @@ export async function renderXyzrender(request: RenderRequest, signal?: AbortSign
     if (request.animation) nativeAnimationQueue = pending.catch(() => {});
     const result = await pending;
     signal?.throwIfAborted();
-    return Response.json({ ...result, baseOrientationRef });
+    return Response.json({ ...result, orientationRef: periodicOrientationRef || result.orientationRef, baseOrientationRef });
   } catch (cause) {
     signal?.throwIfAborted();
     return Response.json({ error: String(cause) }, { status: 500 });

@@ -97,6 +97,6 @@ function MolecularOrientationPanel({ source, onPrepared }: { source: AnimationSo
 
 export function XyzrenderOrientationPanel(props: { source: AnimationSource; onPrepared: (source: AnimationSource) => void }) {
   const extension = (props.source.inputExtension || props.source.path.split('.').pop() || '').toLowerCase().replace(/^\./, '');
-  if (extension === 'cif') return <p className="text-sm text-muted-foreground">Orientation editing is unavailable for periodic structures. Use Animation to rotate the crystal.</p>;
+  if (extension === 'cif') return <p className="text-sm text-muted-foreground">Orientation editing for CIF is unavailable. Use Animation to rotate the crystal.</p>;
   return <MolecularOrientationPanel {...props} />;
 }

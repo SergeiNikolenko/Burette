@@ -1,5 +1,6 @@
 import { createXyzrenderWorker } from "./xyzrender-worker";
 import { rotateXyzrenderReference } from "./xyzrender-orientation";
+import { isPeriodicXyz } from "../../src/lib/xyzrender-orientation";
 import { xyzrenderAnimationArguments } from "./xyzrender-animation-options";
 import { registerXyzrenderExportRoute } from "./xyzrender-export";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -119,6 +120,10 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
       try { if (animation) xyzrenderAnimationArguments(animation, 'animation.gif'); }
       catch (error) { sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) }); return; }
       const activeModel = animation ? null : activeModelIndex(body.activeModel);
+      const periodicReference = orientationRef && isPeriodicXyz(orientationRef) && body.orientation === undefined;
+      const orientedCell = periodicReference && !['trajectory', 'vibration'].includes(String(animation?.mode))
+        ? Buffer.from(orientationRef, 'utf8') : null;
+      if (periodicReference) orientationRef = null;
       const executable = options.resolveExecutable();
       if (!executable) {
         sendJson(res, 404, { error: "External xyzrender executable was not found." });
@@ -137,7 +142,7 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
           ? await readFile(inputPath)
           : null;
         const selectedFrameInputData = selectedXyzFrameInputData(inputData ?? pathInputData, inputExtension, activeModel);
-        const effectiveInputData = selectedFrameInputData ?? inputData;
+        const effectiveInputData = orientedCell ?? selectedFrameInputData ?? inputData;
         let effectiveInputPath = effectiveInputData?.length ? convertedInputPath : inputPath;
         if (effectiveInputData?.length) {
           await writeFile(convertedInputPath, effectiveInputData);

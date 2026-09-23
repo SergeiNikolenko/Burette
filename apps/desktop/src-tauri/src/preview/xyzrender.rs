@@ -83,6 +83,25 @@ pub(crate) fn create_xyzrender_artifact(
     direct_smiles: Option<&str>,
     converted_input: Option<&[u8]>,
 ) -> Result<XyzrenderArtifact, String> {
+    // A rotated periodic cell is complete extended XYZ input. xyzrender rejects
+    // --ref for cells, so use the saved cell itself for later style renders.
+    let oriented_cell = orientation_ref_text
+        .filter(|_| direct_smiles.is_none())
+        .and_then(|text| normalize_orientation_ref(Some(text)))
+        .filter(|text| {
+            text.lines()
+                .nth(1)
+                .is_some_and(|comment| comment.contains("Lattice=\""))
+        });
+    let converted_input = oriented_cell
+        .as_ref()
+        .map(|text| text.as_bytes())
+        .or(converted_input);
+    let orientation_ref_text = if oriented_cell.is_some() {
+        None
+    } else {
+        orientation_ref_text
+    };
     let output_path = output_directory.join("xyzrender.svg");
     let log_path = output_directory.join("xyzrender.log");
     let converted_input_path = output_directory.join("xyzrender-input.xyz");

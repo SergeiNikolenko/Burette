@@ -232,46 +232,63 @@ pub(crate) fn render(request: EditorRequest, directory: &Path) -> Result<EditorR
     let execute = |output: &Path,
                    animation: Option<&Animation>,
                    reference: Option<&Path>|
-     -> Result<(), String> {
-        let mut args = build_xyzrender_args(
-            &input,
-            output,
-            preset,
-            reference,
-            request.controls.as_ref(),
-            None,
-        );
-        if let Some(animation) = animation {
-            args.extend(animation.arguments(&directory.join("animation.gif"))?);
-        }
-        let mut command = Command::new(&executable);
-        command
-            .args(args)
-            .env("PYTHON_CPU_COUNT", "4")
-            .env("OPENBLAS_NUM_THREADS", "1")
-            .env("OMP_NUM_THREADS", "1");
-        if cfg!(target_os = "macos") && output.extension().is_some_and(|ext| ext == "pdf") {
-            let mut paths = std::env::var_os("DYLD_FALLBACK_LIBRARY_PATH")
-                .map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
-                .unwrap_or_default();
-            paths.extend(["/opt/homebrew/lib".into(), "/usr/local/lib".into()]);
-            command.env(
-                "DYLD_FALLBACK_LIBRARY_PATH",
-                std::env::join_paths(paths).map_err(|error| error.to_string())?,
+     -> Result<bool, String> {
+        let animation_args = animation
+            .map(|value| value.arguments(&directory.join("animation.gif")))
+            .transpose()?
+            .unwrap_or_default();
+        let run = |reference: Option<&Path>| -> Result<(std::process::ExitStatus, String), String> {
+            let mut args = build_xyzrender_args(
+                &input,
+                output,
+                preset,
+                reference,
+                request.controls.as_ref(),
+                None,
             );
-        }
-        let timeout = if animation.is_some() {
-            Duration::from_secs(120)
-        } else {
-            XYZRENDER_TIMEOUT
+            args.extend(animation_args.iter().cloned());
+            let mut command = Command::new(&executable);
+            command
+                .args(args)
+                .env("PYTHON_CPU_COUNT", "4")
+                .env("OPENBLAS_NUM_THREADS", "1")
+                .env("OMP_NUM_THREADS", "1");
+            if cfg!(target_os = "macos") && output.extension().is_some_and(|ext| ext == "pdf") {
+                let mut paths = std::env::var_os("DYLD_FALLBACK_LIBRARY_PATH")
+                    .map(|value| std::env::split_paths(&value).collect::<Vec<_>>())
+                    .unwrap_or_default();
+                paths.extend(["/opt/homebrew/lib".into(), "/usr/local/lib".into()]);
+                command.env(
+                    "DYLD_FALLBACK_LIBRARY_PATH",
+                    std::env::join_paths(paths).map_err(|error| error.to_string())?,
+                );
+            }
+            let timeout = if animation.is_some() {
+                Duration::from_secs(120)
+            } else {
+                XYZRENDER_TIMEOUT
+            };
+            run_xyzrender_process(command, &directory.join("render.log"), timeout)
         };
-        let (status, log) = run_xyzrender_process(command, &directory.join("render.log"), timeout)?;
-        if !status.success() {
-            return Err(format!("xyzrender failed: {}", truncate_text(&log, 1024)));
+        let (mut status, mut log) = run(reference)?;
+        let periodic_reference = reference.is_some()
+            && !status.success()
+            && xyzrender_ref_unsupported_for_periodic(&log);
+        if periodic_reference {
+            let _ = fs::remove_file(output);
+            (status, log) = run(None)?;
         }
-        Ok(())
+        if !status.success() {
+            let detail = log
+                .lines()
+                .rev()
+                .find(|line| line.starts_with("xyzrender: error:"))
+                .unwrap_or_else(|| log.lines().last().unwrap_or("Unknown renderer error"));
+            return Err(format!("xyzrender failed: {}", truncate_text(detail, 1024)));
+        }
+        Ok(periodic_reference)
     };
-    execute(&output, request.animation.as_ref(), ref_path)?;
+    let periodic_reference = execute(&output, request.animation.as_ref(), ref_path)?;
     let svg = String::from_utf8(read_bounded(&output)?).map_err(|e| e.to_string())?;
     let gif_base64 = request
         .animation
@@ -292,7 +309,7 @@ pub(crate) fn render(request: EditorRequest, directory: &Path) -> Result<EditorR
             read_bounded(&path).map(|b| base64::engine::general_purpose::STANDARD.encode(b))
         })
         .transpose()?;
-    let orientation_ref = if ref_path.is_some() {
+    let orientation_ref = if ref_path.is_some() && !periodic_reference {
         Some(String::from_utf8(read_bounded(&reference)?).map_err(|e| e.to_string())?)
     } else {
         None
@@ -378,6 +395,24 @@ mod tests {
                 format.extension()
             );
         }
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    #[ignore = "requires the local xyzrender runtime"]
+    fn native_editor_renders_periodic_xyz_without_reference() {
+        let directory =
+            std::env::temp_dir().join(format!("burette-periodic-editor-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let mut request = request();
+        request.input_data_base64 = Some(base64::engine::general_purpose::STANDARD.encode(
+            include_bytes!("../../../../../../samples/structures/demo/caffeine_cell.xyz"),
+        ));
+        request.save_reference = true;
+        request.animation = None;
+        let result = render(request, &directory).unwrap();
+        assert!(result.svg.contains("<svg"));
+        assert!(result.orientation_ref.is_none());
         fs::remove_dir_all(directory).unwrap();
     }
 }
