@@ -54,3 +54,53 @@ for (const fail of [false, true]) {
   }
 }
 console.log('pose camera remains stable through replacement and failure');
+
+// WKWebView can withhold rAF callbacks while the initial canvas is hidden.
+// Startup must still reveal the viewer instead of waiting for its own visibility.
+{
+  const createSource = source.match(/\n  async function createViewer\([\s\S]*?\n  \}/u)[0];
+  const waitSource = source.match(/\n  function waitForAnimationFrame\([\s\S]*?\n  \}/u)[0];
+  const classes = new Set();
+  const viewer = { plugin: { spec: {}, canvas3d: { setProps() {}, requestDraw() {} } } };
+  const bindings = {
+    window: { molstar: { Viewer: { create: async () => viewer } } },
+    document: { getElementById: () => ({ classList: { add: name => classes.add(name), remove: name => classes.delete(name) } }) },
+    debug() {}, createViewerOptions: () => ({}), transparentBackground: false,
+    canvasBackgroundColor: () => 0, requestAnimationFrame() {},
+    setTimeout: callback => setTimeout(callback, 1),
+  };
+  const create = new Function(...Object.keys(bindings), `${waitSource}\n${createSource}; return createViewer;`)(...Object.values(bindings));
+  let timeout;
+  try {
+    const result = await Promise.race([create(), new Promise((_, reject) => { timeout = setTimeout(() => reject(Error('Hidden canvas blocked startup')), 500); })]);
+    assert.equal(result, viewer);
+    assert.equal(classes.size, 0);
+    assert.equal(viewer.plugin.spec.components.sequenceViewer.defaultMode, 'all');
+  } finally { clearTimeout(timeout); }
+}
+console.log('hidden WebKit canvas does not block viewer startup');
+
+// Grid entries must remain separate molecules and retain multiple bonds.
+{
+  const names = ['buildSdfGrid', 'spreadSdfCollectionMolecules', 'parseV2000SdfRecord', 'parseV3000SdfRecord', 'parseSdfAtomLine', 'parseSdfBondLine', 'normalizeSdfElement', 'normalizeSdfBondOrder', 'formatV3000Coord'];
+  const functions = names.map(name => source.match(new RegExp(`\\n  function ${name}\\([\\s\\S]*?\\n  \\}`, 'u'))[0]).join('\n');
+  const build = new Function(`const MAX_SDF_GRID_MOLECULES=64, MAX_SDF_GRID_ATOMS=900, MAX_SDF_GRID_BONDS=900, SDF_GRID_PADDING=4; ${functions}; return {buildSdfGrid,parseV3000SdfRecord};`)();
+  const record = ['Example', '  Test', '', '  0  0  0     0  0            999 V3000', 'M  V30 BEGIN CTAB', 'M  V30 COUNTS 2 1 0 0 0', 'M  V30 BEGIN ATOM', 'M  V30 1 C 0 0 0 0', 'M  V30 2 O 1 0 0 0', 'M  V30 END ATOM', 'M  V30 BEGIN BOND', 'M  V30 1 2 1 2', 'M  V30 END BOND', 'M  V30 END CTAB', 'M  END'].join('\n');
+  const prepared = build.buildSdfGrid([record, record], 'set.sdf');
+  assert.equal(prepared.gridEntries.length, 2);
+  const molecules = prepared.gridEntries.map(entry => build.parseV3000SdfRecord(entry.data));
+  assert.deepEqual(molecules.map(m => [m.atomCount, m.bonds[0].order]), [[2, 2], [2, 2]]);
+  assert.ok(molecules[1].centerX - molecules[0].centerX >= 4);
+  const loaded = [];
+  const bindings = {
+    cancelScheduledMolstarWaterRepresentation() {}, updateSdfPoseButton() {}, notifyStructureOverlayModeChanged() {},
+    loadMolstarEntryWithStructureRefs: async (_, entry) => loaded.push(entry),
+    applyMolstarStyle: async () => {}, configuredMolstarStyle: () => 'default',
+    installDockingPoseControls() {},
+  };
+  const loadSource = source.match(/\n  async function loadPreparedStructure\([\s\S]*?\n  \}/u)[0];
+  const load = new Function(...Object.keys(bindings), `let activeMolstarPrepared, activeDockingPrepared, activeConfig; ${loadSource}; return loadPreparedStructure;`)(...Object.values(bindings));
+  await load({}, prepared);
+  assert.deepEqual(loaded, prepared.gridEntries);
+}
+console.log('grid molecules load independently with bond orders preserved');

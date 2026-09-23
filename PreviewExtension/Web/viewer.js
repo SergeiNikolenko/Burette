@@ -14379,7 +14379,16 @@ SOFTWARE.
       const moleculeLabel = `Molecule ${index + 1}`;
       return {
         label: moleculeLabel,
-        data: sdfMoleculesToPdbStructure([molecule], moleculeLabel)
+        format: 'sdf',
+        data: [moleculeLabel, '  Burette', '',
+          '  0  0  0     0  0            999 V3000', 'M  V30 BEGIN CTAB',
+          `M  V30 COUNTS ${molecule.atomCount} ${molecule.bondCount} 0 0 0`, 'M  V30 BEGIN ATOM',
+          ...molecule.atoms.map((atom, i) => `M  V30 ${i + 1} ${atom.element} ${formatV3000Coord(atom.x)} ${formatV3000Coord(atom.y)} ${formatV3000Coord(atom.z)} 0`),
+          'M  V30 END ATOM', 'M  V30 BEGIN BOND',
+          ...molecule.bonds.map((bond, i) => `M  V30 ${i + 1} ${bond.order} ${bond.a} ${bond.b}`),
+          'M  V30 END BOND', 'M  V30 END CTAB',
+          'M  END', '$$$$', ''
+        ].join('\n')
       };
     });
 
@@ -14387,7 +14396,7 @@ SOFTWARE.
       kind: 'sdf-grid',
       data: '',
       gridEntries,
-      format: 'pdb',
+      format: 'sdf',
       label: `${label} (grid: ${molecules.length}${records.length > molecules.length ? ` of ${records.length}` : ''} molecules)`,
       loadPreset: 'default'
     };
@@ -16917,7 +16926,7 @@ SOFTWARE.
     if (prepared.kind === 'sdf-grid') {
       activeDockingPrepared = null;
       for (const entry of prepared.gridEntries) {
-        await loadSdfCollectionPdbLayer(viewer, entry.data, entry.label);
+        await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' });
       }
       await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
       installDockingPoseControls(viewer, null);
@@ -26856,7 +26865,10 @@ SOFTWARE.
         : new window.molstar.Viewer('app', createViewerOptions());
       viewer.plugin.canvas3d?.setProps({ transparentBackground, renderer: { backgroundColor: canvasBackgroundColor() } });
       viewer.plugin.canvas3d?.requestDraw();
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      // WebKit may suspend animation callbacks while this container is hidden.
+      // Bound both paint waits so revealing the canvas cannot depend on itself.
+      await waitForAnimationFrame();
+      await waitForAnimationFrame();
     } finally {
       app?.classList.remove('buret-molstar-initializing');
     }
