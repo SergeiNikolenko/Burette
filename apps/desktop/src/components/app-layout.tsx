@@ -1,3 +1,4 @@
+import { MobileWebDemoLayout } from "./mobile-web-demo-layout";
 import { XyzrenderAnimationDialog } from "./xyzrender-animation-dialog";
 import { useGroupPixelGuard } from "./ui/use-group-pixel-guard";
 import { SidebarFileOperations } from "./sidebar/file-operations";
@@ -429,6 +430,9 @@ export function AppLayout({
   } as CSSProperties;
   const effectiveTheme = resolveThemeMode(state.preferences.theme, systemThemeMode);
   const activePageKind = state.activeTab?.location.kind ?? null;
+  if (import.meta.env.VITE_BURETTE_WEB_DEMO === "1" && viewportWidth < 768 && !heroEmbed && !state.quickLookStandalone) {
+    return <MobileWebDemoLayout state={state} actions={actions} style={shellStyle} theme={effectiveTheme} />;
+  }
   if (state.quickLookStandalone) {
     return (
       <main
