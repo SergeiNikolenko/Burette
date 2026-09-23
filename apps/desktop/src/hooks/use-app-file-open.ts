@@ -416,13 +416,14 @@ export function useAppFileOpen({
     }
 
     if (structurePaths.length > 0) {
-      const result = await openDocuments(structurePaths);
+      // Normal file opening follows format support; Open As passes an explicit renderer.
+      const result = await openDocuments(structurePaths, undefined, { rendererMode: "auto" });
       preferredStructureDocumentId = result?.documents[0]?.id ?? preferredStructureDocumentId;
     }
 
     const openedStructureAndTextPaths = new Set<string>();
     if (structureAndTextPaths.length > 0) {
-      const result = await openDocuments(structureAndTextPaths, undefined, undefined, { deferErrorStatus: true });
+      const result = await openDocuments(structureAndTextPaths, undefined, { rendererMode: "auto" }, { deferErrorStatus: true });
       const openedDocuments = result?.documents ?? [];
       for (const document of openedDocuments) {
         if (document.renderer === NOT_RENDERABLE_RENDERER) {
