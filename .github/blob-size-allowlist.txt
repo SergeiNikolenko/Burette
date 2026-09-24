@@ -73,3 +73,7 @@ plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-DkD0
 plugins/burette-agent/browser-shell-dist/assets/viewer-BoGANvs7.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-DSV4qkKN.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-DBmBA51F.js
+plugins/burette-agent/browser-shell-dist/assets/molstar-Ixvy7bU4.js
+plugins/burette-agent/browser-shell-dist/assets/dist-Dv4k6zHo.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-BTcAHrJY.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-qDI2I3Uz.js
