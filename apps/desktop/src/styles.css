@@ -2230,6 +2230,38 @@ kbd span { margin-left: 2px; }
 .project:hover .project-actions,
 .project:focus-within .project-actions,
 .project.pinned .project-actions { opacity: 1; pointer-events: auto; }
+/* Holding ⌘ labels the rows ⌘1–⌘9 open (lib/command-key-hints.ts). The badge
+   takes the trailing action's slot so the row never reflows. */
+.project[data-command-hint]::after,
+.tab-shell[data-command-hint]::after {
+  content: "⌘" attr(data-command-hint);
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  min-width: 26px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: var(--surface-subtle);
+  box-shadow: inset 0 0 0 1px var(--line-subtle);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  animation: command-hint-in 120ms ease-out;
+}
+.tab-shell[data-command-hint]::after { right: 4px; }
+.project[data-command-hint] .project-actions,
+.tab-shell[data-command-hint] .tab-close { opacity: 0; pointer-events: none; }
+@keyframes command-hint-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .project[data-command-hint]::after,
+  .tab-shell[data-command-hint]::after { animation: none; }
+}
 .pin-hit {
   width: 22px;
   height: 22px;
