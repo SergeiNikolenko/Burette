@@ -270,3 +270,47 @@ test('shared native workspace supports explicit chemistry views and rejects unau
     if (session) await rm(join(tmpdir(), 'burette-mcp-app', session.sessionId), { recursive: true, force: true });
   }
 });
+
+test('compact viewers explain workspace-only actions; xyzrender and file-view requests are validated', async t => {
+  const file = new URL('../samples/mini.pdb', import.meta.url).pathname;
+  const compact = await run({ operation: 'open', file });
+  t.after(() => rm(join(tmpdir(), 'burette-mcp-app', compact.sessionId), { recursive: true, force: true }));
+  for (const type of ['open_files', 'manage_tabs', 'set_workspace_panel', 'set_xyzrender_view']) {
+    await assert.rejects(run({ operation: 'act', sessionId: compact.sessionId, action: { type, paths: [file] } }), /compact inline viewer.*burette_open_viewer/su);
+  }
+  const workspace = await run({ operation: 'open', file, workspace: true, view: 'xyzrender' });
+  t.after(() => rm(join(tmpdir(), 'burette-mcp-app', workspace.sessionId), { recursive: true, force: true }));
+  assert.match(workspace.notes.at(-1), /1500 atoms.*externalRenderer\.status/su);
+  await run({ operation: 'exchange', sessionId: workspace.sessionId, token: workspace.token, state: { ready: true } });
+  const act = action => run({ operation: 'act', sessionId: workspace.sessionId, action });
+  for (const [action, message] of [
+    [{ type: 'set_xyzrender_view' }, /needs preset, controls or renderer/u],
+    [{ type: 'set_xyzrender_view', preset: 'custom' }, /preset must be one of/u],
+    [{ type: 'set_xyzrender_view', controls: { atomScale: 500 } }, /atomScale must be a number/u],
+    [{ type: 'set_xyzrender_view', controls: { customConfigPath: '/tmp/config.toml' } }, /Unsupported xyzrender control/u],
+    [{ type: 'set_xyzrender_view', renderer: 'molstar', preset: 'flat' }, /cannot also apply/u],
+    [{ type: 'open_files', paths: [file], view: 'ketcher' }, /auto or xyzrender/u],
+    [{ type: 'observe_frames' }, /Unsupported MCP App action: observe_frames/u],
+  ]) await assert.rejects(act(action), message);
+  const queued = await act({ type: 'set_xyzrender_view', preset: 'tube', controls: { atomScale: 1.2, fog: null } });
+  assert.equal(queued.status, 'queued');
+});
+
+test('get_context observes native widget sessions and names the accepted ids otherwise', async t => {
+  const { registerMolecularWorkspace } = await import('../plugins/burette-agent/mcp/registrations/molecular-workspace/register.mjs');
+  const handlers = new Map();
+  registerMolecularWorkspace({ registerResource() {}, registerTool(name, metadata, handler) { handlers.set(name, handler); } });
+  const getContext = handlers.get('burette.get_context');
+  const session = await run({ operation: 'open', file: new URL('../samples/mini.pdb', import.meta.url).pathname, workspace: true });
+  t.after(() => rm(join(tmpdir(), 'burette-mcp-app', session.sessionId), { recursive: true, force: true }));
+  await run({ operation: 'exchange', sessionId: session.sessionId, token: session.token, state: { ready: true, activeDocument: { title: 'mini.pdb', path: '/mini.pdb', ready: true } } });
+  const live = await getContext({ viewerSessionId: session.sessionId });
+  assert.equal(live.isError, undefined);
+  assert.equal(live.structuredContent.ready, true);
+  assert.equal(live.structuredContent.surface, 'native-mcp-app');
+  assert.equal(live.structuredContent.result.controlTool, 'burette.control_inline_viewer');
+  const missing = await getContext({ viewerSessionId: crypto.randomUUID() });
+  assert.equal(missing.structuredContent.error.code, 'VIEWER_SESSION_NOT_FOUND');
+  assert.match(missing.structuredContent.error.message, /burette\.open_viewer.*bws_/su);
+  assert.equal((await getContext({ workspaceSessionId: 'bws_unknown' })).structuredContent.error.code, 'WORKSPACE_SESSION_NOT_FOUND');
+});

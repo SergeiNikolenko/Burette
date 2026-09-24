@@ -35,6 +35,16 @@ The bundled examples use `burette.open_viewer({ example: "1htb" })` or
 `burette.open_viewer({ example: "caffeine" })`. Caffeine is an XYZ document
 for xyzrender. These work independently of the current directory.
 
+`view: "xyzrender"` applies to the opener's files and, by default, to files
+added later with `open_files`; pass `view: "auto"` or `"xyzrender"` per
+`open_files` call to choose. Proteins above 1500 atoms, SDF collections,
+sources over 512 KiB and failed renders stay in Mol*: read the opener `notes`
+and `activeDocument.externalRenderer.status` (`rendering`, `ready`, `failed`,
+`fallback` or `available`) before describing the view. Change the SVG with
+`set_xyzrender_view` (`preset`, merged `controls`, or `renderer: "molstar"` /
+`"xyzrender"`); `capture_scene` returns the SVG as a PNG and `observe_scene`
+reports the renderer status. Mol* commands fail with `XYZRENDER_ACTIVE` there.
+
 `awaiting_mount` means the host has not mounted the widget, not that a project
 folder is missing. Codex mounts the card only while the chat is on screen, so a
 background or unattended task normally stays in `awaiting_mount`; this is not an
@@ -101,11 +111,10 @@ substitute for runtime `observe`.
 - Inspect docking results: authorize receptor and ligand files using
   `open_files`, then `open_docking_view` in this same session. These are supplied
   poses, not a new docking calculation.
-- Inspect a self-contained multi-frame XYZ/PDB: `open_files`, then
-  `observe_frames` and `control_frames` (`next`, `previous`, `goto` with
-  zero-based `index`, `play`, `pause`). These also control docking pose timelines.
-  Observe the active document and timeline before changing frames. Missing
-  topology/coordinates or `NO_FRAME_CONTROLS` means unsupported/partial, not MD.
+- Inspect a self-contained multi-frame XYZ/PDB: `open_files`; the user steps
+  frames with the viewer's timeline. The native widget has no model-driven frame
+  commands (`observe_frames`/`control_frames` are not available); say so rather
+  than substituting spin or wiggle.
 
 Opening a tab is not proof of readiness. Check the selected grid, editor or
 viewer after each switch; keep unrelated tabs and the same workspace session.

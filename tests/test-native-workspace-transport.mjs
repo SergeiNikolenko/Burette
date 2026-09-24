@@ -6,7 +6,7 @@ import { test } from 'node:test';
 
 const code = (await readFile(new URL('../plugins/burette-agent/ui/native-workspace-transport.mjs', import.meta.url), 'utf8')).replace('export function', 'function');
 function transport(options) {
-  const context = vm.createContext({ window: { fetch }, location: { origin: 'https://fixture.invalid' }, crypto, URL, Response, Request, Uint8Array, TextDecoder, TextEncoder, atob });
+  const context = vm.createContext({ window: { fetch }, location: { origin: 'https://fixture.invalid' }, crypto, URL, Response, Request, Uint8Array, TextDecoder, TextEncoder, atob, setTimeout });
   vm.runInContext(code, context);
   return context.createWorkspaceTransport({ assets: {}, isClosed: () => false, observe() {}, ...options });
 }
@@ -112,4 +112,49 @@ test('showing an already open file focuses its tab without reloading its rendere
   assert.deepEqual((await (await bridge.fetch('/__burette/agent-session/actions.json')).json()).actions, [{ id: 'show', status: 'queued', action: { type: 'manage_tabs', operation: 'focus', tabId: 'tab-existing' } }]);
   requested = [path, '/authorized/new.pdb'];
   assert.deepEqual((await (await bridge.fetch('/__burette/agent-session/actions.json')).json()).actions, [{ id: 'show', status: 'queued', action: { type: 'open_files', paths: ['/authorized/new.pdb'] } }]);
+});
+
+const actionsUrl = '/__burette/agent-session/actions.json';
+const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
+async function eventually(condition) {
+  for (let attempt = 0; attempt < 100 && !condition(); attempt += 1) await pause(20);
+  assert.ok(condition());
+}
+
+test('tab actions are acknowledged with the settled observation, never re-run meanwhile', async () => {
+  const exchanges = [];
+  const second = '/authorized/second.pdb';
+  const tabs = [{ id: 'tab-a', path }, { id: 'tab-b', path: second }];
+  const listed = [{ actionId: 'focus', documentId: 'doc-a', action: { type: 'activate_tab', tabId: 'tab-b' } }];
+  const bridge = transport({ descriptor, exchange: async request => { exchanges.push(request); return request.completed ? {} : { actions: listed }; } });
+  const put = state => bridge.fetch('/__burette/agent-session/observe.json', { method: 'PUT', body: JSON.stringify(state) });
+  await put({ activeDocument: { path, ready: true }, viewerAgent: { documentId: 'doc-a' }, activeTabId: 'tab-a', tabs });
+  const [handed] = (await (await bridge.fetch(actionsUrl)).json()).actions;
+  assert.deepEqual(handed.action, { type: 'manage_tabs', operation: 'focus', tabId: 'tab-b' });
+  await bridge.fetch(actionsUrl, { method: 'PUT', body: JSON.stringify({ actions: [{ ...handed, status: 'completed', result: { ok: true } }] }) });
+  assert.deepEqual((await (await bridge.fetch(actionsUrl)).json()).actions, [], 'a listed but unacknowledged action is not handed out twice');
+  await pause(120);
+  assert.equal(exchanges.some(request => request.completed), false, 'the previous tab is still observed');
+  await put({ activeDocument: { path: second, ready: true }, viewerAgent: { documentId: 'doc-b' }, activeTabId: 'tab-b', tabs });
+  await eventually(() => exchanges.some(request => request.completed));
+  const acknowledgement = exchanges.find(request => request.completed);
+  assert.deepEqual([acknowledgement.completed.actionId, acknowledgement.state.activeTabId, acknowledgement.state.activeDocument.id], ['focus', 'tab-b', 'doc-b']);
+});
+
+test('agent-owned actions run once locally and carry the view choice for added files', async () => {
+  const exchanges = [], executions = [], opened = [];
+  const listed = [
+    { actionId: 'view', documentId: 'doc-a', action: { type: 'set_xyzrender_view', preset: 'tube' } },
+    { actionId: 'add', action: { type: 'open_files', paths: ['/authorized/new.xyz'], view: 'xyzrender' } },
+  ];
+  const agent = { intercept: action => action.type === 'set_xyzrender_view' ? async () => { executions.push(action); await pause(30); return { status: 'completed', result: { ok: true, command: action.type } }; } : null };
+  const bridge = transport({ descriptor, agent, prepareOpen: (paths, view) => opened.push([paths, view]),
+    exchange: async request => { exchanges.push(request); return request.completed ? {} : { actions: listed }; } });
+  await bridge.fetch('/__burette/agent-session/observe.json', { method: 'PUT', body: JSON.stringify({ activeDocument: { path, ready: true }, viewerAgent: { documentId: 'doc-a' }, tabs: [] }) });
+  const first = (await (await bridge.fetch(actionsUrl)).json()).actions;
+  const again = (await (await bridge.fetch(actionsUrl)).json()).actions;
+  assert.deepEqual([first.map(item => item.id), again.map(item => item.id)], [['add'], ['add']]);
+  await eventually(() => exchanges.some(request => request.completed?.actionId === 'view'));
+  assert.equal(executions.length, 1);
+  assert.deepEqual(opened[0], [['/authorized/new.xyz'], 'xyzrender']);
 });

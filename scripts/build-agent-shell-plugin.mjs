@@ -26,6 +26,7 @@ const runtimeScripts = [
   'burette-deep-links.mjs',
   'dev-namespace.mjs',
   'mcp-app-session.mjs',
+  'mcp-app-action-rules.mjs',
   'mcp-app-action-log.mjs',
   'mcp-app-open.mjs',
   'mcp-app-capture.mjs',

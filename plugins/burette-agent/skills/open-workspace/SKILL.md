@@ -19,7 +19,9 @@ button at the bottom right opens the side pane or returns to chat. Use
 placement; do not repeat that request on resize. Use `burette.open_inline_viewer`
 only when the user wants a compact PDB/mmCIF chat card. The native opener runs
 the full shared workspace; the compact resource is separate. Both use the same
-session and control tools without a localhost server or upload.
+session and control tools without a localhost server or upload, but the compact
+viewer is single-document: `open_files`, tabs, Ketcher, Story, docking, panels
+and xyzrender are rejected there. Use `burette.open_viewer` for those.
 Pass up to seven `additionalFiles` to `open_viewer` (16 MiB total). Switching,
 closing and reordering stay in that workspace. Inspect
 `activeDocument`, `activeSurface`, and `tabs`; control tabs using `activate_tab`,
@@ -34,6 +36,14 @@ For native follow-up controls, send `control_inline_viewer.action` with
 Ketcher command. `set_structure` takes top-level `format` and `content`.
 Native Story controls use `type: "story_control"` and `operation: "next"`,
 `previous`, `goto`, `play`, or `pause`. Do not substitute a Browser workspace.
+Tab and file actions are acknowledged after observation shows the new tab, so
+observe and capture right after them target the new document. A result with
+`settled: false` means the switch did not finish in time; observe before use.
+`set_workspace_panel` succeeds only when the dock is visibly rendered; observe
+`docks.right`/`docks.bottom` (`open`, `visible`, size). `PANEL_NOT_RENDERED`
+names the placement and size; the bottom dock needs the side pane
+(`set_display_mode` `fullscreen`) when the inline card is too short.
+`burette.get_context` also accepts a native `sessionId` as `viewerSessionId`.
 
 1. Open once per task, then keep the same native workspace. For subsequent
    files call `control_inline_viewer` with its `sessionId` and

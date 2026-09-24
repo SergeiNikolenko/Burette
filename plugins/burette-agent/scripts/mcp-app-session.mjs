@@ -11,12 +11,13 @@ import { captureToolResult } from './mcp-app-capture.mjs';
 import { mcpAppCheckpoint } from './mcp-app-checkpoint.mjs';
 import { completeMcpAction, enqueueMcpAction, pendingMcpActions, readMcpAction, withMcpAdmission } from './mcp-app-action-log.mjs';
 import { openMcpSession } from './mcp-app-open.mjs';
+import { compactViewerActionError, validateMcpAppAction, xyzrenderOpenNotes } from './mcp-app-action-rules.mjs';
 
 const root = join(tmpdir(), 'burette-mcp-app');
 const maxStateBytes = 64 * 1024;
 const apiVersion = 'burette-mcp-app/v1';
 const actions = new Set(['focus_ligand', 'select_residues', 'focus_selection', 'reset_camera', 'clear_selection', 'set_display_mode', 'set_molstar_style', 'color_by_chain', 'set_scene_motion', 'set_scene_wiggle', 'rotate_camera', 'observe_scene', 'capture_scene', 'activate_tab', 'close_tab', 'close_other_tabs', 'close_all_tabs', 'move_tab']);
-const workspaceActions = new Set(['query_atoms', 'query_groups', 'named_selection', 'select_atoms', 'measure_geometry', 'list_scene_layers', 'patch_scene_layers', 'open_ketcher', 'control_ketcher', 'open_files', 'open_docking_view', 'story_observe', 'story_control', 'observe_frames', 'control_frames', 'manage_tabs', 'set_workspace_panel']);
+const workspaceActions = new Set(['query_atoms', 'query_groups', 'named_selection', 'select_atoms', 'measure_geometry', 'list_scene_layers', 'patch_scene_layers', 'open_ketcher', 'control_ketcher', 'open_files', 'open_docking_view', 'story_observe', 'story_control', 'manage_tabs', 'set_workspace_panel', 'set_xyzrender_view']);
 const workspaceShellActions = new Set(['activate_tab', 'close_tab', 'close_other_tabs', 'close_all_tabs', 'move_tab', 'set_display_mode', 'open_ketcher', 'open_files', 'open_docking_view', 'manage_tabs', 'set_workspace_panel']);
 
 async function writeJson(path, value) {
@@ -60,7 +61,7 @@ export async function runMcpAppOperation(input, { assetRoot } = {}) {
       for (const [index, item] of snapshots.entries()) await writeFile(join(sessionDir, index === 0 ? 'source' : `source-${item.document.id}`), item.bytes, { mode: 0o600 });
       await writeJson(join(sessionDir, 'observe.json'), { ready: false, revision: 0, displayMode: 'inline' });
       await writeJson(join(sessionDir, 'session.json'), session);
-      return { ...session, ready: false };
+      return { ...session, ready: false, ...(session.view === 'xyzrender' ? { notes: xyzrenderOpenNotes(session.documents) } : {}) };
     });
   }
   let session = await readSession(input.sessionId);
@@ -93,7 +94,9 @@ export async function runMcpAppOperation(input, { assetRoot } = {}) {
     if (closed) throw new Error('Viewer is closed. Open a new viewer to start a new session.');
     const waitMs = input.waitMs ?? 0;
     if (!Number.isInteger(waitMs) || waitMs < 0 || waitMs > 30000) throw new Error('waitMs must be an integer from 0 to 30000.');
-    if (!actions.has(input.action?.type) && !(session.workspace && workspaceActions.has(input.action?.type))) throw new Error('Unsupported MCP App action.');
+    const type = input.action?.type;
+    if (!session.workspace && workspaceActions.has(type)) throw new Error(compactViewerActionError(type));
+    if (!actions.has(type) && !workspaceActions.has(type)) throw new Error(`Unsupported MCP App action: ${String(type).slice(0, 64)}.`);
     const actionLimit = input.action.type === 'control_ketcher' ? 72 * 1024 : 8192;
     if (Buffer.byteLength(JSON.stringify(input.action)) > actionLimit) throw new Error('Action exceeds its payload limit.');
     if (session.workspace) {
@@ -101,8 +104,7 @@ export async function runMcpAppOperation(input, { assetRoot } = {}) {
         : input.action.type === 'manage_tabs' && input.action.operation === 'open_file' ? [input.action.path] : [];
       if (!Array.isArray(paths) || paths.some(path => !session.documents.some(item => item.path === path))) throw new Error('File is not authorized for this workspace.');
     }
-    if (input.action.type === 'set_display_mode' && !['inline', 'fullscreen'].includes(input.action.mode)) throw new Error('Display mode must be inline or fullscreen.');
-    if (input.action.type === 'set_workspace_panel' && (!['right', 'bottom'].includes(input.action.area) || typeof input.action.open !== 'boolean' || (input.action.documentId !== undefined && (typeof input.action.documentId !== 'string' || input.action.documentId.length > 256)))) throw new Error('Panel action requires right/bottom area, boolean open and an optional observed documentId.');
+    validateMcpAppAction(input.action);
     const state = await runMcpAppOperation({ operation: 'observe', sessionId: session.sessionId });
     if (['activate_tab', 'close_tab', 'close_other_tabs', 'move_tab'].includes(input.action.type)) {
       const tabId = input.action.tabId || state.activeDocument?.id;

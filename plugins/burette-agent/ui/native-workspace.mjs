@@ -1,6 +1,7 @@
 import { createSelectionContext } from '../../../apps/burette-public-plugin/lib/hosted-context';
 import { createWorkspaceAssets } from './native-workspace-assets.mjs';
 import { createWorkspaceTransport } from './native-workspace-transport.mjs';
+import { createWorkspaceAgent } from './native-workspace-agent.mjs';
 import { prepareWorkspacePreview } from './native-workspace-preview.mjs';
 import { createViewerLifetime } from './local-viewer-lifetime.mjs';
 import { createWorkspacePlacement } from './native-workspace-placement.mjs';
@@ -133,9 +134,21 @@ export async function startNativeWorkspace(app, initialResult) {
       assets = createWorkspaceAssets({ manifest, exchange, isClosed: () => lifetime.closed });
       checkpoint = await createWorkspaceCheckpoint({ exchange, sessionId: session.sessionId });
       const descriptor = { ...result.structuredContent, ...(checkpoint.restored ? { view: 'auto' } : {}), documents: mounted.documents || result.structuredContent.documents };
+      const agent = createWorkspaceAgent({ displayMode: () => placement.mode });
+      if (descriptor.view === 'xyzrender') agent.request(descriptor.documents.map(item => item.path), 'xyzrender');
       transport = createWorkspaceTransport({ descriptor, assets, exchange, isClosed: () => lifetime.closed, observe,
         setDisplayMode: placement.set,
-        decorateState: checkpoint.update,
+        decorateState: state => checkpoint.update(agent.decorate(state)),
+        agent,
+        // Added files follow the requested view, defaulting to the opener's.
+        prepareOpen(paths, view = result.structuredContent?.view === 'xyzrender' ? 'xyzrender' : 'auto') {
+          const workspace = window.BuretteMcpWorkspace;
+          if (view === 'xyzrender') {
+            if (workspace.initialRenderer !== 'xyzrender-external') Object.assign(workspace, { initialRenderer: 'xyzrender-external', initialPaths: [] });
+            workspace.initialPaths = [...new Set([...workspace.initialPaths, ...paths])];
+          } else workspace.initialPaths = workspace.initialPaths.filter(path => !paths.includes(path));
+          agent.request(paths, view);
+        },
       });
       window.BuretteMcpWorkspace = { ...assets, placement, sessionId: session.sessionId, get closed() { return lifetime.closed; },
         firstFrame(documentId) { if (!lifetime.closed) { paintedDocuments.add(documentId); reveal(); } },

@@ -12,13 +12,10 @@ frames, RMSD/RMSF/contact plots, and trajectory cleanup outputs.
 
 For the native workspace, reuse the existing session. Self-contained multi-frame
 XYZ/PDB files open with `control_inline_viewer` action `open_files`.
-Once the active viewer is ready, `observe_frames` returns `kind`, zero-based
-`frameIndex`, `frameCount`, and `playing`. `control_frames` takes `operation`:
-`next`, `previous`, `goto` (with zero-based `index`), `play`, or `pause`.
-The same commands operate supplied docking pose timelines. Verify a successful
-frame acknowledgement and re-observe after switching documents. Do not use
-camera spin or procedural wiggle as a substitute for trajectory playback.
-Missing topology/coordinates and `NO_FRAME_CONTROLS` must be reported explicitly.
+The native widget does not expose model-driven frame commands: the user steps
+or plays frames with the viewer's timeline controls. Report that limitation
+instead of using camera spin or procedural wiggle as trajectory playback.
+Missing topology/coordinates must be reported explicitly.
 
 1. Run preflight.
 2. Identify the trajectory bundle and required companion files.

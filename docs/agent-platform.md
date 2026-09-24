@@ -487,11 +487,47 @@ host API on the same mounted document so camera/selection are not reset by
 application code. Host placement and remount behavior still require an actual
 Codex smoke test; a Browser harness is not equivalent evidence.
 
-Native `observe_frames` / `control_frames` use the visible pose/trajectory
-timeline controller. Operations are next, previous, goto (zero-based global
-`index`), play and pause; results include kind, frameIndex, frameCount and
-playing. Out-of-range frames and documents without a timeline fail explicitly.
-This is playback of supplied coordinates, not docking or MD computation.
+The native widget runs the viewer runtime packaged from its `--app-root`
+build, not this checkout's `PreviewExtension/Web`. That runtime has no
+`observe_frames` / `control_frames` handler, so the widget schema does not offer
+them; users step frames with the viewer timeline. Re-add them together with a
+runtime that implements them.
+
+The compact inline viewer is single-document. Workspace actions sent to it
+(`open_files`, tabs, Ketcher, Story, docking, panels, xyzrender) fail with an
+explanation that points to `burette.open_viewer`, not a bare unsupported error.
+
+xyzrender in the native widget is observed and controlled by the bootstrap
+(`ui/native-workspace-agent.mjs`), which records every call to the private
+xyzrender exchange per document path. Observation adds
+`externalRenderer` to `activeDocument` and `documents`: `rendering`, `ready`,
+`failed` (the previous SVG stays on screen), `fallback` (requested but shown in
+Mol*, with the render error or the size/format reason) or `available`
+(rendered earlier, now in Mol*), plus preset, non-default controls, SVG bytes
+and size, and elapsed time. `view: "xyzrender"` covers the opener's files and is
+the default for `open_files`, which also accepts `view: "auto" | "xyzrender"`
+per call; the opener result carries bounded `notes` for sources xyzrender
+cannot take. With an xyzrender document active, `observe_scene` returns the
+renderer status, `capture_scene` rasterizes the current SVG to a PNG (at most
+1024 px and 1 MiB, white background, on-screen pan/zoom not applied), and Mol*
+commands fail with `XYZRENDER_ACTIVE`. `set_xyzrender_view` takes a built-in
+`preset`, bounded `controls` (merged with the current ones; `null` restores a
+preset default) and/or `renderer: "xyzrender" | "molstar"`, which uses the
+viewer's own renderer toggle; it completes after the new SVG renders or fails
+with the render error.
+
+Observation also reports measured `docks.right` / `docks.bottom` (`open`,
+`visible`, width, height), and visible docks appear in `panels` as `dock:right`
+or `dock:bottom`. `set_workspace_panel` is acknowledged only after the dock is
+visibly open or closed; otherwise it fails with `PANEL_NOT_RENDERED`, naming
+the placement and measured size. Tab and file actions are acknowledged in the
+same exchange as an observation that already shows the result (new active tab
+and ready surface, closed tab gone, added files present), for at most 3-10
+seconds; `settled: false` marks a timeout. The widget never hands an action to
+the shell twice while its acknowledgement is pending. `burette.get_context`
+accepts a native widget `sessionId` as `viewerSessionId` and returns its
+observation; unknown ids fail with `VIEWER_SESSION_NOT_FOUND` or
+`WORKSPACE_SESSION_NOT_FOUND` and name the accepted id kinds.
 Asset loading uses at most four native chunk reads concurrently, including
 chunks of a single large engine, and verifies size and SHA-256 before execution.
 Independent preview resources are fetched ahead of use while classic scripts

@@ -41,6 +41,7 @@ for (const unmount of ['host-teardown', 'pagehide']) {
       },
       window, setTimeout, clearTimeout,
       createWorkspaceAssets: () => ({ importModule: async () => {}, dispose: () => disposed.push('assets') }),
+      createWorkspaceAgent: () => ({ request() {}, decorate: state => state }),
       createWorkspaceTransport: options => {
         transportOptions = options;
         return { fetch() {}, dispose: () => disposed.push('transport') };

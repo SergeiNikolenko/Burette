@@ -110,6 +110,8 @@ export function registerMolecularWorkspace(server) {
           result: workspaceSessionsResult(),
         });
       }
+      const widgetSessionId = [input.viewerSessionId, input.workspaceSessionId].find(id => NATIVE_SESSION_ID.test(id || ""));
+      if (widgetSessionId && !input.url && !input.sessionDir) return nativeWidgetContext(widgetSessionId.toLowerCase());
       const resolved = resolveWorkspaceSession(input);
       if (!resolved.ok) return publicContractFailure("burette.get_context", resolved.error);
       const observed = await observeWorkspaceSession(resolved.session);
@@ -1196,6 +1198,39 @@ function publicContractResult(tool, {
       exitCode,
     },
   };
+}
+
+const NATIVE_SESSION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+// Widget sessions from burette.open_viewer / burette.open_inline_viewer live in
+// the MCP App transport, not in the browser-workspace registry.
+async function nativeWidgetContext(sessionId) {
+  // Loaded on demand: the widget transport lives beside the repository CLI.
+  const { runMcpAppOperation } = await import("../../../../../scripts/mcp-app-session.mjs");
+  const observe = await runMcpAppOperation({ operation: "observe", sessionId });
+  if (observe.expired) {
+    return publicContractFailure("burette.get_context", {
+      code: "VIEWER_SESSION_NOT_FOUND",
+      message: "No live Burette session has this id. viewerSessionId accepts a sessionId returned by burette.open_viewer or burette.open_inline_viewer, or a bws_ workspaceSessionId from burette.open_workspace. Widget sessions end when their temporary snapshot is removed; open a new viewer.",
+    });
+  }
+  const ready = observe.ready === true;
+  const status = observe.closed ? "closed" : observe.lifecycle?.status || "unknown";
+  return publicContractResult("burette.get_context", {
+    ok: ready,
+    session: { workspaceSessionId: sessionId, surface: "native-mcp-app" },
+    observe,
+    result: { kind: "native-mcp-app", sessionId, lifecycle: status, observeTool: "burette.observe_inline_viewer", controlTool: "burette.control_inline_viewer" },
+    started: true,
+    ready,
+    completionState: ready ? "ready" : "not_ready",
+    error: ready ? null : {
+      code: observe.closed ? "VIEWER_CLOSED" : "VIEWER_NOT_READY",
+      message: observe.closed
+        ? "This Burette widget session is closed. Open a new viewer."
+        : `This Burette widget session is ${status}. awaiting_mount means the host has not mounted the card yet; observe it again with burette.observe_inline_viewer.`,
+    },
+  });
 }
 
 function publicContractFailure(tool, error, { exitCode = null } = {}) {

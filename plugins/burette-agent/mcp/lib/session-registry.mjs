@@ -63,6 +63,15 @@ export function resolveWorkspaceSession({ workspaceSessionId, viewerSessionId, u
       }),
     };
   }
+  if (requestedId) {
+    return {
+      ok: false,
+      error: {
+        code: "WORKSPACE_SESSION_NOT_FOUND",
+        message: "This MCP server does not know that workspace session. Workspace ids (bws_...) are kept only while the server that opened them runs; pass url or sessionDir from the open result, or open the workspace again.",
+      },
+    };
+  }
   return {
     ok: false,
     error: {

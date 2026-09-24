@@ -1,8 +1,17 @@
 const json = (value, status = 200) => Response.json(value, { status });
 
-export function createWorkspaceTransport({ descriptor, assets, exchange, isClosed, observe, setDisplayMode, decorateState = value => value }) {
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// Longest wait for the observation to show a finished tab or file action.
+const settleTimeouts = { open_files: 10000, focus: 6000, open_file: 6000 };
+
+export function createWorkspaceTransport({ descriptor, assets, exchange, isClosed, observe, setDisplayMode, decorateState = value => value, agent = null, prepareOpen = () => {} }) {
   const originals = window.fetch.bind(window);
   const startupIds = new Set();
+  // Actions being executed locally or acknowledged after settling. The host
+  // re-lists an action until its acknowledgement lands; never run it twice.
+  const handled = new Set();
+  const handed = new Map();
   const sources = new Map();
   let latest = {};
   let initialAction = descriptor.view === 'ketcher' ? { type: 'open_ketcher' }
@@ -55,6 +64,54 @@ export function createWorkspaceTransport({ descriptor, assets, exchange, isClose
     });
   }
   const tabOperations = { activate_tab: 'focus', close_tab: 'close', move_tab: 'move', close_other_tabs: 'close_others', close_all_tabs: 'close_all' };
+  function remember(id) {
+    handled.add(id);
+    if (handled.size > 256) handled.delete(handled.values().next().value);
+  }
+  async function acknowledge(actionId, { status, result }) {
+    // Publish the settled state in the same exchange: the host writes state
+    // before completion, so an observation after the reply is never older.
+    const current = state();
+    observe(current);
+    await exchange({ state: current, completed: { actionId, result, ...(status === 'failed' ? { error: result?.error?.message || 'Workspace action failed.' } : {}) } });
+  }
+  function settled(action) {
+    const tabs = latest.tabs || [];
+    if (action.type === 'open_files') return action.paths.every(path => tabs.some(tab => tab.path === path)) && state().ready;
+    if (action.type !== 'manage_tabs') return true;
+    if (action.operation === 'focus') return latest.activeTabId === action.tabId && state().ready;
+    if (action.operation === 'open_file') return tabs.some(tab => tab.path === action.path) && state().ready;
+    if (action.operation === 'close') return !tabs.some(tab => tab.id === action.tabId);
+    if (action.operation === 'close_others') return tabs.every(tab => tab.id === action.tabId);
+    if (action.operation === 'close_all') return tabs.length === 0;
+    if (action.operation === 'move') return tabs.findIndex(tab => tab.id === action.tabId) === action.toIndex;
+    return true;
+  }
+  async function settle(actionId, action, outcome) {
+    if (outcome.status === 'completed' && action) {
+      const deadline = Date.now() + (settleTimeouts[action.type === 'manage_tabs' ? action.operation : action.type] ?? 3000);
+      while (!settled(action) && Date.now() < deadline && !isClosed()) await sleep(50);
+      if (!settled(action)) outcome = { ...outcome, result: { ...outcome.result, settled: false } };
+      if (action.type === 'set_workspace_panel' && agent) outcome = await agent.settlePanel(action, outcome);
+      if (action.type === 'open_files' && outcome.status === 'completed') {
+        const documents = state().documents || [];
+        outcome = { ...outcome, result: { ...outcome.result, documents: action.paths.map(path => {
+          const document = documents.find(item => item.path === path);
+          return { path, renderer: document?.renderer ?? null, ...(document?.externalRenderer ? { externalRenderer: document.externalRenderer } : {}) };
+        }) } };
+      }
+    }
+    await acknowledge(actionId, outcome);
+  }
+  function runLocally(actionId, type, execute) {
+    remember(actionId);
+    void (async () => {
+      let outcome;
+      try { outcome = await execute(); }
+      catch (error) { outcome = { status: 'failed', result: { ok: false, command: type, error: { code: 'ACTION_FAILED', message: String(error?.message || error).slice(0, 512) } } }; }
+      await acknowledge(actionId, outcome);
+    })().catch(() => handled.delete(actionId));
+  }
   async function actions() {
     if (initialAction) {
       const id = crypto.randomUUID();
@@ -86,19 +143,27 @@ export function createWorkspaceTransport({ descriptor, assets, exchange, isClose
     if (reply.documents) descriptor.documents = reply.documents;
     const queued = [];
     for (const item of reply.actions || []) {
+      if (handled.has(item.actionId)) continue;
+      let local;
       if (item.action.type === 'set_display_mode') {
         await exchange({ completed: { actionId: item.actionId, result: await setDisplayMode(item.action.mode) } });
       } else if (item.action.type === 'open_files') {
+        prepareOpen(item.action.paths, item.action.view);
         const paths = item.action.paths.filter(path => !latest.tabs?.some(tab => tab.path === path));
         const existing = latest.tabs?.find(tab => tab.path === item.action.paths[0]);
-        queued.push({ id: item.actionId, status: 'queued', action: paths.length
-          ? { ...item.action, paths }
-          : { type: 'manage_tabs', operation: 'focus', tabId: existing.id } });
+        const action = paths.length ? { ...item.action, paths } : { type: 'manage_tabs', operation: 'focus', tabId: existing.id };
+        handed.set(item.actionId, action);
+        queued.push({ id: item.actionId, status: 'queued', action });
       } else if (!tabOperations[item.action.type] && !['manage_tabs', 'open_ketcher', 'open_files', 'open_docking_view', 'set_workspace_panel'].includes(item.action.type)
         && item.documentId !== state().activeDocument?.id) {
         await exchange({ completed: { actionId: item.actionId, error: 'The active document changed before execution.', result: { ok: false, error: { code: 'STALE_TARGET', message: 'Observe the active document again.' } } } });
-      } else queued.push({ id: item.actionId, status: 'queued', action: tabOperations[item.action.type]
-        ? { ...item.action, type: 'manage_tabs', operation: tabOperations[item.action.type], tabId: item.action.tabId || latest.activeTabId } : item.action });
+      } else if ((local = agent?.intercept(item.action, state))) runLocally(item.actionId, item.action.type, local);
+      else {
+        const action = tabOperations[item.action.type]
+          ? { ...item.action, type: 'manage_tabs', operation: tabOperations[item.action.type], tabId: item.action.tabId || latest.activeTabId } : item.action;
+        handed.set(item.actionId, action);
+        queued.push({ id: item.actionId, status: 'queued', action });
+      }
     }
     return queued;
   }
@@ -127,7 +192,9 @@ export function createWorkspaceTransport({ descriptor, assets, exchange, isClose
     if (path === '/__burette/xyzrender') {
       const { path: inputPath, inputDataBase64, inputExtension, preset, orientationRef, activeModel, controls } = body();
       const documentId = inputDataBase64 ? undefined : documentFor(inputPath).id;
-      return json(await exchange({ xyzrender: { documentId, inputDataBase64, inputExtension, preset, orientationRef, activeModel, controls } }));
+      const render = () => exchange({ xyzrender: { documentId, inputDataBase64, inputExtension, preset, orientationRef, activeModel, controls } });
+      const tracked = agent && descriptor.documents.some(item => item.path === inputPath);
+      return json(await (tracked ? agent.xyzrender(inputPath, { preset, controls }, render) : render()));
     }
     if (path === '/__burette/dev-files') return json({ files: descriptor.documents.map(item => item.path), truncated: false, scannedEntries: descriptor.documents.length, scannedDirectories: 0 });
     if (path === '/__burette/agent-session/observe.json') {
@@ -144,13 +211,18 @@ export function createWorkspaceTransport({ descriptor, assets, exchange, isClose
             startupError = item.result?.error?.message || 'Workspace initialization failed.';
             observe(state());
           }
-        } else await exchange({ completed: { actionId: item.id, result: item.result, ...(item.status === 'failed' ? { error: item.result?.error?.message || 'Workspace action failed.' } : {}) } });
+        } else if (!handled.has(item.id)) {
+          remember(item.id);
+          const action = handed.get(item.id);
+          handed.delete(item.id);
+          void settle(item.id, action, { status: item.status, result: item.result }).catch(() => handled.delete(item.id));
+        }
       }
       return json({ ok: true });
     }
     return json({ error: `This operation is not available in the native workspace: ${path}` }, 404);
   }
   return { fetch: (input, init) => request(input, init).catch(error => json({ error: error.message }, 400)), state,
-    dispose() { latest = {}; initialAction = null; pendingStartup = null; startupIds.clear(); sources.clear(); },
+    dispose() { latest = {}; initialAction = null; pendingStartup = null; startupIds.clear(); sources.clear(); handled.clear(); handed.clear(); },
   };
 }
