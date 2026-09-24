@@ -18499,7 +18499,9 @@ SOFTWARE.
     if (!Number.isFinite(poseCount) || poseCount <= 0) {
       return agentActionFailure('set_sdf_molecule', 'NO_MOLECULES', 'The SDF molecule collection has no selectable molecules.');
     }
-    const index = Math.max(0, Math.min(poseCount - 1, Math.trunc(Number(action.index) || 0)));
+    const index = Math.trunc(Number(action.index) || 0);
+    const outOfRange = agentFrameIndexFailure('set_sdf_molecule', index, poseCount);
+    if (outOfRange) return outOfRange;
     try {
       if (activeSdfCollectionPoseSetter) {
         await activeSdfCollectionPoseSetter(index);
@@ -18517,11 +18519,22 @@ SOFTWARE.
     }
   }
 
+  // The pose setters clamp for UI steps; an agent asking for a frame that does
+  // not exist must learn that instead of receiving ok for the last frame.
+  function agentFrameIndexFailure(command, index, frameCount) {
+    if (!Number.isFinite(frameCount) || frameCount <= 0) return null;
+    if (index >= 0 && index < frameCount) return null;
+    return agentActionFailure(command, 'INDEX_OUT_OF_RANGE',
+      `Frame index ${index} is out of range; this structure has ${frameCount} frame${frameCount === 1 ? '' : 's'} (valid indices 0–${frameCount - 1}).`);
+  }
+
   async function setStructurePoseFromAction(action = {}) {
     if (!activeStructurePoseSetter) {
       return agentActionFailure('set_structure_pose', 'NO_POSE_CONTROLS', 'The active Mol* viewer does not expose pose controls.');
     }
-    const index = Math.max(0, Math.trunc(Number(action.index) || 0));
+    const index = Math.trunc(Number(action.index) || 0);
+    const outOfRange = agentFrameIndexFailure('set_structure_pose', index, Number(activeTrajectoryPlaybackControl?.frameCount?.()));
+    if (outOfRange) return outOfRange;
     try {
       await activeStructurePoseSetter(index);
       return {
@@ -18880,7 +18893,9 @@ SOFTWARE.
     if (!activeViewer || !Number.isFinite(poseCount) || poseCount <= 0) {
       return agentActionFailure('set_sdf_pose_index', 'NO_POSES', 'The active Mol* viewer has no selectable poses.');
     }
-    const index = Math.max(0, Math.min(poseCount - 1, Math.trunc(Number(action.index) || 0)));
+    const index = Math.trunc(Number(action.index) || 0);
+    const outOfRange = agentFrameIndexFailure('set_sdf_pose_index', index, poseCount);
+    if (outOfRange) return outOfRange;
     try {
       if (activeSdfPoseMode === 'all' && structureOverlayAvailable(prepared)) {
         setSdfPoseMode('single');
