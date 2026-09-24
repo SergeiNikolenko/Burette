@@ -1,6 +1,6 @@
 {
   "name": "burette-agent-plugin",
-  "version": "0.2.32+codex.20260924224318",
+  "version": "0.2.33+codex.20260925000000",
   "private": true,
   "type": "module",
   "files": [

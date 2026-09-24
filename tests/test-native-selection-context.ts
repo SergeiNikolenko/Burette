@@ -6,9 +6,10 @@ import { createSelectionContext } from '../apps/burette-public-plugin/lib/hosted
 const source = readFileSync(new URL('../plugins/burette-agent/ui/native-workspace.mjs', import.meta.url), 'utf8');
 const code = source.slice(source.indexOf('  function observe(state)'), source.indexOf('  async function load(result)'));
 const calls: any[] = [];
-const observe = runInNewContext(`let latestState, contextSignature = '', contextQueue = Promise.resolve();
+const { observe, stage } = runInNewContext(`let latestState, contextSignature = '', contextQueue = Promise.resolve();
+let selectionContext = { content: [] }, annotationContext = null;
 ${code}
-async state => { observe(state); await contextQueue; }`, {
+({ observe: async state => { observe(state); await contextQueue; }, stage: stageAnnotations })`, {
   lifetime: { closed: false, close() {} }, placement: { observe() {} }, reveal() {}, fail() {}, gridSelections: new Map(),
   createSelectionContext, app: { getHostCapabilities: () => ({ updateModelContext: {} }),
     updateModelContext: async (context: unknown) => calls.push(JSON.parse(JSON.stringify(context))) },
@@ -25,4 +26,17 @@ await observe({ ...selected, scene: { selection: null } });
 assert.deepEqual(calls[1], { content: [] });
 await observe({ ...selected, activeDocument: { id: 'other', title: 'other.pdb', ready: false } });
 assert.equal(calls.length, 2, 'Loading a different document must not restore stale selection');
-console.log('Native composer: selected residue produces a draft attachment; deselection clears it; no automatic send');
+
+const annotations = { content: [{ type: 'text', text: 'Burette annotations on 1htb.pdb' }], presentation: { composerAttachmentLayout: 'card', composerLabel: 'Burette · 1 annotation · 1htb.pdb' } };
+await observe(selected);
+await stage(annotations);
+assert.deepEqual(calls.at(-1), annotations);
+const staged = calls.length;
+await observe(selected);
+assert.equal(calls.length, staged, 'An unchanged selection must not replace staged annotations');
+await stage(null);
+assert.equal(calls.at(-1).structuredContent.burette.activeSelection.residues[0].compId, 'VAL', 'Withdrawing annotations restores the selection card');
+await stage(annotations);
+await observe({ ...selected, scene: { selection: null } });
+assert.deepEqual(calls.at(-1), { content: [] }, 'A new selection state replaces staged annotations');
+console.log('Native composer: selections and annotation batches are draft attachments; deselection clears them; no automatic send');

@@ -1,6 +1,6 @@
 {
   "name": "burette",
-  "version": "0.2.32+codex.20260924224318",
+  "version": "0.2.33+codex.20260925000000",
   "description": "A universal molecular viewer for proteins, ligands, and molecular structures, with 3D visualization and 2D editing.",
   "author": {
     "name": "Burette contributors",
