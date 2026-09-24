@@ -591,3 +591,12 @@
 .app-shell :is(.ketcher-ui-options, .ketcher-ui-menu) :is([role="option"], [role="menuitem"], [role="menuitemcheckbox"]) {
   min-height: 32px; padding-block: 6px; font-size: 14px; line-height: 20px;
 }
+/* Agent save confirmation floats over the canvas, clear of the top toolbar. */
+.ketcher-editor-shell .ketcher-persist-request {
+  position: absolute; top: calc(var(--ketcher-top-toolbar-height) + 12px); left: 50%; z-index: 5;
+  width: min(440px, calc(100% - 32px)); transform: translateX(-50%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.16);
+}
+.ketcher-persist-request .ketcher-persist-request-actions {
+  grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;
+}

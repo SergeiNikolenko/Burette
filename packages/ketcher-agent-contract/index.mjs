@@ -37,6 +37,8 @@ const COMMANDS = new Set([
 const INPUT_FORMATS = new Set(["ket", "mol", "rxn", "smiles"]);
 const OUTPUT_FORMATS = new Set(["ket", "mol", "rxn", "sdf", "smiles", "reaction_smiles", "cdxml"]);
 const DELIVERIES = new Set(["inline", "artifact", "download"]);
+// burette_open_viewer and file extensions use `smi`; the Ketcher contract name is `smiles`.
+const FORMAT_ALIASES = Object.freeze({ smi: "smiles" });
 const BASE_ACTION_KEYS = new Set(["apiVersion", "type", "command", "surfaceId", "actionId", "expectedRevision"]);
 
 export function isRecord(value) {
@@ -49,6 +51,11 @@ export function utf8ByteLength(value) {
 
 export function boundedText(value, max = KETCHER_AGENT_LIMITS.textChars) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+export function normalizeFormatName(value) {
+  const format = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return Object.hasOwn(FORMAT_ALIASES, format) ? FORMAT_ALIASES[format] : format;
 }
 
 export function normalizeIndexes(value) {
@@ -66,7 +73,7 @@ export function normalizeStructureInput(input) {
   if (keys.some((key) => !["format", "content", "contentRef"].includes(key))) {
     return failure("INVALID_INPUT", "Structure input contains an unknown field.");
   }
-  const format = typeof input.format === "string" ? input.format.trim().toLowerCase() : "";
+  const format = normalizeFormatName(input.format);
   if (!INPUT_FORMATS.has(format)) return failure("UNSUPPORTED_FORMAT", "Structure format is unsupported.");
   const hasContent = typeof input.content === "string";
   const hasReference = typeof input.contentRef === "string" && input.contentRef.trim().length > 0;
@@ -134,14 +141,14 @@ export function validateKetcherAction(action) {
     if (!Array.isArray(action.formats) || action.formats.length === 0 || action.formats.length > 7) {
       return failure("INVALID_INPUT", "formats must contain one to seven output formats.");
     }
-    const formats = [...new Set(action.formats.map((format) => typeof format === "string" ? format.trim().toLowerCase() : ""))];
+    const formats = [...new Set(action.formats.map(normalizeFormatName))];
     if (!formats.every((format) => OUTPUT_FORMATS.has(format))) return failure("UNSUPPORTED_FORMAT", "An output format is unsupported.");
     const delivery = action.delivery ?? "inline";
     if (!DELIVERIES.has(delivery)) return failure("INVALID_INPUT", "delivery must be inline, artifact, or download.");
     return success({ ...action, formats, delivery });
   }
   if (action.command === "request_persist") {
-    const format = typeof action.format === "string" ? action.format.trim().toLowerCase() : "";
+    const format = normalizeFormatName(action.format);
     const suggestedBasename = typeof action.suggestedBasename === "string" ? action.suggestedBasename.trim() : "ketcher-structure";
     if (!OUTPUT_FORMATS.has(format)) return failure("UNSUPPORTED_FORMAT", "The persistence format is unsupported.");
     if (!suggestedBasename || suggestedBasename.length > KETCHER_AGENT_LIMITS.textChars || /[\\/:*?"<>|\u0000-\u001f]/u.test(suggestedBasename)) {
@@ -189,6 +196,7 @@ export function createKetcherSnapshot({
   highlightedAtoms = [],
   lastAction = null,
   capabilities = {},
+  persistRequest,
 }) {
   const selection = boundedIndexState(selectedAtoms);
   const highlights = boundedIndexState(highlightedAtoms);
@@ -223,6 +231,8 @@ export function createKetcherSnapshot({
       getStructure: capabilities.getStructure === true,
       persist: capabilities.persist === true,
     },
+    // Surfaces with a user-confirmed save flow report it; others keep the original shape.
+    ...(persistRequest === undefined ? {} : { persistRequest }),
   };
 }
 

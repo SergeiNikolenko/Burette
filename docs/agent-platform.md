@@ -215,8 +215,28 @@ Structural edits advance `structureRevision`; highlight/selection changes only
 advance `interactionRevision`. A revision mismatch, stale tab, oversized
 structure, unsupported format, or unresolved `contentRef` is a typed failure.
 Inline content is bounded to 64 KiB, atom-index lists to 256 entries, and
-inline exports to 64 KiB. Persistence stops at `awaiting_user` until a user
-confirms the file write.
+inline exports to 64 KiB. Format names accept `smi` as an alias for `smiles`
+(the name `burette_open_viewer` uses); results always report `smiles`.
+
+- `set_structure` takes either inline `content` or a `contentRef`. On the
+  desktop surface `contentRef` is an absolute local path or `file://` URL to a
+  `.mol`/`.sdf`/`.sd`/`.mdl` (`mol`), `.rxn` (`rxn`), or `.ket` (`ket`) file of
+  at most 1 MiB, read through the workspace's authorized file reader. The
+  browser shells also enforce their dev read roots, so paths outside them fail
+  with `INVALID_INPUT`. Referenced SMILES is not accepted. To seed Ketcher from
+  a file, call `burette.open_ketcher` and then `set_structure` with
+  `contentRef`.
+- `get_structure` supports `delivery: "inline"` only on the desktop surface;
+  `artifact` and `download` fail with `TRANSPORT_UNAVAILABLE` instead of
+  returning mislabeled inline data. Use `request_persist` to write a file.
+- `request_persist` returns `status: "awaiting_user"` and shows a save prompt
+  in the Ketcher tab with the suggested file name and format. The agent cannot
+  confirm it. The snapshot's `persistRequest` reports `awaiting_user`, `saving`,
+  `saved` (with `persistedRevision` and `savedPath`), `cancelled`, or `failed`.
+  A saved request advances `persistedRevision` and clears `dirty` when the saved
+  revision is still current.
+- `REVISION_CONFLICT` messages state whether `expectedRevision` is stale or
+  ahead of the current `structureRevision`.
 
 The hosted public plugin mirrors the same action schema through
 `open_ketcher`/`control_ketcher` and the resource
