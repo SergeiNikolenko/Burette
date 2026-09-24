@@ -16,8 +16,10 @@ export function useBatchFileOperations(actions: ShellActions, state: ShellViewSt
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [completed, setCompleted] = useState<string[]>([]);
-  const trash = async () => {
-    setBusy(true); setError("");
+  // Trashing starts without confirmation; the dialog only reports a failure and offers a retry.
+  const trash = async (paths: string[]) => {
+    if (busy) return;
+    setBusy(true); setError(""); setCompleted([]);
     const affected = useMoleculeStore.getState().tabs.filter(tab => 'path' in tab.location && paths.includes(tab.location.path));
     const moved: string[] = [];
     try {
@@ -56,7 +58,7 @@ export function useBatchFileOperations(actions: ShellActions, state: ShellViewSt
   };
   const items = (files: string[]) => !isTauriRuntime() || files.length < 2 || files.length > 200 ? [] : [
     { ...menuItem("save-file-copy", "Selected Files…", () => exportFiles(files)), disabled: hasDirtyFile(files) },
-    menuItem("trash-file", "Move to Trash…", () => { setPaths(files); setCompleted([]); setError(""); }),
+    menuItem("trash-file", "Move to Trash", () => trash(files)),
   ];
   const dialog = <Dialog.Root open={paths.length > 0} onOpenChange={open => { if (!open && !busy) setPaths([]); }}>
     <Dialog.Portal container={container}><Dialog.Overlay className="radix-dialog-overlay" /><Dialog.Content className="radix-dialog file-operation-dialog">
@@ -67,7 +69,7 @@ export function useBatchFileOperations(actions: ShellActions, state: ShellViewSt
         {completed.length ? <p>{completed.length} files moved.</p> : null}{error ? <p role="alert">{error}</p> : null}
       </div>
       <div className="radix-dialog-actions"><button type="button" className="dock-action" disabled={busy} onClick={() => setPaths([])}>Cancel</button>
-        <button type="button" className="dock-action calculate-properties-run" disabled={busy} onClick={() => void trash()}>{busy ? "Moving…" : "Move to Trash"}</button></div>
+        <button type="button" className="dock-action calculate-properties-run" disabled={busy} onClick={() => void trash(paths)}>{busy ? "Moving…" : "Move to Trash"}</button></div>
     </Dialog.Content></Dialog.Portal>
   </Dialog.Root>;
   return { items, dialog };
