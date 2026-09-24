@@ -36,6 +36,7 @@ export async function startNativeWorkspace(app, initialResult) {
     showWorkspaceFailure(status, message);
   }
   let contextSignature = '';
+  let sendingAnnotations = false;
   let contextQueue = Promise.resolve();
   const gridSelections = new Map();
   const workers = new Set();
@@ -105,9 +106,30 @@ export async function startNativeWorkspace(app, initialResult) {
             presentation: { composerAttachmentLayout: 'card', composerLabel: `Burette · ${state.activeDocument.title}` },
           } : { content: [] };
     const signature = JSON.stringify(context);
+    // An annotation batch owns the model context until its message is posted.
+    if (sendingAnnotations) return;
     if (signature !== contextSignature && app.getHostCapabilities()?.updateModelContext) {
       contextSignature = signature;
       contextQueue = contextQueue.then(() => app.updateModelContext(lifetime.closed ? { content: [] } : context)).catch(() => { contextSignature = ''; });
+    }
+  }
+  // Annotate mode posts its batch as a user message. Details and region crops
+  // ride in the model context, which the host delivers with that message.
+  async function sendAnnotations({ text, context }) {
+    if (lifetime.closed) throw new Error('The workspace is closed.');
+    if (!app.getHostCapabilities()?.message) throw new Error('This chat does not accept messages from the workspace.');
+    sendingAnnotations = true;
+    try {
+      await contextQueue;
+      if (app.getHostCapabilities()?.updateModelContext) {
+        await app.updateModelContext(context).catch(() =>
+          app.updateModelContext({ content: context.content.filter(block => block.type === 'text') }).catch(() => {}));
+      }
+      const result = await app.sendMessage({ role: 'user', content: [{ type: 'text', text }] });
+      if (result?.isError) throw new Error('The chat rejected the annotations.');
+    } finally {
+      sendingAnnotations = false;
+      contextSignature = '';
     }
   }
   async function load(result) {
@@ -156,7 +178,7 @@ export async function startNativeWorkspace(app, initialResult) {
         initialPaths: !checkpoint.restored && ['auto', 'xyzrender'].includes(descriptor.view) ? descriptor.documents.map(item => item.path) : [],
         initialRenderer: descriptor.view === 'xyzrender' ? 'xyzrender-external' : undefined,
         restore: checkpoint.restored, storage: checkpoint.storage, authorizedPaths: descriptor.documents.map(item => item.path),
-        fetch: transport.fetch, Worker: WorkspaceWorker, preparePreview: prepareWorkspacePreview,
+        fetch: transport.fetch, Worker: WorkspaceWorker, preparePreview: prepareWorkspacePreview, sendAnnotations,
       };
       window.fetch = transport.fetch;
       window.Worker = WorkspaceWorker;
