@@ -1329,13 +1329,20 @@ function DerivedTopologyCard({ document, isBrowserDev, actions }: {
 }
 
 function trajectoryPathsFor(document: ViewerDocument, playback: TrajectoryPlaybackState | null) {
-  const topologyPath = document.dockingRequest?.receptorPath;
-  const trajectoryPath = document.dockingRequest?.ligandPaths.includes(playback?.sourcePath || "")
-    ? playback?.sourcePath
-    : document.dockingRequest?.ligandPaths[0];
-  return trajectoryPath
-    ? { trajectoryPath, topologyPath: topologyPath || null }
-    : { trajectoryPath: document.path, topologyPath: null };
+  const dockingTopologyPath = document.dockingRequest?.receptorPath || null;
+  const playbackPath = playback?.sourcePath?.trim() || "";
+  // The viewer reports the actual coordinate source for a paired trajectory
+  // (for example `nvt_protein.xtc`) even when the active document is its PDB
+  // topology. Always analyze that source; running MDSmooth against the PDB
+  // alone produces a one-frame universe and makes smoothing appear disabled.
+  if (playbackPath) {
+    return {
+      trajectoryPath: playbackPath,
+      topologyPath: dockingTopologyPath || (playbackPath === document.path ? null : document.path),
+    };
+  }
+  const trajectoryPath = document.dockingRequest?.ligandPaths[0] || document.path;
+  return { trajectoryPath, topologyPath: dockingTopologyPath };
 }
 
 function trajectorySignalLabel(signal?: MdsmoothSignal) {

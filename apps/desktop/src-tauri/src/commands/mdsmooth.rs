@@ -8,7 +8,16 @@ use tauri::{Manager, Runtime};
 const RUNNER_DEPENDENCIES: [&str; 4] = ["numpy", "scipy", "MDAnalysis", "deeptime"];
 
 #[tauri::command]
-pub(crate) fn run_mdsmooth<R: Runtime>(
+pub(crate) async fn run_mdsmooth<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    request: Value,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || run_mdsmooth_blocking(app, request))
+        .await
+        .map_err(|error| format!("MDSmooth worker failed: {error}"))?
+}
+
+fn run_mdsmooth_blocking<R: Runtime>(
     app: tauri::AppHandle<R>,
     request: Value,
 ) -> Result<Value, String> {
