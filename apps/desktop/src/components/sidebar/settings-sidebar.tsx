@@ -1,4 +1,3 @@
-import { SidebarTooltip } from "./sidebar-tooltip";
 import { useMemo, useState } from "react";
 import { settingsNavGroups, type SettingsSectionId } from "../../lib/settings-sections";
 import { SidebarGlobe, Atom, Agent as Bot, FolderOpen, Keyboard, ColorTheme as Palette, Reload as RefreshCw, SettingsSlider as SlidersHorizontal, SettingsWrench as Wrench, type AppIconType as LucideIcon } from "@/components/ui/app-icons";
@@ -28,12 +27,10 @@ export function SettingsSidebar({ state, actions }: { state: ShellViewState; act
   return (
     <div className="settings-sidebar">
       <div className="settings-sidebar-spacer" data-tauri-drag-region />
-      <SidebarTooltip label="Back to app">
-        <Button type="button" variant="ghost" className="settings-back-button" onClick={actions.backToApp}>
-          <AnimatedBackIcon />
-          <span>Back to app</span>
-        </Button>
-      </SidebarTooltip>
+      <Button type="button" variant="ghost" className="settings-back-button" onClick={actions.backToApp}>
+        <AnimatedBackIcon />
+        <span>Back to app</span>
+      </Button>
       <InputGroup className="settings-search">
         <InputGroupAddon>
           <AnimatedSearchIcon />
@@ -80,21 +77,19 @@ function SettingsNavButton({
   onClick: () => void;
 }) {
   return (
-    <SidebarTooltip label={label}>
-      <Button
-        type="button"
-        variant="ghost"
-        className="settings-nav-item"
-        data-active={active || undefined}
-        onClick={onClick}
-        aria-current={active ? "page" : undefined}
-      >
-        <span className="settings-nav-icon" aria-hidden="true">
-          <SettingsItemIcon id={id} />
-        </span>
-        <span>{label}</span>
-      </Button>
-    </SidebarTooltip>
+    <Button
+      type="button"
+      variant="ghost"
+      className="settings-nav-item"
+      data-active={active || undefined}
+      onClick={onClick}
+      aria-current={active ? "page" : undefined}
+    >
+      <span className="settings-nav-icon" aria-hidden="true">
+        <SettingsItemIcon id={id} />
+      </span>
+      <span>{label}</span>
+    </Button>
   );
 }
 
