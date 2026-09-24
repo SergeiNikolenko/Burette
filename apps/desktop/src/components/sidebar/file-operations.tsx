@@ -36,7 +36,6 @@ export function SidebarFileOperations({ state, actions, children }: {
     running.current = true;
     setBusy(true);
     setError("");
-    setRequest(next);
     const folder = next.operation === "renameFolder" || next.operation === "trashFolder";
     const affects = (path: string) => path === next.path || (folder && path.startsWith(next.path + '/'));
     const changesSource = folder || next.operation === "rename" || next.operation === "trash";
@@ -84,6 +83,8 @@ export function SidebarFileOperations({ state, actions, children }: {
       window.dispatchEvent(new Event("burette-folder-contents-changed"));
       setRequest(null);
     } catch (cause) {
+      // Trash and Duplicate run without a dialog, so a failure opens one to report it.
+      setRequest(next);
       setError(String(cause));
       if (!committed && changesSource && wasOpen.length) await actions.openPaths(wasOpen.flatMap(tab => "path" in tab.location ? [tab.location.path] : []));
     } finally {
@@ -102,7 +103,7 @@ export function SidebarFileOperations({ state, actions, children }: {
     if (kind !== "file") return [
       ...(kind === "folder" ? [{ kind: "item" as const, id: "rename-folder", text: "Rename…", action: () => choose({ operation: "renameFolder", path, name: basename(path) }) }] : []),
       { kind: "item", id: "new-folder", text: "Folder…", action: () => choose({ operation: "createFolder", path, name: "Untitled Folder" }) },
-      ...(kind === "folder" ? [{ kind: "item" as const, id: "trash-folder", text: "Move to Trash…", action: () => choose({ operation: "trashFolder", path }) }] : []),
+      ...(kind === "folder" ? [{ kind: "item" as const, id: "trash-folder", text: "Move to Trash", action: () => { void run({ operation: "trashFolder", path }); } }] : []),
     ];
     const document = state.documents.find(document => document.path === path);
     const dirty = Boolean(document && state.dirtyGridDocuments.has(document.id));
@@ -120,7 +121,8 @@ export function SidebarFileOperations({ state, actions, children }: {
         }
       } },
       { kind: "separator" },
-      { kind: "item", id: "trash-file", text: "Move to Trash…", action: () => choose({ operation: "trash", path }) },
+      // Like Finder, Move to Trash needs no confirmation: the item stays recoverable in Trash.
+      { kind: "item", id: "trash-file", text: "Move to Trash", action: () => { void run({ operation: "trash", path }); } },
     ];
   };
   const renaming = request?.operation === "rename" || request?.operation === "renameFolder";

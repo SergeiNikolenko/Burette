@@ -191,7 +191,9 @@ Sidebar file mutations use the desktop-only `operate_sidebar_file` command. Its
 `request` is tagged by `operation`: `rename` takes `path` and `name`, `duplicate`
 and `trash` take `path`, and `saveCopy` takes `path` and `destination`.
 Paths are absolute; operations require regular files and never overwrite existing destinations.
-Trash uses macOS NSFileManager. Rename and Trash pass through the existing
+Trash uses macOS NSFileManager and, like Finder, runs without a confirmation
+dialog and plays the system move-to-trash sound; a dialog appears only to report
+a failure. Rename and Trash pass through the existing
 unsaved-document close guard before changing disk state. Browser previews omit
 these mutation actions. Project Rename changes the sidebar label; file and nested
 folder Rename change their names on disk without replacing existing destinations.
