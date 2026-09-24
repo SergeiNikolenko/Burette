@@ -66,7 +66,7 @@ assert.match(scene, /onContextMenu/);
 assert.match(scene, /event\.button === 0 && event\.ctrlKey/);
 assert.match(scene, /onMouseDown/);
 assert.match(objectMenu, /showNativeContextMenu/);
-assert.match(objectMenu, /forceWeb: true/);
+assert.doesNotMatch(objectMenu, /forceWeb/, 'the object menu opens natively on macOS, sliders and swatches included');
 assert.doesNotMatch(scene, /GROUP_LONG_PRESS_MS/);
 assert.doesNotMatch(scene, /mesoscale-segmented/);
 assert.doesNotMatch(scene, /mesoscale-search/);

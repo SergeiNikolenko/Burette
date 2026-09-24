@@ -51,6 +51,9 @@ assert.equal(webCalls, 1);
 native = true;
 await show(spec, undefined, { forceWeb: true });
 assert.equal(webCalls, 2);
+// Without the AppKit popup, live controls stay in the web menu rather than being dropped.
+await show([{ kind: 'swatches', id: 'tint', colors: ['#0a84ff'] }]);
+assert.equal(webCalls, 3);
 console.log('Native menu icons, submenus, accelerators, callbacks and runtime routing passed');
 
 const macSource = readFileSync(new URL('../apps/desktop/src/components/mac-context-menu.ts', import.meta.url), 'utf8')
@@ -58,11 +61,21 @@ const macSource = readFileSync(new URL('../apps/desktop/src/components/mac-conte
 const macJs = ts.transpileModule(macSource, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText;
 let result = { kind: 'shown', selection: 'open' };
 let wire;
-const macShow = new Function('nativeMenuImage', 'invoke', `${macJs}\nreturn showMacContextMenu;`)(async url => { assert.match(decodeURIComponent(url), /<svg/); return 'sdk-png'; }, async (command, args) => {
+let liveHandler;
+let liveEvents = [];
+const listen = async (event, handler) => {
+  assert.equal(event, 'native-context-menu-value');
+  liveHandler = handler;
+  return () => { liveHandler = undefined; };
+};
+const macShow = new Function('nativeMenuImage', 'invoke', 'listen', `${macJs}\nreturn showMacContextMenu;`)(async url => { assert.match(decodeURIComponent(url), /<svg/); return 'sdk-png'; }, async (command, args) => {
   assert.equal(command, 'popup_macos_context_menu');
   wire = args;
+  // AppKit reports slider and swatch changes while the menu is still open.
+  for (const [id, value] of liveEvents) liveHandler({ payload: { session: args.session, id, value } });
+  liveHandler?.({ payload: { session: 'another-menu', id: 'opacity', value: 0 } });
   return result;
-});
+}, listen);
 assert.equal(await macShow(spec, { x: 12, y: 24 }), true);
 assert.equal(invoked, 3);
 assert.deepEqual(wire.at, { x: 12, y: 24 });
@@ -84,6 +97,31 @@ assert.deepEqual(wire.items, [{ kind: 'item', id: 'pin-tab', text: 'Pin', enable
 result = { kind: 'unsupported' };
 assert.equal(await macShow(spec), false);
 console.log('AppKit menu wire format, SF Symbols, cancellation and selection callbacks passed');
+
+// Live controls: sliders and swatches apply during tracking, a select becomes a
+// checkmarked submenu, and a detail line becomes the native subtitle.
+const applied = [];
+liveEvents = [['opacity', 0.4], ['tint', '#123456']];
+result = { kind: 'shown', selection: 'motion:spin' };
+await macShow([
+  { kind: 'item', id: 'copy', text: 'Copy', detail: 'As SMILES', action() {} },
+  { kind: 'swatches', id: 'tint', colors: ['#0a84ff', 'red'], activeColor: '#0a84ff', action: value => applied.push(['tint', value]) },
+  { kind: 'number', id: 'opacity', label: 'Opacity', value: 1, min: 0, max: 1, step: 0.05, action: value => applied.push(['opacity', value]) },
+  { kind: 'select', id: 'motion', label: 'Motion', value: 'off', options: ['off', 'spin'], optionLabels: { off: 'Off', spin: 'Spin' }, action: value => applied.push(['motion', value]) },
+]);
+assert.deepEqual(applied, [['opacity', 0.4], ['tint', '#123456'], ['motion', 'spin']]);
+assert.equal(liveHandler, undefined, 'the live listener is removed when the menu closes');
+assert.deepEqual(wire.items, [
+  { kind: 'item', id: 'copy', text: 'Copy', enabled: true, subtitle: 'As SMILES' },
+  { kind: 'colours', id: 'tint', colors: ['#0a84ff'], active: '#0a84ff' },
+  { kind: 'slider', id: 'opacity', text: 'Opacity', value: 1, min: 0, max: 1, step: 0.05 },
+  { kind: 'submenu', id: 'motion', text: 'Motion', enabled: true, items: [
+    { kind: 'item', id: 'motion:off', text: 'Off', enabled: true, checked: true },
+    { kind: 'item', id: 'motion:spin', text: 'Spin', enabled: true, checked: false },
+  ] },
+]);
+liveEvents = [];
+console.log('AppKit live sliders, colour carousel, select submenus and subtitles passed');
 
 // The same SDK vector is shown by Radix and passed as an image to AppKit,
 // including submenu parents. Explicit SDK images override legacy SF Symbols.

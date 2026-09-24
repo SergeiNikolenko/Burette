@@ -272,7 +272,7 @@ export function GridHoverMoleculeCard({
         disabled: !smiles,
         action: () => void writeClipboardText(smiles),
       },
-    ], { x: event.clientX, y: event.clientY }, { forceWeb: true });
+    ], { x: event.clientX, y: event.clientY });
   }, [editInKetcher, shown]);
 
   const [propsOpen, setPropsOpen] = useState(() => window.localStorage.getItem(PROPS_OPEN_STORAGE_KEY) !== "0");

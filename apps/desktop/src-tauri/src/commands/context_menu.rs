@@ -12,6 +12,7 @@ pub(crate) enum MenuEntry {
         image: Option<String>,
         accelerator: Option<String>,
         checked: Option<bool>,
+        subtitle: Option<String>,
     },
     Submenu {
         id: String,
@@ -19,8 +20,41 @@ pub(crate) enum MenuEntry {
         enabled: bool,
         symbol: Option<String>,
         image: Option<String>,
+        subtitle: Option<String>,
         items: Vec<MenuEntry>,
     },
+    /// A live slider row; every change is reported while the menu stays open.
+    Slider {
+        id: String,
+        text: String,
+        symbol: Option<String>,
+        value: f64,
+        min: f64,
+        max: f64,
+        step: f64,
+        unit: Option<String>,
+    },
+    /// A scrolling row of colour swatches with an inline hue picker.
+    Colours {
+        id: String,
+        colors: Vec<String>,
+        active: Option<String>,
+    },
+}
+
+/// Emitted to the requesting webview for each live slider or colour change.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MenuValue {
+    session: String,
+    id: String,
+    value: serde_json::Value,
+}
+
+const MENU_VALUE_EVENT: &str = "native-context-menu-value";
+
+fn is_hex_colour(value: &str) -> bool {
+    value.len() == 7 && value.starts_with('#') && value[1..].bytes().all(|c| c.is_ascii_hexdigit())
 }
 
 #[derive(Deserialize)]
@@ -74,8 +108,47 @@ fn validate(items: &[MenuEntry], at: Option<&MenuPosition>) -> Result<(), String
             if *count > 128 {
                 return Err("Context menu exceeds 128 entries".into());
             }
+            let subtitle = match entry {
+                MenuEntry::Item { subtitle, .. } | MenuEntry::Submenu { subtitle, .. } => {
+                    subtitle.as_deref()
+                }
+                MenuEntry::Separator | MenuEntry::Slider { .. } | MenuEntry::Colours { .. } => None,
+            };
+            if subtitle.is_some_and(|value| value.len() > 1024 || value.contains('\0')) {
+                return Err("Invalid context menu subtitle".into());
+            }
             let (id, text, symbol, image) = match entry {
                 MenuEntry::Separator => continue,
+                MenuEntry::Slider {
+                    id,
+                    text,
+                    symbol,
+                    value,
+                    min,
+                    max,
+                    step,
+                    unit,
+                } => {
+                    if ![*value, *min, *max, *step].iter().all(|n| n.is_finite())
+                        || min >= max
+                        || *step < 0.0
+                        || unit.as_ref().is_some_and(|unit| unit.len() > 8)
+                    {
+                        return Err("Invalid context menu slider".into());
+                    }
+                    (id, text, symbol, &None)
+                }
+                MenuEntry::Colours { id, colors, active } => {
+                    if colors.len() > 64
+                        || !colors
+                            .iter()
+                            .chain(active)
+                            .all(|colour| is_hex_colour(colour))
+                    {
+                        return Err("Invalid context menu colours".into());
+                    }
+                    (id, &String::new(), &None, &None)
+                }
                 MenuEntry::Item {
                     id,
                     text,
@@ -136,15 +209,19 @@ pub(crate) async fn popup_macos_context_menu(
     window: tauri::WebviewWindow,
     items: Vec<MenuEntry>,
     at: Option<MenuPosition>,
+    session: Option<String>,
 ) -> Result<PopupResult, String> {
     validate(&items, at.as_ref())?;
+    if session.as_ref().is_some_and(|value| value.len() > 64) {
+        return Err("Invalid context menu session".into());
+    }
     #[cfg(target_os = "macos")]
     {
         let (sender, mut receiver) = tauri::async_runtime::channel(1);
         let owner = window.clone();
         window
             .run_on_main_thread(move || {
-                let result = macos::popup(&owner, &items, at.as_ref());
+                let result = macos::popup(&owner, &items, at.as_ref(), session.unwrap_or_default());
                 let _ = sender.try_send(result);
             })
             .map_err(|error| error.to_string())?;
@@ -155,7 +232,7 @@ pub(crate) async fn popup_macos_context_menu(
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = window;
+        let _ = (window, session);
         Ok(PopupResult::Unsupported)
     }
 }
@@ -168,7 +245,69 @@ mod macos {
     use objc::declare::ClassDecl;
     use objc::runtime::{Class, Object, Sel};
     use objc::{class, msg_send, sel, sel_impl};
+    use std::ffi::{c_char, c_void, CStr};
     use std::sync::OnceLock;
+    use tauri::Emitter;
+
+    type ValueCallback = extern "C" fn(*mut c_void, *const c_char, f64, *const c_char);
+
+    // Implemented in context_menu_controls.m.
+    extern "C" {
+        fn burette_menu_slider_item(
+            id: id,
+            title: id,
+            symbol: id,
+            value: f64,
+            min: f64,
+            max: f64,
+            step: f64,
+            unit: id,
+            callback: ValueCallback,
+            context: *mut c_void,
+        ) -> id;
+        fn burette_menu_colour_item(
+            id: id,
+            colours: id,
+            active: id,
+            callback: ValueCallback,
+            context: *mut c_void,
+        ) -> id;
+        fn burette_menu_item_show_image(item: id);
+    }
+
+    /// Where live control changes go; it outlives the modal popup that uses it.
+    struct LiveTarget {
+        window: tauri::WebviewWindow,
+        session: String,
+    }
+
+    extern "C" fn value_changed(
+        context: *mut c_void,
+        item: *const c_char,
+        number: f64,
+        colour: *const c_char,
+    ) {
+        let target = unsafe { &*(context as *const LiveTarget) };
+        let text = |value: *const c_char| {
+            unsafe { CStr::from_ptr(value) }
+                .to_string_lossy()
+                .into_owned()
+        };
+        let value = if colour.is_null() {
+            serde_json::json!(number)
+        } else {
+            serde_json::json!(text(colour))
+        };
+        let _ = target.window.emit_to(
+            target.window.label(),
+            MENU_VALUE_EVENT,
+            MenuValue {
+                session: target.session.clone(),
+                id: text(item),
+                value,
+            },
+        );
+    }
 
     // One target per popup keeps nested menus and simultaneous app windows
     // independent. NSMenu's modal tracking ends before this target is released.
@@ -254,15 +393,60 @@ mod macos {
         let _: () = msg_send![item, setImage: image];
     }
 
-    unsafe fn make_menu(entries: &[MenuEntry], target: id, ids: &mut Vec<String>) -> id {
+    unsafe fn make_menu(
+        entries: &[MenuEntry],
+        target: id,
+        ids: &mut Vec<String>,
+        live: *mut c_void,
+    ) -> id {
         let menu: id = msg_send![class!(NSMenu), new];
         let menu: id = msg_send![menu, autorelease];
         let _: () = msg_send![menu, setAutoenablesItems: NO];
         for entry in entries {
-            let (text, enabled, symbol, image) = match entry {
+            let (text, enabled, symbol, image, subtitle) = match entry {
                 MenuEntry::Separator => {
                     let separator: id = msg_send![class!(NSMenuItem), separatorItem];
                     let _: () = msg_send![menu, addItem: separator];
+                    continue;
+                }
+                MenuEntry::Slider {
+                    id,
+                    text,
+                    symbol,
+                    value,
+                    min,
+                    max,
+                    step,
+                    unit,
+                } => {
+                    let item = burette_menu_slider_item(
+                        string(id),
+                        string(text),
+                        symbol.as_deref().map_or(nil, |name| string(name)),
+                        *value,
+                        *min,
+                        *max,
+                        *step,
+                        unit.as_deref().map_or(nil, |unit| string(unit)),
+                        value_changed,
+                        live,
+                    );
+                    let _: () = msg_send![menu, addItem: item];
+                    continue;
+                }
+                MenuEntry::Colours { id, colors, active } => {
+                    let palette: id = msg_send![class!(NSMutableArray), array];
+                    for colour in colors {
+                        let _: () = msg_send![palette, addObject: string(colour)];
+                    }
+                    let item = burette_menu_colour_item(
+                        string(id),
+                        palette,
+                        active.as_deref().map_or(nil, |colour| string(colour)),
+                        value_changed,
+                        live,
+                    );
+                    let _: () = msg_send![menu, addItem: item];
                     continue;
                 }
                 MenuEntry::Item {
@@ -270,6 +454,7 @@ mod macos {
                     enabled,
                     symbol,
                     image,
+                    subtitle,
                     ..
                 }
                 | MenuEntry::Submenu {
@@ -277,8 +462,9 @@ mod macos {
                     enabled,
                     symbol,
                     image,
+                    subtitle,
                     ..
-                } => (text, enabled, symbol, image),
+                } => (text, enabled, symbol, image, subtitle),
             };
             let item: id = msg_send![class!(NSMenuItem), alloc];
             let item: id = msg_send![item, initWithTitle: string(text) action: sel!(chooseItem:) keyEquivalent: string("")];
@@ -288,6 +474,14 @@ mod macos {
                 apply_image(item, encoded);
             } else {
                 apply_symbol(item, symbol);
+            }
+            burette_menu_item_show_image(item);
+            // A second, secondary line under the title (macOS 14.4+).
+            if let Some(subtitle) = subtitle {
+                let supported: BOOL = msg_send![item, respondsToSelector: sel!(setSubtitle:)];
+                if supported == YES {
+                    let _: () = msg_send![item, setSubtitle: string(subtitle)];
+                }
             }
             match entry {
                 MenuEntry::Item {
@@ -309,10 +503,12 @@ mod macos {
                     }
                 }
                 MenuEntry::Submenu { items, .. } => {
-                    let child = make_menu(items, target, ids);
+                    let child = make_menu(items, target, ids, live);
                     let _: () = msg_send![item, setSubmenu: child];
                 }
-                MenuEntry::Separator => unreachable!(),
+                MenuEntry::Separator | MenuEntry::Slider { .. } | MenuEntry::Colours { .. } => {
+                    unreachable!()
+                }
             }
             let _: () = msg_send![menu, addItem: item];
         }
@@ -323,6 +519,7 @@ mod macos {
         window: &tauri::WebviewWindow,
         items: &[MenuEntry],
         at: Option<&MenuPosition>,
+        session: String,
     ) -> Result<PopupResult, String> {
         let native_window = window.ns_window().map_err(|error| error.to_string())? as id;
         unsafe {
@@ -330,7 +527,16 @@ mod macos {
             let target: id = msg_send![target_class(), new];
             (*target).set_ivar("selectedTag", 0isize);
             let mut ids = Vec::new();
-            let menu = make_menu(items, target, &mut ids);
+            let mut live = LiveTarget {
+                window: window.clone(),
+                session,
+            };
+            let menu = make_menu(
+                items,
+                target,
+                &mut ids,
+                &mut live as *mut LiveTarget as *mut c_void,
+            );
             let view: id = msg_send![native_window, contentView];
             let (point, view) = if let Some(at) = at {
                 let bounds: NSRect = msg_send![view, bounds];
@@ -386,6 +592,7 @@ mod tests {
             image: None,
             accelerator: None,
             checked: None,
+            subtitle: None,
         }
     }
     #[test]
@@ -396,6 +603,7 @@ mod tests {
             enabled: true,
             symbol: None,
             image: None,
+            subtitle: None,
             items,
         };
         assert!(validate(&[item("rename"), submenu(vec![item("text")])], None).is_ok());
@@ -413,5 +621,33 @@ mod tests {
             })
         )
         .is_err());
+    }
+
+    #[test]
+    fn validates_live_controls() {
+        let slider = |min: f64, max: f64| MenuEntry::Slider {
+            id: "opacity".into(),
+            text: "Opacity".into(),
+            symbol: Some("circle.lefthalf.filled".into()),
+            value: 0.5,
+            min,
+            max,
+            step: 0.05,
+            unit: None,
+        };
+        let colours = |colors: Vec<&str>| MenuEntry::Colours {
+            id: "tint".into(),
+            colors: colors.into_iter().map(String::from).collect(),
+            active: Some("#0a84ff".into()),
+        };
+        assert!(validate(
+            &[slider(0.0, 1.0), colours(vec!["#0a84ff", "#FF453A"])],
+            None
+        )
+        .is_ok());
+        assert!(validate(&[slider(1.0, 1.0)], None).is_err());
+        assert!(validate(&[slider(0.0, f64::INFINITY)], None).is_err());
+        assert!(validate(&[colours(vec!["red"])], None).is_err());
+        assert!(validate(&[colours(vec!["#000000"; 65])], None).is_err());
     }
 }

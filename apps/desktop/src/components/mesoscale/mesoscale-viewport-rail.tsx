@@ -24,7 +24,7 @@ export function MesoscaleViewportRail({ document, hidden }: { document: ViewerDo
   const run = (action: Parameters<typeof requestMesoscale>[1]) => void requestMesoscale(document.id, action).catch(() => undefined);
   const openMenu = (event: MouseEvent<HTMLButtonElement>, entries: MenuItemSpec[]) => {
     event.stopPropagation();
-    void showNativeContextMenu(entries, menuPoint(event), { forceWeb: true });
+    void showNativeContextMenu(entries, menuPoint(event));
   };
 
   return (
