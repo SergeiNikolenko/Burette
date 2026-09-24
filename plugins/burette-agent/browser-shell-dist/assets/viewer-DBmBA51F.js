@@ -499,6 +499,7 @@
   let statusHideTimer = null;
   function setStatus(message, kind = 'info', options = {}) {
     const text = String(message || '');
+    if (kind === 'error' || text.startsWith('[web] Rendered ')) revealViewer();
     if (status) {
       if (statusHideTimer) {
         window.clearTimeout(statusHideTimer);
@@ -10658,7 +10659,16 @@ SOFTWARE.
     }
   }
 
+  // viewer-shell.js keeps the page transparent and its chrome hidden from the first
+  // parse, so the host surface stays on screen instead of the default black shell,
+  // a bare canvas and chrome mounting piece by piece. The finished scene (or an
+  // error) replaces it in one step.
+  function revealViewer() {
+    document.documentElement.classList.remove('buret-viewer-booting');
+  }
+
   function hideStatus(payload = null) {
+    revealViewer();
     post('ready', 'ready', payload || previewReadyPayload());
     if (window.BuretteDebug) return;
     if (status) status.classList.add('hidden');
@@ -20051,6 +20061,16 @@ SOFTWARE.
     if (storyPanel) root.append(storyPanel);
     if (!toggleRow) root.append(animationRow);
     document.body.appendChild(root);
+    // The counter sizes the stepper, so "Frame 7 / 20" and "Frame 17 / 20" gave the
+    // control two widths and it twitched on every step. Digits are tabular, so the
+    // last frame's label is the widest one; reserve its width once.
+    if (!currentName) {
+      const shown = label.textContent;
+      label.textContent = trajectoryPoseLabel(prepared, controlLabel, prepared.poseCount - 1);
+      label.style.boxSizing = 'border-box';
+      label.style.minWidth = `${Math.ceil(label.getBoundingClientRect().width)}px`;
+      label.textContent = shown;
+    }
     restoreDockingPoseControlsPosition(root);
     const isolationDisposer = installDockingPoseInteractionIsolation(root);
     const hoverDisposer = installDockingPoseHoverSuppression();

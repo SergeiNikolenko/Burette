@@ -255,7 +255,8 @@ struct BuretteRendererPolicy: Equatable {
             case BuretteRendererMode.xyzrenderExternal:
                 renderer = canUseXyzrender ? BuretteRendererMode.xyzrenderExternal : BuretteRendererMode.molstar
             default:
-                renderer = isXYZ ? BuretteRendererMode.xyzrenderExternal : BuretteRendererMode.molstar
+                // Matches the shared core plan, which resolves "auto" to Mol*.
+                renderer = BuretteRendererMode.molstar
             }
         }
 

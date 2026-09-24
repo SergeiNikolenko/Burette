@@ -72,3 +72,4 @@ plugins/burette-agent/browser-shell-dist/assets/index.modern-DRe6F2yp.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-DkD0MHg7.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-BoGANvs7.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-DSV4qkKN.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-DBmBA51F.js
