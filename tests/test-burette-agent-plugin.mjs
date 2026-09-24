@@ -39,7 +39,7 @@ assert.equal(manifest.interface.displayName, "Burette");
 assert.equal(manifest.interface.composerIcon, "./assets/composer-icon.png");
 assert.equal(manifest.interface.logo, "./assets/app-icon.png");
 assert.deepEqual(manifest.interface.capabilities, ["Interactive", "Read", "Write"]);
-assert.match(manifest.interface.longDescription, /observe scene state as structured JSON/);
+assert.match(manifest.interface.longDescription, /inspect molecular interactions/);
 assert.equal(manifest.homepage, "https://github.com/SergeiNikolenko/Burette");
 assert.equal(manifest.repository, "https://github.com/SergeiNikolenko/Burette");
 assert.equal(manifest.license, "MIT");

@@ -9,6 +9,7 @@ import { gunzipSync } from "node:zlib";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { ketcherUiPlugin } from "./vite/ketcher-ui";
+import { nativeWorkspaceCspPlugin } from "./vite/native-workspace-csp";
 import tailwindcss from "@tailwindcss/vite";
 import {
   deferKetcherCssPlugin,
@@ -61,6 +62,7 @@ import { registerBrowserDevXyzrenderRoute } from "./vite/browser-dev/xyzrender";
 const desktopRoot = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
 const hostedMcpBuild = process.env.VITE_BURETTE_BUILD_IDENTIFIER === "hosted-mcp-widget";
+const nativeMcpBuild = process.env.VITE_BURETTE_BUILD_IDENTIFIER === "native-mcp-workspace";
 const prebuiltAgentShellBuild = Boolean(process.env.BURETTE_AGENT_SHELL_OUT_DIR);
 const browserRuntimeRepoRoot = hostedMcpBuild || prebuiltAgentShellBuild ? "" : repoRoot;
 const desktopDist = process.env.BURETTE_AGENT_SHELL_OUT_DIR
@@ -92,6 +94,8 @@ const BROWSER_DEV_APP_ICONS = {
   "default-app": join(repoRoot, "apps", "desktop", "src-tauri", "icons", "icon.png"),
   finder: "/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns",
   maestro: async () => {
+    const standalone = "/Applications/Maestro.app/Contents/Resources/Maestro.icns";
+    if (existsSync(standalone)) return standalone;
     const suites = (await readdir("/Applications"))
       .filter((name) => /^SchrodingerSuites\d{4}-\d+$/u.test(name))
       .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
@@ -3907,7 +3911,8 @@ function normalizeOrientationRef(value: string | null) {
 export default defineConfig({
   root: desktopRoot,
   base: "./",
-  plugins: [tailwindcss(), react(), ketcherUiPlugin(), ketcherRaphaelImportShimPlugin(), deferKetcherCssPlugin(), browserDevXyzrenderPlugin()],
+  plugins: [tailwindcss(), react(), ketcherUiPlugin(), ketcherRaphaelImportShimPlugin(), deferKetcherCssPlugin(), browserDevXyzrenderPlugin(), ...(nativeMcpBuild ? [nativeWorkspaceCspPlugin()] : [])],
+  worker: { plugins: () => nativeMcpBuild ? [nativeWorkspaceCspPlugin()] : [] },
   resolve: {
     alias: {
       "@": resolve(desktopRoot, "src"),
@@ -3950,16 +3955,16 @@ export default defineConfig({
   build: {
     outDir: desktopDist,
     emptyOutDir: true,
-    assetsInlineLimit: (filePath) => (
-      filePath.endsWith("/RDKit_minimal.wasm")
+    assetsInlineLimit: (filePath, content) => (
+      nativeMcpBuild ? /\.(svg|png)$/u.test(filePath) && content.length <= 32768 : filePath.endsWith("/RDKit_minimal.wasm")
         // The plugin serves binary assets over HTTP. Keep one emitted WASM
         // instead of a base64 copy in both the shell and fingerprint worker.
         // Preserve the packaged WKWebView and hosted-widget loading contract.
         ? !prebuiltAgentShellBuild
         : undefined
     ),
-    cssCodeSplit: !hostedMcpBuild,
-    modulePreload: {
+    cssCodeSplit: !hostedMcpBuild && !nativeMcpBuild,
+    modulePreload: nativeMcpBuild ? false : {
       resolveDependencies: resolveModulePreloadDependencies,
     },
     rollupOptions: {

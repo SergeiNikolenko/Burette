@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 
 import { showMacAvailability } from "../lib/browser-availability";
+import { browserFileAction } from "../lib/browser-file-actions";
 import { formatBytes } from "../components/format";
 import type { ChemicalEditorTarget } from "../components/types";
 import { basename } from "../lib/sidebar-projects";
@@ -90,6 +91,14 @@ export function useAppFileActions({
   writeClipboardText,
 }: UseAppFileActionsArgs) {
   const listChemicalEditorTargets = useCallback(async (path: string): Promise<ChemicalEditorTarget[]> => {
+    if (window.BuretteMcpWorkspace) {
+      try {
+        return (await browserFileAction({ type: "list_apps", path })).targets ?? [];
+      } catch (error) {
+        pushErrorStatus(error, "Application discovery failed");
+        return [];
+      }
+    }
     if (!isTauriRuntime()) {
       const extension = path.split(".").pop()?.toLowerCase() ?? "";
       return browserDevChemicalEditorTargets.filter((target) => target.supportedExtensions.includes(extension));
@@ -105,6 +114,11 @@ export function useAppFileActions({
   const openPathInChemicalEditor = useCallback(async (path: string, targetId: string, targetName: string) => {
     try {
       if (!isTauriRuntime()) {
+        if (window.BuretteMcpWorkspace) {
+          await browserFileAction({ type: "open_with", path, targetId });
+          pushStatus(`Opened ${basename(path)} in ${targetName}`);
+          return;
+        }
         showMacAvailability();
         return;
       }
@@ -116,12 +130,13 @@ export function useAppFileActions({
   }, [pushErrorStatus, pushStatus]);
 
   const openPathWithDefaultApp = useCallback(async (path: string) => {
-    if (!isTauriRuntime()) {
+    if (!isTauriRuntime() && !window.BuretteMcpWorkspace) {
       showMacAvailability();
       return;
     }
     try {
-      await openPath(path);
+      if (window.BuretteMcpWorkspace) await browserFileAction({ type: "open_default", path });
+      else await openPath(path);
       pushStatus(`Opened ${basename(path)}`);
     } catch (error) {
       pushErrorStatus(error, "Open with default app failed");
@@ -132,6 +147,8 @@ export function useAppFileActions({
     try {
       if (isTauriRuntime()) {
         await invoke("reveal_path", { path });
+      } else if (window.BuretteMcpWorkspace) {
+        await browserFileAction({ type: "reveal", path });
       } else {
         showMacAvailability();
         return;
@@ -238,4 +255,3 @@ export function useAppFileActions({
     showTextFileMetadata,
   };
 }
-

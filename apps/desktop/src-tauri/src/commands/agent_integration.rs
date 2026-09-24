@@ -36,14 +36,19 @@ pub(super) fn refresh_bundled_codex_plugin(
     if fs::read_to_string(&receipt).is_ok_and(|value| value == revision) {
         return Ok(());
     }
-    let installed = [
+    let Some(installed) = [
         ".codex/plugins/burette-widget-marketplace/plugins/burette",
         ".codex/plugins/burette-marketplace/plugins/burette",
         ".codex/plugins/burette",
     ]
     .into_iter()
-    .find_map(|root| read_json(&home.join(root).join(MANIFEST_RELATIVE_PATH)));
-    if installed.is_none() {
+    .map(|root| home.join(root))
+    .find(|root| read_json(&root.join(MANIFEST_RELATIVE_PATH)).is_some()) else {
+        return Ok(());
+    };
+    // A plugin installed from a source checkout is newer than any bundled copy;
+    // replacing it would silently downgrade the widget.
+    if installed_from_source_checkout(&installed) {
         return Ok(());
     }
     let runtime = [
@@ -73,6 +78,39 @@ pub(super) fn refresh_bundled_codex_plugin(
     fs::create_dir_all(app_data).map_err(|error| error.to_string())?;
     fs::write(receipt, revision).map_err(|error| error.to_string())?;
     Ok(())
+}
+
+/// Installers record their source in `.burette-agent-install.json`; app bundles
+/// install from `…/Burette.app/Contents/Resources`, source checkouts from a repo root.
+#[cfg(any(test, all(target_os = "macos", feature = "sparkle-updater")))]
+fn installed_from_source_checkout(installed_root: &Path) -> bool {
+    read_json(&installed_root.join(".burette-agent-install.json"))
+        .and_then(|marker| marker.get("repoRoot")?.as_str().map(str::to_owned))
+        .is_some_and(|repo_root| !repo_root.contains(".app/Contents/Resources"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::installed_from_source_checkout;
+    use std::fs;
+
+    #[test]
+    fn only_source_checkout_installs_are_preserved() {
+        let root =
+            std::env::temp_dir().join(format!("burette-install-marker-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let marker = root.join(".burette-agent-install.json");
+        assert!(!installed_from_source_checkout(&root));
+        fs::write(&marker, r#"{"repoRoot":"/Users/dev/Burette"}"#).unwrap();
+        assert!(installed_from_source_checkout(&root));
+        fs::write(
+            &marker,
+            r#"{"repoRoot":"/Applications/Burette.app/Contents/Resources"}"#,
+        )
+        .unwrap();
+        assert!(!installed_from_source_checkout(&root));
+        fs::remove_dir_all(&root).unwrap();
+    }
 }
 
 #[derive(Serialize)]

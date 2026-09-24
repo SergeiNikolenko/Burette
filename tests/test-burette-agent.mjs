@@ -289,8 +289,10 @@ viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data =
 context.window.BuretteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-remapped-auth.pdb', format: 'pdb' } });
 context.window.BuretteAgent.notifyStructureLoaded({ prepared: { label: 'fake-remapped-auth.pdb', format: 'pdb' } });
 const ligandViaLabelAlias = await context.window.BuretteAgent.run({ command: 'focusLigand', args: { selector: { label_comp_id: 'HEM', auth_asym_id: 'B', auth_seq_id: 100 } } });
-assert.equal(ligandViaLabelAlias.ok, true);
-assert.equal(ligandViaLabelAlias.result.ligand.label_asym_id, 'B');
+assert.equal(ligandViaLabelAlias.ok, false, 'Explicit author identifiers must not match a different label namespace');
+const exactAuthorLigand = await context.window.BuretteAgent.run({ command: 'focusLigand', args: { selector: { auth_asym_id: 'Y', auth_seq_id: 300 } } });
+assert.equal(exactAuthorLigand.ok, true);
+assert.equal(exactAuthorLigand.result.ligand.auth_seq_id, 300);
 viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data = fakeStructure({ omitCompIds: true });
 context.window.BuretteAgent.attach({ viewer, plugin: viewer.plugin, config: { label: 'fake-no-comp-id.pdb', format: 'pdb' } });
 context.window.BuretteAgent.notifyStructureLoaded({ prepared: { label: 'fake-no-comp-id.pdb', format: 'pdb' } });

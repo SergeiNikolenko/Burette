@@ -3,6 +3,7 @@ import { standaloneDemoSnapshot } from "./web-demo-scenes";
 import { collectionExtension, mergeCollectionSources, parseReactionCollectionRecords, parseSdfCollectionRecords } from "./collection-documents";
 import { runBrowserDevMetalConformer } from "./browser-dev-compute";
 import { parseDataWarrior } from "./datawarrior";
+import { nativePreviewHtml } from "./native-mcp-workspace";
 import type { DockingDocumentRequest, DockingSceneMode, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 
@@ -889,7 +890,10 @@ async function openBrowserDevDocumentFromBytes(
   const text = await decodeStructureText(bytes, extension);
   const grid = gridPayload(path, extension, text);
   const sdfRecordCount = isSdfExtension(extension) ? parseSdfCollectionRecords(text).length : 0;
-  const requestedMode = normalizeRendererMode(preferences.rendererMode);
+  const initialRenderer = typeof window !== "undefined" && !reloadOptions
+    && window.BuretteMcpWorkspace?.initialPaths.includes(path)
+    ? window.BuretteMcpWorkspace.initialRenderer : undefined;
+  const requestedMode = normalizeRendererMode(initialRenderer ?? preferences.rendererMode);
   const explicitSdfViewer = isSdfExtension(extension)
     && Boolean(reloadOptions)
     && (requestedMode === "molstar" || requestedMode === "xyzrender-external");
@@ -1312,7 +1316,9 @@ function viewerHtml(
     ...(externalArtifact ? { externalArtifact } : {}),
     ...(xyzrenderPresetOptions ? { xyzrenderPresetOptions } : {}),
     ...(xyzrenderControls ? { xyzrenderControls } : {}),
-    ...((WEB_DEMO_ENABLED || (renderer === "xyzrender-external" && browserDevVirtualTextDocuments.has(path)))
+    // Virtual structures have no filesystem path, including before their first
+    // Mol* -> xyzrender transition.
+    ...((WEB_DEMO_ENABLED || browserDevVirtualTextDocuments.has(path))
       ? {
           xyzrenderInputDataBase64: bytesToBase64(bytes),
           xyzrenderInputExtension: extension,
@@ -1342,7 +1348,7 @@ function viewerHtml(
     window.BuretteConfig = ${serializeInlineJson(config)};
   </script>
   <script>window.BuretteDataBase64 = "${bytesToBase64(embeddedBytes)}";</script>`;
-  return `<!doctype html>
+  return nativePreviewHtml(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -1370,7 +1376,7 @@ function viewerHtml(
   <script src="${viewerAsset("scene-file-actions.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("viewer.js")}?v=${runtimeAssetVersion}"></script>
 </body>
-</html>`;
+</html>`);
 }
 
 function mesoscaleViewerHtml(
@@ -1380,7 +1386,7 @@ function mesoscaleViewerHtml(
   transparentBackground: boolean,
 ) {
   const version = `${MESOSCALE_ASSET_VERSION}-${RUNTIME_ASSET_SESSION}`;
-  return `<!doctype html>
+  return nativePreviewHtml(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -1397,7 +1403,7 @@ function mesoscaleViewerHtml(
   <script>window.BuretteConfig=${serializeInlineJson(config)};window.BuretteDataBase64="${bytesToBase64(bytes)}";</script>
   <script src="mesoscale.js?v=${version}"></script>
 </body>
-</html>`;
+</html>`);
 }
 
 async function browserRendererPlan(
@@ -1588,7 +1594,7 @@ async function gridHtml(
       rendererSwitch: hasMoleculeRecords,
     },
   };
-  return `<!doctype html>
+  return nativePreviewHtml(`<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -1621,7 +1627,7 @@ async function gridHtml(
   <script src="grid-ui.js?v=${GRID_ASSET_VERSION}"></script>
   <script src="grid-viewer.js?v=${GRID_ASSET_VERSION}"></script>
 </body>
-</html>`;
+</html>`);
 }
 
 function gridPayload(path: string, extension: string, text: string) {

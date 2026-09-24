@@ -3,6 +3,8 @@ import * as ViewerExtensions from 'molstar/lib/apps/viewer/extensions.js';
 import * as ViewerApp from 'molstar/lib/apps/viewer/app.js';
 import * as ViewerPresets from 'molstar/lib/apps/viewer/presets.js';
 import { BuretteSuperposition } from './molstar-superposition-facade.js';
+import { BuretteStory } from './molstar-story-facade.js';
+import { BuretteSelection } from './molstar-selection-facade.js';
 
 globalThis.molstar = Object.assign(
   {},
@@ -11,7 +13,7 @@ globalThis.molstar = Object.assign(
   ViewerExtensions,
   ViewerApp,
   ViewerPresets,
-  { BuretteSuperposition },
+  { BuretteSuperposition, BuretteStory, BuretteSelection },
 );
 
 export * from 'molstar/lib/apps/viewer/lib.js';

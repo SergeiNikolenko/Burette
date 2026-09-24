@@ -673,7 +673,7 @@ assert.match(browserDevDocuments, /const RDKIT_WASM_PATH = WEB_DEMO_ENABLED[\s\S
 assert.match(browserDevDocuments, /const XYZRENDER_ENDPOINT = WEB_DEMO_ENABLED\s*\? "\/api\/xyzrender"\s*:\s*"\/__burette\/xyzrender";/);
 assert.equal(browserDevDocuments.match(/xyzrenderEndpoint: XYZRENDER_ENDPOINT/g)?.length, 2);
 assert.doesNotMatch(browserDevDocuments, /new URL\('rdkit\/RDKit_minimal\.wasm', document\.baseURI\)/);
-assert.match(browserDevDocuments, /WEB_DEMO_ENABLED \|\| \(renderer === "xyzrender-external" && browserDevVirtualTextDocuments\.has\(path\)\)/);
+assert.match(browserDevDocuments, /WEB_DEMO_ENABLED \|\| browserDevVirtualTextDocuments\.has\(path\)/);
 assert.match(browserDevDocuments, /vdwAtoms: null/);
 assert.match(browserDevDocuments, /hullMode: null/);
 assert.match(browserDevDocuments, /hullAtoms: null/);
@@ -683,7 +683,7 @@ assert.match(browserDevDocuments, /const trajectoryFrameCount = Math\.max\(xyzFr
 assert.match(browserDevDocuments, /const shouldOpenTrajectoryInMolstar = trajectoryFrameCount > 1 && requestedMode === "auto";/);
 assert.match(browserDevDocuments, /function countXyzFrames\(text: string\)/);
 assert.match(browserDevDocuments, /function countPdbModels\(text: string\)/);
-assert.match(viewer, /window\.BuretteConfig\?\.hostedMcpWidgetBootstrap === true\) \{\s*setToolbarCollapsed\(toolbar, true, viewer, false\);\s*return;/);
+assert.match(viewer, /window\.BuretteConfig\?\.hostedMcpWidgetBootstrap === true \|\| window\.BuretteConfig\?\.defaultToolbarCollapsed === true\) \{\s*setToolbarCollapsed\(toolbar, true, viewer, false\);\s*return;/);
 assert.match(browserDevDocuments, /requestBrowserDevDesmondPreview/);
 assert.match(browserDevDocuments, /\/__burette\/desmond-preview\?path=/);
 assert.match(browserDevDocuments, /`\$\{path\}\.desmond-preview\.pdb`/);
@@ -792,7 +792,7 @@ assert.match(desmondPreviewExtract, /backbone_quota = max\(128, atom_limit \/\/ 
 assert.match(desmondPreviewExtract, /0 means all atoms unless --target-mb is set/);
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--target-mb"/);
 assert.match(desmondPreviewExtract, /parser\.add_argument\("--output"/);
-assert.match(viteConfig, /plugins: \[tailwindcss\(\), react\(\), ketcherUiPlugin\(\), ketcherRaphaelImportShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\)\]/);
+assert.match(viteConfig, /plugins: \[tailwindcss\(\), react\(\), ketcherUiPlugin\(\), ketcherRaphaelImportShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\),/);
 assert.doesNotMatch(viteConfig, /join\(homedir\(\), "Desktop"\),/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "xyzrender-main"\)/);
@@ -1052,7 +1052,7 @@ assert.match(browserDevStartup, /params\.getAll\("devFolder"\)/);
 assert.match(browserDevStartup, /return browserDevFoldersFromLocation\(\)\[0\] \?\? null;/);
 assert.ok(browserDevStartup.includes('return trimmed ? trimmed.replace(/\\\\/g, "/").replace(/\\/+$/u, "") : null;'));
 assert.match(browserDevStartup, /export function browserDevHasExplicitWorkspace\(\)/);
-assert.match(browserDevStartup, /return params\.has\("devFiles"\) \|\| params\.has\("devFolder"\);/);
+assert.match(browserDevStartup, /return Boolean\(window\.BuretteMcpWorkspace\) \|\| params\.has\("devFiles"\) \|\| params\.has\("devFolder"\);/);
 assert.match(app, /from "\.\/hooks\/use-app-browser-dev-startup"/);
 assert.match(app, /browserDevExplicitFolders,[\s\S]*browserDevHasExplicitWorkspaceQuery,[\s\S]*\} = useAppBrowserDevStartup\(\)/);
 assert.doesNotMatch(app, /browserDevFolderFromLocation\(/);
@@ -1488,7 +1488,7 @@ assert.match(uiToast, /useAppShellPortalContainer/);
 assert.match(uiToast, /<ToastPortal container=\{portalContainer\}>/);
 assert.match(uiToast, /createToastManager\(\)/);
 assert.match(uiToast, /HugeiconsIcon/);
-assert.match(appLayout, /const sidebarVisible = settingsMode \|\| \(!hostedMcpWidget && state\.sidebarOpen\)/);
+assert.match(appLayout, /const sidebarVisible = !window\.BuretteMcpWorkspace && \(settingsMode \|\| \(!hostedMcpWidget && state\.sidebarOpen\)\)/);
 assert.match(appLayout, /const chromeVisible = !settingsMode && !hostedMcpWidget/);
 assert.match(appLayout, /\{!hostedMcpWidget && <div className="drag-region" data-tauri-drag-region \/>\}/);
 assert.match(appLayout, /const sidebarLayoutWidth = sidebarVisible \? sidebarWidth : 0/);
@@ -1519,7 +1519,7 @@ assert.match(appLayout, /const rightDockOpen = !settingsMode && !hostedMcpWidget
 assert.match(appLayout, /const bottomDockOpen = !settingsMode && !hostedMcpWidget && state\.bottomDockOpen/);
 assert.match(appLayout, /"--right-dock-width": `\$\{rightDockOpen \? rightDockWidth : 0\}px`/);
 assert.match(appLayout, /"--chrome-height": hostedMcpWidget \? "0px" : undefined/);
-assert.match(appLayout, /\{chromeVisible && \(/);
+assert.match(appLayout, /\{chromeVisible && !window\.BuretteMcpWorkspace && \(/);
 assert.match(appLayout, /const activePageKind = state\.activeTab\?\.location\.kind \?\? null/);
 assert.match(appLayout, /data-active-page-kind=\{activePageKind \?\? undefined\}/);
 assert.match(appLayout, /<Sidebar state=\{layoutState\} actions=\{actions\} open=\{sidebarVisible\} \/>/);
@@ -3364,7 +3364,7 @@ assert.match(ketcherPage, /function withKetcherTimeout<T>\(operation: Promise<T>
 assert.match(ketcherPage, /Ketcher did not return a sketch\. Draw a molecule first or try again\./);
 assert.match(app, /const openDocumentsInActiveTab = useOpenDocumentsInActiveTab\(\)/);
 assert.match(appKetcherActionsHook, /const \[ketcherDraftMolfile, setKetcherDraftMolfile\] = useState\(""\)/);
-assert.match(appKetcherActionsHook, /saveKetcherDraft: setKetcherDraftMolfile/);
+assert.match(appKetcherActionsHook, /const saveKetcherDraft = useCallback/);
 assert.match(appFileOpenHook, /openDocumentsInActiveTab\(result\.documents\)/);
 assert.match(appKetcherActionsHook, /addDocuments\(\[document\]\)/);
 assert.doesNotMatch(app, /openDocumentsInActiveTab\(\[document\], \{\s*backLocation: request\.draftKet\?\.trim\(\) \|\| request\.draftMolfile\?\.trim\(\)/s);
@@ -3590,7 +3590,7 @@ assert.doesNotMatch(fepNetworkKind, /function molblockWithFallbackCoordinates/);
 assert.match(fepNetworkKind, /normalizeMolblockForKetcher/);
 assert.match(fepNetworkKind, /showNativeContextMenu/);
 assert.match(fepNetworkKind, /Open in Ketcher/);
-assert.match(fepNetworkKind, /Open in Molstar/);
+assert.match(fepNetworkKind, /Open in new tab/);
 assert.match(fepNetworkKind, /Delete from network/);
 assert.match(fepGraphmlLib, /export function parseFepGraphml/);
 assert.match(fepGraphmlLib, /export function parseFepNetworkText/);
@@ -4466,7 +4466,7 @@ assert.match(appSdfViewerMessagesHook, /void openDockingDocument\(receptorDocume
 assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening selected molecules in Molstar docking view\.\.\."\)/);
 assert.match(appSdfViewerMessagesHook, /pushStatus\("Opened selected molecules in Molstar"\)/);
 assert.match(appSdfViewerMessagesHook, /openDocumentsInActiveTab\(\[document\]\)/);
-assert.match(appSdfViewerMessagesHook, /body\.openTarget === "new-tab"/);
+assert.match(appSdfViewerMessagesHook, /body\.openTarget === "active-tab"/);
 assert.match(appSdfViewerMessagesHook, /addDocuments\(\[document\]\)/);
 assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfPoseDocument"/);
 assert.match(appSdfViewerMessagesHook, /const targetPath = requestedPath\.length > 0/);
@@ -5277,7 +5277,7 @@ assert.match(previewViewer, /\.msp-plugin button\[aria-label\], \.msp-plugin but
 assert.match(previewViewer, /control\.closest\('\.msp-hover-box-wrapper, \.buret-seq-header, \.buret-seq-footer'\)/);
 assert.doesNotMatch(previewViewer, /scheduleViewportPopoverRefresh/);
 assert.match(previewViewer, /function molstarTooltipLabel\(control\)/);
-assert.match(previewViewer, /control\.getAttribute\('aria-label'\) \|\| control\.getAttribute\('title'\)/);
+assert.match(previewViewer, /control\.getAttribute\('aria-label'\) \|\| control\.dataset\.buretHint \|\| control\.getAttribute\('title'\)/);
 assert.match(previewViewer, /function positionMolstarControlTooltip\(control\)/);
 assert.match(previewViewer, /installMolstarControlTooltips\(\);/);
 assert.match(previewRuntimeCss, /\.buret-generate-3d-control \{/);
@@ -5710,7 +5710,7 @@ assert.match(applyMolstarPresetNowSource, /const wasStoryPlaying = molstarStoryS
 assert.match(applyMolstarPresetNowSource, /if \(wasStoryPlaying\) await controlMolstarStory\(\{ operation: 'pause' \}\);/);
 assert.match(applyMolstarPresetNowSource, /sceneSnapshot = viewer\.plugin\?\.state\?\.data\?\.getSnapshot\?\.\(\);/);
 assert.ok(
-  applyMolstarPresetNowSource.indexOf('updateMolstarPresentationConfig(value, appearance, legacyStyle);')
+  applyMolstarPresetNowSource.lastIndexOf('updateMolstarPresentationConfig(value, appearance, legacyStyle);')
     > applyMolstarPresetNowSource.indexOf('await applyMolstarAppearance(viewer, appearance);'),
   'the selected preset must be committed only after the scene applied successfully',
 );
@@ -5799,7 +5799,7 @@ assert.match(previewViewer, /function molstarDerivedTopologyRepresentation\(\)/)
 assert.match(previewViewer, /if \(pair\.synthetic\) \{\s*await applyMolstarUniformRepresentation\(viewer, molstarDerivedTopologyRepresentation\(\)\);\s*\}\s*return false;/);
 assert.match(previewViewer, /if \(!prepared\.trajectoryPair\?\.synthetic\) \{[\s\S]*?await applyMolstarStyle\(viewer, style\);\s*\}\s*installDockingPoseControls\(viewer, prepared\);/);
 assert.match(previewViewer, /if \(!prepared\.trajectoryPair\?\.synthetic && !waterExcludedFromInitialPreset\) \{\s*await applyMolstarWaterLineRepresentation\(viewer\);\s*\}/);
-assert.match(previewViewer, /setStatus\(`\[web\] Rendered \$\{config\.label \|\| 'structure'\}`\);\s*if \(prepared\?\.deferredWaterRepresentation === true\) \{\s*scheduleMolstarWaterLineRepresentation\(viewer\);/);
+assert.match(previewViewer, /if \(prepared\?\.deferredWaterRepresentation === true\) \{\s*if \(window\.BuretteNativeFirstFrame\) await applyMolstarWaterLineRepresentation\(viewer\);\s*else scheduleMolstarWaterLineRepresentation\(viewer\);/);
 assert.match(previewViewer, /plugin\.managers\.structure\.component\.setOptions\(\{\s*\.\.\.plugin\.managers\.structure\.component\.state\.options,\s*ignoreLight: true\s*\}\)/s);
 assert.match(previewViewer, /postprocessing:\s*\{\s*outline:/s);
 assert.match(previewViewer, /async function reportBuretteAgentState\(\)/);
@@ -5917,7 +5917,7 @@ assert.match(previewViewer, /function undockToolbar\(toolbar\)/);
 assert.match(previewViewer, /toolbar\.classList\.remove\('buret-toolbar-docked'\)/);
 assert.match(previewViewer, /function fitToolbarToViewport\(toolbar\)/);
 assert.match(previewViewer, /const availableWidth = toolbarViewportBounds\(\)\.width;/);
-assert.match(previewViewer, /toolbar\.style\.maxWidth = Math\.max\(180, availableWidth - TOOLBAR_MARGIN \* 2\) \+ 'px'/);
+assert.match(previewViewer, /toolbar\.style\.maxWidth = Math\.max\(0, availableWidth - TOOLBAR_MARGIN \* 2\) \+ 'px'/);
 assert.match(previewViewer, /const content = toolbar\.querySelector\('\[data-buret-toolbar-content\]'\)/);
 assert.match(previewViewer, /content\.style\.maxWidth = Math\.max\(0, availableWidth - TOOLBAR_MARGIN \* 2 - 36\) \+ 'px'/);
 assert.match(previewViewer, /dockToolbar\(toolbar\);\s*fitToolbarToViewport\(toolbar\);/);
@@ -6108,7 +6108,7 @@ assert.match(previewViewer, /if \(!camera\?\.current && !camera\?\.focus\) conti
 assert.match(previewViewer, /camera\.transitionDurationInMs = instant \? 0 : durationMs/);
 // Composite styles rebuild their geometry with rendering paused. Their snapshot
 // swap is instant, then the camera animates only after the finished scene resumes.
-assert.match(previewViewer, /if \(isStep\) setMolstarStoryTransition\(manager, restyles \|\| action\.preview === true \? 0 : MOLSTAR_STORY_TRANSITION_MS\)/);
+assert.match(previewViewer, /if \(isStep\) setMolstarStoryTransition\(manager, restyles \? 0 : MOLSTAR_STORY_TRANSITION_MS\)/);
 assert.match(previewViewer, /const animatesRestyledStep = restyles\s*&& window\.matchMedia\?\.\('\(prefers-reduced-motion: reduce\)'\)\?\.matches !== true/);
 assert.doesNotMatch(previewViewer, /const animatesRestyledStep = restyles\s*&& action\.preview !== true/);
 assert.match(previewViewer, /const sourceCamera = animatesRestyledStep \? captureMolstarCameraSnapshot\(activeViewer\) : null/);
@@ -6119,11 +6119,8 @@ assert.match(previewViewer, /return targetSnapshot/);
 assert.match(previewViewer, /targetCamera = await waitForMolstarStoryCameraTarget\(activeViewer\);\s*await restoreMolstarStoryPresentation\(activeViewer\);\s*if \(targetCamera\) restoreMolstarCameraSnapshotNow\(activeViewer, sourceCamera\)/);
 assert.match(previewViewer, /canvas3d\?\.resume\?\.\(\);[\s\S]*canvas3d\?\.requestCameraReset\?\.\(\{ snapshot: targetCamera, durationMs: MOLSTAR_STORY_TRANSITION_MS \}\)/);
 // Overlapping steps mean competing snapshot applies and unbalanced render
-// pauses, so steps run one at a time and superseded ones are dropped.
-assert.match(previewViewer, /action\.preview === true\s*&& \(serial !== molstarStoryStepRequested \|\| action\.stillWanted\?\.\(\) === false\)/);
-// A superseded hover preview still answers with the current state: `story_control`
-// hands this result back to the agent, and dropping one would answer with nothing.
-assert.match(previewViewer, /\? molstarStoryResult\('story_control'\)\s*: applyMolstarStoryControl\(action\)/);
+// pauses, so explicit steps run one at a time.
+assert.match(previewViewer, /\.then\(\(\) => applyMolstarStoryControl\(action\)\)/);
 assert.match(previewViewer, /MOLSTAR_STORY_REPORT_INTERVAL_MS = 120/);
 assert.match(previewViewer, /function syncMolstarStoryUi\(\)/);
 assert.match(previewViewer, /function applyMolstarStoryStyleToSnapshots\(manager, style, appearance\)/);
@@ -6146,13 +6143,9 @@ assert.match(previewViewer, /root\.className = 'buret-docking-poses buret-dockin
 assert.match(previewViewer, /if \(document\.querySelector\('\.buret-docking-poses:not\(\.buret-molstar-story\)'\)\) return;/);
 assert.match(previewViewer, /previousRoot && updateMolstarStoryControls\(previousRoot, entries, story\.isPlaying\)\) return/);
 assert.match(previewViewer, /root\.__buretStoryDragCleanup = initDockingPoseControlsDrag\(root\)/);
-// Composite styles still preview on hover. Their geometry work is serialized
-// by controlMolstarStory, while the manual camera transition keeps the result
-// smooth instead of disabling this Story interaction.
-assert.match(previewViewer, /button\.addEventListener\('pointerenter', event => \{\s*if \(event\.pointerType === 'touch'\) return;\s*scheduleMolstarStoryPreview\(button\);\s*scheduleMolstarStoryDetails\(button\);\s*\}\)/);
-assert.doesNotMatch(previewViewer, /function scheduleMolstarStoryPreview\(anchor\) \{\s*const style = configuredMolstarStyle\(activeConfig \|\| window\.BuretteConfig \|\| \{\}\);\s*if \(MOLSTAR_STORY_REBUILT_STYLES\.has\(style\)\) return;/);
-assert.match(previewViewer, /preview: true,\s*stillWanted: \(\) => anchor\.isConnected && anchor\.matches\(':hover'\)/);
-assert.match(previewViewer, /MOLSTAR_STORY_PREVIEW_DWELL_MS = 240/);
+// Hover previews text only; scene selection requires an explicit click.
+assert.match(previewViewer, /button\.addEventListener\('pointerenter', event => \{\s*if \(event\.pointerType === 'touch'\) return;\s*scheduleMolstarStoryDetails\(button\);\s*\}\)/);
+assert.doesNotMatch(previewViewer, /scheduleMolstarStoryPreview|molstarStoryPreviewTimer/);
 assert.match(previewViewer, /MOLSTAR_STORY_DETAILS_DWELL_MS = 500/);
 // The style swap happens with rendering held, so no frame shows the authored
 // style before the user's own style lands.
@@ -6175,8 +6168,6 @@ assert.match(previewViewer, /await applyMolstarNonIllustrativePostprocessing\(vi
 // Both spellings of the action share one path, so style preservation and step
 // serialization do not depend on which one the caller used.
 assert.match(previewViewer, /return controlMolstarStory\(\{ \.\.\.args, operation: args\.operation \|\| args\.action \}\);/);
-// A queued preview is re-checked when it reaches the front of the queue.
-assert.match(previewViewer, /action\.stillWanted\?\.\(\) === false/);
 assert.match(previewViewer, /const styleOverrides = MOLSTAR_STYLE_REPRESENTATION_OVERRIDES\[style\] \|\| \{\};/);
 assert.match(previewViewer, /const appearanceOverride = normalizeMolstarAppearance\(appearance\) === 'illustrative'\s*\? \{ ignoreLight: true \}\s*: \{ ignoreLight: false \};/);
 assert.match(previewViewer, /const overrides = \{ \.\.\.styleOverrides, \.\.\.appearanceOverride \};/);
@@ -6194,7 +6185,8 @@ assert.match(previewViewer, /molstarPresentationOverride: userOverride/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses\.buret-molstar-story \{\s*border-radius: 12px;/);
 assert.match(previewViewer, /function renderMolstarStoryMarkdown\(container, markdown\)/);
 assert.match(previewRuntimeCss, /\.buret-story-hover-card \{/);
-assert.match(appViewerStateMessagesHook, /if \(firstStory \|\| body\.type === "openStructureStory"\) openDockTab\("right", "story"\);/);
+assert.match(appViewerStateMessagesHook, /if \(body\.type === "openStructureStory"\) openDockTab\("right", "story"\);/);
+assert.doesNotMatch(appViewerStateMessagesHook, /firstStory|openedStories/);
 assert.doesNotMatch(appViewerStateMessagesHook, /body\.type === "mvsStoryChanged"\) openDockTab/);
 assert.match(previewViewer, /function sceneTreeDisplayLabel\(value\)/);
 assert.match(previewViewer, /if \(\/\^reflig\$\/i\.test\(words\)\) label = 'Reference ligand'/);
@@ -6323,7 +6315,7 @@ assert.match(previewViewer, /actions\.push\(\['save-modified', 'Save modified st
 assert.match(previewViewer, /actions\.push\(\['save-format:mmcif', 'Save as mmCIF'\]\);/);
 assert.match(previewViewer, /if \(molstarModifiedPdbExportAvailable\(\)\) actions\.push\(\['save-format:pdb', 'Save as PDB'\]\);/);
 assert.match(previewViewer, /if \(molstarContextSdfExportAvailable\(target\)\) actions\.push\(\['save-format:sdf', 'Save ligand as SDF'\]\);/);
-assert.match(previewViewer, /Open in Mol\*/);
+assert.match(previewViewer, /Open in new tab/);
 assert.match(previewViewer, /Save modified structure/);
 assert.match(previewViewer, /Save as mmCIF/);
 assert.match(previewViewer, /Save as PDB/);
@@ -7933,7 +7925,7 @@ assert.match(gridViewer, /saveAsTitle: !editing[\s\S]*?'Save this collection as 
 assert.match(gridUi, /ariaLabel="Grid view mode"/);
 assert.match(gridUi, /dataAttribute="buret-grid-view-mode"/);
 assert.match(gridUi, /id="table-columns"/);
-assert.match(gridUi, /View selected molecules in Molstar/);
+assert.match(gridUi, /Open selected molecules in a new Burette tab/);
 assert.match(gridUi, /id="generate-3d-selected"/);
 assert.match(gridUi, /data-buret-grid-generate-3d-label/);
 assert.match(gridUi, /Generate 3D/);
@@ -8403,9 +8395,9 @@ assert.match(gridViewer, /const molblock = typeof mol\.get_molblock === 'functio
 assert.match(gridViewer, /return sdfRecordFromMolblock\(molblock\)/);
 assert.match(gridViewer, /const text = String\(record\.text \|\| ''\)\.trimEnd\(\);[\s\S]*?if \(!text\.trim\(\)\) return null;/);
 assert.match(gridViewer, /const molblock = String\(row\?\.molblock \|\| ''\)\.trimEnd\(\);[\s\S]*?if \(molblock\.trim\(\)\) \{/);
-assert.match(gridViewer, /function requestSingleMolstarDocument\(row, cfg, openTarget = 'active-tab'\)/);
+assert.match(gridViewer, /function requestSingleMolstarDocument\(row, cfg, openTarget = 'new-tab'\)/);
 assert.match(gridViewer, /openTarget,/);
-assert.match(gridViewer, /data-buret-detail-action="molstar">Open in Mol\*/);
+assert.match(gridViewer, /data-buret-detail-action="molstar">Open in new tab/);
 assert.match(gridViewer, /data-buret-detail-action="ketcher">Edit in Ketcher/);
 assert.match(gridViewer, /data-buret-detail-action="generate3d">Generate 3D/);
 assert.match(viewerBridgeMessagesLib, /handleGridConformerMessage\(body, eventSource\)/);

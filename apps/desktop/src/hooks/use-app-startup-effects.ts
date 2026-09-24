@@ -127,14 +127,17 @@ export function useAppStartupEffects({
 
   useEffect(() => {
     if (openedPersistedTabsRef.current) return;
-    if (!isTauriRuntime() || documents.length > 0) return;
+    if ((!isTauriRuntime() && !window.BuretteMcpWorkspace?.restore) || documents.length > 0) return;
     const paths = Array.from(new Set(tabs
       .map((tab) => tab.location.kind === "file" || tab.location.kind === "text-file" ? tab.location.path : null)
       .filter((path): path is string => typeof path === "string" && !isTemporaryDocumentPath(path))));
     if (paths.length === 0) return;
     openedPersistedTabsRef.current = true;
     const restoreTabId = activeTabId;
-    void invoke<string[]>("existing_paths", { paths }).then(async (existingPaths) => {
+    const existing = window.BuretteMcpWorkspace
+      ? Promise.resolve(paths.filter(path => window.BuretteMcpWorkspace?.authorizedPaths?.includes(path)))
+      : invoke<string[]>("existing_paths", { paths });
+    void existing.then(async (existingPaths) => {
       useMoleculeStore.getState().pruneMissingFileTabs(paths, existingPaths);
       if (existingPaths.length === 0) return;
       await openPaths(existingPaths);

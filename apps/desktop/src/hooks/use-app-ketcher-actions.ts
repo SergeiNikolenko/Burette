@@ -22,6 +22,7 @@ import {
   waitForGridDocumentCloseTransition,
 } from "../lib/window-mutation-barrier";
 import type { MoleculeTab } from "../stores/molecule-store";
+import { useMoleculeStore } from "../stores/molecule-store";
 import type {
   TextFileDocument,
   ViewerDocument,
@@ -81,6 +82,15 @@ export function useAppKetcherActions({
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [ketcherDraftMolfile, setKetcherDraftMolfile] = useState("");
   const ketcherImportSequenceRef = useRef(0);
+  const saveKetcherDraft = useCallback((molfile: string) => {
+    setKetcherDraftMolfile(molfile);
+    if (!window.BuretteMcpWorkspace) return;
+    useMoleculeStore.setState(current => ({ tabs: current.tabs.map(tab => (
+      tab.id === current.activeTabId && tab.location.kind === "ketcher"
+        ? { ...tab, location: { ...tab.location, draftMolfile: molfile } }
+        : tab
+    )) }));
+  }, []);
 
   const openKetcher = useCallback(() => {
     openKetcherTab();
@@ -499,7 +509,7 @@ export function useAppKetcherActions({
     openKetcherSketch,
     openKetcherWithFragment,
     openKetcherWithStructures,
-    saveKetcherDraft: setKetcherDraftMolfile,
+    saveKetcherDraft,
     saveKetcherExportFile,
   };
 }

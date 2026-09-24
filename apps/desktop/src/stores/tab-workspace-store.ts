@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import {
   createDockTab,
   dockTabCatalog,
@@ -297,6 +297,7 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
     }),
     {
       name: workspaceStorageKey("burette.tab-workspaces"),
+      storage: createJSONStorage(() => window.BuretteMcpWorkspace?.storage ?? localStorage),
       version: 1,
       partialize: (state) => ({
         workspaces: Object.fromEntries(

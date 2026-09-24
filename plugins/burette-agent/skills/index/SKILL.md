@@ -89,6 +89,47 @@ local URLs without launching an external browser and navigate them in the
 in-app Browser. Do not use macOS `open`, Arc, Chrome, Safari, or another
 external browser unless the user explicitly asks for an external browser.
 
+## User handoff links
+
+When a response presents an opened molecular file, project, PDB entry, or saved
+scene, include a clickable "Open in Burette" link in the chat without waiting
+for another request. Use `burette.create_link` and its returned `deepLink`;
+the repository CLI `link` command is the fallback. Do not hand-encode paths.
+Prefer the exact local file for a file-based result, a PDB link for an explicit
+PDB lookup, or a registered desktop session link for that desktop session.
+An inline MCP session ID is not a registered desktop session ID.
+For unsaved/virtual documents, do not fabricate a file link or silently save:
+offer an export, or clearly label a link as opening the original source.
+A file/PDB link opens the source in the installed app on this Mac; it does not
+transfer unsaved widget edits, camera, or selection. Omit the link for unrelated
+discussion or when no valid target is available.
+
+## Updated-plugin acceptance
+
+For development updates, use the plugin-creator update workflow and the native
+source checkout's development documentation before presenting the result.
+Keep four separate facts: source/build, installed package, live MCP resource,
+and the exact mounted panel. None proves the next.
+
+- Verify the installed version and requested UI markers in its actual shell
+  assets. Compare the live resource with the corresponding installed resource,
+  not with a different shell bundle. Keep diagnostic output bounded.
+- Updating in the same task has worked; do not claim that a new task or an app
+  restart is always required. Its refresh trigger is not established. Check the
+  current connection first; an old resource connection does not prove every
+  tool connection is old, and a new server process does not prove panel refresh.
+- Do not present another old pane as the updated result. Preserve current
+  sessions and avoid repeated opener calls. A new task is a documented fallback
+  for tool pickup, not a guaranteed fix; create one only at the user's request.
+  Do not restart the host, kill MCP processes, or patch caches to force refresh.
+- For UI changes, inspect the requested header, buttons, labels, menus and their
+  clicks in the real plugin. A ready molecule or capture_scene image proves only
+  the molecular canvas, not the surrounding interface. Browser/component tests
+  are supporting checks, never native acceptance.
+- Report installed, live-connection-verified and visually verified separately.
+  If native inspection is unavailable, keep that gate incomplete. Do not call
+  the task finished or promise a refresh that has not been observed.
+
 ## Completion Gate
 
 A Burette workflow is complete only when:

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { RadixDropdownMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
@@ -8,39 +8,43 @@ import { isTauriRuntime } from "../lib/tauri";
 import { useFinderIconUrl } from "../hooks/use-finder-icon-url";
 import { useDefaultApplicationIconUrl } from "../hooks/use-default-application-icon-url";
 import { AppImageIcon } from "./ui/app-image-icon";
+import { WorkspaceFileHeader } from "./workspace-file-header";
+import { useNativeApplicationIcons } from "../hooks/use-native-application-icons";
+import { visibleEditorTargets } from "../lib/chemical-editor-targets";
+import { isLocalFilePath } from "../lib/browser-file-actions";
 
 type ActiveFile = {
   path: string;
   label: string;
 };
 
-export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
+export function OpenInEditorMenu({ state, actions, presentation = "chrome" }: { state: ShellViewState; actions: ShellActions; presentation?: "chrome" | "file-header" }) {
   const activeFile = useMemo(() => activeFileFromState(state), [state]);
-  const finderIconUrl = useFinderIconUrl();
-  const defaultApplicationIconUrl = useDefaultApplicationIconUrl(activeFile?.path ?? null);
+  const filePath = activeFile && isLocalFilePath(activeFile.path) ? activeFile.path : null;
+  const localFinderIconUrl = useFinderIconUrl();
+  const localDefaultIconUrl = useDefaultApplicationIconUrl(filePath);
   const [targets, setTargets] = useState<ChemicalEditorTarget[]>([]);
+  const nativeIcons = useNativeApplicationIcons(filePath, targets);
+  const finderIconUrl = window.BuretteMcpWorkspace ? nativeIcons.finder ?? null : localFinderIconUrl;
+  const defaultApplicationIconUrl = window.BuretteMcpWorkspace ? nativeIcons.default ?? null : localDefaultIconUrl;
   const [loading, setLoading] = useState(false);
   const [loadedPath, setLoadedPath] = useState<string | null>(null);
 
-  const refreshTargets = useCallback(async (path: string) => {
-    setLoading(true);
-    try {
-      const next = await actions.listChemicalEditorTargets(path);
-      setTargets(next);
-      setLoadedPath(path);
-    } finally {
-      setLoading(false);
-    }
-  }, [actions]);
-
+  const listTargets = useRef(actions.listChemicalEditorTargets);
+  listTargets.current = actions.listChemicalEditorTargets;
   useEffect(() => {
-    if (!activeFile) {
-      setTargets([]);
-      setLoadedPath(null);
-      return;
-    }
-    void refreshTargets(activeFile.path);
-  }, [activeFile?.path, refreshTargets]);
+    let cancelled = false;
+    setTargets([]);
+    setLoadedPath(null);
+    setLoading(Boolean(filePath));
+    if (filePath) void listTargets.current(filePath).then(next => {
+      if (!cancelled) {
+        setTargets(visibleEditorTargets(next));
+        setLoadedPath(filePath);
+      }
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [filePath]);
 
   const items = useMemo<MenuItemSpec[]>(() => {
     if (!activeFile) {
@@ -52,7 +56,7 @@ export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; ac
       id: `chemical-editor-${target.id}`,
       text: target.name,
       iconText: editorIconText(target.name),
-      iconUrl: editorIconUrl(target) ?? undefined,
+      iconUrl: nativeIcons[target.id] ?? editorIconUrl(target) ?? undefined,
       action: () => {
         void actions.openPathInChemicalEditor(activeFile.path, target.id, target.name);
       },
@@ -70,6 +74,19 @@ export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; ac
         text: "No compatible chemical editors found",
         disabled: true,
       }]),
+      { kind: "separator" as const },
+      {
+        kind: "submenu", id: "open-default-destination", text: "Default for Open",
+        items: [
+          { value: "default-app" as const, label: "System default app" },
+          { value: "finder" as const, label: "Reveal in Finder" },
+          ...visibleTargets.map(target => ({ value: `editor:${target.id}` as const, label: target.name })),
+        ].map(option => ({
+          kind: "checkbox" as const, id: `open-default-${option.value}`, text: option.label,
+          checked: state.preferences.openInDefaultDestination === option.value,
+          action: () => actions.setPreference("openInDefaultDestination", option.value),
+        })),
+      },
       { kind: "separator" as const },
       {
         kind: "item" as const,
@@ -92,19 +109,34 @@ export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; ac
         },
       },
     ];
-  }, [actions, activeFile, defaultApplicationIconUrl, finderIconUrl, loadedPath, loading, targets]);
+  }, [actions, activeFile, defaultApplicationIconUrl, finderIconUrl, loadedPath, loading, targets, nativeIcons, state.preferences.openInDefaultDestination]);
 
   if (!activeFile) return null;
+  if (!filePath && presentation !== "file-header") return null;
 
   const visibleTargets = targets.length > 0 ? targets : browserDevPreviewTargets(activeFile.path);
   const preferredTarget = preferredTargetForDestination(state.preferences.openInDefaultDestination, visibleTargets);
-  const preferredIconUrl = openDestinationIconUrl(
+  const preferredIconUrl = (preferredTarget && nativeIcons[preferredTarget.id]) || openDestinationIconUrl(
     state.preferences.openInDefaultDestination,
     preferredTarget,
     finderIconUrl,
     defaultApplicationIconUrl,
   );
   const label = openDestinationLabel(state.preferences.openInDefaultDestination, preferredTarget);
+  if (presentation === "file-header") {
+    const rootPath = state.sidebarProjects.map(project => project.rootPath)
+      .filter((path): path is string => Boolean(path && activeFile.path.startsWith(`${path}/`)))
+      .sort((a, b) => b.length - a.length)[0];
+    return <WorkspaceFileHeader activeFile={activeFile} rootPath={rootPath}
+      fileActionsAvailable={Boolean(filePath)}
+      rightDockOpen={state.rightDockOpen} bottomDockOpen={state.bottomDockOpen}
+      defaultApplicationIconUrl={preferredIconUrl} items={items} actions={actions} openLabel={label}
+      onOpen={() => {
+        if (preferredTarget) void actions.openPathInChemicalEditor(activeFile.path, preferredTarget.id, preferredTarget.name);
+        else if (state.preferences.openInDefaultDestination === "finder") void actions.revealPath(activeFile.path, activeFile.label);
+        else void actions.openPathWithDefaultApp(activeFile.path);
+      }} />;
+  }
 
   return (
     <RadixDropdownMenu
@@ -139,7 +171,7 @@ export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; ac
 function preferredTargetForDestination(destination: string, targets: ChemicalEditorTarget[]) {
   if (destination.startsWith("editor:")) {
     const targetId = destination.slice("editor:".length);
-    return targets.find((target) => target.id === targetId) ?? targets[0] ?? null;
+    return targets.find((target) => target.id === targetId) ?? null;
   }
   if (destination === "default-app" || destination === "finder") return null;
   return null;
@@ -148,7 +180,7 @@ function preferredTargetForDestination(destination: string, targets: ChemicalEdi
 function openDestinationLabel(destination: string, target: ChemicalEditorTarget | null) {
   if (destination === "default-app") return "Open with Default App";
   if (target) return `Open in ${target.name}`;
-  return "Reveal in Finder";
+  return destination === "finder" || destination === "auto" ? "Reveal in Finder" : "Open with Default App";
 }
 
 function openDestinationIconUrl(
@@ -159,8 +191,7 @@ function openDestinationIconUrl(
 ) {
   if (target) return editorIconUrl(target);
   if (destination === "finder" || destination === "auto") return finderIconUrl;
-  if (destination === "default-app") return defaultApplicationIconUrl;
-  return null;
+  return defaultApplicationIconUrl;
 }
 
 function openDestinationIconText(destination: string, target: ChemicalEditorTarget | null) {
@@ -171,7 +202,7 @@ function openDestinationIconText(destination: string, target: ChemicalEditorTarg
 
 function activeFileFromState(state: ShellViewState): ActiveFile | null {
   if (state.activeDocument?.path) {
-    return { path: state.activeDocument.path, label: "structure" };
+    return { path: state.activeDocument.path, label: state.activeDocument.title };
   }
   const location = state.activeTab?.location;
   if (location?.kind !== "text-file") return null;
@@ -208,7 +239,7 @@ function browserDevIconUrl(target: ChemicalEditorTarget) {
 }
 
 function browserDevPreviewTargets(path: string): ChemicalEditorTarget[] {
-  if (isTauriRuntime() || !import.meta.env.DEV) return [];
+  if (isTauriRuntime() || window.BuretteMcpWorkspace || !import.meta.env.DEV) return [];
   const params = new URLSearchParams(window.location.search);
   if (!params.has("devFiles")) return [];
   const previewTargets: Array<{

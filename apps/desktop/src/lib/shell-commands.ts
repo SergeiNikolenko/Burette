@@ -267,7 +267,7 @@ export function shellCommandsForQuery(query: string, actions: ShellActions): She
       id: `fetch-pdb-${fetchCommand.pdbId}`,
       group: "Commands",
       label: `Fetch ${fetchCommand.pdbId} from RCSB PDB`,
-      description: `Command: ${fetchCommand.command} · Download and open in Molstar`,
+      description: `Command: ${fetchCommand.command} · Download and open in a new tab`,
       run: () => actions.fetchPdbStructure(fetchCommand.pdbId),
     });
   }

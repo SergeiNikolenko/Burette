@@ -8,12 +8,12 @@
     app.insertAdjacentHTML('afterend', `
       <div id="buret-toolbar" role="toolbar" aria-label="Burette preview controls">
         <div class="buret-toolbar-content" data-buret-toolbar-content>
-          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle left panel">L<span class="buret-tooltip" role="tooltip">Toggle Mol* left object tree</span></button>
-          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle right panel">R<span class="buret-tooltip" role="tooltip">Toggle Mol* right properties panel</span></button>
+          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle Mol* left object tree"><span class="buret-panel-icon" aria-hidden="true"><span data-buret-mode-icon="SidebarLeft"></span><span data-panel-label="left">L</span></span><span class="buret-tooltip" role="tooltip">Toggle Mol* left object tree</span></button>
+          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle Mol* right properties panel"><span class="buret-panel-icon" aria-hidden="true"><span data-buret-mode-icon="SidebarRight"></span><span data-panel-label="right">R</span></span><span class="buret-tooltip" role="tooltip">Toggle Mol* right properties panel</span></button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq<span class="buret-tooltip" role="tooltip">Toggle sequence panel</span></button>
           <div class="buret-molstar-preset-slot" data-buret-molstar-preset-slot>
             <button id="buret-molstar-preset-trigger" class="buret-button buret-molstar-preset-trigger" type="button" data-buret-molstar-preset-trigger aria-label="Mol* representation preset" aria-haspopup="menu" aria-controls="buret-molstar-preset-menu" aria-expanded="false" title="Mol* representation preset">
-              <span data-buret-molstar-preset-label>Automatic</span>
+              <span data-buret-molstar-preset-label>Style: Auto</span>
               <span class="buret-molstar-preset-chevron" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
               <span class="buret-tooltip" role="tooltip">Choose component and representation preset</span>
             </button>

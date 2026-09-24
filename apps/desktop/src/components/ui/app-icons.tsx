@@ -16,6 +16,7 @@ function appIcon(name: keyof typeof glyphs) {
 
 export type AppIconType = ReturnType<typeof appIcon>;
 // BEGIN GENERATED EXPORTS
+export const Annotate = /* @__PURE__ */ appIcon("Annotate");
 export const SidebarFolder = /* @__PURE__ */ appIcon("SidebarFolder");
 export const SidebarFolderOpen = /* @__PURE__ */ appIcon("SidebarFolderOpen");
 export const SidebarGlobe = /* @__PURE__ */ appIcon("SidebarGlobe");

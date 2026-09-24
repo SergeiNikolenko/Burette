@@ -14,11 +14,16 @@ type ThemeTokens = {
 };
 
 export function readSystemThemeMode(): ThemeMode {
+  if (typeof window !== "undefined" && window.BuretteMcpWorkspace) return window.BuretteMcpWorkspace.theme;
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return "dark";
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
 export function subscribeSystemThemeMode(onChange: () => void): () => void {
+  if (typeof window !== "undefined" && window.BuretteMcpWorkspace) {
+    window.addEventListener("burette-host-theme", onChange);
+    return () => window.removeEventListener("burette-host-theme", onChange);
+  }
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
   const media = window.matchMedia("(prefers-color-scheme: light)");
   if (typeof media.addEventListener === "function") {
@@ -34,6 +39,7 @@ export function useSystemThemeMode(): ThemeMode {
 }
 
 export function resolveThemeMode(theme: ViewerPreferences["theme"], systemThemeMode = readSystemThemeMode()): ThemeMode {
+  if (typeof window !== "undefined" && window.BuretteMcpWorkspace) return systemThemeMode;
   if (theme === "light" || theme === "dark") return theme;
   return systemThemeMode;
 }

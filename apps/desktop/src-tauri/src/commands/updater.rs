@@ -1195,6 +1195,13 @@ sync_burette_codex_plugin() {{
       fi
     done
   fi
+  # A plugin installed from a source checkout is newer than any bundled copy;
+  # replacing it would silently downgrade the widget.
+  local install_marker="$staged_plugin/.burette-agent-install.json"
+  if [ -f "$install_marker" ] && ! /usr/bin/grep -q '\.app/Contents/Resources"' "$install_marker"; then
+    echo "codex plugin sync skipped: preserving source checkout install"
+    return 0
+  fi
   local plugin_installer="$plugin_src/scripts/install-local.mjs"
   local javascript_bin
   javascript_bin="$(PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v node || PATH="/opt/homebrew/bin:/usr/local/bin:$PATH" command -v bun || true)"

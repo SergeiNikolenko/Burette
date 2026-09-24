@@ -2362,6 +2362,7 @@
       ? `${safeStructureFileStem(rows[0]?.name || `molecule-${Number(rows[0]?.index) + 1 || 1}`, Number(rows[0]?.index))}.sdf`
       : `selected-${records.length}-molecules.sdf`;
     post('openSdfMolstarDocument', '[grid] Open selected molecules in Molstar.', {
+      openTarget: 'new-tab',
       documentId: cfg?.documentId || null,
       title,
       extension: 'sdf',
@@ -2375,7 +2376,7 @@
     setStatus(`[grid] Opening ${records.length.toLocaleString()} selected molecule${records.length === 1 ? '' : 's'} in Molstar.`);
   }
 
-  async function requestSingleMolstarDocument(row, cfg, openTarget = 'active-tab') {
+  async function requestSingleMolstarDocument(row, cfg, openTarget = 'new-tab') {
     const records = await sdfRecordTextsForMolstar([row]);
     const record = records[0] || null;
     const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
@@ -7041,7 +7042,7 @@
           </div>
           <div class="buret-grid-molecule-detail-actions">
             <button type="button" data-buret-detail-action="descriptors">Calculate descriptors</button>
-            <button type="button" data-buret-detail-action="molstar">Open in Mol*</button>
+            <button type="button" data-buret-detail-action="molstar">Open in new tab</button>
             <button type="button" data-buret-detail-action="ketcher">Edit in Ketcher</button>
             <button type="button" data-buret-detail-action="generate3d">Generate 3D</button>
             <button type="button" data-buret-detail-action="copy">Copy structure</button>

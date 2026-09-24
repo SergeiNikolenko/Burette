@@ -14,6 +14,9 @@ import "./styles/inspector-panel.css";
 import "./styles/dock-panels.css";
 import "./styles/drop-feedback.css";
 
+const NativeWorkspacePlacementControl = React.lazy(() => import("./components/native-workspace-placement-control")
+  .then(module => ({ default: module.NativeWorkspacePlacementControl })));
+
 installFrontendErrorLog();
 installKetcherBrowserRequire();
 
@@ -36,6 +39,22 @@ if (import.meta.env.VITE_BURETTE_WEB_DEMO === "1") {
     console.error("[Web demo analytics] Initialization failed", error);
   });
 }
-createRoot(document.getElementById("root")!).render(
-  <Root />,
-);
+if (!window.BuretteMcpWorkspace?.closed) {
+  const root = createRoot(document.getElementById("root")!);
+  // Keep host placement interactive while the molecular root is loading.
+  const host = window.BuretteMcpWorkspace ? document.createElement("div") : null;
+  if (host) {
+    host.dataset.workspacePlacementHost = "";
+    document.body.appendChild(host);
+  }
+  const controls = host ? createRoot(host) : null;
+  if (window.BuretteMcpWorkspace) window.BuretteMcpWorkspace.unmount = () => {
+    controls?.unmount();
+    host?.remove();
+    root.unmount();
+  };
+  root.render(<Root />);
+  controls?.render(<React.StrictMode><ErrorBoundary><React.Suspense fallback={null}>
+    <NativeWorkspacePlacementControl />
+  </React.Suspense></ErrorBoundary></React.StrictMode>);
+}

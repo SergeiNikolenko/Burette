@@ -748,12 +748,12 @@ function GridActionToolbar(props: GridControlProps) {
             id="open-selected-molstar"
             className="ab-btn ab-btn-icon"
             type="button"
-            aria-label="Open in Molstar"
+            aria-label="Open in new tab"
             disabled={props.selectedCount === 0}
             onClick={() => props.onRendererSwitch("molstar")}
           >
             <Cube className="ab-ico" aria-hidden="true" />
-            <ControlTooltip label={props.selectedCount ? "View selected molecules in Molstar" : "Select molecules to view in Molstar"} />
+            <ControlTooltip label={props.selectedCount ? "Open selected molecules in a new Burette tab" : "Select molecules to open in a new tab"} />
           </button> : null}
         </div>
       ) : null}

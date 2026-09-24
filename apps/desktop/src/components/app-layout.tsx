@@ -26,8 +26,8 @@ import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/th
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
 
-// Smallest the viewer/content column may become before the right dock stops
-// squeezing it (the point where an overlay dock takes over).
+// Collection grids may continue behind an overlay inspector; molecular viewers
+// must instead resize to the visible panel so their controls remain reachable.
 const MAIN_MIN_WIDTH = 420;
 // The editor tab strip is absolutely positioned over the first band of the
 // viewer column, so that band is the one part of it the bottom dock may not
@@ -303,7 +303,9 @@ export function AppLayout({
   const maxSidebarWidth = Math.max(280, Math.min(420, Math.floor(viewportWidth * 0.35)));
   const settingsMode = state.page === "settings";
   const chromeVisible = !settingsMode && !hostedMcpWidget;
-  const sidebarVisible = settingsMode || (!hostedMcpWidget && state.sidebarOpen);
+  // Hiding only the panel's content leaves react-resizable-panels' wrapper wide.
+  // The native host owns navigation, even when desktop sidebar state was restored.
+  const sidebarVisible = !window.BuretteMcpWorkspace && (settingsMode || (!hostedMcpWidget && state.sidebarOpen));
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
   const sidebarLayoutWidth = sidebarVisible ? sidebarWidth : 0;
   const workbenchWidth = viewportWidth - sidebarLayoutWidth;
@@ -338,9 +340,11 @@ export function AppLayout({
   const sidebarPanelRef = useCollapsiblePanelSync(sidebarVisible, sidebarWidth);
   const rightDockPanelRef = useCollapsiblePanelSync(rightDockOpen, rightDockWidth);
   const bottomDockPanelRef = useCollapsiblePanelSync(bottomDockOpen, state.bottomDockHeight);
-  const initialSidebarSize = useInitialSize(sidebarWidth);
-  const initialRightDockSize = useInitialSize(rightDockWidth);
-  const initialBottomDockSize = useInitialSize(state.bottomDockHeight);
+  // Seed closed panels collapsed: allocating their expanded width first can
+  // leave the center at 0% when a narrow host mounts before its first resize.
+  const initialSidebarSize = useInitialSize(sidebarVisible ? sidebarWidth : 0);
+  const initialRightDockSize = useInitialSize(rightDockOpen ? rightDockWidth : 0);
+  const initialBottomDockSize = useInitialSize(bottomDockOpen ? state.bottomDockHeight : 0);
   // Latest open flags / stored pixel sizes, readable from observer callbacks.
   const rightDockOpenRef = useRef(rightDockOpen);
   rightDockOpenRef.current = rightDockOpen;
@@ -437,7 +441,7 @@ export function AppLayout({
     return (
       <main
         className="app-shell"
-        data-theme={state.preferences.theme}
+        data-theme={window.BuretteMcpWorkspace ? effectiveTheme : state.preferences.theme}
         data-effective-theme={effectiveTheme}
         data-runtime={isTauriRuntime() ? "tauri" : "browser"}
         data-quicklook-debug="true"
@@ -457,7 +461,7 @@ export function AppLayout({
     <SidebarFileOperations state={state} actions={actions}><WorkspaceMenus state={state} actions={actions}><main
       ref={shellRef}
       className="app-shell"
-      data-theme={state.preferences.theme}
+      data-theme={window.BuretteMcpWorkspace ? effectiveTheme : state.preferences.theme}
       data-effective-theme={effectiveTheme}
       data-active-page-kind={activePageKind ?? undefined}
       data-runtime={tauriRuntime ? "tauri" : "browser"}
@@ -482,7 +486,7 @@ export function AppLayout({
     >
       <XyzrenderAnimationDialog />
       {!hostedMcpWidget && <div className="drag-region" data-tauri-drag-region />}
-      {chromeVisible && (
+      {chromeVisible && !window.BuretteMcpWorkspace && (
         <>
           {!hostedMcpWidget ? (
             <div className="chrome-leading-controls" data-tauri-drag-region>
@@ -523,7 +527,7 @@ export function AppLayout({
           ) : null}
           <div className="chrome-trailing-controls" data-tauri-drag-region>
             {!hostedMcpWidget ? <ActivityIndicator state={layoutState} actions={actions} /> : null}
-            {!hostedMcpWidget ? <OpenInEditorMenu state={layoutState} actions={actions} /> : null}
+            {!hostedMcpWidget && !window.BuretteMcpWorkspace ? <OpenInEditorMenu state={layoutState} actions={actions} /> : null}
             {!hostedMcpWidget ? (
               <button
                 type="button"
@@ -554,6 +558,9 @@ export function AppLayout({
           </header>
         </>
       )}
+      {window.BuretteMcpWorkspace ? <>
+        <OpenInEditorMenu state={layoutState} actions={actions} presentation="file-header" />
+      </> : null}
       <section className="workspace">
         {/* Sizes AND open flags are persisted from onLayoutChanged, not
             onResize: onResize is driven by a ResizeObserver and also fires for
@@ -597,7 +604,7 @@ export function AppLayout({
               <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />
             </div>
           </ResizablePanel>
-          {chromeVisible ? (
+          {chromeVisible && !window.BuretteMcpWorkspace ? (
             <ResizableHandle
               withHandle
               className="workspace-sidebar-handle"
@@ -626,12 +633,12 @@ export function AppLayout({
                   id="workbench-main"
                   className="workbench-main-panel"
                   minSize="0px"
-                  style={SPILLING_PANEL_STYLE}
+                  style={activeGridId ? SPILLING_PANEL_STYLE : CLIPPED_PANEL_STYLE}
                 >
                   <ResizablePanelGroup
                     orientation="vertical"
                     className="workbench-main-panels"
-                    style={{ minWidth: MAIN_MIN_WIDTH }}
+                    style={{ minWidth: activeGridId ? Math.max(0, Math.min(MAIN_MIN_WIDTH, workbenchWidth)) : 0 }}
                     elementRef={workbenchMainGroupRef}
                     data-panels-animating={bottomDockAnimating || undefined}
                     onLayoutChanged={(_layout, meta) => {

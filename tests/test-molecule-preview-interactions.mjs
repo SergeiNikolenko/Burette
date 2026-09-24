@@ -84,7 +84,7 @@ image._burettePreviewDispose();
 const viewerSource = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
 const resizeSource = viewerSource.slice(
   viewerSource.indexOf('  function installMolstarMoleculePreviewResize('),
-  viewerSource.indexOf('  function molstarPreviewLoadScript('),
+  viewerSource.search(/\n  (?:async )?function molstarPreviewLoadScript\(/u),
 );
 const actions = [];
 const installResize = new Function('window', 'document', 'Element', 'runMolstarMoleculePreviewAction', `
