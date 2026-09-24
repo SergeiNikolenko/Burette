@@ -134,6 +134,27 @@ CIF data blocks. `focusLigand` retains that reference when resolving an index or
 saving a selection, and scopes both selection and camera focus to that structure.
 References are local to the loaded scene; refresh them after reloading a file.
 
+## Annotate Mode
+
+Cmd+. or the header Annotate button covers the workspace with an annotation
+layer. A drag marks a region; a click marks the element under the pointer. Each
+annotation carries a comment and a bounded description of its target:
+
+- The host asks the viewer frame with the `describe_region` agent action
+  (`rect` in frame client pixels). Mol* answers with atom and residue
+  identities (at most 96 atoms) and a JPEG crop within the 1 MiB image budget;
+  xyzrender answers with 1-based atoms per structure; the grid answers with
+  zero-based source indexes and up to eight row texts. A click in xyzrender or
+  the grid also returns the atom or row `box`, which only lays out the outline.
+- Outside viewer frames, the layer reads visible text (at most 1200 characters).
+
+Send delivers the batch in one message. In the native Codex widget,
+`BuretteMcpWorkspace.sendAnnotations` pushes the details and at most four crops
+as model context, then posts the numbered summary as a user message. Selection
+context updates pause until the message is posted. Other surfaces have no chat
+and copy the summary to the clipboard. The bottom dock and its toggle are
+hidden on plugin surfaces.
+
 ## MolViewSpec Story Contract
 
 A Story is standard MolViewSpec multi-state data: `kind: "multiple"`, global
