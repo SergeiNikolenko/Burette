@@ -497,6 +497,16 @@ function prepareSummary(
   };
 }
 
+// The model answers from the text content, so it carries every reviewed count
+// instead of leaving chains, residues, bonds, or elements to structuredContent.
+export function structureSummaryText(summary: PublicStructureSummary): string {
+  const rows = summary.rows.map(({ label, value }) => `${label} ${value}`).join("; ");
+  const chains = (summary.components.chains ?? []).slice(0, 4).map((chain) =>
+    `chain ${chain.id}: ${chain.residues} residue${chain.residues === 1 ? "" : "s"}, ${chain.atoms} atom${chain.atoms === 1 ? "" : "s"}`,
+  );
+  return `${summary.fileName}: ${summary.summaryLine}. ${rows}.${chains.length ? ` ${chains.join("; ")}.` : ""}`;
+}
+
 export function prepareStructureText(
   text: string,
   fileName: string,

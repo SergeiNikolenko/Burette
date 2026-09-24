@@ -15,6 +15,7 @@ import {
   NOAUTH_TOOL_SECURITY,
   publicStructureOutputSchema,
   ketcherToolMeta,
+  RCSB_TOOL_ANNOTATIONS,
   TOOL_ANNOTATIONS,
   viewerToolMeta,
 } from "@/lib/contracts";
@@ -27,6 +28,7 @@ import {
   prepareAttachedStructure,
   preparePdbStructure,
   StructureServiceError,
+  structureSummaryText,
 } from "@/lib/structure-service";
 import {
   createViewerResourceMeta,
@@ -144,6 +146,13 @@ function toolError(error: unknown) {
   };
 }
 
+function ketcherReadyText(snapshot: ReturnType<typeof hostedKetcherSnapshot> | undefined): string {
+  const structure = snapshot?.structure;
+  if (!snapshot || !structure || structure.kind === "empty") return `Ketcher editor is ready with an empty canvas at structure revision ${snapshot?.structureRevision ?? 0}.`;
+  const smiles = structure.smiles ? ` (SMILES ${structure.smiles})` : "";
+  return `Ketcher editor is ready with a ${structure.kind} of ${structure.atomCount} atoms and ${structure.bondCount} bonds${smiles} at structure revision ${snapshot.structureRevision}. Nothing was written to a file.`;
+}
+
 function createServer(): McpServer {
   const server = new McpServer({
     name: "burette-molecular-viewer",
@@ -235,7 +244,7 @@ function createServer(): McpServer {
           }
         : null;
       return {
-        content: [{ type: "text" as const, text: "Ketcher editor is ready." }],
+        content: [{ type: "text" as const, text: ketcherReadyText(snapshot?.snapshot) }],
         structuredContent: {
           ok: true,
           surfaceId: created.surface.surfaceId,
@@ -328,7 +337,7 @@ function createServer(): McpServer {
           content: [
             {
               type: "text" as const,
-              text: prepared.summary.summaryLine,
+              text: structureSummaryText(prepared.summary),
             },
           ],
           structuredContent: prepared.summary,
@@ -355,7 +364,7 @@ function createServer(): McpServer {
         "Use this when the user asks to select or focus part of a structure, clear the selection, reset the camera, or hide/show polymers, ligands, ions, or water. Re-render the PDB entry or authorized attachment with up to eight allowlisted viewer actions.",
       inputSchema: molecularSceneInputSchema,
       outputSchema: publicStructureOutputSchema,
-      annotations: TOOL_ANNOTATIONS,
+      annotations: RCSB_TOOL_ANNOTATIONS,
       ...NOAUTH_TOOL_SECURITY,
       _meta: {
         ...viewerToolMeta("Preparing molecular scene…", "Molecular scene ready"),
@@ -376,7 +385,7 @@ function createServer(): McpServer {
         return {
           content: [{
             type: "text" as const,
-            text: `${prepared.summary.summaryLine} ${input.actions.length} viewer action${input.actions.length === 1 ? " was" : "s were"} requested; the widget will report which actions were applied.`,
+            text: `${structureSummaryText(prepared.summary)} ${input.actions.length} viewer action${input.actions.length === 1 ? " was" : "s were"} requested; the widget will report which actions were applied.`,
           }],
           structuredContent: prepared.summary,
           _meta: {
@@ -405,7 +414,7 @@ function createServer(): McpServer {
           .describe("Four-character PDB ID, for example 1CRN."),
       },
       outputSchema: publicStructureOutputSchema,
-      annotations: TOOL_ANNOTATIONS,
+      annotations: RCSB_TOOL_ANNOTATIONS,
       ...NOAUTH_TOOL_SECURITY,
       _meta: viewerToolMeta("Retrieving PDB structure…", "PDB structure ready"),
     },
@@ -416,7 +425,7 @@ function createServer(): McpServer {
           content: [
             {
               type: "text" as const,
-              text: prepared.summary.summaryLine,
+              text: structureSummaryText(prepared.summary),
             },
           ],
           structuredContent: prepared.summary,

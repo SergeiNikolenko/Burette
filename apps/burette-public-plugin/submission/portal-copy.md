@@ -47,16 +47,17 @@ account, and do not control local files or desktop sessions.
 3. Visualize this mmCIF file and tell me how many chains and residues it has.
 4. Preview the attached XYZ geometry and identify the element counts.
 5. Open Ketcher and sketch ethanol from the SMILES CCO.
+6. Open PDB 1HTB and focus the NAD ligand, hiding the water.
 
 ## Release notes
 
-Resubmission after review-case corrections. Burette now reports verified chain,
-residue, atom, bond, and element counts for the submitted PDB, mmCIF, and SDF
-fixtures; every structured tool result declares an output schema; and the five
-positive review cases are independent. The no-auth MCP server still provides
-supported molecular attachments, explicit RCSB PDB lookups, an isolated
-revisioned Ketcher editor, and interactive CSP-compatible previews. No reviewer
-account or credentials are required.
+Every structure result now states its chain, residue, atom, bond, and element
+counts in the text response, so reported numbers match the review cases on web
+and mobile. Ketcher reports correct atom and bond counts for aromatic and
+branched SMILES. The PDB lookup and scene tools now declare openWorldHint
+because they read public RCSB entries. Listing, support, privacy, terms, and
+demo URLs now point to the live Burette site, and the listing describes the
+Ketcher editor.
 
 ## Availability
 
@@ -72,7 +73,7 @@ supported.
 - **Reviewer credentials:** Not required.
 - **CSP connect domains:** The stable production app origin only, for self-hosted runtime assets such as RDKit WASM.
 - **CSP resource domains:** The stable production app origin only.
-- **CSP frame domains:** The stable production app origin only.
+- **CSP frame domains:** None. The widget renders without nested frames.
 
 ## Portal prerequisites
 
@@ -80,8 +81,10 @@ supported.
   the same app as the personal ChatGPT card before changing or resubmitting it.
 - Rename the existing ChatGPT card from the legacy spelling `Burrete` to
   `Burette`, and verify that the refreshed card shows the current listing copy.
-- Select the verified developer or business identity that matches the public
-  website and policies.
+- Select the verified developer identity (`Individual — SERGEI NIKOLENKO`) and
+  keep the Plugin Author field matching that verified name.
+- The listing URLs must use the live `burette-landing` host; the legacy
+  `burrete-landing` host returns 404.
 - Submit from the same OpenAI organization and a global-data-residency project.
 - The submitter needs Apps Management write permission.
 - After entering the MCP URL, scan tools and verify all five tool descriptors,

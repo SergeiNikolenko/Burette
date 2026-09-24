@@ -18,6 +18,9 @@ export const TOOL_ANNOTATIONS = {
   idempotentHint: true,
 } as const;
 
+// Tools that may read a public RCSB entry reach the public internet.
+export const RCSB_TOOL_ANNOTATIONS = { ...TOOL_ANNOTATIONS, openWorldHint: true } as const;
+
 export const NOAUTH_SECURITY_SCHEMES = [{ type: "noauth" as const }];
 export const NOAUTH_TOOL_SECURITY = {
   securitySchemes: NOAUTH_SECURITY_SCHEMES,

@@ -3973,7 +3973,10 @@ export default defineConfig({
           ? "assets/burette-hosted-shell.js"
           : undefined,
         assetFileNames: hostedMcpBuild
-          ? (assetInfo) => assetInfo.name?.endsWith(".css")
+          // Only the combined bundle stylesheet gets the stable name the widget
+          // HTML links. URL-imported sheets (molstar.css, viewer-runtime.css)
+          // would otherwise take it and leave the widget unstyled.
+          ? (assetInfo) => assetInfo.names.includes("style.css")
             ? "assets/burette-hosted-shell.css"
             : "assets/[name]-[hash][extname]"
           : undefined,

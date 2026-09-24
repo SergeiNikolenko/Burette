@@ -4,7 +4,7 @@
   "app_info": {
     "display_name": "Burette",
     "subtitle": "Preview molecular structures",
-    "description": "Burette opens supported molecular structure attachments and explicit public PDB entries as interactive 3D scenes, with bounded composition summaries for chains, residues, ligands, molecules, and elements.",
+    "description": "Burette opens supported molecular structure attachments and explicit public PDB entries as interactive 3D scenes, with bounded composition summaries for chains, residues, ligands, molecules, and elements. It also opens an isolated Ketcher editor for sketching small molecules and exporting them without writing files.",
     "category": "EDUCATION"
   },
   "tools": {
@@ -23,24 +23,24 @@
     "preview_pdb_structure": {
       "annotations": {
         "readOnlyHint": true,
-        "openWorldHint": false,
+        "openWorldHint": true,
         "destructiveHint": false
       },
       "justifications": {
         "read_only_justification": "Only retrieves the explicitly requested public RCSB PDB entry and computes a bounded preview.",
-        "open_world_justification": "Reads public structure data without writing to RCSB or any other external system.",
+        "open_world_justification": "Retrieves the explicitly requested entry from the public RCSB Protein Data Bank over the internet. It only reads public data and never writes to RCSB or any other external system.",
         "destructive_justification": "Cannot delete, overwrite, send, revoke, or perform another irreversible action."
       }
     },
     "render_molecular_scene": {
       "annotations": {
         "readOnlyHint": true,
-        "openWorldHint": false,
+        "openWorldHint": true,
         "destructiveHint": false
       },
       "justifications": {
         "read_only_justification": "Only re-renders one explicitly supplied structure with bounded client-side viewer actions and does not save a workspace.",
-        "open_world_justification": "Viewer actions affect only the isolated result widget and do not write to RCSB or another external system.",
+        "open_world_justification": "When the scene source is a PDB ID, it reads that public entry from the RCSB Protein Data Bank over the internet. Viewer actions affect only the isolated result widget and never write to RCSB or any other external system.",
         "destructive_justification": "Cannot modify the source file, persist a molecular edit, or perform an irreversible external action."
       }
     },
@@ -77,7 +77,7 @@
         "https://raw.githubusercontent.com/SergeiNikolenko/Burette/main/samples/mini.pdb"
       ],
       "tools_triggered": "preview_molecular_file",
-      "expected_output": "Reports 1 chain, 2 residues, and 9 atoms, then opens mini.pdb in the interactive Burette molecular viewer.",
+      "expected_output": "Reports 1 chain (A) with 2 residues and 9 atoms, elements C 5, N 2, O 2, then opens mini.pdb in the interactive Burette molecular viewer.",
       "expected_output_url": null
     },
     {

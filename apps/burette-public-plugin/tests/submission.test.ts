@@ -33,8 +33,8 @@ const publicToolNames = [
 
 const publicToolAnnotations = {
   preview_molecular_file: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
-  preview_pdb_structure: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
-  render_molecular_scene: { readOnlyHint: true, openWorldHint: false, destructiveHint: false },
+  preview_pdb_structure: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
+  render_molecular_scene: { readOnlyHint: true, openWorldHint: true, destructiveHint: false },
   open_ketcher: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },
   control_ketcher: { readOnlyHint: false, openWorldHint: false, destructiveHint: false },
 } as const;
