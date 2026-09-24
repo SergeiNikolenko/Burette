@@ -861,6 +861,7 @@
       return window.BuretteAgent.run({ command, args: action });
     }
     if (type === 'capture_scene') return captureAgentScene(action);
+    if (type === 'describe_region') return describeAgentRegion(action);
     if (type === 'replace_document') return replaceMolecularDocument(action);
     if (['set_scene_motion', 'set_scene_wiggle', 'rotate_camera'].includes(type)) return controlViewportFromAction(action);
     if (type === 'hide_waters') {
@@ -960,6 +961,82 @@
     }
     if (images.some(image => (image.dataUri?.length || 0) - 'data:image/png;base64,'.length > 1398104)) return agentActionFailure('capture_scene', 'PAYLOAD_TOO_LARGE', 'Captured image exceeds the 1 MiB image budget.');
     return { ok: true, command: 'capture_scene', result: { capturedAt: new Date().toISOString(), scene, depiction, images } };
+  }
+
+  // Annotate mode: report what lies under a screen rectangle (viewer client
+  // pixels) without touching the selection or the camera. The payload is
+  // bounded because the host forwards it into the agent's context.
+  async function describeAgentRegion(action) {
+    const rect = action.rect || {};
+    const left = Number(rect.left), top = Number(rect.top), width = Number(rect.width), height = Number(rect.height);
+    if (![left, top, width, height].every(Number.isFinite) || width < 0 || height < 0) {
+      return agentActionFailure('describe_region', 'INVALID_ARGS', 'describe_region requires rect {left, top, width, height}.');
+    }
+    const box = { left, top, right: left + width, bottom: top + height };
+    const hits = element => {
+      const r = element.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && r.right >= box.left && r.left <= box.right && r.bottom >= box.top && r.top <= box.bottom;
+    };
+    const result = { surface: 'document' };
+    if (isXyzrenderLassoSurfaceActive()) {
+      result.surface = 'xyzrender';
+      result.structures = [];
+      const click = width <= 24 && height <= 24;
+      const cx = left + width / 2, cy = top + height / 2;
+      for (const item of document.querySelectorAll('.buret-xyzrender-sheet-item')) {
+        if (!hits(item)) continue;
+        let atoms = xyzrenderAtomNodes(item).filter(atom => atom.x >= box.left - atom.radius && atom.x <= box.right + atom.radius
+          && atom.y >= box.top - atom.radius && atom.y <= box.bottom + atom.radius);
+        // A click names the one atom under the pointer and snaps the box to it.
+        if (click && atoms.length) {
+          const atom = atoms.reduce((best, next) => Math.hypot(next.x - cx, next.y - cy) < Math.hypot(best.x - cx, best.y - cy) ? next : best);
+          atoms = [atom];
+          const drawn = atom.element.getBoundingClientRect();
+          result.box = { left: drawn.left, top: drawn.top, width: drawn.width, height: drawn.height };
+        }
+        const indexes = atoms.map(atom => atom.index);
+        if (indexes.length) result.structures.push({ label: String(sheetEntryLabel(xyzrenderSheetItemEntry(item)) || '').split('/').pop().slice(0, 160),
+          atomCount: indexes.length, atoms: compactXyzrenderAtomSelector(indexes) });
+        if (click && indexes.length || result.structures.length >= 16) break;
+      }
+      return { ok: true, command: 'describe_region', result };
+    }
+    const viewer = activeMolstarViewer();
+    const canvas = viewer?.plugin?.canvas3d ? viewer.plugin.canvas3dContext?.canvas || document.querySelector('.msp-plugin canvas') : null;
+    const canvasRect = canvas?.getBoundingClientRect();
+    if (canvas && canvasRect.width && canvasRect.height && hits(canvas)) {
+      result.surface = 'molstar';
+      let lociList;
+      if (width < 6 && height < 6) {
+        const pick = molstarPickFromCanvasPoint(canvas, left + width / 2, top + height / 2);
+        lociList = pick?.loci?.kind === 'element-loci' ? [pick.loci] : [];
+      } else {
+        lociList = await molstarLassoProjectedLoci({ canvas, points: [
+          { x: box.left, y: box.top }, { x: box.right, y: box.top }, { x: box.right, y: box.bottom }, { x: box.left, y: box.bottom }] });
+      }
+      Object.assign(result, molstarLociIdentities(lociList));
+      const crop = {
+        x: Math.max(0, (box.left - canvasRect.left) / canvasRect.width),
+        y: Math.max(0, (box.top - canvasRect.top) / canvasRect.height),
+        width: Math.min(1, Math.max(width, 24) / canvasRect.width),
+        height: Math.min(1, Math.max(height, 24) / canvasRect.height),
+      };
+      const shot = action.image === false ? null
+        : await Promise.resolve(window.BuretteAgent?.run({ command: 'screenshot', args: { format: 'jpeg', quality: 0.85, axes: false, transparent: false, crop } })).catch(() => null);
+      const dataUri = shot?.result?.dataUri;
+      if (typeof dataUri === 'string' && dataUri.length <= 1398104) result.image = { dataUri, mimeType: shot.result.mimeType };
+      return { ok: true, command: 'describe_region', result };
+    }
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    let text = '';
+    for (let node = walker.nextNode(); node && text.length < 1200; node = walker.nextNode()) {
+      if (!node.nodeValue.trim()) continue;
+      range.selectNodeContents(node);
+      if ([...range.getClientRects()].some(r => r.right >= box.left && r.left <= box.right && r.bottom >= box.top && r.top <= box.bottom)) text += `${node.nodeValue.trim()} `;
+    }
+    result.text = text.trim().slice(0, 1200);
+    return { ok: true, command: 'describe_region', result };
   }
 
   function molstarStoryState() {
@@ -13287,7 +13364,9 @@ SOFTWARE.
       element.getAttribute('clip-path'),
       element.getAttribute('mask')
     ].filter(Boolean).join(' ');
-    const gradientMatch = values.match(/url\(#x\d+g(\d+)\)/u);
+    // xyzrender names atom gradients `x<render id>g<zero-based atom>`; newer
+    // releases use a hex render id, older ones a decimal one.
+    const gradientMatch = values.match(/url\(#x[0-9a-f]+g(\d+)\)/iu);
     if (gradientMatch) {
       const gradientIndex = Number(gradientMatch[1]) + 1;
       return Number.isInteger(gradientIndex) && gradientIndex > 0 ? gradientIndex : null;
@@ -26969,9 +27048,22 @@ SOFTWARE.
     const manager = activeMolstarViewer()?.plugin?.managers?.structure?.selection;
     const count = Number(manager?.stats?.elementCount) || 0;
     if (!count) return null;
+    const { atomIdentities, residues } = molstarLociIdentities([...manager.entries?.values?.() || []].map(entry => entry.selection));
+    return { source: 'viewer', level: molstarSelectionLevel(), atoms: count,
+      residueCount: Number(manager.stats?.residueCount) || residues.length,
+      atomIdentities, residues, truncated: count > atomIdentities.length };
+  }
+
+  // Up to 96 atom identities (and their residues) from element loci, plus the
+  // full atom count. Only scalar identifiers leave the viewer.
+  function molstarLociIdentities(lociList) {
     const atoms = [], residues = new Map();
-    for (const entry of manager.entries?.values?.() || []) {
-      for (const element of entry.selection?.elements || []) {
+    let atomCount = 0;
+    for (const loci of lociList) {
+      if (!loci) continue;
+      atomCount += Number(molstarStructureRuntime().StructureElement?.Loci?.size?.(loci)) || 0;
+      if (atoms.length >= 96) continue;
+      for (const element of loci?.elements || []) {
         molstarContextOrderedSetForEach(element.indices, index => {
           if (atoms.length >= 96) return false;
           const atom = molstarContextAtomFromModelIndex(element.unit?.model, element.unit?.elements?.[index]);
@@ -26988,11 +27080,8 @@ SOFTWARE.
         });
         if (atoms.length >= 96) break;
       }
-      if (atoms.length >= 96) break;
     }
-    return { source: 'viewer', level: molstarSelectionLevel(), atoms: count,
-      residueCount: Number(manager.stats?.residueCount) || residues.size,
-      atomIdentities: atoms, residues: [...residues.values()], truncated: count > atoms.length };
+    return { atomCount, atomIdentities: atoms, residues: [...residues.values()] };
   }
 
   function installMolstarSelectionPreviewSync(viewer) {

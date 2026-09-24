@@ -1,0 +1,70 @@
+/* Annotate mode. The floating chrome is dark in both themes, like the Codex
+   annotate tool it mirrors; only the header toggle follows the app theme. */
+.annotation-layer {
+  --annotation-accent: #3b82f6;
+  position: absolute; inset: 0; z-index: 60;
+  font: 400 14px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+.annotation-surface {position: absolute; inset: 0; cursor: crosshair; touch-action: none}
+.annotation-layer[data-capturing] .annotation-surface {cursor: progress}
+.annotation-region {
+  position: absolute; box-sizing: border-box; pointer-events: none;
+  border: 2px dashed var(--annotation-accent); background: rgb(59 130 246 / 10%);
+}
+.annotation-region[data-element] {border-style: solid; border-radius: 3px; background: transparent}
+.annotation-pin {
+  position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; padding: 0; box-sizing: border-box;
+  display: grid; place-items: center; border: 2px solid #fff; border-radius: 50% 50% 50% 0;
+  background: var(--annotation-accent); color: #fff; font-size: 11px; font-weight: 600; line-height: 1;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 28%); cursor: pointer;
+}
+span.annotation-pin {pointer-events: none}
+.annotation-composer {
+  position: absolute; width: 320px; height: 40px; box-sizing: border-box; margin: 0;
+  display: flex; align-items: center; gap: 8px; padding: 0 6px 0 16px;
+  border: 1px solid rgb(255 255 255 / 8%); border-radius: 20px; background: rgb(28 28 28 / 97%);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 35%); animation: annotation-pop 140ms ease-out;
+}
+.annotation-composer input {
+  flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #f4f4f4; font: inherit; font-size: 14px;
+}
+.annotation-composer input::placeholder {color: #8c8c8c}
+.annotation-submit, .annotation-stop {
+  display: grid; place-items: center; flex: none; width: 28px; height: 28px; padding: 0;
+  border: 0; border-radius: 50%; background: #f4f4f4; color: #161616; cursor: pointer;
+}
+.annotation-submit:disabled {background: #4a4a4a; color: #9a9a9a; cursor: default}
+.annotation-bar {
+  position: absolute; left: 50%; bottom: 20px; height: 40px; box-sizing: border-box;
+  display: flex; align-items: center; gap: 10px; padding: 0 6px 0 10px; white-space: nowrap;
+  border: 1px solid rgb(255 255 255 / 8%); border-radius: 14px; background: rgb(28 28 28 / 97%); color: #f4f4f4;
+  box-shadow: 0 10px 28px rgb(0 0 0 / 30%);
+}
+.annotation-grip {
+  width: 10px; height: 16px; cursor: grab; touch-action: none; opacity: .55;
+  background: radial-gradient(circle, currentColor 1.3px, transparent 1.5px) 0 0 / 5px 5.33px;
+}
+.annotation-bar-label {padding-right: 4px}
+.annotation-bar-label[data-error] {color: #ff8a80; max-width: 360px; overflow: hidden; text-overflow: ellipsis}
+.annotation-bar-divider {width: 1px; height: 18px; background: rgb(255 255 255 / 16%)}
+.annotation-cancel, .annotation-send {
+  height: 30px; padding: 0 10px; border: 0; border-radius: 9px; font: inherit; cursor: pointer;
+}
+.annotation-cancel {background: transparent; color: #e8e8e8}
+.annotation-cancel:hover {background: rgb(255 255 255 / 8%)}
+.annotation-send {padding: 0 12px; background: #2f6fed; color: #fff; font-weight: 500}
+.annotation-send:disabled {opacity: .5; cursor: default}
+.annotation-working {
+  padding: 0 6px 0 8px; color: transparent; font-size: 15px;
+  background: linear-gradient(90deg, #8c8c8c 0%, #f4f4f4 50%, #8c8c8c 100%) 0 0 / 200% 100%;
+  -webkit-background-clip: text; background-clip: text; animation: annotation-shimmer 1.6s linear infinite;
+}
+.annotation-stop {background: #3a3a3a; color: #f4f4f4}
+.annotate-toggle[data-active] {
+  width: auto !important; padding: 0 10px 0 8px !important; gap: 6px; border-radius: 999px !important;
+  background: rgb(59 130 246 / 14%) !important; color: #2563eb;
+}
+[data-theme="dark"] .annotate-toggle[data-active], .dark .annotate-toggle[data-active] {background: rgb(59 130 246 / 18%) !important; color: #7aa7f7}
+@keyframes annotation-pop {from {opacity: 0; transform: scale(.96)} to {opacity: 1; transform: none}}
+@keyframes annotation-shimmer {to {background-position: -200% 0}}
+@media (prefers-reduced-motion: reduce) {.annotation-composer, .annotation-working {animation: none}}

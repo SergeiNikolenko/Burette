@@ -19,7 +19,6 @@
 .workspace-file-panels {display:flex; gap:2px; flex:none}
 .workspace-file-header .workspace-file-icon-button {width:28px; padding:0; flex:none; border-radius:7px}
 .workspace-file-header button[aria-pressed="true"] {background:var(--surface-hover, #f3f3f3)}
-.workspace-file-bottom-icon {transform:rotate(-90deg)}
 .workspace-file-open-primary {border-radius:17px 0 0 17px}
 .workspace-file-open-primary img {width:18px; height:18px; object-fit:contain}
 .workspace-file-header .workspace-file-open-menu {padding:0 6px; border-radius:0 17px 17px 0}

@@ -16,6 +16,7 @@ declare global {
         set: (mode: "inline" | "fullscreen") => Promise<{ ok: boolean; mode: string }>;
       };
       preparePreview: (html: string) => string;
+      sendAnnotations?: (message: { text: string; context: { content: ({ type: "text"; text: string } | { type: "image"; data: string; mimeType: string })[] } }) => Promise<void>;
       unmount?: () => void;
     };
   }

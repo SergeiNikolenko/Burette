@@ -1,16 +1,16 @@
+import { AnnotateToggle } from "./annotation-layer";
 import { RadixDropdownMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
-import { ChevronDown, ChevronRight, Copy, SidebarLeft, SidebarRight } from "./ui/app-icons";
+import { ChevronDown, ChevronRight, Copy, SidebarRight } from "./ui/app-icons";
 import type { ShellActions } from "./types";
 import type { MenuItemSpec } from "./menu-types";
 import "./workspace-file-header.css";
 
-export function WorkspaceFileHeader({ activeFile, rootPath, rightDockOpen, bottomDockOpen, defaultApplicationIconUrl, items, actions, fileActionsAvailable = true, onOpen, openLabel = "Open with default app" }: {
+export function WorkspaceFileHeader({ activeFile, rootPath, rightDockOpen, defaultApplicationIconUrl, items, actions, fileActionsAvailable = true, onOpen, openLabel = "Open with default app" }: {
   activeFile: { path: string; label: string };
   rootPath?: string | null;
   fileActionsAvailable?: boolean;
   rightDockOpen: boolean;
-  bottomDockOpen: boolean;
   defaultApplicationIconUrl: string | null;
   items: MenuItemSpec[];
   onOpen?: () => void;
@@ -60,11 +60,7 @@ export function WorkspaceFileHeader({ activeFile, rootPath, rightDockOpen, botto
           )} />
       </div> : null}
       <div className="workspace-file-panels" role="group" aria-label="Workspace panels">
-        <button type="button" className="workspace-file-icon-button" aria-label="Toggle bottom panel" aria-pressed={bottomDockOpen}
-          onClick={() => actions.toggleDock("bottom")}>
-          <SidebarLeft className="workspace-file-bottom-icon" size={18} aria-hidden />
-          <ShortcutTooltip label={bottomDockOpen ? "Hide bottom panel" : "Show bottom panel"} />
-        </button>
+        <AnnotateToggle className="workspace-file-icon-button" />
         <button type="button" className="workspace-file-icon-button" aria-label="Toggle right panel" aria-pressed={rightDockOpen}
           onClick={() => actions.toggleDock("right")}>
           <SidebarRight size={18} aria-hidden />

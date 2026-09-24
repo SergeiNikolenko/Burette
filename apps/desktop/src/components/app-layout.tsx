@@ -25,6 +25,7 @@ import { activeViewerIframeForDocument, postMessageToViewerSource } from "../lib
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
+import { AnnotateToggle, AnnotationLayer } from "./annotation-layer";
 
 // Collection grids may continue behind an overlay inspector; molecular viewers
 // must instead resize to the visible panel so their controls remain reachable.
@@ -323,7 +324,10 @@ export function AppLayout({
     ? "112px"
     : "calc(92px / var(--window-zoom, 1) + 100px)";
   const rightDockOpen = !settingsMode && !hostedMcpWidget && state.rightDockOpen;
-  const bottomDockOpen = !settingsMode && !hostedMcpWidget && state.bottomDockOpen;
+  // The agent plugin surfaces (native widget and browser agent shell) have no
+  // bottom dock: its Jobs/compute tabs are excluded there.
+  const pluginSurface = Boolean(window.BuretteMcpWorkspace) || state.buildInfo.isAgentShell;
+  const bottomDockOpen = !settingsMode && !hostedMcpWidget && !pluginSurface && state.bottomDockOpen;
   const sidebarElementRef = useRef<HTMLDivElement | null>(null);
   const rightDockElementRef = useRef<HTMLDivElement | null>(null);
   const shellRef = usePanelEdgeVariables([
@@ -528,7 +532,8 @@ export function AppLayout({
           <div className="chrome-trailing-controls" data-tauri-drag-region>
             {!hostedMcpWidget ? <ActivityIndicator state={layoutState} actions={actions} /> : null}
             {!hostedMcpWidget && !window.BuretteMcpWorkspace ? <OpenInEditorMenu state={layoutState} actions={actions} /> : null}
-            {!hostedMcpWidget ? (
+            {!hostedMcpWidget ? <AnnotateToggle className="chrome-button dock-toggle-button" /> : null}
+            {!hostedMcpWidget && !pluginSurface ? (
               <button
                 type="button"
                 className="chrome-button dock-toggle-button"
@@ -661,7 +666,7 @@ export function AppLayout({
                         <ViewerArea state={layoutState} actions={actions} />
                       </section>
                     </ResizablePanel>
-                    {chromeVisible ? (
+                    {chromeVisible && !pluginSurface ? (
                       <ResizableHandle
                         withHandle
                         className="resizable-handle-horizontal"
@@ -718,6 +723,7 @@ export function AppLayout({
             </section>
           </ResizablePanel>
         </ResizablePanelGroup>
+        {!hostedMcpWidget ? <AnnotationLayer documentTitle={state.activeDocument?.title ?? "Burette"} /> : null}
       </section>
       <FileDropFeedback preview={dropPreview} />
     </main></WorkspaceMenus></SidebarFileOperations>
