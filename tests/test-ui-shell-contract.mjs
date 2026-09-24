@@ -6315,7 +6315,7 @@ assert.match(previewViewer, /actions\.push\(\['save-modified', 'Save modified st
 assert.match(previewViewer, /actions\.push\(\['save-format:mmcif', 'Save as mmCIF'\]\);/);
 assert.match(previewViewer, /if \(molstarModifiedPdbExportAvailable\(\)\) actions\.push\(\['save-format:pdb', 'Save as PDB'\]\);/);
 assert.match(previewViewer, /if \(molstarContextSdfExportAvailable\(target\)\) actions\.push\(\['save-format:sdf', 'Save ligand as SDF'\]\);/);
-assert.match(previewViewer, /Open in new tab/);
+assert.match(previewViewer, /actions\.push\(\['molstar', 'Open in new tab'\]\)/);
 assert.match(previewViewer, /Save modified structure/);
 assert.match(previewViewer, /Save as mmCIF/);
 assert.match(previewViewer, /Save as PDB/);
