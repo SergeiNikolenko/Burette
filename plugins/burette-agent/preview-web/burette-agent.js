@@ -1213,6 +1213,7 @@
       auth_comp_id: authComp,
       entityType,
       moleculeType: ah.derived?.residue?.moleculeType?.[residueIndex],
+      group_PDB: valueAt(residues.group_PDB, residueIndex),
       residueIndex,
       chainIndex
     };
@@ -1294,6 +1295,9 @@
     if (entityType === 'non-polymer') return COMMON_IONS.has(comp) ? 'ion' : 'ligand';
     if (entityType === 'polymer' && atom.moleculeType === 5) return 'protein';
     if (entityType === 'polymer' && [6, 7, 8].includes(atom.moleculeType)) return 'nucleic';
+    // Coordinate-only PyMOL ligand exports use UNK/HETATM; CCD also uses
+    // UNK for unknown amino acids, so respect the file's explicit record type.
+    if (comp === 'UNK' && atom.group_PDB === 'HETATM') return 'ligand';
     if (STANDARD_AA.has(comp)) return 'protein';
     if (NUCLEIC.has(comp)) return 'nucleic';
     if (entityType === 'polymer') return 'polymer';
@@ -1467,6 +1471,9 @@
   }
 
   function resolveSelection(selection) {
+    if (typeof selection === 'string' && ['all', 'polymer', 'protein', 'nucleic', 'branched', 'ligand', 'ion', 'water'].includes(selection)) {
+      return resolveSelection({ kind: selection });
+    }
     if (!selection || selection === 'last') {
       if (!state.lastSelectionId) throw coded('INVALID_ARGS', 'No previous selection exists.');
       return state.selections.get(state.lastSelectionId);
@@ -1490,6 +1497,13 @@
     }
     const atoms = collectAtoms(selector, { includePositions: false, maxAtoms: 200000 });
     const schemas = schemasForSelector(selector, atoms, options.warnings);
+    // Residue addresses are local to a structure: separate CIF blocks can reuse
+    // every chain, residue and atom identifier. Mol* supports an explicit filter
+    // alongside its residue schema, so scope the visual action as well as counts.
+    const structureIds = new Set(atoms.map(atom => atom.structureId));
+    const scopedStructures = selector.structure != null || selector.structureId != null
+      ? new Set(getStructures().filter(entry => structureIds.has(String(entry.ref))).map(entry => entry.data))
+      : null;
     if (action === 'select' && options.mode !== 'add') {
       try { viewer.structureInteractivity({ action: 'select' }); } catch (_) {}
     }
@@ -1507,6 +1521,7 @@
         viewer.structureInteractivity({
           elements: schema,
           action,
+          filterStructure: scopedStructures ? structure => scopedStructures.has(structure) : undefined,
           applyGranularity: options.granularity !== 'atom',
           focusOptions: action === 'focus' ? focusOptions : undefined
         });

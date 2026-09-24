@@ -94,7 +94,7 @@ export function createWorkspaceTransport({ descriptor, assets, exchange, isClose
         queued.push({ id: item.actionId, status: 'queued', action: paths.length
           ? { ...item.action, paths }
           : { type: 'manage_tabs', operation: 'focus', tabId: existing.id } });
-      } else if (!tabOperations[item.action.type] && !['manage_tabs', 'open_ketcher', 'open_files', 'open_docking_view'].includes(item.action.type)
+      } else if (!tabOperations[item.action.type] && !['manage_tabs', 'open_ketcher', 'open_files', 'open_docking_view', 'set_workspace_panel'].includes(item.action.type)
         && item.documentId !== state().activeDocument?.id) {
         await exchange({ completed: { actionId: item.actionId, error: 'The active document changed before execution.', result: { ok: false, error: { code: 'STALE_TARGET', message: 'Observe the active document again.' } } } });
       } else queued.push({ id: item.actionId, status: 'queued', action: tabOperations[item.action.type]

@@ -1,5 +1,13 @@
 /* Shared Quick Look viewer shell style. Keep app runtimes linked here; do not fork host-specific Mol* chrome. */
+.buret-molstar-tooltip[popover] { inset: auto; margin: 0; }
+.buret-control-tooltips :is(#buret-toolbar,.buret-viewport-rail,.buret-docking-poses,.buret-corner-toggle) .buret-tooltip { display: none; }
+/* Empty scenes and loading states use Burette's own shell on every surface. */
+.msp-plugin .msp-logo { display: none !important; }
+#app.buret-molstar-initializing .msp-plugin,
+#app.buret-inspector-updating .msp-plugin canvas { visibility: hidden; }
+
 :root {
+  color-scheme: dark;
   --buret-viewer-ui-scale: 0.9;
   --buret-toolbar-safe-top: 12px;
   --buret-canvas-background: #000000;
@@ -9,7 +17,6 @@
   --buret-toolbar-border: rgba(255, 255, 255, 0.10);
   --buret-toolbar-hover: rgba(255, 255, 255, 0.14);
   --buret-toolbar-color: rgba(255, 255, 255, 0.94);
-  --buret-toolbar-shadow: 0 8px 22px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.06);
   --buret-control-island-right: 12px;
   --buret-control-island-gap: 6px;
   --buret-generate-3d-control-right: 70px;
@@ -38,6 +45,43 @@
   --buret-select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='rgba(255,255,255,0.62)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M3 4.5l3 3 3-3'/></svg>");
 }
 html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
+
+/* Shared floating chrome: desktop and embedded plugin use the same surface.
+   Molecular colors and representations are deliberately unaffected. */
+body .msp-plugin [class*="msp-accent-color"] { color: var(--buret-molstar-text) !important; }
+body .msp-plugin :is(button,input,select,[tabindex]):is(:hover,:focus,:focus-visible) { outline-color: var(--buret-molstar-border) !important; }
+body #buret-toolbar { border-radius:18px; gap:2px; box-shadow:0 1px 4px rgb(0 0 0 / 8%); }
+body #buret-viewport-rail, body #buret-scene-tree-toggle { border-radius:18px; box-shadow:0 1px 4px rgb(0 0 0 / 8%); }
+body #buret-toolbar .buret-toolbar-content { gap:2px; }
+body #buret-toolbar .buret-button { padding-inline:5px; }
+body #buret-toolbar .buret-molstar-preset-trigger { min-width:76px; padding-inline:6px; }
+body :is(.buret-button,.buret-rail-button) { border-radius:10px; }
+body :is(.buret-button,.buret-rail-button) svg { width:16px; height:16px; }
+body:is(.buret-theme-light,.buret-theme-dark) :is(
+  .buret-tree-menu,.buret-molstar-preset-menu,.buret-viewport-menu,
+  .buret-xyzrender-popover,.buret-docking-pose-files,.buret-story-hover-card
+) {
+  border:1px solid var(--buret-toolbar-border);
+  border-radius:18px; background:var(--buret-toolbar-background);
+  color:var(--buret-toolbar-color); box-shadow:0 4px 16px rgb(0 0 0 / 8%);
+}
+body:is(.buret-theme-light,.buret-theme-dark) .buret-docking-poses.buret-molstar-story {
+  border-radius:18px; background:var(--buret-toolbar-background);
+  border-color:var(--buret-toolbar-border); box-shadow:0 1px 4px rgb(0 0 0 / 8%);
+}
+body :is(.buret-tree-menu-item,.buret-docking-pose-file) { border-radius:10px; }
+body .buret-molstar-story .buret-docking-pose-main { gap:2px; }
+body .buret-molstar-story button { border-radius:14px; }
+body .buret-molstar-story .buret-docking-pose-current { width:min(220px,30vw); }
+body .buret-molstar-story :is(.buret-docking-pose-previous,.buret-docking-pose-next,.buret-molstar-story-open) {
+  width:30px; padding:6px; display:inline-flex; align-items:center; justify-content:center;
+}
+body .buret-molstar-story button svg { width:16px; height:16px; }
+body .buret-molstar-story .buret-docking-pose-previous svg { transform:rotate(180deg); }
+body .buret-tooltip {
+  border-radius:10px; background:var(--buret-toolbar-background);
+  box-shadow:0 4px 16px rgb(0 0 0 / 8%); font-size:12px;
+}
 html.buret-transparent-background,
 html.buret-transparent-background body,
 html.buret-transparent-background #app,
@@ -48,14 +92,14 @@ html.buret-transparent-background canvas { background: transparent !important; b
 body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #f2f2f2; }
 strong { font-weight: 400; }
 body.buret-theme-light {
+  color-scheme: light;
   --buret-control-fill: rgb(244, 244, 244);
   --buret-shell-background: #ffffff;
   --buret-panel-background: var(--buret-control-fill);
   --buret-toolbar-background: #ffffff;
-  --buret-toolbar-border: rgba(0, 0, 0, 0.08);
-  --buret-toolbar-hover: rgba(0, 0, 0, 0.04);
+  --buret-toolbar-border: rgba(0, 0, 0, 0.12);
+  --buret-toolbar-hover: rgba(0, 0, 0, 0.08);
   --buret-toolbar-color: rgba(20, 21, 23, 0.92);
-  --buret-toolbar-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 12px rgba(0, 0, 0, 0.06);
   --buret-molstar-panel-background: var(--buret-control-fill);
   --buret-molstar-row-background: var(--buret-control-fill);
   --buret-molstar-field-background: rgb(255, 255, 255);
@@ -94,6 +138,12 @@ body.buret-theme-dark {
   --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
   --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
+}
+/* Resolve neutral accents after each theme's base palette. */
+body:is(.buret-theme-light,.buret-theme-dark) {
+  --buret-molstar-accent: var(--buret-molstar-text);
+  --buret-menu-accent: var(--buret-molstar-text);
+  --buret-menu-focus-ring: var(--buret-molstar-muted-text);
 }
 body.burette-opaque-background,
 body.burette-opaque-background #app {
@@ -555,7 +605,9 @@ body.burette-mobile-host #buret-scene-tree {
   border-radius: 12px;
   color: var(--buret-toolbar-color);
   background: var(--buret-toolbar-background);
-  box-shadow: var(--buret-toolbar-shadow);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   cursor: grab;
@@ -663,7 +715,9 @@ body.buret-toolbar-collapsed #buret-selection-bar {
   border-radius: 12px;
   color: var(--buret-toolbar-color);
   background: var(--buret-toolbar-background);
-  box-shadow: var(--buret-toolbar-shadow);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
@@ -930,20 +984,22 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   flex-direction: column;
   width: min(148px, calc(100vw - 32px));
   height: 196px;
-  min-width: 132px;
-  min-height: 150px;
+  min-width: 148px;
+  min-height: 126px;
   max-width: min(340px, calc(100vw - 16px));
   max-height: min(420px, calc(100vh - 16px));
   box-sizing: border-box;
-  padding: 5px;
+  padding: 10px;
   overflow: hidden;
   pointer-events: auto;
   user-select: none;
   border: 1px solid var(--buret-molstar-border);
-  border-radius: var(--buret-molstar-panel-radius);
+  border-radius: 14px;
   color: var(--buret-molstar-text);
-  background: var(--buret-molstar-panel-background);
-  box-shadow: 0 18px 44px var(--buret-molstar-shadow);
+  background: color-mix(in srgb, var(--buret-molstar-panel-background) 92%, transparent);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 8px 28px var(--buret-molstar-shadow);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 /* Only the header and the drawing are the grab area; the buttons under them keep a
@@ -958,10 +1014,10 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 }
 .buret-molecule-card-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 6px;
   flex: 0 0 auto;
-  padding: 1px 1px 5px 4px;
+  padding: 0 0 6px 2px;
 }
 .buret-molecule-card-heading {
   display: flex;
@@ -979,20 +1035,12 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.buret-molecule-card-subtitle {
-  overflow: hidden;
-  color: var(--buret-molstar-muted-text);
-  font-size: 10px;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+
 /* The edge handles are laid over the whole card, so the controls take a stacking
    context of their own — the border stays grabbable right up to a button, and the
    button itself is never swallowed by the handle crossing it. */
 .buret-molecule-card-icon,
 .buret-molecule-card-button,
-.buret-molecule-card-sizes,
 .buret-molecule-card-nav {
   position: relative;
   z-index: 3;
@@ -1004,7 +1052,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   flex: 0 0 auto;
   border-radius: 6px;
   padding: 1px;
-  background: var(--buret-molstar-field-background);
+  background: transparent;
 }
 .buret-molecule-card-step {
   display: grid;
@@ -1073,33 +1121,41 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   z-index: 42;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   max-width: 220px;
-  height: 36px;
-  padding: 0 11px 0 9px;
+  height: 30px;
+  padding: 0 10px;
   border: 1px solid var(--buret-molstar-border);
-  border-radius: 999px;
-  background: var(--buret-molstar-panel-background);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--buret-molstar-panel-background) 92%, transparent);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
   color: var(--buret-molstar-text);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
-  font: inherit;
-  font-size: 12px;
+  box-shadow: 0 2px 8px var(--buret-molstar-shadow);
+  font: 500 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+  transition: background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 .buret-molecule-preview-chip:hover {
   background: var(--buret-molstar-hover-background);
-  transform: translateY(-1px);
+  box-shadow: 0 3px 12px var(--buret-molstar-shadow);
+}
+.buret-molecule-preview-chip:active {
+  transform: scale(.97);
 }
 .buret-molecule-preview-chip:focus-visible {
-  outline: 2px solid var(--buret-molstar-accent);
+  outline: 1px solid var(--buret-molstar-muted-text);
   outline-offset: 2px;
 }
 .buret-molecule-preview-chip > svg {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
   flex: 0 0 auto;
-  color: var(--buret-molstar-accent);
+  color: var(--buret-molstar-muted-text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-molecule-preview-chip { transition: none; }
+  .buret-molecule-preview-chip:active { transform: none; }
 }
 .buret-molecule-preview-chip-label {
   min-width: 0;
@@ -1107,83 +1163,68 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-body.burette-mobile-host .buret-molecule-preview-chip {
-  display: none;
-}
-.buret-molecule-card-footer {
+.buret-molecule-card-toolbar {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   flex: 0 0 auto;
-  padding-top: 5px;
+  padding: 5px 0 0;
+  order: 2;
+  border-top: 1px solid var(--buret-molstar-border);
 }
 .buret-molecule-card-button {
   display: flex;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
+  gap: 4px;
   flex: 0 1 auto;
   min-width: 0;
-  height: 22px;
-  border: 0;
+  height: 24px;
+  border: 1px solid transparent;
   border-radius: 6px;
-  padding: 0 5px;
+  padding: 0 6px;
   color: var(--buret-molstar-text);
-  background: var(--buret-molstar-field-background);
-  font: inherit;
-  font-size: 10px;
+  background: transparent;
+  font: 500 10px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   cursor: pointer;
-  transition: background 140ms ease;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
 }
 .buret-molecule-card-button > svg {
   flex: 0 0 auto;
-  width: 12px;
-  height: 12px;
-  color: var(--buret-molstar-muted-text);
+  width: 13px;
+  height: 13px;
 }
 .buret-molecule-card-button > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.buret-molecule-card-button:hover {
+.buret-molecule-card-button:hover:not(:disabled) {
   background: var(--buret-molstar-hover-background);
+}
+.buret-molecule-card-button:active:not(:disabled) {
+  transform: scale(.97);
 }
 .buret-molecule-card-button:focus-visible {
-  outline: 2px solid var(--buret-molstar-accent);
-  outline-offset: 1px;
+  outline: 1px solid var(--buret-molstar-muted-text);
+  outline-offset: 2px;
 }
-.buret-molecule-card-sizes {
-  display: flex;
-  flex: 0 0 auto;
+.buret-molecule-card-button[data-buret-molecule-preview-action="lasso"] {
   margin-left: auto;
-  border-radius: 6px;
-  padding: 1px;
-  background: var(--buret-molstar-field-background);
 }
-.buret-molecule-card-size {
-  width: 16px;
-  height: 20px;
-  border: 0;
-  border-radius: 5px;
-  padding: 0;
-  color: var(--buret-molstar-muted-text);
-  background: transparent;
-  font: inherit;
-  font-size: 9.5px;
-  font-weight: 590;
-  cursor: pointer;
-  transition: background 140ms ease, color 140ms ease;
-}
-.buret-molecule-card-size:hover {
-  color: var(--buret-molstar-text);
-}
-.buret-molecule-card-size[aria-pressed="true"] {
+.buret-molecule-card-button[aria-pressed="true"] {
   color: var(--buret-molstar-text);
   background: var(--buret-molstar-hover-background);
+  box-shadow: inset 0 0 0 1px var(--buret-molstar-border);
 }
-.buret-molecule-card-size:focus-visible {
-  outline: 2px solid var(--buret-molstar-accent);
-  outline-offset: 1px;
+.buret-molecule-card-button:disabled {
+  opacity: .4;
+  cursor: default;
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-molecule-card-button { transition: none; }
+  .buret-molecule-card-button:hover:not(:disabled),
+  .buret-molecule-card-button:active:not(:disabled) { transform: none; }
 }
 /* The card is narrow, so the labels are the first thing to go when the buttons no
    longer fit — the icons alone still say Ketcher and copy. */
@@ -1195,12 +1236,9 @@ body.burette-mobile-host .buret-molecule-preview-chip {
 .buret-molstar-molecule-preview[data-compact="true"] .buret-molecule-card-button[data-copy-state] > span {
   display: inline;
 }
-.buret-molecule-card-button[data-copy-state] {
-  flex: 1 1 auto;
-}
 .buret-molecule-card-button[data-copy-state="done"],
 .buret-molecule-card-button[data-copy-state="done"] > svg {
-  color: #32d74b;
+  color: var(--buret-molstar-text);
 }
 .buret-molecule-card-button[data-copy-state="error"],
 .buret-molecule-card-button[data-copy-state="error"] > svg {
@@ -1265,17 +1303,19 @@ body.burette-mobile-host .buret-molecule-preview-chip {
   outline-offset: 2px;
 }
 .buret-molstar-molecule-preview-image {
+  box-sizing: border-box;
   display: grid;
   place-items: center;
   width: 100%;
   flex: 1 1 auto;
-  min-height: 78px;
+  min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--buret-molstar-border);
+  border: 0;
   border-radius: 7px;
-  /* The depiction is drawn on paper: RDKit bakes a white plate and black bonds into
-     the SVG, so the plate stays white in both themes and the card frames it. */
-  background: #ffffff;
+  --depiction-carbon: #202124;
+  --depiction-nitrogen: #2454d6;
+  --depiction-oxygen: #d22b31;
+  background: transparent;
   color: #6e6e73;
   font-size: 10px;
   text-align: center;
@@ -1288,7 +1328,12 @@ body.burette-mobile-host .buret-molecule-preview-chip {
   object-fit: contain;
 }
 .buret-molstar-molecule-preview-image svg {
-  padding: 9px;
+  padding: 2px;
+}
+.buret-theme-dark .buret-molstar-molecule-preview-image {
+  --depiction-carbon: #e6e8ed;
+  --depiction-nitrogen: #829fff;
+  --depiction-oxygen: #ff7979;
 }
 #status {
   position: fixed; left: 50%; right: auto; bottom: 16px; top: auto;
@@ -1526,7 +1571,9 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   background: var(--buret-toolbar-background);
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
-  box-shadow: var(--buret-toolbar-shadow);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   user-select: none; touch-action: none;
   transition: background 180ms ease, box-shadow 180ms ease;
 }
@@ -1589,7 +1636,9 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   cursor: pointer;
   background: var(--buret-toolbar-background);
   border: 1px solid var(--buret-toolbar-border);
-  box-shadow: var(--buret-toolbar-shadow);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   /* Rolled up, the grip is the only control left on the canvas — the muting that
      keeps it out of the way beside the open toolbar would wash the whole island. */
   opacity: 1;
@@ -1603,6 +1652,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 .buret-molstar-preset-slot,
 .buret-xyzrender-preset-slot {
   position: relative;
+  flex: 0 0 auto;
 }
 .buret-tooltip {
   position: absolute;
@@ -1773,7 +1823,7 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
   outline-offset: -1px;
 }
 .buret-generate-3d-control.generating {
-  min-width: 132px;
+  min-width: 148px;
   cursor: progress;
 }
 .buret-generate-3d-control.generating::before {
@@ -2017,7 +2067,17 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   color: #ffb8b8;
 }
 .buret-renderer-control.visible { display: flex; }
-.buret-renderer-choice { min-width: 38px; }
+.buret-mode-button { width: 34px; min-width: 34px; padding: 0; }
+.buret-panel-icon { position: relative !important; display: inline-flex; width: 16px; height: 16px; flex: none; }
+.buret-panel-icon svg { width: 16px; height: 16px; }
+.buret-panel-icon [data-panel-label] {
+  position: absolute !important; top: 20.833333%; width: 37.5%; height: 58.333333%;
+  display: flex; align-items: center; justify-content: center;
+  font: 500 7px/1 system-ui; letter-spacing: 0; pointer-events: none;
+}
+.buret-panel-icon [data-panel-label="left"] { left: 41.666667%; }
+.buret-panel-icon [data-panel-label="right"] { left: 20.833333%; }
+.buret-mode-button svg { width: 18px; height: 18px; }
 .buret-molstar-preset-slot { display: none; align-items: center; }
 .buret-molstar-preset-slot.visible { display: flex; }
 .buret-xyzrender-preset-slot { display: none; align-items: center; }
@@ -2028,6 +2088,11 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   color: inherit; background: transparent; font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 .buret-select:hover, .buret-select:focus { background: var(--buret-toolbar-hover); outline: none; }
+.buret-select option,
+.buret-select optgroup {
+  color: var(--buret-toolbar-color);
+  background: var(--buret-panel-background);
+}
 .buret-molstar-preset-trigger {
   display: grid;
   min-width: 82px;
@@ -2040,6 +2105,10 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
 }
 .buret-molstar-preset-trigger > [data-buret-molstar-preset-label] {
   min-width: 0;
+  /* Override the generic button's centered grid item: intrinsic text width
+     otherwise escapes its track and overlaps Seq for long preset names. */
+  justify-self: stretch;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3530,6 +3599,29 @@ body.burette-mobile-host .buret-docking-poses button {
     flex: 1 1 auto;
   }
 }
+/* A plain frame counter needs no reserved width for structure names. Keep
+   the closed stepper at its content width even in a narrow desktop pane. */
+.buret-docking-poses.buret-docking-poses-frames:not(.buret-docking-poses-animation-open):not(.buret-docking-poses-collapsed) {
+  width: max-content;
+}
+.buret-docking-poses-frames .buret-docking-pose-main {
+  display: inline-flex;
+  flex-wrap: wrap;
+  width: auto;
+  gap: 4px;
+}
+.buret-docking-poses-frames .buret-docking-pose-main > * {
+  flex-shrink: 0;
+}
+.buret-docking-poses-frames .buret-docking-pose-main > span {
+  min-width: 0;
+  padding-inline: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.buret-docking-poses-frames.buret-docking-poses-compact.buret-docking-poses-animation-open .buret-docking-pose-animation {
+  max-height: 140px;
+}
 .buret-superposition-panel {
   position: fixed;
   top: 64px;
@@ -3882,15 +3974,6 @@ body .msp-plugin .msp-selection-viewport-controls-actions {
   width: 18px;
   height: 18px;
 }
-/* Keep the light scene-tree control in the same floating-control family. */
-body.buret-theme-light .buret-corner-toggle {
-  border-color: var(--buret-toolbar-border);
-  background: var(--buret-toolbar-background);
-  box-shadow: var(--buret-toolbar-shadow);
-}
-body.buret-theme-light .buret-corner-toggle:hover {
-  background: var(--buret-toolbar-hover);
-}
 /* The layers fan apart on hover and stay apart while the panel is open — the same
    motion animate-ui gives its Lucide icons, expressed as a transform because this
    document has no React and no motion library. */
@@ -4058,13 +4141,17 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   width: 100%;
   padding: 4px;
   box-sizing: border-box;
+  /* Rows are controls, not prose: a drag or a double click must not paint a
+     text selection across labels and notes. */
+  -webkit-user-select: none;
+  user-select: none;
 }
 .buret-tree-highlight {
   position: absolute;
   left: 0;
   top: 0;
   z-index: 0;
-  border-radius: 5px;
+  border-radius: 8px;
   background: var(--buret-molstar-hover-background);
   opacity: 0;
   pointer-events: none;
@@ -4088,7 +4175,7 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   gap: 4px;
   min-height: 24px;
   padding: 0 3px 0 0;
-  border-radius: 5px;
+  border-radius: 8px;
 }
 .buret-tree-twisty {
   display: grid;
@@ -4184,7 +4271,7 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
    over a panel that is otherwise greyscale; a flat tint carries it quietly. */
 .buret-tree-item[data-selected="true"] > .buret-tree-row {
   background: color-mix(in srgb, var(--buret-molstar-text) 9%, transparent);
-  border-radius: 5px;
+  border-radius: 8px;
 }
 .buret-tree-item[data-selected="true"] > .buret-tree-row > .buret-tree-trigger > .buret-tree-label {
   color: var(--buret-molstar-text);
@@ -4536,6 +4623,7 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   padding: 0 8px 6px;
 }
 .buret-tree-swatch {
+  box-sizing: border-box;
   flex: 0 0 auto;
   width: 15px;
   height: 15px;
@@ -4547,6 +4635,52 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
 .buret-tree-swatch:hover {
   transform: scale(1.18);
 }
+.buret-tree-swatch-custom {
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: var(--buret-molstar-hover-background);
+  color: var(--buret-molstar-text);
+  cursor: pointer;
+}
+.buret-tree-swatch-custom > svg {
+  position: absolute;
+  inset: 0;
+  width: 9px;
+  height: 9px;
+  margin: auto;
+  pointer-events: none;
+}
+.buret-tree-swatch-custom:hover { transform: none; }
+.buret-tree-swatches-with-picker { flex-wrap: nowrap; align-items: center; gap: 8px; }
+.buret-tree-swatch-rail { display: flex; gap: 3px; min-width: 0; flex: 1; overflow-x: auto; padding: 0; scrollbar-width: none; overscroll-behavior: contain; }
+.buret-tree-swatch-rail::-webkit-scrollbar { display: none; }
+.buret-tree-swatch-rail .buret-tree-swatch { flex: 0 0 14px; width: 14px; height: 14px; min-height: 14px; padding: 0; border: 0; border-radius: 50%; transform: none; }
+.buret-tree-swatches-with-picker .buret-tree-swatch-custom { flex: 0 0 24px; width: 24px; height: 24px; border-radius: 6px; }
+.buret-tree-swatch-custom > svg { width: 16px; height: 16px; }
+.buret-color-picker { box-sizing: border-box; padding: 10px; margin-bottom: 10px; border: 1px solid var(--buret-toolbar-border); border-radius: 10px; color: var(--buret-molstar-text); font: 12px/1.4 system-ui, sans-serif; }
+.buret-color-picker[hidden] { display: none; }
+.buret-color-picker-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; color: var(--buret-molstar-muted-text); }
+.buret-color-picker-title select { min-width: 0; max-width: 130px; font: inherit; color: var(--buret-molstar-text); background: var(--buret-molstar-panel-background); border: 1px solid var(--buret-toolbar-border); border-radius: 4px; padding: 3px; }
+.buret-color-picker-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; margin-bottom: 12px; }
+.buret-color-picker .buret-color-picker-shade { display: block; width: 100%; height: 28px; min-height: 28px; padding: 0; margin: 0; border: 0; border-radius: 7px; }
+.buret-color-picker-shade:hover { box-shadow: inset 0 0 0 2px #ffffffb0; }
+.buret-color-picker .buret-color-picker-shade[aria-pressed="true"],
+.buret-tree-swatch-rail .buret-tree-swatch[aria-pressed="true"] { outline: none; box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 3px #0009; }
+.buret-color-picker-hex { display: flex; align-items: center; gap: 12px; }
+.buret-color-picker-hex > span { color: var(--buret-molstar-muted-text); font-size: 10px; }
+.buret-color-picker-hex > input {
+  width: 0;
+  flex: 1;
+  padding: 5px 8px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 5px;
+  background: var(--buret-molstar-hover-background);
+  color: inherit;
+  font: 12px ui-monospace, monospace;
+}
+.buret-color-picker :focus-visible { outline: 2px solid var(--buret-molstar-accent); outline-offset: 2px; }
+.buret-color-picker input[aria-invalid="true"] { border-color: #ff453a; }
 .buret-tree-swatch:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px var(--buret-molstar-accent);
@@ -4613,72 +4747,97 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   }
 }
 
-/* Sequence strip.
-   Mol* renders it edge to edge across the top region with hard dividers; this
-   reshapes it into the same floating card as the scene tree. The region keeps its
-   layout height — that is what pushes the 3D view down — while the card floats
-   inside it. */
+/* Sequence is an edge-to-edge dock, sharing the shell's flat dividers. */
 body .msp-plugin .msp-layout-region.msp-layout-top {
   background: transparent !important;
   border: 0 !important;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
 }
-/* Mol* pins the region to a fixed 100px; the grip below drives this instead. */
+/* Start with one numbered track while the resize control initializes. */
 body:not(.burette-mobile-host) .msp-plugin .msp-layout-region.msp-layout-top {
-  height: var(--buret-sequence-height, 100px) !important;
+  height: clamp(64px, var(--buret-sequence-height, 88px), max(64px, 60vh)) !important;
 }
-.buret-sequence-resize {
+body.buret-sequence-open:not(.burette-mobile-host) .msp-plugin .msp-layout-region.msp-layout-main {
+  top: var(--buret-viewport-top-inset, 88px) !important;
+}
+/* Same ResizableHandle component as the shell docks, using preview tokens. */
+.buret-sequence-layout {
   position: absolute;
-  left: var(--buret-control-island-right);
-  right: var(--buret-control-island-right);
-  top: calc(var(--buret-viewport-top-inset, 0px) - 9px);
+  inset: 0;
   z-index: 37;
-  height: 12px;
-  display: none;
-  cursor: ns-resize;
+  pointer-events: none;
+}
+.buret-sequence-panels { height: 100%; pointer-events: none; overflow: clip !important; }
+.buret-sequence-layout .resizable-handle {
+  position: relative;
+  z-index: 3;
+  flex: 0 0 14px;
+  height: 14px;
+  margin: -7px 0;
+  cursor: row-resize;
   touch-action: none;
+  outline: none;
+  user-select: none;
+  pointer-events: auto;
 }
-body.buret-sequence-open .buret-sequence-resize {
-  display: block;
-}
-.buret-sequence-resize::after {
+.buret-sequence-layout .resizable-handle::after {
   content: "";
   position: absolute;
-  left: 12px;
-  right: 12px;
-  top: 5px;
-  height: 2px;
-  border-radius: 1px;
-  background: transparent;
-  transition: background 130ms ease;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: var(--buret-molstar-border);
+  pointer-events: none;
 }
-.buret-sequence-resize:hover::after,
-.buret-sequence-resize.buret-sequence-resizing::after {
-  background: var(--buret-molstar-accent);
+.buret-sequence-layout .resizable-handle-grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--buret-molstar-muted-text);
+  opacity: 0;
+  pointer-events: none;
 }
+.buret-sequence-layout .resizable-handle:hover .resizable-handle-grip,
+.buret-sequence-layout .resizable-handle:focus-visible .resizable-handle-grip,
+.buret-sequence-layout .resizable-handle:active .resizable-handle-grip { opacity: 1; }
+.buret-sequence-pull {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,0);
+  padding:3px 12px; border:1px solid var(--buret-toolbar-border); border-top:0;
+  border-radius:0 0 9px 9px; background:var(--buret-toolbar-background);
+  color:var(--buret-toolbar-color); font:500 10px/1.2 system-ui,sans-serif;
+  opacity:0; pointer-events:none; transition:opacity 110ms ease;
+}
+.buret-sequence-layout .resizable-handle:is(:hover,:focus-visible,:active) .buret-sequence-pull { opacity:1; }
 body .msp-plugin .msp-sequence {
   position: absolute;
-  inset: 6px var(--buret-control-island-right) 6px var(--buret-control-island-right);
+  inset: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   max-height: none !important;
-  border: 1px solid var(--buret-molstar-border) !important;
-  border-radius: var(--buret-molstar-panel-radius);
-  background: var(--buret-molstar-panel-background) !important;
-  box-shadow: 0 18px 44px var(--buret-molstar-shadow) !important;
+  border: 0 !important;
+  border-radius: 0;
+  background: var(--buret-dock-background, var(--buret-menu-background)) !important;
+  box-shadow: none !important;
 }
 body .msp-plugin .msp-sequence .msp-sequence-select {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   flex: 0 0 auto;
-  height: 30px;
-  padding: 0 7px;
+  height: 38px;
+  margin-bottom: 0;
+  padding: 0 40px 0 10px;
   border-bottom: 1px solid var(--buret-molstar-border) !important;
   background: var(--buret-molstar-row-background) !important;
-  font: 400 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   white-space: nowrap;
 }
 /* The leading material icon carries no meaning next to the label. */
@@ -4687,27 +4846,29 @@ body .msp-plugin .msp-sequence .msp-sequence-select > .msp-icon {
 }
 body .msp-plugin .msp-sequence .msp-sequence-select > span {
   flex: 0 0 auto;
-  padding: 0 3px 0 3px;
+  padding: 0 6px 0 2px;
   border: 0 !important;
   background: transparent !important;
   color: var(--buret-molstar-muted-text) !important;
-  font-size: 10px;
-  font-weight: 590;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: normal;
+  letter-spacing: normal;
+  text-transform: none;
 }
 body .msp-plugin .msp-sequence .msp-sequence-select > select.msp-form-control {
   flex: 0 1 auto;
   min-width: 0;
-  height: 20px;
+  max-width: min(280px, 35%);
+  height: 26px;
   border: 0 !important;
-  border-radius: 5px;
-  padding: 0 18px 0 7px;
+  border-radius: 6px;
+  padding: 0 22px 0 8px;
   color: var(--buret-molstar-text) !important;
   background-color: var(--buret-molstar-field-background) !important;
   background-image: var(--buret-select-chevron);
   background-repeat: no-repeat;
-  background-position: right 5px center;
+  background-position: right 8px center;
   font: inherit;
   -webkit-appearance: none;
   appearance: none;
@@ -4716,25 +4877,38 @@ body .msp-plugin .msp-sequence .msp-sequence-select > select.msp-form-control:ho
   background-color: var(--buret-molstar-hover-background) !important;
   outline: none !important;
 }
+body .msp-plugin .msp-sequence .msp-sequence-select > select.msp-form-control:last-of-type {
+  min-width: 44px;
+}
+body .msp-plugin .msp-sequence .msp-sequence-select > select.msp-form-control:focus-visible {
+  outline: 2px solid var(--buret-molstar-accent) !important;
+  outline-offset: 1px;
+}
 body .msp-plugin .msp-sequence .msp-sequence-wrapper-non-empty {
+  /* Reset Mol*'s absolute 25px inset so header and reading area cannot overlap. */
+  position: relative;
+  inset: auto;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 8px 10px 10px;
+  padding: 0;
+  scrollbar-gutter: stable;
   border-top: 0 !important;
   background: transparent !important;
   box-shadow: none;
 }
 body .msp-plugin .msp-sequence .msp-sequence-wrapper {
   background: transparent !important;
-  font: 400 12px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace !important;
-  letter-spacing: 0.04em;
+  padding: 12px 14px 8px;
+  font: 400 12px/30px ui-monospace, SFMono-Regular, Menlo, monospace !important;
+  letter-spacing: 0.02em;
   word-break: break-all;
 }
 body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-number {
   color: var(--buret-molstar-muted-text) !important;
   font-size: 10px;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-present {
@@ -4743,29 +4917,10 @@ body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-present {
 body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-missing {
   opacity: 0.5;
 }
-/* Dark gets its header strip for free — panel and row fills differ there. Light
-   maps both onto the same tint, so the controls melt into the sequence and the
-   whole card reads as one flat slab. Put the reading surface on the brighter
-   fill and leave the strip on the panel tint, which restores the same split. */
-body.buret-theme-light .msp-plugin .msp-sequence .msp-sequence-wrapper-non-empty {
-  background: var(--buret-molstar-field-background) !important;
-}
-body.buret-theme-light .msp-plugin .msp-sequence .msp-sequence-select {
-  background: var(--buret-control-fill) !important;
-}
-/* ...and the card itself takes the reading surface, otherwise its own fill shows
-   as a grey ring around the white sequence. */
-body.buret-theme-light .msp-plugin .msp-sequence {
-  background: var(--buret-molstar-field-background) !important;
-}
 /* Mol* offers no way to dismiss the strip from the strip; the toolbar toggle is a
    long way off once you are reading sequence. Pinned rather than laid out in the
    row: Mol* re-renders the header on every chain change and would shuffle a flex
    child back among its own selects. */
-body .msp-plugin .msp-sequence .msp-sequence-select {
-  position: relative;
-  padding-right: 30px;
-}
 .buret-sequence-close {
   position: absolute;
   right: 6px;
@@ -4773,8 +4928,8 @@ body .msp-plugin .msp-sequence .msp-sequence-select {
   transform: translateY(-50%);
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 26px;
   border: 0;
   border-radius: 5px;
   padding: 0;
@@ -4793,6 +4948,298 @@ body .msp-plugin .msp-sequence .msp-sequence-select {
 .buret-sequence-close:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 1px var(--buret-molstar-accent);
+}
+@media (max-width: 560px) {
+  body .msp-plugin .msp-sequence .msp-sequence-select {
+    gap: 4px;
+    padding-left: 6px;
+  }
+  body .msp-plugin .msp-sequence .msp-sequence-select > span {
+    display: none;
+  }
+  body .msp-plugin .msp-sequence .msp-sequence-select > select.msp-form-control {
+    max-width: 40%;
+  }
+}
+
+/* Sequence adapter: native Mol* nodes stay in place for selection and updates. */
+body .msp-plugin .buret-seq-enhanced > .msp-sequence-select { display: none; }
+.buret-seq-header {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+  padding: 0 14px;
+  color: var(--buret-molstar-text);
+  font: 400 12px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
+}
+.buret-seq-header {
+  order: -1;
+  min-height: 40px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--buret-molstar-border);
+}
+.buret-seq-title { font-size: 13px; font-weight: 600; order: -5; }
+.buret-seq-context { color: var(--buret-molstar-muted-text); white-space: nowrap; }
+.buret-seq-header [data-role="Structure"] { order: -4; }
+.buret-seq-header [data-role="Chain"] {
+  order: -3;
+  padding: 4px 8px;
+  color: var(--buret-molstar-text);
+  font-weight: 500;
+}
+.buret-seq-header [data-role="Molecule"] {
+  order: -2;
+  flex: 1;
+  min-width: 40px;
+  text-align: left;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.buret-seq-header [data-role="View"] { margin-left: auto; flex-shrink: 0; }
+.buret-seq-header [data-role="View"] .buret-seq-button {
+  background: var(--buret-molstar-field-background);
+}
+.buret-seq-button {
+  appearance: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.buret-seq-control { display: inline-flex; min-width: 0; }
+.buret-seq-control > .buret-seq-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.buret-seq-control > .buret-seq-button > span { overflow: hidden; text-overflow: ellipsis; }
+.buret-seq-control svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--buret-molstar-muted-text); }
+.buret-seq-button:hover, .buret-seq-button[aria-expanded="true"] {
+  background-color: var(--buret-molstar-hover-background);
+}
+.buret-seq-button:focus-visible {
+  outline: 1px solid var(--buret-molstar-muted-text);
+  outline-offset: -1px;
+  box-shadow: none;
+}
+.buret-seq-button:disabled { opacity: .45; cursor: default; }
+body .msp-plugin .buret-seq-enhanced .msp-sequence-chain-label {
+  margin: 0;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 7px 16px;
+  border-top: 1px solid var(--buret-molstar-border);
+  background: var(--buret-dock-background, var(--buret-menu-background));
+  color: var(--buret-molstar-text) !important;
+  font: 500 11px/18px -apple-system, BlinkMacSystemFont, sans-serif;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Polymer tracks span the dock; native component controls form a quiet footer. */
+body .msp-plugin .buret-seq-enhanced:not(.buret-seq-compact) .msp-sequence-wrapper-non-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+}
+body .msp-plugin .buret-seq-enhanced:not(.buret-seq-compact) .msp-sequence-wrapper-non-empty > :not(.buret-component-row):not(.buret-component-label) {
+  flex: 0 0 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+body .msp-plugin .buret-seq-enhanced .buret-component-label { display: none; }
+body .msp-plugin .buret-seq-enhanced .buret-component-label:popover-open {
+  display: block;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(320px, calc(100vw - 24px));
+  padding: 14px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 10px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  box-shadow: 0 8px 28px #0003;
+}
+body .msp-plugin .buret-seq-enhanced .buret-component-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  margin: 0 0 0 16px;
+  padding: 5px 9px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 7px;
+  line-height: 20px !important;
+}
+body .msp-plugin .buret-component-row > .msp-sequence-number { display: none; }
+.buret-component-control {
+  border: 0;
+  background: transparent;
+  color: var(--buret-molstar-muted-text);
+  font: 11px/20px -apple-system, BlinkMacSystemFont, sans-serif;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.buret-component-control:hover { color: var(--buret-molstar-text); }
+.buret-component-control:focus-visible { outline: 2px solid var(--buret-molstar-accent); outline-offset: 3px; }
+body .msp-plugin .buret-seq-enhanced .buret-water-label {
+  display: block;
+  position: static;
+  padding: 5px 12px;
+  margin-left: auto;
+  border: 0;
+}
+.buret-water-label button::after { content: ' +'; }
+.buret-water-label button[aria-expanded="true"]::after { content: ' −'; }
+body .msp-plugin .buret-seq-enhanced .buret-water-row {
+  flex-basis: calc(100% - 32px);
+  margin-right: 16px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+body .msp-plugin .buret-seq-enhanced .buret-water-row > .msp-sequence-number {
+  display: inline-block;
+  position: static;
+  margin: 0;
+  width: auto;
+}
+body .msp-plugin .buret-seq-enhanced .buret-water-row[hidden] { display: none; }
+body .msp-plugin .msp-sequence .buret-seq-grid {
+  display: grid;
+  padding: 10px 16px 12px;
+  font: 400 12px/22px SFMono-Regular, ui-monospace, Menlo, monospace !important;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: 0;
+  align-content: start;
+}
+body .msp-plugin .msp-sequence .buret-seq-grid > [data-seqid] {
+  text-align: center;
+  font-weight: 400 !important;
+  min-width: 0;
+  margin: 0;
+  border-radius: 0;
+}
+body .msp-plugin .msp-sequence .buret-seq-grid > .msp-sequence-number {
+  position: static;
+  margin: 0;
+  padding: 0;
+  width: max-content;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 14px;
+  letter-spacing: 0;
+}
+body .msp-plugin .msp-sequence .msp-sequence-wrapper [data-buret-drag-selected],
+body .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-residue-selected {
+  background: color-mix(in srgb, var(--buret-molstar-accent) 72%, #000) !important;
+  color: #fff !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+body.buret-theme-dark .msp-plugin .msp-sequence .msp-sequence-wrapper [data-buret-drag-selected],
+body.buret-theme-dark .msp-plugin .msp-sequence .msp-sequence-wrapper .msp-sequence-residue-selected {
+  background: color-mix(in srgb, var(--buret-molstar-accent) 65%, #fff) !important;
+  color: #17101c !important;
+}
+body .msp-plugin .msp-sequence .msp-sequence-residue-highlighted:not(.msp-sequence-residue-selected):not([data-buret-drag-selected]) {
+  background: color-mix(in srgb, var(--buret-molstar-accent) 18%, var(--buret-dock-background, var(--buret-menu-background))) !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+/* A shallow dock becomes a single horizontal sequence track. */
+.buret-seq-compact .buret-seq-header { min-height: 32px; }
+.buret-seq-compact .buret-seq-button { height: 24px; padding: 3px 6px; line-height: 18px; }
+body .msp-plugin .buret-seq-compact .buret-seq-grid {
+  width: max-content;
+  padding-block: 3px 5px;
+}
+body .msp-plugin .buret-seq-compact .msp-sequence-chain-label {
+  position: relative;
+  padding-block: 0;
+  font-size: 10px;
+  line-height: 12px;
+}
+body .msp-plugin .buret-seq-compact .msp-sequence-wrapper-non-empty {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+body .msp-plugin .buret-seq-compact .msp-sequence-wrapper-non-empty > * {
+  flex: 0 0 auto;
+}
+body .msp-plugin .buret-seq-compact .msp-sequence-wrapper {
+  width: max-content;
+  white-space: nowrap;
+  word-break: normal;
+  padding-block: 3px 5px;
+}
+body .msp-plugin .buret-seq-compact .msp-sequence-chain-label {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-block: 0;
+  border-left: 1px solid var(--buret-molstar-border);
+}
+.buret-seq-menu {
+  z-index: 2147483647;
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
+  max-height: min(320px, var(--radix-select-content-available-height));
+  padding: 4px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 8px;
+  background: var(--buret-menu-background);
+  color: var(--buret-molstar-text);
+  box-shadow: 0 4px 16px var(--buret-molstar-shadow);
+  overflow: auto;
+  font: 400 12px/1.5 -apple-system, BlinkMacSystemFont, sans-serif;
+}
+.buret-seq-menu [data-radix-select-viewport] { min-width: 0 !important; }
+.buret-seq-menu [data-slot="select-item"] {
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 5px 28px 5px 8px;
+  border-radius: 4px;
+  cursor: default;
+  outline: none;
+  overflow-wrap: anywhere;
+}
+.buret-seq-menu [data-slot="select-item"] > span:first-child {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+}
+.buret-seq-menu [data-highlighted] { background: var(--buret-molstar-hover-background); }
+.buret-seq-menu [data-disabled] { opacity: .45; }
+.buret-seq-menu svg { width: 14px; height: 14px; }
+.buret-seq-menu [data-slot^="select-scroll-"] { display: flex; justify-content: center; }
+@media (max-width: 700px) {
+  .buret-seq-header { gap: 4px; padding: 0 10px; }
+  .buret-seq-header [data-role="Chain"] { padding: 4px; }
 }
 
 /* Molecule context menu.
@@ -4902,12 +5349,12 @@ body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-
 body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-item-destructive {
   color: #ff6b5e;
 }
-body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] .buret-tree-swatch {
+body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] .buret-tree-swatches:not(.buret-tree-swatches-with-picker) .buret-tree-swatch {
   display: block;
   flex: 0 0 auto;
-  width: 15px;
-  height: 15px;
-  min-height: 15px;
+  width: 14px;
+  height: 14px;
+  min-height: 14px;
   border-radius: 50%;
   padding: 0;
 }
@@ -4960,3 +5407,131 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level
   opacity: 1;
   color: var(--buret-accent, #5da9ff);
 }
+
+.buret-preview-atom { opacity: 0; pointer-events: none; }
+.buret-preview-atom.buret-preview-atom-selected {
+  opacity: 1;
+  fill: rgb(117 167 223 / 24%) !important;
+  stroke: #75a7df !important;
+  stroke-width: 1px !important;
+  vector-effect: non-scaling-stroke;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(1.6);
+}
+.buret-preview-bond-selected {
+  stroke: #75a7df !important;
+  stroke-width: 2px !important;
+  vector-effect: non-scaling-stroke;
+}
+.buret-preview-lasso-active { cursor: crosshair; touch-action: none; }
+.buret-preview-lasso-path {
+  fill: rgb(117 167 223 / 10%);
+  stroke: #75a7df;
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.buret-molecule-card-icon[aria-pressed="true"] {
+  background: var(--buret-molstar-hover-background);
+  color: var(--buret-molstar-text);
+}
+
+/* Measurement is an active tool, so its prompt uses the viewer control material. */
+#buret-measure-prompt {
+  position: fixed;
+  z-index: 100;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: max-content;
+  max-width: calc(100% - 24px);
+  box-sizing: border-box;
+  padding: 8px 10px 8px 14px;
+  border: 1px solid var(--buret-toolbar-border);
+  border-radius: 12px;
+  background: var(--buret-toolbar-background);
+  color: var(--buret-toolbar-color);
+  box-shadow: 0 4px 18px rgb(0 0 0 / 12%);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif;
+  user-select: none;
+}
+#buret-measure-prompt button {
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 7px;
+  padding: 5px 9px;
+  background: var(--buret-toolbar-hover);
+  color: inherit;
+  font: inherit;
+}
+#buret-measure-prompt button:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 2px;
+}
+
+.buret-molecule-card-toolbar > .buret-molecule-card-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: transparent;
+  margin-left: auto;
+}
+.buret-molecule-card-toolbar > .buret-molecule-card-icon:hover {
+  background: var(--buret-molstar-hover-background);
+}
+
+/* Compact viewports keep the scene clear; the host Story tab owns the prose. */
+@media (max-width: 1000px), (max-height: 650px) {
+  body .msp-plugin .msp-snapshot-description-wrapper { display: none !important; }
+}
+/* Snapshot navigation is owned by Burette scene controls. */
+.msp-state-snapshot-viewport-controls {
+  display: none !important;
+}
+
+/* Sheet actions share the viewer's light/dark menu tokens. */
+.buret-xyzrender-editor-actions {
+  position: absolute; left: 16px; bottom: 16px; z-index: 100;
+  display: flex; gap: 2px; padding: 5px; border-radius: 10px;
+  background: var(--buret-menu-background); color: var(--buret-toolbar-color);
+  box-shadow: var(--buret-menu-shadow); pointer-events: auto;
+}
+.buret-xyzrender-editor-actions button {
+  appearance: none; border: 0; border-radius: 6px; padding: 7px 10px;
+  background: transparent; color: inherit; font: 12px -apple-system, sans-serif;
+}
+.buret-xyzrender-editor-actions button:hover,
+.buret-xyzrender-editor-actions button:focus-visible {
+  background: color-mix(in srgb, var(--buret-toolbar-color) 12%, transparent);
+}
+.buret-external-artifact-root:has(.buret-xyzrender-editor-actions) .buret-xyz-badge { bottom: 66px; }
+
+body:has(#buret-toolbar[data-active-renderer="xyzrender-external"]) { --buret-accent: #888; }
+#buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-toggle],
+body:has(#buret-toolbar[data-active-renderer="xyzrender-external"]) #buret-viewport-rail,
+body:has(#buret-toolbar[data-active-renderer="xyzrender-external"]) #buret-scene-tree-toggle,
+#buret-toolbar.buret-xyzrender-app[data-active-renderer="xyzrender-external"] [data-buret-xyzrender-preset-slot] { display: none !important; }
+.buret-xyzrender-inspector { display: none; }
+#buret-toolbar.buret-xyzrender-app[data-active-renderer="xyzrender-external"] .buret-xyzrender-inspector { display: inline-flex; }
+.buret-xyzrender-3d-dialog {
+  width: min(900px, calc(100vw - 40px)); height: min(740px, calc(100vh - 40px));
+  box-sizing: border-box; padding: 16px; border: 1px solid var(--buret-toolbar-border);
+  border-radius: 14px; background: var(--buret-menu-background, #171717); color: var(--buret-toolbar-color);
+  font: 13px -apple-system, sans-serif;
+}
+.buret-xyzrender-3d-dialog[open] { display: flex; flex-direction: column; gap: 12px; }
+.buret-xyzrender-3d-dialog::backdrop { background: #0008; }
+.buret-xyzrender-3d-dialog header, .buret-xyzrender-3d-dialog footer { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.buret-xyzrender-3d-dialog header span { flex: 1; opacity: .6; }
+.buret-xyzrender-3d-stage { flex: 1; min-height: 160px; position: relative; overflow: hidden; border-radius: 8px; }
+.buret-xyzrender-3d-dialog button, .buret-xyzrender-3d-dialog select {
+  border: 1px solid var(--buret-toolbar-border); background: var(--buret-toolbar-hover);
+  color: inherit; font: inherit; padding: 7px 12px; border-radius: 7px;
+}
+.buret-xyzrender-3d-dialog button:disabled { opacity: .45; }
+.buret-xyzrender-3d-dialog input { accent-color: #888; max-width: 160px; }
+.buret-xyzrender-3d-dialog p { margin: 0; min-height: 18px; opacity: .7; }

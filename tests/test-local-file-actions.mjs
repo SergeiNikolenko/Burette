@@ -44,5 +44,5 @@ test('icons use only fixed destinations or discovered apps and bound returned PN
   await localFileAction({ type: 'app_icon', path, targetId: targets[0].id }, options);
   assert.equal(executions.at(-1).at(-1), '/Applications/Fixture.app');
   await assert.rejects(localFileAction({ type: 'app_icon', path, targetId: '/etc/passwd' }, options), /not registered/u);
-  await assert.rejects(localFileAction({ type: 'app_icon', path, targetId: 'finder' }, { ...options, execute: async () => ({ stdout: 'x'.repeat(20000) }) }), /Invalid application icon/u);
+  await assert.rejects(localFileAction({ type: 'app_icon', path, targetId: 'finder' }, { ...options, execute: async () => ({ stdout: 'iVBORw0KGgo' + 'x'.repeat(50000) }) }), /Invalid application icon/u);
 });

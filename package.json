@@ -25,6 +25,7 @@
     "build:dev": "bash scripts/build-dev.sh",
     "patch:web-assets": "bash scripts/patch-web-assets.sh",
     "build:grid-ui": "bun build apps/desktop/src/preview-grid/grid-ui.tsx --outfile PreviewExtension/Web/grid-ui.js --target browser --format iife --production --minify",
+    "build:sequence-ui": "bun build apps/desktop/src/preview-sequence/adapter.js --outfile PreviewExtension/Web/sequence-panel.js --target browser --format iife --production --minify",
     "build:macos": "bash scripts/build.sh",
     "build:agent-shell": "bun scripts/build-agent-shell-plugin.mjs",
     "build:native-workspace": "bun scripts/build-native-workspace.mjs",

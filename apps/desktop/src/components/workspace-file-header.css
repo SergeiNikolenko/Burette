@@ -1,0 +1,22 @@
+.workspace-file-header {
+  display:flex; flex:none; align-items:center; gap:8px; min-width:0;
+  height:44px; padding:0 12px; border-bottom:1px solid var(--line-subtle, #e6e6e6);
+  background:var(--bg-base, #fff); color:var(--text-primary, #161616);
+  font:400 14px/1.4 system-ui, sans-serif; z-index:20;
+}
+.workspace-file-breadcrumb {display:flex; align-items:center; gap:8px; min-width:0; flex:1}
+.workspace-file-breadcrumb svg {flex:none; color:var(--text-secondary, #777)}
+.workspace-file-parent {color:var(--text-secondary, #777); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:25%}
+.workspace-file-name {font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.workspace-file-header button {position:relative; display:inline-flex; align-items:center; justify-content:center; gap:6px; height:30px; padding:0 10px; border:0; background:transparent; color:inherit; font:inherit; cursor:pointer}
+.workspace-file-open {display:flex; border:1px solid var(--line-subtle, #e6e6e6); border-radius:18px; box-shadow:0 1px 4px #0000000d}
+.workspace-file-open-primary {border-radius:17px 0 0 17px}
+.workspace-file-open-primary img {width:18px; height:18px; object-fit:contain}
+.workspace-file-header .workspace-file-open-menu {padding:0 6px; border-radius:0 17px 17px 0}
+.workspace-file-header button:hover,.workspace-file-header button[data-state="open"] {background:var(--surface-hover, #f3f3f3)}
+.workspace-file-header button:focus-visible {outline:2px solid var(--text-secondary, #777); outline-offset:2px}
+.workspace-file-header .shortcut-tooltip {left:auto; right:0; transform:none; background:var(--bg-base, #fff); border:1px solid var(--line-subtle, #e6e6e6); border-radius:10px; box-shadow:0 4px 16px #00000012; font-size:13px}
+.workspace-file-menu {min-width:240px; padding:6px; border:1px solid var(--line-subtle, #e6e6e6); border-radius:18px; background:var(--bg-base, #fff); box-shadow:0 4px 16px #00000012}
+.workspace-file-header button[aria-expanded="true"] > .shortcut-tooltip {visibility:hidden; opacity:0}
+.workspace-file-menu [role="menuitem"] {min-height:32px; border-radius:12px; font-size:14px}
+@media(max-width:420px) {.workspace-file-parent,.workspace-file-breadcrumb>svg {display:none}.workspace-file-header {padding:0 8px}}

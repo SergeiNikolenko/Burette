@@ -12,7 +12,8 @@ or workflow result bundles in Burette.
 
 Use `burette.open_viewer` for local structures, SDF/SMILES/CSV collections,
 Ketcher sketches, docking scenes and packaged MVSX Stories in the native Codex
-workspace, full chat width with content-adaptive height by default. Its shadcn
+workspace. Ketcher defaults to inline chat; other views default to the side pane.
+Inline uses full chat width with content-adaptive height. Its shadcn
 button at the bottom right opens the side pane or returns to chat. Use
 `set_display_mode` with `fullscreen` only when the user requests right-side
 placement; do not repeat that request on resize. Use `burette.open_inline_viewer`

@@ -89,7 +89,7 @@ export async function packNativeWorkspace({ shellRoot, runtimeRoot, outputRoot, 
   await walk(shellRoot, 'shell');
   // Only the visualization runtimes used by the shared shell, not its compute
   // engines, diagnostics, or standalone application files.
-  for (const name of ['molstar.js', 'molstar.css', 'viewer-runtime.css', 'viewer-shell.js', 'viewer-bootstrap.js', 'viewer.js', 'burette-agent.js', 'trajectory-smoothing.js', 'molstar-preset-preview-controller.js', 'superposition-panel.js', 'grid-viewer.js', 'grid-ui.js', 'grid.css', 'rdkit/RDKit_minimal.js', 'rdkit/RDKit_minimal.wasm', 'openchemlib/openchemlib.js']) {
+  for (const name of ['molstar.js', 'molstar.css', 'viewer-runtime.css', 'viewer-shell.js', 'viewer-bootstrap.js', 'sequence-panel.js', 'molecule-preview-interactions.js', 'renderer-view-state.js', 'color-picker.js', 'scene-file-actions.js', 'viewer.js', 'burette-agent.js', 'trajectory-smoothing.js', 'molstar-preset-preview-controller.js', 'superposition-panel.js', 'grid-viewer.js', 'grid-ui.js', 'grid.css', 'rdkit/RDKit_minimal.js', 'rdkit/RDKit_minimal.wasm', 'openchemlib/openchemlib.js']) {
     let bytes = name === 'molstar.js' ? Buffer.from(molstar) : await readFile(join(runtimeRoot, name));
     if (name === 'rdkit/RDKit_minimal.js') bytes = Buffer.from(rewriteEmbindForCsp(bytes.toString('utf8')));
     await add(`runtime/${name}`, bytes);

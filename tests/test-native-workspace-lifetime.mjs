@@ -39,7 +39,7 @@ for (const unmount of ['host-teardown', 'pagehide']) {
         getElementById: () => status, querySelectorAll: () => [{ contentWindow: previewWindow }], documentElement: { dataset: {} },
         body: { replaceChildren: () => assert.fail('No terminal closed screen'), dataset: {} },
       },
-      window,
+      window, setTimeout, clearTimeout,
       createWorkspaceAssets: () => ({ importModule: async () => {}, dispose: () => disposed.push('assets') }),
       createWorkspaceTransport: options => {
         transportOptions = options;

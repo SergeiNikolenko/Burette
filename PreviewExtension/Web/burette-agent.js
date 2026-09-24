@@ -1467,6 +1467,9 @@
   }
 
   function resolveSelection(selection) {
+    if (typeof selection === 'string' && ['all', 'polymer', 'protein', 'nucleic', 'branched', 'ligand', 'ion', 'water'].includes(selection)) {
+      return resolveSelection({ kind: selection });
+    }
     if (!selection || selection === 'last') {
       if (!state.lastSelectionId) throw coded('INVALID_ARGS', 'No previous selection exists.');
       return state.selections.get(state.lastSelectionId);

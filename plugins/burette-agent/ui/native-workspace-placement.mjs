@@ -10,15 +10,23 @@ export function createWorkspacePlacement(app, status) {
     #root .app-shell{width:100%;flex:1;min-height:0;height:auto}
     #root .app-shell .workbench{border-left:0;border-radius:0;box-shadow:none}
     body>[data-workspace-placement-host]{position:fixed;right:12px;bottom:12px;z-index:101;pointer-events:auto}
+    .workspace-placement-trigger[data-slot="button"]{background:#0a0a0a;color:#fafafa;border:1px solid #333;border-radius:6px;height:30px;min-height:30px;padding:4px 10px;gap:4px;font:14px/1.35 system-ui}
+    .workspace-placement-trigger:hover,.workspace-placement-trigger[data-state="open"]{background:#171717;color:#fff}
+    .workspace-placement-trigger[data-slot="button"]:focus-visible{outline:1px solid #666;outline-offset:2px;box-shadow:none}
     .workspace-placement-error{max-width:240px;margin-bottom:8px;padding:8px 10px;border-radius:8px;background:#b42318;color:#fff;font:12px/1.4 system-ui}
-    body[data-display-mode="inline"] .app-shell{--chrome-height:0px;--chrome-drag-height:0px}
-    body[data-display-mode="inline"] :is(.topbar,.chrome-leading-controls,.chrome-trailing-controls,.tab-strip,.drag-region){display:none}
+    #root .app-shell{--chrome-height:0px;--chrome-drag-height:0px}
+    #root :is(.topbar,.chrome-leading-controls,.chrome-trailing-controls,.drag-region,.workspace-sidebar-panel,.workspace-sidebar-handle){display:none}
+    /* Resizable panels carry inline layout styles; a hidden sidebar must not
+       retain its saved share of the native card. */
+    #root .workspace-sidebar-panel{display:none!important;flex:0 0 0px!important}
+    #root .workspace-center-panel{flex:1 1 100%!important;width:100%;max-width:100%}
     #status{flex:none;max-height:72px;overflow:auto}
   `;
   document.head.appendChild(style);
   let mode = app.getHostContext()?.displayMode || 'inline';
   let pending = false;
   let lastHeight = 0;
+  let inlineHeight = 0;
   let hostWidth;
   let snapshot;
   let content = {};
@@ -35,7 +43,8 @@ export function createWorkspacePlacement(app, status) {
     const width = hostWidth || window.innerWidth;
     if (!Number.isFinite(width) || width <= 0) return;
     // Keep this inline presentation stable through parsing and first render.
-    const height = lastHeight || workspaceContentHeight(content, width, document);
+    const height = inlineHeight || workspaceContentHeight(content, width, document);
+    inlineHeight = height;
     // Inline cards have a stable content budget. Use the side pane for more room.
     document.documentElement.style.height = `${height}px`;
     document.body.style.height = `${height}px`;

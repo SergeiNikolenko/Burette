@@ -29,11 +29,16 @@ export async function createWorkspaceCheckpoint({ exchange, sessionId }) {
     setItem(key, value) { values[key] = value; clearTimeout(timer); timer = setTimeout(saveWorkspace, 200); },
     removeItem(key) { delete values[key]; clearTimeout(timer); timer = setTimeout(saveWorkspace, 200); },
   };
-  async function sync(frame, record) {
+  async function sync(frame, record, force = false) {
     if (disposed || record.busy || !frame.isConnected) return;
     const plugin = frame.contentWindow?.BuretteViewer?.plugin;
     if (!plugin?.canvas3d || !plugin.managers.structure.hierarchy.current.structures.length || plugin.behaviors.state.isBusy.value) return;
     if (record.plugin !== plugin) { record.plugin = plugin; record.restored = false; record.signature = null; }
+    // Heartbeats are not edits. Serializing every visited scene on every poll
+    // competes with camera interaction and Story transitions on the UI thread.
+    // Restoration and teardown remain immediate; ordinary saves are bounded.
+    if (record.restored && !force && (performance.now() < (record.nextCaptureAt || 0)
+      || plugin.canvas3d.camera?.transition?.inTransition)) return;
     record.busy = true;
     try {
       record.key ||= [...new Uint8Array(await crypto.subtle.digest('SHA-256', textEncoder.encode(record.path)))].map(byte => byte.toString(16).padStart(2, '0')).join('');
@@ -64,7 +69,7 @@ export async function createWorkspaceCheckpoint({ exchange, sessionId }) {
       record.signature = serialized;
       record.savedAt = new Date().toISOString();
     } catch (error) { report(error); record.restored = true; }
-    finally { record.busy = false; }
+    finally { record.busy = false; record.nextCaptureAt = performance.now() + 2000; }
   }
   function update(state) {
     if (disposed) return state;
@@ -81,7 +86,10 @@ export async function createWorkspaceCheckpoint({ exchange, sessionId }) {
     return { ...state, ready: state.ready && !restoring, persistence: { restoring: Boolean(restoring), savedAt: record?.savedAt || null, warning } };
   }
   return { storage, restored, update, async flush() {
-      await Promise.all([...frames].map(([frame, record]) => record.busy ? record.pending : sync(frame, record)));
+      await Promise.all([...frames].map(async ([frame, record]) => {
+        if (record.busy) await record.pending;
+        await sync(frame, record, true);
+      }));
       await saveWorkspace();
     },
     dispose() { disposed = true; clearTimeout(timer); frames.clear(); },

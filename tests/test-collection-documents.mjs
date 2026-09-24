@@ -56,6 +56,20 @@ assert.equal(browserRecords[0].molblock.endsWith("M  END"), true);
 assert.equal(browserRecords[0].molblock.includes("> <pIC50>"), false);
 assert.equal(browserRecords[0].props.pIC50, "5.1");
 
+// Extracted/editor documents must support their first renderer switch without
+// asking the host to read a synthetic burette-ketcher:// filesystem path.
+const singleMol = parseSdfCollectionRecords(sampleMultiSdf)[0].molblock;
+const virtualMolecule = await openBrowserDevTextDocument("extracted.mol", "mol", singleMol, {
+  ...defaultPreferences, rendererMode: "molstar",
+});
+assert.equal(virtualMolecule.renderer, "molstar");
+const virtualConfigMatch = /window\.BuretteConfig = (\{[^\n]+\});/u.exec(virtualMolecule.runtimePath);
+assert.ok(virtualConfigMatch, "virtual molecule must contain its viewer config");
+const virtualConfig = JSON.parse(virtualConfigMatch[1]);
+assert.equal(Buffer.from(virtualConfig.xyzrenderInputDataBase64, "base64").toString(), singleMol);
+assert.equal(virtualConfig.xyzrenderInputExtension, "mol");
+assert.equal(Buffer.from(virtualConfig.ketcherSourceTextBase64, "base64").toString(), singleMol);
+
 const browserDelimitedRecords = parseBrowserDevDelimitedGridRecords(
   "SMILES,name,score\nCCO,ethanol,1.2\nO,water,2.3\n",
   "csv",

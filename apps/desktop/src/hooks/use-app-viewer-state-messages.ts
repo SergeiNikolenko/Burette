@@ -33,6 +33,7 @@ type UseAppViewerStateMessagesOptions = {
   setStructureOverlayModes: SetStructureOverlayModes;
   setStructureStories: SetStructureStories;
   toggleSidebar: () => void;
+  toggleDock: (area: "right" | "bottom") => void;
 };
 
 type XyzrenderPresetOption = {
@@ -55,8 +56,13 @@ export function useAppViewerStateMessages({
   setStructureOverlayModes,
   setStructureStories,
   toggleSidebar,
+  toggleDock,
 }: UseAppViewerStateMessagesOptions) {
   const handleViewerStateMessage = useCallback((sourceName: unknown, body: ViewerStateMessageBody) => {
+    if (sourceName === "burette-viewer" && body?.type === "toggleRightDock" && window.BuretteMcpWorkspace) {
+      toggleDock("right");
+      return true;
+    }
     if ((sourceName === "burette-viewer" || sourceName === "burette-grid") && body?.type === "openCommandPalette") {
       openCommandPalette();
       return true;
@@ -175,7 +181,7 @@ export function useAppViewerStateMessages({
     }
 
     return false;
-  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, setPreference, setStructureOverlayModes, setStructureStories, setViewerLigandSelections, toggleSidebar]);
+  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, setPreference, setStructureOverlayModes, setStructureStories, setViewerLigandSelections, toggleSidebar, toggleDock]);
 
   return { handleViewerStateMessage };
 }

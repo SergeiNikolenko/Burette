@@ -8,13 +8,14 @@ import { isTauriRuntime } from "../lib/tauri";
 import { useFinderIconUrl } from "../hooks/use-finder-icon-url";
 import { useDefaultApplicationIconUrl } from "../hooks/use-default-application-icon-url";
 import { useNativeApplicationIcons } from "../hooks/use-native-application-icons";
+import { WorkspaceFileHeader } from "./workspace-file-header";
 
 type ActiveFile = {
   path: string;
   label: string;
 };
 
-export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
+export function OpenInEditorMenu({ state, actions, presentation = "chrome" }: { state: ShellViewState; actions: ShellActions; presentation?: "chrome" | "file-header" }) {
   const activeFile = useMemo(() => activeFileFromState(state), [state]);
   const localFinderIconUrl = useFinderIconUrl();
   const localDefaultIconUrl = useDefaultApplicationIconUrl(activeFile?.path ?? null);
@@ -109,6 +110,7 @@ export function OpenInEditorMenu({ state, actions }: { state: ShellViewState; ac
   );
   const label = openDestinationLabel(state.preferences.openInDefaultDestination, preferredTarget);
 
+  if (presentation === "file-header") return <WorkspaceFileHeader activeFile={activeFile} defaultApplicationIconUrl={defaultApplicationIconUrl} items={items} actions={actions} />;
   return (
     <RadixDropdownMenu
       align="end"

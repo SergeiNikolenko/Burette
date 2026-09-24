@@ -52,14 +52,56 @@ test('close-first rejects file admission; enqueue-first preserves the queued rec
   }
 });
 
-test('registered workspace opener requests compact inline placement by default', async () => {
+test('Ketcher accepts actual molecular content without a project and defaults inline', async t => {
+  const handlers = new Map();
+  await registerLocalViewer({ registerResource() {}, registerTool(name, metadata, handler) { handlers.set(name, handler); } });
+  const open = handlers.get('burette.open_viewer');
+  const structure = { format: 'smi', content: 'CC(=O)Oc1ccccc1C(=O)O' };
+  const openRequestId = crypto.randomUUID();
+  const result = await open({ view: 'ketcher', structure, openRequestId });
+  assert.equal(result.isError, undefined);
+  const session = result.structuredContent;
+  const dir = join(tmpdir(), 'burette-mcp-app', session.sessionId);
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  assert.deepEqual({ mode: session.requestedDisplayMode, view: session.view, ready: session.ready },
+    { mode: 'inline', view: 'ketcher', ready: false });
+  assert.equal(await readFile(join(dir, 'source'), 'utf8'), structure.content);
+  assert.equal((await open({ view: 'ketcher', structure, openRequestId })).structuredContent.sessionId, session.sessionId);
+  assert.equal((await open({ view: 'ketcher', structure: { ...structure, content: 'O' }, openRequestId })).isError, true);
+  for (const args of [
+    {}, { file: '/missing', structure, view: 'ketcher' },
+    { structure, view: 'auto' }, { structure: { format: '../bad', content: 'O' }, view: 'ketcher' },
+    { structure: { format: 'smi', content: 'O'.repeat(65537) }, view: 'ketcher' },
+    { structure: { format: 'smi', content: ' ' }, view: 'ketcher' },
+  ]) assert.equal((await open(args)).isError, true);
+  const expanded = (await open({ view: 'ketcher', structure, displayMode: 'fullscreen' })).structuredContent;
+  t.after(() => rm(join(tmpdir(), 'burette-mcp-app', expanded.sessionId), { recursive: true, force: true }));
+  assert.equal(expanded.requestedDisplayMode, 'fullscreen');
+});
+
+test('bundled molecular examples resolve without a caller project path', async t => {
+  const handlers = new Map();
+  await registerLocalViewer({ registerResource() {}, registerTool(name, metadata, handler) { handlers.set(name, handler); } });
+  for (const [example, format] of [['1htb', 'pdb'], ['caffeine', 'xyz']]) {
+    const result = await handlers.get('burette.open_viewer')({ example });
+    assert.equal(result.isError, undefined);
+    const session = result.structuredContent;
+    t.after(() => rm(join(tmpdir(), 'burette-mcp-app', session.sessionId), { recursive: true, force: true }));
+    assert.equal(session.format, format);
+    assert.equal(session.view, example === 'caffeine' ? 'xyzrender' : 'auto');
+    assert.ok(session.byteCount > 100);
+    assert.match(session.documents[0].path, /assets\/examples\//);
+  }
+});
+
+test('registered workspace opener requests side-pane placement by default', async () => {
   const handlers = new Map();
   await registerLocalViewer({ registerResource() {}, registerTool(name, metadata, handler) { handlers.set(name, handler); } });
   const result = await handlers.get('burette.open_viewer')({ file: new URL('../samples/mini.pdb', import.meta.url).pathname });
   const session = result.structuredContent;
   try {
     assert.equal(result.isError, undefined);
-    assert.equal(session.requestedDisplayMode, 'inline');
+    assert.equal(session.requestedDisplayMode, 'fullscreen');
     assert.equal(session.workspace, true);
   } finally {
     if (session?.sessionId) await rm(join(tmpdir(), 'burette-mcp-app', session.sessionId), { recursive: true, force: true });

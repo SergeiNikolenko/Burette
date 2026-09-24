@@ -19,14 +19,17 @@ export async function startNativeWorkspace(app, initialResult) {
   let runtimeLoaded = false;
   let startupFailed = false;
   let latestState;
+  let loadingDeadline;
   function reveal() {
     if (!startupFailed && runtimeLoaded && latestState?.ready && !latestState.error &&
       (latestState.activeDocument?.renderer !== 'molstar' || paintedDocuments.has(latestState.activeDocument.id))) {
       root.inert = false;
+      clearTimeout(loadingDeadline);
       status.hidden = true;
     }
   }
   function fail(message) {
+    clearTimeout(loadingDeadline);
     startupFailed = true;
     root.inert = true;
     showWorkspaceFailure(status, message);
@@ -42,6 +45,7 @@ export async function startNativeWorkspace(app, initialResult) {
   }
   const lifetime = createViewerLifetime({
     dispose({ terminal }) {
+      clearTimeout(loadingDeadline);
       placement.dispose();
       checkpoint?.dispose();
       for (const frame of document.querySelectorAll('iframe')) {
@@ -52,6 +56,10 @@ export async function startNativeWorkspace(app, initialResult) {
       transport?.dispose();
       assets?.dispose();
       gridSelections.clear();
+      if (!terminal) {
+        root.inert = true;
+        showWorkspaceFailure(status, 'The workspace disconnected. Retry to restore this session.');
+      }
       if (terminal) for (const key of Object.keys(localStorage)) if (key.endsWith(`.mcp-${session?.sessionId}`)) localStorage.removeItem(key);
     },
     clearContext: () => contextQueue.then(() => app.updateModelContext({ content: [] })).catch(() => {}),
@@ -104,12 +112,20 @@ export async function startNativeWorkspace(app, initialResult) {
     if (started || lifetime.closed || !result._meta?.session) return;
     started = true;
     session = result._meta.session;
+    showWorkspaceOpening(status);
+    loadingDeadline = setTimeout(() => {
+      const error = 'Workspace loading timed out. Retry to restore this session.';
+      fail(error);
+      void exchange({ state: { ready: false, error } }).catch(() => {});
+    }, 45000);
     try {
       const mounted = await exchange({});
       if (mounted.closed) { await lifetime.close(); return; }
       placement.update(app.getHostContext());
-      // Mount where the host placed this view. Expansion is an explicit user
-      // or agent action, never a startup side effect repeated after a resize.
+      // Apply the opener's requested placement once, never again on resize.
+      if (result.structuredContent?.requestedDisplayMode === 'fullscreen' && placement.mode !== 'fullscreen') {
+        await placement.set('fullscreen');
+      }
       if (lifetime.closed) return;
       const { manifest } = await exchange({ asset: { manifest: true } });
       showWorkspaceOpening(status);
@@ -123,7 +139,8 @@ export async function startNativeWorkspace(app, initialResult) {
       window.BuretteMcpWorkspace = { ...assets, placement, sessionId: session.sessionId, get closed() { return lifetime.closed; },
         firstFrame(documentId) { if (!lifetime.closed) { paintedDocuments.add(documentId); reveal(); } },
         theme: app.getHostContext()?.theme || 'light',
-        initialPaths: !checkpoint.restored && descriptor.view === 'auto' ? descriptor.documents.map(item => item.path) : [],
+        initialPaths: !checkpoint.restored && ['auto', 'xyzrender'].includes(descriptor.view) ? descriptor.documents.map(item => item.path) : [],
+        initialRenderer: descriptor.view === 'xyzrender' ? 'xyzrender-external' : undefined,
         restore: checkpoint.restored, storage: checkpoint.storage, authorizedPaths: descriptor.documents.map(item => item.path),
         fetch: transport.fetch, Worker: WorkspaceWorker, preparePreview: prepareWorkspacePreview,
       };

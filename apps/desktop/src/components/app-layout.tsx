@@ -530,7 +530,7 @@ export function AppLayout({
           ) : null}
           <div className="chrome-trailing-controls" data-tauri-drag-region>
             {!hostedMcpWidget && !state.buildInfo.isAgentShell ? <ActivityIndicator state={layoutState} actions={actions} /> : null}
-            {!hostedMcpWidget ? <OpenInEditorMenu state={layoutState} actions={actions} /> : null}
+            {!hostedMcpWidget && !window.BuretteMcpWorkspace ? <OpenInEditorMenu state={layoutState} actions={actions} /> : null}
             {bottomDockAvailable ? (
               <button
                 type="button"
@@ -561,6 +561,7 @@ export function AppLayout({
           </header>
         </>
       )}
+      {window.BuretteMcpWorkspace ? <OpenInEditorMenu state={layoutState} actions={actions} presentation="file-header" /> : null}
       <section className="workspace">
         {/* Sizes AND open flags are persisted from onLayoutChanged, not
             onResize: onResize is driven by a ResizeObserver and also fires for

@@ -364,7 +364,7 @@
       '.msp-plugin input[aria-label], .msp-plugin input[title]'
     );
     if (!control || control.closest('#buret-toolbar, .buret-preview-dock, .buret-generate-3d-control')) return null;
-    if (control.closest('.msp-hover-box-wrapper')) return null;
+    if (control.closest('.msp-hover-box-wrapper, .buret-seq-header, .buret-seq-footer')) return null;
     return control;
   }
 
@@ -1198,6 +1198,7 @@
   }
 
   function molstarStoryPresentationRequiresRebuild(config) {
+    if (activeViewer?.__buretteAutomaticStory && configuredMolstarPreset(config) === 'automatic') return false;
     return Boolean(molstarStoryPresetOverride(config)?.provider)
       || MOLSTAR_STORY_REBUILT_STYLES.has(configuredMolstarStyle(config));
   }
@@ -2047,6 +2048,7 @@
     root.style.setProperty('--buret-molstar-accent', accent);
     root.style.setProperty('--buret-menu-accent', accent);
     root.style.setProperty('--buret-menu-background', background);
+    root.style.setProperty('--buret-dock-background', background);
     root.style.setProperty('--buret-menu-section-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 16)}%, transparent)`);
     root.style.setProperty('--buret-menu-input-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 22)}%, transparent)`);
     root.style.setProperty('--buret-menu-input-focus-background', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 30)}%, transparent)`);
@@ -3141,7 +3143,7 @@
       const configuredScale = Number(options.radiusScale);
       const radiusScale = Number.isFinite(configuredScale) && configuredScale > 0
         ? configuredScale
-        : (document.body?.classList.contains('burette-mobile-host') ? 0.58 : 0.88);
+        : (document.body?.classList.contains('burette-mobile-host') ? 0.58 : window.BuretteNativeFirstFrame ? 0.7 : 0.88);
       const up = Array.isArray(options.up) && options.up.length >= 3 ? options.up : [0, 1, 0];
       const direction = Array.isArray(options.direction) && options.direction.length >= 3
         ? options.direction
@@ -3561,7 +3563,7 @@
     const label = trigger?.querySelector('[data-buret-molstar-preset-label]');
     const menu = document.querySelector('[data-buret-molstar-preset-menu]');
     populateMolstarPresetMenu(menu);
-    if (label) label.textContent = option.label;
+    if (label) label.textContent = window.BuretteNativeFirstFrame ? `Style: ${option.value === 'automatic' ? 'Auto' : option.label}` : option.label;
     if (trigger) trigger.title = `Mol* preset: ${option.label}`;
     menu?.querySelectorAll('[data-buret-molstar-preset]').forEach(button => {
       button.setAttribute('aria-checked', button.dataset.buretMolstarPreset === option.value ? 'true' : 'false');
@@ -4515,7 +4517,11 @@
       sceneSnapshot = viewer.plugin?.state?.data?.getSnapshot?.();
       // Source reloads read this configuration; rollback below restores it on failure.
       updateMolstarPresentationConfig(value, appearance, legacyStyle);
-      if (option.provider) await applyMolstarProviderPreset(viewer, option);
+      const storySnapshot = value === 'automatic' && viewer.__buretteAutomaticStory
+        ? Array.from(viewer.plugin.managers.snapshot.state.entries).find(entry => entry.snapshot.id === viewer.plugin.managers.snapshot.state.current)?.snapshot
+        : null;
+      if (storySnapshot) await viewer.plugin.state.setSnapshot(storySnapshot);
+      else if (option.provider) await applyMolstarProviderPreset(viewer, option);
       else await reloadMolstarStyle(viewer, legacyStyle, serial, appearance);
       if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
       await applyMolstarAppearance(viewer, appearance);
@@ -4565,6 +4571,7 @@
   }
 
   async function applyConfiguredMolstarPreset(viewer, config) {
+    if (viewer.__buretteAutomaticStory && configuredMolstarPreset(config) === 'automatic') return;
     const value = configuredMolstarPreset(config);
     const option = molstarPresetOption(value);
     const explicitlyConfigured = config?.molstarPreset != null;
@@ -5899,6 +5906,19 @@
   }
 
   function restoreToolbarCollapsed(toolbar, viewer) {
+    const placement = window.BuretteNativeFirstFrame ? window.parent?.BuretteMcpWorkspace?.placement : null;
+    if (placement) {
+      let previousMode;
+      const sync = () => {
+        if (previousMode === placement.mode) return;
+        previousMode = placement.mode;
+        setToolbarCollapsed(toolbar, placement.mode === 'inline', viewer, false);
+      };
+      sync();
+      const unsubscribe = placement.subscribe(sync);
+      window.addEventListener('pagehide', unsubscribe, { once: true });
+      return;
+    }
     if (window.BuretteConfig?.hostedMcpWidgetBootstrap === true || window.BuretteConfig?.defaultToolbarCollapsed === true) {
       setToolbarCollapsed(toolbar, true, viewer, false);
       return;
@@ -7041,6 +7061,19 @@
             continue;
           }
           const chain = decoratorChain(childRef);
+          // Story imports expose parser/model plumbing as several identical
+          // nested rows. Keep the file and meaningful components, not those
+          // implementation nodes. This changes presentation, never Mol* state.
+          const objectName = cell.obj.type?.name;
+          const childRefs = chain.flatMap(ref => children.get(ref) || []);
+          if (molstarStoryState().available && (
+            (['Trajectory', 'Model'].includes(objectName) && childRefs.length === 1)
+            || cell.transform.transformer?.id === 'ms-plugin.structure-from-model'
+          )) {
+            nodes.push(...build(chain));
+            continue;
+          }
+          if (objectName === 'Structure' && cell.obj.data?.elementCount === 0) continue;
           const nodeRef = chain[chain.length - 1];
           const nodeCell = state.cells.get(nodeRef) || cell;
           const components = colorTargets.get(nodeRef) || null;
@@ -8736,6 +8769,10 @@
   // Mol* rebuilds the strip's header whenever the chain or entity changes, so the
   // button is re-added rather than bound once.
   function installSequenceCloseButton() {
+    if (window.BuretteSequencePanel && !document.body.classList.contains('burette-mobile-host')) {
+      window.BuretteSequencePanel.sync();
+      return;
+    }
     const strip = document.querySelector('.msp-sequence .msp-sequence-select');
     if (!strip || strip.querySelector('.buret-sequence-close')) return;
     const button = document.createElement('button');
@@ -8774,11 +8811,13 @@
     // first just made. The press that ends the run arrives here before Mol* has
     // acted on it, so the 3D view still gets its usual focus-on-click.
     const enter = event => {
-      if (!event.target?.closest?.('.msp-sequence')) {
+      if (!event.target?.closest?.('.msp-sequence, .buret-seq-menu, .buret-sequence-layout, #buret-viewport-menu')) {
         leave();
         return;
       }
-      if (previousMode !== null) return;
+      // Header/menu interactions keep an existing selection alive, but
+      // browsing controls alone must not enter Mol* selection mode.
+      if (previousMode !== null || !event.target.closest('.msp-sequence-wrapper [data-seqid]')) return;
       const plugin = activeMolstarViewer()?.plugin;
       if (!plugin) return;
       previousMode = plugin.selectionMode === true;
@@ -8788,40 +8827,24 @@
     window.addEventListener('blur', leave);
   }
 
-  // Mol* pins the sequence region to a fixed height; this drags it, in the same
-  // shape as the molecule preview's resize edges.
   function initSequenceResize() {
-    const grip = document.getElementById('buret-sequence-resize');
-    if (!grip || grip.dataset.bound === '1') return;
-    grip.dataset.bound = '1';
-    let drag = null;
-    const onPointerDown = event => {
-      if (event.button !== 0) return;
-      const region = document.querySelector('.msp-layout-region.msp-layout-top');
-      if (!region) return;
-      drag = { pointerId: event.pointerId, top: region.getBoundingClientRect().top };
-      try { grip.setPointerCapture(event.pointerId); } catch (_) {}
-      grip.classList.add('buret-sequence-resizing');
-      event.preventDefault();
-    };
-    const onPointerMove = event => {
-      if (!drag || event.pointerId !== drag.pointerId) return;
-      const height = Math.max(64, Math.min(event.clientY - drag.top + 6, window.innerHeight * 0.6));
-      document.documentElement.style.setProperty('--buret-sequence-height', `${Math.round(height)}px`);
-      updateViewportCornerLayout();
-      event.preventDefault();
-    };
-    const finishResize = event => {
-      if (!drag || event.pointerId !== drag.pointerId) return;
-      try { grip.releasePointerCapture(event.pointerId); } catch (_) {}
-      grip.classList.remove('buret-sequence-resizing');
-      drag = null;
-      scheduleViewerResize(activeMolstarViewer(), 40);
-    };
-    grip.addEventListener('pointerdown', onPointerDown);
-    grip.addEventListener('pointermove', onPointerMove);
-    grip.addEventListener('pointerup', finishResize);
-    grip.addEventListener('pointercancel', finishResize);
+    let initialHeight = 88;
+    try {
+      const saved = Number(window.localStorage.getItem('buret.sequence.height'));
+      if (Number.isFinite(saved) && saved >= 64) initialHeight = saved;
+    } catch (_) {}
+    window.BuretteSequencePanel?.initResize({
+      initialHeight,
+      onCollapse() { toggleLayoutRegion('sequence', activeMolstarViewer()); },
+      onExpand() { toggleLayoutRegion('sequence', activeMolstarViewer()); },
+      onResize() {
+        updateViewportCornerLayout();
+        scheduleViewerResize(activeMolstarViewer(), 40);
+      },
+      onCommit(height) {
+        try { window.localStorage.setItem('buret.sequence.height', String(height)); } catch (_) {}
+      }
+    });
   }
 
   function initViewportPanelDrag(panel) {
@@ -8941,7 +8964,7 @@
 
   function closeViewportMenu() {
     document.getElementById('buret-viewport-menu')?.remove();
-    for (const trigger of document.querySelectorAll('#buret-viewport-rail [aria-expanded], #buret-selection-bar [aria-expanded]')) {
+    for (const trigger of document.querySelectorAll('#buret-viewport-rail [aria-expanded], #buret-selection-bar [aria-expanded], .buret-seq-footer [aria-expanded]')) {
       trigger.setAttribute('aria-expanded', 'false');
     }
   }
@@ -8976,7 +8999,7 @@
     build(menu);
     document.body.appendChild(menu);
     trigger.setAttribute('aria-expanded', 'true');
-    positionOpenViewportMenu(trigger.closest('#buret-viewport-rail'));
+    positionOpenViewportMenu(trigger.closest('#buret-viewport-rail, .buret-seq-footer'));
   }
 
   function viewportMenuItem(menu, label, action, options = {}) {
@@ -15907,6 +15930,17 @@
       activeDockingPrepared = null;
       if (typeof viewer.loadMvsData !== 'function') {
         throw new Error('Mol* viewer.loadMvsData is not available in this runtime.');
+      }
+      if (window.molstar?.BuretteStory && !viewer.__buretteAutomaticStory) {
+        viewer.__buretteAutomaticStory = window.molstar.BuretteStory.install(viewer.plugin, {
+          settings: () => ({
+            preset: configuredMolstarPreset(activeConfig || window.BuretteConfig || {}),
+            appearance: configuredMolstarAppearance(activeConfig || window.BuretteConfig || {})
+          }),
+          appearance: appearance => applyMolstarAppearance(viewer, appearance),
+          automatic: () => window.molstar.BuretteStory.automatic(viewer.plugin),
+          camera: camera => window.molstar.BuretteStory.camera(viewer.plugin, camera)
+        });
       }
       await viewer.loadMvsData(prepared.data, prepared.format, { replaceExisting: true });
       installDockingPoseControls(viewer, null);
@@ -25593,11 +25627,15 @@
       );
     }
 
-    if (typeof window.molstar.Viewer.create === 'function') {
-      return window.molstar.Viewer.create('app', createViewerOptions());
-    }
-
-    return new window.molstar.Viewer('app', createViewerOptions());
+    const viewer = typeof window.molstar.Viewer.create === 'function'
+      ? await window.molstar.Viewer.create('app', createViewerOptions())
+      : new window.molstar.Viewer('app', createViewerOptions());
+    // Set before loading data, when Mol* initializes the sequence state.
+    viewer.plugin.spec.components = {
+      ...viewer.plugin.spec.components,
+      sequenceViewer: { ...viewer.plugin.spec.components?.sequenceViewer, defaultMode: 'all' }
+    };
+    return viewer;
   }
 
   function ensureMolstarStylesheet() {

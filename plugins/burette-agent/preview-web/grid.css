@@ -53,9 +53,9 @@
   --buret-picture-min-height: clamp(136px, 18vw, 190px);
   --buret-drawing-max-width: 100%;
   --buret-drawing-max-height: 100%;
-  --buret-grid-shell-padding: 18px;
-  --buret-grid-rail-gutter: 42px;
-  --buret-grid-content-padding-inline: 24px;
+  --buret-grid-shell-padding: 8px;
+  --buret-grid-rail-gutter: 24px;
+  --buret-grid-content-padding-inline: 0px;
   --buret-control-height: 32px;
   --buret-button-height: 28px;
   --buret-segment-height: 28px;
@@ -214,10 +214,13 @@ button:disabled {
 }
 
 .buret-grid-toolbar {
+  width: 100%;
+  box-sizing: border-box;
   display: grid;
-  gap: 8px;
-  margin-bottom: 12px;
-  padding: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 6px;
   border: 0;
   border-radius: 12px;
   background: var(--buret-table-surface);
@@ -240,17 +243,16 @@ button:disabled {
 }
 
 #grid-controls.buret-grid-controls-condensed .buret-toolbar-row-view {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 4px;
-  overflow: hidden;
+  overflow: visible;
 }
 
 #grid-controls.buret-grid-controls-condensed .buret-toolbar-row-view > * {
   flex-shrink: 0;
 }
 
-#grid-controls.buret-grid-controls-condensed .buret-grid-xyzrender-preset-control,
-#grid-controls.buret-grid-controls-condensed .buret-selected-open-actions {
+#grid-controls.buret-grid-controls-condensed .buret-grid-xyzrender-preset-control {
   display: none;
 }
 
@@ -269,6 +271,7 @@ button:disabled {
 }
 
 .buret-toolbar-row {
+  min-width: 0;
   display: grid;
   gap: 10px;
   align-items: end;
@@ -276,6 +279,20 @@ button:disabled {
 
 .buret-toolbar-row-main {
   grid-template-columns: minmax(0, 1fr) minmax(112px, 148px) auto;
+}
+
+.buret-search-control {
+  width: 100%;
+  max-width: 320px;
+}
+
+.buret-load-status:empty {
+  display: none;
+}
+
+.buret-search-control,
+.buret-sort-control {
+  min-width: 0;
 }
 
 .buret-toolbar-row-view {
@@ -406,6 +423,9 @@ button:disabled {
   min-width: var(--buret-button-height);
   padding: 0;
 }
+
+/* The standalone grid does not load Tailwind utilities used by shared icons. */
+#grid-controls .ab-ico .stroke-none { stroke: none; }
 
 #grid-controls .ab-btn-icon .ab-ico {
   color: currentColor;
@@ -606,8 +626,21 @@ button:disabled {
   background: transparent;
 }
 
-.buret-selected-open-actions[hidden] {
-  display: none;
+/* Selection counts grow with the collection; wrap the controls within the
+   visible grid strip rather than letting their intrinsic width escape it. */
+.buret-selection-actions,
+.buret-selected-open-actions {
+  flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
+  height: auto;
+}
+
+.buret-selection-count {
+  color: var(--buret-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .buret-toolbar-spacer {
@@ -761,7 +794,8 @@ button:disabled {
 .buret-grid-toolbar input[type="search"],
 .buret-grid-toolbar select {
   width: 100%;
-  padding: 0 10px;
+  min-height: 28px;
+  padding: 0 8px;
   border: 1px solid var(--buret-input-border);
   background-color: var(--buret-input-surface);
   text-transform: none;
@@ -773,7 +807,7 @@ button:disabled {
 }
 
 .buret-sort-control select {
-  min-height: var(--buret-control-height);
+  min-height: 28px;
   padding: 0 30px 0 10px;
 }
 
@@ -1142,7 +1176,7 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
    spectrum peak table's row-state language on top. */
 .buret-grid-table {
   width: max-content;
-  min-width: 100%;
+  min-width: 0;
   border: 1px solid var(--buret-border);
   border-collapse: separate;
   border-spacing: 0;
@@ -1158,7 +1192,7 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   box-sizing: border-box;
   min-width: 118px;
   max-width: 220px;
-  padding: 8px 12px;
+  padding: 4px 10px;
   border: 0;
   border-bottom: 1px solid var(--buret-table-divider);
   overflow: hidden;
@@ -1170,6 +1204,11 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
 .buret-grid-table td {
   background: var(--buret-table-surface);
   transition: background 120ms ease-out;
+}
+
+/* Keep the vertical position stable when structural columns leave the window. */
+.buret-grid-table-molecular .buret-grid-table-row {
+  height: 61px;
 }
 
 .buret-grid-table th.buret-grid-table-search-column {
@@ -1195,14 +1234,14 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   width: 74px;
   min-width: 74px;
   max-width: 74px;
-  padding-block: 7px;
+  padding-block: 4px;
 }
 
 .buret-grid-table th[data-column="index"],
 .buret-grid-table td[data-column="index"] {
-  width: 64px;
-  min-width: 64px;
-  max-width: 64px;
+  width: 44px;
+  min-width: 44px;
+  max-width: 44px;
 }
 
 .buret-grid-table-filter-header {
@@ -1224,9 +1263,9 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
 
 .buret-grid-table th[data-column="smiles"],
 .buret-grid-table td[data-column="smiles"] {
-  width: 240px;
-  min-width: 240px;
-  max-width: 240px;
+  width: 180px;
+  min-width: 180px;
+  max-width: 180px;
 }
 
 .buret-grid-table-column-spacer {
@@ -1242,10 +1281,7 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
   height: 52px;
   box-sizing: border-box;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--buret-table-divider) 76%, transparent);
-  border-radius: 10px;
   background: var(--buret-picture-bg);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.035);
 }
 
 .buret-grid-table-molecule svg,
@@ -1655,6 +1691,24 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--buret-accent) 78%, transparent);
 }
 
+.buret-structure-drag-preview {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483647;
+  max-width: 180px;
+  padding: 6px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--buret-text) 20%, transparent);
+  border-radius: 6px;
+  background: var(--buret-menu-surface);
+  color: var(--buret-text);
+  font: 11px/16px system-ui, sans-serif;
+  pointer-events: none;
+}
+
 .buret-card.buret-card-drop-target {
   border-color: var(--buret-accent);
   box-shadow:
@@ -1733,19 +1787,20 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
   display: grid;
   place-items: center;
   box-sizing: border-box;
-  padding: clamp(16px, 3vw, 32px);
-  background: rgba(0, 0, 0, 0.58);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.36);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   animation: buret-grid-dialog-overlay-in 160ms ease-out;
 }
 
 .buret-grid-molecule-detail {
   display: grid;
-  grid-template-columns: minmax(280px, 0.95fr) minmax(320px, 1.05fr);
-  width: min(920px, calc(100vw - 40px));
-  height: min(640px, calc(100vh - 40px));
-  max-height: calc(100vh - 40px);
+  grid-template-columns: minmax(220px, 0.85fr) minmax(320px, 1.15fr);
+  box-sizing: border-box;
+  width: min(780px, 100%);
+  height: min(460px, 100%);
+  max-height: 100%;
   overflow: hidden;
   border: 1px solid var(--buret-border);
   border-radius: 14px;
@@ -1762,8 +1817,10 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
   min-height: 0;
   padding: 20px;
   overflow: hidden;
-  border-right: 1px solid var(--buret-border);
-  background: #fff;
+  margin: 16px 0 16px 16px;
+  border: 1px solid var(--buret-border);
+  border-radius: 9px;
+  background: var(--buret-picture-bg);
 }
 
 .buret-grid-molecule-detail-image .buret-rdkit-card-image,
@@ -1798,15 +1855,17 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
 
 .buret-grid-molecule-detail-title-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
+  margin-bottom: 16px;
   gap: 14px;
 }
 
 .buret-grid-molecule-detail h2 {
-  margin: 2px 0 12px;
-  font-size: 18px;
-  line-height: 1.15;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 16px;
+  line-height: 1.3;
   letter-spacing: 0;
 }
 
@@ -1849,10 +1908,11 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
 
 .buret-grid-molecule-detail-tabs button {
   flex: 0 0 auto;
-  min-height: 30px;
+  min-height: 28px;
+  font-size: 12px;
   border: 0;
   border-radius: 7px;
-  padding: 0 12px;
+  padding: 0 10px;
   color: var(--buret-muted);
   background: transparent;
   transition: background 140ms ease-out, color 140ms ease-out;
@@ -1897,8 +1957,8 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
 
 .buret-grid-molecule-detail-props {
   display: grid;
-  grid-template-columns: minmax(140px, 42%) minmax(0, 1fr);
-  gap: 8px 12px;
+  grid-template-columns: minmax(100px, 42%) minmax(0, 1fr);
+  gap: 12px;
   margin: 0;
   font-size: 13px;
   line-height: 1.35;
@@ -2100,81 +2160,80 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
   max-height: min(430px, calc(100vh - 300px));
   margin: 0;
   overflow: auto;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--buret-border);
   border-radius: 8px;
   padding: 10px;
-  color: #f5f7fb;
-  background: #111318;
+  color: var(--buret-text);
+  background: var(--buret-control-surface);
   font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+/* Keep all six existing actions visible in a quiet, aligned footer. */
 .buret-grid-molecule-detail-actions {
   flex: 0 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  position: static;
-  margin: 16px -18px -18px;
-  padding: 12px 18px 18px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 16px;
+  padding-top: 12px;
   border-top: 1px solid var(--buret-border);
-  background: var(--buret-detail-surface);
 }
 
-/* Buttons here take the shared control styling — borderless, 8px radius, the
-   toolbar's surface and hover — instead of the bordered pre-redesign variant
-   that used to override it. */
+.buret-grid-molecule-detail-actions button {
+  min-width: 0;
+  min-height: 30px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.3;
+}
 
-@media (max-width: 820px) {
+.buret-grid-molecule-detail button:focus-visible {
+  outline: 2px solid var(--buret-ring);
+  outline-offset: 2px;
+}
+
+/* Stack only when two useful columns no longer fit. The inset drawing stays
+   bounded, leaving room for properties and every action in a narrow dock. */
+@media (max-width: 620px) {
   .buret-grid-molecule-detail {
     grid-template-columns: 1fr;
-    grid-template-rows: minmax(180px, 34vh) minmax(0, 1fr);
-    width: min(680px, calc(100vw - 24px));
-    height: min(640px, calc(100vh - 24px));
-    max-height: calc(100vh - 24px);
+    grid-template-rows: minmax(100px, 0.7fr) minmax(280px, 1fr);
+    width: min(440px, 100%);
+    height: min(560px, 100%);
   }
 
   .buret-grid-molecule-detail-image {
-    padding: 16px;
-    border-right: 0;
-    border-bottom: 1px solid var(--buret-border);
-  }
-
-  .buret-grid-molecule-detail-image .buret-rdkit-card-image,
-  .buret-grid-molecule-detail-image .buret-xyzrender-card-image,
-  .buret-grid-molecule-detail-image svg {
-    min-height: 0;
-    max-height: 100%;
+    margin: 12px 12px 0;
+    padding: 12px;
   }
 
   .buret-grid-molecule-detail-body {
-    padding: 16px 18px;
+    padding: 14px;
   }
 
-  .buret-grid-molecule-detail-descriptor-table {
-    max-height: 36vh;
+  .buret-grid-molecule-detail-title-row {
+    margin-bottom: 10px;
+  }
+
+  .buret-grid-molecule-detail-tabs {
+    margin-bottom: 12px;
   }
 
   .buret-grid-molecule-detail-actions {
-    gap: 6px;
     margin-top: 10px;
-  }
-
-  .buret-grid-molecule-detail-actions button {
-    min-height: 30px;
-    padding: 5px 9px;
+    padding-top: 10px;
   }
 }
 
-@media (max-width: 520px) {
-  .buret-grid-molecule-detail-overlay {
-    padding: 6px;
+@media (max-height: 480px) {
+  .buret-grid-molecule-detail {
+    overflow-y: auto;
   }
 
-  .buret-grid-molecule-detail {
-    width: calc(100vw - 12px);
-    height: calc(100vh - 12px);
-    max-height: calc(100vh - 12px);
-    border-radius: 12px;
+  .buret-grid-molecule-detail-body {
+    overflow: visible;
+    min-height: 300px;
   }
 }
 
@@ -2637,9 +2696,9 @@ body.buret-hide-properties .buret-card-body {
 
 @media (max-width: 520px) {
   .buret-grid-shell {
-    --buret-grid-shell-padding: 12px;
-    --buret-grid-rail-gutter: 32px;
-    --buret-grid-content-padding-inline: 12px;
+    --buret-grid-shell-padding: 8px;
+    --buret-grid-rail-gutter: 24px;
+    --buret-grid-content-padding-inline: 0px;
   }
 }
 .buret-grid-close-transition {
@@ -2661,4 +2720,102 @@ body.buret-hide-properties .buret-card-body {
   font-size: 13px;
   font-weight: 600;
   box-shadow: 0 8px 28px rgb(0 0 0 / 14%);
+}
+
+/* Pinned columns stay visible inside the horizontal table scroller. */
+.buret-grid-table [data-buret-pinned-column] {
+  z-index: 1;
+  background: var(--buret-panel);
+  box-shadow: 1px 0 var(--buret-table-panel-border);
+}
+.buret-grid-table th[data-buret-pinned-column] { z-index: 3; background: var(--buret-panel); }
+.buret-grid-molecule-context-menu hr { width: 100%; border: 0; border-top: 1px solid var(--buret-table-panel-border); margin: 4px 0; }
+.buret-grid-molecule-context-menu button:disabled { opacity: .4; cursor: default; }
+.buret-grid-molecule-context-menu button:disabled:hover { background: transparent; }
+.buret-grid-molecule-context-menu label { display: grid; gap: 4px; padding: 6px 8px; color: var(--buret-muted); font-size: 12px; }
+.buret-grid-molecule-context-menu input { min-width: 0; padding: 6px 8px; border: 1px solid var(--buret-table-panel-border); border-radius: 6px; background: var(--buret-panel); color: var(--buret-text); }
+
+.buret-grid-molecule-context-menu { max-width: min(360px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; }
+.buret-grid-statistics-menu .buret-grid-molecule-context-menu-subtitle { white-space: normal; line-height: 1.6; }
+
+/* Same measured reading pace as workspace tab names; the cell never reflows. */
+.buret-cell-marquee { display: block; overflow: hidden; white-space: nowrap; }
+.buret-cell-marquee > span { display: inline-block; min-width: 100%; transition: transform 160ms ease-out; }
+td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marquee-shift, 0px))); transition: transform var(--marquee-duration, 1.6s) cubic-bezier(0.4, 0, 0.2, 1) 120ms; }
+@media (prefers-reduced-motion: reduce) { td:hover .buret-cell-marquee > span { transition: none; } }
+
+/* The grid can become a narrow rail beside a wide inspector. */
+#grid-controls { container: grid-controls / inline-size; }
+@container grid-controls (max-width: 400px) {
+  .buret-toolbar-row-main { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .buret-actionbar .ab-spacer, .buret-actionbar .ab-divider { display: none; }
+  .buret-selection-actions { flex-basis: 100%; justify-content: flex-start; }
+  .buret-toolbar-row-view { gap: 6px; }
+}
+.buret-actionbar .ab-actions-menu { margin-left: auto; }
+
+/* Size against the exposed strip, not the iframe hidden beneath a dock. */
+
+@container grid-controls (max-width: 420px) {
+  #grid-controls .buret-toolbar-row-main {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  #grid-controls .buret-sort-control,
+  #grid-controls .buret-load-status,
+  #grid-controls .buret-toolbar-row-view > :not(.ab-seg):not(.ab-menu-wrap):not(.buret-selection-actions) {
+    display: none;
+  }
+  #grid-controls .buret-toolbar-row-view {
+    gap: 4px;
+  }
+  #grid-controls .ab-menu-wrap {
+    margin-left: auto;
+  }
+  #grid-controls .buret-selection-actions {
+    order: 1;
+    flex-basis: 100%;
+    flex-wrap: nowrap;
+  }
+  #grid-controls .buret-selection-count {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+@container grid-controls (max-width: 260px) {
+  #grid-controls .buret-selection-actions {
+    display: none;
+  }
+  #grid-controls .ab-seg button {
+    padding-inline: 6px;
+  }
+}
+
+@container grid-controls (max-width: 190px) {
+  #grid-controls .buret-toolbar-row-view > .ab-seg {
+    display: none;
+  }
+}
+
+/* Scaffold and R-group columns retain text values for filtering/copy/export. */
+.buret-grid-table-fragment {
+  width: 100%;
+  min-width: 96px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  background: var(--buret-picture-bg);
+  overflow: hidden;
+}
+.buret-grid-table-fragment > div:not(.buret-molecule-loading),
+.buret-grid-table-fragment svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.buret-grid-table-fragment .buret-molecule-loading {
+  min-height: 0;
 }

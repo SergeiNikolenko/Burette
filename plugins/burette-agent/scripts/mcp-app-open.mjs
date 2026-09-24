@@ -11,9 +11,16 @@ const json = path => readFile(path, 'utf8').then(JSON.parse);
 export async function openMcpSession(root, input, create) {
   const key = input.openRequestId;
   if (key != null && (typeof key !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(key))) fail('INVALID_OPEN_REQUEST', 'openRequestId must be a UUID v4.');
-  const paths = [input.file, ...(input.additionalFiles || [])];
+  const structure = input.structure;
+  if (structure != null && (!input.workspace || input.view !== 'ketcher' || input.file != null || input.additionalFiles?.length
+    || !['smi', 'mol', 'sdf', 'ket'].includes(structure.format)
+    || typeof structure.content !== 'string' || !structure.content.trim() || Buffer.byteLength(structure.content) > 65536)) {
+    fail('INVALID_OPEN_REQUEST', 'Provide either a file or a Ketcher structure (smi, mol, sdf, ket; nonempty, at most 64 KiB).');
+  }
+  const paths = structure == null ? [input.file, ...(input.additionalFiles || [])] : [];
   if (paths.some(path => typeof path !== 'string' || !path || path.length > 4096)) fail('INVALID_OPEN_REQUEST', 'Provide nonempty file paths of at most 4096 characters.');
   const fingerprint = createHash('sha256').update(JSON.stringify({ paths: paths.map(path => resolve(path)),
+    structure: structure == null ? null : { format: structure.format, content: structure.content },
     workspace: !!input.workspace, view: input.view || 'auto', displayMode: input.displayMode || 'inline' })).digest('hex');
   const sessionId = key?.toLowerCase() || randomUUID(), dir = join(root, sessionId);
   await mkdir(root, { recursive: true, mode: 0o700 });

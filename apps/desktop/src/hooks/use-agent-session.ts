@@ -6,6 +6,7 @@ import type { OpenTextFilesResult } from "../types";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import type { DockArea } from "../lib/dock";
 import { executeAgentTabAction, type AgentTabActions } from "../lib/agent-tab-actions";
+import { setAgentWorkspacePanel } from "../lib/agent-workspace-panel";
 import type { MoleculeTab } from "../stores/molecule-store";
 import { createSelectionContext } from "../../../burette-public-plugin/lib/hosted-context";
 
@@ -512,6 +513,7 @@ async function executeDesktopAgentAction(
   tabActions: AgentTabActions,
 ) {
   const type = String(item.action?.type || "");
+  if (type === 'set_workspace_panel') return setAgentWorkspacePanel(item.action, activeTabId, tabs);
   if (type === "open_ketcher") {
     await openKetcherTab();
     return { ok: true, command: type, result: { opened: true } };

@@ -37,7 +37,7 @@ assert.equal(manifest.interface.displayName, "Burette");
 assert.equal(manifest.interface.composerIcon, "./assets/composer-icon.png");
 assert.equal(manifest.interface.logo, "./assets/app-icon.png");
 assert.deepEqual(manifest.interface.capabilities, ["Interactive", "Read", "Write"]);
-assert.match(manifest.interface.longDescription, /observe scene state as structured JSON/);
+assert.match(manifest.interface.longDescription, /inspect molecular interactions/);
 assert.equal(manifest.homepage, "https://github.com/SergeiNikolenko/Burette");
 assert.equal(manifest.repository, "https://github.com/SergeiNikolenko/Burette");
 assert.equal(manifest.license, "MIT");
@@ -84,7 +84,7 @@ const rootPackageJson = JSON.parse(await readFile("package.json", "utf8"));
 assert.equal(rootPackageJson.scripts["install:plugin"], "bun plugins/burette-agent/scripts/install-local.mjs");
 assert.equal(rootPackageJson.scripts["build:agent-shell"], "bun scripts/build-agent-shell-plugin.mjs");
 const shellBuilder = await readFile("scripts/build-agent-shell-plugin.mjs", "utf8");
-assert.ok(shellBuilder.includes("await run('bun', ['run', 'build:grid-ui'], { cwd: repoRoot });"), "Plugin build must refresh the shared grid UI before packaging it.");
+assert.ok(shellBuilder.includes("await run('bun', ['run', 'build:grid-ui'], { cwd: appRoot });"), "Plugin build must refresh the shared grid UI before packaging it.");
 
 const repoMarketplace = JSON.parse(await readFile(".agents/plugins/marketplace.json", "utf8"));
 assert.equal(repoMarketplace.name, "burette");

@@ -6,10 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { buildMcpMolstar } from './build-mcp-molstar.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const appRootIndex = process.argv.indexOf('--app-root');
+if (appRootIndex >= 0 && !process.argv[appRootIndex + 1]) throw new Error('--app-root requires a checkout path.');
+const appRoot = appRootIndex < 0 ? root : resolve(process.argv[appRootIndex + 1]);
 const bootstrapOnly = process.argv.includes('--bootstrap-only');
 const names = ['molstar.css', 'viewer-runtime.css', 'molstar.js', 'viewer-shell.js', 'burette-agent.js', 'trajectory-smoothing.js', 'molstar-preset-preview-controller.js', 'superposition-panel.js', 'viewer.js'];
-const assets = bootstrapOnly ? null : Object.fromEntries(await Promise.all(names.map(async name => [name, await readFile(resolve(root, 'PreviewExtension/Web', name), 'utf8')])));
-if (assets) assets['molstar.js'] = await buildMcpMolstar(root);
+const assets = bootstrapOnly ? null : Object.fromEntries(await Promise.all(names.map(async name => [name, await readFile(resolve(appRoot, 'PreviewExtension/Web', name), 'utf8')])));
+if (assets) assets['molstar.js'] = await buildMcpMolstar(appRoot);
 const require = createRequire(import.meta.url);
 const tailwindRequire = createRequire(require.resolve('@tailwindcss/vite'));
 const { compile } = await import(tailwindRequire.resolve('@tailwindcss/node'));

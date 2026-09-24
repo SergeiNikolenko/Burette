@@ -3,9 +3,33 @@ import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import { Window } from 'happy-dom';
+import { createViewerLifetime } from '../plugins/burette-agent/ui/local-viewer-lifetime.mjs';
 import { workspaceLoadingStyle, workspaceLoadingMarkup } from '../plugins/burette-agent/ui/native-workspace-loading.mjs';
 
 const source = await readFile(new URL('../plugins/burette-agent/ui/native-workspace-loading.mjs', import.meta.url), 'utf8');
+
+test('host detach leaves a visible recovery message instead of an empty retained pane', async () => {
+  const dom = new Window();
+  try {
+    const { document } = dom;
+    dom.Worker = class {};
+    document.body.innerHTML = '<div id="status" hidden></div><div id="root">Scene</div>';
+    dom.BuretteMcpWorkspace = { unmount: () => document.getElementById('root').replaceChildren() };
+    const workspace = await readFile(new URL('../plugins/burette-agent/ui/native-workspace.mjs', import.meta.url), 'utf8');
+    const start = runInNewContext(source.replaceAll('export ', '') + '\n' + workspace.replace(/^import .*\n/gm, '').replace('export async function', 'async function') + '\nstartNativeWorkspace', {
+      window: dom, document, localStorage: dom.localStorage, setTimeout, clearTimeout,
+      createViewerLifetime, createWorkspacePlacement: () => ({ dispose() {} }),
+    });
+    const app = { getHostContext: () => ({}), updateModelContext: async () => {}, requestTeardown: () => assert.fail('must not close retained session') };
+    await start(app, {});
+    await app.onteardown();
+    assert.equal(document.getElementById('root').textContent, '');
+    const status = document.getElementById('status');
+    assert.equal(status.hidden, false);
+    assert.match(status.querySelector('[role="alert"]').textContent, /workspace disconnected/);
+    assert.equal(status.querySelector('button').textContent, 'Retry');
+  } finally { dom.close(); }
+});
 test('opening uses one accessible spinner and its stable familiar label without duplication', () => {
   const createElement = tag => ({ tag, attributes: {}, children: [], setAttribute(key, value) { this.attributes[key] = value; }, append(...nodes) { this.children.push(...nodes); } });
   const opening = runInNewContext(source.replaceAll('export ', '') + '\nshowWorkspaceOpening', {
@@ -59,14 +83,18 @@ test('spinner is retained across loading stages and failure offers an accessible
     });
     const status = document.getElementById('status');
     const spinner = status.querySelector('.workspace-loading-spinner');
+    status.hidden = true;
     opening(status);
+    assert.equal(status.hidden, false, 'a retained panel must not remain blank when loading again');
     opening(status);
     assert.equal(status.querySelector('.workspace-loading-spinner'), spinner);
     assert.equal(status.textContent, 'Opening molecular structure...');
     document.documentElement.dataset.theme = 'dark';
     assert.equal(dom.getComputedStyle(document.body).backgroundColor, '#000');
     assert.equal(dom.getComputedStyle(document.getElementById('root')).opacity, '0');
+    status.hidden = true;
     fail(status, 'Fixture render failure');
+    assert.equal(status.hidden, false);
     assert.equal(status.querySelector('[role="alert"]').textContent, 'Fixture render failureRetry');
     assert.equal(status.querySelector('.workspace-loading-spinner'), null);
     assert.equal(dom.getComputedStyle(status).display, 'grid');

@@ -149,9 +149,27 @@ try {
   } });
   assert.equal(opened.isError, undefined);
   assert.equal(opened.structuredContent.ready, false);
-  assert.equal(opened.structuredContent.requestedDisplayMode, 'inline');
+  assert.equal(opened.structuredContent.requestedDisplayMode, 'fullscreen');
   assert.equal(opened.structuredContent.workspace, true);
   inlineSessionId = opened.structuredContent.sessionId;
+  for (const args of [
+    { view: 'ketcher', structure: { format: 'smi', content: 'CC(=O)Oc1ccccc1C(=O)O' } },
+    { example: 'caffeine' },
+    { example: '1htb' },
+  ]) {
+    const example = await request('tools/call', { name: 'burette.open_viewer', arguments: args });
+    assert.equal(example.isError, undefined);
+    try {
+      assert.equal(example.structuredContent.view, args.view || (args.example === 'caffeine' ? 'xyzrender' : 'auto'));
+      assert.equal(example.structuredContent.requestedDisplayMode, args.view === 'ketcher' ? 'inline' : 'fullscreen');
+      if (args.structure) {
+        const seed = await request('tools/call', { name: 'burette.inline_viewer_exchange', arguments: { ...example._meta.session, source: true } });
+        assert.equal(Buffer.from(seed._meta.payload.dataBase64, 'base64').toString(), args.structure.content);
+      }
+    } finally {
+      await rm(path.join(tmpdir(), 'burette-mcp-app', example.structuredContent.sessionId), { recursive: true, force: true });
+    }
+  }
   assert.equal(opened.structuredContent.token, undefined);
   assert.ok(opened._meta.session.token);
   assert.equal(opened.content[0].text.includes(opened._meta.session.token), false);

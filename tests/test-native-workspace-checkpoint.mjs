@@ -90,3 +90,35 @@ test('a native host omitting null metadata still opens and persists a fresh work
     }
   } finally { first?.dispose(); restored?.dispose(); await rm(directory, { recursive: true, force: true }); }
 });
+
+test('heartbeats do not repeatedly serialize scenes and teardown saves the latest camera', async () => {
+  const previousDocument = globalThis.document;
+  const saved = new Map();
+  let captures = 0;
+  let position = [1, 2, 3];
+  const plugin = { canvas3d: { camera: { transition: { inTransition: false } } },
+    managers: { structure: { hierarchy: { current: { structures: [{}] } } } },
+    behaviors: { state: { isBusy: { value: false } } },
+    state: { getSnapshot() { captures++; return { data: {}, camera: { current: { position } } }; } },
+  };
+  const frame = { isConnected: true, dataset: { documentId: 'protein' }, contentWindow: { BuretteViewer: { plugin } } };
+  globalThis.document = { querySelectorAll: () => [frame] };
+  const checkpoint = await createWorkspaceCheckpoint({ sessionId: 'test', exchange: async ({ checkpoint: item }) => {
+    if (item.value !== undefined) saved.set(item.key, item.value);
+    return { value: saved.get(item.key) ?? null };
+  } });
+  try {
+    const state = { ready: true, activeDocument: { id: 'protein', path: '/protein.pdb', renderer: 'molstar', ready: true } };
+    checkpoint.update(state);
+    await checkpoint.flush();
+    const before = captures;
+    for (let i = 0; i < 100; i++) checkpoint.update(state);
+    assert.equal(captures, before, 'poll bursts must not capture scenes');
+    position = [4, 5, 6];
+    await checkpoint.flush();
+    assert.equal(captures, before + 1, 'teardown bypasses the interval');
+    const value = [...saved.entries()].find(([key]) => key !== 'workspace')[1];
+    const { gunzipSync } = await import('node:zlib');
+    assert.deepEqual(JSON.parse(gunzipSync(Buffer.from(value, 'base64'))).camera.current.position, position);
+  } finally { checkpoint.dispose(); globalThis.document = previousDocument; }
+});

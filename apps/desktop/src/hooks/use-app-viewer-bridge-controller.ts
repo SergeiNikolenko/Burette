@@ -133,6 +133,7 @@ type UseAppViewerBridgeControllerOptions = {
   skipNextPreferenceRefreshRef: RefValue<boolean>;
   showGridComputeJobs: () => void;
   toggleSidebar: () => void;
+  toggleDock: (area: "right" | "bottom") => void;
   updateDirtyGridDocument: (documentId: string | null | undefined, dirty: boolean) => void;
   updateGridMenuState: (documentId: string, state: GridNativeMenuState) => void;
   updateHoveredGridRow: (documentId: string, row: HoveredGridRow | null) => void;
@@ -180,6 +181,7 @@ export function useAppViewerBridgeController({
   skipNextPreferenceRefreshRef,
   showGridComputeJobs,
   toggleSidebar,
+  toggleDock,
   updateDirtyGridDocument,
   updateGridMenuState,
   updateHoveredGridRow,
@@ -303,6 +305,7 @@ export function useAppViewerBridgeController({
     setStructureOverlayModes,
     setStructureStories,
     toggleSidebar,
+    toggleDock,
   });
   const { handleDockingPoseMessage } = useAppDockingPoseMessages({
     activeDocument,
@@ -312,6 +315,7 @@ export function useAppViewerBridgeController({
     setPoseReviewSelections,
   });
   const { handleSdfViewerMessage } = useAppSdfViewerMessages({
+    addDocuments,
     activeDocument,
     documents,
     openBrowserDevTextDocument,

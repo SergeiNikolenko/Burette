@@ -269,6 +269,11 @@ assert.equal(focus.ok, true);
 assert.ok(interactions.some(x => x.action === 'focus'));
 assert.equal(interactions.findLast(x => x.action === 'focus')?.focusOptions?.optimizeDirection, true);
 assert.equal(interactions.findLast(x => x.action === 'focus')?.focusOptions?.zoomOut, true);
+const proteinFocus = await context.window.BuretteAgent.run({ command: 'focusSelection', args: { selector: 'protein' } });
+assert.equal(proteinFocus.ok, true);
+assert.equal(proteinFocus.result.selectorEcho.kind, 'protein');
+const missingFocus = await context.window.BuretteAgent.run({ command: 'focusSelection', args: { selector: 'missing-selection-id' } });
+assert.equal(missingFocus.ok, false);
 
 const lig = await context.window.BuretteAgent.run({ command: 'focusLigand', args: { selector: { label_comp_id: 'HEM' }, showNeighborhood: true, radiusA: 4 } });
 assert.equal(lig.ok, true);

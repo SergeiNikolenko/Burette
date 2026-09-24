@@ -51,6 +51,10 @@ registrations, validation helpers, and plugin-local scripts.
 - Rebuild from the same source revision and verify plugin-specific UI checks
   after shared interface changes. An updated desktop build alone is not an
   updated plugin; publish/install the rebuilt plugin through its normal lifecycle.
+- Toolbar icons, labels, hints and appearance belong to the main application's
+  `PreviewExtension/Web` sources selected by `--app-root`. Do not inject a
+  plugin-only toolbar decorator. Keep adapter differences limited to transport,
+  host placement and host theme integration.
 
 ## Validation
 

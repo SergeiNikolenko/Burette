@@ -31,7 +31,7 @@ test('placement state moves the same workspace without inserting a second contro
   placement.update({ displayMode: 'fullscreen' });
   assert.equal(placement.getSnapshot().target, 'inline');
   await placement.set('inline');
-  assert.deepEqual(structuredClone({ requests, sizes }), { requests: [{ mode: 'fullscreen' }, { mode: 'inline' }], sizes: [{ height: 320 }, { height: 320 }, { height: 320 }] });
+  assert.deepEqual(structuredClone({ requests, sizes }), { requests: [{ mode: 'fullscreen' }, { mode: 'inline' }], sizes: [{ height: 480 }, { height: 480 }, { height: 480 }] });
 });
 
 test('hosts without a mode list can still grant placement requests', async () => {
@@ -42,6 +42,15 @@ test('hosts without a mode list can still grant placement requests', async () =>
   assert.deepEqual(structuredClone(requests), [{ mode: 'fullscreen' }]);
 });
 
+test('returning after a structure loads preserves the original inline height', async () => {
+  const { placement, document, sizes } = fixture();
+  await placement.set('fullscreen');
+  placement.observe({ activeSurface: { kind: 'ketcher' }, chemicalEditor: { structure: { atomCount: 500 } } });
+  await placement.set('inline');
+  assert.equal(document.body.style.height, '480px');
+  assert.deepEqual(structuredClone(sizes), [{ height: 480 }, { height: 480 }]);
+});
+
 test('inline geometry follows width and host return without height feedback or remount', () => {
   const { placement, document, sizes, requests, events, window } = fixture();
   placement.update({ containerDimensions: { width: 420, height: 200 } });
@@ -50,9 +59,9 @@ test('inline geometry follows width and host return without height feedback or r
   placement.update({ displayMode: 'inline', containerDimensions: { width: 420, height: 200 } });
   window.innerWidth = 360;
   events.get('resize')();
-  assert.deepEqual(structuredClone(sizes), [{ height: 320 }, { height: 320 }]);
-  assert.equal(document.body.style.height, '320px');
-  assert.equal(document.documentElement.style.height, '320px');
+  assert.deepEqual(structuredClone(sizes), [{ height: 480 }, { height: 480 }]);
+  assert.equal(document.body.style.height, '480px');
+  assert.equal(document.documentElement.style.height, '480px');
   assert.deepEqual(requests, []);
   placement.dispose();
   assert.equal(events.size, 0);
@@ -62,9 +71,9 @@ test('wide chats retain full host width and do not jump when content finishes lo
   const { placement, document, requests } = fixture();
   placement.update({ containerDimensions: { width: 1024, height: 200 } });
   assert.equal(document.body.style.width, undefined);
-  assert.equal(document.body.style.height, '320px');
+  assert.equal(document.body.style.height, '480px');
   placement.observe({ activeSurface: { kind: 'ketcher' }, chemicalEditor: { structure: { atomCount: 15 } } });
-  assert.equal(document.body.style.height, '320px');
+  assert.equal(document.body.style.height, '480px');
   assert.deepEqual(requests, []);
   await placement.set('fullscreen');
   assert.equal(document.body.style.width, undefined);
@@ -90,10 +99,10 @@ test('inline card retains its fixed budget without resize feedback', () => {
     events.get('resize')();
     placement.update({ containerDimensions: { width: 560, height } });
     placement.observe({ activeSurface: { kind: 'ketcher' } });
-    assert.equal(document.body.style.height, '320px');
-    assert.equal(document.documentElement.style.height, '320px');
+    assert.equal(document.body.style.height, '480px');
+    assert.equal(document.documentElement.style.height, '480px');
   }
-  assert.deepEqual(structuredClone(sizes), [{ height: 320 }]);
+  assert.deepEqual(structuredClone(sizes), [{ height: 480 }]);
 });
 
 test('repeated host resize or current-placement requests do not remount the app', async () => {

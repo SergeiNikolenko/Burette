@@ -21,6 +21,7 @@ body[data-closed]{height:48px}
 export const workspaceLoadingMarkup = '<div class="workspace-loading workspace-loading-opening" role="status"><span class="workspace-loading-spinner" aria-hidden="true"></span><span>Opening molecular structure...</span></div>';
 
 export function showWorkspaceOpening(status) {
+  status.hidden = false;
   if (status.querySelector('.workspace-loading-spinner')) return;
   const row = document.createElement('div');
   row.className = 'workspace-loading workspace-loading-opening';

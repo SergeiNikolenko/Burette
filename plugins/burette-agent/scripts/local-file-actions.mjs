@@ -9,11 +9,18 @@ const readAppIcon = `ObjC.import("AppKit"); function run(argv) {
   const workspace = $.NSWorkspace.sharedWorkspace;
   const path = argv[1] === 'finder' ? '/System/Library/CoreServices/Finder.app'
     : argv[1] === 'default' ? ObjC.unwrap(workspace.URLForApplicationToOpenURL($.NSURL.fileURLWithPath(argv[0])).path) : argv[1];
-  const icon = workspace.iconForFile(path);
-  const bitmap = $.NSBitmapImageRep.alloc.initWithBitmapDataPlanesPixelsWidePixelsHighBitsPerSampleSamplesPerPixelHasAlphaIsPlanarColorSpaceNameBytesPerRowBitsPerPixel(null, 32, 32, 8, 4, true, false, $.NSDeviceRGBColorSpace, 0, 0);
+  const bundle = $.NSBundle.bundleWithPath(path);
+  const iconName = ObjC.unwrap(bundle.objectForInfoDictionaryKey('CFBundleIconFile'));
+  const resource = iconName ? bundle.pathForResourceOfType(iconName.replace(/\\.icns$/i, ''), 'icns') : null;
+  // Read the application's artwork directly. Launch Services can add a light
+  // system tile to legacy app icons; that decoration does not belong in a menu.
+  const icon = resource && ObjC.unwrap(resource) ? $.NSImage.alloc.initWithContentsOfFile(resource) : workspace.iconForFile(path);
+  const bitmap = $.NSBitmapImageRep.alloc.initWithBitmapDataPlanesPixelsWidePixelsHighBitsPerSampleSamplesPerPixelHasAlphaIsPlanarColorSpaceNameBytesPerRowBitsPerPixel(null, 64, 64, 8, 4, true, false, $.NSDeviceRGBColorSpace, 0, 0);
   $.NSGraphicsContext.saveGraphicsState;
   $.NSGraphicsContext.setCurrentContext($.NSGraphicsContext.graphicsContextWithBitmapImageRep(bitmap));
-  icon.drawInRectFromRectOperationFraction($.NSMakeRect(0, 0, 32, 32), $.NSZeroRect, $.NSCompositingOperationCopy, 1);
+  $.NSColor.clearColor.set;
+  $.NSRectFillUsingOperation($.NSMakeRect(0, 0, 64, 64), $.NSCompositingOperationClear);
+  icon.drawInRectFromRectOperationFraction($.NSMakeRect(0, 0, 64, 64), $.NSZeroRect, $.NSCompositingOperationSourceOver, 1);
   $.NSGraphicsContext.restoreGraphicsState;
   return ObjC.unwrap(bitmap.representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $({})).base64EncodedStringWithOptions(0));
 }`;
@@ -42,7 +49,7 @@ export async function localFileAction(input, { authorize, platform = process.pla
   const icon = async target => {
     const { stdout } = await execute('/usr/bin/osascript', ['-l', 'JavaScript', '-e', readAppIcon, path, target], options);
     const png = stdout.trim();
-    if (png.length > 16384 || !/^iVBORw0KGgo[A-Za-z0-9+/=]+$/u.test(png)) throw new Error('Invalid application icon.');
+    if (png.length > 49152 || !/^iVBORw0KGgo[A-Za-z0-9+/=]+$/u.test(png)) throw new Error('Invalid application icon.');
     return { iconUrl: `data:image/png;base64,${png}` };
   };
   if (input.type === 'app_icon' && ['finder', 'default'].includes(input.targetId)) return icon(input.targetId);

@@ -16,8 +16,8 @@ const root = join(tmpdir(), 'burette-mcp-app');
 const maxStateBytes = 64 * 1024;
 const apiVersion = 'burette-mcp-app/v1';
 const actions = new Set(['focus_ligand', 'select_residues', 'focus_selection', 'reset_camera', 'clear_selection', 'set_display_mode', 'set_molstar_style', 'color_by_chain', 'set_scene_motion', 'set_scene_wiggle', 'rotate_camera', 'observe_scene', 'capture_scene', 'activate_tab', 'close_tab', 'close_other_tabs', 'close_all_tabs', 'move_tab']);
-const workspaceActions = new Set(['query_atoms', 'query_groups', 'named_selection', 'select_atoms', 'measure_geometry', 'list_scene_layers', 'patch_scene_layers', 'open_ketcher', 'control_ketcher', 'open_files', 'open_docking_view', 'story_observe', 'story_control', 'observe_frames', 'control_frames', 'manage_tabs']);
-const workspaceShellActions = new Set(['activate_tab', 'close_tab', 'close_other_tabs', 'close_all_tabs', 'move_tab', 'set_display_mode', 'open_ketcher', 'open_files', 'open_docking_view', 'manage_tabs']);
+const workspaceActions = new Set(['query_atoms', 'query_groups', 'named_selection', 'select_atoms', 'measure_geometry', 'list_scene_layers', 'patch_scene_layers', 'open_ketcher', 'control_ketcher', 'open_files', 'open_docking_view', 'story_observe', 'story_control', 'observe_frames', 'control_frames', 'manage_tabs', 'set_workspace_panel']);
+const workspaceShellActions = new Set(['activate_tab', 'close_tab', 'close_other_tabs', 'close_all_tabs', 'move_tab', 'set_display_mode', 'open_ketcher', 'open_files', 'open_docking_view', 'manage_tabs', 'set_workspace_panel']);
 
 async function writeJson(path, value) {
   const temporary = `${path}.${randomUUID()}.tmp`;
@@ -41,11 +41,16 @@ async function readSession(sessionId) {
 // The CLI owns this transport. MCP only forwards bounded operations to it.
 export async function runMcpAppOperation(input, { assetRoot } = {}) {
   if (input.operation === 'open') {
-    if (input.view != null && !['auto', 'ketcher', 'docking'].includes(input.view)) throw new Error('Unknown native workspace view.');
+    if (input.view != null && !['auto', 'ketcher', 'docking', 'xyzrender'].includes(input.view)) throw new Error('Unknown native workspace view.');
     if (input.displayMode != null && !['inline', 'fullscreen'].includes(input.displayMode)) throw new Error('Display mode must be inline or fullscreen.');
     if (input.additionalFiles != null && (!Array.isArray(input.additionalFiles) || input.additionalFiles.length > 7)) throw new Error('A native workspace supports at most 8 files.');
     return openMcpSession(root, input, async (sessionId, sessionDir) => {
-      const { snapshots } = await snapshotMcpDocuments([input.file, ...(input.additionalFiles || [])], input.workspace);
+      let sourceFile = input.file;
+      if (input.structure != null) {
+        sourceFile = join(sessionDir, `sketch.${input.structure.format}`);
+        await writeFile(sourceFile, input.structure.content, { mode: 0o600, flag: 'wx' });
+      }
+      const { snapshots } = await snapshotMcpDocuments([sourceFile, ...(input.additionalFiles || [])], input.workspace);
       if (input.view === 'docking' && snapshots.length < 2) throw new Error('Docking requires a receptor and at least one ligand file.');
       if (input.view === 'ketcher' && !['mol', 'sdf', 'sd', 'smi', 'smiles', 'ket', 'rxn'].includes(snapshots[0].document.format)) throw new Error('Ketcher requires MOL, SDF, SMILES, KET or RXN input.');
       await mkdir(join(sessionDir, 'actions'), { mode: 0o700 });
@@ -97,6 +102,7 @@ export async function runMcpAppOperation(input, { assetRoot } = {}) {
       if (!Array.isArray(paths) || paths.some(path => !session.documents.some(item => item.path === path))) throw new Error('File is not authorized for this workspace.');
     }
     if (input.action.type === 'set_display_mode' && !['inline', 'fullscreen'].includes(input.action.mode)) throw new Error('Display mode must be inline or fullscreen.');
+    if (input.action.type === 'set_workspace_panel' && (!['right', 'bottom'].includes(input.action.area) || typeof input.action.open !== 'boolean' || (input.action.documentId !== undefined && (typeof input.action.documentId !== 'string' || input.action.documentId.length > 256)))) throw new Error('Panel action requires right/bottom area, boolean open and an optional observed documentId.');
     const state = await runMcpAppOperation({ operation: 'observe', sessionId: session.sessionId });
     if (['activate_tab', 'close_tab', 'close_other_tabs', 'move_tab'].includes(input.action.type)) {
       const tabId = input.action.tabId || state.activeDocument?.id;

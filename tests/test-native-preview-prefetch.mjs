@@ -8,7 +8,7 @@ test('native reveal waits for a new committed, stationary draw and reports rende
   let onDraw, onTimeout, unsubscribed = 0;
   const bridge = { theme: 'light' };
   const window = { parent: { BuretteMcpWorkspace: bridge, addEventListener() {} }, addEventListener() {}, postMessage() {} };
-  const document = { createElement: () => ({}), head: { appendChild() {} }, querySelectorAll: () => [] };
+  const document = { createElement: () => ({}), head: { appendChild() {} }, querySelectorAll: () => [], body: { dataset: {} } };
   runInNewContext(source.replace('export function', 'function') + '\nstartPreview(() => () => {});', {
     window, document, setTimeout: callback => { onTimeout = callback; return 1; }, clearTimeout() {},
   });
@@ -49,12 +49,13 @@ test('native preview fetches independent assets together and preserves script ex
       queueMicrotask(() => { element.onload(); if (element.src === 'blob:second.js') finished(); });
     } },
     getElementById: () => assert.fail('No loading error expected'),
+    body: { dataset: {} },
   };
   const bridge = { resolve: path => path, theme: 'light', closed: false,
     asset(path) { requested.push(path); return new Promise(resolve => pending.set(path, resolve)); },
   };
   const window = { parent: { BuretteMcpWorkspace: bridge, addEventListener() {}, postMessage() {} }, addEventListener() {}, postMessage() {} };
-  runInNewContext(source.replace('export function', 'function') + '\nstartPreview(() => () => {});', { window, document, queueMicrotask });
+  runInNewContext(source.replace('export function', 'function') + '\nstartPreview(() => () => {});', { window, document, queueMicrotask, setTimeout: () => 1, clearTimeout() {} });
   assert.deepEqual(requested, ['style.css', 'first.js', 'second.js']);
   pending.get('second.js')('blob:second.js');
   pending.get('style.css')('blob:style.css');

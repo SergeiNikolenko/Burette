@@ -15,7 +15,7 @@ test('SDK CSS references the packaged KaTeX font without requiring network acces
     await writeFile(join(shellRoot, 'index.js'), 'export const ready = true;');
     await writeFile(join(shellRoot, 'assets/KaTeX_Main-Regular-fixture.woff2'), 'font fixture');
     await writeFile(join(shellRoot, 'assets/style.css'), '@font-face{src:url("https://cdn.openai.com/common/fonts/katex/KaTeX_Main-Regular.woff2")}');
-    for (const name of ['molstar.css', 'viewer-runtime.css', 'viewer-shell.js', 'viewer-bootstrap.js', 'viewer.js', 'burette-agent.js', 'trajectory-smoothing.js', 'molstar-preset-preview-controller.js', 'superposition-panel.js', 'grid-viewer.js', 'grid-ui.js', 'grid.css', 'rdkit/RDKit_minimal.wasm', 'openchemlib/openchemlib.js']) {
+    for (const name of ['molstar.css', 'viewer-runtime.css', 'viewer-shell.js', 'viewer-bootstrap.js', 'sequence-panel.js', 'molecule-preview-interactions.js', 'renderer-view-state.js', 'color-picker.js', 'scene-file-actions.js', 'viewer.js', 'burette-agent.js', 'trajectory-smoothing.js', 'molstar-preset-preview-controller.js', 'superposition-panel.js', 'grid-viewer.js', 'grid-ui.js', 'grid.css', 'rdkit/RDKit_minimal.wasm', 'openchemlib/openchemlib.js']) {
       await writeFile(join(runtimeRoot, name), 'fixture');
     }
     await writeFile(join(runtimeRoot, 'rdkit/RDKit_minimal.js'), 'function craftInvokerFunction(){new Function()}var __embind_register_class_constructor;');

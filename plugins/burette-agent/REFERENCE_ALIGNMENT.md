@@ -74,8 +74,9 @@ Burette adopts the reusable architecture, not the reference implementation:
 - the host controls expansion, with no localhost iframe fallback;
 - source bytes/capabilities remain outside model-visible content;
 - creation, mounted readiness, and acknowledged action success are separate;
-- `open_viewer` starts as a compact inline workspace; side-pane placement
-  is opt-in, and display-mode changes reuse the same viewer and session;
+- `open_viewer` requests side-pane placement once on mount, except Ketcher
+  which stays inline by default; returning to chat
+  and subsequent display-mode changes reuse the same viewer and session;
 - the native workspace uses the same application source for file tabs,
   collections, Ketcher, combined scenes and packaged Stories; the compact
   inline PDB/mmCIF resource remains separate.

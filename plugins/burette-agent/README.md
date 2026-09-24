@@ -1,5 +1,7 @@
 # Burette Plugin
 
+Development and no-restart verification: [Native widget development](../../docs/native-widget-development.md).
+
 UI selections (including whole structures and chains) are reported in the active
 document's `observe.scene.selection`. Selection context is capped at 24 KiB;
 atom identity samples are capped at 96 and
@@ -17,11 +19,24 @@ It reflects the current viewer, not experimental evidence or a simulation.
 The full Browser workspace and the inline MCP App are separate host surfaces:
 opening a Browser workspace does not itself create a native chat attachment.
 For molecular work in Codex, `burette.open_viewer` opens a compact native chat
-workspace without Browser or localhost, using full chat width and content-adaptive
-height. Open in side pane is in the bottom-right Codex menu, outside the
+workspace without Browser or localhost, opening in the side pane by default.
+Returning to chat uses full chat width and content-adaptive height. The bottom-right button directly opens the side pane or returns to chat, outside the
 file-actions menu. The inline widget hides the bottom dock and its resize handle;
 the side pane retains them. Host unmount releases the renderer without
 terminating the session; display-mode changes do not close the workspace.
+Native cards hide the internal browser-style top bar in both display modes.
+They retain a separate current-file header: path breadcrumbs, full-path copying,
+right/bottom dock toggles, a default-application action and an Open With menu
+containing Reveal in Finder. The shared
+`WorkspaceFileHeader` uses the existing allowlisted file actions; it does not
+rename host-owned Codex tabs or manufacture a system application menu.
+Mol* left/right controls use panel icons; workspace dock controls live in the
+file header, not the molecular toolbar. Internal documents remain accessible through the tab
+tools; hiding their bar does not turn them into host-owned Codex tabs.
+The native control action `set_workspace_panel` accepts `area: "right" | "bottom"`,
+`open: boolean`, and optional `documentId` from an already open molecular tab.
+It changes the active tab's dock, not the host placement or molecular coordinates.
+Use side-pane mode for the bottom dock; it remains hidden in inline cards.
 Keep the task's `sessionId` for subsequent files: `control_inline_viewer` with
 `action: { type: "open_files", paths: ["/absolute/new-file.pdb"] }` adds internal
 tabs in that same pane. Existing paths are focused rather than duplicated. New
@@ -168,9 +183,11 @@ That command writes the runtime files into the plugin bundle:
 - `plugins/burette-agent/browser-shell-dist/`
 - `plugins/burette-agent/preview-web/`
 
-The plugin is the shared Burette interface built with
-`VITE_BURETTE_AGENT_SHELL=1`, not a separate UI fork. Viewer and Ketcher updates
-are included when this bundle is rebuilt and installed. Its visualization-only
+The plugin builds this checkout's Burette interface with
+`VITE_BURETTE_AGENT_SHELL=1`. The recovery checkout is not automatically updated
+from the main repository: rebuilding it alone does not include newer main UI.
+See the source-boundary checks in `docs/native-widget-development.md` before
+claiming UI parity. Its visualization-only
 profile omits molecular Compute/Tools and Jobs, and hides project-sidebar and
 bottom-dock toggle buttons. Ketcher import/export still uses its output panel.
 The shared preview receives `visualizationOnly: true`; desktop builds retain
@@ -244,9 +261,10 @@ The `.burette-agent-install.json` file records the source checkout or app bundle
 used for the install. The MCP server, Browser shell, and Browser preview paths
 must work from the installed plugin copy without the source checkout.
 
-Verify the installation with `codex plugin list`, then restart Codex after
-changing the plugin. A running Codex process can keep the previous MCP process
-and tool surface alive until the next session.
+Verify the installation with `codex plugin list`, then compare the active MCP
+resource with the installed build and observe the requested card. Follow
+`docs/native-widget-development.md`; do not routinely restart Codex or confuse
+installation with a refreshed, mounted widget.
 
 Public Plugins Directory submission remains a separate deployment target from
 this local stdio bundle. The hosted plugin provides the public HTTPS endpoint,

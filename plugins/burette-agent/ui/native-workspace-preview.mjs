@@ -5,6 +5,7 @@ import { installWorkspaceTooltipLayout } from './native-workspace-tooltip-layout
 function startPreview(installTooltipLayout) {
   const bridge = window.parent.BuretteMcpWorkspace;
   window.__BURETTE_HOSTED_MCP_WIDGET__ = true;
+  document.body.dataset.buretteNativeUi = 'true';
   window.fetch = bridge.fetch;
   window.Worker = bridge.Worker;
   window.BuretteNativeFirstFrame = async viewer => {
@@ -33,7 +34,9 @@ function startPreview(installTooltipLayout) {
   window.BuretteResolveRuntimeAsset = path => bridge.asset(bridge.resolve(path, 'runtime/viewer.js'));
   window.BuretteRDKitWasmURL = '/__burette/rdkit-wasm';
   const themeStyle = document.createElement('style');
-  themeStyle.textContent = '[data-buret-action="theme"] { display: none !important; } #buret-toolbar:not(.collapsed):not(.buret-suppressed-by-molstar-panel),#buret-toolbar.collapsed .buret-grip,#buret-toolbar.buret-suppressed-by-molstar-panel .buret-grip,.buret-viewport-rail,.buret-corner-toggle:not(:focus-visible),.buret-scene-tree { box-shadow: 0 1px 4px rgb(0 0 0 / 8%) !important; }';
+  // Only host behavior belongs here. Icons, hints, shadows and menu tokens are
+  // supplied by the shared viewer source selected by the build's --app-root.
+  themeStyle.textContent = '[data-buret-action="theme"] { display: none !important; }';
   document.head.appendChild(themeStyle);
   const disposeTooltipLayout = installTooltipLayout();
   const syncTheme = () => {
@@ -96,7 +99,7 @@ export function prepareWorkspacePreview(html) {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const config = doc.getElementById('burette-runtime-config');
   if (config) {
-    config.textContent = JSON.stringify({ ...JSON.parse(config.textContent), defaultToolbarCollapsed: true, hostedMcpWidgetBootstrap: true }).replaceAll('<', '\\u003c');
+    config.textContent = JSON.stringify({ ...JSON.parse(config.textContent), autoFocusStructure: true, defaultToolbarCollapsed: true, hostedMcpWidgetBootstrap: true }).replaceAll('<', '\\u003c');
   }
   doc.querySelectorAll('base').forEach(element => element.remove());
   for (const script of doc.querySelectorAll('script')) {

@@ -1311,7 +1311,9 @@ function viewerHtml(
     ...(externalArtifact ? { externalArtifact } : {}),
     ...(xyzrenderPresetOptions ? { xyzrenderPresetOptions } : {}),
     ...(xyzrenderControls ? { xyzrenderControls } : {}),
-    ...((WEB_DEMO_ENABLED || (renderer === "xyzrender-external" && browserDevVirtualTextDocuments.has(path)))
+    // A virtual document has no authorized filesystem path. Keep its source
+    // available before the first Mol* -> xyzrender switch, not only afterwards.
+    ...((WEB_DEMO_ENABLED || browserDevVirtualTextDocuments.has(path))
       ? {
           xyzrenderInputDataBase64: bytesToBase64(bytes),
           xyzrenderInputExtension: extension,
@@ -1363,6 +1365,7 @@ function viewerHtml(
   <script src="${viewerAsset("trajectory-smoothing.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("molstar-preset-preview-controller.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("superposition-panel.js")}?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("sequence-panel.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("viewer.js")}?v=${runtimeAssetVersion}"></script>
 </body>
 </html>`);

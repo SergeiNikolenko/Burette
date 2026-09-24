@@ -672,7 +672,7 @@ assert.match(browserDevDocuments, /const RDKIT_WASM_PATH = WEB_DEMO_ENABLED[\s\S
 assert.match(browserDevDocuments, /const XYZRENDER_ENDPOINT = WEB_DEMO_ENABLED\s*\? "\/api\/xyzrender"\s*:\s*"\/__burette\/xyzrender";/);
 assert.equal(browserDevDocuments.match(/xyzrenderEndpoint: XYZRENDER_ENDPOINT/g)?.length, 2);
 assert.doesNotMatch(browserDevDocuments, /new URL\('rdkit\/RDKit_minimal\.wasm', document\.baseURI\)/);
-assert.match(browserDevDocuments, /WEB_DEMO_ENABLED \|\| \(renderer === "xyzrender-external" && browserDevVirtualTextDocuments\.has\(path\)\)/);
+assert.match(browserDevDocuments, /WEB_DEMO_ENABLED \|\| browserDevVirtualTextDocuments\.has\(path\)/);
 assert.match(browserDevDocuments, /vdwAtoms: null/);
 assert.match(browserDevDocuments, /hullMode: null/);
 assert.match(browserDevDocuments, /hullAtoms: null/);
@@ -4525,7 +4525,8 @@ assert.match(appSdfViewerMessagesHook, /rendererMode: "molstar" as const/);
 assert.match(appSdfViewerMessagesHook, /void openDockingDocument\(receptorDocument\.path, \[document\.path\]\)/);
 assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening selected molecules in Molstar docking view\.\.\."\)/);
 assert.match(appSdfViewerMessagesHook, /pushStatus\("Opened selected molecules in Molstar"\)/);
-assert.match(appSdfViewerMessagesHook, /openDocumentsInActiveTab\(\[document\]\)/);
+// The new-tab behavior is exercised by test-sdf-new-tab.mjs.
+assert.match(appSdfViewerMessagesHook, /addDocuments\(\[document\]\)/);
 assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfPoseDocument"/);
 assert.match(appSdfViewerMessagesHook, /const targetPath = requestedPath\.length > 0/);
 assert.match(appSdfViewerMessagesHook, /const requestedReceptorPath = bodyString\(body\.receptorPath\)\.trim\(\)/);

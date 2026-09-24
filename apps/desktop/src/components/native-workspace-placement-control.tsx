@@ -1,8 +1,6 @@
 import { useState } from "react";
-import { Button } from "@openai/apps-sdk-ui/components/Button";
-import { ExpandLarge, CollapseLarge } from "@openai/apps-sdk-ui/components/Icon";
+import { Button } from "@/components/ui/button";
 import { useNativeWorkspacePlacement } from "../hooks/use-native-workspace-placement";
-import "../plugin-ui.css";
 
 export function NativeWorkspacePlacementControl() {
   const placement = window.BuretteMcpWorkspace?.placement;
@@ -13,15 +11,13 @@ export function NativeWorkspacePlacementControl() {
   return (
     <div data-workspace-placement-control>
       {error && <div role="alert" className="workspace-placement-error">{error}</div>}
-      <Button color="secondary" variant="solid" size="sm" disabled={state.disabled}
+      <Button variant="outline" size="sm" className="workspace-placement-trigger" disabled={state.disabled}
         aria-label={label} onClick={() => {
           setError("");
           void placement.set(state.target).then(result => {
             if (!result.ok) setError("Codex did not change the panel.");
           }).catch(cause => setError(`Could not change panel: ${cause.message}`));
-        }}>
-        Codex {state.mode === "inline" ? <ExpandLarge aria-hidden="true" /> : <CollapseLarge aria-hidden="true" />}
-      </Button>
+        }}>{label}</Button>
     </div>
   );
 }

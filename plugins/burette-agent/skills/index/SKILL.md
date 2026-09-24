@@ -23,6 +23,30 @@ request. Do not switch to discussing plugin installation unless asked.
 
 ## Direct native viewing
 
+For a first drawing request, call `burette.open_viewer` with `view: "ketcher"`
+and `structure: { format: "smi", content: "<requested molecule SMILES>" }`.
+For aspirin the content is `CC(=O)Oc1ccccc1C(=O)O`. This seeds the editor
+before it reports ready and opens inline in chat. No project folder, dummy
+MOL file or repository search is needed. Never substitute an unrelated fixture.
+The `burette.open_ketcher` facade requires an existing Browser/desktop workspace
+handle; a native `sessionId` is not that handle.
+
+The bundled examples use `burette.open_viewer({ example: "1htb" })` or
+`burette.open_viewer({ example: "caffeine" })`. Caffeine is an XYZ document
+for xyzrender. These work independently of the current directory.
+
+`awaiting_mount` means the host has not mounted the widget, not that a project
+folder is missing. Codex mounts the card only while the chat is on screen, so a
+background or unattended task normally stays in `awaiting_mount`; this is not an
+error. Observe once more after a short wait (at most 5 seconds). If still
+unmounted, finish the turn: say the session is prepared with the named file and
+the card appears when the chat is opened. Do not claim the molecule is shown,
+call it a failure, poll repeatedly, or offer alternative viewers. Do not switch
+to the standalone desktop app, issue commands to an unmounted editor, or
+request fullscreen to repair mounting.
+After ready, verify the Ketcher exported structure matches the requested
+molecule before reporting a successful drawing.
+
 When a supported local structure/collection/Story path is known and `burette.open_viewer` is
 available, this section is the complete opening workflow:
 
@@ -37,6 +61,14 @@ available, this section is the complete opening workflow:
 3. A suspended/not-ready workspace is not permission to create a duplicate.
    Ask the user to bring its existing pane back. Use `burette.control_inline_viewer` only for actions the user requested.
    A completed acknowledgement does not need another identical control call.
+
+The native opener defaults to the side pane except Ketcher, which stays inline
+unless expansion is explicitly requested. Use `set_display_mode` with
+`mode: "inline"` only when the user wants the chat card. To arrange the active
+workspace use `set_workspace_panel` with `area: "right" | "bottom"`, `open: true`
+and optionally an observed open-tab `documentId`. Close with `open: false`.
+The bottom dock is visible only in side-pane mode. These are internal workspace
+docks, not additional Codex windows; observe and verify each requested view.
 
 Do not load Browser, Computer, unrelated scientific workflow skills, or a broad
 capability inventory for this direct path. Only load another focused workflow
@@ -177,6 +209,47 @@ Browser means the Codex in-app Browser plugin for both surfaces. Create or use
 local URLs without launching an external browser and navigate them in the
 in-app Browser. Do not use macOS `open`, Arc, Chrome, Safari, or another
 external browser unless the user explicitly asks for an external browser.
+
+## User handoff links
+
+When a response presents an opened molecular file, project, PDB entry, or saved
+scene, include a clickable "Open in Burette" link in the chat without waiting
+for another request. Use `burette.create_link` and its returned `deepLink`;
+the repository CLI `link` command is the fallback. Do not hand-encode paths.
+Prefer the exact local file for a file-based result, a PDB link for an explicit
+PDB lookup, or a registered desktop session link for that desktop session.
+An inline MCP session ID is not a registered desktop session ID.
+For unsaved/virtual documents, do not fabricate a file link or silently save:
+offer an export, or clearly label a link as opening the original source.
+A file/PDB link opens the source in the installed app on this Mac; it does not
+transfer unsaved widget edits, camera, or selection. Omit the link for unrelated
+discussion or when no valid target is available.
+
+## Updated-plugin acceptance
+
+For development updates, use the plugin-creator update workflow and the native
+source checkout's development documentation before presenting the result.
+Keep four separate facts: source/build, installed package, live MCP resource,
+and the exact mounted panel. None proves the next.
+
+- Verify the installed version and requested UI markers in its actual shell
+  assets. Compare the live resource with the corresponding installed resource,
+  not with a different shell bundle. Keep diagnostic output bounded.
+- Updating in the same task has worked; do not claim that a new task or an app
+  restart is always required. Its refresh trigger is not established. Check the
+  current connection first; an old resource connection does not prove every
+  tool connection is old, and a new server process does not prove panel refresh.
+- Do not present another old pane as the updated result. Preserve current
+  sessions and avoid repeated opener calls. A new task is a documented fallback
+  for tool pickup, not a guaranteed fix; create one only at the user's request.
+  Do not restart the host, kill MCP processes, or patch caches to force refresh.
+- For UI changes, inspect the requested header, buttons, labels, menus and their
+  clicks in the real plugin. A ready molecule or capture_scene image proves only
+  the molecular canvas, not the surrounding interface. Browser/component tests
+  are supporting checks, never native acceptance.
+- Report installed, live-connection-verified and visually verified separately.
+  If native inspection is unavailable, keep that gate incomplete. Do not call
+  the task finished or promise a refresh that has not been observed.
 
 ## Completion Gate
 

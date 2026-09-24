@@ -13,6 +13,15 @@ scene tree per snapshot.
 
 ## Workflow
 
+For Burette docking Stories, keep the viewer on standard Automatic representation
+and preserve its chosen Appearance. Do not author a second docking-specific
+color/opacity style, residue labels, or distance primitives by default. When a
+step has an explicit nonempty residue selection, give its MVS component
+`ref: "burette-environment"`; Burette uses the stock Mol* focus/surroundings
+behavior for it. Keep computed contacts and scores in the description. Steps
+without that selection must not acquire an invented environment. Verify the
+first step and forward/back after loading, not only the toolbar's Auto label.
+
 1. Call `burette.list_story_templates`. Reuse the closest installed scaffold
    when its scientific purpose matches; otherwise write a short storyboard
    before generating JSON. Give every step one scientific purpose and one
