@@ -23,6 +23,8 @@ const APP_ID: &str = "com.local.BuretteV10";
 const LEGACY_APP_ID: &str = "com.local.BurreteV10";
 #[cfg(target_os = "macos")]
 const K_LS_ROLES_ALL: u32 = u32::MAX;
+#[cfg(target_os = "macos")]
+const LSREGISTER: &str = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister";
 
 #[cfg(target_os = "macos")]
 #[link(name = "CoreServices", kind = "framework")]
@@ -44,6 +46,7 @@ extern "C" {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct QuickLookResetReport {
     ok: bool,
+    stale_registrations_removed: CommandReport,
     launch_services_registered: CommandReport,
     default_handlers_registered: CommandReport,
     extension_registered: CommandReport,
@@ -65,7 +68,15 @@ struct CommandReport {
 
 #[cfg(target_os = "macos")]
 #[tauri::command]
-pub(crate) fn reset_quick_look() -> Result<QuickLookResetReport, String> {
+pub(crate) async fn reset_quick_look() -> Result<QuickLookResetReport, String> {
+    // `lsregister -dump` takes seconds; keep the blocking work off the main thread.
+    tauri::async_runtime::spawn_blocking(reset_quick_look_blocking)
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+#[cfg(target_os = "macos")]
+fn reset_quick_look_blocking() -> Result<QuickLookResetReport, String> {
     let app_bundle = current_app_bundle()?;
     let app_bundle_id =
         bundle_id(&app_bundle).unwrap_or_else(|| "com.local.BuretteV10".to_string());
@@ -76,9 +87,16 @@ pub(crate) fn reset_quick_look() -> Result<QuickLookResetReport, String> {
     let preview_extension_id =
         bundle_id(&preview_extension).unwrap_or_else(|| "com.local.BuretteV10.Preview".to_string());
 
+    // Deleted or trashed builds stay in Launch Services and can keep claiming
+    // shared UTIs; Quick Look then fails with "Extension ... not found".
+    let stale_registrations_removed = unregister_stale_owned_bundles(&app_bundle);
     let launch_services_registered = run_command(
-        "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
-        vec!["-f".into(), "-R".into(), app_bundle.to_string_lossy().to_string()],
+        LSREGISTER,
+        vec![
+            "-f".into(),
+            "-R".into(),
+            app_bundle.to_string_lossy().to_string(),
+        ],
         false,
     );
     let default_handlers_registered =
@@ -100,7 +118,8 @@ pub(crate) fn reset_quick_look() -> Result<QuickLookResetReport, String> {
         false,
     );
     let quicklookd_killed = run_command("/usr/bin/killall", vec!["quicklookd".into()], true);
-    let ok = launch_services_registered.success
+    let ok = stale_registrations_removed.success
+        && launch_services_registered.success
         && default_handlers_registered.success
         && extension_registered.success
         && extension_enabled.success
@@ -109,6 +128,7 @@ pub(crate) fn reset_quick_look() -> Result<QuickLookResetReport, String> {
         && quicklookd_killed.success;
     Ok(QuickLookResetReport {
         ok,
+        stale_registrations_removed,
         launch_services_registered,
         default_handlers_registered,
         extension_registered,
@@ -273,7 +293,7 @@ fn cleanup_owned_update_bundles(current_app: &Path) -> Result<(), String> {
                 continue;
             }
             let _ = run_command(
-                "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+                LSREGISTER,
                 vec!["-u".into(), bundle.to_string_lossy().to_string()],
                 false,
             );
@@ -282,6 +302,103 @@ fn cleanup_owned_update_bundles(current_app: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn unregister_stale_owned_bundles(current_app: &Path) -> CommandReport {
+    let command = "lsregister -u (stale Burette bundles)";
+    let dump = match Command::new(LSREGISTER).arg("-dump").output() {
+        Ok(output) if output.status.success() => output.stdout,
+        Ok(output) => {
+            return CommandReport {
+                command,
+                success: false,
+                status: output.status.code(),
+                message: String::from_utf8_lossy(&output.stderr).trim().to_string(),
+            };
+        }
+        Err(err) => {
+            return CommandReport {
+                command,
+                success: false,
+                status: None,
+                message: err.to_string(),
+            };
+        }
+    };
+    let trash = std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".Trash"));
+    let stale = stale_owned_bundles(
+        &String::from_utf8_lossy(&dump),
+        current_app,
+        trash.as_deref(),
+        |path| path.exists(),
+    );
+    let failures: Vec<String> = stale
+        .iter()
+        .filter_map(|bundle| {
+            let report = run_command(
+                LSREGISTER,
+                vec!["-u".into(), bundle.to_string_lossy().to_string()],
+                false,
+            );
+            (!report.success).then(|| format!("{}: {}", bundle.display(), report.message))
+        })
+        .collect();
+    CommandReport {
+        command,
+        success: failures.is_empty(),
+        status: None,
+        message: if failures.is_empty() {
+            format!("unregistered {} stale Burette bundles", stale.len())
+        } else {
+            failures.join("; ")
+        },
+    }
+}
+
+/// Lists registered Burette app bundles, including dev flavors, whose bundle
+/// no longer exists or sits in the Trash. Extension records map to their
+/// containing app because unregistering the app drops its plug-ins too.
+#[cfg(target_os = "macos")]
+fn stale_owned_bundles(
+    dump: &str,
+    current_app: &Path,
+    trash: Option<&Path>,
+    exists: impl Fn(&Path) -> bool,
+) -> BTreeSet<PathBuf> {
+    let mut stale = BTreeSet::new();
+    let mut path: Option<&str> = None;
+    for line in dump.lines() {
+        if line.starts_with("----") {
+            path = None;
+        } else if let Some(value) = line.strip_prefix("path:") {
+            let value = value.trim();
+            path = Some(value.rsplit_once(" (0x").map_or(value, |(path, _)| path));
+        } else if let Some(identifier) = line.strip_prefix("identifier:") {
+            let identifier = identifier.trim();
+            if !(identifier.starts_with(APP_ID) || identifier.starts_with(LEGACY_APP_ID)) {
+                continue;
+            }
+            let Some(bundle) = path.and_then(containing_app_bundle) else {
+                continue;
+            };
+            let trashed = trash.is_some_and(|trash| bundle.starts_with(trash));
+            if bundle != current_app && (trashed || !exists(&bundle)) {
+                stale.insert(bundle);
+            }
+        }
+    }
+    stale
+}
+
+#[cfg(target_os = "macos")]
+fn containing_app_bundle(path: &str) -> Option<PathBuf> {
+    let end = path.find(".app/").map(|index| index + ".app".len());
+    match end {
+        Some(end) => Some(PathBuf::from(&path[..end])),
+        None if path.ends_with(".app") => Some(PathBuf::from(path)),
+        None => None,
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -407,9 +524,64 @@ fn bundle_id(bundle: &Path) -> Option<String> {
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
-    use super::{app_bundles_below, should_replace_default_handler, APP_ID, LEGACY_APP_ID};
+    use super::{
+        app_bundles_below, should_replace_default_handler, stale_owned_bundles, APP_ID,
+        LEGACY_APP_ID,
+    };
+    use std::collections::BTreeSet;
     use std::fs;
     use std::os::unix::fs::symlink;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn reset_prunes_missing_and_trashed_burette_bundles_only() {
+        let dump = "\
+--------------------------------------------------------------------------------
+path:                       /Applications/Burette.app (0x10)
+identifier:                 com.local.BuretteV10
+--------------------------------------------------------------------------------
+path:                       /tmp/review/build/Burette-pose.app/Contents/PlugIns/BurettePreview.appex (0x11)
+identifier:                 com.local.BuretteV10.Dev.pose.Preview
+--------------------------------------------------------------------------------
+path:                       /tmp/review/build/Burette-pose.app (0x12)
+identifier:                 com.local.BuretteV10.Dev.pose
+--------------------------------------------------------------------------------
+path:                       /Users/me/.Trash/Burette-old.app (0x13)
+identifier:                 com.local.BuretteV10.Dev.old
+--------------------------------------------------------------------------------
+path:                       /Users/me/.Trash/Other.app (0x14)
+identifier:                 org.example.Other
+--------------------------------------------------------------------------------
+path:                       /gone/Burrete.app (0x15)
+identifier:                 com.local.BurreteV10
+--------------------------------------------------------------------------------
+path:                       /gone/Unrelated.app (0x16)
+identifier:                 org.example.Unrelated
+--------------------------------------------------------------------------------
+path:                       /gone/Current.app (0x17)
+identifier:                 com.local.BuretteV10
+";
+        let existing = [
+            "/Applications/Burette.app",
+            "/Users/me/.Trash/Burette-old.app",
+        ];
+        let stale = stale_owned_bundles(
+            dump,
+            Path::new("/gone/Current.app"),
+            Some(Path::new("/Users/me/.Trash")),
+            |path| existing.iter().any(|existing| path == Path::new(existing)),
+        );
+
+        let expected: BTreeSet<PathBuf> = [
+            "/Users/me/.Trash/Burette-old.app",
+            "/gone/Burrete.app",
+            "/tmp/review/build/Burette-pose.app",
+        ]
+        .into_iter()
+        .map(PathBuf::from)
+        .collect();
+        assert_eq!(stale, expected);
+    }
 
     #[test]
     fn startup_claims_missing_and_legacy_handlers_but_preserves_user_choices() {

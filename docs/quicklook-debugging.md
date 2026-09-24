@@ -63,6 +63,53 @@ qlmanage -r cache
 killall quicklookd 2>/dev/null || true
 ```
 
+Remove a dev flavor with its script instead of deleting the bundle by hand:
+
+```bash
+BURETTE_DEV_FLAVOR=chat85b0 ./scripts/uninstall-dev.sh
+```
+
+Deleting a bundle (`rm -rf`, a removed `/tmp` review checkout, or the Trash)
+does not unregister it. See
+[Stale Launch Services registrations](#stale-launch-services-registrations).
+
+## Stale Launch Services Registrations
+
+Symptom: Spacebar preview shows the generic Quick Look card with
+`Extension com.local.BuretteV10.Dev.<flavor>.Preview not found.` (or another
+Burette extension id) instead of the Burette preview.
+
+Cause: a Burette bundle was deleted or moved to the Trash while Launch Services
+still has its record. Dev flavors namespace their own `com.local.burette10.*`
+types, but they also claim shared third-party UTIs such as
+`com.schrodinger.mol`, `public.pdb`, and `net.sourceforge.openbabel.mdl`. When
+the missing bundle has a newer version than the installed app, Quick Look keeps
+routing those types to the missing extension. Finder can re-register app
+bundles that sit in the Trash, so empty the Trash after removing them.
+
+Fix, from least to most manual:
+
+1. In the app, open Settings and press **Quick Look → Reset**. The same action
+   is under Help → Troubleshooting → Reset Quick Look. It unregisters Burette
+   bundles that no longer exist or sit in the Trash, then re-registers the
+   running app and refreshes Quick Look.
+2. From the repository:
+
+   ```bash
+   ./scripts/prune-launch-services.sh --dry-run
+   ./scripts/prune-launch-services.sh
+   qlmanage -r && qlmanage -r cache
+   ```
+
+   `scripts/install.sh` runs the prune step on every install.
+3. Inspect the records directly:
+
+   ```bash
+   LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+   "$LSREGISTER" -dump | grep -E '^path:.*Burette'
+   "$LSREGISTER" -u /path/to/missing/Burette-<flavor>.app
+   ```
+
 ## Smoke Tests
 
 Use forced previews to bypass Launch Services ambiguity while debugging:
@@ -152,6 +199,7 @@ between desktop previews and Finder previews are documented in
 - The final Tauri bundle does not contain `BuretteThumbnail.appex`.
 - Vendored web assets under `PreviewExtension/Web/` are missing or stale.
 - Launch Services is still pointing at an older app bundle.
+- A deleted or trashed dev build is still registered and owns a shared UTI.
 - The selected file type is not registered to the expected forced content type.
 
 ## Quick Look RCA
@@ -163,6 +211,7 @@ between desktop previews and Finder previews are documented in
 | Runtime directory is missing `manifest.json` | Preview runtime generation failed before web rendering. | Quick Look log, `preview-trace.jsonl`, `PreviewExtension/Platform/PreviewViewController.swift` |
 | Manifest exists but preview is blank | Generated web assets or renderer-specific assets are missing or stale. | `PreviewExtension/Web/`, `vendor-assets.lock.json`, runtime `manifest.json` |
 | Browser Quick Look succeeds but native Quick Look is blank | Browser-dev URL bypasses native extension registration, sandbox, and Launch Services. | `docs/tools/testing-surfaces.md`, extension container logs |
+| Quick Look card says `Extension com.local.BuretteV10...Preview not found.` | A deleted or trashed Burette bundle is still registered and claims the file's UTI. | [Stale Launch Services registrations](#stale-launch-services-registrations) |
 | Only `.csv` or `.tsv` normal preview is missing | macOS may route public table UTIs to the system generator. | Forced preview scripts, browser-dev grid rendering |
 
 ## Required Checks After Migration Changes

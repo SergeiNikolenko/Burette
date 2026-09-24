@@ -27,6 +27,11 @@ BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/build.sh
 BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/install.sh
 ```
 
+Remove a dev flavor with `BURETTE_DEV_FLAVOR=<worktree-slug> ./scripts/uninstall-dev.sh`.
+Deleting the bundle by hand leaves its Launch Services record behind; clean
+existing leftovers with `./scripts/prune-launch-services.sh [--dry-run]`
+(`install.sh` also runs it).
+
 Preview checks:
 
 ```bash
