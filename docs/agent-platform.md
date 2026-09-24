@@ -285,8 +285,11 @@ key each opener creates a fresh session. A session is published only after its
 sources and initial observation. Incomplete initialization fails closed after
 a two-second bounded wait and requires explicit recovery if its writer crashed.
 Keys live only as long as their temporary session directory, not across OS
-cleanup; intentional new workspaces require new keys. This is backend opening
-idempotency, not a guarantee that the host renders only one card for retries.
+cleanup; intentional new workspaces require new keys. The host may still render
+one card per retry. Each opener result carries a private `presentationId`, and
+only the newest card exchanges with the session: an earlier card receives
+`superseded`, releases its renderer and cannot close, observe or acknowledge
+actions for the session.
 Subsequent requests reuse that task's `sessionId` through the model-facing
 `control_inline_viewer` action `{ type: "open_files", paths: [...] }`, not
 another UI opener. This action explicitly authorizes new local paths, snapshots

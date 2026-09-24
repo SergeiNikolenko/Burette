@@ -18,7 +18,7 @@ const layerOperation = z.object({
     color: z.object({ name: z.enum(['element-symbol', 'chain-id', 'uniform']), value: z.string().regex(/^#[0-9a-f]{6}$/i).optional() }).strict(),
   }).strict().optional(),
 }).strict();
-const openRequestId = z.string().uuid().optional().describe('A fresh UUID v4 for each intentional workspace. Reuse the same ID and paths/options when retrying a timed-out opener; it reuses the snapshot/session, not a guaranteed single host card.');
+const openRequestId = z.string().uuid().optional().describe('A fresh UUID v4 for each intentional workspace. Reuse the same ID and paths/options when retrying a timed-out opener; it reuses the snapshot/session and the newest card takes it over.');
 
 async function runOperation(input, privateResult, assetRoot) {
   // Use the CLI-owned implementation in this persistent server, not one new
@@ -29,8 +29,8 @@ async function runOperation(input, privateResult, assetRoot) {
   if (privateResult) return { content: [], _meta: { payload: result } };
   const capture = captureToolResult(result);
   if (capture) return capture;
-  const { token, ...publicResult } = result;
-  return { ...(result.status === 'failed' ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify(publicResult) }], structuredContent: publicResult, ...(token ? { _meta: { session: { sessionId: result.sessionId, token } } } : {}) };
+  const { token, presentationId, ...publicResult } = result;
+  return { ...(result.status === 'failed' ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify(publicResult) }], structuredContent: publicResult, ...(token ? { _meta: { session: { sessionId: result.sessionId, token, ...(presentationId ? { presentationId } : {}) } } } : {}) };
 }
 
 export async function registerLocalViewer(server) {
@@ -75,7 +75,7 @@ export async function registerLocalViewer(server) {
   }, input => operation({ operation: 'act', ...input, waitMs: input.waitMs ?? (input.action.type === 'capture_scene' ? 30000 : 12000) }));
   registerAppTool(server, 'burette.inline_viewer_exchange', {
     title: 'Exchange local viewer state', description: 'Private mounted-app transport for source chunks, observation and action acknowledgements.',
-    inputSchema: { ...locator, token: z.string().uuid(), close: z.boolean().optional(), source: z.boolean().optional(), documentId: z.string().uuid().optional(), offset: z.number().int().nonnegative().optional(), state: z.record(z.string(), z.unknown()).optional(), completed: z.record(z.string(), z.unknown()).optional(),
+    inputSchema: { ...locator, token: z.string().uuid(), presentationId: z.string().uuid().optional(), close: z.boolean().optional(), source: z.boolean().optional(), documentId: z.string().uuid().optional(), offset: z.number().int().nonnegative().optional(), state: z.record(z.string(), z.unknown()).optional(), completed: z.record(z.string(), z.unknown()).optional(),
       fileAction: z.object({ type: z.enum(['list_apps', 'app_icon', 'reveal', 'open_default', 'open_with']), documentId: z.string().uuid(), targetId: z.string().max(24).optional() }).optional(),
       checkpoint: z.object({ key: z.string().max(64), value: z.string().max(699052).optional() }).optional(),
       xyzrender: z.object({ documentId: z.string().uuid().optional(), inputDataBase64: z.string().max(699052).optional(), inputExtension: z.string().max(8).optional(), preset: z.string().max(24).optional(), orientationRef: z.string().max(65536).nullable().optional(), activeModel: z.number().int().nonnegative().nullable().optional(), controls: z.record(z.string(), z.unknown()).refine(value => JSON.stringify(value).length <= 16384).optional() }).optional(),

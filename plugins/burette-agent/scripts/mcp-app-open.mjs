@@ -6,6 +6,16 @@ import { setTimeout as delay } from 'node:timers/promises';
 const fail = (code, message) => { throw Object.assign(new Error(message), { code }); };
 const json = path => readFile(path, 'utf8').then(JSON.parse);
 
+// Every opener result is one host card. The newest card owns the session, so a
+// retried opener never leaves two mounted cards draining one action queue.
+async function present(dir, session) {
+  const presentationId = randomUUID();
+  const temporary = join(dir, `presentation.${presentationId}.tmp`);
+  await writeFile(temporary, JSON.stringify({ presentationId }), { mode: 0o600, flag: 'wx' });
+  await rename(temporary, join(dir, 'presentation.json'));
+  return { ...session, presentationId };
+}
+
 // A key claims one temporary session directory across processes. session.json
 // is the commit marker: create must publish it only after sources and state.
 export async function openMcpSession(root, input, create) {
@@ -31,7 +41,7 @@ export async function openMcpSession(root, input, create) {
     try {
       await writeFile(join(dir, 'open-request.tmp'), JSON.stringify({ fingerprint }), { mode: 0o600, flag: 'wx' });
       await rename(join(dir, 'open-request.tmp'), join(dir, 'open-request.json'));
-      return { ...await create(sessionId, dir), reused: false };
+      return await present(dir, { ...await create(sessionId, dir), reused: false });
     } catch (error) {
       // Never remove a published session even if future post-commit work fails.
       const committed = await stat(join(dir, 'session.json')).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error; });
@@ -48,7 +58,7 @@ export async function openMcpSession(root, input, create) {
       const closed = await json(join(dir, 'closed.json')).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
       if (closed) fail('OPEN_REQUEST_CLOSED', 'This openRequestId belongs to a closed viewer. Use a new request ID only for an intentional new workspace.');
       const state = await json(join(dir, 'observe.json'));
-      return { ...session, reused: true, ready: state.ready === true && Date.now() - Date.parse(state.updatedAt) < 15000 };
+      return await present(dir, { ...session, reused: true, ready: state.ready === true && Date.now() - Date.parse(state.updatedAt) < 15000 });
     } catch (error) { if (error.code !== 'ENOENT') throw error; }
     await delay(25);
   } while (Date.now() < deadline);

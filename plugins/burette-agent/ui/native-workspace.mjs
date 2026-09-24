@@ -65,10 +65,10 @@ export async function startNativeWorkspace(app, initialResult) {
     clearContext: () => contextQueue.then(() => app.updateModelContext({ content: [] })).catch(() => {}),
     persist: () => session ? exchange({ close: true }).catch(() => {}) : Promise.resolve(),
     requestTeardown: () => app.requestTeardown(),
-    showClosed() {
+    showClosed(message = 'Burette workspace closed.') {
       document.body.replaceChildren(status);
       status.hidden = false;
-      status.textContent = 'Burette workspace closed.';
+      status.textContent = message;
       document.body.dataset.closed = 'true';
       void app.sendSizeChanged({ height: 48 }).catch(() => {});
     },
@@ -79,6 +79,7 @@ export async function startNativeWorkspace(app, initialResult) {
     } };
     const result = await app.callServerTool({ name: 'burette.inline_viewer_exchange', arguments: JSON.parse(JSON.stringify({ ...session, ...input })) });
     if (result.isError || !result._meta?.payload) throw new Error(result.content?.[0]?.text || 'Workspace exchange failed.');
+    if (result._meta.payload.superseded) void lifetime.supersede();
     return result._meta.payload;
   }
   function observe(state) {

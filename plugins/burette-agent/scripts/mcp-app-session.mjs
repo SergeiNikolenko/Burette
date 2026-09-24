@@ -146,6 +146,15 @@ export async function runMcpAppOperation(input, { assetRoot } = {}) {
   }
   if (input.operation !== 'exchange' || input.token !== session.token) throw new Error('Invalid MCP App capability.');
   if (closed) return { closed: true, actions: [] };
+  if (input.presentationId != null) {
+    // A retried opener handed the session to a newer card. The older card steps
+    // aside without closing, observing or acknowledging anything.
+    const owner = await readFile(join(sessionDir, 'presentation.json'), 'utf8').then(JSON.parse, error => {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    });
+    if (owner && owner.presentationId !== input.presentationId) return { closed: true, superseded: true, actions: [] };
+  }
   if (input.checkpoint) return mcpAppCheckpoint(sessionDir, input.checkpoint);
   if (input.asset) return readMcpAppAsset(input.asset, assetRoot);
   if (input.close === true) {

@@ -25,5 +25,11 @@ export function createViewerLifetime({ dispose, clearContext, persist, showClose
       return finish({ terminal: true, notifyHost });
     },
     detach() { return finish({ terminal: false }); },
+    /** A newer card owns the session: release this renderer, keep the session. */
+    supersede() {
+      const done = finish({ terminal: false });
+      showClosed('This Burette view continues in the newer card below.');
+      return done;
+    },
   };
 }

@@ -49,7 +49,8 @@ Native Story controls use `type: "story_control"` and `operation: "next"`,
    returns the same temporary snapshot and session (`reused: true`), even if
    source files changed or disappeared. A conflict or closed-session error
    must not be worked around with a new ID unless a new workspace is intended.
-   This does not prevent the host from displaying duplicate cards for retries.
+   The host may still show a second card; the newest card takes over the
+   session and the earlier one steps aside without closing it.
    The key expires with the OS-temporary session; it is not durable project ID.
 3. Call `burette.observe_inline_viewer` until `ready` is true. Report a mounting
    or rendering blocker if it remains false; do not reopen repeatedly or add

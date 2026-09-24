@@ -40,14 +40,14 @@ export async function startLocalViewer(app, initialResult) {
     clearContext: () => app.updateModelContext({ content: [] }).catch(() => {}),
     persist: () => session ? exchange({ close: true }).catch(() => {}) : Promise.resolve(),
     requestTeardown: () => app.requestTeardown(),
-    showClosed: () => {
+    showClosed: (message = 'Burette viewer closed.') => {
       document.body.dataset.empty = 'true';
       document.body.dataset.closed = 'true';
       disposeViewerHeader();
       disposeViewerTabs();
       document.body.replaceChildren(status);
       status.className = '';
-      status.textContent = 'Burette viewer closed.';
+      status.textContent = message;
       void app.sendSizeChanged({ height: 48 }).catch(() => {});
     },
   });
@@ -116,6 +116,7 @@ export async function startLocalViewer(app, initialResult) {
       throw new Error(`${input.source ? `Source chunk at byte ${input.offset ?? 0}` : 'Viewer state exchange'}: ${error.message}`);
     }
     if (result.isError || !result._meta?.payload) throw new Error(result.content?.[0]?.text || 'Local viewer exchange failed.');
+    if (result._meta.payload.superseded) void lifetime.supersede();
     return result._meta.payload;
   }
 

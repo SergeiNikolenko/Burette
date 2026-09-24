@@ -25,7 +25,7 @@ const server = createServer(async (request, response) => {
       response.end(await readFile(new URL(`../plugins/burette-agent/assets/${native && !legacyResource ? 'native-workspace' : 'local-viewer'}.html`, import.meta.url), 'utf8'));
     } else if (request.url === '/result') {
       response.setHeader('Content-Type', 'application/json');
-      response.end(JSON.stringify({ content: [], structuredContent: { requestedDisplayMode: session.requestedDisplayMode, documents: session.documents, workspace: session.workspace, view: session.view }, _meta: { session: { sessionId: session.sessionId, token: session.token } } }));
+      response.end(JSON.stringify({ content: [], structuredContent: { requestedDisplayMode: session.requestedDisplayMode, documents: session.documents, workspace: session.workspace, view: session.view }, _meta: { session: { sessionId: session.sessionId, token: session.token, presentationId: session.presentationId } } }));
     } else if (request.url === '/exchange' && request.method === 'POST') {
       let body = '';
       for await (const chunk of request) {

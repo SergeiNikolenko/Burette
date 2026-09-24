@@ -21,15 +21,36 @@ test('retries preserve the original snapshot and current session without rereadi
   await run({ operation: 'exchange', sessionId: first.sessionId, token: first.token, state: { ready: true, tabs: [] } });
   await writeFile(file, 'changed');
   const second = await run(input);
-  assert.deepEqual(second, { ...first, reused: true, ready: true });
+  assert.notEqual(second.presentationId, first.presentationId);
+  assert.deepEqual(second, { ...first, presentationId: second.presentationId, reused: true, ready: true });
   await rm(file);
-  assert.deepEqual(await run({ ...input, openRequestId: openRequestId.toUpperCase() }), second);
+  const third = await run({ ...input, openRequestId: openRequestId.toUpperCase() });
+  assert.deepEqual(third, { ...second, presentationId: third.presentationId });
   assert.deepEqual(await readFile(join(dir, 'source')), source);
   await assert.rejects(run({ ...input, file: `${file}-different` }), { code: 'OPEN_REQUEST_CONFLICT' });
   await assert.rejects(run({ ...input, view: 'docking' }), { code: 'OPEN_REQUEST_CONFLICT' });
   await assert.rejects(run({ ...input, displayMode: 'fullscreen' }), { code: 'OPEN_REQUEST_CONFLICT' });
   await run({ operation: 'exchange', sessionId: first.sessionId, token: first.token, close: true });
   await assert.rejects(run(input), { code: 'OPEN_REQUEST_CLOSED' });
+  assert.equal((await run({ operation: 'observe', sessionId: first.sessionId })).closed, true);
+});
+
+test('a retried opener card takes over the session and the earlier card steps aside', async t => {
+  const openRequestId = randomUUID(), dir = join(tmpdir(), 'burette-mcp-app', openRequestId);
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const input = { operation: 'open', openRequestId, workspace: true,
+    file: new URL('../samples/mini.pdb', import.meta.url).pathname };
+  const first = await run(input);
+  const exchange = (card, extra) => run({ operation: 'exchange', sessionId: card.sessionId, token: card.token, presentationId: card.presentationId, ...extra });
+  assert.equal((await exchange(first, {})).superseded, undefined);
+  const second = await run(input);
+  const stale = { closed: true, superseded: true, actions: [] };
+  assert.deepEqual(await exchange(first, { state: { ready: true, tabs: [] } }), stale);
+  assert.deepEqual(await exchange(first, { close: true }), stale);
+  assert.equal((await run({ operation: 'observe', sessionId: first.sessionId })).lifecycle.status, 'awaiting_mount');
+  await exchange(second, { state: { ready: true, tabs: [] } });
+  assert.equal((await run({ operation: 'observe', sessionId: first.sessionId })).ready, true);
+  await exchange(second, { close: true });
   assert.equal((await run({ operation: 'observe', sessionId: first.sessionId })).closed, true);
 });
 
@@ -51,7 +72,7 @@ test('independent processes with one openRequestId share exactly one snapshot/se
   const publicState = ({ reused, ...result }) => result;
   results.forEach(result => assert.deepEqual(publicState(result), publicState(results[0])));
   assert.equal(results[0].id, openRequestId);
-  assert.deepEqual((await readdir(dir)).sort(), ['actions', 'observe.json', 'open-request.json', 'session.json', 'source']);
+  assert.deepEqual((await readdir(dir)).sort(), ['actions', 'observe.json', 'open-request.json', 'presentation.json', 'session.json', 'source']);
 });
 
 test('invalid keys fail before allocation; failed initialization cleans only its own new directory', async t => {
