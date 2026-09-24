@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
+import ts from 'typescript';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -2972,7 +2973,16 @@ assert.match(structureInfoPanel, /const compositionSummary = !derivedTopology &&
 assert.match(structureInfoPanel, /function DerivedTopologyCard/);
 assert.match(structureInfoPanel, /positions only, with no elements, residues or bonds/);
 assert.match(structureInfoPanel, /Attach topology…/);
-assert.match(structureInfoPanel, /document\.dockingRequest\?\.ligandPaths\.includes\(playback\?\.sourcePath \|\| ""\)/);
+const trajectoryPathSource = structureInfoPanel.match(/function trajectoryPathsFor\([\s\S]*?\n\}/u)[0];
+const trajectoryPaths = new Function(`${ts.transpile(trajectoryPathSource)}; return trajectoryPathsFor;`)();
+for (const [document, playback, expected] of [
+  [{ path: '/traj.xyz' }, null, { trajectoryPath: '/traj.xyz', topologyPath: null }],
+  [{ path: '/traj.xyz' }, { sourcePath: '/traj.xyz' }, { trajectoryPath: '/traj.xyz', topologyPath: null }],
+  [{ path: '/topology.pdb' }, { sourcePath: ' /coords.xtc ' }, { trajectoryPath: '/coords.xtc', topologyPath: '/topology.pdb' }],
+  [{ path: '/topology.pdb' }, { sourcePath: '/coords.trr' }, { trajectoryPath: '/coords.trr', topologyPath: '/topology.pdb' }],
+  [{ path: '/scene.pdb', dockingRequest: { receptorPath: '/top.pdb', ligandPaths: ['/first.xtc'] } }, { sourcePath: '/second.xtc' }, { trajectoryPath: '/second.xtc', topologyPath: '/top.pdb' }],
+  [{ path: '/scene.pdb', dockingRequest: { receptorPath: '/top.pdb', ligandPaths: ['/first.xtc'] } }, null, { trajectoryPath: '/first.xtc', topologyPath: '/top.pdb' }],
+]) assert.deepEqual(trajectoryPaths(document, playback), expected);
 assert.match(structureInfoPanel, /const pair = trajectoryPathsFor\(document, playback\)/);
 assert.match(structureInfoPanel, /originalFrameIndex: playback\?\.globalFrameIndex \?\? 0/);
 assert.match(structureInfoPanel, /sourcePath: playback\?\.sourcePath \|\| ""/);
