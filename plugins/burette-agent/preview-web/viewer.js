@@ -18185,6 +18185,16 @@ SOFTWARE.
     if (everyLoci) plugin.canvas3d?.mark?.({ loci: everyLoci }, 2);
   }
 
+  // Align and the XYZ style actions rebuild the scene through the single-frame
+  // overlay path: one Mol* structure per shown frame. Its model cell holds a
+  // single frame, so a native modelIndex step clamps to 0 and the frame never
+  // changes; frame steps must go through the overlay path instead.
+  function xyzSingleFrameSceneActive(viewer) {
+    const state = activeXyzFrameOverlayState;
+    return Boolean(viewer && state?.viewer === viewer && state.key?.startsWith('single|')
+      && molstarRefsStillLoaded(viewer, state.activeRefs));
+  }
+
   async function setNativeTrajectoryPoseDirect(index, poseCount) {
     const transform = nativeTrajectoryModelTransform(poseCount);
     if (!transform) return false;
@@ -18233,6 +18243,7 @@ SOFTWARE.
     const state = activeViewer?.plugin?.state?.data;
     if (!state?.events?.changed?.subscribe) return null;
     const sync = () => {
+      if (xyzSingleFrameSceneActive(activeViewer)) return;
       const position = readNativeTrajectoryPosition(poseCount);
       if (position) onPoseChange(position.index);
     };
@@ -18653,7 +18664,7 @@ SOFTWARE.
         updateSdfPoseButton(prepared);
       }
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(index)); } catch (_) {}
-      if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all') {
+      if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all' && !xyzSingleFrameSceneActive(activeViewer)) {
         const switched = await setNativeTrajectoryPose(index, poseCount);
         if (!switched) throw new Error('Mol* trajectory controls are not available.');
       } else if (prepared.xyzFrameOverlayAvailable === true) {
@@ -19142,7 +19153,6 @@ SOFTWARE.
     let loopBusy = false;
     let loopEpoch = 0;
     let loopStartedAt = 0;
-    let loopStartPose = activePose;
     let poseUpdateQueue = Promise.resolve();
     let poseRepeatDelayTimer = null;
     let poseRepeatTimer = null;
@@ -19502,10 +19512,7 @@ SOFTWARE.
         loopTimer = null;
         loopBusy = false;
       }
-      if (active) {
-        loopStartedAt = loopNow();
-        loopStartPose = activePose;
-      }
+      if (active) loopStartedAt = loopNow();
       loop.classList.toggle('active', Boolean(active));
       loop.textContent = active ? 'Stop' : 'Loop';
       loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
@@ -19533,18 +19540,17 @@ SOFTWARE.
     const loopNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
       ? performance.now()
       : Date.now();
+    // The loop advances one frame per tick. In WKWebView a frame step can take
+    // longer than a frame at high fps; picking the target from wall-clock time
+    // then jumps half the loop ahead and back again, so the playhead only ever
+    // alternates between two frames instead of playing.
     const loopTargetIndex = () => {
-      const delay = loopDelayMs();
-      const elapsed = Math.max(0, loopNow() - loopStartedAt);
-      const frameOffset = Math.floor(elapsed / delay);
-      const loopBounds = trajectoryControlBounds(loopStartPose);
-      return loopBounds.start + ((loopStartPose - loopBounds.start + frameOffset) % loopBounds.count);
+      const loopBounds = trajectoryControlBounds(activePose);
+      return loopBounds.start + ((activePose - loopBounds.start + 1) % loopBounds.count);
     };
     const loopNextDelay = () => {
-      const delay = loopDelayMs();
       const elapsed = Math.max(0, loopNow() - loopStartedAt);
-      const untilNextFrame = delay - (elapsed % delay);
-      return Math.max(minimumTrajectoryLoopTimerDelay(prepared), Math.min(delay, untilNextFrame));
+      return Math.max(minimumTrajectoryLoopTimerDelay(prepared), loopDelayMs() - elapsed);
     };
     const scheduleLoopStep = (delayMs = loopNextDelay(), expectedLoopEpoch = loopEpoch) => {
       if (!hostViewerVisible) return;
@@ -19564,6 +19570,7 @@ SOFTWARE.
           return;
         }
         loopBusy = true;
+        loopStartedAt = loopNow();
         void setPose(nextIndex, { loopStep: true, loopEpoch: expectedLoopEpoch }).finally(() => {
           loopBusy = false;
           if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
@@ -19576,7 +19583,6 @@ SOFTWARE.
         if (loopTimer !== null) { window.clearTimeout(loopTimer); loopTimer = null; }
         if (hostViewerVisible && loopActive) {
           loopStartedAt = loopNow();
-          loopStartPose = activePose;
           scheduleLoopStep();
         }
       },
@@ -19600,7 +19606,6 @@ SOFTWARE.
       if (options.loopStep !== true && loopActive) {
         loopEpoch += 1;
         loopStartedAt = loopNow();
-        loopStartPose = requestedIndex;
         if (loopTimer) {
           clearTimeout(loopTimer);
           loopTimer = null;
@@ -19622,15 +19627,16 @@ SOFTWARE.
       previous.disabled = true;
       next.disabled = true;
       applyLabel(nextIndex);
+      const xyzOverlayFrames = prepared.xyzFrameOverlayAvailable === true
+        && (prepared.kind === 'xyz-frame-overlay' || xyzSingleFrameSceneActive(viewer));
       try {
-        if (prepared.nativeTrajectoryControls) {
+        if (prepared.nativeTrajectoryControls && !xyzOverlayFrames) {
           const switched = await setNativeTrajectoryPose(nextIndex, prepared.poseCount);
           if (!switched) throw new Error('Mol* trajectory controls are not available.');
           activePose = readNativeTrajectoryPosition(prepared.poseCount)?.index ?? nextIndex;
           updateControls();
           if (options.loopStep !== true && loopActive && options.loopEpoch === loopEpoch) {
             loopStartedAt = loopNow();
-            loopStartPose = activePose;
             if (loopTimer) {
               clearTimeout(loopTimer);
               loopTimer = null;
@@ -19641,7 +19647,7 @@ SOFTWARE.
           await applySdfCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: false });
           activePose = nextIndex;
           updateControls();
-        } else if (prepared.kind === 'xyz-frame-overlay') {
+        } else if (xyzOverlayFrames) {
           await applyXyzFrameOverlayVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { installControls: false, focus: false });
           activePose = nextIndex;
           updateControls();
