@@ -20,6 +20,8 @@ export interface StructureSummary {
 
 export const MAX_SUMMARY_BYTES: number;
 
+export function isVirtualDocumentPath(file: string): boolean;
+
 export function summarizeStructureFile(file: string): Promise<StructureSummary>;
 
 export function summarizeStructureText(input: {

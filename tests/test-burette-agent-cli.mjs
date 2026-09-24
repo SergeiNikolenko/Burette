@@ -177,6 +177,8 @@ try {
   assert.equal(missingUrl.status, 2);
   const missingUrlError = JSON.parse(missingUrl.stderr);
   assert.equal(missingUrlError.ok, false);
+  // The same message reaches MCP callers, so it names the parameter and the flag.
+  assert.match(missingUrlError.error.message, /requires url \(--url\).*sessionDir \(--session-dir\)/u);
 
   const fakeBin = await mkdtemp(resolve(tmpdir(), 'burette-fake-vp-'));
   const fakeVp = resolve(fakeBin, 'vp');
@@ -339,6 +341,30 @@ try {
       assert.equal(miniFs.statusCode, 200);
       assert.match(miniFs.body, /^HEADER\s+MINI GLY-ALA PEPTIDE/u);
       assert.doesNotMatch(miniFs.body, /Burette Agent Shell/);
+      const shellSessionDir = prebuiltPayload.result.sessionDir;
+      const shellSession = JSON.parse(await readFile(resolve(shellSessionDir, 'session.json'), 'utf8'));
+      assert.equal(shellSession.allowedRoots.includes(resolve('samples')), true);
+      const shellActionsBefore = await readFile(resolve(shellSessionDir, 'actions.json'), 'utf8');
+      // The shell server answers 403 outside its roots; act must say so before queueing.
+      for (const action of [
+        { type: 'manage_tabs', operation: 'open_file', path: resolve('README.md') },
+        { type: 'open_files', paths: [resolve('samples/mini.pdb'), resolve('README.md')] },
+        { type: 'render_panel', kind: 'markdown', file: 'README.md' },
+      ]) {
+        const outsideRoot = runCli(['act', '--url', prebuiltPayload.result.url, JSON.stringify(action), '--wait-ms', '1000']);
+        assert.equal(outsideRoot.status, 1, `${action.type}: ${outsideRoot.stdout}`);
+        const outsideRootError = JSON.parse(outsideRoot.stderr).error;
+        assert.equal(outsideRootError.code, 'PATH_NOT_ALLOWED', action.type);
+        assert.match(outsideRootError.message, /outside this workspace's allowed roots/u);
+        assert.equal(outsideRootError.details.resolvedPath, resolve('README.md'));
+      }
+      const unsupportedGridAction = runCli(['act', '--url', prebuiltPayload.result.url, '{"type":"grid_sort"}']);
+      assert.equal(unsupportedGridAction.status, 2);
+      assert.equal(JSON.parse(unsupportedGridAction.stderr).error.code, 'UNSUPPORTED_ACTION');
+      assert.equal(await readFile(resolve(shellSessionDir, 'actions.json'), 'utf8'), shellActionsBefore);
+      const insideRoot = runCli(['act', '--url', prebuiltPayload.result.url, JSON.stringify({ type: 'open_files', paths: [resolve('samples/mini.pdb')] })]);
+      assert.equal(insideRoot.status, 0, insideRoot.stderr);
+      assert.equal(JSON.parse(insideRoot.stdout).result.action.status, 'queued');
       const finderIcon = await get(`${prebuiltPayload.result.url.split('?')[0]}__burette/app-icon/finder.png`, shellHeaders);
       if (process.platform === 'darwin') {
         assert.equal(finderIcon.statusCode, 200);
@@ -502,9 +528,49 @@ try {
     assert.equal(boundedHistory.actions.length, 128);
     assert.equal(boundedHistory.actions[0].id, 'completed-13');
     assert.equal(boundedHistory.actions.at(-1).status, 'queued');
+
+    // Unknown action types fail up front, whatever document kind is active.
+    const actionsBeforeUnsupported = await readFile(resolve(sessionDir, 'actions.json'), 'utf8');
+    for (const actionText of ['{"type":"grid_sort"}', '{"label":"missing type"}']) {
+      const unsupported = runCli(['act', '--session-dir', sessionDir, actionText, '--wait-ms', '1000']);
+      assert.equal(unsupported.status, 2, actionText);
+      const unsupportedError = JSON.parse(unsupported.stderr).error;
+      assert.equal(unsupportedError.code, 'UNSUPPORTED_ACTION', actionText);
+      assert.equal(unsupportedError.details.supportedTypes.includes('reset_camera'), true);
+    }
+    assert.equal(await readFile(resolve(sessionDir, 'actions.json'), 'utf8'), actionsBeforeUnsupported);
   } finally {
     await rm(sessionDir, { recursive: true, force: true });
   }
+
+  // The CLI rejects action types before queueing, so its allowlist must match
+  // what the shell (use-agent-session.ts) and the Mol* viewer (viewer.js) run.
+  const cliTypeList = (name) => {
+    const match = cliSource.match(new RegExp(`const ${name} = \\[([^\\]]*)\\];`, 'u'));
+    assert.ok(match, name);
+    return [...match[1].matchAll(/'([a-z_]+)'/gu)].map(item => item[1]).sort();
+  };
+  const sourceBody = (source, start, end) => {
+    const from = source.indexOf(start);
+    const to = source.indexOf(end, from + start.length);
+    assert.ok(from !== -1 && to !== -1, start);
+    return source.slice(from, to);
+  };
+  const quotedTypes = (body) => [...new Set([
+    ...[...body.matchAll(/type === ['"]([a-z_]+)['"]/gu)].map(item => item[1]),
+    ...[...body.matchAll(/\[([^\]]*)\]\.includes\(type\)/gu)]
+      .flatMap(item => [...item[1].matchAll(/['"]([a-z_]+)['"]/gu)].map(entry => entry[1])),
+  ])].sort();
+  const viewerSource = await readFile('PreviewExtension/Web/viewer.js', 'utf8');
+  const shellSource = await readFile('apps/desktop/src/hooks/use-agent-session.ts', 'utf8');
+  assert.deepEqual(
+    cliTypeList('SESSION_VIEWER_ACTION_TYPES'),
+    quotedTypes(sourceBody(viewerSource, 'async function executeBuretteAgentAction(', 'async function captureAgentScene(')),
+  );
+  assert.deepEqual(
+    cliTypeList('SESSION_SHELL_ACTION_TYPES'),
+    quotedTypes(sourceBody(shellSource, 'async function executeDesktopAgentAction(', 'async function renderPanel(')),
+  );
 
   console.log('burette-agent CLI tests passed');
 } finally {
