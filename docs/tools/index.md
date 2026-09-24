@@ -12,6 +12,8 @@ runtime boundaries.
 | Full CI | `bun run ci` | Broad pre-merge validation. | Current checkout. | Full repository validation summary. |
 | Packaged build | `scripts/build.sh` | Building a local or release app bundle. | Optional `BURETTE_DEV_FLAVOR`. | `build/Burette*.app`. |
 | Packaged install | `scripts/install.sh` | Installing a local bundle for native/Quick Look checks. | Optional `BURETTE_DEV_FLAVOR`. | App installed under `~/Applications`. |
+| Dev uninstall | `scripts/uninstall-dev.sh` | Removing a dev-flavor install. | Required `BURETTE_DEV_FLAVOR`. | Bundles removed and unregistered from Launch Services and PlugInKit. |
+| Launch Services prune | `scripts/prune-launch-services.sh` | Quick Look reports `Extension ... not found` for a deleted build. | Optional `--dry-run`. | Stale Burette registrations unregistered. |
 | Forced preview | `scripts/force-preview.sh` | Checking one structure file through Quick Look. | One structure file. | `qlmanage` result and extension logs. |
 | Quick Look smoke | `scripts/quicklook-preview-smoke.sh` | CI-style focused packaged preview smoke. | One or more sample files. | TSV report path or failure. |
 | All samples Quick Look smoke | `scripts/smoke-samples-quicklook.sh` | Enumerating `samples/` against an installed dev extension. | Samples directory. | TSV and Markdown reports under `build/reports`. |

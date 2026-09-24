@@ -211,6 +211,7 @@ unregister_bundle "$APP"
 if [[ "$IS_DEV_FLAVOR" != "1" ]]; then
   unregister_legacy_launch_services_bundles
 fi
+"$ROOT/scripts/prune-launch-services.sh" || true
 
 assert_bundled_xyzrender_runtime() {
   local runtime="$1"
