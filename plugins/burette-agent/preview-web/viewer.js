@@ -18185,6 +18185,16 @@ SOFTWARE.
     if (everyLoci) plugin.canvas3d?.mark?.({ loci: everyLoci }, 2);
   }
 
+  // Align and the XYZ style actions rebuild the scene through the single-frame
+  // overlay path: one Mol* structure per shown frame. Its model cell holds a
+  // single frame, so a native modelIndex step clamps to 0 and the frame never
+  // changes; frame steps must go through the overlay path instead.
+  function xyzSingleFrameSceneActive(viewer) {
+    const state = activeXyzFrameOverlayState;
+    return Boolean(viewer && state?.viewer === viewer && state.key?.startsWith('single|')
+      && molstarRefsStillLoaded(viewer, state.activeRefs));
+  }
+
   async function setNativeTrajectoryPoseDirect(index, poseCount) {
     const transform = nativeTrajectoryModelTransform(poseCount);
     if (!transform) return false;
@@ -18233,6 +18243,7 @@ SOFTWARE.
     const state = activeViewer?.plugin?.state?.data;
     if (!state?.events?.changed?.subscribe) return null;
     const sync = () => {
+      if (xyzSingleFrameSceneActive(activeViewer)) return;
       const position = readNativeTrajectoryPosition(poseCount);
       if (position) onPoseChange(position.index);
     };
@@ -18653,7 +18664,7 @@ SOFTWARE.
         updateSdfPoseButton(prepared);
       }
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(index)); } catch (_) {}
-      if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all') {
+      if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all' && !xyzSingleFrameSceneActive(activeViewer)) {
         const switched = await setNativeTrajectoryPose(index, poseCount);
         if (!switched) throw new Error('Mol* trajectory controls are not available.');
       } else if (prepared.xyzFrameOverlayAvailable === true) {
@@ -19616,8 +19627,10 @@ SOFTWARE.
       previous.disabled = true;
       next.disabled = true;
       applyLabel(nextIndex);
+      const xyzOverlayFrames = prepared.xyzFrameOverlayAvailable === true
+        && (prepared.kind === 'xyz-frame-overlay' || xyzSingleFrameSceneActive(viewer));
       try {
-        if (prepared.nativeTrajectoryControls) {
+        if (prepared.nativeTrajectoryControls && !xyzOverlayFrames) {
           const switched = await setNativeTrajectoryPose(nextIndex, prepared.poseCount);
           if (!switched) throw new Error('Mol* trajectory controls are not available.');
           activePose = readNativeTrajectoryPosition(prepared.poseCount)?.index ?? nextIndex;
@@ -19634,7 +19647,7 @@ SOFTWARE.
           await applySdfCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: false });
           activePose = nextIndex;
           updateControls();
-        } else if (prepared.kind === 'xyz-frame-overlay') {
+        } else if (xyzOverlayFrames) {
           await applyXyzFrameOverlayVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { installControls: false, focus: false });
           activePose = nextIndex;
           updateControls();

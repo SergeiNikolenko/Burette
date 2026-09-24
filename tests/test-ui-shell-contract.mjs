@@ -6813,9 +6813,13 @@ assert.match(previewViewer, /plugin\.state\.updateTransform\(/);
 assert.match(previewViewer, /\{ \.\.\.transform\.params, modelIndex: target \}/);
 assert.match(previewViewer, /const forwardSteps = \(target - current\.index \+ poseCount\) % poseCount/);
 assert.match(previewViewer, /for \(let step = 0; step < stepCount; step \+= 1\) \{/);
-assert.match(previewViewer, /if \(prepared\.nativeTrajectoryControls && activeSdfPoseMode !== 'all'\) \{[\s\S]*?await setNativeTrajectoryPose\(index, poseCount\)/);
+assert.match(previewViewer, /if \(prepared\.nativeTrajectoryControls && activeSdfPoseMode !== 'all' && !xyzSingleFrameSceneActive\(activeViewer\)\) \{[\s\S]*?await setNativeTrajectoryPose\(index, poseCount\)/);
 assert.match(previewViewer, /else if \(prepared\.xyzFrameOverlayAvailable === true\) \{\s*await applyXyzFrameOverlayVisibility\(activeViewer, prepared, index, \{ focus: false \}\);/);
-assert.match(previewViewer, /if \(prepared\.nativeTrajectoryControls\) \{/);
+assert.match(previewViewer, /if \(prepared\.nativeTrajectoryControls && !xyzOverlayFrames\) \{/);
+// Align and the XYZ style actions leave a single-frame overlay scene; stepping it
+// natively clamps modelIndex to 0, so frame steps and the native sync must skip it.
+assert.match(previewViewer, /const xyzOverlayFrames = prepared\.xyzFrameOverlayAvailable === true\s*&& \(prepared\.kind === 'xyz-frame-overlay' \|\| xyzSingleFrameSceneActive\(viewer\)\);/);
+assert.match(previewViewer, /const sync = \(\) => \{\s*if \(xyzSingleFrameSceneActive\(activeViewer\)\) return;/);
 assert.match(previewViewer, /else if \(prepared\.kind === 'sdf-collection'\) \{/);
 assert.match(previewViewer, /await applySdfCollectionVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex, \{ focus: false \}\)/);
 assert.match(previewViewer, /if \(type === 'set_sdf_molecule'\) \{/);
