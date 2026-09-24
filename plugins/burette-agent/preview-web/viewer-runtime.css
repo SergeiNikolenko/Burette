@@ -5,6 +5,13 @@
 .msp-plugin .msp-logo { display: none !important; }
 #app.buret-molstar-initializing .msp-plugin,
 #app.buret-inspector-updating .msp-plugin canvas { visibility: hidden; }
+/* Until the first frame the page paints nothing of its own, so the host surface
+   shows through instead of the black default shell and half-mounted chrome. */
+html.buret-viewer-booting,
+html.buret-viewer-booting body { background: transparent !important; }
+/* Opacity rather than visibility: Mol* marks parts of its layout visible, which
+   would override an inherited visibility: hidden. */
+html.buret-viewer-booting body { opacity: 0 !important; }
 
 :root {
   color-scheme: dark;
@@ -3450,6 +3457,7 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-docking-poses span {
   min-width: 76px;
   text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 .buret-docking-pose-slider {
   /* A basis of 110px made the slider the widest item in the playback row, so opening
@@ -3466,6 +3474,15 @@ body.burette-mobile-host .buret-docking-poses button {
   -webkit-appearance: none;
   background: transparent;
   cursor: pointer;
+}
+/* Filling the whole playback row stretched the track across most of the control.
+   A short scrubber is enough for frame counts shown here; Smooth keeps the row's
+   right edge so it still lines up with All above it. */
+.buret-docking-poses:not(.buret-docking-poses-compact) .buret-docking-pose-slider {
+  max-width: 96px;
+}
+.buret-docking-poses:not(.buret-docking-poses-compact) .buret-docking-pose-animation .buret-trajectory-smooth-button {
+  margin-left: auto;
 }
 .buret-docking-pose-slider:focus-visible {
   outline: none;

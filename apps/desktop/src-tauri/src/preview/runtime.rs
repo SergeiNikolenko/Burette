@@ -866,25 +866,10 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     } else {
         default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
     };
-    // Mol* does not load extended XYZ cells reliably; keep the first view on
-    // the renderer that understands their Lattice metadata.
-    let periodic_xyz = runtime_extension == "xyz"
-        && runtime_data
-            .split(|byte| *byte == b'\n')
-            .nth(1)
-            .is_some_and(|comment| {
-                comment
-                    .windows(b"Lattice=\"".len())
-                    .any(|part| part == b"Lattice=\"")
-            });
-    let renderer = if requested_renderer == "auto"
-        && requested_renderer_for_document == "molstar"
-        && periodic_xyz
-    {
-        "xyzrender-external".to_string()
-    } else {
-        resolve_renderer(&format, requested_renderer_for_document)
-    };
+    // Periodic extended XYZ opens in Mol* like every other structure, matching
+    // browser-dev and the hosted widget. The xyzrender view that draws the
+    // Lattice cell stays one "Open As" away.
+    let renderer = resolve_renderer(&format, requested_renderer_for_document);
     let runtime = create_runtime(
         app,
         &canonical,
@@ -2741,11 +2726,18 @@ f_m_ct {
     }
 
     #[test]
-    fn opens_periodic_xyz_in_xyzrender_by_default() {
+    fn opens_periodic_xyz_in_molstar_by_default_and_keeps_lattice_for_xyzrender() {
         with_fake_xyzrender(|| {
             let app = mock_app_with_grid_registry();
             let path = temp_fixture_path("structures/demo/caffeine_cell.xyz");
             let document = open_document(app.handle(), path.clone(), &viewer_preferences(), None)
+                .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+            assert_eq!(document.renderer, "molstar");
+            remove_runtime_artifacts(&document.runtime_path);
+
+            let mut preferences = viewer_preferences();
+            preferences.renderer_mode = "xyzrender-external".to_string();
+            let document = open_document(app.handle(), path.clone(), &preferences, None)
                 .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
             assert_eq!(document.renderer, "xyzrender-external");
             let config_js = fs::read_to_string(
