@@ -10,6 +10,7 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { Field, FieldLabel } from "./ui/field";
 import { Input } from "./ui/input";
+import { GridFilterNumberInput } from "./grid-filter-number-input";
 import { Slider } from "./ui/slider";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import type { GridFilterColumn, GridFilterModel, ShellActions } from "./types";
@@ -237,21 +238,21 @@ function NumericFilter({
         />
       </div>
       <div className="grid-filter-inputs">
-        <Input
-          type="number"
-          inputMode="decimal"
+        <GridFilterNumberInput
+          fallback={scale.min}
+          step={scale.step}
           placeholder={formatNumber(scale.min)}
           value={column.filter?.min ?? ""}
-          aria-label={`Minimum ${column.label}`}
-          onChange={(event) => actions.setGridColumnFilter(column.id, "min", event.currentTarget.value)}
+          label={`Minimum ${column.label}`}
+          onCommit={(value) => actions.setGridColumnFilter(column.id, "min", value)}
         />
-        <Input
-          type="number"
-          inputMode="decimal"
+        <GridFilterNumberInput
+          fallback={scale.max}
+          step={scale.step}
           placeholder={formatNumber(scale.max)}
           value={column.filter?.max ?? ""}
-          aria-label={`Maximum ${column.label}`}
-          onChange={(event) => actions.setGridColumnFilter(column.id, "max", event.currentTarget.value)}
+          label={`Maximum ${column.label}`}
+          onCommit={(value) => actions.setGridColumnFilter(column.id, "max", value)}
         />
       </div>
     </>
@@ -418,9 +419,6 @@ export function GridFilterSection({
           </div>
         </div>
         <AccordionContent className="h-auto">
-          <div className="grid-filter-count">
-            {model.visible.toLocaleString()} of {model.total.toLocaleString()} rows
-          </div>
           <Field className="grid-filter-search-field">
             <FieldLabel className="sr-only">Find a column to filter</FieldLabel>
             <div className="grid-filter-search-wrap">

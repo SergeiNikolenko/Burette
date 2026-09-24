@@ -1,18 +1,41 @@
 use serde::Deserialize;
 use std::fs::{self, File, OpenOptions};
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 #[derive(Deserialize)]
 #[serde(tag = "operation", rename_all = "camelCase")]
 pub(crate) enum FileOperation {
-    Rename { path: String, name: String },
-    Duplicate { path: String },
-    SaveCopy { path: String, destination: String },
-    Trash { path: String },
-    RenameFolder { path: String, name: String },
-    CreateFolder { path: String, name: String },
-    TrashFolder { path: String },
+    Rename {
+        path: String,
+        name: String,
+    },
+    Duplicate {
+        path: String,
+    },
+    SaveCopy {
+        path: String,
+        destination: String,
+    },
+    Trash {
+        path: String,
+    },
+    RenameFolder {
+        path: String,
+        name: String,
+    },
+    CreateFolder {
+        path: String,
+        name: String,
+    },
+    CreateText {
+        path: String,
+        name: String,
+        contents: String,
+    },
+    TrashFolder {
+        path: String,
+    },
 }
 
 // These commands operate on explicit sidebar paths. Existing destinations are
@@ -80,6 +103,53 @@ fn copy_new(source: &Path, destination: &Path) -> io::Result<()> {
 
 fn operate(request: FileOperation) -> Result<Option<String>, String> {
     let output = match request {
+        FileOperation::CreateText {
+            path,
+            name,
+            contents,
+        } => {
+            if contents.len() > 24 * 1024 * 1024 || contents.trim().is_empty() {
+                return Err("Choose nonempty text up to 24 MB".into());
+            }
+            let parent = regular_folder(&path)?;
+            let original = child_path(&parent, &name)?;
+            let stem = original
+                .file_stem()
+                .ok_or("Missing filename")?
+                .to_string_lossy();
+            let extension = original
+                .extension()
+                .map(|value| format!(".{}", value.to_string_lossy()))
+                .unwrap_or_default();
+            let mut saved = None;
+            for index in 0..10_000 {
+                let target = if index == 0 {
+                    original.clone()
+                } else {
+                    parent.join(format!("{stem} {index}{extension}"))
+                };
+                match OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(&target)
+                {
+                    Ok(mut file) => {
+                        if let Err(error) = file
+                            .write_all(contents.as_bytes())
+                            .and_then(|_| file.sync_all())
+                        {
+                            let _ = fs::remove_file(&target);
+                            return Err(error.to_string());
+                        }
+                        saved = Some(target);
+                        break;
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+                    Err(error) => return Err(error.to_string()),
+                }
+            }
+            saved.ok_or("Could not choose an unused filename")?
+        }
         FileOperation::CreateFolder { path, name } => {
             let parent = regular_folder(&path)?;
             let target = child_path(&parent, &name)?;
@@ -222,6 +292,27 @@ mod tests {
     use super::*;
 
     #[cfg(target_os = "macos")]
+    #[test]
+    fn dropped_records_create_unique_files_without_overwrite_or_traversal() {
+        let root = std::env::temp_dir().join(format!("burette-drop-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&root).unwrap();
+        let create = |name: &str, contents: &str| {
+            operate(FileOperation::CreateText {
+                path: root.to_string_lossy().into(),
+                name: name.into(),
+                contents: contents.into(),
+            })
+        };
+        let first = create("molecule.sdf", "first").unwrap().unwrap();
+        let second = create("molecule.sdf", "second").unwrap().unwrap();
+        assert_ne!(first, second);
+        assert_eq!(fs::read_to_string(first).unwrap(), "first");
+        assert_eq!(fs::read_to_string(second).unwrap(), "second");
+        assert!(create("../escape.sdf", "payload").is_err());
+        assert!(create("empty.sdf", " ").is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn folder_operations_preserve_contents_and_existing_destinations() {
         let root =

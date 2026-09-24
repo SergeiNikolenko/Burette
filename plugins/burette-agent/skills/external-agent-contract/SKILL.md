@@ -62,6 +62,16 @@ that was opened before this contract existed.
    every mutation; never reuse a revision after a conflict or tab switch.
 7. For adjacent notes or review panels, call `burette.render_panel`.
 
+## Desktop links
+
+Use `burette.create_link` for a PDB ID (`kind: "pdb"`, `target: "1HTB"`),
+a local file (`kind: "open"`) or project folder (`kind: "project"`). For an
+existing desktop session, pass `kind: "session"` and its `workspaceSessionId`.
+Desktop workspace opening also returns `result.deepLink`. Present it as
+"Open in Burette"; creation does not prove the target was opened. Local links
+require the same Mac and files. Browser/cloud sessions cannot be attached by
+ID to the desktop app. Save a scene as MVSX when durable scene transfer is needed.
+
 ## Handoff
 
 Keep transport details out of intermediate reasoning, but do not hide the

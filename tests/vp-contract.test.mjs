@@ -3,9 +3,14 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-burette-deep-links.mjs": () => import("./test-burette-deep-links.mjs"),
+  "test-ketcher-import-readiness.mjs": () => import("./test-ketcher-import-readiness.mjs"),
   "test-renderer-view-state.mjs": () => import("./test-renderer-view-state.mjs"),
   "test-json-display.mjs": () => import("./test-json-display.mjs"),
   "test-standalone-conformer-jobs.mjs": () => import("./test-standalone-conformer-jobs.mjs"),
+  "test-grid-conformer-metal.mjs": () => import("./test-grid-conformer-metal.mjs"),
+  // The settings migration deliberately boots Zustand with legacy localStorage.
+  "test-settings-engine-migration.mjs": () => promisify(execFile)(process.execPath, [fileURLToPath(new URL("./test-settings-engine-migration.mjs", import.meta.url))]),
   "test-browser-file-actions.mjs": () => import("./test-browser-file-actions.mjs"),
   "test-workspace-export-guards.mjs": () => import("./test-workspace-export-guards.mjs"),
   "test-workspace-file-menu.mjs": () => import("./test-workspace-file-menu.mjs"),
@@ -15,6 +20,7 @@ const contractScripts = {
   "test-expanded-context-menus.mjs": () => import("./test-expanded-context-menus.mjs"),
   "test-color-picker.mjs": () => import("./test-color-picker.mjs"),
   "test-molstar-context-environment.mjs": () => import("./test-molstar-context-environment.mjs"),
+  "test-chemical-space-settings.mjs": () => import("./test-chemical-space-settings.mjs"),
   "test-chemical-space-grid-navigation.mjs": () => import("./test-chemical-space-grid-navigation.mjs"),
   "test-burette-agent.mjs": () => import("./test-burette-agent.mjs"),
   "test-agent-preview-server.mjs": () => import("./test-agent-preview-server.mjs"),
@@ -26,9 +32,12 @@ const contractScripts = {
   "test-sidebar-projects.mjs": () => import("./test-sidebar-projects.mjs"),
   "test-docking-documents.mjs": () => import("./test-docking-documents.mjs"),
   "test-ui-shell-contract.mjs": () => import("./test-ui-shell-contract.mjs"),
+  "test-molstar-style-switch.mjs": () => import("./test-molstar-style-switch.mjs"),
   "test-molstar-preset-preview-controller.mjs": () => import("./test-molstar-preset-preview-controller.mjs"),
   "test-collection-documents.mjs": () => import("./test-collection-documents.mjs"),
   "test-structure-drag.mjs": () => import("./test-structure-drag.mjs"),
+  "test-drop-feedback.mjs": () => import("./test-drop-feedback.mjs"),
+  "test-drop-routing.mjs": () => import("./test-drop-routing.mjs"),
   "test-drop-actions.mjs": () => import("./test-drop-actions.mjs"),
   "test-molecule-store-behavior.mjs": () => import("./test-molecule-store-behavior.mjs"),
   "test-markdown-block-layout.mjs": () => import("./test-markdown-block-layout.mjs"),

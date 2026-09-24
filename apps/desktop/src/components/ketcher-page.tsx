@@ -29,7 +29,7 @@ import type { KetcherEditorApi } from "./ketcher-editor";
 import { registerKetcherAgentController, unregisterKetcherAgentController } from "../lib/ketcher-agent";
 import { RadixDropdownMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
-import { ChevronDown, Minus, Plus, ColorTheme } from "@/components/ui/app-icons";
+import { ChevronDown, Minus, Plus, ColorTheme, Grid, Cube, Camera } from "@/components/ui/app-icons";
 import "./ketcher/workspace.css";
 import { KetcherTextPanel } from "./ketcher/text-panel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -882,7 +882,6 @@ export function KetcherPage({
       setStatus("Ketcher is not ready");
       return "transient-failure";
     }
-    await waitForKetcherStructServiceReady();
     const cleanPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
     const cleanFragments = fragments.filter((fragment) => fragment.text.trim());
     if (cleanPaths.length === 0 && cleanFragments.length === 0) return "failure";
@@ -1156,24 +1155,24 @@ export function KetcherPage({
           <div className="flex items-center gap-1" role="group" aria-label="Open sketch in a viewer">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="ghost" aria-label="Open sketch as 2D grid" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>
-                  Grid
+                <Button type="button" variant="ghost" size="icon" aria-label="Open sketch as 2D grid" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>
+                  <Grid className="size-[18px]" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Open sketch as 2D grid</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="ghost" aria-label="Open sketch in Molstar" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>
-                  Molstar
+                <Button type="button" variant="ghost" size="icon" aria-label="Open sketch in Molstar" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>
+                  <Cube className="size-[18px]" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Open sketch in Molstar</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="ghost" aria-label="Open sketch in xyzrender" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>
-                  xyzrender
+                <Button type="button" variant="ghost" size="icon" aria-label="Open sketch in xyzrender" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>
+                  <Camera className="size-[18px]" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Open sketch in xyzrender</TooltipContent>
@@ -1633,6 +1632,10 @@ async function importKetcherStructure(
   let lastError: unknown = null;
   for (const candidate of candidates) {
     try {
+      // MOL imports use the local serializer and do not need Indigo to start.
+      if (!looksLikeMolBlock(candidate) || looksLikeReactionBlock(candidate)) {
+        await waitForKetcherStructServiceReady();
+      }
       await loadKetcherImportCandidate(candidate, loadCandidate);
       await waitForKetcherCanvasUpdate();
       return;

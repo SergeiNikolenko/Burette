@@ -624,11 +624,16 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     let extension = structure_path_extension(&canonical);
     let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
     let is_sdf = matches!(extension.as_str(), "sd" | "sdf");
+    let streamed_table = matches!(
+        extension.as_str(),
+        "csv" | "tsv" | "smi" | "smiles" | "dwar"
+    );
     let should_use_viewer_for_sdf = is_sdf
         && reload_options.is_some()
         && (requested_renderer == "molstar" || requested_renderer == "xyzrender-external");
     let desktop_limit = preferences.desktop_preview_limit_bytes();
-    if metadata.len() > desktop_limit && (!is_sdf || should_use_viewer_for_sdf) {
+    if metadata.len() > desktop_limit && ((!is_sdf && !streamed_table) || should_use_viewer_for_sdf)
+    {
         return Err(format!(
             "{} is larger than the {} MiB desktop preview limit",
             canonical.display(),
@@ -680,20 +685,22 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     let document_id = stable_id(&canonical);
     let title = file_title(&canonical);
     let mut preloaded_sdf_data = None;
-    if is_sdf && !should_use_viewer_for_sdf {
+    if (is_sdf || streamed_table) && !should_use_viewer_for_sdf {
         // Small SDFs still need the ordinary single-molecule fallback. Feeding
         // them through the strict streaming collection parser first would make
         // a valid molecule with a large property block fail the 512 KiB
         // collection-record guard before we could discover that it is not a
         // collection. Large sources and sources beyond the configured preview
         // budget stay file-backed and are never read wholesale.
-        let grid_source =
-            if metadata.len() <= MAX_STRUCTURE_FILE_SIZE && metadata.len() <= desktop_limit {
-                preloaded_sdf_data = Some(fs::read(&canonical).map_err(|error| error.to_string())?);
-                preloaded_sdf_data.as_deref()
-            } else {
-                None
-            };
+        let grid_source = if is_sdf
+            && metadata.len() <= MAX_STRUCTURE_FILE_SIZE
+            && metadata.len() <= desktop_limit
+        {
+            preloaded_sdf_data = Some(fs::read(&canonical).map_err(|error| error.to_string())?);
+            preloaded_sdf_data.as_deref()
+        } else {
+            None
+        };
         let runtime_document_id = crate::windows::runtime_document_id(window_label, &document_id);
         if let Some(runtime_path) = create_grid_runtime_with_options(
             app,
@@ -859,7 +866,25 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     } else {
         default_renderer_mode_for_document(&extension, requested_renderer, reload_options)
     };
-    let renderer = resolve_renderer(&format, requested_renderer_for_document);
+    // Mol* does not load extended XYZ cells reliably; keep the first view on
+    // the renderer that understands their Lattice metadata.
+    let periodic_xyz = runtime_extension == "xyz"
+        && runtime_data
+            .split(|byte| *byte == b'\n')
+            .nth(1)
+            .is_some_and(|comment| {
+                comment
+                    .windows(b"Lattice=\"".len())
+                    .any(|part| part == b"Lattice=\"")
+            });
+    let renderer = if requested_renderer == "auto"
+        && requested_renderer_for_document == "molstar"
+        && periodic_xyz
+    {
+        "xyzrender-external".to_string()
+    } else {
+        resolve_renderer(&format, requested_renderer_for_document)
+    };
     let runtime = create_runtime(
         app,
         &canonical,
@@ -2356,6 +2381,10 @@ Atoms # charge
 
             assert_eq!(config["activeModel"], 1);
             assert_eq!(config["trajectoryFrameCount"], 2);
+            assert_eq!(
+                config["xyzrenderAnimationSourcePath"],
+                path.canonicalize().unwrap().to_string_lossy().as_ref()
+            );
             assert!(input.contains("second frame"));
             assert!(!input.contains("first frame"));
 
@@ -2709,6 +2738,40 @@ f_m_ct {
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
         }
+    }
+
+    #[test]
+    fn opens_periodic_xyz_in_xyzrender_by_default() {
+        with_fake_xyzrender(|| {
+            let app = mock_app_with_grid_registry();
+            let path = temp_fixture_path("structures/demo/caffeine_cell.xyz");
+            let document = open_document(app.handle(), path.clone(), &viewer_preferences(), None)
+                .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+            assert_eq!(document.renderer, "xyzrender-external");
+            let config_js = fs::read_to_string(
+                Path::new(&document.runtime_path)
+                    .parent()
+                    .unwrap()
+                    .join("preview-config.js"),
+            )
+            .unwrap();
+            let config: serde_json::Value = serde_json::from_str(
+                config_js
+                    .trim()
+                    .strip_prefix("window.BuretteConfig = ")
+                    .and_then(|value| value.strip_suffix(';'))
+                    .unwrap(),
+            )
+            .unwrap();
+            let input = base64::engine::general_purpose::STANDARD
+                .decode(config["xyzrenderInputDataBase64"].as_str().unwrap())
+                .unwrap();
+            assert!(String::from_utf8(input).unwrap().contains("Lattice=\""));
+            remove_runtime_artifacts(&document.runtime_path);
+            if let Some(parent) = path.parent() {
+                let _ = fs::remove_dir_all(parent);
+            }
+        });
     }
 
     #[test]

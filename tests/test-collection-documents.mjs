@@ -65,6 +65,22 @@ assert.equal(browserDelimitedRecords[0].name, "ethanol");
 assert.equal(browserDelimitedRecords[0].smiles, "CCO");
 assert.equal(browserDelimitedRecords[0].props.score, "1.2");
 
+const savedSar = parseBrowserDevDelimitedGridRecords(
+  await readFile(new URL("./fixtures/sar/two-series-saved.csv", import.meta.url), "utf8"), "csv",
+);
+assert.equal(savedSar.length, 8, "saved SAR metadata must not become extra molecules");
+assert.deepEqual(savedSar.map(({ name, smiles, props }) => [name, smiles, props.RGroup_Series]), [
+  ["Benzene methyl chloro", "Cc1ccc(Cl)cc1", "S1"],
+  ["Benzene ethyl chloro", "CCc1ccc(Cl)cc1", "S1"],
+  ["Benzene methyl bromo", "Cc1ccc(Br)cc1", "S1"],
+  ["Benzene ethyl bromo", "CCc1ccc(Br)cc1", "S1"],
+  ["Pyridine methyl", "Cc1ccncc1", "S2"],
+  ["Pyridine ethyl", "CCc1ccncc1", "S2"],
+  ["Acyclic", "CCCCCC", undefined],
+  ["Invalid", "not-a-smiles((", undefined],
+]);
+assert.ok(savedSar.every(({ props }) => !("index" in props) && !("burette_encoding" in props)));
+
 const smiles = mergeCollectionSources([
   { path: "/tmp/a.smi", extension: "smi", text: "CCO ethanol\n\n" },
   { path: "/tmp/b.smiles", extension: "smiles", text: "# comment\nO water\n" },

@@ -1,3 +1,4 @@
+import { activeViewerIframeForDocument, isReadOnlyViewerMessageSource } from "../lib/viewer-bridge";
 import { useCallback, useRef } from "react";
 import type { StructureOverlayMode, ViewerLigandSelection } from "../components/types";
 import type { ViewerDocument, ViewerPreferences } from "../types";
@@ -23,11 +24,13 @@ type SetStructureStories = (
 ) => void;
 
 type UseAppViewerStateMessagesOptions = {
+  updateDirtyGridDocument: (documentId: string, dirty: boolean) => void;
   activeDocument: ViewerDocument | null;
   addDocuments: (documents: ViewerDocument[]) => void;
   documents: ViewerDocument[];
   openCommandPalette: () => void;
   openDockTab: (area: "right", kind: DockTabKind) => void;
+  toggleDockTab: (area: "right", kind: DockTabKind) => void;
   setPreference: <K extends keyof ViewerPreferences>(key: K, value: ViewerPreferences[K]) => void;
   setViewerLigandSelections: SetViewerLigandSelections;
   setStructureOverlayModes: SetStructureOverlayModes;
@@ -45,11 +48,13 @@ function bodyString(value: unknown) {
 }
 
 export function useAppViewerStateMessages({
+  updateDirtyGridDocument,
   activeDocument,
   addDocuments,
   documents,
   openCommandPalette,
   openDockTab,
+  toggleDockTab,
   setPreference,
   setViewerLigandSelections,
   setStructureOverlayModes,
@@ -57,7 +62,16 @@ export function useAppViewerStateMessages({
   toggleSidebar,
 }: UseAppViewerStateMessagesOptions) {
   const openedStories = useRef(new Set<string>());
-  const handleViewerStateMessage = useCallback((sourceName: unknown, body: ViewerStateMessageBody) => {
+  const handleViewerStateMessage = useCallback((sourceName: unknown, body: ViewerStateMessageBody, eventSource: MessageEventSource | null) => {
+    if (sourceName === "burette-viewer" && body?.type === "structureDirtyChanged") {
+      const documentId = bodyString(body.documentId);
+      if (documentId && !isReadOnlyViewerMessageSource(eventSource)
+        && activeViewerIframeForDocument(documentId, "molstar")?.contentWindow === eventSource
+        && documents.some((document) => document.id === documentId)) {
+        updateDirtyGridDocument(documentId, body.dirty === true);
+      }
+      return true;
+    }
     if ((sourceName === "burette-viewer" || sourceName === "burette-grid") && body?.type === "openCommandPalette") {
       openCommandPalette();
       return true;
@@ -69,8 +83,38 @@ export function useAppViewerStateMessages({
     }
 
     if (sourceName === "burette-viewer" && body?.type === "setTheme") {
-      const theme = body.value === "light" || body.value === "dark" ? body.value : null;
+      const theme = body.value === "auto" || body.value === "light" || body.value === "dark" ? body.value : null;
       if (theme) setPreference("theme", theme);
+      return true;
+    }
+
+    if (sourceName === "burette-viewer" && body?.type === "xyzrenderAtomSelection") {
+      if (Array.isArray(body.selections) && body.selections.length <= 32) window.dispatchEvent(new CustomEvent("burette:xyzrender-selection", { detail: body.selections }));
+      return true;
+    }
+
+    if (sourceName === "burette-viewer" && body?.type === "xyzrenderItemRemoved") {
+      if (body.documentId === activeDocument?.id && typeof body.itemId === "string") window.dispatchEvent(new CustomEvent("burette:xyzrender-item-removed", { detail: body }));
+      return true;
+    }
+
+    if (sourceName === "burette-viewer" && body?.type === "xyzrenderActiveItem") {
+      if (body.documentId === activeDocument?.id && typeof body.itemId === "string" && typeof body.path === "string" && typeof body.previewSvg === "string" && body.previewSvg.length <= 2_000_000) {
+        window.dispatchEvent(new CustomEvent("burette:xyzrender-active-item", { detail: body }));
+      }
+      return true;
+    }
+
+    if (sourceName === "burette-viewer" && body?.type === "openXyzrenderAnimation") {
+      if (typeof body.path === "string" && typeof body.previewSvg === "string" && body.previewSvg.length <= 2_000_000) {
+        openDockTab("right", "xyzrender");
+        window.dispatchEvent(new CustomEvent("burette:xyzrender-animation", { detail: body }));
+      }
+      return true;
+    }
+
+    if (sourceName === "burette-viewer" && body?.type === "openXyzrenderInspector") {
+      toggleDockTab("right", "xyzrender");
       return true;
     }
 
@@ -178,7 +222,7 @@ export function useAppViewerStateMessages({
     }
 
     return false;
-  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, setPreference, setStructureOverlayModes, setStructureStories, setViewerLigandSelections, toggleSidebar]);
+  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, toggleDockTab, setPreference, setStructureOverlayModes, setStructureStories, setViewerLigandSelections, toggleSidebar, updateDirtyGridDocument]);
 
   return { handleViewerStateMessage };
 }

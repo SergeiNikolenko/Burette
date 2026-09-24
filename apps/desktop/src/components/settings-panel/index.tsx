@@ -1,3 +1,4 @@
+import { SshConnections } from "../ssh/ssh-projects";
 import { useEffect, useMemo, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ViewerPreferences, XtbSettings } from "../../types";
@@ -25,7 +26,6 @@ import { KeyboardShortcutsSection } from "./keyboard-shortcuts-section";
 import { ThemesSection } from "./themes-section";
 
 const defaultRendererModeOptions: Array<ViewerPreferences["rendererMode"]> = ["auto", "molstar", "xyzrender-external"];
-const conformerEngineOptions: Array<ViewerPreferences["conformerEngine"]> = ["datamol", "rdkit"];
 type SettingsPanelLocation = { kind: "settings"; section: AppSettingsSectionId };
 type OpenInDefaultDestination = ViewerPreferences["openInDefaultDestination"];
 type OpenDestinationOption = {
@@ -143,7 +143,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                 <SettingsSection
                   title="Structure Rendering"
                   rows={[
-                    preferenceRow<"rendererMode">("Mode", "Choose the renderer used for newly opened structures.", preferences.rendererMode, defaultRendererModeOptions, defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode)),
+                    preferenceRow<"rendererMode">("Mode", "Preferred renderer for direct previews. Files opened normally use Auto; use Open As to choose a renderer for one file.", preferences.rendererMode, defaultRendererModeOptions, defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode)),
                     preferenceRow<"molstarStyle">("Mol* appearance", "Default lighting and outline appearance for the Mol* renderer.", preferences.molstarStyle, ["default", "illustrative"], defaultPreferences.molstarStyle, (molstarStyle) => actions.setPreference("molstarStyle", molstarStyle)),
                     {
                       label: "Desktop preview limit",
@@ -152,7 +152,6 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                       reset: () => actions.setPreference("desktopPreviewLimitMiB", defaultPreferences.desktopPreviewLimitMiB),
                       isModified: preferences.desktopPreviewLimitMiB !== defaultPreferences.desktopPreviewLimitMiB,
                     },
-                    preferenceRow<"conformerEngine">("3D engine", "Choose the engine used to generate 3D conformers.", preferences.conformerEngine, conformerEngineOptions, defaultPreferences.conformerEngine, (conformerEngine) => actions.setPreference("conformerEngine", conformerEngine)),
                     {
                       label: "Conformer set candidates",
                       description: "How many conformers to ask the engine for before RMSD pruning.",
@@ -221,6 +220,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                 </>
               ) : null}
               {section === "updates" ? <SettingsSection title="Updates" rows={updateRows} /> : null}
+              {section === "connections" ? <SshConnections /> : null}
               {section === "workspace" ? (
                 <SettingsSection
                   title="Files and Projects"

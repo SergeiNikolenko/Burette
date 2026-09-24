@@ -72,7 +72,6 @@ BURETTE_DEV_FLAVOR=chat85b0 ./scripts/install.sh
 | Variable | Use |
 | --- | --- |
 | `BURETTE_RDKIT_PYTHON` | Python interpreter for RDKit-backed browser-dev workflows. |
-| `BURETTE_DATAMOL_PYTHON` | Python interpreter for Datamol-backed preparation workflows. |
 | `BURETTE_DESCRIPTOR_PYTHON` | Python interpreter with RDKit and descriptor dependencies. |
 | `BURETTE_MSBUDDY_PYTHON` | Python interpreter for MSBuddy runtime support. |
 | `BURETTE_UV` | Override for the `uv` executable used by runtime installers. |

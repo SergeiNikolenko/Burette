@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import "./test-plugin-native-preservation.mjs";
+import "./test-native-widget-stage.mjs";
 import { spawnSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -82,7 +84,7 @@ const preflightScript = await read("scripts/burette_agent_preflight.mjs");
 assert.match(preflightScript, /story_authoring_reference: "supported_from_installed_molstar_schema"/);
 
 const rootPackageJson = JSON.parse(await readFile("package.json", "utf8"));
-assert.equal(rootPackageJson.scripts["install:plugin"], "bun plugins/burette-agent/scripts/install-local.mjs");
+assert.equal(rootPackageJson.scripts["install:plugin"], "bun scripts/stage-native-widget.mjs && bun plugins/burette-native-bundle/scripts/install-local.mjs");
 assert.equal(rootPackageJson.scripts["build:agent-shell"], "bun scripts/build-agent-shell-plugin.mjs");
 
 const repoMarketplace = JSON.parse(await readFile(".agents/plugins/marketplace.json", "utf8"));
@@ -172,6 +174,7 @@ for (const missingAsset of [
   try {
     await mkdir(path.join(fixturePluginRoot, "scripts"), { recursive: true });
     await cp(path.join(pluginRoot, "scripts", "install-local.mjs"), path.join(fixturePluginRoot, "scripts", "install-local.mjs"));
+    await cp(path.join(pluginRoot, "scripts", "preserve-native-widget.mjs"), path.join(fixturePluginRoot, "scripts", "preserve-native-widget.mjs"));
     await mkdir(path.join(fixturePluginRoot, ".codex-plugin"), { recursive: true });
     await writeFile(path.join(fixturePluginRoot, ".codex-plugin", "plugin.json"), '{"version":"0.0.0"}\n');
     for (const relativePath of installerRequiredFiles) {
@@ -309,6 +312,7 @@ for (const asset of [
   "scripts/burette-agent.mjs",
   "scripts/mvs-story-templates.mjs",
   "scripts/install-local.mjs",
+  "scripts/preserve-native-widget.mjs",
   "skills/mvs-story/references/molviewspec-authoring.md",
   "assets/mvs-story-templates/aligned-structure-comparison.json",
   "assets/mvs-story-templates/binding-site-tour.json",

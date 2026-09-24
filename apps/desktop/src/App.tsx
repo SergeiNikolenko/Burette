@@ -954,7 +954,6 @@ export default function App() {
   });
 
   const {
-    addXyzrenderSheetItems,
     addXyzrenderSheetItemsToDocument,
     appendGridRecords,
   } = useAppGridWorkflows({
@@ -1026,7 +1025,7 @@ export default function App() {
     tabActions: agentTabActions,
     openKetcherTab,
     addProjectRoots: addDroppedProjectRoots,
-    addXyzrenderSheetItems,
+    addXyzrenderSheetItems: addXyzrenderSheetItemsToDocument,
     appendGridRecords,
     chooseDropAction,
     documents,
@@ -1038,6 +1037,7 @@ export default function App() {
     openFepSetupWorkspace,
     openKetcherWithStructures,
     openPaths,
+    fetchPdbStructure,
     openStructureRecords,
     openTextDocuments,
     pushErrorStatus,
@@ -1076,6 +1076,7 @@ export default function App() {
     openKetcherWithStructures,
     openCommandPalette,
     openDockTab,
+    toggleDockTab,
     openPoseReviewWorkspace,
     pendingMolstarReplaceRef,
     pendingViewerReloadDocumentIdRef,

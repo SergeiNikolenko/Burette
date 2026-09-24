@@ -72,7 +72,7 @@
         pointer-events: none;
       }
       #${overlayId} .burette-boot-lift {
-        opacity: .78;
+        opacity: .92;
         transition: transform 650ms cubic-bezier(.2, .8, .2, 1), opacity 350ms ease;
       }
       #${overlayId} .burette-boot-button:is(:hover, :focus-visible) .burette-boot-lift {
@@ -90,11 +90,11 @@
         transform: rotate(12deg);
       }
       #${overlayId} .burette-boot-base {
-        fill: ${dark ? "#b8b8b8" : "#939393"};
+        fill: ${dark ? "#d4d4d4" : "#4a4a4a"};
         transition: fill 400ms ease;
       }
       #${overlayId} .burette-boot-button:is(:hover, :focus-visible) .burette-boot-base {
-        fill: ${dark ? "#eeeeee" : "#555555"};
+        fill: ${dark ? "#ffffff" : "#1f1f1f"};
       }
       #${overlayId} .burette-boot-wave {
         animation: burette-boot-wave 3.6s cubic-bezier(.4, 0, .3, 1) infinite;

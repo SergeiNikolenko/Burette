@@ -28,3 +28,46 @@ assert.equal(Object.keys(JSON.parse(stored)).length, 32, 'Session history stays 
 stored = '{broken';
 assert.doesNotThrow(() => runtime().read('file-0'));
 console.log('Renderer view state: iframe reload, camera/2D round trip, isolation and bounded storage passed');
+
+let resize, disconnected = false;
+const viewContext = vm.createContext({ window: { sessionStorage: storage }, ResizeObserver: class {
+  constructor(callback) { resize = callback; } observe() {} disconnect() { disconnected = true; }
+} });
+vm.runInContext(source, viewContext);
+const placed = { style: {}, dataset: {}, offsetLeft: 500, offsetTop: 300, offsetWidth: 800, offsetHeight: 400 };
+const viewport = { clientWidth: 1000, clientHeight: 600, querySelectorAll: () => [placed] };
+const stop = viewContext.window.BuretteRendererViewState.observeSheetViewport(viewport, null);
+assert.deepEqual(placed.style, { left: '500px', top: '300px', width: '800px', height: '400px' });
+viewport.clientWidth = 600; resize();
+assert.deepEqual(placed.style, { left: '300px', top: '300px', width: '800px', height: '400px' }, 'opening the inspector preserves dimensions and centers the sheet');
+viewport.clientWidth = 0; resize();
+viewport.clientWidth = 1000; resize();
+assert.equal(placed.style.left, '500px', 'hidden tabs do not corrupt the previous viewport');
+placed.dataset.rotation = '90'; viewport.clientHeight = 400; resize();
+assert.deepEqual(placed.style, { left: '500px', top: '200px', width: '800px', height: '400px' }, 'rotation and bottom dock do not trigger auto-fit');
+viewport.clientHeight = 600; resize();
+assert.equal(placed.style.top, '300px');
+stop(); assert.equal(disconnected, true);
+first.save('viewport', { xyz: { ...xyz, viewport: { width: 1000, height: 600 } } });
+assert.deepEqual(copy(runtime().read('viewport').xyz.viewport), { width: 1000, height: 600 });
+
+// Restoring a saved sheet into a different viewport keeps its pixel geometry.
+placed.offsetLeft = 500; placed.offsetTop = 300;
+viewport.clientWidth = 600;
+const restoredStop = viewContext.window.BuretteRendererViewState.observeSheetViewport(viewport, { width: 1000, height: 600 });
+assert.deepEqual(placed.style, { left: '300px', top: '300px', width: '800px', height: '400px' });
+restoredStop();
+
+// An accidentally broadcast host command must not open another document's editor.
+const viewerSource = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
+const branch = viewerSource.slice(viewerSource.indexOf("    if (event.source === window.parent && body.type === 'openXyzrenderEditor')"), viewerSource.indexOf("    if (event.source === window.parent && body.type === 'applyXyzrenderAnimationFrame')"));
+let opened = 0;
+const parent = {};
+const editorContext = vm.createContext({ window: { parent }, activeConfig: { documentId: 'methane' }, openXyzrender3DEditor: () => { opened++; } });
+for (const [documentId, expected] of [['protein', 0], ['methane', 1], [undefined, 1]]) {
+  editorContext.body = { type: 'openXyzrenderEditor', documentId };
+  editorContext.event = { source: parent };
+  vm.runInContext(`(() => { ${branch} })()`, editorContext);
+  assert.equal(opened, expected);
+}
+console.log('Sheet resize preservation and document-scoped animation launch passed');

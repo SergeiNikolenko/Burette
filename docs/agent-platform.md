@@ -315,6 +315,15 @@ bun tests/test-viewer-bridge-message-contract.mjs
 
 ### Inspector context operations
 
+Composition right-clicks send `open_components_menu` with an exact `query`,
+`componentLabel`, `kind`, and finite viewer-local `x`/`y` coordinates. The desktop
+bridge translates the pointer position into the active iframe. The viewer opens
+the same scene-tree editor (Type, Opacity, Theme, palette and Advanced), clamped
+inside the viewport. Partial components are separated with their existing style,
+visibility and selection preserved; that separation can be undone. Rows spanning
+multiple representations expose an Object selector so the edited target is explicit.
+Opening an already separate component does not add an undo step.
+
 The desktop inspector uses `edit_components` with `query` (exact PyMOL, maximum
 4096 characters), `componentLabel`, `kind`, and a discriminated `edit`:
 `{ operation: "representation", value: string }`, `{ operation: "opacity",
@@ -345,3 +354,47 @@ and separator entries and an optional logical window position. It returns a sele
 ID or cancellation; callbacks remain in the frontend. The request is limited to
 128 entries, three submenu levels, unique IDs of at most 160 bytes, labels of at
 most 1024 bytes, and finite coordinates. SF Symbol names are resolved by AppKit.
+
+## macOS navigation links
+
+The desktop app registers `burette://` through its packaged Info.plist.
+`burette://pdb/1HTB` fetches the PDB structure; `burette://open?path=<encoded absolute path>`
+opens a file (including saved MVSX scenes); `burette://project?path=<encoded absolute path>`
+opens a folder through the existing project workflow. Use the CLI to encode paths:
+
+```bash
+bun scripts/burette-agent.mjs link pdb 1HTB
+bun scripts/burette-agent.mjs link open /absolute/path/structure.pdb
+bun scripts/burette-agent.mjs link project /absolute/path/project
+bun scripts/burette-agent.mjs link --session-dir /absolute/path/session
+```
+
+Desktop `open` returns `result.deepLink`. `burette.create_link` exposes generation
+to MCP callers; session links take an existing desktop `workspaceSessionId`.
+`burette://session/<uuid>` resolves a private registration under
+`~/Library/Application Support/<app identifier>/deep-links/`. It checks the
+original session token and mode, opens initial paths, then attaches the existing
+agent transport. Deleting the registration revokes the link. Removing or
+reinitializing the session invalidates it. No token or session path is in the URL.
+These links are local navigation, not cloud sharing or persistent scene snapshots.
+Use saved MVSX for scene transfer; unsaved state is not serialized into links.
+
+The parser rejects unknown routes/parameters, credentials, fragments, invalid
+PDB IDs and relative paths. Limits: URLs 8 KiB, paths 4 KiB, session metadata
+64 KiB, initial paths 32, pending links 32 per window. Only locally registered
+sessions can attach an agent. URLs cannot execute commands or viewer actions.
+An attached desktop session has one owning window; following its link focuses
+that window and a second window cannot claim the same agent transport. Earlier
+sessions remain leased to that window until it closes, protecting late writes
+when switching sessions. Switching waits for the current agent action to finish.
+Events are queued per target window and drained after the frontend subscribes,
+covering cold launch, warm launch and recreated windows. Errors appear in the
+existing app status surface. Files and projects reuse normal opening behavior.
+
+Development bundles register `burette-<normalized flavor>://`. Set matching
+`BURETTE_DEV_FLAVOR` when generating links. The production registration and
+registry remain separate. Browser and iOS runtimes do not register this protocol.
+
+Focused checks: `bun tests/test-burette-deep-links.mjs` and
+`cargo test --lib deep_links` from `apps/desktop/src-tauri`; packaged validation
+must additionally open a link with the app closed and running.

@@ -134,8 +134,10 @@ impl ComputeServiceClient {
         job_id: Uuid,
         batch: MetalAlignmentBatch<'_>,
         max_memory_bytes: u64,
+        before_dispatch: &dyn Fn() -> Result<(), String>,
     ) -> Result<MetalAlignmentExecution, String> {
         self.with_transport_restart(|connection| {
+            before_dispatch()?;
             connection.align_and_score(job_id, batch, max_memory_bytes)
         })
     }
@@ -145,8 +147,10 @@ impl ComputeServiceClient {
         job_id: Uuid,
         molecule: &SemiempiricalMolecule,
         max_memory_bytes: u64,
+        before_dispatch: &dyn Fn() -> Result<(), String>,
     ) -> Result<(Rm1Evaluation, u64), String> {
         self.with_transport_restart(|connection| {
+            before_dispatch()?;
             connection.evaluate_semiempirical(job_id, molecule, max_memory_bytes)
         })
     }
@@ -642,6 +646,12 @@ impl ComputeServiceConnection {
         job_id: Uuid,
         operation: WorkerOperation,
     ) -> Result<Duration, String> {
+        if matches!(
+            operation,
+            WorkerOperation::AlignmentScoreV1 | WorkerOperation::SemiempiricalScfV1
+        ) {
+            return Ok(Duration::from_secs(30));
+        }
         if !is_conformer_operation(operation) {
             return Ok(KERNEL_REQUEST_TIMEOUT);
         }
@@ -2290,6 +2300,7 @@ mod tests {
                     pairs: &descriptors,
                 },
                 8 * 1024 * 1024,
+                &|| Ok(()),
             )
             .expect("execute alignment kernel through helper");
         assert!((alignment.pairs[0].scores.shape_tanimoto - 1.0).abs() < 1.0e-5);
@@ -2315,7 +2326,7 @@ mod tests {
         )
         .expect("valid water");
         let (evaluation, gpu_time_ms) = client
-            .evaluate_semiempirical(Uuid::new_v4(), &water, 64 * 1024 * 1024)
+            .evaluate_semiempirical(Uuid::new_v4(), &water, 64 * 1024 * 1024, &|| Ok(()))
             .expect("execute semiempirical SCF through helper");
         assert_eq!(evaluation.scf.status, SemiempiricalScfStatus::Converged);
         assert!(evaluation.total_energy_ev.is_finite());

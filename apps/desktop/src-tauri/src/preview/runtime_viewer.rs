@@ -246,6 +246,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "showPanelControls": true,
         "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
+    config["xyzrenderAnimationSourcePath"] = json!(source_path);
     config["autoFocusStructure"] = json!(true);
     config["rendererViewState"] = json!(reload_options
         .and_then(|options| options.renderer_view_state.as_deref())

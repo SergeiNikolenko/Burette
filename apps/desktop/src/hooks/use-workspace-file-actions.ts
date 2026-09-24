@@ -1,3 +1,4 @@
+import { appendScenePayload, focusSceneDocument } from "./workspace-scene-import";
 import { validatePoseFiles, validatePoseRecords } from "./workspace-chemical-copy";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -5,8 +6,7 @@ import { isTauriRuntime } from "../lib/tauri";
 import type { StructureDragRecord } from "../lib/structure-drag";
 import { toast } from "../components/ui/toast";
 import { useRef } from "react";
-import { readStructureTextDocument } from "../lib/structure-text";
-import { activeViewerIframeForDocument, requestGridView, requestViewerAction } from "../lib/viewer-bridge";
+import { requestGridView, requestViewerAction } from "../lib/viewer-bridge";
 import { writeClipboardText } from "../lib/clipboard";
 import { fileCapabilities } from "../components/workspace-menu-items";
 import type { ShellActions, ShellViewState } from "../components/types";
@@ -23,41 +23,16 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     && state.tabs.some(tab => tab.location.kind === "file" && tab.location.documentId === document.id)
     && paths.every(path => fileCapabilities(path).scene && !scenePaths(document).includes(path))
     && scenePaths(document).length + paths.length <= 200).slice(0, 60);
-  const focusViewer = async (document: ViewerDocument) => {
-    actions.selectDocument(document.id);
-    for (let attempt = 0; attempt < 50; attempt++) {
-      if (activeViewerIframeForDocument(document.id, document.renderer)?.contentWindow) {
-        if (document.renderer !== "molstar") return;
-        try {
-          const state = await requestViewerAction(document.id, { type: "workspace_scene_state" }, 1200);
-          if (state.ready) return;
-        } catch { /* The iframe can mount before its message listener. */ }
-      }
-      await new Promise(resolve => window.setTimeout(resolve, 100));
-    }
-    throw new Error("Open the document and wait for its viewer to load.");
-  };
+  const focusViewer = (document: ViewerDocument) => focusSceneDocument(document, actions.selectDocument);
   const addToScene = async (paths: string[], document: ViewerDocument) => {
     if (!sceneTargets(paths).some(target => target.id === document.id)) throw new Error("These files cannot be added to this scene.");
-    const sources = [];
-    let total = 0;
-    for (const path of paths) {
-      const source = await readStructureTextDocument(path, undefined, { maxBytes: 24 * 1024 * 1024 - total });
-      total += new TextEncoder().encode(source.content).byteLength;
-      if (source.truncated || total > 24 * 1024 * 1024) throw new Error("Scene imports are limited to 24 MB at a time.");
-      sources.push({ path, label: path.split('/').pop(), format: fileCapabilities(path).extension, data: source.content });
-    }
-    await focusViewer(document);
-    await requestViewerAction(document.id, { type: "append_scene_files", sources, existingPaths: scenePaths(document) });
+    await appendScenePayload(document.id, { paths, records: [] });
     added.current.set(document.id, [...(added.current.get(document.id) ?? []), ...paths]);
     toast.add({ title: "Added to scene", description: "Use Export → Scene to save the combined scene.", type: "info" });
   };
   const addRecordsToScene = async (records: StructureDragRecord[], document: ViewerDocument) => {
-    await focusViewer(document);
     const paths = records.map(record => record.path);
-    await requestViewerAction(document.id, { type: "append_scene_files", existingPaths: scenePaths(document), sources: records.map(record => ({
-      path: record.path, label: record.path.split('/').pop(), format: record.inputExtension, data: record.text,
-    })) });
+    await appendScenePayload(document.id, { paths: [], records });
     added.current.set(document.id, [...(added.current.get(document.id) ?? []), ...paths]);
     toast.add({ title: "Added to scene", description: "Use Export → Scene to save the combined scene.", type: "info" });
   };

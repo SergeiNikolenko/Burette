@@ -42,6 +42,97 @@ assert.ok(neighbors && StructureElement.Loci.size(neighbors) > 0, 'separate rece
 assert.equal(neighbors.structure, receptor);
 assert.equal(StructureElement.Loci.size(surroundings({ loci: pick }, 5, ligand)), 44);
 
+// Molecule-mode picks on a protein residue must take its complete residue,
+// while explicit atom mode and existing multi-residue selections stay intact.
+const residueLoci = StructureElement.Loci.extendToWholeResidues(
+  StructureElement.Loci(receptor, [{ unit: receptor.units[0], indices: Int32Array.of(0) }]));
+const atomLoci = StructureElement.Loci(receptor, [{ unit: receptor.units[0], indices: Int32Array.of(0) }]);
+const selectionLoci = new Function('molstarStructureFromRef', 'molstarContextResidueAtomLociForStructure',
+  'molstarContextPickingLevelLoci', 'molstarContextMenuMode', 'molstarContextMenuPick',
+  `${functionSource('molstarContextSelectionLoci')}; return molstarContextSelectionLoci;`
+)(ref => ref, () => residueLoci, target => target.atomLoci, 'molecule', null);
+const residueTarget = { scope: 'residue', atom: {}, structure: receptor, loci: atomLoci, atomLoci };
+assert.equal(selectionLoci(residueTarget), residueLoci);
+assert.ok(StructureElement.Loci.size(residueLoci) > 1);
+assert.equal(selectionLoci({ ...residueTarget, pickingLevel: 'atom' }), atomLoci);
+assert.equal(selectionLoci({ ...residueTarget, selectionBased: true, loci: pick }), pick);
+
+// A residue surface menu resolves each scope explicitly: one residue, its whole
+// chain, or all protein atoms. Ligands retain their molecule-wide surface.
+const chainLoci = { kind: 'element-loci', scope: 'chain' };
+const proteinLoci = { kind: 'element-loci', scope: 'protein' };
+const surfaceTarget = new Function(
+  'molstarContextResidueLabel', 'molstarContextChainLabel',
+  'molstarContextChainLociFromPick', 'compositionQueryLoci',
+  `${functionSource('molstarSurfaceTarget')}; return molstarSurfaceTarget;`,
+)(() => 'THR B 2', () => 'Chain B', () => chainLoci,
+  (_structure, query) => query === 'polymer.protein' ? proteinLoci : null);
+assert.equal(surfaceTarget(residueTarget, 'represent:surface-residue').pickingLevel, 'residue');
+assert.deepEqual(surfaceTarget(residueTarget, 'represent:surface-chain'), {
+  ...residueTarget, loci: chainLoci, selectionBased: true, label: 'Chain B'
+});
+assert.deepEqual(surfaceTarget(residueTarget, 'represent:surface-protein'), {
+  ...residueTarget, loci: proteinLoci, selectionBased: true, label: 'Protein'
+});
+assert.equal(surfaceTarget({ label: 'NAD' }, 'represent:surface-ligand').pickingLevel, 'molecule');
+
+// Pocket surfaces must include complete protein residues, excluding the ligand
+// and solvent, including when receptor and ligand are separate scene objects.
+const complex = await parseStructure(lines, 'complex');
+const complexRef = { cell: { obj: { data: complex } } };
+const complexLigand = queryLoci(complexRef, 'organic and resn NAD and chain A and resi 377');
+const renderedPockets = [];
+let pocketStructures = [complexRef];
+const pocketSurface = new Function(
+  'molstarStructureRuntime', 'molstarContextSelectionLoci', 'molstarCurrentStructures',
+  'activeMolstarViewer', 'compositionQueryLoci', 'molstarSurroundingsLoci',
+  'molstarLociIsEmpty', 'addGreySurfaceForContext', 'configuredMolstarAppearance',
+  'activeConfig', 'window',
+  `${functionSource('addMolstarPocketSurface')}; return addMolstarPocketSurface;`,
+)(() => ({ StructureElement }), target => target.loci, () => pocketStructures,
+  () => null, queryLoci, surroundings, StructureElement.Loci.isEmpty,
+  async (target, options) => { renderedPockets.push({ target, options }); return true; },
+  () => 'illustrative', null, { BuretteConfig: {} });
+assert.equal(await pocketSurface({ loci: complexLigand, label: 'NAD' }), 1);
+const pocket = renderedPockets[0].target.loci;
+assert.equal(renderedPockets[0].options.illustrative, true);
+assert.equal(StructureElement.Loci.size(StructureElement.Loci.intersect(pocket, complexLigand)), 0);
+assert.ok(StructureElement.Loci.areEqual(pocket, StructureElement.Loci.extendToWholeResidues(pocket)));
+assert.ok(StructureElement.Loci.areEqual(pocket,
+  StructureElement.Loci.intersect(pocket, queryLoci(complexRef, 'polymer.protein'))));
+assert.ok(StructureElement.Loci.size(pocket) > 0);
+pocketStructures = [{ cell: { obj: { data: receptor } } }, ligandRef];
+assert.equal(await pocketSurface({ loci: pick, label: 'NAD' }), 1);
+assert.equal(renderedPockets[1].target.loci.structure, receptor);
+pocketStructures = [ligandRef];
+assert.equal(await pocketSurface({ loci: pick, label: 'NAD' }), 0);
+
+const surfaceUpdates = [];
+const illustrativePasses = [];
+const surfaceRepresentation = { cell: { transform: { params: { type: { name: 'molecular-surface' } } } } };
+const surfaceComponent = { representations: [surfaceRepresentation] };
+const surfaceManager = {
+  async updateRepresentations(_components, _surface, update) {
+    surfaceUpdates.push(update({ type: { params: { quality: 'auto' } }, colorTheme: {} }));
+  },
+};
+const contextSurface = new Function(
+  'addMolstarContextScopeComponent', 'activeMolstarViewer', 'applyMolstarIllustrativePostprocessing',
+  `${functionSource('addGreySurfaceForContext')}; return addGreySurfaceForContext;`,
+)(async () => surfaceComponent,
+  () => ({ plugin: { managers: { structure: { component: surfaceManager } } } }),
+  async (_viewer, options) => illustrativePasses.push(options));
+assert.equal(await contextSurface({ label: 'Pocket' }, { illustrative: true }), true);
+assert.equal(surfaceUpdates[0].type.params.celShaded, true);
+assert.equal(surfaceUpdates[0].type.params.alpha, 0.22);
+assert.equal(surfaceUpdates[0].colorTheme.params.value, 0xc8d0d8);
+assert.deepEqual(illustrativePasses, [{ includeTransparent: true }]);
+assert.equal(await contextSurface({ label: 'Ligand' }), true);
+assert.equal(surfaceUpdates[1].type.params.alpha, 0.35);
+assert.equal(surfaceUpdates[1].type.params.celShaded, undefined);
+assert.equal(surfaceUpdates[1].colorTheme.params.value, 0x98989d);
+assert.equal(illustrativePasses.length, 1);
+
 // Pinning must use the live native focus behavior and copy its transforms.
 // In particular, no second ball-and-stick preset may drift from Mol* settings.
 const pinSource = functionSource('pinMolstarEnvironment');
@@ -144,9 +235,10 @@ assert.equal(picked, priorSelection);
 let selectedPreviewLoci = null;
 const selectPreviewAtoms = new Function('molstarStructureFromRef', 'activeMolstarViewer', 'molstarContextElementLoci', 'scheduleSceneTreeRender',
   `${functionSource('selectMolstarMoleculePreviewAtoms')}; return selectMolstarMoleculePreviewAtoms;`)(
-  value => value, () => ({ plugin: { managers: { structure: { selection: {
-    clear() { selectedPreviewLoci = null; },
-    fromLoci(_modifier, loci, applyGranularity) { assert.equal(applyGranularity, false); selectedPreviewLoci = loci; },
+  value => value, () => ({ plugin: { managers: { interactivity: { lociSelects: {
+    deselectAll() { selectedPreviewLoci = null; },
+  } }, structure: { selection: {
+    fromLoci(modifier, loci, applyGranularity) { assert.equal(modifier, 'set'); assert.equal(applyGranularity, false); selectedPreviewLoci = loci; },
   } } } } }), value => value, () => {},
 );
 const previewUnit = ligand.units[0];

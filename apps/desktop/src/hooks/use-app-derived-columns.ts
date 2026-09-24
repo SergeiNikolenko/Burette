@@ -8,7 +8,6 @@ import {
   computeDerivedValue,
   computeRowProperties,
   createReactionRunner,
-  decomposeRGroupsInRuntime,
   DERIVED_COLUMN_KINDS,
   countSubstructureMatches,
   fetchDerivedSourceRows,
@@ -20,6 +19,7 @@ import {
   rgroupRuntimeStatus,
   SCAFFOLD_COUNT_COLUMN,
   storeDerivedValues,
+  storeRGroupResults,
   type DerivedColumnKind,
   type DerivedComputeRow,
   type DerivedStoreValue,
@@ -27,6 +27,8 @@ import {
   type PropertyRunOptions,
   type ReferenceFingerprint,
 } from "../lib/derived-columns";
+import { ScaffoldWorker } from "../lib/scaffold-worker";
+import { prepareRGroupPreview, type RGroupPreview } from "./rgroup-preview";
 import { compileFormula } from "../lib/formula-eval.mjs";
 import { logFrontendError } from "../lib/frontend-error-log";
 import { joinColumnValues } from "../lib/merge-columns.mjs";
@@ -44,10 +46,6 @@ const GRID_RECORDS_TIMEOUT_MS = 15_000;
 // hanging the webview.
 const REFERENCE_STRUCTURE_LIMIT = 5_000;
 const REFERENCE_FILE_MAX_BYTES = 32 * 1024 * 1024;
-// rdRGroupDecomposition aligns one core across the whole set at once, so the
-// molecules travel to Python in a single payload; the command enforces the
-// same ceiling on its side.
-const RGROUP_ROW_LIMIT = 5_000;
 // What Merge Equivalent Rows puts between values that differ. Two measurements
 // of the same molecule are both worth keeping, so they are joined rather than
 // one of them being chosen.
@@ -325,13 +323,14 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
   // Mirrors notifyGridDescriptorRunFinished in use-app-descriptors: stored
   // values only reach the desktop grid when it re-reads a page, and column ids
   // ride along with the page payload.
-  const notifyGridDerivedRunFinished = useCallback((documentId: string) => {
+  const notifyGridDerivedRunFinished = useCallback((documentId: string, resultKind?: "rgroup") => {
     activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
       source: "burette-grid-host",
       body: {
         type: "gridDescriptorFinished",
         documentId,
         descriptorIdCount: 1,
+        ...(resultKind ? { resultKind } : {}),
       },
     }, "*");
   }, []);
@@ -1127,14 +1126,14 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
     const updateJob = beginDerivedJob(scaffoldColumn.label, targetDocument.title);
     pushStatus(`Analysing scaffolds in ${targetDocument.title}`);
     void (async () => {
+      let worker: ScaffoldWorker | null = null;
       try {
-        const engines = await loadDerivedEngines();
+        worker = new ScaffoldWorker();
         const counts = new Map<string, number>();
         const scaffolds: Array<{ rowId: number; scaffold: string | null; errorText: string | null }> = [];
         let processedRows = 0;
         let failedRows = 0;
-        const consider = (rowId: number, row: DerivedComputeRow) => {
-          const result = computeDerivedValue("murcko-scaffold", engines, row);
+        const consider = (rowId: number, result: Awaited<ReturnType<ScaffoldWorker["compute"]>>[number]) => {
           processedRows += 1;
           if (result.errorText) failedRows += 1;
           const scaffold = result.errorText ? null : result.valueText ?? "";
@@ -1148,8 +1147,9 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
             const batch = await fetchDerivedSourceRows(documentId, afterSourceIndex, DERIVED_SOURCE_BATCH);
             if (processedRows === 0) updateJob({ totalRows: batch.totalRows });
             if (batch.rows.length === 0) break;
-            const values: DerivedStoreValue[] = batch.rows.map((row) => {
-              const computed = consider(row.rowId, row);
+            const results = await worker.compute(batch.rows);
+            const values: DerivedStoreValue[] = batch.rows.map((row, index) => {
+              const computed = consider(row.rowId, results[index]);
               return {
                 rowId: row.rowId,
                 valueReal: null,
@@ -1182,7 +1182,12 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
         } else {
           const records = await requestGridRecords(documentId);
           updateJob({ totalRows: records.length });
-          for (const record of records) consider(record.index, record);
+          for (let start = 0; start < records.length; start += DERIVED_SOURCE_BATCH) {
+            const batch = records.slice(start, start + DERIVED_SOURCE_BATCH);
+            const results = await worker.compute(batch);
+            batch.forEach((record, index) => consider(record.index, results[index]));
+            updateJob({ processedRows, failedRows });
+          }
           activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
             source: "burette-grid-host",
             body: {
@@ -1222,6 +1227,7 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
         updateJob({ status: "failed", completedAt: Date.now(), error: message });
         pushStatus(`Analyse scaffolds failed: ${message}`, "error");
       } finally {
+        worker?.dispose();
         runningKeysRef.current.delete(runKey);
       }
     })();
@@ -1445,103 +1451,32 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
     })();
   }, [beginDerivedJob, documents, notifyGridDerivedRunFinished, pushStatus]);
 
-  // Decompose R-Groups: the core plus one column per substitution point. The
-  // core comes from the dialog, or - when the dialog left it blank - from the
-  // scaffold the collection has most of, computed with the same Murcko code
-  // Analyse Scaffolds uses.
-  const decomposeGridRGroups = useCallback((documentId: string, requestedCore: string) => {
+  // Empty core decomposes each Murcko family independently; R labels are scoped
+  // to the Series column, never aligned across unrelated scaffolds.
+  const decomposeGridRGroups = useCallback(async (documentId: string, requestedCore: string, prepared?: RGroupPreview) => {
     const targetDocument = documents.find((document) => document.id === documentId);
-    if (!targetDocument) {
-      pushStatus("Grid target is not open.", "error");
-      return;
-    }
-    if (!isTauriRuntime()) {
-      pushStatus("R-group decomposition runs in the desktop app; it needs the Python RDKit runtime.", "error");
-      return;
-    }
+    if (!targetDocument || !isTauriRuntime()) throw new Error("Open a desktop collection to decompose R-groups.");
     const runKey = `${documentId}:rgroups`;
-    if (runningKeysRef.current.has(runKey)) return;
+    if (runningKeysRef.current.has(runKey)) throw new Error("R-group analysis is already running.");
     runningKeysRef.current.add(runKey);
     const updateJob = beginDerivedJob("R-Groups", targetDocument.title);
-    pushStatus(`Decomposing R-groups in ${targetDocument.title}`);
-    void (async () => {
-      try {
-        const engines = await loadDerivedEngines();
-        const rows: Array<{ rowId: number; smiles: string | null; molblock: string | null }> = [];
-        const scaffoldCounts = new Map<string, number>();
-        let afterSourceIndex = -1;
-        for (;;) {
-          const batch = await fetchDerivedSourceRows(documentId, afterSourceIndex, DERIVED_SOURCE_BATCH);
-          if (rows.length === 0) updateJob({ totalRows: batch.totalRows });
-          if (batch.rows.length === 0) break;
-          for (const row of batch.rows) {
-            rows.push({ rowId: row.rowId, smiles: row.smiles ?? null, molblock: row.molblock ?? null });
-            if (!requestedCore.trim()) {
-              const scaffold = computeDerivedValue("murcko-scaffold", engines, row).valueText;
-              if (scaffold) scaffoldCounts.set(scaffold, (scaffoldCounts.get(scaffold) ?? 0) + 1);
-            }
-          }
-          if (rows.length > RGROUP_ROW_LIMIT) {
-            throw new Error(`R-group decomposition is limited to ${RGROUP_ROW_LIMIT.toLocaleString()} molecules.`);
-          }
-          afterSourceIndex = batch.rows[batch.rows.length - 1].sourceIndex;
-          updateJob({ processedRows: rows.length });
-          await new Promise((resolve) => window.setTimeout(resolve, 0));
-        }
-        if (rows.length === 0) throw new Error("The collection has no molecules.");
-        let core = requestedCore.trim();
-        if (!core) {
-          const ranked = [...scaffoldCounts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
-          if (ranked.length === 0) throw new Error("No molecule has a ring system to use as a core.");
-          core = ranked[0][0];
-          pushStatus(`Using the collection's most common scaffold as the core: ${core}`);
-        }
-        const decomposition = await decomposeRGroupsInRuntime(core, rows);
-        if (decomposition.rows.length === 0) {
-          throw new Error(`No molecule matched the core ${core}.`);
-        }
-        const byRow = new Map(decomposition.rows.map((row) => [row.rowId, row.values]));
-        for (const label of decomposition.labels) {
-          const columnId = `RGroup_${label}`;
-          const values: DerivedStoreValue[] = rows
-            .filter((row) => byRow.has(row.rowId))
-            .map((row) => ({
-              rowId: row.rowId,
-              valueReal: null,
-              valueText: byRow.get(row.rowId)?.[label] ?? "",
-              errorText: null,
-            }));
-          for (let start = 0; start < values.length; start += DERIVED_STORE_BATCH) {
-            await storeDerivedValues(documentId, {
-              columnId,
-              label: label === "Core" ? "R-Group Core" : label,
-              kind: "rgroup",
-              paramsJson: JSON.stringify({ core, label }),
-            }, values.slice(start, start + DERIVED_STORE_BATCH));
-          }
-        }
-        notifyGridDerivedRunFinished(documentId);
-        const skipped = decomposition.unmatchedRows + decomposition.unparsedRows;
-        updateJob({
-          status: "success",
-          completedAt: Date.now(),
-          processedRows: rows.length,
-          failedRows: skipped,
-        });
-        const positions = decomposition.labels.filter((label) => label !== "Core").length;
-        pushStatus(
-          `Decomposed ${decomposition.rows.length.toLocaleString()} molecule${decomposition.rows.length === 1 ? "" : "s"} into ${positions} R position${positions === 1 ? "" : "s"}${skipped > 0 ? ` (${skipped.toLocaleString()} did not match the core)` : ""}`,
-          "success",
-        );
-      } catch (error) {
-        logDerivedColumnError("rgroup", documentId, error);
-        const message = error instanceof Error ? error.message : String(error);
-        updateJob({ status: "failed", completedAt: Date.now(), error: message });
-        pushStatus(`Decompose R-groups failed: ${message}`, "error");
-      } finally {
-        runningKeysRef.current.delete(runKey);
-      }
-    })();
+    try {
+      const preview = prepared ?? await prepareRGroupPreview(documentId, requestedCore.trim());
+      if (preview.documentId !== documentId || preview.core !== requestedCore.trim()) throw new Error("Preview no longer matches the requested analysis.");
+      const { sourceRows, result, core } = preview;
+      await storeRGroupResults(documentId, sourceRows, result, { core, rdkitVersion: result.rdkitVersion, series: result.series });
+      notifyGridDerivedRunFinished(documentId, "rgroup");
+      updateJob({ status: "success", completedAt: Date.now(), processedRows: sourceRows.length, failedRows: result.excludedRows.length });
+      pushStatus(`Applied ${result.series.length} series; ${result.rows.length}/${sourceRows.length} molecules matched. See Series and Status.`, "success");
+    } catch (error) {
+      logDerivedColumnError("rgroup", documentId, error);
+      const message = error instanceof Error ? error.message : String(error);
+      updateJob({ status: "failed", completedAt: Date.now(), error: message });
+      pushStatus(`Decompose R-groups failed: ${message}`, "error");
+      throw error;
+    } finally {
+      runningKeysRef.current.delete(runKey);
+    }
   }, [beginDerivedJob, documents, notifyGridDerivedRunFinished, pushStatus]);
 
   // Deduplication: pages the whole collection through the same channel the

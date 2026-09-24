@@ -1,3 +1,4 @@
+import { appendScenePayload } from "./workspace-scene-import";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -11,7 +12,7 @@ import { buildFileDropPreview } from "../lib/drop-preview";
 import type { DropPreviewTarget, FileDropPreview } from "../lib/drop-preview";
 import { describeDropTargetElement } from "../lib/drop-target";
 import { parentDirectory } from "../lib/sidebar-projects";
-import { hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
+import { TAB_DRAG_MIME, hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 
@@ -28,13 +29,13 @@ type OpenDockingDocument = (
   options?: { activePose?: number | null; sceneMode?: DockingSceneMode | null },
 ) => void | Promise<ViewerDocument | null>;
 type OpenDockingStructureRecords = (receptorPath: string, ligandPaths: string[], records: StructureDragRecord[]) => void | Promise<void>;
-type OpenStructureRecords = (records: StructureDragRecord[]) => void | Promise<void>;
+type OpenStructureRecords = (records: StructureDragRecord[], directory?: string) => void | Promise<void>;
 type OpenKetcherWithStructures = (paths: string[], fragments?: Array<{ title: string; text: string }>) => void;
 type OpenFepSetupWorkspace = (request: FepSetupRequest) => void;
 type OpenDockPayload = (input: DockDropInput) => void | Promise<void>;
 type AppendGridRecords = (targetDocumentId: string, payload: StructureDragPayload) => boolean;
-type AddXyzrenderSheetItems = (payload: StructureDragPayload) => boolean;
-type MergeMoleculeCollections = (paths: string[]) => boolean;
+type AddXyzrenderSheetItems = (targetDocumentId: string, payload: StructureDragPayload) => boolean;
+type MergeMoleculeCollections = (targetPath: string, paths: string[]) => void | Promise<void>;
 type AddProjectRoots = (paths: string[]) => void;
 type ReportStatus = (status: string, kind?: "info" | "error") => void;
 type DropPoint = { x: number; y: number };
@@ -79,18 +80,19 @@ function browserDropPoint(event: React.DragEvent<HTMLElement>) {
 
 function tauriDropPoint(position: { x: number; y: number } | null | undefined) {
   if (!position || typeof window === "undefined") return null;
-  const scale = Math.max(1, window.devicePixelRatio || 1);
+  // Wry 0.55 WKWebView reports NSDraggingInfo coordinates in logical points;
+  // Tauri wraps them as PhysicalPosition without conversion. Other hosts use pixels.
+  const mac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
+  const scale = mac ? 1 : Math.max(1, window.devicePixelRatio || 1);
   return { x: position.x / scale, y: position.y / scale };
 }
 
 function elementFromTauriDropPosition(position: { x: number; y: number } | null | undefined) {
   if (!position || typeof document === "undefined") return null;
   const scaled = tauriDropPoint(position);
-  const candidates = [
-    scaled ? document.elementFromPoint(scaled.x, scaled.y) : null,
-    document.elementFromPoint(position.x, position.y),
-  ].filter((element): element is Element => Boolean(element));
-  return candidates.find((element) => element.closest(".dock-panel")) ?? candidates[0] ?? null;
+  // Normalize once for the host, then hit-test exactly the logical point.
+  // Trying both coordinate systems can select a distant dock on Retina displays.
+  return scaled ? document.elementFromPoint(scaled.x, scaled.y) : null;
 }
 
 function fileDropTargetElement(element: Element | null, target: OpenDropTargetContext) {
@@ -112,6 +114,7 @@ function fileDropTargetElement(element: Element | null, target: OpenDropTargetCo
     return element?.closest('[data-file-drop-zone="ketcher"], .ketcher-page')
       ?? document.querySelector(".ketcher-page");
   }
+  if (target.kind === "folder") return element?.closest("[data-drop-directory]") ?? null;
   const documentTarget = element?.closest("[data-drop-document-path]");
   if (documentTarget) return documentTarget;
   return element?.closest(".molecule-stage, .main-stage")
@@ -149,9 +152,11 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   const [dropActive, setDropActive] = useState(false);
   const [dropPreview, setDropPreview] = useState<FileDropPreview | null>(null);
   const nativeDragPayloadRef = useRef<StructureDragPayload | null>(null);
+  const nativeTabDragRef = useRef<string | null>(null);
+  const browserTabDragRef = useRef<string | null>(null);
   const browserDragPayloadRef = useRef<StructureDragPayload | null>(null);
+  const cancelledBrowserDragRef = useRef(false);
   const hideDropFeedback = useCallback(() => {
-    nativeDragPayloadRef.current = null;
     setDropActive(false);
     setDropPreview(null);
   }, []);
@@ -164,7 +169,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   ) => {
     const bounds = fileDropBounds(fileDropTargetElement(element, target));
     if (!bounds) return;
-    let preview = buildFileDropPreview({
+    const preview = buildFileDropPreview({
       payload,
       target,
       source: { kind: "finder" },
@@ -172,12 +177,6 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       point,
       fallbackItemCount,
     });
-    if (preview.targetKind === "workspace") {
-      const workspaceBounds = fileDropBounds(
-        document.querySelector(".main-stage") ?? document.querySelector(".app-shell"),
-      );
-      if (workspaceBounds) preview = { ...preview, bounds: workspaceBounds };
-    }
     setDropActive(true);
     setDropPreview(preview);
   }, []);
@@ -248,19 +247,26 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   }, [activeTabKind, activeViewerTarget]);
 
   const executeDropAction = useCallback((action: DropAction, payload: StructureDragPayload) => {
+    if (action.kind === "append-scene-files") {
+      void appendScenePayload(action.targetDocumentId, action.payload).catch(error => pushStatus(`Add to scene failed: ${String(error)}`, "error"));
+      return;
+    }
     if (action.kind === "merge-collection") {
-      if (mergeMoleculeCollections?.(action.paths)) return;
+      if (mergeMoleculeCollections) {
+        void mergeMoleculeCollections(action.targetPath, action.paths);
+        return;
+      }
       void openDocuments(payload.paths);
       return;
     }
     if (action.kind === "append-grid-records") {
       if (appendGridRecords?.(action.targetDocumentId, action.payload)) return;
-      if (mergeMoleculeCollections?.(action.payload.paths)) return;
       if (action.payload.paths.length > 0) void openDocuments(action.payload.paths);
       return;
     }
     if (action.kind === "add-xyzrender-sheet-items") {
-      if (addXyzrenderSheetItems?.(action.payload)) return;
+      if (action.targetDocumentId && addXyzrenderSheetItems?.(action.targetDocumentId, action.payload)) return;
+      if (payload.records.length > 0) void openStructureRecords?.(payload.records);
       if (payload.paths.length > 0) void openDocuments(payload.paths);
       return;
     }
@@ -325,7 +331,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     if (action.kind === "open-structure-records") {
       if (action.paths.length > 0) void openDocuments(action.paths);
       if (action.records.length > 0 && openStructureRecords) {
-        void openStructureRecords(action.records);
+        void openStructureRecords(action.records, action.directory);
         return;
       }
       if (!isTauriRuntime()) pushStatus("Drop this molecule onto an xyzrender sheet to add it.");
@@ -413,10 +419,33 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
 
   const handleFileDrop = useCallback(
     (event: DragDropEvent) => {
+      if (event.type === "enter" && event.paths.length) cancelledBrowserDragRef.current = false;
+      if (cancelledBrowserDragRef.current) {
+        hideDropFeedback();
+        window.dispatchEvent(new Event("burette-native-drag-end"));
+        return;
+      }
+      if (event.type === "enter" && !event.paths.length) nativeTabDragRef.current = browserTabDragRef.current;
+      if (event.type === "enter" || event.type === "over") {
+        const element = elementFromTauriDropPosition(event.position);
+        window.dispatchEvent(new CustomEvent("burette-native-drag-hover", {
+          detail: {
+            tabId: element?.closest<HTMLElement>(".tab-shell")?.dataset.tabId ?? null,
+            sourceTabId: event.type === "enter" && event.paths.length ? null : nativeTabDragRef.current,
+            x: tauriDropPoint(event.position)?.x,
+          },
+        }));
+      } else {
+        window.dispatchEvent(new Event("burette-native-drag-end"));
+      }
       if (event.type === "enter") {
-        nativeDragPayloadRef.current = { paths: event.paths, records: [] };
+        if (event.paths.length) nativeTabDragRef.current = null;
+        nativeDragPayloadRef.current = event.paths.length
+          ? { paths: event.paths, records: [] }
+          : browserDragPayloadRef.current ?? { paths: [], records: [] };
         const point = tauriDropPoint(event.position) ?? { x: 0, y: 0 };
         const element = elementFromTauriDropPosition(event.position);
+        if (nativeTabDragRef.current && element?.closest(".tab-strip")) { hideDropFeedback(); return; }
         showDropFeedback(
           nativeDragPayloadRef.current,
           dropTargetForElement(element),
@@ -429,6 +458,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       if (event.type === "over") {
         const point = tauriDropPoint(event.position) ?? { x: 0, y: 0 };
         const element = elementFromTauriDropPosition(event.position);
+        if (nativeTabDragRef.current && element?.closest(".tab-strip")) { hideDropFeedback(); return; }
         const payload = nativeDragPayloadRef.current ?? { paths: [], records: [] };
         showDropFeedback(payload, dropTargetForElement(element), element, point, payload.paths.length);
         return;
@@ -437,11 +467,29 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         const point = tauriDropPoint(event.position);
         const element = elementFromTauriDropPosition(event.position);
         const target = dropTargetForElement(element);
-        const payload: StructureDragPayload = { paths: event.paths, records: [], point };
+        const tabId = nativeTabDragRef.current;
+        nativeTabDragRef.current = null;
+        browserTabDragRef.current = null;
+        if (tabId && element?.closest(".tab-strip")) {
+          nativeDragPayloadRef.current = null;
+          browserDragPayloadRef.current = null;
+          hideDropFeedback();
+          window.dispatchEvent(new CustomEvent("burette-native-tab-drop", { detail: { tabId, x: point?.x } }));
+          return;
+        }
+        // WKWebView's native handler consumes internal HTML drops too. Such
+        // drags have no Finder paths, so use the bounded dragstart payload.
+        const payload: StructureDragPayload = event.paths.length
+          ? { paths: event.paths, records: [], point }
+          : { ...(nativeDragPayloadRef.current ?? browserDragPayloadRef.current ?? { paths: [], records: [] }), point };
+        nativeDragPayloadRef.current = null;
+        browserDragPayloadRef.current = null;
         hideDropFeedback();
         void runFinderDropAction(payload, target);
         return;
       }
+      nativeDragPayloadRef.current = null;
+      nativeTabDragRef.current = null;
       hideDropFeedback();
     },
     [dropTargetForElement, hideDropFeedback, runFinderDropAction, showDropFeedback],
@@ -470,33 +518,84 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
   useEffect(() => {
     const resetDropState = () => {
       browserDragPayloadRef.current = null;
+      browserTabDragRef.current = null;
       hideDropFeedback();
     };
     // dragover exposes MIME types but protects getData(). Read our payload
     // after the source's dragstart handler has written it, while it is readable.
     const rememberBrowserDrag = (event: DragEvent) => {
+      cancelledBrowserDragRef.current = false;
+      browserTabDragRef.current = event.dataTransfer?.getData(TAB_DRAG_MIME) || null;
+      nativeTabDragRef.current = browserTabDragRef.current;
       if (event.dataTransfer && hasStructureDrag(event.dataTransfer)) {
-        browserDragPayloadRef.current = readStructureDragPayload(event.dataTransfer);
+        const payload = readStructureDragPayload(event.dataTransfer);
+        browserDragPayloadRef.current = payload;
+        if (nativeDragPayloadRef.current) nativeDragPayloadRef.current = payload;
+        const count = payload.paths.length + payload.records.length || payload.items?.length || 1;
+        const label = payload.paths[0] || payload.records[0]?.path || payload.items?.[0]?.title || "Structure";
+        const preview = document.createElement("div");
+        preview.className = "structure-drag-preview";
+        preview.textContent = count > 1 ? `${count} items` : label.replace(/\\/g, "/").split("/").pop()!;
+        document.body.appendChild(preview);
+        event.dataTransfer.setDragImage(preview, 12, 12);
+        requestAnimationFrame(() => preview.remove());
       }
     };
+    const rememberGridDrag = (event: MessageEvent) => {
+      if (event.data?.source !== "burette-grid") return;
+      if (!Array.from(document.querySelectorAll<HTMLIFrameElement>(".viewer-iframe")).some(frame => frame.contentWindow === event.source)) return;
+      const body = event.data.body;
+      if (body?.type === "structureDragEnd") { resetDropState(); return; }
+      if (body?.type === "structureDragCancel") {
+        cancelledBrowserDragRef.current = true;
+        nativeDragPayloadRef.current = null;
+        nativeTabDragRef.current = null;
+        resetDropState();
+        window.dispatchEvent(new Event("burette-structure-drag-cancel"));
+        return;
+      }
+      if (body?.type !== "structureDragStart" || !Array.isArray(body.payload?.records)) return;
+      const records = body.payload.records;
+      if (records.length > 200 || records.some((record: StructureDragRecord) => !record || typeof record.text !== "string" || typeof record.path !== "string" || typeof record.inputExtension !== "string")) return;
+      if (records.reduce((size: number, record: StructureDragRecord) => size + new TextEncoder().encode(record.text).length, 0) > 24 * 1024 * 1024) return;
+      browserDragPayloadRef.current = { paths: [], records };
+      if (nativeDragPayloadRef.current) nativeDragPayloadRef.current = browserDragPayloadRef.current;
+      nativeTabDragRef.current = null;
+      browserTabDragRef.current = null;
+      cancelledBrowserDragRef.current = false;
+    };
     const resetOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") resetDropState();
+      if (event.key === "Escape") {
+        if (browserDragPayloadRef.current) cancelledBrowserDragRef.current = true;
+        nativeDragPayloadRef.current = null;
+        nativeTabDragRef.current = null;
+        resetDropState();
+      }
+    };
+    const finishDrop = (event: DragEvent) => {
+      if (cancelledBrowserDragRef.current && !Array.from(event.dataTransfer?.types ?? []).includes("Files")) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+      resetDropState();
     };
     const resetWhenHidden = () => {
-      if (document.visibilityState === "hidden") resetDropState();
+      if (document.visibilityState === "hidden") hideDropFeedback();
     };
 
+    window.addEventListener("message", rememberGridDrag);
     window.addEventListener("dragstart", rememberBrowserDrag);
-    window.addEventListener("drop", resetDropState, true);
+    window.addEventListener("drop", finishDrop, true);
     window.addEventListener("keydown", resetOnEscape, true);
-    window.addEventListener("blur", resetDropState);
+    window.addEventListener("blur", hideDropFeedback);
     window.addEventListener("dragend", resetDropState);
     document.addEventListener("visibilitychange", resetWhenHidden);
     return () => {
+      window.removeEventListener("message", rememberGridDrag);
       window.removeEventListener("dragstart", rememberBrowserDrag);
-      window.removeEventListener("drop", resetDropState, true);
+      window.removeEventListener("drop", finishDrop, true);
       window.removeEventListener("keydown", resetOnEscape, true);
-      window.removeEventListener("blur", resetDropState);
+      window.removeEventListener("blur", hideDropFeedback);
       window.removeEventListener("dragend", resetDropState);
       document.removeEventListener("visibilitychange", resetWhenHidden);
     };
@@ -506,6 +605,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     const fileDrop = Array.from(event.dataTransfer.types).includes("Files");
     const structureDrop = hasStructureDrag(event.dataTransfer);
     if (!fileDrop && !structureDrop) return;
+    if (structureDrop && cancelledBrowserDragRef.current) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
     const { payload, itemCount } = structureDrop

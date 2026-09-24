@@ -15,6 +15,8 @@ const runtimeScripts = [
   'agent-preview.mjs',
   'agent-shell-server.mjs',
   'burette-agent.mjs',
+  'burette-deep-links.mjs',
+  'dev-namespace.mjs',
   'mvs-story.mjs',
   'mvs-story-templates.mjs',
 ];
@@ -28,6 +30,7 @@ const requiredPreviewAssets = [
   'superposition-panel.js',
   'molecule-preview-interactions.js',
   'renderer-view-state.js',
+  'xyzrender-3d-editor.js',
   'color-picker.js',
   'sequence-panel.js',
   'scene-file-actions.js',

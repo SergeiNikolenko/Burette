@@ -1,3 +1,11 @@
+import { useSidebarStructureDrag } from "./sidebar/use-sidebar-structure-drag";
+import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
+import type { AnimationSource } from "./xyzrender-animation-dialog";
+import { Switch } from "./ui/switch";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { ChevronDown } from "./ui/app-icons";
+import { XyzrenderProperties } from "./xyzrender-properties";
 import { StoryMarkdown } from "./story-markdown";
 import { DockFileTabs } from "./dock-file-tabs";
 import { useDropHighlightReset } from "../hooks/use-drop-highlight-reset";
@@ -19,6 +27,7 @@ import { MarkdownRichViewer } from "./text-file-viewer/markdown-rich-viewer";
 import { useSourceEditing } from "../lib/source-editing/context";
 import { formatBytes } from "./format";
 import { StructureInfoPanel } from "./structure-info-panel";
+import { JobsPanel } from "./jobs-panel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
@@ -27,7 +36,7 @@ import { FoldingAnalysisPanel, useFoldingResult } from "./folding-results-panel"
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
-import type { ConformerJob, DatabaseJob, DerivedColumnJob, TextFileDocument, ViewerDocument, ViewerReloadOptions, XtbJob, XyzrenderControls } from "../types";
+import type { TextFileDocument, ViewerDocument, ViewerReloadOptions, XyzrenderControls } from "../types";
 import { isMesoscaleViewerDocument } from "../lib/mesoscale-documents";
 import { MesoscaleScenePanel } from "./mesoscale/mesoscale-scene-panel";
 import { MesoscaleInfoPanel } from "./mesoscale/mesoscale-info-panel";
@@ -135,6 +144,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   ));
   const activeTab = visibleTabs.find((tab) => tab.kind === activeTabKind) ?? visibleTabs[0] ?? tabs[0];
   const filesTabDragPayload = dockFilesDragPayload(dockDocument, dockTextDocument, dockTool);
+  const filesTabDrag = useSidebarStructureDrag({ state, actions, disabled: readOnly, getPayload: () => filesTabDragPayload });
   const dockDrops = useMemo(
     () => state.dockDroppedStructures.filter((item) => item.area === area && item.tabKind === activeTab.kind),
     [activeTab.kind, area, state.dockDroppedStructures],
@@ -241,17 +251,12 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
                       className="dock-tab"
                       data-active={active || undefined}
                       draggable={tab.kind === "files" && Boolean(filesTabDragPayload)}
-                      onDragStart={(event) => {
-                        if (tab.kind !== "files" || !filesTabDragPayload) return;
-                        writeStructureDragPayload(event.dataTransfer, filesTabDragPayload);
-                        actions.setStructureDragActive(true);
-                      }}
-                      onDragEnd={() => actions.setStructureDragActive(false)}
+                      {...(tab.kind === "files" ? filesTabDrag : {})}
                       onClick={() => actions.setDockActiveTab(area, tab.kind)}
                       role="tab"
                       aria-selected={active}
                     >
-                      <HugeiconsIcon icon={Icon} strokeWidth={2} aria-hidden="true" />
+                      <HugeiconsIcon icon={Icon} className="size-[18px]" strokeWidth={2} aria-hidden="true" />
                       <span>{DOCK_TAB_LABELS[tab.kind]}</span>
                     </Button>
                     {!readOnly && !(tab.kind === "xyzrender" && !rawTabs.some((rawTab) => rawTab.kind === "xyzrender")) && (
@@ -372,6 +377,7 @@ function DockPanelContent({
   if (activeTabKind === "files") {
     const fileTabs = (
       <DockFileTabs
+        state={state}
         area={area}
         entries={fileEntries}
         activeKey={activeFileEntryKey}
@@ -522,30 +528,10 @@ function DockPanelContent({
     );
   }
   if (activeTabKind === "jobs") {
-    const jobCount = state.conformerJobs.length + state.xtbJobs.length + state.derivedColumnJobs.length + state.databaseJobs.length;
     return (
       <div className="dock-content">
-        <div className="dock-jobs-toolbar">
-          <span>Job history</span>
-          <button
-            type="button"
-            className="dock-action dock-action-compact"
-            disabled={jobCount === 0}
-            onClick={() => {
-              actions.clearConformerJobs();
-              actions.clearXtbJobs();
-              actions.clearDerivedColumnJobs();
-              actions.clearDatabaseJobs();
-            }}
-          >
-            Clear
-          </button>
-        </div>
-        <DatabaseJobList jobs={state.databaseJobs} actions={actions} />
-        <ConformerJobList jobs={state.conformerJobs} actions={actions} />
-        <DerivedColumnJobList jobs={state.derivedColumnJobs} />
-        <XtbJobList jobs={state.xtbJobs} actions={actions} emptyLabel={state.conformerJobs.length === 0 && state.derivedColumnJobs.length === 0 && state.databaseJobs.length === 0 ? "No jobs yet" : "No xTB jobs yet"} />
-        <DockDropList items={dockDrops} actions={actions} emptyLabel="No job inputs" />
+        <JobsPanel state={state} actions={actions} />
+        {dockDrops.length ? <DockDropList items={dockDrops} actions={actions} emptyLabel="" /> : null}
       </div>
     );
   }
@@ -705,6 +691,8 @@ const XYZRENDER_DEFAULT_HULL_OPACITY = 0.45;
 const XYZRENDER_DEFAULT_PORE_OPACITY = 0.6;
 
 function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
+  const activeItem = useRef<AnimationSource | null>(null);
+  const [itemLabel, setItemLabel] = useState(document.title);
   const controlsRef = useRef<XyzrenderControls>(xyzrenderDockControls(document));
   const presetRef = useRef(document.xyzrenderPreset || "default");
   const [preset, setPreset] = useState(presetRef.current);
@@ -729,6 +717,7 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
   }, []);
 
   useEffect(() => {
+    if (activeItem.current?.documentId === document.id) return;
     const nextPreset = document.xyzrenderPreset || "default";
     const nextControls = xyzrenderDockControls(document);
     presetRef.current = nextPreset;
@@ -738,6 +727,25 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
     setControls(nextControls);
   }, [document.id, document.xyzrenderControls, document.xyzrenderPreset]);
 
+  useEffect(() => {
+    activeItem.current = null;
+    setItemLabel(document.title);
+    const receive = (event: Event) => {
+      const item = (event as CustomEvent<AnimationSource>).detail;
+      if (item.documentId !== document.id) return;
+      clearPendingApply();
+      activeItem.current = item;
+      setItemLabel(item.label);
+      const nextControls = xyzrenderDockControls({ ...document, xyzrenderControls: item.controls as XyzrenderControls });
+      lastAppliedSignature.current = xyzrenderDockSignature(nextControls, item.preset);
+      setControlsState(nextControls);
+      setPresetState(item.preset);
+    };
+    window.addEventListener('burette:xyzrender-active-item', receive);
+    window.addEventListener('burette:xyzrender-animation', receive);
+    return () => { clearPendingApply(); window.removeEventListener('burette:xyzrender-active-item', receive); window.removeEventListener('burette:xyzrender-animation', receive); };
+  }, [document.id, clearPendingApply, setControlsState, setPresetState]);
+
   const updateControl = <K extends keyof XyzrenderControls>(key: K, value: XyzrenderControls[K]) => {
     setControlsState({ ...controlsRef.current, [key]: value });
   };
@@ -746,6 +754,14 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
     controlsRef.current = nextControls;
     presetRef.current = nextPreset;
     lastAppliedSignature.current = xyzrenderDockSignature(nextControls, nextPreset);
+    window.dispatchEvent(new CustomEvent("burette:xyzrender-style", { detail: { documentId: document.id, itemId: activeItem.current?.itemId, label: document.title, path: document.path, preset: nextPreset, controls: nextControls } }));
+    if (activeItem.current?.itemId) {
+      for (const frame of window.document.querySelectorAll<HTMLIFrameElement>('iframe.viewer-iframe')) frame.contentWindow?.postMessage({ source: 'burette-host', body: {
+        type: 'setXyzrenderControls', documentId: document.id, itemId: activeItem.current.itemId,
+        controls: nextControls, preset: nextPreset, selectionAction: options.xyzrenderSelectionAction,
+      } }, '*');
+      return;
+    }
     void actions.reloadXyzrenderDocument(document, {
       xyzrenderPreset: nextPreset,
       xyzrenderControls: nextControls,
@@ -776,21 +792,15 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
   return (
     <div className="dock-content xyzrender-dock-panel">
       <section className="structure-brief-card xyzrender-dock-card">
+        <Button type="button" variant="outline" className="xyzrender-editor-launch w-full h-10" onClick={() => { activeViewerIframeForDocument(document.id)?.contentWindow?.postMessage({ source: "burette-host", body: { type: "openXyzrenderEditor", documentId: document.id } }, "*"); }}>Orientation & animation…</Button>
+        <div id="xyzrender-editor-controls" />
         <div className="structure-inspector-section-header">
           <div>
-            <h3>xyzrender</h3>
-            <p>{document.title}</p>
+            <h3>Style</h3>
+            <p>{itemLabel}</p>
           </div>
           <span className="xyzrender-dock-badge">SVG</span>
         </div>
-        <label className="xyzrender-dock-field">
-          <span>Preset</span>
-          <select value={preset} onChange={(event) => setPresetState(event.currentTarget.value)}>
-            {xyzrenderPresetOptions(document).map((option) => (
-              <option value={option.value} key={option.value}>{option.label}</option>
-            ))}
-          </select>
-        </label>
         <XyzrenderPresetGallery
           preset={preset}
           onSelect={(value) => {
@@ -855,6 +865,7 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
             apply(nextControls, presetRef.current);
           }}
         />
+
         <XyzrenderDockCheckbox
           label="Transparent"
           checked={controls.transparentBackground === true}
@@ -864,30 +875,16 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
         <XyzrenderDockTriState label="Fog" value={controls.fog} onChange={(value) => updateControl("fog", value)} />
         <XyzrenderDockCheckbox label="Hide bonds" checked={controls.hideBonds === true} onChange={(checked) => updateControl("hideBonds", checked)} />
       </section>
-      <section className="structure-brief-card xyzrender-dock-card">
-        <div className="structure-inspector-section-header">
-          <div>
-            <h3>Field overlay</h3>
-            <p>Surface mode and opacity</p>
-          </div>
-        </div>
-        <label className="xyzrender-dock-field">
-          <span>Mode</span>
-          <select
-            value={controls.fieldMode ?? "auto"}
-            onChange={(event) => updateControl("fieldMode", normalizeXyzrenderFieldMode(event.currentTarget.value))}
-          >
-            <option value="auto">Auto</option>
-            <option value="off">Off</option>
-            <option value="density">Density</option>
-            <option value="mo">MO</option>
-            <option value="esp">ESP</option>
-            <option value="nci">NCI</option>
-          </select>
-        </label>
-        <XyzrenderDockNumber label="Iso" value={controls.fieldIso} step="0.1" onChange={(value) => updateControl("fieldIso", value)} />
-        <XyzrenderDockNumber label="Opacity" value={controls.fieldOpacity} min={0} max={1} step="0.05" onChange={(value) => updateControl("fieldOpacity", value)} />
-      </section>
+      <Collapsible className="xyzrender-advanced-settings">
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" className="w-full justify-between">
+            Advanced settings<ChevronDown data-icon="inline-end" />
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-2">
+          <XyzrenderProperties controls={controls} onChange={setControlsState} />
+        </CollapsibleContent>
+      </Collapsible>
       <div className="xyzrender-dock-actions">
         <button type="button" className="dock-action" onClick={() => apply()}>Apply</button>
         <button type="button" className="dock-action" onClick={reset}>Reset</button>
@@ -1058,7 +1055,7 @@ function XyzrenderDockCheckbox({ label, checked, onChange }: { label: string; ch
   return (
     <label className="xyzrender-dock-check">
       <span>{label}</span>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.currentTarget.checked)} />
+      <Switch aria-label={label} checked={checked} onCheckedChange={onChange} />
     </label>
   );
 }
@@ -1067,11 +1064,10 @@ function XyzrenderDockTriState({ label, value, onChange }: { label: string; valu
   return (
     <label className="xyzrender-dock-field">
       <span>{label}</span>
-      <select value={value === true ? "on" : value === false ? "off" : "default"} onChange={(event) => onChange(xyzrenderTriStateValue(event.currentTarget.value))}>
-        <option value="default">Default</option>
-        <option value="on">On</option>
-        <option value="off">Off</option>
-      </select>
+      <Select value={value === true ? "on" : value === false ? "off" : "default"} onValueChange={next => onChange(xyzrenderTriStateValue(next))}>
+        <SelectTrigger aria-label={label} className="w-28"><SelectValue /></SelectTrigger>
+        <SelectContent><SelectGroup><SelectItem value="default">Default</SelectItem><SelectItem value="on">On</SelectItem><SelectItem value="off">Off</SelectItem></SelectGroup></SelectContent>
+      </Select>
     </label>
   );
 }
@@ -1141,13 +1137,6 @@ function xyzrenderVisibleOpacity(value: number | null | undefined, fallback: num
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-function xyzrenderPresetOptions(document: ViewerDocument) {
-  const options = document.xyzrenderPresetOptions?.length
-    ? document.xyzrenderPresetOptions
-    : [{ value: "default", label: "Default" }];
-  if (options.some((option) => option.value === (document.xyzrenderPreset || "default"))) return options;
-  return [{ value: document.xyzrenderPreset || "default", label: document.xyzrenderPreset || "Default" }, ...options];
-}
 
 function xyzrenderTriStateValue(value: string) {
   if (value === "on") return true;
@@ -1227,387 +1216,6 @@ function TextDocumentInfoPanel({ document, actions }: { document: TextFileDocume
           </button>
         </div>
       </section>
-    </div>
-  );
-}
-
-// Matches the inspector's tool rows: a drawn chevron rather than the "⌄" glyph,
-// which sits off centre and changes shape with the font.
-function JobMenuChevronIcon() {
-  return (
-    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-      <path d="M2.75 4.5 6 7.75 9.25 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function DerivedColumnJobList({ jobs }: { jobs: DerivedColumnJob[] }) {
-  if (jobs.length === 0) return null;
-  return (
-    <div className="dock-drop-list">
-      {jobs.map((job) => {
-        const progress = job.status === "running"
-          ? `${job.processedRows.toLocaleString()}${job.totalRows > 0 ? ` of ${job.totalRows.toLocaleString()}` : ""} rows`
-          : job.status === "failed"
-            ? job.error || "Failed"
-            : `${(job.processedRows - job.failedRows).toLocaleString()} value${job.processedRows - job.failedRows === 1 ? "" : "s"}${job.failedRows > 0 ? ` · ${job.failedRows.toLocaleString()} failed` : ""}`;
-        return (
-          <div className="dock-drop-item dock-xtb-job-item" key={job.id} data-status={job.status}>
-            <div className="dock-drop-item-header">
-              <div className="dock-drop-item-title">
-                <strong>{job.columnLabel}</strong>
-                <span className="dock-job-meta">
-                  <span className="dock-job-status">{job.status === "running" ? <span className="dock-job-spinner" aria-hidden="true" /> : null}{job.status}</span>
-                  {" · "}
-                  {job.documentTitle}
-                  {" · "}
-                  {progress}
-                </span>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// A database search is one request with one answer, so the row carries the query
-// and its outcome rather than the log and cancel controls the runtime jobs need.
-// Provider caveats - "COD has no structures", "these hits carry no activity" -
-// are on the row, because the toast that first announced them is long gone by the
-// time the collection raises a question.
-function DatabaseJobList({
-  jobs,
-  actions,
-}: {
-  jobs: DatabaseJob[];
-  actions: ShellActions;
-}) {
-  if (jobs.length === 0) return null;
-  return (
-    <div className="dock-drop-list">
-      {jobs.map((job) => {
-        const documentId = job.documentId;
-        const openResult = () => {
-          if (documentId) actions.selectDocument(documentId);
-        };
-        return (
-          <div
-            className="dock-drop-item dock-xtb-job-item"
-            key={job.id}
-            data-status={job.status}
-            data-has-primary-result={documentId ? true : undefined}
-            role={documentId ? "button" : undefined}
-            tabIndex={documentId ? 0 : undefined}
-            onClick={documentId ? openResult : undefined}
-            onKeyDown={documentId ? (event) => {
-              if (event.target !== event.currentTarget) return;
-              if (event.key !== "Enter" && event.key !== " ") return;
-              event.preventDefault();
-              openResult();
-            } : undefined}
-          >
-            <div className="dock-drop-item-header">
-              <div className="dock-drop-item-title">
-                <strong>{job.title}</strong>
-                <span className="dock-job-meta">
-                  <span className="dock-job-status">
-                    {job.status === "running" ? <span className="dock-job-spinner" aria-hidden="true" /> : null}
-                    {job.status}
-                  </span>
-                  {" · "}
-                  {job.status === "success" && job.recordCount !== undefined
-                    ? `${job.recordCount.toLocaleString()} record${job.recordCount === 1 ? "" : "s"}`
-                    : job.query}
-                </span>
-              </div>
-              {documentId ? (
-                <div className="dock-inline-action-row">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="xs"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openResult();
-                    }}
-                  >
-                    Open
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-            {job.error ? <span>{job.error}</span> : null}
-            {(job.warnings ?? []).map((warning) => (
-              <span key={warning} className="dock-job-note">{warning}</span>
-            ))}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function XtbJobList({
-  jobs,
-  actions,
-  emptyLabel,
-}: {
-  jobs: XtbJob[];
-  actions: ShellActions;
-  emptyLabel: string;
-}) {
-  return (
-    <div className="dock-drop-list">
-      {jobs.length === 0 ? (
-        emptyLabel ? <div className="dock-empty">{emptyLabel}</div> : null
-      ) : jobs.map((job) => {
-        const primaryOpenPath = job.result?.primaryOpenPath;
-        const isRunning = job.status === "running";
-        const openJobResult = () => {
-          if (!primaryOpenPath) return;
-          void actions.openPaths([primaryOpenPath]);
-        };
-        const showJobMenu = (event: React.MouseEvent<HTMLDivElement>) => {
-          const items = [
-            isRunning ? {
-              kind: "item" as const,
-              id: `xtb-job-${job.id}-cancel`,
-              text: "Cancel",
-              action: () => void actions.cancelXtbJob(job.id),
-            } : null,
-            job.result?.logPath ? {
-              kind: "item" as const,
-              id: `xtb-job-${job.id}-log`,
-              text: "Log",
-              action: () => void actions.openTextPaths([job.result!.logPath]),
-            } : null,
-            primaryOpenPath ? {
-              kind: "item" as const,
-              id: `xtb-job-${job.id}-open`,
-              text: "Open result",
-              action: openJobResult,
-            } : null,
-          ].filter((item) => item !== null);
-          if (items.length === 0) return;
-          event.preventDefault();
-          event.stopPropagation();
-          void showNativeContextMenu(items, { x: event.clientX, y: event.clientY }, { forceWeb: true });
-        };
-        return (
-          <div
-            className="dock-drop-item dock-xtb-job-item"
-            key={job.id}
-            data-status={job.status}
-            data-has-primary-result={primaryOpenPath ? true : undefined}
-            role={primaryOpenPath ? "button" : undefined}
-            tabIndex={primaryOpenPath ? 0 : undefined}
-            onClick={primaryOpenPath ? openJobResult : undefined}
-            onContextMenu={showJobMenu}
-            onKeyDown={primaryOpenPath ? (event) => {
-              // The row and its action buttons are both keyboard targets. Without
-              // this guard, Enter on the menu button bubbles here and opens the
-              // result on top of showing the menu.
-              if (event.target !== event.currentTarget) return;
-              if (event.key !== "Enter" && event.key !== " ") return;
-              event.preventDefault();
-              openJobResult();
-            } : undefined}
-          >
-            <div className="dock-drop-item-header">
-              <div className="dock-drop-item-title">
-                <strong>{job.title}</strong>
-                <span className="dock-job-meta">
-                  <span className="dock-job-status">{job.status === "running" ? <span className="dock-job-spinner" aria-hidden="true" /> : null}{job.status}</span>
-                  {" · "}
-                  {job.inputLabel}
-                </span>
-              </div>
-              {/* A finished job used to carry Log and Open result side by side
-                  and a running one a lone Cancel, so the row's width changed
-                  with its state. One button and its menu, like a tool row. */}
-              {isRunning || job.result ? (
-                <div className="dock-inline-action-row">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    size="xs"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      if (isRunning) void actions.cancelXtbJob(job.id);
-                      else openJobResult();
-                    }}
-                    disabled={!isRunning && !primaryOpenPath}
-                  >
-                    {isRunning ? "Cancel" : "Open"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="xs"
-                    className="dock-job-menu-button"
-                    aria-label={`${job.title} actions`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      showJobMenu(event as unknown as React.MouseEvent<HTMLDivElement>);
-                    }}
-                  >
-                    <JobMenuChevronIcon />
-                  </Button>
-                </div>
-              ) : null}
-            </div>
-            {!job.result && job.error ? <span>{job.error}</span> : null}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function ConformerJobList({
-  jobs,
-  actions,
-}: {
-  jobs: ConformerJob[];
-  actions: ShellActions;
-}) {
-  if (jobs.length === 0) return null;
-  return (
-    <div className="dock-drop-list">
-      {jobs.map((job) => {
-        const primaryOpenPath = job.primaryOpenPath ?? job.result?.primaryOpenPath;
-        const reportPath = job.reportPath ?? null;
-        const isRunning = job.status === "running";
-        const canCancel = isRunning && job.cancelable !== false;
-        const openJobResult = () => {
-          if (!primaryOpenPath) return;
-          void actions.openPaths([primaryOpenPath]);
-        };
-        const showJobMenu = (event: React.MouseEvent<HTMLDivElement>) => {
-          const items = [
-            canCancel ? {
-              kind: "item" as const,
-              id: `conformer-job-${job.id}-cancel`,
-              text: "Cancel",
-              action: () => void actions.cancelConformerJob(job.id),
-            } : null,
-            job.logPath ? {
-              kind: "item" as const,
-              id: `conformer-job-${job.id}-log`,
-              text: "Log",
-              action: () => void actions.openTextPaths([job.logPath!]),
-            } : null,
-            reportPath ? {
-              kind: "item" as const,
-              id: `conformer-job-${job.id}-report`,
-              text: "Report",
-              action: () => void actions.openTextPaths([reportPath]),
-            } : null,
-            primaryOpenPath ? {
-              kind: "item" as const,
-              id: `conformer-job-${job.id}-open`,
-              text: "Open result",
-              action: openJobResult,
-            } : null,
-          ].filter((item) => item !== null);
-          if (items.length === 0) return;
-          event.preventDefault();
-          event.stopPropagation();
-          void showNativeContextMenu(items, { x: event.clientX, y: event.clientY }, { forceWeb: true });
-        };
-        return (
-          <div
-            className="dock-drop-item dock-xtb-job-item"
-            key={job.id}
-            data-status={job.status}
-            data-has-primary-result={primaryOpenPath ? true : undefined}
-            role={primaryOpenPath ? "button" : undefined}
-            tabIndex={primaryOpenPath ? 0 : undefined}
-            onClick={primaryOpenPath ? openJobResult : undefined}
-            onContextMenu={showJobMenu}
-            onKeyDown={primaryOpenPath ? (event) => {
-              // The row and its action buttons are both keyboard targets. Without
-              // this guard, Enter on the menu button bubbles here and opens the
-              // result on top of showing the menu.
-              if (event.target !== event.currentTarget) return;
-              if (event.key !== "Enter" && event.key !== " ") return;
-              event.preventDefault();
-              openJobResult();
-            } : undefined}
-          >
-            <div className="dock-drop-item-header">
-              <div className="dock-drop-item-title">
-                <strong>{job.title}</strong>
-                <span className="dock-job-meta">
-                  <span className="dock-job-status">{job.status === "running" ? <span className="dock-job-spinner" aria-hidden="true" /> : null}{job.status}</span>
-                  {" · "}
-                  {job.inputTitle}
-                </span>
-                {job.progress ? (
-                  <span className="dock-job-meta" title={job.durableJobId ? `Job ${job.durableJobId}` : undefined}>
-                    {job.progress}
-                  </span>
-                ) : null}
-              </div>
-              {canCancel || job.logPath || reportPath || primaryOpenPath ? (
-                <div className="dock-inline-action-row">
-                  {canCancel ? (
-                    <button
-                      type="button"
-                      className="dock-action dock-action-compact"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void actions.cancelConformerJob(job.id);
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  ) : null}
-                  {job.logPath ? (
-                    <button
-                      type="button"
-                      className="dock-action dock-action-compact"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void actions.openTextPaths([job.logPath!]);
-                      }}
-                    >
-                      Log
-                    </button>
-                  ) : null}
-                  {reportPath ? (
-                    <button
-                      type="button"
-                      className="dock-action dock-action-compact"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void actions.openTextPaths([reportPath]);
-                      }}
-                    >
-                      Report
-                    </button>
-                  ) : null}
-                  {primaryOpenPath ? (
-                    <button
-                      type="button"
-                      className="dock-action dock-action-compact"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        openJobResult();
-                      }}
-                    >
-                      Open result
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            {job.error ? <span>{job.error}</span> : null}
-          </div>
-        );
-      })}
     </div>
   );
 }

@@ -187,7 +187,7 @@ export const DEFAULT_SCRUB_SETTINGS: ScrubSettings = {
 
 export type CalligraphSettings = {
   variant: "number" | "slots"
-  animation: "default" | "smooth" | "snappy" | "bouncy"
+  animation: "default" | "smooth" | "snappy" | "bouncy" | "none"
   stagger: number
   autoSize: boolean
 }
@@ -699,6 +699,7 @@ function ScrubBoundFeedback({
 }
 
 export type UseNumberScrubOptions = {
+  allowTextInput?: boolean
   disabled?: boolean
   format?: FormatSettings
   formatValue?: (value: number) => string
@@ -718,6 +719,7 @@ export type UseNumberScrubOptions = {
 export type ScrubState = ReturnType<typeof useNumberScrub>
 
 export function useNumberScrub({
+  allowTextInput = true,
   disabled = false,
   format = DEFAULT_FORMAT_SETTINGS,
   formatValue,
@@ -1286,7 +1288,7 @@ export function useNumberScrub({
 
   const enterEditMode = useCallback(
     (point?: EditPointerPoint) => {
-      if (disabled) {
+      if (disabled || !allowTextInput) {
         return
       }
 
@@ -1314,7 +1316,7 @@ export function useNumberScrub({
         })
       })
     },
-    [disabled, formatForEdit, selectOnEdit, value],
+    [disabled, allowTextInput, formatForEdit, selectOnEdit, value],
   )
 
   const canScrub = !disabled && !editing
@@ -1539,8 +1541,16 @@ export function useNumberScrub({
         delta,
         scrubDirection,
       )
+      // Rebase at the boundary so reversing the pointer responds immediately.
+      if ((max !== undefined && attempted > max) || (min !== undefined && attempted < min)) {
+        state.startValue = Math.min(max ?? Infinity, Math.max(min ?? -Infinity, attempted))
+        state.startX = event.clientX
+        state.startY = event.clientY
+      }
     },
     [
+      max,
+      min,
       activateScrubbing,
       commit,
       endScrubSession,
@@ -1885,9 +1895,9 @@ function CalligraphNumber({
   const { body, sign } = splitSignedDisplayValue(value)
 
   const animation =
-    settings.animation === "default" ? undefined : settings.animation
+    settings.animation === "default" || settings.animation === "none" ? undefined : settings.animation
 
-  if (shouldReduceMotion) {
+  if (shouldReduceMotion || settings.animation === "none") {
     return (
       <span
         ref={contentRef}
@@ -2181,6 +2191,7 @@ export type ScrubNumberFieldProps = Omit<
   "onChange" | "type" | "value" | "defaultValue" | "size" | "format"
 > & {
   allowWheelScrub?: boolean
+  allowTextInput?: boolean
   boundFeedback?: BoundFeedbackMode
   calligraph?: CalligraphSettings
   defaultResetValue?: number
@@ -2207,6 +2218,7 @@ export type ScrubNumberFieldProps = Omit<
 }
 
 export function ScrubNumberField({
+  allowTextInput = true,
   allowWheelScrub = false,
   boundFeedback = "none",
   calligraph = DEFAULT_CALLIGRAPH_SETTINGS,
@@ -2266,6 +2278,7 @@ export function ScrubNumberField({
     : undefined)
 
   const scrub = useNumberScrub({
+    allowTextInput,
     disabled,
     format: DEFAULT_FORMAT_SETTINGS,
     formatValue,

@@ -1,6 +1,8 @@
 /* Shared Quick Look viewer shell style. Keep app runtimes linked here; do not fork host-specific Mol* chrome. */
 /* Empty scenes and loading states use Burette's own shell on every surface. */
 .msp-plugin .msp-logo { display: none !important; }
+#app.buret-molstar-initializing .msp-plugin,
+#app.buret-inspector-updating .msp-plugin canvas { visibility: hidden; }
 
 :root {
   color-scheme: dark;
@@ -942,15 +944,17 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   max-width: min(340px, calc(100vw - 16px));
   max-height: min(420px, calc(100vh - 16px));
   box-sizing: border-box;
-  padding: 5px;
+  padding: 10px;
   overflow: hidden;
   pointer-events: auto;
   user-select: none;
   border: 1px solid var(--buret-molstar-border);
-  border-radius: var(--buret-molstar-panel-radius);
+  border-radius: 14px;
   color: var(--buret-molstar-text);
-  background: var(--buret-molstar-panel-background);
-  box-shadow: 0 18px 44px var(--buret-molstar-shadow);
+  background: color-mix(in srgb, var(--buret-molstar-panel-background) 92%, transparent);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
+  box-shadow: 0 8px 28px var(--buret-molstar-shadow);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 /* Only the header and the drawing are the grab area; the buttons under them keep a
@@ -968,7 +972,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   align-items: center;
   gap: 6px;
   flex: 0 0 auto;
-  padding: 1px 1px 5px 4px;
+  padding: 0 0 6px 2px;
 }
 .buret-molecule-card-heading {
   display: flex;
@@ -992,7 +996,6 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
    button itself is never swallowed by the handle crossing it. */
 .buret-molecule-card-icon,
 .buret-molecule-card-button,
-.buret-molecule-card-sizes,
 .buret-molecule-card-nav {
   position: relative;
   z-index: 3;
@@ -1004,7 +1007,7 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   flex: 0 0 auto;
   border-radius: 6px;
   padding: 1px;
-  background: var(--buret-molstar-field-background);
+  background: transparent;
 }
 .buret-molecule-card-step {
   display: grid;
@@ -1073,33 +1076,41 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   z-index: 42;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   max-width: 220px;
-  height: 36px;
-  padding: 0 11px 0 9px;
+  height: 30px;
+  padding: 0 10px;
   border: 1px solid var(--buret-molstar-border);
-  border-radius: 999px;
-  background: var(--buret-molstar-panel-background);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--buret-molstar-panel-background) 92%, transparent);
+  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(24px);
   color: var(--buret-molstar-text);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
-  font: inherit;
-  font-size: 12px;
+  box-shadow: 0 2px 8px var(--buret-molstar-shadow);
+  font: 500 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+  transition: background 140ms ease, box-shadow 140ms ease, transform 140ms ease;
 }
 .buret-molecule-preview-chip:hover {
   background: var(--buret-molstar-hover-background);
-  transform: translateY(-1px);
+  box-shadow: 0 3px 12px var(--buret-molstar-shadow);
+}
+.buret-molecule-preview-chip:active {
+  transform: scale(.97);
 }
 .buret-molecule-preview-chip:focus-visible {
-  outline: 2px solid var(--buret-molstar-accent);
+  outline: 1px solid var(--buret-molstar-muted-text);
   outline-offset: 2px;
 }
 .buret-molecule-preview-chip > svg {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
   flex: 0 0 auto;
-  color: var(--buret-molstar-accent);
+  color: var(--buret-molstar-muted-text);
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-molecule-preview-chip { transition: none; }
+  .buret-molecule-preview-chip:active { transform: none; }
 }
 .buret-molecule-preview-chip-label {
   min-width: 0;
@@ -1107,83 +1118,68 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-body.burette-mobile-host .buret-molecule-preview-chip {
-  display: none;
-}
 .buret-molecule-card-toolbar {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   flex: 0 0 auto;
-  padding-bottom: 5px;
+  padding: 5px 0 0;
+  order: 2;
+  border-top: 1px solid var(--buret-molstar-border);
 }
 .buret-molecule-card-button {
   display: flex;
   align-items: center;
-  gap: 3px;
+  justify-content: center;
+  gap: 4px;
   flex: 0 1 auto;
   min-width: 0;
-  height: 22px;
-  border: 0;
+  height: 24px;
+  border: 1px solid transparent;
   border-radius: 6px;
-  padding: 0 5px;
+  padding: 0 6px;
   color: var(--buret-molstar-text);
-  background: var(--buret-molstar-field-background);
-  font: inherit;
-  font-size: 10px;
+  background: transparent;
+  font: 500 10px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   cursor: pointer;
-  transition: background 140ms ease;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, transform 140ms ease;
 }
 .buret-molecule-card-button > svg {
   flex: 0 0 auto;
-  width: 12px;
-  height: 12px;
-  color: var(--buret-molstar-muted-text);
+  width: 13px;
+  height: 13px;
 }
 .buret-molecule-card-button > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.buret-molecule-card-button:hover {
+.buret-molecule-card-button:hover:not(:disabled) {
   background: var(--buret-molstar-hover-background);
+}
+.buret-molecule-card-button:active:not(:disabled) {
+  transform: scale(.97);
 }
 .buret-molecule-card-button:focus-visible {
-  outline: 2px solid var(--buret-molstar-accent);
-  outline-offset: 1px;
+  outline: 1px solid var(--buret-molstar-muted-text);
+  outline-offset: 2px;
 }
-.buret-molecule-card-sizes {
-  display: flex;
-  flex: 0 0 auto;
+.buret-molecule-card-button[data-buret-molecule-preview-action="lasso"] {
   margin-left: auto;
-  border-radius: 6px;
-  padding: 1px;
-  background: var(--buret-molstar-field-background);
 }
-.buret-molecule-card-size {
-  width: 16px;
-  height: 20px;
-  border: 0;
-  border-radius: 5px;
-  padding: 0;
-  color: var(--buret-molstar-muted-text);
-  background: transparent;
-  font: inherit;
-  font-size: 9.5px;
-  font-weight: 590;
-  cursor: pointer;
-  transition: background 140ms ease, color 140ms ease;
-}
-.buret-molecule-card-size:hover {
-  color: var(--buret-molstar-text);
-}
-.buret-molecule-card-size[aria-pressed="true"] {
+.buret-molecule-card-button[aria-pressed="true"] {
   color: var(--buret-molstar-text);
   background: var(--buret-molstar-hover-background);
+  box-shadow: inset 0 0 0 1px var(--buret-molstar-border);
 }
-.buret-molecule-card-size:focus-visible {
-  outline: 2px solid var(--buret-molstar-accent);
-  outline-offset: 1px;
+.buret-molecule-card-button:disabled {
+  opacity: .4;
+  cursor: default;
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-molecule-card-button { transition: none; }
+  .buret-molecule-card-button:hover:not(:disabled),
+  .buret-molecule-card-button:active:not(:disabled) { transform: none; }
 }
 /* The card is narrow, so the labels are the first thing to go when the buttons no
    longer fit — the icons alone still say Ketcher and copy. */
@@ -1195,12 +1191,9 @@ body.burette-mobile-host .buret-molecule-preview-chip {
 .buret-molstar-molecule-preview[data-compact="true"] .buret-molecule-card-button[data-copy-state] > span {
   display: inline;
 }
-.buret-molecule-card-button[data-copy-state] {
-  flex: 1 1 auto;
-}
 .buret-molecule-card-button[data-copy-state="done"],
 .buret-molecule-card-button[data-copy-state="done"] > svg {
-  color: #32d74b;
+  color: var(--buret-molstar-text);
 }
 .buret-molecule-card-button[data-copy-state="error"],
 .buret-molecule-card-button[data-copy-state="error"] > svg {
@@ -1272,12 +1265,12 @@ body.burette-mobile-host .buret-molecule-preview-chip {
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid var(--buret-molstar-border);
+  border: 0;
   border-radius: 7px;
   --depiction-carbon: #202124;
   --depiction-nitrogen: #2454d6;
   --depiction-oxygen: #d22b31;
-  background: var(--buret-molstar-panel-background);
+  background: transparent;
   color: #6e6e73;
   font-size: 10px;
   text-align: center;
@@ -2028,7 +2021,8 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   color: #ffb8b8;
 }
 .buret-renderer-control.visible { display: flex; }
-.buret-renderer-choice { min-width: 38px; }
+.buret-mode-button { width: 34px; min-width: 34px; padding: 0; }
+.buret-mode-button svg { width: 18px; height: 18px; }
 .buret-molstar-preset-slot { display: none; align-items: center; }
 .buret-molstar-preset-slot.visible { display: flex; }
 .buret-xyzrender-preset-slot { display: none; align-items: center; }
@@ -3546,6 +3540,29 @@ body.burette-mobile-host .buret-docking-poses button {
     flex: 1 1 auto;
   }
 }
+/* A plain frame counter needs no reserved width for structure names. Keep
+   the closed stepper at its content width even in a narrow desktop pane. */
+.buret-docking-poses.buret-docking-poses-frames:not(.buret-docking-poses-animation-open):not(.buret-docking-poses-collapsed) {
+  width: max-content;
+}
+.buret-docking-poses-frames .buret-docking-pose-main {
+  display: inline-flex;
+  flex-wrap: wrap;
+  width: auto;
+  gap: 4px;
+}
+.buret-docking-poses-frames .buret-docking-pose-main > * {
+  flex-shrink: 0;
+}
+.buret-docking-poses-frames .buret-docking-pose-main > span {
+  min-width: 0;
+  padding-inline: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.buret-docking-poses-frames.buret-docking-poses-compact.buret-docking-poses-animation-open .buret-docking-pose-animation {
+  max-height: 140px;
+}
 .buret-superposition-panel {
   position: fixed;
   top: 64px;
@@ -4576,57 +4593,21 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   pointer-events: none;
 }
 .buret-tree-swatch-custom:hover { transform: none; }
-.buret-tree-swatches-with-picker { flex-wrap: nowrap; gap: 2px; }
-.buret-tree-swatches-with-picker .buret-tree-swatch { flex-shrink: 1; min-width: 0; }
-.buret-color-picker {
-  position: fixed;
-  inset: auto;
-  margin: 0;
-  width: 208px;
-  box-sizing: border-box;
-  padding: 12px;
-  border: 1px solid var(--buret-toolbar-border);
-  border-radius: 10px;
-  background: var(--buret-molstar-panel-background);
-  color: var(--buret-molstar-text);
-  box-shadow: 0 8px 28px #0005;
-  font: 12px/1.4 system-ui, sans-serif;
-}
-.buret-color-picker-field {
-  position: relative;
-  height: 112px;
-  border-radius: 5px;
-  background-image: linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent);
-  touch-action: none;
-  cursor: crosshair;
-}
-.buret-color-picker-field > span {
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border: 2px solid white;
-  border-radius: 50%;
-  box-shadow: 0 0 0 1px #0008;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-.buret-color-picker-hue {
-  appearance: none;
-  width: 100%;
-  height: 8px;
-  margin: 14px 0;
-  border-radius: 4px;
-  background: linear-gradient(to right, red, #ff0, #0f0, cyan, blue, #f0f, red);
-}
-.buret-color-picker-hue::-webkit-slider-thumb {
-  appearance: none;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid white;
-  background: transparent;
-  box-shadow: 0 0 0 1px #0006;
-}
+.buret-tree-swatches-with-picker { flex-wrap: nowrap; align-items: center; gap: 8px; }
+.buret-tree-swatch-rail { display: flex; gap: 3px; min-width: 0; flex: 1; overflow-x: auto; padding: 0; scrollbar-width: none; overscroll-behavior: contain; }
+.buret-tree-swatch-rail::-webkit-scrollbar { display: none; }
+.buret-tree-swatch-rail .buret-tree-swatch { flex: 0 0 14px; width: 14px; height: 14px; min-height: 14px; padding: 0; border: 0; border-radius: 50%; transform: none; }
+.buret-tree-swatches-with-picker .buret-tree-swatch-custom { flex: 0 0 24px; width: 24px; height: 24px; border-radius: 6px; }
+.buret-tree-swatch-custom > svg { width: 16px; height: 16px; }
+.buret-color-picker { box-sizing: border-box; padding: 10px; margin-bottom: 10px; border: 1px solid var(--buret-toolbar-border); border-radius: 10px; color: var(--buret-molstar-text); font: 12px/1.4 system-ui, sans-serif; }
+.buret-color-picker[hidden] { display: none; }
+.buret-color-picker-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; color: var(--buret-molstar-muted-text); }
+.buret-color-picker-title select { min-width: 0; max-width: 130px; font: inherit; color: var(--buret-molstar-text); background: var(--buret-molstar-panel-background); border: 1px solid var(--buret-toolbar-border); border-radius: 4px; padding: 3px; }
+.buret-color-picker-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; margin-bottom: 12px; }
+.buret-color-picker .buret-color-picker-shade { display: block; width: 100%; height: 28px; min-height: 28px; padding: 0; margin: 0; border: 0; border-radius: 7px; }
+.buret-color-picker-shade:hover { box-shadow: inset 0 0 0 2px #ffffffb0; }
+.buret-color-picker .buret-color-picker-shade[aria-pressed="true"],
+.buret-tree-swatch-rail .buret-tree-swatch[aria-pressed="true"] { outline: none; box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 3px #0009; }
 .buret-color-picker-hex { display: flex; align-items: center; gap: 12px; }
 .buret-color-picker-hex > span { color: var(--buret-molstar-muted-text); font-size: 10px; }
 .buret-color-picker-hex > input {
@@ -4951,6 +4932,9 @@ body .msp-plugin .buret-seq-enhanced > .msp-sequence-select { display: none; }
   white-space: nowrap;
 }
 .buret-seq-header [data-role="View"] { margin-left: auto; flex-shrink: 0; }
+.buret-seq-header [data-role="View"] .buret-seq-button {
+  background: var(--buret-molstar-field-background);
+}
 .buret-seq-button {
   appearance: none;
   border: 0;
@@ -4988,11 +4972,88 @@ body .msp-plugin .buret-seq-enhanced .msp-sequence-chain-label {
   top: 0;
   z-index: 1;
   padding: 7px 16px;
-  border-block: 1px solid var(--buret-molstar-border);
+  border-top: 1px solid var(--buret-molstar-border);
   background: var(--buret-dock-background, var(--buret-menu-background));
   color: var(--buret-molstar-text) !important;
   font: 500 11px/18px -apple-system, BlinkMacSystemFont, sans-serif;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+/* Polymer tracks span the dock; native component controls form a quiet footer. */
+body .msp-plugin .buret-seq-enhanced:not(.buret-seq-compact) .msp-sequence-wrapper-non-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: start;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+}
+body .msp-plugin .buret-seq-enhanced:not(.buret-seq-compact) .msp-sequence-wrapper-non-empty > :not(.buret-component-row):not(.buret-component-label) {
+  flex: 0 0 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+body .msp-plugin .buret-seq-enhanced .buret-component-label { display: none; }
+body .msp-plugin .buret-seq-enhanced .buret-component-label:popover-open {
+  display: block;
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(320px, calc(100vw - 24px));
+  padding: 14px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 10px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+  box-shadow: 0 8px 28px #0003;
+}
+body .msp-plugin .buret-seq-enhanced .buret-component-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  margin: 0 0 0 16px;
+  padding: 5px 9px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 7px;
+  line-height: 20px !important;
+}
+body .msp-plugin .buret-component-row > .msp-sequence-number { display: none; }
+.buret-component-control {
+  border: 0;
+  background: transparent;
+  color: var(--buret-molstar-muted-text);
+  font: 11px/20px -apple-system, BlinkMacSystemFont, sans-serif;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.buret-component-control:hover { color: var(--buret-molstar-text); }
+.buret-component-control:focus-visible { outline: 2px solid var(--buret-molstar-accent); outline-offset: 3px; }
+body .msp-plugin .buret-seq-enhanced .buret-water-label {
+  display: block;
+  position: static;
+  padding: 5px 12px;
+  margin-left: auto;
+  border: 0;
+}
+.buret-water-label button::after { content: ' +'; }
+.buret-water-label button[aria-expanded="true"]::after { content: ' −'; }
+body .msp-plugin .buret-seq-enhanced .buret-water-row {
+  flex-basis: calc(100% - 32px);
+  margin-right: 16px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+body .msp-plugin .buret-seq-enhanced .buret-water-row > .msp-sequence-number {
+  display: inline-block;
+  position: static;
+  margin: 0;
+  width: auto;
+}
+body .msp-plugin .buret-seq-enhanced .buret-water-row[hidden] { display: none; }
 body .msp-plugin .msp-sequence .buret-seq-grid {
   display: grid;
   padding: 10px 16px 12px;
@@ -5221,7 +5282,7 @@ body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-
 body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-item-destructive {
   color: #ff6b5e;
 }
-body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] .buret-tree-swatch {
+body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] .buret-tree-swatches:not(.buret-tree-swatches-with-picker) .buret-tree-swatch {
   display: block;
   flex: 0 0 auto;
   width: 14px;
@@ -5282,14 +5343,24 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level
 
 .buret-preview-atom { opacity: 0; pointer-events: none; }
 .buret-preview-atom.buret-preview-atom-selected {
-  opacity: 0.55;
-  fill: #8bdc65 !important;
-  stroke: #8bdc65 !important;
+  opacity: 1;
+  fill: rgb(117 167 223 / 24%) !important;
+  stroke: #75a7df !important;
+  stroke-width: 1px !important;
+  vector-effect: non-scaling-stroke;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(1.6);
+}
+.buret-preview-bond-selected {
+  stroke: #75a7df !important;
+  stroke-width: 2px !important;
+  vector-effect: non-scaling-stroke;
 }
 .buret-preview-lasso-active { cursor: crosshair; touch-action: none; }
 .buret-preview-lasso-path {
-  fill: rgb(139 220 101 / 14%);
-  stroke: #8bdc65;
+  fill: rgb(117 167 223 / 10%);
+  stroke: #75a7df;
   stroke-width: 1.5px;
   vector-effect: non-scaling-stroke;
   pointer-events: none;
@@ -5339,7 +5410,8 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  background: var(--buret-molstar-field-background);
+  background: transparent;
+  margin-left: auto;
 }
 .buret-molecule-card-toolbar > .buret-molecule-card-icon:hover {
   background: var(--buret-molstar-hover-background);
@@ -5353,3 +5425,46 @@ body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-picking-level
 .msp-state-snapshot-viewport-controls {
   display: none !important;
 }
+
+/* Sheet actions share the viewer's light/dark menu tokens. */
+.buret-xyzrender-editor-actions {
+  position: absolute; left: 16px; bottom: 16px; z-index: 100;
+  display: flex; gap: 2px; padding: 5px; border-radius: 10px;
+  background: var(--buret-menu-background); color: var(--buret-toolbar-color);
+  box-shadow: var(--buret-menu-shadow); pointer-events: auto;
+}
+.buret-xyzrender-editor-actions button {
+  appearance: none; border: 0; border-radius: 6px; padding: 7px 10px;
+  background: transparent; color: inherit; font: 12px -apple-system, sans-serif;
+}
+.buret-xyzrender-editor-actions button:hover,
+.buret-xyzrender-editor-actions button:focus-visible {
+  background: color-mix(in srgb, var(--buret-toolbar-color) 12%, transparent);
+}
+.buret-external-artifact-root:has(.buret-xyzrender-editor-actions) .buret-xyz-badge { bottom: 66px; }
+
+body:has(#buret-toolbar[data-active-renderer="xyzrender-external"]) { --buret-accent: #888; }
+#buret-toolbar[data-active-renderer="xyzrender-external"] [data-buret-toggle],
+body:has(#buret-toolbar[data-active-renderer="xyzrender-external"]) #buret-viewport-rail,
+body:has(#buret-toolbar[data-active-renderer="xyzrender-external"]) #buret-scene-tree-toggle,
+#buret-toolbar.buret-xyzrender-app[data-active-renderer="xyzrender-external"] [data-buret-xyzrender-preset-slot] { display: none !important; }
+.buret-xyzrender-inspector { display: none; }
+#buret-toolbar.buret-xyzrender-app[data-active-renderer="xyzrender-external"] .buret-xyzrender-inspector { display: inline-flex; }
+.buret-xyzrender-3d-dialog {
+  width: min(900px, calc(100vw - 40px)); height: min(740px, calc(100vh - 40px));
+  box-sizing: border-box; padding: 16px; border: 1px solid var(--buret-toolbar-border);
+  border-radius: 14px; background: var(--buret-menu-background, #171717); color: var(--buret-toolbar-color);
+  font: 13px -apple-system, sans-serif;
+}
+.buret-xyzrender-3d-dialog[open] { display: flex; flex-direction: column; gap: 12px; }
+.buret-xyzrender-3d-dialog::backdrop { background: #0008; }
+.buret-xyzrender-3d-dialog header, .buret-xyzrender-3d-dialog footer { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.buret-xyzrender-3d-dialog header span { flex: 1; opacity: .6; }
+.buret-xyzrender-3d-stage { flex: 1; min-height: 160px; position: relative; overflow: hidden; border-radius: 8px; }
+.buret-xyzrender-3d-dialog button, .buret-xyzrender-3d-dialog select {
+  border: 1px solid var(--buret-toolbar-border); background: var(--buret-toolbar-hover);
+  color: inherit; font: inherit; padding: 7px 12px; border-radius: 7px;
+}
+.buret-xyzrender-3d-dialog button:disabled { opacity: .45; }
+.buret-xyzrender-3d-dialog input { accent-color: #888; max-width: 160px; }
+.buret-xyzrender-3d-dialog p { margin: 0; min-height: 18px; opacity: .7; }

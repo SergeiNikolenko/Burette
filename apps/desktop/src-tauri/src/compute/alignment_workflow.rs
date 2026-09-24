@@ -1,3 +1,7 @@
+mod input_validation;
+#[cfg(test)]
+use crate::preview::grid_store::alignment_source_rows_by_indices;
+
 use std::path::Path;
 
 use burette_compute_core::{align_and_score, AlignmentAtom, AlignmentMode, AtomMapping};
@@ -5,9 +9,8 @@ use burette_compute_metal::{AlignmentPairDescriptor, MetalAlignmentBatch, MetalT
 use burette_compute_protocol::{
     AlignmentModeV1, AlignmentV1Parameters, AlignmentV1SubmitRequest, AnalysisResourceLimits,
     BackendPolicy, ComputeJobSchemaVersion, ExecutionPolicy, GridScope, GridSourceReference,
-    SchedulingPolicy, SelectedGridScope, WorkflowTemplateId,
+    MolecularSnapshotRef, SchedulingPolicy, SelectedGridScope, WorkflowTemplateId,
 };
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -16,9 +19,7 @@ use crate::preview::{
     grid_analysis::{
         apply_alignment_analysis_run, GridAlignmentAnalysisApplyInput, GridAlignmentAssignmentInput,
     },
-    grid_database::open_grid_database,
-    grid_identity,
-    grid_store::{alignment_source_rows_by_indices, GridAlignmentSourceRow},
+    grid_store::GridAlignmentSourceRow,
 };
 
 use super::error::{ComputeCoordinatorError, ComputeResult};
@@ -158,6 +159,7 @@ fn execute_grid_alignment_with_run_id(
         rows,
         parsed,
         "molfileFormalCharge".into(),
+        &|_, _| Ok(()),
     )
 }
 
@@ -167,6 +169,7 @@ pub(crate) fn execute_snapshot_alignment_with_run_id(
     rows: Vec<GridAlignmentSourceRow>,
     request: &GridAlignmentRequest,
     run_id: Uuid,
+    checkpoint: super::analysis_control::AnalysisCheckpoint<'_>,
 ) -> ComputeResult<GridAlignmentResult> {
     let indexes = normalized_indexes(&request.source_indexes)?;
     if rows.len() != indexes.len()
@@ -191,9 +194,11 @@ pub(crate) fn execute_snapshot_alignment_with_run_id(
         rows,
         parsed,
         "molfileFormalCharge".into(),
+        checkpoint,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn execute_alignment_rows(
     runtime: &MetalTanimotoRuntime,
     compute_service: Option<(&ComputeServiceClient, Uuid)>,
@@ -202,50 +207,13 @@ fn execute_alignment_rows(
     rows: Vec<GridAlignmentSourceRow>,
     parsed: Vec<ParsedMolfile>,
     charge_model: String,
+    checkpoint: super::analysis_control::AnalysisCheckpoint<'_>,
 ) -> ComputeResult<GridAlignmentResult> {
     let reference = &parsed[0];
-    let mut probe_atoms = Vec::new();
-    let mut reference_atoms = Vec::new();
-    let mut mappings = Vec::new();
-    let mut pair_mappings = Vec::new();
-    let mut descriptors = Vec::new();
-    for probe in parsed.iter().skip(1) {
-        let pair_mapping = infer_atom_mapping(probe, reference)?;
-        let probe_start = probe_atoms.len() as u64;
-        let reference_start = reference_atoms.len() as u64;
-        let mapping_start = mappings.len() as u64;
-        probe_atoms.extend_from_slice(&probe.atoms);
-        reference_atoms.extend_from_slice(&reference.atoms);
-        mappings.extend_from_slice(&pair_mapping);
-        descriptors.push(AlignmentPairDescriptor {
-            probe_atom_start: probe_start,
-            probe_atom_count: probe.atoms.len() as u64,
-            reference_atom_start: reference_start,
-            reference_atom_count: reference.atoms.len() as u64,
-            mapping_start,
-            mapping_count: pair_mapping.len() as u64,
-            mode: AlignmentMode::MappedHorn,
-        });
-        pair_mappings.push(pair_mapping);
-    }
+    let reference_graph = bond_matrix(reference.atoms.len(), &reference.bonds)?;
+    let reference_signatures = atom_signature_index(reference, &reference_graph);
     let max_memory_bytes = request.max_memory_bytes.unwrap_or(DEFAULT_MAX_MEMORY_BYTES);
-    let batch = MetalAlignmentBatch {
-        probe_atoms: &probe_atoms,
-        reference_atoms: &reference_atoms,
-        mappings: &mappings,
-        pairs: &descriptors,
-    };
-    let execution = compute_service
-        .map_or_else(
-            || {
-                runtime
-                    .align_and_score_profiled(batch, max_memory_bytes)
-                    .map_err(|error| error.to_string())
-            },
-            |(service, job_id)| service.align_and_score(job_id, batch, max_memory_bytes),
-        )
-        .map_err(|error| ComputeCoordinatorError::Unavailable(error.to_string()))?;
-
+    let mut gpu_time_ms = 0;
     let reference_has_charge = reference
         .atoms
         .iter()
@@ -268,9 +236,56 @@ fn execute_alignment_rows(
         &scores[0],
         runtime.device_identity().name.as_str(),
     )?];
-    for (pair_index, metal) in execution.pairs.iter().enumerate() {
-        let probe = &parsed[pair_index + 1];
-        validate_cpu_parity(probe, reference, &pair_mappings[pair_index], metal)?;
+    checkpoint(
+        1,
+        Some(
+            serde_json::json!({"score":scores[0], "transform":transforms[0], "alignedSdf":sdf_records[0]}),
+        ),
+    )?;
+    for (pair_index, probe) in parsed.iter().skip(1).enumerate() {
+        checkpoint(pair_index + 1, None)?;
+        let mapping =
+            infer_atom_mapping(probe, reference, &reference_graph, &reference_signatures)?;
+        let descriptors = [AlignmentPairDescriptor {
+            probe_atom_start: 0,
+            probe_atom_count: probe.atoms.len() as u64,
+            reference_atom_start: 0,
+            reference_atom_count: reference.atoms.len() as u64,
+            mapping_start: 0,
+            mapping_count: mapping.len() as u64,
+            mode: AlignmentMode::MappedHorn,
+        }];
+        let batch = MetalAlignmentBatch {
+            probe_atoms: &probe.atoms,
+            reference_atoms: &reference.atoms,
+            mappings: &mapping,
+            pairs: &descriptors,
+        };
+        let execution = compute_service.map_or_else(
+            || {
+                runtime
+                    .align_and_score_profiled(batch, max_memory_bytes)
+                    .map_err(|e| e.to_string())
+            },
+            |(service, job_id)| {
+                service.align_and_score(job_id, batch, max_memory_bytes, &|| {
+                    checkpoint(pair_index + 1, None).map_err(|e| e.to_string())
+                })
+            },
+        );
+        let execution = match execution {
+            Ok(execution) => execution,
+            Err(error) => {
+                // Restore typed cancellation after the service admission callback.
+                checkpoint(pair_index + 1, None)?;
+                return Err(ComputeCoordinatorError::Unavailable(error));
+            }
+        };
+        gpu_time_ms += execution.gpu_time_ms;
+        let metal = execution.pairs.first().ok_or_else(|| {
+            ComputeCoordinatorError::Protocol("Alignment returned no result".into())
+        })?;
+        validate_cpu_parity(probe, reference, &mapping, metal)?;
         let score = GridAlignmentScore {
             source_index: rows[pair_index + 1].source_index,
             name: rows[pair_index + 1].name.clone(),
@@ -290,6 +305,12 @@ fn execute_alignment_rows(
             runtime.device_identity().name.as_str(),
         )?);
         transforms.push(rigid_transform_matrix(metal.transform));
+        checkpoint(
+            pair_index + 2,
+            Some(
+                serde_json::json!({"score":score, "transform":transforms.last(), "alignedSdf":sdf_records.last()}),
+            ),
+        )?;
         scores.push(score);
     }
     let aligned_sdf = format!("{}\n", sdf_records.join("\n"));
@@ -307,7 +328,7 @@ fn execute_alignment_rows(
         title: format!("aligned-{}-poses.sdf", rows.len()),
         aligned_sdf,
         scores,
-        gpu_time_ms: execution.gpu_time_ms,
+        gpu_time_ms,
         backend: "nativeMetal",
         mapping: "deterministicElementBondGraph",
         charge_model,
@@ -319,30 +340,20 @@ fn execute_alignment_rows(
 
 pub(crate) fn apply_grid_alignment_result(
     database_path: &Path,
+    snapshot: &MolecularSnapshotRef,
+    frozen_rows: &[GridAlignmentSourceRow],
     result: &GridAlignmentResult,
     runtime: &MetalTanimotoRuntime,
     artifact_id: Uuid,
     artifact_manifest_sha256: &str,
 ) -> ComputeResult<()> {
-    let indexes = result
-        .scores
-        .iter()
-        .map(|score| usize::try_from(score.source_index))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| {
-            ComputeCoordinatorError::Validation("Alignment source index exceeds usize".into())
-        })?;
-    let rows = alignment_source_rows_by_indices(database_path, &indexes)
-        .map_err(ComputeCoordinatorError::Validation)?;
-    if rows.len() != result.scores.len() {
-        return Err(ComputeCoordinatorError::Validation(
-            "One or more aligned Grid rows no longer exist".into(),
-        ));
-    }
+    let source_rows =
+        super::analysis_snapshot::resolve_analysis_source_rows(database_path, frozen_rows)?;
     apply_grid_scores(
         database_path,
         result.run_id,
-        &rows,
+        snapshot,
+        &source_rows,
         &result.scores,
         runtime,
         result.gpu_time_ms,
@@ -385,9 +396,14 @@ fn normalized_indexes(indexes: &[usize]) -> ComputeResult<Vec<usize>> {
     Ok(normalized)
 }
 
+type AtomSignature = (String, i32, Vec<(String, u8)>);
+type AtomSignatureIndex = std::collections::BTreeMap<AtomSignature, Vec<usize>>;
+
 fn infer_atom_mapping(
     probe: &ParsedMolfile,
     reference: &ParsedMolfile,
+    reference_graph: &[u8],
+    reference_signatures: &AtomSignatureIndex,
 ) -> ComputeResult<Vec<AtomMapping>> {
     if probe.atoms.len() != reference.atoms.len() || probe.bonds.len() != reference.bonds.len() {
         return Err(ComputeCoordinatorError::Validation(
@@ -396,15 +412,13 @@ fn infer_atom_mapping(
     }
     let atom_count = probe.atoms.len();
     let probe_graph = bond_matrix(atom_count, &probe.bonds)?;
-    let reference_graph = bond_matrix(atom_count, &reference.bonds)?;
     let mut candidates = Vec::with_capacity(atom_count);
     for probe_atom in 0..atom_count {
         let signature = atom_signature(probe, &probe_graph, probe_atom);
-        let matches = (0..atom_count)
-            .filter(|&reference_atom| {
-                atom_signature(reference, &reference_graph, reference_atom) == signature
-            })
-            .collect::<Vec<_>>();
+        let matches = reference_signatures
+            .get(&signature)
+            .cloned()
+            .unwrap_or_default();
         if matches.is_empty() {
             return Err(ComputeCoordinatorError::Validation(
                 "Pose alignment could not match the element and bond environments".into(),
@@ -427,7 +441,7 @@ fn infer_atom_mapping(
         &search_order,
         &candidates,
         &probe_graph,
-        &reference_graph,
+        reference_graph,
         &mut assigned,
         &mut used,
     ) {
@@ -484,11 +498,18 @@ fn degree(graph: &[u8], atom: usize) -> usize {
         .count()
 }
 
-fn atom_signature(
-    molecule: &ParsedMolfile,
-    graph: &[u8],
-    atom: usize,
-) -> (String, i32, Vec<(String, u8)>) {
+fn atom_signature_index(molecule: &ParsedMolfile, graph: &[u8]) -> AtomSignatureIndex {
+    let mut signatures = std::collections::BTreeMap::new();
+    for atom in 0..molecule.atoms.len() {
+        signatures
+            .entry(atom_signature(molecule, graph, atom))
+            .or_insert_with(Vec::new)
+            .push(atom);
+    }
+    signatures
+}
+
+fn atom_signature(molecule: &ParsedMolfile, graph: &[u8], atom: usize) -> AtomSignature {
     let atom_count = molecule.atoms.len();
     let mut neighbors = (0..atom_count)
         .filter_map(|neighbor| {
@@ -558,6 +579,10 @@ fn parse_row(row: &GridAlignmentSourceRow) -> ComputeResult<ParsedMolfile> {
         ComputeCoordinatorError::Validation(format!("{} has no molfile coordinates", row.name))
     })?;
     parse_molfile(molblock)
+        .and_then(|parsed| {
+            parsed.validate_spatial_input()?;
+            Ok(parsed)
+        })
         .map_err(|message| ComputeCoordinatorError::Validation(format!("{}: {message}", row.name)))
 }
 
@@ -913,6 +938,7 @@ fn sdf_record(
 fn apply_grid_scores(
     database_path: &Path,
     run_id: Uuid,
+    snapshot: &MolecularSnapshotRef,
     rows: &[GridAlignmentSourceRow],
     scores: &[GridAlignmentScore],
     runtime: &MetalTanimotoRuntime,
@@ -921,10 +947,6 @@ fn apply_grid_scores(
     artifact_id: Uuid,
     artifact_manifest_sha256: &str,
 ) -> ComputeResult<()> {
-    let connection: Connection =
-        open_grid_database(database_path).map_err(ComputeCoordinatorError::Validation)?;
-    let identity = grid_identity::read_source_identity(&connection)
-        .map_err(ComputeCoordinatorError::Validation)?;
     let settings = serde_json::json!({
         "mapping": "deterministicElementBondGraph",
         "shapeGaussian": "alpha=2.4179878/r_vdw^2; amplitude=1",
@@ -934,13 +956,6 @@ fn apply_grid_scores(
     let settings_bytes = serde_json::to_vec(&settings)
         .map_err(|error| ComputeCoordinatorError::Protocol(error.to_string()))?;
     let normalized_settings_sha256 = sha256(&settings_bytes);
-    let snapshot_sha256 = sha256(
-        rows.iter()
-            .flat_map(|row| row.molecule_content_sha256.as_bytes())
-            .copied()
-            .collect::<Vec<_>>()
-            .as_slice(),
-    );
     let assignments = rows
         .iter()
         .zip(scores)
@@ -959,10 +974,10 @@ fn apply_grid_scores(
         database_path,
         &GridAlignmentAnalysisApplyInput {
             run_id,
-            document_fingerprint_sha256: identity.document_fingerprint_sha256,
-            source_revision: identity.source_revision,
-            snapshot_id: Uuid::new_v4(),
-            snapshot_sha256,
+            document_fingerprint_sha256: snapshot.frozen_source.document_fingerprint_sha256.clone(),
+            source_revision: snapshot.frozen_source.source_revision,
+            snapshot_id: snapshot.snapshot_id,
+            snapshot_sha256: snapshot.snapshot_sha256.clone(),
             normalized_settings_sha256,
             provenance: serde_json::json!({
                 "backend": "nativeMetal",
@@ -1025,6 +1040,18 @@ fn now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    fn map_atoms(
+        probe: &ParsedMolfile,
+        reference: &ParsedMolfile,
+    ) -> ComputeResult<Vec<AtomMapping>> {
+        let graph = bond_matrix(reference.atoms.len(), &reference.bonds)?;
+        infer_atom_mapping(
+            probe,
+            reference,
+            &graph,
+            &atom_signature_index(reference, &graph),
+        )
+    }
     use super::*;
 
     #[test]
@@ -1045,7 +1072,7 @@ mod tests {
             "methanol pose\n  Burette\n\n  3  2  0  0  0  0            999 V2000\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n  2  3  1  0  0  0  0\n  3  1  1  0  0  0  0\nM  END",
         )
         .expect("parse reordered pose");
-        let mapping = infer_atom_mapping(&reordered, &reference).expect("infer mapping");
+        let mapping = map_atoms(&reordered, &reference).expect("infer mapping");
         let pairs = mapping
             .iter()
             .map(|item| (item.probe_atom, item.reference_atom))
@@ -1063,7 +1090,7 @@ mod tests {
             "disconnected\n  Burette\n\n  3  1  0  0  0  0            999 V2000\n    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0\n    1.4000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    2.0000    0.7000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\nM  END",
         )
         .expect("parse disconnected");
-        assert!(infer_atom_mapping(&disconnected, &connected).is_err());
+        assert!(map_atoms(&disconnected, &connected).is_err());
     }
 
     #[test]

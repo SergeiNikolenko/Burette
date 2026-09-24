@@ -23,9 +23,10 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.2 5.6c2.3-2 6.6-2.4 10.2-.8 3.5 1.6 5.4 4.6 4.5 7.3-.8 2.5-3.7 4.2-7.3 4.2-1.5 0-3-.3-4.3-.9l-2.6 3.2c-.4.5-1.2.2-1.2-.4l.2-4.1C2.5 12 2.6 7.8 5.2 5.6Zm1.3 1.5c-1.8 1.5-1.7 4.4.2 5.8.2.1.3.4.3.7l-.1 1.8 1.6-1.9c.3-.3.7-.4 1-.2 1 .6 2 .9 3.1.9 2.8 0 4.9-1.2 5.4-2.7.5-1.6-.8-3.6-3.5-4.8-2.9-1.3-6.4-1.1-8 .4Z" fill="currentColor"/></svg>
             <span class="buret-tooltip" role="tooltip">Select all atoms inside the lasso</span>
           </button>
-          <button class="buret-button" type="button" data-buret-action="theme" aria-label="Switch to light theme" title="Switch to light theme">Light<span class="buret-tooltip" role="tooltip">Switch to light theme</span></button>
+          <button class="buret-button" type="button" data-buret-action="theme" aria-label="Theme: Auto (system)" title="Theme: Auto (system)"><span class="buret-tooltip" role="tooltip">Theme: Auto (system)</span></button>
           <button class="buret-button buret-save-modified hidden" type="button" data-buret-action="save-modified-structure" aria-label="Save modified structure" title="Save modified structure">Save<span class="buret-tooltip" role="tooltip">Save modified Mol* structure</span></button>
-          <button class="buret-button hidden" type="button" data-buret-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">Ketcher<span class="buret-tooltip" role="tooltip">Open this structure in Ketcher</span></button>
+          <button class="buret-button buret-mode-button hidden" type="button" data-buret-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher"><span data-buret-mode-icon="Edit" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Open this structure in Ketcher</span></button>
+          <button class="buret-button buret-xyzrender-inspector" type="button" data-buret-action="xyzrender-inspector" aria-label="Open xyzrender inspector">Appearance</button>
           <div class="buret-xyzrender-preset-slot" data-buret-xyzrender-preset-slot>
             <select class="buret-select" data-buret-xyzrender-preset aria-label="External xyzrender preset" title="External xyzrender preset"></select>
             <span class="buret-tooltip" role="tooltip">Choose xyzrender preset</span>
@@ -34,11 +35,11 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H4v2h6V5Zm10 0h-6v2h6V5ZM14 11H4v2h10v-2Zm6 0h-2v2h2v-2ZM8 17H4v2h4v-2Zm12 0h-8v2h8v-2Z" fill="currentColor"/></svg>
             <span class="buret-tooltip" role="tooltip">Open xyzrender controls</span>
           </button>
-          <button class="buret-button hidden" type="button" data-buret-action="sdf-grid" aria-label="Show SDF grid" title="Show SDF grid">Grid<span class="buret-tooltip" role="tooltip">Return to the SDF grid</span></button>
+          <button class="buret-button buret-mode-button hidden" type="button" data-buret-action="sdf-grid" aria-label="Show SDF grid" title="Show SDF grid"><span data-buret-mode-icon="Grid" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Return to the SDF grid</span></button>
           <button class="buret-button buret-pose-toggle hidden" type="button" data-buret-action="sdf-poses" aria-label="Show all SDF poses together" aria-pressed="false" title="Show all SDF poses together">All<span class="buret-tooltip" role="tooltip">Show all SDF poses together</span></button>
           <div class="buret-renderer-control" data-buret-renderer-control>
-            <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive">Mol*<span class="buret-tooltip" role="tooltip">Use interactive Mol* viewer</span></button>
-            <button class="buret-button buret-renderer-choice" type="button" data-buret-renderer="xyzrender-external" aria-label="Use external xyzrender" title="Use external xyzrender">xyzr<span class="buret-tooltip" role="tooltip">Use external xyzrender SVG</span></button>
+            <button class="buret-button buret-mode-button buret-renderer-choice" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive"><span data-buret-mode-icon="Cube" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Use interactive Mol* viewer</span></button>
+            <button class="buret-button buret-mode-button buret-renderer-choice" type="button" data-buret-renderer="xyzrender-external" aria-label="Use external xyzrender" title="Use external xyzrender"><span data-buret-mode-icon="Camera" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Use external xyzrender SVG</span></button>
           </div>
         </div>
         <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Collapse controls" aria-expanded="true" title="Collapse controls">

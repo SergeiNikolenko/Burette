@@ -1,6 +1,6 @@
+import { useDeepLinks } from "./use-deep-links";
 import { useAgentSession } from "./use-agent-session";
 import { useAppClipboard } from "./use-app-clipboard";
-import { useAppOpenDropMergeCollections } from "./use-app-open-drop-merge-collections";
 import { useOpenDrop } from "./use-open-drop";
 import { useOpenEvents } from "./use-open-events";
 import type { DockArea, DockDropInput } from "../lib/dock";
@@ -24,7 +24,7 @@ type OpenDockingStructureRecords = (
   ligandPaths: string[],
   records: StructureDragRecord[],
 ) => void | Promise<void>;
-type OpenStructureRecords = (records: StructureDragRecord[]) => void | Promise<void>;
+type OpenStructureRecords = (records: StructureDragRecord[], directory?: string) => void | Promise<void>;
 type OpenKetcherWithStructures = (
   paths: string[],
   fragments?: Array<{ title: string; text: string }>,
@@ -44,7 +44,7 @@ type UseAppOpenDropControllerOptions = {
   tabActions: AgentTabActions;
   openKetcherTab: () => void | Promise<void>;
   addProjectRoots: (paths: string[]) => void;
-  addXyzrenderSheetItems: (payload: StructureDragPayload) => boolean;
+  addXyzrenderSheetItems: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
   appendGridRecords: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
   chooseDropAction: ChooseDropAction;
   documents: ViewerDocument[];
@@ -56,6 +56,7 @@ type UseAppOpenDropControllerOptions = {
   openFepSetupWorkspace: OpenFepSetupWorkspace;
   openKetcherWithStructures: OpenKetcherWithStructures;
   openPaths: OpenPaths;
+  fetchPdbStructure: (id: string) => Promise<void>;
   openStructureRecords: OpenStructureRecords;
   openTextDocuments: OpenTextDocuments;
   pushErrorStatus: PushErrorStatus;
@@ -83,6 +84,7 @@ export function useAppOpenDropController({
   openFepSetupWorkspace,
   openKetcherWithStructures,
   openPaths,
+  fetchPdbStructure,
   openStructureRecords,
   openTextDocuments,
   pushErrorStatus,
@@ -90,11 +92,7 @@ export function useAppOpenDropController({
   setDockDocument,
 }: UseAppOpenDropControllerOptions) {
   useOpenEvents(openPaths, pushErrorStatus);
-  const mergeDroppedMoleculeCollections = useAppOpenDropMergeCollections({
-    activeDocument,
-    mergeMoleculeCollections,
-  });
-  useAgentSession({
+  const activateSession = useAgentSession({
     activeDocument,
     activeTabId,
     activeTabKind,
@@ -108,6 +106,7 @@ export function useAppOpenDropController({
     pushErrorStatus,
     setDockDocument,
   });
+  useDeepLinks({ openPaths, fetchPdbStructure, activateSession, pushErrorStatus });
   const {
     dropActive,
     dropPreview,
@@ -135,7 +134,7 @@ export function useAppOpenDropController({
     addXyzrenderSheetItems,
     addProjectRoots,
     chooseDropAction,
-    mergeMoleculeCollections: mergeDroppedMoleculeCollections,
+    mergeMoleculeCollections,
   });
   const { openClipboard } = useAppClipboard({ openClipboardText, pushErrorStatus, pushStatus });
 

@@ -1,3 +1,8 @@
+import { useProjectOrganization } from "./project-organization";
+import { Plus } from "../ui/app-icons";
+import { SshProjectDialog } from "../ssh/ssh-project-dialog";
+import { SshProjects } from "../ssh/ssh-projects";
+import { useSshProjects } from "../../lib/ssh-projects";
 import { sidebarCreationItems } from "./context-actions";
 import { showNativeContextMenu } from "../native-context-menu";
 import { SidebarTooltip } from "./sidebar-tooltip";
@@ -75,13 +80,16 @@ export function FileBrowser({
   state: ShellViewState;
   actions: ShellActions;
 }) {
+  const [sshDialogOpen, setSshDialogOpen] = useState(false);
+  const sshProjects = useSshProjects();
+  const organization = useProjectOrganization();
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [ketcherDropActive, setKetcherDropActive] = useState(false);
   useDropHighlightReset(setKetcherDropActive);
   const hideProjectPreviews = state.buildInfo.isAgentShell && !state.workspacePath;
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
-  const visibleProjects = hideProjectPreviews ? [] : filterSidebarProjects(state.sidebarProjects, state.sidebarQuery);
+  const visibleProjects = hideProjectPreviews ? [] : filterSidebarProjects(state.sidebarProjects, state.sidebarQuery).sort((a, b) => organization.sort === "priority" ? Number(b.isPinned) - Number(a.isPinned) : organization.sort === "recent" ? Math.max(0, ...b.items.map(i => i.openedAt ?? 0)) - Math.max(0, ...a.items.map(i => i.openedAt ?? 0)) : 0);
   const pinnedItems = visibleProjects.flatMap((project) => project.items.filter((item) => item.isPinned));
   const pinnedExpanded = pinnedOpen || hasSidebarQuery;
   const projectsExpanded = state.projectsOpen || hasSidebarQuery;
@@ -220,9 +228,10 @@ export function FileBrowser({
               <ChevronIcon />
             </span>
           </button>
+
           <button
             type="button"
-            className="sidebar-section-menu-button"
+            className="sidebar-section-menu-button sidebar-expand-projects"
             aria-label={allVisibleProjectsExpanded ? "Collapse all project folders" : "Expand all project folders"}
             onClick={toggleAllProjectFolders}
           >
@@ -230,6 +239,8 @@ export function FileBrowser({
           </button>
           <NativeDropdownMenu
             items={[
+              ...organization.items,
+              { kind: "separator" },
               {
                 kind: "item",
                 id: "add-project-folder",
@@ -239,6 +250,17 @@ export function FileBrowser({
                 },
               },
               { kind: "separator" },
+              {
+                kind: "item",
+                id: "hide-all-files",
+                text: "Hide All Files",
+                disabled: state.sidebarProjects.length === 0,
+                action: () => {
+                  for (const project of state.sidebarProjects) {
+                    if (project.rootPath) actions.removeProjectRoot(project.rootPath);
+                  }
+                },
+              },
               {
                 kind: "item",
                 id: "close-all-tabs",
@@ -256,14 +278,16 @@ export function FileBrowser({
               </button>
             )}
           />
+          <button type="button" className="sidebar-section-menu-button sidebar-add-project" aria-label="Add project" onClick={() => setSshDialogOpen(true)}><Plus size={16} /></button>
         </div>
         {projectsExpanded && (
-          visibleProjects.length === 0 ? (
+          visibleProjects.length === 0 && sshProjects.length === 0 ? (
             <div className="empty-sidebar">
               {hasSidebarQuery ? "No matching projects or structures" : "No project structures yet"}
             </div>
           ) : (
             <div className="project-tree" role="tree" id="sidebar-projects-tree" onKeyDown={handleSidebarTreeKeyDown}>
+              {organization.organization === "connection" && visibleProjects.length > 0 && <div className="ssh-project-section-title">This computer</div>}
               {visibleProjects.map((project) => (
                 <ProjectGroup
                   key={project.id}
@@ -273,11 +297,13 @@ export function FileBrowser({
                   expandFoldersByDefault={isWebDemoWorkspace() && project.rootPath === webDemoProjectRoot()}
                 />
               ))}
+              <SshProjects onOpen={actions.openPaths} query={sidebarQuery} organization={organization.organization} sort={organization.sort} />
             </div>
           )
         )}
       </section>
       )}
+      {sshDialogOpen && <SshProjectDialog open onOpenChange={setSshDialogOpen} onLocal={actions.chooseWorkspace} />}
     </ScrollFade>
   );
 }

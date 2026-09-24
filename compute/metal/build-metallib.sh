@@ -319,6 +319,11 @@ SDK_VERSION="$sdk_version" \
 SDK_BUILD_VERSION="$sdk_build_version" \
   bun "$metadata_writer" "$metadata_file"
 
+# The module cache is only an input to the compiler while this generation is
+# being built. It is not loaded by the packaged Metal runtime and should not
+# consume space in every Burette.app bundle.
+rm -rf "$module_cache_dir"
+
 generation_name="$(basename "$stage_dir")"
 metadata_sha256="$(sha256 "$metadata_file")"
 pointer_stage="$(mktemp "$output_dir/.current.XXXXXX")"

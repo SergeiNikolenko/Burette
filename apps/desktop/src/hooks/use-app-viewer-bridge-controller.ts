@@ -114,6 +114,7 @@ type UseAppViewerBridgeControllerOptions = {
   openKetcherWithStructures: OpenKetcherWithStructures;
   openCommandPalette: () => void;
   openDockTab: (area: "right", kind: DockTabKind) => void;
+  toggleDockTab: (area: "right", kind: DockTabKind) => void;
   openPoseReviewWorkspace: OpenPoseReviewWorkspace;
   pendingMolstarReplaceRef: RefValue<Map<string, PendingMolstarReplaceResolver>>;
   pendingViewerReloadDocumentIdRef: RefValue<string | null>;
@@ -161,6 +162,7 @@ export function useAppViewerBridgeController({
   openKetcherWithStructures,
   openCommandPalette,
   openDockTab,
+  toggleDockTab,
   openPoseReviewWorkspace,
   pendingMolstarReplaceRef,
   pendingViewerReloadDocumentIdRef,
@@ -216,7 +218,7 @@ export function useAppViewerBridgeController({
   });
   const { handleGridConformerMessage } = useAppGridConformerMessages({
     openDocuments,
-    openDocumentsInActiveTab,
+    addDocuments,
     openTextDocuments,
     postMessageToViewerSource,
     preferences,
@@ -263,6 +265,7 @@ export function useAppViewerBridgeController({
   });
   const { handlePubChemSearchMessage } = useAppPubChemMessages({ pushStatus });
   const { handleViewerFileMessage } = useAppViewerFileActions({
+    postMessageToViewerSource,
     pushErrorStatus,
     pushStatus,
   });
@@ -293,11 +296,13 @@ export function useAppViewerBridgeController({
     postMessageToViewerSource,
   });
   const { handleViewerStateMessage } = useAppViewerStateMessages({
+    updateDirtyGridDocument,
     activeDocument,
     addDocuments,
     documents,
     openCommandPalette,
     openDockTab,
+  toggleDockTab,
     setPreference,
     setViewerLigandSelections,
     setStructureOverlayModes,
@@ -313,6 +318,7 @@ export function useAppViewerBridgeController({
   });
   const { handleSdfViewerMessage } = useAppSdfViewerMessages({
     activeDocument,
+    addDocuments,
     documents,
     openBrowserDevTextDocument,
     openDockingDocument,

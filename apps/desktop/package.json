@@ -7,7 +7,7 @@
     "build": "../../node_modules/.bin/vite build --config vite.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "dev:tauri": "bunx --bun tauri dev",
-    "build:tauri": "bun run build && node ../../node_modules/@tauri-apps/cli/tauri.js build",
+    "build:tauri": "node ../../scripts/stage-native-widget.mjs && bun run build && node ../../node_modules/@tauri-apps/cli/tauri.js build",
     "tauri": "bunx --bun tauri"
   },
   "dependencies": {
@@ -26,6 +26,8 @@
     "docx-preview": "^0.3.7",
     "dompurify": "^3.3.3",
     "eve-raphael": "0.5.0",
+    "gifenc": "^1.0.3",
+    "gifuct-js": "^2.1.2",
     "hast-util-to-jsx-runtime": "^2.3.6",
     "katex": "^0.18.4",
     "ketcher-core": "3.15.0",

@@ -374,10 +374,12 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
             </button>
           ) : null}
         </div>
-        {(!compositionSummary || compositionPending || compositionError) ? (
+        {document.renderer !== "grid2d" && (!compositionSummary || compositionPending || compositionError) ? (
           <p>{inspectorSummaryLine(brief.kind, compositionSummary, compositionPending, compositionError)}</p>
         ) : null}
-        <InspectorHeaderStats document={document} summary={compositionSummary} pending={compositionPending} />
+        {document.renderer !== "grid2d" ? (
+          <InspectorHeaderStats document={document} summary={compositionSummary} pending={compositionPending} />
+        ) : null}
       </section>
 
       {document.renderer === "grid2d" ? (
@@ -586,7 +588,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         </>
       ) : null}
 
-      <StructureDetailsSection
+      {document.renderer !== "grid2d" ? <StructureDetailsSection
         dockDrops={dockDrops}
         xtbArtifact={structureXtbArtifact}
         brief={brief}
@@ -596,7 +598,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         document={document}
         hostedMcpWidget={hostedMcpWidget}
         actions={actions}
-      />
+      /> : null}
     </div>
   );
 }
@@ -1017,9 +1019,6 @@ function TrajectorySmoothingCard({
         </ToggleGroup>
       </div>
       <AccordionContent className="h-auto grid gap-3">
-          {built ? null : (
-            <p className="trajectory-smoothing-intro">Smooths playback without changing the original trajectory or analysis data.</p>
-          )}
           <ToggleGroup type="single" variant="outline" size="sm" spacing={0} className="w-full" aria-label="Smoothing strength" value={preset} disabled={mode === "kinetic"} onValueChange={(value) => {
             if (value === "light" || value === "balanced" || value === "strong") selectPreset(value);
           }}>
@@ -1034,9 +1033,6 @@ function TrajectorySmoothingCard({
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
-          <div className="trajectory-smoothing-strength-copy">
-            {mode === "kinetic" ? `${kineticStates} MSM/PCCA+ macrostates` : <>{frameCount} source frames <span aria-hidden="true">→</span> <strong>{targetFrames}</strong> played back</>}
-          </div>
           <Accordion type="single" collapsible value={advanced ? "science" : ""} onValueChange={(value) => setAdvanced(Boolean(value))}>
             <AccordionItem value="science">
             <AccordionTrigger>Scientific settings</AccordionTrigger>
@@ -4035,10 +4031,18 @@ function StructureActionRow({
   const showContextMenu = (event: MouseEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    if (hideAction?.type === "hide_components" && hideAction.query && hideAction.kind) {
+      actions.runStructureViewerAction(document, {
+        type: "open_components_menu", label: row.label, componentLabel: row.label,
+        query: hideAction.query, kind: hideAction.kind,
+        x: event.clientX, y: event.clientY, notify: false,
+      });
+      return;
+    }
     void showNativeContextMenu(contextMenuItems({
       row,
       document,
-          primaryAction,
+      primaryAction,
       secondaryAction,
       selected,
       hidden: hidden === true,
@@ -4048,7 +4052,7 @@ function StructureActionRow({
         actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear selection" });
         setActiveActionKey(null);
       },
-    }), { x: event.clientX, y: event.clientY });
+    }), { x: event.clientX, y: event.clientY }, { forceWeb: true });
   };
 
   if (secondaryAction) {

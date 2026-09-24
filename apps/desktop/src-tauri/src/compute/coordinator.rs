@@ -346,6 +346,7 @@ impl ComputeCoordinator {
         owner: &str,
         request: &GridSemiempiricalRequest,
         source_lease: GridSnapshotLease,
+        on_progress: &dyn Fn(super::analysis_control::AnalysisProgress),
     ) -> ComputeResult<GridSemiempiricalResult> {
         validate_owner_window_label(owner)?;
         if request.document_id.trim().is_empty()
@@ -357,8 +358,21 @@ impl ComputeCoordinator {
             ));
         }
         let durable_request = durable_semiempirical_request(request)?;
+        let report_directory =
+            super::analysis_control::AnalysisControl::prepare(&self.ready()?.store)?;
         let queued = self.submit_analysis_v1(owner, durable_request.into(), &source_lease)?;
-        self.execute_semiempirical_v1(owner, request, source_lease, queued)
+        let control = super::analysis_control::AnalysisControl::new(
+            &self.ready()?.store,
+            owner,
+            &queued,
+            report_directory,
+            request.source_indexes.len(),
+            on_progress,
+        );
+        control.checkpoint(0, None)?;
+        self.execute_semiempirical_v1(owner, request, source_lease, queued, &|count, row| {
+            control.checkpoint(count, row)
+        })
     }
 
     pub(crate) fn align_grid_poses(
@@ -366,6 +380,7 @@ impl ComputeCoordinator {
         owner: &str,
         request: &GridAlignmentRequest,
         source_lease: GridSnapshotLease,
+        on_progress: &dyn Fn(super::analysis_control::AnalysisProgress),
     ) -> ComputeResult<GridAlignmentResult> {
         validate_owner_window_label(owner)?;
         if request.document_id.trim().is_empty()
@@ -377,8 +392,21 @@ impl ComputeCoordinator {
             ));
         }
         let durable_request = durable_alignment_request(request)?;
+        let report_directory =
+            super::analysis_control::AnalysisControl::prepare(&self.ready()?.store)?;
         let queued = self.submit_analysis_v1(owner, durable_request.into(), &source_lease)?;
-        self.execute_alignment_v1(owner, request, source_lease, queued)
+        let control = super::analysis_control::AnalysisControl::new(
+            &self.ready()?.store,
+            owner,
+            &queued,
+            report_directory,
+            request.source_indexes.len(),
+            on_progress,
+        );
+        control.checkpoint(0, None)?;
+        self.execute_alignment_v1(owner, request, source_lease, queued, &|count, row| {
+            control.checkpoint(count, row)
+        })
     }
 
     fn submit_analysis_v1(
@@ -438,6 +466,7 @@ impl ComputeCoordinator {
         request: &GridSemiempiricalRequest,
         source_lease: GridSnapshotLease,
         queued: JobSnapshot,
+        checkpoint: super::analysis_control::AnalysisCheckpoint<'_>,
     ) -> ComputeResult<GridSemiempiricalResult> {
         let ready = self.ready()?;
         let freeze_running = start_stage(
@@ -483,6 +512,9 @@ impl ComputeCoordinator {
             .and_then(|snapshot| load_analysis_source_rows(&snapshot))
         {
             Ok(rows) => rows,
+            Err(ComputeCoordinatorError::Cancelled) => {
+                return Err(ComputeCoordinatorError::Cancelled)
+            }
             Err(error) => {
                 persist_failed_stage(
                     &ready.store,
@@ -549,13 +581,17 @@ impl ComputeCoordinator {
             } else {
                 None
             },
-            source_rows,
+            source_rows.clone(),
             request,
             queued.job_id,
+            checkpoint,
         );
         let host_time_ms = numeric_started.elapsed().as_secs_f64() * 1_000.0;
         let mut result = match result {
             Ok(result) => result,
+            Err(ComputeCoordinatorError::Cancelled) => {
+                return Err(ComputeCoordinatorError::Cancelled)
+            }
             Err(error) => {
                 persist_failed_stage(
                     &ready.store,
@@ -687,6 +723,8 @@ impl ComputeCoordinator {
         result.report_path = Some(publication.report_path.clone());
         match apply_grid_semiempirical_result(
             source_lease.database_path_for_freeze(),
+            &queued.frozen_source,
+            &source_rows,
             &result,
             publication.artifact_id,
             &publication.artifact_manifest_sha256,
@@ -703,6 +741,7 @@ impl ComputeCoordinator {
         request: &GridAlignmentRequest,
         source_lease: GridSnapshotLease,
         queued: JobSnapshot,
+        checkpoint: super::analysis_control::AnalysisCheckpoint<'_>,
     ) -> ComputeResult<GridAlignmentResult> {
         let ready = self.ready()?;
         let freeze_running = start_stage(
@@ -748,6 +787,9 @@ impl ComputeCoordinator {
             .and_then(|snapshot| load_analysis_source_rows(&snapshot))
         {
             Ok(rows) => rows,
+            Err(ComputeCoordinatorError::Cancelled) => {
+                return Err(ComputeCoordinatorError::Cancelled)
+            }
             Err(error) => {
                 persist_failed_stage(
                     &ready.store,
@@ -801,13 +843,17 @@ impl ComputeCoordinator {
         let result = execute_snapshot_alignment_with_run_id(
             runtime,
             ready.compute_service.as_ref(),
-            source_rows,
+            source_rows.clone(),
             request,
             queued.job_id,
+            checkpoint,
         );
         let host_time_ms = numeric_started.elapsed().as_secs_f64() * 1_000.0;
         let mut result = match result {
             Ok(result) => result,
+            Err(ComputeCoordinatorError::Cancelled) => {
+                return Err(ComputeCoordinatorError::Cancelled)
+            }
             Err(error) => {
                 persist_failed_stage(
                     &ready.store,
@@ -867,6 +913,8 @@ impl ComputeCoordinator {
         result.report_path = Some(publication.report_path.clone());
         match apply_grid_alignment_result(
             source_lease.database_path_for_freeze(),
+            &queued.frozen_source,
+            &source_rows,
             &result,
             runtime,
             publication.artifact_id,

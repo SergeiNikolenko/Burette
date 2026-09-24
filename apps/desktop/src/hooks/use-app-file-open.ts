@@ -1,4 +1,5 @@
 import { useCallback } from "react";
+import { saveStructureRecordsInFolder } from "./save-structure-records";
 import { useMoleculeStore } from "../stores/molecule-store";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -415,13 +416,14 @@ export function useAppFileOpen({
     }
 
     if (structurePaths.length > 0) {
-      const result = await openDocuments(structurePaths);
+      // Normal file opening follows format support; Open As passes an explicit renderer.
+      const result = await openDocuments(structurePaths, undefined, { rendererMode: "auto" });
       preferredStructureDocumentId = result?.documents[0]?.id ?? preferredStructureDocumentId;
     }
 
     const openedStructureAndTextPaths = new Set<string>();
     if (structureAndTextPaths.length > 0) {
-      const result = await openDocuments(structureAndTextPaths, undefined, undefined, { deferErrorStatus: true });
+      const result = await openDocuments(structureAndTextPaths, undefined, { rendererMode: "auto" }, { deferErrorStatus: true });
       const openedDocuments = result?.documents ?? [];
       for (const document of openedDocuments) {
         if (document.renderer === NOT_RENDERABLE_RENDERER) {
@@ -485,7 +487,17 @@ export function useAppFileOpen({
     return { opened, errors };
   }, [preferences]);
 
-  const openStructureRecords = useCallback(async (records: StructureDragRecord[]) => {
+  const openStructureRecords = useCallback(async (records: StructureDragRecord[], directory?: string) => {
+    if (directory) {
+      try {
+        const { paths, errors } = await saveStructureRecordsInFolder(records, directory);
+        window.dispatchEvent(new Event("burette-folder-contents-changed"));
+        if (paths.length) await openDocuments(paths);
+        const message = `Saved ${paths.length} molecule file${paths.length === 1 ? "" : "s"} in ${directory}`;
+        pushStatus(errors.length ? `${message}. ${summarizeErrors(errors)}` : message, errors.length ? "error" : "success", errors);
+      } catch (error) { pushErrorStatus(error, "Could not save dropped molecules"); }
+      return;
+    }
     pushStatus("Opening pasted structures...");
     const { opened, errors } = await openStructureRecordDocuments(records);
     if (opened.length === 0 && errors.length === 0) return;
@@ -499,7 +511,7 @@ export function useAppFileOpen({
       return;
     }
     pushStatus(openedText);
-  }, [addDocuments, openStructureRecordDocuments, pushStatus, rememberRecentStructures]);
+  }, [addDocuments, openDocuments, openStructureRecordDocuments, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   const openStructureUrlInMolstar = useCallback(async (url: string) => {
     try {

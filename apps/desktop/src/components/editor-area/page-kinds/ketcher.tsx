@@ -32,9 +32,11 @@ export type KetcherLocation = {
   importRequest?: KetcherLocationImportRequest;
 };
 
-const KetcherPage = lazy(() => import("../../ketcher-page").then((module) => ({
-  default: module.KetcherPage,
-})));
+const KetcherPage = lazy(() => {
+  // Load the editor alongside the page, without delaying the shell or its error UI.
+  void import("../../ketcher-editor").then((module) => module.loadKetcherRuntime()).catch(() => {});
+  return import("../../ketcher-page").then((module) => ({ default: module.KetcherPage }));
+});
 
 export const ketcherKind = definePageKind<"ketcher", KetcherLocation>({
   kind: "ketcher",

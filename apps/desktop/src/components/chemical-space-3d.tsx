@@ -14,6 +14,11 @@ import {
 } from "../lib/chemical-space-3d-lod";
 import { simplifyLassoPolygon } from "../lib/chemical-space-lasso";
 
+import { useChemicalSpaceSetting } from "../hooks/use-chemical-space-setting";
+import { ChemicalSpaceViewControls } from "./chemical-space-view-controls";
+
+type CameraPose = { position: number[]; target: number[] };
+
 type Point2 = { x: number; y: number };
 type ProjectedPoint = Point2 & { sourceRecordId: number; depth: number };
 type MoleculePreview = {
@@ -24,6 +29,7 @@ type MoleculePreview = {
 };
 
 type ChemicalSpace3DProps = {
+  documentKey: string;
   positions: Array<[number, number, number]>;
   treeEdges: Array<[number, number]>;
   sourceRecordIds: number[];
@@ -43,6 +49,8 @@ type ChemicalSpace3DProps = {
 };
 
 type ThreeRuntime = {
+  fit: (selectionOnly: boolean) => void;
+  restorePose: (pose: CameraPose) => void;
   updatePositions: (positions: Array<[number, number, number]>) => void;
   updateHovered: (sourceRecordId: number | null) => void;
   updateSelected: (sourceRecordIds: Set<number>) => void;
@@ -68,6 +76,7 @@ const PROJECTED_HOVER_CELL_SIZE = 8;
 const MAX_PROJECTED_POINTS_PER_CELL = 8;
 
 export function ChemicalSpace3D({
+  documentKey,
   positions,
   treeEdges,
   sourceRecordIds,
@@ -94,7 +103,9 @@ export function ChemicalSpace3D({
   const onHoverRef = useRef(onHover);
   const onSelectRef = useRef(onSelect);
   const previewRef = useRef(preview);
-  const cameraPoseRef = useRef<{ position: number[]; target: number[] } | null>(null);
+  const [savedPose, setSavedPose] = useChemicalSpaceSetting<CameraPose | null>(documentKey, "camera3d", null);
+  const cameraPoseRef = useRef(savedPose);
+  cameraPoseRef.current = savedPose;
   const positionsRef = useRef(positions);
   const selectedRef = useRef(selected);
   const hoveredRef = useRef(hovered);
@@ -156,6 +167,7 @@ export function ChemicalSpace3D({
     const foregroundColor = semanticColor(host, "text-foreground", "#f5f5f7");
     const pointColor = semanticColor(host, "text-foreground", "#f5f5f7");
     const pointTexture = circleTexture();
+    const selectionTexture = circleTexture(true);
     const densityScale = adaptivePointScale(sourceRecordIds.length);
     const pointOpacity = adaptivePointOpacity(sourceRecordIds.length);
     let displayedIndices = representativePointIndices(
@@ -230,9 +242,21 @@ export function ChemicalSpace3D({
     }));
     scene.add(points);
 
-    const selectedPoints = overlayPoints(primaryColor, pointTexture, BASE_POINT_SIZE * pointScale * densityScale);
-    const hoveredPoints = overlayPoints(primaryColor, pointTexture, BASE_POINT_SIZE * pointScale * densityScale);
-    scene.add(selectedPoints, hoveredPoints);
+    const selectedPoints = overlayPoints(foregroundColor, selectionTexture, BASE_POINT_SIZE * pointScale * densityScale * 1.8);
+    // Hover follows the same perspective and density scaling as the cloud.
+    // Brightness and a halo distinguish it without a fixed screen-space size.
+    const hoverHalo = overlayPoints(primaryColor, pointTexture, BASE_POINT_SIZE * pointScale * densityScale * 2.6);
+    const hoveredPoints = overlayPoints(foregroundColor, pointTexture, BASE_POINT_SIZE * pointScale * densityScale * 1.6);
+    for (const marker of [hoverHalo, hoveredPoints]) {
+      marker.material.sizeAttenuation = true;
+      marker.material.depthTest = false;
+      marker.material.depthWrite = false;
+      marker.material.toneMapped = false;
+    }
+    hoverHalo.material.opacity = 0.4;
+    hoverHalo.renderOrder = 10;
+    hoveredPoints.renderOrder = 11;
+    scene.add(selectedPoints, hoverHalo, hoveredPoints);
 
     const grid = new THREE.GridHelper(2.5, 10, primaryColor, foregroundColor);
     grid.position.y = -1.08;
@@ -295,7 +319,15 @@ export function ChemicalSpace3D({
       }
       projectedBuckets = nextBuckets;
     };
+    const savePose = () => {
+      const next = { position: camera.position.toArray(), target: controls.target.toArray() };
+      setSavedPose((previous) => previous
+        && previous.position.every((v, i) => Math.abs(v - next.position[i]) < 1e-9)
+        && previous.target.every((v, i) => Math.abs(v - next.target[i]) < 1e-9)
+        ? previous : next);
+    };
     const renderView = () => {
+      savePose();
       draw();
       rebuildProjectedIndex();
     };
@@ -368,6 +400,7 @@ export function ChemicalSpace3D({
     const updateHovered = (sourceRecordId: number | null, shouldRender = true) => {
       const index = sourceRecordId === null ? undefined : indexById.get(sourceRecordId);
       updateOverlayGeometry(hoveredPoints.geometry, index === undefined ? [] : [index], positionsRef.current);
+      updateOverlayGeometry(hoverHalo.geometry, index === undefined ? [] : [index], positionsRef.current);
       if (shouldRender) draw();
     };
     const updatePositions = (nextPositions: Array<[number, number, number]>) => {
@@ -392,8 +425,9 @@ export function ChemicalSpace3D({
     };
     const updatePointScale = (nextPointScale: number) => {
       points.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
-      selectedPoints.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
-      hoveredPoints.material.size = BASE_POINT_SIZE * nextPointScale * densityScale;
+      selectedPoints.material.size = BASE_POINT_SIZE * nextPointScale * densityScale * 1.8;
+      hoveredPoints.material.size = BASE_POINT_SIZE * nextPointScale * densityScale * 1.6;
+      hoverHalo.material.size = BASE_POINT_SIZE * nextPointScale * densityScale * 2.6;
       draw();
     };
     const updateTreeLineScale = (nextTreeLineScale: number) => {
@@ -574,6 +608,36 @@ export function ChemicalSpace3D({
     resizeObserver.observe(host);
 
     runtimeRef.current = {
+      restorePose: (pose) => {
+        camera.position.fromArray(pose.position);
+        controls.target.fromArray(pose.target);
+        const distance = camera.position.distanceTo(controls.target);
+        controls.maxDistance = Math.max(12, distance * 2);
+        camera.far = Math.max(100, distance * 4);
+        camera.updateProjectionMatrix();
+        controls.update();
+        scheduleViewRender();
+      },
+      fit: (selectionOnly) => {
+        const box = new THREE.Box3();
+        for (let i = 0; i < positionsRef.current.length; i++) {
+          if (selectionOnly && !selectedRef.current.has(sourceRecordIds[i])) continue;
+          box.expandByPoint(new THREE.Vector3(...positionsRef.current[i]));
+        }
+        if (box.isEmpty()) return;
+        const sphere = box.getBoundingSphere(new THREE.Sphere());
+        const halfFov = Math.min(camera.fov * Math.PI / 360,
+          Math.atan(Math.tan(camera.fov * Math.PI / 360) * camera.aspect));
+        const distance = Math.max(controls.minDistance, sphere.radius * 1.15 / Math.sin(halfFov));
+        controls.maxDistance = Math.max(12, distance * 2);
+        const direction = camera.position.clone().sub(controls.target).normalize();
+        controls.target.copy(sphere.center);
+        camera.position.copy(sphere.center).addScaledVector(direction, distance);
+        camera.far = Math.max(100, distance * 4);
+        camera.updateProjectionMatrix();
+        controls.update();
+        scheduleViewRender();
+      },
       updatePositions,
       updateHovered,
       updateSelected,
@@ -623,6 +687,8 @@ export function ChemicalSpace3D({
       cliffMaterial.dispose();
       selectedPoints.geometry.dispose();
       selectedPoints.material.dispose();
+      hoverHalo.geometry.dispose();
+      hoverHalo.material.dispose();
       hoveredPoints.geometry.dispose();
       hoveredPoints.material.dispose();
       grid.geometry.dispose();
@@ -630,10 +696,13 @@ export function ChemicalSpace3D({
       axes.geometry.dispose();
       disposeMaterial(axes.material);
       pointTexture.dispose();
+      selectionTexture.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [methodLabel, sourceRecordIds, treeEdges]);
+  }, [documentKey, methodLabel, sourceRecordIds, treeEdges, setSavedPose]);
+
+  useEffect(() => { if (savedPose) runtimeRef.current?.restorePose(savedPose); }, [savedPose]);
 
   useEffect(() => runtimeRef.current?.updatePositions(positions), [positions]);
   useEffect(() => runtimeRef.current?.updateSelected(selected), [selected]);
@@ -644,6 +713,17 @@ export function ChemicalSpace3D({
   useEffect(() => runtimeRef.current?.updateClusters(clusterIds), [clusterIds]);
   useEffect(() => runtimeRef.current?.updateClusters(clusterIdsRef.current), [pointColors]);
   useEffect(() => runtimeRef.current?.updateCliffs(cliffEdges), [cliffEdges]);
+
+  useEffect(() => {
+    if (tool === "lasso") return;
+    lassoSelectionGenerationRef.current += 1;
+    runtimeRef.current?.cancelSelection();
+    lassoRef.current = [];
+    if (lassoPaintFrameRef.current) cancelAnimationFrame(lassoPaintFrameRef.current);
+    lassoPaintFrameRef.current = 0;
+    setLasso([]);
+    setSelecting(false);
+  }, [tool]);
 
   useEffect(() => {
     const canvas = lassoCanvasRef.current;
@@ -660,21 +740,32 @@ export function ChemicalSpace3D({
     context.beginPath();
     context.moveTo(lasso[0].x, lasso[0].y);
     for (const point of lasso.slice(1)) context.lineTo(point.x, point.y);
-    context.strokeStyle = getComputedStyle(canvas).getPropertyValue("--primary").trim() || "#af52de";
-    context.lineWidth = 1.5;
+    // Two contrasting strokes remain visible over both themes and coloured points.
+    context.strokeStyle = "#171717";
+    context.lineWidth = 3.5;
+    context.stroke();
+    context.strokeStyle = "#ffffff";
+    context.lineWidth = 1.75;
     context.setLineDash([5, 4]);
     context.stroke();
   }, [lasso]);
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-muted/20">
+      <ChemicalSpaceViewControls
+        hasSelection={sourceRecordIds.some((id) => selected.has(id))}
+        onFitAll={() => runtimeRef.current?.fit(false)}
+        onFitSelection={() => runtimeRef.current?.fit(true)}
+      />
       <div ref={hostRef} className="absolute inset-0" />
       <canvas
         ref={lassoCanvasRef}
+        tabIndex={tool === "lasso" ? 0 : -1}
         className={tool === "lasso" ? "absolute inset-0 size-full touch-none cursor-crosshair" : "pointer-events-none absolute inset-0 size-full"}
         aria-label="3D chemical-space lasso surface"
         onPointerDown={(event) => {
           if (tool !== "lasso") return;
+          event.currentTarget.focus({ preventScroll: true });
           event.currentTarget.setPointerCapture(event.pointerId);
           lassoSelectionGenerationRef.current += 1;
           runtimeRef.current?.cancelSelection();
@@ -701,6 +792,7 @@ export function ChemicalSpace3D({
           }
         }}
         onPointerUp={() => {
+          if (tool !== "lasso") return;
           const polygon = simplifyLassoPolygon(lassoRef.current);
           lassoRef.current = [];
           if (lassoPaintFrameRef.current) {
@@ -844,7 +936,7 @@ function semanticColor(host: HTMLElement, className: string, fallback: string) {
   return new THREE.Color(red / 255, green / 255, blue / 255);
 }
 
-function circleTexture() {
+function circleTexture(ring = false) {
   const canvas = document.createElement("canvas");
   canvas.width = 64;
   canvas.height = 64;
@@ -856,6 +948,13 @@ function circleTexture() {
     gradient.addColorStop(1, "rgba(255,255,255,0)");
     context.fillStyle = gradient;
     context.fillRect(0, 0, 64, 64);
+    if (ring) {
+      context.globalCompositeOperation = "destination-out";
+      context.beginPath();
+      context.arc(32, 32, 21, 0, Math.PI * 2);
+      context.fillStyle = "#fff";
+      context.fill();
+    }
   }
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;

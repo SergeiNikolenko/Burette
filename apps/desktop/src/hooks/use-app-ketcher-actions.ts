@@ -422,7 +422,6 @@ export function useAppKetcherActions({
             : ensemble ? "Generating conformer ensemble on Metal..." : "Generating 3D geometry on Metal...");
           const generated = await generateBrowserDev3DConformer({
             ...source,
-            engine: optimize ? "rdkit" : preferences.conformerEngine,
             operation: optimize ? "optimize" : "generate",
             mode: ensemble ? "ensemble" : "single",
             candidateCount: preferences.conformerCandidateCount,

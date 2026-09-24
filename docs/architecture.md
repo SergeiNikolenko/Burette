@@ -55,6 +55,13 @@ The desktop shell is a compact molecule workspace:
 - tab strip for active structure pages and settings
 - command palette for app actions
 - native macOS menu bar with stateful, context-dependent items
+- macOS Dock menu for New Workspace, Open Structure, up to seven recent
+  documents, Resume Last Session, Open from Clipboard, and Settings. Commands
+  reuse the File/App menu handlers; recent entries refresh when the Dock menu
+  opens. Resume restores missing saved windows and focuses the saved active
+  window without replacing currently open work. Clipboard contents are validated
+  by the existing import flow after selection. Custom Dock commands are available
+  while the app is running; macOS owns the menu shown when it is quit.
 - native context menus for sidebar files, folders, projects, and sidebar menu buttons;
   editor tabs also use the native menu adapter. Pinned tabs persist in workspace
   sessions, stay at the left edge, and survive Close Other Tabs / Close Tabs to
@@ -78,9 +85,18 @@ fails, or cancels the document switch.
 
 Settings that require new runtime HTML are applied when each open file next
 becomes active, after its unsaved edits have been resolved. Live theme and style
-changes are broadcast without rebuilding the viewer. Leaving Settings returns
+changes are broadcast without rebuilding the viewer. Theme defaults to Auto
+(system); the viewer's icon button cycles Auto, Light, and Dark. The preference
+also sets the native application appearance so AppKit menus and window materials
+match the web shell. Auto removes the native override and follows system
+changes. Leaving Settings returns
 to the tab that was active on entry. Unsaved grids show a tab marker, and the
 Inspector molecule card resets its retained hover state when its document changes.
+
+The Mol* 2D molecule card keeps its hidden state for the current viewer document.
+Changing or clearing selection, Escape, and viewport resize do not reopen it;
+the bottom restore chip does. Viewer teardown resets that state. The card uses
+one hide control and edge resizing, with actions below the depiction.
 
 Collection tables show a floating molecule preview when hovering the Mol cell
 with the right dock closed. Opening the dock dismisses that preview. The shell
@@ -183,3 +199,45 @@ remote selections before exporting. Native grid paging accepts `desc:` and
 `numeric:` prefixes on property sort keys (for example
 `desc:numeric:prop:pIC50`); property names remain SQL parameters. Analysis
 column sorting remains unavailable for remote pages.
+
+### Grid inspector opening
+
+The mini Mol* inspector sends `burette-inspector-open` to its parent on a click (not a drag). The host dispatches `structure.open-in-molstar` with `rowIndex`; the grid emits `openSdfMolstarDocument` with `openTarget: "new-tab"`. The SDF message handler adds the prepared document as a new tab, preserving the source collection. Existing messages without `openTarget` retain their active-tab behavior.
+
+
+### xyzrender canvas inspector selection
+
+In the browser/app viewer, `xyzrenderActiveItem` publishes the selected sheet
+item's stable `itemId`, source and appearance to the inspector. The host routes
+it as `burette:xyzrender-active-item`; `setXyzrenderControls` with an `itemId`
+updates that item only. A missing or removed target is ignored. Appearance and
+orientation remain on the sheet item; animation settings are remembered per item
+for the editor session (up to 32 entries). Ready animations remain mounted per item while switching selection, preserving
+playback and avoiding repeated renders. Canvas playback uses the display clock;
+only the visible inspector updates its frame label, at most ten times a second.
+`xyzrenderItemRemoved` releases the removed item's animation and aborts its pending
+render. Changing animation parameters invalidates only that item's frames.
+
+Decoded animation storage is reserved before rendering, with a shared limit of
+200 million RGBA pixels. New renders that exceed the budget ask for a smaller
+image or removal of another animation; existing movies are not evicted.
+
+### R-group result persistence
+
+`rgroup_store_results` replaces all columns owned by the `rgroup` calculation
+in one SQLite transaction, preserving unrelated descriptors. Its bounded payload
+contains the source structures and the complete result. Applying results checks
+the source row IDs and structures again under the write transaction; a changed
+collection requires a new calculation. Failed writes preserve the previous run.
+See [Scaffold and R-group analysis](sar-analysis.md) for chemistry semantics,
+limits, result columns, and focused verification.
+
+### Adding files to an open scene
+
+Dropping structures or collection records onto a Mol* document appends them to
+that document's mounted scene. The receptor's representations and camera stay
+intact; SDF imports retain all models. Both native and browser drop routes use
+the same scene import operation as Add to Scene. Trajectory pairing retains its
+separate document workflow. Combined scenes can be saved through Export → Scene.
+SSH requests wait for the shared native worker rather than treating contention
+as a connection failure; refreshing a remote project keeps its cached tree visible.

@@ -1,0 +1,21 @@
+.radix-dialog.rgroup-dialog { width: min(480px, calc(100vw - 48px)); max-height: min(820px, calc(100vh - 48px)); }
+.radix-dialog.rgroup-dialog-preview { width: min(640px, calc(100vw - 48px)); }
+.rgroup-dialog .radix-dialog-body { overflow-y: auto; }
+.rgroup-dialog .radix-dialog-body > p { margin: 0 0 16px; }
+.rgroup-footer { gap: 8px; justify-content: flex-end; }
+.rgroup-results { border-top: 1px solid var(--line-subtler); padding-top: 16px; }
+.rgroup-coverage { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+.rgroup-coverage strong { font-size: 16px; }
+.rgroup-coverage span { color: var(--text-secondary); }
+.rgroup-core { display: flex; flex-direction: column; align-items: center; gap: 8px; margin: 0 0 16px; }
+.rgroup-structure { display: block; width: 100%; height: 150px; }
+.rgroup-structure svg { display: block; width: 100%; height: 100%; }
+.rgroup-substituents { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.rgroup-substituents figure { margin: 0; padding: 6px; border: 1px solid var(--line-subtler); border-radius: 6px; overflow: hidden; }
+.rgroup-substituents .rgroup-structure { height: 90px; }
+.rgroup-substituents figcaption { text-align: center; color: var(--text-secondary); font-size: 12px; padding: 4px 0; }
+.rgroup-pagination { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+@media (max-width: 560px) {
+  .rgroup-core { grid-template-columns: 1fr; gap: 4px; }
+  .rgroup-substituents { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

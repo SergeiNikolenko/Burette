@@ -1,9 +1,10 @@
 import type { DockingDocumentRequest, FepSetupRequest } from "../types";
 import { isMoleculeCollectionPath } from "./collection-documents";
-import { dockingCandidatesForDrop, isMolstarCombineSource, isMolstarCoordinateTrajectorySource, isProteinLikeDockingSource, isTrajectoryDocumentRequest } from "./docking-documents";
+import { dockingCandidatesForDrop, isMolstarSceneImportSource, isMolstarCombineSource, isMolstarCoordinateTrajectorySource, isProteinLikeDockingSource, isTrajectoryDocumentRequest } from "./docking-documents";
 import type { StructureDragPayload, StructureDragRecord } from "./structure-drag";
 
 export type DropTargetContext =
+  | { kind: "folder"; directory: string }
   | {
       kind: "workspace";
     }
@@ -37,6 +38,7 @@ export type DropSourceContext =
     };
 
 export type DropAction =
+  | { kind: "append-scene-files"; targetDocumentId: string; payload: StructureDragPayload }
   | {
       kind: "merge-collection";
       targetPath: string;
@@ -88,6 +90,7 @@ export type DropAction =
     }
   | {
       kind: "open-structure-records";
+      directory?: string;
       paths: string[];
       records: StructureDragRecord[];
     }
@@ -119,6 +122,12 @@ export function resolveDropActionChoices(
   source: DropSourceContext = UNKNOWN_DROP_SOURCE,
 ): DropActionChoice[] {
   if (payload.paths.length === 0 && payload.records.length === 0) return [];
+  if (target.kind === "folder") {
+    if (payload.records.length) return [choice("save-structure-records", "Save molecules in folder", "default", {
+      kind: "open-structure-records", paths: payload.paths, records: payload.records, directory: target.directory,
+    }, source)];
+    return workspaceDropActionChoices(payload, source);
+  }
   if (target.kind === "workspace" || target.kind === "sidebar" || target.kind === "tab-strip") {
     return workspaceDropActionChoices(payload, source);
   }
@@ -166,6 +175,14 @@ export function resolveDropActionChoices(
       targetDocumentId: target.documentId,
       payload,
     }, source)];
+  }
+
+  if (target.renderer === "molstar" && target.documentId
+    && payload.paths.every(isMolstarSceneImportSource)
+    && payload.records.every(record => isMolstarSceneImportSource(`record.${record.inputExtension}`))) {
+    return withOpenSeparately(payload, {
+      kind: "append-scene-files", targetDocumentId: target.documentId, payload,
+    }, "Add to scene", source);
   }
 
   const dockingChoices = dockingActionChoices(target.documentPath, payload, target.dockingRequest);
@@ -220,7 +237,7 @@ function isKetcherImportPath(path: string) {
 }
 
 export function isKetcherImportExtension(extension: string) {
-  return ["mol", "sd", "sdf", "smi", "smiles"].includes(extension.trim().replace(/^\./u, "").toLowerCase());
+  return ["mol", "sd", "sdf", "smi", "smiles", "rxn"].includes(extension.trim().replace(/^\./u, "").toLowerCase());
 }
 
 function fileExtension(path: string) {

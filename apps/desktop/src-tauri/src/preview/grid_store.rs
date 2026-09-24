@@ -17,9 +17,12 @@ use std::time::SystemTime;
 use super::{
     grid_analysis,
     grid_database::open_grid_database,
-    grid_identity, grid_predicate,
+    grid_identity, grid_page_cache, grid_predicate,
     runtime_utils::{clipped, decode_text},
 };
+
+#[path = "grid_streamed_table.rs"]
+mod streamed_table;
 
 const GRID_INITIAL_ROWS: usize = 192;
 const GRID_INGEST_BATCH_ROWS: usize = 1_000;
@@ -322,6 +325,7 @@ struct SdfFileReader {
     source_identity: SdfSourceIdentity,
     byte_offset: u64,
     skip_line_feed_after_carriage_return: bool,
+    table: Option<streamed_table::TableStream>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -369,6 +373,7 @@ impl SdfFileReader {
             source_identity,
             byte_offset: 0,
             skip_line_feed_after_carriage_return: false,
+            table: None,
         };
         source.verify_unchanged()?;
         Ok(source)
@@ -714,7 +719,10 @@ pub(crate) fn build_grid_store_from_file_with_options(
     source_path: &Path,
     options: &GridParseOptions,
 ) -> Result<Option<GridStoreHandle>, String> {
-    if !matches!(extension, "sdf" | "sd") {
+    if !matches!(
+        extension,
+        "sdf" | "sd" | "csv" | "tsv" | "smi" | "smiles" | "dwar"
+    ) {
         return Err(format!(
             "file-backed grid indexing is only supported for SDF sources, not {extension}"
         ));
@@ -728,8 +736,16 @@ pub(crate) fn build_grid_store_from_file_with_options(
     prepare_deferred_fts_index(&connection)?;
     let cancel_token = Arc::new(AtomicBool::new(false));
     let mut source = SdfFileReader::open(source_path)?;
-    let first_batch = parse_sdf_file_batch(&mut source, 0, GRID_INITIAL_ROWS, None)?;
+    if !matches!(extension, "sdf" | "sd") {
+        source.table = Some(streamed_table::TableStream::new(extension, options));
+    }
+    let first_batch = parse_file_grid_batch(&mut source, 0, GRID_INITIAL_ROWS, None)?;
     source.verify_unchanged()?;
+    let has_molecules = source
+        .table
+        .as_ref()
+        .map(|table| table.has_molecules)
+        .unwrap_or(true);
     if first_batch.records.is_empty() && first_batch.complete {
         let _ = std::fs::remove_file(&database_path);
         return Ok(None);
@@ -749,7 +765,11 @@ pub(crate) fn build_grid_store_from_file_with_options(
         Some(source.byte_offset),
         Some(source.source_identity.len),
     )?;
-    if first_batch.complete && !options.include_single_sdf && records_indexed <= 1 {
+    if matches!(extension, "sdf" | "sd")
+        && first_batch.complete
+        && !options.include_single_sdf
+        && records_indexed <= 1
+    {
         let _ = std::fs::remove_file(&database_path);
         return Ok(None);
     }
@@ -780,7 +800,7 @@ pub(crate) fn build_grid_store_from_file_with_options(
         ingest_worker,
         summary: GridCollectionSummary {
             format,
-            has_molecules: true,
+            has_molecules,
             records_total: records_indexed,
             records_indexed,
             index_ready: first_batch.complete,
@@ -911,17 +931,28 @@ fn fetch_predicate_page(
     } else {
         format!(" where {}", predicate.predicate_sql)
     };
-    let count_sql = format!("select count(*) from molecules{where_sql}");
-    let total_rows = connection
-        .query_row(
-            &count_sql,
-            params_from_iter(predicate.params.iter()),
-            |row| row.get::<_, i64>(0),
-        )
-        .map_err(|err| err.to_string())? as usize;
-    let fts_query = predicate.fts_query.as_deref().filter(|fts_query| {
-        fts_candidates_cover_exact_result(connection, predicate, fts_query, total_rows)
-    });
+    let cache_key = grid_page_cache::key(connection, predicate);
+    let (total_rows, use_fts) =
+        if let Some(stats) = cache_key.as_ref().and_then(grid_page_cache::get) {
+            stats
+        } else {
+            let count_sql = format!("select count(*) from molecules{where_sql}");
+            let total_rows = connection
+                .query_row(
+                    &count_sql,
+                    params_from_iter(predicate.params.iter()),
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(|err| err.to_string())? as usize;
+            let use_fts = predicate.fts_query.as_deref().is_some_and(|query| {
+                fts_candidates_cover_exact_result(connection, predicate, query, total_rows)
+            });
+            if let Some(key) = cache_key {
+                grid_page_cache::put(key, (total_rows, use_fts));
+            }
+            (total_rows, use_fts)
+        };
+    let fts_query = predicate.fts_query.as_deref().filter(|_| use_fts);
     let fts_sql = if fts_query.is_some() {
         " and molecules.id in (
              select rowid from molecules_fts where molecules_fts match ?
@@ -1023,7 +1054,13 @@ fn attach_latest_analysis_runs(
     page_rows: &mut [GridPageRow],
 ) -> Result<Vec<GridAnalysisColumn>, String> {
     let mut columns = Vec::new();
-    for workflow_template in ["cluster.v1", "similaritySearch.v1", "conformer.v1"] {
+    for workflow_template in [
+        "cluster.v1",
+        "similaritySearch.v1",
+        "conformer.v1",
+        "alignment.v1",
+        "semiempirical.v1",
+    ] {
         columns.extend(attach_latest_analysis_run(
             connection,
             page_rows,
@@ -1066,11 +1103,11 @@ fn attach_latest_analysis_run(
              order by value_id collate nocase",
         )
         .map_err(|error| error.to_string())?;
-    let columns = columns_statement
+    let mut columns = columns_statement
         .query_map([&run_id], |row| {
             let value_id = row.get::<_, String>(0)?;
             Ok(GridAnalysisColumn {
-                label: analysis_label(&value_id).into(),
+                label: analysis_label(&value_id),
                 run_id: run_id.clone(),
                 value_id,
                 value_kind: row.get(1)?,
@@ -1079,6 +1116,13 @@ fn attach_latest_analysis_run(
         .map_err(|error| error.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())?;
+    if workflow_template == "semiempirical.v1" {
+        columns.sort_by_key(|column| {
+            semiempirical_column(&column.value_id)
+                .map(|(_, rank)| rank)
+                .unwrap_or(usize::MAX)
+        });
+    }
     if page_rows.is_empty() {
         return Ok(columns);
     }
@@ -1140,7 +1184,42 @@ fn attach_latest_analysis_run(
     Ok(columns)
 }
 
-fn analysis_label(value_id: &str) -> &str {
+fn semiempirical_column(value_id: &str) -> Option<(String, usize)> {
+    for (rank, (suffix, label)) in [
+        ("TotalEnergyEv", "energy (eV)"),
+        ("Status", "status"),
+        ("Error", "error"),
+        ("ScfIterations", "SCF iterations"),
+        ("ElectronicEnergyEv", "electronic energy (eV)"),
+        ("NuclearEnergyEv", "nuclear energy (eV)"),
+        ("AtomicCharges", "atomic charges (e)"),
+    ]
+    .iter()
+    .enumerate()
+    {
+        let Some(prefix) = value_id.strip_suffix(suffix) else {
+            continue;
+        };
+        let method = match prefix {
+            "rm1" => "RM1",
+            "am1" => "AM1",
+            "pm3" => "PM3",
+            "pm6" => "PM6",
+            "pm6D" => "PM6-D",
+            "pm6D3H4" => "PM6-D3H4",
+            "pm6Sp" => "PM6-SP",
+            "am1Star" => "AM1*",
+            _ => continue,
+        };
+        return Some((format!("{method} {label}"), rank));
+    }
+    None
+}
+
+fn analysis_label(value_id: &str) -> String {
+    if let Some((label, _)) = semiempirical_column(value_id) {
+        return label;
+    }
     match value_id {
         "clusterId" => "Cluster ID",
         "isRepresentative" => "Representative",
@@ -1157,12 +1236,18 @@ fn analysis_label(value_id: &str) -> &str {
         "geometryInitialization" => "Geometry source",
         "bestEtkEnergy" => "Best ETK energy",
         "mmffVariant" => "MMFF variant",
-        "bestMmffEnergy" => "Best MMFF energy",
+        "bestMmffEnergy" => "MMFF energy (kcal/mol)",
         "mmffOptimizationStatus" => "MMFF status",
         "mmffOptimizationError" => "MMFF error",
         "conformerError" => "Conformer error",
+        "alignmentReference" => "Reference pose",
+        "alignedRmsd" => "Aligned RMSD (Å)",
+        "shapeTanimoto" => "Shape Tanimoto",
+        "electrostaticCarbo" => "Electrostatic Carbo",
+        "combinedPoseSimilarity" => "Pose similarity",
         _ => value_id,
     }
+    .into()
 }
 
 fn attach_descriptor_cells(
@@ -1270,7 +1355,7 @@ fn page_sort_clause(
     PageSortClause {
         join_sql: "left join descriptor_values descriptor_sort on descriptor_sort.molecule_id = molecules.id and descriptor_sort.descriptor_id = ?",
         order_sql: format!(
-            "descriptor_sort.value_real is null asc, descriptor_sort.value_real {direction}, source_index asc"
+            "coalesce(descriptor_sort.value_real, descriptor_sort.value_text) is null asc, descriptor_sort.value_real {direction}, descriptor_sort.value_text collate nocase {direction}, source_index asc"
         ),
         params: vec![SqlValue::Text(sort.id.clone())],
     }
@@ -1461,7 +1546,7 @@ fn spawn_sdf_file_ingest_worker(
             record_sdf_ingest_failure(&connection, next_index, &source, &error);
             return;
         }
-        let batch = match parse_sdf_file_batch(
+        let batch = match parse_file_grid_batch(
             &mut source,
             next_index,
             GRID_INGEST_BATCH_ROWS,
@@ -1638,7 +1723,8 @@ fn initialize_schema(connection: &Connection) -> Result<(), String> {
         let _ = install_fts_triggers(connection);
     }
     grid_identity::initialize(connection)?;
-    grid_analysis::initialize(connection)
+    grid_analysis::initialize(connection)?;
+    grid_page_cache::initialize(connection)
 }
 
 fn initialize_fts_table(connection: &Connection) -> Result<(), String> {
@@ -2520,7 +2606,7 @@ fn line_at(text: &str, offset: usize) -> Option<(&str, usize)> {
 // cheap — re-splitting the whole file to get it was not.
 fn first_non_empty_line(text: &str) -> Option<(&str, usize)> {
     let mut offset = 0usize;
-    while let Some((line, next_offset)) = line_at(text, offset) {
+    while let Some((line, next_offset)) = streamed_table::record_at(text, offset) {
         offset = next_offset;
         if !line.trim().is_empty() {
             return Some((line, offset));
@@ -2764,6 +2850,21 @@ fn parse_rdf_batch(
     }
 }
 
+fn parse_file_grid_batch(
+    source: &mut SdfFileReader,
+    start_index: usize,
+    max_records: usize,
+    cancel: Option<&AtomicBool>,
+) -> Result<ParsedGridBatch, String> {
+    if let Some(mut table) = source.table.take() {
+        let result = table.next_batch(source, start_index, max_records, cancel);
+        source.table = Some(table);
+        result
+    } else {
+        parse_sdf_file_batch(source, start_index, max_records, cancel)
+    }
+}
+
 fn parse_sdf_file_batch(
     source: &mut SdfFileReader,
     start_index: usize,
@@ -2943,7 +3044,7 @@ fn parse_generic_delimited_table_batch(
     };
     let mut row_number = cursor.row;
     let mut next_index = start_index;
-    while let Some((line, next_offset)) = line_at(text, offset) {
+    while let Some((line, next_offset)) = streamed_table::record_at(text, offset) {
         offset = next_offset;
         if line.trim().is_empty() {
             continue;
@@ -3005,6 +3106,27 @@ fn parse_delimited_table_batch(
     max_records: usize,
     options: &GridParseOptions,
 ) -> Result<ParsedGridBatch, String> {
+    parse_delimited_table_with_inference(
+        text,
+        separator,
+        cursor,
+        start_index,
+        max_records,
+        options,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn parse_delimited_table_with_inference(
+    text: &str,
+    separator: char,
+    cursor: GridCursor,
+    start_index: usize,
+    max_records: usize,
+    options: &GridParseOptions,
+    inference: Option<&[usize]>,
+) -> Result<ParsedGridBatch, String> {
     let Some((header_line, after_header)) = first_non_empty_line(text) else {
         return Ok(ParsedGridBatch {
             records: Vec::new(),
@@ -3030,8 +3152,9 @@ fn parse_delimited_table_batch(
             }
         })
         .collect();
-    let inferred_smiles_indexes =
-        infer_smiles_columns_from_source(text, after_header, headers.len(), separator);
+    let inferred_smiles_indexes = inference.map(<[usize]>::to_vec).unwrap_or_else(|| {
+        infer_smiles_columns_from_source(text, after_header, headers.len(), separator)
+    });
     let first_row_looks_like_data = headers.iter().any(|value| looks_like_smiles(value));
     if !is_likely_delimited_header(&headers)
         && (inferred_smiles_indexes.is_empty() || first_row_looks_like_data)
@@ -3042,10 +3165,18 @@ fn parse_delimited_table_batch(
         .iter()
         .map(|value| normalize_column_name(value))
         .collect();
+    // Our saved tables have one authoritative structure column. Metadata such
+    // as "SMILES column" must not create additional molecules on reopen.
+    let saved_smiles_column = encoding_index.and_then(|_| {
+        normalized_headers
+            .iter()
+            .position(|header| header == "smiles")
+            .map(|index| headers[index].as_str())
+    });
     let smiles_indexes = resolve_smiles_columns(
         &headers,
         &normalized_headers,
-        options.smiles_column.as_deref(),
+        options.smiles_column.as_deref().or(saved_smiles_column),
         &inferred_smiles_indexes,
     )?;
     let has_multiple_smiles_columns = smiles_indexes.len() > 1;
@@ -3071,7 +3202,7 @@ fn parse_delimited_table_batch(
     };
     let mut row_number = cursor.row.max(1);
     let mut next_index = start_index;
-    while let Some((line, next_offset)) = line_at(text, offset) {
+    while let Some((line, next_offset)) = streamed_table::record_at(text, offset) {
         offset = next_offset;
         if line.trim().is_empty() {
             continue;
@@ -3151,6 +3282,7 @@ fn parse_delimited_table_batch(
                     || Some(index) == name_index
                     || Some(index) == molblock_index
                     || Some(index) == encoding_index
+                    || (saved_grid_encoding && normalized_headers[index] == "index")
                 {
                     continue;
                 }
@@ -3218,7 +3350,7 @@ fn parse_delimited_rows_as_smiles_batch(
     };
     let mut row_number = cursor.row;
     let mut next_index = start_index;
-    while let Some((line, next_offset)) = line_at(text, offset) {
+    while let Some((line, next_offset)) = streamed_table::record_at(text, offset) {
         offset = next_offset;
         if line.trim().is_empty() {
             continue;
@@ -3505,7 +3637,7 @@ fn infer_smiles_columns_from_source(
     let mut offset = start_offset;
     let mut scanned = 0usize;
     while scanned < SMILES_INFERENCE_MAX_SCANNED_ROWS {
-        let Some((line, next_offset)) = line_at(text, offset) else {
+        let Some((line, next_offset)) = streamed_table::record_at(text, offset) else {
             break;
         };
         offset = next_offset;
@@ -4181,134 +4313,145 @@ mod tests {
 
     #[test]
     fn analysis_filtered_page_matches_the_shared_predicate() {
-        let runtime_dir = temp_runtime_dir();
-        let csv = "smiles,name\nCCO,Ethanol\nc1ccccc1,Benzene\nCCN,Ethylamine\n";
-        let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
-        wait_for_index_ready(&database_path);
-        let connection = Connection::open(&database_path).expect("open database");
-        let run_id = uuid::Uuid::from_u128(7);
-        let (document_fingerprint_sha256, source_revision) = connection
-            .query_row(
-                "select document_fingerprint_sha256, source_revision
+        for (workflow_template, value_id, label) in [
+            (WorkflowTemplateId::ClusterV1, "clusterId", "Cluster ID"),
+            (
+                WorkflowTemplateId::AlignmentV1,
+                "alignedRmsd",
+                "Aligned RMSD (Å)",
+            ),
+            (
+                WorkflowTemplateId::SemiempiricalV1,
+                "rm1TotalEnergyEv",
+                "RM1 energy (eV)",
+            ),
+        ] {
+            let runtime_dir = temp_runtime_dir();
+            let csv = "smiles,name\nCCO,Ethanol\nc1ccccc1,Benzene\nCCN,Ethylamine\n";
+            let (database_path, _) = build_store(&runtime_dir, "csv", csv.as_bytes());
+            wait_for_index_ready(&database_path);
+            let connection = Connection::open(&database_path).expect("open database");
+            let run_id = uuid::Uuid::from_u128(7);
+            let (document_fingerprint_sha256, source_revision) = connection
+                .query_row(
+                    "select document_fingerprint_sha256, source_revision
                  from grid_metadata where id = 1",
-                [],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, u64>(1)?)),
-            )
-            .expect("read current Grid identity");
-        let molecules = {
-            let mut statement = connection
-                .prepare(
-                    "select id, source_index, molecule_content_sha256
-                     from molecules order by source_index",
+                    [],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, u64>(1)?)),
                 )
-                .expect("prepare molecule identities");
-            let rows = statement
-                .query_map([], |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, u64>(1)?,
-                        row.get::<_, String>(2)?,
-                    ))
-                })
-                .expect("query molecule identities")
-                .collect::<Result<Vec<_>, _>>()
-                .expect("collect molecule identities");
-            rows
-        };
-        drop(connection);
-        grid_analysis::apply_analysis_run(
-            &database_path,
-            &grid_analysis::GridAnalysisApplyInput {
-                run_id,
-                workflow_template: WorkflowTemplateId::ClusterV1,
-                document_fingerprint_sha256,
-                source_revision,
-                snapshot_id: uuid::Uuid::from_u128(8),
-                snapshot_sha256: "c".repeat(64),
-                normalized_settings_sha256: "b".repeat(64),
-                maturity: CapabilityMaturity::Experimental,
-                representative_policy: RepresentativePolicy::ButinaMaxNeighborsV1,
-                provenance: serde_json::json!({}),
-                created_at_ms: 1,
-                values: molecules
-                    .into_iter()
-                    .map(|(molecule_id, source_index, molecule_content_sha256)| {
-                        grid_analysis::GridAnalysisValueInput {
-                            molecule_id,
-                            source_index,
-                            molecule_content_sha256,
-                            value_id: "clusterId".into(),
-                            value: grid_analysis::GridAnalysisValue::Integer(
-                                ((source_index + 1) * 10) as i64,
-                            ),
-                        }
+                .expect("read current Grid identity");
+            let molecules = {
+                let mut statement = connection
+                    .prepare(
+                        "select id, source_index, molecule_content_sha256
+                     from molecules order by source_index",
+                    )
+                    .expect("prepare molecule identities");
+                let rows = statement
+                    .query_map([], |row| {
+                        Ok((
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, u64>(1)?,
+                            row.get::<_, String>(2)?,
+                        ))
                     })
-                    .collect(),
-                artifacts: Vec::new(),
-            },
-        )
-        .expect("apply typed analysis values");
+                    .expect("query molecule identities")
+                    .collect::<Result<Vec<_>, _>>()
+                    .expect("collect molecule identities");
+                rows
+            };
+            drop(connection);
+            grid_analysis::apply_analysis_run(
+                &database_path,
+                &grid_analysis::GridAnalysisApplyInput {
+                    run_id,
+                    workflow_template,
+                    document_fingerprint_sha256,
+                    source_revision,
+                    snapshot_id: uuid::Uuid::from_u128(8),
+                    snapshot_sha256: "c".repeat(64),
+                    normalized_settings_sha256: "b".repeat(64),
+                    maturity: CapabilityMaturity::Experimental,
+                    representative_policy: RepresentativePolicy::ButinaMaxNeighborsV1,
+                    provenance: serde_json::json!({}),
+                    created_at_ms: 1,
+                    values: molecules
+                        .into_iter()
+                        .map(|(molecule_id, source_index, molecule_content_sha256)| {
+                            grid_analysis::GridAnalysisValueInput {
+                                molecule_id,
+                                source_index,
+                                molecule_content_sha256,
+                                value_id: value_id.into(),
+                                value: grid_analysis::GridAnalysisValue::Integer(
+                                    ((source_index + 1) * 10) as i64,
+                                ),
+                            }
+                        })
+                        .collect(),
+                    artifacts: Vec::new(),
+                },
+            )
+            .expect("apply typed analysis values");
 
-        let analysis_filters = vec![AnalysisFilter {
-            run_id,
-            value_id: "clusterId".to_string(),
-            min: Some(15.0),
-            max: Some(25.0),
-        }];
-        let page = fetch_page(
-            &database_path,
-            &GridQuery {
-                query: String::new(),
-                sort: "index".to_string(),
-                analysis_filters: analysis_filters.clone(),
-                column_filters: Vec::new(),
-                descriptor_filters: Vec::new(),
-                descriptor_sort: None,
-                offset: 0,
-                limit: 96,
-            },
-        )
-        .expect("fetch analysis-filtered page");
-        let plan = grid_predicate::plan_grid_predicate(
-            &GridTextQuery::Text {
-                text: String::new(),
-            },
-            &[],
-            &[],
-            &analysis_filters,
-        )
-        .expect("plan matching predicate");
-        let connection = Connection::open(&database_path).expect("reopen database");
-        let direct_sql = format!(
-            "select source_index from molecules where {} order by source_index",
-            plan.predicate_sql
-        );
-        let direct_indexes = connection
-            .prepare(&direct_sql)
-            .expect("prepare direct predicate")
-            .query_map(params_from_iter(plan.params.iter()), |row| row.get(0))
-            .expect("query direct predicate")
-            .collect::<Result<Vec<usize>, _>>()
-            .expect("collect direct indexes");
+            let analysis_filters = vec![AnalysisFilter {
+                run_id,
+                value_id: value_id.to_string(),
+                min: Some(15.0),
+                max: Some(25.0),
+            }];
+            let page = fetch_page(
+                &database_path,
+                &GridQuery {
+                    query: String::new(),
+                    sort: "index".to_string(),
+                    analysis_filters: analysis_filters.clone(),
+                    column_filters: Vec::new(),
+                    descriptor_filters: Vec::new(),
+                    descriptor_sort: None,
+                    offset: 0,
+                    limit: 96,
+                },
+            )
+            .expect("fetch analysis-filtered page");
+            let plan = grid_predicate::plan_grid_predicate(
+                &GridTextQuery::Text {
+                    text: String::new(),
+                },
+                &[],
+                &[],
+                &analysis_filters,
+            )
+            .expect("plan matching predicate");
+            let connection = Connection::open(&database_path).expect("reopen database");
+            let direct_sql = format!(
+                "select source_index from molecules where {} order by source_index",
+                plan.predicate_sql
+            );
+            let direct_indexes = connection
+                .prepare(&direct_sql)
+                .expect("prepare direct predicate")
+                .query_map(params_from_iter(plan.params.iter()), |row| row.get(0))
+                .expect("query direct predicate")
+                .collect::<Result<Vec<usize>, _>>()
+                .expect("collect direct indexes");
 
-        assert_eq!(
-            page.rows.iter().map(|row| row.index).collect::<Vec<_>>(),
-            direct_indexes
-        );
-        assert_eq!(direct_indexes, vec![1]);
-        assert_eq!(page.analysis_columns.len(), 1);
-        assert_eq!(page.analysis_columns[0].run_id, run_id.to_string());
-        assert_eq!(page.analysis_columns[0].value_id, "clusterId");
-        assert_eq!(page.analysis_columns[0].label, "Cluster ID");
-        assert_eq!(page.analysis_columns[0].value_kind, "integer");
-        assert_eq!(
-            page.rows[0]
-                .analyses
-                .get("clusterId")
-                .map(|cell| &cell.value),
-            Some(&serde_json::json!(20))
-        );
-        let _ = std::fs::remove_dir_all(&runtime_dir);
+            assert_eq!(
+                page.rows.iter().map(|row| row.index).collect::<Vec<_>>(),
+                direct_indexes
+            );
+            assert_eq!(direct_indexes, vec![1]);
+            assert_eq!(page.analysis_columns.len(), 1);
+            assert_eq!(page.analysis_columns[0].run_id, run_id.to_string());
+            assert_eq!(page.analysis_columns[0].value_id, value_id);
+            assert_eq!(page.analysis_columns[0].label, label);
+            assert_eq!(page.analysis_columns[0].value_kind, "integer");
+            assert_eq!(
+                page.rows[0].analyses.get(value_id).map(|cell| &cell.value),
+                Some(&serde_json::json!(20))
+            );
+            let _ = std::fs::remove_dir_all(&runtime_dir);
+        }
     }
 
     #[test]
@@ -6847,3 +6990,7 @@ mod tests {
         assert_eq!(index, 3);
     }
 }
+
+#[cfg(test)]
+#[path = "grid_sar_tests.rs"]
+mod sar_tests;

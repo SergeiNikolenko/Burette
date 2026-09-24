@@ -37,8 +37,25 @@ try {
   await folding({ method: "GET", url: `/?path=${encodeURIComponent(input)}` }, local);
   assert.equal(local.body.models[0].metrics[0].value, 0.75);
 
-  let save;
-  registerBrowserDevFileContentRoutes({ middlewares: { use(route, handler) { if (route === "/__burette/write-text-file") save = handler; } } }, { isDevFileReadAllowed, devFileSizeLimit: 1024 });
+  let save, create;
+  registerBrowserDevFileContentRoutes({ middlewares: { use(route, handler) {
+    if (route === "/__burette/write-text-file") save = handler;
+    if (route === "/__burette/create-text-file") create = handler;
+  } } }, { isDevFileReadAllowed, devFileSizeLimit: 1024 });
+  const createFile = async (path, name, contents = "CCO ethanol") => {
+    const result = response();
+    await create(Object.assign(Readable.from([Buffer.from(JSON.stringify({ path, name, contents }))]), { method: "POST" }), result);
+    return result;
+  };
+  assert.equal((await createFile(root, "denied.smi")).statusCode, 403);
+  assert.equal((await createFile(allowed, "../escape.smi")).statusCode, 400);
+  const first = await createFile(allowed, "molecule.smi");
+  const second = await createFile(allowed, "molecule.smi", "CC methane");
+  assert.deepEqual([first.body.path, second.body.path], [join(allowed, "molecule.smi"), join(allowed, "molecule 1.smi")]);
+  assert.deepEqual([readFileSync(first.body.path, "utf8"), readFileSync(second.body.path, "utf8")], ["CCO ethanol", "CC methane"]);
+  symlinkSync(outside, join(allowed, "linked.smi"));
+  assert.equal((await createFile(allowed, "linked.smi")).body.path, join(allowed, "linked 1.smi"));
+  assert.deepEqual(JSON.parse(readFileSync(outside, "utf8")), { ranking_score: 0.8123 });
   const file = join(allowed, "notes.txt");
   writeFileSync(file, "initial");
   const baseline = Math.floor(statSync(file).mtimeMs);

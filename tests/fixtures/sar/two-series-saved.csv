@@ -1,0 +1,9 @@
+burette_encoding,index,name,smiles,molblock,CSV row,SMILES column,RGroup_Core,RGroup_R1,RGroup_R2,RGroup_Series,RGroup_Status
+escaped-v1,0,Benzene methyl chloro,Cc1ccc(Cl)cc1,,1,smiles,c1cc([*:2])ccc1[*:1],C[*:1],Cl[*:2],S1,Matched
+escaped-v1,1,Benzene ethyl chloro,CCc1ccc(Cl)cc1,,2,smiles,c1cc([*:2])ccc1[*:1],CC[*:1],Cl[*:2],S1,Matched
+escaped-v1,2,Benzene methyl bromo,Cc1ccc(Br)cc1,,3,smiles,c1cc([*:2])ccc1[*:1],C[*:1],Br[*:2],S1,Matched
+escaped-v1,3,Benzene ethyl bromo,CCc1ccc(Br)cc1,,4,smiles,c1cc([*:2])ccc1[*:1],CC[*:1],Br[*:2],S1,Matched
+escaped-v1,4,Pyridine methyl,Cc1ccncc1,,5,smiles,c1cc([*:1])ccn1,C[*:1],,S2,Matched
+escaped-v1,5,Pyridine ethyl,CCc1ccncc1,,6,smiles,c1cc([*:1])ccn1,CC[*:1],,S2,Matched
+escaped-v1,6,Acyclic,CCCCCC,,7,smiles,,,,,No ring scaffold
+escaped-v1,7,Invalid,not-a-smiles((,,8,smiles,,,,,Invalid structure

@@ -5,6 +5,10 @@ contains only documents that describe the active project.
 
 ## Current Docs
 
+- [Performance and reliability audit, 2026-09-20](performance-reliability-audit-2026-09-20.md):
+  22 source-backed findings, isolated mechanism checks, priorities and acceptance scenarios.
+- [macOS product quality priorities](macos-product-quality.md): calendar release
+  naming, source-backed assessment, and proposed native acceptance scenarios.
 - [Code and software audit, 2026-09-05](code-software-audit-2026-09-05.md): open
   findings, priorities, evidence, and acceptance checks across Burette surfaces.
 - [Changelog](../CHANGELOG.md): pointer to GitHub Releases, which are the
@@ -24,6 +28,10 @@ contains only documents that describe the active project.
 - [Security and permissions](security-and-permissions.md): local file access,
   Tauri permissions, browser/agent surfaces, local servers, release secrets,
   diagnostics, and security reporting.
+- [Molecular drag and drop](drag-and-drop.md): source/destination matrix, safe file creation,
+  gesture feedback, bounds and focused checks.
+- [Scene naming proposal](scene-naming.md): content-based automatic titles, stable file
+  identity, manual names and export scope; proposed, not yet implemented.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
   Ketcher editing scope, artifacts, and checks.
 - [Mesoscale viewer implementation plan](mesoscale-viewer-implementation-plan.md):

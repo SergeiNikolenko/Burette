@@ -189,3 +189,11 @@ Browser workspace link. Do not describe a successful molecular load until the
 full readiness gate above passes. When the user wants to see the result, also
 require the nonblank central-canvas check from `visual-qa`; counts are not a
 substitute.
+
+## Desktop handoff links
+
+Desktop opens return `result.deepLink`. This navigation link reopens the initial
+files and attaches the same local agent session. It does not serialize camera,
+unsaved edits, or scene state; use a saved MVSX artifact for portable scenes.
+Use `burette.create_link` or `burette-agent.mjs link --session-dir <directory>`
+to create another link. Never invent a session ID or include action JSON in URLs.

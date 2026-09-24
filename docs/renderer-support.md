@@ -122,3 +122,105 @@ For renderer behavior changes, also verify forced previews:
 ./scripts/force-preview.sh samples/mini.cif
 ./scripts/force-preview.sh samples/mini.xyz
 ```
+
+### xyzrender sheet editing
+
+The desktop/browser sheet preserves each item's placement and rotation while
+replacing rendered SVG content. Shift/Command-click adds items to the selection;
+selected items move together and can receive a preset together. Canvas actions
+provide duplication, selection and arrangement. Lasso starts on empty canvas as
+well as inside an image, and selects visible graphics across the sheet.
+
+The browser context menu reuses the Mol* menu components, including its nested
+menus and keyboard navigation. The desktop viewer sends `xyzrenderContextMenu`
+with a request ID, label and selection/hidden flags to the shell. The shell builds
+a fixed menu through the native menu adapter and returns
+`xyzrenderContextMenuResult` with the request ID and selected action. Unsupported
+native menus fall back to the browser menu. This bridge does not accept arbitrary
+commands from the viewer.
+
+`Orientation & animation` uses xyzrender through the browser renderer. Its
+orientation editor rotates an XYZ reference around the centroid, rerenders with
+`--ref`, and applies the resulting reference to the originating sheet item.
+Changing a preset subsequently retains that reference. Crystal orientation uses
+the crystallographic direction control instead (`--ref` is not supported upstream).
+
+The shadcn inspector groups atom/bond styling, selection rules, TS/NCI,
+surfaces, hulls/pores, overlays/ensembles, labels/property colours/vectors and
+crystal options. Search filters the groups. Lasso selections can populate atom
+selector fields. Core settings use `XyzrenderControls`; advanced settings use the
+existing `extraArguments` contract with an argument codec, not shell execution.
+Text/numeric drafts commit on blur or Enter. Surface mappings accept explicit
+ESP/interaction cube paths instead of assuming one cube serves both roles.
+
+The dock opens with the illustrated style/display galleries; detailed fields
+and search are behind Advanced settings. Orientation and animation controls live
+in this same dock, with previews applied on the primary canvas rather than in a
+second modal scene. Apply GIF to canvas leaves an animated image on the card;
+changing its style returns it to a static editable rendering. Canvas camera keys
+match Mol*: W/S zoom, A/D horizontal movement, R/F vertical movement, Q/E roll.
+Text inputs and modified command shortcuts retain their normal keyboard behavior.
+Orientation angles and animation speed/amplitude use the shared Kinetic
+ScrubNumberField (Calligraph and Motion): drag to change. Speed and assembly
+noise do not enter text editing on click. Animation defaults to 60 fps and
+640 px / 240 frames; speed ranges from 30 to 120 fps, and 120 frames are available
+in the collapsed GIF settings section. Actual preview cadence is limited by the
+display refresh rate. GIF export resamples to at most 50 fps with delays of at
+least 20 ms, preserving duration to GIF timing precision. Style changes notify the active animation editor by
+document identity, including inline sheet sources whose path is only a label,
+and cancel the previous render before replacing its frames.
+Orientation sliders render serially while dragging, coalescing pending angles
+to the latest value instead of repeatedly aborting Python. Up to 16 small SVG
+orientations are cached for the current source/style. Opening at zero angles
+reuses the reference-building render. In browser-dev, static SVG requests use a
+serial, persistent Python CLI worker when the installed executable has a Python
+shebang. This reuses scientific imports without changing renderer flags; other
+executable wrappers retain subprocess rendering. Aborts/timeouts stop the worker,
+and the next request restarts it. GIF rendering retains separate processes.
+Single-frame XYZ trajectory requests return an unavailable-mode response before
+launching the renderer, and the inspector offers full rotation instead.
+Browser GIF rendering defaults to four
+Python workers and single-threaded BLAS; explicit environment settings override
+these defaults.
+
+Animation supports rotation, adjustable rocking, trajectory with per-frame bond
+rebuilding, TS vibration, and decorative assembly/scatter with anchor atoms.
+Combined rotation is available for trajectory, vibration and assembly. The editor
+keeps the current SVG while loading. Closing or superseding a request aborts the
+browser request and its renderer process. Preview decoding is capped at 240
+frames / 100 million pixels; large trajectories must be shortened before editing.
+The browser render has a 120-second timeout and a 16 MB output limit.
+The orientation editor exports SVG, PNG, PDF and TIFF; animation exports GIF.
+PDF on macOS supplies the Homebrew Cairo library lookup path to the child process.
+These orientation/animation/export endpoints are browser-dev only; native
+animation bridging is not implemented. They do not create a Mol* scene.
+
+The tested local runtime is xyzrender 0.3.8, installed with
+`uv tool install --upgrade 'xyzrender[all]==0.3.8'`. This updates the external user
+runtime, not an already packaged application's embedded runtime. Bundling follows
+`scripts/bundle-quicklook-xyzrender-launcher.sh`.
+
+In desktop xyzrender mode, Appearance toggles the xyzrender dock. Mol* panel
+shortcuts and viewport rail are hidden; sheet history uses the existing host
+history controls. Sheet selection and inspector accents use neutral grey tokens.
+
+The xyzrender animation editor decodes real rendered GIF frames for a neutral
+slider with play/pause and an export range. Speed is editable from 1 to 30 fps
+(GIF timing is rounded to 10 ms). Save encodes the selected composited frames,
+preserves transparency, writes a real GIF through the browser export route, and
+provides an HTTP attachment link. The route retains up to 20 download links per
+server instance; saved files remain in temporary export directories until OS
+cleanup. Browser rendering and export have focused codec and HTTP tests.
+
+Animation preview uses the parent-to-viewer `applyXyzrenderAnimationFrame` message
+with `itemId`, integer `width`/`height` (1–1024), and an exact-sized RGBA
+`Uint8ClampedArray` named `pixels`. Only the parent window is accepted. The viewer
+reuses a canvas, avoiding PNG encoding on playback. Committed GIFs continue using
+`applyXyzrenderAnimation`. The molecular editor hides Miller directions for
+non-CIF inputs; those directions require crystal lattice data.
+
+### Native xyzrender editor
+
+The desktop Orientation & animation editor renders through the `render_xyzrender_editor` Tauri command using the bundled xyzrender runtime. It does not require a browser-dev server. GIF, SVG, PNG, PDF and TIFF exports use the native save dialog. Trajectory and vibration rendering read the original source file; the selected inline frame remains the input for static orientation and synthetic sheet items. Browser-dev keeps its HTTP transport. Native rendering stages input in a temporary cache directory, bounds inputs/outputs to 16 MiB and animation decoding to 100 million pixels, and allows two concurrent renders with a 120-second animation timeout. Closing a panel discards its result; an already running native render finishes within its timeout before releasing its slot.
+
+Orientation and animation controls share one inspector. Changing angles keeps the existing movie playing until its replacement is ready, retaining the playback position and export range. Native animation renders are queued; obsolete queued requests are discarded. Image presets span 256–1024 pixels and generated motion detail spans 24–240 frames within the pixel budget. Opening or resizing docks preserves the sheet zoom and item dimensions, moving the sheet with the viewport center. Orientation commands target only the inspected document. XYZ frame and alignment rebuilds retain the selected Mol* appearance.

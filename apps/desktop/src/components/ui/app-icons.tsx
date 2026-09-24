@@ -16,6 +16,9 @@ function appIcon(name: keyof typeof glyphs) {
 
 export type AppIconType = ReturnType<typeof appIcon>;
 // BEGIN GENERATED EXPORTS
+export const SidebarFolder = /* @__PURE__ */ appIcon("SidebarFolder");
+export const SidebarFolderOpen = /* @__PURE__ */ appIcon("SidebarFolderOpen");
+export const SidebarGlobe = /* @__PURE__ */ appIcon("SidebarGlobe");
 export const Agent = /* @__PURE__ */ appIcon("Agent");
 export const ArrowCurvedRight = /* @__PURE__ */ appIcon("ArrowCurvedRight");
 export const ArrowLeft = /* @__PURE__ */ appIcon("ArrowLeft");
@@ -62,6 +65,7 @@ export const Flask = /* @__PURE__ */ appIcon("Flask");
 export const Folder = /* @__PURE__ */ appIcon("Folder");
 export const FolderOpen = /* @__PURE__ */ appIcon("FolderOpen");
 export const FolderPlus = /* @__PURE__ */ appIcon("FolderPlus");
+export const Grid = /* @__PURE__ */ appIcon("Grid");
 export const History = /* @__PURE__ */ appIcon("History");
 export const InfoCircle = /* @__PURE__ */ appIcon("InfoCircle");
 export const Keyboard = /* @__PURE__ */ appIcon("Keyboard");
@@ -91,3 +95,6 @@ export const X = /* @__PURE__ */ appIcon("X");
 export const XCircleCrossedClose = /* @__PURE__ */ appIcon("XCircleCrossedClose");
 export const PinFilled = /* @__PURE__ */ appIcon("PinFilled");
 export const Edit = /* @__PURE__ */ appIcon("Edit");
+export const ThemeLight = /* @__PURE__ */ appIcon("ThemeLight");
+export const ThemeDark = /* @__PURE__ */ appIcon("ThemeDark");
+export const ThemeAuto = /* @__PURE__ */ appIcon("ThemeAuto");

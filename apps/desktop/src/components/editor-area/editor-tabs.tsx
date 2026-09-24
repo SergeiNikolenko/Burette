@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import type { ShellActions, ShellViewState } from "../types";
 import type { MenuItemSpec } from "../menu-types";
 import { ScrollFade } from "../scroll-fade";
-import { hasStructureDrag, readStructureDragPayload, type StructureDragPayload, writeStructureDragPayload } from "../../lib/structure-drag";
+import { TAB_DRAG_MIME, hasStructureDrag, readStructureDragPayload, type StructureDragPayload, writeStructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { showNativeContextMenu } from "../native-context-menu";
 import { pageKind } from "./page-kinds";
@@ -15,7 +15,6 @@ import { Badge } from "../ui/badge";
 import type { DropTargetContext } from "../../lib/drop-actions";
 import { describeDropTargetElement } from "../../lib/drop-target";
 
-const TAB_DRAG_MIME = "application/x-burette-tab-id";
 const TAB_REORDER_ANIMATION_MS = 170;
 const TAB_DRAG_ACTIVATE_DELAY_MS = 520;
 const TAB_MOUSE_REORDER_THRESHOLD_PX = 8;
@@ -309,7 +308,7 @@ export function EditorTabs({
 
   const scheduleDragActivation = useCallback((tabId: string) => {
     const draggedTabId = draggingTabIdRef.current;
-    if (!draggedTabId || tabId === draggedTabId || tabId === state.activeTabId) {
+    if (tabId === draggedTabId || tabId === state.activeTabId) {
       clearDragActivation();
       return;
     }
@@ -379,13 +378,40 @@ export function EditorTabs({
   useEffect(() => {
     const escape = (event: KeyboardEvent) => { if (event.key === "Escape") stopTabDrag(); };
     window.addEventListener("blur", stopTabDrag);
+    window.addEventListener("burette-structure-drag-cancel", stopTabDrag);
     window.addEventListener("keydown", escape, true);
     return () => {
       window.removeEventListener("blur", stopTabDrag);
+      window.removeEventListener("burette-structure-drag-cancel", stopTabDrag);
       window.removeEventListener("keydown", escape, true);
       removeMouseDragListeners();
     };
   }, [removeMouseDragListeners, stopTabDrag]);
+
+  useEffect(() => {
+    if (readOnly) return;
+    const drop = (event: Event) => {
+      const { tabId, x } = (event as CustomEvent<{ tabId: string; x?: number }>).detail;
+      if (Number.isFinite(x) && state.tabs.some(tab => tab.id === tabId)) moveDraggedTab(tabId, x!);
+      stopTabDrag();
+    };
+    const hover = (event: Event) => {
+      const { tabId, sourceTabId, x } = (event as CustomEvent<{ tabId: string | null; sourceTabId: string | null; x?: number }>).detail;
+      if (sourceTabId) {
+        clearDragActivation();
+        if (tabId && Number.isFinite(x)) moveDraggedTab(sourceTabId, x!);
+      } else if (tabId) scheduleDragActivation(tabId);
+      else clearDragActivation();
+    };
+    window.addEventListener("burette-native-tab-drop", drop);
+    window.addEventListener("burette-native-drag-hover", hover);
+    window.addEventListener("burette-native-drag-end", clearDragActivation);
+    return () => {
+      window.removeEventListener("burette-native-tab-drop", drop);
+      window.removeEventListener("burette-native-drag-hover", hover);
+      window.removeEventListener("burette-native-drag-end", clearDragActivation);
+    };
+  }, [readOnly, state.tabs, moveDraggedTab, stopTabDrag, scheduleDragActivation, clearDragActivation]);
 
   const updateNativeTabDrag = useCallback((event: React.DragEvent<HTMLElement>) => {
     const tabId = draggingTabIdRef.current;
@@ -539,6 +565,7 @@ export function EditorTabs({
               key={tab.id}
               ref={(node) => setTabShellRef(tab.id, node)}
               className="tab-shell"
+              data-tab-id={tab.id}
               data-active={active || undefined}
               data-selected={selected || undefined}
               data-dragging={isDragging || undefined}
@@ -547,9 +574,13 @@ export function EditorTabs({
               data-drop-document-renderer={tabDropTarget?.renderer ?? undefined}
               onDragOver={readOnly ? undefined : (event) => {
                 updateNativeTabDrag(event);
-                scheduleDragActivation(tab.id);
+                if (hasStructureDrag(event.dataTransfer)) scheduleDragActivation(tab.id);
+              }}
+              onDragLeave={readOnly ? undefined : (event) => {
+                if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) clearDragActivation();
               }}
               onDrop={readOnly ? undefined : (event) => {
+                clearDragActivation();
                 if (!draggingTabIdRef.current) return;
                 event.preventDefault();
                 event.stopPropagation();
@@ -589,14 +620,21 @@ export function EditorTabs({
                 // after Escape and must never open a file or run an action.
                 onDragEnd={readOnly ? undefined : stopTabDrag}
                 onDragOver={readOnly ? undefined : (event) => {
-                  if (!hasStructureDrag(event.dataTransfer)) return;
-                  const payload = readStructureDragPayload(event.dataTransfer);
-                  if (!tabDropTarget || shellDropActionChoices(payload, tabDropTarget, { kind: "tab" }).length === 0) return;
+                  if (!hasStructureDrag(event.dataTransfer) || draggingTabIdRef.current) return;
+                  if (!tabDropTarget) return;
+                  scheduleDragActivation(tab.id);
                   event.preventDefault();
                   event.stopPropagation();
                   event.dataTransfer.dropEffect = "copy";
                 }}
                 onDrop={readOnly ? undefined : (event) => {
+                  clearDragActivation();
+                  if (draggingTabIdRef.current) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    stopTabDrag();
+                    return;
+                  }
                   if (!tabDocument || !hasStructureDrag(event.dataTransfer)) return;
                   const payload = readStructureDragPayload(event.dataTransfer);
                   if (payload.paths.length === 0 && payload.records.length === 0) return;

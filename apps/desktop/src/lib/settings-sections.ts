@@ -5,6 +5,7 @@ export type SettingsSectionId =
   | "structure"
   | "updates"
   | "workspace"
+  | "connections"
   | "agent"
   | "maintenance";
 
@@ -43,6 +44,7 @@ export const settingsNavGroups: SettingsNavGroup[] = [
   {
     title: "Integrations",
     items: [
+      { id: "connections", label: "Connections", description: "SSH machines and remote projects" },
       { id: "agent", label: "Agents", description: "Agent plugin status and diagnostics" },
     ],
   },

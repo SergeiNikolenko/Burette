@@ -11,12 +11,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
-const rustSource = readFileSync(
-  fileURLToPath(new URL("../apps/desktop/src-tauri/src/commands/rgroups.rs", import.meta.url)),
-  "utf8",
+const runner = readFileSync(
+  fileURLToPath(new URL("../apps/desktop/src-tauri/src/commands/rgroup_runner.py", import.meta.url)), "utf8",
 );
-const runner = rustSource.match(/const RGROUP_RUNNER: &str = r#"([\s\S]*?)"#;/u)?.[1];
-assert.ok(runner && runner.includes("rdRGroupDecomposition"), "the runner script is embedded in rgroups.rs");
 
 function resolvePython() {
   const configured = process.env.BURETTE_RGROUP_TEST_PYTHON;
@@ -123,3 +120,48 @@ assert.equal(badCore.ok, false);
 assert.match(badCore.error, /core/iu);
 
 console.log(`rgroup runner tests passed (RDKit ${status.rdkitVersion})`);
+
+// Automatic mode covers both families, retaining a reason for every exclusion.
+const mixed = run(python, { mode: "decompose", core: "", rows: [
+  ...series, { rowId: 5, smiles: "Cc1ccncc1" }, { rowId: 6, smiles: "CCc1ccncc1" },
+  { rowId: 7, smiles: "CCCC" }, { rowId: 8, smiles: "broken((" },
+] });
+assert.ok(mixed.ok, mixed.error);
+assert.deepEqual([mixed.rows.length, mixed.series.length, mixed.noScaffoldRows, mixed.unparsedRows], [6, 2, 1, 1]);
+assert.deepEqual(mixed.excludedRows, [{ rowId: 7, status: "No ring scaffold" }, { rowId: 8, status: "Invalid structure" }]);
+assert.deepEqual(mixed.series.map(s => s.matchedRows), [4, 2]);
+const constant = run(python, { mode: "decompose", core: "c1ccccc1", rows: series.slice(0, 2) });
+assert.ok(constant.ok, constant.error);
+assert.equal(constant.series[0].labels.length, 1, "constant chloro position is folded into core");
+assert.ok(constant.rows.every(row => row.values.Core.includes("Cl")));
+assert.equal(constant.series[0].constantPositions, 1);
+const reversed = run(python, { mode: "decompose", core: "c1ccccc1", rows: [...series].reverse() });
+assert.deepEqual([...reversed.rows].sort((a,b)=>a.rowId-b.rowId), [...decomposed.rows].sort((a,b)=>a.rowId-b.rowId), "input order does not change R positions");
+// Rejoin every decomposition to its input, including hydrogen, stereo, salt,
+// and a bridge attached to the core at two positions.
+const reconstructionCases = [
+  ["C1CCCCC1", ["CC1(C)CCCCC1", "CCC1(C)CCCCC1"]],
+  ["c1ccccc1", ["c1ccccc1", "Cc1ccccc1", "C[C@H](O)c1ccccc1", "C[C@@H](O)c1ccccc1"]],
+  ["c1ccccc1", ["Oc1ccccc1", "COc1ccccc1"]],
+  ["c1ccccc1", ["[Na+].[O-]c1ccccc1", "[Na+].[O-]c1ccc(C)cc1"]],
+  ["c1ccccc1", ["c1ccc2c(c1)OCO2", "Cc1ccc2c(c1)OCO2"]],
+];
+for (const [core, smiles] of reconstructionCases) {
+  const result = run(python, { mode: "decompose", core, rows: smiles.map((smiles, i) => ({ rowId: i+1, smiles })) });
+  assert.ok(result.ok, result.error);
+  const check = spawnSync(python, ["-c", `
+import json,sys
+from rdkit import Chem
+x=json.load(sys.stdin)
+for row in x['result']['rows']:
+ vals=row['values']
+ parts=list(dict.fromkeys([vals['Core']]+[v for k,v in vals.items() if k.startswith('R')]))
+ mol=Chem.MolFromSmiles(parts[0])
+ for part in parts[1:]: mol=Chem.CombineMols(mol,Chem.MolFromSmiles(part))
+ mol=Chem.RemoveHs(Chem.molzip(mol))
+ if vals.get('Components'): mol=Chem.CombineMols(mol,Chem.MolFromSmiles(vals['Components']))
+ assert Chem.MolToSmiles(mol)==Chem.MolToSmiles(Chem.MolFromSmiles(x['smiles'][row['rowId']-1]))
+`], { input: JSON.stringify({result, smiles}), encoding: "utf8" });
+  assert.equal(check.status, 0, check.stderr);
+}
+console.log("multi-scaffold, constant-group, order and reconstruction tests passed");

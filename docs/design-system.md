@@ -27,6 +27,10 @@ Current default theme values include:
 | Translucency | `30` | `20` |
 | Contrast | `20` | `16` |
 
+Dark shell text mixes the configured foreground at 84% with the background
+(about `#D6D6D6` with the defaults), keeping primary labels softer than white.
+Light shell text uses the configured foreground directly.
+
 The runtime derives border, surface, hover, selected, palette, tab, and scrollbar
 colors from these settings through CSS variables and `color-mix()`. Users can
 edit accent, background, foreground, font, translucency, and contrast in
@@ -92,6 +96,13 @@ The shell is a workspace, not a brand canvas.
 
 ### Sidebar And Search
 
+- Folder markers use the matching 24-unit Hugeicons `Folder01Icon` and
+  `Folder02Icon` outlines, recorded as `SidebarFolder`/`SidebarFolderOpen` in
+  the shared icon snapshot. Both render at 16 px with the primary text color.
+  `SidebarGlobe` comes from `Globe02Icon`; the folder component supports cyan,
+  blue and purple network badges. Local folders have no badge; source identity
+  must be supplied before assigning one. These glyphs use the existing
+  `@hugeicons/core-free-icons` dependency's geometry and license.
 - The sidebar is a file/project navigation tool, not a marketing navigation
   rail.
 - Project folders, recent files, nested structures, and search should stay dense

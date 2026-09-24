@@ -234,11 +234,11 @@ assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
 assert.ok(mainWindowConfig);
 assert.equal(tauriConfig.build.beforeBuildCommand, 'true');
 assert.equal(desktopPackageConfig.scripts.build, '../../node_modules/.bin/vite build --config vite.config.ts');
-assert.equal(desktopPackageConfig.scripts['build:tauri'], 'bun run build && node ../../node_modules/@tauri-apps/cli/tauri.js build');
+assert.equal(desktopPackageConfig.scripts['build:tauri'], 'node ../../scripts/stage-native-widget.mjs && bun run build && node ../../node_modules/@tauri-apps/cli/tauri.js build');
 assert.equal(mainWindowConfig.create, false);
 assert.equal(mainWindowConfig.visible, true);
 assert.equal(mainWindowConfig.windowEffects?.state, 'active');
-assert.equal(tauriConfig.bundle.resources['../../../plugins/burette-agent'], 'plugins/burette-agent');
+assert.equal(tauriConfig.bundle.resources['../../../plugins/burette-native-bundle'], 'plugins/burette-agent');
 assert.equal(tauriConfig.bundle.resources['../../../compute/metal/runtime'], 'ComputeMetal');
 assert.match(tauriConfig.app.security.csp, /'unsafe-eval'/);
 assert.match(tauriConfig.app.security.csp, /'wasm-unsafe-eval'/);
@@ -482,13 +482,17 @@ assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_delim
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_structure_text/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) async fn fetch_pdb_structure/);
 assert.match(documentsCommand, /https:\/\/files\.rcsb\.org\/download\/\{pdb_id\}\.pdb/);
-assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn generate_3d_conformer/);
+assert.match(
+  documentsCommand,
+  /#\[tauri::command\]\s+pub\(crate\) async fn generate_3d_conformer[\s\S]*?spawn_blocking/,
+  'native conformer generation must not block the WebKit UI thread',
+);
 assert.match(documentsCommand, /engine: Option<String>/);
 assert.match(documentsCommand, /mode: Option<String>/);
 assert.match(documentsCommand, /candidate_count: Option<usize>/);
 assert.match(documentsCommand, /rmsd_cutoff: Option<f64>/);
 assert.match(documentsCommand, /conformer_count: Option<usize>/);
-assert.match(documentsCommand, /3D conformer generation supports Datamol and RDKit engines/);
+assert.match(documentsCommand, /This legacy conformer endpoint supports RDKit only; use native compute for Metal/);
 assert.match(documentsCommand, /source_3d: Option<ConformerGenerationSource>/);
 assert.match(documentsCommand, /fn generated_conformer_set_title/);
 assert.match(documentsCommand, /"mode": mode/);
@@ -496,7 +500,7 @@ assert.match(documentsCommand, /"candidateCount": candidate_count/);
 assert.match(documentsCommand, /"rmsdCutoff": rmsd_cutoff/);
 assert.match(documentsCommand, /include_str!\(concat!\([\s\S]*env!\("CARGO_MANIFEST_DIR"\),[\s\S]*"\/\.\.\/\.\.\/\.\.\/scripts\/rdkit_conformer\.py"/);
 assert.match(rdkitConformerScript, /Cannot preserve the original 3D pose because the original core no longer matches the current Ketcher sketch/);
-assert.match(rdkitConformerScript, /3D conformer generation supports Datamol and RDKit engines/);
+assert.match(rdkitConformerScript, /This legacy conformer endpoint supports RDKit only; use native compute for Metal/);
 assert.match(rdkitConformerScript, /ff\.AddFixedPoint\(int\(atom_idx\)\)/);
 assert.match(rdkitConformerScript, /method = "ETKDG\+" \+ family \+ \("\+fixed-core" if core is not None else "\+ensemble"\)/);
 assert.match(rdkitConformerScript, /mode = str\(payload\.get\("mode"\) or "single"\)/);
@@ -631,12 +635,11 @@ assert.match(documentsCommand, /fn looks_like_supported_structure_file/);
 assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_preview_cache/);
 assert.match(runtimeDoctorCommand, /#\[tauri::command\]\s+pub\(crate\) fn external_runtime_doctor/);
 assert.match(runtimeDoctorCommand, /burette\.external-runtime-doctor\.v1/);
-for (const checkId of ['xyzrender', 'descriptors-python', 'datamol-conformer-python', 'rdkit-conformer-python', 'crest', 'prism', 'xtb', 'schrodinger']) {
+for (const checkId of ['xyzrender', 'descriptors-python', 'rdkit-conformer-python', 'crest', 'prism', 'xtb', 'schrodinger']) {
   assert.match(runtimeDoctorCommand, new RegExp(`"${checkId}"`));
 }
 assert.match(runtimeDoctorCommand, /descriptors::descriptor_runtime_status\(\)/);
-assert.match(runtimeDoctorCommand, /documents::conformer_python_runtime_status\("datamol"\)/);
-assert.match(runtimeDoctorCommand, /documents::conformer_python_runtime_status\("rdkit"\)/);
+assert.match(runtimeDoctorCommand, /documents::conformer_python_runtime_status\(\)/);
 assert.match(runtimeDoctorCommand, /conformer::conformer_status\(\)/);
 assert.match(runtimeDoctorCommand, /xtb::xtb_status\(app\)/);
 assert.match(runtimeDoctorCommand, /xyzrender::xyzrender_runtime_status\(\)/);
@@ -1023,12 +1026,8 @@ assert.match(updaterCommand, /mcp" \/ "lib" \/ "server-bundle\.mjs/);
 assert.doesNotMatch(updaterCommand, /"0\.1\.0"/);
 assert.match(updaterCommand, /Education & Research/);
 assert.match(updaterCommand, /codex plugin synced/);
-assert.match(buildScript, /XYZRENDER_RUNTIME_PYTHON_PACKAGES=\("datamol==0\.12\.5"\)/);
 assert.match(buildScript, /require_xyzrender_runtime_for_release\(\)\s*\{/);
 assert.match(buildScript, /release builds require bundled xyzrender runtime source/);
-assert.match(buildScript, /ensure_xyzrender_runtime_python_packages\(\)\s*\{/);
-assert.match(buildScript, /uv pip install --python "\$LOCAL_XYZRENDER_ENV\/bin\/python3" "\$\{XYZRENDER_RUNTIME_PYTHON_PACKAGES\[@\]\}"/);
-assert.match(buildScript, /import datamol/);
 assert.match(buildScript, /bundle_xyzrender_runtime "\$TAURI_BUILT_APP"/);
 assert.match(buildScript, /rsync -aL --delete "\$LOCAL_XYZRENDER_ENV\/" "\$runtime\/"/);
 assert.match(buildScript, /Contents\/Resources\/xyzrender-runtime/);
@@ -1147,7 +1146,7 @@ assert.match(macosTerminationSource, /DispatchQueue::main\(\)\.exec_async\(work\
 assert.match(lib, /macos::after_current_appkit_event\(initial_workspace\)/);
 assert.match(
   lib,
-  /RunEvent::Opened \{ urls \} => \{[\s\S]*?macos::after_current_appkit_event\(move \|\| \{\s*show_and_emit_open_documents\(&opened_app, paths\);\s*\}\);/,
+  /RunEvent::Opened \{ urls \} => \{[\s\S]*?macos::after_current_appkit_event\(move \|\| \{\s*show_and_emit_open_documents\(&opened_app, paths\);\s*deep_links::receive\(&opened_app, links\);\s*\}\);/,
 );
 assert.match(lib, /startup::signal_open_documents_for_window\(app, window\.label\(\), paths\)/);
 assert.match(windowsSource, /pub\(crate\) const MAIN_WINDOW_LABEL: &str = "main"/);
@@ -1611,7 +1610,7 @@ assert.doesNotMatch(previewRuntimeViewer, /window\.parent\.postMessage\(\{ sourc
 assert.match(previewRuntimeGrid, /Content-Security-Policy/);
 assert.match(previewRuntimeGrid, /'unsafe-eval'/);
 assert.match(previewRuntimeGrid, /'wasm-unsafe-eval'/);
-assert.match(previewRuntimeGrid, /grid-ui-v50/);
+assert.match(previewRuntimeGrid, /grid-ui-v\d+/);
 // The grid-only formats have to agree with the registry: a source that opens
 // as nothing else must report an empty collection rather than fall through to
 // a viewer that cannot read it either.

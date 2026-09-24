@@ -68,6 +68,11 @@ function SequenceResize({ initialHeight, onResize, onCollapse, onExpand, onCommi
   const sizePxRef = useRef(initialHeight);
   const elementRef = useGroupPixelGuard([{ panelRef, openRef, sizePxRef }]);
   useEffect(() => {
+    // The first render has a provisional content ceiling. Restore the saved
+    // height once the actual rows have been measured.
+    if (openRef.current) panelRef.current?.resize(`${sizePxRef.current}px`);
+  }, [maximumHeight]);
+  useEffect(() => {
     const syncVisibility = () => {
       const open = document.body.classList.contains('buret-sequence-open');
       if (openingRef.current && !open) return;

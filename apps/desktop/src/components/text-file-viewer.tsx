@@ -91,16 +91,16 @@ export function TextFileViewer({
     const parent = parentRef.current;
     if (!parent) return undefined;
 
-    const emitStructureSelection = (selection: TextStructureSelection) => {
-      const selectionKey = JSON.stringify([selection.granularity, selection.selector, selection.lineCount]);
-      if (selectionKey === lastStructureSelectionKeyRef.current) return;
-      lastStructureSelectionKeyRef.current = selectionKey;
-      if (selectionTimeoutRef.current !== null) {
-        window.clearTimeout(selectionTimeoutRef.current);
-      }
+    const emitStructureSelection = (resolve: () => TextStructureSelection | null) => {
+      if (selectionTimeoutRef.current !== null) window.clearTimeout(selectionTimeoutRef.current);
       selectionTimeoutRef.current = window.setTimeout(() => {
         selectionTimeoutRef.current = null;
-        onStructureSelectionRef.current?.(document, selection);
+        const selection = resolve();
+        if (!selection) return;
+        const selectionKey = JSON.stringify([selection.granularity, selection.selector, selection.lineCount]);
+        if (selectionKey === lastStructureSelectionKeyRef.current) return;
+        lastStructureSelectionKeyRef.current = selectionKey;
+        onStructureSelectionRef.current?.(documentRef.current, selection);
       }, 120);
     };
 
@@ -137,8 +137,7 @@ export function TextFileViewer({
             if (!update.selectionSet) return;
             const range = update.state.selection.main;
             if (range.empty) return;
-            const selection = textStructureSelectionFromRange(documentRef.current, range.from, range.to);
-            if (selection) emitStructureSelection(selection);
+            emitStructureSelection(() => textStructureSelectionFromRange(documentRef.current, range.from, range.to));
           }),
           keymap.of([
             {
@@ -170,8 +169,7 @@ export function TextFileViewer({
       return target && parent.contains(target) ? target : null;
     };
     const emitStructureRange = (from: number, to: number) => {
-      const structureSelection = textStructureSelectionFromRange(documentRef.current, from, to);
-      if (structureSelection) emitStructureSelection(structureSelection);
+      emitStructureSelection(() => textStructureSelectionFromRange(documentRef.current, from, to));
     };
     const emitLineDragStructureSelection = (lineElement: HTMLElement) => {
       try {
@@ -189,7 +187,7 @@ export function TextFileViewer({
       if (!selection.focusNode || !parent.contains(selection.focusNode)) return;
       const selectedTextStructureSelection = textStructureSelectionFromSelectedText(documentRef.current, selection.toString());
       if (selectedTextStructureSelection) {
-        emitStructureSelection(selectedTextStructureSelection);
+        emitStructureSelection(() => selectedTextStructureSelection);
         return;
       }
       const range = selection.getRangeAt(0);
@@ -206,8 +204,7 @@ export function TextFileViewer({
       if (selectedDocumentLines.length === 0) return;
       const from = Math.min(...selectedDocumentLines.map((line) => line.from));
       const to = Math.max(...selectedDocumentLines.map((line) => line.to));
-      const structureSelection = textStructureSelectionFromRange(documentRef.current, from, to);
-      if (structureSelection) emitStructureSelection(structureSelection);
+      emitStructureSelection(() => textStructureSelectionFromRange(documentRef.current, from, to));
     };
     window.document.addEventListener("selectionchange", emitNativeStructureSelection);
     parent.addEventListener("mouseup", emitNativeStructureSelection);

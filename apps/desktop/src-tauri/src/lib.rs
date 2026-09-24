@@ -3,6 +3,7 @@
 
 mod commands;
 mod compute;
+mod deep_links;
 #[cfg(target_os = "macos")]
 mod macos;
 mod menu;
@@ -52,9 +53,15 @@ pub fn run() {
             }
             let cwd = Some(PathBuf::from(cwd));
             let session_dir = startup::agent_session_from_argv(argv.clone(), cwd.clone());
+            let links = argv
+                .iter()
+                .filter(|arg| arg.starts_with("burette") && arg.contains("://"))
+                .cloned()
+                .collect();
             let paths = startup::file_args_from_argv(argv, cwd);
             show_and_emit_open_documents(app, paths);
             startup::emit_agent_session(app, session_dir);
+            deep_links::receive(app, links);
         }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -65,6 +72,7 @@ pub fn run() {
         .manage(RecentDocumentsRegistry::default())
         .manage(commands::shell::ProjectRootWatcher::default())
         .manage(startup::PendingOpenDocuments::default())
+        .manage(deep_links::PendingLinks::default())
         .manage(zoom::WindowZoom::default())
         .on_page_load(|webview, payload| {
             if payload.event() == tauri::webview::PageLoadEvent::Finished {
@@ -107,6 +115,11 @@ pub fn run() {
             app.manage(compute_coordinator);
             let argv: Vec<String> = std::env::args().collect();
             let launch_mode = startup::LaunchMode::current(&argv);
+            let startup_links = argv
+                .iter()
+                .filter(|arg| arg.starts_with("burette") && arg.contains("://"))
+                .cloned()
+                .collect();
             let startup_paths = startup::file_args_from_argv(argv, std::env::current_dir().ok());
             #[cfg(target_os = "macos")]
             app.set_activation_policy(if launch_mode.is_register() && startup_paths.is_empty() {
@@ -127,6 +140,7 @@ pub fn run() {
                     if !startup_paths.is_empty() {
                         show_and_emit_open_documents(&initial_app, startup_paths);
                     }
+                    deep_links::receive(&initial_app, startup_links);
                 };
                 #[cfg(target_os = "macos")]
                 macos::after_current_appkit_event(initial_workspace);
@@ -191,6 +205,7 @@ pub fn run() {
             commands::derived::derived_store_values,
             commands::rgroups::rgroup_runtime_status,
             commands::rgroups::rgroup_decompose,
+            commands::rgroup_results::rgroup_store_results,
             commands::descriptors::descriptor_calculate,
             commands::descriptors::descriptor_calculate_grid,
             commands::descriptors::descriptor_start_grid,
@@ -198,6 +213,8 @@ pub fn run() {
             commands::descriptors::descriptor_cancel_grid,
             commands::descriptors::descriptor_grid_summary,
             commands::startup::startup_documents,
+            deep_links::drain_deep_links,
+            deep_links::claim_agent_session,
             commands::startup::startup_agent_session,
             commands::database::database_search,
             commands::database::database_browser_url,
@@ -238,6 +255,7 @@ pub fn run() {
             commands::documents::save_text_as,
             commands::documents::release_save_as_reservation,
             commands::documents::abort_open_document_claim,
+            commands::xyzrender_editor::render_xyzrender_editor,
             commands::documents::render_xyzrender_sheet_item,
             commands::documents::render_xyzrender_sheet_items,
             commands::grid::grid_fetch_page,
@@ -264,6 +282,10 @@ pub fn run() {
             commands::file_operations::operate_sidebar_file,
             commands::context_menu::popup_macos_context_menu,
             commands::folder_contents::read_folder_contents,
+            commands::ssh::ssh_hosts,
+            commands::ssh::ssh_list,
+            commands::ssh::ssh_delete_folder,
+            commands::ssh::ssh_preview,
             commands::shell::write_base64_file,
             commands::shell::write_text_file,
             commands::quicklook::reset_quick_look,
@@ -280,6 +302,8 @@ pub fn run() {
         .expect("error while building Burette Tauri application");
 
     #[cfg(target_os = "macos")]
+    menu::dock::install(app.handle()).expect("failed to install the macOS Dock menu");
+    #[cfg(target_os = "macos")]
     macos::install_termination_handler(app.handle())
         .expect("failed to install the macOS termination handler");
 
@@ -287,6 +311,11 @@ pub fn run() {
 
     app.run(|app, event| match event {
         RunEvent::Opened { urls } => {
+            let links = urls
+                .iter()
+                .filter(|url| url.scheme() != "file")
+                .map(ToString::to_string)
+                .collect();
             let paths: Vec<String> = urls
                 .into_iter()
                 .filter_map(|url| url.to_file_path().ok())
@@ -298,10 +327,14 @@ pub fn run() {
                 let opened_app = app.clone();
                 macos::after_current_appkit_event(move || {
                     show_and_emit_open_documents(&opened_app, paths);
+                    deep_links::receive(&opened_app, links);
                 });
             }
             #[cfg(not(target_os = "macos"))]
-            show_and_emit_open_documents(app, paths);
+            {
+                show_and_emit_open_documents(app, paths);
+                deep_links::receive(app, links);
+            }
         }
         #[cfg(target_os = "macos")]
         RunEvent::Reopen {

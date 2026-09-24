@@ -76,6 +76,7 @@
   const RDKIT_SVG_CACHE_LIMIT = 220;
   const XYZRENDER_CARD_CACHE_LIMIT = 1500;
   const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
+  let activeStructureDrag = false;
   const state = {
     rdkit: null,
     externalHoverIndex: null,
@@ -280,6 +281,12 @@
 
   function initShellShortcutBridge() {
     document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && activeStructureDrag) {
+        activeStructureDrag = false;
+        event.preventDefault();
+        post('structureDragCancel', '');
+        return;
+      }
       if (event.defaultPrevented || isEditableShortcutTarget(event.target)) return;
       const key = event.key?.toLowerCase();
       const commandKey = event.metaKey || event.ctrlKey;
@@ -383,6 +390,13 @@
     root.dataset.hoverPreviewBound = '1';
     let lastHoverIndex = null;
     root.addEventListener('pointerover', (event) => {
+      const cell = event.target?.closest?.('td');
+      const text = cell?.querySelector('.buret-cell-marquee');
+      if (text) {
+        const shift = Math.max(0, text.firstElementChild.scrollWidth - text.clientWidth);
+        text.style.setProperty('--marquee-shift', `${shift}px`);
+        text.style.setProperty('--marquee-duration', `${Math.max(0.45, shift / 34)}s`);
+      }
       const target = event.target?.closest?.(
         '.buret-card[data-index], .buret-grid-table-row[data-index], .buret-grid-rail-tick[data-buret-grid-rail-index]'
       );
@@ -450,7 +464,7 @@
     });
   }
 
-  function setStatus(message, kind = 'info') {
+  function setStatus(message, kind = 'info', notifyHost = true) {
     const cfg = window.BuretteConfig && typeof window.BuretteConfig === 'object' ? window.BuretteConfig : {};
     if (status) {
       setStatusText(String(message || ''));
@@ -458,7 +472,7 @@
       status.classList.toggle('hidden', kind !== 'error' && !window.BuretteDebug);
       if (kind === 'error' && status && !window.BuretteDebug && cfg.appViewer === true) status.classList.add('hidden');
     }
-    if (kind === 'error' || window.BuretteDebug) post(kind === 'error' ? 'error' : 'status', message || '');
+    if (notifyHost && (kind === 'error' || window.BuretteDebug)) post(kind === 'error' ? 'error' : 'status', message || '');
   }
 
   function setStatusText(text) {
@@ -800,7 +814,7 @@
       if (body.type === 'gridAlignmentError') {
         state.aligningPoses = false;
         refreshGridControls(config());
-        setStatus(body.error || '[grid] Pose alignment failed.', 'error');
+        setStatus(body.error || '[grid] Pose alignment failed.', 'error', false);
         return;
       }
       if (body.type === 'gridSemiempiricalStarted') {
@@ -818,16 +832,17 @@
       if (body.type === 'gridSemiempiricalError') {
         state.evaluatingSemiempirical = false;
         refreshGridControls(config());
-        setStatus(body.error || '[grid] RM1 evaluation failed.', 'error');
+        setStatus(body.error || '[grid] RM1 evaluation failed.', 'error', false);
         return;
       }
       if (body.type === 'gridGenerate3DFinished') {
         setGridGenerate3DPending(false);
+        if (body.gridApplied === true) void refreshRemote(config());
         return;
       }
       if (body.type === 'gridGenerate3DError') {
         setGridGenerate3DPending(false);
-        setStatus(body.error || '[grid] 3D generation failed.', 'error');
+        setStatus(body.error || '[grid] 3D generation failed.', 'error', false);
         return;
       }
       if (body.type === 'gridClusterStarted') {
@@ -1020,6 +1035,7 @@
     const command = String(body?.command || '').trim();
     const caps = capabilities(cfgValue);
     const selectedStructureCount = selectedMolecularGridRowCount();
+    const selectedComputeCount = caps.cluster ? state.selected.size : selectedStructureCount;
     switch (command) {
       case 'file.save':
         if (!caps.export) return;
@@ -1112,10 +1128,16 @@
       case 'view.grid-renderer-xyzrender':
         setCardRenderer('xyzrender', cfgValue);
         return;
-      case 'structure.open-in-molstar':
+      case 'structure.open-in-molstar': {
+        const targetRow = commandTargetRow(body);
+        if (targetRow && caps.molstarOpen) {
+          void requestSingleMolstarDocument(targetRow, cfgValue, 'new-tab');
+          return;
+        }
         if ((!caps.molstarOpen && !caps.rendererSwitch) || selectedStructureCount < 1 || selectedStructureCount > NATIVE_MOLSTAR_SELECTION_LIMIT) return;
         requestRendererSwitch('molstar', cfgValue);
         return;
+      }
       case 'structure.edit-in-ketcher': {
         if (!caps.ketcherOpen) return;
         const targetRow = commandTargetRow(body);
@@ -1130,7 +1152,7 @@
         return;
       }
       case 'structure.generate-3d':
-        if (!caps.selection || selectedStructureCount < 1 || selectedStructureCount > NATIVE_GENERATE_3D_SELECTION_LIMIT) return;
+        if (!caps.selection || selectedComputeCount < 1 || selectedComputeCount > NATIVE_GENERATE_3D_SELECTION_LIMIT) return;
         requestSelected3DGeneration(cfgValue);
         return;
       case 'structure.calculate-properties':
@@ -1156,6 +1178,7 @@
     const caps = capabilities(cfg);
     if (!caps.editing) return;
     const selectedStructureCount = selectedMolecularGridRowCount();
+    const selectedComputeCount = caps.cluster ? state.selected.size : selectedStructureCount;
     const selectedSourceIndexes = state.selected.size <= GRID_SELECTION_BRIDGE_LIMIT
       ? [...state.selected].map(Number).filter(index => Number.isSafeInteger(index) && index >= 0)
       : [];
@@ -1181,7 +1204,7 @@
       selectionEnabled: caps.selection,
       canOpenSelectedInMolstar: (caps.molstarOpen || caps.rendererSwitch) && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_MOLSTAR_SELECTION_LIMIT,
       canOpenSelectedInKetcher: caps.ketcherOpen && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_KETCHER_SELECTION_LIMIT,
-      canGenerate3dForSelection: caps.selection && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_GENERATE_3D_SELECTION_LIMIT,
+      canGenerate3dForSelection: caps.selection && selectedComputeCount > 0 && selectedComputeCount <= NATIVE_GENERATE_3D_SELECTION_LIMIT,
       supportsXyzrender: supportsXyzrenderCards(cfg),
       generating3d: state.generating3d
     };
@@ -2086,6 +2109,7 @@
   // of handing them back row by row, so the columns only appear once a page is
   // re-read; descriptorIds ride along with the page payload.
   function applyDescriptorGridRunFinished(body, cfg) {
+    if (body.resultKind === 'rgroup') markGridDirty('R-group analysis');
     const added = Math.max(0, Number(body.descriptorIdCount || 0));
     setStatus(added > 0
       ? `[grid] Descriptors ready: ${added.toLocaleString()} column${added === 1 ? '' : 's'}.`
@@ -2171,7 +2195,7 @@
   function remoteTableColumnFilters() {
     const filters = [];
     for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
-      if (!filter || columnId.startsWith('descriptor:') || columnId.startsWith('analysis:')) continue;
+      if (!filter || (columnId.startsWith('descriptor:') && filter.type !== 'text') || columnId.startsWith('analysis:')) continue;
       const row = { id: columnId, filterType: filter.type === 'number' ? 'number' : 'text' };
       if (row.filterType === 'number') {
         const min = Number(filter.min);
@@ -2277,6 +2301,8 @@
     toggle.disabled = !hasInputCoordinates;
     toggle.title = hasInputCoordinates ? 'Use coordinates embedded in the file' : 'No file coordinates in this grid';
     toggle.setAttribute('aria-pressed', hasInputCoordinates && state.rdkitUseInputCoords ? 'true' : 'false');
+    const label = toggle.querySelector('[data-coordinate-mode]');
+    if (label) label.textContent = hasInputCoordinates && state.rdkitUseInputCoords ? '3D' : '2D';
   }
 
   function hasInputCoordinateRows() {
@@ -2344,7 +2370,7 @@
     setStatus(`[grid] Opening ${records.length.toLocaleString()} selected molecule${records.length === 1 ? '' : 's'} in Molstar.`);
   }
 
-  async function requestSingleMolstarDocument(row, cfg) {
+  async function requestSingleMolstarDocument(row, cfg, openTarget = 'active-tab') {
     const records = await sdfRecordTextsForMolstar([row]);
     const record = records[0] || null;
     const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
@@ -2355,6 +2381,7 @@
     const receptorPath = String(cfg?.dockingReceptorPath || '').trim();
     const title = `${safeStructureFileStem(label, Number(row?.index))}.sdf`;
     post('openSdfMolstarDocument', `[grid] Open ${label} in Molstar.`, {
+      openTarget,
       documentId: cfg?.documentId || null,
       title,
       extension: 'sdf',
@@ -2409,44 +2436,48 @@
 
   function selectedRowsHaveInput3dCoordinates() {
     const rows = selectedMolstarRows();
-    return rows.length > 0
-      && rows.length === state.selected.size
+    return state.selected.size > 0
+      && (capabilities(safeConfig()).cluster || rows.length === state.selected.size)
       && rows.every(row => hasMolblockInput3DCoordinates(row.molblock));
   }
 
   function requestSelected3DGeneration(cfg) {
     const rows = selectedMolstarRows();
-    if (!rows.length) {
+    if (!state.selected.size) {
       setStatus('[grid] Select one or more molecules before generating 3D.', 'error');
       return;
     }
-    request3DGenerationForRows(rows, cfg);
+    if (!capabilities(cfg).cluster && rows.length !== state.selected.size) {
+      setStatus('[grid] Load every selected molecule before generating 3D.', 'error');
+      return;
+    }
+    request3DGenerationForRows(rows, cfg, [...state.selected]);
   }
 
   function requestSelectedGeometryOptimization(cfg) {
     const rows = selectedMolstarRows();
-    if (!rows.length || !rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
+    if (!state.selected.size || !rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
       setStatus('[grid] Generate 3D coordinates for every selected molecule before optimizing geometry.', 'error');
       return;
     }
-    const molecules = rows.map(row => gridConformerGenerationInput(row)).filter(Boolean);
+    const molecules = capabilities(cfg).cluster ? [] : rows.map(row => gridConformerGenerationInput(row)).filter(Boolean);
     const title = `${cfg?.label || 'Molecules'} — optimized geometry`;
     setGridGenerate3DPending(true);
     post('optimizeGeometryGridSelection', '[grid] Optimize selected input geometry.', {
       documentId: cfg?.documentId || null,
       title,
-      sourceIndexes: rows.map(row => Number(row.index)),
+      sourceIndexes: [...state.selected].map(Number).sort((a, b) => a - b),
       molecules,
       conformerVariant: state.conformerVariant,
       mmffVariant: state.mmffVariant
     });
-    setStatus(`[grid] Optimizing ${molecules.length.toLocaleString()} input geometr${molecules.length === 1 ? 'y' : 'ies'}.`);
+    setStatus(`[grid] Optimizing ${state.selected.size.toLocaleString()} input geometr${state.selected.size === 1 ? 'y' : 'ies'}.`);
   }
 
   function requestSelectedPoseAlignment(cfg) {
     if (state.aligningPoses) return;
     const rows = selectedMolstarRows();
-    if (rows.length < 2) {
+    if (state.selected.size < 2) {
       setStatus('[grid] Select at least two 3D poses. The first selected row is the reference.', 'error');
       return;
     }
@@ -2458,16 +2489,16 @@
     refreshGridControls(cfg);
     post('alignGridPoses', '[grid] Align and compare selected poses.', {
       documentId: cfg?.documentId || null,
-      sourceIndexes: rows.map(row => Number(row.index))
+      sourceIndexes: [...state.selected].map(Number).sort((a, b) => a - b)
     });
-    setStatus(`[grid] Aligning ${rows.length.toLocaleString()} poses to the first selected row on Metal.`);
+    setStatus(`[grid] Aligning ${state.selected.size.toLocaleString()} poses to the first selected row on Metal.`);
   }
 
   function requestSelectedSemiempiricalEvaluation(cfg) {
     if (state.evaluatingSemiempirical) return;
     const rows = selectedMolstarRows();
     const methodLabel = state.semiempiricalMethod === 'AM1_STAR' ? 'AM1*' : state.semiempiricalMethod;
-    if (!rows.length || !rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
+    if (!state.selected.size || !rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
       setStatus(`[grid] Generate 3D coordinates for every selected molecule before calculating ${methodLabel}.`, 'error');
       return;
     }
@@ -2475,10 +2506,10 @@
     refreshGridControls(cfg);
     post('evaluateSemiempiricalGridSelection', `[grid] Calculate ${methodLabel} energies and charges.`, {
       documentId: cfg?.documentId || null,
-      sourceIndexes: rows.map(row => Number(row.index)),
+      sourceIndexes: [...state.selected].map(Number).sort((a, b) => a - b),
       method: state.semiempiricalMethod
     });
-    setStatus(`[grid] Calculating ${methodLabel} energies and charges for ${rows.length.toLocaleString()} selected molecule${rows.length === 1 ? '' : 's'}; execution provenance will identify Metal or CPU fallback.`);
+    setStatus(`[grid] Calculating ${methodLabel} energies and charges for ${state.selected.size.toLocaleString()} selected molecule${state.selected.size === 1 ? '' : 's'}; execution provenance will identify Metal or CPU fallback.`);
   }
 
   function requestSingle3DGeneration(row, cfg) {
@@ -2489,11 +2520,12 @@
     request3DGenerationForRows([row], cfg);
   }
 
-  function request3DGenerationForRows(rows, cfg) {
-    const molecules = rows
+  function request3DGenerationForRows(rows, cfg, sourceIndexes = rows.map(row => Number(row.index))) {
+    const nativeSource = capabilities(cfg).cluster && !!cfg.documentId;
+    const molecules = nativeSource ? [] : rows
       .map(row => gridConformerGenerationInput(row))
       .filter(Boolean);
-    if (!molecules.length) {
+    if (!nativeSource && !molecules.length) {
       setStatus('[grid] Selected molecules do not have SDF or SMILES structure data for 3D generation.', 'error');
       return;
     }
@@ -2504,12 +2536,12 @@
     post('generate3dGridSelection', '[grid] Generate 3D for selected molecules.', {
       documentId: cfg?.documentId || null,
       title,
-      sourceIndexes: rows.map(row => Number(row.index)),
+      sourceIndexes,
       molecules,
       conformerVariant: state.conformerVariant,
       mmffVariant: state.mmffVariant
     });
-    setStatus(`[grid] Generating 3D for ${molecules.length.toLocaleString()} molecule${molecules.length === 1 ? '' : 's'}.`);
+    setStatus(`[grid] Generating 3D for ${(nativeSource ? sourceIndexes.length : molecules.length).toLocaleString()} molecule${sourceIndexes.length === 1 ? '' : 's'}.`);
   }
 
   function gridConformerGenerationInput(row) {
@@ -3737,6 +3769,11 @@
     if (state.tableColumnScrollFrame || state.rendering || !state.rows.length) return;
     state.tableColumnScrollFrame = window.requestAnimationFrame(() => {
       state.tableColumnScrollFrame = 0;
+      const columns = tableColumnWindow(tableVisibleColumns(tableColumnCatalog()));
+      if (wrapper.dataset.columnWindow === columns.windowColumns.map(column => column.id).join('|')) {
+        startVisibleRdkitCards();
+        return;
+      }
       void renderVirtualWindow(cfg, state.token, { force: true });
     });
   }
@@ -3754,6 +3791,25 @@
     event.preventDefault();
     wrapper.scrollLeft = next;
     handleTableColumnScroll(wrapper, cfg);
+  }
+
+  // Invalid records remain source rows for tables, analysis and export. Only
+  // the molecular view omits them; raw paging offsets must never change.
+  const invalidCardSources = new WeakMap();
+
+  function omitInvalidCard(row) {
+    const source = row.molblock || row.smiles || '';
+    const changed = !invalidCardSources.has(row) || invalidCardSources.get(row) !== source;
+    invalidCardSources.set(row, source);
+    if (changed && state.viewMode !== 'table') {
+      requestAnimationFrame(() => { void renderVirtualWindow(safeConfig(), state.token, { force: true }); });
+    }
+  }
+
+  function cardViewRows(rows) {
+    if (state.viewMode === 'table') return rows;
+    return rows.filter(row => !invalidCardSources.has(row)
+      || invalidCardSources.get(row) !== (row.molblock || row.smiles || ''));
   }
 
   async function renderVirtualWindow(cfg, token, options = {}) {
@@ -3776,11 +3832,12 @@
       resetCardRenderQueues();
       const fragment = document.createDocumentFragment();
       const cards = [];
-      const rows = state.rows.slice(range.start, range.end);
+      const rows = cardViewRows(state.rows.slice(0, state.visibleCount)).slice(range.start, range.end);
       if (state.viewMode === 'table') {
         fragment.appendChild(gridTable(rows, cfg, range));
         grid.replaceChildren(fragment);
         restoreTableScrollPosition(grid);
+        requestAnimationFrame(startVisibleRdkitCards);
         updateTableHeaderStick();
         state.windowStart = range.start;
         state.windowEnd = range.end;
@@ -3884,14 +3941,14 @@
 
   function maybeLoadMoreForRenderedRange(cfg, range) {
     if (!hasMoreRows() || state.remoteLoading) return;
-    if (range.end >= Math.max(0, state.visibleCount - GRID_WINDOW_OVERSCAN_ROWS)) {
+    if (range.end >= Math.max(0, cardViewRows(state.rows.slice(0, state.visibleCount)).length - GRID_WINDOW_OVERSCAN_ROWS)) {
       window.setTimeout(() => loadMore(cfg), 0);
     }
   }
 
   function virtualWindowRange(grid) {
     updateVirtualGridMetrics();
-    const visibleRows = Math.min(state.visibleCount, state.rows.length);
+    const visibleRows = cardViewRows(state.rows.slice(0, state.visibleCount)).length;
     if (!visibleRows) return { start: 0, end: 0, topHeight: 0, bottomHeight: 0 };
     const columns = Math.max(1, state.estimatedColumnCount);
     const totalGridRows = Math.ceil(visibleRows / columns);
@@ -3925,9 +3982,10 @@
       const row = grid.querySelector('.buret-grid-table-row');
       const rect = row?.getBoundingClientRect?.();
       state.estimatedColumnCount = 1;
+      state.estimatedGridGap = 0;
       state.estimatedRowHeight = rect && Number.isFinite(rect.height) && rect.height > 0
         ? Math.max(36, rect.height)
-        : 44;
+        : effectiveMolecularGrid(safeConfig()) ? 61 : 36;
       return;
     }
     const card = grid.querySelector('.buret-card');
@@ -3981,8 +4039,6 @@
         ? `Indexing failed: ${state.indexError}`
         : state.indexing
         ? `Indexing ${included.toLocaleString()}${state.recordsTotalHint ? ` / ${state.recordsTotalHint.toLocaleString()}` : ''} ${effectiveMolecularGrid(cfg) ? 'molecules' : 'rows'}`
-        : hasMoreRows()
-        ? 'More rows available'
         : '';
     }
     const clearSMARTS = document.getElementById('clear-smarts');
@@ -4079,7 +4135,7 @@
     const rows = state.rows || [];
     rail.hidden = gridRailTotalRows() < 2;
     if (rail.hidden) return;
-    const railRows = gridRailRows(rows);
+    const railRows = gridRailRows(rows).filter(({ row }) => !row || cardViewRows([row]).length > 0);
     ticks.innerHTML = railRows.map(({ row, position }, markerIndex) => {
       const index = row ? Number(row.index) : null;
       const title = escapeAttr(row?.name || `Molecule ${position + 1}`);
@@ -4279,7 +4335,7 @@
     if (rowIndex >= 0) {
       state.pendingGridScrollIndex = index;
       state.visibleCount = Math.min(state.rows.length, Math.max(state.visibleCount, rowIndex + 1));
-      scrollToEstimatedGridRow(rowIndex, behavior);
+      scrollToEstimatedGridRow(cardViewRows(state.rows.slice(0, rowIndex)).length, behavior);
       if (state.rendering) {
         state.pendingLoad = true;
         return;
@@ -4699,6 +4755,8 @@
     const columnSpan = tableRenderedColumnSpan(columnWindow);
     const wrapper = document.createElement('div');
     wrapper.className = 'buret-grid-table-wrap';
+    wrapper.classList.toggle('buret-grid-table-molecular', effectiveMolecularGrid(cfg));
+    wrapper.dataset.columnWindow = columnWindow.windowColumns.map(column => column.id).join('|');
     wrapper.tabIndex = 0;
     wrapper.setAttribute('aria-label', effectiveMolecularGrid(cfg) ? 'Molecule table' : 'Data table');
     wrapper.innerHTML = `
@@ -4742,6 +4800,7 @@
       rowEl.addEventListener('dblclick', event => handleTableRowOpen(event, row, cfg));
       rowEl.addEventListener('contextmenu', event => showMoleculeContextMenu(event, row));
       installTableMoleculeHover(rowEl, row, cfg);
+      installCardDrag(rowEl, row);
       scheduleRdkitCard(rowEl, row);
       scheduleXyzrenderCard(rowEl, row, cfg);
     });
@@ -4826,6 +4885,14 @@
     ];
     const descriptorColumns = new Map();
     const analysisColumns = new Map();
+    // Server metadata defines the result order; sparse row objects may arrive
+    // alphabetically and must not move primary energies behind charge arrays.
+    if (state.remoteMode) {
+      for (const column of state.remoteAnalysisColumns || []) {
+        const valueId = String(column?.valueId || '');
+        if (valueId) analysisColumns.set(valueId, column);
+      }
+    }
     const propColumns = new Set();
     for (const row of rows) {
       for (const [id, value] of Object.entries(row.descriptors || {})) {
@@ -4847,10 +4914,6 @@
       for (const id of state.remoteDescriptorIds || []) {
         if (!descriptorColumns.has(id)) descriptorColumns.set(id, id);
       }
-      for (const column of state.remoteAnalysisColumns || []) {
-        const valueId = String(column?.valueId || '');
-        if (valueId) analysisColumns.set(valueId, column);
-      }
     }
     for (const key of propColumns) {
       columns.push({
@@ -4865,7 +4928,7 @@
       columns.push({
         id: `descriptor:${id}`,
         label,
-        type: 'number',
+        type: id.startsWith('RGroup_') || id === 'Scaffold' ? 'text' : 'number',
         kind: 'descriptor',
         title: descriptorHelpText(id, label),
         get: row => descriptorDisplayValue(row.descriptors?.[id])
@@ -4929,7 +4992,9 @@
 
   function tableVisibleColumns(catalog) {
     return catalog.filter(column => column.fixed || !state.tableHiddenColumns.has(column.id))
-      .sort((a, b) => Number(state.tablePinnedColumns.has(b.id)) - Number(state.tablePinnedColumns.has(a.id)));
+      .sort((a, b) => Number(state.tablePinnedColumns.has(b.id)) - Number(state.tablePinnedColumns.has(a.id))
+        || Number(['prop:CSV row', 'prop:SMILES column'].includes(a.id))
+          - Number(['prop:CSV row', 'prop:SMILES column'].includes(b.id)));
   }
 
   function tableColumnWindow(columns) {
@@ -5005,24 +5070,22 @@
   function tableColumnWidth(column) {
     const override = state.tableColumnWidths.get(column.id);
     if (Number.isFinite(override)) return override;
-    if (column.id === 'index') return 64;
+    if (column.id === 'index') return 44;
     if (column.id === 'molecule') return 74;
     if (column.id === 'name') return 160;
-    if (column.id === 'smiles') return 240;
+    if (column.id === 'smiles') return 180;
     return TABLE_DEFAULT_COLUMN_WIDTH;
   }
 
-  // Only user-resized columns get inline widths; the others keep the
-  // stylesheet's content-driven min/max clamp.
+  // Use the same widths for layout and column virtualization to avoid jumps.
   function tableColumnWidthStyle(column) {
     const pinnedLeft = state.tablePinnedOffsets.get(column.id);
     if (pinnedLeft !== undefined) {
       const width = tableColumnWidth(column);
       return ` data-buret-pinned-column="true" style="position:sticky;left:${pinnedLeft}px;width:${width}px;min-width:${width}px;max-width:${width}px"`;
     }
-    const override = state.tableColumnWidths.get(column.id);
-    if (!Number.isFinite(override)) return '';
-    return ` style="width:${override}px;min-width:${override}px;max-width:${override}px"`;
+    const width = tableColumnWidth(column);
+    return ` style="width:${width}px;min-width:${width}px;max-width:${width}px"`;
   }
 
   function tableColumnResizable(column) {
@@ -5130,7 +5193,13 @@
 
   function tableCellHTML(row, column, cfg) {
     if (column.html) return column.html(row, cfg);
-    return tableHighlightedTextHTML(String(column.get(row) ?? ''));
+    const value = String(column.get(row) ?? '');
+    const id = column.id.replace(/^(?:descriptor|prop):/u, '');
+    if (value && /^(?:Scaffold|RGroup_(?:Core|R[1-9][0-9]*|Components))$/u.test(id)) {
+      const fragment = { index: 'fragment', smiles: value, fragment: true };
+      return `<div class="buret-grid-table-fragment" data-buret-fragment-smiles="${escapeAttr(value)}" data-buret-molecule-picture role="img" aria-label="${escapeAttr(value)}" title="${escapeAttr(value)}">${drawRdkitPlaceholder(fragment)}</div>`;
+    }
+    return `<span class="buret-cell-marquee"><span>${tableHighlightedTextHTML(value)}</span></span>`;
   }
 
   function tableHighlightedTextHTML(text) {
@@ -5515,7 +5584,13 @@
         event.preventDefault();
         return;
       }
-      const records = gridDragRecordsForRow(row);
+      const records = gridDragRecordsForRow(row, window.BuretteConfig?.documentId || window.location.href);
+      const selectedCount = state.selected.has(Number(row.index)) && state.selected.size > 1 ? state.selected.size : 1;
+      if (records.length !== selectedCount || records.length > 200 || records.reduce((size, record) => size + new TextEncoder().encode(record.text).length, 0) > 24 * 1024 * 1024) {
+        event.preventDefault();
+        setStatus('[grid] Drag up to 200 loaded molecules (24 MB). Load the selected rows before dragging the whole selection.', 'error');
+        return;
+      }
       if (!records.length) {
         event.preventDefault();
         return;
@@ -5525,10 +5600,20 @@
         event.dataTransfer?.setData(STRUCTURE_DRAG_MIME, JSON.stringify(payload));
         event.dataTransfer?.setData('text/plain', records.map(item => item.text.trimEnd()).join('\n') + '\n');
         if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
+        const preview = document.createElement('div');
+        preview.className = 'buret-structure-drag-preview';
+        preview.textContent = records.length === 1 ? records[0].path.split('/').pop() : `${records.length} molecules`;
+        document.body.appendChild(preview);
+        event.dataTransfer?.setDragImage(preview, 12, 12);
+        requestAnimationFrame(() => preview.remove());
+        activeStructureDrag = true;
+        post('structureDragStart', '', { payload });
       } catch (_) {}
     });
     el.addEventListener('dragend', () => {
+      activeStructureDrag = false;
       cardDragSourceAllowed = true;
+      post('structureDragEnd', '');
     });
   }
 
@@ -6925,7 +7010,6 @@
         <div class="buret-grid-molecule-detail-body">
           <div class="buret-grid-molecule-detail-title-row">
             <div>
-              <div class="buret-eyebrow">Molecule ${Number.isFinite(index) ? index + 1 : ''}</div>
               <h2 id="buret-grid-molecule-detail-title">${escapeHTML(row.name || `Molecule ${index + 1}`)}</h2>
             </div>
             <button type="button" data-buret-detail-close aria-label="Close molecule detail" title="Close">&times;</button>
@@ -7773,7 +7857,11 @@
     let html = '';
     try {
       mol = state.rdkit.get_mol(row.molblock || row.smiles || '');
-      if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
+      if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid()) || mol.get_num_atoms?.() === 0) {
+        if (row.fragment) return escapeHTML(row.smiles);
+        omitInvalidCard(row);
+        return '';
+      }
       try {
         if (!useInputCoords) {
           try { mol.set_new_coords?.(); } catch (_) {}
@@ -7795,6 +7883,11 @@
       if (!html.includes('<svg')) throw new Error('empty drawing');
       if (isDegenerateMoleculeSVG(html)) throw new Error('invalid molecule drawing');
     } catch (error) {
+      if (!mol) {
+        if (row.fragment) return escapeHTML(row.smiles);
+        omitInvalidCard(row);
+        return '';
+      }
       const label = row.smiles || row.name || 'Molecule';
       html = moleculeErrorHTML(label, error.message || String(error));
     } finally {
@@ -7886,19 +7979,20 @@
   }
 
   function scheduleRdkitCard(card, row) {
-    const target = card.querySelector('[data-buret-rdkit-card-key]');
-    if (!target) return;
-    const key = target.getAttribute('data-buret-rdkit-card-key');
-    if (!key) return;
-    const start = () => enqueueRdkitCard(row, key, target);
-    state.rdkitCardLazyJobs.set(target, start);
-    state.rdkitCardLazyTargets.push(target);
-    const observer = ensureRdkitCardObserver();
-    if (observer) {
-      observer.observe(target);
-      return;
+    for (const target of card.querySelectorAll('[data-buret-rdkit-card-key]')) {
+      const key = target.getAttribute('data-buret-rdkit-card-key');
+      if (!key) continue;
+      const fragment = target.closest('[data-buret-fragment-smiles]');
+      const source = fragment
+        ? { index: 'fragment', smiles: fragment.getAttribute('data-buret-fragment-smiles'), fragment: true }
+        : row;
+      const start = () => enqueueRdkitCard(source, key, target);
+      state.rdkitCardLazyJobs.set(target, start);
+      state.rdkitCardLazyTargets.push(target);
+      const observer = ensureRdkitCardObserver();
+      if (observer) observer.observe(target);
+      else window.setTimeout(() => startLazyRdkitCard(target), 0);
     }
-    window.setTimeout(() => startLazyRdkitCard(target), 0);
   }
 
   function ensureRdkitCardObserver() {
@@ -7947,7 +8041,8 @@
     }
     const existing = state.rdkitCardPending.get(key);
     if (existing) {
-      existing.target = target || existing.target;
+      existing.targets ??= new Set([existing.target]);
+      existing.targets.add(target);
       return;
     }
     const job = { row, key, target, seq: state.rdkitCardSeq++ };
@@ -7968,7 +8063,8 @@
       try {
         while (state.rdkitCardQueue.length && processed < RDKIT_CARD_FRAME_BATCH) {
           const job = state.rdkitCardQueue.shift();
-          updateRdkitCard(job.key, drawRdkit(job.row), job.target);
+          const html = drawRdkit(job.row);
+          for (const target of job.targets || [job.target]) updateRdkitCard(job.key, html, target);
           state.rdkitCardPending.delete(job.key);
           processed++;
           const now = nowMs();
@@ -8733,12 +8829,7 @@
   async function exportCSV(cfg) {
     const rows = await collectExportRows(cfg);
     if (!rows) return;
-    const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
-    const data = [
-      ['index', 'name', 'smiles', ...props],
-      ...rows.map(row => [row.index, row.name || '', row.smiles || '', ...props.map(prop => (row.props || {})[prop] || '')])
-    ];
-    download(data.map(row => row.map(csv).join(',')).join('\n') + '\n', baseName(cfg.label) + '.csv', 'text/csv');
+    download(serializeDelimitedRows(rows, ','), baseName(cfg.label) + '.csv', 'text/csv');
   }
 
   async function saveGridAs(cfg) {
@@ -8835,6 +8926,16 @@
     };
   }
 
+  function withSarProperties(rows) {
+    return rows.map(row => {
+      const props = { ...row.props };
+      for (const [id, cell] of Object.entries(row.descriptors || {})) {
+        if (id.startsWith('RGroup_') || id === 'Scaffold' || id === 'ScaffoldCount') props[id] = cell.value ?? '';
+      }
+      return { ...row, props };
+    });
+  }
+
   function serializeSmilesRows(rows) {
     return rows
       .map(row => `${row.smiles || ''}\t${row.name || `mol_${Number(row.index) + 1}`}`.trim())
@@ -8843,6 +8944,7 @@
   }
 
   function serializeSdfRows(rows) {
+    rows = withSarProperties(rows);
     return rows.map(row => {
       const molblock = String(row.molblock || '').replace(/\n?\$\$\$\$\s*$/u, '').trimEnd();
       const props = {
@@ -8859,6 +8961,7 @@
   }
 
   function serializeDelimitedRows(rows, separator) {
+    rows = withSarProperties(rows);
     const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
     const data = [
       ['burette_encoding', 'index', 'name', 'smiles', 'molblock', ...props],
@@ -8868,7 +8971,7 @@
         row.name || '',
         row.smiles || '',
         row.molblock || '',
-        ...props.map(prop => (row.props || {})[prop] || '')
+        ...props.map(prop => (row.props || {})[prop] ?? '')
       ])
     ];
     return data.map(row => row.map(value => gridDelimitedCell(value, separator)).join(separator)).join('\n') + '\n';
@@ -9070,7 +9173,7 @@
         pumpRdkitCardQueue();
       }
     } catch (error) {
-      const message = error && error.stack ? error.stack : String(error);
+      const message = error?.message || String(error);
       setStatus(message, 'error');
     }
   }

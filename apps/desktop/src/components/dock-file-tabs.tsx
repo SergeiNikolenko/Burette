@@ -1,18 +1,19 @@
 import type { DockArea, DockFileEntry } from "../lib/dock";
-import { writeStructureDragPayload } from "../lib/structure-drag";
-import type { ShellActions } from "./types";
+import { useSidebarStructureDrag } from "./sidebar/use-sidebar-structure-drag";
+import type { ShellActions, ShellViewState } from "./types";
 import { fileCapabilities, menuItem } from "./workspace-menu-items";
 import { showNativeContextMenu } from "./native-context-menu";
 import { FileBlank, Atom } from "./ui/app-icons";
 import { Button } from "./ui/button";
 
-export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, actions }: {
+export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, actions, state }: {
   area: DockArea;
   entries: DockFileEntry[];
   activeKey: string | null;
   textViews: Record<string, boolean>;
   onTextView: (key: string, text: boolean) => void;
   actions: ShellActions;
+  state: ShellViewState;
 }) {
   if (!entries.length) return null;
   return <div className="dock-file-tabs" role="tablist" aria-label={`${area} dock files`}>
@@ -42,15 +43,28 @@ export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, 
         ];
         void showNativeContextMenu(items, { x: event.clientX, y: event.clientY }, { forceWeb: true });
       };
-      return <div key={entry.key} className="dock-tab-shell" data-active={active || undefined}
-        draggable onDragStart={(event) => { writeStructureDragPayload(event.dataTransfer, payload); actions.setStructureDragActive(true); }}
-        onDragEnd={() => actions.setStructureDragActive(false)} onContextMenu={menu}>
-        {entry.kind !== "tool" && <Button variant="ghost" size="icon-2xs" aria-label={`View options for ${entry.title}`} onClick={menu}>
-          {text ? <FileBlank aria-hidden="true" /> : <Atom aria-hidden="true" />}
-        </Button>}
-        <Button variant="ghost" size="sm" className="dock-file-tab" role="tab" aria-selected={active}
-          title={entry.kind === "tool" ? entry.title : entry.path} onClick={select}>{entry.title}</Button>
-      </div>;
+      return <DockFileTab key={entry.key} active={active} payload={payload} state={state} actions={actions} menu={menu}
+        entry={entry} text={text} select={select} />;
     })}
+  </div>;
+}
+
+function DockFileTab({ active, payload, state, actions, menu, entry, text, select }: {
+  active: boolean;
+  payload: import("../lib/structure-drag").StructureDragPayload;
+  state: ShellViewState;
+  actions: ShellActions;
+  menu: (event: React.MouseEvent<HTMLElement>) => void;
+  entry: DockFileEntry;
+  text: boolean;
+  select: () => void;
+}) {
+  const drag = useSidebarStructureDrag({ state, actions, getPayload: () => payload });
+  return <div className="dock-tab-shell" data-active={active || undefined} onContextMenu={menu}>
+    {entry.kind !== "tool" && <Button variant="ghost" size="icon-2xs" aria-label={`View options for ${entry.title}`} onClick={menu}>
+      {text ? <FileBlank aria-hidden="true" /> : <Atom aria-hidden="true" />}
+    </Button>}
+    <Button variant="ghost" size="sm" className="dock-file-tab" role="tab" aria-selected={active}
+      draggable {...drag} title={entry.kind === "tool" ? entry.title : entry.path} onClick={select}>{entry.title}</Button>
   </div>;
 }

@@ -1,6 +1,8 @@
+import { FolderExpandCollapseIcon } from "./folder-expand-collapse-icon";
 import { useWorkspaceMenus } from "../workspace-menus";
 import { SidebarTooltip } from "./sidebar-tooltip";
 import { Pin, PinFilled, DotsHorizontal } from "../ui/app-icons";
+import { SidebarFolderIcon } from "./sidebar-folder-icon";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload, type StructureDragPayload } from "../../lib/structure-drag";
@@ -238,6 +240,7 @@ export function ProjectGroup({
         role="treeitem"
         tabIndex={0}
         className="project-group-row"
+        data-drop-directory={project.rootPath ?? undefined}
         draggable={!renaming && project.items.length > 0}
         onMouseDown={(event) => {
           handleRowMouseDown(event);
@@ -256,6 +259,7 @@ export function ProjectGroup({
         aria-expanded={expanded}
         aria-label={`${project.title}, ${project.items.length} file${project.items.length === 1 ? "" : "s"}`}
       >
+        <SidebarFolderIcon expanded={expanded} />
         <span className="project-group-copy">
           {renaming ? (
             <input
@@ -453,6 +457,7 @@ function ProjectTreeNodeView({
         role="treeitem"
         tabIndex={0}
         className="project-folder-row"
+        data-drop-directory={project.rootPath ? `${project.rootPath}/${node.path}` : undefined}
         style={projectDepthStyle(depth)}
         draggable={nodeItems.length > 0}
         onMouseDown={(event) => {
@@ -472,6 +477,7 @@ function ProjectTreeNodeView({
         aria-expanded={expanded}
         aria-label={node.path}
       >
+        <SidebarFolderIcon expanded={expanded} />
         <MarqueeName className="project-folder-name">{displayName}</MarqueeName>
         <button
           type="button"
@@ -739,23 +745,6 @@ function MoreIcon() {
   return <DotsHorizontal size={16} aria-hidden="true" />;
 }
 
-function FolderExpandCollapseIcon({ collapse }: { collapse: boolean }) {
-  return collapse ? (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M3.5 3.5L6.9 6.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M6.9 4.7V6.9H4.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M12.5 12.5L9.1 9.1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M9.1 11.3V9.1H11.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ) : (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M6.9 6.9L3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M3.5 5.7V3.5H5.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.1 9.1L12.5 12.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M12.5 10.3V12.5H10.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
 
 function sidebarDropTarget(item: SidebarProjectItem, state: ShellViewState) {
   const document = item.documentId

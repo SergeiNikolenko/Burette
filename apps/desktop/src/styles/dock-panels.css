@@ -30,3 +30,19 @@
 .dock-content .dock-empty { background: transparent; border-radius: 0; padding: 8px 4px; color: var(--text-muted); font-size: 12px; line-height: 18px; }
 .dock-jobs-toolbar { padding-inline: 4px; }
 .dock-jobs-toolbar > span { font-size: 12px; line-height: 18px; font-weight: 500; }
+
+/* One chronological list for all calculation engines. */
+.jobs-panel { min-width: 0; }
+.jobs-panel-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 6px; color: var(--text-muted); font-size: 12px; }
+.jobs-panel-list { list-style: none; margin: 0; padding: 0; }
+.jobs-panel-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 10px; min-width: 0; padding: 6px 2px; border-top: 1px solid var(--line-subtler); }
+.jobs-panel-heading { display: inline-flex; width: calc(100% - 16px); vertical-align: middle; align-items: center; gap: 10px; min-width: 0; }
+.jobs-panel-heading strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.jobs-panel-status { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; color: var(--text-muted); font-size: 11px; }
+.jobs-panel-row[data-status="failed"] .jobs-panel-status { color: var(--status-danger); }
+.jobs-panel-row[data-status="recovered"] .jobs-panel-status { color: var(--text-secondary); }
+.jobs-panel-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.jobs-panel-summary { margin: 4px 0; overflow-wrap: anywhere; color: var(--text-muted); font-size: 12px; line-height: 18px; }
+.jobs-panel-details { min-width: 0; color: var(--text-secondary); font-size: 12px; }
+.jobs-panel-details summary { min-height: 28px; line-height: 28px; cursor: pointer; }
+.jobs-panel-details pre { margin: 6px 0; padding: 8px; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-hover); border-radius: 6px; font: inherit; }

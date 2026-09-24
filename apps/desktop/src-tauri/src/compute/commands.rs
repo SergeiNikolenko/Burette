@@ -142,7 +142,11 @@ pub(crate) async fn compute_evaluate_grid_semiempirical<R: Runtime>(
     coordinator: State<'_, ComputeCoordinator>,
     registry: State<'_, GridRuntimeRegistry>,
     request: GridSemiempiricalRequest,
+    on_progress: Option<tauri::ipc::JavaScriptChannelId>,
 ) -> Result<GridSemiempiricalResult, ComputeCommandError> {
+    let on_progress = on_progress.map(|id| {
+        id.channel_on::<R, super::analysis_control::AnalysisProgress>(window.as_ref().clone())
+    });
     let owner = trusted_owner(&window)?;
     let namespaced_document_id = runtime_document_id(&owner, request.document_id.trim());
     let source_lease = registry
@@ -153,8 +157,14 @@ pub(crate) async fn compute_evaluate_grid_semiempirical<R: Runtime>(
             )))
         })?;
     let coordinator = coordinator.inner().clone();
-    run_blocking(move || coordinator.evaluate_grid_semiempirical(&owner, &request, source_lease))
-        .await
+    run_blocking(move || {
+        coordinator.evaluate_grid_semiempirical(&owner, &request, source_lease, &|progress| {
+            if let Some(channel) = &on_progress {
+                let _ = channel.send(progress);
+            }
+        })
+    })
+    .await
 }
 
 #[tauri::command]
@@ -163,7 +173,11 @@ pub(crate) async fn compute_align_grid_poses<R: Runtime>(
     coordinator: State<'_, ComputeCoordinator>,
     registry: State<'_, GridRuntimeRegistry>,
     request: GridAlignmentRequest,
+    on_progress: Option<tauri::ipc::JavaScriptChannelId>,
 ) -> Result<GridAlignmentResult, ComputeCommandError> {
+    let on_progress = on_progress.map(|id| {
+        id.channel_on::<R, super::analysis_control::AnalysisProgress>(window.as_ref().clone())
+    });
     let owner = trusted_owner(&window)?;
     let namespaced_document_id = runtime_document_id(&owner, request.document_id.trim());
     let source_lease = registry
@@ -174,7 +188,14 @@ pub(crate) async fn compute_align_grid_poses<R: Runtime>(
             )))
         })?;
     let coordinator = coordinator.inner().clone();
-    run_blocking(move || coordinator.align_grid_poses(&owner, &request, source_lease)).await
+    run_blocking(move || {
+        coordinator.align_grid_poses(&owner, &request, source_lease, &|progress| {
+            if let Some(channel) = &on_progress {
+                let _ = channel.send(progress);
+            }
+        })
+    })
+    .await
 }
 
 #[derive(Debug, Serialize)]

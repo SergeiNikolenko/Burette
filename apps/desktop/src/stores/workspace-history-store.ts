@@ -90,8 +90,13 @@ function nextEntryId() {
   return `workspace-history-${entrySequence}`;
 }
 
-function snapshotEquals(left: WorkspaceHistorySnapshot, right: WorkspaceHistorySnapshot) {
-  return JSON.stringify(left) === JSON.stringify(right);
+function snapshotEquals(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  const a = Object.entries(left);
+  const b = right as Record<string, unknown>;
+  return a.length === Object.keys(right).length
+    && a.every(([key, value]) => Object.hasOwn(b, key) && snapshotEquals(value, b[key]));
 }
 
 function captureWorkspaceSnapshot(): WorkspaceHistorySnapshot {
@@ -129,9 +134,26 @@ function entryFromSnapshots(
   };
 }
 
+// Count shared immutable text revisions once; do not scan their contents.
+function boundHistoryText(entries: WorkspaceHistoryEntry[]) {
+  const seen = new Set<object>();
+  let bytes = 0;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    for (const snapshot of [entries[index].before, entries[index].after]) {
+      for (const document of snapshot.molecule.textDocuments) {
+        if (seen.has(document)) continue;
+        seen.add(document);
+        bytes += document.content.length * 2;
+      }
+    }
+    if (bytes > 64 * 1024 * 1024) return entries.slice(Math.min(index + 1, entries.length - 1));
+  }
+  return entries;
+}
+
 function pushUndoEntry(entry: WorkspaceHistoryEntry) {
   useWorkspaceHistoryStore.setState((state) => ({
-    undoStack: [...state.undoStack, entry].slice(-MAX_WORKSPACE_HISTORY_ENTRIES),
+    undoStack: boundHistoryText([...state.undoStack, entry].slice(-MAX_WORKSPACE_HISTORY_ENTRIES)),
     redoStack: [],
     canUndo: true,
     canRedo: false,

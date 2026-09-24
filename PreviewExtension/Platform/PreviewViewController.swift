@@ -4020,7 +4020,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return
         }
         let name = Self.safeExportFileName(body["name"] as? String ?? "molstar-export.txt")
-        presentJavaScriptExportSavePanel(data: Data(text.utf8), name: name)
+        presentJavaScriptExportSavePanel(data: Data(text.utf8), name: name, requestID: body["requestId"] as? String)
     }
 
     private func handleJavaScriptDataExport(_ body: [String: Any]) {
@@ -4032,7 +4032,15 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         presentJavaScriptExportSavePanel(data: data, name: name)
     }
 
-    private func presentJavaScriptExportSavePanel(data: Data, name: String) {
+    private func presentJavaScriptExportSavePanel(data: Data, name: String, requestID: String? = nil) {
+        let reply: (String) -> Void = { [weak self] status in
+            guard let self, let requestID,
+                  let data = try? JSONSerialization.data(withJSONObject: [
+                    "source": "burette-host",
+                    "body": ["type": "structureExportResult", "requestId": requestID, "status": status]
+                  ]), let json = String(data: data, encoding: .utf8) else { return }
+            self.webView.evaluateJavaScript("window.postMessage(\(json), '*');", completionHandler: nil)
+        }
         let panel = NSSavePanel()
         panel.nameFieldStringValue = name
         panel.canCreateDirectories = true
@@ -4043,15 +4051,18 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             guard let self else { return }
             guard response == .OK, let url = panel.url else {
                 self.appendLog("export.cancelled name=\(name)")
+                reply("cancelled")
                 return
             }
             do {
                 try data.write(to: url, options: [.atomic])
                 self.appendLog("export.saved path=\(url.path) bytes=\(data.count)")
                 self.previewStatus = "[native] Exported \(url.lastPathComponent)"
+                reply("saved")
             } catch {
                 self.appendLog("export.failed path=\(url.path) error=\(Self.describe(error))")
                 self.previewStatus = "[native] Export failed\n\(Self.describe(error))"
+                reply("error")
             }
         }
         if let window = view.window {
@@ -7540,7 +7551,8 @@ private enum PreviewExternalXyzrenderWorker {
                 }
             }
         }
-        for version in ["python3.13", "python3.12", "python3.11"] {
+        // Quick Look can deny directory enumeration while allowing known bundle paths.
+        for version in ["python3.14", "python3.13", "python3.12", "python3.11"] {
             let sitePackages = libDirectory
                 .appendingPathComponent(version, isDirectory: true)
                 .appendingPathComponent("site-packages", isDirectory: true)

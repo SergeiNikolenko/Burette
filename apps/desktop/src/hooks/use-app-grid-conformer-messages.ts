@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, type Dispatch, type SetStateAction } from "react";
+import { runAnalysisWorkflow } from "../lib/compute-analysis";
 import { generateBrowserDev3DConformer, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
-import { conformerGenerationPreferences, type ConformerGenerationResult } from "../lib/conformer-generation";
+import { conformerGenerationPreferences } from "../lib/conformer-generation";
 import { pathExtension } from "../lib/file-routing";
 import { isTauriRuntime } from "../lib/tauri";
 import { runConformerWorkflow, type ConformerVariant, type MmffVariant } from "../lib/compute-conformer";
@@ -15,7 +16,7 @@ type PushStatus = (message: string, kind?: "info" | "success" | "error", details
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 
 type UseAppGridConformerMessagesOptions = {
-  openDocumentsInActiveTab: (documents: ViewerDocument[]) => void;
+  addDocuments: (documents: ViewerDocument[]) => void;
   openDocuments: (paths: string[], reloadOptions?: ViewerReloadOptions, preferencesOverride?: Partial<ViewerPreferences>) => Promise<unknown> | void;
   openTextDocuments: (paths: string[], options?: { background?: boolean }) => void | Promise<unknown>;
   postMessageToViewerSource: PostMessageToViewerSource;
@@ -62,6 +63,7 @@ type GridSemiempiricalResult = {
   gpuTimeMs: number;
   backend: "nativeMetalScfHybrid" | "nativeCpuReference";
   gridApplied: boolean;
+  gridWarning: string | null;
   reportPath: string | null;
 };
 
@@ -110,7 +112,7 @@ function standaloneGridConformerSource(
 
 export function useAppGridConformerMessages({
   openDocuments,
-  openDocumentsInActiveTab,
+  addDocuments,
   openTextDocuments,
   postMessageToViewerSource,
   preferences,
@@ -144,18 +146,17 @@ export function useAppGridConformerMessages({
         return true;
       }
       reply("gridSemiempiricalStarted");
-      void invoke<GridSemiempiricalResult>("compute_evaluate_grid_semiempirical", {
-        request: { documentId, sourceIndexes, method },
-      }).then((result) => {
-        if (result.reportPath) void openTextDocuments([result.reportPath], { background: true });
+      showGridComputeJobs();
+      void runAnalysisWorkflow<GridSemiempiricalResult>("compute_evaluate_grid_semiempirical",
+        { documentId, sourceIndexes, method }, "Grid selection").then((result) => {
+        if (result.reportPath) void Promise.resolve().then(() => openTextDocuments([result.reportPath!], { background: true }))
+          .catch((error) => pushErrorStatus(error, "Result saved; could not open report"));
         const converged = result.rows.filter((row) => row.converged).length;
         const failed = result.rows.length - converged;
-        const execution = result.backend === "nativeMetalScfHybrid"
-          ? `with Metal SCF kernels (${result.gpuTimeMs.toLocaleString()} ms GPU, ${result.hostTimeMs.toLocaleString()} ms host)`
-          : `on the CPU reference backend in ${result.hostTimeMs.toLocaleString()} ms`;
         pushStatus(
-          `Calculated native ${result.method} energies and charges for ${converged.toLocaleString()} molecule${converged === 1 ? "" : "s"} ${execution}${failed ? `; ${failed.toLocaleString()} failed` : ""}; results were written to Grid.`,
-          failed ? "error" : "success",
+          `${result.method}: ${converged.toLocaleString()} calculated${failed ? ` · ${failed.toLocaleString()} failed` : ""}${!result.gridApplied ? " · table not updated" : ""}`,
+          !converged || !result.gridApplied ? "error" : "success",
+          result.gridWarning ? [result.gridWarning] : undefined,
         );
         reply("gridSemiempiricalFinished", {
           runId: result.runId,
@@ -192,28 +193,17 @@ export function useAppGridConformerMessages({
       }
       reply("gridAlignmentStarted");
       void (async () => {
-        const result = await invoke<GridAlignmentResult>("compute_align_grid_poses", {
-          request: {
+        showGridComputeJobs();
+        const result = await runAnalysisWorkflow<GridAlignmentResult>("compute_align_grid_poses", {
             documentId,
             sourceIndexes,
             maxMemoryBytes: 2 * 1_024 * 1_024 * 1_024,
-          },
-        });
-        if (result.reportPath) void openTextDocuments([result.reportPath], { background: true });
-        const document = await invoke<ViewerDocument>("open_text_structure", {
-          request: {
-            title: result.title,
-            extension: "sdf",
-            text: result.alignedSdf,
-          },
-          preferences: { ...preferences, rendererMode: "molstar" },
-          reloadOptions: {},
-        });
-        openDocumentsInActiveTab([document]);
-        rememberRecentStructures([document]);
+        }, "Grid selection");
+        if (result.reportPath) void Promise.resolve().then(() => openTextDocuments([result.reportPath!], { background: true }))
+          .catch((error) => pushErrorStatus(error, "Result saved; could not open report"));
         const compared = Math.max(0, result.scores.length - 1);
         pushStatus(
-          `Aligned and scored ${compared.toLocaleString()} pose${compared === 1 ? "" : "s"} against the first selected row on Metal in ${result.gpuTimeMs.toLocaleString()} ms; scores were written to Grid.`,
+          `Aligned ${compared.toLocaleString()} pose${compared === 1 ? "" : "s"}${!result.gridApplied ? " · table not updated" : ""}`,
           result.gridApplied ? "success" : "error",
         );
         reply("gridAlignmentFinished", {
@@ -222,6 +212,22 @@ export function useAppGridConformerMessages({
           gpuTimeMs: result.gpuTimeMs,
           backend: result.backend,
         });
+        try {
+          const document = await invoke<ViewerDocument>("open_text_structure", {
+            request: {
+              title: result.title,
+              extension: "sdf",
+              text: result.alignedSdf,
+            },
+            preferences: { ...preferences, rendererMode: "molstar" },
+            reloadOptions: {},
+          });
+          addDocuments([document]);
+          rememberRecentStructures([document]);
+        } catch (error) {
+          pushErrorStatus(error, "Alignment saved; could not open result");
+        }
+
       })().catch((error) => {
         const message = statusErrorMessage(error);
         reply("gridAlignmentError", { error: message });
@@ -238,7 +244,13 @@ export function useAppGridConformerMessages({
         body: { type, ...payload },
       });
     };
-    if (!molecules.length) {
+    const documentId = bodyString(body.documentId).trim();
+    const sourceIndexes = Array.isArray(body.sourceIndexes)
+      ? [...new Set(body.sourceIndexes.filter((value): value is number => Number.isSafeInteger(value) && value >= 0))]
+      : [];
+    const gridSource = isTauriRuntime() && !!documentId && sourceIndexes.length > 0;
+    const moleculeCount = gridSource ? sourceIndexes.length : molecules.length;
+    if (!moleculeCount) {
       reply("gridGenerate3DError", { error: "Select one or more molecules before generating 3D." });
       pushStatus("Select one or more molecules before generating 3D.", "error");
       return true;
@@ -256,7 +268,7 @@ export function useAppGridConformerMessages({
       ? `Optimize geometry · ${mmffVariant}`
       : `Generate 3D · ${conformerVariant}`;
     const inputTitle = bodyString(body.title).trim()
-      || `${molecules.length.toLocaleString()} selected molecule${molecules.length === 1 ? "" : "s"}`;
+      || `${moleculeCount.toLocaleString()} selected molecule${moleculeCount === 1 ? "" : "s"}`;
     const updateGridJob = (patch: Partial<ConformerJob>) => {
       setConformerJobs((previous) => previous.map((job) => job.id === gridJobId ? { ...job, ...patch } : job));
     };
@@ -268,97 +280,96 @@ export function useAppGridConformerMessages({
       status: "running",
       startedAt: Date.now(),
       progress: "Submitted to the compute coordinator",
-      backend: isTauriRuntime() ? "nativeMetal" : "rdkitCpu",
+      backend: "nativeMetal",
       cancelable: false,
       result: null,
       error: null,
     };
     setConformerJobs((previous) => [pendingJob, ...previous].slice(0, 20));
     showGridComputeJobs();
-    pushStatus(`${gridJobTitle} submitted for ${molecules.length.toLocaleString()} molecule${molecules.length === 1 ? "" : "s"}.`);
+    pushStatus(`${gridJobTitle} submitted for ${moleculeCount.toLocaleString()} molecule${moleculeCount === 1 ? "" : "s"}.`);
     reply("gridGenerate3DStarted", { jobId: gridJobId });
+    let gridApplied = false;
     void (async () => {
-      const documentId = bodyString(body.documentId).trim();
-      const sourceIndexes = Array.isArray(body.sourceIndexes)
-        ? [...new Set(body.sourceIndexes.filter((value): value is number => (
-            Number.isSafeInteger(value) && value >= 0
-          )))]
-        : [];
-      let metalError: string | null = null;
-      if (isTauriRuntime() && documentId && sourceIndexes.length > 0) {
+      if (isTauriRuntime()) {
+        if (optimizeInputGeometry && (!documentId || !sourceIndexes.length)) {
+          throw new Error("Input geometry optimization requires an open Grid selection.");
+        }
+        const source = gridSource ? null : standaloneGridConformerSource(bodyString(body.title).trim() || "selected-molecules-3d.sdf", molecules);
+        if (!source && (!documentId || !sourceIndexes.length)) {
+          throw new Error("Mixed structure formats require an open Grid selection.");
+        }
+        const progressLabels = optimizeInputGeometry ? {
+          extracting: "Extracting input geometry and MMFF parameters",
+          embedding: `${mmffVariant}-optimizing input geometry on Metal GPU`,
+          stereo: "Validating stereochemistry on Metal GPU",
+          validation: "Checking CPU reference parity",
+          publishing: "Publishing optimized geometries and updating Grid",
+        } as const : {
+          extracting: "Extracting conformer constraints",
+          embedding: `Generating ${conformerVariant} conformers on Metal GPU`,
+          stereo: "Validating stereochemistry on Metal GPU",
+          validation: "Checking CPU reference parity",
+          publishing: "Publishing the generated conformer artifact",
+        } as const;
+        const onProgress = (phase: keyof typeof progressLabels, job: { jobId: string }) => {
+          const progress = progressLabels[phase];
+          updateGridJob({ durableJobId: job.jobId, cancelable: true, progress, backend: "nativeMetal" });
+          pushStatus(`${progress}...`);
+        };
+        const result = gridSource
+          ? await runConformerWorkflow(documentId, sourceIndexes, onProgress, {
+              variant: conformerVariant,
+              initialization: optimizeInputGeometry ? "inputGeometry" : "generated",
+              backendPolicy: "gpuRequired",
+              mmffVariant,
+              conformersPerMolecule: 1,
+            })
+          : await runStandaloneConformerWorkflow(source!, onProgress, {
+              variant: conformerVariant,
+              initialization: "generated",
+              mmffVariant,
+              conformersPerMolecule: 1,
+            });
+        gridApplied = result.gridApplied;
+        const inputFailures = result.failedSourceRecords ?? 0;
+        const failureMessage = [result.failedCount && `${result.failedCount} geometries failed validation`,
+          inputFailures && `${inputFailures} input molecules could not be prepared`].filter(Boolean).join("; ");
+        updateGridJob({
+          status: !result.passedCount ? "failed" : result.failedCount || inputFailures || (gridSource && !result.gridApplied) ? "recovered" : "success",
+          cancelable: false,
+          completedAt: Date.now(),
+          progress: `${result.passedCount.toLocaleString()} of ${result.conformerCount.toLocaleString()} geometries passed validation${inputFailures ? `; ${inputFailures} input molecules failed` : ""}`,
+          backend: "nativeMetal",
+          durableJobId: result.job.jobId,
+          reportPath: result.reportPath,
+          primaryOpenPath: result.primaryOpenPath,
+          error: failureMessage || result.gridWarning,
+        });
+        const failed = result.failedCount + inputFailures;
+        pushStatus(
+          `${optimizeInputGeometry ? "Optimized" : "Generated 3D for"} ${result.passedCount.toLocaleString()} molecule${result.passedCount === 1 ? "" : "s"}${failed ? ` · ${failed} failed` : ""}${gridSource && !result.gridApplied ? " · table not updated" : ""}`,
+          !result.passedCount || (gridSource && !result.gridApplied) ? "error" : "success",
+          [failureMessage, result.gridWarning].filter((message): message is string => Boolean(message)),
+        );
+        // Opening is presentation, not computation. Keep the published result
+        // successful when a viewer cannot be created or restored.
         try {
-          const source = standaloneGridConformerSource(bodyString(body.title).trim() || "selected-molecules-3d.sdf", molecules);
-          if (!optimizeInputGeometry && !source) {
-            throw new Error("The selected Grid rows use mixed structure formats.");
-          }
-          const progressLabels = optimizeInputGeometry ? {
-            extracting: "Extracting input geometry and MMFF parameters",
-            embedding: `${mmffVariant}-optimizing input geometry on Metal GPU`,
-            stereo: "Validating stereochemistry on Metal GPU",
-            validation: "Checking CPU reference parity",
-            publishing: "Publishing optimized geometries and updating Grid",
-          } as const : {
-            extracting: "Extracting conformer constraints",
-            embedding: `Generating ${conformerVariant} conformers on Metal GPU`,
-            stereo: "Validating stereochemistry on Metal GPU",
-            validation: "Checking CPU reference parity",
-            publishing: "Publishing the generated conformer artifact",
-          } as const;
-          const onProgress = (phase: keyof typeof progressLabels, job: { jobId: string }) => {
-            const progress = progressLabels[phase];
-            updateGridJob({ durableJobId: job.jobId, progress, backend: "nativeMetal" });
-            pushStatus(`${progress}...`);
-          };
-          const result = optimizeInputGeometry
-            ? await runConformerWorkflow(documentId, sourceIndexes, onProgress, {
-                variant: conformerVariant,
-                initialization: "inputGeometry",
-                mmffVariant,
-                conformersPerMolecule: 1,
-              })
-            : await runStandaloneConformerWorkflow(source!, onProgress, {
-                variant: conformerVariant,
-                initialization: "generated",
-                mmffVariant,
-                conformersPerMolecule: 1,
-              });
-          void openTextDocuments([result.reportPath], { background: true });
+          await openTextDocuments([result.reportPath], { background: true });
+        } catch (error) {
+          pushErrorStatus(error, "Calculation saved; could not open report", [result.reportPath]);
+        }
+        try {
           if (!optimizeInputGeometry) {
             await openDocuments([result.primaryOpenPath], {}, {
               rendererMode: "molstar",
               molstarStyle: "ball-and-stick",
             });
           }
-          updateGridJob({
-            status: result.failedCount ? "recovered" : "success",
-            completedAt: Date.now(),
-            progress: `${result.passedCount.toLocaleString()} of ${result.conformerCount.toLocaleString()} geometries passed validation`,
-            backend: "nativeMetal",
-            durableJobId: result.job.jobId,
-            reportPath: result.reportPath,
-            primaryOpenPath: result.primaryOpenPath,
-            error: result.failedCount ? `${result.failedCount.toLocaleString()} geometries failed validation.` : null,
-          });
-          pushStatus(
-            optimizeInputGeometry
-              ? `Processed and validated ${result.passedCount.toLocaleString()} input geometries with ${mmffVariant} via Metal GPU; per-row convergence status and energy were written to Grid.`
-              : `Generated and ${mmffVariant}-optimized ${result.passedCount.toLocaleString()} valid 3D geometries with ${conformerVariant} via Metal GPU and opened the generated conformer artifact.`,
-            optimizeInputGeometry ? (result.gridApplied ? "success" : "error") : (result.failedCount ? "error" : "success"),
-            result.gridWarning ? [result.gridWarning] : undefined,
-          );
-          return;
         } catch (error) {
-          if (optimizeInputGeometry) throw error;
-          metalError = statusErrorMessage(error);
-          updateGridJob({
-            progress: "Metal GPU attempt failed; retrying with RDKit CPU",
-            backend: "rdkitCpu",
-            error: metalError,
-          });
-          pushStatus(
-            `Metal 3D generation failed; retrying the selected molecules with RDKit CPU. ${metalError}`,
-          );
+          pushErrorStatus(error, "Calculation saved; could not open result", [result.primaryOpenPath]);
         }
+        return;
       }
       if (optimizeInputGeometry) {
         throw new Error("Input geometry optimization requires the native desktop Metal runtime.");
@@ -368,8 +379,8 @@ export function useAppGridConformerMessages({
       const errors: string[] = [];
       for (const [index, molecule] of molecules.entries()) {
         updateGridJob({
-          progress: `Generating molecule ${(index + 1).toLocaleString()} of ${molecules.length.toLocaleString()} with RDKit CPU`,
-          backend: "rdkitCpu",
+          progress: `Generating molecule ${(index + 1).toLocaleString()} of ${molecules.length.toLocaleString()} with Metal GPU`,
+          backend: "nativeMetal",
         });
         const item = molecule && typeof molecule === "object" ? molecule as Record<string, unknown> : {};
         const itemTitle = bodyString(item.title).trim() || "molecule.smi";
@@ -389,9 +400,7 @@ export function useAppGridConformerMessages({
             mode: "single" as const,
             source3d: null,
           };
-          const conformer = isTauriRuntime()
-            ? await invoke<ConformerGenerationResult>("generate_3d_conformer", { request })
-            : await generateBrowserDev3DConformer(request);
+          const conformer = await generateBrowserDev3DConformer(request);
           generatedCount += 1;
           const molblock = conformerMolblock(conformer.text);
           const sourceIndex = Number(item.sourceIndex);
@@ -417,45 +426,41 @@ export function useAppGridConformerMessages({
         "",
       ].join("\n")).join("");
       const title = bodyString(body.title).trim() || "selected-molecules-3d.sdf";
-      const generatedDocument = isTauriRuntime()
-        ? await invoke<ViewerDocument>("open_text_structure", {
-            request: { title, extension: "sdf", text: generatedSdf },
-            preferences: { ...preferences, rendererMode: "molstar", molstarStyle: "ball-and-stick" },
-            reloadOptions: {},
-          })
-        : await openBrowserDevTextDocument(
-            title,
-            "sdf",
-            generatedSdf,
-            { ...preferences, rendererMode: "molstar", molstarStyle: "ball-and-stick" },
-          );
-      openDocumentsInActiveTab([generatedDocument]);
+      const generatedDocument = await openBrowserDevTextDocument(
+        title,
+        "sdf",
+        generatedSdf,
+        { ...preferences, rendererMode: "molstar", molstarStyle: "ball-and-stick" },
+      );
+      addDocuments([generatedDocument]);
       rememberRecentStructures([generatedDocument]);
       const suffix = errors.length ? ` ${errors.length} failed.` : "";
       updateGridJob({
-        status: metalError || errors.length ? "recovered" : "success",
+        status: errors.length ? "recovered" : "success",
         completedAt: Date.now(),
         progress: `Generated ${generatedCount.toLocaleString()} of ${molecules.length.toLocaleString()} molecules`,
-        backend: "rdkitCpu",
+        backend: "nativeMetal",
         primaryOpenPath: generatedDocument.sourcePath ?? generatedDocument.path,
-        error: [metalError, ...errors].filter(Boolean).join("; ") || null,
+        error: errors.join("; ") || null,
       });
-      pushStatus(`Generated 3D for ${generatedCount} molecule${generatedCount === 1 ? "" : "s"} with RDKit CPU and opened the generated conformer artifact.${suffix}`, errors.length ? "error" : "success");
+      pushStatus(`Generated 3D for ${generatedCount} molecule${generatedCount === 1 ? "" : "s"} with Metal GPU and opened the generated conformer artifact.${suffix}`, errors.length ? "error" : "success");
     })()
       .catch((error) => {
         const message = statusErrorMessage(error);
+        const cancelled = error instanceof Error && error.name === "AbortError";
         updateGridJob({
-          status: "failed",
+          status: cancelled ? "cancelled" : "failed",
+          cancelable: false,
           completedAt: Date.now(),
-          progress: "Compute failed",
+          progress: cancelled ? "Compute cancelled" : "Compute failed",
           error: message,
         });
         reply("gridGenerate3DError", { jobId: gridJobId, error: message });
         pushErrorStatus(error, "Grid 3D generation failed");
       })
-      .finally(() => reply("gridGenerate3DFinished", { jobId: gridJobId }));
+      .finally(() => reply("gridGenerate3DFinished", { jobId: gridJobId, gridApplied }));
     return true;
-  }, [openDocuments, openDocumentsInActiveTab, openTextDocuments, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setConformerJobs, showGridComputeJobs]);
+  }, [openDocuments, addDocuments, openTextDocuments, postMessageToViewerSource, preferences, pushErrorStatus, pushStatus, rememberRecentStructures, setConformerJobs, showGridComputeJobs]);
 
   return { handleGridConformerMessage };
 }

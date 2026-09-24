@@ -185,6 +185,13 @@ fn plan_column_filter(
                     );
                     params.push(pattern);
                 }
+                id if id.starts_with("descriptor:") => {
+                    let descriptor_id = &id["descriptor:".len()..];
+                    validate_filter_id("text descriptor", descriptor_id)?;
+                    clauses.push("exists (select 1 from descriptor_values as text_descriptor where text_descriptor.molecule_id = molecules.id and text_descriptor.descriptor_id = ? and lower(coalesce(text_descriptor.value_text, '')) like ? escape '\\')".to_string());
+                    params.push(SqlValue::Text(descriptor_id.to_string()));
+                    params.push(pattern);
+                }
                 id if id.starts_with("prop:") => {
                     clauses.push("lower(coalesce(json_extract(molecules.props_json, ?), '')) like ? escape '\\'".to_string());
                     params.push(SqlValue::Text(property_json_path(id)?));

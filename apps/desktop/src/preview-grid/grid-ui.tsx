@@ -1,4 +1,5 @@
 import React from "react";
+import { Cube, Edit } from "../components/ui/app-icons";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -256,7 +257,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
   const needs3d = !noSelection && !props.selectedInput3d;
   return (
     <>
-      <div className="ab-group">Compute · <span className="ab-group-accent">Metal GPU</span></div>
+      <div className="ab-group">Compute</div>
       <div className="ab-row">
         <button
           id="generate-3d-selected"
@@ -341,20 +342,6 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
         >
           {ICONS.align}
           <span className="ab-item-title">{props.aligningPoses ? "Aligning..." : "Align & compare"}</span>
-        </button>
-      </div>
-      <div className="ab-row">
-        <button
-          id="calculate-descriptors-selected"
-          className="ab-item"
-          type="button"
-          role="menuitem"
-          disabled={noSelection}
-          aria-description="Calculate Mordred descriptors for the selected molecules and write them to Grid"
-          onClick={() => props.onRun(props.onCalculateSelectedDescriptors)}
-        >
-          {ICONS.descriptors}
-          <span className="ab-item-title">Calculate descriptors</span>
         </button>
       </div>
     </>
@@ -623,7 +610,7 @@ function ActionsMenu(props: GridControlProps) {
   const selectedCount = props.selectedCount;
 
   return (
-    <div className="ab-menu-wrap" ref={wrapRef}>
+    <div className="ab-menu-wrap ab-actions-menu" ref={wrapRef}>
       <button
         className="ab-btn"
         type="button"
@@ -641,7 +628,7 @@ function ActionsMenu(props: GridControlProps) {
               : "No molecules selected"}
           </div>
           <FileSection {...props} onRun={onRun} />
-          <ComputeSection {...props} onRun={onRun} />
+          {props.clusterEnabled ? <ComputeSection {...props} onRun={onRun} /> : null}
           <CollectionSection {...props} onRun={onRun} />
           <SelectionSection {...props} onRun={onRun} />
         </div>
@@ -712,7 +699,7 @@ function GridActionToolbar(props: GridControlProps) {
       <span id="rdkit-use-input-coords-control" className="buret-rdkit-coords-control" hidden>
         <button
           id="rdkit-use-input-coords"
-          className="ab-btn ab-btn-icon"
+          className="ab-btn"
           type="button"
           aria-pressed="false"
           aria-label="Use file coords"
@@ -720,8 +707,8 @@ function GridActionToolbar(props: GridControlProps) {
             event.currentTarget.getAttribute("aria-pressed") !== "true",
           )}
         >
-          {ICONS.generate3d}
-          <ControlTooltip label="Use the coordinates embedded in the file" />
+          <span data-coordinate-mode>2D</span>
+          <ControlTooltip label="2D diagram / 3D file coordinates" />
         </button>
       </span>
       <button id="clear-smarts" className="ab-btn buret-clear-smarts" type="button" hidden onClick={props.onClearSmarts}>
@@ -748,24 +735,24 @@ function GridActionToolbar(props: GridControlProps) {
         <div id="selected-open-actions" className="buret-selected-open-actions" role="group" aria-label="Open selection">
           {props.ketcherOpen ? <button
             id="open-selected-ketcher"
-            className="ab-btn"
+            className="ab-btn ab-btn-icon"
             type="button"
             aria-label="Open in Ketcher"
             disabled={props.selectedCount === 0 || props.ketcherPending}
             onClick={props.onOpenKetcher}
           >
-            Ketcher
+            <Edit className="ab-ico" aria-hidden="true" />
             <ControlTooltip label={props.selectedCount ? "Edit selected molecules in Ketcher" : "Select molecules to edit in Ketcher"} />
           </button> : null}
           {props.molstarOpen ? <button
             id="open-selected-molstar"
-            className="ab-btn"
+            className="ab-btn ab-btn-icon"
             type="button"
             aria-label="Open in Molstar"
             disabled={props.selectedCount === 0}
             onClick={() => props.onRendererSwitch("molstar")}
           >
-            Mol*
+            <Cube className="ab-ico" aria-hidden="true" />
             <ControlTooltip label={props.selectedCount ? "View selected molecules in Molstar" : "Select molecules to view in Molstar"} />
           </button> : null}
         </div>
@@ -777,14 +764,13 @@ function GridActionToolbar(props: GridControlProps) {
 
 function GridControls(props: GridControlProps) {
   const searchPlaceholder = props.substructureSearch
-    ? "name, table value or SMARTS"
-    : "name or table value";
+    ? "Search or SMARTS"
+    : "Search";
 
   return (
     <div className="buret-grid-toolbar">
       <div className="buret-toolbar-row buret-toolbar-row-main">
         <div className="buret-search-control buret-filter-control">
-          Search
           <input
             id="search"
             type="search"
@@ -796,7 +782,6 @@ function GridControls(props: GridControlProps) {
           />
         </div>
         <label className="buret-sort-control">
-          Sort
           <select id="sort" onChange={(event) => props.onSortChange(event.currentTarget.value || "index")}>
             {props.sortOptions.map((option) => (
               <option key={option.value} value={option.value}>{option.label}</option>

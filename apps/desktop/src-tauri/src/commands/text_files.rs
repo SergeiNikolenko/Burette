@@ -5,11 +5,12 @@ use serde::Serialize;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use tauri::Runtime;
+use tauri::{Manager, Runtime};
 
 use crate::menu::OpenDocumentRegistry;
 
 const TEXT_FILE_READ_LIMIT: usize = 12 * 1024 * 1024;
+const TEXT_BATCH_READ_LIMIT: usize = 64 * 1024 * 1024;
 const DOCUMENT_FILE_READ_LIMIT: u64 = 256 * 1024 * 1024;
 const IMAGE_PREVIEW_READ_LIMIT: u64 = 24 * 1024 * 1024;
 const IMAGE_PREVIEW_BATCH_READ_LIMIT: u64 = 48 * 1024 * 1024;
@@ -87,53 +88,71 @@ pub(crate) async fn read_document_file(path: String) -> Result<tauri::ipc::Respo
 }
 
 #[tauri::command]
-pub(crate) fn read_text_file(
+pub(crate) async fn read_text_file(
     path: String,
     max_bytes: Option<usize>,
 ) -> Result<TextFileDocument, String> {
-    read_text_file_impl(PathBuf::from(path), max_bytes)
+    tauri::async_runtime::spawn_blocking(move || {
+        read_text_file_impl(PathBuf::from(path), max_bytes)
+    })
+    .await
+    .map_err(|error| format!("text read task failed: {error}"))?
 }
 
 #[tauri::command]
-pub(crate) fn open_text_files<R: Runtime>(
+pub(crate) async fn open_text_files<R: Runtime>(
     window: tauri::WebviewWindow<R>,
-    registry: tauri::State<'_, OpenDocumentRegistry>,
     paths: Vec<String>,
     open_state_revision: u64,
 ) -> Result<OpenTextFilesResult, String> {
-    let mut documents = Vec::new();
-    let mut errors = Vec::new();
-    let mut remaining_image_preview_bytes = IMAGE_PREVIEW_BATCH_READ_LIMIT;
-    for path in paths {
-        let path = PathBuf::from(&path);
-        let path = match canonical_text_file_path(&path) {
-            Ok(path) => path,
-            Err(error) => {
-                errors.push(error);
-                continue;
+    tauri::async_runtime::spawn_blocking(move || {
+        let registry = window.state::<OpenDocumentRegistry>();
+        let mut documents = Vec::new();
+        let mut errors = Vec::new();
+        let mut remaining_text_bytes = TEXT_BATCH_READ_LIMIT;
+        let mut remaining_image_preview_bytes = IMAGE_PREVIEW_BATCH_READ_LIMIT;
+        for path in paths {
+            if remaining_text_bytes < TEXT_FILE_READ_LIMIT {
+                errors.push(
+                    "Batch preview limit reached (64 MiB); open the remaining files separately."
+                        .to_string(),
+                );
+                break;
             }
-        };
-        match open_text_file_with_provisional_claim(
-            &registry,
-            window.label(),
-            path,
-            open_state_revision,
-            remaining_image_preview_bytes,
-        ) {
-            Ok(document) => {
-                if document.language == "image" && !document.content.is_empty() {
-                    remaining_image_preview_bytes =
-                        remaining_image_preview_bytes.saturating_sub(document.byte_count);
+            let path = PathBuf::from(&path);
+            let path = match canonical_text_file_path(&path) {
+                Ok(path) => path,
+                Err(error) => {
+                    errors.push(error);
+                    continue;
                 }
-                documents.push(document);
+            };
+            match open_text_file_with_provisional_claim(
+                &registry,
+                window.label(),
+                path,
+                open_state_revision,
+                remaining_image_preview_bytes.min((remaining_text_bytes / 4 * 3) as u64),
+            ) {
+                Ok(document) => {
+                    if document.language == "image" && !document.content.is_empty() {
+                        remaining_image_preview_bytes =
+                            remaining_image_preview_bytes.saturating_sub(document.byte_count);
+                    }
+                    remaining_text_bytes =
+                        remaining_text_bytes.saturating_sub(document.content.len());
+                    documents.push(document);
+                }
+                Err(error) => errors.push(error),
             }
-            Err(error) => errors.push(error),
         }
-    }
-    if documents.is_empty() && !errors.is_empty() {
-        return Err(errors.join("; "));
-    }
-    Ok(OpenTextFilesResult { documents, errors })
+        if documents.is_empty() && !errors.is_empty() {
+            return Err(errors.join("; "));
+        }
+        Ok(OpenTextFilesResult { documents, errors })
+    })
+    .await
+    .map_err(|error| format!("text batch read task failed: {error}"))?
 }
 
 fn canonical_text_file_path(path: &Path) -> Result<PathBuf, String> {
@@ -258,13 +277,21 @@ fn read_text_file_impl_with_image_limit(
         });
     }
 
-    let truncated = text_bytes.len() > read_limit;
+    let mut truncated = text_bytes.len() > read_limit;
     let readable_bytes = if truncated {
         &text_bytes[..read_limit]
     } else {
         text_bytes.as_slice()
     };
-    let content = String::from_utf8_lossy(readable_bytes).into_owned();
+    let mut content = String::from_utf8_lossy(readable_bytes).into_owned();
+    if content.len() > read_limit {
+        let mut end = read_limit;
+        while !content.is_char_boundary(end) {
+            end -= 1;
+        }
+        content.truncate(end);
+        truncated = true;
+    }
 
     Ok(TextFileDocument {
         id: uuid::Uuid::new_v4().to_string(),
@@ -518,6 +545,16 @@ mod tests {
             .content
             .contains("Burette does not have an inline renderer"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn limits_decoded_invalid_utf8_content() {
+        let path = temp_path("invalid-utf8.txt");
+        fs::write(&path, vec![0xff; 4096]).unwrap();
+        let document = read_text_file_impl(path.clone(), Some(4096)).unwrap();
+        assert!(document.content.len() <= 4096);
+        assert!(document.truncated);
+        fs::remove_file(path).unwrap();
     }
 
     #[test]
