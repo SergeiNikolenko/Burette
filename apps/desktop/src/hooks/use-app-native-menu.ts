@@ -59,7 +59,7 @@ type OpenDocuments = (
   paths: string[],
   reloadOptions?: ViewerReloadOptions,
   preferences?: Partial<ViewerPreferences>,
-  options?: { replace?: boolean; inActiveTab?: boolean },
+  options?: { replace?: boolean; inActiveTab?: boolean; shouldApply?: () => boolean },
 ) => void | Promise<unknown>;
 
 type UseAppNativeMenuOptions = {
@@ -97,13 +97,19 @@ export function useAppNativeMenu({
   sourceSaveEnabled,
   saveActiveSource,
 }: UseAppNativeMenuOptions) {
+  const [pendingAnalysis, setPendingAnalysis] = useState<{ command: string; path: string; tabId: string | null; opensNewTab: boolean } | null>(null);
   const [shellEditingText, setShellEditingText] = useState(false);
   const activeDocument = state.activeDocument;
+  const analysisRequestRef = useRef(0);
+  const analysisTargetRef = useRef({ tabId: state.activeTabId, documentId: activeDocument?.id });
+  analysisTargetRef.current = { tabId: state.activeTabId, documentId: activeDocument?.id };
   const isGrid = activeDocument?.renderer === "grid2d";
   const extension = activeDocument?.extension.trim().toLowerCase().replace(/^\./u, "") ?? "";
   const activeDocumentFileBacked = Boolean(activeDocument
     && fileBackedViewerDocumentPath(activeDocument));
   const activeDocumentReadable = activeDocumentFileBacked;
+  const canOpenCollectionAnalysis = Boolean(!isGrid && activeDocumentReadable
+    && (extension === "sdf" || extension === "sd"));
   const activeDocumentTabPath = state.activeTab?.location.kind === "document" && isAbsoluteNativeFilePath(state.activeTab.location.path)
     ? state.activeTab.location.path
     : null;
@@ -216,6 +222,7 @@ export function useAppNativeMenu({
     canExportExternalPreview: activeDocument?.renderer === "xyzrender-external",
     documentDirty: windowDocumentDirty,
     isGrid,
+    canOpenCollectionAnalysis,
     sidebarOpen: state.sidebarOpen,
     rightDockOpen: state.rightDockOpen,
     bottomDockOpen: state.bottomDockOpen,
@@ -248,7 +255,7 @@ export function useAppNativeMenu({
     rgroupRuntimeAvailable: state.rgroupRuntimeAvailable,
     openDocumentPaths,
     recentDocuments: null,
-  }), [activeDocument, activeTabClosable, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closableTabCount, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.rgroupRuntimeAvailable, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
+  }), [activeDocument, activeTabClosable, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closableTabCount, canOpenCollectionAnalysis, documentRegistryRevision, gridMenuState, isGrid, openDocumentPaths, selectedMoleculeCount, shellEditingText, sourceSaveEnabled, state.activeTab, state.rgroupRuntimeAvailable, state.bottomDockOpen, state.rightDockOpen, state.sidebarOpen, state.tabs.length, windowDocumentDirty]);
   const nativeStateRef = useRef<NativeMenuState>({ ...nativeState, recentDocuments });
   const closingWindowRef = useRef(false);
   const closeRequestInFlightRef = useRef(false);
@@ -418,6 +425,24 @@ export function useAppNativeMenu({
       const nextIndex = (currentIndex + offset + state.tabs.length) % state.tabs.length;
       actions.selectTab(state.tabs[nextIndex].id);
     };
+
+    if (command.startsWith("analyze.") && canOpenCollectionAnalysis && activeDocument) {
+      const request = ++analysisRequestRef.current;
+      const target = analysisTargetRef.current;
+      setPendingAnalysis({ command, path: activeDocument.path, tabId: state.activeTabId, opensNewTab: state.activeTab?.pinned === true });
+      try {
+        await openDocuments([activeDocument.path], undefined, { rendererMode: "grid2d" }, {
+          inActiveTab: true,
+          shouldApply: () => analysisRequestRef.current === request
+            && analysisTargetRef.current.tabId === target.tabId
+            && analysisTargetRef.current.documentId === target.documentId,
+        });
+      } catch (error) {
+        if (analysisRequestRef.current === request) setPendingAnalysis(null);
+        await messageDialog(String(error), { title: "Cannot Open Collection Analysis", kind: "error" });
+      }
+      return;
+    }
 
     switch (command) {
       case "settings.open":
@@ -674,7 +699,24 @@ export function useAppNativeMenu({
       default:
         console.warn(`Unknown native menu command: ${command}`);
     }
-  }, [actions, activeDocument, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.tabs]);
+  }, [actions, activeDocument, canOpenCollectionAnalysis, canEditInKetcher, canGenerate3d, canOpenInMolstar, canRunCrest, canRunPrism, canRunXtb, closeCurrentWindow, conformerSelection, isGrid, openDocuments, saveActiveSource, sourceSaveEnabled, state.activeTabId, state.activeTab?.pinned, state.tabs]);
+
+  // Grid commands need the mounted grid and its records, not just a new document.
+  // Cancel if the user leaves the target tab while it is opening.
+  useEffect(() => {
+    if (!pendingAnalysis) return;
+    // Opening from a pinned source intentionally creates a new grid tab.
+    if ((state.activeTabId !== pendingAnalysis.tabId && !(pendingAnalysis.opensNewTab && isGrid)) || activeDocument?.path !== pendingAnalysis.path) {
+      analysisRequestRef.current += 1;
+      setPendingAnalysis(null);
+      return;
+    }
+    if (!isGrid || !gridMenuState?.saveEnabled) return;
+    setPendingAnalysis(null);
+    if (gridMenuState.hasMolecules) {
+      void handleNativeMenuCommand({ command: pendingAnalysis.command });
+    }
+  }, [pendingAnalysis, state.activeTabId, activeDocument?.path, isGrid, gridMenuState, handleNativeMenuCommand]);
 
   useMenuEvents({
     handleNativeMenuCommand,

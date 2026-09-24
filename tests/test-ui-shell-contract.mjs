@@ -6064,11 +6064,9 @@ assert.match(previewViewer, /function sdfMoleculesToPdbCollection\(molecules, la
 assert.match(previewViewer, /seqId: index \+ 1/);
 assert.match(previewViewer, /function sdfMoleculesToPdbStructure\(molecules, label\)/);
 assert.match(previewViewer, /sdfPdbAtom\(molecule, index\),\s*\{ seqId: moleculeIndex \+ 1 \}/);
-assert.match(previewViewer, /function sdfCollectionBackgroundPdb\(prepared, activeIndex\)/);
 assert.doesNotMatch(previewViewer, /function sdfMoleculesToPdbTrajectory\(molecules, label\)/);
 assert.doesNotMatch(previewViewer, /function molstarResidueExpression\(residue\)/);
 assert.doesNotMatch(previewViewer, /function setMolstarComponentsVisibility\(viewer, components, visible\)/);
-assert.match(previewViewer, /const background = molecules\.filter\(\(_, index\) => index !== activeIndex\)/);
 assert.match(previewViewer, /CONECT\$\{String\(serial\)\.padStart\(5, ' '\)\}/);
 assert.match(previewViewer, /function prepareXyzStructure\(text, config\)/);
 assert.match(previewViewer, /function splitXyzFrames\(text\)/);
@@ -6885,9 +6883,8 @@ assert.match(previewViewer, /restoreSdfCollectionAlignment\(prepared\);/);
 // Loop ticks rebuild the active layer through Mol* state transactions, which
 // starves camera drags; while the pointer is held on the viewport the loop
 // skips ticks and the elapsed-time frame math catches up afterwards.
-assert.match(previewViewer, /let loopPointerHeld = false/);
-assert.match(previewViewer, /if \(loopBusy \|\| loopPointerHeld\) \{/);
-assert.match(previewViewer, /window\.addEventListener\('pointerdown', onLoopPointerDown, true\)/);
+assert.doesNotMatch(previewViewer, /loopPointerHeld|onLoopPointerDown/);
+assert.match(previewViewer, /if \(loopBusy\) \{/);
 // The playback row keeps max-content only while closed; open it must take the
 // control's width or the slider collapses to its 44px minimum.
 assert.match(previewRuntimeCss, /buret-docking-poses-animation-open \.buret-docking-pose-animation \{\s*position: static;[\s\S]*?width: auto;/);
@@ -6913,9 +6910,6 @@ assert.match(previewViewer, /async function applySdfCollectionMolstarStyle\(view
 assert.match(previewViewer, /function sdfCollectionStateKey\(prepared, style, allMode, contextStyle, contextOpacity, contextColor\)/);
 assert.match(previewViewer, /function sdfCollectionVisibilityStateStillLoaded\(viewer, state\)/);
 assert.match(previewViewer, /const stateKey = sdfCollectionStateKey\(prepared, style, allMode, contextStyle, contextOpacity, contextColor\)/);
-assert.match(previewViewer, /const backgroundData = sdfCollectionBackgroundPdb\(prepared, -1\)/);
-assert.match(previewViewer, /if \(backgroundData\) \{/);
-assert.match(previewViewer, /backgroundStructures\.push\(\.\.\.await loadSdfCollectionPdbLayer\(viewer, backgroundData,/);
 assert.doesNotMatch(previewViewer, /const contextStructures = await loadSdfCollectionPdbLayer\(viewer, prepared\.data,/);
 assert.match(previewViewer, /const contextStyle = options\.contextStyle \?\? readSdfCollectionContextStyle\(activeConfig\)/);
 assert.match(previewViewer, /const contextOpacity = options\.contextOpacity \?\? readSdfCollectionContextOpacity\(activeConfig\)/);
@@ -7014,7 +7008,7 @@ assert.match(previewViewer, /fileList\.className = 'buret-docking-pose-files'/);
 assert.match(previewViewer, /align\.className = 'buret-docking-pose-align'/);
 assert.match(previewViewer, /align\.textContent = alignmentOn \? 'Aligned' : 'Align'/);
 assert.match(previewViewer, /function xyzFramesAlignable\(frames\)/);
-assert.match(previewViewer, /\} else \{\s*if \(align\) mainRow\.append\(align\);\s*if \(all\) mainRow\.append\(all\);/);
+assert.match(previewViewer, /\} else \{\s*if \(align\) mainRow\.append\(align\);\s*if \(spread\) mainRow\.append\(spread\);\s*if \(all\) mainRow\.append\(all\);/);
 assert.match(previewViewer, /\['align-structures', 'Reset structure alignment'\]/);
 assert.match(previewViewer, /async function applyDockingSceneSinglePose\(viewer, prepared, activePose, options\)/);
 assert.match(previewViewer, /function setDockingSceneRefsHidden\(viewer, refs, hidden\)/);
@@ -7044,7 +7038,7 @@ assert.match(previewViewer, /let poseUpdateQueue = Promise\.resolve\(\)/);
 assert.match(previewViewer, /let loopEpoch = 0/);
 assert.match(previewViewer, /const setPose = \(index, options = \{\}\) => \{[\s\S]*?if \(options\.loopStep !== true && loopActive\) \{[\s\S]*?loopEpoch \+= 1;[\s\S]*?loopStartPose = requestedIndex;[\s\S]*?poseUpdateQueue = queued\.catch\(\(\) => \{\}\);[\s\S]*?return queued;[\s\S]*?\};/);
 assert.match(previewViewer, /const performSetPose = async \(index, options = \{\}\) => \{/);
-assert.match(previewViewer, /const shouldFocus = options\.focus === true \|\| options\.userStep === true;/);
+assert.match(previewViewer, /const shouldFocus = options\.focus === true;/);
 assert.match(previewViewer, /if \(shouldFocus\) scheduleMolstarStructureFocus\(viewer, \{ reason: 'pose-selection', durationMs: 180, force: true \}\);/);
 assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopNextDelay\(\), expectedLoopEpoch = loopEpoch\) => \{[\s\S]*?if \(!loopActive \|\| expectedLoopEpoch !== loopEpoch\) return;/);
 assert.match(previewViewer, /slider\.className = 'buret-docking-pose-slider'/);

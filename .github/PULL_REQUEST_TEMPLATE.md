@@ -7,6 +7,7 @@ behavior it affects.
 
 - [ ] Focused change; no unrelated cleanup.
 - [ ] No generated bundles, app builds, cache files, or local reports committed.
+- [ ] Removed task-created local app builds, test installs, preview servers, and scratch files after validation; preserved the user's installed Burette and data.
 
 ## Validation
 

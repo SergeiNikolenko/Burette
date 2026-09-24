@@ -1719,6 +1719,7 @@
   let pendingTrajectoryPlaybackRestore = null;
   let viewportTrajectoryAnimationEpoch = 0;
   let activeSdfPoseMode = 'single';
+  let activeSdfCollectionLayout = 'overlap';
   let activeSdfCollectionVisibilityState = null;
   let activeXyzFrameOverlayState = null;
   let xyzFrameAlignment = null;
@@ -3292,6 +3293,20 @@
     } catch (_) {}
   }
 
+  function sdfCollectionLayoutStorageKey(config) {
+    return `buret.sdfCollection.layout.${String(config?.documentId || config?.label || 'collection')}`;
+  }
+
+  function readSdfCollectionLayout(config) {
+    try { return window.localStorage?.getItem(sdfCollectionLayoutStorageKey(config)) === 'spread' ? 'spread' : 'overlap'; }
+    catch (_) { return 'overlap'; }
+  }
+
+  function setSdfCollectionLayout(layout) {
+    activeSdfCollectionLayout = layout === 'spread' ? 'spread' : 'overlap';
+    try { window.localStorage?.setItem(sdfCollectionLayoutStorageKey(activeConfig), activeSdfCollectionLayout); } catch (_) {}
+  }
+
   function notifyStructureOverlayModeChanged(prepared = activeMolstarPrepared) {
     if (!structureOverlayAvailable(prepared)) return;
     const documentId = String(activeConfig?.documentId || window.BuretteConfig?.documentId || '');
@@ -3346,6 +3361,12 @@
   }
 
   function updateStructureOverlayToggleButton(button, prepared = activeMolstarPrepared) {
+    const spread = document.querySelector('[data-buret-action="sdf-collection-spread"]');
+    if (spread) {
+      const active = activeSdfPoseMode === 'all' && activeSdfCollectionLayout === 'spread';
+      spread.classList.toggle('active', active);
+      spread.setAttribute('aria-pressed', active ? 'true' : 'false');
+    }
     if (!button) return;
     const available = structureOverlayToggleAvailable(prepared);
     button.classList.toggle('hidden', !available);
@@ -14353,44 +14374,28 @@ SOFTWARE.
     }
     if (molecules.length <= 1 || totalAtoms > 999 || totalBonds > 999) return null;
 
-    const columns = Math.max(1, Math.ceil(Math.sqrt(molecules.length)));
-    const rows = Math.ceil(molecules.length / columns);
-    const cellWidth = Math.max(2, ...molecules.map(m => Math.max(2, m.width))) + SDF_GRID_PADDING;
-    const cellHeight = Math.max(2, ...molecules.map(m => Math.max(2, m.height))) + SDF_GRID_PADDING;
-    const gridWidth = (columns - 1) * cellWidth;
-    const gridHeight = (rows - 1) * cellHeight;
-
-    const atoms = [];
-    const bonds = [];
-    let atomOffset = 0;
-    molecules.forEach((molecule, index) => {
-      const column = index % columns;
-      const row = Math.floor(index / columns);
-      const targetX = column * cellWidth - gridWidth / 2;
-      const targetY = gridHeight / 2 - row * cellHeight;
-      const dx = targetX - molecule.centerX;
-      const dy = targetY - molecule.centerY;
-      for (const atom of molecule.atoms) {
-        atoms.push(formatSdfAtomLine(atom, atom.x + dx, atom.y + dy, atom.z));
-      }
-      for (const bond of molecule.bonds) {
-        bonds.push(formatSdfBondLine(bond, atomOffset));
-      }
-      atomOffset += molecule.atomCount;
+    const spread = spreadSdfCollectionMolecules(molecules);
+    const gridEntries = spread.map((molecule, index) => {
+      const moleculeLabel = `Molecule ${index + 1}`;
+      return {
+        label: moleculeLabel,
+        format: 'sdf',
+        data: [moleculeLabel, '  Burette', '',
+          '  0  0  0     0  0            999 V3000', 'M  V30 BEGIN CTAB',
+          `M  V30 COUNTS ${molecule.atomCount} ${molecule.bondCount} 0 0 0`, 'M  V30 BEGIN ATOM',
+          ...molecule.atoms.map((atom, i) => `M  V30 ${i + 1} ${atom.element} ${formatV3000Coord(atom.x)} ${formatV3000Coord(atom.y)} ${formatV3000Coord(atom.z)} 0`),
+          'M  V30 END ATOM', 'M  V30 BEGIN BOND',
+          ...molecule.bonds.map((bond, i) => `M  V30 ${i + 1} ${bond.order} ${bond.a} ${bond.b}`),
+          'M  V30 END BOND', 'M  V30 END CTAB',
+          'M  END', '$$$$', ''
+        ].join('\n')
+      };
     });
 
     return {
-      data: [
-        'Burette SDF Grid',
-        '  Burette',
-        `${molecules.length} of ${records.length} SDF records`,
-        formatSdfCountsLine(totalAtoms, totalBonds),
-        ...atoms,
-        ...bonds,
-        'M  END',
-        '$$$$',
-        ''
-      ].join('\n'),
+      kind: 'sdf-grid',
+      data: '',
+      gridEntries,
       format: 'sdf',
       label: `${label} (grid: ${molecules.length}${records.length > molecules.length ? ` of ${records.length}` : ''} molecules)`,
       loadPreset: 'default'
@@ -14514,6 +14519,32 @@ SOFTWARE.
     return { data: lines.join('\n'), residues, singlePdbs, molecules };
   }
 
+  function spreadSdfCollectionMolecules(molecules) {
+    const columns = Math.ceil(Math.sqrt(molecules.length));
+    const rows = Math.ceil(molecules.length / columns);
+    // Alignment replaces coordinates; parsed bounds can describe the old pose.
+    const bounds = molecules.map(molecule => {
+      const xs = molecule.atoms.map(atom => atom.x);
+      const ys = molecule.atoms.map(atom => atom.y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      return { centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2, size: Math.max(maxX - minX, maxY - minY) };
+    });
+    const spacing = Math.max(3, ...bounds.map(bound => bound.size)) + SDF_GRID_PADDING;
+    return molecules.map((molecule, index) => {
+      const x = (index % columns - (columns - 1) / 2) * spacing;
+      const y = ((rows - 1) / 2 - Math.floor(index / columns)) * spacing;
+      return {
+        ...molecule,
+        atoms: molecule.atoms.map(atom => ({
+          ...atom,
+          x: atom.x + x - bounds[index].centerX,
+          y: atom.y + y - bounds[index].centerY
+        }))
+      };
+    });
+  }
+
   function sdfMoleculesToPdbStructure(molecules, label) {
     const totalAtoms = molecules.reduce((sum, molecule) => sum + molecule.atomCount, 0);
     if (totalAtoms <= 0 || totalAtoms > 99999) return null;
@@ -14542,14 +14573,6 @@ SOFTWARE.
     appendPdbConectLines(lines, adjacency);
     lines.push('END', '');
     return lines.join('\n');
-  }
-
-  function sdfCollectionBackgroundPdb(prepared, activeIndex) {
-    const molecules = Array.isArray(prepared?.collectionMolecules) ? prepared.collectionMolecules : [];
-    if (molecules.length <= 1) return null;
-    const background = molecules.filter((_, index) => index !== activeIndex);
-    if (background.length === 0) return null;
-    return sdfMoleculesToPdbStructure(background, `${prepared.label || 'Molecule collection'} background`);
   }
 
   function appendPdbConectLines(lines, adjacency) {
@@ -14746,6 +14769,7 @@ SOFTWARE.
       Number(prepared?.poseCount || prepared?.sdfPoseRecordCount || 0),
       style,
       allMode ? 'all' : 'single',
+      allMode ? activeSdfCollectionLayout : 'overlap',
       contextStyle,
     ].join('|');
   }
@@ -15010,38 +15034,56 @@ SOFTWARE.
 
   async function switchCachedPoseLayer(viewer, state, index, entry, applyStyle) {
     const plugin = viewer.plugin;
-    state.poseCache ||= new Map();
-    const previous = state.poseCache.get(state.activeIndex);
-    if (previous) {
-      // Retain parsed trajectories, never inactive structures: full exports and
-      // selections enumerate the live structure hierarchy.
-      const remove = plugin.state.data.build();
-      for (const trajectory of previous.trajectories) {
-        for (const child of plugin.state.data.tree.children.get(trajectory.ref) || []) remove.delete(child);
+    const canvas3d = plugin.canvas3d;
+    const cameraSnapshot = state.activeIndex >= 0 ? captureMolstarCameraSnapshot(viewer) : null;
+    const manualReset = canvas3d?.props?.camera?.manualReset === true;
+    // Removing the old foreground briefly empties the scene. Prevent Mol* from
+    // reframing that intermediate scene or fitting each replacement molecule.
+    if (cameraSnapshot) canvas3d.setProps({ camera: { manualReset: true } });
+    try {
+      state.poseCache ||= new Map();
+      const previous = state.poseCache.get(state.activeIndex);
+      if (previous) {
+        // Retain parsed trajectories, never inactive structures: full exports and
+        // selections enumerate the live structure hierarchy.
+        const remove = plugin.state.data.build();
+        for (const trajectory of previous.trajectories) {
+          for (const child of plugin.state.data.tree.children.get(trajectory.ref) || []) remove.delete(child);
+        }
+        await remove.commit();
       }
-      await remove.commit();
-    }
-    let cached = state.poseCache.get(index);
-    if (!cached || !plugin.state.data.cells.has(cached.raw.ref)) {
-      const normalized = normalizeFormat(entry.format);
-      const payload = normalized === 'cifCore' ? { data: coreCifToPdb(entry.data), format: 'pdb' } : { data: entry.data, format: normalized };
-      const raw = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
-      cached = { raw, trajectories: await parseMolstarStructureTrajectories(plugin, raw, payload.format), sourceBytes: (payload.data?.length || 0) * 2 };
-    }
-    state.poseCache.delete(index);
-    state.poseCache.set(index, cached);
-    const before = molstarStructureCellRefs(viewer);
-    for (const trajectory of cached.trajectories) await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', { representationPreset: 'empty' });
-    const structures = Array.from(molstarCurrentStructures(viewer)).filter(structure => !before.has(structure.cell.transform.ref));
-    await applyStyle(structures);
-    state.activeRefs = molstarStructureRefsOf(structures);
-    state.activeIndex = index;
-    let bytes = Array.from(state.poseCache.values()).reduce((sum, item) => sum + item.sourceBytes, 0);
-    while (state.poseCache.size > 1 && (state.poseCache.size > 4 || bytes > 16 * 1024 * 1024)) {
-      const [oldIndex, old] = state.poseCache.entries().next().value;
-      await plugin.state.data.build().delete(old.raw.ref).commit();
-      state.poseCache.delete(oldIndex);
-      bytes -= old.sourceBytes;
+      let cached = state.poseCache.get(index);
+      if (!cached || !plugin.state.data.cells.has(cached.raw.ref)) {
+        const normalized = normalizeFormat(entry.format);
+        const payload = normalized === 'cifCore' ? { data: coreCifToPdb(entry.data), format: 'pdb' } : { data: entry.data, format: normalized };
+        const raw = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
+        cached = { raw, trajectories: await parseMolstarStructureTrajectories(plugin, raw, payload.format), sourceBytes: (payload.data?.length || 0) * 2 };
+      }
+      state.poseCache.delete(index);
+      state.poseCache.set(index, cached);
+      const before = molstarStructureCellRefs(viewer);
+      for (const trajectory of cached.trajectories) await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', { representationPreset: 'empty' });
+      const structures = Array.from(molstarCurrentStructures(viewer)).filter(structure => !before.has(structure.cell.transform.ref));
+      await applyStyle(structures);
+      state.activeRefs = molstarStructureRefsOf(structures);
+      state.activeIndex = index;
+      let bytes = Array.from(state.poseCache.values()).reduce((sum, item) => sum + item.sourceBytes, 0);
+      while (state.poseCache.size > 1 && (state.poseCache.size > 4 || bytes > 16 * 1024 * 1024)) {
+        const [oldIndex, old] = state.poseCache.entries().next().value;
+        await plugin.state.data.build().delete(old.raw.ref).commit();
+        state.poseCache.delete(oldIndex);
+        bytes -= old.sourceBytes;
+      }
+    } finally {
+      if (cameraSnapshot) {
+        try {
+          canvas3d.commit(true);
+          // Camera input remains live during the async rebuild. Do not restore
+          // the old snapshot over a drag/zoom that happened while it ran.
+        } finally {
+          canvas3d.setProps({ camera: { manualReset } });
+        }
+      }
     }
   }
 
@@ -15082,7 +15124,10 @@ SOFTWARE.
       throw new Error('Mol* structure builders are not available in this runtime.');
     }
     const allMode = activeSdfPoseMode === 'all';
-    const singlePdbs = Array.isArray(prepared.collectionSinglePdbs) ? prepared.collectionSinglePdbs : [];
+    const spreadCollection = allMode && activeSdfCollectionLayout === 'spread'
+      ? sdfMoleculesToPdbCollection(spreadSdfCollectionMolecules(prepared.collectionMolecules), prepared.label)
+      : null;
+    const singlePdbs = spreadCollection?.singlePdbs || (Array.isArray(prepared.collectionSinglePdbs) ? prepared.collectionSinglePdbs : []);
     const activeIndex = Math.max(0, Math.min(singlePdbs.length - 1, Math.trunc(Number(activePose) || 0)));
     const activeData = singlePdbs[activeIndex];
     if (!activeData) throw new Error('Mol* collection molecule data is unavailable.');
@@ -15098,10 +15143,12 @@ SOFTWARE.
       resetDockingSceneVisibilityState(viewer);
       if (typeof plugin.clear === 'function') await plugin.clear();
       const backgroundStructures = [];
+      const allRefsByIndex = [];
       if (allMode) {
-        const backgroundData = sdfCollectionBackgroundPdb(prepared, -1);
-        if (backgroundData) {
-          backgroundStructures.push(...await loadSdfCollectionPdbLayer(viewer, backgroundData, `${prepared.label || 'Molecule collection'} (background)`));
+        for (const [index, data] of singlePdbs.entries()) {
+          const structures = await loadSdfCollectionPdbLayer(viewer, data, `Molecule ${index + 1}`);
+          backgroundStructures.push(...structures);
+          allRefsByIndex.push(molstarStructureRefsOf(structures));
         }
         if (backgroundStructures.length) {
           await applySdfCollectionMolstarStyle(
@@ -15112,13 +15159,17 @@ SOFTWARE.
             contextColor
           );
         }
+        const selected = molstarStructuresByRefs(viewer, allRefsByIndex[activeIndex]);
+        await applySdfCollectionMolstarStyle(viewer, style, selected, 1, 'colored');
       }
       state = {
         viewer,
         key: stateKey,
         backgroundRefs: molstarStructureRefsOf(backgroundStructures),
-        activeRefs: [],
-        activeIndex: -1
+        allRefsByIndex,
+        activeRefs: allMode ? allRefsByIndex[activeIndex] : [],
+        activeIndex: allMode ? activeIndex : -1,
+        appearanceKey: allMode ? `${contextOpacity}|${contextColor}` : undefined
       };
       activeSdfCollectionVisibilityState = state;
     }
@@ -15127,10 +15178,33 @@ SOFTWARE.
     if (state.appearanceKey !== appearanceKey) {
       const background = molstarStructuresByRefs(viewer, state.backgroundRefs);
       if (background.length) await applySdfCollectionMolstarStyle(viewer, contextStyle === 'match' ? style : contextStyle, background, contextOpacity, contextColor);
+      if (allMode) {
+        const selected = molstarStructuresByRefs(viewer, state.allRefsByIndex[activeIndex]);
+        await applySdfCollectionMolstarStyle(viewer, style, selected, 1, 'colored');
+      }
       state.appearanceKey = appearanceKey;
     }
 
     if (state.activeIndex === activeIndex && sdfCollectionVisibilityStateStillLoaded(viewer, state)) {
+      updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+      if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
+      return;
+    }
+
+    if (allMode) {
+      const canvas3d = plugin.canvas3d;
+      const manualReset = canvas3d?.props?.camera?.manualReset === true;
+      canvas3d?.setProps({ camera: { manualReset: true } });
+      try {
+        const previous = molstarStructuresByRefs(viewer, state.allRefsByIndex[state.activeIndex]);
+        if (previous.length) await applySdfCollectionMolstarStyle(viewer, contextStyle === 'match' ? style : contextStyle, previous, contextOpacity, contextColor);
+        const selected = molstarStructuresByRefs(viewer, state.allRefsByIndex[activeIndex]);
+        await applySdfCollectionMolstarStyle(viewer, style, selected, 1, 'colored');
+        state.activeRefs = state.allRefsByIndex[activeIndex];
+        state.activeIndex = activeIndex;
+      } finally {
+        canvas3d?.setProps({ camera: { manualReset } });
+      }
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
       return;
@@ -16857,6 +16931,15 @@ SOFTWARE.
     activeMolstarPrepared = prepared;
     updateSdfPoseButton(prepared);
     notifyStructureOverlayModeChanged(prepared);
+    if (prepared.kind === 'sdf-grid') {
+      activeDockingPrepared = null;
+      for (const entry of prepared.gridEntries) {
+        await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' });
+      }
+      await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
+      installDockingPoseControls(viewer, null);
+      return;
+    }
     if (prepared.kind === 'docking') {
       await loadDockingPreparedStructure(viewer, prepared);
       return;
@@ -19001,6 +19084,35 @@ SOFTWARE.
     const controlLabelLower = controlLabel.toLowerCase();
     root.setAttribute('aria-label', `${controlLabel} controls`);
     const all = overlayToggleAvailable ? createStructureOverlayToggleButton(prepared) : null;
+    const spread = prepared.kind === 'sdf-collection' ? document.createElement('button') : null;
+    if (spread) {
+      spread.type = 'button';
+      spread.className = 'buret-docking-pose-align';
+      spread.dataset.buretAction = 'sdf-collection-spread';
+      spread.textContent = 'Spread';
+      spread.title = 'Arrange molecules separately without changing the SDF coordinates';
+      spread.setAttribute('aria-label', spread.title);
+      const syncSpread = () => {
+        const active = activeSdfPoseMode === 'all' && activeSdfCollectionLayout === 'spread';
+        spread.classList.toggle('active', active);
+        spread.setAttribute('aria-pressed', active ? 'true' : 'false');
+      };
+      syncSpread();
+      spread.addEventListener('click', () => {
+        if (!activeViewer || !activeMolstarPrepared) return;
+        setSdfCollectionLayout(activeSdfCollectionLayout === 'spread' && activeSdfPoseMode === 'all' ? 'overlap' : 'spread');
+        if (activeSdfPoseMode !== 'all') {
+          setSdfPoseMode('all');
+          notifyStructureOverlayModeChanged(activeMolstarPrepared);
+        }
+        syncSpread();
+        updateStructureOverlayToggleButton(all, activeMolstarPrepared);
+        spread.disabled = true;
+        void applySdfCollectionVisibility(activeViewer, activeMolstarPrepared, readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, activeMolstarPrepared.poseCount), { focus: true })
+          .catch(error => setStatus(`[web] Could not arrange molecules.\n\n${error?.message || String(error)}`, 'error'))
+          .finally(() => { spread.disabled = false; });
+      });
+    }
     if (prepared.overlayOnly === true && all) {
       root.classList.add('buret-docking-poses-overlay-only');
       root.setAttribute('aria-label', `${controlLabel} overlay controls`);
@@ -19028,15 +19140,6 @@ SOFTWARE.
     let loopTimer = null;
     let loopActive = Boolean(playbackRestore?.playing);
     let loopBusy = false;
-    // Every loop tick rebuilds the active layer through a Mol* state
-    // transaction, which starves camera drags of main-thread time; while the
-    // pointer is held down on the viewport the loop skips ticks (the elapsed-
-    // time frame math catches the playhead up afterwards).
-    let loopPointerHeld = false;
-    const onLoopPointerDown = (event) => {
-      if (event.target instanceof Element && event.target.closest('.msp-viewport')) loopPointerHeld = true;
-    };
-    const onLoopPointerUp = () => { loopPointerHeld = false; };
     let loopEpoch = 0;
     let loopStartedAt = 0;
     let loopStartPose = activePose;
@@ -19246,6 +19349,7 @@ SOFTWARE.
           : sdfCollectionAlignFrames
             ? 'Superimpose every molecule onto the first one by atom order'
             : 'Automatically superimpose every structure onto the first one';
+      align.hidden = !alignmentSupported;
       align.disabled = !alignmentSupported;
       align.setAttribute('aria-pressed', alignmentOn ? 'true' : 'false');
     }
@@ -19450,7 +19554,7 @@ SOFTWARE.
         if (!hostViewerVisible) {
           return;
         }
-        if (loopBusy || loopPointerHeld) {
+        if (loopBusy) {
           scheduleLoopStep(undefined, expectedLoopEpoch);
           return;
         }
@@ -19510,7 +19614,10 @@ SOFTWARE.
     const performSetPose = async (index, options = {}) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
-      const shouldFocus = options.focus === true || options.userStep === true;
+      const shouldFocus = options.focus === true;
+      // A normal step keeps the user's view. Cancel delayed focus retries from
+      // an earlier load/selection before replacing any scene layers.
+      if (!shouldFocus) molstarStructureFocusSerial += 1;
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
       previous.disabled = true;
       next.disabled = true;
@@ -19912,14 +20019,8 @@ SOFTWARE.
       }
     };
     window.addEventListener('keydown', onKeyDown);
-    window.addEventListener('pointerdown', onLoopPointerDown, true);
-    window.addEventListener('pointerup', onLoopPointerUp, true);
-    window.addEventListener('pointercancel', onLoopPointerUp, true);
     dockingPoseKeydownDisposer = () => {
       window.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('pointerdown', onLoopPointerDown, true);
-      window.removeEventListener('pointerup', onLoopPointerUp, true);
-      window.removeEventListener('pointercancel', onLoopPointerUp, true);
     };
     mainRow.append(animation, previous, label, next);
     const smoothAvailable = (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);
@@ -19929,9 +20030,11 @@ SOFTWARE.
       toggleRow.className = 'buret-docking-pose-toggles';
       if (story) toggleRow.append(story);
       if (align) toggleRow.append(align);
+      if (spread) toggleRow.append(spread);
       if (all) toggleRow.append(all);
     } else {
       if (align) mainRow.append(align);
+      if (spread) mainRow.append(spread);
       if (all) mainRow.append(all);
       animationRow.append(speed, loop, slider);
       if (smoothAvailable) animationRow.append(smooth);
@@ -26770,7 +26873,10 @@ SOFTWARE.
         : new window.molstar.Viewer('app', createViewerOptions());
       viewer.plugin.canvas3d?.setProps({ transparentBackground, renderer: { backgroundColor: canvasBackgroundColor() } });
       viewer.plugin.canvas3d?.requestDraw();
-      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      // WebKit may suspend animation callbacks while this container is hidden.
+      // Bound both paint waits so revealing the canvas cannot depend on itself.
+      await waitForAnimationFrame();
+      await waitForAnimationFrame();
     } finally {
       app?.classList.remove('buret-molstar-initializing');
     }
@@ -26858,6 +26964,7 @@ SOFTWARE.
   async function startMolstar(config, cb) {
     disposeActiveMolstarViewer();
     activeSdfPoseMode = readSdfPoseMode(config);
+    activeSdfCollectionLayout = readSdfCollectionLayout(config);
     ensureMolstarStylesheet();
     const container = document.getElementById('app');
     if (container) container.innerHTML = '';
@@ -27258,7 +27365,9 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
   }
 
   function showError(error) {
-    const message = error && (error.stack || error.message) ? (error.stack || error.message) : String(error);
+    const message = error instanceof Error
+      ? `${error.name}: ${error.message}${error.stack ? `\n${error.stack}` : ''}`
+      : String(error);
     const diagnostics = window.__BURETTE_HOSTED_MCP_WIDGET__ === true
       ? ''
       : '\n\nCheck: ./scripts/tail-log.sh';

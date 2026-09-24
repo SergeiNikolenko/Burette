@@ -241,3 +241,39 @@ the same scene import operation as Add to Scene. Trajectory pairing retains its
 separate document workflow. Combined scenes can be saved through Export → Scene.
 SSH requests wait for the shared native worker rather than treating contention
 as a connection failure; refreshing a remote project keeps its cached tree visible.
+
+### Native conformers in Mol* collections
+
+Generate 3D on an SDF/MOL document restores the native artifact coordinates
+into its source records by the artifact molecule ordinal. The active tab keeps
+the source name and SDF topology/properties, so Grid and pose alignment remain
+available. A single-conformer calculation replaces coordinates rather than
+appending the old geometry. Failed source records remain unchanged; ensemble
+mode retains multiple generated conformers per source. The durable compute
+artifact and report remain available separately.
+
+### Pose navigation camera
+
+Next/Prev, keyboard steps, slider and playback keep the current camera. Cached
+pose replacement temporarily suppresses Mol* automatic camera resets while
+removing and rebuilding the foreground, then restores its prior reset policy even if the replacement fails. Camera
+input remains live, and holding the viewport pointer does not pause playback. Initial loading and explicit focus
+retain their framing behavior. Unsupported Align controls are hidden; supported
+alignment remains visible, including its temporary busy state.
+
+Native Analyze commands also accept a file-backed SDF opened in Mol*. The desktop
+menu's `canOpenCollectionAnalysis` capability enables these commands; choosing one
+opens the same file in Grid and dispatches the analysis only after its records
+are ready. Leaving the target tab cancels the pending analysis. Grid-specific
+selection, unsaved-edit, and Python RDKit requirements still apply. Opening all
+rows in Mol* keeps the collection title, and 2D alignment preserves SD properties.
+
+Spread arranges collection molecules in a grid in the 3D scene without changing
+the source coordinates. All/Spread loads each molecule as a separate structure,
+so selection and scene-tree operations stay scoped to that molecule. Stepping
+changes foreground styling without replacing the other structures. Align remains
+a separate operation and is hidden when the collection cannot be aligned.
+
+The initial Mol* canvas stays hidden until its background is configured. Paint
+waits use a timer fallback because WKWebView can suspend animation callbacks for
+hidden canvases; startup must not depend on revealing the canvas first.

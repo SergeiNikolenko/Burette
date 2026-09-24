@@ -46,6 +46,7 @@ export type NativeMenuState = {
   canExportExternalPreview: boolean;
   documentDirty: boolean;
   isGrid: boolean;
+  canOpenCollectionAnalysis: boolean;
   sidebarOpen: boolean;
   rightDockOpen: boolean;
   bottomDockOpen: boolean;
