@@ -1,7 +1,7 @@
 import { nativeMenuImage } from "./menu-icons";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { MenuItemSpec } from "./menu-types";
+import type { MenuItemSpec, MenuPresentation } from "./menu-types";
 
 // SDK icons become AppKit template images. Older menu surfaces may still name
 // an SF Symbol; explicit SDK images take precedence.
@@ -69,7 +69,7 @@ type MenuValue = { session: string; id: string; value: number | string };
 
 const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 
-export async function showMacContextMenu(spec: MenuItemSpec[], at?: { x: number; y: number }): Promise<boolean> {
+export async function showMacContextMenu(spec: MenuItemSpec[], at?: { x: number; y: number }, presentation: MenuPresentation = "context"): Promise<boolean> {
   const images = new Map<string, string>();
   const prepare = async (entries: MenuItemSpec[]): Promise<void> => {
     await Promise.all(entries.map(async entry => {
@@ -128,7 +128,7 @@ export async function showMacContextMenu(spec: MenuItemSpec[], at?: { x: number;
     : undefined;
   let result: PopupResult;
   try {
-    result = await invoke<PopupResult>("popup_macos_context_menu", { items, at, session });
+    result = await invoke<PopupResult>("popup_macos_context_menu", { items, at, session, presentation });
   } finally {
     unlisten?.();
   }

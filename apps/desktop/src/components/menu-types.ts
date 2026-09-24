@@ -22,3 +22,7 @@ export type MenuItemSpec =
   | { kind: "swatches"; id: string; colors: string[]; activeColor?: string; label?: string; action?: (color: string) => void }
   | { kind: "select"; id: string; label: string; value: string; options: readonly string[]; optionLabels?: Record<string, string>; disabled?: boolean; action?: (value: string) => void }
   | { kind: "number"; id: string; label: string; value: number; min?: number; max?: number; step?: number; unit?: string; nativeSymbol?: string; disabled?: boolean; action?: (value: number) => void };
+
+// A right-click menu gets the system context-menu rows such as "Ask Siri"; a
+// menu dropped from a button or offered as a choice stays a plain command list.
+export type MenuPresentation = "context" | "dropdown";

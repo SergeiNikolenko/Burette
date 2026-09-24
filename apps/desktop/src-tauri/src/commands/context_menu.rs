@@ -63,6 +63,16 @@ pub(crate) struct MenuPosition {
     y: f64,
 }
 
+/// A right-click menu gets the system context-menu rows (such as "Ask Siri");
+/// a menu dropped from a button stays a plain command list.
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum MenuPresentation {
+    #[default]
+    Context,
+    Dropdown,
+}
+
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub(crate) enum PopupResult {
@@ -210,6 +220,7 @@ pub(crate) async fn popup_macos_context_menu(
     items: Vec<MenuEntry>,
     at: Option<MenuPosition>,
     session: Option<String>,
+    presentation: Option<MenuPresentation>,
 ) -> Result<PopupResult, String> {
     validate(&items, at.as_ref())?;
     if session.as_ref().is_some_and(|value| value.len() > 64) {
@@ -221,7 +232,13 @@ pub(crate) async fn popup_macos_context_menu(
         let owner = window.clone();
         window
             .run_on_main_thread(move || {
-                let result = macos::popup(&owner, &items, at.as_ref(), session.unwrap_or_default());
+                let result = macos::popup(
+                    &owner,
+                    &items,
+                    at.as_ref(),
+                    session.unwrap_or_default(),
+                    presentation.unwrap_or_default(),
+                );
                 let _ = sender.try_send(result);
             })
             .map_err(|error| error.to_string())?;
@@ -232,7 +249,7 @@ pub(crate) async fn popup_macos_context_menu(
     }
     #[cfg(not(target_os = "macos"))]
     {
-        let _ = (window, session);
+        let _ = (window, session, presentation);
         Ok(PopupResult::Unsupported)
     }
 }
@@ -273,6 +290,7 @@ mod macos {
             context: *mut c_void,
         ) -> id;
         fn burette_menu_item_show_image(item: id);
+        fn burette_menu_popup_context(menu: id, view: id, point: NSPoint);
     }
 
     /// Where live control changes go; it outlives the modal popup that uses it.
@@ -520,6 +538,7 @@ mod macos {
         items: &[MenuEntry],
         at: Option<&MenuPosition>,
         session: String,
+        presentation: MenuPresentation,
     ) -> Result<PopupResult, String> {
         let native_window = window.ns_window().map_err(|error| error.to_string())? as id;
         unsafe {
@@ -538,25 +557,28 @@ mod macos {
                 &mut live as *mut LiveTarget as *mut c_void,
             );
             let view: id = msg_send![native_window, contentView];
-            let (point, view) = if let Some(at) = at {
+            let point = if let Some(at) = at {
                 let bounds: NSRect = msg_send![view, bounds];
                 let flipped: BOOL = msg_send![view, isFlipped];
-                (
-                    NSPoint::new(
-                        at.x,
-                        if flipped == YES {
-                            at.y
-                        } else {
-                            bounds.size.height - at.y
-                        },
-                    ),
-                    view,
+                NSPoint::new(
+                    at.x,
+                    if flipped == YES {
+                        at.y
+                    } else {
+                        bounds.size.height - at.y
+                    },
                 )
             } else {
-                (msg_send![class!(NSEvent), mouseLocation], nil)
+                let screen: NSPoint = msg_send![class!(NSEvent), mouseLocation];
+                let point: NSPoint = msg_send![native_window, convertPointFromScreen: screen];
+                msg_send![view, convertPoint: point fromView: nil]
             };
-            let _: BOOL =
-                msg_send![menu, popUpMenuPositioningItem: nil atLocation: point inView: view];
+            match presentation {
+                MenuPresentation::Context => burette_menu_popup_context(menu, view, point),
+                MenuPresentation::Dropdown => {
+                    let _: BOOL = msg_send![menu, popUpMenuPositioningItem: nil atLocation: point inView: view];
+                }
+            }
             let tag = *(*target).get_ivar::<isize>("selectedTag");
             let selection = tag
                 .checked_sub(1)

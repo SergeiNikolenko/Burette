@@ -350,8 +350,11 @@ expanding to residues. Escape leaves lasso mode. Zoom is bounded to 1–8× (the
 lasso paths to 2,048 sampled points.
 
 The desktop-only `popup_macos_context_menu` command accepts tagged item, submenu,
-separator, slider and colours entries, an optional logical window position and an
-optional session string. It returns a selected ID or cancellation; callbacks remain
+separator, slider and colours entries, an optional logical window position, an
+optional session string and an optional `presentation` of `context` (default) or
+`dropdown`. A `context` menu opens as an AppKit context menu, so macOS 27 adds its
+system "Ask Siri" row on top; a `dropdown` menu, used for buttons and choice
+pickers, stays a plain command list. It returns a selected ID or cancellation; callbacks remain
 in the frontend. Slider and colour changes are emitted to the requesting window as
 `native-context-menu-value` events (`{ session, id, value }`) while the menu is
 open. The request is limited to 128 entries, three submenu levels, unique IDs of at

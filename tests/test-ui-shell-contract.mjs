@@ -3996,7 +3996,7 @@ assert.match(sidebarSurface, /Expand all project folders/);
 assert.match(sidebarSurface, /Collapse all project folders/);
 assert.match(sidebarSurface, /Close All Tabs/);
 assert.match(nativeContextMenu, /export async function showNativeContextMenu/);
-assert.match(nativeContextMenu, /options: \{ forceWeb\?: boolean \} = \{\}/);
+assert.match(nativeContextMenu, /options: \{ forceWeb\?: boolean; presentation\?: MenuPresentation \} = \{\}/);
 assert.match(nativeContextMenu, /if \(options\.forceWeb \|\| !isTauriRuntime\(\)\)/);
 assert.match(nativeContextMenu, /showRadixContextMenu\(spec, at\)/);
 assert.match(nativeContextMenu, /from "\.\/menu-types"/);

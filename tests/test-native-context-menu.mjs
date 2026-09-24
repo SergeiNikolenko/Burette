@@ -79,12 +79,15 @@ const macShow = new Function('nativeMenuImage', 'invoke', 'listen', `${macJs}\nr
 assert.equal(await macShow(spec, { x: 12, y: 24 }), true);
 assert.equal(invoked, 3);
 assert.deepEqual(wire.at, { x: 12, y: 24 });
+// Right-click menus take the context-menu path that carries the system "Ask Siri" row.
+assert.equal(wire.presentation, 'context');
 assert.deepEqual(wire.items[2].items, [
   { kind: 'item', id: 'text', text: 'Text', enabled: true, accelerator: 'CmdOrCtrl+T' },
   { kind: 'item', id: 'disabled', text: 'Unavailable', enabled: false },
 ]);
 result = { kind: 'shown', selection: 'disabled' };
-await macShow(spec);
+await macShow(spec, { x: 12, y: 24 }, 'dropdown');
+assert.equal(wire.presentation, 'dropdown');
 assert.equal(invoked, 3);
 result = { kind: 'shown', selection: null };
 await macShow(spec);

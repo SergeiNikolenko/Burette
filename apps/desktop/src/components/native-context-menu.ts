@@ -1,12 +1,12 @@
 import { withMenuIcons } from "./menu-icons";
 import { isTauriRuntime } from "../lib/tauri";
-import type { MenuItemSpec } from "./menu-types";
+import type { MenuItemSpec, MenuPresentation } from "./menu-types";
 import { showRadixContextMenu } from "./radix-menu";
 
 export async function showNativeContextMenu(
   spec: MenuItemSpec[],
   at?: { x: number; y: number },
-  options: { forceWeb?: boolean } = {},
+  options: { forceWeb?: boolean; presentation?: MenuPresentation } = {},
 ): Promise<boolean> {
   if (!options.forceWeb) spec = withMenuIcons(spec);
   if (options.forceWeb || !isTauriRuntime()) {
@@ -15,7 +15,7 @@ export async function showNativeContextMenu(
   }
 
   const { showMacContextMenu } = await import("./mac-context-menu");
-  if (await showMacContextMenu(spec, at)) return true;
+  if (await showMacContextMenu(spec, at, options.presentation)) return true;
   // Live controls exist only in the macOS popup; elsewhere the web menu keeps them.
   const hasControls = (entries: MenuItemSpec[]): boolean => entries.some((entry) =>
     entry.kind === "swatches" || entry.kind === "number" || entry.kind === "select"

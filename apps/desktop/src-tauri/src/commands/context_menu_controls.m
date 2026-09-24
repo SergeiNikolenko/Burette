@@ -7,6 +7,7 @@
 // checkmark anywhere shifts both by one state column.
 
 #import <AppKit/AppKit.h>
+#import <objc/message.h>
 
 typedef void (*BuretteMenuValueCallback)(void *context, const char *itemId, double number, const char *colour);
 
@@ -416,4 +417,25 @@ void burette_menu_item_show_image(NSMenuItem *item) {
 #else
     (void)item;
 #endif
+}
+
+// Right-click menus open through the context-menu path so AppKit adds the same
+// system rows it gives native context menus, including the macOS 27 "Ask Siri"
+// field. AppKit only shows that field for a menu that opts in; the switch is
+// private, so it is looked up at runtime and skipped where it does not exist.
+void burette_menu_popup_context(NSMenu *menu, NSView *view, NSPoint point) {
+    SEL behaviour = NSSelectorFromString(@"_setPreferredIntelligentAssistantInteractionBehavior:");
+    if ([menu respondsToSelector:behaviour]) {
+        ((void (*)(id, SEL, NSInteger))objc_msgSend)(menu, behaviour, 1);
+    }
+    NSEvent *event = [NSEvent mouseEventWithType:NSEventTypeRightMouseDown
+                                        location:[view convertPoint:point toView:nil]
+                                   modifierFlags:0
+                                       timestamp:NSProcessInfo.processInfo.systemUptime
+                                    windowNumber:view.window.windowNumber
+                                         context:nil
+                                     eventNumber:0
+                                      clickCount:1
+                                        pressure:1];
+    [NSMenu popUpContextMenu:menu withEvent:event forView:view];
 }

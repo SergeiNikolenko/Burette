@@ -308,7 +308,7 @@ export function ProjectGroup({
             onClick={(event) => {
               event.stopPropagation();
               const rect = event.currentTarget.getBoundingClientRect();
-              void showNativeContextMenu(menus.folder(project, project.rootPath ?? "", true, startRename), { x: rect.left, y: rect.bottom });
+              void showNativeContextMenu(menus.folder(project, project.rootPath ?? "", true, startRename), { x: rect.left, y: rect.bottom }, { presentation: "dropdown" });
             }}
           >
             <MoreIcon />
