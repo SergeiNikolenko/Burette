@@ -160,8 +160,8 @@ const keyboardShortcutRows: ShortcutRow[] = [
     keybindings: ["⌥⌘E"],
   },
   {
-    command: "Jump to tab",
-    description: "Switch to the matching tab position.",
+    command: "Jump to structure",
+    description: "Open the numbered sidebar structure, or the matching tab when the sidebar is hidden. Hold ⌘ to show the numbers.",
     keybindings: ["⌘1", "⌘2", "…", "⌘9"],
   },
 ];

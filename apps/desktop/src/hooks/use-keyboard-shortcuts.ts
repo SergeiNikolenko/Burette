@@ -6,6 +6,7 @@ import {
 } from "../lib/workspace-history-dispatch";
 import { isTauriRuntime } from "../lib/tauri";
 import { requestTextFind } from "../lib/text-find";
+import { activateCommandHintTarget, watchCommandKeyHints } from "../lib/command-key-hints";
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -15,6 +16,7 @@ function isEditableTarget(target: EventTarget | null) {
 }
 
 export function useKeyboardShortcuts(state: ShellViewState, actions: ShellActions, toggleSidebar: () => void, enabled = true) {
+  useEffect(() => (enabled ? watchCommandKeyHints() : undefined), [enabled]);
   useEffect(() => {
     if (!enabled) return undefined;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -45,11 +47,7 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         return;
       }
       if (commandKey && !event.altKey && !event.shiftKey && /^[1-9]$/.test(event.key)) {
-        const tab = state.tabs[Number(event.key) - 1];
-        if (tab) {
-          event.preventDefault();
-          actions.selectTab(tab.id);
-        }
+        if (activateCommandHintTarget(Number(event.key))) event.preventDefault();
         return;
       }
       if (isTauriRuntime()) return;
