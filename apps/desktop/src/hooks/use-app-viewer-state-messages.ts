@@ -1,5 +1,5 @@
 import { activeViewerIframeForDocument, isReadOnlyViewerMessageSource } from "../lib/viewer-bridge";
-import { useCallback, useRef } from "react";
+import { useCallback } from "react";
 import type { StructureOverlayMode, ViewerLigandSelection } from "../components/types";
 import type { ViewerDocument, ViewerPreferences } from "../types";
 import type { DockTabKind } from "../lib/dock";
@@ -36,6 +36,7 @@ type UseAppViewerStateMessagesOptions = {
   setStructureOverlayModes: SetStructureOverlayModes;
   setStructureStories: SetStructureStories;
   toggleSidebar: () => void;
+  toggleDock: (area: "right" | "bottom") => void;
 };
 
 type XyzrenderPresetOption = {
@@ -60,9 +61,14 @@ export function useAppViewerStateMessages({
   setStructureOverlayModes,
   setStructureStories,
   toggleSidebar,
+  toggleDock,
 }: UseAppViewerStateMessagesOptions) {
-  const openedStories = useRef(new Set<string>());
   const handleViewerStateMessage = useCallback((sourceName: unknown, body: ViewerStateMessageBody, eventSource: MessageEventSource | null) => {
+    if (sourceName === "burette-viewer" && body?.type === "toggleRightDock" && window.BuretteMcpWorkspace
+      && activeDocument && activeViewerIframeForDocument(activeDocument.id, "molstar")?.contentWindow === eventSource) {
+      toggleDock("right");
+      return true;
+    }
     if (sourceName === "burette-viewer" && body?.type === "structureDirtyChanged") {
       const documentId = bodyString(body.documentId);
       if (documentId && !isReadOnlyViewerMessageSource(eventSource)
@@ -154,12 +160,8 @@ export function useAppViewerStateMessages({
       const story = structureStoryFromViewerMessage(body);
       if (!story) return true;
       setStructureStories((previous) => ({ ...previous, [story.documentId]: story }));
-      const firstStory = activeDocument?.id === story.documentId && !openedStories.current.has(story.documentId);
-      if (firstStory) {
-        openedStories.current.add(story.documentId);
-        if (openedStories.current.size > 64) openedStories.current.delete(openedStories.current.values().next().value!);
-      }
-      if (firstStory || body.type === "openStructureStory") openDockTab("right", "story");
+      // Receiving Story metadata must not change the user's panel layout.
+      if (body.type === "openStructureStory") openDockTab("right", "story");
       return true;
     }
 
@@ -222,7 +224,7 @@ export function useAppViewerStateMessages({
     }
 
     return false;
-  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, toggleDockTab, setPreference, setStructureOverlayModes, setStructureStories, setViewerLigandSelections, toggleSidebar, updateDirtyGridDocument]);
+  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, toggleDockTab, setPreference, setStructureOverlayModes, setStructureStories, setViewerLigandSelections, toggleSidebar, toggleDock, updateDirtyGridDocument]);
 
   return { handleViewerStateMessage };
 }

@@ -6,10 +6,12 @@ import type { OpenTextFilesResult } from "../types";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import type { DockArea } from "../lib/dock";
 import { executeAgentTabAction, type AgentTabActions } from "../lib/agent-tab-actions";
+import { setAgentWorkspacePanel } from "../lib/agent-workspace-panel";
 import type { MoleculeTab } from "../stores/molecule-store";
+import { createSelectionContext } from "../../../burette-public-plugin/lib/hosted-context";
 
 const AGENT_API_VERSION = "burette-agent-control/v1";
-const ACTION_POLL_INTERVAL_MS = 500;
+const ACTION_POLL_INTERVAL_MS = window.BuretteMcpWorkspace ? 1000 : 500;
 const BROWSER_AGENT_SESSION_DIR = "__browser_agent_shell__";
 const MAX_OBSERVED_DOCUMENTS = 128;
 const MAX_OBSERVED_TABS = 128;
@@ -247,7 +249,7 @@ export function useAgentSession({
         resolve(body.result);
         return;
       }
-      if (event.data?.source !== "burette-viewer") return;
+      if (event.data?.source !== "burette-viewer" && !(window.BuretteMcpWorkspace && event.data?.source === "burette-grid")) return;
       const body = event.data.body;
       if (!body || typeof body.documentId !== "string") return;
       const nextState = viewerAgentStateFromMessage(body, viewerAgentStatesRef.current[body.documentId]);
@@ -317,6 +319,11 @@ export function useAgentSession({
         activeTabIdRef.current,
         activeTabKindRef.current,
       )
+        .then((processed) => processed ? writeObserve(
+          sessionDirRef.current, activeDocumentRef.current, documentsRef.current,
+          tabsRef.current, workspacePanelsRef.current, viewerAgentStatesRef.current,
+          activeTabIdRef.current, activeTabKindRef.current,
+        ) : undefined)
         .catch((error) => pushErrorStatusRef.current(error, "Agent action failed"))
         .finally(() => {
           busy = false;
@@ -324,7 +331,7 @@ export function useAgentSession({
         });
     };
     const timer = window.setInterval(pollNow, ACTION_POLL_INTERVAL_MS);
-    const browserActionEvents = isBrowserAgentShell
+    const browserActionEvents = isBrowserAgentShell && !window.BuretteMcpWorkspace
       ? new EventSource("/__burette/agent-session/events")
       : null;
     browserActionEvents?.addEventListener("actions", pollNow);
@@ -337,6 +344,9 @@ export function useAgentSession({
   return activateSession;
 }
 
+let observeWriteRevision = 0;
+let observeWriteQueue = Promise.resolve();
+
 async function writeObserve(
   sessionDir: string | null,
   activeDocument: ViewerDocument | null | undefined,
@@ -348,13 +358,14 @@ async function writeObserve(
   activeTabKind: string | null | undefined,
 ) {
   if (!sessionDir || (!isTauriRuntime() && !isBrowserAgentSessionDir(sessionDir))) return;
+  const revision = ++observeWriteRevision;
   const activeAgentState = activeDocument ? viewerAgentStates[activeDocument.id] : undefined;
   const activeMolstar = !!activeDocument && activeDocument.renderer === "molstar";
   const ketcherAgent = activeTabKind === "ketcher" ? await loadKetcherAgentModule() : null;
   const activeKetcher = ketcherAgent?.getKetcherAgentController(activeTabId) ?? null;
   const ketcherSnapshot = activeKetcher?.snapshot() ?? null;
   const activeReady = activeDocument
-    ? activeMolstar
+    ? activeMolstar || (window.BuretteMcpWorkspace && activeDocument.renderer === "grid2d")
       ? !!(activeAgentState?.viewerReady || activeAgentState?.agentReady)
       : true
     : false;
@@ -424,7 +435,12 @@ async function writeObserve(
     },
     errors: [],
   };
-  await writeJson(joinSessionPath(sessionDir, "observe.json"), observe);
+  const write = observeWriteQueue.then(async () => {
+    if (revision !== observeWriteRevision) return;
+    await writeJson(joinSessionPath(sessionDir, "observe.json"), observe);
+  });
+  observeWriteQueue = write.catch(() => {});
+  await write;
 }
 
 function observedTab(
@@ -501,6 +517,7 @@ async function pollAgentActions(
   nextAction.status = isFailedResult(result) ? "failed" : "completed";
   await writeJson(actionsPath, { apiVersion: AGENT_API_VERSION, actions });
   await writeObserve(sessionDir, activeDocument, documents, tabs, workspacePanels, viewerAgentStates, activeTabId, activeTabKind);
+  return true;
 }
 
 async function executeDesktopAgentAction(
@@ -520,6 +537,7 @@ async function executeDesktopAgentAction(
   tabActions: AgentTabActions,
 ) {
   const type = String(item.action?.type || "");
+  if (type === 'set_workspace_panel') return setAgentWorkspacePanel(item.action, activeTabId, tabs);
   if (type === "open_ketcher") {
     await openKetcherTab();
     return { ok: true, command: type, result: { opened: true } };
@@ -657,7 +675,7 @@ async function postActionToActiveViewer(
     const timeout = window.setTimeout(() => {
       pendingViewerActions.delete(item.id);
       resolve(agentFailure(String(item.action?.type || ""), "ACTION_TIMEOUT", "The active viewer did not report an action result."));
-    }, 5000);
+    }, item.action?.type === "capture_scene" ? 30000 : 5000);
     pendingViewerActions.set(item.id, (value) => {
       window.clearTimeout(timeout);
       resolve(value);
@@ -674,7 +692,7 @@ async function postActionToActiveViewer(
   return result;
 }
 
-function viewerAgentStateFromMessage(body: { type?: unknown; message?: unknown; documentId?: unknown }, previous?: ViewerAgentState) {
+function viewerAgentStateFromMessage(body: { type?: unknown; message?: unknown; documentId?: unknown; selection?: unknown }, previous?: ViewerAgentState) {
   const documentId = typeof body.documentId === "string" ? body.documentId : "";
   if (!documentId) return null;
   const type = String(body.type || "");
@@ -690,6 +708,16 @@ function viewerAgentStateFromMessage(body: { type?: unknown; message?: unknown; 
     story: previous?.story ?? null,
     updatedAt: new Date().toISOString(),
   };
+  if (type === "selectionChanged") {
+    const selection = createSelectionContext(body.selection, documentId).structuredContent.burette.activeSelection;
+    next.selection = selection ? {
+      selectionId: null,
+      selector: null,
+      ligand: null,
+      counts: selection,
+    } : null;
+    return next;
+  }
   if (type === "mvsStoryChanged") {
     const story = storyStateFromViewerEvent(body as Record<string, unknown>);
     if (!story) return null;
@@ -771,7 +799,7 @@ function viewerAgentStateWithActionResult(
       errorCode: typeof error?.code === "string" ? error.code : null,
       completedAt: new Date().toISOString(),
     },
-    selection: sceneSelectionFromActionResult(result) ?? previous?.selection ?? null,
+    selection: command === "clear_selection" && ok ? null : sceneSelectionFromActionResult(result) ?? previous?.selection ?? null,
     story: storyStateFromActionResult(result) ?? previous?.story ?? null,
     updatedAt: new Date().toISOString(),
   };
@@ -810,7 +838,16 @@ function sceneSelectionFromActionResult(result: unknown): AgentSceneSelection | 
   const selectionId = typeof payload.selectionId === "string" ? payload.selectionId : null;
   const selector = payload.selectorEcho ?? null;
   const ligand = payload.ligand ?? null;
-  const counts = payload.counts ?? null;
+  const rawCounts = typeof payload.counts === "object" && payload.counts !== null ? payload.counts as Record<string, unknown> : null;
+  const counts = rawCounts ? {
+    ...rawCounts,
+    residueCount: rawCounts.residueCount ?? rawCounts.residues,
+    residues: Array.isArray(payload.residuesPreview) ? payload.residuesPreview.slice(0, 96).map((item: Record<string, unknown>) => ({
+      chain: item.auth_asym_id ?? item.label_asym_id,
+      sequence: item.auth_seq_id ?? item.label_seq_id,
+      compId: item.auth_comp_id ?? item.label_comp_id,
+    })) : [],
+  } : null;
   if (!selectionId && !selector && !ligand && !counts) return null;
   return { selectionId, selector, ligand, counts };
 }

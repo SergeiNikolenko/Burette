@@ -119,7 +119,9 @@ function SequenceResize({ initialHeight, onResize, onCollapse, onExpand, onCommi
         document.documentElement.style.setProperty('--buret-sequence-height', value);
         onResize();
       }} />
-    <ResizableHandle withHandle className="resizable-handle-horizontal" aria-label="Resize sequence" />
+    <ResizableHandle className="resizable-handle-horizontal" aria-label="Resize sequence">
+      <span className="buret-sequence-pull" aria-hidden="true">SEQ</span>
+    </ResizableHandle>
     <ResizablePanel id="structure" minSize="40%" />
   </ResizablePanelGroup>;
 }

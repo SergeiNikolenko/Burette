@@ -1096,6 +1096,7 @@ export default function App() {
     skipNextPreferenceRefreshRef,
     showGridComputeJobs,
     toggleSidebar,
+    toggleDock,
     updateDirtyGridDocument,
     updateGridFilterModel,
     updateGridMenuState,

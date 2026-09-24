@@ -104,8 +104,8 @@ export function useAppSdfViewerMessages({
           void openDockingDocument(receptorDocument.path, [document.path]);
           return true;
         }
-        if (body.openTarget === "new-tab") addDocuments([document]);
-        else openDocumentsInActiveTab([document]);
+        if (body.openTarget === "active-tab") openDocumentsInActiveTab([document]);
+        else addDocuments([document]);
         rememberRecentStructures([document]);
         pushStatus("Opened selected molecules in Molstar");
       } catch (error) {

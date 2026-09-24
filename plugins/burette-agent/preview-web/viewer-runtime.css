@@ -1,4 +1,6 @@
 /* Shared Quick Look viewer shell style. Keep app runtimes linked here; do not fork host-specific Mol* chrome. */
+.buret-molstar-tooltip[popover] { inset: auto; margin: 0; }
+.buret-control-tooltips :is(#buret-toolbar,.buret-viewport-rail,.buret-docking-poses,.buret-corner-toggle) .buret-tooltip { display: none; }
 /* Empty scenes and loading states use Burette's own shell on every surface. */
 .msp-plugin .msp-logo { display: none !important; }
 #app.buret-molstar-initializing .msp-plugin,
@@ -43,6 +45,43 @@
   --buret-select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='rgba(255,255,255,0.62)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M3 4.5l3 3 3-3'/></svg>");
 }
 html, body, #app { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: transparent; }
+
+/* Shared floating chrome: desktop and embedded plugin use the same surface.
+   Molecular colors and representations are deliberately unaffected. */
+body .msp-plugin [class*="msp-accent-color"] { color: var(--buret-molstar-text) !important; }
+body .msp-plugin :is(button,input,select,[tabindex]):is(:hover,:focus,:focus-visible) { outline-color: var(--buret-molstar-border) !important; }
+body #buret-toolbar { border-radius:18px; gap:2px; box-shadow:0 1px 4px rgb(0 0 0 / 8%); }
+body #buret-viewport-rail, body #buret-scene-tree-toggle { border-radius:18px; box-shadow:0 1px 4px rgb(0 0 0 / 8%); }
+body #buret-toolbar .buret-toolbar-content { gap:2px; }
+body #buret-toolbar .buret-button { padding-inline:5px; }
+body #buret-toolbar .buret-molstar-preset-trigger { min-width:76px; padding-inline:6px; }
+body :is(.buret-button,.buret-rail-button) { border-radius:10px; }
+body :is(.buret-button,.buret-rail-button) svg { width:16px; height:16px; }
+body:is(.buret-theme-light,.buret-theme-dark) :is(
+  .buret-tree-menu,.buret-molstar-preset-menu,.buret-viewport-menu,
+  .buret-xyzrender-popover,.buret-docking-pose-files,.buret-story-hover-card
+) {
+  border:1px solid var(--buret-toolbar-border);
+  border-radius:18px; background:var(--buret-toolbar-background);
+  color:var(--buret-toolbar-color); box-shadow:0 4px 16px rgb(0 0 0 / 8%);
+}
+body:is(.buret-theme-light,.buret-theme-dark) .buret-docking-poses.buret-molstar-story {
+  border-radius:18px; background:var(--buret-toolbar-background);
+  border-color:var(--buret-toolbar-border); box-shadow:0 1px 4px rgb(0 0 0 / 8%);
+}
+body :is(.buret-tree-menu-item,.buret-docking-pose-file) { border-radius:10px; }
+body .buret-molstar-story .buret-docking-pose-main { gap:2px; }
+body .buret-molstar-story button { border-radius:14px; }
+body .buret-molstar-story .buret-docking-pose-current { width:min(220px,30vw); }
+body .buret-molstar-story :is(.buret-docking-pose-previous,.buret-docking-pose-next,.buret-molstar-story-open) {
+  width:30px; padding:6px; display:inline-flex; align-items:center; justify-content:center;
+}
+body .buret-molstar-story button svg { width:16px; height:16px; }
+body .buret-molstar-story .buret-docking-pose-previous svg { transform:rotate(180deg); }
+body .buret-tooltip {
+  border-radius:10px; background:var(--buret-toolbar-background);
+  box-shadow:0 4px 16px rgb(0 0 0 / 8%); font-size:12px;
+}
 html.buret-transparent-background,
 html.buret-transparent-background body,
 html.buret-transparent-background #app,
@@ -57,7 +96,7 @@ body.buret-theme-light {
   --buret-control-fill: rgb(244, 244, 244);
   --buret-shell-background: #ffffff;
   --buret-panel-background: var(--buret-control-fill);
-  --buret-toolbar-background: var(--buret-control-fill);
+  --buret-toolbar-background: #ffffff;
   --buret-toolbar-border: rgba(0, 0, 0, 0.12);
   --buret-toolbar-hover: rgba(0, 0, 0, 0.08);
   --buret-toolbar-color: rgba(20, 21, 23, 0.92);
@@ -99,6 +138,12 @@ body.buret-theme-dark {
   --buret-molstar-muted-text: rgba(190, 196, 204, 0.82);
   --buret-molstar-accent: #AF52DE;
   --buret-molstar-shadow: rgba(0, 0, 0, 0.38);
+}
+/* Resolve neutral accents after each theme's base palette. */
+body:is(.buret-theme-light,.buret-theme-dark) {
+  --buret-molstar-accent: var(--buret-molstar-text);
+  --buret-menu-accent: var(--buret-molstar-text);
+  --buret-menu-focus-ring: var(--buret-molstar-muted-text);
 }
 body.burette-opaque-background,
 body.burette-opaque-background #app {
@@ -1607,6 +1652,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
 .buret-molstar-preset-slot,
 .buret-xyzrender-preset-slot {
   position: relative;
+  flex: 0 0 auto;
 }
 .buret-tooltip {
   position: absolute;
@@ -2022,6 +2068,15 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
 }
 .buret-renderer-control.visible { display: flex; }
 .buret-mode-button { width: 34px; min-width: 34px; padding: 0; }
+.buret-panel-icon { position: relative !important; display: inline-flex; width: 16px; height: 16px; flex: none; }
+.buret-panel-icon svg { width: 16px; height: 16px; }
+.buret-panel-icon [data-panel-label] {
+  position: absolute !important; top: 20.833333%; width: 37.5%; height: 58.333333%;
+  display: flex; align-items: center; justify-content: center;
+  font: 500 7px/1 system-ui; letter-spacing: 0; pointer-events: none;
+}
+.buret-panel-icon [data-panel-label="left"] { left: 41.666667%; }
+.buret-panel-icon [data-panel-label="right"] { left: 20.833333%; }
 .buret-mode-button svg { width: 18px; height: 18px; }
 .buret-molstar-preset-slot { display: none; align-items: center; }
 .buret-molstar-preset-slot.visible { display: flex; }
@@ -2050,6 +2105,10 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
 }
 .buret-molstar-preset-trigger > [data-buret-molstar-preset-label] {
   min-width: 0;
+  /* Override the generic button's centered grid item: intrinsic text width
+     otherwise escapes its track and overlaps Seq for long preset names. */
+  justify-self: stretch;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4747,6 +4806,14 @@ body.buret-sequence-open:not(.burette-mobile-host) .msp-plugin .msp-layout-regio
 .buret-sequence-layout .resizable-handle:hover .resizable-handle-grip,
 .buret-sequence-layout .resizable-handle:focus-visible .resizable-handle-grip,
 .buret-sequence-layout .resizable-handle:active .resizable-handle-grip { opacity: 1; }
+.buret-sequence-pull {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,0);
+  padding:3px 12px; border:1px solid var(--buret-toolbar-border); border-top:0;
+  border-radius:0 0 9px 9px; background:var(--buret-toolbar-background);
+  color:var(--buret-toolbar-color); font:500 10px/1.2 system-ui,sans-serif;
+  opacity:0; pointer-events:none; transition:opacity 110ms ease;
+}
+.buret-sequence-layout .resizable-handle:is(:hover,:focus-visible,:active) .buret-sequence-pull { opacity:1; }
 body .msp-plugin .msp-sequence {
   position: absolute;
   inset: 0;

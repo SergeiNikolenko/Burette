@@ -90,6 +90,8 @@ function activeLocation(state: ShellViewState): Location {
 }
 
 function mountedWarmPageLimit() {
+  // Native sessions admit at most eight bounded files; preserve visited views.
+  if (window.BuretteMcpWorkspace) return Number.POSITIVE_INFINITY;
   let limit = DEFAULT_WARM_PAGE_LIMIT;
   const deviceMemory = typeof navigator === "undefined"
     ? null

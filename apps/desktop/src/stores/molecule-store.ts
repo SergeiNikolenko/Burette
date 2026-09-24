@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -356,6 +356,7 @@ function moveTabToIndex(tabs: MoleculeTab[], id: string, toIndex: number) {
 }
 
 function ensureTabs(tabs: MoleculeTab[]) {
+  if (!tabs.length && typeof window !== "undefined" && window.BuretteMcpWorkspace) return tabs;
   return tabs.length > 0 ? [...tabs].sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))) : [createLauncherTab()];
 }
 
@@ -399,6 +400,7 @@ function buildFileTabs(documents: ViewerDocument[]) {
 
 function shouldIgnorePersistedSession() {
   if (typeof window === "undefined") return false;
+  if (window.BuretteMcpWorkspace) return false;
   if (new URLSearchParams(window.location.search).has("devFiles")) return true;
   return window.location.protocol === "http:" && (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost");
 }
@@ -985,6 +987,7 @@ export const useMoleculeStore = create<MoleculeState>()(
     }),
     {
       name: workspaceStorageKey("burette.molecule.session"),
+      storage: createJSONStorage(() => window.BuretteMcpWorkspace?.storage ?? localStorage),
       partialize: (state) => shouldIgnorePersistedSession()
         ? devFilesPersistedSession(state.recentStructures)
         : ({

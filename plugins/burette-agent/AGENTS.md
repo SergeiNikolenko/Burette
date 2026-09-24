@@ -30,7 +30,18 @@ registrations, validation helpers, and plugin-local scripts.
 - No arbitrary JavaScript execution, arbitrary shell execution, destructive
   overwrite, or remote job submission belongs in this plugin surface.
 
-## Validation
+## Shared interface ownership
+
+- The main application owns toolbar icons, labels, tooltips, menu styling and
+  file-header components. Fix these in `PreviewExtension/Web` or
+  `apps/desktop/src`, not in a second plugin-only decorator.
+- The native widget build must consume this checkout with `--app-root` when
+  shared UI changes are being delivered. Its adapter owns transport and host
+  placement/theme integration only. Verify copied runtime assets against the
+  selected source after building; installation does not prove a mounted card
+  refreshed.
+
+## Validation checks
 
 For plugin changes, run the narrowest applicable checks:
 

@@ -1,7 +1,7 @@
 {
   "name": "burette",
   "version": "0.2.2",
-  "description": "Operate Burette as an agent-accessible molecular workspace for structures, Mol* scenes and Stories, molecule collections, trajectories, and workflow result artifacts.",
+  "description": "A universal molecular viewer for proteins, ligands, and molecular structures, with 3D visualization and 2D editing.",
   "author": {
     "name": "Burette contributors",
     "url": "https://github.com/SergeiNikolenko/Burette"
@@ -23,8 +23,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Burette",
-    "shortDescription": "Operate molecular workspaces",
-    "longDescription": "Burette lets an assistant open molecular structures in Browser preview or the real desktop app, create and navigate reproducible multi-step MolViewSpec Stories, observe scene state as structured JSON, run allowlisted Mol* actions, render adjacent notes/tables/charts/reports, and hand off externally prepared molecular workflow artifacts for review. It keeps molecular commands typed and auditable while using Browser and Computer surfaces for visual verification.",
+    "shortDescription": "Universal molecular viewer",
+    "longDescription": "Explore proteins, ligands, and molecular structures in one interactive workspace. View proteins and binding sites with Mol*, draw and edit molecules in Ketcher, and visualize molecular geometries with xyzrender. Open structure files, inspect molecular interactions, and browse molecule collections.",
     "developerName": "Burette",
     "category": "Education & Research",
     "capabilities": [
@@ -37,10 +37,9 @@
     "privacyPolicyURL": "https://github.com/SergeiNikolenko/Burette/blob/main/PRIVACY.md",
     "termsOfServiceURL": "https://github.com/SergeiNikolenko/Burette/blob/main/TERMS.md",
     "defaultPrompt": [
-      "Open this structure in Burette and describe the active molecular scene",
-      "Hide waters, focus the ligand, and render a right-side notes panel",
-      "Review this SDF/property table and show the selected molecule in Burette",
-      "Create a MolViewSpec Story that explains this binding pose step by step"
+      "Open PDB 1HTB and show its ligands",
+      "Draw aspirin in Ketcher",
+      "Show caffeine in 3D with xyzrender"
     ],
     "brandColor": "#14A39A",
     "composerIcon": "./assets/composer-icon.png",

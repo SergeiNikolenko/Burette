@@ -40,7 +40,7 @@ export function structureStoryFromViewerMessage(body: Record<string, unknown> | 
   if (!body) return null;
   const documentId = boundedString(body.documentId, MAX_DOCUMENT_ID_LENGTH);
   const fileName = boundedString(body.fileName, MAX_FILE_NAME_LENGTH);
-  if (body.type === "mvsStoryChanged") {
+  if (body.type === "mvsStoryChanged" || (body.type === "openStructureStory" && body.current)) {
     const current = body.current && typeof body.current === "object" ? body.current as Record<string, unknown> : null;
     const stepIndex = boundedInteger(body.stepIndex, 0, MAX_STEP_COUNT - 1);
     const stepCount = boundedInteger(body.stepCount, 1, MAX_STEP_COUNT);

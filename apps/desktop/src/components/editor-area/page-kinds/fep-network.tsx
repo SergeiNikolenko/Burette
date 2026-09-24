@@ -215,7 +215,7 @@ function FepNetworkPreview({ actions, location }: { actions: ShellActions; locat
       {
         kind: "item",
         id: "open-molstar",
-        text: "Open in Molstar",
+        text: "Open in new tab",
         action: () => void actions.openStructureRecords([{ path: `${node.label}.mol`, inputExtension: "mol", text: editorMolblock }]),
       },
       { kind: "separator" },

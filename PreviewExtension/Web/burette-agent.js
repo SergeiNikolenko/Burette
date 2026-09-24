@@ -149,7 +149,24 @@
     return state.viewer && state.plugin;
   }
 
+  function detach() {
+    exactSelection()?.dispose();
+    state.viewer = null;
+    state.plugin = null;
+    state.config = null;
+    state.prepared = null;
+    state.structureReady = false;
+    state.selections.clear();
+    state.commandLog = [];
+    state.lastSelectionId = null;
+    resetReadyPromise();
+  }
+
   function notifyStructureLoaded({ viewer, plugin, prepared, config } = {}) {
+    if (config && config.documentId !== state.config?.documentId) {
+      state.selections.clear();
+      state.lastSelectionId = null;
+    }
     attach({ viewer, plugin, config });
     state.prepared = prepared || state.prepared || null;
     state.config = config || state.config || window.BuretteConfig || null;
@@ -177,7 +194,7 @@
       'labelSelection', 'showLigands', 'focusLigand', 'contacts', 'resetCamera', 'screenshot',
       'showAssemblySymmetry', 'hideAssemblySymmetry', 'showWaterBridges', 'applyMesoscalePreset', 'colorScalarField',
       'loadMVS', 'observeStory', 'controlStory',
-      'exportSession', 'exportMVS'
+      'exportSession', 'exportMVS', 'queryAtoms', 'queryGroups', 'namedSelection', 'selectAtoms', 'measureGeometry', 'listSceneLayers', 'patchSceneLayers'
     ];
   }
 
@@ -291,6 +308,12 @@
   }
 
   async function executeCommand(command, args, warnings) {
+    if (['queryAtoms', 'queryGroups', 'namedSelection', 'selectAtoms', 'measureGeometry', 'listSceneLayers', 'patchSceneLayers'].includes(command)) {
+      const owner = exactSelection();
+      if (!owner) throw coded('NOT_IMPLEMENTED', 'Exact selection facade is unavailable in this bundle.');
+      const method = { queryAtoms: 'query', queryGroups: 'groups', namedSelection: 'named', selectAtoms: 'select', measureGeometry: 'measure', listSceneLayers: 'sceneLayers', patchSceneLayers: 'patchLayers' }[command];
+      return owner[method](args);
+    }
     if (command === 'summary') return commandSummary(args);
     if (command === 'select' || command === 'selectResidues') return commandSelect(args, command, warnings);
     if (command === 'focusSelection') return commandFocus(args, warnings);
@@ -988,7 +1011,7 @@
     const hierarchyStructures = state.plugin?.managers?.structure?.hierarchy?.current?.structures || [];
     for (let i = 0; i < hierarchyStructures.length; i++) {
       const entry = hierarchyStructures[i];
-      const data = entry?.cell?.obj?.data || entry?.obj?.data || entry?.data;
+      const data = entry?.transform?.cell?.obj?.data || entry?.properties?.cell?.obj?.data || entry?.cell?.obj?.data || entry?.obj?.data || entry?.data;
       if (!data || seen.has(data)) continue;
       seen.add(data);
       out.push({ data, entry, ref: entry?.cell?.transform?.ref || entry?.cell?.ref || entry?.ref || `structure-${i}` });
@@ -1046,7 +1069,7 @@
       if (atom.kind === 'ligand') {
         let ligand = ligandMap.get(residueKey);
         if (!ligand) {
-          ligand = { ...residueSummary(atom), structureId: atom.structureId, atomCount: 0 };
+          ligand = { ...residueSummary(atom), atomCount: 0 };
           ligandMap.set(residueKey, ligand);
         }
         ligand.atomCount++;
@@ -1097,6 +1120,11 @@
 
   function residueSummary(atom) {
     return {
+      structureId: atom.structureId,
+      structureIndex: atom.structureIndex,
+      modelIndex: atom.modelIndex,
+      unitId: atom.unitId,
+      instance_id: atom.instance_id,
       label_entity_id: atom.label_entity_id,
       label_asym_id: atom.label_asym_id,
       auth_asym_id: atom.auth_asym_id,
@@ -1110,12 +1138,14 @@
   }
 
   function collectAtoms(selector, options = {}) {
-    const structures = options.structureEntry ? [options.structureEntry] : getStructures();
+    const allStructures = getStructures();
+    const structures = options.structureEntry ? [options.structureEntry] : allStructures;
     const atoms = [];
     const includePositions = options.includePositions !== false;
     const maxAtoms = options.maxAtoms == null ? Infinity : Number(options.maxAtoms);
     for (let structureIndex = 0; structureIndex < structures.length; structureIndex++) {
       const entry = structures[structureIndex];
+      const globalIndex = options.structureEntry ? allStructures.findIndex(item => item.ref === entry.ref) : structureIndex;
       const structure = entry.data || entry;
       const units = Array.isArray(structure?.units) ? structure.units : [];
       for (let unitIndex = 0; unitIndex < units.length; unitIndex++) {
@@ -1123,7 +1153,7 @@
         const elements = unit?.elements || [];
         for (let i = 0; i < elements.length; i++) {
           const atomIndex = elements[i];
-          const atom = atomRecord(entry, structureIndex, unit, unitIndex, atomIndex, includePositions);
+          const atom = atomRecord(entry, globalIndex, unit, unitIndex, atomIndex, includePositions);
           if (!atom) continue;
           if (selector && !matchesSelector(atom, selector)) continue;
           atoms.push(atom);
@@ -1135,6 +1165,7 @@
   }
 
   function atomRecord(entry, structureIndex, unit, unitIndex, atomIndex, includePosition) {
+    if (unit?.kind != null && unit.kind !== 0) return null;
     const model = unit?.model;
     const ah = model?.atomicHierarchy;
     if (!ah) return null;
@@ -1153,16 +1184,22 @@
     // Prefer the atom table and fall back to the residue one, since which table
     // carries the name depends on the Mol* build.
     const labelComp = valueAt(atoms.label_comp_id, atomIndex) ?? valueAt(residues.label_comp_id, residueIndex);
-    const authComp = valueAt(atoms.auth_comp_id, atomIndex) ?? valueAt(residues.auth_comp_id, residueIndex) ?? labelComp;
+    const authComp = valueAt(atoms.auth_comp_id, atomIndex) ?? valueAt(residues.auth_comp_id, residueIndex);
     const entityType = entityTypeFor(model, labelEntity);
     const rec = {
       structureId: String(entry.ref || `structure-${structureIndex}`),
       structureIndex,
-      modelIndex: Number(model?.modelNum || model?.trajectoryInfo?.index || 0),
+      modelIndex: Number(model?.modelNum ?? model?.trajectoryInfo?.index ?? 0),
+      modelId: model?.id,
       unitIndex,
       unitId: unit?.id,
+      instance_id: unit?.conformation?.operator?.name,
+      label_alt_id: valueAt(atoms.label_alt_id, atomIndex),
+      occupancy: numberOrUndefined(valueAt(model?.atomicConformation?.occupancy, atomIndex)),
       atom_index: atomIndex,
-      atom_id: numberOrUndefined(valueAt(atoms.id, atomIndex)),
+      residue_index: residueIndex,
+      chain_index: chainIndex,
+      atom_id: numberOrUndefined(valueAt(model?.atomicConformation?.atomId, atomIndex) ?? valueAt(atoms.id, atomIndex)),
       label_atom_id: valueAt(atoms.label_atom_id, atomIndex),
       auth_atom_id: valueAt(atoms.auth_atom_id, atomIndex),
       type_symbol: valueAt(atoms.type_symbol, atomIndex),
@@ -1175,6 +1212,7 @@
       label_comp_id: labelComp,
       auth_comp_id: authComp,
       entityType,
+      moleculeType: ah.derived?.residue?.moleculeType?.[residueIndex],
       group_PDB: valueAt(residues.group_PDB, residueIndex),
       residueIndex,
       chainIndex
@@ -1187,6 +1225,7 @@
   function valueAt(column, index) {
     if (index == null || index < 0 || !column) return undefined;
     try {
+      if (typeof column.valueKind === 'function' && column.valueKind(index) !== 0) return undefined;
       if (typeof column.value === 'function') return normalizeMissing(column.value(index));
       if (Array.isArray(column)) return normalizeMissing(column[index]);
       if (column.array) return normalizeMissing(column.array[index]);
@@ -1253,6 +1292,9 @@
     const comp = String(atom.label_comp_id || atom.auth_comp_id || '').toUpperCase();
     const entityType = String(atom.entityType || '').toLowerCase();
     if (WATER.has(comp) || entityType === 'water') return 'water';
+    if (entityType === 'non-polymer') return COMMON_IONS.has(comp) ? 'ion' : 'ligand';
+    if (entityType === 'polymer' && atom.moleculeType === 5) return 'protein';
+    if (entityType === 'polymer' && [6, 7, 8].includes(atom.moleculeType)) return 'nucleic';
     // Coordinate-only PyMOL ligand exports use UNK/HETATM; CCD also uses
     // UNK for unknown amino acids, so respect the file's explicit record type.
     if (comp === 'UNK' && atom.group_PDB === 'HETATM') return 'ligand';
@@ -1302,14 +1344,18 @@
   }
 
   function matchesSelector(atom, selector = {}) {
-    if (!selector || selector.kind === 'all') return true;
+    if (!selector) return true;
     if (Array.isArray(selector.residues) && selector.residues.length > 0) {
       const baseSelector = { ...selector };
       delete baseSelector.residues;
       return selector.residues.some(residue => matchesSelector(atom, { ...baseSelector, ...normalizeSelector(residue, false) }));
     }
-    if (selector.structure && selector.structure !== 'primary' && selector.structure !== atom.structureId && Number(selector.structure) !== atom.structureIndex) return false;
+    if (selector.structure === 'primary' && atom.structureIndex !== 0) return false;
+    if (selector.structure != null && selector.structure !== 'primary' && selector.structure !== atom.structureId && Number(selector.structure) !== atom.structureIndex) return false;
+    if (selector.structureId != null && selector.structureId !== atom.structureId) return false;
     if (selector.modelIndex != null && Number(selector.modelIndex) !== atom.modelIndex) return false;
+    if (selector.unitId != null && Number(selector.unitId) !== atom.unitId) return false;
+    if (selector.label_alt_id != null && !fieldMatches(atom.label_alt_id ?? '', selector.label_alt_id)) return false;
     if (selector.kind && !matchesKind(atom, selector.kind)) return false;
     for (const key of ['label_entity_id', 'label_asym_id', 'auth_asym_id', 'pdbx_PDB_ins_code', 'label_comp_id', 'auth_comp_id', 'label_atom_id', 'auth_atom_id', 'type_symbol', 'atom_id', 'atom_index', 'instance_id']) {
       if (selector[key] != null && !selectorFieldMatches(atom, key, selector[key])) return false;
@@ -1347,7 +1393,9 @@
 
   function selectorFieldValues(atom, key) {
     const value = atom[key];
-    const values = value == null ? [] : [value];
+    // Legacy tools may use the other namespace only when this one is absent.
+    // An explicit author ID must never also match a different label ID.
+    if (value != null) return [value];
     const fallback = {
       auth_asym_id: 'label_asym_id',
       label_asym_id: 'auth_asym_id',
@@ -1359,8 +1407,7 @@
       label_atom_id: 'auth_atom_id'
     }[key];
     const fallbackValue = fallback ? atom[fallback] : null;
-    if (fallbackValue != null && !values.some(item => String(item) === String(fallbackValue))) values.push(fallbackValue);
-    return values;
+    return fallbackValue == null ? [] : [fallbackValue];
   }
 
   function rangeSelectorMatches(atom, key, beg, end) {
@@ -1383,7 +1430,7 @@
     const chainSet = new Set();
     for (const atom of atoms) {
       residueMap.set(residueIdentity(atom), residueSummary(atom));
-      chainSet.add([atom.label_entity_id, atom.label_asym_id, atom.auth_asym_id].join('|'));
+      chainSet.add([atom.structureId, atom.modelIndex, atom.unitId, atom.label_entity_id, atom.label_asym_id, atom.auth_asym_id].join('|'));
     }
     return {
       atoms: atoms.length,
@@ -1397,6 +1444,8 @@
     return [
       atom.structureId,
       atom.modelIndex,
+      atom.unitId,
+      atom.instance_id,
       atom.label_entity_id,
       atom.label_asym_id,
       atom.auth_asym_id,
@@ -1422,6 +1471,9 @@
   }
 
   function resolveSelection(selection) {
+    if (typeof selection === 'string' && ['all', 'polymer', 'protein', 'nucleic', 'branched', 'ligand', 'ion', 'water'].includes(selection)) {
+      return resolveSelection({ kind: selection });
+    }
     if (!selection || selection === 'last') {
       if (!state.lastSelectionId) throw coded('INVALID_ARGS', 'No previous selection exists.');
       return state.selections.get(state.lastSelectionId);
@@ -1449,7 +1501,7 @@
     // every chain, residue and atom identifier. Mol* supports an explicit filter
     // alongside its residue schema, so scope the visual action as well as counts.
     const structureIds = new Set(atoms.map(atom => atom.structureId));
-    const scopedStructures = selector.structure != null && selector.structure !== 'primary'
+    const scopedStructures = selector.structure != null || selector.structureId != null
       ? new Set(getStructures().filter(entry => structureIds.has(String(entry.ref))).map(entry => entry.data))
       : null;
     if (action === 'select' && options.mode !== 'add') {
@@ -1523,7 +1575,7 @@
       const key = residueIdentity(atom);
       let ligand = ligands.get(key);
       if (!ligand) {
-        ligand = { ...residueSummary(atom), structureId: atom.structureId, atomCount: 0 };
+        ligand = { ...residueSummary(atom), atomCount: 0 };
         ligands.set(key, ligand);
       }
       ligand.atomCount++;
@@ -1559,8 +1611,7 @@
 
   function ligandToSelector(ligand) {
     const selector = { kind: 'ligand' };
-    if (ligand.structureId != null) selector.structure = ligand.structureId;
-    for (const key of ['label_entity_id', 'label_asym_id', 'auth_asym_id', 'label_seq_id', 'auth_seq_id', 'pdbx_PDB_ins_code', 'label_comp_id', 'auth_comp_id']) {
+    for (const key of ['structureId', 'modelIndex', 'unitId', 'instance_id', 'label_entity_id', 'label_asym_id', 'auth_asym_id', 'label_seq_id', 'auth_seq_id', 'pdbx_PDB_ins_code', 'label_comp_id', 'auth_comp_id']) {
       if (ligand[key] != null) selector[key] = ligand[key];
     }
     return selector;
@@ -1695,15 +1746,25 @@
     return dx * dx + dy * dy + dz * dz;
   }
 
+  function exactSelection() {
+    if (!state.plugin || !window.molstar?.BuretteSelection) return null;
+    return window.molstar.BuretteSelection.forPlugin(state.plugin, {
+      structures: getStructures,
+      atoms: maxAtoms => collectAtoms(null, { maxAtoms }),
+    });
+  }
+
   const agent = {
     version: AGENT_VERSION,
     apiVersion: API_VERSION,
     get ready() { return state.readyPromise; },
     attach,
+    detach,
     notifyStructureLoaded,
     capabilities: () => run({ command: 'capabilities' }),
     run,
     batch,
+    selectionState: () => exactSelection()?.state() ?? null,
     _state: state
   };
 

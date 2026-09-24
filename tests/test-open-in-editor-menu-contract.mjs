@@ -16,7 +16,7 @@ const tauriPermissions = await readFile("apps/desktop/src-tauri/permissions/bure
 
 assert.match(menu, /iconUrl: defaultApplicationIconUrl \?\? undefined/);
 assert.match(menu, /iconUrl: finderIconUrl \?\? undefined/);
-assert.match(menu, /destination === "default-app"\) return defaultApplicationIconUrl/);
+assert.match(menu, /if \(destination === "finder" \|\| destination === "auto"\) return finderIconUrl;\s*return defaultApplicationIconUrl;/);
 assert.doesNotMatch(finderHook, /import\.meta\.env\.DEV/);
 assert.match(finderHook, /\/__burette\/app-icon\/finder\.png/);
 assert.match(finderHook, /setIconUrl\(BROWSER_DEV_FINDER_ICON_URL\)/);

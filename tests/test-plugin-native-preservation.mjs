@@ -69,6 +69,12 @@ import { preserveNativeWidget } from "../plugins/burette-agent/scripts/preserve-
       "scripts/mcp-app-session.mjs",
     ]) await put(source, file);
     assert.equal(run(), "reached-installation");
+    // A source checkout install is never downgraded by the bundled copy.
+    const marker = path.join(root, "home/.codex/plugins/burette-widget-marketplace/plugins/burette/.burette-agent-install.json");
+    await writeFile(marker, JSON.stringify({ repoRoot: "/Users/dev/Burette" }));
+    assert.equal(run(), "codex plugin sync skipped: preserving source checkout install");
+    await writeFile(marker, JSON.stringify({ repoRoot: "/Applications/Burette.app/Contents/Resources" }));
+    assert.equal(run(), "reached-installation");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

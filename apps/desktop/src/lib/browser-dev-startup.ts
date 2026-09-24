@@ -29,6 +29,7 @@ export type BrowserDevFolderScan = {
 };
 
 export async function browserDevFilesFromLocation() {
+  if (window.BuretteMcpWorkspace) return window.BuretteMcpWorkspace.initialPaths;
   const params = new URLSearchParams(window.location.search);
   if (params.has("quickLookFile")) return [];
   if (params.has("devDocking")) return [];
@@ -65,13 +66,13 @@ export function browserDevQuickLookFileFromLocation() {
 
 export function browserDevHasExplicitFiles() {
   if (typeof window === "undefined" || isTauriRuntime()) return false;
-  return new URLSearchParams(window.location.search).has("devFiles");
+  return Boolean(window.BuretteMcpWorkspace) || new URLSearchParams(window.location.search).has("devFiles");
 }
 
 export function browserDevHasExplicitWorkspace() {
   if (typeof window === "undefined" || isTauriRuntime()) return false;
   const params = new URLSearchParams(window.location.search);
-  return params.has("devFiles") || params.has("devFolder");
+  return Boolean(window.BuretteMcpWorkspace) || params.has("devFiles") || params.has("devFolder");
 }
 
 export function browserDevAgentFocusLayout(

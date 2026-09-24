@@ -91,3 +91,12 @@ assert.deepEqual(mvsStory, {
 });
 
 console.log("structure story tests passed");
+
+assert.deepEqual(structureStoryFromViewerMessage({
+  type: "openStructureStory", documentId: "mvs", fileName: "story.mvsx",
+  stepIndex: 0, stepCount: 2, current: { title: "Pocket", description: "Measured contacts" },
+}), {
+  documentId: "mvs", fileName: "story.mvsx", stepIndex: 0, stepCount: 2,
+  stage: "Pocket", summary: "Measured contacts", comparison: null,
+  source: "mvs", key: null, isPlaying: false, descriptionFormat: "markdown",
+});
