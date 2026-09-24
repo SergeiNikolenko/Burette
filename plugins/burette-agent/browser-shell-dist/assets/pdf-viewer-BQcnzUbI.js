@@ -1,0 +1,1 @@
+import{a as e}from"./document-page-GVZO_7zm.js";export{e as PdfResourceContent};

@@ -14,6 +14,7 @@ import {
   type ConformerGenerationResult,
   type MolstarStylePreference,
 } from "../lib/conformer-generation";
+import { conformerCollectionSdf } from "../lib/conformer-collection";
 import { readStructureText } from "../lib/structure-text";
 import {
   runStandaloneAlignment,
@@ -141,12 +142,28 @@ export function useAppGenerate3DConformer({
           { conformersPerMolecule: mode === "ensemble" ? 16 : 1 },
         );
         void openTextDocuments([result.reportPath], { background: true });
-        await openDocuments(
-          [result.primaryOpenPath],
-          {},
-          { rendererMode: "molstar", molstarStyle: molstarStyle ?? preferences.molstarStyle },
-          { inActiveTab: true },
-        );
+        if (["sdf", "sd", "mol"].includes(document.extension.trim().toLowerCase())) {
+          const collection = await invoke<ViewerDocument>("open_text_structure", {
+            request: {
+              title: document.title.replace(/\.(sdf|sd|mol)$/iu, ".sdf"),
+              extension: "sdf",
+              text: conformerCollectionSdf(text, await readStructureText(result.primaryOpenPath), mode === "ensemble"),
+            },
+            preferences: { ...preferences, rendererMode: "molstar", molstarStyle: molstarStyle ?? preferences.molstarStyle },
+            reloadOptions: {},
+          });
+          openDocumentsInActiveTab([collection], {
+            backLocation: { kind: "file", documentId: document.id, path: document.path },
+          });
+          rememberRecentStructures([collection]);
+        } else {
+          await openDocuments(
+            [result.primaryOpenPath],
+            {},
+            { rendererMode: "molstar", molstarStyle: molstarStyle ?? preferences.molstarStyle },
+            { inActiveTab: true },
+          );
+        }
         pushStatus(
           `Generated ${result.passedCount.toLocaleString()} validated conformer${result.passedCount === 1 ? "" : "s"} via ${result.backend === "nativeMetal" ? "Metal GPU" : "native CPU"} and opened the artifact in Molstar.`,
           result.failedCount ? "error" : "success",
