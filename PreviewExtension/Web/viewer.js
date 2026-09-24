@@ -1015,16 +1015,6 @@
           { x: box.left, y: box.top }, { x: box.right, y: box.top }, { x: box.right, y: box.bottom }, { x: box.left, y: box.bottom }] });
       }
       Object.assign(result, molstarLociIdentities(lociList));
-      const crop = {
-        x: Math.max(0, (box.left - canvasRect.left) / canvasRect.width),
-        y: Math.max(0, (box.top - canvasRect.top) / canvasRect.height),
-        width: Math.min(1, Math.max(width, 24) / canvasRect.width),
-        height: Math.min(1, Math.max(height, 24) / canvasRect.height),
-      };
-      const shot = action.image === false ? null
-        : await Promise.resolve(window.BuretteAgent?.run({ command: 'screenshot', args: { format: 'jpeg', quality: 0.85, axes: false, transparent: false, crop } })).catch(() => null);
-      const dataUri = shot?.result?.dataUri;
-      if (typeof dataUri === 'string' && dataUri.length <= 1398104) result.image = { dataUri, mimeType: shot.result.mimeType };
       return { ok: true, command: 'describe_region', result };
     }
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);

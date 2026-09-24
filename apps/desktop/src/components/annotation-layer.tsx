@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { clickTargetBox, deliverAnnotations, describeRegion, type Annotation, type RegionRect, type RegionTarget } from "../lib/annotation-region";
+import { canStageAnnotations, clickTargetBox, copyAnnotations, describeRegion, stageAnnotations, type Annotation, type RegionRect, type RegionTarget } from "../lib/annotation-region";
 import { useAnnotationStore } from "../stores/annotation-store";
 import { ShortcutTooltip } from "./shortcut-tooltip";
-import { Annotate, Check, Stop } from "./ui/app-icons";
+import { Annotate, Check } from "./ui/app-icons";
 import "./annotation-layer.css";
 
 // Annotate mode, modelled on the Codex file viewer: drag a region (or click an
-// element), describe the change in the composer beside the pin, collect as many
-// annotations as needed, then Send them to the agent in one message.
+// element), describe the change in the composer beside the pin and collect as
+// many annotations as needed. In the Codex widget the batch appears in the chat
+// composer as one card while it grows; Send closes the layer and leaves the
+// card for the user's next message. Elsewhere Send copies the batch.
 
 const CLICK_BOX = 16;
 const MAX_ANNOTATIONS = 20;
@@ -16,7 +18,7 @@ const COMPOSER_WIDTH = 320;
 // `target` is undefined until the region is read; clicks read it at once so a
 // viewer can snap the box to the element under the pointer.
 type Draft = { key: number; rect: RegionRect; pin: { x: number; y: number }; comment: string; element: boolean; id?: number; target?: RegionTarget | null };
-type Phase = { kind: "idle" } | { kind: "working"; token: number } | { kind: "done"; message: string } | { kind: "error"; message: string };
+type Phase = { kind: "idle" } | { kind: "done"; message: string } | { kind: "error"; message: string };
 
 export function AnnotateToggle({ className }: { className?: string }) {
   const active = useAnnotationStore((state) => state.active);
@@ -43,12 +45,12 @@ export function AnnotationLayer({ documentTitle }: { documentTitle: string }) {
   const [barOffset, setBarOffset] = useState({ x: 0, y: 0 });
   const nextId = useRef(1);
   const draftKey = useRef(0);
-  const sendToken = useRef(0);
+  const closeTimer = useRef(0);
 
   useEffect(() => {
     if (active) return;
     setAnnotations([]); setDrag(null); setDraft(null); setPhase({ kind: "idle" }); setBarOffset({ x: 0, y: 0 });
-    sendToken.current += 1;
+    window.clearTimeout(closeTimer.current);
   }, [active]);
 
   useEffect(() => {
@@ -67,20 +69,28 @@ export function AnnotationLayer({ documentTitle }: { documentTitle: string }) {
   if (!active) return null;
   const bounds = layerRef.current?.getBoundingClientRect() ?? { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
   const local = (rect: RegionRect) => ({ left: rect.left - bounds.left, top: rect.top - bounds.top, width: rect.width, height: rect.height });
-  const busy = capturing || phase.kind === "working";
+  const busy = capturing || phase.kind === "done";
+  const staging = canStageAnnotations();
+
+  function update(next: Annotation[]) {
+    setAnnotations(next);
+    if (!staging) return;
+    setPhase({ kind: "idle" });
+    stageAnnotations(documentTitle, next).catch((error: unknown) => setPhase({ kind: "error", message: error instanceof Error ? error.message : String(error) }));
+  }
 
   async function commitDraft(current: Draft) {
     const comment = current.comment.trim().slice(0, 2000);
     setDraft(null);
     if (current.id != null) {
-      setAnnotations((items) => comment ? items.map((item) => item.id === current.id ? { ...item, comment } : item) : items.filter((item) => item.id !== current.id));
+      update(comment ? annotations.map((item) => item.id === current.id ? { ...item, comment } : item) : annotations.filter((item) => item.id !== current.id));
       return;
     }
     if (!comment || !layerRef.current) return;
     setCapturing(true);
     try {
       const target = current.target !== undefined ? current.target : await describeRegion(layerRef.current, current.rect);
-      setAnnotations((items) => [...items, { id: nextId.current++, rect: current.rect, pin: current.pin, comment, target }].slice(0, MAX_ANNOTATIONS));
+      update([...annotations, { id: nextId.current++, rect: current.rect, pin: current.pin, comment, target }].slice(0, MAX_ANNOTATIONS));
     } finally {
       setCapturing(false);
     }
@@ -116,16 +126,19 @@ export function AnnotationLayer({ documentTitle }: { documentTitle: string }) {
   }
 
   async function send() {
-    const token = ++sendToken.current;
-    setPhase({ kind: "working", token });
     try {
-      const outcome = await deliverAnnotations(documentTitle, annotations);
-      if (token !== sendToken.current) return;
-      setPhase({ kind: "done", message: outcome === "sent" ? "Sent to the chat" : "Copied. Paste into your agent chat" });
-      window.setTimeout(() => { if (token === sendToken.current) setActive(false); }, 1400);
+      if (staging) await stageAnnotations(documentTitle, annotations);
+      else await copyAnnotations(documentTitle, annotations);
+      setPhase({ kind: "done", message: staging ? "Added to the chat message" : "Copied. Paste into your agent chat" });
+      closeTimer.current = window.setTimeout(() => setActive(false), 1200);
     } catch (error) {
-      if (token === sendToken.current) setPhase({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+      setPhase({ kind: "error", message: error instanceof Error ? error.message : String(error) });
     }
+  }
+
+  function cancel() {
+    if (staging && annotations.length) void stageAnnotations(documentTitle, []).catch(() => {});
+    setActive(false);
   }
 
   function startBarDrag(event: ReactPointerEvent<HTMLSpanElement>) {
@@ -171,18 +184,13 @@ export function AnnotationLayer({ documentTitle }: { documentTitle: string }) {
         </form>
       </> : null}
       <div className="annotation-bar" role="toolbar" aria-label="Annotations" style={{ transform: `translate(calc(-50% + ${barOffset.x}px), ${barOffset.y}px)` }}>
-        {phase.kind === "working" ? <>
-          <span className="annotation-working">Working</span>
-          <button type="button" className="annotation-stop" aria-label="Stop sending" onClick={() => { sendToken.current += 1; setPhase({ kind: "idle" }); }}>
-            <Stop size={12} aria-hidden />
-          </button>
-        </> : phase.kind === "done" ? <span className="annotation-bar-label">{phase.message}</span> : <>
+        {phase.kind === "done" ? <span className="annotation-bar-label">{phase.message}</span> : <>
           <span className="annotation-grip" aria-hidden onPointerDown={startBarDrag} />
           <span className="annotation-bar-label" data-error={phase.kind === "error" || undefined}>
-            {phase.kind === "error" ? `Could not send: ${phase.message}` : capturing ? "Reading the region…" : count ? `${count} annotation${count === 1 ? "" : "s"}` : "Select content and ask for changes"}
+            {phase.kind === "error" ? `Could not add to the chat: ${phase.message}` : capturing ? "Reading the region…" : count ? `${count} annotation${count === 1 ? "" : "s"}` : "Select content and ask for changes"}
           </span>
           {count ? <span className="annotation-bar-divider" aria-hidden /> : null}
-          <button type="button" className="annotation-cancel" onClick={() => setActive(false)}>Cancel</button>
+          <button type="button" className="annotation-cancel" onClick={cancel}>Cancel</button>
           {count ? <button type="button" className="annotation-send" disabled={capturing || Boolean(draft)} onClick={() => void send()}>
             {phase.kind === "error" ? "Retry" : "Send"}
           </button> : null}

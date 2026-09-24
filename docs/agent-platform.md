@@ -142,17 +142,19 @@ annotation carries a comment and a bounded description of its target:
 
 - The host asks the viewer frame with the `describe_region` agent action
   (`rect` in frame client pixels). Mol* answers with atom and residue
-  identities (at most 96 atoms) and a JPEG crop within the 1 MiB image budget;
-  xyzrender answers with 1-based atoms per structure; the grid answers with
+  identities (at most 96 atoms); xyzrender answers with 1-based atoms per structure; the grid answers with
   zero-based source indexes and up to eight row texts. A click in xyzrender or
   the grid also returns the atom or row `box`, which only lays out the outline.
 - Outside viewer frames, the layer reads visible text (at most 1200 characters).
 
-Send delivers the batch in one message. In the native Codex widget,
-`BuretteMcpWorkspace.sendAnnotations` pushes the details and at most four crops
-as model context, then posts the numbered summary as a user message. Selection
-context updates pause until the message is posted. Other surfaces have no chat
-and copy the summary to the clipboard. The bottom dock and its toggle are
+In the native Codex widget the batch never posts a message by itself. Each
+added, edited or removed annotation calls `BuretteMcpWorkspace.stageAnnotations`,
+which publishes one text-only model context with a `Burette · N annotations`
+composer card (Codex shows every image block as a separate attachment, so the
+batch carries no crops). Send closes the layer and leaves the card for the
+user's next message; Cancel withdraws it. The card stays until the viewer
+selection changes, which republishes the selection context. Other surfaces
+have no chat and Send copies the numbered summary to the clipboard. The bottom dock and its toggle are
 hidden on plugin surfaces.
 
 ## MolViewSpec Story Contract

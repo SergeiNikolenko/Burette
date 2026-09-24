@@ -2,9 +2,9 @@ import { writeClipboardText } from "./clipboard";
 
 // Annotate mode: the user marks a screen rectangle, writes a comment, and the
 // batch is delivered to the agent. Viewer iframes answer `describe_region`
-// (Mol* atoms and residues plus a cropped frame, xyzrender atoms, grid rows,
-// or text); anything outside an iframe is read from the DOM. Every field that
-// reaches the agent is bounded here.
+// (Mol* atoms and residues, xyzrender atoms, grid rows, or text); anything
+// outside an iframe is read from the DOM. Every field that reaches the agent is
+// bounded here.
 
 export type RegionRect = { left: number; top: number; width: number; height: number };
 
@@ -19,7 +19,6 @@ export type RegionTarget = {
   rowCount?: number;
   sourceIndexes?: number[];
   text?: string;
-  image?: { dataUri: string; mimeType: string };
   // Element box a click snapped to (page pixels); layout only, never sent.
   box?: RegionRect;
 };
@@ -28,7 +27,6 @@ export type Annotation = { id: number; rect: RegionRect; pin: { x: number; y: nu
 
 const REGION_TIMEOUT_MS = 8000;
 const MAX_TEXT = 1200;
-const MAX_IMAGES = 4;
 
 function topElementAt(layer: HTMLElement, x: number, y: number) {
   return document.elementsFromPoint(x, y).find((element) => !layer.contains(element)) ?? null;
@@ -123,36 +121,38 @@ function describeTarget(target: RegionTarget | null) {
   }
 }
 
-export function annotationMessage(documentTitle: string, annotations: Annotation[]) {
+export function annotationText(documentTitle: string, annotations: Annotation[]) {
   const lines = annotations.map((annotation, index) =>
     `${index + 1}. ${annotation.comment}\n   → ${describeTarget(annotation.target)}`);
-  const text = `Burette annotations on ${documentTitle}:\n\n${lines.join("\n")}`;
-  const images = annotations.flatMap((annotation, index) => annotation.target?.image
-    ? [{ index: index + 1, ...annotation.target.image }] : []).slice(0, MAX_IMAGES);
-  const structured = annotations.map(({ comment, target }, index) => {
-    const { image, box: _box, ...rest } = target ?? { surface: "document" as const };
-    return { index: index + 1, comment, target: rest, image: image ? "attached" : undefined };
+  return `Burette annotations on ${documentTitle}:\n\n${lines.join("\n")}`;
+}
+
+// One text block and one composer card: Codex renders every image block as a
+// separate attachment, so the batch carries no crops.
+export function annotationContext(documentTitle: string, annotations: Annotation[]) {
+  const items = annotations.map(({ comment, target }, index) => {
+    const { box: _box, ...rest } = target ?? { surface: "document" as const };
+    return { index: index + 1, comment, target: rest };
   });
+  const count = annotations.length;
   return {
-    text,
-    context: {
-      content: [
-        { type: "text" as const, text: `Burette annotation details (document: ${documentTitle}):\n${JSON.stringify(structured)}` },
-        ...images.map((image) => ({ type: "image" as const, data: image.dataUri.replace(/^data:[^,]*,/, ""), mimeType: image.mimeType })),
-      ],
-    },
+    content: [{ type: "text" as const, text: annotationText(documentTitle, annotations) }],
+    structuredContent: { burette: { annotations: { document: documentTitle, items } } },
+    presentation: { composerAttachmentLayout: "card" as const, composerLabel: `Burette · ${count} annotation${count === 1 ? "" : "s"} · ${documentTitle}` },
   };
 }
 
-// The Codex native widget posts the batch into the chat; every other surface
-// (desktop, browser shell) has no chat, so the batch goes to the clipboard.
-export async function deliverAnnotations(documentTitle: string, annotations: Annotation[]): Promise<"sent" | "copied"> {
-  const message = annotationMessage(documentTitle, annotations);
-  const workspace = window.BuretteMcpWorkspace;
-  if (workspace?.sendAnnotations) {
-    await workspace.sendAnnotations(message);
-    return "sent";
-  }
-  await writeClipboardText(message.text);
-  return "copied";
+// The Codex native widget keeps the batch in the chat composer as it grows, and
+// the user sends it with their own message. Null withdraws it.
+export function canStageAnnotations() {
+  return Boolean(window.BuretteMcpWorkspace?.stageAnnotations);
+}
+
+export async function stageAnnotations(documentTitle: string, annotations: Annotation[]) {
+  await window.BuretteMcpWorkspace?.stageAnnotations?.(annotations.length ? annotationContext(documentTitle, annotations) : null);
+}
+
+// Desktop and the browser shell have no chat, so Send copies the batch.
+export function copyAnnotations(documentTitle: string, annotations: Annotation[]) {
+  return writeClipboardText(annotationText(documentTitle, annotations));
 }

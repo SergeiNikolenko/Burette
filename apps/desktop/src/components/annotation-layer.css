@@ -29,7 +29,7 @@ span.annotation-pin {pointer-events: none}
   flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: #f4f4f4; font: inherit; font-size: 14px;
 }
 .annotation-composer input::placeholder {color: #8c8c8c}
-.annotation-submit, .annotation-stop {
+.annotation-submit {
   display: grid; place-items: center; flex: none; width: 28px; height: 28px; padding: 0;
   border: 0; border-radius: 50%; background: #f4f4f4; color: #161616; cursor: pointer;
 }
@@ -54,17 +54,10 @@ span.annotation-pin {pointer-events: none}
 .annotation-cancel:hover {background: rgb(255 255 255 / 8%)}
 .annotation-send {padding: 0 12px; background: #2f6fed; color: #fff; font-weight: 500}
 .annotation-send:disabled {opacity: .5; cursor: default}
-.annotation-working {
-  padding: 0 6px 0 8px; color: transparent; font-size: 15px;
-  background: linear-gradient(90deg, #8c8c8c 0%, #f4f4f4 50%, #8c8c8c 100%) 0 0 / 200% 100%;
-  -webkit-background-clip: text; background-clip: text; animation: annotation-shimmer 1.6s linear infinite;
-}
-.annotation-stop {background: #3a3a3a; color: #f4f4f4}
 .annotate-toggle[data-active] {
   width: auto !important; padding: 0 10px 0 8px !important; gap: 6px; border-radius: 999px !important;
   background: rgb(59 130 246 / 14%) !important; color: #2563eb;
 }
 [data-theme="dark"] .annotate-toggle[data-active], .dark .annotate-toggle[data-active] {background: rgb(59 130 246 / 18%) !important; color: #7aa7f7}
 @keyframes annotation-pop {from {opacity: 0; transform: scale(.96)} to {opacity: 1; transform: none}}
-@keyframes annotation-shimmer {to {background-position: -200% 0}}
-@media (prefers-reduced-motion: reduce) {.annotation-composer, .annotation-working {animation: none}}
+@media (prefers-reduced-motion: reduce) {.annotation-composer {animation: none}}
