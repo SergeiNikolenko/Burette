@@ -7025,18 +7025,20 @@ assert.match(previewViewer, /let loopActive = Boolean\(playbackRestore\?\.playin
 assert.match(previewViewer, /loopActive = Boolean\(active\)/);
 assert.match(previewViewer, /const open = !isAnimationOptionsOpen\(\);\s*setAnimationOptionsOpen\(open\);\s*if \(!open \|\| hasTrajectorySegments\) return;/);
 assert.match(previewViewer, /const loopTargetIndex = \(\) => \{/);
-assert.match(previewViewer, /const frameOffset = Math\.floor\(elapsed \/ delay\)/);
 assert.match(previewViewer, /const trajectoryControlBounds = \(poseIndex\) => \{/);
 assert.match(previewViewer, /currentIndex\.textContent = `\$\{poseIndex - current\.segment\.startFrame \+ 1\}\/\$\{current\.segment\.frameCount\} · \$\{current\.index \+ 1\}\/\$\{trajectorySegments\.length\}`/);
-assert.match(previewViewer, /const loopBounds = trajectoryControlBounds\(loopStartPose\)/);
-assert.match(previewViewer, /return loopBounds\.start \+ \(\(loopStartPose - loopBounds\.start \+ frameOffset\) % loopBounds\.count\)/);
+// A slow frame step must not let wall-clock time pick the next frame: the loop
+// would alternate between two frames instead of playing (WKWebView regression).
+assert.match(previewViewer, /const loopBounds = trajectoryControlBounds\(activePose\)/);
+assert.match(previewViewer, /return loopBounds\.start \+ \(\(activePose - loopBounds\.start \+ 1\) % loopBounds\.count\)/);
+assert.doesNotMatch(previewViewer, /loopStartPose/);
 assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopNextDelay\(\), expectedLoopEpoch = loopEpoch\) => \{/);
 assert.match(previewViewer, /loopTimer = window\.setTimeout\(\(\) => \{/);
 assert.match(previewViewer, /const nextIndex = loopTargetIndex\(\)/);
 assert.match(previewViewer, /if \(nextIndex === activePose\) \{/);
 assert.match(previewViewer, /let poseUpdateQueue = Promise\.resolve\(\)/);
 assert.match(previewViewer, /let loopEpoch = 0/);
-assert.match(previewViewer, /const setPose = \(index, options = \{\}\) => \{[\s\S]*?if \(options\.loopStep !== true && loopActive\) \{[\s\S]*?loopEpoch \+= 1;[\s\S]*?loopStartPose = requestedIndex;[\s\S]*?poseUpdateQueue = queued\.catch\(\(\) => \{\}\);[\s\S]*?return queued;[\s\S]*?\};/);
+assert.match(previewViewer, /const setPose = \(index, options = \{\}\) => \{[\s\S]*?if \(options\.loopStep !== true && loopActive\) \{[\s\S]*?loopEpoch \+= 1;[\s\S]*?loopStartedAt = loopNow\(\);[\s\S]*?poseUpdateQueue = queued\.catch\(\(\) => \{\}\);[\s\S]*?return queued;[\s\S]*?\};/);
 assert.match(previewViewer, /const performSetPose = async \(index, options = \{\}\) => \{/);
 assert.match(previewViewer, /const shouldFocus = options\.focus === true;/);
 assert.match(previewViewer, /if \(shouldFocus\) scheduleMolstarStructureFocus\(viewer, \{ reason: 'pose-selection', durationMs: 180, force: true \}\);/);

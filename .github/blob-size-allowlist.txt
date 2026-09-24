@@ -64,3 +64,10 @@ plugins/burette-agent/browser-shell-dist/assets/index.modern-DQWd4CLe.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CPvhX_Et.js
 plugins/burette-agent/browser-shell-dist/assets/scaffold.worker-CZm3QNgR.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-DBGdXR42.js
+
+# Regenerated browser-shell bundles for the trajectory loop frame-step fix.
+plugins/burette-agent/browser-shell-dist/assets/dist-ChRp6sLR.js
+plugins/burette-agent/browser-shell-dist/assets/index.modern-DN6_6mNQ.js
+plugins/burette-agent/browser-shell-dist/assets/index.modern-DRe6F2yp.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-DkD0MHg7.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-BoGANvs7.js

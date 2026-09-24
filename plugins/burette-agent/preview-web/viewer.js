@@ -19142,7 +19142,6 @@ SOFTWARE.
     let loopBusy = false;
     let loopEpoch = 0;
     let loopStartedAt = 0;
-    let loopStartPose = activePose;
     let poseUpdateQueue = Promise.resolve();
     let poseRepeatDelayTimer = null;
     let poseRepeatTimer = null;
@@ -19502,10 +19501,7 @@ SOFTWARE.
         loopTimer = null;
         loopBusy = false;
       }
-      if (active) {
-        loopStartedAt = loopNow();
-        loopStartPose = activePose;
-      }
+      if (active) loopStartedAt = loopNow();
       loop.classList.toggle('active', Boolean(active));
       loop.textContent = active ? 'Stop' : 'Loop';
       loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
@@ -19533,18 +19529,17 @@ SOFTWARE.
     const loopNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
       ? performance.now()
       : Date.now();
+    // The loop advances one frame per tick. In WKWebView a frame step can take
+    // longer than a frame at high fps; picking the target from wall-clock time
+    // then jumps half the loop ahead and back again, so the playhead only ever
+    // alternates between two frames instead of playing.
     const loopTargetIndex = () => {
-      const delay = loopDelayMs();
-      const elapsed = Math.max(0, loopNow() - loopStartedAt);
-      const frameOffset = Math.floor(elapsed / delay);
-      const loopBounds = trajectoryControlBounds(loopStartPose);
-      return loopBounds.start + ((loopStartPose - loopBounds.start + frameOffset) % loopBounds.count);
+      const loopBounds = trajectoryControlBounds(activePose);
+      return loopBounds.start + ((activePose - loopBounds.start + 1) % loopBounds.count);
     };
     const loopNextDelay = () => {
-      const delay = loopDelayMs();
       const elapsed = Math.max(0, loopNow() - loopStartedAt);
-      const untilNextFrame = delay - (elapsed % delay);
-      return Math.max(minimumTrajectoryLoopTimerDelay(prepared), Math.min(delay, untilNextFrame));
+      return Math.max(minimumTrajectoryLoopTimerDelay(prepared), loopDelayMs() - elapsed);
     };
     const scheduleLoopStep = (delayMs = loopNextDelay(), expectedLoopEpoch = loopEpoch) => {
       if (!hostViewerVisible) return;
@@ -19564,6 +19559,7 @@ SOFTWARE.
           return;
         }
         loopBusy = true;
+        loopStartedAt = loopNow();
         void setPose(nextIndex, { loopStep: true, loopEpoch: expectedLoopEpoch }).finally(() => {
           loopBusy = false;
           if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
@@ -19576,7 +19572,6 @@ SOFTWARE.
         if (loopTimer !== null) { window.clearTimeout(loopTimer); loopTimer = null; }
         if (hostViewerVisible && loopActive) {
           loopStartedAt = loopNow();
-          loopStartPose = activePose;
           scheduleLoopStep();
         }
       },
@@ -19600,7 +19595,6 @@ SOFTWARE.
       if (options.loopStep !== true && loopActive) {
         loopEpoch += 1;
         loopStartedAt = loopNow();
-        loopStartPose = requestedIndex;
         if (loopTimer) {
           clearTimeout(loopTimer);
           loopTimer = null;
@@ -19630,7 +19624,6 @@ SOFTWARE.
           updateControls();
           if (options.loopStep !== true && loopActive && options.loopEpoch === loopEpoch) {
             loopStartedAt = loopNow();
-            loopStartPose = activePose;
             if (loopTimer) {
               clearTimeout(loopTimer);
               loopTimer = null;
