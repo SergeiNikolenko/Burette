@@ -36,6 +36,7 @@ export function useAppDropActions({
         action: () => runChoice(choice),
       })),
       at ?? undefined,
+      { presentation: "dropdown" },
     ).catch((error) => {
       pushErrorStatus(error, "Drop action menu failed");
       runChoice(choices[0]);

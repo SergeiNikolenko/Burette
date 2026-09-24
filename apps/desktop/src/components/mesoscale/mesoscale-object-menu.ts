@@ -63,7 +63,7 @@ function clipMenu(documentId: string, item: MesoscaleHierarchyObject): MenuItemS
 }
 
 export function showMesoscaleAppearanceMenu(documentId: string, item: MesoscaleHierarchyObject, point: { x: number; y: number }) {
-  return showNativeContextMenu(appearanceMenu(documentId, item, false, 1), point, { forceWeb: true });
+  return showNativeContextMenu(appearanceMenu(documentId, item, false, 1), point);
 }
 
 export function showMesoscaleObjectMenu(
@@ -107,5 +107,5 @@ export function showMesoscaleObjectMenu(
     { kind: "item", id: "mesoscale-isolate", text: bulk ? "Isolate Selection" : "Isolate", action: () => run(bulk ? { type: "isolateSelection" } : { type: "isolateObjects", refs: [item.ref] }) },
     { kind: "item", id: "mesoscale-visibility", text: item.hidden ? "Show" : "Hide", action: () => setVisible(item.hidden) },
   ];
-  return showNativeContextMenu(items, point, { forceWeb: true });
+  return showNativeContextMenu(items, point);
 }

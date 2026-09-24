@@ -162,6 +162,8 @@ export function useAppFileOpen({
               .catch((error) => pushErrorStatus(error, "Open failed"));
           },
         })),
+        undefined,
+        { presentation: "dropdown" },
       );
     },
     [openDelimitedGridDocument, pushErrorStatus, pushStatus],

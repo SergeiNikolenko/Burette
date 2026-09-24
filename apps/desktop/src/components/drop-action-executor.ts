@@ -41,6 +41,7 @@ export function runShellDropActionChoices(
       action: () => runChoice(choice),
     })),
     point ?? undefined,
+    { presentation: "dropdown" },
   ).catch(() => runChoice(choices[0]));
   return true;
 }

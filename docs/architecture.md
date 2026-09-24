@@ -67,8 +67,13 @@ The desktop shell is a compact molecule workspace:
   sessions, stay at the left edge, and survive Close Other Tabs / Close Tabs to
   the Right. Explicit Close Tab and Close All Tabs remain available.
   macOS draws the pinned OpenAI Apps SDK UI icons, separators, and submenus in AppKit through
-  `popup_macos_context_menu`. Other desktop platforms use the Tauri menu API;
-  browser sessions use the existing web menu. The right-panel action opens the
+  `popup_macos_context_menu`, including the live controls some menus carry:
+  number fields become slider rows, swatches a scrolling colour carousel with an
+  inline hue picker (`context_menu_controls.m`), and a select a submenu with the
+  current option checked. Slider and colour changes apply while the menu stays
+  open. Other desktop platforms use the Tauri menu API for command-only menus
+  and the web menu for menus with controls; browser sessions use the existing
+  web menu. The right-panel action opens the
   structure viewer directly; text tabs explicitly open a text panel. File, project
   and tab menus share short labels and Open, Copy, Export and Close submenus;
   unavailable actions and duplicate Save As entries are omitted.
