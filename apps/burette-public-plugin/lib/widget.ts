@@ -178,6 +178,7 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
           if (message.method === "ui/notifications/tool-result") acceptKetcherResult(message.params);
           if (
             message.method === "ui/notifications/tool-result"
+            && !window.__BURETTE_HOSTED_KETCHER_WIDGET__
             && !window.__BURETTE_HOSTED_MCP_BRIDGE_READY__
           ) {
             window.__BURETTE_HOSTED_MCP_RESULTS__.push(message.params);
@@ -196,6 +197,7 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
             structuredContent: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolOutput,
             _meta: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata,
           });
+          if (window.__BURETTE_HOSTED_KETCHER_WIDGET__) return;
           window.__BURETTE_HOSTED_MCP_RESULTS__.push({
             structuredContent: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolOutput,
             _meta: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata,
