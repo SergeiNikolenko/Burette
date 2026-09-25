@@ -55,4 +55,15 @@ assert.equal(snapshot.selectedAtoms.length, 256);
 assert.equal(snapshot.selectedAtomCount, 300);
 assert.equal(snapshot.selectionTruncated, true);
 assert.equal(snapshot.structure.smiles, "CCO");
+assert.equal(Object.hasOwn(snapshot, "persistRequest"), false, "surfaces without a save flow keep the original snapshot shape");
+const persistRequest = { actionId: "act-3", status: "awaiting_user" };
+assert.deepEqual(createKetcherSnapshot({ state: edited, persistRequest }).persistRequest, persistRequest);
+assert.equal(createKetcherSnapshot({ state: edited, persistRequest: null }).persistRequest, null);
+
+// `smi` (the burette_open_viewer name) is an alias for `smiles` in every format field.
+const base = { type: "control_ketcher", surfaceId: "desktop-ketcher:tab-1", actionId: "act-4", expectedRevision: 1 };
+assert.equal(validateKetcherAction({ ...base, command: "set_structure", format: " SMI ", content: "CCO" }).value.input.format, "smiles");
+assert.deepEqual(validateKetcherAction({ ...base, command: "get_structure", formats: ["smi", "smiles", "mol"] }).value.formats, ["smiles", "mol"]);
+assert.equal(validateKetcherAction({ ...base, command: "request_persist", format: "smi" }).value.format, "smiles");
+assert.equal(validateKetcherAction({ ...base, command: "set_structure", format: "smiles2", content: "CCO" }).error.code, "UNSUPPORTED_FORMAT");
 console.log("ketcher agent contract tests passed");

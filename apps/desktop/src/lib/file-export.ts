@@ -1,3 +1,9 @@
+/** Result of a user-driven text save; `path` is null when the browser only downloads the file. */
+export type TextFileSaveOutcome =
+  | { status: "saved"; path: string | null }
+  | { status: "cancelled" }
+  | { status: "failed"; message: string };
+
 export function downloadTextFile(fileName: string, text: string) {
   const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);

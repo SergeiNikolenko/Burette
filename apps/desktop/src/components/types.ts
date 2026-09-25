@@ -1,6 +1,7 @@
 import type { ConformerJob, ConformerOperation, ConformerSettings, ConformerStatus, DerivedColumnJob, HoveredGridRow, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbSettings, XtbStatus, DatabaseJob } from "../types";
 import type { DatabaseQueryDraft } from "../hooks/use-app-database";
 import type { DatabaseProvider } from "../lib/database";
+import type { TextFileSaveOutcome } from "../lib/file-export";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import type { StructureViewerAction as BaseStructureViewerAction } from "../lib/structure-composition";
@@ -163,7 +164,7 @@ export type ShellActions = {
     title: string;
     extension: string;
     text: string;
-  }) => void | Promise<void>;
+  }) => Promise<TextFileSaveOutcome>;
   openFepNetworkPreview: (request?: { title?: string; graphmlText?: string }) => void;
   applyKetcherToGridRow: (request: {
     documentId: string;

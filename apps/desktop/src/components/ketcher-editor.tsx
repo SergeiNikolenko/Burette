@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import type { Ketcher, Struct } from "ketcher-core";
 import { installKetcherBrowserRequire, installKetcherRaphaelBrowserModules } from "../lib/ketcher-browser-require";
+import { deserializeKetcherMolfile, normalizeKetcherMolfileNames } from "../lib/ketcher-workflow";
 import { Spinner } from "@/components/ui/spinner";
 import "ketcher-react/dist/index.css";
 
@@ -176,16 +177,16 @@ function createKetcherEditorApi(
     )) as Ketcher["getKet"],
     getMolfile: (async (...args: Parameters<Ketcher["getMolfile"]>) => {
       const molfile = await callKetcherWhenReady(() => instance.getMolfile(...args));
-      return molfile.trim() ? molfile : serializeCurrentMolfile(instance, MolSerializer);
+      return normalizeKetcherMolfileNames(molfile.trim() ? molfile : serializeCurrentMolfile(instance, MolSerializer));
     }) as Ketcher["getMolfile"],
     getRdf: ((...args: Parameters<Ketcher["getRdf"]>) => (
       callKetcherWhenReady(() => instance.getRdf(...args))
     )) as Ketcher["getRdf"],
-    getRxn: ((...args: Parameters<Ketcher["getRxn"]>) => (
-      callKetcherWhenReady(() => instance.getRxn(...args))
+    getRxn: (async (...args: Parameters<Ketcher["getRxn"]>) => (
+      normalizeKetcherMolfileNames(await callKetcherWhenReady(() => instance.getRxn(...args)))
     )) as Ketcher["getRxn"],
-    getSdf: ((...args: Parameters<Ketcher["getSdf"]>) => (
-      callKetcherWhenReady(() => instance.getSdf(...args))
+    getSdf: (async (...args: Parameters<Ketcher["getSdf"]>) => (
+      normalizeKetcherMolfileNames(await callKetcherWhenReady(() => instance.getSdf(...args)))
     )) as Ketcher["getSdf"],
     getSequence: ((...args: Parameters<Ketcher["getSequence"]>) => (
       callKetcherWhenReady(() => instance.getSequence(...args))
@@ -274,18 +275,12 @@ function serializeCurrentMolfile(instance: Ketcher, MolSerializer: KetcherCoreMo
   return new MolSerializer().serialize(struct);
 }
 
-function deserializeMolfile(MolSerializer: KetcherCoreModule["MolSerializer"], molfile: string) {
-  const struct = new MolSerializer().deserialize(molfile);
-  struct.rescale();
-  return struct;
-}
-
 function setMolfileDirectly(
   instance: Ketcher,
   MolSerializer: KetcherCoreModule["MolSerializer"],
   molfile: string,
 ) {
-  const struct = deserializeMolfile(MolSerializer, molfile);
+  const struct = deserializeKetcherMolfile(MolSerializer, molfile);
   const editor = (instance as KetcherWithEditorStruct).editor;
   editor.struct(struct);
   editor.zoomAccordingContent(struct);
@@ -297,7 +292,7 @@ function addMolfileFragmentDirectly(
   MolSerializer: KetcherCoreModule["MolSerializer"],
   molfile: string,
 ) {
-  const struct = deserializeMolfile(MolSerializer, molfile);
+  const struct = deserializeKetcherMolfile(MolSerializer, molfile);
   const editor = (instance as KetcherWithEditorStruct).editor;
   editor.structToAddFragment(struct);
   editor.zoomAccordingContent(editor.struct());

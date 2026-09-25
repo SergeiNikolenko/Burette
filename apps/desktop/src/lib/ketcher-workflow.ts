@@ -1,5 +1,7 @@
 import type { KetcherImportRequest, KetcherSource3D } from "../components/types";
 
+type KetcherMolSerializer = typeof import("ketcher-core")["MolSerializer"];
+
 export function queueKetcherImportRequest(request: KetcherImportRequest) {
   const targetWindow = window as Window & { __buretteKetcherImportRequest?: KetcherImportRequest | null };
   targetWindow.__buretteKetcherImportRequest = request;
@@ -32,4 +34,28 @@ export function ketcherDraftMolfileFromImportText(text: string) {
 function looksLikeMolfile(text: string) {
   const lines = text.split("\n");
   return lines.length >= 4 && /^\s*\d+\s+\d+\b/u.test(lines[3] ?? "");
+}
+
+// ketcher-core writes `'' + struct.name`, so structures built from SMILES get a
+// literal "null" name line. Blank that header line in MOL, SDF, and RXN exports.
+const KETCHER_NULL_NAME_LINE = /(^|\$\$\$\$\r?\n|\$RXN[^\r\n]*\r?\n|\$MOL\r?\n)(?:null|undefined)(?=\r?\n)/gu;
+
+export function normalizeKetcherMolfileNames(text: string) {
+  return text.replace(KETCHER_NULL_NAME_LINE, "$1");
+}
+
+/**
+ * Parses a molfile for direct `editor.struct()` loading. Mirrors ketcher-core's
+ * prepareStructToRender (the setMolecule path): without implicit hydrogens,
+ * terminal heteroatoms render as O/N instead of OH/NH2.
+ */
+export function deserializeKetcherMolfile(MolSerializer: KetcherMolSerializer, molfile: string) {
+  const struct = new MolSerializer().deserialize(molfile);
+  struct.rescale();
+  struct.initHalfBonds();
+  struct.initNeighbors();
+  struct.setImplicitHydrogen();
+  struct.setStereoLabelsToAtoms();
+  struct.markFragments();
+  return struct;
 }

@@ -42,6 +42,18 @@ export type KetcherRevisionState = {
   persistedRevision: number;
   dirty: boolean;
 };
+export type KetcherPersistStatus = "awaiting_user" | "saving" | "saved" | "cancelled" | "failed";
+export type KetcherPersistRequest = {
+  actionId: string;
+  status: KetcherPersistStatus;
+  format: KetcherOutputFormat;
+  suggestedBasename: string;
+  fileName: string;
+  requestedRevision: number;
+  persistedRevision: number | null;
+  savedPath: string | null;
+  error: string | null;
+};
 export type KetcherSnapshot = KetcherRevisionState & {
   apiVersion: "burette-ketcher-agent/v1";
   structure: {
@@ -62,11 +74,13 @@ export type KetcherSnapshot = KetcherRevisionState & {
   highlightTruncated: boolean;
   lastAction: unknown;
   capabilities: Record<string, boolean>;
+  persistRequest?: KetcherPersistRequest | null;
 };
 
 export declare function isRecord(value: unknown): value is Record<string, unknown>;
 export declare function utf8ByteLength(value: string): number;
 export declare function boundedText(value: unknown, max?: number): string;
+export declare function normalizeFormatName(value: unknown): string;
 export declare function normalizeIndexes(value: unknown): number[] | null;
 export declare function normalizeStructureInput(input: unknown): { ok: true; value: KetcherStructureInput } | { ok: false; error: { code: KetcherAgentErrorCode; message: string } };
 export declare function validateKetcherAction(action: unknown): { ok: true; value: KetcherControlAction & { input?: KetcherStructureInput } } | { ok: false; error: { code: KetcherAgentErrorCode; message: string } };
@@ -81,4 +95,5 @@ export declare function createKetcherSnapshot(input: {
   highlightedAtoms?: number[];
   lastAction?: unknown;
   capabilities?: Record<string, unknown>;
+  persistRequest?: KetcherPersistRequest | null;
 }): KetcherSnapshot;
