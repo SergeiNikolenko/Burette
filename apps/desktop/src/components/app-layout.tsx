@@ -723,7 +723,7 @@ export function AppLayout({
             </section>
           </ResizablePanel>
         </ResizablePanelGroup>
-        {!hostedMcpWidget ? <AnnotationLayer documentTitle={state.activeDocument?.title ?? "Burette"} /> : null}
+        {!hostedMcpWidget ? <AnnotationLayer documentTitle={state.activeDocument?.title ?? "Burette"} picksResidues={state.activeDocument?.renderer === "molstar"} /> : null}
       </section>
       <FileDropFeedback preview={dropPreview} />
     </main></WorkspaceMenus></SidebarFileOperations>

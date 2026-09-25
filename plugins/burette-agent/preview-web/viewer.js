@@ -862,6 +862,7 @@
     }
     if (type === 'capture_scene') return captureAgentScene(action);
     if (type === 'describe_region') return describeAgentRegion(action);
+    if (type === 'annotation_snapshot') return annotationSnapshot(action);
     if (type === 'replace_document') return replaceMolecularDocument(action);
     if (['set_scene_motion', 'set_scene_wiggle', 'rotate_camera'].includes(type)) return controlViewportFromAction(action);
     if (type === 'hide_waters') {
@@ -964,8 +965,10 @@
   }
 
   // Annotate mode: report what lies under a screen rectangle (viewer client
-  // pixels) without touching the selection or the camera. The payload is
-  // bounded because the host forwards it into the agent's context.
+  // pixels) without moving the camera. In Mol*, `granularity: 'residue'` widens
+  // the atoms to whole residues and `select: true` adds them to the selection so
+  // the user sees what the note covers. The payload is bounded because the host
+  // forwards it into the agent's context.
   async function describeAgentRegion(action) {
     const rect = action.rect || {};
     const left = Number(rect.left), top = Number(rect.top), width = Number(rect.width), height = Number(rect.height);
@@ -1014,6 +1017,14 @@
         lociList = await molstarLassoProjectedLoci({ canvas, points: [
           { x: box.left, y: box.top }, { x: box.right, y: box.top }, { x: box.right, y: box.bottom }, { x: box.left, y: box.bottom }] });
       }
+      const StructureElement = molstarStructureRuntime().StructureElement;
+      if (action.granularity === 'residue' && typeof StructureElement?.Loci?.extendToWholeResidues === 'function') {
+        lociList = lociList.map(loci => StructureElement.Loci.extendToWholeResidues(loci));
+      }
+      if (action.select === true) {
+        const selects = viewer.plugin.managers?.interactivity?.lociSelects;
+        for (const loci of lociList) selects?.select?.({ loci }, false);
+      }
       Object.assign(result, molstarLociIdentities(lociList));
       return { ok: true, command: 'describe_region', result };
     }
@@ -1027,6 +1038,56 @@
     }
     result.text = text.trim().slice(0, 1200);
     return { ok: true, command: 'describe_region', result };
+  }
+
+  // Annotate mode: one frame of the Mol* view with the numbered marks drawn on
+  // it (viewer client pixels), so a batch carries a single picture however many
+  // regions it has. The frame stays within the 1 MiB image budget.
+  async function annotationSnapshot(action) {
+    const viewer = activeMolstarViewer();
+    const canvas = viewer?.plugin?.canvas3d ? viewer.plugin.canvas3dContext?.canvas || document.querySelector('.msp-plugin canvas') : null;
+    const frame = canvas?.getBoundingClientRect();
+    if (!frame?.width || !frame?.height) return agentActionFailure('annotation_snapshot', 'NOT_AVAILABLE', 'No Mol* view to capture.');
+    const scale = Math.min(window.devicePixelRatio || 1, 1280 / Math.max(frame.width, frame.height));
+    const width = Math.round(frame.width * scale), height = Math.round(frame.height * scale);
+    const shot = await window.BuretteAgent.run({ command: 'screenshot', args: { width, height, format: 'png', transparent: false, autoCrop: false, axes: false } });
+    if (shot?.ok === false) return shot;
+    const image = new Image();
+    await withTimeout(new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error('Could not decode the view capture.'));
+      image.src = shot.result.dataUri;
+    }), 5000, 'View capture timed out');
+    const output = document.createElement('canvas');
+    output.width = width; output.height = height;
+    const context = output.getContext('2d');
+    context.drawImage(image, 0, 0, width, height);
+    for (const [position, mark] of (Array.isArray(action.marks) ? action.marks : []).slice(0, 20).entries()) {
+      const x = (Number(mark.left) - frame.left) * scale, y = (Number(mark.top) - frame.top) * scale;
+      const w = Number(mark.width) * scale, h = Number(mark.height) * scale;
+      if (![x, y, w, h].every(Number.isFinite)) continue;
+      context.setLineDash([6 * scale, 4 * scale]);
+      context.lineWidth = 2 * scale;
+      context.strokeStyle = '#3b82f6';
+      context.strokeRect(x, y, Math.max(w, 2), Math.max(h, 2));
+      context.setLineDash([]);
+      const cx = Number.isFinite(Number(mark.pinX)) ? (Number(mark.pinX) - frame.left) * scale : x + w;
+      const cy = Number.isFinite(Number(mark.pinY)) ? (Number(mark.pinY) - frame.top) * scale : y;
+      context.beginPath();
+      context.arc(cx, cy, 11 * scale, 0, 2 * Math.PI);
+      context.fillStyle = '#3b82f6';
+      context.fill();
+      context.strokeStyle = '#ffffff';
+      context.stroke();
+      context.fillStyle = '#ffffff';
+      context.font = `600 ${12 * scale}px -apple-system, system-ui, sans-serif`;
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText(String(Number(mark.index) || position + 1), cx, cy + 0.5 * scale);
+    }
+    const dataUri = output.toDataURL('image/jpeg', 0.85);
+    if (dataUri.length - 'data:image/jpeg;base64,'.length > 1398104) return agentActionFailure('annotation_snapshot', 'PAYLOAD_TOO_LARGE', 'The view capture exceeds the 1 MiB image budget.');
+    return { ok: true, command: 'annotation_snapshot', result: { dataUri, mimeType: 'image/jpeg', width, height } };
   }
 
   function molstarStoryState() {

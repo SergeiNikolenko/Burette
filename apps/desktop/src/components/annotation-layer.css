@@ -6,6 +6,7 @@
   font: 400 14px/1.3 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
 }
 .annotation-surface {position: absolute; inset: 0; cursor: crosshair; touch-action: none}
+.annotation-surface[data-passthrough] {pointer-events: none}
 .annotation-layer[data-capturing] .annotation-surface {cursor: progress}
 .annotation-region {
   position: absolute; box-sizing: border-box; pointer-events: none;
@@ -44,6 +45,12 @@ span.annotation-pin {pointer-events: none}
   width: 10px; height: 16px; cursor: grab; touch-action: none; opacity: .55;
   background: radial-gradient(circle, currentColor 1.3px, transparent 1.5px) 0 0 / 5px 5.33px;
 }
+.annotation-granularity {display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: rgb(255 255 255 / 7%)}
+.annotation-granularity button {
+  height: 26px; padding: 0 9px; border: 0; border-radius: 7px; background: transparent; color: #b4b4b4; font: inherit; font-size: 13px; cursor: pointer;
+}
+.annotation-granularity button[data-active] {background: rgb(255 255 255 / 14%); color: #f4f4f4}
+.annotation-granularity button:disabled {cursor: default}
 .annotation-bar-label {padding-right: 4px}
 .annotation-bar-label[data-error] {color: #ff8a80; max-width: 360px; overflow: hidden; text-overflow: ellipsis}
 .annotation-bar-divider {width: 1px; height: 18px; background: rgb(255 255 255 / 16%)}
@@ -51,6 +58,7 @@ span.annotation-pin {pointer-events: none}
   height: 30px; padding: 0 10px; border: 0; border-radius: 9px; font: inherit; cursor: pointer;
 }
 .annotation-cancel {background: transparent; color: #e8e8e8}
+.annotation-cancel:disabled {opacity: .5; cursor: default}
 .annotation-cancel:hover {background: rgb(255 255 255 / 8%)}
 .annotation-send {padding: 0 12px; background: #2f6fed; color: #fff; font-weight: 500}
 .annotation-send:disabled {opacity: .5; cursor: default}

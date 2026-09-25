@@ -141,21 +141,27 @@ layer. A drag marks a region; a click marks the element under the pointer. Each
 annotation carries a comment and a bounded description of its target:
 
 - The host asks the viewer frame with the `describe_region` agent action
-  (`rect` in frame client pixels). Mol* answers with atom and residue
-  identities (at most 96 atoms); xyzrender answers with 1-based atoms per structure; the grid answers with
-  zero-based source indexes and up to eight row texts. A click in xyzrender or
-  the grid also returns the atom or row `box`, which only lays out the outline.
+  (`rect` in frame client pixels, `granularity` `atom` or `residue`,
+  `select: true`). Mol* answers with atom and residue identities (at most 96
+  atoms) and adds the covered atoms, widened to whole residues when the bar's
+  Residues toggle is on, to the viewer selection; xyzrender answers with
+  1-based atoms per structure; the grid answers with zero-based source indexes
+  and up to eight row texts. A click in xyzrender or the grid also returns the
+  atom or row `box`, which only lays out the outline.
 - Outside viewer frames, the layer reads visible text (at most 1200 characters).
+- Controls stay live: over buttons, menus, toolbars and other ARIA controls,
+  in the page or inside a same-origin viewer frame, the layer lets the pointer
+  through, so only the scene and plain content take annotations.
 
-In the native Codex widget the batch never posts a message by itself. Each
-added, edited or removed annotation calls `BuretteMcpWorkspace.stageAnnotations`,
-which publishes one text-only model context with a `Burette · N annotations`
-composer card (Codex shows every image block as a separate attachment, so the
-batch carries no crops). Send closes the layer and leaves the card for the
-user's next message; Cancel withdraws it. The card stays until the viewer
-selection changes, which republishes the selection context. Other surfaces
-have no chat and Send copies the numbered summary to the clipboard. The bottom dock and its toggle are
-hidden on plugin surfaces.
+In the native Codex widget Send posts the batch as one chat message through
+`BuretteMcpWorkspace.sendAnnotations`: the numbered comments as text, one JPEG
+frame of the Mol* view with every mark drawn and numbered (the
+`annotation_snapshot` agent action, within the 1 MiB image budget), and a
+`Burette · N annotations` composer card carrying the structured targets. Hosts
+that take no images in widget messages get the frame in the card instead.
+Other surfaces have no chat and Send copies the numbered summary to the
+clipboard. Send and Cancel both clear the selection the layer added. The bottom
+dock and its toggle are hidden on plugin surfaces.
 
 ## MolViewSpec Story Contract
 
