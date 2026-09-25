@@ -1516,7 +1516,8 @@ assert.match(appLayout, /\{ elementRef: rightDockElementRef, property: "--right-
 assert.match(appLayout, /shell\.style\.setProperty\(entry\.property, `\$\{width\}px`\)/);
 assert.match(appLayout, /<header className="topbar">/);
 assert.match(appLayout, /const rightDockOpen = !settingsMode && !hostedMcpWidget && state\.rightDockOpen/);
-assert.match(appLayout, /const bottomDockOpen = !settingsMode && !hostedMcpWidget && state\.bottomDockOpen/);
+assert.match(appLayout, /const pluginSurface = Boolean\(window\.BuretteMcpWorkspace\) \|\| state\.buildInfo\.isAgentShell;/);
+assert.match(appLayout, /const bottomDockOpen = !settingsMode && !hostedMcpWidget && !pluginSurface && state\.bottomDockOpen/);
 assert.match(appLayout, /"--right-dock-width": `\$\{rightDockOpen \? rightDockWidth : 0\}px`/);
 assert.match(appLayout, /"--chrome-height": hostedMcpWidget \? "0px" : undefined/);
 assert.match(appLayout, /\{chromeVisible && !window\.BuretteMcpWorkspace && \(/);

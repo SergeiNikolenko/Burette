@@ -16,6 +16,11 @@ declare global {
         set: (mode: "inline" | "fullscreen") => Promise<{ ok: boolean; mode: string }>;
       };
       preparePreview: (html: string) => string;
+      sendAnnotations?: (batch: {
+        text: string;
+        context: { content: { type: "text"; text: string }[]; structuredContent: unknown; presentation: unknown };
+        image: { data: string; mimeType: string } | null;
+      }) => Promise<void>;
       unmount?: () => void;
     };
   }

@@ -129,7 +129,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome" }: { 
       .sort((a, b) => b.length - a.length)[0];
     return <WorkspaceFileHeader activeFile={activeFile} rootPath={rootPath}
       fileActionsAvailable={Boolean(filePath)}
-      rightDockOpen={state.rightDockOpen} bottomDockOpen={state.bottomDockOpen}
+      rightDockOpen={state.rightDockOpen}
       defaultApplicationIconUrl={preferredIconUrl} items={items} actions={actions} openLabel={label}
       onOpen={() => {
         if (preferredTarget) void actions.openPathInChemicalEditor(activeFile.path, preferredTarget.id, preferredTarget.name);

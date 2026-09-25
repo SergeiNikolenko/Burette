@@ -15,7 +15,7 @@ document.body.append(container);
 const root = createRoot(container);
 const render = async (path: string, open = false, fileActionsAvailable = true) => act(async () => root.render(createElement(WorkspaceFileHeader, {
   fileActionsAvailable,
-  activeFile: { path, label: "structure" }, rootPath: "/project/Burette", rightDockOpen: open, bottomDockOpen: open,
+  activeFile: { path, label: "structure" }, rootPath: "/project/Burette", rightDockOpen: open,
   defaultApplicationIconUrl: null,
   actions: {
     copyPath: async (...args: unknown[]) => { calls.push(["copy", ...args]); },
@@ -30,14 +30,16 @@ assert.equal(container.querySelector(".workspace-file-breadcrumb")?.textContent,
 assert.equal(container.querySelector(".workspace-file-breadcrumb")?.getAttribute("aria-label"), path);
 assert.equal(container.querySelector("[aria-current=page]")?.textContent, "1htb.pdb");
 await act(async () => {
-  for (const label of ["Copy file path", "Toggle right panel", "Toggle bottom panel", "Open with default app"]) {
+  for (const label of ["Copy file path", "Toggle right panel", "Annotate this view", "Open with default app"]) {
     (container.querySelector(`[aria-label="${label}"]`) as HTMLElement).click();
   }
   container.querySelector('[aria-label="Open in another application"]')!.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, button: 0, ctrlKey: false }));
 });
 assert.ok(document.querySelector('[role="menu"]'));
 await act(async () => (document.querySelector('[role="menuitem"]') as HTMLElement).click());
-assert.deepEqual(calls, [["copy", path, "file"], ["dock", "right"], ["dock", "bottom"], ["default", path], ["editor", path]]);
+assert.deepEqual(calls, [["copy", path, "file"], ["dock", "right"], ["default", path], ["editor", path]]);
+assert.equal(container.querySelector('[aria-label="Toggle bottom panel"]'), null);
+assert.equal(container.querySelector('[aria-label="Stop annotating"]')?.textContent?.startsWith("Annotating"), true);
 await render("/other/mini.pdb", true);
 assert.equal(container.querySelector("[aria-current=page]")?.textContent, "mini.pdb");
 assert.equal(container.querySelectorAll('[aria-pressed="true"]').length, 2);
@@ -51,4 +53,4 @@ assert.ok(!container.textContent?.includes("burette-ketcher:"));
 assert.equal(container.querySelectorAll('[aria-pressed="true"]').length, 2);
 await act(async () => root.unmount());
 await window.happyDOM.close();
-console.log("File header: breadcrumbs, full-path copy, both dock toggles, active file updates and Open menu passed");
+console.log("File header: breadcrumbs, full-path copy, right dock and annotate toggles, active file updates and Open menu passed");
