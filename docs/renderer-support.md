@@ -123,6 +123,22 @@ For renderer behavior changes, also verify forced previews:
 ./scripts/force-preview.sh samples/mini.xyz
 ```
 
+### Mol* context menu
+
+In the desktop app, a right click in the Mol* viewer opens a macOS menu. The
+viewer still decides every row: it sends `molstarContextMenu` with a request ID,
+the click point and the rows as data (items, submenus, labels, choices,
+checkboxes, sliders and colour swatches). The shell parses them with
+`molstarContextMenuItems`, which prefixes IDs with `molstar-menu:` and holds the
+rows to the AppKit command's bounds. The shell answers with
+`molstarContextMenuResult`: `select` for a chosen row and for every slider or
+swatch move while the menu is open, then `closed`. The viewer records one undo
+step per live control on `closed`. A new picking level reopens the menu at the
+same point. Browser-dev and hosts without native menus answer `unsupported`, and
+the viewer opens its own web menu. The iPhone host keeps its `mobileContextMenu`
+path. The web menu's custom colour picker and representation hover preview have
+no native counterpart.
+
 ### xyzrender sheet editing
 
 The desktop/browser sheet preserves each item's placement and rotation while

@@ -2985,6 +2985,10 @@
       if (Array.isArray(body.angles) && body.angles.length === 3 && body.angles.every(Number.isFinite)) item.dataset.buretXyzrenderOrientationAngles = JSON.stringify(body.angles);
       return;
     }
+    if (event.source === window.parent && body.type === 'molstarContextMenuResult') {
+      handleMolstarNativeMenuResult(body);
+      return;
+    }
     if (body.type === 'xyzrenderContextMenuResult') {
       const pending = xyzrenderContextMenuPending;
       if (!pending || pending.requestId !== body.requestId) return;
@@ -8595,26 +8599,37 @@ SOFTWARE.
     parent.appendChild(row);
   }
 
-  function sceneTreeAdvancedSection(menu, viewer, target) {
+  function sceneTreeAdvancedParams(viewer, target) {
     const schema = sceneTreeReprParamSchema(viewer, target);
-    if (!schema) return;
-    const current = target.representation?.cell?.transform?.params?.type?.params || {};
+    if (!schema) return null;
     const rows = SCENE_TREE_ADVANCED_PARAMS
-      .filter(([name]) => schema[name] && ['number', 'boolean', 'select'].includes(schema[name].type));
+      .filter(([name]) => schema[name] && ['number', 'boolean', 'select'].includes(schema[name].type))
+      .map(([name, label]) => ({ name, label, definition: schema[name] }));
     const sizeThemes = viewer?.plugin?.representation?.structure?.themes?.sizeThemeRegistry;
-    if (!rows.length && !sizeThemes) return;
+    if (!rows.length && !sizeThemes) return null;
+    // Size is a theme of its own, alongside colour rather than inside the type.
+    const sizeOptions = sizeThemes?.getApplicableTypes?.({ structure: target.component?.cell?.obj?.data }) || [];
+    return {
+      rows,
+      current: target.representation?.cell?.transform?.params?.type?.params || {},
+      sizeOptions: sizeOptions.length > 1 ? sizeOptions : []
+    };
+  }
+
+  function sceneTreeAdvancedSection(menu, viewer, target) {
+    const advanced = sceneTreeAdvancedParams(viewer, target);
+    if (!advanced) return;
     sceneTreeMenuSection(menu);
     const disclosure = document.createElement('details');
     disclosure.className = 'buret-tree-menu-actions buret-tree-menu-advanced';
     const summary = document.createElement('summary');
     summary.textContent = 'Advanced';
     disclosure.appendChild(summary);
-    for (const [name, label] of rows) {
-      sceneTreeAdvancedControl(disclosure, name, label, schema[name], current[name]);
+    for (const { name, label, definition } of advanced.rows) {
+      sceneTreeAdvancedControl(disclosure, name, label, definition, advanced.current[name]);
     }
-    // Size is a theme of its own, alongside colour rather than inside the type.
-    const sizeOptions = sizeThemes?.getApplicableTypes?.({ structure: target.component?.cell?.obj?.data }) || [];
-    if (sizeOptions.length > 1) {
+    const sizeOptions = advanced.sizeOptions;
+    if (sizeOptions.length) {
       const row = document.createElement('label');
       row.className = 'buret-tree-menu-field';
       const caption = document.createElement('span');
@@ -8638,19 +8653,23 @@ SOFTWARE.
   // Both surface types can draw themselves as a mesh or as bare wireframe. That is
   // a choice about what the drawing is, not a tuning knob, so it sits beside Type
   // rather than under Advanced — and it only appears for a type that offers both.
-  function sceneTreeSurfaceFillRow(menu, viewer, target) {
+  function sceneTreeSurfaceFill(viewer, target) {
     const schema = sceneTreeReprParamSchema(viewer, target);
     const options = (schema?.visuals?.options || []).map(option => String(option[0]));
     const own = name => !name.startsWith('structure-');
     const solid = options.find(name => own(name) && name.endsWith('-mesh'));
     const wireframe = options.find(name => own(name) && name.endsWith('-wireframe'));
-    if (!solid || !wireframe) return;
+    if (!solid || !wireframe) return null;
     const current = target.representation?.cell?.transform?.params?.type?.params?.visuals;
-    const active = Array.isArray(current) && current.includes(wireframe) ? wireframe : solid;
-    sceneTreeMenuSelect(menu, 'Fill', 'representation-visual', [
-      { name: solid, label: 'Solid' },
-      { name: wireframe, label: 'Wireframe' }
-    ], active);
+    return {
+      options: [{ name: solid, label: 'Solid' }, { name: wireframe, label: 'Wireframe' }],
+      active: Array.isArray(current) && current.includes(wireframe) ? wireframe : solid
+    };
+  }
+
+  function sceneTreeSurfaceFillRow(menu, viewer, target) {
+    const fill = sceneTreeSurfaceFill(viewer, target);
+    if (fill) sceneTreeMenuSelect(menu, 'Fill', 'representation-visual', fill.options, fill.active);
   }
 
   // Painting a whole structure is a state commit, and a pointer crossing a list
@@ -24329,6 +24348,258 @@ SOFTWARE.
     });
   }
 
+  // The desktop app draws the 3D right click as a real macOS menu. The viewer
+  // still owns every row: it describes them as data, the host draws them, and
+  // the host sends back the chosen row plus every slider and swatch move while
+  // the menu is open. A host without native menus answers `unsupported` and the
+  // web menu below takes over.
+  let molstarNativeMenuPending = null;
+  let molstarNativeMenuSerial = 0;
+
+  // An NSMenu is as wide as its longest row, so the native menu uses short titles.
+  // Rows inside Export, Search and Compute drop the prefix their submenu already
+  // names. Actions still receive the full title for status and undo text.
+  const MOLSTAR_NATIVE_MENU_LABELS = {
+    focus: 'Focus',
+    'focus-atom': 'Focus atom',
+    'represent:menu': 'Style',
+    'represent:surface-options': 'Surface',
+    'analyze:pin-environment': 'Surroundings (5 Å)',
+    'save-modified': 'Modified structure',
+    'save-format:mmcif': 'mmCIF',
+    'save-format:pdb': 'PDB',
+    'save-format:sdf': 'Ligand as SDF',
+    'pubchem:identity': 'Identical in PubChem',
+    'pubchem:similarity': 'Similar in PubChem (90%)',
+    'compute:optimizeGeometry': 'Optimize geometry',
+    'compute:semiempiricalRm1': 'RM1 energy & charges',
+    'compute:alignPoses': 'Align & compare poses'
+  };
+
+  function molstarNativeMenuLabel(name, label) {
+    return MOLSTAR_NATIVE_MENU_LABELS[name] || String(label).replace(/^(Extract .+) as PDB$/, '$1');
+  }
+
+  function molstarNativeMenuIcon(paths) {
+    if (!paths) return undefined;
+    const svg = sceneTreeIconElement(paths);
+    svg.setAttribute('width', '24');
+    svg.setAttribute('height', '24');
+    const markup = new XMLSerializer().serializeToString(svg).replaceAll('currentColor', '#000');
+    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`;
+  }
+
+  // A slider or swatch sends a value per move. The first move of a control takes
+  // the undo snapshot and closing the menu records it, so a whole drag undoes as
+  // one step, the same as in the web menu.
+  function molstarNativeMenuLiveUndo(session, key, label) {
+    if (!session.undo.has(key)) session.undo.set(key, captureMolstarSceneUndoSnapshot(label));
+  }
+
+  function molstarNativeRepresentationMenu(session, target) {
+    const viewer = activeMolstarViewer();
+    const component = sceneTreeColorTargets(viewer).get(molstarContextComponentRef(target))?.[0];
+    const ref = component?.representations?.[0]?.cell?.transform?.ref;
+    const repTarget = ref ? sceneTreeRepresentationTargets(viewer).get(ref) : null;
+    if (!repTarget) return null;
+    const params = repTarget.representation?.cell?.transform?.params || {};
+    const nodeLabel = sceneTreeNodeByRef(sceneTreeNodes(viewer), ref)?.label || 'representation';
+    const options = list => list.map(option => ({ value: String(option.name), label: String(option.label) }));
+    const choose = (id, label, kind, value, list, run = choice => runSceneTreeSelectAction(kind, ref, choice)) => {
+      session.handlers.set(id, choice => {
+        const undoLabel = molstarSceneMenuSelectUndoLabel(kind, ref);
+        void (undoLabel ? runMolstarSceneEdit(undoLabel, () => run(String(choice))) : run(String(choice)));
+      });
+      return { kind: 'select', id, label, value: String(value || ''), options: options(list) };
+    };
+    const items = [{ kind: 'label', text: 'Representation' }];
+    const types = sceneTreeRepresentationTypes(viewer, [repTarget.component]);
+    if (types.length) {
+      items.push(choose('representation-type', 'Type', 'representation-type', params.type?.name, types));
+      items.push(choose('representation-add', 'Add another', 'add-representation', '', types,
+        type => duplicateSceneTreeRepresentation(ref, type)));
+    }
+    const fill = sceneTreeSurfaceFill(viewer, repTarget);
+    if (fill) items.push(choose('representation-visual', 'Fill', 'representation-visual', fill.active, fill.options));
+    const alpha = Number.isFinite(params.type?.params?.alpha) ? params.type.params.alpha : 1;
+    session.handlers.set('opacity', value => {
+      molstarNativeMenuLiveUndo(session, 'opacity', `opacity of ${nodeLabel}`);
+      void streamSceneTreeReprAlpha(ref, Number(value) / 100);
+    });
+    items.push({ kind: 'number', id: 'opacity', label: 'Opacity', value: Math.round(alpha * 100), min: 0, max: 100, step: 1, unit: '%' });
+    if (alpha < 0.999) {
+      session.handlers.set('outline-brightness', value => {
+        session.renderOnClose = true;
+        setMolstarOutlineBrightness(Number(value) / 100);
+      });
+      items.push({ kind: 'number', id: 'outline-brightness', label: 'Outline', value: Math.round(molstarOutlineBrightness * 100), min: 0, max: 100, step: 1, unit: '%' });
+    }
+
+    items.push({ kind: 'separator' }, { kind: 'label', text: 'Colour' });
+    items.push(choose('representation-color', 'Theme', 'representation-color', params.colorTheme?.name,
+      sceneTreeColorThemes(viewer, [repTarget.component])));
+    const tint = sceneTreeRepresentationTint(repTarget.representation);
+    session.handlers.set('tint', value => {
+      const colour = /^#[0-9a-f]{6}$/i.test(String(value)) ? Number.parseInt(String(value).slice(1), 16) : NaN;
+      if (!Number.isFinite(colour)) return;
+      molstarNativeMenuLiveUndo(session, 'tint', `colour of ${nodeLabel}`);
+      void streamSceneTreeTheme(ref, 'rep-tint-color', 'tint', colour);
+    });
+    items.push({
+      kind: 'swatches', id: 'tint',
+      colors: SCENE_TREE_UNIFORM_COLORS.map(entry => sceneTreeColorHex(entry.value)),
+      ...(Number.isFinite(tint) ? { active: sceneTreeColorHex(tint) } : {})
+    });
+
+    const advanced = sceneTreeAdvancedParams(viewer, repTarget);
+    const advancedItems = [];
+    for (const { name, label, definition } of advanced?.rows || []) {
+      const id = `param:${name}`;
+      const value = advanced.current[name];
+      const edit = next => runMolstarSceneEdit(`${name} of ${nodeLabel}`, () => applySceneTreeReprParam(ref, name, next));
+      if (definition.type === 'boolean') {
+        session.handlers.set(id, checked => { void edit(checked === true); });
+        advancedItems.push({ kind: 'checkbox', id, text: label, checked: value === true });
+      } else if (definition.type === 'select') {
+        const choices = (definition.options || []).map(option => ({ name: option[0], label: option[1] ?? option[0] }));
+        session.handlers.set(id, choice => {
+          const picked = choices.find(option => String(option.name) === String(choice));
+          if (picked) void edit(picked.name);
+        });
+        advancedItems.push({ kind: 'select', id, label, value: String(value ?? definition.defaultValue), options: options(choices) });
+      } else {
+        session.handlers.set(id, next => {
+          molstarNativeMenuLiveUndo(session, id, `${name} of ${nodeLabel}`);
+          void streamSceneTreeReprParam(ref, name, Number(next));
+        });
+        advancedItems.push({
+          kind: 'number', id, label,
+          value: Number.isFinite(value) ? value : definition.defaultValue,
+          min: definition.min ?? 0, max: definition.max ?? 1, step: definition.step ?? 0.01
+        });
+      }
+    }
+    if (advanced?.sizeOptions.length) {
+      advancedItems.push(choose('representation-size', 'Size by', 'representation-size', params.sizeTheme?.name,
+        advanced.sizeOptions.map(option => ({ name: option[0], label: option[1] ?? option[0] }))));
+    }
+    if (advancedItems.length) {
+      items.push({ kind: 'separator' }, { kind: 'submenu', id: 'advanced', text: 'Advanced', items: advancedItems });
+    }
+    return {
+      kind: 'submenu', id: 'represent:menu', text: molstarNativeMenuLabel('represent:menu'),
+      icon: molstarNativeMenuIcon(moleculeContextActionIcon('represent:menu')), items
+    };
+  }
+
+  function molstarNativeMenuEntries(session, target, mode) {
+    const action = entry => {
+      const [name, label] = entry;
+      const children = moleculeMenuActionChildren(entry);
+      const icon = molstarNativeMenuIcon(moleculeContextActionIcon(name));
+      const text = molstarNativeMenuLabel(name, label);
+      if (children.length) return { kind: 'submenu', id: name, text, icon, items: children.map(action) };
+      session.handlers.set(name, () => {
+        session.actionChosen = true;
+        void moleculeContextMenuAction(name, label, target);
+      });
+      return { kind: 'item', id: name, text, icon };
+    };
+    const grouped = new Map();
+    for (const entry of molstarContextMenuActions(target, mode)) {
+      const group = moleculeContextActionGroup(entry[0]);
+      if (!grouped.has(group)) grouped.set(group, []);
+      grouped.get(group).push(entry);
+    }
+    const body = [];
+    for (const section of MOLECULE_MENU_GROUPS) {
+      const entries = moleculeMenuSectionEntries(grouped, section);
+      if (!entries.length) continue;
+      if (body.length && section.breakBefore) body.push({ kind: 'separator' });
+      if (section.rootLabel) body.push({ kind: 'label', text: section.rootLabel });
+      if (!section.direct) {
+        const groupIds = section.groups || [section.id];
+        const items = [];
+        for (const groupId of groupIds) {
+          const groupEntries = grouped.get(groupId) || [];
+          if (!groupEntries.length) continue;
+          if (items.length) items.push({ kind: 'separator' });
+          if (groupIds.length > 1) items.push({ kind: 'label', text: MOLECULE_MENU_GROUP_TITLES[groupId] || section.title });
+          items.push(...groupEntries.map(action));
+        }
+        body.push({
+          kind: 'submenu', id: `section:${section.id}`, text: section.title,
+          icon: molstarNativeMenuIcon(MOLECULE_MENU_GROUP_ICONS[section.id]), items
+        });
+        continue;
+      }
+      if (!section.hideTitle) body.push({ kind: 'label', text: section.title });
+      for (const entry of entries) {
+        const item = entry[0] === 'represent:menu' ? molstarNativeRepresentationMenu(session, target) : action(entry);
+        if (item) body.push(item);
+      }
+    }
+    session.handlers.set('picking-level', level => {
+      if (VIEWPORT_GRANULARITIES.some(([value]) => value === level) && level !== mode) session.pickingLevel = level;
+    });
+    return [
+      { kind: 'label', text: mode === 'chain' ? molstarContextChainLabel(target.atom) : target.label },
+      {
+        kind: 'select', id: 'picking-level', label: 'Picking level', value: mode,
+        options: VIEWPORT_GRANULARITIES.map(([value, label]) => ({ value, label }))
+      },
+      { kind: 'separator' },
+      ...body
+    ];
+  }
+
+  function showDesktopNativeMolstarContextMenu(event, pick, target, mode) {
+    const config = activeConfig || window.BuretteConfig || {};
+    if (config.appViewer !== true || document.body?.classList.contains('burette-mobile-host')) return false;
+    const point = { clientX: event.clientX, clientY: event.clientY };
+    const session = {
+      requestId: `molstar-menu-${++molstarNativeMenuSerial}`,
+      handlers: new Map(),
+      undo: new Map(),
+      actionChosen: false,
+      pickingLevel: '',
+      renderOnClose: false,
+      fallback: () => showMolstarContextMenu(point, pick, { forceWeb: true }),
+      close() {
+        for (const snapshot of this.undo.values()) pushMolstarEditUndoSnapshot(snapshot);
+        if (this.renderOnClose) scheduleSceneTreeRender();
+        if (this.pickingLevel) {
+          // The web menu re-lists its actions in place; a native menu cannot, so
+          // it opens again at the same point with the new level.
+          setMolstarSelectionLevel(this.pickingLevel);
+          const levelLabel = VIEWPORT_GRANULARITIES.find(([value]) => value === this.pickingLevel)?.[1] || this.pickingLevel;
+          setStatus(`[web] Picking level set to ${levelLabel.toLowerCase()}.`);
+          showMolstarContextMenu(point, pick);
+        } else if (!this.actionChosen) {
+          // A chosen action hides the menu state itself once it has run.
+          hideMolstarContextMenu();
+        }
+      }
+    };
+    const items = molstarNativeMenuEntries(session, { ...target, pickingLevel: mode }, mode);
+    molstarNativeMenuPending = session;
+    if (postHostMessage({ type: 'molstarContextMenu', requestId: session.requestId, ...point, items })) return true;
+    molstarNativeMenuPending = null;
+    return false;
+  }
+
+  function handleMolstarNativeMenuResult(body) {
+    const session = molstarNativeMenuPending;
+    if (!session || session.requestId !== body.requestId) return;
+    if (body.event === 'select') {
+      session.handlers.get(String(body.id || ''))?.(body.value);
+      return;
+    }
+    molstarNativeMenuPending = null;
+    if (body.event === 'unsupported') session.fallback();
+    else if (body.event === 'closed') session.close();
+  }
+
   // Only explicit context-menu commands enter edit history. Ordinary picking and
   // camera movement stay ephemeral, while deliberate selection commands, visual
   // edits and newly-created scene objects all undo as one menu action.
@@ -26387,7 +26658,7 @@ SOFTWARE.
     return trigger;
   }
 
-  function showMolstarContextMenu(event, pick) {
+  function showMolstarContextMenu(event, pick, options = {}) {
     hideMolstarContextMenu({ keepMoleculePreview: true });
     molstarContextMenuPick = pick || null;
     const menuTarget = molstarContextTarget();
@@ -26408,6 +26679,7 @@ SOFTWARE.
       molstarContextMenuMode = mode;
       return;
     }
+    if (!options.forceWeb && showDesktopNativeMolstarContextMenu(event, pick, menuTarget, mode)) return;
     const menu = document.createElement('div');
     menu.className = 'buret-molecule-context-menu';
     menu.setAttribute('role', 'menu');

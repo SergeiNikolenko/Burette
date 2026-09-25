@@ -6587,7 +6587,7 @@ assert.match(previewViewer, /const menu = document\.querySelector\('\.buret-mole
 assert.match(previewViewer, /const previousFocus = menu\?\._buretPreviousFocus/);
 assert.match(previewViewer, /menu\?\.remove\(\)/);
 assert.match(previewViewer, /if \(options\.keepMoleculePreview\) return;/);
-assert.match(previewViewer, /showMolstarContextMenu\(event, pick\)[\s\S]*?hideMolstarContextMenu\(\{ keepMoleculePreview: true \}\);/);
+assert.match(previewViewer, /function showMolstarContextMenu\(event, pick, options = \{\}\) \{\s*hideMolstarContextMenu\(\{ keepMoleculePreview: true \}\);/);
 assert.match(previewViewer, /const hideMoleculePreviewFromEvent = \(event\) => \{[\s\S]*?scheduleMolstarSelectedMoleculePreview\(\);/);
 assert.match(previewViewer, /function installMolstarSelectionPreviewSync\(viewer\)/);
 assert.match(previewViewer, /function notifyMolstarSelectionChanged\(target\)/);
