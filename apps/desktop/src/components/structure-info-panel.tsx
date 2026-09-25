@@ -353,7 +353,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         detail: document.title,
         action: () => void actions.revealDocument(document),
       },
-    ], { x: rect.left, y: rect.bottom + 6 }, { forceWeb: true });
+    ], { x: rect.left, y: rect.bottom + 6 });
   };
 
   return (
@@ -1963,7 +1963,7 @@ function TextFileInfoPanel({ document, dockDrops, actions }: { document: TextFil
         detail: document.title,
         action: () => void actions.revealPath(document.path, "file"),
       },
-    ], { x: rect.left, y: rect.bottom + 6 }, { forceWeb: true });
+    ], { x: rect.left, y: rect.bottom + 6 });
   };
 
   return (
@@ -3066,12 +3066,12 @@ function XtbResultsPanel({ document, job, actions }: { document: ViewerDocument;
   const showResultsMenu = (event: MouseEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    void showNativeContextMenu(xtbResultMenuItems(result, actions), { x: event.clientX, y: event.clientY }, { forceWeb: true });
+    void showNativeContextMenu(xtbResultMenuItems(result, actions), { x: event.clientX, y: event.clientY });
   };
   const showArtifactMenu = (event: MouseEvent<HTMLButtonElement>, artifact: XtbArtifact) => {
     event.preventDefault();
     event.stopPropagation();
-    void showNativeContextMenu(xtbArtifactMenuItems(artifact, actions), { x: event.clientX, y: event.clientY }, { forceWeb: true });
+    void showNativeContextMenu(xtbArtifactMenuItems(artifact, actions), { x: event.clientX, y: event.clientY });
   };
   return (
     <InspectorSection className="structure-inspector-xtb-results" title="Results" detail={operationTitle(result.operation)}>
@@ -4052,7 +4052,7 @@ function StructureActionRow({
         actions.runStructureViewerAction(document, { type: "clear_selection", label: "Clear selection" });
         setActiveActionKey(null);
       },
-    }), { x: event.clientX, y: event.clientY }, { forceWeb: true });
+    }), { x: event.clientX, y: event.clientY });
   };
 
   if (secondaryAction) {

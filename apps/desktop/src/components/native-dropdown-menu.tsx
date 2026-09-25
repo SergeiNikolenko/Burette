@@ -12,7 +12,7 @@ export function NativeDropdownMenu(props: ComponentProps<typeof RadixDropdownMen
     const rect = element.getBoundingClientRect();
     setOpen(true);
     try {
-      await showNativeContextMenu(props.items, { x: rect.left, y: props.side === "top" ? rect.top : rect.bottom });
+      await showNativeContextMenu(props.items, { x: rect.left, y: props.side === "top" ? rect.top : rect.bottom }, { presentation: "dropdown" });
     } finally {
       setOpen(false);
     }

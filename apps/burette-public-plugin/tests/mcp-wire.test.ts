@@ -3,6 +3,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod/v4";
+import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { KETCHER_AGENT_API_VERSION } from "@burette/ketcher-agent-contract";
 import { createKetcherWidgetHtml } from "../lib/widget";
@@ -11,6 +12,7 @@ import {
   NOAUTH_SECURITY_SCHEMES,
 } from "../lib/contracts";
 import { POST as handleMcpPost } from "../app/mcp/route";
+import { prepareStructureText, structureSummaryText } from "../lib/structure-service";
 
 async function readSseResponse(response: Response) {
   const dataLine = (await response.text())
@@ -108,6 +110,42 @@ describe("MCP wire contract", () => {
     deliver(cleared);
     expect(widgetWindow.__BURETTE_HOSTED_KETCHER_SEED__?.content).toBe("");
     expect(seedEvents).toBe(3);
+  });
+
+  test("starts cross-origin workers through a same-origin blob that keeps the script location", () => {
+    const blobs = new Map<string, string>();
+    const started: Array<{ url: string; options?: { type?: string } }> = [];
+    class FakeWorker {
+      constructor(url: string, options?: { type?: string }) { started.push({ url: String(url), options }); }
+    }
+    const FakeURL = Object.assign(function (url: string, base?: string) { return new URL(url, base); }, {
+      createObjectURL: (blob: { source: string }) => {
+        const url = `blob:https://sandbox.example/${blobs.size}`;
+        blobs.set(url, blob.source);
+        return url;
+      },
+    });
+    const widgetWindow = { parent: {}, Worker: FakeWorker, addEventListener: () => {} } as Record<string, unknown>;
+    const bootstrap = createKetcherWidgetHtml("https://burette.example").match(/<script>([\s\S]*?)<\/script>/u)?.[1];
+    runInNewContext(bootstrap!, {
+      window: widgetWindow, TextEncoder, CustomEvent, URL: FakeURL,
+      Blob: class { source: string; constructor(parts: string[]) { this.source = parts.join(""); } },
+      document: { baseURI: "https://sandbox.example/widget" },
+      location: { origin: "https://sandbox.example" },
+    });
+    const Worker = widgetWindow.Worker as new (url: string, options?: { type?: string }) => unknown;
+    const script = "https://burette.example/viewer-shell/assets/indigoWorker.js";
+    new Worker(script, { type: "module" });
+    new Worker(script);
+    new Worker("https://sandbox.example/local-worker.js", { type: "module" });
+
+    const setLocation = `Object.defineProperty(self, 'location', { value: new URL("${script}"), configurable: true });`;
+    // Module workers would fetch the script under worker-src, which the host limits to blob:.
+    expect(started.map(({ url, options }) => [blobs.get(url) ?? url, options?.type])).toEqual([
+      [`${setLocation} importScripts("${script}");`, "classic"],
+      [`${setLocation} importScripts("${script}");`, "classic"],
+      ["https://sandbox.example/local-worker.js", "module"],
+    ]);
   });
 
   test("serializes noauth security schemes at top level and in _meta", async () => {
@@ -211,7 +249,30 @@ describe("MCP wire contract", () => {
     await server.close();
   });
 
-  test("publishes output schemas for every public Burette tool", async () => {
+  test("states the reviewed counts in the text the model answers from", async () => {
+    const text = (file: string) => structureSummaryText(prepareStructureText(
+      readFileSync(new URL(`../../../samples/${file}`, import.meta.url), "utf8"), file, "attachment",
+    ).summary);
+    expect(text("mini.pdb")).toBe("mini.pdb: PDB macromolecule, 1 chain, 9 atoms, 0 ligand instances. Atoms 9; Residues 2; Chains 1; Models 1; Elements C 5, N 2, O 2. chain A: 2 residues, 9 atoms.");
+    expect(text("mini.cif")).toContain("chain A: 1 residue, 4 atoms.");
+    expect(text("mini.sdf")).toBe("mini.sdf: SDF collection, 2 molecules, 9 atoms. Molecules 2; Atoms 9; Bonds 8; Elements C 6, H 2, O 1.");
+
+    const response = await handleMcpPost(new Request("https://burette.example/mcp", {
+      method: "POST",
+      headers: {
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+        "mcp-protocol-version": LATEST_PROTOCOL_VERSION,
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: {
+        name: "open_ketcher", arguments: { structure: { format: "smiles", content: "c1ccncc1O.[Na+]" } },
+      } }),
+    }));
+    const payload = await readSseResponse(response) as { result: { content: Array<{ text: string }> } };
+    expect(payload.result.content[0]!.text).toBe("Ketcher editor is ready with a molecule of 8 atoms and 7 bonds (SMILES c1ccncc1O.[Na+]) at structure revision 1. Nothing was written to a file.");
+  });
+
+  test("publishes output schemas and the submitted annotations for every public Burette tool", async () => {
     const response = await handleMcpPost(new Request("https://burette.example/mcp", {
       method: "POST",
       headers: {
@@ -224,7 +285,11 @@ describe("MCP wire contract", () => {
     expect(response.status).toBe(200);
 
     const payload = await readSseResponse(response) as {
-      result?: { tools?: Array<{ name?: string; outputSchema?: Record<string, unknown> }> };
+      result?: { tools?: Array<{ name?: string; outputSchema?: Record<string, unknown>; annotations?: Record<string, unknown> }> };
+    };
+    // Scan Tools imports the served annotations; the portal justifications must describe the same values.
+    const submitted = JSON.parse(readFileSync(new URL("../chatgpt-app-submission.json", import.meta.url), "utf8")) as {
+      tools: Record<string, { annotations: Record<string, boolean> }>;
     };
     const tools = payload.result?.tools ?? [];
     expect(tools.map((tool) => tool.name).sort()).toEqual([
@@ -234,6 +299,9 @@ describe("MCP wire contract", () => {
       "preview_pdb_structure",
       "render_molecular_scene",
     ]);
-    for (const tool of tools) expect(tool.outputSchema).toBeDefined();
+    for (const tool of tools) {
+      expect(tool.outputSchema).toBeDefined();
+      expect(tool.annotations).toMatchObject(submitted.tools[tool.name!]!.annotations);
+    }
   });
 });

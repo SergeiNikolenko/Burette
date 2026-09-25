@@ -24319,16 +24319,21 @@ SOFTWARE.
 
   function moleculeContextActionIcon(action) {
     const name = String(action || '');
+    // One trash can marks the delete group; the bulk row below it stays text-only.
+    if (name === 'remove-type') return null;
     if (name.startsWith('remove')) return SCENE_TREE_ICON.trash;
     if (name.startsWith('focus')) return SCENE_TREE_ICON.focus;
-    if (name === 'view:hide') return SCENE_TREE_ICON.eye;
+    if (name === 'view:hide') return APP_ICON_DATA.EyeOff;
     if (name === 'view:isolate') return SCENE_TREE_ICON.isolate;
     if (name === 'view:show-all') return SCENE_TREE_ICON.restore;
-    if (name.startsWith('represent:surface')) return ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
-    if (name === 'represent:menu') return APP_ICON_DATA.SettingsSlider;
+    // Surface targets inside the submenu inherit the parent's icon.
+    if (name === 'represent:surface' || name === 'represent:surface-options') return APP_ICON_DATA.Cube;
+    if (name.startsWith('represent:surface-')) return null;
+    if (name === 'represent:menu') return APP_ICON_DATA.ColorTheme;
     // A box with a plus: the selection becomes a new object in the scene.
     if (name === 'represent:component') return APP_ICON_DATA.FolderPlus;
-    if (name === 'analyze:surroundings' || name === 'analyze:pin-environment') return ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
+    if (name === 'analyze:pin-environment') return APP_ICON_DATA.Pin;
+    if (name === 'analyze:surroundings') return ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
     if (name === 'analyze:label') return APP_ICON_DATA.Tag;
     if (name === 'analyze:distance') return ['M21.3 15.3 8.7 2.7a1 1 0 0 0-1.4 0L2.7 7.3a1 1 0 0 0 0 1.4l12.6 12.6a1 1 0 0 0 1.4 0l4.6-4.6a1 1 0 0 0 0-1.4Z', 'M14.5 12.5 12 15', 'M11.5 9.5 9 12', 'M8.5 6.5 6 9', 'M17.5 15.5 15 18'];
     if (name === 'analyze:interactions') return ['M6 6h.01', 'M18 18h.01', 'M18 6h.01', 'M6 18h.01', 'M7.5 7.5 16.5 16.5', 'M16.5 7.5 7.5 16.5'];
@@ -24336,8 +24341,7 @@ SOFTWARE.
     if (name === 'analyze:dihedral') return ['M3 17h6l6-10h6', 'M9 17v4', 'M15 7V3'];
     if (name.startsWith('align')) return APP_ICON_DATA.CompareArrows;
     if (name.startsWith('colour:')) return APP_ICON_DATA.ColorTheme;
-    if (name.startsWith('extract:') || name.startsWith('split:')) return ['M12 3v18', 'M5 8 3 12l2 4', 'M19 8l2 4-2 4'];
-    if (name.startsWith('select')) return APP_ICON_DATA.Check;
+    if (name.startsWith('select')) return APP_ICON_DATA.CheckCircle;
     if (name === 'molstar') {
       return APP_ICON_DATA.ExternalLink;
     }
@@ -24533,7 +24537,7 @@ SOFTWARE.
           renderer: 'molstar',
           contextDocument
         });
-        setStatus(posted ? `[web] Opening ${targetLabel} in Mol*...` : '[web] Separate Mol* view is unavailable in this host.');
+        setStatus(posted ? `[web] Opening ${targetLabel} in a new tab...` : '[web] Separate Mol* view is unavailable in this host.');
       } else if (action === 'save-modified') {
         const saved = saveMolstarModifiedStructure();
         setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
@@ -26218,7 +26222,7 @@ SOFTWARE.
     const triggerChevron = document.createElement('span');
     triggerChevron.className = 'buret-tree-menu-chevron';
     triggerChevron.appendChild(sceneTreeIconElement(['m9 18 6-6-6-6']));
-    trigger.append(moleculeMenuIcon(moleculeContextActionIcon('represent:menu')), triggerLabel, triggerValue, triggerChevron);
+    trigger.append(moleculeMenuIcon(APP_ICON_DATA.SettingsSlider), triggerLabel, triggerValue, triggerChevron);
     container.append(heading, trigger);
 
     const typeMenu = document.createElement('div');

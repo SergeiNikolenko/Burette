@@ -192,6 +192,8 @@ export function useAppGridWorkflows({
               .catch((error) => pushErrorStatus(error, "Grid append failed"));
           },
         })),
+        undefined,
+        { presentation: "dropdown" },
       );
     },
     [appendDelimitedGridRecords, pushErrorStatus, pushStatus],

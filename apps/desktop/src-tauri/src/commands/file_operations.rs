@@ -41,10 +41,62 @@ pub(crate) enum FileOperation {
 // These commands operate on explicit sidebar paths. Existing destinations are
 // never overwritten, and Trash always goes through the system recycle bin.
 #[tauri::command]
-pub(crate) async fn operate_sidebar_file(request: FileOperation) -> Result<Option<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || operate(request))
+pub(crate) async fn operate_sidebar_file(
+    app: tauri::AppHandle,
+    request: FileOperation,
+) -> Result<Option<String>, String> {
+    let trashing = matches!(
+        request,
+        FileOperation::Trash { .. } | FileOperation::TrashFolder { .. }
+    );
+    let output = tauri::async_runtime::spawn_blocking(move || operate(request))
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())??;
+    #[cfg(target_os = "macos")]
+    if trashing {
+        // Trash runs without a confirmation, so it sounds like Finder instead.
+        let _ = app.run_on_main_thread(play_trash_sound);
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = (app, trashing);
+    Ok(output)
+}
+
+#[cfg(target_os = "macos")]
+fn play_trash_sound() {
+    use cocoa::base::{id, nil, BOOL, NO, YES};
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::cell::Cell;
+    const SOUND: &std::ffi::CStr = c"/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/finder/move to trash.aif";
+    // Kept for the app lifetime: releasing an NSSound cuts its playback short.
+    thread_local!(static CACHED: Cell<id> = const { Cell::new(nil) });
+    unsafe {
+        // Finder stays silent when "Play user interface sound effects" is off.
+        let defaults: id = msg_send![class!(NSUserDefaults), standardUserDefaults];
+        let key: id = msg_send![class!(NSString), stringWithUTF8String: c"com.apple.sound.uiaudio.enabled".as_ptr()];
+        let enabled: id = msg_send![defaults, objectForKey: key];
+        if enabled != nil {
+            let enabled: BOOL = msg_send![enabled, boolValue];
+            if enabled == NO {
+                return;
+            }
+        }
+        let mut sound = CACHED.get();
+        if sound == nil {
+            let path: id = msg_send![class!(NSString), stringWithUTF8String: SOUND.as_ptr()];
+            let allocated: id = msg_send![class!(NSSound), alloc];
+            sound = msg_send![allocated, initWithContentsOfFile: path byReference: YES];
+            if sound == nil {
+                return;
+            }
+            CACHED.set(sound);
+        }
+        // A batch trashes file by file; one sound covers the whole batch.
+        let playing: BOOL = msg_send![sound, isPlaying];
+        if playing == NO {
+            let _: BOOL = msg_send![sound, play];
+        }
+    }
 }
 
 fn child_path(parent: &Path, name: &str) -> Result<PathBuf, String> {

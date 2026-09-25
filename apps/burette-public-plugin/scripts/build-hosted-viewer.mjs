@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { cp, mkdir, readFile, rm } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,7 +67,14 @@ await run("bun", [
   "--format",
   "iife",
   "--minify",
+  // ext-apps ships a bun-built dist whose `typeof require` guards bun rewrites
+  // to an undefined `__require` in IIFE output, killing the bridge at load.
+  "--define",
+  "require=undefined",
 ], { cwd: REPO_ROOT, env: process.env });
+if ((await readFile(HOSTED_APP_OUTPUT, "utf8")).includes("__require")) {
+  throw new Error("The hosted Apps bridge bundle references an undefined __require.");
+}
 
 await run("bun", ["run", "build"], {
   cwd: path.join(REPO_ROOT, "apps/desktop"),
@@ -78,6 +85,12 @@ await run("bun", ["run", "build"], {
     VITE_BURETTE_WEB_ASSETS_BASE: "/burette-viewer/",
   },
 });
+
+// The widget HTML links the bundle stylesheet by this fixed name.
+const shellIndex = await readFile(path.join(OUTPUT_SHELL_ROOT, "index.html"), "utf8");
+if (!shellIndex.includes('rel="stylesheet" crossorigin href="./assets/burette-hosted-shell.css"')) {
+  throw new Error("The hosted shell bundle stylesheet is not assets/burette-hosted-shell.css.");
+}
 
 await run("bun", ["run", "build"], {
   cwd: path.join(REPO_ROOT, "apps/desktop"),

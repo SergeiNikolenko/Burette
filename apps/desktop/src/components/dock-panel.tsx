@@ -182,7 +182,6 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
         action: () => actions.openDockTab(area, kind),
       })),
       { x: rect.left, y: rect.bottom + 6 },
-      { forceWeb: true },
     );
   };
 

@@ -1,12 +1,12 @@
 import { withMenuIcons } from "./menu-icons";
 import { isTauriRuntime } from "../lib/tauri";
-import type { MenuItemSpec } from "./menu-types";
+import type { MenuItemSpec, MenuPresentation } from "./menu-types";
 import { showRadixContextMenu } from "./radix-menu";
 
 export async function showNativeContextMenu(
   spec: MenuItemSpec[],
   at?: { x: number; y: number },
-  options: { forceWeb?: boolean } = {},
+  options: { forceWeb?: boolean; presentation?: MenuPresentation } = {},
 ): Promise<boolean> {
   if (!options.forceWeb) spec = withMenuIcons(spec);
   if (options.forceWeb || !isTauriRuntime()) {
@@ -15,7 +15,15 @@ export async function showNativeContextMenu(
   }
 
   const { showMacContextMenu } = await import("./mac-context-menu");
-  if (await showMacContextMenu(spec, at)) return true;
+  if (await showMacContextMenu(spec, at, options.presentation)) return true;
+  // Live controls exist only in the macOS popup; elsewhere the web menu keeps them.
+  const hasControls = (entries: MenuItemSpec[]): boolean => entries.some((entry) =>
+    entry.kind === "swatches" || entry.kind === "number" || entry.kind === "select"
+    || (entry.kind === "submenu" && hasControls(entry.items)));
+  if (hasControls(spec)) {
+    showRadixContextMenu(spec, at);
+    return true;
+  }
 
   const [{ LogicalPosition }, { Menu }, { MenuItem }, { CheckMenuItem }, { PredefinedMenuItem }, { Submenu }, { IconMenuItem }] = await Promise.all([
     import("@tauri-apps/api/dpi"),
@@ -27,11 +35,8 @@ export async function showNativeContextMenu(
     import("@tauri-apps/api/menu/iconMenuItem"),
   ]);
 
-  // A native menu holds commands, so the richer kinds map down to what AppKit
-  // can draw: a heading becomes a disabled caption, a checkbox its own item
-  // type. Swatches and parameter fields have no native form at all - the menus
-  // that carry them are opened with forceWeb, and dropping them here keeps a
-  // native fallback usable instead of failing to build.
+  // The Tauri menu API holds commands only: a heading becomes a disabled
+  // caption and a checkbox its own item type.
   const items = await Promise.all(
     spec.flatMap((entry) => {
       if (entry.kind === "separator") {

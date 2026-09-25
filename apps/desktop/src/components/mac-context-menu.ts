@@ -1,6 +1,7 @@
 import { nativeMenuImage } from "./menu-icons";
 import { invoke } from "@tauri-apps/api/core";
-import type { MenuItemSpec } from "./menu-types";
+import { listen } from "@tauri-apps/api/event";
+import type { MenuItemSpec, MenuPresentation } from "./menu-types";
 
 // SDK icons become AppKit template images. Older menu surfaces may still name
 // an SF Symbol; explicit SDK images take precedence.
@@ -59,11 +60,16 @@ const symbols: Record<string, string> = {
 
 type NativeEntry =
   | { kind: "separator" }
-  | { kind: "item"; id: string; text: string; enabled: boolean; symbol?: string; image?: string; accelerator?: string; checked?: boolean }
-  | { kind: "submenu"; id: string; text: string; enabled: boolean; symbol?: string; image?: string; items: NativeEntry[] };
+  | { kind: "item"; id: string; text: string; enabled: boolean; symbol?: string; image?: string; subtitle?: string; accelerator?: string; checked?: boolean }
+  | { kind: "submenu"; id: string; text: string; enabled: boolean; symbol?: string; image?: string; subtitle?: string; items: NativeEntry[] }
+  | { kind: "slider"; id: string; text: string; symbol?: string; value: number; min: number; max: number; step: number; unit?: string }
+  | { kind: "colours"; id: string; colors: string[]; active?: string };
 type PopupResult = { kind: "shown"; selection: string | null } | { kind: "unsupported" };
+type MenuValue = { session: string; id: string; value: number | string };
 
-export async function showMacContextMenu(spec: MenuItemSpec[], at?: { x: number; y: number }): Promise<boolean> {
+const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
+
+export async function showMacContextMenu(spec: MenuItemSpec[], at?: { x: number; y: number }, presentation: MenuPresentation = "context"): Promise<boolean> {
   const images = new Map<string, string>();
   const prepare = async (entries: MenuItemSpec[]): Promise<void> => {
     await Promise.all(entries.map(async entry => {
@@ -74,12 +80,36 @@ export async function showMacContextMenu(spec: MenuItemSpec[], at?: { x: number;
   };
   await prepare(spec);
   const actions = new Map<string, () => unknown>();
+  // Sliders and swatches apply while the menu is still open, not on close.
+  const live = new Map<string, (value: number | string) => unknown>();
   const serialize = (entries: MenuItemSpec[]): NativeEntry[] => entries.flatMap((entry): NativeEntry[] => {
     if (entry.kind === "separator") return [{ kind: "separator" }];
     if (entry.kind === "label") return [{ kind: "item", id: entry.id, text: entry.text, enabled: false }];
-    if (entry.kind !== "item" && entry.kind !== "submenu" && entry.kind !== "checkbox") return [];
+    if (entry.kind === "number") {
+      if (entry.action && !entry.disabled) live.set(entry.id, (value) => entry.action?.(Number(value)));
+      const min = entry.min ?? 0;
+      return [{ kind: "slider", id: entry.id, text: entry.label, value: entry.value, min, max: entry.max ?? Math.max(min + 1, entry.value),
+        step: entry.step ?? 0, ...(entry.unit ? { unit: entry.unit } : {}), ...(entry.nativeSymbol ? { symbol: entry.nativeSymbol } : {}) }];
+    }
+    if (entry.kind === "swatches") {
+      if (entry.action) live.set(entry.id, (value) => entry.action?.(String(value)));
+      const colors = entry.colors.filter((colour) => HEX_COLOUR.test(colour));
+      return [{ kind: "colours", id: entry.id, colors,
+        ...(entry.activeColor && HEX_COLOUR.test(entry.activeColor) ? { active: entry.activeColor } : {}) }];
+    }
+    if (entry.kind === "select") {
+      // A choice is a submenu whose current option carries the checkmark.
+      return [{ kind: "submenu", id: entry.id, text: entry.label, enabled: !entry.disabled && entry.options.length > 0,
+        items: entry.options.map((option) => {
+          const id = `${entry.id}:${option}`;
+          if (entry.action) actions.set(id, () => entry.action?.(option));
+          return { kind: "item", id, text: entry.optionLabels?.[option] ?? option, enabled: true, checked: option === entry.value };
+        }) }];
+    }
     const symbol = ("nativeSymbol" in entry ? entry.nativeSymbol : undefined) ?? symbols[entry.id];
-    const common = { id: entry.id, text: entry.text, enabled: !entry.disabled, ...(images.has(entry.id) ? { image: images.get(entry.id) } : symbol ? { symbol } : {}) };
+    const common = { id: entry.id, text: entry.text, enabled: !entry.disabled,
+      ...(entry.detail ? { subtitle: entry.detail } : {}),
+      ...(images.has(entry.id) ? { image: images.get(entry.id) } : symbol ? { symbol } : {}) };
     if (entry.kind === "submenu") return [{ kind: "submenu", ...common, items: serialize(entry.items) }];
     if (!entry.disabled && entry.action) {
       actions.set(entry.id, entry.kind === "checkbox" ? () => entry.action?.(!entry.checked) : entry.action);
@@ -89,7 +119,19 @@ export async function showMacContextMenu(spec: MenuItemSpec[], at?: { x: number;
       ...(entry.kind === "checkbox" ? { checked: entry.checked } : {}),
     }];
   });
-  const result = await invoke<PopupResult>("popup_macos_context_menu", { items: serialize(spec), at });
+  const items = serialize(spec);
+  const session = crypto.randomUUID();
+  const unlisten = live.size
+    ? await listen<MenuValue>("native-context-menu-value", ({ payload }) => {
+        if (payload.session === session) void live.get(payload.id)?.(payload.value);
+      })
+    : undefined;
+  let result: PopupResult;
+  try {
+    result = await invoke<PopupResult>("popup_macos_context_menu", { items, at, session, presentation });
+  } finally {
+    unlisten?.();
+  }
   if (result.kind === "unsupported") return false;
   if (result.selection) await actions.get(result.selection)?.();
   return true;

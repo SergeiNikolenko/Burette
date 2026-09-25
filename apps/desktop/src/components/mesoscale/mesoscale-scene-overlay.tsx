@@ -33,7 +33,7 @@ export function MesoscaleSceneOverlay({ document, onClose }: { document: ViewerD
       { kind: "separator" },
       { kind: "item", id: "mesoscale-export-molx", text: "Export Mol* state (.molx)", icon: "Download", action: () => run({ type: "exportState", format: "molx" }) },
       { kind: "item", id: "mesoscale-export-molj", text: "Export Mol* JSON (.molj)", icon: "Download", action: () => run({ type: "exportState", format: "molj" }) },
-    ], { x: rect.right, y: rect.bottom + 6 }, { forceWeb: true });
+    ], { x: rect.right, y: rect.bottom + 6 });
   };
 
   return (

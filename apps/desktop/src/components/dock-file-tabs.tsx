@@ -41,7 +41,7 @@ export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, 
           ...(capabilities.scene || capabilities.xyzrender ? [menuItem("open-3d", "Mol*", () => renderer("molstar"))] : []),
           ...(capabilities.xyzrender ? [menuItem("open-xyzrender", "xyzrender", () => renderer("xyzrender-external"))] : []),
         ];
-        void showNativeContextMenu(items, { x: event.clientX, y: event.clientY }, { forceWeb: true });
+        void showNativeContextMenu(items, { x: event.clientX, y: event.clientY });
       };
       return <DockFileTab key={entry.key} active={active} payload={payload} state={state} actions={actions} menu={menu}
         entry={entry} text={text} select={select} />;

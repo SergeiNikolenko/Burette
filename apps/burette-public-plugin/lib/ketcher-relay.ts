@@ -182,8 +182,35 @@ function structureSummary(input: KetcherStructureInput | null) {
       return { kind: "empty" as const, atomCount: 0, bondCount: 0, componentCount: 0 };
     }
   }
-  const atomCount = (input.content.match(/(?:\[[^\]]+\]|Br|Cl|[BCNOPSFIH])/gu) ?? []).length;
-  return { kind: atomCount > 0 ? "molecule" as const : "empty" as const, atomCount, bondCount: 0, componentCount: input.content.split(".").length };
+  const { atomCount, bondCount } = smilesCounts(input.content);
+  return {
+    kind: atomCount > 0 ? "molecule" as const : "empty" as const,
+    atomCount,
+    bondCount,
+    componentCount: input.content.split(".").filter((part) => part.trim()).length,
+  };
+}
+
+// Heavy-atom graph counts for the SMILES grammar, including aromatic atoms,
+// branches, ring closures, and dot-disconnected components.
+function smilesCounts(content: string) {
+  let atomCount = 0, bondCount = 0, previous = false;
+  const branches: boolean[] = [];
+  const openRings = new Set<string>();
+  for (const [token] of content.matchAll(/\[[^\]]*\]|Br|Cl|[BCNOPSFI]|[bcnops]|%\d{2}|\d|[().]/gu)) {
+    if (token === "(") branches.push(previous);
+    else if (token === ")") previous = branches.pop() ?? false;
+    else if (token === ".") previous = false;
+    else if (/^(?:%\d{2}|\d)$/u.test(token)) {
+      if (openRings.delete(token)) bondCount += 1;
+      else openRings.add(token);
+    } else {
+      atomCount += 1;
+      if (previous) bondCount += 1;
+      previous = true;
+    }
+  }
+  return { atomCount, bondCount };
 }
 
 function molCounts(content: string) {
