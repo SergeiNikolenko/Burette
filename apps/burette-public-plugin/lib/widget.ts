@@ -9,7 +9,7 @@ export const VIEWER_SHELL_STYLES_PATH =
 export const VIEWER_RUNTIME_ASSETS_PATH = "/burette-viewer/";
 export const VIEWER_MOBILE_SCRIPT_PATH = "/burette-hosted-mobile.js";
 export const VIEWER_APP_BRIDGE_SCRIPT_PATH = "/burette-hosted-app.js";
-const VIEWER_SHELL_ASSET_VERSION = "viewer-v21";
+const VIEWER_SHELL_ASSET_VERSION = "viewer-v23";
 
 function assetUrl(origin: string, assetPath: string): string {
   if (!origin) return assetPath;
@@ -61,7 +61,9 @@ export function createViewerWidgetHtml(assetOrigin = ""): string {
 }
 
 function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
-  const shellScript = `${assetUrl(assetOrigin, VIEWER_SHELL_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
+  // No cache-busting query here: lazy chunks import the entry by its bare URL,
+  // and a second URL would evaluate the shell twice into two React roots.
+  const shellScript = assetUrl(assetOrigin, VIEWER_SHELL_SCRIPT_PATH);
   const shellStyles = `${assetUrl(assetOrigin, VIEWER_SHELL_STYLES_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
   const viewerAssets = assetUrl(assetOrigin, VIEWER_RUNTIME_ASSETS_PATH);
   const mobileScript = `${assetUrl(assetOrigin, VIEWER_MOBILE_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
@@ -98,6 +100,28 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
         window.__BURETTE_HOSTED_ANALYTICS_ORIGIN__ = config.analyticsOrigin;
         window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
         window.__BURETTE_HOSTED_OPENAI_GLOBALS__ = {};
+        const NativeWorker = window.Worker;
+        if (typeof NativeWorker === "function") {
+          // The widget runs on a sandbox origin, so browsers refuse worker scripts
+          // from the asset origin (Ketcher's Indigo worker). Start a same-origin
+          // blob worker that loads the real script and reports its URL as the
+          // worker location, so the script still resolves its WASM next to itself.
+          // The worker is always classic: the host CSP sets worker-src to blob:
+          // only, which also governs static imports inside module workers, while
+          // importScripts falls under script-src. Vite emits workers as IIFE.
+          window.Worker = class extends NativeWorker {
+            constructor(url, options) {
+              const script = new URL(String(url), document.baseURI);
+              if (script.origin === location.origin || script.protocol !== "https:") {
+                super(url, options);
+                return;
+              }
+              const href = JSON.stringify(script.href);
+              const source = "Object.defineProperty(self, 'location', { value: new URL(" + href + "), configurable: true }); importScripts(" + href + ");";
+              super(URL.createObjectURL(new Blob([source], { type: "text/javascript" })), { ...options, type: "classic" });
+            }
+          };
+        }
         const appQueue = [];
         const appReady = new Promise((resolve) => { window.__BURETTE_HOSTED_APP_READY__ = resolve; });
         window.__BURETTE_HOSTED_APP_QUEUE__ = appQueue;
