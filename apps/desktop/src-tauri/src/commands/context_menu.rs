@@ -115,8 +115,10 @@ fn validate(items: &[MenuEntry], at: Option<&MenuPosition>) -> Result<(), String
         }
         for entry in items {
             *count += 1;
-            if *count > 128 {
-                return Err("Context menu exceeds 128 entries".into());
+            // The Mol* viewer menu lists every representation type and colour
+            // theme as a checkmarked choice, which alone passes a hundred rows.
+            if *count > 512 {
+                return Err("Context menu exceeds 512 entries".into());
             }
             let subtitle = match entry {
                 MenuEntry::Item { subtitle, .. } | MenuEntry::Submenu { subtitle, .. } => {
@@ -631,7 +633,7 @@ mod tests {
         assert!(validate(&[item("rename"), submenu(vec![item("text")])], None).is_ok());
         assert!(validate(&[item("rename"), submenu(vec![item("rename")])], None).is_err());
         assert!(validate(
-            &(0..129).map(|i| item(&i.to_string())).collect::<Vec<_>>(),
+            &(0..513).map(|i| item(&i.to_string())).collect::<Vec<_>>(),
             None
         )
         .is_err());

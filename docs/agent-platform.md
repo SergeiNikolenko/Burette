@@ -392,7 +392,7 @@ system "Ask Siri" row on top; a `dropdown` menu, used for buttons and choice
 pickers, stays a plain command list. It returns a selected ID or cancellation; callbacks remain
 in the frontend. Slider and colour changes are emitted to the requesting window as
 `native-context-menu-value` events (`{ session, id, value }`) while the menu is
-open. The request is limited to 128 entries, three submenu levels, unique IDs of at
+open. The request is limited to 512 entries (submenu rows included), three submenu levels, unique IDs of at
 most 160 bytes, labels and subtitles of at most 1024 bytes, finite slider bounds,
 at most 64 `#rrggbb` colours per carousel, and finite coordinates. SF Symbol names
 are resolved by AppKit.

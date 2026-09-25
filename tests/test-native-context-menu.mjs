@@ -163,3 +163,201 @@ const minimalXyzItems = xyzrenderContextMenuItems({ label: 'a', hasSelection: fa
 assert.equal(minimalXyzItems.length, 8);
 assert.ok(!minimalXyzItems.some(item => item.kind === 'label'), 'native menu omits the filename label');
 console.log('xyzrender native menu context and action routing passed');
+
+// The Mol* 3D right click: the viewer describes the menu, the host parses it into
+// NSMenu rows, and every choice or slider move comes back to the viewer.
+const { molstarContextMenuItems } = await import('../apps/desktop/src/components/molstar-context-menu.ts');
+const viewerSource = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
+const viewerFunction = name => {
+  const match = new RegExp(`\\n  function ${name}\\([\\s\\S]*?\\n  \\}`).exec(viewerSource);
+  assert.ok(match, name);
+  return match[0];
+};
+const molstarMenuFunctions = ['molstarNativeMenuLiveUndo', 'molstarNativeRepresentationMenu', 'molstarNativeMenuEntries',
+  'showDesktopNativeMolstarContextMenu', 'handleMolstarNativeMenuResult'];
+const calls = [];
+const log = name => (...args) => { calls.push([name, ...args]); };
+const posted = [];
+const representation = { cell: { transform: { params: { type: { name: 'cartoon', params: { alpha: 0.5 } }, colorTheme: { name: 'chain-id' } } } } };
+const molstarStubs = {
+  activeConfig: { appViewer: true },
+  document: { body: { classList: { contains: () => false } } },
+  postHostMessage: message => { posted.push(message); return true; },
+  molstarNativeMenuIcon: paths => paths ? 'data:image/svg+xml,icon' : undefined,
+  moleculeContextActionIcon: () => 'paths',
+  MOLECULE_MENU_GROUPS: [
+    { id: 'view', title: 'View', direct: true, hideTitle: true },
+    { id: 'color', title: 'Colour', breakBefore: true },
+  ],
+  MOLECULE_MENU_GROUP_ICONS: {},
+  MOLECULE_MENU_GROUP_TITLES: {},
+  VIEWPORT_GRANULARITIES: [['residue', 'Residue'], ['chain', 'Chain']],
+  molstarContextMenuActions: () => [['focus', 'Focus'], ['represent:menu', 'Representation & colour…'], ['colour:red', 'Red']],
+  moleculeContextActionGroup: name => name.startsWith('colour:') ? 'color' : 'view',
+  moleculeMenuSectionEntries: (grouped, section) => grouped.get(section.id) || [],
+  moleculeMenuActionChildren: () => [],
+  molstarContextChainLabel: () => 'Chain A',
+  activeMolstarViewer: () => ({}),
+  molstarContextComponentRef: () => 'component',
+  sceneTreeColorTargets: () => new Map([['component', [{ representations: [{ cell: { transform: { ref: 'rep' } } }] }]]]),
+  sceneTreeRepresentationTargets: () => new Map([['rep', { component: {}, representation }]]),
+  sceneTreeNodes: () => [],
+  sceneTreeNodeByRef: () => ({ label: 'Cartoon' }),
+  sceneTreeRepresentationTypes: () => [{ name: 'cartoon', label: 'Cartoon' }, { name: 'surface', label: 'Surface' }],
+  sceneTreeSurfaceFill: () => null,
+  sceneTreeColorThemes: () => [{ name: 'chain-id', label: 'Chain ID' }, { name: 'uniform', label: 'Uniform' }],
+  sceneTreeRepresentationTint: () => 0xff0000,
+  sceneTreeColorHex: value => `#${value.toString(16).padStart(6, '0')}`,
+  SCENE_TREE_UNIFORM_COLORS: [{ value: 0xff0000 }, { value: 0x00ff00 }],
+  molstarOutlineBrightness: 0.4,
+  sceneTreeAdvancedParams: () => ({
+    rows: [
+      { name: 'sizeFactor', label: 'Size', definition: { type: 'number', min: 0, max: 3, step: 0.1, defaultValue: 1 } },
+      { name: 'ignoreLight', label: 'Ignore light', definition: { type: 'boolean' } },
+      { name: 'quality', label: 'Quality', definition: { type: 'select', options: [['auto', 'Auto'], ['high', 'High']], defaultValue: 'auto' } },
+    ],
+    current: { sizeFactor: 0.5 },
+    sizeOptions: [['uniform', 'Uniform'], ['physical', 'Physical']],
+  }),
+  molstarSceneMenuSelectUndoLabel: kind => `undo ${kind}`,
+  runMolstarSceneEdit: (label, run) => { calls.push(['edit', label]); return run(); },
+  captureMolstarSceneUndoSnapshot: label => ({ label }),
+  pushMolstarEditUndoSnapshot: snapshot => calls.push(['undo', snapshot.label]),
+  ...Object.fromEntries(['runSceneTreeSelectAction', 'duplicateSceneTreeRepresentation', 'streamSceneTreeReprAlpha',
+    'streamSceneTreeTheme', 'streamSceneTreeReprParam', 'applySceneTreeReprParam', 'setMolstarOutlineBrightness',
+    'moleculeContextMenuAction', 'scheduleSceneTreeRender', 'setMolstarSelectionLevel', 'setStatus',
+    'hideMolstarContextMenu', 'showMolstarContextMenu'].map(name => [name, log(name)])),
+};
+const molstarMenu = new Function(...Object.keys(molstarStubs), `
+  const window = {};
+  let molstarNativeMenuPending = null;
+  let molstarNativeMenuSerial = 0;
+  ${molstarMenuFunctions.map(viewerFunction).join('\n')}
+  return { ${molstarMenuFunctions.join(',')} };
+`)(...Object.values(molstarStubs));
+const pick = { id: 'pick' };
+const openMolstarMenu = mode => {
+  assert.equal(molstarMenu.showDesktopNativeMolstarContextMenu({ clientX: 10, clientY: 20 }, pick, { label: 'ALA 12' }, mode), true);
+  const message = posted.at(-1);
+  const reply = body => molstarMenu.handleMolstarNativeMenuResult({ requestId: message.requestId, ...body });
+  return { message, reply, items: molstarContextMenuItems(message.items, (id, value) => reply({ event: 'select', id, value })) };
+};
+const byId = (items, id) => items.find(item => item.id === `molstar-menu:${id}`);
+
+const first = openMolstarMenu('residue');
+assert.deepEqual({ type: first.message.type, clientX: first.message.clientX, clientY: first.message.clientY },
+  { type: 'molstarContextMenu', clientX: 10, clientY: 20 });
+assert.deepEqual(first.items.map(item => item.id || item.kind), [
+  'molstar-menu-label-0', 'molstar-menu:picking-level', 'separator', 'molstar-menu:focus', 'molstar-menu:represent:menu',
+  'separator', 'molstar-menu:section:color',
+]);
+assert.equal(first.items[0].text, 'ALA 12');
+const representMenu = byId(first.items, 'represent:menu');
+assert.equal(representMenu.iconUrl, 'data:image/svg+xml,icon');
+assert.deepEqual(representMenu.items.map(item => item.id || item.kind), [
+  'molstar-menu-label-1', 'molstar-menu:representation-type', 'molstar-menu:representation-add', 'molstar-menu:opacity',
+  'molstar-menu:outline-brightness', 'separator', 'molstar-menu-label-2', 'molstar-menu:representation-color',
+  'molstar-menu:tint', 'separator', 'molstar-menu:advanced',
+]);
+assert.deepEqual(byId(representMenu.items, 'opacity'), {
+  kind: 'number', id: 'molstar-menu:opacity', label: 'Opacity', value: 50, min: 0, max: 100, step: 1, unit: '%',
+  action: byId(representMenu.items, 'opacity').action,
+});
+assert.deepEqual(byId(representMenu.items, 'tint').colors, ['#ff0000', '#00ff00']);
+assert.equal(byId(representMenu.items, 'tint').activeColor, '#ff0000');
+const advancedMenu = byId(representMenu.items, 'advanced');
+assert.deepEqual(advancedMenu.items.map(item => `${item.kind}:${item.id}`), [
+  'number:molstar-menu:param:sizeFactor', 'checkbox:molstar-menu:param:ignoreLight',
+  'select:molstar-menu:param:quality', 'select:molstar-menu:representation-size',
+]);
+assert.equal(byId(advancedMenu.items, 'param:sizeFactor').value, 0.5);
+
+// Live controls stream every move but record one undo step each, on close.
+byId(representMenu.items, 'opacity').action(40);
+byId(representMenu.items, 'opacity').action(30);
+byId(representMenu.items, 'tint').action('#00ff00');
+byId(advancedMenu.items, 'param:sizeFactor').action(1.5);
+byId(representMenu.items, 'outline-brightness').action(80);
+assert.equal(calls.filter(([name]) => name === 'undo').length, 0);
+byId(representMenu.items, 'representation-type').action('surface');
+byId(advancedMenu.items, 'param:ignoreLight').action(true);
+byId(advancedMenu.items, 'param:quality').action('high');
+byId(advancedMenu.items, 'representation-size').action('physical');
+byId(first.items, 'focus').action();
+first.reply({ event: 'closed' });
+assert.deepEqual(calls, [
+  ['streamSceneTreeReprAlpha', 'rep', 0.4],
+  ['streamSceneTreeReprAlpha', 'rep', 0.3],
+  ['streamSceneTreeTheme', 'rep', 'rep-tint-color', 'tint', 0x00ff00],
+  ['streamSceneTreeReprParam', 'rep', 'sizeFactor', 1.5],
+  ['setMolstarOutlineBrightness', 0.8],
+  ['edit', 'undo representation-type'],
+  ['runSceneTreeSelectAction', 'representation-type', 'rep', 'surface'],
+  ['edit', 'ignoreLight of Cartoon'],
+  ['applySceneTreeReprParam', 'rep', 'ignoreLight', true],
+  ['edit', 'quality of Cartoon'],
+  ['applySceneTreeReprParam', 'rep', 'quality', 'high'],
+  ['edit', 'undo representation-size'],
+  ['runSceneTreeSelectAction', 'representation-size', 'rep', 'physical'],
+  ['moleculeContextMenuAction', 'focus', 'Focus', { label: 'ALA 12', pickingLevel: 'residue' }],
+  ['undo', 'opacity of Cartoon'],
+  ['undo', 'colour of Cartoon'],
+  ['undo', 'sizeFactor of Cartoon'],
+  ['scheduleSceneTreeRender'],
+]);
+// A late or foreign reply never reaches a closed session.
+calls.length = 0;
+first.reply({ event: 'select', id: 'focus' });
+assert.deepEqual(calls, []);
+
+// A new picking level reopens the menu at the same point.
+const second = openMolstarMenu('residue');
+byId(second.items, 'picking-level').action('chain');
+second.reply({ event: 'closed' });
+assert.deepEqual(calls, [
+  ['setMolstarSelectionLevel', 'chain'],
+  ['setStatus', '[web] Picking level set to chain.'],
+  ['showMolstarContextMenu', { clientX: 10, clientY: 20 }, pick],
+]);
+
+// Dismissing without a choice clears the menu state; a host without NSMenu falls back to the web menu.
+calls.length = 0;
+openMolstarMenu('chain').reply({ event: 'closed' });
+openMolstarMenu('residue').reply({ event: 'unsupported' });
+assert.deepEqual(calls, [['hideMolstarContextMenu'], ['showMolstarContextMenu', { clientX: 10, clientY: 20 }, pick, { forceWeb: true }]]);
+assert.equal(posted.at(-2).items[0].text, 'Chain A');
+
+molstarStubs.activeConfig.appViewer = false;
+assert.equal(molstarMenu.showDesktopNativeMolstarContextMenu({ clientX: 0, clientY: 0 }, pick, { label: 'x' }, 'residue'), false);
+
+// The host drops malformed rows and never lets the frame spoof shared ids or oversized payloads.
+const parsed = molstarContextMenuItems([
+  { kind: 'item', id: 'remove', text: 'Remove', icon: 'javascript:alert(1)' },
+  { kind: 'item', id: 'x'.repeat(161), text: 'Too long' },
+  { kind: 'submenu', id: 'empty', text: 'Empty', items: [{ kind: 'mystery' }] },
+  { kind: 'number', id: 'bad', label: 'Bad', value: 1, min: 5, max: 5 },
+  { kind: 'number', id: 'clamped', label: 'Clamped', value: 400, min: 0, max: 100 },
+  { kind: 'swatches', id: 'colours', colors: ['red', '#12345g', '#abcdef'], active: 'url(x)' },
+  { kind: 'select', id: 'choice', label: 'Choice', value: 'b', options: [{ value: 'a' }, { value: 'a', label: 'dup' }, { value: 'b', label: 'B' }] },
+], () => {});
+assert.deepEqual(parsed.map(({ action: _action, ...rest }) => rest), [
+  { kind: 'item', id: 'molstar-menu:remove', text: 'Remove' },
+  { kind: 'number', id: 'molstar-menu:clamped', label: 'Clamped', value: 100, min: 0, max: 100 },
+  { kind: 'swatches', id: 'molstar-menu:colours', colors: ['#abcdef'] },
+  { kind: 'select', id: 'molstar-menu:choice', label: 'Choice', value: 'b', options: ['a', 'b'], optionLabels: { a: 'a', b: 'B' } },
+]);
+// Budget and depth match popup_macos_context_menu, where a choice expands into a submenu of options.
+assert.equal(molstarContextMenuItems(Array.from({ length: 600 }, () => ({ kind: 'separator' })), () => {}).length, 512);
+const manyOptions = Array.from({ length: 80 }, (_, index) => ({ value: `v${index}` }));
+assert.equal(molstarContextMenuItems(Array.from({ length: 7 }, (_, index) =>
+  ({ kind: 'select', id: `s${index}`, label: 'S', options: manyOptions })), () => {}).length, 6);
+const choice = id => ({ kind: 'select', id, label: 'Choice', options: [{ value: 'a' }] });
+const [levelOne] = molstarContextMenuItems([{ kind: 'submenu', id: 'one', text: 'One', items: [
+  { kind: 'submenu', id: 'two', text: 'Two', items: [choice('second'), { kind: 'submenu', id: 'three', text: 'Three', items: [
+    choice('third'), { kind: 'item', id: 'leaf', text: 'Leaf' },
+  ] }] },
+] }], () => {});
+const [secondChoice, levelThree] = levelOne.items[0].items;
+assert.equal(secondChoice.kind, 'select');
+assert.deepEqual(levelThree.items.map(item => item.id), ['molstar-menu:leaf'], 'a third-level choice would nest past AppKit');
+console.log('Mol* native context menu protocol passed');

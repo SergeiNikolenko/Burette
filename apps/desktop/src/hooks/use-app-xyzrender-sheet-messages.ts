@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { molstarContextMenuItems } from "../components/molstar-context-menu";
 import { showNativeContextMenu } from "../components/native-context-menu";
 import { xyzrenderContextMenuItems } from "../components/xyzrender-context-menu";
 import { isTauriRuntime } from "../lib/tauri";
@@ -10,6 +11,18 @@ type XyzrenderSheetMessageBody = Record<string, unknown> | null | undefined;
 type UseAppXyzrenderSheetMessagesOptions = {
   postMessageToViewerSource: PostMessageToViewerSource;
 };
+
+// A viewer reports its click in frame coordinates; the menu opens in window ones.
+function viewerFramePoint(source: MessageEventSource | null, body: Record<string, unknown>) {
+  const frame = Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe"))
+    .find(candidate => candidate.contentWindow === source);
+  const frameRect = frame?.getBoundingClientRect();
+  const clientX = Number(body.clientX);
+  const clientY = Number(body.clientY);
+  return frameRect && Number.isFinite(clientX) && Number.isFinite(clientY)
+    ? { x: frameRect.left + clientX, y: frameRect.top + clientY }
+    : undefined;
+}
 
 export function useAppXyzrenderSheetMessages({
   postMessageToViewerSource,
@@ -35,15 +48,22 @@ export function useAppXyzrenderSheetMessages({
         hasSelection: body.hasSelection === true,
         hasHidden: body.hasHidden === true,
       }, action => reply({ action }));
-      const frame = Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe"))
-        .find(candidate => candidate.contentWindow === source);
-      const frameRect = frame?.getBoundingClientRect();
-      const clientX = Number(body.clientX);
-      const clientY = Number(body.clientY);
-      const at = frameRect && Number.isFinite(clientX) && Number.isFinite(clientY)
-        ? { x: frameRect.left + clientX, y: frameRect.top + clientY }
-        : undefined;
-      void showNativeContextMenu(items, at).catch(() => reply({ unsupported: true }));
+      void showNativeContextMenu(items, viewerFramePoint(source, body)).catch(() => reply({ unsupported: true }));
+      return true;
+    }
+    if (body?.type === "molstarContextMenu") {
+      const requestId = body.requestId;
+      if (sourceName !== "burette-viewer" || typeof requestId !== "string" || requestId.length > 128) return true;
+      const reply = (result: { event: "select" | "closed" | "unsupported"; id?: string; value?: string | number | boolean }) =>
+        postMessageToViewerSource(source, { source: "burette-host", body: { type: "molstarContextMenuResult", requestId, ...result } });
+      // Browser-dev keeps the viewer's own menu; only the desktop app has NSMenu.
+      const items = isTauriRuntime() ? molstarContextMenuItems(body.items, (id, value) => reply({ event: "select", id, value })) : [];
+      if (!items.length) {
+        reply({ event: "unsupported" });
+        return true;
+      }
+      void showNativeContextMenu(items, viewerFramePoint(source, body))
+        .then(() => reply({ event: "closed" }), () => reply({ event: "unsupported" }));
       return true;
     }
     if (body?.type !== "renderXyzrenderSheetItem") return false;
