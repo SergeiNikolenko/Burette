@@ -173,7 +173,7 @@ const viewerFunction = name => {
   assert.ok(match, name);
   return match[0];
 };
-const molstarMenuFunctions = ['molstarNativeMenuLiveUndo', 'molstarNativeRepresentationMenu', 'molstarNativeMenuEntries',
+const molstarMenuFunctions = ['molstarNativeMenuLabel', 'molstarNativeMenuLiveUndo', 'molstarNativeRepresentationMenu', 'molstarNativeMenuEntries',
   'showDesktopNativeMolstarContextMenu', 'handleMolstarNativeMenuResult'];
 const calls = [];
 const log = name => (...args) => { calls.push([name, ...args]); };
@@ -192,8 +192,9 @@ const molstarStubs = {
   MOLECULE_MENU_GROUP_ICONS: {},
   MOLECULE_MENU_GROUP_TITLES: {},
   VIEWPORT_GRANULARITIES: [['residue', 'Residue'], ['chain', 'Chain']],
-  molstarContextMenuActions: () => [['focus', 'Focus'], ['represent:menu', 'Representation & colour…'], ['colour:red', 'Red']],
-  moleculeContextActionGroup: name => name.startsWith('colour:') ? 'color' : 'view',
+  molstarContextMenuActions: () => [['focus', 'Focus in current view'], ['represent:menu', 'Representation & colour…'],
+    ['colour:red', 'Red'], ['extract:chain', 'Extract Chain A as PDB']],
+  moleculeContextActionGroup: name => /^(?:colour|extract):/.test(name) ? 'color' : 'view',
   moleculeMenuSectionEntries: (grouped, section) => grouped.get(section.id) || [],
   moleculeMenuActionChildren: () => [],
   molstarContextChainLabel: () => 'Chain A',
@@ -232,6 +233,7 @@ const molstarMenu = new Function(...Object.keys(molstarStubs), `
   const window = {};
   let molstarNativeMenuPending = null;
   let molstarNativeMenuSerial = 0;
+  ${/\n  const MOLSTAR_NATIVE_MENU_LABELS = \{[\s\S]*?\n  \};/.exec(viewerSource)[0]}
   ${molstarMenuFunctions.map(viewerFunction).join('\n')}
   return { ${molstarMenuFunctions.join(',')} };
 `)(...Object.values(molstarStubs));
@@ -252,6 +254,9 @@ assert.deepEqual(first.items.map(item => item.id || item.kind), [
   'separator', 'molstar-menu:section:color',
 ]);
 assert.equal(first.items[0].text, 'ALA 12');
+// Short native titles keep the NSMenu narrow; submenu rows drop the prefix their parent names.
+assert.deepEqual([byId(first.items, 'focus').text, byId(first.items, 'represent:menu').text,
+  byId(first.items, 'section:color').items.map(item => item.text)], ['Focus', 'Style', ['Red', 'Extract Chain A']]);
 const representMenu = byId(first.items, 'represent:menu');
 assert.equal(representMenu.iconUrl, 'data:image/svg+xml,icon');
 assert.deepEqual(representMenu.items.map(item => item.id || item.kind), [
@@ -299,7 +304,7 @@ assert.deepEqual(calls, [
   ['applySceneTreeReprParam', 'rep', 'quality', 'high'],
   ['edit', 'undo representation-size'],
   ['runSceneTreeSelectAction', 'representation-size', 'rep', 'physical'],
-  ['moleculeContextMenuAction', 'focus', 'Focus', { label: 'ALA 12', pickingLevel: 'residue' }],
+  ['moleculeContextMenuAction', 'focus', 'Focus in current view', { label: 'ALA 12', pickingLevel: 'residue' }],
   ['undo', 'opacity of Cartoon'],
   ['undo', 'colour of Cartoon'],
   ['undo', 'sizeFactor of Cartoon'],

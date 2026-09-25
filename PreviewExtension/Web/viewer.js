@@ -24356,6 +24356,30 @@ SOFTWARE.
   let molstarNativeMenuPending = null;
   let molstarNativeMenuSerial = 0;
 
+  // An NSMenu is as wide as its longest row, so the native menu uses short titles.
+  // Rows inside Export, Search and Compute drop the prefix their submenu already
+  // names. Actions still receive the full title for status and undo text.
+  const MOLSTAR_NATIVE_MENU_LABELS = {
+    focus: 'Focus',
+    'focus-atom': 'Focus atom',
+    'represent:menu': 'Style',
+    'represent:surface-options': 'Surface',
+    'analyze:pin-environment': 'Surroundings (5 Å)',
+    'save-modified': 'Modified structure',
+    'save-format:mmcif': 'mmCIF',
+    'save-format:pdb': 'PDB',
+    'save-format:sdf': 'Ligand as SDF',
+    'pubchem:identity': 'Identical in PubChem',
+    'pubchem:similarity': 'Similar in PubChem (90%)',
+    'compute:optimizeGeometry': 'Optimize geometry',
+    'compute:semiempiricalRm1': 'RM1 energy & charges',
+    'compute:alignPoses': 'Align & compare poses'
+  };
+
+  function molstarNativeMenuLabel(name, label) {
+    return MOLSTAR_NATIVE_MENU_LABELS[name] || String(label).replace(/^(Extract .+) as PDB$/, '$1');
+  }
+
   function molstarNativeMenuIcon(paths) {
     if (!paths) return undefined;
     const svg = sceneTreeIconElement(paths);
@@ -24408,7 +24432,7 @@ SOFTWARE.
         session.renderOnClose = true;
         setMolstarOutlineBrightness(Number(value) / 100);
       });
-      items.push({ kind: 'number', id: 'outline-brightness', label: 'Outline brightness', value: Math.round(molstarOutlineBrightness * 100), min: 0, max: 100, step: 1, unit: '%' });
+      items.push({ kind: 'number', id: 'outline-brightness', label: 'Outline', value: Math.round(molstarOutlineBrightness * 100), min: 0, max: 100, step: 1, unit: '%' });
     }
 
     items.push({ kind: 'separator' }, { kind: 'label', text: 'Colour' });
@@ -24463,7 +24487,7 @@ SOFTWARE.
       items.push({ kind: 'separator' }, { kind: 'submenu', id: 'advanced', text: 'Advanced', items: advancedItems });
     }
     return {
-      kind: 'submenu', id: 'represent:menu', text: 'Representation & colour…',
+      kind: 'submenu', id: 'represent:menu', text: molstarNativeMenuLabel('represent:menu'),
       icon: molstarNativeMenuIcon(moleculeContextActionIcon('represent:menu')), items
     };
   }
@@ -24473,12 +24497,13 @@ SOFTWARE.
       const [name, label] = entry;
       const children = moleculeMenuActionChildren(entry);
       const icon = molstarNativeMenuIcon(moleculeContextActionIcon(name));
-      if (children.length) return { kind: 'submenu', id: name, text: label, icon, items: children.map(action) };
+      const text = molstarNativeMenuLabel(name, label);
+      if (children.length) return { kind: 'submenu', id: name, text, icon, items: children.map(action) };
       session.handlers.set(name, () => {
         session.actionChosen = true;
         void moleculeContextMenuAction(name, label, target);
       });
-      return { kind: 'item', id: name, text: label, icon };
+      return { kind: 'item', id: name, text, icon };
     };
     const grouped = new Map();
     for (const entry of molstarContextMenuActions(target, mode)) {
