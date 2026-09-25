@@ -11,6 +11,7 @@ import {
   viewerToolMeta,
 } from "../lib/contracts";
 import {
+  createKetcherWidgetHtml,
   createViewerResourceMeta,
   createViewerWidgetHtml,
   VIEWER_RESOURCE_URI,
