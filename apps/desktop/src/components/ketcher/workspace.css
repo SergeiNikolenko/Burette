@@ -13,6 +13,11 @@
 .ketcher-page .ketcher-editor-shell { border-radius: 12px; }
 .ketcher-page .ketcher-page-footer { padding: 8px 16px 12px; }
 .ketcher-page[data-narrow] .ketcher-page-actions { justify-content: flex-start; overflow: visible; }
+/* The ChatGPT widget is only the editor: its viewer, compute, database and
+   collection actions need the desktop workspace, which the widget lacks. */
+.app-shell[data-hosted-mcp-widget="true"] .ketcher-page { grid-template-rows: minmax(0, 1fr) auto; }
+.app-shell[data-hosted-mcp-widget="true"] .ketcher-page .ketcher-page-header { display: none; }
+.app-shell[data-hosted-mcp-widget="true"] .ketcher-page .ketcher-page-body { padding: 8px; }
 .ketcher-dock-workflow .ketcher-dock-toolbar { gap: 12px; }
 .ketcher-dock-workflow .ketcher-dock-title { flex: 1; min-width: 0; }
 .ketcher-dock-workflow textarea[data-slot="textarea"] { border-radius: 8px; padding: 12px; font-family: var(--font-mono); }
