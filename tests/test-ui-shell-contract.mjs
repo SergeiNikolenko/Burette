@@ -670,7 +670,7 @@ assert.match(browserDevDocuments, /requestedRenderer: normalizeRendererMode\(pre
 assert.match(browserDevDocuments, /sourcePath: path/);
 assert.match(browserDevDocuments, /const WEB_DEMO_ENABLED = import\.meta\.env\.VITE_BURETTE_WEB_DEMO === "1";/);
 assert.match(browserDevDocuments, /const RDKIT_WASM_PATH = WEB_DEMO_ENABLED[\s\S]*?\/rdkit\/RDKit_minimal\.wasm`[\s\S]*?"\/__burette\/rdkit-wasm";/);
-assert.match(browserDevDocuments, /const XYZRENDER_ENDPOINT = WEB_DEMO_ENABLED\s*\? "\/api\/xyzrender"\s*:\s*"\/__burette\/xyzrender";/);
+assert.match(browserDevDocuments, /const XYZRENDER_ENDPOINT = HOSTED_APP_ORIGIN\s*\? `\$\{HOSTED_APP_ORIGIN\}\/api\/xyzrender`\s*: WEB_DEMO_ENABLED\s*\? "\/api\/xyzrender"\s*:\s*"\/__burette\/xyzrender";/);
 assert.equal(browserDevDocuments.match(/xyzrenderEndpoint: XYZRENDER_ENDPOINT/g)?.length, 2);
 assert.doesNotMatch(browserDevDocuments, /new URL\('rdkit\/RDKit_minimal\.wasm', document\.baseURI\)/);
 assert.match(browserDevDocuments, /WEB_DEMO_ENABLED \|\| browserDevVirtualTextDocuments\.has\(path\)/);

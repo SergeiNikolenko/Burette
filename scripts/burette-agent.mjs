@@ -1065,7 +1065,8 @@ const SESSION_VIEWER_ACTION_TYPES = [
   'measure_geometry', 'list_scene_layers', 'patch_scene_layers', 'capture_scene', 'replace_document',
   'set_scene_motion', 'set_scene_wiggle', 'rotate_camera', 'hide_waters', 'show_waters',
   'show_surface', 'color_by_chain', 'render_panel', 'apply_scene', 'load_mvs', 'observe_story', 'control_story',
-  'export_session', 'screenshot', 'export_image', 'raw_burette_agent',
+  'export_session', 'screenshot', 'export_image', 'describe_region', 'annotation_snapshot',
+  'raw_burette_agent',
 ];
 const SESSION_ACTION_TYPES = new Set([...SESSION_SHELL_ACTION_TYPES, ...SESSION_VIEWER_ACTION_TYPES]);
 

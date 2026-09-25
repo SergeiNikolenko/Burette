@@ -40,6 +40,7 @@ interface Window {
   __BURETTE_HOSTED_APP_QUEUE__?: Array<{ method: string; args: unknown[] }>;
   __BURETTE_HOSTED_APP_READY__?: (ready: boolean) => void;
   __BURETTE_WEB_ASSETS_BASE__?: string;
+  __BURETTE_HOSTED_ANALYTICS_ORIGIN__?: string;
   __BURETTE_BOOT_OVERLAY__?: {
     report: (message: string, details?: string) => void;
     markMounted: () => void;

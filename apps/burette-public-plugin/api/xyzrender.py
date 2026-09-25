@@ -116,9 +116,17 @@ def render_request(
 
 
 class handler(BaseHTTPRequestHandler):
+    # The ChatGPT widget calls this service from its sandbox origin.
+    def _send_cors_headers(self) -> None:
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Max-Age", "86400")
+
     def _send_json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
         self.send_response(status)
+        self._send_cors_headers()
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
@@ -146,6 +154,12 @@ class handler(BaseHTTPRequestHandler):
             self._send_json(503, {"error": "xyzrender is unavailable on this deployment"})
         except Exception:
             self._send_json(422, {"error": "xyzrender could not render this structure"})
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self._send_cors_headers()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def do_GET(self) -> None:
         self._send_json(405, {"error": "POST required"})
