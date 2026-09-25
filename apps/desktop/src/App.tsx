@@ -265,6 +265,7 @@ export default function App() {
     setDockActiveTab,
     setDockDocument,
     setDockOpen,
+    textDocuments,
   });
 
   const [structureDragActive, setStructureDragActiveState] = useState(false);

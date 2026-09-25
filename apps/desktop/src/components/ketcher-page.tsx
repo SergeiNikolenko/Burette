@@ -26,7 +26,8 @@ import type { StructureDragRecord } from "../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "./drop-action-executor";
 import type { KetcherLocation } from "./editor-area/page-kinds";
 import type { KetcherEditorApi } from "./ketcher-editor";
-import { registerKetcherAgentController, unregisterKetcherAgentController } from "../lib/ketcher-agent";
+import { registerKetcherAgentController, unregisterKetcherAgentController, type KetcherPersistWriter } from "../lib/ketcher-agent";
+import { KetcherPersistRequestPrompt } from "./ketcher/persist-request";
 import { RadixDropdownMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import { ChevronDown, Minus, Plus, ColorTheme, Grid, Cube, Camera } from "@/components/ui/app-icons";
@@ -867,6 +868,12 @@ export function KetcherPage({
     });
   }, [actions, output, panelMode]);
 
+  const writeAgentPersistRequest = useCallback<KetcherPersistWriter>((file) => actions.saveKetcherExportFile({
+    title: file.fileName,
+    extension: file.extension,
+    text: file.text,
+  }), [actions]);
+
   const saveExportOutput = useCallback(() => {
     if (panelMode?.purpose !== "export") return;
     const extension = KETCHER_EXPORT_FILE_EXTENSIONS[panelMode.format];
@@ -1392,6 +1399,7 @@ export function KetcherPage({
               <div>Add to Ketcher</div>
             </div>
           )}
+          <KetcherPersistRequestPrompt tabId={tabId} onWrite={writeAgentPersistRequest} />
         </div>
       </div>
       {isActive && panelMode && dockPortalElement ? createPortal((

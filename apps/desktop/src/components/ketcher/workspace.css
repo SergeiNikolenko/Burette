@@ -13,6 +13,11 @@
 .ketcher-page .ketcher-editor-shell { border-radius: 12px; }
 .ketcher-page .ketcher-page-footer { padding: 8px 16px 12px; }
 .ketcher-page[data-narrow] .ketcher-page-actions { justify-content: flex-start; overflow: visible; }
+/* The ChatGPT widget is only the editor: its viewer, compute, database and
+   collection actions need the desktop workspace, which the widget lacks. */
+.app-shell[data-hosted-mcp-widget="true"] .ketcher-page { grid-template-rows: minmax(0, 1fr) auto; }
+.app-shell[data-hosted-mcp-widget="true"] .ketcher-page .ketcher-page-header { display: none; }
+.app-shell[data-hosted-mcp-widget="true"] .ketcher-page .ketcher-page-body { padding: 8px; }
 .ketcher-dock-workflow .ketcher-dock-toolbar { gap: 12px; }
 .ketcher-dock-workflow .ketcher-dock-title { flex: 1; min-width: 0; }
 .ketcher-dock-workflow textarea[data-slot="textarea"] { border-radius: 8px; padding: 12px; font-family: var(--font-mono); }
@@ -590,4 +595,13 @@
 }
 .app-shell :is(.ketcher-ui-options, .ketcher-ui-menu) :is([role="option"], [role="menuitem"], [role="menuitemcheckbox"]) {
   min-height: 32px; padding-block: 6px; font-size: 14px; line-height: 20px;
+}
+/* Agent save confirmation floats over the canvas, clear of the top toolbar. */
+.ketcher-editor-shell .ketcher-persist-request {
+  position: absolute; top: calc(var(--ketcher-top-toolbar-height) + 12px); left: 50%; z-index: 5;
+  width: min(440px, calc(100% - 32px)); transform: translateX(-50%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.16);
+}
+.ketcher-persist-request .ketcher-persist-request-actions {
+  grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;
 }

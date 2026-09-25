@@ -127,6 +127,21 @@ browser-dev and native app validation remain separate surfaces.
   panel through the normal text-document path.
 - Screenshot interpretation must not replace typed `observe`, validation
   output, or CLI/MCP errors.
+- Session `act` rejects action types that neither the shell nor the Mol* viewer
+  implements with `UNSUPPORTED_ACTION` before queueing; `details.supportedTypes`
+  lists the accepted types.
+- Browser agent shells record `allowedRoots` in `session.json` (the opened
+  file's directory, or `BURETTE_DEV_FS_ALLOW`, plus the generated-files root and
+  the session directory). `act` fails with `PATH_NOT_ALLOWED` for `open_files`,
+  `manage_tabs open_file`, `render_panel`, or `open_docking_view` paths outside
+  them, instead of queueing a read the shell server would answer with HTTP 403.
+- For grid documents, `observe.grid` carries bounded read-only grid state: sort
+  key and direction, search query (256 characters) and whether it runs as
+  SMARTS, up to 20 active filters, the selection count with up to 50 selected
+  source row indexes, and total and visible row counts.
+- MCP `structureSummary` follows the observed active document. In-memory
+  documents such as `burette-ketcher://…` report `VIRTUAL_DOCUMENT_UNSUPPORTED`
+  because they have no file on disk.
 
 Mol* ligand results include `structureId`, the current viewer structure reference.
 Use it as `selector.structure` to distinguish identical residue addresses across
@@ -244,8 +259,28 @@ Structural edits advance `structureRevision`; highlight/selection changes only
 advance `interactionRevision`. A revision mismatch, stale tab, oversized
 structure, unsupported format, or unresolved `contentRef` is a typed failure.
 Inline content is bounded to 64 KiB, atom-index lists to 256 entries, and
-inline exports to 64 KiB. Persistence stops at `awaiting_user` until a user
-confirms the file write.
+inline exports to 64 KiB. Format names accept `smi` as an alias for `smiles`
+(the name `burette_open_viewer` uses); results always report `smiles`.
+
+- `set_structure` takes either inline `content` or a `contentRef`. On the
+  desktop surface `contentRef` is an absolute local path or `file://` URL to a
+  `.mol`/`.sdf`/`.sd`/`.mdl` (`mol`), `.rxn` (`rxn`), or `.ket` (`ket`) file of
+  at most 1 MiB, read through the workspace's authorized file reader. The
+  browser shells also enforce their dev read roots, so paths outside them fail
+  with `INVALID_INPUT`. Referenced SMILES is not accepted. To seed Ketcher from
+  a file, call `burette.open_ketcher` and then `set_structure` with
+  `contentRef`.
+- `get_structure` supports `delivery: "inline"` only on the desktop surface;
+  `artifact` and `download` fail with `TRANSPORT_UNAVAILABLE` instead of
+  returning mislabeled inline data. Use `request_persist` to write a file.
+- `request_persist` returns `status: "awaiting_user"` and shows a save prompt
+  in the Ketcher tab with the suggested file name and format. The agent cannot
+  confirm it. The snapshot's `persistRequest` reports `awaiting_user`, `saving`,
+  `saved` (with `persistedRevision` and `savedPath`), `cancelled`, or `failed`.
+  A saved request advances `persistedRevision` and clears `dirty` when the saved
+  revision is still current.
+- `REVISION_CONFLICT` messages state whether `expectedRevision` is stale or
+  ahead of the current `structureRevision`.
 
 The hosted public plugin mirrors the same action schema through
 `open_ketcher`/`control_ketcher` and the resource

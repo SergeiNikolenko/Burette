@@ -11,6 +11,7 @@ import {
   viewerToolMeta,
 } from "../lib/contracts";
 import {
+  createKetcherWidgetHtml,
   createViewerResourceMeta,
   createViewerWidgetHtml,
   VIEWER_RESOURCE_URI,
@@ -397,6 +398,8 @@ describe("viewer resource contract", () => {
     expect(html).toContain("background: #000000;");
     expect(html).toContain("html, body, #root, #app { min-height: 0; height: 100%; }");
     expect(html).not.toContain("background: #111315;");
+    // A narrow chat column must not collapse the Ketcher editor.
+    expect(createKetcherWidgetHtml("https://burette.example")).not.toContain("min-height: 0; height: 100%;");
   });
 
   test("builds the stable hosted shell entry assets", () => {

@@ -877,6 +877,79 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   ]);
 }
 
+async function testActiveDocumentSummaryAndToolErrors(tempRoot) {
+  const pluginRoot = await copyPlugin(tempRoot, "summary-plugin");
+  await installMockAgentCli(pluginRoot);
+  const server = await registerAll(pluginRoot);
+  const activePathFile = path.join(pluginRoot, "scripts", "mock-active-path.txt");
+
+  // A started workspace whose observe state is not reported yet is ok, so its
+  // exit code must be the open command's 0, not the observe probe's 1.
+  for (const tool of ["burette.open_workspace", "open_burette_workspace"]) {
+    const awaiting = await server.tools.get(tool).handler({
+      file: sampleMini,
+      mode: "browser-agent-shell",
+      sessionDir: `/tmp/burette-observe-unavailable-${tool}`,
+      noLaunch: true,
+    });
+    assert.equal(awaiting.structuredContent.ok, true, tool);
+    assert.equal(awaiting.structuredContent.completionState, "awaiting_browser", tool);
+    assert.equal(awaiting.structuredContent.exitCode, 0, tool);
+  }
+
+  const opened = await server.tools.get("burette.open_workspace").handler({
+    file: sampleMini,
+    mode: "browser-preview",
+    noLaunch: true,
+  });
+  assert.equal(opened.structuredContent.exitCode, 0);
+  assert.equal(opened.structuredContent.modelContext.structureSummary.counts.atoms, 9);
+  const workspaceSessionId = opened.structuredContent.workspaceSessionId;
+
+  // The summary follows the active document instead of the file opened first.
+  const expected = await server.tools.get("summarize_burette_structure").handler({ file: sample1htb });
+  await writeFile(activePathFile, sample1htb);
+  const switched = await server.tools.get("burette.observe_workspace").handler({ workspaceSessionId });
+  assert.equal(switched.structuredContent.modelContext.activeDocument.path, sample1htb);
+  assert.deepEqual(
+    switched.structuredContent.modelContext.structureSummary.counts,
+    expected.structuredContent.summary.counts,
+  );
+  const context = await server.tools.get("burette.get_context").handler({ workspaceSessionId });
+  assert.deepEqual(context.structuredContent.modelContext.structureSummary.counts, expected.structuredContent.summary.counts);
+
+  // In-memory documents get a clear unsupported error, never a plugin-relative path.
+  const virtualPath = "burette-ketcher://browser-1vk43g0/ethanol.sdf";
+  await writeFile(activePathFile, virtualPath);
+  const virtualObserved = await server.tools.get("burette.observe_workspace").handler({ workspaceSessionId });
+  assert.equal(virtualObserved.structuredContent.modelContext.structureSummary.ok, false);
+  assert.equal(virtualObserved.structuredContent.modelContext.structureSummary.path, virtualPath);
+  assert.equal(virtualObserved.structuredContent.modelContext.structureSummary.error.code, "VIRTUAL_DOCUMENT_UNSUPPORTED");
+  const virtualSummary = await server.tools.get("summarize_burette_structure").handler({
+    url: opened.structuredContent.result.url,
+  });
+  assert.equal(virtualSummary.structuredContent.ok, false);
+  assert.equal(virtualSummary.isError, true);
+  assert.equal(virtualSummary.structuredContent.error.code, "VIRTUAL_DOCUMENT_UNSUPPORTED");
+  assert.equal(virtualSummary.structuredContent.error.message.includes(pluginRoot), false);
+  assert.doesNotMatch(virtualSummary.structuredContent.error.message, /ENOENT/u);
+
+  // Tool errors name tool parameters, not only CLI flags.
+  for (const [tool, input] of [
+    ["set_burette_representation_style", { style: "cartoon" }],
+    ["manage_burette_tabs", { operation: "list" }],
+    ["manage_burette_tabs", { operation: "open_file", path: sampleMini }],
+    ["observe_burette_workspace", {}],
+    ["act_molstar_scene", { action: { type: "reset_camera" } }],
+  ]) {
+    const missingLocator = await server.tools.get(tool).handler(input);
+    assert.equal(missingLocator.structuredContent.ok, false, tool);
+    assert.equal(missingLocator.isError, true, tool);
+    assert.equal(missingLocator.structuredContent.error.code, "INVALID_ARGS", tool);
+    assert.match(missingLocator.structuredContent.error.message, /requires the url or sessionDir parameter/u, tool);
+  }
+}
+
 async function testCliBridgeErrors(tempRoot) {
   const failureRoot = await copyPlugin(tempRoot, "failure-plugin");
   await writeFile(
@@ -919,6 +992,7 @@ try {
   await testValidationHandlers(tempRoot);
   await testFetchAndWorkspaceHandlers(tempRoot);
   await testMockedWorkspaceToolScenarios(tempRoot);
+  await testActiveDocumentSummaryAndToolErrors(tempRoot);
   await testCliBridgeErrors(tempRoot);
 } finally {
   await rm(tempRoot, { recursive: true, force: true });

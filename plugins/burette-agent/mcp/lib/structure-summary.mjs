@@ -16,7 +16,20 @@ const PROTEIN_RESIDUES = new Set([
 const NUCLEIC_RESIDUES = new Set(["A", "C", "G", "T", "U", "DA", "DC", "DG", "DT", "DU", "ADE", "CYT", "GUA", "THY", "URA"]);
 const POLYMER_RESIDUES = new Set([...PROTEIN_RESIDUES, ...NUCLEIC_RESIDUES]);
 
+// Workspace documents created in memory (Ketcher edits, grid rows, exports) use
+// scheme paths such as burette-ketcher://id/title; they have no file on disk.
+export function isVirtualDocumentPath(file) {
+  return /^[a-z][a-z0-9+.-]+:\//iu.test(String(file ?? "").trim());
+}
+
 export async function summarizeStructureFile(file) {
+  if (isVirtualDocumentPath(file)) {
+    const error = new Error(
+      `${file} is an in-memory workspace document with no file on disk; structure summaries need a local file. Save or export it to a file and pass that path as file.`,
+    );
+    error.code = "VIRTUAL_DOCUMENT_UNSUPPORTED";
+    throw error;
+  }
   const absolutePath = path.resolve(file);
   const fileStat = await stat(absolutePath);
   if (!fileStat.isFile()) {

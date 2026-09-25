@@ -4115,6 +4115,7 @@
     footer.hidden = !footerText;
     updateGridRail();
     notifyGridMenuState(cfg);
+    notifyGridAgentState(cfg, total, visible);
   }
 
   function moleculeCountLabel(count) {
@@ -4751,6 +4752,72 @@
     if (signature === state.gridFilterModelSignature) return;
     state.gridFilterModelSignature = signature;
     post('gridFilterModel', '[grid] Column filter model.', { model });
+  }
+
+  // Read-only grid state for the agent observe payload. Every field is bounded
+  // so a 1M-row selection or a long query never reaches agent context in full.
+  const GRID_AGENT_MAX_SELECTED_IDS = 50;
+  const GRID_AGENT_MAX_FILTERS = 20;
+  const GRID_AGENT_MAX_TEXT = 256;
+
+  function gridAgentText(value) {
+    return String(value ?? '').slice(0, GRID_AGENT_MAX_TEXT);
+  }
+
+  function gridAgentFilters() {
+    const filters = [];
+    for (const filter of state.descriptorFilters || []) {
+      if (!filter?.id) continue;
+      const row = { id: gridAgentText(`descriptor:${filter.id}`), type: 'number' };
+      if (Number.isFinite(Number(filter.min))) row.min = Number(filter.min);
+      if (Number.isFinite(Number(filter.max))) row.max = Number(filter.max);
+      filters.push(row);
+    }
+    for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
+      if (!filter || tableColumnFilterEmpty(filter)) continue;
+      const row = { id: gridAgentText(columnId), type: filter.type === 'number' ? 'number' : 'text' };
+      if (row.type === 'number') {
+        if (String(filter.min ?? '').trim() && Number.isFinite(Number(filter.min))) row.min = Number(filter.min);
+        if (String(filter.max ?? '').trim() && Number.isFinite(Number(filter.max))) row.max = Number(filter.max);
+      } else {
+        row.text = gridAgentText(String(filter.text || '').trim());
+      }
+      filters.push(row);
+    }
+    return filters;
+  }
+
+  function notifyGridAgentState(cfg, totalRows, visibleRows) {
+    if (cfg?.appViewer !== true) return;
+    const sort = tableActiveSort();
+    const selectedRowIds = [];
+    for (const index of state.selected) {
+      if (selectedRowIds.length >= GRID_AGENT_MAX_SELECTED_IDS) break;
+      const numeric = Number(index);
+      if (Number.isSafeInteger(numeric) && numeric >= 0) selectedRowIds.push(numeric);
+    }
+    const filters = gridAgentFilters();
+    const query = String(state.query || '');
+    const payload = {
+      sort: sort ? { key: gridAgentText(sort.columnId), direction: sort.direction } : { key: 'index', direction: 'asc' },
+      searchQuery: query.slice(0, GRID_AGENT_MAX_TEXT),
+      searchQueryTruncated: query.length > GRID_AGENT_MAX_TEXT,
+      smartsSearch: Boolean(state.smarts),
+      filters: filters.slice(0, GRID_AGENT_MAX_FILTERS),
+      filterCount: filters.length,
+      chemicalSpaceFilterActive: state.chemicalSpaceFilterActive === true,
+      selectedCount: state.selected.size,
+      selectedRowIds,
+      selectionTruncated: state.selected.size > selectedRowIds.length,
+      totalRows: Math.max(0, Number(totalRows) || 0),
+      visibleRows: Math.max(0, Number(visibleRows) || 0),
+      viewMode: gridAgentText(state.viewMode),
+      indexing: state.indexing === true,
+    };
+    const signature = JSON.stringify(payload);
+    if (signature === state.gridAgentStateSignature) return;
+    state.gridAgentStateSignature = signature;
+    post('gridAgentState', '', { gridState: payload });
   }
 
   // How far the right dock floats over the grid. A spilling grid keeps its full

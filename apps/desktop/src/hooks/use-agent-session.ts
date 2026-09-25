@@ -6,6 +6,7 @@ import type { OpenTextFilesResult } from "../types";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import type { DockArea } from "../lib/dock";
 import { executeAgentTabAction, type AgentTabActions } from "../lib/agent-tab-actions";
+import { agentGridState, recordAgentGridState } from "../lib/agent-grid-state";
 import { setAgentWorkspacePanel } from "../lib/agent-workspace-panel";
 import type { MoleculeTab } from "../stores/molecule-store";
 import { createSelectionContext } from "../../../burette-public-plugin/lib/hosted-context";
@@ -249,6 +250,23 @@ export function useAgentSession({
         resolve(body.result);
         return;
       }
+      if (
+        (event.data?.source === "burette-grid" || event.data?.source === "burette-viewer")
+        && event.data.body?.type === "gridAgentState"
+      ) {
+        if (!recordAgentGridState(event.data.body)) return;
+        void writeObserve(
+          sessionDirRef.current,
+          activeDocumentRef.current,
+          documentsRef.current,
+          tabsRef.current,
+          workspacePanelsRef.current,
+          viewerAgentStatesRef.current,
+          activeTabIdRef.current,
+          activeTabKindRef.current,
+        );
+        return;
+      }
       if (event.data?.source !== "burette-viewer" && !(window.BuretteMcpWorkspace && event.data?.source === "burette-grid")) return;
       const body = event.data.body;
       if (!body || typeof body.documentId !== "string") return;
@@ -426,6 +444,7 @@ async function writeObserve(
       lastAction: activeAgentState?.lastAction ?? null,
     },
     story: activeAgentState?.story ?? null,
+    grid: activeDocument?.renderer === "grid2d" ? agentGridState(activeDocument.id) : null,
     panels: ["viewer", ...workspacePanels.slice(-MAX_OBSERVED_PANELS).map((panel) => panel.id)],
     workspacePanels: workspacePanels.slice(-MAX_OBSERVED_PANELS),
     bounds: {
@@ -622,7 +641,11 @@ async function renderPanel(
   const result = await openTextDocuments([file], { background: true });
   const document = result?.documents[0] ?? null;
   if (!document) {
-    return agentFailure("render_panel", "OPEN_FAILED", "Panel file could not be opened as a text document.");
+    return agentFailure(
+      "render_panel",
+      "OPEN_FAILED",
+      `Panel file could not be opened as a text document: ${file}. Check that it exists and is inside the workspace's allowed roots.`,
+    );
   }
   const area: DockArea = action.area === "bottom" ? "bottom" : "right";
   setDockDocument(area, document.id);

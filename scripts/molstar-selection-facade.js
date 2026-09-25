@@ -100,9 +100,13 @@ function create(plugin, source) {
   let revision = 1;
   const bookmarks = selectionBookmarks();
   const changed = () => { revision++; };
+  // The revision guards atom addresses, the current selection and owned scene
+  // layers. Camera motion and canvas settings change none of those, yet Mol*
+  // emits camera events on every animation frame and after each scene commit
+  // (radiusMax refits one frame after a new representation), so subscribing to
+  // them made a mutation's returned revision stale before the caller could use it.
   const subscriptions = [plugin.state?.data?.events?.changed, plugin.state?.data?.events?.cell?.stateUpdated,
-    plugin.managers?.structure?.selection?.events?.changed,
-    plugin.canvas3d?.camera?.stateChanged, plugin.canvas3d?.camera?.changed, plugin.events?.canvas3d?.settingsUpdated]
+    plugin.managers?.structure?.selection?.events?.changed]
     .filter(event => event?.subscribe).map(event => event.subscribe(changed));
   function check(args, required = false) {
     if ((required || args.sceneId !== undefined) && args.sceneId !== sceneId) fail('STALE_SCENE', 'Query the current sceneId before using atom references.');

@@ -4,10 +4,16 @@ import { BuretteSelection } from '../scripts/molstar-selection-facade.js';
 import { OrderedSet } from 'molstar/lib/mol-data/int.js';
 import { StructureElement } from 'molstar/lib/mol-model/structure.js';
 
-function fixture() {
+function emitter() {
   const listeners = new Set();
-  const event = { subscribe(fn) { listeners.add(fn); return { unsubscribe: () => listeners.delete(fn) }; } };
-  const changed = () => { for (const fn of listeners) fn(); };
+  return { subscribe(fn) { listeners.add(fn); return { unsubscribe: () => listeners.delete(fn) }; }, next() { for (const fn of listeners) fn(); } };
+}
+
+function fixture() {
+  const event = emitter();
+  const changed = () => event.next();
+  const cameraEvents = [emitter(), emitter(), emitter()];
+  const moveCamera = () => { for (const cameraEvent of cameraEvents) cameraEvent.next(); };
   const entries = ['object-a', 'object-b'].map(ref => ({ ref, data: { elementCount: 4,
     units: [1, 2].map(id => ({ id, kind: 0, model: { id: 'model-1' }, elements: Int32Array.from([0, 1]) })),
   } }));
@@ -24,7 +30,8 @@ function fixture() {
     deselectAll() { selected.clear(); changed(); },
     select({ loci }, granularity) { calls.push(granularity); selected.set(loci.structure, loci); changed(); },
   };
-  const plugin = { state: { data: { events: { changed: event } } }, managers: { structure: { selection }, interactivity: { lociSelects: interactivity } } };
+  const plugin = { state: { data: { events: { changed: event } } }, managers: { structure: { selection }, interactivity: { lociSelects: interactivity } },
+    canvas3d: { camera: { stateChanged: cameraEvents[0], changed: cameraEvents[1] } }, events: { canvas3d: { settingsUpdated: cameraEvents[2] } } };
   const controller = BuretteSelection.forPlugin(plugin, { structures: () => entries, atoms: () => atoms });
   const query = (expression, extra = {}) => controller.query({ selectionVersion: 1, expression, ...extra });
   const select = (expression, mode = 'set', extra = {}) => controller.select({ selectionVersion: 1, expression, mode,
@@ -34,7 +41,7 @@ function fixture() {
     OrderedSet.forEach(element.indices, i => result.push([entries.find(entry => entry.data === loci.structure).ref, element.unit.id, element.unit.elements[i]]));
     return result;
   }));
-  return { controller, query, select, selectedAtoms, calls, changed, atoms, entries, interactivity };
+  return { controller, query, select, selectedAtoms, calls, changed, moveCamera, atoms, entries, interactivity };
 }
 
 test('strict namespaces, zero occupancy, altloc and object/operator identities', () => {
@@ -63,6 +70,22 @@ test('fixed revision pages fail on UI mutation and new scene', () => {
   f.changed();
   assert.throws(() => f.query({ kind: 'all' }, { offset: 2, sceneId: first.sceneId, expectedRevision: first.revision }), /scene changed/);
   assert.throws(() => f.select({ kind: 'all' }, 'set', { sceneId: crypto.randomUUID() }), /sceneId/);
+  f.controller.dispose();
+});
+
+test('camera motion and canvas settings do not invalidate atom references', () => {
+  const f = fixture();
+  const applied = f.select({ fields: { structureId: 'object-a', unitId: 1, atom_index: 0 } });
+  // Focus/reset animations emit camera events on every frame, and Mol* refits
+  // the camera one frame after a new representation is committed.
+  for (let frame = 0; frame < 60; frame++) f.moveCamera();
+  assert.equal(f.controller.state().revision, applied.revision);
+  const chained = f.select({ fields: { structureId: 'object-b' } }, 'add',
+    { sceneId: applied.sceneId, expectedRevision: applied.revision });
+  assert.equal(chained.applied, true);
+  f.changed();
+  assert.throws(() => f.select({ kind: 'all' }, 'set', { sceneId: chained.sceneId, expectedRevision: chained.revision }),
+    { code: 'STALE_REVISION' });
   f.controller.dispose();
 });
 

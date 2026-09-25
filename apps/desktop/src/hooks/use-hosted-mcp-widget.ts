@@ -5,6 +5,7 @@ import {
   openBrowserDevMolstarContextDocument,
 } from "../lib/browser-dev-documents";
 import {
+  isHostedKetcherWidget,
   isHostedMcpWidget,
   isHostedMcpToolResultMessage,
   parseHostedMcpStructureMessage,
@@ -34,6 +35,15 @@ export function useHostedMcpWidget({
   useEffect(() => {
     if (!isHostedMcpWidget()) return undefined;
     document.documentElement.dataset.hostedMcpWidget = "true";
+    // Ketcher results carry no 3D structure, so the handlers below would read
+    // every one as "clear the viewer" and close the Ketcher tab the app opens.
+    // ChatGPT exposes window.openai.toolOutput before the first render, which
+    // made that happen at mount. The Ketcher page consumes its seed itself.
+    if (isHostedKetcherWidget()) {
+      return () => {
+        delete document.documentElement.dataset.hostedMcpWidget;
+      };
+    }
 
     const forgetOpenedDocument = () => {
       if (!openedDocumentPathRef.current) return;

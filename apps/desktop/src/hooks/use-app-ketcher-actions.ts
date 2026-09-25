@@ -6,7 +6,7 @@ import type { KetcherImportRequest, KetcherSketchRequest, StatusKind } from "../
 import type { KetcherLocation } from "../components/editor-area/page-kinds/ketcher";
 import { browserDevComputeReportDocument, runBrowserDevSemiempirical } from "../lib/browser-dev-compute";
 import { appendToBrowserDevCollection, generateBrowserDev3DConformer, openBrowserDevTextDocument, readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
-import { downloadTextFile, exportDialogFilters, safeExportFileName, stableTextDocumentId } from "../lib/file-export";
+import { downloadTextFile, exportDialogFilters, safeExportFileName, stableTextDocumentId, type TextFileSaveOutcome } from "../lib/file-export";
 import { pathExtension } from "../lib/file-routing";
 import { ketcherDraftMolfileFromImportText, ketcherSource3DFromText, queueKetcherImportRequest } from "../lib/ketcher-workflow";
 import { currentDocumentRegistryRevision } from "../lib/native-menu";
@@ -171,27 +171,29 @@ export function useAppKetcherActions({
     title: string;
     extension: string;
     text: string;
-  }) => {
+  }): Promise<TextFileSaveOutcome> => {
     const title = safeExportFileName(request.title);
     if (!isTauriRuntime()) {
       downloadTextFile(title, request.text);
       pushStatus(`Saved ${title}`);
-      return;
+      return { status: "saved", path: null };
     }
     try {
       const outputPath = await save({
         defaultPath: title,
         filters: exportDialogFilters(title, "text/plain"),
       });
-      if (!outputPath) return;
+      if (!outputPath) return { status: "cancelled" };
       const savedPath = await invoke<string>("save_text_as", {
         text: request.text,
         outputPath,
         sourcePath: null,
       });
       pushStatus(`Saved ${basename(savedPath)}`);
+      return { status: "saved", path: savedPath };
     } catch (error) {
       pushErrorStatus(error, "Save Ketcher export failed");
+      return { status: "failed", message: error instanceof Error ? error.message : String(error) };
     }
   }, [pushErrorStatus, pushStatus]);
 

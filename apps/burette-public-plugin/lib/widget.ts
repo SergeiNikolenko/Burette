@@ -68,6 +68,13 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
   const viewerAssets = assetUrl(assetOrigin, VIEWER_RUNTIME_ASSETS_PATH);
   const mobileScript = `${assetUrl(assetOrigin, VIEWER_MOBILE_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
   const appBridgeScript = `${assetUrl(assetOrigin, VIEWER_APP_BRIDGE_SCRIPT_PATH)}?v=${VIEWER_SHELL_ASSET_VERSION}`;
+  // Narrow viewports get the mobile viewer, which fills whatever height the
+  // host gives it. Ketcher has no mobile variant, so it keeps its minimum
+  // height; otherwise a narrow chat column squeezes the editor to a strip.
+  const narrowLayout = ketcherWidget ? "" : `
+      @media (max-width: 600px) {
+        html, body, #root, #app { min-height: 0; height: 100%; }
+      }`;
   const bootstrap = serializeForInlineScript({
     viewerAssets,
     analyticsOrigin: assetOrigin.replace(/\/$/u, ""),
@@ -85,10 +92,7 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
       html, body, #root { width: 100%; min-height: 480px; height: min(80vh, 760px); }
       body .app-shell { width: 100%; height: 100%; }
       body { margin: 0; overflow: hidden; background: #f7f7f7; }
-      @media (prefers-color-scheme: dark) { body { background: #000000; } }
-      @media (max-width: 600px) {
-        html, body, #root, #app { min-height: 0; height: 100%; }
-      }
+      @media (prefers-color-scheme: dark) { body { background: #000000; } }${narrowLayout}
     </style>
     <script>
       (() => {
@@ -178,6 +182,7 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
           if (message.method === "ui/notifications/tool-result") acceptKetcherResult(message.params);
           if (
             message.method === "ui/notifications/tool-result"
+            && !window.__BURETTE_HOSTED_KETCHER_WIDGET__
             && !window.__BURETTE_HOSTED_MCP_BRIDGE_READY__
           ) {
             window.__BURETTE_HOSTED_MCP_RESULTS__.push(message.params);
@@ -196,6 +201,7 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
             structuredContent: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolOutput,
             _meta: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata,
           });
+          if (window.__BURETTE_HOSTED_KETCHER_WIDGET__) return;
           window.__BURETTE_HOSTED_MCP_RESULTS__.push({
             structuredContent: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolOutput,
             _meta: window.__BURETTE_HOSTED_OPENAI_GLOBALS__.toolResponseMetadata,
