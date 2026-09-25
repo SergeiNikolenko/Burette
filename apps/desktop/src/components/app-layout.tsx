@@ -23,7 +23,8 @@ import { createDragCommit, type DragCommit } from "../lib/drag-commit";
 import { isTauriRuntime } from "../lib/tauri";
 import { activeViewerIframeForDocument, postMessageToViewerSource } from "../lib/viewer-bridge";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
-import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
+import { isHostedKetcherWidget, isHostedMcpWidget } from "../lib/hosted-mcp-widget";
+import { HostedKetcherViewSwitch } from "./hosted-ketcher-view-switch";
 import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
 import { AnnotateToggle, AnnotationLayer } from "./annotation-layer";
 
@@ -566,6 +567,7 @@ export function AppLayout({
       {window.BuretteMcpWorkspace ? <>
         <OpenInEditorMenu state={layoutState} actions={actions} presentation="file-header" />
       </> : null}
+      {isHostedKetcherWidget() ? <HostedKetcherViewSwitch state={state} actions={actions} /> : null}
       <section className="workspace">
         {/* Sizes AND open flags are persisted from onLayoutChanged, not
             onResize: onResize is driven by a ResizeObserver and also fires for

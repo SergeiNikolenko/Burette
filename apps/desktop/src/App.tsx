@@ -187,10 +187,13 @@ export default function App() {
   const closeActiveDocument = useCloseActiveTab();
   const closeAllDocuments = useCloseAllTabs();
 
+  // The Ketcher widget starts on the editor; its view switch then moves between
+  // the editor tab and the viewer tabs opened from the sketch.
+  const hasKetcherTab = tabs.some((tab) => tab.location.kind === "ketcher");
   useEffect(() => {
-    if (!hostedKetcherWidget || activeTab?.location.kind === "ketcher") return;
+    if (!hostedKetcherWidget || hasKetcherTab) return;
     openKetcherTab();
-  }, [activeTab?.location.kind, hostedKetcherWidget, openKetcherTab]);
+  }, [hasKetcherTab, hostedKetcherWidget, openKetcherTab]);
   const moveTab = useMoveTab();
   const agentTabActions = useAppAgentSessionActions({ closeTab, moveTab, openNewTab, setActiveTab });
   const {

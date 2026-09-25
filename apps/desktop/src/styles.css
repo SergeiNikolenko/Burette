@@ -226,6 +226,12 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   pointer-events: none;
 }
 .app-shell[data-hosted-mcp-widget="true"]::after { display: none; }
+.hosted-ketcher-view-switch {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  padding: 8px 8px 0;
+}
 .app-shell[data-theme="auto"] {
   color-scheme: light dark;
 }

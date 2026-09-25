@@ -4,6 +4,7 @@ import { collectionExtension, mergeCollectionSources, parseReactionCollectionRec
 import { runBrowserDevMetalConformer } from "./browser-dev-compute";
 import { parseDataWarrior } from "./datawarrior";
 import { nativePreviewHtml } from "./native-mcp-workspace";
+import { isHostedMcpWidget } from "./hosted-mcp-widget";
 import type { DockingDocumentRequest, DockingSceneMode, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 
@@ -131,7 +132,12 @@ const WEB_DEMO_ENABLED = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
 const RDKIT_WASM_PATH = WEB_DEMO_ENABLED
   ? `${WEB_ASSETS_BASE.replace(/\/$/u, "")}/rdkit/RDKit_minimal.wasm`
   : "/__burette/rdkit-wasm";
-const XYZRENDER_ENDPOINT = WEB_DEMO_ENABLED
+// The ChatGPT widget runs on a sandbox origin, so it reaches the hosted
+// xyzrender service on the app origin that serves its assets.
+const HOSTED_APP_ORIGIN = isHostedMcpWidget() ? window.__BURETTE_HOSTED_ANALYTICS_ORIGIN__ ?? "" : "";
+const XYZRENDER_ENDPOINT = HOSTED_APP_ORIGIN
+  ? `${HOSTED_APP_ORIGIN}/api/xyzrender`
+  : WEB_DEMO_ENABLED
   ? "/api/xyzrender"
   : "/__burette/xyzrender";
 const AMBER_NETCDF_EXTENSIONS = new Set(["nc", "ncdf", "netcdf", "ncrst"]);
@@ -1325,6 +1331,9 @@ function viewerHtml(
         }
       : {}),
     ...(externalRendererStatus ? { externalRendererStatus } : {}),
+    // Sketches opened from the ChatGPT Ketcher widget boot like the widget's own
+    // viewer: the sandbox blocks inline scripts, and the toolbar starts collapsed.
+    ...(isHostedMcpWidget() ? { hostedMcpWidgetBootstrap: true } : {}),
   };
   if (mesoscale) {
     return mesoscaleViewerHtml(label, bytes, config, visuals.transparentBackground);
