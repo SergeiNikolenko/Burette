@@ -14,6 +14,7 @@ type UseAppSpectrumDockLifecycleOptions = {
   setDockActiveTab: (area: "right" | "bottom", kind: "files" | "inspector") => void;
   setDockDocument: (area: "right" | "bottom", documentId: string | null) => void;
   setDockOpen: (area: "right" | "bottom", open: boolean) => void;
+  textDocuments: ReadonlyArray<{ id: string }>;
 };
 
 export function useAppSpectrumDockLifecycle({
@@ -28,6 +29,7 @@ export function useAppSpectrumDockLifecycle({
   setDockActiveTab,
   setDockDocument,
   setDockOpen,
+  textDocuments,
 }: UseAppSpectrumDockLifecycleOptions) {
   useEffect(() => {
     if (activeDocument?.renderer === "spectrum") return;
@@ -36,7 +38,13 @@ export function useAppSpectrumDockLifecycle({
     if (spectrumTab) closeDockTab("bottom", spectrumTab.id);
     if (bottomDockActiveTab === "spectrum") setDockActiveTab("bottom", "files");
 
-    if (bottomDockDocumentId && !documents.some((document) => document.id === bottomDockDocumentId)) {
+    // Text documents (agent render_panel markdown/table/chart panels) live outside `documents`;
+    // only a bottom-dock id that matches neither store is stale.
+    if (
+      bottomDockDocumentId
+      && !documents.some((document) => document.id === bottomDockDocumentId)
+      && !textDocuments.some((document) => document.id === bottomDockDocumentId)
+    ) {
       setDockDocument("bottom", null);
       setDockOpen("bottom", false);
     }
@@ -60,5 +68,6 @@ export function useAppSpectrumDockLifecycle({
     setDockActiveTab,
     setDockDocument,
     setDockOpen,
+    textDocuments,
   ]);
 }

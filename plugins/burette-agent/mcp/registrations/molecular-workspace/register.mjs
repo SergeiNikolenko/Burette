@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
 
@@ -10,7 +11,7 @@ import {
   updateWorkspaceSession,
 } from "../../lib/session-registry.mjs";
 import { componentSelector, editStructureFragmentFile, extractStructureComponentFile } from "../../lib/structure-components.mjs";
-import { summarizeStructureFile } from "../../lib/structure-summary.mjs";
+import { isVirtualDocumentPath, summarizeStructureFile } from "../../lib/structure-summary.mjs";
 import { toolText } from "../../lib/tool-response.mjs";
 
 const actionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
@@ -199,7 +200,8 @@ export function registerMolecularWorkspace(server) {
         ready,
         completionState: ready ? "ready" : awaitingBrowser ? "awaiting_browser" : "failed",
         error: ready || awaitingBrowser ? null : observed.error,
-        exitCode: observed.exitCode ?? result.exitCode,
+        // A not-yet-reported observe exits 1 while the open itself succeeded.
+        exitCode: ready || awaitingBrowser ? result.exitCode : observed.exitCode ?? result.exitCode,
       });
     },
   );
@@ -523,6 +525,7 @@ export function registerMolecularWorkspace(server) {
         observed,
         structureSummary,
         allowAwaitingBrowser: true,
+        openExitCode: result.exitCode,
       });
     },
   );
@@ -564,7 +567,23 @@ export function registerMolecularWorkspace(server) {
           },
         };
       }
-      const summary = boundedStructureSummary(await summarizeStructureFile(resolved.file));
+      let summary;
+      try {
+        summary = boundedStructureSummary(await summarizeStructureFile(resolved.file));
+      } catch (error) {
+        const summaryError = structureSummaryError(error);
+        return {
+          content: toolText(`summarize_burette_structure failed: ${summaryError.message}`),
+          isError: true,
+          structuredContent: {
+            ok: false,
+            tool: "summarize_burette_structure",
+            summary: null,
+            observe: boundedWorkspaceObserve(resolved.observe || null),
+            error: summaryError,
+          },
+        };
+      }
       return {
         content: toolText(`summarize_burette_structure completed: ${summary.summaryLine}`),
         structuredContent: {
@@ -604,7 +623,9 @@ export function registerMolecularWorkspace(server) {
       const args = ["observe"];
       if (input.url) args.push("--url", input.url);
       if (input.sessionDir) args.push("--session-dir", input.sessionDir);
-      const result = await runBuretteAgent(args);
+      const result = hasWorkspaceLocator(input)
+        ? await runBuretteAgent(args)
+        : missingWorkspaceLocatorResult(MISSING_WORKSPACE_LOCATOR_ERROR);
       return observedWorkspaceToolResult("observe_burette_workspace", {
         started: true,
         result: null,
@@ -643,6 +664,9 @@ export function registerMolecularWorkspace(server) {
       },
     },
     async input => {
+      if (!hasWorkspaceLocator(input)) {
+        return cliToolResult("manage_burette_tabs", missingWorkspaceLocatorResult(MISSING_WORKSPACE_LOCATOR_ERROR));
+      }
       if (input.operation === "list") {
         const args = ["observe"];
         if (input.url) args.push("--url", input.url);
@@ -1079,6 +1103,9 @@ export function registerMolecularWorkspace(server) {
       },
     },
     async input => {
+      if (!hasWorkspaceLocator(input)) {
+        return cliToolResult("act_molstar_scene", missingWorkspaceLocatorResult(MISSING_WORKSPACE_LOCATOR_ERROR));
+      }
       const args = ["act"];
       if (input.url) args.push("--url", input.url);
       if (input.sessionDir) args.push("--session-dir", input.sessionDir);
@@ -1118,6 +1145,16 @@ function workspaceLocatorArgs(session) {
   };
 }
 
+// MCP callers pass tool parameters, not CLI flags, so name both.
+const MISSING_WORKSPACE_LOCATOR_ERROR = {
+  code: "INVALID_ARGS",
+  message: "This tool requires the url or sessionDir parameter returned by open_burette_workspace (CLI: --url or --session-dir).",
+};
+
+function hasWorkspaceLocator(input) {
+  return Boolean(input?.url || input?.sessionDir);
+}
+
 function missingWorkspaceLocatorResult(error) {
   return {
     ok: false,
@@ -1140,7 +1177,7 @@ function workspaceSessionsResult() {
   };
 }
 
-function publicContractResult(tool, {
+async function publicContractResult(tool, {
   ok,
   session = null,
   observe = null,
@@ -1157,7 +1194,8 @@ function publicContractResult(tool, {
   const effectiveOk = nestedResultOk(ok, result);
   const boundedObserve = boundedWorkspaceObserve(observe);
   const boundedError = boundedToolError(error || nestedResultError(result));
-  const modelContext = buildModelContext({ session, observe: boundedObserve, structureSummary: structureSummary || session?.structureSummary || null });
+  const activeSummary = await activeDocumentStructureSummary(session, observe, structureSummary || session?.structureSummary || null);
+  const modelContext = buildModelContext({ session, observe: boundedObserve, structureSummary: activeSummary });
   return {
     content: toolText(completionState === "awaiting_browser"
       ? `${tool} started. Open the returned workspace URL, then call burette.observe_workspace. Do not claim that the structure is visible until ready is true and the central canvas is visually verified.`
@@ -1220,6 +1258,7 @@ function buildModelContext({ session, observe, structureSummary }) {
     viewer: observe?.viewer || observe?.viewerAgent || null,
     scene: observe?.scene || null,
     story: observe?.story || null,
+    grid: observe?.grid || null,
     tabs: Array.isArray(observe?.tabs) ? observe.tabs.map(tab => ({
       id: tab.id,
       title: tab.title,
@@ -1263,6 +1302,30 @@ function surfaceFromMode(mode) {
 
 function fileTitle(file) {
   return String(file || "").replace(/\\/g, "/").split("/").filter(Boolean).pop() || "workspace";
+}
+
+// Summaries are cached per workspace session; recompute when the observed
+// active document is no longer the file the cached summary describes.
+async function activeDocumentStructureSummary(session, observe, cachedSummary) {
+  const activePath = typeof observe?.activeDocument?.path === "string" ? observe.activeDocument.path.trim() : "";
+  if (!activePath) return cachedSummary;
+  if (cachedSummary && sameDocumentPath(cachedSummary.path, activePath)) return cachedSummary;
+  const summary = await safeStructureSummary(activePath);
+  if (session?.workspaceSessionId) updateWorkspaceSession(session.workspaceSessionId, { structureSummary: summary });
+  return summary;
+}
+
+function sameDocumentPath(left, right) {
+  if (typeof left !== "string" || typeof right !== "string" || !left || !right) return false;
+  if (isVirtualDocumentPath(left) || isVirtualDocumentPath(right)) return left.trim() === right.trim();
+  return path.resolve(left) === path.resolve(right);
+}
+
+function structureSummaryError(error) {
+  return {
+    code: typeof error?.code === "string" ? error.code : "SUMMARY_FAILED",
+    message: error instanceof Error ? error.message : String(error),
+  };
 }
 
 async function resolveStructureSummaryTarget(input) {
@@ -1450,6 +1513,7 @@ function structureComponentLabel({ component, chain, compId, seq, element }) {
 }
 
 async function runWorkspaceAction({ url, sessionDir, action, waitMs }) {
+  if (!url && !sessionDir) return missingWorkspaceLocatorResult(MISSING_WORKSPACE_LOCATOR_ERROR);
   const args = ["act"];
   if (url) args.push("--url", url);
   if (sessionDir) args.push("--session-dir", sessionDir);
@@ -1465,9 +1529,7 @@ async function safeStructureSummary(file) {
     return {
       ok: false,
       path: file,
-      error: {
-        message: error instanceof Error ? error.message : String(error),
-      },
+      error: structureSummaryError(error),
     };
   }
 }
@@ -1509,6 +1571,7 @@ function observedWorkspaceToolResult(tool, {
   observed,
   structureSummary = null,
   allowAwaitingBrowser = false,
+  openExitCode = null,
 }) {
   const rawObserve = observed.payload?.result || null;
   const readiness = workspaceReadiness(rawObserve);
@@ -1532,7 +1595,9 @@ function observedWorkspaceToolResult(tool, {
       observe: boundedWorkspaceObserve(rawObserve),
       structureSummary,
       error: awaitingBrowser ? null : error,
-      exitCode: observed.exitCode,
+      // ok and exitCode describe the same outcome: a started workspace that has
+      // not reported observe state yet keeps the open command's exit code.
+      exitCode: (ready || awaitingBrowser) && openExitCode !== null ? openExitCode : observed.exitCode,
     },
   };
 }

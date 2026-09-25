@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, open as openFile, readFile, readdir, realpath, stat, wr
 import { createServer } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { delimiter, dirname, resolve } from 'node:path';
+import { delimiter, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { validateMvsDocumentFile, validateMvsStoryFile, writeMvsStoryFile } from './mvs-story.mjs';
 import { instantiateMvsStoryTemplate, listMvsStoryTemplates } from './mvs-story-templates.mjs';
 import { getOfficialMvsAuthoringReference } from './mvs-schema-validator.mjs';
@@ -512,6 +512,9 @@ async function openBrowserAgentShell(file, options) {
   const initialFile = sceneFiles ? sceneFiles[0] : resolve(file);
   const sessionDir = options.sessionDir ? resolve(options.sessionDir) : await mkdtemp(resolve(tmpdir(), 'burette-agent-shell-'));
   const token = randomUUID();
+  // The shell server only reads files under these roots (HTTP 403 otherwise);
+  // act checks queued action paths against them before the shell sees them.
+  const allowedRoots = [...browserDevFsAllowRoots(initialFile, sceneFiles ?? []), sessionDir];
   if (options.sessionDir) await assertBrowserSessionDirectoryAvailable(sessionDir);
   await mkdir(sessionDir, { recursive: true });
   await writeJsonFile(resolve(sessionDir, 'session.json'), {
@@ -520,6 +523,7 @@ async function openBrowserAgentShell(file, options) {
     token,
     createdAt: new Date().toISOString(),
     initialPaths: [initialFile],
+    allowedRoots,
   });
   await writeJsonFile(resolve(sessionDir, 'actions.json'), {
     apiVersion: 'burette-agent-control/v1',
@@ -543,6 +547,7 @@ async function openBrowserAgentShell(file, options) {
     token,
     createdAt: new Date().toISOString(),
     initialPaths: [initialFile],
+    allowedRoots,
     sessionDir,
     host,
     port,
@@ -772,7 +777,7 @@ async function observe(options) {
     await observeDesktopSession(options);
     return;
   }
-  if (!options.url) fail('INVALID_ARGS', 'observe requires --url with the tokenized browser-preview URL.', 2);
+  if (!options.url) fail('INVALID_ARGS', 'observe requires url (--url) with the tokenized workspace URL, or sessionDir (--session-dir).', 2);
   const localUrl = requireLocalAgentUrl(options.url, 'INVALID_URL');
   const shellSessionDir = await browserShellSessionDir(localUrl.toString());
   if (shellSessionDir) {
@@ -823,7 +828,7 @@ async function act(options) {
     await actDesktopSession(options);
     return;
   }
-  if (!options.url) fail('INVALID_ARGS', 'act requires --url with the tokenized browser-preview URL.', 2);
+  if (!options.url) fail('INVALID_ARGS', 'act requires url (--url) with the tokenized workspace URL, or sessionDir (--session-dir).', 2);
   const localUrl = requireLocalAgentUrl(options.url, 'INVALID_URL');
   const shellSessionDir = await browserShellSessionDir(localUrl.toString());
   if (shellSessionDir) {
@@ -930,9 +935,11 @@ async function observeDesktopSession(options) {
 }
 
 async function actDesktopSession(options) {
-  await assertSessionResponsive(options.sessionDir);
+  const session = await assertSessionResponsive(options.sessionDir);
   let action = await readAction(options);
+  assertSessionActionSupported(action);
   action = await normalizeAgentActionPaths(action);
+  await assertActionPathsAllowed(action, session);
   const actionsPath = resolve(options.sessionDir, 'actions.json');
   const actionsFile = await readJsonFile(actionsPath, { apiVersion: 'burette-agent-control/v1', actions: [] });
   const itemId = `act-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -1016,10 +1023,102 @@ function readStdin() {
 }
 
 async function normalizeAgentActionPaths(action) {
-  if (action?.type !== 'manage_tabs' || action?.operation !== 'open_file' || typeof action.path !== 'string') return action;
-  const absolutePath = resolve(action.path);
-  const canonicalPath = await realpath(absolutePath).catch(() => absolutePath);
-  return { ...action, path: canonicalPath };
+  if (action?.type === 'manage_tabs' && action?.operation === 'open_file' && typeof action.path === 'string') {
+    return { ...action, path: await canonicalFilePath(action.path) };
+  }
+  if (action?.type === 'render_panel' && typeof action.file === 'string' && action.file.trim() && !isVirtualDocumentPath(action.file)) {
+    return { ...action, file: await canonicalFilePath(action.file) };
+  }
+  return action;
+}
+
+async function canonicalFilePath(path) {
+  const absolutePath = resolve(String(path).trim());
+  return await realpath(absolutePath).catch(() => absolutePath);
+}
+
+// In-memory workspace documents use scheme paths such as burette-ketcher://id/title.
+function isVirtualDocumentPath(path) {
+  return /^[a-z][a-z0-9+.-]+:\//iu.test(String(path).trim());
+}
+
+// Action types a desktop or browser-agent-shell session can execute: shell
+// actions handled in apps/desktop/src/hooks/use-agent-session.ts plus Mol*
+// viewer actions handled by executeBuretteAgentAction in
+// PreviewExtension/Web/viewer.js. tests/test-burette-agent-cli.mjs keeps this
+// list in sync with both sources.
+const SESSION_SHELL_ACTION_TYPES = [
+  'set_workspace_panel', 'open_ketcher', 'control_ketcher', 'open_files',
+  'open_docking_view', 'manage_tabs', 'render_panel',
+];
+const SESSION_VIEWER_ACTION_TYPES = [
+  'workspace_scene_state', 'align_scene_files', 'export_scene_structure', 'copy_scene_sequence',
+  'append_scene_files', 'story_observe', 'story_control', 'get_xtb_context', 'focus_ligand',
+  'show_ligands', 'hide_components', 'show_components', 'edit_components', 'open_components_menu',
+  'remove_components', 'create_component', 'select_residues', 'clear_selection', 'set_sdf_molecule',
+  'set_structure_pose', 'apply_trajectory_smoothing', 'apply_external_trajectory_smoothing',
+  'set_trajectory_smoothing_view', 'set_molstar_style', 'set_sdf_context_style',
+  'set_sdf_context_opacity', 'set_sdf_context_color', 'set_sdf_pose_mode', 'set_sdf_pose_index',
+  'focus_selection', 'show_assembly_symmetry', 'hide_assembly_symmetry', 'show_water_bridges',
+  'apply_mesoscale_preset', 'color_xtb_charges', 'color_xtb_fukui', 'label_selection', 'contacts',
+  'reset_camera', 'observe_scene', 'query_atoms', 'query_groups', 'named_selection', 'select_atoms',
+  'measure_geometry', 'list_scene_layers', 'patch_scene_layers', 'capture_scene', 'replace_document',
+  'set_scene_motion', 'set_scene_wiggle', 'rotate_camera', 'hide_waters', 'show_waters',
+  'show_surface', 'color_by_chain', 'render_panel', 'apply_scene', 'load_mvs', 'observe_story', 'control_story',
+  'export_session', 'screenshot', 'export_image', 'raw_burette_agent',
+];
+const SESSION_ACTION_TYPES = new Set([...SESSION_SHELL_ACTION_TYPES, ...SESSION_VIEWER_ACTION_TYPES]);
+
+function assertSessionActionSupported(action) {
+  const type = typeof action?.type === 'string' ? action.type : '';
+  if (SESSION_ACTION_TYPES.has(type)) return;
+  fail(
+    'UNSUPPORTED_ACTION',
+    type
+      ? `Unsupported workspace action type: ${type}. It was rejected before queueing; see details.supportedTypes.`
+      : 'Workspace actions require a string type; see details.supportedTypes.',
+    2,
+    { type: type || null, supportedTypes: [...SESSION_ACTION_TYPES] },
+  );
+}
+
+function actionFilePaths(action) {
+  const paths = [];
+  if (action?.type === 'manage_tabs' && action.operation === 'open_file') paths.push(action.path);
+  if (action?.type === 'open_files' && Array.isArray(action.paths)) paths.push(...action.paths);
+  if (action?.type === 'render_panel') paths.push(action.file);
+  if (action?.type === 'open_docking_view') {
+    paths.push(action.receptorPath);
+    if (Array.isArray(action.ligandPaths)) paths.push(...action.ligandPaths);
+  }
+  return paths.filter(path => typeof path === 'string' && path.trim() && !isVirtualDocumentPath(path));
+}
+
+function isPathWithin(root, target) {
+  const relation = relative(root, target);
+  return relation === '' || (!relation.startsWith('..') && !isAbsolute(relation));
+}
+
+// Browser agent shells only serve files under the roots recorded at open time.
+// Reject other paths here so the agent gets PATH_NOT_ALLOWED instead of an
+// HTTP 403 that only surfaces as a UI toast and an effect timeout.
+async function assertActionPathsAllowed(action, session) {
+  if (session?.mode !== 'browser-dev-shell' || !Array.isArray(session.allowedRoots)) return;
+  const paths = actionFilePaths(action);
+  if (paths.length === 0) return;
+  const roots = await Promise.all(session.allowedRoots
+    .filter(root => typeof root === 'string' && root.trim())
+    .map(canonicalFilePath));
+  for (const path of paths) {
+    const resolvedPath = await canonicalFilePath(path);
+    if (roots.some(root => isPathWithin(root, resolvedPath))) continue;
+    fail(
+      'PATH_NOT_ALLOWED',
+      `${path} is outside this workspace's allowed roots (${roots.join(', ')}). Move or copy the file into an allowed root, or open a new workspace for it.`,
+      1,
+      { type: action.type, path, resolvedPath, allowedRoots: roots },
+    );
+  }
 }
 
 async function assertSessionResponsive(sessionDir) {
@@ -1031,13 +1130,14 @@ async function assertSessionResponsive(sessionDir) {
     || !session.token.trim()) {
     fail('INVALID_SESSION_DIRECTORY', 'The session directory is not an initialized Burette agent workspace.', 1, { sessionDir: resolve(sessionDir) });
   }
-  if (session.mode !== 'browser-dev-shell' || typeof session.url !== 'string') return;
+  if (session.mode !== 'browser-dev-shell' || typeof session.url !== 'string') return session;
   const sessionUrl = requireLocalAgentUrl(session.url, 'INVALID_SESSION_URL', { sessionDir });
   try {
     await fetchWithTimeout(sessionUrl, 1500);
   } catch (error) {
     fail('BROWSER_AGENT_SHELL_UNAVAILABLE', `Browser agent shell is not reachable at ${session.url}. Reopen the workspace instead of waiting for an action timeout.`, 1, { sessionDir, cause: error?.message || String(error) });
   }
+  return session;
 }
 
 async function assertBrowserSessionDirectoryAvailable(sessionDir) {

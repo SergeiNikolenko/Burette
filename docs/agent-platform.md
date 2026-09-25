@@ -127,6 +127,21 @@ browser-dev and native app validation remain separate surfaces.
   panel through the normal text-document path.
 - Screenshot interpretation must not replace typed `observe`, validation
   output, or CLI/MCP errors.
+- Session `act` rejects action types that neither the shell nor the Mol* viewer
+  implements with `UNSUPPORTED_ACTION` before queueing; `details.supportedTypes`
+  lists the accepted types.
+- Browser agent shells record `allowedRoots` in `session.json` (the opened
+  file's directory, or `BURETTE_DEV_FS_ALLOW`, plus the generated-files root and
+  the session directory). `act` fails with `PATH_NOT_ALLOWED` for `open_files`,
+  `manage_tabs open_file`, `render_panel`, or `open_docking_view` paths outside
+  them, instead of queueing a read the shell server would answer with HTTP 403.
+- For grid documents, `observe.grid` carries bounded read-only grid state: sort
+  key and direction, search query (256 characters) and whether it runs as
+  SMARTS, up to 20 active filters, the selection count with up to 50 selected
+  source row indexes, and total and visible row counts.
+- MCP `structureSummary` follows the observed active document. In-memory
+  documents such as `burette-ketcher://…` report `VIRTUAL_DOCUMENT_UNSUPPORTED`
+  because they have no file on disk.
 
 Mol* ligand results include `structureId`, the current viewer structure reference.
 Use it as `selector.structure` to distinguish identical residue addresses across

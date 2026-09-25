@@ -1,6 +1,6 @@
 {
   "name": "burette",
-  "version": "2026.9.23",
+  "version": "2026.9.24",
   "private": true,
   "description": "Internal release and installation helper for the Burette macOS app and Quick Look extension.",
   "license": "MIT",
