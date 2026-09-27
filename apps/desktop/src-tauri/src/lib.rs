@@ -9,7 +9,6 @@ mod macos;
 mod menu;
 mod preview;
 mod startup;
-mod tray;
 mod window_state;
 mod windows;
 mod zoom;
@@ -128,9 +127,8 @@ pub fn run() {
                 tauri::ActivationPolicy::Regular
             });
             menu::configure_menu(app)?;
-            tray::configure_tray(app)?;
             if launch_mode.is_register() && startup_paths.is_empty() {
-                tray::hide_main_window(app.handle());
+                windows::hide_workspace_application(app.handle());
             } else {
                 let initial_app = app.handle().clone();
                 let initial_workspace = move || {

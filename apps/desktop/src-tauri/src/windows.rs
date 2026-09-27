@@ -143,6 +143,14 @@ pub(crate) fn restore_workspace_windows<R: Runtime>(
     Ok(())
 }
 
+pub(crate) fn hide_workspace_application<R: Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        let _ = window.hide();
+    }
+    #[cfg(target_os = "macos")]
+    let _ = app.hide();
+}
+
 fn show_workspace_application<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {

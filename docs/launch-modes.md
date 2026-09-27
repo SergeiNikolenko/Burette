@@ -9,10 +9,11 @@ full desktop shell.
 - Normal user launch: opens the full app window.
 - File-open launch: opens the full app window and forwards file paths to the
   desktop shell.
-- Menu or tray launch: shows the full app window before dispatching menu
+- Menu or Dock launch: shows the full app window before dispatching menu
   actions such as Open or Settings.
 - Registration or maintenance launch: may hide the main window when no file
-  paths are present.
+  paths are present. Burette has no menu bar extra; opening the app again
+  (Finder, Launchpad, or `open`) shows the main window.
 - In-app update actions: remain user-visible because they are initiated from the
   desktop shell.
 

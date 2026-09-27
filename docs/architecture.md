@@ -1,6 +1,6 @@
 # Burette Architecture
 
-Burette is a windowed macOS desktop app (with a tray item) built on a Tauri
+Burette is a windowed macOS desktop app built on a Tauri
 shell, plus a Swift Finder Quick Look extension, a source-built iPhone preview
 app, a hosted public plugin, and a packaged agent plugin — all for molecular
 structure files.
@@ -139,7 +139,7 @@ style edits preserve visibility and sibling representations. Inspector menus
 offer commands rather than a fabricated single value for mixed components.
 
 Normal app launch remains a visible full-window launch. Registration-only
-maintenance may opt into `BURETTE_LAUNCH_MODE=register`; file-open and tray/menu
+maintenance may opt into `BURETTE_LAUNCH_MODE=register`; file-open, Dock, and menu
 paths still show the full app. See [Launch modes](launch-modes.md).
 
 ## Preview Runtime

@@ -17,7 +17,7 @@ runtime generation, caches, and diagnostics are scoped to the caller.
 
 Do not make normal app launch hidden to improve cold-start numbers. Registration
 or maintenance launches can opt into `BURETTE_LAUNCH_MODE=register`, but user
-launch, file-open launch, tray click, and menu activation must show the app.
+launch, file-open launch, app reopen, and menu activation must show the app.
 
 ## Asset Profiles
 
