@@ -619,7 +619,9 @@ function trajectorySource(path, bytes) {
     source: {
       path,
       format: trajectoryMolstarFormat(extension),
-      binary: TRAJECTORY_COORDINATE_EXTENSIONS.has(extension) || extension === 'tpr',
+      // LAMMPS dump trajectories are text even though they contain coordinates.
+      binary: extension !== 'lammpstrj'
+        && (TRAJECTORY_COORDINATE_EXTENSIONS.has(extension) || extension === 'tpr'),
       label: basename(path),
     },
     dataBase64: bytes.toString('base64'),

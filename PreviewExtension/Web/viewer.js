@@ -3014,7 +3014,7 @@
     const config = activeConfig || window.BuretteConfig || {};
     // MCP widgets have no native-compute transport. Do not advertise or send
     // desktop compute actions just because the document happens to be an SDF.
-    if (config.hostedMcpWidgetBootstrap === true) return;
+    if (config.hostedMcpWidgetBootstrap === true || config.visualizationOnly === true) return;
     const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (!['sdf', 'sd', 'mol'].includes(format)) {
       setStatus('Native molecular compute supports SDF and MOL structures in Molstar.', 'error');
@@ -3046,7 +3046,7 @@
   }
 
   function canGenerate3DConformerFromConfig(config, renderer) {
-    if (config?.hostedMcpWidgetBootstrap === true) return false;
+    if (config?.hostedMcpWidgetBootstrap === true || config?.visualizationOnly === true) return false;
     const format = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format);
     return renderer === 'molstar' && ['sdf', 'sd', 'mol'].includes(format);
   }
@@ -11015,6 +11015,23 @@ SOFTWARE.
       return Array.from(viewer?.plugin?.managers?.structure?.hierarchy?.current?.structures || []).length;
     } catch (_) {
       return 0;
+    }
+  }
+
+  function assertMolstarLoadReady(viewer, prepared) {
+    const cells = viewer?.plugin?.state?.data?.cells;
+    const failedCell = cells && typeof cells.values === 'function'
+      ? Array.from(cells.values()).find(cell => cell?.status === 'error')
+      : null;
+    if (failedCell) {
+      const transform = failedCell.transform?.transformer?.definition?.display?.name || 'Mol* parser';
+      const detail = String(failedCell.errorText || '').trim().slice(0, 240);
+      throw new Error(`Mol* could not load ${prepared?.label || 'the structure'} (${transform})${detail ? `: ${detail}` : ''}; viewer readiness was withheld.`);
+    }
+    // Volume-only maps and MVS scenes can be valid without molecular structures.
+    if (prepared?.kind === 'volume' || prepared?.kind === 'mvs') return;
+    if (currentMolstarStructureCount(viewer) < 1) {
+      throw new Error(`Mol* loaded no molecular structures for ${prepared?.label || 'the input'}; viewer readiness was withheld.`);
     }
   }
 
@@ -27708,6 +27725,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       45000,
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
+    assertMolstarLoadReady(viewer, prepared);
     if (config.demoSnapshotUrl) {
       const response = await fetch(config.demoSnapshotUrl);
       if (!response.ok) throw new Error('Could not load the saved demo scene.');

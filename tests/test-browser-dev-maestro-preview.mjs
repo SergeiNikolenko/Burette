@@ -151,8 +151,22 @@ try {
   const payload = JSON.parse(body);
   assert.equal(payload.docking.receptor.synthetic, true, "unrelated PDB files must not override coordinates-only mode");
   assert.equal(payload.docking.receptor.label, "Derived topology");
+  assert.equal(payload.docking.ligands[0].binary, true, "XTC coordinate payloads remain binary");
   assert.notEqual(payload.topologyPath, unrelatedTopology);
   assert.notEqual(payload.topologyPath, namedButUnrelatedTopology);
+
+  const lammpsPath = join(trajectoryRoot, "paired.lammpstrj");
+  const lammpsTopology = join(trajectoryRoot, "paired.pdb");
+  const lammpsText = "ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n0\n";
+  await Promise.all([writeFile(lammpsPath, lammpsText), writeFile(lammpsTopology, pdb)]);
+  body = "";
+  const lammpsResponse = { statusCode: 0, setHeader() {}, end(chunk = "") { body += chunk; } };
+  await trajectoryPairRoute({ method: "GET", url: `?path=${encodeURIComponent(lammpsPath)}` }, lammpsResponse);
+  assert.equal(lammpsResponse.statusCode, 200, body);
+  const lammpsPayload = JSON.parse(body);
+  assert.equal(lammpsPayload.docking.ligands[0].format, "lammpstrj");
+  assert.equal(lammpsPayload.docking.ligands[0].binary, false);
+  assert.equal(Buffer.from(lammpsPayload.payloads.ligands[0].dataBase64, "base64").toString(), lammpsText);
   await rm(payload.topologyPath, { force: true });
 } finally {
   await rm(trajectoryRoot, { recursive: true, force: true });

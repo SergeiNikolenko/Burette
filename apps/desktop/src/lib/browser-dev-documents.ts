@@ -1335,6 +1335,11 @@ function viewerHtml(
     // viewer: the sandbox blocks inline scripts, and the toolbar starts collapsed.
     ...(isHostedMcpWidget() ? { hostedMcpWidgetBootstrap: true } : {}),
   };
+  // The prebuilt plugin shell has no desktop native-compute transport. Vite
+  // development and packaged desktop runtimes retain their own capabilities.
+  if (import.meta.env.PROD && import.meta.env.VITE_BURETTE_AGENT_SHELL === "1") {
+    Object.assign(config, { visualizationOnly: true });
+  }
   if (mesoscale) {
     return mesoscaleViewerHtml(label, bytes, config, visuals.transparentBackground);
   }

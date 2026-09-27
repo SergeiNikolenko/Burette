@@ -19,9 +19,9 @@ const context = {
 };
 runInNewContext(source.slice(start, end), context);
 
-for (const format of ['sdf', 'mol']) {
+for (const format of ['sdf', 'mol']) for (const capability of [{ hostedMcpWidgetBootstrap: true }, { visualizationOnly: true }]) {
   // Both the public widget and the local native adapter set this bootstrap flag.
-  context.activeConfig = { format, renderer: 'molstar', hostedMcpWidgetBootstrap: true };
+  context.activeConfig = { format, renderer: 'molstar', ...capability };
   assert.equal(context.canGenerate3DConformerFromConfig(context.activeConfig, 'molstar'), false);
   for (const operation of ['generate3d', 'generateEnsemble', 'optimizeGeometry', 'semiempiricalRm1', 'alignPoses']) {
     context.requestMolecularCompute(operation);
