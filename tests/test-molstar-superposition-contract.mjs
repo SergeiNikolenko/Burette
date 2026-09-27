@@ -59,7 +59,7 @@ assert.match(viewer, /revertOnError: true, revertIfAborted: true/);
 assert.match(viewer, /requestCameraReset/);
 assert.match(viewer, /if \(changed\) scheduleMolstarStructureFocus\(viewer, \{ reason: 'superposition-reset', durationMs: 180, force: true \}\)/);
 assert.match(viewer, /Automatically superimpose every structure onto the first one/);
-assert.match(viewer, /structureAlignmentControl\?\.isAligned\(\)\s*\? structureAlignmentControl\.reset\(\)\s*:\s*structureAlignmentControl\?\.apply\(\{ method: 'auto' \}\)/);
+assert.match(viewer, /if \(structureAlignmentControl\?\.isAligned\(\)\) await structureAlignmentControl\.reset\(\);\s*else await structureAlignmentControl\?\.apply\(\{ method: 'auto' \}\)/);
 assert.match(viewer, /SUPERPOSITION_CONTEXT_ACTION_PREFIX = 'align:context:'/);
 assert.match(viewer, /contextActions\(target, mode\)/);
 assert.match(viewer, /method: 'selected-atoms',[\s\S]*?useCurrentSelection: true/);

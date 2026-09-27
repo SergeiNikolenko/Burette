@@ -85,6 +85,45 @@ assert.doesNotMatch(source('showMolstarPresetMenu'), /showNativeViewerMenu/, 'to
 assert.doesNotMatch(source('showGenerate3DMenu'), /showNativeViewerMenu/, 'toolbar popovers stay in the viewer, not NSMenu');
 console.log('Native scene/rail adapter: scoped actions, disabled rows, types, themes, live sliders, colour, undo and fallback passed');
 
+// Toolbar popovers use their original DOM actions even in a native-capable host.
+{
+  const dom = new Window();
+  dom.document.body.innerHTML = `<div id="buret-toolbar">
+    <button data-buret-action="generate-3d-conformer"></button>
+    <button data-buret-molstar-preset-trigger></button></div>
+    <div data-buret-generate-3d-menu class="hidden"><button role="menuitem">Generate</button></div>
+    <div data-buret-molstar-preset-menu class="hidden"><button aria-checked="true">Auto</button></div>
+    <div id="buret-viewport-rail"><button aria-expanded="false">Camera</button></div>`;
+  const noOp = () => {};
+  const bindings = { document: dom.document, window: dom, activeConfig: {},
+    positionGenerate3DMenu: noOp, positionMolstarPresetMenu: noOp, positionOpenViewportMenu: noOp,
+    populateMolstarPresetMenu: noOp, updateMolstarPresetControl: noOp, hideMolstarPresetPreview: noOp,
+    configuredMolstarPreset: () => 'automatic', focusMolstarPresetControl: noOp,
+    setMolstarPresetMenuRovingItem: (_menu, item) => item,
+    showNativeViewerMenu: () => { throw Error('toolbar must not enter NSMenu'); } };
+  const names = ['showGenerate3DMenu', 'hideGenerate3DMenu', 'showMolstarPresetMenu', 'hideMolstarPresetMenu', 'openViewportMenu', 'closeViewportMenu'];
+  const menus = new Function(...Object.keys(bindings), names.map(source).join('\n') + `;return {${names.join(',')}}`)(...Object.values(bindings));
+  const generate = dom.document.querySelector('[data-buret-action]');
+  const preset = dom.document.querySelector('[data-buret-molstar-preset-trigger]');
+  const camera = dom.document.querySelector('#buret-viewport-rail button');
+  menus.showGenerate3DMenu(null);
+  assert.ok(dom.document.querySelector('[data-buret-generate-3d-menu]').classList.contains('hidden'));
+  menus.showGenerate3DMenu(generate);
+  assert.equal(generate.getAttribute('aria-expanded'), 'true');
+  menus.showMolstarPresetMenu(preset);
+  assert.equal(generate.getAttribute('aria-expanded'), 'false');
+  assert.equal(preset.getAttribute('aria-expanded'), 'true');
+  menus.openViewportMenu(camera, 'Camera', menu => { menu.textContent = 'Reset view'; });
+  assert.equal(preset.getAttribute('aria-expanded'), 'false');
+  assert.equal(camera.getAttribute('aria-expanded'), 'true');
+  assert.equal(dom.document.querySelector('#buret-viewport-menu').textContent, 'Reset view');
+  menus.showGenerate3DMenu(generate);
+  assert.equal(camera.getAttribute('aria-expanded'), 'false');
+  assert.equal(dom.document.querySelector('#buret-viewport-menu'), null);
+  await dom.happyDOM.abort();
+}
+console.log('in-viewer toolbar menus preserve DOM behavior and mutual exclusion');
+
 // The real postMessage route releases its listener on cancellation/fallback,
 // ignores another frame, and runs commands only after the native popup closes.
 ({ menu } = fixture());

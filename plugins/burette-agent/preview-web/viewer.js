@@ -2927,7 +2927,9 @@
 
   function showGenerate3DMenu(anchor) {
     const menu = document.querySelector('[data-buret-generate-3d-menu]');
-    if (!menu || anchor?.classList?.contains('hidden') || anchor?.disabled) return;
+    if (!menu || !anchor || anchor.classList.contains('hidden') || anchor.disabled) return;
+    hideMolstarPresetMenu();
+    closeViewportMenu();
     menu.classList.remove('hidden');
     positionGenerate3DMenu(anchor);
     anchor.setAttribute('aria-expanded', 'true');
@@ -4592,6 +4594,7 @@
     const menu = document.querySelector('[data-buret-molstar-preset-menu]');
     if (!menu || !anchor || anchor.disabled) return;
     hideGenerate3DMenu();
+    closeViewportMenu();
     populateMolstarPresetMenu(menu);
     updateMolstarPresetControl(document.getElementById('buret-toolbar'), configuredMolstarPreset(activeConfig || window.BuretteConfig || {}));
     menu.classList.remove('hidden');
@@ -9813,6 +9816,8 @@ SOFTWARE.
   function openViewportMenu(trigger, label, build) {
     const wasOpen = trigger.getAttribute('aria-expanded') === 'true';
     closeViewportMenu();
+    hideGenerate3DMenu();
+    hideMolstarPresetMenu();
     if (wasOpen) return;
     const menu = document.createElement('div');
     menu.id = 'buret-viewport-menu';
