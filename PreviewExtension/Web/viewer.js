@@ -3007,6 +3007,9 @@
 
   function requestMolecularCompute(operation = 'generate3d', options = {}) {
     const config = activeConfig || window.BuretteConfig || {};
+    // MCP widgets have no native-compute transport. Do not advertise or send
+    // desktop compute actions just because the document happens to be an SDF.
+    if (config.hostedMcpWidgetBootstrap === true) return;
     const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (!['sdf', 'sd', 'mol'].includes(format)) {
       setStatus('Native molecular compute supports SDF and MOL structures in Molstar.', 'error');
@@ -3038,6 +3041,7 @@
   }
 
   function canGenerate3DConformerFromConfig(config, renderer) {
+    if (config?.hostedMcpWidgetBootstrap === true) return false;
     const format = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format);
     return renderer === 'molstar' && ['sdf', 'sd', 'mol'].includes(format);
   }

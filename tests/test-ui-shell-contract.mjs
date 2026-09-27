@@ -8911,3 +8911,5 @@ assert.match(ketcherPage, /isActive && panelMode && dockPortalElement \? createP
 assert.match(ketcherPage, /actions\.setDockTool\("right", "ketcher"\)/);
 assert.match(ketcherPage, /onValueChange=\{\(value\) => \{ setOutput\(value\); setLiveImportDirty\(true\); \}\}/);
 assert.match(ketcherPage, /state\.rightDockOpen, state\.rightDockTool, state\.rightDockActiveTab/);
+
+await import('./test-widget-compute-capability.mjs');

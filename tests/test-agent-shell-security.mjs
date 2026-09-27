@@ -87,6 +87,19 @@ try {
   assert.equal(await read.text(), 'HEADER ALLOWED');
   const listing = await fetch(`${base}/__burette/dev-files?${new URLSearchParams({ root: allowed })}`, { headers });
   assert.deepEqual((await listing.json()).files, [join(allowed, 'ordinary.pdb')]);
+  const pairFor = path => fetch(
+    `${base}/__burette/trajectory-pair?${new URLSearchParams({ path })}`, { headers },
+  );
+  // A nested simulation must not turn an ordinary structure into an unrelated
+  // paired trajectory, even when the parent directory is authorized.
+  const isolated = join(allowed, 'isolated');
+  await mkdir(isolated);
+  await writeFile(join(isolated, 'mini.pdb'), 'HEADER MINI');
+  await mkdir(join(isolated, 'md'));
+  await writeFile(join(isolated, 'md', 'run.xtc'), 'SYNTHETIC TRAJECTORY');
+  await writeFile(join(isolated, 'md', 'run.gro'), 'SYNTHETIC TOPOLOGY');
+  assert.equal((await pairFor(join(isolated, 'mini.pdb'))).status, 404);
+  assert.equal((await pairFor(join(isolated, 'md', 'run.xtc'))).status, 200);
   await mkdir(join(allowed, 'race'));
   await writeFile(join(allowed, 'race', 'secret.pdb'), 'HEADER BEFORE SWAP');
   const raced = await fetch(`${base}/__burette/read-file?${new URLSearchParams({ path: join(allowed, 'race', 'secret.pdb') })}`, { headers });
