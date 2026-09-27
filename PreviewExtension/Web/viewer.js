@@ -1604,8 +1604,13 @@
     if (!requestedActions.length) return;
     hostedMcpActionsApplied = true;
     try {
-      await window.BuretteHostedAppBridge?.ready;
-      const actions = window.BuretteHostedAppBridge?.sanitizeViewerActions?.(requestedActions) || [];
+      // The React-hosted viewer is a same-origin srcdoc child; the MCP Apps
+      // connection belongs to its parent shell. Re-read after readiness because
+      // initialization replaces the shell's temporary bridge object.
+      const bridgeWindow = window.BuretteHostedAppBridge ? window : window.parent;
+      if (!bridgeWindow?.BuretteHostedAppBridge) throw new Error('Hosted scene bridge is unavailable.');
+      await bridgeWindow.BuretteHostedAppBridge.ready;
+      const actions = bridgeWindow.BuretteHostedAppBridge?.sanitizeViewerActions?.(requestedActions) || [];
       if (actions.length !== requestedActions.length) {
         throw new Error('Hosted scene contained an action outside the public Burette allowlist.');
       }
