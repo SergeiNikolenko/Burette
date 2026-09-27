@@ -44,7 +44,17 @@ function metadataFromResult(result: UnknownRecord) {
 function nestedResultMetadata(value: unknown) {
   const envelope = record(value);
   const result = record(envelope?.result);
-  return record(result?._meta) ?? record(envelope?._meta);
+  return record(result?._meta) ?? record(result?.meta) ?? record(envelope?._meta) ?? record(envelope?.meta);
+}
+
+export function isHostedMcpStructureFailure(value: unknown): boolean {
+  const result = record(value);
+  if (!result) return false;
+  const metadata = metadataFromResult(result);
+  return result.isError === true
+    || record(result.structuredContent)?.viewerAvailable === false
+    || (metadata !== null && Object.hasOwn(metadata, "structure")
+      && parseHostedMcpStructureResult(value) === null);
 }
 
 function boundedLabel(value: unknown, fallback: string) {
@@ -143,8 +153,10 @@ export function selectHostedMcpInitialStructure(
   queuedResults: readonly unknown[],
   openAiResult?: unknown,
 ): HostedMcpStructure | null {
-  if (queuedResults.length > 0) {
-    return parseHostedMcpStructureResult(queuedResults[queuedResults.length - 1]);
+  for (let i = queuedResults.length - 1; i >= 0; i -= 1) {
+    if (isHostedMcpStructureFailure(queuedResults[i])) return null;
+    const structure = parseHostedMcpStructureResult(queuedResults[i]);
+    if (structure) return structure;
   }
-  return parseHostedMcpStructureResult(openAiResult);
+  return isHostedMcpStructureFailure(openAiResult) ? null : parseHostedMcpStructureResult(openAiResult);
 }

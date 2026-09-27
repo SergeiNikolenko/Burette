@@ -1570,6 +1570,7 @@
   window.BuretteViewerActions = { run: executeBuretteAgentAction };
 
   let hostedMcpActionsApplied = false;
+  let hostedMcpSceneInitialized = false;
   function hostedMcpSelectionFromResults(actions, results) {
     let selection = null;
     for (let index = 0; index < actions.length; index++) {
@@ -1597,6 +1598,7 @@
   }
 
   async function applyHostedMcpActions() {
+    if (!hostedMcpSceneInitialized) return;
     if (hostedMcpActionsApplied) return;
     const requestedActions = Array.isArray(window.BuretteConfig?.hostedMcpActions)
       ? window.BuretteConfig.hostedMcpActions.slice(0, 8)
@@ -2269,7 +2271,8 @@
   }
 
   function resolvedCanvasBackground() {
-    if (canvasBackground === 'auto') return resolveViewerTheme() === 'light' ? 'white' : 'graphite';
+    if (canvasBackground === 'auto') return resolveViewerTheme() === 'light' ? 'white'
+      : window.BuretteConfig?.hostedMcpWidgetBootstrap === true ? 'black' : 'graphite';
     return canvasBackground;
   }
 
@@ -17120,6 +17123,11 @@ SOFTWARE.
     const representation = representationForSceneComponentKind(kind);
     let created = 0;
     for (const component of components) {
+      // "Keep protein visible" is idempotent, not another overlapping cartoon.
+      if (component.representations?.some(repr => repr.cell?.obj?.data?.repr?.state?.visible === true)) {
+        created += 1;
+        continue;
+      }
       try {
         await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation, { tag: `burette-${kind}` });
         created += 1;
@@ -17387,7 +17395,9 @@ SOFTWARE.
       const plugin = viewer.plugin;
       const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
       for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
-        await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', { useDefaultIfSingleModel: true });
+        await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', {
+          useDefaultIfSingleModel: activeConfig?.hostedMcpWidgetBootstrap !== true
+        });
       }
       if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
       await applyMolstarWaterLineRepresentation(viewer);
@@ -17395,14 +17405,18 @@ SOFTWARE.
       return;
     }
     const plugin = viewer.plugin;
-    if (prepared.format !== 'mmcif' && prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
+    if (activeConfig?.hostedMcpWidgetBootstrap !== true && prepared.format !== 'mmcif' && prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
       await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
     const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
     for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
-      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
+      // Hosted counts and author-residue selectors describe the supplied
+      // coordinates, not automatically generated biological-assembly copies.
+      const presetOptions = activeConfig?.hostedMcpWidgetBootstrap === true
+        ? { structure: { name: 'model', params: {} } } : undefined;
+      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', presetOptions);
     }
     if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
     await applyMolstarWaterLineRepresentation(viewer);
@@ -27812,6 +27826,13 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
         hideStatus(readyPayload);
         window.BuretteNativeSceneReady();
       } else setTimeout(() => hideStatus(readyPayload), isQuickLookHost() ? 0 : 700);
+    }
+    // Apply authored actions only after presets and initial framing finish.
+    // Agent readiness alone precedes those steps, which otherwise overwrite focus.
+    hostedMcpSceneInitialized = true;
+    if (Array.isArray(config.hostedMcpActions) && config.hostedMcpActions.length) {
+      molstarStructureFocusSerial += 1;
+      await applyHostedMcpActions();
     }
   }
 

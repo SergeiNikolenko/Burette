@@ -4,6 +4,10 @@ Prepared 2026-09-27. This is a **candidate review pack**, not a claim that
 these exact cases have passed in ChatGPT or Codex. Publication remains gated
 on the acceptance matrix below. Production server tests are not UI evidence.
 
+**Live follow-up:** [production repair and desktop review](live-review-20260927.md)
+records the original failures, deployed fixes, and fresh ChatGPT evidence.
+Desktop results are not native/mobile acceptance or marketplace approval.
+
 ## Why these workflows
 
 Burette turns a conversation into a workspace for inspecting actual molecular
@@ -20,10 +24,9 @@ claims docking, affinity prediction, chemical synthesis, or clinical benefit.
   own setup and does not depend on P4. Never paste a stored editor surface ID.
 - For P3, download the supplied SDF and **attach the file to the conversation**.
   A URL pasted as text is not equivalent to an authorized attachment.
-- The newly prepared SDF is local only until a separately approved deployment.
-  Its intended public URL in the submission JSON is not yet a working fixture
-  guarantee. Verify HTTP 200 and the SHA-256 in `review-fixtures.json` before
-  submission. Until then use `public/review-fixtures/salicylate-series.sdf`.
+- The synthetic SDF was deployed with user authorization; its public URL and
+  SHA-256 were verified. Use the attached file, not a pasted URL, for P3.
+  Recheck `review-fixtures.json` if replacing the fixture.
 - Inspect actual widgets as well as text. A success sentence, `viewerAvailable`,
   or a server-accepted scene action is not proof that the UI applied it.
 
@@ -201,12 +204,12 @@ save completion, or that hiding water modifies coordinates on disk.
 
 | Case | Data / transport preflight | ChatGPT web | Mobile | Advertised Codex surface |
 |---|---|---|---|---|
-| P1 | Production counts cross-checked with RCSB | Pending exact case | Pending | Pending |
-| P2 | Public action schema / server acceptance checked | Pending visible selection + focus + hiding | Pending | Pending |
-| P3 | RDKit + hosted parser checked; fixture not deployed | Pending upload + all records | Pending | Pending |
-| P4 | Production seed counts checked | Pending exact sketch | Pending | Pending |
-| P5 | Production edit/read preflight | Pending exact fresh flow | Pending | Pending |
-| N1–N3 | Expectations specified, not execution evidence | Pending | Pending | Pending |
+| P1 | Counts cross-checked with RCSB | Nonblank scene/counts; camera controls checked; drag automation limitation | Pending | Pending |
+| P2 | Action schema + Mol* camera regressions | PASS: selected 16 atoms; camera target verified; waters hidden | Pending | Pending |
+| P3 | RDKit + parser; fixture deployed/hash verified | PASS: uploaded attachment, 3 distinct named cards/table | Pending | Pending |
+| P4 | Seed counts checked | PASS: visible salicylic acid, export 10 atoms/10 bonds | Pending | Pending |
+| P5 | Edit/read preflight | PASS: independent replacement with aspirin, export 13/13, view-switch preservation | Pending | Pending |
+| N1–N3 | Capability boundaries documented | PASS in fresh desktop runs; N2 required routing repair/retest | Pending | Pending |
 
 For every run record: surface/device, production revision, prompt, tool
 sequence, actual text/counts, screenshot, PASS/FAIL/PARTIAL/BLOCKED. Previous
@@ -215,7 +218,7 @@ new pack. No video or all-green table should be manufactured from preflight.
 
 ## Submission gates
 
-1. Publish the review fixture only with deployment approval; verify URL + hash.
+1. Fixture deployed with approval; retain verified URL + hash in submission evidence.
 2. Run these exact five positive and three negative cases independently on the
    surfaces advertised in the listing; resolve failures, don't weaken criteria.
 3. Refresh Scan Tools, verify identity/domain/policy URLs, and align listing,

@@ -89,9 +89,10 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
     <title>Burette</title>
     <link rel="stylesheet" crossorigin href="${shellStyles}" />
     <style>
-      html, body, #root { width: 100%; min-height: 480px; height: min(80vh, 760px); }
+      html, body, #root { width: 100%; min-height: 0; height: 100%; }
+      html { height: 100vh; }
       body .app-shell { width: 100%; height: 100%; }
-      body { margin: 0; overflow: hidden; background: #f7f7f7; }
+      body { margin: 0; overflow: hidden; background: #ffffff; }
       @media (prefers-color-scheme: dark) { body { background: #000000; } }${narrowLayout}
     </style>
     <script>

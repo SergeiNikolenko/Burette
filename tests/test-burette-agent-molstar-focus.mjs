@@ -12,6 +12,7 @@ import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
 import { DefaultPluginSpec } from 'molstar/lib/mol-plugin/spec.js';
 import { applyStructureInteractivity } from 'molstar/lib/extensions/plugin/interactivity.js';
 import { StructureElement } from 'molstar/lib/mol-model/structure.js';
+import { DefaultCameraFocusOptions } from 'molstar/lib/mol-plugin-state/manager/camera.js';
 
 const dom = new Window(); globalThis.document = dom.document;
 const plugin = new PluginContext(DefaultPluginSpec());
@@ -55,6 +56,15 @@ try {
   const again = await agent.run({ command: 'focusSelection', args: { selector: 'last' } });
   assert.equal(again.ok, true, JSON.stringify(again.error));
   assert.deepEqual(focused.map(call => call.atoms), [44]);
+  // Undefined properties override Mol* defaults and turn the camera radius
+  // into NaN, even though the atom selection and command report success.
+  assert.equal(Number.isFinite({ ...DefaultCameraFocusOptions, ...focused[0].options }.extraRadius), true);
+
+  focused.length = 0;
+  const zeroMargin = await agent.run({ command: 'focusSelection', args: { selector: 'last', extraRadius: 0, durationMs: 0 } });
+  assert.equal(zeroMargin.ok, true);
+  assert.equal(focused[0].options.extraRadius, 0);
+  assert.equal(focused[0].options.durationMs, 0);
 
   // If Mol* resolves nothing, report it instead of ok with an unchanged view.
   schemaOverride = { operator_name: 'no-such-operator' };

@@ -1457,6 +1457,17 @@ button:focus-visible > .shortcut-tooltip {
   border-radius: 0;
   box-shadow: none;
 }
+/* Also fix previously created hosted cards whose cached wrapper used 80vh.
+   The Apps host owns the available height, including expanded side panels. */
+html[data-hosted-mcp-widget="true"] {
+  height: 100vh !important;
+  min-height: 0 !important;
+}
+html[data-hosted-mcp-widget="true"] body,
+html[data-hosted-mcp-widget="true"] #root {
+  height: 100% !important;
+  min-height: 0 !important;
+}
 .workbench-main {
   min-width: 0;
   min-height: 0;
