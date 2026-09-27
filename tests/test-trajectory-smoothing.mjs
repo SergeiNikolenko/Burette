@@ -1,6 +1,10 @@
+import './test-dcd-time.mjs';
+import './test-molstar-trajectory-playback.mjs';
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
+import "./test-trajectory-loop-timing.mjs";
+import "./test-native-trajectory-smoothing.mjs";
 
 const source = fs.readFileSync(new URL("../PreviewExtension/Web/trajectory-smoothing.js", import.meta.url), "utf8");
 const context = { window: {} };

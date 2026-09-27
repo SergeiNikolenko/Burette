@@ -11,7 +11,7 @@ import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState, StructureOverlayMode, StructureViewerAction } from "./types";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
 import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
-import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "../lib/viewer-bridge";
+import { activeViewerIframeForDocument, isKnownViewerMessageSource, requestViewerAction } from "../lib/viewer-bridge";
 import { compositionSceneAction } from "../lib/composition-scene-actions";
 import { compositionRowFromScene, type CompositionSceneState } from "../lib/composition-scene-state";
 import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerWorkflow } from "../lib/conformer-ensemble";
@@ -876,10 +876,13 @@ function TrajectorySmoothingCard({
   const failedAutoUpdate = useRef<string | null>(null);
   const requestSerial = useRef(0);
   const updatedTimer = useRef<number | null>(null);
-  const settingsSignature = JSON.stringify([signal, mode, preset, targetFrames, referenceFrame, align, rmsdFilter, cutoffFrequency, powerRetained, filterOrder, includeEnds, kineticStates, lagFrames]);
+  const settingsSignature = JSON.stringify([document.id, document.runtimePath, playback?.sourcePath, signal, mode, preset, targetFrames, referenceFrame, align, rmsdFilter, cutoffFrequency, powerRetained, filterOrder, includeEnds, kineticStates, lagFrames]);
   const latestSettingsSignature = useRef(settingsSignature);
   latestSettingsSignature.current = settingsSignature;
+  const latestPlayback = useRef(playback);
+  latestPlayback.current = playback;
   const build = async () => {
+    if (running) return;
     if (import.meta.env.VITE_BURETTE_WEB_DEMO === "1") {
       showMacAvailability("Trajectory smoothing uses a local runtime in the Mac app and is not available in this browser preview.");
       return;
@@ -892,9 +895,16 @@ function TrajectorySmoothingCard({
     setError(null);
     try {
       const pair = trajectoryPathsFor(document, playback);
+      // WKWebView cannot fetch arbitrary asset URLs from an asset iframe. Stage
+      // the result beside this preview and use its existing scoped file bridge.
+      const outputName = `mdsmooth-${serial}-${crypto.randomUUID()}.${pair.topologyPath ? "dcd" : document.extension === "xyz" ? "xyz" : "pdb"}`;
+      const outputPath = isTauriRuntime()
+        ? document.runtimePath.replace(/[^/\\]+$/, outputName)
+        : undefined;
       const response = await runMdsmooth({
         trajectoryPath: pair.trajectoryPath,
         topologyPath: pair.topologyPath,
+        outputPath,
         signal,
         mode,
         targetFrames: Math.max(2, Math.min(frameCount, targetFrames)),
@@ -908,6 +918,20 @@ function TrajectorySmoothingCard({
         states: kineticStates,
         microstates: Math.min(100, frameCount),
         ticaDimensions: 3,
+      });
+      if (serial !== requestSerial.current || requestedSignature !== latestSettingsSignature.current) return;
+      const currentPlayback = latestPlayback.current;
+      await requestViewerAction(document.id, {
+        type: "apply_external_trajectory_smoothing",
+        sourceUrl: outputPath ? outputName : trajectoryOutputUrl(response.outputPath),
+        sourceFormat: response.outputFormat ?? "xyz",
+        frameCount: response.frameCount,
+        interpolation: response.interpolation,
+        frameIndex: currentPlayback?.frameIndex ?? 0,
+        originalFrameIndex: currentPlayback?.globalFrameIndex ?? 0,
+        originalSegmentStartFrame: currentPlayback?.segmentStartFrame ?? 0,
+        sourcePath: currentPlayback?.sourcePath || "",
+        playing: Boolean(currentPlayback?.playing),
       });
       if (serial !== requestSerial.current || requestedSignature !== latestSettingsSignature.current) return;
       failedAutoUpdate.current = null;
@@ -934,20 +958,6 @@ function TrajectorySmoothingCard({
       });
       setBuilt(true);
       setView("smoothed");
-      actions.runStructureViewerAction(document, {
-        type: "apply_external_trajectory_smoothing",
-        label: "Show smoothed motion",
-        notify: false,
-        sourceUrl: trajectoryOutputUrl(response.outputPath),
-        sourceFormat: response.outputFormat ?? "xyz",
-        frameCount: response.frameCount,
-        interpolation: response.interpolation,
-        frameIndex: playback?.frameIndex ?? 0,
-        originalFrameIndex: playback?.globalFrameIndex ?? 0,
-        originalSegmentStartFrame: playback?.segmentStartFrame ?? 0,
-        sourcePath: playback?.sourcePath || "",
-        playing: Boolean(playback?.playing),
-      });
     } catch (reason) {
       if (serial !== requestSerial.current || requestedSignature !== latestSettingsSignature.current) return;
       failedAutoUpdate.current = requestedSignature;
@@ -976,16 +986,21 @@ function TrajectorySmoothingCard({
     return () => window.clearTimeout(timer);
   }, [built, resultDirty, running, settingsSignature]);
   useEffect(() => () => {
+    requestSerial.current += 1;
     if (updatedTimer.current) window.clearTimeout(updatedTimer.current);
   }, []);
-  const changeView = (nextView: "original" | "smoothed") => {
-    setView(nextView);
-    actions.runStructureViewerAction(document, {
-      type: "set_trajectory_smoothing_view",
-      label: `Show ${nextView} trajectory`,
-      notify: false,
-      view: nextView,
-    });
+  const changeView = async (nextView: "original" | "smoothed") => {
+    if (running) return;
+    setRunning(true);
+    setError(null);
+    try {
+      await requestViewerAction(document.id, { type: "set_trajectory_smoothing_view", view: nextView });
+      setView(nextView);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setRunning(false);
+    }
   };
   const setFrame = (index: number) => {
     actions.runStructureViewerAction(document, {

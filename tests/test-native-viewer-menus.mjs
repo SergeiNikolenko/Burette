@@ -80,9 +80,9 @@ menu.remove();
 // A Composition object picker is attached after openSceneTreeMenu returns.
 // Defer native presentation to include it and route changes to the exact object.
 assert.match(source('openSceneTreeMenu'), /queueMicrotask\(\(\) => showNativeViewerMenu/);
-assert.match(source('openViewportMenu'), /showNativeViewerMenu/);
-assert.match(source('showMolstarPresetMenu'), /showNativeViewerMenu/);
-assert.match(source('showGenerate3DMenu'), /showNativeViewerMenu/);
+assert.doesNotMatch(source('openViewportMenu'), /showNativeViewerMenu/, 'toolbar popovers stay in the viewer, not NSMenu');
+assert.doesNotMatch(source('showMolstarPresetMenu'), /showNativeViewerMenu/, 'toolbar popovers stay in the viewer, not NSMenu');
+assert.doesNotMatch(source('showGenerate3DMenu'), /showNativeViewerMenu/, 'toolbar popovers stay in the viewer, not NSMenu');
 console.log('Native scene/rail adapter: scoped actions, disabled rows, types, themes, live sliders, colour, undo and fallback passed');
 
 // The real postMessage route releases its listener on cancellation/fallback,

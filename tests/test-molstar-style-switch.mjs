@@ -43,4 +43,18 @@ for (const preset of ['automatic', 'line', 'ball-and-stick', 'spacefill', 'illus
     ? ['base', 'blue water', 'illustrative']
     : [...(preset === 'illustrative-surface' ? ['base'] : []), preset, 'blue water', 'illustrative']);
 }
+
+// Translucent water lines must not pull the illustrative outline onto every
+// solvent molecule; a faded chain still needs it.
+const hasTranslucentNonWater = new Function('isMolstarWaterComponent', `${extract('molstarHasTranslucentNonWater')}; return molstarHasTranslucentNonWater;`)(component => component.key === 'water');
+const representation = alpha => ({ cell: { transform: { params: { type: { name: 'cartoon', params: { alpha } } } } } });
+const scene = components => ({ managers: { structure: { hierarchy: { current: { structures: [{ components }] } } } } });
+assert.equal(hasTranslucentNonWater(scene([
+  { key: 'polymer', representations: [representation(1)] },
+  { key: 'water', representations: [representation(0.32)] }
+])), false);
+assert.equal(hasTranslucentNonWater(scene([
+  { key: 'polymer', representations: [representation(0.4)] },
+  { key: 'water', representations: [representation(0.32)] }
+])), true);
 console.log('molstar style switch tests passed');

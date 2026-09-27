@@ -33,7 +33,7 @@ export type MdsmoothResult = {
   outputPath: string;
   // "pdb" when the run had a real topology to write back, "xyz" when all it knew
   // was elements and positions. The viewer needs it to parse the result correctly.
-  outputFormat?: "pdb" | "xyz";
+  outputFormat?: "pdb" | "xyz" | "dcd";
   signal: MdsmoothSignal;
   selection: string;
   selectedAtomCount: number;
