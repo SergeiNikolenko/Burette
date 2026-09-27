@@ -158,9 +158,21 @@ try {
   assert.deepEqual({ topologyPath: pair.topologyPath, trajectoryPath: pair.trajectoryPath }, {
     topologyPath: join(allowed, 'ordinary.pdb'), trajectoryPath: join(allowed, 'ordinary.xtc'),
   }, 'The shared shell needs both file identities to classify and navigate the paired document');
+  assert.equal(pair.docking.ligands[0].binary, true, 'XTC coordinate payloads remain binary');
   const pairFor = path => fetch(
     `${base}/__burette/trajectory-pair?${new URLSearchParams({ path })}`, { headers },
   );
+  const lammpsDir = join(allowed, 'lammps');
+  await mkdir(lammpsDir);
+  await writeFile(join(lammpsDir, 'paired.pdb'), 'HEADER PAIRED');
+  const lammpsText = 'ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n0\n';
+  await writeFile(join(lammpsDir, 'paired.lammpstrj'), lammpsText);
+  const lammpsPairResponse = await pairFor(join(lammpsDir, 'paired.pdb'));
+  assert.equal(lammpsPairResponse.status, 200);
+  const lammpsPair = await lammpsPairResponse.json();
+  assert.equal(lammpsPair.docking.ligands[0].format, 'lammpstrj');
+  assert.equal(lammpsPair.docking.ligands[0].binary, false);
+  assert.equal(Buffer.from(lammpsPair.payloads.ligands[0].dataBase64, 'base64').toString(), lammpsText);
   // A nested simulation must not turn an ordinary structure into an unrelated
   // paired trajectory, even when the parent directory is authorized.
   const isolated = join(allowed, 'isolated');
