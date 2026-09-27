@@ -4,6 +4,7 @@ import { SidebarTooltip } from "./sidebar-tooltip";
 import { Pin, PinFilled, DotsHorizontal } from "../ui/app-icons";
 import { SidebarFolderIcon } from "./sidebar-folder-icon";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { documentFallbackExtensions } from "../../lib/file-routing";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload, type StructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
@@ -563,7 +564,11 @@ export function ProjectItem({
     state,
   });
   const openItem = () => {
-    if (item.documentId) {
+    // A CSV/TSV row can be bound to the hidden text copy that the grid and dock
+    // keep for source editing; reopen it instead so it lands in the molecule
+    // grid or the table viewer. Raw text stays an explicit Open As choice.
+    const textCopyOfTable = item.renderer === "text" && documentFallbackExtensions.has(item.extension.toLowerCase());
+    if (item.documentId && !textCopyOfTable) {
       actions.selectDocument(item.documentId);
       return;
     }
