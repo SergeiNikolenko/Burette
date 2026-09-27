@@ -31,8 +31,51 @@ const methodCaller = `function __emval_get_method_caller(argCount,argTypes,kind)
 }`;
 
 export function rewriteEmbindForCsp(code: string) {
+  const factoryStart = code.indexOf("function createJsInvoker(");
+  if (factoryStart >= 0) {
+    const factoryEnd = code.indexOf("var __embind_register_class_constructor", factoryStart);
+    const callerStart = code.indexOf("var __emval_create_invoker=function(");
+    const callerEnd = code.indexOf("function __emval_get_global(", callerStart);
+    if (callerStart < 0) {
+      const legacyStart = code.indexOf("function __emval_get_method_caller(", factoryEnd);
+      const legacyEnd = code.indexOf("function __emval_get_property(", legacyStart);
+      if (factoryEnd < 0 || legacyStart < 0 || legacyEnd < 0
+          || !code.slice(factoryStart, factoryEnd).includes("new Function(...args,invokerFnBody)")
+          || !code.slice(legacyStart, legacyEnd).includes("new Function(...params,functionBody)")) throw new Error("Intermediate Embind layout changed.");
+      code = code.slice(0, legacyStart) + methodCaller + code.slice(legacyEnd);
+      code = code.slice(0, factoryStart) + invoker + code.slice(factoryEnd);
+      if (/\bnew\s+Function\b|\bFunction\s*\(|\beval\s*\(/u.test(code)) throw new Error("Unreviewed dynamic code in Embind runtime.");
+      return code;
+    }
+    if (factoryEnd < 0 || callerStart < factoryEnd || callerEnd < 0
+        || !code.slice(factoryStart, factoryEnd).includes("new Function(args1,invokerFnBody)")
+        || !code.slice(callerStart, callerEnd).includes("var GenericWireTypeSize=8")) throw new Error("Modern Embind layout changed.");
+    const modernCaller = `var __emval_create_invoker=function(argCount,argTypesPtr,kind){
+      var [retType,...types]=emval_lookupTypes(argCount,argTypesPtr), toReturnWire=retType.toWireType.bind(retType);
+      return emval_addMethodCaller(function(handle,methodName,destructorsRef,args){
+        var values=types.map((type,index)=>type.readValueFromPointer(args+index*8)),result;
+        if(kind===0) result=Emval.toValue(handle)(...values);
+        else if(kind===1){var obj=Emval.toValue(handle);result=obj[getStringOrSymbol(methodName)](...values);}
+        else if(kind===2) result=Reflect.construct(Emval.toValue(handle),values);
+        else if(kind===3) result=values[values.length-1];
+        else throw new Error('Unsupported Emval invocation kind.');
+        if(!retType.isVoid) return emval_returnValue(toReturnWire,destructorsRef,result);
+      });
+    };`;
+    code = code.slice(0, callerStart) + modernCaller + code.slice(callerEnd);
+    code = code.slice(0, factoryStart) + invoker + code.slice(factoryEnd);
+    if (/\bnew\s+Function\b|\bFunction\s*\(|\beval\s*\(/u.test(code)) throw new Error("Unreviewed dynamic code in Embind runtime.");
+    return code;
+  }
   const start = code.indexOf("function craftInvokerFunction(");
   const end = code.indexOf("var __embind_register_class_constructor", start);
+  // Indigo 1.46 ships a closure-based invoker already. Preserve upstream wire
+  // conversion semantics instead of replacing it or weakening the iframe CSP.
+  const existing = code.slice(start, end);
+  if (start >= 0 && end > start && existing.includes("var invokerFn=function(...args)")
+      && existing.includes("cppInvokerFunc(...invokerFuncArgs)")
+      && code.includes('createNamedFunction=(name,func)=>Object.defineProperty')
+      && !/\bnew\s+Function\b|\bFunction\s*\(|\beval\s*\(|newFunc\(Function/u.test(code)) return code;
   if (start < 0 || end < 0 || !/new Function|newFunc\(Function/u.test(code.slice(start, end))) {
     throw new Error("Embind layout changed; review the offline workspace build.");
   }
