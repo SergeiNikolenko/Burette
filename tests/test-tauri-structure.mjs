@@ -233,7 +233,7 @@ assert.ok(tauriHandlerSource, 'the registered Tauri command handler must be disc
 assert.equal(await exists('apps/desktop/src-tauri/src/commands.rs'), false);
 assert.ok(mainWindowConfig);
 assert.equal(tauriConfig.build.beforeBuildCommand, 'true');
-assert.equal(desktopPackageConfig.scripts.build, '../../node_modules/.bin/vite build --config vite.config.ts');
+assert.equal(desktopPackageConfig.scripts.build, 'vp build --config vite.config.ts');
 assert.equal(desktopPackageConfig.scripts['build:tauri'], 'node ../../scripts/stage-native-widget.mjs && bun run build && node ../../node_modules/@tauri-apps/cli/tauri.js build');
 assert.equal(mainWindowConfig.create, false);
 assert.equal(mainWindowConfig.visible, true);
@@ -784,7 +784,7 @@ assert.match(updaterCommand, /BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX/);
 assert.match(updaterCommand, /ed25519/);
 assert.match(updaterCommand, /manifest_asset_name/);
 assert.match(updaterCommand, /asset_sha256/);
-assert.equal(packageConfig.packageManager, 'bun@1.3.8');
+assert.equal(packageConfig.packageManager, 'bun@1.4.2');
 assert.deepEqual(packageConfig.workspaces, ['apps/*', 'packages/*']);
 assert.equal(packageConfig.scripts['check:formats'], 'bun scripts/check-preview-format-registry.mjs');
 assert.equal(packageConfig.scripts['check:vendor-assets'], 'bun scripts/check-vendor-assets.mjs');
@@ -800,16 +800,16 @@ for (const updateTest of [
 ]) {
   assert.ok(packageConfig.scripts['test:update'].split(/\s*&&\s*/u).includes(updateTest), `test:update must include ${updateTest}`);
 }
-assert.equal(desktopPackageConfig.scripts.build, '../../node_modules/.bin/vite build --config vite.config.ts');
+assert.equal(desktopPackageConfig.scripts.build, 'vp build --config vite.config.ts');
 assert.doesNotMatch(desktopPackageConfig.scripts.build, /bun --bun vite build/);
 assert.match(packageConfig.scripts['check:js'], /scripts\/dev-namespace\.mjs/);
 assert.match(buildScript, /BURETTE_DEV_FLAVOR/);
 assert.match(buildScript, /bun "\$ROOT\/scripts\/dev-namespace\.mjs" shell-env/);
 assert.match(buildScript, /LOCAL_APP="\$ROOT\/build\/\$BURETTE_APP_BUNDLE_NAME"/);
-assert.match(buildScript, /\.\.\/\.\.\/node_modules\/\.bin\/vite build --config vite\.config\.ts/);
+assert.match(buildScript, /\.\.\/\.\.\/node_modules\/\.bin\/vp build --config vite\.config\.ts/);
 assert.match(buildScript, /bun "\$ROOT\/scripts\/dev-namespace\.mjs" patch-tree "\$SAFE_ROOT"/);
 assert.match(buildDevScript, /BURETTE_DEV_FLAVOR is supported by scripts\/build\.sh, not scripts\/build-dev\.sh/);
-assert.match(buildDevScript, /\.\.\/\.\.\/node_modules\/\.bin\/vite build --config vite\.config\.ts/);
+assert.match(buildDevScript, /\.\.\/\.\.\/node_modules\/\.bin\/vp build --config vite\.config\.ts/);
 assert.match(buildDevScript, /bun run build:tauri/);
 assert.match(installLocalScript, /BURETTE_DEV_FLAVOR/);
 assert.match(installLocalScript, /DEST="\$DEST_DIR\/\$APP_BUNDLE_NAME"/);
@@ -920,6 +920,8 @@ assert.deepEqual(vendorAssetsLock.assets.map((asset) => asset.path).toSorted(), 
   'PreviewExtension/Web/molstar.css',
   'PreviewExtension/Web/molstar.js',
   'PreviewExtension/Web/openchemlib/openchemlib.js',
+  'PreviewExtension/Web/rdkit-compute/RDKit_minimal.js',
+  'PreviewExtension/Web/rdkit-compute/RDKit_minimal.wasm',
   'PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js',
   'PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm',
   'PreviewExtension/Web/rdkit/RDKit_minimal.js',

@@ -1,6 +1,6 @@
 import { z } from "zod/v4";
-import { ListToolsRequestSchema, type ListToolsResult } from "@modelcontextprotocol/sdk/types.js";
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { ListToolsResultSchema } from "@modelcontextprotocol/core";
+import type { McpServer } from "@modelcontextprotocol/server";
 import { KETCHER_RESOURCE_URI, VIEWER_RESOURCE_URI } from "./widget";
 
 export const PUBLIC_OUTPUT_LIMITS = {
@@ -26,6 +26,8 @@ export const NOAUTH_TOOL_SECURITY = {
   securitySchemes: NOAUTH_SECURITY_SCHEMES,
 } as const;
 
+type ListToolsResult = z.infer<typeof ListToolsResultSchema>;
+
 type RawListToolsHandler = (
   request: unknown,
   extra: unknown,
@@ -42,7 +44,7 @@ export function exposeNoauthSecuritySchemes(server: McpServer): void {
     throw new Error("The MCP SDK tools/list handler is unavailable.");
   }
 
-  server.server.setRequestHandler(ListToolsRequestSchema, async (request, extra) => {
+  server.server.setRequestHandler("tools/list", async (request, extra) => {
     const result = await originalHandler(request, extra);
     return {
       ...result,

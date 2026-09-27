@@ -4,6 +4,13 @@ import { pathToFileURL } from "node:url";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import dns from "node:dns/promises";
+import http from "node:http";
+import https from "node:https";
+import { EventEmitter } from "node:events";
+import { syncBuiltinESMExports } from "node:module";
+import { PassThrough } from "node:stream";
+import { mock } from "node:test";
 
 const repoRoot = process.cwd();
 const sourcePluginRoot = path.resolve("plugins/burette-agent");
@@ -291,11 +298,95 @@ async function testValidationHandlers(tempRoot) {
   assert.equal(validTrajectory.structuredContent.ok, true);
 }
 
+async function testPublicFetchBoundary(handler) {
+  const requests = [];
+  let responseFor = () => ({ body: "Public research" });
+  let addressesFor = () => [{ address: "93.184.216.34", family: 4 }];
+  mock.method(dns, "lookup", async hostname => addressesFor(hostname));
+  const request = options => {
+    requests.push(options);
+    const result = new EventEmitter();
+    return result;
+  };
+  for (const transport of [http, https]) {
+    mock.method(transport, "request", (options, callback) => {
+      const result = request(options);
+      result.end = () => queueMicrotask(() => {
+        const reply = responseFor(options);
+        const response = new PassThrough();
+        response.statusCode = reply.status ?? 200;
+        response.headers = reply.headers ?? { "content-type": "text/plain" };
+        callback(response);
+        response.end(reply.body ?? "");
+      });
+      return result;
+    });
+  }
+  syncBuiltinESMExports();
+  const fetchResult = async (url, options = {}) => (await handler({ url, ...options })).structuredContent;
+  try {
+    for (const host of ["127.0.0.1", "127.1", "2130706433", "10.0.0.1", "100.64.0.1", "169.254.169.254", "192.168.1.1", "[::]", "[::1]", "[::ffff:127.0.0.1]", "[0:0:0:0:0:ffff:7f00:1]", "[fd00::1]", "[fe90::1]", "[64:ff9b::7f00:1]", "[2001::7f00:1]", "[2002:7f00:1::]", "localhost.", "viewer.local"]) {
+      const result = await fetchResult(`http://${host}/`);
+      assert.equal(result.ok, false, `${host} must be blocked`);
+    }
+    assert.equal(requests.length, 0, "blocked IPs must never reach the HTTP transport");
+
+    addressesFor = () => [{ address: "93.184.216.34", family: 4 }, { address: "127.0.0.1", family: 4 }];
+    assert.equal((await fetchResult("https://research.example/")).ok, false);
+    assert.equal(requests.length, 0, "mixed public/private DNS must fail closed");
+
+    addressesFor = () => [{ address: "93.184.216.34", family: 4 }];
+    for (const host of ["fc-research.example", "fd-research.example"]) {
+      const result = await fetchResult(`https://${host}/paper?section=1`);
+      assert.equal(result.ok, true, "ordinary DNS names must not be mistaken for IPv6");
+      const options = requests.at(-1);
+      assert.equal(options.hostname, "93.184.216.34", "connect to the validated address without a second DNS lookup");
+      assert.equal(options.servername, host, "preserve TLS certificate verification for the original host");
+      assert.equal(options.headers.host, host);
+      assert.equal(options.path, "/paper?section=1");
+    }
+
+    for (const location of ["http://127.0.0.1/secret", "https://[::ffff:127.0.0.1]/secret", "file:///etc/passwd", "http://user:secret@research.example/"]) {
+      const count = requests.length;
+      responseFor = () => ({ status: 302, headers: { location } });
+      assert.equal((await fetchResult("https://research.example/")).ok, false);
+      assert.equal(requests.length, count + 1, "unsafe redirects must be rejected before the next request");
+    }
+    addressesFor = host => [{ address: host === "private.example" ? "10.0.0.1" : "93.184.216.34", family: 4 }];
+    responseFor = () => ({ status: 302, headers: { location: "https://private.example/secret" } });
+    const beforePrivateRedirect = requests.length;
+    assert.equal((await fetchResult("https://research.example/")).ok, false);
+    assert.equal(requests.length, beforePrivateRedirect + 1);
+
+    responseFor = options => options.path === "/start"
+      ? { status: 302, headers: { location: "/paper" } }
+      : { body: "A &amp; B &#999999999; &#xFFFFFF;", headers: { "content-type": "text/html" } };
+    const redirected = await fetchResult("https://research.example/start");
+    assert.equal(redirected.ok, true);
+    assert.equal(redirected.url, "https://research.example/paper");
+    assert.equal(redirected.text, "A & B");
+
+    responseFor = () => ({ body: "x".repeat(1_000_001) });
+    const large = await fetchResult("https://research.example/", { start_index: 999_990, raw: true });
+    assert.equal(large.text.length, 10);
+    assert.equal(large.truncated, true, "the byte limit must not silently report a complete response");
+    assert.equal(large.nextStartIndex, null);
+
+    addressesFor = () => new Promise(() => {});
+    const timedOut = await fetchResult("https://research.example/", { timeout_ms: 20 });
+    assert.match(timedOut.error.message, /timed out/);
+  } finally {
+    mock.restoreAll();
+    syncBuiltinESMExports();
+  }
+}
+
 async function testFetchAndWorkspaceHandlers(tempRoot) {
   const pluginRoot = await copyPlugin(tempRoot, "workspace-plugin");
   const server = await registerAll(pluginRoot);
   const processIds = [];
   try {
+    await testPublicFetchBoundary(server.tools.get("fetch").handler);
     const blockedFetch = await server.tools.get("fetch").handler({ url: "http://127.0.0.1:9" });
     assert.equal(blockedFetch.structuredContent.ok, false);
     assert.match(blockedFetch.structuredContent.error.message, /Local, private, and link-local hosts are blocked/);

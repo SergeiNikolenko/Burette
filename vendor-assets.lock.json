@@ -12,21 +12,26 @@
     },
     "@rdkit/rdkit": {
       "packageName": "@rdkit/rdkit",
+      "version": "2026.3.6",
+      "integrity": "sha512-JkMi2PfVjRFuy3ZCDAoTUJeTGyNsgtmq4hDUduLnnbobxsOfSydfpa6lhZGYYaisfMSEAgE1iAT95W4ZsUCMrA=="
+    },
+    "rdkit-compute": {
+      "packageName": "@rdkit/rdkit",
       "version": "2025.3.4-1.0.0",
       "integrity": "sha512-MJzNoeW2SWt2KCdIibfY213uLWyHZjFfS2ntJ/HuYNHdu6dEiim7jb6ZMU9wnt9Oovkc85BHMuupxkufIMvftQ=="
     },
     "openchemlib": {
       "packageName": "openchemlib",
-      "version": "9.24.0",
-      "integrity": "sha512-aIZc4wxcIq4d1RK32WAkGjjyFUKPcf2zdlklvzkmmo2HuHTojFUubeSxp0CQ6MZDGLiK18iQJwxA4/O9Db2bvA=="
+      "version": "9.25.0",
+      "integrity": "sha512-FGTaZLJRTGXNC7khx8QvX/EiQBHpH1ncUbT7YXDJhw/Y/aDUKe5WrUIqTguMEtSs3GUHcRUjNUhfkpxulx2UXw=="
     }
   },
   "assets": [
     {
       "path": "PreviewExtension/Web/molstar.js",
       "package": "molstar",
-      "bytes": 5786391,
-      "sha256": "sha256-MoqZq21DgOMgPuiSN61+auc2yU0UrrFTbmOvLAx4/+I="
+      "bytes": 5816388,
+      "sha256": "sha256-LNSpyHXl5cqCMoPn61oWVJL1hlr9Ro9tZNmVxgx00fk="
     },
     {
       "path": "PreviewExtension/Web/molstar.css",
@@ -37,8 +42,8 @@
     {
       "path": "PreviewExtension/Web/mesoscale.js",
       "package": "molstar",
-      "bytes": 5403236,
-      "sha256": "sha256-LNiLiuTPNUadVlSCWoJ2VYzmBOHOjrZYdAANrh2X46E="
+      "bytes": 5433273,
+      "sha256": "sha256-zfwsBqzA7vGADJl76Dh448fnVIsnNly73claHyaAnh0="
     },
     {
       "path": "PreviewExtension/Web/mesoscale.css",
@@ -49,12 +54,24 @@
     {
       "path": "PreviewExtension/Web/rdkit/RDKit_minimal.js",
       "package": "@rdkit/rdkit",
-      "bytes": 128073,
-      "sha256": "sha256-WNPJlq3n4LATfU+TY/9sIEtUVolCj6CJjurtV573iNk="
+      "bytes": 106681,
+      "sha256": "sha256-M57FpgMfLg4/BLytPueZGp+a4Y+JJsH4puGcwGo9rxs="
     },
     {
       "path": "PreviewExtension/Web/rdkit/RDKit_minimal.wasm",
       "package": "@rdkit/rdkit",
+      "bytes": 7333095,
+      "sha256": "sha256-9Zga9M9b3O+GH/33QQMwv5iH8RleOfv5kBs6LxNKzi4="
+    },
+    {
+      "path": "PreviewExtension/Web/rdkit-compute/RDKit_minimal.js",
+      "package": "rdkit-compute",
+      "bytes": 128073,
+      "sha256": "sha256-WNPJlq3n4LATfU+TY/9sIEtUVolCj6CJjurtV573iNk="
+    },
+    {
+      "path": "PreviewExtension/Web/rdkit-compute/RDKit_minimal.wasm",
+      "package": "rdkit-compute",
       "bytes": 6914823,
       "sha256": "sha256-4JZ9RP7VnkSi0Hv8CPOoaCHFShTJW7fm45L+hnMzuMg="
     },
@@ -73,8 +90,8 @@
     {
       "path": "PreviewExtension/Web/openchemlib/openchemlib.js",
       "package": "openchemlib",
-      "bytes": 1108967,
-      "sha256": "sha256-uhMoUL+w9c9j44QzXjC4rjSlWQcx5YWC5DuPznstlqw="
+      "bytes": 1104184,
+      "sha256": "sha256-Turw1Xa2ag0+dGTMeKEX4l0rXCBu2bHjLp7Q82lsK1g="
     }
   ],
   "profiles": {
@@ -110,7 +127,9 @@
     ],
     "desktop-native-compute": [
       "rdkit-conformer/Burette_rdkit_conformer.js",
-      "rdkit-conformer/Burette_rdkit_conformer.wasm"
+      "rdkit-conformer/Burette_rdkit_conformer.wasm",
+      "rdkit-compute/RDKit_minimal.js",
+      "rdkit-compute/RDKit_minimal.wasm"
     ],
     "quicklook-molstar": [
       "molstar.js",

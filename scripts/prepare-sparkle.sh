@@ -2,16 +2,16 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TREE="${1:?usage: prepare-sparkle.sh build-tree}"
-SDK="$ROOT/build/sparkle/2.9.6"
+SDK="$ROOT/build/sparkle/2.10.0"
 mkdir -p "$SDK"
-ARCHIVE="$SDK/Sparkle-2.9.6.tar.xz"
+ARCHIVE="$SDK/Sparkle-2.10.0.tar.xz"
 if [[ ! -f "$ARCHIVE" ]]; then
   curl --fail --location --proto '=https' --proto-redir '=https' \
-    https://github.com/sparkle-project/Sparkle/releases/download/2.9.6/Sparkle-2.9.6.tar.xz \
+    https://github.com/sparkle-project/Sparkle/releases/download/2.10.0/Sparkle-2.10.0.tar.xz \
     --output "$ARCHIVE.download"
   mv "$ARCHIVE.download" "$ARCHIVE"
 fi
-echo "52bf9e88cdd972fc0c81501377a880e90d47031bd8ca5462488f843e2609e192  $ARCHIVE" | shasum -a 256 -c - >&2
+echo "c2bf58aa8387266ac179357b1415d6f2635f044da8be41042af32425dae6da0c  $ARCHIVE" | shasum -a 256 -c - >&2
 # Always extract the verified archive; never trust a previously modified framework.
 tar -xf "$ARCHIVE" -C "$SDK"
 python3 - "$TREE" "$SDK" <<'PY'

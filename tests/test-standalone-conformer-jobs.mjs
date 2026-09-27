@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import ts from 'typescript';
+import ts from 'typescript-compiler-api';
 const source = readFileSync(new URL('../apps/desktop/src/lib/standalone-compute.ts', import.meta.url), 'utf8');
 const code = ts.transpile(source, { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 });
 const jobs = [], calls = [], workflows = [];

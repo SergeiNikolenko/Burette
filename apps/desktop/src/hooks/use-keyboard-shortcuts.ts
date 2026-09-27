@@ -110,7 +110,7 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         }
         return;
       }
-      if (commandKey && !event.altKey && !event.shiftKey && event.key === ".") {
+      if (window.BuretteMcpWorkspace && commandKey && !event.altKey && !event.shiftKey && event.key === ".") {
         event.preventDefault();
         useAnnotationStore.getState().toggle();
         return;

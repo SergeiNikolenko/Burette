@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-startup-runtime-refresh.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-startup-runtime-refresh.mjs", import.meta.url))]),
   "test-pose-camera-stability.mjs": () => import("./test-pose-camera-stability.mjs"),
   "test-collection-analysis-menu.mjs": () => import("./test-collection-analysis-menu.mjs"),
   "test-conformer-collection.mjs": () => import("./test-conformer-collection.mjs"),

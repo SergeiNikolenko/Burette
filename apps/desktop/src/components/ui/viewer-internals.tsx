@@ -773,7 +773,7 @@ export function useViewerDevelopmentLayoutWarning({
   keyParts: unknown[];
 }) {
   useKeyedLayoutEffect(enabled ? joinEffectKey(keyParts) : null, () => {
-    if (process.env.NODE_ENV === "production" || !enabled) return;
+    if (import.meta.env.PROD || !enabled) return;
 
     const observedElements = elements().filter(
       (element): element is HTMLElement => Boolean(element),

@@ -416,7 +416,7 @@ function devFilesPersistedSession(recentStructures: RecentStructure[]): Persiste
 
 export function getMoleculeSessionSnapshot(state: Pick<MoleculeState, "tabs" | "activeTabId">) {
   const tabs = state.tabs.map(serializeTab).filter((tab): tab is SessionTab => tab !== null);
-  const activeIndex = state.activeTabId ? state.tabs.findIndex((tab) => tab.id === state.activeTabId) : null;
+  const activeIndex = state.activeTabId ? tabs.findIndex((tab) => tab.id === state.activeTabId) : null;
   return { tabs, activeIndex: activeIndex !== null && activeIndex >= 0 ? activeIndex : null };
 }
 
@@ -962,9 +962,12 @@ export const useMoleculeStore = create<MoleculeState>()(
         }),
       restoreSession: (sessionTabs, activeIndex) =>
         set((state) => {
-          const hydratedTabs = ensureTabs(sessionTabs.map((tab) => hydrateTab(tab)).filter((tab): tab is MoleculeTab => tab !== null));
+          // activeIndex belongs to the incoming session, before invalid views
+          // are removed or pinned tabs are moved to the beginning.
+          const hydratedTabs = sessionTabs.map((tab) => hydrateTab(tab));
           const requested = activeIndex === null ? null : hydratedTabs[activeIndex]?.id ?? null;
-          const tabs = dedupeTabIds(ensureTabs(collapseDuplicateKetcherTabs(hydratedTabs, requested)));
+          const validTabs = hydratedTabs.filter((tab): tab is MoleculeTab => tab !== null);
+          const tabs = dedupeTabIds(ensureTabs(collapseDuplicateKetcherTabs(validTabs, requested)));
           const activeTabId = activeTabIdOrFirst(tabs, requested);
           return { tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, state.documents) };
         }),

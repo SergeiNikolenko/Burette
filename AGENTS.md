@@ -10,7 +10,7 @@ changing.
 - Product name: `Burette`
 - Package name: `burette`
 - Tauri app identifier: `com.local.BuretteV10`
-- Package manager: `bun@1.3.8`
+- Package manager: `bun@1.4.2`
 - Stable agent CLIs: `scripts/burette-agent.mjs` and
   `scripts/agent-preview.mjs`
 - Packaged agent plugin root: `plugins/burette-agent`

@@ -20,6 +20,7 @@ const requestedProfiles = process.argv
 const packageSpecs = [
   { name: 'molstar' },
   { name: '@rdkit/rdkit' },
+  { name: 'rdkit-compute', packageName: '@rdkit/rdkit' },
   { name: 'openchemlib' },
 ];
 
@@ -30,6 +31,8 @@ const assetSpecs = [
   { path: 'PreviewExtension/Web/mesoscale.css', package: 'molstar' },
   { path: 'PreviewExtension/Web/rdkit/RDKit_minimal.js', package: '@rdkit/rdkit' },
   { path: 'PreviewExtension/Web/rdkit/RDKit_minimal.wasm', package: '@rdkit/rdkit' },
+  { path: 'PreviewExtension/Web/rdkit-compute/RDKit_minimal.js', package: 'rdkit-compute' },
+  { path: 'PreviewExtension/Web/rdkit-compute/RDKit_minimal.wasm', package: 'rdkit-compute' },
   { path: 'PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js', package: 'burette-rdkit-conformer' },
   { path: 'PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm', package: 'burette-rdkit-conformer' },
   { path: 'PreviewExtension/Web/openchemlib/openchemlib.js', package: 'openchemlib' },
@@ -42,7 +45,7 @@ function readJson(filePath) {
 function packageSnapshot(bunLock, spec) {
   const entry = getBunPackageSnapshot(bunLock, spec.name);
   return {
-    packageName: spec.name,
+    packageName: spec.packageName ?? spec.name,
     version: entry.version,
     integrity: entry.integrity,
   };

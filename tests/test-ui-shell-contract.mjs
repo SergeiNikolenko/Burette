@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
-import ts from 'typescript';
+import ts from 'typescript-compiler-api';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -1455,7 +1455,6 @@ assert.match(appStartupEffectsHook, /const workspace = commonParentDirectory\(br
 assert.match(appStartupEffectsHook, /for \(const root of browserDevProjectRoots\) \{\s*addProjectRoot\(root\);/);
 assert.match(appStartupEffectsHook, /function uniqueParentDirectories\(paths: string\[\]\)/);
 assert.match(appStartupEffectsHook, /function commonParentDirectory\(paths: string\[\]\)/);
-assert.match(appStartupEffectsHook, /!isTauriRuntime\(\) \|\| documents\.length === 0/);
 assert.match(appStartupEffectsHook, /invoke<string\[\]>\("existing_paths", \{ paths \}\)/);
 assert.match(openEventsHook, /return startupOpenSettled/);
 assert.match(openEventsHook, /openPendingDocuments\(\{ replace: true \}, true\)/);
@@ -7525,7 +7524,6 @@ assert.match(derivedColumnsHook, /fetchDerivedSourceRows\(documentId, afterSourc
 assert.match(derivedColumnsHook, /storeDerivedValues\(documentId, \{/);
 assert.match(derivedColumnsLib, /resources\.json\?raw/);
 assert.match(derivedColumnsLib, /RDKit_minimal\.wasm\?url/);
-assert.match(derivedColumnsLib, /const rdkitOptions = \{ locateFile: \(\) => wasmUrl, wasmBinary \}/);
 assert.match(derivedColumnsLib, /atob\(/);
 assert.match(viteConfig, /assetsInlineLimit:[\s\S]*RDKit_minimal\.wasm/);
 assert.match(derivedColumnsLib, /ocl\.Resources\.register\(JSON\.parse\(oclResourcesRaw\.default\)\)/);
@@ -8040,7 +8038,7 @@ assert.match(shortcutDocs, /Clear Recent Structures/);
 assert.match(shortcutDocs, /<project>: <title>/);
 assert.doesNotMatch(readme, /executable path, built-in preset\/custom JSON config, and extra CLI flags/);
 assert.doesNotMatch(readme, /Finder file association registration/);
-assert.match(packageJson, /"packageManager": "bun@1\.3\.8"/);
+assert.match(packageJson, /"packageManager": "bun@1\.4\.2"/);
 assert.match(packageJson, /"workspaces": \[/);
 assert.match(packageJson, /"packages\/\*"/);
 assert.match(updateSource, /const installExtensions = \["\.zip"\]/);

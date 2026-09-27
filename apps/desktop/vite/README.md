@@ -35,8 +35,14 @@ fall back to initials in menus and the Open In trigger.
 
 - Do not change browser-dev endpoint paths, methods, status codes, query
   parameters, or response shapes as part of a mechanical refactor.
+- Register the browser-dev request guard before every `/__burette` route.
+  These local file and compute endpoints accept loopback connections and
+  matching Host/Origin headers only. CLI requests may omit Origin; exposing
+  Vite on a network interface does not expose these privileged operations.
 - Keep job lifecycle logic auditable: process registration, status reads,
   cancellation, and cleanup stay within the job slice that owns the endpoint.
+  Descriptor batch results must still belong to the running job before they
+  replace its status; cancellation during preparation or a batch is terminal.
 - Keep Quick Look and packaged asset paths stable. Browser-dev conveniences must
   not leak into the packaged preview runtime.
 - Keep `vite.config.ts` small. New endpoint bodies should be route modules, not

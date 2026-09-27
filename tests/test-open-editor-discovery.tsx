@@ -8,10 +8,10 @@ Object.assign(globalThis, { window, IS_REACT_ACT_ENVIRONMENT: true });
 (window as any).BuretteMcpWorkspace = {};
 const beforeFetch = globalThis.fetch;
 const iconRequests: string[] = [];
-globalThis.fetch = async (_url, options) => {
+globalThis.fetch = Object.assign(async (_url: Parameters<typeof fetch>[0], options?: Parameters<typeof fetch>[1]) => {
   iconRequests.push(JSON.parse(options!.body as string).path);
   return Response.json({ iconUrl: "data:image/png;base64,iVBORw0KGgo=" });
-};
+}, { preconnect: beforeFetch.preconnect });
 const { createElement, act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { OpenInEditorMenu } = await import("../apps/desktop/src/components/open-in-editor-menu");

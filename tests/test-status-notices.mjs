@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import ts from 'typescript';
+import ts from 'typescript-compiler-api';
 
 const code = ts.transpile(readFileSync('apps/desktop/src/hooks/use-app-status.ts', 'utf8'), {
   module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,

@@ -139,7 +139,7 @@ if [[ ! -d node_modules || ! -d node_modules/@hugeicons/core-free-icons || ! -d 
 fi
 
 pushd apps/desktop >/dev/null
-../../node_modules/.bin/vite build --config vite.config.ts
+../../node_modules/.bin/vp build --config vite.config.ts
 popd >/dev/null
 
 bun run build:tauri

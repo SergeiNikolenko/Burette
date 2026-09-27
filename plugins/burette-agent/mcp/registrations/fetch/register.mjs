@@ -1,4 +1,8 @@
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
+import { lookup } from "node:dns/promises";
+import { request as requestHttp } from "node:http";
+import { request as requestHttps } from "node:https";
+import { isIP } from "node:net";
 import { z } from "zod";
 
 import { toolText } from "../../lib/tool-response.mjs";
@@ -7,6 +11,7 @@ const MAX_LENGTH = 20000;
 const DEFAULT_LENGTH = 8000;
 const MAX_RESPONSE_BYTES = 1000000;
 const DEFAULT_TIMEOUT_MS = 15000;
+const MAX_REDIRECTS = 3;
 
 export function registerFetch(server) {
   registerAppTool(
@@ -60,30 +65,23 @@ async function fetchPublicUrl(input) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await globalThis.fetch(parsed.url.href, {
-      redirect: "follow",
-      signal: controller.signal,
-      headers: {
-        "user-agent": "Burette-Agent-Fetch/0.1",
-        accept: "text/html, text/plain, application/json, application/xml, text/markdown;q=0.9, */*;q=0.5",
-      },
-    });
-    const contentType = response.headers.get("content-type") || "";
-    const sourceText = await readBoundedResponseText(response);
+    const { response, url } = await requestPublicUrl(parsed.url, controller.signal);
+    const contentType = String(response.headers["content-type"] || "");
+    const { text: sourceText, truncated: sourceTruncated } = await readBoundedResponseText(response);
     const readableText = input.raw ? sourceText : readableFromResponseText(sourceText, contentType);
     const chunk = readableText.slice(startIndex, startIndex + maxLength);
     const nextStartIndex = startIndex + chunk.length < readableText.length ? startIndex + chunk.length : null;
     return {
       ok: true,
       tool: "fetch",
-      url: response.url || parsed.url.href,
-      status: response.status,
+      url: url.href,
+      status: response.statusCode,
       contentType,
       startIndex,
       maxLength,
       returnedLength: chunk.length,
       totalLength: readableText.length,
-      truncated: nextStartIndex !== null,
+      truncated: sourceTruncated || nextStartIndex !== null,
       nextStartIndex,
       text: chunk,
       error: null,
@@ -102,7 +100,7 @@ function validateFetchUrl(url) {
   } catch {
     return { ok: false, error: { message: "Invalid URL." } };
   }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+  if ((parsed.protocol !== "http:" && parsed.protocol !== "https:") || parsed.username || parsed.password) {
     return { ok: false, error: { message: "Only http and https URLs are supported." } };
   }
   if (isBlockedHost(parsed.hostname)) {
@@ -112,42 +110,104 @@ function validateFetchUrl(url) {
 }
 
 function isBlockedHost(hostname) {
-  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (!host || host === "localhost" || host.endsWith(".localhost")) return true;
-  if (host === "::1" || host === "0:0:0:0:0:0:0:1" || host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80:")) return true;
-  const ipv4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (!ipv4) return false;
-  const parts = ipv4.slice(1).map(Number);
-  if (parts.some(part => part > 255)) return true;
-  const [a, b] = parts;
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.$/, "");
+  if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local")) return true;
+  const family = isIP(host);
+  if (family === 0) return false;
+  if (family === 6) {
+    // Normalize expanded literals before excluding mapped/translated and non-global ranges.
+    const address = new URL(`http://[${host}]`).hostname.slice(1, -1);
+    return !/^[23][0-9a-f]{3}:/u.test(address)
+      || address.startsWith("2002:")
+      || /^2001:(?:[0-1]?[0-9a-f]{1,2}|db8)?:/u.test(address)
+      || address.startsWith("3fff:");
+  }
+  const [a, b, c] = host.split(".").map(Number);
   return (
     a === 0 ||
     a === 10 ||
     a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
     (a === 169 && b === 254) ||
     (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168)
+    (a === 192 && (b === 0 || b === 168)) ||
+    (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100))) ||
+    (a === 203 && b === 0 && c === 113) ||
+    a >= 224
   );
 }
 
+async function requestPublicUrl(initialUrl, signal) {
+  let url = initialUrl;
+  for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
+    signal.throwIfAborted();
+    const validated = validateFetchUrl(url.href);
+    if (!validated.ok) throw new Error(validated.error.message);
+    const hostname = url.hostname.replace(/^\[|\]$/g, "");
+    const addresses = isIP(hostname)
+      ? [{ address: hostname, family: isIP(hostname) }]
+      : await new Promise((resolve, reject) => {
+          const onAbort = () => reject(signal.reason);
+          signal.addEventListener("abort", onAbort, { once: true });
+          lookup(hostname, { all: true, verbatim: true }).then(resolve, reject)
+            .finally(() => signal.removeEventListener("abort", onAbort));
+        });
+    signal.throwIfAborted();
+    if (!addresses.length || addresses.some(({ address }) => !isIP(address) || isBlockedHost(address))) {
+      throw new Error("Local, private, and link-local hosts are blocked.");
+    }
+    let response;
+    for (const [index, address] of addresses.entries()) {
+      try {
+        response = await new Promise((resolve, reject) => {
+          const request = (url.protocol === "https:" ? requestHttps : requestHttp)({
+            protocol: url.protocol,
+            hostname: address.address,
+            family: address.family,
+            port: url.port || (url.protocol === "https:" ? 443 : 80),
+            path: `${url.pathname}${url.search}`,
+            servername: isIP(hostname) ? undefined : hostname,
+            signal,
+            headers: {
+              host: url.host,
+              "user-agent": "Burette-Agent-Fetch/0.1",
+              accept: "text/html, text/plain, application/json, application/xml, text/markdown;q=0.9, */*;q=0.5",
+            },
+          }, resolve);
+          request.once("error", reject);
+          request.end();
+        });
+        break;
+      } catch (error) {
+        if (signal.aborted || index === addresses.length - 1) throw error;
+      }
+    }
+    if (![301, 302, 303, 307, 308].includes(response.statusCode) || !response.headers.location) {
+      return { response, url };
+    }
+    response.destroy();
+    if (redirects === MAX_REDIRECTS) throw new Error("Too many redirects.");
+    url = new URL(response.headers.location, url);
+  }
+}
+
 async function readBoundedResponseText(response) {
-  if (!response.body) return response.text();
-  const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let received = 0;
   let text = "";
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  let truncated = false;
+  for await (const value of response) {
+    const remaining = MAX_RESPONSE_BYTES - received;
+    text += decoder.decode(value.subarray(0, remaining), { stream: true });
     received += value.byteLength;
     if (received > MAX_RESPONSE_BYTES) {
-      await reader.cancel();
+      truncated = true;
+      response.destroy();
       break;
     }
-    text += decoder.decode(value, { stream: true });
   }
   text += decoder.decode();
-  return text;
+  return { text, truncated };
 }
 
 function readableFromResponseText(text, contentType) {
@@ -184,11 +244,11 @@ function decodeEntities(text) {
     .replace(/&#39;/g, "'")
     .replace(/&#(\d+);/g, (_, code) => {
       const value = Number(code);
-      return Number.isFinite(value) ? String.fromCodePoint(value) : "";
+      return Number.isInteger(value) && value >= 0 && value <= 0x10ffff ? String.fromCodePoint(value) : "";
     })
     .replace(/&#x([0-9a-f]+);/gi, (_, code) => {
       const value = Number.parseInt(code, 16);
-      return Number.isFinite(value) ? String.fromCodePoint(value) : "";
+      return Number.isInteger(value) && value >= 0 && value <= 0x10ffff ? String.fromCodePoint(value) : "";
     });
 }
 

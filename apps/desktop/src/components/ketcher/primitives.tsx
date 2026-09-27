@@ -118,23 +118,23 @@ export function KetcherDialog({ children, title, headerContent, footerContent, c
   </Dialog>;
 }
 
-type Option = { value: string | number | boolean; label: string; children?: ReactNode };
-export function KetcherSelect({ options, value, onChange, disabled, placeholder, className, name, error, "data-testid": testId }: {
+type Option = { value: string | number | boolean; label: string; children?: ReactNode; disabled?: boolean; markedAsUsed?: boolean };
+export function KetcherSelect({ options, value, onChange, disabled, placeholder, className, name, error, title, "data-testid": testId }: {
   options: Option[]; value?: string | number | boolean; onChange: (value: string | number | boolean) => void; disabled?: boolean;
-  placeholder?: string; className?: string; name?: string; error?: boolean; "data-testid"?: string;
+  placeholder?: string; className?: string; name?: string; error?: boolean; title?: string; "data-testid"?: string;
 }) {
   // Radix reserves the empty string for an unset selection. Ketcher uses it as
   // a real enum value (e.g. unspecified stereochemistry), so encode by index.
   const container = useFullscreenContainer();
   const index = options.findIndex((option) => String(option.value) === String(value));
   return <Select value={index < 0 ? "" : String(index)} onValueChange={(key) => { if (key !== "") onChange(options[Number(key)].value); }} disabled={disabled} name={name}>
-    <SelectTrigger size="sm" className={cn("ketcher-ui-select", className)} data-testid={testId} aria-label={name || testId || placeholder} aria-invalid={error}>
+    <SelectTrigger size="sm" className={cn("ketcher-ui-select", className)} data-testid={testId} title={title} aria-label={name || testId || placeholder} aria-invalid={error}>
       <SelectValue placeholder={placeholder} />
     </SelectTrigger>
     <SelectContent container={container} className="ketcher-ui-options" position="popper">
       {options.map((option, i) => String(option.value).includes("Divider")
         ? <SelectSeparator key={i} />
-        : <SelectItem key={i} value={String(i)} data-testid={`${option.label}-option`}>{option.children ?? option.label}</SelectItem>)}
+        : <SelectItem key={i} value={String(i)} disabled={option.disabled} title={option.markedAsUsed ? "Already in use" : undefined} data-testid={`${option.label}-option`}>{option.children ?? option.label}</SelectItem>)}
     </SelectContent>
   </Select>;
 }

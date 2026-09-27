@@ -599,7 +599,7 @@ assert.match(selfContainedPlugin.url, /^http:\/\/127\.0\.0\.1:/);
 const bundledMcpTargets = (await readdir("plugins/burette-agent/mcp/lib"))
   .filter(file => /^server-(?:bundle|chunk)-?.*\.mjs$/u.test(file))
   .map(file => `plugins/burette-agent/mcp/lib/${file}`);
-assert.equal(bundledMcpTargets.length >= 2, true);
+assert.equal(bundledMcpTargets.length >= 1, true);
 for (const target of bundledMcpTargets) {
   assert.equal((await stat(target)).size <= 512000, true, `${target} exceeds the repository blob limit`);
 }

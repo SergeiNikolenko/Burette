@@ -10,7 +10,7 @@ mock.module('@tauri-apps/api/core', () => ({ invoke: async (command: string, arg
 mock.module('@tauri-apps/plugin-dialog', () => ({ save: async () => destination }));
 const { renderXyzrender, saveXyzrenderFile } = await import('../apps/desktop/src/lib/xyzrender-transport');
 Object.assign(globalThis, { window: { __TAURI_INTERNALS__: {} } });
-globalThis.fetch = (() => { throw new Error('Native renderer must not use an HTTP server'); }) as typeof fetch;
+globalThis.fetch = Object.assign(() => { throw new Error('Native renderer must not use an HTTP server'); }, { preconnect: fetch.preconnect });
 
 test('native orientation prepares a reference, then renders rotated coordinates without HTTP', async () => {
   calls.length = 0;
@@ -23,7 +23,7 @@ test('native orientation prepares a reference, then renders rotated coordinates 
 });
 test('native GIF save writes only the destination selected in the system dialog', async () => {
   calls.length = 0;
-  expect(await saveXyzrenderFile('molecule.gif', 'gif', 'R0lGODlh')).toEqual({ name: 'molecule.gif', path: destination });
+  expect(await saveXyzrenderFile('molecule.gif', 'gif', 'R0lGODlh')).toEqual({ name: 'molecule.gif', path: '/tmp/animation.gif' });
   expect(calls).toEqual([{ command: 'write_base64_file', args: { request: { outputPath: destination, contentsBase64: 'R0lGODlh' } } }]);
   destination = null;
   calls.length = 0;

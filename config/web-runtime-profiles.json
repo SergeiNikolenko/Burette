@@ -34,7 +34,9 @@
     ],
     "desktop-native-compute": [
       "rdkit-conformer/Burette_rdkit_conformer.js",
-      "rdkit-conformer/Burette_rdkit_conformer.wasm"
+      "rdkit-conformer/Burette_rdkit_conformer.wasm",
+      "rdkit-compute/RDKit_minimal.js",
+      "rdkit-compute/RDKit_minimal.wasm"
     ],
     "quicklook-molstar": [
       "molstar.js",

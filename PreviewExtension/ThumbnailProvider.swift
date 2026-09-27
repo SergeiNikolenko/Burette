@@ -21,7 +21,9 @@ final class ThumbnailProvider: QLThumbnailProvider {
     }
 
     private static func readSmallMolecule(fileURL: URL, fileExtension: String) -> [ThumbnailAtom]? {
-        guard let data = try? Data(contentsOf: fileURL, options: [.mappedIfSafe]),
+        guard let handle = try? FileHandle(forReadingFrom: fileURL) else { return nil }
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: maxBytes + 1),
               data.count <= maxBytes else {
             return nil
         }
@@ -275,7 +277,7 @@ final class ThumbnailProvider: QLThumbnailProvider {
     }
 
     private static func parseGRO(_ text: String) -> [ThumbnailAtom]? {
-        let lines = text.split(whereSeparator: \.isNewline).map(String.init)
+        let lines = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
         guard lines.count >= 3,
               let atomCount = Int(lines[1].trimmingCharacters(in: .whitespaces)),
               atomCount > 1,
@@ -285,28 +287,32 @@ final class ThumbnailProvider: QLThumbnailProvider {
         }
         var atoms: [ThumbnailAtom] = []
         for line in lines[2..<(2 + atomCount)] {
-            let parts = line.split(whereSeparator: \.isWhitespace).map(String.init)
-            guard parts.count >= 3,
-                  let x = Double(parts[parts.count - 3]),
-                  let y = Double(parts[parts.count - 2]),
-                  let z = Double(parts[parts.count - 1]) else {
+            // GRO coordinates occupy fixed columns; optional velocities follow them.
+            guard line.count >= 44,
+                  let x = Double(line[safe: 20..<28].trimmingCharacters(in: .whitespaces)),
+                  let y = Double(line[safe: 28..<36].trimmingCharacters(in: .whitespaces)),
+                  let z = Double(line[safe: 36..<44].trimmingCharacters(in: .whitespaces)) else {
                 continue
             }
-            let elementSource = parts.count >= 5 ? parts[1] : ""
+            let elementSource = line[safe: 10..<15].trimmingCharacters(in: .whitespaces)
             atoms.append(ThumbnailAtom(element: inferredElement(from: elementSource), x: x * 10, y: y * 10, z: z * 10))
         }
         return atoms.count >= 2 ? atoms : nil
     }
 
     private static func parseCube(_ text: String) -> [ThumbnailAtom]? {
-        let lines = text.split(whereSeparator: \.isNewline).map(String.init)
+        let lines = text.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
         guard lines.count >= 6 else { return nil }
         let atomHeader = lines[2].split(whereSeparator: \.isWhitespace)
-        guard let rawAtomCount = atomHeader.first.flatMap({ Int($0) }) else { return nil }
+        guard let rawAtomCount = atomHeader.first.flatMap({ Int($0) }),
+              (-240...240).contains(rawAtomCount) else { return nil }
         let atomCount = abs(rawAtomCount)
         guard atomCount > 1, atomCount <= 240, lines.count >= 6 + atomCount else {
             return nil
         }
+        let axisCounts = (3...5).compactMap { lines[$0].split(whereSeparator: \.isWhitespace).first.flatMap { Int($0) } }
+        guard axisCounts.count == 3 else { return nil }
+        let coordinateScale = axisCounts.allSatisfy { $0 > 0 } ? 0.529177210903 : 1.0
         var atoms: [ThumbnailAtom] = []
         for line in lines[6..<(6 + atomCount)] {
             let parts = line.split(whereSeparator: \.isWhitespace).map(String.init)
@@ -317,7 +323,7 @@ final class ThumbnailProvider: QLThumbnailProvider {
                   let z = Double(parts[4]) else {
                 continue
             }
-            atoms.append(ThumbnailAtom(element: elementSymbol(atomicNumber), x: x, y: y, z: z))
+            atoms.append(ThumbnailAtom(element: elementSymbol(atomicNumber), x: x * coordinateScale, y: y * coordinateScale, z: z * coordinateScale))
         }
         return atoms.count >= 2 ? atoms : nil
     }

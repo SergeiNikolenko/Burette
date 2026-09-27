@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
-import ts from 'typescript';
+import ts from 'typescript-compiler-api';
 
 test('panel action routes open documents to either dock and rejects foreign targets', async () => {
   const source = await readFile(new URL('../apps/desktop/src/lib/agent-workspace-panel.ts', import.meta.url), 'utf8');

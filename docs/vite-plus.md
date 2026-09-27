@@ -37,6 +37,20 @@ vp run ready
 temporarily disabled for the legacy source tree to avoid a repository-wide
 format-only diff during the toolchain migration.
 
+## Toolchain Versions
+
+Use the package manager version declared in `package.json` (Bun 1.4.2).
+Bun 1.3.8 cannot resolve the TypeScript 7 path configuration after `baseUrl`
+was removed. Vite+ 0.3.3 also requires the `vite` alias to its matching core.
+If an older global `vp` ignores local check settings, select the workspace CLI:
+
+```bash
+PATH="$PWD/node_modules/.bin:$PATH" vp check
+```
+
+TypeScript 7 runs type checks; the explicitly pinned `typescript-compiler-api`
+alias retains the final stable JavaScript compiler API for reviewed AST transforms.
+
 ## Native Binding Troubleshooting
 
 If `vp dev`, `vp check`, or another Vite+ command fails on macOS with

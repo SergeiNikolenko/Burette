@@ -8102,6 +8102,13 @@
       const start = () => enqueueRdkitCard(source, key, target);
       state.rdkitCardLazyJobs.set(target, start);
       state.rdkitCardLazyTargets.push(target);
+      // Finder can create an offscreen Quick Look WebView. Its intersection
+      // observer never reports visible cards, even though the preview is live.
+      // The preview is bounded to 750 records; render its initial cards eagerly.
+      if (config().quickLookViewer === true) {
+        startLazyRdkitCard(target);
+        continue;
+      }
       const observer = ensureRdkitCardObserver();
       if (observer) observer.observe(target);
       else window.setTimeout(() => startLazyRdkitCard(target), 0);
@@ -8168,7 +8175,7 @@
     if (state.rdkitCardRendering || !state.rdkitCardQueue.length) return;
     if (!state.rdkit && !state.rdkitError) return;
     state.rdkitCardRendering = true;
-    requestAnimationFrame(() => {
+    const renderBatch = () => {
       for (const job of state.rdkitCardQueue) job.priority = cardRenderPriority(job.target);
       state.rdkitCardQueue.sort(compareCardRenderJobs);
       const startedAt = nowMs();
@@ -8191,7 +8198,11 @@
         state.rdkitCardRendering = false;
         if (state.rdkitCardQueue.length) window.setTimeout(pumpRdkitCardQueue, 0);
       }
-    });
+    };
+    // Offscreen Quick Look WebViews may also suspend animation frames. Keep
+    // ordinary app/browser batches aligned to frames for interactive scrolling.
+    if (config().quickLookViewer === true) window.setTimeout(renderBatch, 0);
+    else requestAnimationFrame(renderBatch);
   }
 
   function sortXyzrenderCardQueue() {

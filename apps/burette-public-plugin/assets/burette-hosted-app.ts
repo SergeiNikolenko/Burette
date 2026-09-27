@@ -1,5 +1,4 @@
 import { App, type McpUiUpdateModelContextRequest } from "@modelcontextprotocol/ext-apps";
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { inject, pageview } from "@vercel/analytics";
 import {
   createSceneContext,
@@ -17,7 +16,7 @@ declare global {
       callServerTool: (
         name: string,
         arguments_?: Record<string, unknown>,
-      ) => Promise<CallToolResult>;
+      ) => ReturnType<App["callServerTool"]>;
       sanitizeViewerActions: (actions: unknown) => Record<string, unknown>[];
     };
     __BURETTE_HOSTED_APP_QUEUE__?: Array<{ method: string; args: unknown[] }>;

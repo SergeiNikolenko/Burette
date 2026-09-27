@@ -14,10 +14,11 @@ use super::cluster_plan::ClusterV1EngineIdentities;
 
 const VENDOR_ASSETS_LOCK: &[u8] = include_bytes!("../../../../../vendor-assets.lock.json");
 const RDKIT_PACKAGE: &str = "@rdkit/rdkit";
+const RDKIT_COMPUTE_PACKAGE: &str = "rdkit-compute";
 const RDKIT_BASELINE_VERSION: &str = "2025.3.4-1.0.0";
 const RDKIT_ASSET_PATHS: [&str; 2] = [
-    "PreviewExtension/Web/rdkit/RDKit_minimal.js",
-    "PreviewExtension/Web/rdkit/RDKit_minimal.wasm",
+    "PreviewExtension/Web/rdkit-compute/RDKit_minimal.js",
+    "PreviewExtension/Web/rdkit-compute/RDKit_minimal.wasm",
 ];
 const CONFORMER_EXTRACTOR_PACKAGE: &str = "burette-rdkit-conformer";
 const CONFORMER_EXTRACTOR_VERSION: &str =
@@ -165,7 +166,7 @@ fn verify_rdkit(viewer_root: &Path) -> Result<EngineIdentity, String> {
     }
     let package = lock
         .packages
-        .get(RDKIT_PACKAGE)
+        .get(RDKIT_COMPUTE_PACKAGE)
         .ok_or_else(|| "The embedded vendor asset lock does not pin RDKit".to_string())?;
     if package.package_name != RDKIT_PACKAGE || package.version != RDKIT_BASELINE_VERSION {
         return Err(format!(
@@ -178,7 +179,7 @@ fn verify_rdkit(viewer_root: &Path) -> Result<EngineIdentity, String> {
         let asset = lock
             .assets
             .iter()
-            .find(|asset| asset.path == expected_path && asset.package == RDKIT_PACKAGE)
+            .find(|asset| asset.path == expected_path && asset.package == RDKIT_COMPUTE_PACKAGE)
             .ok_or_else(|| format!("The vendor asset lock is missing {expected_path}"))?
             .clone();
         let relative = expected_path

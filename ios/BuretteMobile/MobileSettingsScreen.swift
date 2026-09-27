@@ -35,11 +35,7 @@ struct MobileSettingsScreen: View {
 
     private var renderingSection: some View {
         Section("Rendering") {
-            Picker("Renderer", selection: $model.renderer) {
-                ForEach(MobileRenderer.allCases) { renderer in
-                    Text(renderer.displayName).tag(renderer)
-                }
-            }
+            LabeledContent("Renderer", value: "Mol*")
             Picker("Mol* quality", selection: $model.molstarQuality) {
                 ForEach(MobileMolstarQuality.allCases) { quality in
                     Text(quality.displayName).tag(quality)
@@ -153,7 +149,7 @@ struct MobileSettingsScreen: View {
     private func runDiagnostics() {
         var lines: [String] = []
         lines.append("Burette Mobile \(appVersion)")
-        lines.append("Renderer: \(model.renderer.displayName)")
+        lines.append("Renderer: Mol*")
         lines.append("Mol* quality: \(model.molstarQuality.displayName)")
         lines.append("Theme: \(model.theme.displayName)")
         lines.append("Imported files: \(model.importedDocuments.count)")
