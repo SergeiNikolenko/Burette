@@ -2899,11 +2899,6 @@ img.radix-menu-item-icon {
   width: 18px;
   height: 18px;
 }
-.dock-panel[data-area="right"] .dock-tab[data-active] {
-  width: auto;
-  max-width: 170px;
-  justify-content: flex-start;
-}
 .dock-panel[data-area="right"] .dock-tab:not([data-active]) span {
   display: none;
 }
@@ -2926,16 +2921,17 @@ img.radix-menu-item-icon {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The fill is opaque in both themes, so a backdrop blur adds nothing but
+   WebKit's light fringe around the rounded edge. */
 .dock-tab:hover,
 .dock-tab[data-active],
 .dock-tab-shell:hover .dock-tab,
 .dock-tab-shell:focus-within .dock-tab {
   background: var(--tab-active-bg);
   color: var(--text-secondary);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
 }
-.dock-tab:active { transform: scale(0.985); }
+/* A pressed tab stays put: the shared Button nudges it down a pixel. */
+.dock-tab:active { translate: none; }
 .dock-tab-close {
   position: absolute;
   right: 5px;
@@ -2978,6 +2974,23 @@ img.radix-menu-item-icon {
 }
 .dock-panel[data-area="right"] .dock-tab-close {
   right: 5px;
+}
+/* In a narrow right dock the active tab is an icon too; only the pointed-at
+   tab opens up. If the active tab kept its label, clicking a tab to its right
+   would collapse it and slide the clicked tab out from under the pointer. */
+@container (width < 360px) {
+  .dock-panel[data-area="right"] .dock-tab-shell[data-active]:not(:hover, :focus-within) .dock-tab {
+    padding-right: 7px;
+  }
+
+  .dock-panel[data-area="right"] .dock-tab-shell[data-active]:not(:hover, :focus-within) .dock-tab span {
+    display: none;
+  }
+
+  .dock-panel[data-area="right"] .dock-tab-shell[data-active]:not(:hover, :focus-within) .dock-tab-close {
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 @container (min-width: 360px) {
   .dock-panel[data-area="right"] .dock-tab-shell {
