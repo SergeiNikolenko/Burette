@@ -8848,7 +8848,6 @@ SOFTWARE.
     ['xrayShaded', 'X-ray shading'],
     ['aromaticBonds', 'Aromatic bonds'],
     ['tubularHelices', 'Helices as tubes'],
-    ['ignoreLight', 'Flat colour'],
     ['celShaded', 'Cel shading'],
     ['ignoreHydrogens', 'Hide hydrogens']
   ];
@@ -9027,6 +9026,75 @@ SOFTWARE.
     }));
   }
 
+  // Illustrative drawing is flat colour plus the outline pass. Flat colour is
+  // `ignoreLight` on each representation, so a row can take it for just the
+  // representations beneath it — a structure, one component, or a single drawing.
+  // The outline is one pass over the whole canvas; it stays on while anything is
+  // drawn flat, because flat colour without its contour reads as a bare silhouette.
+  // Points and a few other types have no lighting to ignore, and Mol* drops the
+  // key from them, so they are left out rather than keeping a row forever mixed.
+  function sceneTreeIllustrativeTargets(viewer, ref) {
+    const state = viewer?.plugin?.state?.data;
+    if (!ref || !state?.cells?.has(ref)) return [];
+    const subtree = new Set(sceneTreeSubtreeRefs(state, ref));
+    return Array.from(sceneTreeRepresentationTargets(viewer))
+      .filter(([repRef, target]) => subtree.has(repRef) && sceneTreeReprParamSchema(viewer, target)?.ignoreLight)
+      .map(([, target]) => target.representation);
+  }
+
+  function sceneTreeRepresentationFlat(representation) {
+    return representation?.cell?.transform?.params?.type?.params?.ignoreLight === true;
+  }
+
+  function sceneTreeMenuIllustrative(menu, representations) {
+    if (!representations.length) return;
+    const flat = representations.filter(sceneTreeRepresentationFlat).length;
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field';
+    const caption = document.createElement('span');
+    caption.textContent = 'Illustrative';
+    const control = document.createElement('input');
+    control.type = 'checkbox';
+    control.className = 'buret-tree-menu-check';
+    control.checked = flat === representations.length;
+    control.indeterminate = flat > 0 && flat < representations.length;
+    control.dataset.sceneTreeIllustrative = '';
+    row.append(caption, control);
+    menu.appendChild(row);
+  }
+
+  function syncMolstarIllustrativeOutline(viewer) {
+    const plugin = viewer?.plugin;
+    const state = plugin?.state?.data;
+    if (!plugin?.canvas3d || !state?.cells) return;
+    const flat = Array.from(state.cells.values())
+      .some(cell => cell?.transform?.params?.type?.params?.ignoreLight === true);
+    const outlined = plugin.canvas3d.props?.postprocessing?.outline?.name === 'on';
+    if (flat && !outlined) enableMolstarIllustrativeOutline(viewer);
+    else if (!flat && outlined) resetMolstarPostprocessing(viewer);
+  }
+
+  async function applySceneTreeIllustrative(ref, enabled) {
+    const viewer = activeMolstarViewer();
+    const state = viewer?.plugin?.state?.data;
+    const representations = sceneTreeIllustrativeTargets(viewer, ref)
+      .filter(representation => sceneTreeRepresentationFlat(representation) !== enabled);
+    if (!state || !representations.length) return;
+    try {
+      const update = state.build();
+      for (const representation of representations) {
+        update.to(representation.cell.transform.ref).update(old => ({
+          ...old, type: { ...old.type, params: { ...old.type.params, ignoreLight: enabled } }
+        }));
+      }
+      await update.commit();
+      syncMolstarIllustrativeOutline(viewer);
+    } catch (error) {
+      debug('scene tree illustrative update failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
   function applySceneTreeReprSize(ref, name) {
     return updateSceneTreeRepresentation(ref, old => ({ ...old, sizeTheme: { name, params: {} } }));
   }
@@ -9049,6 +9117,7 @@ SOFTWARE.
     if (alpha < 0.999) {
       sceneTreeMenuSlider(menu, 'Outline brightness', 'outline-brightness', Math.round(molstarOutlineBrightness * 100));
     }
+    sceneTreeMenuIllustrative(menu, sceneTreeIllustrativeTargets(viewer, target.representation?.cell?.transform?.ref));
 
     sceneTreeMenuSection(menu, 'Colour');
     sceneTreeMenuThemePicker(menu, 'Theme', 'representation-color',
@@ -9127,14 +9196,15 @@ SOFTWARE.
         menu.appendChild(sceneTreeMenuItem('Show all', 'show-all', { icon: SCENE_TREE_ICON.restore }));
       }
       // Adding a representation only makes sense on a single component; a structure
-      // row would fan the same type across every component under it.
-      if (isComponent) {
-        const representations = sceneTreeRepresentationTypes(viewer, components);
-        if (representations.length) {
-          sceneTreeMenuSection(menu, 'Representation');
-          sceneTreeMenuSelect(menu, 'Add', 'add-representation', representations, '', 'Representation…');
-        }
+      // row would fan the same type across every component under it. The
+      // illustrative switch does fan out, to every representation below the row.
+      const representations = isComponent ? sceneTreeRepresentationTypes(viewer, components) : [];
+      const illustrative = sceneTreeIllustrativeTargets(viewer, ref);
+      if (representations.length || illustrative.length) sceneTreeMenuSection(menu, 'Representation');
+      if (representations.length) {
+        sceneTreeMenuSelect(menu, 'Add', 'add-representation', representations, '', 'Representation…');
       }
+      sceneTreeMenuIllustrative(menu, illustrative);
       if (components.length) {
         sceneTreeMenuSection(menu, 'Colour');
         sceneTreeMenuThemePicker(menu, 'Theme', 'color-theme', sceneTreeColorThemes(viewer, components), node.theme);
@@ -11085,6 +11155,15 @@ SOFTWARE.
         const sceneUndoLabel = `${control.dataset.sceneTreeParam} of ${node?.label || 'representation'}`;
         void runMolstarSceneEdit(sceneUndoLabel, () => (
           applySceneTreeReprParam(ref, control.dataset.sceneTreeParam, value)
+        ));
+      });
+      document.addEventListener('change', event => {
+        const control = event.target.closest('[data-scene-tree-illustrative]');
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref) return;
+        const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+        void runMolstarSceneEdit(`illustrative style of ${node?.label || 'structure'}`, () => (
+          applySceneTreeIllustrative(ref, control.checked)
         ));
       });
       document.addEventListener('change', event => {
@@ -16720,12 +16799,17 @@ SOFTWARE.
   async function applyMolstarIllustrativePostprocessing(viewer, options = {}) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    molstarOutlineBrightness = readMolstarOutlineBrightness();
     await plugin.managers.structure.component.setOptions({
       ...plugin.managers.structure.component.state.options,
       ignoreLight: true
     });
-    if (!plugin.canvas3d) return;
+    enableMolstarIllustrativeOutline(viewer, options);
+  }
+
+  function enableMolstarIllustrativeOutline(viewer, options = {}) {
+    const plugin = viewer?.plugin;
+    if (!plugin?.canvas3d) return;
+    molstarOutlineBrightness = readMolstarOutlineBrightness();
     const postprocessing = plugin.canvas3d.props.postprocessing;
     plugin.canvas3d.setProps({
       postprocessing: {
@@ -23698,6 +23782,8 @@ SOFTWARE.
     }
     setMolstarStructureDirty(snapshot.dirty === true);
     activeStructureAlignmentControl?.restoreMetadata?.(snapshot.superposition || null);
+    // Flat colour is scene state; the outline that goes with it is canvas state.
+    syncMolstarIllustrativeOutline(activeMolstarViewer());
     scheduleSceneTreeRender();
   }
 
@@ -24965,6 +25051,18 @@ SOFTWARE.
         setMolstarOutlineBrightness(Number(value) / 100);
       });
       items.push({ kind: 'number', id: 'outline-brightness', label: 'Outline', value: Math.round(molstarOutlineBrightness * 100), min: 0, max: 100, step: 1, unit: '%' });
+    }
+    // The picked component as a whole, like the scene tree row it belongs to.
+    const componentRef = component.cell?.transform?.ref;
+    const componentRepresentations = sceneTreeIllustrativeTargets(viewer, componentRef);
+    if (componentRepresentations.length) {
+      const componentLabel = sceneTreeNodeByRef(sceneTreeNodes(viewer), componentRef)?.label || nodeLabel;
+      session.handlers.set('illustrative', checked => {
+        void runMolstarSceneEdit(`illustrative style of ${componentLabel}`,
+          () => applySceneTreeIllustrative(componentRef, checked === true));
+      });
+      items.push({ kind: 'checkbox', id: 'illustrative', text: 'Illustrative',
+        checked: componentRepresentations.every(sceneTreeRepresentationFlat) });
     }
 
     items.push({ kind: 'separator' }, { kind: 'label', text: 'Colour' });
