@@ -36,6 +36,10 @@ pub(crate) enum FileOperation {
     TrashFolder {
         path: String,
     },
+    MoveInto {
+        path: String,
+        destination: String,
+    },
 }
 
 // These commands operate on explicit sidebar paths. Existing destinations are
@@ -278,8 +282,130 @@ fn operate(request: FileOperation) -> Result<Option<String>, String> {
             trash_file(&source)?;
             return Ok(None);
         }
+        FileOperation::MoveInto { path, destination } => {
+            let folder = regular_folder(&destination)?;
+            let source = PathBuf::from(&path);
+            let metadata = fs::symlink_metadata(&source).map_err(|error| error.to_string())?;
+            let (Some(parent), Some(name)) = (source.parent(), source.file_name()) else {
+                return Err("Choose a file or folder to move.".into());
+            };
+            if !source.is_absolute()
+                || source
+                    .components()
+                    .any(|part| part == std::path::Component::ParentDir)
+            {
+                return Err("Choose an absolute path to move.".into());
+            }
+            let parent = fs::canonicalize(parent).map_err(|error| error.to_string())?;
+            let real_folder = fs::canonicalize(&folder).map_err(|error| error.to_string())?;
+            if parent == real_folder {
+                return Ok(Some(path));
+            }
+            if real_folder.starts_with(parent.join(name)) {
+                return Err("A folder cannot be moved into itself.".into());
+            }
+            let target = folder.join(name);
+            if fs::symlink_metadata(&target).is_ok() {
+                return Err(format!(
+                    "“{}” already contains an item named “{}”.",
+                    folder.file_name().unwrap_or_default().to_string_lossy(),
+                    name.to_string_lossy()
+                ));
+            }
+            move_into(&source, &metadata, &folder, &target)?;
+            target
+        }
     };
     Ok(Some(output.to_string_lossy().into_owned()))
+}
+
+// Like Finder: a move within one volume renames, a move to another volume copies
+// and leaves the original in place.
+#[cfg(unix)]
+fn move_into(
+    source: &Path,
+    metadata: &fs::Metadata,
+    folder: &Path,
+    target: &Path,
+) -> Result<(), String> {
+    use std::os::unix::fs::MetadataExt;
+    let folder_device = fs::metadata(folder)
+        .map_err(|error| error.to_string())?
+        .dev();
+    if metadata.dev() == folder_device {
+        rename_new(source, target).map_err(|error| error.to_string())
+    } else {
+        copy_item(source, target)
+    }
+}
+
+#[cfg(not(unix))]
+fn move_into(
+    source: &Path,
+    _metadata: &fs::Metadata,
+    _folder: &Path,
+    target: &Path,
+) -> Result<(), String> {
+    rename_new(source, target).map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn copy_item(source: &Path, target: &Path) -> Result<(), String> {
+    use cocoa::base::{id, nil, BOOL, YES};
+    use cocoa::foundation::NSAutoreleasePool;
+    use objc::{class, msg_send, sel, sel_impl};
+    let (source, target) = (c_path(source)?, c_path(target)?);
+    unsafe {
+        let pool = NSAutoreleasePool::new(nil);
+        let source_url = file_url(&source);
+        let target_url = file_url(&target);
+        let manager: id = msg_send![class!(NSFileManager), defaultManager];
+        let mut error: id = nil;
+        // NSFileManager copies folders with their metadata and never replaces an existing item.
+        let ok: BOOL =
+            msg_send![manager, copyItemAtURL: source_url toURL: target_url error: &mut error];
+        let result = if ok == YES {
+            Ok(())
+        } else {
+            Err(ns_error_message(error, "Could not copy the item."))
+        };
+        let _: () = msg_send![pool, drain];
+        result
+    }
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn copy_item(_source: &Path, _target: &Path) -> Result<(), String> {
+    Err("Moving items to another volume is supported by the macOS app.".into())
+}
+
+#[cfg(target_os = "macos")]
+fn c_path(path: &Path) -> Result<std::ffi::CString, String> {
+    use std::os::unix::ffi::OsStrExt;
+    std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|error| error.to_string())
+}
+
+/// Autoreleased; call inside an autorelease pool.
+#[cfg(target_os = "macos")]
+unsafe fn file_url(path: &std::ffi::CStr) -> cocoa::base::id {
+    use cocoa::base::id;
+    use objc::{class, msg_send, sel, sel_impl};
+    let name: id = msg_send![class!(NSString), stringWithUTF8String: path.as_ptr()];
+    msg_send![class!(NSURL), fileURLWithPath: name]
+}
+
+#[cfg(target_os = "macos")]
+unsafe fn ns_error_message(error: cocoa::base::id, fallback: &str) -> String {
+    use cocoa::base::id;
+    use objc::{msg_send, sel, sel_impl};
+    if error.is_null() {
+        return fallback.into();
+    }
+    let description: id = msg_send![error, localizedDescription];
+    let message: *const std::ffi::c_char = msg_send![description, UTF8String];
+    std::ffi::CStr::from_ptr(message)
+        .to_string_lossy()
+        .into_owned()
 }
 
 #[cfg(target_os = "macos")]
@@ -310,24 +436,17 @@ fn trash_file(path: &Path) -> Result<(), String> {
     use cocoa::base::{id, nil, BOOL, YES};
     use cocoa::foundation::NSAutoreleasePool;
     use objc::{class, msg_send, sel, sel_impl};
-    use std::ffi::{CStr, CString};
-    use std::os::unix::ffi::OsStrExt;
-    let path = CString::new(path.as_os_str().as_bytes()).map_err(|error| error.to_string())?;
+    let path = c_path(path)?;
     unsafe {
         let pool = NSAutoreleasePool::new(nil);
-        let name: id = msg_send![class!(NSString), stringWithUTF8String: path.as_ptr()];
-        let url: id = msg_send![class!(NSURL), fileURLWithPath: name];
+        let url = file_url(&path);
         let manager: id = msg_send![class!(NSFileManager), defaultManager];
         let mut error: id = nil;
         let ok: BOOL = msg_send![manager, trashItemAtURL: url resultingItemURL: std::ptr::null_mut::<id>() error: &mut error];
         let result = if ok == YES {
             Ok(())
-        } else if error.is_null() {
-            Err("Could not move the file to Trash.".into())
         } else {
-            let description: id = msg_send![error, localizedDescription];
-            let message: *const std::ffi::c_char = msg_send![description, UTF8String];
-            Err(CStr::from_ptr(message).to_string_lossy().into_owned())
+            Err(ns_error_message(error, "Could not move the file to Trash."))
         };
         let _: () = msg_send![pool, drain];
         result
@@ -425,6 +544,35 @@ mod tests {
             "context-menu-trash-check"
         );
         fs::remove_file(trashed).unwrap();
+    }
+
+    #[test]
+    fn move_into_folder_never_replaces_or_nests_a_folder_in_itself() {
+        let root = std::env::temp_dir().join(format!("burette-move-into-{}", uuid::Uuid::new_v4()));
+        let inbox = root.join("inbox");
+        fs::create_dir_all(inbox.join("nested")).unwrap();
+        let source = root.join("ligand.sdf");
+        fs::write(&source, "molecule\n").unwrap();
+        let move_into = |path: &Path, destination: &Path| {
+            operate(FileOperation::MoveInto {
+                path: path.to_string_lossy().into(),
+                destination: destination.to_string_lossy().into(),
+            })
+        };
+        let moved = move_into(&source, &inbox).unwrap().unwrap();
+        assert_eq!(PathBuf::from(&moved), inbox.join("ligand.sdf"));
+        assert!(!source.exists());
+        // Dropping an item on the folder that already holds it changes nothing.
+        assert_eq!(
+            move_into(Path::new(&moved), &inbox).unwrap(),
+            Some(moved.clone())
+        );
+        fs::write(&source, "other\n").unwrap();
+        assert!(move_into(&source, &inbox).is_err());
+        assert_eq!(fs::read_to_string(&moved).unwrap(), "molecule\n");
+        assert!(move_into(&inbox, &inbox.join("nested")).is_err());
+        assert!(inbox.join("nested").is_dir());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

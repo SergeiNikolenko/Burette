@@ -23,10 +23,13 @@ export function FileDropFeedback({ preview }: { preview: FileDropPreview | null 
   return (
     <div className="file-drop-feedback" data-target-kind={preview.targetKind} style={style}>
       <div className="file-drop-target" aria-hidden="true" />
-      <div className="file-drop-card" role="status" aria-live="polite" aria-atomic="true">
-        <span className="file-drop-action">{preview.actionLabel}</span>
-        <span className="file-drop-destination">{preview.targetLabel}</span>
-      </div>
+      {/* Like Finder, a highlighted folder row needs no caption. */}
+      {preview.targetKind === "folder" ? null : (
+        <div className="file-drop-card" role="status" aria-live="polite" aria-atomic="true">
+          <span className="file-drop-action">{preview.actionLabel}</span>
+          <span className="file-drop-destination">{preview.targetLabel}</span>
+        </div>
+      )}
     </div>
   );
 }

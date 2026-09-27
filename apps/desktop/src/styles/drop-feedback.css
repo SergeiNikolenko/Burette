@@ -13,10 +13,17 @@
   top: var(--file-drop-target-top);
   width: var(--file-drop-target-width);
   height: var(--file-drop-target-height);
-  border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--line-strong));
-  background: color-mix(in srgb, var(--accent) 3%, transparent);
+  border: 1px solid var(--line-strong);
+  background: color-mix(in srgb, var(--fg-base) 3%, transparent);
   border-radius: 7px;
   box-sizing: border-box;
+}
+/* A folder row lights up like a Finder drop target: a filled row, no outline. */
+.file-drop-feedback[data-target-kind="folder"] .file-drop-target {
+  border: 0;
+  border-radius: var(--control-radius);
+  /* The overlay sits above the row text, so the fill must stay translucent. */
+  background: color-mix(in srgb, var(--fg-base) 12%, transparent);
 }
 .file-drop-card {
   position: fixed;

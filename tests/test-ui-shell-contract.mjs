@@ -1515,7 +1515,9 @@ assert.match(appLayout, /\{ elementRef: rightDockElementRef, property: "--right-
 assert.match(appLayout, /shell\.style\.setProperty\(entry\.property, `\$\{width\}px`\)/);
 assert.match(appLayout, /<header className="topbar">/);
 assert.match(appLayout, /const rightDockOpen = !settingsMode && !hostedMcpWidget && state\.rightDockOpen/);
-assert.match(appLayout, /const pluginSurface = Boolean\(window\.BuretteMcpWorkspace\) \|\| state\.buildInfo\.isAgentShell;/);
+assert.match(appLayout, /const pluginSurface = isAgentPluginSurface\(state\.buildInfo\.isAgentShell\);/);
+assert.match(appLayout, /\{!hostedMcpWidget && pluginSurface \? <AnnotateToggle /);
+assert.match(appLayout, /\{!hostedMcpWidget && pluginSurface \? <AnnotationLayer /);
 assert.match(appLayout, /const bottomDockOpen = !settingsMode && !hostedMcpWidget && !pluginSurface && state\.bottomDockOpen/);
 assert.match(appLayout, /"--right-dock-width": `\$\{rightDockOpen \? rightDockWidth : 0\}px`/);
 assert.match(appLayout, /"--chrome-height": hostedMcpWidget \? "0px" : undefined/);
@@ -8766,8 +8768,8 @@ assert.match(sidebarFileTreeNode, /items: draggableItems\.map\(\(item\) => \(\{/
 assert.match(sidebarFileTreeNode, /kind: "file"/);
 assert.match(sidebarFileTreeNode, /title: item\.title/);
 assert.match(sidebarFileTreeNode, /detail: item\.relativePath/);
-assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(project\.items\)/);
-assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(nodeItems\)/);
+assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(project\.items, project\.rootPath\)/);
+assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(nodeItems, folderPath\)/);
 assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(\[item\]\)/);
 assert.match(sidebarFileTreeNode, /className="project-group-row"[\s\S]*draggable=\{!renaming && project\.items\.length > 0\}/);
 assert.match(sidebarFileTreeNode, /className="project-folder-row"[\s\S]*draggable=\{nodeItems\.length > 0\}/);

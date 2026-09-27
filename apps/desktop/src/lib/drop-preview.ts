@@ -24,7 +24,7 @@ export type FileDropPreview = {
   choiceCount: number;
   itemLabel: string;
   point: StructureDragPoint;
-  targetKind: "dock" | "fep" | "ketcher" | "sidebar" | "tab-strip" | "viewer" | "workspace";
+  targetKind: "dock" | "fep" | "folder" | "ketcher" | "sidebar" | "tab-strip" | "viewer" | "workspace";
   targetLabel: string;
 };
 
@@ -75,7 +75,6 @@ function dropActionUsesWorkspace(kind: DropAction["kind"] | undefined) {
 }
 
 function previewTargetKind(target: DropPreviewTarget): FileDropPreview["targetKind"] {
-  if (target.kind === "folder") return "sidebar";
   if (target.kind === "active-viewer") return "viewer";
   if (target.kind === "fep-setup") return "fep";
   return target.kind;

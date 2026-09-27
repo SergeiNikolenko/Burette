@@ -200,6 +200,16 @@ unsaved-document close guard before changing disk state. Browser previews omit
 these mutation actions. Project Rename changes the sidebar label; file and nested
 folder Rename change their names on disk without replacing existing destinations.
 
+Sidebar folder rows are drop targets like Finder folders. Files and folders
+dropped on a row (from Finder or from other sidebar rows) go through the
+`moveInto` operation, which takes `path` and `destination`: a move within one
+volume renames, a move to another volume copies and keeps the original, and an
+existing item with the same name is never replaced. Molecule records dropped on
+a row are still saved as new files there. On macOS, dragging a sidebar row
+starts a native file drag (`start_file_drag`), so Finder and other apps receive
+copies of the real files or folder; in-app drops of that drag keep the row's
+structure payload.
+
 Grid row/cell menus use the desktop host menu when embedded in the workspace,
 with the web menu as a standalone fallback. Column-header menus remain owned
 by the shared grid web runtime. Column sorting, filtering, pinning, visibility, width reset, and loaded

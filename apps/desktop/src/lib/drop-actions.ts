@@ -1,6 +1,7 @@
 import type { DockingDocumentRequest, FepSetupRequest } from "../types";
 import { isMoleculeCollectionPath } from "./collection-documents";
 import { dockingCandidatesForDrop, isMolstarSceneImportSource, isMolstarCombineSource, isMolstarCoordinateTrajectorySource, isProteinLikeDockingSource, isTrajectoryDocumentRequest } from "./docking-documents";
+import { movableEntries } from "./move-into-folder";
 import type { StructureDragPayload, StructureDragRecord } from "./structure-drag";
 
 export type DropTargetContext =
@@ -95,6 +96,11 @@ export type DropAction =
       records: StructureDragRecord[];
     }
   | {
+      kind: "move-into-folder";
+      directory: string;
+      paths: string[];
+    }
+  | {
       kind: "show-inline-record-target-hint";
     };
 
@@ -121,13 +127,17 @@ export function resolveDropActionChoices(
   target: DropTargetContext,
   source: DropSourceContext = UNKNOWN_DROP_SOURCE,
 ): DropActionChoice[] {
-  if (payload.paths.length === 0 && payload.records.length === 0) return [];
   if (target.kind === "folder") {
     if (payload.records.length) return [choice("save-structure-records", "Save molecules in folder", "default", {
       kind: "open-structure-records", paths: payload.paths, records: payload.records, directory: target.directory,
     }, source)];
-    return workspaceDropActionChoices(payload, source);
+    // A folder row drags the folder itself, while its file paths feed viewers.
+    const paths = movableEntries(payload.entries ?? payload.paths, target.directory);
+    return paths.length ? [choice("move-into-folder", `Move to ${fileName(target.directory)}`, "default", {
+      kind: "move-into-folder", directory: target.directory, paths,
+    }, source)] : [];
   }
+  if (payload.paths.length === 0 && payload.records.length === 0) return [];
   if (target.kind === "workspace" || target.kind === "sidebar" || target.kind === "tab-strip") {
     return workspaceDropActionChoices(payload, source);
   }

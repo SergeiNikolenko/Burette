@@ -85,11 +85,6 @@ const keyboardShortcutRows: ShortcutRow[] = [
     keybindings: ["⌥⌘B"],
   },
   {
-    command: "Annotate view",
-    description: "Mark regions of the view and send comments to the agent.",
-    keybindings: ["⌘."],
-  },
-  {
     command: "Zoom in",
     description: "Scale all window content up one step.",
     keybindings: ["⌘="],

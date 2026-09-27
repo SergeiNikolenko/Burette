@@ -9,6 +9,7 @@ pub(crate) mod database;
 pub(crate) mod derived;
 pub(crate) mod descriptors;
 pub(crate) mod documents;
+pub(crate) mod file_drag;
 pub(crate) mod file_operations;
 pub(crate) mod folding_results;
 pub(crate) mod grid;

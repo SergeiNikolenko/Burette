@@ -27,6 +27,7 @@ import { isHostedKetcherWidget, isHostedMcpWidget } from "../lib/hosted-mcp-widg
 import { HostedKetcherViewSwitch } from "./hosted-ketcher-view-switch";
 import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
 import { AnnotateToggle, AnnotationLayer } from "./annotation-layer";
+import { isAgentPluginSurface } from "../lib/native-mcp-workspace";
 
 // Collection grids may continue behind an overlay inspector; molecular viewers
 // must instead resize to the visible panel so their controls remain reachable.
@@ -326,8 +327,9 @@ export function AppLayout({
     : "calc(92px / var(--window-zoom, 1) + 100px)";
   const rightDockOpen = !settingsMode && !hostedMcpWidget && state.rightDockOpen;
   // The agent plugin surfaces (native widget and browser agent shell) have no
-  // bottom dock: its Jobs/compute tabs are excluded there.
-  const pluginSurface = Boolean(window.BuretteMcpWorkspace) || state.buildInfo.isAgentShell;
+  // bottom dock: its Jobs/compute tabs are excluded there. Annotate mode sends
+  // to the agent chat, so only these surfaces have it.
+  const pluginSurface = isAgentPluginSurface(state.buildInfo.isAgentShell);
   const bottomDockOpen = !settingsMode && !hostedMcpWidget && !pluginSurface && state.bottomDockOpen;
   const sidebarElementRef = useRef<HTMLDivElement | null>(null);
   const rightDockElementRef = useRef<HTMLDivElement | null>(null);
@@ -533,7 +535,7 @@ export function AppLayout({
           <div className="chrome-trailing-controls" data-tauri-drag-region>
             {!hostedMcpWidget ? <ActivityIndicator state={layoutState} actions={actions} /> : null}
             {!hostedMcpWidget && !window.BuretteMcpWorkspace ? <OpenInEditorMenu state={layoutState} actions={actions} /> : null}
-            {!hostedMcpWidget ? <AnnotateToggle className="chrome-button dock-toggle-button" /> : null}
+            {!hostedMcpWidget && pluginSurface ? <AnnotateToggle className="chrome-button dock-toggle-button" /> : null}
             {!hostedMcpWidget && !pluginSurface ? (
               <button
                 type="button"
@@ -725,7 +727,7 @@ export function AppLayout({
             </section>
           </ResizablePanel>
         </ResizablePanelGroup>
-        {window.BuretteMcpWorkspace && !hostedMcpWidget ? <AnnotationLayer documentTitle={state.activeDocument?.title ?? "Burette"} picksResidues={state.activeDocument?.renderer === "molstar"} /> : null}
+        {!hostedMcpWidget && pluginSurface ? <AnnotationLayer documentTitle={state.activeDocument?.title ?? "Burette"} picksResidues={state.activeDocument?.renderer === "molstar"} /> : null}
       </section>
       <FileDropFeedback preview={dropPreview} />
     </main></WorkspaceMenus></SidebarFileOperations>
