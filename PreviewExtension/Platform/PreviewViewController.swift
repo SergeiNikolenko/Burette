@@ -27,6 +27,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     private var previewStatus = ""
     private var pendingCompletion: ((Error?) -> Void)?
     private var activePreviewRequestID = UUID()
+    private var activePreviewNavigation: WKNavigation?
     private var renderTimeoutWorkItem: DispatchWorkItem?
     private var previewSourceMonitor: DispatchSourceTimer?
     private var previewSourceFingerprint: PreviewSourceFingerprint?
@@ -109,6 +110,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     func preparePreviewOfFile(at url: URL, completionHandler handler: @escaping (Error?) -> Void) {
         let requestID = UUID()
         activePreviewRequestID = requestID
+        activePreviewNavigation = nil
         renderTimeoutWorkItem?.cancel()
         renderTimeoutWorkItem = nil
         pendingCompletion = handler
@@ -166,7 +168,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     self.currentRuntimeDirectory = result.indexURL.deletingLastPathComponent()
                     self.previewSourceFingerprint = Self.previewSourceFingerprint(for: url)
                     self.pendingPreviewSourceFingerprint = nil
-                    self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
+                    self.activePreviewNavigation = self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
                     self.scheduleRenderTimeout(for: requestID, timeoutSeconds: result.renderTimeoutSeconds)
                     self.finishPreviewIfNeeded(nil, requestID: requestID, cancelRenderTimeout: false)
                     if Self.showDebugOverlay {
@@ -3891,6 +3893,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
 	    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+	        guard let navigation, navigation === activePreviewNavigation else { return }
+	        guard (error as NSError).domain != NSURLErrorDomain || (error as NSError).code != NSURLErrorCancelled else { return }
 	        appendLog("WK didFail error=\(Self.describe(error))")
 	        appendFailedPreviewTrace(requestID: activePreviewRequestID, error: error, message: "WK didFail")
 	        renderNativeError(error, fileURL: nil)
@@ -3898,6 +3902,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 	    }
 
 	    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+	        guard let navigation, navigation === activePreviewNavigation else { return }
+	        guard (error as NSError).domain != NSURLErrorDomain || (error as NSError).code != NSURLErrorCancelled else { return }
 	        appendLog("WK didFailProvisionalNavigation error=\(Self.describe(error))")
 	        appendFailedPreviewTrace(requestID: activePreviewRequestID, error: error, message: "WK didFailProvisionalNavigation")
 	        renderNativeError(error, fileURL: nil)
@@ -4290,7 +4296,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         guard let first = lines.first?.trimmingCharacters(in: .whitespacesAndNewlines),
               let atomCount = Int(first),
               atomCount > 0,
-              lines.count >= atomCount + 2 else {
+              lines.count >= 2, atomCount <= lines.count - 2 else {
             return nil
         }
         return normalized.hasSuffix("\n") ? normalized : normalized + "\n"
@@ -4300,6 +4306,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         guard let url = currentPreviewURL else { return }
         let requestID = UUID()
         activePreviewRequestID = requestID
+        activePreviewNavigation = nil
         renderTimeoutWorkItem?.cancel()
         hasRenderedTerminationError = false
         let rendererOverride = rendererOverride
@@ -4327,7 +4334,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                     self.previewSourceFingerprint = sourceFingerprint ?? Self.previewSourceFingerprint(for: url)
                     self.pendingPreviewSourceFingerprint = nil
                     self.appendLog("elapsed.wkLoadStartMs=0")
-                    self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
+                    self.activePreviewNavigation = self.webView.loadFileURL(result.indexURL, allowingReadAccessTo: result.readAccessURL)
                     self.scheduleRenderTimeout(for: requestID, timeoutSeconds: result.renderTimeoutSeconds)
                 }
             } catch {
@@ -4648,6 +4655,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private func renderNativeError(_ error: Error, fileURL: URL?) {
+        activePreviewNavigation = nil
         let fileName = fileURL?.lastPathComponent ?? "file"
         appendLog("renderNativeError for \(fileName): \(Self.describe(error))")
         webView.loadHTMLString(Self.staticErrorHTML(title: "Burette could not preview \(fileName)", details: Self.describe(error)), baseURL: nil)
@@ -5959,8 +5967,8 @@ private enum PreviewStructureTextConverter {
         guard lines.count >= 6 else { return nil }
         let countFields = fields(lines[2])
         guard let atomCountToken = countFields.first, let atomCount = Int(atomCountToken), atomCount != 0 else { return nil }
-        let count = abs(atomCount)
-        guard lines.count >= 6 + count else { return nil }
+        guard atomCount.magnitude <= lines.count - 6 else { return nil }
+        let count = Int(atomCount.magnitude)
         let axisCounts = (3...5).compactMap { index in
             fields(lines[index]).first.flatMap(Int.init)
         }
@@ -6001,7 +6009,7 @@ private enum PreviewStructureTextConverter {
               !atomicNumbers.isEmpty,
               typeIndices.count >= atomCount,
               let coordinateStart,
-              coordinateStart + atomCount <= lines.count else {
+              atomCount <= lines.count - coordinateStart else {
             return nil
         }
 
@@ -6014,8 +6022,9 @@ private enum PreviewStructureTextConverter {
                   let z = Double(parts[2]) else {
                 continue
             }
-            let typeIndex = typeIndices[index] - 1
-            guard typeIndex >= 0, typeIndex < atomicNumbers.count else { continue }
+            let typeNumber = typeIndices[index]
+            guard typeNumber > 0, typeNumber <= atomicNumbers.count else { continue }
+            let typeIndex = typeNumber - 1
             atoms.append(Atom(symbol: symbol(for: atomicNumbers[typeIndex]), x: x, y: y, z: z))
         }
         return atoms.count == atomCount ? atoms : nil

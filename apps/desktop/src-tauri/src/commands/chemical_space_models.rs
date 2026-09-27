@@ -178,15 +178,15 @@ pub(crate) fn chemical_space_model_runtime_install() -> Result<(), String> {
         };
         state.child_pid = None;
         match outcome {
+            _ if state.cancel_requested => {
+                state.phase = InstallPhase::Cancelled;
+                state.line = None;
+                state.error = Some("The model runtime installation was cancelled.".into());
+            }
             Ok(()) => {
                 state.phase = InstallPhase::Completed;
                 state.line = Some("Model runtime installed.".into());
                 state.error = None;
-            }
-            Err(error) if state.cancel_requested => {
-                state.phase = InstallPhase::Cancelled;
-                state.line = None;
-                state.error = Some(error);
             }
             Err(error) => {
                 state.phase = InstallPhase::Failed;
@@ -256,11 +256,10 @@ pub(crate) fn chemical_space_represent_start(
         job.child_pid = None;
         job.done = true;
         match outcome {
-            Ok(result) => job.result = Some(result),
-            Err(error) if job.cancel_requested => {
+            _ if job.cancel_requested => {
                 job.error = Some("The representation was cancelled.".into());
-                let _ = error;
             }
+            Ok(result) => job.result = Some(result),
             Err(error) => job.error = Some(error),
         }
     });
@@ -580,6 +579,7 @@ fn ensure_not_cancelled() -> Result<(), String> {
 /// Runs one installer step, streaming its output lines into the install state
 /// so the panel can show live progress, honouring cancellation and a deadline.
 fn run_install_step(command: &mut Command, label: &str, timeout: Duration) -> Result<(), String> {
+    ensure_not_cancelled()?;
     let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -587,6 +587,11 @@ fn run_install_step(command: &mut Command, label: &str, timeout: Duration) -> Re
         .spawn()
         .map_err(|error| format!("Could not start {label}: {error}"))?;
     if let Ok(mut state) = install_state().lock() {
+        if state.cancel_requested {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("The model runtime installation was cancelled.".into());
+        }
         state.child_pid = Some(child.id());
     }
     let stdout = child
@@ -597,8 +602,8 @@ fn run_install_step(command: &mut Command, label: &str, timeout: Duration) -> Re
         .stderr
         .take()
         .ok_or_else(|| format!("Could not capture {label} errors."))?;
-    let stdout_reader = thread::spawn(move || stream_lines(stdout, true));
-    let stderr_reader = thread::spawn(move || stream_lines(stderr, true));
+    let stdout_reader = thread::spawn(move || stream_lines(stdout, set_install_line));
+    let stderr_reader = thread::spawn(move || stream_lines(stderr, set_install_line));
     let status = wait_with_deadline(&mut child, timeout, label)?;
     let stdout_tail = stdout_reader.join().unwrap_or_default();
     let stderr_tail = stderr_reader.join().unwrap_or_default();
@@ -614,24 +619,35 @@ fn run_install_step(command: &mut Command, label: &str, timeout: Duration) -> Re
     Ok(())
 }
 
-/// Reads a child stream line by line. When `publish` is set every line becomes
-/// the live install status line; the bounded tail is returned for error
-/// reporting either way.
-fn stream_lines(stream: impl Read, publish: bool) -> String {
+/// Drain both child pipes without retaining unbounded lines. Keep the latest
+/// diagnostics, including errors after long download/progress output.
+fn stream_lines(stream: impl Read, mut on_line: impl FnMut(&str)) -> String {
     let mut tail = String::new();
-    for line in BufReader::new(stream).lines() {
-        let Ok(line) = line else { break };
-        let plain = strip_ansi(&line);
+    let mut reader = BufReader::new(stream);
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        match (&mut reader)
+            .take(ERROR_TAIL_BYTES as u64)
+            .read_until(b'\n', &mut line)
+        {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        let plain = strip_ansi(&String::from_utf8_lossy(&line));
         let trimmed = plain.trim();
         if trimmed.is_empty() {
             continue;
         }
-        if publish {
-            set_install_line(trimmed);
-        }
-        if tail.len() < ERROR_TAIL_BYTES {
-            tail.push_str(trimmed);
-            tail.push('\n');
+        on_line(trimmed);
+        tail.push_str(trimmed);
+        tail.push('\n');
+        if tail.len() > ERROR_TAIL_BYTES {
+            let mut start = tail.len() - ERROR_TAIL_BYTES;
+            while !tail.is_char_boundary(start) {
+                start += 1;
+            }
+            tail.drain(..start);
         }
     }
     tail
@@ -710,6 +726,14 @@ fn run_represent_worker(
     input: &Value,
     request_id: &str,
 ) -> Result<Value, String> {
+    if represent_jobs()
+        .lock()
+        .map_err(|_| "The representation job registry is unavailable.")?
+        .get(request_id)
+        .is_some_and(|job| job.cancel_requested)
+    {
+        return Err("The representation was cancelled.".into());
+    }
     let weights = model_weights_dir()?;
     fs::create_dir_all(&weights)
         .map_err(|error| format!("Could not create {}: {error}", weights.display()))?;
@@ -727,6 +751,11 @@ fn run_represent_worker(
         .map_err(|error| format!("Could not start the model worker: {error}"))?;
     if let Ok(mut jobs) = represent_jobs().lock() {
         if let Some(job) = jobs.get_mut(request_id) {
+            if job.cancel_requested {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("The representation was cancelled.".into());
+            }
             job.child_pid = Some(child.id());
         }
     }
@@ -756,9 +785,7 @@ fn run_represent_worker(
     });
     let progress_request_id = request_id.to_string();
     let stderr_reader = thread::spawn(move || {
-        let mut tail = String::new();
-        for line in BufReader::new(stderr).lines() {
-            let Ok(line) = line else { break };
+        stream_lines(stderr, |line| {
             if let Some(payload) = line.strip_prefix("BURETTE_PROGRESS\t") {
                 if let Ok(progress) = serde_json::from_str::<Value>(payload) {
                     if let Ok(mut jobs) = represent_jobs().lock() {
@@ -767,14 +794,8 @@ fn run_represent_worker(
                         }
                     }
                 }
-                continue;
             }
-            if tail.len() < ERROR_TAIL_BYTES {
-                tail.push_str(&line);
-                tail.push('\n');
-            }
-        }
-        tail
+        })
     });
     let status = wait_with_deadline(&mut child, REPRESENT_TIMEOUT, "The model worker")?;
     let stdout = stdout_reader.join().unwrap_or_default();
@@ -867,5 +888,38 @@ mod tests {
         .expect("write stamp");
         assert!(stamped_runtime_is_current(&dir));
         fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn worker_logs_remain_bounded_and_keep_the_final_error() {
+        let input = format!(
+            "{}\n\u{1b}[31mfinal failure\u{1b}[0m\n",
+            "я".repeat(ERROR_TAIL_BYTES * 2)
+        );
+        let mut max_line = 0;
+        let tail = stream_lines(input.as_bytes(), |line| max_line = max_line.max(line.len()));
+        assert!(max_line <= ERROR_TAIL_BYTES);
+        assert!(tail.len() <= ERROR_TAIL_BYTES);
+        assert!(tail.ends_with("final failure\n"));
+    }
+
+    #[test]
+    fn cancelled_representation_does_not_start_a_worker() {
+        let id = uuid::Uuid::new_v4().to_string();
+        represent_jobs().lock().expect("registry").insert(
+            id.clone(),
+            RepresentJob {
+                cancel_requested: true,
+                ..RepresentJob::default()
+            },
+        );
+        let result = run_represent_worker(
+            Path::new("/nonexistent/model-python"),
+            "chemberta",
+            &json!({}),
+            &id,
+        );
+        represent_jobs().lock().expect("registry").remove(&id);
+        assert_eq!(result.unwrap_err(), "The representation was cancelled.");
     }
 }
