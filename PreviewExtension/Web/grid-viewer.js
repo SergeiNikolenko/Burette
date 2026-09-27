@@ -348,6 +348,7 @@
 
   function postGridRowHover(index, cfg) {
     const row = Number.isSafeInteger(index) && index >= 0 ? gridRowByIndex(index) : null;
+    const match = row ? state.smartsMatches.get(Number(row.index)) : null;
     state.hoveredGridRowIndex = row ? index : null;
     if (row) state.lastGridRowIndex = index;
     let previewSvg = '';
@@ -377,6 +378,9 @@
             molblock: String(row.molblock || ''),
             cardRenderer: state.cardRenderer,
             previewSvg,
+            useInputCoords: state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock),
+            highlightAtoms: Array.isArray(match?.atoms) ? match.atoms.slice(0, 256) : [],
+            highlightBonds: Array.isArray(match?.bonds) ? match.bonds.slice(0, 256) : [],
             props: hoverRowProps(row)
           }
         : null

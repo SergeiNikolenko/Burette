@@ -2704,7 +2704,7 @@ assert.match(structureInfoPanel, /<InspectorSection title="Composition"/);
 // Grid hover is rendered once in the inspector, above the filters, rather than
 // as a second popover over the molecule canvas.
 assert.match(structureInfoPanel, /<GridHoverMoleculeCard[\s\S]*key=\{document\.id\}[\s\S]*row=\{hoveredGridRow \?\? null\}[\s\S]*onInspectProperty=/);
-assert.doesNotMatch(gridHoverMolecule, /aria-label="Resize molecule preview"/);
+assert.match(gridHoverMolecule, /aria-label="Resize molecule preview"/);
 assert.match(gridHoverMolecule, /className="grid-hover-molecule-props-title">Data<\/span>/);
 assert.match(gridHoverMolecule, /aria-label="Resize data section"/);
 assert.match(gridHoverMolecule, /aria-expanded=\{propsOpen\}/);
@@ -2730,8 +2730,13 @@ assert.match(appGridControlMessagesHook, /body\?\.type === "gridRowHover"/);
 assert.match(appGridControlMessagesHook, /smiles: typeof raw\.smiles === "string" \? raw\.smiles : null/);
 assert.match(appGridControlMessagesHook, /raw\.cardRenderer === "xyzrender"/);
 assert.match(appGridControlMessagesHook, /raw\.previewSvg\.length <= 512_000/);
+assert.match(appGridControlMessagesHook, /highlightAtoms: highlightIndices\(raw\.highlightAtoms\)/);
+assert.match(appGridControlMessagesHook, /highlightBonds: highlightIndices\(raw\.highlightBonds\)/);
+assert.match(appGridControlMessagesHook, /useInputCoords: raw\.useInputCoords === true/);
 assert.match(gridViewer, /cardRenderer: state\.cardRenderer/);
 assert.match(gridViewer, /previewSvg/);
+assert.match(gridViewer, /highlightAtoms: Array\.isArray\(match\?\.atoms\) \? match\.atoms\.slice\(0, 256\)/);
+assert.match(gridViewer, /useInputCoords: state\.rdkitUseInputCoords/);
 assert.match(gridViewer, /state\.lastGridRowIndex/);
 assert.match(gridViewer, /HOVER_PREVIEW_SVG_LIMIT = 512_000/);
 assert.match(gridViewer, /columnId: String\(columnId\)\.slice\(0, 160\)/);

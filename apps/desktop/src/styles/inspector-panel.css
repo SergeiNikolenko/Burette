@@ -69,7 +69,7 @@
 .trajectory-smoothing-update-status[data-complete] { color: var(--status-success); }
 
 .grid-preview-mode { display: flex; margin-left: auto; gap: 2px; }
-.grid-molecule-3d { border: 0; display: block; position: relative; width: 100%; height: 260px; overflow: hidden; }
+.grid-molecule-3d { border: 0; display: block; position: relative; width: 100%; min-height: 160px; overflow: hidden; }
 .grid-molecule-3d canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .grid-molecule-3d-status { display: grid; place-items: center; min-height: 260px; color: var(--text-muted); font-size: 12px; }
 .grid-molecule-3d > .grid-molecule-3d-status { position: absolute; inset: 0; }
