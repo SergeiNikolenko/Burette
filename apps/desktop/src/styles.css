@@ -9189,6 +9189,7 @@ img.settings-open-destination-icon {
   .agent-integration-content { width: 100%; padding: 80px 16px 64px; }
 }
 @media (max-width: 520px) {
+  .chrome-leading-controls .tab-history-controls { display: none; }
   .settings-panel-content { width: 100%; padding: 80px 24px 64px; }
   .agent-integration-content { width: 100%; padding: 80px 24px 64px; }
 }

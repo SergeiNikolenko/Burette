@@ -319,12 +319,14 @@ export function AppLayout({
   // How far the leading window controls reach: the tab strip starts past them
   // when the sidebar is narrower than they are (or closed). The sidebar's own
   // edge comes from `--sidebar-edge`, measured rather than stored.
-  // The desktop inset splits into 92px of native traffic-light clearance
-  // (constant on screen, so divided by the window zoom like
-  // `.chrome-leading-controls`) plus 100px of zoomable toggle-and-gap space.
+  // The native traffic lights keep a fixed on-screen position as the page
+  // zooms. At narrow widths the history buttons disappear, so the tab strip
+  // only needs to clear the sidebar toggle beside those lights.
   const chromeLeadingInset = compactLeadingChrome
     ? "112px"
-    : "calc(92px / var(--window-zoom, 1) + 100px)";
+    : viewportWidth <= 520
+      ? "calc(82px / var(--window-zoom, 1) + 40px)"
+      : "calc(92px / var(--window-zoom, 1) + 100px)";
   const rightDockOpen = !settingsMode && !hostedMcpWidget && state.rightDockOpen;
   // The agent plugin surfaces (native widget and browser agent shell) have no
   // bottom dock: its Jobs/compute tabs are excluded there. Annotate mode sends
