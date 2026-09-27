@@ -1598,8 +1598,8 @@ fn maestro_pdb_data_from_text(data: &[u8], extension: &str) -> Option<ConvertedS
 ///
 /// Water keeps its place in the model (Mol* replaces every coordinate per frame,
 /// so atoms cannot be split into staged entries) but is renamed to `HOH`, and
-/// residue numbers wrap instead of clamping at the PDB limit so ten thousand
-/// waters stay ten thousand residues.
+/// overflow residue numbers use a separate unused chain. Wrapping inside the
+/// same chain merges distinct waters in Mol* even when the atoms stay in order.
 pub(crate) fn desmond_topology_from_cms(data: &[u8]) -> Option<DesmondTopology> {
     let decoded = decode_structure_text(data, "cms")?;
     let text = decoded.replace("\r\n", "\n").replace('\r', "\n");
@@ -1625,11 +1625,31 @@ pub(crate) fn desmond_topology_from_cms(data: &[u8]) -> Option<DesmondTopology> 
     if components.is_empty() || atoms.len() != component_atoms {
         return None;
     }
+    let mut used_chains = atoms
+        .iter()
+        .map(|atom| atom.chain_name.clone())
+        .collect::<std::collections::HashSet<_>>();
+    let mut overflow_chains = std::collections::HashMap::new();
     for atom in &mut atoms {
         if is_maestro_water_atom(atom) {
             atom.residue_name = "HOH".to_string();
         }
-        atom.residue_number = (atom.residue_number - 1).rem_euclid(9999) + 1;
+        if !(-999..=9999).contains(&atom.residue_number) {
+            let residue = i64::from(atom.residue_number) - 1;
+            let key = (atom.chain_name.clone(), residue.div_euclid(9999));
+            if let std::collections::hash_map::Entry::Vacant(entry) =
+                overflow_chains.entry(key.clone())
+            {
+                let chain = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+                    .chars()
+                    .map(|ch| ch.to_string())
+                    .find(|chain| !used_chains.contains(chain))?;
+                used_chains.insert(chain.clone());
+                entry.insert(chain);
+            }
+            atom.chain_name = overflow_chains.get(&key)?.clone();
+            atom.residue_number = (residue.rem_euclid(9999) + 1) as i32;
+        }
     }
     Some(DesmondTopology {
         pdb: maestro_atoms_to_pdb(&atoms).into_bytes(),
@@ -3201,6 +3221,65 @@ footer
         assert!(!xyz.contains("C 0.000000 0.100000 0.200000"));
         assert!(xyz.contains("O -1.000000 0.000000 0.000000"));
         assert!(xyz.contains("H -1.500000 0.750000 0.000000"));
+    }
+
+    #[test]
+    fn desmond_overflow_waters_keep_distinct_residue_addresses() {
+        let block = |kind| {
+            format!(
+                r#"
+f_m_ct {{
+ s_ffio_ct_type
+ :::
+ {kind}
+ m_atom[7] {{
+ i_m_atomic_number
+ r_m_x_coord
+ r_m_y_coord
+ r_m_z_coord
+ s_m_pdb_residue_name
+ s_m_pdb_atom_name
+ i_m_residue_number
+ s_m_chain_name
+ :::
+ 8 0 0 0 T3P O 1 A
+ 1 1 0 0 T3P H1 1 A
+ 1 0 1 0 T3P H2 1 A
+ 8 10 0 0 T3P O 10000 A
+ 1 11 0 0 T3P H1 10000 A
+ 1 10 1 0 T3P H2 10000 A
+ 6 20 0 0 ALA CA -2 B
+ :::
+ }}
+}}
+"#
+            )
+        };
+        let cms = block("full_system") + &block("solvent");
+        let topology = super::desmond_topology_from_cms(cms.as_bytes()).unwrap();
+        let pdb = String::from_utf8(topology.pdb).unwrap();
+        let rows = pdb
+            .lines()
+            .filter(|line| line.starts_with("ATOM") || line.starts_with("HETATM"))
+            .collect::<Vec<_>>();
+        assert_eq!(rows.len(), 7);
+        assert_eq!(
+            rows.iter().map(|row| &row[21..26]).collect::<Vec<_>>(),
+            vec!["A   1", "A   1", "A   1", "C   1", "C   1", "C   1", "B  -2"]
+        );
+        assert_eq!(
+            rows.iter()
+                .take(6)
+                .map(|row| &row[17..20])
+                .collect::<Vec<_>>(),
+            vec!["HOH"; 6]
+        );
+        assert_eq!(
+            rows.iter()
+                .map(|row| row[30..38].trim())
+                .collect::<Vec<_>>(),
+            vec!["0.000", "1.000", "0.000", "10.000", "11.000", "10.000", "20.000"]
+        );
     }
 
     #[test]
