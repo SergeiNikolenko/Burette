@@ -95,7 +95,9 @@ changes are broadcast without rebuilding the viewer. Theme defaults to Auto
 also sets the native application appearance so AppKit menus and window materials
 match the web shell. Auto removes the native override and follows system
 changes. Leaving Settings returns
-to the tab that was active on entry. Unsaved grids show a tab marker, and the
+to the tab that was active on entry. Settings stays outside the visible tab
+strip and is never selected as a fallback when a workspace tab closes. Closing
+the last visible tab returns to the launcher. Unsaved grids show a tab marker, and the
 Inspector molecule card resets its retained hover state when its document changes.
 
 The Mol* 2D molecule card keeps its hidden state for the current viewer document.
