@@ -1,0 +1,1 @@
+import"./chunk-FOHPRMQF-DjrQ5VX_.js";import{M as e}from"./mermaid-parser.core-DIA7Veog.js";export{e as createArchitectureServices};

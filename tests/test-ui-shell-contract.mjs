@@ -4718,7 +4718,7 @@ assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v\d+"/);
-assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v86"/);
+assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v87"/);
 assert.match(
   browserDevDocuments,
   /viewerProfile === "mesoscale"\) return !document\.runtimePath\.includes\(MESOSCALE_ASSET_VERSION\)/,
@@ -6783,7 +6783,7 @@ assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.dockingSc
 assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.sdfPoseOverlayAvailable === true[\s\S]*await applyDockingPoseCollectionVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex, \{ focus: false \}\);[\s\S]*activePose = nextIndex;/);
 assert.match(previewViewer, /const sceneStructures = \[\];[\s\S]*sceneStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\);[\s\S]*await applySdfCollectionMolstarStyle\(viewer, resolvedContextStyle, sceneStructures, 1, 'colored'\);/);
 assert.match(previewViewer, /function minimumTrajectoryLoopDelay\(prepared\)/);
-assert.match(previewViewer, /const NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD = 25/);
+assert.doesNotMatch(previewViewer, /buret-docking-pose-speed-skip/);
 assert.doesNotMatch(previewViewer, /NATIVE_TRAJECTORY_LOOP_MAX_FPS/);
 assert.match(previewViewer, /return prepared\?\.nativeTrajectoryControls \? 0 : minimumTrajectoryLoopTimerDelay\(prepared\)/);
 assert.match(previewViewer, /function minimumTrajectoryLoopTimerDelay\(prepared\)/);
@@ -7029,10 +7029,15 @@ assert.match(previewViewer, /const open = !isAnimationOptionsOpen\(\);\s*setAnim
 assert.match(previewViewer, /const loopTargetIndex = \(\) => \{/);
 assert.match(previewViewer, /const trajectoryControlBounds = \(poseIndex\) => \{/);
 assert.match(previewViewer, /currentIndex\.textContent = `\$\{poseIndex - current\.segment\.startFrame \+ 1\}\/\$\{current\.segment\.frameCount\} · \$\{current\.index \+ 1\}\/\$\{trajectorySegments\.length\}`/);
-// A slow frame step must not let wall-clock time pick the next frame: the loop
+// A slow frame step must not let wall-clock time pick an absolute frame: the loop
 // would alternate between two frames instead of playing (WKWebView regression).
+// It still has to skip the frames that fell due, or fps above the step rate is
+// ignored, so the loop moves forward by a bounded stride from the current frame.
 assert.match(previewViewer, /const loopBounds = trajectoryControlBounds\(activePose\)/);
-assert.match(previewViewer, /return loopBounds\.start \+ \(\(activePose - loopBounds\.start \+ 1\) % loopBounds\.count\)/);
+assert.match(previewViewer, /return loopBounds\.start \+ \(\(activePose - loopBounds\.start \+ loopStride\(loopBounds\)\) % loopBounds\.count\)/);
+assert.match(previewViewer, /const stride = Math\.max\(1, Math\.min\(Math\.floor\(loopBounds\.count \/ 4\), Math\.floor\(due\)\)\);/);
+// A loop that keeps up must still show every frame.
+assert.match(previewViewer, /const loopStride = \(loopBounds\) => \{\s*if \(loopStepMs < loopDelayMs\(\)\) \{\s*loopFrameCarry = 0;\s*return 1;/);
 assert.doesNotMatch(previewViewer, /loopStartPose/);
 assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopNextDelay\(\), expectedLoopEpoch = loopEpoch\) => \{/);
 assert.match(previewViewer, /loopTimer = window\.setTimeout\(\(\) => \{/);
@@ -7113,7 +7118,6 @@ assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{[\s\S]*appearance: textfield;/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-all \{[\s\S]*min-width: 34px;/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{[\s\S]*width: 44px;/);
-assert.match(previewRuntimeCss, /\.buret-docking-pose-speed\.buret-docking-pose-speed-skip \{[\s\S]*#f59e0b/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed::-webkit-inner-spin-button,\s*\.buret-docking-pose-speed::-webkit-outer-spin-button \{[\s\S]*-webkit-appearance: none;/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{[\s\S]*flex: 1 1 0;/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses-trajectory-segments \.buret-docking-pose-animation \{[\s\S]*width: 100%;/);

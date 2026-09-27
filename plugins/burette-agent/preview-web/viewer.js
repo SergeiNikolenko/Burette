@@ -12060,7 +12060,6 @@ SOFTWARE.
   }
 
   const DEFAULT_TRAJECTORY_LOOP_FPS = 20;
-  const NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD = 25;
 
   function trajectoryLoopFpsStorageKey(config, prepared) {
     return `${trajectoryControlStorageKey(config, prepared)}.fps.v1`;
@@ -19626,6 +19625,8 @@ SOFTWARE.
     let loopBusy = false;
     let loopEpoch = 0;
     let loopStartedAt = 0;
+    let loopFrameCarry = 0;
+    let loopStepMs = 0;
     let poseUpdateQueue = Promise.resolve();
     let poseRepeatDelayTimer = null;
     let poseRepeatTimer = null;
@@ -19859,10 +19860,6 @@ SOFTWARE.
     speed.inputMode = 'decimal';
     speed.value = playbackRestore?.fps || formatTrajectoryFps(readTrajectoryLoopFps(activeConfig, prepared));
     speed.title = 'Frames per second (FPS)';
-    const updateSpeedMode = () => {
-      const fps = Number(speed.value);
-      speed.classList.toggle('buret-docking-pose-speed-skip', Number.isFinite(fps) && fps > NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD);
-    };
     const slider = document.createElement('input');
     slider.className = 'buret-docking-pose-slider';
     slider.type = 'range';
@@ -19985,7 +19982,11 @@ SOFTWARE.
         loopTimer = null;
         loopBusy = false;
       }
-      if (active) loopStartedAt = loopNow();
+      if (active) {
+        loopStartedAt = loopNow();
+        loopFrameCarry = 0;
+        loopStepMs = 0;
+      }
       loop.classList.toggle('active', Boolean(active));
       loop.textContent = active ? 'Stop' : 'Loop';
       loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
@@ -20005,7 +20006,6 @@ SOFTWARE.
       updateViewportAnimateState();
     };
     updateControls();
-    updateSpeedMode();
     const loopDelayMs = () => {
       const delay = trajectoryFpsToDelay(speed.value, prepared);
       return Number.isFinite(delay) && delay > 0 ? delay : 1200;
@@ -20013,13 +20013,27 @@ SOFTWARE.
     const loopNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
       ? performance.now()
       : Date.now();
-    // The loop advances one frame per tick. In WKWebView a frame step can take
-    // longer than a frame at high fps; picking the target from wall-clock time
-    // then jumps half the loop ahead and back again, so the playhead only ever
-    // alternates between two frames instead of playing.
+    // A Mol* frame step on a large system can take longer than one frame at the
+    // requested fps. Then each tick advances by the frames that fell due since the
+    // previous step began (fractions carry over) instead of by one: otherwise the
+    // step time alone sets the speed and raising fps changes nothing. A loop that
+    // keeps up still shows every frame, so timer lateness never skips one. The
+    // stride only moves forward and stays under a quarter of the loop; picking an
+    // absolute frame from wall-clock time made the playhead alternate between two
+    // frames in WKWebView.
+    const loopStride = (loopBounds) => {
+      if (loopStepMs < loopDelayMs()) {
+        loopFrameCarry = 0;
+        return 1;
+      }
+      const due = loopFrameCarry + Math.max(0, loopNow() - loopStartedAt) / loopDelayMs();
+      const stride = Math.max(1, Math.min(Math.floor(loopBounds.count / 4), Math.floor(due)));
+      loopFrameCarry = Math.max(0, Math.min(1, due - stride));
+      return stride;
+    };
     const loopTargetIndex = () => {
       const loopBounds = trajectoryControlBounds(activePose);
-      return loopBounds.start + ((activePose - loopBounds.start + 1) % loopBounds.count);
+      return loopBounds.start + ((activePose - loopBounds.start + loopStride(loopBounds)) % loopBounds.count);
     };
     const loopNextDelay = () => {
       const elapsed = Math.max(0, loopNow() - loopStartedAt);
@@ -20046,6 +20060,7 @@ SOFTWARE.
         loopStartedAt = loopNow();
         void setPose(nextIndex, { loopStep: true, loopEpoch: expectedLoopEpoch }).finally(() => {
           loopBusy = false;
+          loopStepMs = loopNow() - loopStartedAt;
           if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
           scheduleLoopStep(undefined, expectedLoopEpoch);
         });
@@ -20453,13 +20468,11 @@ SOFTWARE.
       const delay = loopDelayMs();
       const fps = trajectoryDelayToFps(delay, prepared);
       speed.value = formatTrajectoryFps(fps);
-      updateSpeedMode();
       try { localStorage.setItem(trajectoryLoopFpsStorageKey(activeConfig, prepared), String(fps)); } catch (_) {}
       if (!loopActive) return;
       setLoopActive(false);
       loop.click();
     });
-    speed.addEventListener('input', updateSpeedMode);
     slider.addEventListener('input', () => {
       const controlBounds = trajectoryControlBounds(activePose);
       const previewIndex = controlBounds.start + Math.max(0, Math.min(controlBounds.count - 1, Number(slider.value) - 1));

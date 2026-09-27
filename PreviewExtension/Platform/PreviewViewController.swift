@@ -1011,7 +1011,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             temporaryExternalDirectory: nil,
             xyzrenderControls: xyzrenderControlsOverride
         )
-        let nativeTrajectoryPair = structureStrategy == .trajectory
+        // Quick Look's sandbox denies process-fork, so the core bridge never returns a
+        // plan there. MD coordinate and topology files still look for their pair.
+        let pairsTrajectory = structureStrategy == .trajectory || (previewPlan == nil
+            && trajectoryCoordinateExtensions.union(trajectoryTopologyExtensions).contains(structurePathExtension(for: url)))
+        let nativeTrajectoryPair = pairsTrajectory
             ? try nativeTrajectoryPairPreview(
                 for: url,
                 sourceData: structureData,
@@ -1214,6 +1218,11 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             options: [.skipsHiddenFiles]
         )) ?? [])
             .filter { pairExtensions.contains(structurePathExtension(for: $0)) }
+            .filter { candidate in
+                // Quick Look cannot download a sibling evicted to iCloud; reading it would block.
+                var info = stat()
+                return lstat(candidate.path, &info) == 0 && info.st_flags & UInt32(SF_DATALESS) == 0
+            }
         let candidates = Array(Set([url.path] + urls.map(\.path))).map(URL.init(fileURLWithPath:))
         let coordinateURL = trajectoryCoordinateExtensions.contains(sourceExtension)
             ? url
@@ -2763,7 +2772,9 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
 
     private static func ensureUbiquitousFileIsAvailable(_ url: URL, fileManager: FileManager) throws {
         let values = try? url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey])
-        guard values?.isUbiquitousItem == true else { return }
+        // Quick Look's sandbox can see that a file lives in iCloud without seeing its
+        // download status; an unknown status is read as-is.
+        guard values?.isUbiquitousItem == true, values?.ubiquitousItemDownloadingStatus != nil else { return }
         if values?.ubiquitousItemDownloadingStatus == .current || values?.ubiquitousItemDownloadingStatus == .downloaded { return }
         try? fileManager.startDownloadingUbiquitousItem(at: url)
         for _ in 0..<50 {
