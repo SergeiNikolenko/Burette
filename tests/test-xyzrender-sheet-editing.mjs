@@ -15,7 +15,8 @@ const document = window.document;
 document.body.innerHTML = `<div class="buret-external-artifact-root"><div class="buret-xyzrender-sheet-item selected" style="left: 100px; top: 120px"></div><div class="buret-xyzrender-sheet-item selected" style="left: 300px; top: 120px"></div><div class="buret-xyzrender-context-menu"><button>Duplicate</button></div><div id="empty"></div></div>`;
 const names = ['selectRotatableArtifact', 'bringXyzrenderSheetItemToFront', 'clearRotatableArtifactSelection', 'installRotatableArtifactSelectionClear', 'sheetItemCenterPosition', 'installXyzrenderSheetItemDrag'];
 const published = [];
-const api = new Function('document', 'publishXyzrenderItem', `let xyzrenderLassoEnabled = false; ${names.map(declaration).join('\n')} return { ${names.join(',')} };`)(document, item => published.push(item));
+const selectionPublishes = [];
+const api = new Function('document', 'publishXyzrenderItem', 'publishXyzrenderSelection', `let xyzrenderLassoEnabled = false; ${names.map(declaration).join('\n')} return { ${names.join(',')} };`)(document, item => published.push(item), root => selectionPublishes.push(root));
 const root = document.querySelector('.buret-external-artifact-root');
 const items = [...root.querySelectorAll('.buret-xyzrender-sheet-item')];
 api.installRotatableArtifactSelectionClear(root);
@@ -29,6 +30,9 @@ pointer(items[0], 'pointerup', 140, 140);
 assert.deepEqual(items.map(item => [item.style.left, item.style.top]), [['120px', '130px'], ['320px', '130px']], 'group drag respects canvas zoom');
 pointer(document.querySelector('#empty'), 'pointerdown', 0, 0);
 assert.equal(root.querySelectorAll('.selected').length, 0, 'empty canvas clears selection');
+assert.deepEqual(selectionPublishes, [root], 'clearing the selection tells the inspector');
+pointer(document.querySelector('#empty'), 'pointerdown', 0, 0);
+assert.equal(selectionPublishes.length, 1, 'an empty click without a selection sends nothing');
 pointer(items[0], 'pointerdown', 120, 130);
 pointer(items[0], 'pointerup', 120, 130);
 pointer(items[1], 'pointerdown', 320, 130, { shiftKey: true });
@@ -61,6 +65,9 @@ const publish = new Function('document', 'window', 'activeConfig', 'postHostMess
   const xyzrenderSheetItemRegions = () => [];
   const xyzrenderSheetItemVdwAtoms = () => '';
   const captureCurrentXyzrenderOrientationRef = () => null;
+  ${declaration('selectedXyzrenderSheetItems')}
+  ${declaration('xyzrenderItemPayload')}
+  ${declaration('xyzrenderSelectionPayload')}
   ${declaration('publishXyzrenderItem')}
   return publishXyzrenderItem;
 `)(document, window, config, message => messages.push(message));
@@ -76,6 +83,9 @@ assert.deepEqual(messages.map(({type, preset, controls}) => [type, preset, contr
   ['xyzrenderActiveItem', 'default', true], ['xyzrenderActiveItem', 'bubble', false], ['xyzrenderActiveItem', 'default', true],
 ]);
 assert.equal(messages[0].itemId, messages[2].itemId);
+// Both items are selected, so the inspector can animate them together.
+assert.deepEqual(messages[2].selection.map(({ itemId, preset }) => [itemId, preset]), [[messages[0].itemId, 'default'], [messages[1].itemId, 'bubble']]);
+assert.equal(messages[2].selection[0].previewSvg, undefined, 'selection entries omit preview artwork');
 console.log('inspector selection preserves per-item identity and appearance across document default changes');
 
 const removals = [];

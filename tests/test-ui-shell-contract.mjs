@@ -1728,8 +1728,9 @@ assert.match(viewer, /async function applyXyzrenderSelectionVdw\(controls, prese
 assert.match(viewer, /if \(body\.selectionAction === 'vdw'\) \{\s*if \(addressedToThisDocument\) void applyXyzrenderSelectionVdw\(controls, preset\);\s*return;\s*\}/);
 assert.match(viewer, /if \(!groups\.length\) \{\s*requestXyzrenderVdwSelection\(controls, preset\);\s*return;\s*\}/);
 assert.doesNotMatch(viewer, /Select atoms first, then apply partial vdW spheres/);
+assert.match(viewer, /const selectionTargetsItem = addressedToThisDocument && \(typeof body\.itemId !== 'string'\s*\|\| xyzrenderSelectionGroups\(\)\.some\(group => group\.item\.dataset\.buretXyzrenderEditorId === body\.itemId\)\);/);
 assert.match(viewer, /if \(hasXyzrenderSelection\(\)\) \{\s*void applyXyzrenderSelectionPreset\(value, controls\);\s*return;\s*\}/s);
-assert.match(viewer, /if \(body\.type === 'setXyzrenderControls'\) \{[\s\S]*?if \(addressedToThisDocument && hasXyzrenderSelection\(\)\) \{\s*void applyXyzrenderSelectionPreset\(preset, controls\);\s*return;\s*\}[\s\S]*?const options = \{ controls, preset \};[\s\S]*?requestBrowserDevXyzrenderUpdate\(options\)/);
+assert.match(viewer, /if \(body\.type === 'setXyzrenderControls'\) \{[\s\S]*?if \(selectionTargetsItem && hasXyzrenderSelection\(\)\) \{\s*void applyXyzrenderSelectionPreset\(preset, controls\);\s*return;\s*\}[\s\S]*?const options = \{ controls, preset \};[\s\S]*?requestBrowserDevXyzrenderUpdate\(options\)/);
 assert.match(viewer, /function xyzrenderOrientationPayload\(options = \{\}\)/);
 assert.match(viewer, /postHostMessage\(\{ type: 'setXyzrenderControls', documentId, controls, preset, \.\.\.xyzrenderOrientationPayload\(options\) \}\)/);
 assert.match(viewer, /function xyzrenderAtomSelectorForElements\(item, elements\)/);
