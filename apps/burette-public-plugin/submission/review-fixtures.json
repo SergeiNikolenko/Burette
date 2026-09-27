@@ -1,0 +1,31 @@
+{
+  "file": "public/review-fixtures/salicylate-series.sdf",
+  "sha256": "00fc447903c791f40d7511861e7b6ca79536e65a1c38ea700f1726f6c1a6b03b",
+  "bytes": 3253,
+  "generator": "RDKit JS 2025.3.4-1.0.0; get_mol(smiles), set_new_coords(), get_molblock(); named SDF records",
+  "purpose": "Synthetic structure-only handoff for review; no experimental activity or clinical data",
+  "coordinates": "2D; hydrogens implicit; not conformers or docking poses",
+  "molecules": [
+    {
+      "name": "Salicylic acid",
+      "smiles": "O=C(O)c1ccccc1O",
+      "canonicalSmiles": "O=C(O)c1ccccc1O",
+      "atoms": 10,
+      "bonds": 10
+    },
+    {
+      "name": "Aspirin",
+      "smiles": "CC(=O)Oc1ccccc1C(=O)O",
+      "canonicalSmiles": "CC(=O)Oc1ccccc1C(=O)O",
+      "atoms": 13,
+      "bonds": 13
+    },
+    {
+      "name": "Methyl salicylate",
+      "smiles": "COC(=O)c1ccccc1O",
+      "canonicalSmiles": "COC(=O)c1ccccc1O",
+      "atoms": 11,
+      "bonds": 11
+    }
+  ]
+}

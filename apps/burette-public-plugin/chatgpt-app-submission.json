@@ -3,7 +3,7 @@
   "schema_version": 1,
   "app_info": {
     "display_name": "Burette",
-    "subtitle": "Preview molecular structures",
+    "subtitle": "Explore molecular structures",
     "description": "Burette opens supported molecular structure attachments and explicit public PDB entries as interactive 3D scenes, with bounded composition summaries for chains, residues, ligands, molecules, and elements. It also opens an isolated Ketcher editor for sketching small molecules and exporting them without writing files.",
     "category": "EDUCATION"
   },
@@ -71,75 +71,71 @@
   },
   "test_cases": [
     {
-      "description": "Preview a small attached PDB macromolecule.",
-      "user_prompt": "Preview this PDB file in the full molecular viewer and summarize its chains, residues, and atoms.",
-      "file_attachment_urls": [
-        "https://raw.githubusercontent.com/SergeiNikolenko/Burette/main/samples/mini.pdb"
-      ],
-      "tools_triggered": "preview_molecular_file",
-      "expected_output": "Reports 1 chain (A) with 2 residues and 9 atoms, elements C 5, N 2, O 2, then opens mini.pdb in the interactive Burette molecular viewer.",
-      "expected_output_url": null
-    },
-    {
-      "description": "Preview an attached mmCIF structure.",
-      "user_prompt": "Open this mmCIF structure and show its chain and element summary.",
-      "file_attachment_urls": [
-        "https://raw.githubusercontent.com/SergeiNikolenko/Burette/main/samples/mini.cif"
-      ],
-      "tools_triggered": "preview_molecular_file",
-      "expected_output": "Reports chain A with 1 residue and 4 atoms, including C 2, N 1, and O 1, then opens mini.cif in the interactive viewer.",
-      "expected_output_url": null
-    },
-    {
-      "description": "Preview an attached SDF collection.",
-      "user_prompt": "Preview this SDF and summarize the molecules and elements it contains.",
-      "file_attachment_urls": [
-        "https://raw.githubusercontent.com/SergeiNikolenko/Burette/main/samples/mini.sdf"
-      ],
-      "tools_triggered": "preview_molecular_file",
-      "expected_output": "Reports 2 molecules, 9 atoms, 8 bonds, and element counts C 6, H 2, and O 1, then opens mini.sdf in the interactive viewer.",
-      "expected_output_url": null
-    },
-    {
-      "description": "Retrieve an explicit public PDB entry.",
-      "user_prompt": "Open PDB 1CRN in the full molecular viewer and summarize its composition.",
+      "description": "Inspect an experimental protein-ligand complex without confusing protein and total residue counts.",
+      "user_prompt": "I'm preparing a journal-club slide about streptavidin and biotin. Open PDB 1STP in Burette. Tell me which protein chains, bound ligand, and waters are actually present in the loaded coordinates. Distinguish protein residues from the total residue count, and leave the structure open for inspection.",
       "file_attachment_urls": null,
       "tools_triggered": "preview_pdb_structure",
-      "expected_output": "Retrieves 1CRN from RCSB, reports 1 chain, 46 residues, and 327 atoms, and opens the structure in the interactive viewer.",
+      "expected_output": "Opens PDB 1STP in an interactive viewer. Reports loaded protein chain A: 121 protein residues and 901 protein atoms; BTN A300: 16 atoms; 84 waters. Full file: 1001 atoms, 206 coordinate residues, 1 model. Does not describe 206 as amino-acid residues or claim a generated tetramer.",
       "expected_output_url": null
     },
     {
-      "description": "Open an ephemeral Ketcher editor with a small inline structure.",
-      "user_prompt": "Open a Ketcher editor and seed it with ethanol using the SMILES CCO.",
+      "description": "Locate bound biotin while retaining protein context and hiding solvent.",
+      "user_prompt": "Show me where biotin sits in the streptavidin structure PDB 1STP. Select the BTN ligand at residue 300 in chain A, focus on it, and hide the water molecules. Keep the protein visible so I can inspect the ligand in context.",
+      "file_attachment_urls": null,
+      "tools_triggered": "render_molecular_scene",
+      "expected_output": "Renders PDB 1STP with BTN A300 selected and focused, water components hidden, protein visible. Source counts still include 84 waters. The actual widget must show selection, camera focus and visibility effects; a server-accepted request alone is not success. Does not infer affinity or hydrogen bonds.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Review a three-record SDF handoff with named related chemical structures.",
+      "user_prompt": "A colleague sent this small salicylate series for a structure review. Open the attached salicylate-series.sdf in Burette, list the molecule names, and check how many molecular records, stored atoms, and bonds it contains. Let me inspect the structures, and explain whether hydrogens are explicit in this file. Do not rank their biological activity.",
+      "file_attachment_urls": [
+        "https://burette-plugin.vercel.app/review-fixtures/salicylate-series.sdf"
+      ],
+      "tools_triggered": "preview_molecular_file",
+      "expected_output": "Reports 3 molecules named Salicylic acid, Aspirin and Methyl salicylate; 34 stored atoms and 34 bonds, C24 O10. Hydrogens are implicit, not absent chemically. All three distinct structures can be inspected; blank or inaccessible records fail. Coordinates are 2D, not optimized conformers.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Create an editable salicylic acid reference sketch for a teaching note.",
+      "user_prompt": "I'm preparing a chemistry teaching note. Open an editable Ketcher sketch of salicylic acid from SMILES O=C(O)c1ccccc1O. Keep the carboxylic acid and the adjacent phenolic OH visible, so I can inspect the substitution pattern.",
       "file_attachment_urls": null,
       "tools_triggered": "open_ketcher",
-      "expected_output": "Creates an isolated Ketcher surface seeded with valid ethanol SMILES CCO, reports a 3-atom molecule at structure revision 1, and renders the editor without writing a file.",
+      "expected_output": "Shows a nonblank salicylic acid sketch from O=C(O)c1ccccc1O: one molecule, 10 heavy atoms, 10 bonds, newly seeded revision 1. The phenolic OH is adjacent to the carboxylic acid. Does not claim 3D conformer generation or file persistence.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Edit a reference sketch and verify that the final exported structure matches the drawing.",
+      "user_prompt": "Start a new Ketcher sketch with salicylic acid, O=C(O)c1ccccc1O. Then replace that sketch with aspirin, CC(=O)Oc1ccccc1C(=O)O. Read the final structure back from the editor and return its SMILES. Keep the final drawing visible so I can check it against the export. This is a drawing edit, not a synthesis.",
+      "file_attachment_urls": null,
+      "tools_triggered": "control_ketcher",
+      "expected_output": "In this independent conversation, first open_ketcher creates salicylic acid. control_ketcher set_structure replaces it with aspirin using the current surface ID/revision, then get_structure reads SMILES. Final molecule has 13 heavy atoms and 13 bonds, and SMILES chemically equivalent to CC(=O)Oc1ccccc1C(=O)O. Mutation increments the revision; read does not. Both the final mutation and export cards show aspirin, not a blank or stale sketch. No local file write or synthesis claim.",
       "expected_output_url": null
     }
   ],
   "negative_test_cases": [
     {
-      "description": "Do not invoke a read-only preview tool for destructive local file editing.",
-      "user_prompt": "Delete several atoms from my local PDB file and overwrite the original file.",
+      "description": "Clarify a missing structure instead of guessing a target.",
+      "user_prompt": "Show me the ligand-binding pocket in my protein.",
       "file_attachment_urls": null,
       "tools_triggered": null,
-      "expected_output": "The plugin should not be invoked because it cannot edit, delete, or overwrite local molecular files.",
+      "expected_output": "Asks for a supported molecular attachment or explicit PDB ID, and ligand identity if needed. Does not choose a demo protein, invent a binding pocket, or invoke a molecular tool before clarification.",
       "expected_output_url": null
     },
     {
-      "description": "Do not use a molecular preview as medical diagnosis.",
-      "user_prompt": "Diagnose whether I have cancer from a protein structure.",
+      "description": "Do not substitute visualization for docking or fabricate affinity.",
+      "user_prompt": "Use Burette to dock aspirin into PDB 1STP and give me its predicted binding affinity in kcal/mol.",
       "file_attachment_urls": null,
       "tools_triggered": null,
-      "expected_output": "The plugin should not be invoked because molecular visualization is not a medical diagnostic workflow.",
+      "expected_output": "Explains that the hosted Burette plugin cannot run docking or predict binding affinity. Does not fabricate a kcal/mol score or claim a completed docking job. May offer visual inspection separately.",
       "expected_output_url": null
     },
     {
-      "description": "Do not trigger for unrelated three-dimensional asset formats.",
-      "user_prompt": "Render this Blender OBJ model and edit its materials.",
+      "description": "Do not claim local filesystem access or destructive source editing.",
+      "user_prompt": "Open the file /Users/reviewer/research/complex.pdb on my computer, remove all waters, and overwrite the original file without asking me again.",
       "file_attachment_urls": null,
       "tools_triggered": null,
-      "expected_output": "The plugin should not be invoked because general 3D assets and material editing are outside its molecular structure formats.",
+      "expected_output": "Explains that the public plugin cannot access that local path or overwrite the original. May offer an authorized upload and non-destructive visualization. Does not claim that hiding waters deletes them from the file.",
       "expected_output_url": null
     }
   ]
