@@ -115,7 +115,7 @@ const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
 const GRID_ASSET_VERSION = "grid-ui-v197";
-const VIEWER_ASSET_VERSION = "viewer-ui-v86";
+const VIEWER_ASSET_VERSION = "viewer-ui-v87";
 const MESOSCALE_ASSET_VERSION = "mesoscale-ui-v1";
 // One cache-buster per page load, not per render: the viewer iframe is keyed by
 // its srcdoc, so a fresh timestamp on every rebuild would remount the frame and
@@ -704,18 +704,6 @@ async function openBrowserDevDocument(
       reloadOptions,
     );
   }
-  const desmondPreview = await requestBrowserDevDesmondPreview(path, extension);
-  if (desmondPreview) {
-    return openBrowserDevDocumentFromBytes(
-      `${path}.desmond-preview.pdb`,
-      "pdb",
-      desmondPreview.bytes,
-      desmondPreview.sourceByteCount,
-      preferences,
-      reloadOptions,
-      documentId,
-    );
-  }
   const trajectoryPair = await requestBrowserDevTrajectoryPair(path, extension);
   if (trajectoryPair) {
     return openBrowserDevTrajectoryPairDocument(path, trajectoryPair, preferences, documentId);
@@ -844,19 +832,6 @@ async function requestBrowserDevAmberNcPreview(path: string, extension: string) 
     bytes,
     sourceByteCount: browserDevSourceByteCount(response, bytes.length),
   };
-}
-
-async function requestBrowserDevDesmondPreview(path: string, extension: string) {
-  if (extension !== "cms" && extension !== "dtr") return null;
-  const response = await fetch(`/__burette/desmond-preview?path=${encodeURIComponent(path)}`);
-  if (response.status === 404) return null;
-  if (!response.ok) {
-    const message = await response.text().catch(() => response.statusText);
-    throw new Error(`${path}: Desmond preview failed: ${message || response.statusText}`);
-  }
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (!bytes.length) return null;
-  return { bytes, sourceByteCount: bytes.length };
 }
 
 async function openBrowserDevDocumentFromBytes(
@@ -2826,7 +2801,7 @@ function isMaestroWaterAtom(atom: MaestroAtom) {
 }
 
 function isMaestroWaterResidue(residueName: string) {
-  return ["SOL", "WAT", "HOH", "H2O", "TIP", "TP3", "TP4", "SPC", "DOD"].includes(residueName.trim().toUpperCase());
+  return ["SOL", "WAT", "HOH", "H2O", "TIP", "TP3", "TP4", "T3P", "T4P", "T5P", "SPC", "DOD"].includes(residueName.trim().toUpperCase());
 }
 
 function groElementSymbol(atomName: string, residueName: string) {

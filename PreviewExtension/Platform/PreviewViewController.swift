@@ -2761,17 +2761,29 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
     }
 
+    // Everything in an iCloud-synced Desktop or Documents folder is ubiquitous,
+    // and the Quick Look sandbox does not always get a downloading status for it.
+    // Only a dataless file is really missing its bytes, so anything else opens.
     private static func ensureUbiquitousFileIsAvailable(_ url: URL, fileManager: FileManager) throws {
         let values = try? url.resourceValues(forKeys: [.isUbiquitousItemKey, .ubiquitousItemDownloadingStatusKey])
         guard values?.isUbiquitousItem == true else { return }
         if values?.ubiquitousItemDownloadingStatus == .current || values?.ubiquitousItemDownloadingStatus == .downloaded { return }
+        if !isDataless(url) { return }
         try? fileManager.startDownloadingUbiquitousItem(at: url)
         for _ in 0..<50 {
             let nextValues = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
             if nextValues?.ubiquitousItemDownloadingStatus == .current || nextValues?.ubiquitousItemDownloadingStatus == .downloaded { return }
+            if !isDataless(url) { return }
             Thread.sleep(forTimeInterval: 0.1)
         }
         throw PreviewError.ubiquitousFileNotDownloaded(url.lastPathComponent)
+    }
+
+    private static func isDataless(_ url: URL) -> Bool {
+        let datalessFlag: UInt32 = 0x4000_0000 // SF_DATALESS
+        var info = stat()
+        guard stat(url.path, &info) == 0 else { return false }
+        return info.st_flags & datalessFlag != 0
     }
 
     private struct XYZPayload {

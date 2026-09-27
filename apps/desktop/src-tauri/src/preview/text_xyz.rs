@@ -45,6 +45,16 @@ struct MaestroPdbBlock {
     atoms: Vec<MaestroAtom>,
 }
 
+/// The full Desmond system as one PDB model, in trajectory atom order.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct DesmondTopology {
+    pub(crate) pdb: Vec<u8>,
+    /// `(atoms, pseudo particles)` for every component CT, in file order. A
+    /// Desmond trajectory stores each component's atoms followed by its force
+    /// field pseudo particles (virtual sites), which the PDB model does not have.
+    pub(crate) components: Vec<(usize, usize)>,
+}
+
 pub(crate) fn converted_data_from_text(
     data: &[u8],
     extension: &str,
@@ -1584,6 +1594,78 @@ fn maestro_pdb_data_from_text(data: &[u8], extension: &str) -> Option<ConvertedS
     })
 }
 
+/// Builds the topology a Desmond trajectory plays against.
+///
+/// Water keeps its place in the model (Mol* replaces every coordinate per frame,
+/// so atoms cannot be split into staged entries) but is renamed to `HOH`, and
+/// residue numbers wrap instead of clamping at the PDB limit so ten thousand
+/// waters stay ten thousand residues.
+pub(crate) fn desmond_topology_from_cms(data: &[u8]) -> Option<DesmondTopology> {
+    let decoded = decode_structure_text(data, "cms")?;
+    let text = decoded.replace("\r\n", "\n").replace('\r', "\n");
+    let lines: Vec<&str> = text.lines().collect();
+    let blocks = parse_maestro_pdb_blocks(&lines, MAESTRO_PDB_PREVIEW_ATOM_LIMIT)?;
+    let is_full_system = |ct_type: &str| ct_type.eq_ignore_ascii_case("full_system");
+    let components = maestro_ct_particle_counts(&lines)
+        .into_iter()
+        .filter(|(ct_type, _, _)| !is_full_system(ct_type))
+        .map(|(_, atoms, pseudo)| (atoms, pseudo))
+        .collect::<Vec<_>>();
+    let mut atoms = blocks
+        .iter()
+        .find(|block| is_full_system(&block.ct_type))
+        .map(|block| block.atoms.clone())
+        .unwrap_or_else(|| {
+            blocks
+                .iter()
+                .flat_map(|block| block.atoms.iter().cloned())
+                .collect()
+        });
+    let component_atoms = components.iter().map(|(atoms, _)| atoms).sum::<usize>();
+    if components.is_empty() || atoms.len() != component_atoms {
+        return None;
+    }
+    for atom in &mut atoms {
+        if is_maestro_water_atom(atom) {
+            atom.residue_name = "HOH".to_string();
+        }
+        atom.residue_number = (atom.residue_number - 1).rem_euclid(9999) + 1;
+    }
+    Some(DesmondTopology {
+        pdb: maestro_atoms_to_pdb(&atoms).into_bytes(),
+        components,
+    })
+}
+
+/// Reads `(ct type, m_atom count, ffio_pseudo count)` for every CT header.
+fn maestro_ct_particle_counts(lines: &[&str]) -> Vec<(String, usize, usize)> {
+    fn block_count(line: &str, name: &str) -> Option<usize> {
+        line.strip_prefix(name)?
+            .strip_prefix('[')?
+            .split(']')
+            .next()?
+            .parse()
+            .ok()
+    }
+    let mut cts: Vec<(String, usize, usize)> = Vec::new();
+    let mut index = 0;
+    while index < lines.len() {
+        let trimmed = lines[index].trim();
+        index += 1;
+        if trimmed == "f_m_ct {" {
+            let ct_type = parse_maestro_ct_type(lines, &mut index).unwrap_or_default();
+            cts.push((ct_type, 0, 0));
+        } else if let (Some(count), Some(ct)) = (block_count(trimmed, "m_atom"), cts.last_mut()) {
+            ct.1 = count;
+        } else if let (Some(count), Some(ct)) =
+            (block_count(trimmed, "ffio_pseudo"), cts.last_mut())
+        {
+            ct.2 = count;
+        }
+    }
+    cts
+}
+
 fn gro_pdb_data_from_text(data: &[u8], label: &str) -> Option<ConvertedStructureData> {
     let decoded = decode_structure_text(data, "gro")?;
     let text = decoded.replace("\r\n", "\n").replace('\r', "\n");
@@ -1786,7 +1868,18 @@ fn is_maestro_water_atom(atom: &MaestroAtom) -> bool {
 fn is_maestro_water_residue(residue_name: &str) -> bool {
     matches!(
         residue_name.trim().to_ascii_uppercase().as_str(),
-        "SOL" | "WAT" | "HOH" | "H2O" | "TIP" | "TP3" | "TP4" | "SPC" | "DOD"
+        "SOL"
+            | "WAT"
+            | "HOH"
+            | "H2O"
+            | "TIP"
+            | "TP3"
+            | "TP4"
+            | "T3P"
+            | "T4P"
+            | "T5P"
+            | "SPC"
+            | "DOD"
     )
 }
 

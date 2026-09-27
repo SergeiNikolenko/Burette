@@ -57,7 +57,6 @@
       "../../../PreviewExtension/Web": "ViewerWeb",
       "../../../compute/metal/runtime": "ComputeMetal",
       "../../../plugins/burette-native-bundle": "plugins/burette-agent",
-      "../../../scripts/desmond_preview_extract.py": "desmond_preview_extract.py",
       "../../../scripts/mdsmooth_runner.py": "mdsmooth_runner.py",
       "../../../scripts/mdsmooth_core": "mdsmooth_core"
     },

@@ -635,9 +635,10 @@ assert.match(documentsCommand, /fn looks_like_supported_structure_file/);
 assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_preview_cache/);
 assert.match(runtimeDoctorCommand, /#\[tauri::command\]\s+pub\(crate\) fn external_runtime_doctor/);
 assert.match(runtimeDoctorCommand, /burette\.external-runtime-doctor\.v1/);
-for (const checkId of ['xyzrender', 'descriptors-python', 'rdkit-conformer-python', 'crest', 'prism', 'xtb', 'schrodinger']) {
+for (const checkId of ['xyzrender', 'descriptors-python', 'rdkit-conformer-python', 'crest', 'prism', 'xtb']) {
   assert.match(runtimeDoctorCommand, new RegExp(`"${checkId}"`));
 }
+assert.doesNotMatch(runtimeDoctorCommand, /schrodinger/i);
 assert.match(runtimeDoctorCommand, /descriptors::descriptor_runtime_status\(\)/);
 assert.match(runtimeDoctorCommand, /documents::conformer_python_runtime_status\(\)/);
 assert.match(runtimeDoctorCommand, /conformer::conformer_status\(\)/);

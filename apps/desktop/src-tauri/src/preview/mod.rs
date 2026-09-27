@@ -1,3 +1,4 @@
+mod desmond_trajectory;
 pub(crate) mod formats;
 #[allow(
     dead_code,
