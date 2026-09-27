@@ -82,6 +82,13 @@ export function molstarContextMenuItems(entries: unknown, send: MolstarContextMe
           action: (next) => send(key, next),
         }];
       }
+      if (entry.kind === "text") {
+        const label = text(entry.label);
+        const value = typeof entry.value === "string" && entry.value.length <= 1024 ? entry.value : null;
+        const placeholder = typeof entry.placeholder === "string" && entry.placeholder.length <= MAX_TEXT ? entry.placeholder : "";
+        return label !== null && value !== null ? [{ kind: "text", id, label, value, placeholder,
+          action: (next) => send(key, next) }] : [];
+      }
       if (entry.kind === "swatches") {
         const colors = Array.isArray(entry.colors)
           ? entry.colors.filter((colour): colour is string => typeof colour === "string" && HEX_COLOUR.test(colour)).slice(0, 24)

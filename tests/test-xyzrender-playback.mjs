@@ -17,7 +17,7 @@ const range = [0, 239];
 let renders = 0, position, scrub;
 function Harness({visible}) {
   renders++;
-  [position, scrub] = useXyzrenderPlayback(animation, true, 60, range, 'first', false, visible);
+  [position, scrub] = useXyzrenderPlayback(animation, true, 60, range, 'first', undefined, false, visible);
   return React.createElement('span', null, position);
 }
 const root = createRoot(document.getElementById('root'));
@@ -33,15 +33,19 @@ assert.ok(paints.length >= 20);
 assert.ok(renders < paints.length / 2, 'inspector is not rerendered on every frame');
 const lastPixel = paints.at(-1).pixels[0];
 await act(() => root.render(React.createElement(Harness, {visible: false})));
+assert.deepEqual(paints.at(-1), { type: 'clearXyzrenderAnimationPreview', itemId: 'first' }, 'hiding restores the item artwork');
 const hiddenRenders = renders;
+const hiddenPaints = paints.length;
 for (let i = 0; i < 20; i++) await tick();
-assert.equal(renders, hiddenRenders, 'background playback does not rerender hidden controls');
-assert.ok(paints.at(-1).pixels[0] > lastPixel, 'background animation continues advancing');
+assert.equal(renders, hiddenRenders, 'hidden controls are not rerendered');
+assert.equal(paints.length, hiddenPaints, 'another item in the inspector stops this preview');
 await act(() => root.render(React.createElement(Harness, {visible: true})));
-assert.equal(position, paints.at(-1).pixels[0], 'returning shows the current frame without restarting');
+assert.equal(paints.at(-1).pixels[0], lastPixel, 'returning resumes from the paused frame');
+assert.equal(position, lastPixel);
 await act(() => root.unmount());
+assert.equal(paints.at(-1).type, 'clearXyzrenderAnimationPreview');
 assert.equal(pending.size, 0);
-console.log('playback: 60 fps canvas, throttled inspector, uninterrupted background playback, cleanup');
+console.log('playback: 60 fps canvas, throttled inspector, preview only for the visible item, cleanup');
 
 const { createAnimationBudget } = await import('../apps/desktop/src/lib/xyzrender-animation-budget.ts');
 const reserve = createAnimationBudget();

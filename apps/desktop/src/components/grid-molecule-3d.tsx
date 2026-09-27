@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 const assets = import.meta.glob<string>("../../../../PreviewExtension/Web/{molstar.js,molstar.css,viewer.js,viewer-shell.js,viewer-runtime.css,renderer-view-state.js,molstar-preset-preview-controller.js,color-picker.js,sequence-panel.js,native-viewer-menus.js,scene-file-actions.js}", { eager: true, query: "?url", import: "default" });
 const asset = (name: string) => new URL(assets[`../../../../PreviewExtension/Web/${name}`], window.location.href).href;
 
-export default function GridMolecule3D({ molblock, theme, onOpen }: { molblock: string; theme: string; onOpen: () => void }) {
+export default function GridMolecule3D({ molblock, theme, height, onOpen }: { molblock: string; theme: string; height: number; onOpen: () => void }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const initial = useRef(molblock);
   const open = useRef(onOpen);
@@ -51,5 +51,5 @@ export default function GridMolecule3D({ molblock, theme, onOpen }: { molblock: 
     const timer = window.setTimeout(send, 60);
     return () => { window.clearTimeout(timer); window.removeEventListener("message", ready); };
   }, [molblock, html]);
-  return <iframe ref={frame} className="grid-molecule-3d" title="Molecule 3D preview" srcDoc={html} sandbox="allow-scripts allow-same-origin allow-downloads" />;
+  return <iframe ref={frame} className="grid-molecule-3d" title="Molecule 3D preview" style={{ height }} srcDoc={html} sandbox="allow-scripts allow-same-origin allow-downloads" />;
 }

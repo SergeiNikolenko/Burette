@@ -191,6 +191,7 @@
   const molstarLassoSelectionResidueKeys = new Set();
   let xyzrenderLassoEnabled = false;
   let xyzrenderLassoStroke = null;
+  let pendingXyzrenderVdwRequest = null;
   let xyzrenderLassoOverlay = null;
   const xyzrenderSelectedElements = new Set();
   const xyzrenderStyledElements = new Set();
@@ -3095,6 +3096,20 @@
       for (const node of content.querySelectorAll('svg, .buret-xyzrender-animation-image')) node.style.visibility = 'hidden';
       return;
     }
+    // A preview ends when the inspector moves to another item: show the item's
+    // applied GIF, or its static drawing, again.
+    if (event.source === window.parent && body.type === 'clearXyzrenderAnimationPreview') {
+      const item = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item')).find(node => node.dataset.buretXyzrenderEditorId === body.itemId);
+      const content = item?.querySelector('.buret-xyzrender-sheet-item-body');
+      const canvas = content?.querySelector(':scope > .buret-xyzrender-animation-canvas');
+      if (!canvas) return;
+      canvas.remove();
+      const image = content.querySelector('.buret-xyzrender-animation-image');
+      if (image) image.style.visibility = 'visible';
+      const svg = content.querySelector(':scope > svg');
+      if (svg) svg.style.visibility = image ? 'hidden' : '';
+      return;
+    }
     if (event.source === window.parent && body.type === 'applyXyzrenderAnimation') {
       const item = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item')).find(node => node.dataset.buretXyzrenderEditorId === body.itemId);
       const content = item?.querySelector('.buret-xyzrender-sheet-item-body');
@@ -3132,6 +3147,10 @@
     }
     if (event.source === window.parent && body.type === 'molstarContextMenuResult') {
       handleMolstarNativeMenuResult(body);
+      return;
+    }
+    if (event.source === window.parent && body.type === 'sceneTreeContextMenuResult') {
+      handleSceneTreeNativeMenuResult(body);
       return;
     }
     if (body.type === 'xyzrenderContextMenuResult') {
@@ -3181,14 +3200,22 @@
       const config = activeConfig || window.BuretteConfig || {};
       const documentId = String(config.documentId || '');
       const hasXyzrenderArtifact = Boolean(document.querySelector('.buret-external-artifact-root, .buret-xyzrender-sheet-item-base, .buret-external-artifact-object'));
-      if (body.documentId && documentId && String(body.documentId) !== documentId && !hasXyzrenderArtifact) return;
+      const addressedToThisDocument = !body.documentId || !documentId || String(body.documentId) === documentId;
+      if (!addressedToThisDocument && !hasXyzrenderArtifact) return;
       const controls = normalizeXyzrenderControls(body.controls || config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
       const preset = normalizeXyzrenderPreset(body.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
+      // The dock broadcasts item edits to every viewer frame. Atom selections belong
+      // to one document, so only its frame may act on them; the other tabs would
+      // otherwise report an empty selection.
+      if (addressedToThisDocument) pendingXyzrenderVdwRequest = null;
       if (body.selectionAction === 'vdw') {
-        void applyXyzrenderSelectionVdw(controls, preset);
+        if (addressedToThisDocument) void applyXyzrenderSelectionVdw(controls, preset);
         return;
       }
-      if (hasXyzrenderSelection()) {
+      // Atom selections only redirect a style meant for the item that holds them.
+      const selectionTargetsItem = addressedToThisDocument && (typeof body.itemId !== 'string'
+        || xyzrenderSelectionGroups().some(group => group.item.dataset.buretXyzrenderEditorId === body.itemId));
+      if (selectionTargetsItem && hasXyzrenderSelection()) {
         void applyXyzrenderSelectionPreset(preset, controls);
         return;
       }
@@ -3410,11 +3437,7 @@
   }
 
   function requestGenerated3DCameraView(viewer) {
-    requestMolstarStructureFocus(viewer, {
-      reason: 'generated-3d',
-      durationMs: 650,
-      radiusScale: document.body?.classList.contains('burette-mobile-host') ? 0.58 : 0.88
-    });
+    requestMolstarStructureFocus(viewer, { reason: 'generated-3d', durationMs: 650 });
   }
 
   function scheduleMolstarStructureFocus(viewer, options = {}) {
@@ -3446,6 +3469,77 @@
     return !!config?.molstarContextFocus && typeof config.molstarContextFocus === 'object';
   }
 
+  // Fraction of the viewport half-width and half-height the fitted atoms may fill,
+  // and the margin that keeps drawn atom spheres at the edge inside the frame.
+  const MOLSTAR_FOCUS_FILL = 0.9;
+  const MOLSTAR_FOCUS_ATOM_PADDING = 2;
+  const MOLSTAR_FOCUS_SAMPLE_LIMIT = 250000;
+
+  // Mol*'s reset fits the bounding sphere into the short side of the viewport. An
+  // elongated protein seen end-on then covers about half of the preview, so the
+  // camera distance is fitted to the visible atoms projected along the view instead.
+  function fittedMolstarStructureFocus(viewer, camera, direction, up) {
+    const structures = (viewer?.plugin?.managers?.structure?.hierarchy?.current?.structures || [])
+      .filter(entry => !entry?.cell?.state?.isHidden)
+      .map(entry => entry?.cell?.obj?.data)
+      .filter(structure => Array.isArray(structure?.units));
+    const viewport = camera.viewport;
+    const fov = Number(camera.state?.fov);
+    if (!structures.length || !(viewport?.width > 0) || !(viewport?.height > 0) || !(fov > 0)) return null;
+    const norm = vector => {
+      const length = Math.hypot(vector[0], vector[1], vector[2]);
+      return length > 1e-6 ? vector.map(value => value / length) : null;
+    };
+    const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const back = norm(Array.from(direction).slice(0, 3));
+    const right = back && norm(cross(Array.from(up).slice(0, 3), back));
+    if (!right) return null;
+    const trueUp = cross(back, right);
+    const total = structures.reduce((sum, structure) => sum + (Number(structure.elementCount) || 0), 0);
+    const stride = Math.max(1, Math.ceil(total / MOLSTAR_FOCUS_SAMPLE_LIMIT));
+    const pad = MOLSTAR_FOCUS_ATOM_PADDING;
+    const tangents = [Math.tan(fov / 2) * MOLSTAR_FOCUS_FILL * viewport.width / viewport.height, Math.tan(fov / 2) * MOLSTAR_FOCUS_FILL];
+    // In view coordinates a camera at (cx, cy, depth) frames an atom when
+    // |x - cx| <= tanX * (depth - z), and likewise for y. Per axis the nearest
+    // depth is (upper - lower) / (2 tan) and the centre is their midpoint, which
+    // also balances the larger-looking atoms closest to the camera.
+    const upper = [-Infinity, -Infinity];
+    const lower = [Infinity, Infinity];
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    const point = [0, 0, 0];
+    for (const structure of structures) {
+      for (const unit of structure.units) {
+        const elements = unit?.elements;
+        const conformation = unit?.conformation;
+        if (!elements || typeof conformation?.position !== 'function') continue;
+        for (let index = 0; index < elements.length; index += stride) {
+          conformation.position(elements[index], point);
+          const view = [right, trueUp, back].map(axis => axis[0] * point[0] + axis[1] * point[1] + axis[2] * point[2]);
+          for (let axis = 0; axis < 3; axis += 1) {
+            if (view[axis] < min[axis]) min[axis] = view[axis];
+            if (view[axis] > max[axis]) max[axis] = view[axis];
+          }
+          for (let axis = 0; axis < 2; axis += 1) {
+            upper[axis] = Math.max(upper[axis], view[axis] + pad + tangents[axis] * view[2]);
+            lower[axis] = Math.min(lower[axis], view[axis] - pad - tangents[axis] * view[2]);
+          }
+        }
+      }
+    }
+    if (!(max[2] >= min[2])) return null;
+    const center = [(upper[0] + lower[0]) / 2, (upper[1] + lower[1]) / 2, (min[2] + max[2]) / 2];
+    const depth = Math.max(...[0, 1].map(axis => (upper[axis] - lower[axis]) / (2 * tangents[axis])));
+    const toWorld = view => [0, 1, 2].map(axis => right[axis] * view[0] + trueUp[axis] * view[1] + back[axis] * view[2]);
+    return {
+      target: toWorld(center),
+      position: toWorld([center[0], center[1], depth]),
+      up: trueUp,
+      // Mol* derives the clipping planes from this radius around the target.
+      radius: Math.hypot(...center.map((value, axis) => Math.max(value - min[axis], max[axis] - value))) + pad
+    };
+  }
+
   function requestMolstarStructureFocus(viewer, options = {}) {
     const canvas3d = viewer?.plugin?.canvas3d;
     const camera = canvas3d?.camera;
@@ -3456,17 +3550,15 @@
       const radius = Number(sphere?.radius);
       const target = center && center.length >= 3 ? [center[0], center[1], center[2]] : camera.target;
       const safeRadius = Number.isFinite(radius) && radius > 0 ? radius : Number(camera.state?.radius || 10);
-      const configuredScale = Number(options.radiusScale);
-      const radiusScale = Number.isFinite(configuredScale) && configuredScale > 0
-        ? configuredScale
-        : (document.body?.classList.contains('burette-mobile-host') ? 0.58 : 0.88);
+      const radiusScale = document.body?.classList.contains('burette-mobile-host') ? 0.58 : 0.88;
       const up = Array.isArray(options.up) && options.up.length >= 3 ? options.up : [0, 1, 0];
       const direction = Array.isArray(options.direction) && options.direction.length >= 3
         ? options.direction
         : [0.85, -0.38, 0.92];
-      const snapshot = typeof camera.getFocus === 'function'
+      const fitted = fittedMolstarStructureFocus(viewer, camera, direction, up);
+      const snapshot = fitted || (typeof camera.getFocus === 'function'
         ? camera.getFocus(target, Math.max(0.1, safeRadius * radiusScale), up, direction)
-        : null;
+        : null);
       if (snapshot) snapshot.mode = 'perspective';
       canvas3d.requestCameraReset({
         snapshot: snapshot || undefined,
@@ -6207,7 +6299,10 @@
   function setXyzrenderLassoEnabled(enabled) {
     const next = enabled === true;
     xyzrenderLassoEnabled = next;
-    if (!next) cancelXyzrenderLassoStroke();
+    if (!next) {
+      cancelXyzrenderLassoStroke();
+      pendingXyzrenderVdwRequest = null;
+    }
     document.body?.classList.toggle('buret-xyzrender-lasso-active', xyzrenderLassoEnabled);
     updateMolstarLassoButton();
     setStatus(xyzrenderLassoEnabled ? '[web] xyzrender lasso enabled.' : '[web] xyzrender lasso disabled.');
@@ -7154,9 +7249,9 @@
 
   // Scene tree: a Burette-styled stand-in for the Mol* left object tree. It mirrors
   // the same hierarchy Mol* shows — data, model, assembly, components, their
-  // representations — but as a compact draggable overlay. Rows carry only the two
-  // controls Mol* puts there (visibility, remove); focus and colouring live in the
-  // right-click menu. The Mol* panel itself stays reachable under the `L` button.
+  // representations — but as a compact draggable overlay. In the desktop app the
+  // right-click menu and a measurement's settings button open the host's native
+  // menu; other hosts fall back to the in-page menu.
   const SCENE_TREE_SVG_NS = 'http://www.w3.org/2000/svg';
   // Same left-edge type colours Mol* paints on `.msp-type-class-*` tree rows.
   const SCENE_TREE_TYPE_COLOR = {
@@ -7218,6 +7313,7 @@ SOFTWARE.
   let sceneTreeRenderHandle = 0;
   let sceneTreeHoverRef = '';
   let sceneTreeMenuRef = '';
+  let sceneTreeNativeMenuPending = null;
   let sceneTreeSelectedRef = '';
   let sceneTreeMenuPointerStart = null;
   const sceneTreePickerUndoSnapshots = new WeakMap();
@@ -7434,6 +7530,31 @@ SOFTWARE.
     return { label: display.label, note: '', format: display.format };
   }
 
+  function sceneTreeMeasurementSource(cell) {
+    const selections = cell?.obj?.data;
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const Props = window.molstar?.lib?.structure?.StructureProperties;
+    if (!Array.isArray(selections) || !StructureElement?.Loci?.getFirstLocation || !Props) return '';
+    const names = selections.slice(0, 4).map(selection => {
+      const loci = selection?.loci;
+      if (loci?.kind !== 'element-loci') return null;
+      const location = StructureElement.Loci.getFirstLocation(loci);
+      if (!location) return null;
+      const residue = molstarContextResidueLabel({
+        auth_comp_id: Props.residue.auth_comp_id(location),
+        auth_asym_id: Props.chain.auth_asym_id(location),
+        auth_seq_id: Props.residue.auth_seq_id(location)
+      });
+      const atom = StructureElement.Loci.size(loci) === 1
+        ? String(Props.atom.auth_atom_id(location) || '').trim() : '';
+      return { residue, atom };
+    }).filter(Boolean);
+    if (!names.length) return '';
+    const residue = names.every(name => name.residue === names[0].residue) ? names[0].residue : '';
+    const atoms = names.every(name => name.atom) ? names.map(name => name.atom).join('–') : '';
+    return [residue, atoms].filter(Boolean).join(' · ') || names.map(name => name.residue).join('–');
+  }
+
   function sceneTreeNodes(viewer) {
     const state = viewer?.plugin?.state?.data;
     if (!state?.cells) return [];
@@ -7496,10 +7617,22 @@ SOFTWARE.
           const rawLabel = String(cell.obj.label || 'Node');
           const display = sceneTreeRowLabel(cell, rawLabel);
           const label = display.label;
+          const measurementName = ['Label', 'Distance', 'Angle', 'Dihedral'].includes(label);
+          const measurementTargets = measurementEditable ? sceneTreeMeasurementTargets(viewer, nodeRef) : [];
+          const customText = measurementName ? sceneTreeMeasurementValue(measurementTargets, 'custom-text') : undefined;
+          const measurementSource = measurementName ? sceneTreeMeasurementSource(nodeCell) : '';
+          const nested = build(chain);
+          // Mol* stores a measurement and its shape representation as two cells.
+          // The second identical row has no separate user task or settings.
+          const visibleChildren = measurementName && nested.length === 1
+            && nested[0].label === label && nested[0].measurementEditable ? nested[0].children : nested;
           nodes.push({
             ref: nodeRef,
             label,
-            note: String(cell.obj.description || display.note || display.format || ''),
+            note: measurementName && measurementEditable
+              ? ([typeof customText === 'string' ? customText.trim() : '', measurementSource]
+                .filter(Boolean).join(' · '))
+              : String(cell.obj.description || display.note || display.format || ''),
             sourceLabel: rawLabel === label ? '' : rawLabel,
             group: String(cell.obj.type?.name || '') === 'Primitive Data' ? 'annotations' : 'structures',
             typeClass: String(cell.obj.type?.typeClass || 'Object'),
@@ -7510,7 +7643,7 @@ SOFTWARE.
               && Array.isArray(nodeCell?.obj?.data?.units)
               && nodeCell.obj.data.units.length > 0,
             ...(components ? sceneTreeColorState(components) : { theme: '', value: null }),
-            children: build(chain)
+            children: visibleChildren
           });
         }
       }
@@ -7628,7 +7761,7 @@ SOFTWARE.
       dot.title = `Colour ${node.label}`;
       actions.appendChild(dot);
     } else if (node.measurementEditable) {
-      actions.appendChild(sceneTreeActionButton('menu', `Settings for ${node.label}`, SCENE_TREE_ICON.settings));
+      actions.appendChild(sceneTreeActionButton('menu', `Edit ${node.label} settings`, SCENE_TREE_ICON.settings));
     }
     if (node.focusSaveable) {
       actions.appendChild(sceneTreeActionButton('save-focus', `Save ${node.label}`, SCENE_TREE_ICON.plus));
@@ -7932,6 +8065,13 @@ SOFTWARE.
   function focusSceneTreeNode(ref) {
     const plugin = activeMolstarViewer()?.plugin;
     const data = plugin?.state?.data?.cells?.get(ref)?.obj?.data;
+    if (Array.isArray(data)) {
+      const loci = data.map(selection => selection?.loci).filter(Boolean);
+      if (loci.length && typeof plugin?.managers?.camera?.focusLoci === 'function') {
+        plugin.managers.camera.focusLoci(loci, { durationMs: 250 });
+      }
+      return;
+    }
     // A Mol* Structure carries its extent on `boundary`, not `boundingSphere`;
     // representation cells keep theirs one level down on the structure they draw.
     const sphere = data?.boundary?.sphere || data?.sourceData?.boundary?.sphere;
@@ -8261,7 +8401,7 @@ SOFTWARE.
     'line-size': { keys: ['linesSize'], label: 'Thickness', min: 0.01, max: 5, step: 0.01 },
     'dash-length': { keys: ['dashLength'], label: 'Dash length', min: 0.01, max: 0.2, step: 0.01 },
     'arc-scale': { keys: ['arcScale'], label: 'Arc radius', min: 0.01, max: 1, step: 0.01 },
-    'text-size': { keys: ['textSize'], label: 'Text size', min: 0.1, max: 10, step: 0.1 },
+    'text-size': { keys: ['textSize'], label: 'Text size', min: 0.1, max: 10, step: 0.01 },
     'sector-opacity': { keys: ['sectorOpacity'], label: 'Sector opacity', min: 0, max: 1, step: 0.01 },
     'border-width': { keys: ['borderWidth'], label: 'Text border', min: 0, max: 0.5, step: 0.01 },
     'custom-text': { keys: ['customText'], label: 'Custom text' }
@@ -8332,7 +8472,7 @@ SOFTWARE.
     caption.textContent = definition.label;
     const swatches = document.createElement('div');
     swatches.className = 'buret-tree-swatches buret-tree-swatches-inline';
-    for (const entry of SCENE_TREE_UNIFORM_COLORS) {
+    for (const entry of SCENE_TREE_UNIFORM_COLORS.slice(0, 8)) {
       const swatch = document.createElement('button');
       swatch.type = 'button';
       swatch.className = 'buret-tree-swatch';
@@ -8346,6 +8486,14 @@ SOFTWARE.
       swatches.appendChild(swatch);
     }
     row.append(caption, swatches);
+    const custom = document.createElement('input');
+    custom.type = 'color';
+    custom.className = 'buret-tree-custom-color';
+    custom.dataset.sceneTreeMeasurementCustomColor = field;
+    custom.value = sceneTreeColorHex(Number.isFinite(current) ? current : 0x7da5c7);
+    custom.setAttribute('aria-label', `Custom ${definition.label.toLowerCase()} color`);
+    custom.title = `Custom ${definition.label.toLowerCase()} color`;
+    row.appendChild(custom);
     menu.appendChild(row);
   }
 
@@ -8395,10 +8543,14 @@ SOFTWARE.
   }
 
   function sceneTreeMeasurementMenu(menu, targets) {
-    sceneTreeMenuSection(menu, 'Measurement');
-    sceneTreeMeasurementSwatches(menu, targets, 'geometry-color');
-    for (const field of ['line-size', 'dash-length', 'arc-scale', 'sector-opacity']) {
-      sceneTreeMeasurementSlider(menu, targets, field);
+    const geometryFields = ['geometry-color', 'line-size', 'dash-length', 'arc-scale', 'sector-opacity']
+      .filter(field => targets.some(target => sceneTreeMeasurementParam(target, field)));
+    if (geometryFields.length) {
+      sceneTreeMenuSection(menu, 'Measurement');
+      if (geometryFields.includes('geometry-color')) sceneTreeMeasurementSwatches(menu, targets, 'geometry-color');
+      for (const field of geometryFields.filter(field => field !== 'geometry-color')) {
+        sceneTreeMeasurementSlider(menu, targets, field);
+      }
     }
     sceneTreeMenuSection(menu, 'Label');
     sceneTreeMeasurementText(menu, targets);
@@ -8697,7 +8849,6 @@ SOFTWARE.
     ['xrayShaded', 'X-ray shading'],
     ['aromaticBonds', 'Aromatic bonds'],
     ['tubularHelices', 'Helices as tubes'],
-    ['ignoreLight', 'Flat colour'],
     ['celShaded', 'Cel shading'],
     ['ignoreHydrogens', 'Hide hydrogens']
   ];
@@ -8876,6 +9027,75 @@ SOFTWARE.
     }));
   }
 
+  // Illustrative drawing is flat colour plus the outline pass. Flat colour is
+  // `ignoreLight` on each representation, so a row can take it for just the
+  // representations beneath it — a structure, one component, or a single drawing.
+  // The outline is one pass over the whole canvas; it stays on while anything is
+  // drawn flat, because flat colour without its contour reads as a bare silhouette.
+  // Points and a few other types have no lighting to ignore, and Mol* drops the
+  // key from them, so they are left out rather than keeping a row forever mixed.
+  function sceneTreeIllustrativeTargets(viewer, ref) {
+    const state = viewer?.plugin?.state?.data;
+    if (!ref || !state?.cells?.has(ref)) return [];
+    const subtree = new Set(sceneTreeSubtreeRefs(state, ref));
+    return Array.from(sceneTreeRepresentationTargets(viewer))
+      .filter(([repRef, target]) => subtree.has(repRef) && sceneTreeReprParamSchema(viewer, target)?.ignoreLight)
+      .map(([, target]) => target.representation);
+  }
+
+  function sceneTreeRepresentationFlat(representation) {
+    return representation?.cell?.transform?.params?.type?.params?.ignoreLight === true;
+  }
+
+  function sceneTreeMenuIllustrative(menu, representations) {
+    if (!representations.length) return;
+    const flat = representations.filter(sceneTreeRepresentationFlat).length;
+    const row = document.createElement('label');
+    row.className = 'buret-tree-menu-field';
+    const caption = document.createElement('span');
+    caption.textContent = 'Illustrative';
+    const control = document.createElement('input');
+    control.type = 'checkbox';
+    control.className = 'buret-tree-menu-check';
+    control.checked = flat === representations.length;
+    control.indeterminate = flat > 0 && flat < representations.length;
+    control.dataset.sceneTreeIllustrative = '';
+    row.append(caption, control);
+    menu.appendChild(row);
+  }
+
+  function syncMolstarIllustrativeOutline(viewer) {
+    const plugin = viewer?.plugin;
+    const state = plugin?.state?.data;
+    if (!plugin?.canvas3d || !state?.cells) return;
+    const flat = Array.from(state.cells.values())
+      .some(cell => cell?.transform?.params?.type?.params?.ignoreLight === true);
+    const outlined = plugin.canvas3d.props?.postprocessing?.outline?.name === 'on';
+    if (flat && !outlined) enableMolstarIllustrativeOutline(viewer);
+    else if (!flat && outlined) resetMolstarPostprocessing(viewer);
+  }
+
+  async function applySceneTreeIllustrative(ref, enabled) {
+    const viewer = activeMolstarViewer();
+    const state = viewer?.plugin?.state?.data;
+    const representations = sceneTreeIllustrativeTargets(viewer, ref)
+      .filter(representation => sceneTreeRepresentationFlat(representation) !== enabled);
+    if (!state || !representations.length) return;
+    try {
+      const update = state.build();
+      for (const representation of representations) {
+        update.to(representation.cell.transform.ref).update(old => ({
+          ...old, type: { ...old.type, params: { ...old.type.params, ignoreLight: enabled } }
+        }));
+      }
+      await update.commit();
+      syncMolstarIllustrativeOutline(viewer);
+    } catch (error) {
+      debug('scene tree illustrative update failed: ' + (error && error.message || String(error)));
+    }
+    scheduleSceneTreeRender();
+  }
+
   function applySceneTreeReprSize(ref, name) {
     return updateSceneTreeRepresentation(ref, old => ({ ...old, sizeTheme: { name, params: {} } }));
   }
@@ -8898,6 +9118,7 @@ SOFTWARE.
     if (alpha < 0.999) {
       sceneTreeMenuSlider(menu, 'Outline brightness', 'outline-brightness', Math.round(molstarOutlineBrightness * 100));
     }
+    sceneTreeMenuIllustrative(menu, sceneTreeIllustrativeTargets(viewer, target.representation?.cell?.transform?.ref));
 
     sceneTreeMenuSection(menu, 'Colour');
     sceneTreeMenuThemePicker(menu, 'Theme', 'representation-color',
@@ -8923,9 +9144,10 @@ SOFTWARE.
     const menu = document.createElement('div');
     menu.id = 'buret-scene-tree-menu';
     menu.className = 'buret-tree-menu';
+    if (measurementTargets.length) menu.classList.add('buret-tree-measurement-editor');
     menu.dataset.ref = ref;
-    menu.setAttribute('role', 'menu');
-    menu.setAttribute('aria-label', `${node.label} actions`);
+    menu.setAttribute('role', measurementTargets.length ? 'dialog' : 'menu');
+    menu.setAttribute('aria-label', measurementTargets.length ? `${node.label} settings` : `${node.label} actions`);
 
     const header = document.createElement('div');
     header.className = 'buret-tree-menu-header';
@@ -8935,10 +9157,18 @@ SOFTWARE.
     header.setAttribute('data-buret-panel-handle', '');
     const heading = document.createElement('span');
     heading.className = 'buret-tree-menu-heading';
-    heading.textContent = node.label;
+    heading.textContent = measurementTargets.length ? `${node.label} settings` : node.label;
     heading.title = node.label;
     header.appendChild(heading);
-    if (node.note) {
+    if (measurementTargets.length) {
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'buret-tree-editor-close';
+      close.dataset.sceneTreeAction = 'close-editor';
+      close.setAttribute('aria-label', 'Close settings');
+      close.appendChild(sceneTreeIconElement(APP_ICON_DATA.X));
+      header.appendChild(close);
+    } else if (node.note) {
       const note = document.createElement('span');
       note.className = 'buret-tree-menu-note';
       note.textContent = node.note;
@@ -8946,10 +9176,12 @@ SOFTWARE.
     }
     menu.appendChild(header);
 
-    menu.appendChild(sceneTreeMenuItem('Focus', 'focus', { icon: SCENE_TREE_ICON.focus }));
-    menu.appendChild(sceneTreeMenuItem(node.hidden ? 'Show' : 'Hide', 'visibility', {
-      icon: node.hidden ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye
-    }));
+    if (!measurementTargets.length) {
+      menu.appendChild(sceneTreeMenuItem('Focus', 'focus', { icon: SCENE_TREE_ICON.focus }));
+      menu.appendChild(sceneTreeMenuItem(node.hidden ? 'Show' : 'Hide', 'visibility', {
+        icon: node.hidden ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye
+      }));
+    }
 
     if (isAssemblySymmetry) {
       sceneTreeAssemblySymmetryMenu(menu, viewer, ref);
@@ -8965,14 +9197,15 @@ SOFTWARE.
         menu.appendChild(sceneTreeMenuItem('Show all', 'show-all', { icon: SCENE_TREE_ICON.restore }));
       }
       // Adding a representation only makes sense on a single component; a structure
-      // row would fan the same type across every component under it.
-      if (isComponent) {
-        const representations = sceneTreeRepresentationTypes(viewer, components);
-        if (representations.length) {
-          sceneTreeMenuSection(menu, 'Representation');
-          sceneTreeMenuSelect(menu, 'Add', 'add-representation', representations, '', 'Representation…');
-        }
+      // row would fan the same type across every component under it. The
+      // illustrative switch does fan out, to every representation below the row.
+      const representations = isComponent ? sceneTreeRepresentationTypes(viewer, components) : [];
+      const illustrative = sceneTreeIllustrativeTargets(viewer, ref);
+      if (representations.length || illustrative.length) sceneTreeMenuSection(menu, 'Representation');
+      if (representations.length) {
+        sceneTreeMenuSelect(menu, 'Add', 'add-representation', representations, '', 'Representation…');
       }
+      sceneTreeMenuIllustrative(menu, illustrative);
       if (components.length) {
         sceneTreeMenuSection(menu, 'Colour');
         sceneTreeMenuThemePicker(menu, 'Theme', 'color-theme', sceneTreeColorThemes(viewer, components), node.theme);
@@ -8980,17 +9213,19 @@ SOFTWARE.
       }
     }
 
-    sceneTreeMenuSection(menu, isLassoSelection ? 'Selection' : '');
-    if (isLassoSelection) {
+    if (!measurementTargets.length) sceneTreeMenuSection(menu, isLassoSelection ? 'Selection' : '');
+    if (isLassoSelection && !measurementTargets.length) {
       menu.appendChild(sceneTreeMenuItem('Delete selected atoms', 'delete-lasso-atoms', {
         icon: SCENE_TREE_ICON.trash,
         destructive: true
       }));
     }
-    menu.appendChild(sceneTreeMenuItem(isLassoSelection ? 'Remove selection object' : 'Remove', 'remove', {
-      icon: SCENE_TREE_ICON.trash,
-      destructive: !isLassoSelection
-    }));
+    if (!measurementTargets.length) {
+      menu.appendChild(sceneTreeMenuItem(isLassoSelection ? 'Remove selection object' : 'Remove', 'remove', {
+        icon: SCENE_TREE_ICON.trash,
+        destructive: !isLassoSelection
+      }));
+    }
 
     document.body.appendChild(menu);
     const rect = menu.getBoundingClientRect();
@@ -9000,6 +9235,97 @@ SOFTWARE.
     menu.style.top = `${Math.round(top)}px`;
     initViewportPanelDrag(menu);
     queueMicrotask(() => showNativeViewerMenu(menu, clientX, clientY, closeSceneTreeMenu));
+  }
+
+  // Measurements get their own native menu so the custom text is an inline
+  // field; other rows go through openSceneTreeMenu and the shared adapter.
+  function showNativeMeasurementMenu(ref, event) {
+    const config = activeConfig || window.BuretteConfig || {};
+    if (config.appViewer !== true || document.body?.classList.contains('burette-mobile-host')) return false;
+    const viewer = activeMolstarViewer();
+    const node = sceneTreeNodeByRef(sceneTreeNodes(viewer), ref);
+    const measurementTargets = node ? sceneTreeMeasurementTargets(viewer, ref) : [];
+    if (!measurementTargets.length) return false;
+    const session = { requestId: `scene-tree-menu-${++molstarNativeMenuSerial}`, ref,
+      point: { x: event.clientX, y: event.clientY }, handlers: new Map(), undo: new Map() };
+    const item = (id, text, run) => {
+      session.handlers.set(id, run);
+      return { kind: 'item', id, text };
+    };
+    const items = [
+      { kind: 'label', text: node.label },
+      item('focus', 'Focus', () => focusSceneTreeNode(ref)),
+      item('visibility', node.hidden ? 'Show' : 'Hide', () =>
+        runMolstarSceneEdit(`visibility of ${node.label}`, () => toggleSceneTreeVisibility(ref)))
+    ];
+    const addField = (field, kind) => {
+      if (!measurementTargets.some(target => sceneTreeMeasurementParam(target, field))) return;
+      const definition = SCENE_TREE_MEASUREMENT_FIELDS[field];
+      const current = sceneTreeMeasurementValue(measurementTargets, field);
+      const fallback = measurementTargets.map(target => sceneTreeMeasurementParam(target, field)?.value)
+        .find(value => value !== undefined);
+      const value = current === null ? fallback : current;
+      const id = `measurement:${field}`;
+      const name = kind === 'swatches' ? `${definition.label} colour` : definition.label;
+      session.handlers.set(id, next => {
+        let parsed = String(next).slice(0, 1024);
+        if (kind === 'swatches') {
+          if (!/^#[0-9a-f]{6}$/i.test(parsed)) return;
+          parsed = Number.parseInt(parsed.slice(1), 16);
+        } else if (kind === 'number') {
+          parsed = Number(next);
+          if (!Number.isFinite(parsed)) return;
+        }
+        // One undo step per control, pushed when the menu closes.
+        if (!session.undo.has(id)) session.undo.set(id,
+          captureMolstarSceneUndoSnapshot(`${name.toLowerCase()} of ${node.label}`));
+        void streamSceneTreeMeasurementParam(ref, field, parsed);
+      });
+      if (kind === 'swatches') {
+        items.push({ kind: 'label', text: name });
+        items.push({ kind, id,
+          colors: SCENE_TREE_UNIFORM_COLORS.map(entry => sceneTreeColorHex(entry.value)),
+          ...(Number.isFinite(value) ? { active: sceneTreeColorHex(value) } : {}) });
+      } else if (kind === 'number' && Number.isFinite(value)) {
+        items.push({ kind, id, label: definition.label, value,
+          min: definition.min, max: definition.max, step: definition.step });
+      } else if (kind === 'text') {
+        items.push({ kind, id, label: definition.label,
+          value: typeof value === 'string' ? value : '',
+          placeholder: current === null ? 'Mixed' : 'Automatic value' });
+      }
+    };
+    // A label has no geometry, so its menu starts straight at the text settings.
+    if (['geometry-color', 'line-size', 'dash-length', 'arc-scale', 'sector-opacity']
+      .some(field => measurementTargets.some(target => sceneTreeMeasurementParam(target, field)))) {
+      items.push({ kind: 'separator' }, { kind: 'label', text: 'Measurement' });
+    }
+    addField('geometry-color', 'swatches');
+    for (const field of ['line-size', 'dash-length', 'arc-scale', 'sector-opacity']) addField(field, 'number');
+    items.push({ kind: 'separator' }, { kind: 'label', text: 'Label' });
+    addField('custom-text', 'text');
+    addField('text-color', 'swatches');
+    for (const field of ['text-size', 'border-width']) addField(field, 'number');
+    items.push({ kind: 'separator' });
+    items.push(item('remove', 'Remove', () =>
+      runMolstarSceneEdit(`removing ${node.label}`, () => removeSceneTreeNode(ref))));
+    sceneTreeNativeMenuPending = session;
+    if (postHostMessage({ type: 'sceneTreeContextMenu', requestId: session.requestId,
+      clientX: event.clientX, clientY: event.clientY, items })) return true;
+    sceneTreeNativeMenuPending = null;
+    return false;
+  }
+
+  function handleSceneTreeNativeMenuResult(body) {
+    const session = sceneTreeNativeMenuPending;
+    if (!session || body.requestId !== session.requestId) return;
+    if (body.event === 'select') {
+      session.handlers.get(String(body.id || ''))?.(body.value);
+      return;
+    }
+    sceneTreeNativeMenuPending = null;
+    if (body.event === 'unsupported') openSceneTreeMenu(session.ref, session.point.x, session.point.y);
+    else for (const snapshot of session.undo.values()) pushMolstarEditUndoSnapshot(snapshot);
   }
 
   function molstarSceneMenuUndoLabel(action, ref, control) {
@@ -9141,9 +9467,16 @@ SOFTWARE.
     const ref = control.closest('[data-ref]')?.dataset.ref;
     if (!ref) return;
     const action = control.dataset.sceneTreeAction;
+    if (action === 'close-editor') {
+      closeSceneTreeMenu();
+      return;
+    }
     if (action === 'menu') {
       const rect = control.getBoundingClientRect();
-      openSceneTreeMenu(ref, rect.left, rect.bottom + 4);
+      closeSceneTreeMenu();
+      if (!showNativeMeasurementMenu(ref, { clientX: rect.left, clientY: rect.bottom + 4 })) {
+        openSceneTreeMenu(ref, rect.left, rect.bottom + 4);
+      }
       return;
     }
     const sceneUndoLabel = molstarSceneMenuUndoLabel(action, ref, control);
@@ -9168,7 +9501,10 @@ SOFTWARE.
     const row = event.target.closest('.buret-tree-row');
     if (!row?.dataset.ref) return;
     event.preventDefault();
-    openSceneTreeMenu(row.dataset.ref, event.clientX, event.clientY);
+    closeSceneTreeMenu();
+    if (!showNativeMeasurementMenu(row.dataset.ref, event)) {
+      openSceneTreeMenu(row.dataset.ref, event.clientX, event.clientY);
+    }
   }
 
   // Named apart from moveViewportPanel: that one places Mol*'s own panels and
@@ -10786,6 +11122,15 @@ SOFTWARE.
         ));
       });
       document.addEventListener('change', event => {
+        const control = event.target.closest('[data-scene-tree-illustrative]');
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref) return;
+        const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+        void runMolstarSceneEdit(`illustrative style of ${node?.label || 'structure'}`, () => (
+          applySceneTreeIllustrative(ref, control.checked)
+        ));
+      });
+      document.addEventListener('change', event => {
         const control = event.target.closest('[data-scene-tree-measurement-param]');
         const ref = control?.closest('[data-ref]')?.dataset.ref;
         if (!control || !ref) return;
@@ -10795,6 +11140,16 @@ SOFTWARE.
         const sceneUndoLabel = `${control.dataset.sceneTreeMeasurementParam} of ${node?.label || 'measurement'}`;
         void runMolstarSceneEdit(sceneUndoLabel, () => (
           applySceneTreeMeasurementParam(ref, control.dataset.sceneTreeMeasurementParam, control.value)
+        ));
+      });
+      document.addEventListener('change', event => {
+        const control = event.target.closest('[data-scene-tree-measurement-custom-color]');
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref || !/^#[0-9a-f]{6}$/i.test(control.value)) return;
+        const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+        void runMolstarSceneEdit(`measurement colour of ${node?.label || 'measurement'}`, () => (
+          applySceneTreeMeasurementParam(ref, control.dataset.sceneTreeMeasurementCustomColor,
+            Number.parseInt(control.value.slice(1), 16))
         ));
       });
       // The point of the theme list: the scene takes each theme as the pointer
@@ -12862,17 +13217,15 @@ SOFTWARE.
       const position = sheetItemCenterPosition(original);
       const body = original.querySelector('.buret-xyzrender-sheet-item-body');
       const snapshot = body.cloneNode(true);
-      const canvas = body.querySelector('.buret-xyzrender-animation-canvas');
-      if (canvas) {
-        // Canvas pixels are not serialized by innerHTML. Freeze the visible preview
-        // in the duplicate; committed GIF images already retain their animation.
-        snapshot.querySelectorAll('.buret-xyzrender-animation-image').forEach(image => image.remove());
-        const image = document.createElement('img');
-        image.className = 'buret-xyzrender-animation-image';
-        image.style.cssText = canvas.style.cssText;
-        image.style.visibility = 'visible';
-        image.src = canvas.toDataURL('image/png');
-        snapshot.querySelector('.buret-xyzrender-animation-canvas').replaceWith(image);
+      const previewCanvas = snapshot.querySelector(':scope > .buret-xyzrender-animation-canvas');
+      if (previewCanvas) {
+        // A live preview belongs to the original only. The copy shows the
+        // applied GIF, if any, or the static drawing.
+        previewCanvas.remove();
+        const image = snapshot.querySelector('.buret-xyzrender-animation-image');
+        if (image) image.style.visibility = 'visible';
+        const svg = snapshot.querySelector(':scope > svg');
+        if (svg) svg.style.visibility = image ? 'hidden' : '';
       }
       const copy = addXyzrenderSheetItem(sheet, snapshot.innerHTML,
         sheetItemExportLabel(original), { x: position.left + 40, y: position.top + 40 }, 1, getStageScale, xyzrenderSheetItemEntry(original));
@@ -12886,6 +13239,7 @@ SOFTWARE.
     });
     clearRotatableArtifactSelection(root);
     copies.forEach(copy => copy.classList.add('selected'));
+    publishXyzrenderSelection(root);
   }
 
   function arrangeXyzrenderSheetItems(item) {
@@ -13205,7 +13559,10 @@ SOFTWARE.
         try {
           const payload = await renderXyzrenderSheetItemPayload(entry, preset, controls);
           sheetItemSerial += 1;
-          addXyzrenderSheetItem(sheet, payload.svg, label, point, sheetItemSerial, getStageScale, entry);
+          const item = addXyzrenderSheetItem(sheet, payload.svg, label, point, sheetItemSerial, getStageScale, entry);
+          // Record the style the item was drawn with before the document's changes.
+          item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || preset);
+          item.dataset.buretXyzrenderControls = JSON.stringify(controls);
         } catch (error) {
           failed = true;
           setStatus(`Could not add ${label} to xyzrender sheet: ${error instanceof Error ? error.message : String(error)}`, 'error');
@@ -13620,12 +13977,34 @@ SOFTWARE.
     }
   }
 
+  // Choosing partial vdW before any atoms are selected arms the lasso instead of
+  // failing; the next lasso selection receives the spheres.
+  function requestXyzrenderVdwSelection(controls, preset) {
+    pendingXyzrenderVdwRequest = { controls, preset };
+    if (!xyzrenderLassoEnabled) setXyzrenderLassoEnabled(true);
+    setStatus('Draw a lasso around the atoms that should get vdW spheres. Press Esc to cancel.', 'info', { visible: true });
+  }
+
+  function applyPendingXyzrenderVdwRequest() {
+    const request = pendingXyzrenderVdwRequest;
+    if (!request || !hasXyzrenderSelection()) return;
+    pendingXyzrenderVdwRequest = null;
+    void applyXyzrenderSelectionVdw(request.controls, request.preset);
+  }
+
   async function applyXyzrenderSelectionVdw(controls, preset) {
     const groups = xyzrenderSelectionGroups();
     if (!groups.length) {
-      setStatus('Select atoms first, then apply partial vdW spheres.', 'error');
+      requestXyzrenderVdwSelection(controls, preset);
       return;
     }
+    // Flat, tube, wire and skeletal SVGs carry no per-atom markers, so a lasso
+    // there selects bare graphics that cannot be mapped back to atoms.
+    if (!groups.some(group => xyzrenderAtomSelectorForElements(group.item, group.elements))) {
+      setStatus('This style does not expose individual atoms. Switch to Default or Paton, select atoms, then choose Partial again.', 'error');
+      return;
+    }
+    pendingXyzrenderVdwRequest = null;
     const normalizedPreset = normalizeXyzrenderPreset(preset);
     setStatus('[web] Applying partial vdW spheres to selected xyzrender atoms…');
     let updated = 0;
@@ -13648,6 +14027,11 @@ SOFTWARE.
         setXyzrenderSheetItemEntry(group.item, entry);
         group.item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || normalizedPreset || basePreset);
         setXyzrenderSheetItemVdwAtoms(group.item, atomSelector);
+        group.item.dataset.buretXyzrenderControls = JSON.stringify(nextControls);
+        // Report the new state so the dock highlights Partial for this item.
+        if (group.item.classList.contains('selected') || document.querySelectorAll('.buret-xyzrender-sheet-item').length === 1) {
+          publishXyzrenderItem(group.item);
+        }
         updated += atomSelector.split(',').reduce((count, part) => {
           const [start, end] = part.split('-').map(Number);
           return count + (end ? end - start + 1 : 1);
@@ -13674,6 +14058,7 @@ SOFTWARE.
       return revision;
     });
     let updated = 0;
+    let updatedBase = false;
     for (const [index, item] of items.entries()) {
       const revision = revisions[index];
       const entry = xyzrenderSheetItemEntry(item);
@@ -13695,17 +14080,22 @@ SOFTWARE.
         const background = item.querySelector('.buret-xyzrender-sheet-item-background');
         if (background) background.style.display = itemControls.transparentBackground ? 'none' : '';
         updated += 1;
+        if (item.classList.contains('buret-xyzrender-sheet-item-base')) updatedBase = true;
       } catch (error) {
         setStatus(`Could not update ${sheetEntryLabel(entry)}: ${error instanceof Error ? error.message : String(error)}`, 'error');
       }
     }
     if (updated > 0) {
-      activeConfig = { ...config, xyzrenderControls: controls, xyzrenderPreset: preset,
-        externalArtifact: { ...config.externalArtifact, preset } };
-      window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
-      postHostMessage({ type: 'rendererChanged', documentId: config.documentId,
-        renderer: 'xyzrender-external', preset, controls, presetOptions: config.xyzrenderPresetOptions || [] });
-      configureRendererControls(activeConfig);
+      // Only the document's own structure defines its style. Duplicates and
+      // added structures keep their appearance on the item alone.
+      if (updatedBase) {
+        activeConfig = { ...config, xyzrenderControls: controls, xyzrenderPreset: preset,
+          externalArtifact: { ...config.externalArtifact, preset } };
+        window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
+        postHostMessage({ type: 'rendererChanged', documentId: config.documentId,
+          renderer: 'xyzrender-external', preset, controls, presetOptions: config.xyzrenderPresetOptions || [] });
+        configureRendererControls(activeConfig);
+      }
       const badge = document.querySelector('.buret-xyz-badge span');
       if (badge) badge.textContent = `${updated} selected · ${preset}`;
       setStatus(`[web] Updated ${updated} selected xyzrender structure${updated === 1 ? '' : 's'}.`);
@@ -13938,13 +14328,16 @@ SOFTWARE.
     root.querySelectorAll('.buret-xyzrender-sheet-item').forEach(item => {
       item.classList.add('selected');
     });
+    publishXyzrenderSelection(root);
   }
 
   function clearRotatableArtifactSelection(root = document) {
-    root.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => {
+    const selected = root.querySelectorAll('.buret-xyzrender-sheet-item.selected');
+    selected.forEach(existing => {
       existing.classList.remove('selected');
       existing.classList.remove('rotating', 'resizing', 'dragging');
     });
+    if (selected.length) publishXyzrenderSelection(root);
   }
 
   function installRotatableArtifactSelectionClear(root) {
@@ -14305,31 +14698,51 @@ SOFTWARE.
     resetRotatableArtifactRotateRadius(item);
   }
 
-  function publishXyzrenderItem(item, type = 'xyzrenderActiveItem') {
-    const config = activeConfig || window.BuretteConfig || {};
-    if (!item || config.appViewer !== true) return;
+  function xyzrenderItemPayload(item, config) {
     const entry = xyzrenderSheetItemEntry(item);
     // Freeze each item's initial appearance before document defaults can change.
     for (const node of document.querySelectorAll('.buret-xyzrender-sheet-item')) {
       node.dataset.buretXyzrenderPreset ||= config.xyzrenderPreset || 'default';
       node.dataset.buretXyzrenderControls ||= JSON.stringify(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS);
     }
-    item.dataset.buretXyzrenderEditorId ||= `xyzr-${Date.now()}-${++xyzrenderSheetRequestSerial}`;
-    postHostMessage({
-          itemId: item.dataset.buretXyzrenderEditorId,
-          type, documentId: config.documentId, label: sheetEntryLabel(entry).split('/').pop(),
-          path: sheetEntryLabel(entry), inputDataBase64: sheetEntryInputDataBase64(entry),
-          animationSourcePath: entry?.animationSourcePath,
-          animationSourceExtension: entry?.animationSourceExtension,
-          inputExtension: sheetEntryInputExtension(entry),
-          previewSvg: item.querySelector('.buret-xyzrender-sheet-item-body > svg')?.outerHTML || '',
-          preset: item.dataset.buretXyzrenderPreset || config.xyzrenderPreset || 'default',
-          controls: normalizeXyzrenderControls({ ...(item.dataset.buretXyzrenderControls ? JSON.parse(item.dataset.buretXyzrenderControls) : config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS), regions: xyzrenderSheetItemRegions(item), vdwAtoms: xyzrenderSheetItemVdwAtoms(item) || config.xyzrenderControls?.vdwAtoms }, config),
-          orientationRef: item.dataset.buretXyzrenderOrientationRef || captureCurrentXyzrenderOrientationRef()?.text,
-          orientationBaseRef: item.dataset.buretXyzrenderOrientationBase,
-          angles: item.dataset.buretXyzrenderOrientationAngles ? JSON.parse(item.dataset.buretXyzrenderOrientationAngles) : undefined,
+    // Ids route host messages to one item, so they must stay unique across tabs.
+    item.dataset.buretXyzrenderEditorId ||= `xyzr-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+    return {
+      itemId: item.dataset.buretXyzrenderEditorId,
+      documentId: config.documentId, label: sheetEntryLabel(entry).split('/').pop(),
+      path: sheetEntryLabel(entry), inputDataBase64: sheetEntryInputDataBase64(entry),
+      animationSourcePath: entry?.animationSourcePath,
+      animationSourceExtension: entry?.animationSourceExtension,
+      inputExtension: sheetEntryInputExtension(entry),
+      preset: item.dataset.buretXyzrenderPreset || config.xyzrenderPreset || 'default',
+      controls: normalizeXyzrenderControls({ ...(item.dataset.buretXyzrenderControls ? JSON.parse(item.dataset.buretXyzrenderControls) : config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS), regions: xyzrenderSheetItemRegions(item), vdwAtoms: xyzrenderSheetItemVdwAtoms(item) || config.xyzrenderControls?.vdwAtoms }, config),
+      orientationRef: item.dataset.buretXyzrenderOrientationRef || captureCurrentXyzrenderOrientationRef()?.text,
+      orientationBaseRef: item.dataset.buretXyzrenderOrientationBase,
+      angles: item.dataset.buretXyzrenderOrientationAngles ? JSON.parse(item.dataset.buretXyzrenderOrientationAngles) : undefined,
+    };
+  }
 
+  // Batch animation acts on every selected structure, not only the inspected one.
+  function xyzrenderSelectionPayload(root, config) {
+    const selected = selectedXyzrenderSheetItems(root);
+    return selected.length > 1 ? selected.map(node => xyzrenderItemPayload(node, config)) : [];
+  }
+
+  function publishXyzrenderItem(item, type = 'xyzrenderActiveItem') {
+    const config = activeConfig || window.BuretteConfig || {};
+    if (!item || config.appViewer !== true) return;
+    const root = item.closest?.('.buret-external-artifact-root') || document;
+    postHostMessage({
+      ...xyzrenderItemPayload(item, config), type,
+      previewSvg: item.querySelector('.buret-xyzrender-sheet-item-body > svg')?.outerHTML || '',
+      selection: xyzrenderSelectionPayload(root, config),
     });
+  }
+
+  function publishXyzrenderSelection(root = document) {
+    const config = activeConfig || window.BuretteConfig || {};
+    if (config.appViewer !== true) return;
+    postHostMessage({ type: 'xyzrenderSelection', documentId: config.documentId, selection: xyzrenderSelectionPayload(root, config) });
   }
 
   async function openXyzrender3DEditor() {
@@ -16341,12 +16754,17 @@ SOFTWARE.
   async function applyMolstarIllustrativePostprocessing(viewer, options = {}) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    molstarOutlineBrightness = readMolstarOutlineBrightness();
     await plugin.managers.structure.component.setOptions({
       ...plugin.managers.structure.component.state.options,
       ignoreLight: true
     });
-    if (!plugin.canvas3d) return;
+    enableMolstarIllustrativeOutline(viewer, options);
+  }
+
+  function enableMolstarIllustrativeOutline(viewer, options = {}) {
+    const plugin = viewer?.plugin;
+    if (!plugin?.canvas3d) return;
+    molstarOutlineBrightness = readMolstarOutlineBrightness();
     const postprocessing = plugin.canvas3d.props.postprocessing;
     plugin.canvas3d.setProps({
       postprocessing: {
@@ -21329,6 +21747,7 @@ SOFTWARE.
     setStatus(selected > 0
       ? `[web] Selected ${selected} xyzrender ${label}${selected === 1 ? '' : 's'} with lasso.`
       : '[web] xyzrender lasso did not match visible graphics.');
+    applyPendingXyzrenderVdwRequest();
   }
 
   function selectXyzrenderElementsInLasso(item, points, additive) {
@@ -23458,6 +23877,8 @@ SOFTWARE.
     }
     setMolstarStructureDirty(snapshot.dirty === true);
     activeStructureAlignmentControl?.restoreMetadata?.(snapshot.superposition || null);
+    // Flat colour is scene state; the outline that goes with it is canvas state.
+    syncMolstarIllustrativeOutline(activeMolstarViewer());
     scheduleSceneTreeRender();
   }
 
@@ -24467,7 +24888,7 @@ SOFTWARE.
     { id: 'view', title: 'Visibility', direct: true, breakBefore: true },
     { id: 'represent', title: 'Appearance', direct: true, breakBefore: true },
     { id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true },
-    { id: 'align', title: 'Superposition' },
+    { id: 'align', title: 'Align' },
     { id: 'export', title: 'Export' },
     { id: 'search', title: 'Search' },
     { id: 'compute', title: 'Compute' },
@@ -24725,6 +25146,18 @@ SOFTWARE.
         setMolstarOutlineBrightness(Number(value) / 100);
       });
       items.push({ kind: 'number', id: 'outline-brightness', label: 'Outline', value: Math.round(molstarOutlineBrightness * 100), min: 0, max: 100, step: 1, unit: '%' });
+    }
+    // The picked component as a whole, like the scene tree row it belongs to.
+    const componentRef = component.cell?.transform?.ref;
+    const componentRepresentations = sceneTreeIllustrativeTargets(viewer, componentRef);
+    if (componentRepresentations.length) {
+      const componentLabel = sceneTreeNodeByRef(sceneTreeNodes(viewer), componentRef)?.label || nodeLabel;
+      session.handlers.set('illustrative', checked => {
+        void runMolstarSceneEdit(`illustrative style of ${componentLabel}`,
+          () => applySceneTreeIllustrative(componentRef, checked === true));
+      });
+      items.push({ kind: 'checkbox', id: 'illustrative', text: 'Illustrative',
+        checked: componentRepresentations.every(sceneTreeRepresentationFlat) });
     }
 
     items.push({ kind: 'separator' }, { kind: 'label', text: 'Colour' });
@@ -27948,6 +28381,20 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {
       molstarStructureFocusSerial += 1;
       restoreMolstarCameraSnapshotNow(viewer, savedCamera);
+    } else if (isQuickLookHost() && !hasMolstarContextFocus(config)) {
+      // Quick Look keeps the file's orientation and never animates the camera; it
+      // only trades Mol*'s bounding-sphere distance for the atom-fitted one. An MVS
+      // scene brings its own camera.
+      const cameraState = viewer.plugin.canvas3d?.camera?.state;
+      if (cameraState && prepared.kind !== 'mvs') {
+        scheduleMolstarStructureFocus(viewer, {
+          reason: 'quick-look-frame',
+          durationMs: 0,
+          force: true,
+          direction: [0, 1, 2].map(axis => cameraState.position[axis] - cameraState.target[axis]),
+          up: Array.from(cameraState.up)
+        });
+      }
     } else if (!hasMolstarContextFocus(config)) {
       scheduleMolstarStructureFocus(viewer, { reason: 'initial-load', durationMs: 120 });
     }

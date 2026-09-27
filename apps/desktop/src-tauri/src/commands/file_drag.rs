@@ -3,15 +3,33 @@
 
 use std::path::Path;
 
+use serde::Serialize;
+
 const MAX_DRAG_ITEMS: usize = 500;
 
-/// Starts an AppKit file drag at the pointer and resolves when it ends:
-/// `true` when a destination accepted the files.
+#[derive(Clone, Copy, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FileDragOutcome {
+    /// A destination (Finder, another app, or the webview itself) took the files.
+    accepted: bool,
+    /// Where the button was released over this window when nothing took the
+    /// files, in webview points from the top-left. AppKit does not always hand
+    /// such a drop to the webview, so the page completes it at this point.
+    in_app_drop: Option<FileDragPoint>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize)]
+pub(crate) struct FileDragPoint {
+    x: f64,
+    y: f64,
+}
+
+/// Starts an AppKit file drag at the pointer and resolves when it ends.
 #[tauri::command]
 pub(crate) async fn start_file_drag(
     window: tauri::WebviewWindow,
     paths: Vec<String>,
-) -> Result<bool, String> {
+) -> Result<FileDragOutcome, String> {
     if paths.is_empty() || paths.len() > MAX_DRAG_ITEMS {
         return Err(format!("Drag between 1 and {MAX_DRAG_ITEMS} items."));
     }
@@ -43,6 +61,7 @@ pub(crate) async fn start_file_drag(
 
 #[cfg(target_os = "macos")]
 mod macos {
+    use super::{FileDragOutcome, FileDragPoint};
     use cocoa::base::{id, nil, YES};
     use cocoa::foundation::{NSAutoreleasePool, NSPoint, NSRect, NSSize};
     use objc::declare::ClassDecl;
@@ -51,7 +70,12 @@ mod macos {
     use std::ffi::{c_void, CString};
     use std::sync::OnceLock;
 
-    type Sender = tauri::async_runtime::Sender<bool>;
+    type Sender = tauri::async_runtime::Sender<FileDragOutcome>;
+
+    const NOT_STARTED: FileDragOutcome = FileDragOutcome {
+        accepted: false,
+        in_app_drop: None,
+    };
 
     const DRAG_OPERATION_COPY: usize = 1;
     const LEFT_MOUSE_UP: usize = 2;
@@ -68,13 +92,7 @@ mod macos {
         DRAG_OPERATION_COPY
     }
 
-    extern "C" fn ended(
-        this: &mut Object,
-        _: Sel,
-        _session: id,
-        _point: NSPoint,
-        operation: usize,
-    ) {
+    extern "C" fn ended(this: &mut Object, _: Sel, _session: id, point: NSPoint, operation: usize) {
         unsafe {
             let drag = *this.get_ivar::<*mut c_void>("drag");
             if drag.is_null() {
@@ -82,8 +100,17 @@ mod macos {
             }
             this.set_ivar("drag", std::ptr::null_mut::<c_void>());
             let drag = Box::from_raw(drag as *mut Drag);
+            let accepted = operation != 0;
+            let in_app_drop = if accepted {
+                None
+            } else {
+                released_over_view(drag.view, point)
+            };
             release_mouse(drag.view);
-            let _ = drag.sender.try_send(operation != 0);
+            let _ = drag.sender.try_send(FileDragOutcome {
+                accepted,
+                in_app_drop,
+            });
             // Balances `new` in `begin`; the session no longer calls its source.
             let _: id = msg_send![this, autorelease];
         }
@@ -124,6 +151,31 @@ mod macos {
         msg_send![class!(NSEvent), mouseEventWithType: kind location: location modifierFlags: 0usize timestamp: uptime windowNumber: number context: nil eventNumber: 0isize clickCount: 1isize pressure: 1.0f32]
     }
 
+    // Escape ends the drag with the button still held; a drop releases it over
+    // the topmost window, which must be this one.
+    unsafe fn released_over_view(view: id, screen_point: NSPoint) -> Option<FileDragPoint> {
+        let buttons: usize = msg_send![class!(NSEvent), pressedMouseButtons];
+        let window: id = msg_send![view, window];
+        if buttons & 1 == 1 || window == nil {
+            return None;
+        }
+        let number: isize = msg_send![window, windowNumber];
+        let topmost: isize = msg_send![class!(NSWindow), windowNumberAtPoint: screen_point belowWindowWithWindowNumber: 0isize];
+        if topmost != number {
+            return None;
+        }
+        let location: NSPoint = msg_send![window, convertPointFromScreen: screen_point];
+        let frame: NSRect = msg_send![view, frame];
+        // Same convention as wry's drop positions: the webview fills the window.
+        let point = FileDragPoint {
+            x: location.x,
+            y: frame.size.height - location.y,
+        };
+        let inside = (0.0..=frame.size.width).contains(&point.x)
+            && (0.0..=frame.size.height).contains(&point.y);
+        inside.then_some(point)
+    }
+
     // AppKit's drag loop consumed the mouse-up WebKit is still waiting for.
     unsafe fn release_mouse(view: id) {
         let event = mouse_event(view, LEFT_MOUSE_UP);
@@ -142,7 +194,7 @@ mod macos {
             nil
         };
         if event == nil {
-            let _ = sender.try_send(false);
+            let _ = sender.try_send(NOT_STARTED);
             let _: () = msg_send![pool, drain];
             return;
         }
@@ -179,7 +231,7 @@ mod macos {
             msg_send![view, beginDraggingSessionWithItems: items event: event source: source];
         if session == nil {
             let drag = Box::from_raw(drag);
-            let _ = drag.sender.try_send(false);
+            let _ = drag.sender.try_send(NOT_STARTED);
             let _: () = msg_send![source, release];
         } else {
             let _: () = msg_send![session, setAnimatesToStartingPositionsOnCancelOrFail: YES];

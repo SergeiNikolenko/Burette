@@ -79,7 +79,7 @@ for (const file of dialogFiles) {
 assert.deepEqual(problems, [], `dialog consistency problems:\n${problems.join('\n')}`);
 
 // The shared rules the dialogs rely on.
-assert.match(styles, /\.radix-dialog-footer \{[^}]*display: flex;[^}]*justify-content: flex-end;[^}]*gap: 8px;[^}]*padding: 0 16px 16px;/s);
+assert.match(styles, /\.radix-dialog-footer \{[^}]*display: flex;[^}]*justify-content: flex-end;[^}]*gap: 10px;[^}]*padding: 8px var\(--dialog-inset\) var\(--dialog-inset\);/s);
 assert.match(styles, /\.radix-dialog-footer\.calculate-properties-footer \{[^}]*justify-content: space-between;/s);
 assert.match(styles, /\.calculate-properties-option,\s*\.radix-dialog-check-row \{/);
 assert.match(styles, /\.radix-dialog-check-row input\[type="checkbox"\] \{[^}]*accent-color: var\(--accent\);/s);

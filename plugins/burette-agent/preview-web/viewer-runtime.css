@@ -2840,12 +2840,6 @@ body.burette-quicklook-host .buret-xyz-badge {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
-body.burette-quicklook-host {
-  --buret-toolbar-safe-top: 56px;
-}
-body.burette-quicklook-host .buret-corner-button {
-  display: inline-flex;
-}
 body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-layout-left,
 body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-layout-right,
 body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-layout-top,
@@ -4248,6 +4242,7 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
 }
 .buret-tree-note {
   flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4305,8 +4300,10 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   width: 13px;
   height: 13px;
 }
+/* Keyboard focus only: a row focused by a mouse click must not keep its
+   actions lit once the pointer has left. */
 .buret-tree-row:hover .buret-tree-action,
-.buret-tree-row:focus-within .buret-tree-action,
+.buret-tree-row:has(:focus-visible) .buret-tree-action,
 .buret-tree-item[data-hidden="true"] > .buret-tree-row .buret-tree-action-visibility {
   opacity: 1;
 }
@@ -4381,6 +4378,50 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   background: var(--buret-molstar-panel-background);
   box-shadow: 0 18px 44px var(--buret-molstar-shadow);
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+.buret-tree-measurement-editor {
+  width: min(268px, calc(100vw - 24px));
+  max-height: min(64vh, 400px);
+  padding: 8px;
+  border-radius: 12px;
+}
+.buret-tree-measurement-editor .buret-tree-menu-header {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 4px 8px;
+}
+.buret-tree-measurement-editor .buret-tree-menu-heading {
+  font-size: 13px;
+}
+.buret-tree-editor-close {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 5px;
+  color: var(--buret-molstar-muted-text);
+  background: transparent;
+  cursor: pointer;
+}
+.buret-tree-editor-close:hover { background: var(--buret-molstar-hover-background); color: var(--buret-molstar-text); }
+.buret-tree-editor-close:focus-visible { outline: 2px solid var(--buret-molstar-accent); }
+.buret-tree-editor-close > svg { width: 14px; height: 14px; }
+.buret-tree-measurement-editor .buret-tree-menu-divider { margin: 5px 4px; }
+.buret-tree-measurement-editor .buret-tree-menu-field { padding: 4px 4px 8px; gap: 8px; }
+.buret-tree-measurement-editor .buret-tree-menu-field > span:first-child { min-width: 72px; }
+.buret-tree-measurement-editor .buret-tree-swatches-inline { flex-wrap: nowrap; gap: 3px; }
+.buret-tree-measurement-editor .buret-tree-swatch { width: 16px; height: 16px; }
+.buret-tree-custom-color {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  padding: 2px;
+  border: 1px solid var(--buret-molstar-border);
+  border-radius: 6px;
+  background: var(--buret-molstar-field-background);
+  cursor: pointer;
 }
 .buret-tree-menu-header {
   display: flex;

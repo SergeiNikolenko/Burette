@@ -326,6 +326,9 @@ export type HoveredGridRow = {
   molblock?: string | null;
   cardRenderer?: "rdkit" | "xyzrender";
   previewSvg?: string | null;
+  useInputCoords?: boolean;
+  highlightAtoms?: number[];
+  highlightBonds?: number[];
   props?: Array<{ columnId?: string | null; label: string; value: string }>;
 };
 

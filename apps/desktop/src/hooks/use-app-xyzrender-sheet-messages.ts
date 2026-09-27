@@ -51,11 +51,12 @@ export function useAppXyzrenderSheetMessages({
       void showNativeContextMenu(items, viewerFramePoint(source, body)).catch(() => reply({ unsupported: true }));
       return true;
     }
-    if (body?.type === "molstarContextMenu") {
+    if (body?.type === "molstarContextMenu" || body?.type === "sceneTreeContextMenu") {
       const requestId = body.requestId;
       if ((sourceName !== "burette-viewer" && sourceName !== "burette-grid") || typeof requestId !== "string" || requestId.length > 128) return true;
+      const resultType = body.type === "sceneTreeContextMenu" ? "sceneTreeContextMenuResult" : "molstarContextMenuResult";
       const reply = (result: { event: "select" | "closed" | "unsupported"; id?: string; value?: string | number | boolean }) =>
-        postMessageToViewerSource(source, { source: "burette-host", body: { type: "molstarContextMenuResult", requestId, ...result } });
+        postMessageToViewerSource(source, { source: "burette-host", body: { type: resultType, requestId, ...result } });
       // Browser-dev keeps the viewer's own menu; only the desktop app has NSMenu.
       const items = isTauriRuntime() ? molstarContextMenuItems(body.items, (id, value) => reply({ event: "select", id, value })) : [];
       if (!items.length) {

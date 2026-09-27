@@ -4,6 +4,7 @@ import { SidebarTooltip } from "./sidebar-tooltip";
 import { Pin, PinFilled, DotsHorizontal } from "../ui/app-icons";
 import { SidebarFolderIcon } from "./sidebar-folder-icon";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { documentFallbackExtensions } from "../../lib/file-routing";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload, type StructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
@@ -298,6 +299,13 @@ export function ProjectGroup({
           <FolderExpandCollapseIcon collapse={expanded} />
         </button>
         <span className="project-group-actions">
+          {project.rootPath && (
+            <FolderPinButton
+              pinned={project.isPinned}
+              title={project.title}
+              onToggle={() => actions.togglePinnedProjectRoot(project.rootPath!)}
+            />
+          )}
           <button
             type="button"
             className="project-group-menu-button"
@@ -490,6 +498,14 @@ function ProjectTreeNodeView({
         >
           <FolderExpandCollapseIcon collapse={expanded} />
         </button>
+        {folderPath && (
+          <FolderPinButton
+            className="project-row-pin"
+            pinned={false}
+            title={displayName}
+            onToggle={() => actions.togglePinnedProjectRoot(folderPath)}
+          />
+        )}
       </div>
       <div
         className="project-folder-children-shell"
@@ -548,7 +564,11 @@ export function ProjectItem({
     state,
   });
   const openItem = () => {
-    if (item.documentId) {
+    // A CSV/TSV row can be bound to the hidden text copy that the grid and dock
+    // keep for source editing; reopen it instead so it lands in the molecule
+    // grid or the table viewer. Raw text stays an explicit Open As choice.
+    const textCopyOfTable = item.renderer === "text" && documentFallbackExtensions.has(item.extension.toLowerCase());
+    if (item.documentId && !textCopyOfTable) {
       actions.selectDocument(item.documentId);
       return;
     }
@@ -736,6 +756,30 @@ function sidebarProjectItemsDragPayload(
 
 function projectDepthStyle(depth: number): CSSProperties {
   return { "--project-depth": depth } as CSSProperties;
+}
+
+// Pinning a folder promotes it to a pinned project, same as the folder menu's Pin.
+function FolderPinButton({ pinned, title, onToggle, className }: {
+  pinned: boolean;
+  title: string;
+  onToggle: () => void;
+  className?: string;
+}) {
+  return (
+    <SidebarTooltip label={pinned ? "Unpin folder" : "Pin folder"}>
+      <button
+        type="button"
+        className={["pin-hit", pinned ? "pinned" : "", className ?? ""].filter(Boolean).join(" ")}
+        aria-label={(pinned ? "Unpin " : "Pin ") + title}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggle();
+        }}
+      >
+        <PinIcon pinned={pinned} />
+      </button>
+    </SidebarTooltip>
+  );
 }
 
 function PinIcon({ pinned }: { pinned: boolean }) {

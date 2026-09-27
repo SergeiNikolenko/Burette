@@ -22,8 +22,24 @@ send({...body, pixels: new Uint8ClampedArray(16)});
 assert.equal(document.querySelector('canvas'), canvas); assert.equal(painted.pixels[0], 0);
 console.log('animation frame bridge: validates sender and pixels, reuses canvas, updates pixels');
 
-// Duplicating a live frame must preserve pixels, not copy an empty canvas.
-window.HTMLCanvasElement.prototype.toDataURL = () => 'data:image/png;base64,cGl4ZWxz';
+// Ending a preview restores the static drawing, or the applied GIF when present.
+send({ type: 'clearXyzrenderAnimationPreview', itemId: 'test' });
+assert.equal(document.querySelector('canvas'), null);
+assert.equal(document.querySelector('svg').style.visibility, '');
+send(body);
+const gif = document.createElement('img');
+gif.className = 'buret-xyzrender-animation-image';
+document.querySelector('.buret-xyzrender-sheet-item-body').append(gif);
+send(body);
+assert.equal(gif.style.visibility, 'hidden');
+send({ type: 'clearXyzrenderAnimationPreview', itemId: 'test' });
+assert.deepEqual([document.querySelector('canvas'), gif.style.visibility, document.querySelector('svg').style.visibility], [null, 'visible', 'hidden']);
+gif.remove();
+send(body);
+console.log('animation preview clear: restores the drawing or the applied GIF');
+
+// A live preview belongs to the original item; its copy shows the real artwork.
+const canvasAfterClear = document.querySelector('canvas');
 const original = document.querySelector('.buret-xyzrender-sheet-item');
 const duplicateStart = source.indexOf('  function duplicateXyzrenderSheetItems(item)');
 const duplicateEnd = source.indexOf('  function arrangeXyzrenderSheetItems', duplicateStart);
@@ -31,16 +47,18 @@ const stage = document.createElement('div');
 stage.className = 'buret-external-artifact-stage';
 const root = document.createElement('div'); root.append(stage);
 let copiedBody;
-const duplicate = new Function('document', 'selectedXyzrenderSheetItemsForAction', 'ensureXyzrenderSheet', 'sheetItemCenterPosition', 'addXyzrenderSheetItem', 'sheetItemExportLabel', 'xyzrenderSheetItemEntry', 'setSheetItemRotation', 'clearRotatableArtifactSelection', `${source.slice(duplicateStart, duplicateEnd)}; return duplicateXyzrenderSheetItems;`)(document,
+const duplicate = new Function('document', 'selectedXyzrenderSheetItemsForAction', 'ensureXyzrenderSheet', 'sheetItemCenterPosition', 'addXyzrenderSheetItem', 'sheetItemExportLabel', 'xyzrenderSheetItemEntry', 'setSheetItemRotation', 'clearRotatableArtifactSelection', 'publishXyzrenderSelection', `${source.slice(duplicateStart, duplicateEnd)}; return duplicateXyzrenderSheetItems;`)(document,
   () => ({root, items: [original]}), () => stage, () => ({left: 0, top: 0}),
   (_sheet, html) => { copiedBody = document.createElement('div'); copiedBody.innerHTML = html; return copiedBody; },
-  () => 'caffeine.xyz', () => ({}), () => {}, () => {});
+  () => 'caffeine.xyz', () => ({}), () => {}, () => {}, () => {});
 duplicate(original);
 assert.equal(copiedBody.querySelector('canvas'), null);
-assert.equal(copiedBody.querySelector('img').src, 'data:image/png;base64,cGl4ZWxz');
-assert.equal(copiedBody.querySelector('img').style.visibility, 'visible');
-assert.equal(original.querySelector('canvas'), canvas);
-original.querySelector('.buret-xyzrender-sheet-item-body').innerHTML = '<svg style="visibility:hidden"></svg><img class="buret-xyzrender-animation-image" src="data:image/gif;base64,Z2lm">';
+assert.equal(copiedBody.querySelector('img'), null);
+assert.equal(copiedBody.querySelector('svg').style.visibility, '');
+assert.equal(original.querySelector('canvas'), canvasAfterClear, 'the original keeps its preview');
+original.querySelector('.buret-xyzrender-sheet-item-body').innerHTML = '<svg style="visibility:hidden"></svg><img class="buret-xyzrender-animation-image" style="visibility:hidden" src="data:image/gif;base64,Z2lm"><canvas class="buret-xyzrender-animation-canvas"></canvas>';
 duplicate(original);
+assert.equal(copiedBody.querySelector('canvas'), null);
 assert.equal(copiedBody.querySelector('img').src, 'data:image/gif;base64,Z2lm');
-console.log('animation duplication: preserves live pixels and committed GIFs');
+assert.equal(copiedBody.querySelector('img').style.visibility, 'visible');
+console.log('animation duplication: drops the live preview and keeps committed GIFs');

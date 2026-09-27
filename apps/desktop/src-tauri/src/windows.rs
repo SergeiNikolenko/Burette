@@ -195,6 +195,8 @@ fn create_workspace_window<R: Runtime>(
     }
     registry.apply_geometry(&window);
     attach_window_cleanup(app, &window);
+    #[cfg(target_os = "macos")]
+    crate::macos::keep_traffic_lights_inset(&window);
     crate::zoom::apply_current_zoom(&window);
     Ok(window)
 }

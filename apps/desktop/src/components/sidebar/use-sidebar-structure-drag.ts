@@ -119,7 +119,12 @@ export function useSidebarStructureDrag({
       suppressClickRef.current = true;
       setStructureDragActive(true);
       void startNativeFileDrag(payload)
-        .catch(() => false)
+        .then(({ inAppDrop }) => {
+          // AppKit does not always report a drop on this window to the
+          // webview; the drag then ends unaccepted and the page finishes it.
+          if (inAppDrop) runSidebarDropAtPoint(payload, inAppDrop.x, inAppDrop.y, state, actions);
+        })
+        .catch(() => {})
         .finally(() => {
           finishDrag();
           window.setTimeout(() => {
@@ -135,7 +140,7 @@ export function useSidebarStructureDrag({
     }
     if (mouseDragRef.current) mouseDragRef.current.nativeDragStarted = true;
     setStructureDragActive(true);
-  }, [finishDrag, getPayload, setStructureDragActive]);
+  }, [actions, finishDrag, getPayload, setStructureDragActive, state]);
 
   const onClickCapture = useCallback((event: ReactMouseEvent<HTMLElement>) => {
     if (!suppressClickRef.current) return;
