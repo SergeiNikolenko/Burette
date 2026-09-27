@@ -1,3 +1,4 @@
+import DOMPurify from "dompurify";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { loadDerivedEngines } from "../lib/derived-columns";
@@ -152,10 +153,19 @@ export function GridHoverMoleculeCard({
   // make the preview useless while moving between rows.
   const shown = row ?? lastRowRef.current;
 
+  // An RDKit grid sends the card's own drawing, so the inspector shows the row
+  // exactly as the card does: same layout, same fit, same substructure match.
+  const shownPreviewSvg = shown?.cardRenderer === "rdkit" ? shown.previewSvg ?? "" : "";
+  const cardDrawing = useMemo(() => {
+    if (showingScaffold || !shownPreviewSvg.trim()) return null;
+    const clean = DOMPurify.sanitize(shownPreviewSvg, { USE_PROFILES: { svg: true } });
+    return clean.trimStart().startsWith("<svg") ? clean : null;
+  }, [showingScaffold, shownPreviewSvg]);
+
   const molecularSource = showingScaffold && scaffold.kind === "found"
     ? scaffold.smiles
     : (shown?.molblock ?? "").trim() ? shown?.molblock ?? "" : (shown?.smiles ?? "").trim();
-  const hideMolecularPreview = !showingScaffold && (!molecularSource || invalidSource === molecularSource);
+  const hideMolecularPreview = !showingScaffold && !cardDrawing && (!molecularSource || invalidSource === molecularSource);
 
   // A callback ref, not a mount effect: the card is unmounted while nothing is
   // hovered and while it is collapsed, so an effect with an empty dependency
@@ -186,7 +196,7 @@ export function GridHoverMoleculeCard({
 
   useEffect(() => {
     const token = ++renderTokenRef.current;
-    if (!wellSize) return;
+    if (!wellSize || cardDrawing) return;
     const scaffoldSource = showingScaffold && scaffold.kind === "found" ? scaffold.smiles : "";
     // The molblock is passed whole rather than trimmed: its first line is the
     // molecule name and is usually blank, and trimming shifts the header block.
@@ -242,7 +252,7 @@ export function GridHoverMoleculeCard({
       }
     })();
     return () => { renderTokenRef.current += 1; };
-  }, [scaffold, showingScaffold, shown, theme, wellSize]);
+  }, [scaffold, showingScaffold, shown, theme, wellSize, cardDrawing]);
 
   // The drawing IS the row's structure, so acting on it acts on that row: the
   // grid runs the same command the Structure menu sends, aimed at the row under
@@ -367,6 +377,8 @@ export function GridHoverMoleculeCard({
       >
         {scaffoldStatus ? (
           <span className="grid-hover-molecule-empty">{scaffoldStatus}</span>
+        ) : cardDrawing ? (
+          <div className="grid-hover-molecule-card-drawing" dangerouslySetInnerHTML={{ __html: cardDrawing }} />
         ) : svg ? (
           <div className="grid-hover-molecule-drawing" dangerouslySetInnerHTML={{ __html: svg }} />
         ) : (

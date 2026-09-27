@@ -357,6 +357,15 @@
         const cachedSvg = state.xyzrenderCardCache.get(xyzrenderCardKey(row, record))?.svg || '';
         if (cachedSvg.length <= HOVER_PREVIEW_SVG_LIMIT) previewSvg = cachedSvg;
       }
+    } else if (row) {
+      // The inspector shows the card's own drawing - substructure highlight and
+      // content fit included - so the two surfaces never disagree about a row.
+      // Only drawings that already exist are sent: drawing here would omit an
+      // invalid row as a side effect of hovering it.
+      const drawn = root?.querySelector(`[data-index="${index}"] svg[data-buret-rdkit-svg="true"]`)?.outerHTML
+        || state.svgCache.get(rdkitCardKey(row))
+        || '';
+      if (drawn.length <= HOVER_PREVIEW_SVG_LIMIT) previewSvg = drawn;
     }
     post('gridRowHover', '', {
       documentId: cfg?.documentId || null,
@@ -372,6 +381,16 @@
           }
         : null
     });
+  }
+
+  // Re-sends the row the inspector is showing after its drawing changed,
+  // without claiming the pointer is over it.
+  function repostInspectorRow(cfg) {
+    const hovered = state.hoveredGridRowIndex;
+    const index = Number.isSafeInteger(hovered) ? hovered : state.lastGridRowIndex;
+    if (!Number.isSafeInteger(index)) return;
+    postGridRowHover(index, cfg);
+    state.hoveredGridRowIndex = hovered;
   }
 
   // Marks the row the chemical-space map is pointing at, so a point under the
@@ -2083,10 +2102,7 @@
     refreshGridControls(cfg);
     applyGridPreferences(cfg);
     render(cfg);
-    const previewRowIndex = Number.isSafeInteger(state.hoveredGridRowIndex)
-      ? state.hoveredGridRowIndex
-      : state.lastGridRowIndex;
-    if (Number.isSafeInteger(previewRowIndex)) postGridRowHover(previewRowIndex, cfg);
+    repostInspectorRow(cfg);
   }
 
   function setGridViewMode(value, cfg) {
@@ -3141,6 +3157,9 @@
     state.totalRows = state.rows.length;
     const rendered = render(cfg);
     postChemicalSpaceVisibility(visibilityRows);
+    // The inspector keeps the last row on screen while the user types, so a new
+    // substructure query has to reach its drawing without another hover.
+    repostInspectorRow(cfg);
     return rendered;
   }
 
@@ -8233,6 +8252,9 @@
     target.innerHTML = html;
     const card = target.closest('.buret-card');
     if (card) fitCardSVGs(card);
+    if (card?.hasAttribute('data-index') && Number(card.getAttribute('data-index')) === state.lastGridRowIndex) {
+      repostInspectorRow(config());
+    }
   }
 
   function resetRdkitCardObserver() {
