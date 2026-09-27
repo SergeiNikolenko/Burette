@@ -642,6 +642,15 @@
       }
       if (!data || (data.source !== 'burette-grid-host' && data.source !== 'burette-host')) return;
       const body = data.body || {};
+      // Applied in place like the structure viewer: the config already carries
+      // the token sets for both themes, so a theme change never reopens the grid.
+      if (body.type === 'setViewerTheme') {
+        const cfg = safeConfig();
+        if (!cfg) return;
+        cfg.theme = body.value === 'light' || body.value === 'dark' ? body.value : 'auto';
+        applyTheme(cfg);
+        return;
+      }
       if (body.type === 'gridSetColumnFilter') {
         applyGridColumnFilter(config(), String(body.columnId || ''), String(body.part || ''), body.value);
         return;
@@ -1765,10 +1774,13 @@
   }
 
   function installThemeListener(cfg) {
-    if (cfg.theme === 'light' || cfg.theme === 'dark' || !window.matchMedia) return;
+    if (!window.matchMedia) return;
     try {
       const media = window.matchMedia('(prefers-color-scheme: light)');
-      const update = () => applyTheme(cfg);
+      // Always installed: the host can switch a fixed theme back to Auto later.
+      const update = () => {
+        if (cfg.theme !== 'light' && cfg.theme !== 'dark') applyTheme(cfg);
+      };
       if (typeof media.addEventListener === 'function') media.addEventListener('change', update);
       else if (typeof media.addListener === 'function') media.addListener(update);
     } catch (_) {}
