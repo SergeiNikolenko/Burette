@@ -2,11 +2,19 @@ use cocoa::appkit::{NSApplicationTerminateReply, NSView, NSWindow, NSWindowButto
 use cocoa::base::{id, NO, YES};
 use cocoa::foundation::NSRect;
 use dispatch2::DispatchQueue;
-use objc::runtime::{class_addMethod, class_getInstanceMethod, object_getClass, Imp, Object, Sel};
+use objc::declare::ClassDecl;
+use objc::runtime::{
+    class_addMethod, class_getInstanceMethod, object_getClass, Class, Imp, Object, Sel,
+};
 use objc::{class, msg_send, sel, sel_impl};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use tauri::LogicalPosition;
+
+#[link(name = "AppKit", kind = "framework")]
+extern "C" {
+    static NSViewFrameDidChangeNotification: id;
+}
 
 static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
 static TERMINATION_PENDING: AtomicBool = AtomicBool::new(false);
@@ -35,35 +43,143 @@ pub(crate) fn reposition_traffic_lights<R: tauri::Runtime>(window: &tauri::Webvi
     });
 }
 
-unsafe fn inset_traffic_lights(window: id, position: LogicalPosition<f64>) {
-    let close = window.standardWindowButton_(NSWindowButton::NSWindowCloseButton);
-    let miniaturize = window.standardWindowButton_(NSWindowButton::NSWindowMiniaturizeButton);
-    let zoom = window.standardWindowButton_(NSWindowButton::NSWindowZoomButton);
-    if close.is_null() || miniaturize.is_null() || zoom.is_null() {
-        return;
-    }
-    let button_row = NSView::superview(close);
-    if button_row.is_null() {
-        return;
-    }
-    let title_bar_container = NSView::superview(button_row);
-    if title_bar_container.is_null() {
-        return;
-    }
+/// Keeps the traffic lights inset whenever AppKit lays the title bar out again.
+///
+/// AppKit resets the buttons to their default positions on its own schedule,
+/// for example after an accessibility client such as Computer Use releases the
+/// window, and no Tauri window event marks that moment. Watching the frames of
+/// the close button and its title bar container catches every such reset.
+pub(crate) fn keep_traffic_lights_inset<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>) {
+    let target = window.clone();
+    let _ = window.run_on_main_thread(move || {
+        let Ok(ns_window) = target.ns_window() else {
+            return;
+        };
+        if ns_window.is_null() {
+            return;
+        }
+        unsafe { observe_title_bar_frames(ns_window as id) };
+    });
+}
 
-    let close_frame = NSView::frame(close);
+struct TitleBarViews {
+    container: id,
+    buttons: [id; 3],
+}
+
+unsafe fn title_bar_views(window: id) -> Option<TitleBarViews> {
+    let buttons = [
+        NSWindowButton::NSWindowCloseButton,
+        NSWindowButton::NSWindowMiniaturizeButton,
+        NSWindowButton::NSWindowZoomButton,
+    ]
+    .map(|kind| window.standardWindowButton_(kind));
+    if buttons.iter().any(|button| button.is_null()) {
+        return None;
+    }
+    let button_row = NSView::superview(buttons[0]);
+    if button_row.is_null() {
+        return None;
+    }
+    let container = NSView::superview(button_row);
+    if container.is_null() {
+        return None;
+    }
+    Some(TitleBarViews { container, buttons })
+}
+
+// Only frames that differ are written, so the frame change notifications this
+// raises end in a pass that changes nothing.
+unsafe fn inset_traffic_lights(window: id, position: LogicalPosition<f64>) {
+    let Some(TitleBarViews { container, buttons }) = title_bar_views(window) else {
+        return;
+    };
+
+    let close_frame = NSView::frame(buttons[0]);
     let title_bar_height = close_frame.size.height + position.y;
-    let mut title_bar_frame: NSRect = NSView::frame(title_bar_container);
+    let mut title_bar_frame: NSRect = NSView::frame(container);
+    let current = title_bar_frame;
     title_bar_frame.size.height = title_bar_height;
     title_bar_frame.origin.y = NSWindow::frame(window).size.height - title_bar_height;
-    let _: () = msg_send![title_bar_container, setFrame: title_bar_frame];
-
-    let spacing = NSView::frame(miniaturize).origin.x - close_frame.origin.x;
-    for (index, button) in [close, miniaturize, zoom].into_iter().enumerate() {
-        let mut frame = NSView::frame(button);
-        frame.origin.x = position.x + index as f64 * spacing;
-        NSView::setFrameOrigin(button, frame.origin);
+    if title_bar_frame.size.height != current.size.height
+        || title_bar_frame.origin.y != current.origin.y
+    {
+        let _: () = msg_send![container, setFrame: title_bar_frame];
     }
+
+    let spacing = NSView::frame(buttons[1]).origin.x - close_frame.origin.x;
+    for (index, button) in buttons.into_iter().enumerate() {
+        let mut origin = NSView::frame(button).origin;
+        let x = position.x + index as f64 * spacing;
+        if origin.x != x {
+            origin.x = x;
+            NSView::setFrameOrigin(button, origin);
+        }
+    }
+}
+
+unsafe fn observe_title_bar_frames(window: id) {
+    let Some(TitleBarViews { container, buttons }) = title_bar_views(window) else {
+        return;
+    };
+    let center: id = msg_send![class!(NSNotificationCenter), defaultCenter];
+    let observer = title_bar_observer();
+    for view in [buttons[0], container] {
+        let _: () = msg_send![view, setPostsFrameChangedNotifications: YES];
+        let _: () = msg_send![center, addObserver: observer
+            selector: sel!(titleBarFrameChanged:)
+            name: NSViewFrameDidChangeNotification
+            object: view];
+    }
+}
+
+/// One app-lifetime observer serves every window; each notification names the
+/// view that moved, and the view leads back to its window.
+fn title_bar_observer() -> id {
+    static OBSERVER: OnceLock<usize> = OnceLock::new();
+    *OBSERVER.get_or_init(|| unsafe {
+        let observer: id = msg_send![title_bar_observer_class(), new];
+        observer as usize
+    }) as id
+}
+
+fn title_bar_observer_class() -> &'static Class {
+    static CLASS: OnceLock<&'static Class> = OnceLock::new();
+    CLASS.get_or_init(|| {
+        let mut class = ClassDecl::new("BuretteTitleBarObserver", class!(NSObject))
+            .expect("unique title bar observer class");
+        unsafe {
+            class.add_method(
+                sel!(titleBarFrameChanged:),
+                title_bar_frame_changed as extern "C" fn(&Object, Sel, id),
+            );
+        }
+        class.register()
+    })
+}
+
+// AppKit moves the buttons in the middle of its own layout pass, so the inset
+// is restored once that pass has finished.
+extern "C" fn title_bar_frame_changed(_: &Object, _: Sel, notification: id) {
+    let window = unsafe {
+        let view: id = msg_send![notification, object];
+        let window: id = msg_send![view, window];
+        if window.is_null() {
+            return;
+        }
+        let owned = title_bar_views(window)
+            .is_some_and(|views| view == views.container || view == views.buttons[0]);
+        if !owned {
+            return;
+        }
+        let window: id = msg_send![window, retain];
+        window as usize
+    };
+    after_current_appkit_event(move || unsafe {
+        let window = window as id;
+        inset_traffic_lights(window, TRAFFIC_LIGHT_INSET);
+        let _: () = msg_send![window, release];
+    });
 }
 
 pub(crate) fn after_current_appkit_event<F>(work: F)
