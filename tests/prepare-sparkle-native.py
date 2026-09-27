@@ -39,7 +39,7 @@ subprocess.run(['codesign', '--force', '--sign', '-', str(candidate)], check=Tru
 subprocess.run(['codesign', '--verify', '--deep', '--strict', str(candidate)], check=True)
 archive = web / f'Burette-{next_version}.zip'
 subprocess.run(['ditto', '-c', '-k', '--keepParent', str(candidate), str(archive)], check=True)
-signature = subprocess.run([str(root / 'build/sparkle/2.9.6/bin/sign_update'),
+signature = subprocess.run([str(root / 'build/sparkle/2.10.0/bin/sign_update'),
                             '--ed-key-file', '-', '-p', str(archive)],
                            input=key['private'] + '\n', text=True, capture_output=True, check=True).stdout.strip()
 spec = importlib.util.spec_from_file_location('appcast', root / 'scripts/sparkle-appcast.py')

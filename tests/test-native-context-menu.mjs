@@ -1,7 +1,7 @@
 import { withMenuIcons } from "../apps/desktop/src/components/menu-icons.ts";
 import { Edit } from "../apps/desktop/src/components/ui/app-icon-data.ts";
 import assert from 'node:assert/strict';
-import ts from 'typescript';
+import ts from 'typescript-compiler-api';
 import { readFileSync } from 'node:fs';
 
 // Exercise the actual adapter against the Tauri menu boundary without AppKit.

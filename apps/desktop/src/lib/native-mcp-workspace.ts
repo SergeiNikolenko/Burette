@@ -26,6 +26,11 @@ declare global {
   }
 }
 
+/** The native Codex widget or the browser agent shell: surfaces with an agent chat. */
+export function isAgentPluginSurface(isAgentShell: boolean) {
+  return isAgentShell || (typeof window !== "undefined" && Boolean(window.BuretteMcpWorkspace));
+}
+
 export function nativePreviewHtml(html: string) {
   return typeof window === "undefined" ? html : window.BuretteMcpWorkspace?.preparePreview(html) ?? html;
 }

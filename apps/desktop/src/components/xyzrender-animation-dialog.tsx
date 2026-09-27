@@ -17,6 +17,8 @@ import { safeExportFileName } from "../lib/file-export";
 import { Slider } from "./ui/slider";
 import { Input } from "./ui/input";
 import { decodeAnimation, encodeAnimation, type AnimationFrames } from "../lib/xyzrender-animation";
+import { postToXyzrenderViewer } from "../lib/viewer-bridge";
+import { gifBytesToBase64, renderAnimationGifDataUrl } from "../lib/xyzrender-batch-animation";
 
 export type AnimationSource = {
   itemId?: string;
@@ -36,8 +38,21 @@ export type AnimationSource = {
 };
 const frameOptions = [24, 48, 60, 120, 180, 240];
 const sizeOptions = [256, 384, 480, 640, 800, 1024];
+// Worker startup dominates small renders: 384 px x 120 frames costs about the
+// same as 60 frames and a third of the former 640 px x 240 default.
+const DEFAULT_SIZE = 384;
+const DEFAULT_FRAMES = 120;
+const DEFAULT_FPS = 30;
+// A low-resolution draft only pays off when the final pass is expensive.
+const DRAFT_THRESHOLD = 480;
 
 type Mode = "rotation" | "bounce" | "trajectory" | "vibration" | "assembly";
+
+type BatchProgress = { done: number; total: number; failed: string[]; skipped: number; finished: boolean };
+
+// Miller directions need lattice data, not just molecular coordinates.
+const isCrystalSource = (source: AnimationSource) => (source.inputExtension || source.path.split('.').pop() || '').toLowerCase().replace(/^\./, '') === 'cif';
+const axisFor = (source: AnimationSource, axis: string) => !isCrystalSource(source) && /^-?\d{3}$/.test(axis) ? 'y' : axis;
 
 type AnimationSettings = { mode: Mode; selectedAxis: string; amplitude: number; rotate: boolean; rebuildBonds: boolean; noise: number; anchor: string; forward: boolean; fps: number; size: number; frames: number };
 
@@ -49,6 +64,7 @@ export function XyzrenderAnimationDialog() {
     if (settings.current.size > 32) settings.current.delete(settings.current.keys().next().value!);
   }, []);
   const [source, setSource] = useState<AnimationSource | null>(null);
+  const [selection, setSelection] = useState<{ documentId?: string; items: AnimationSource[] }>({ items: [] });
   const [animationSources, setAnimationSources] = useState<AnimationSource[]>([]);
   const retainedSources = useRef(animationSources);
   retainedSources.current = animationSources;
@@ -87,28 +103,40 @@ export function XyzrenderAnimationDialog() {
       setAnimationSources(current => current.filter(item => item.itemId !== itemId));
       setSource(current => current?.itemId === itemId ? retainedSources.current.find(item => item.itemId !== itemId) || null : current);
     };
+    const selected = (event: Event) => setSelection((event as CustomEvent<{ documentId?: string; items: AnimationSource[] }>).detail);
+    window.addEventListener("burette:xyzrender-selection", selected);
     window.addEventListener("burette:xyzrender-item-removed", remove);
     window.addEventListener("burette:xyzrender-active-item", select);
     window.addEventListener("burette:xyzrender-style", style);
-    return () => { window.removeEventListener("burette:xyzrender-item-removed", remove); window.removeEventListener("burette:xyzrender-active-item", select); window.removeEventListener("burette:xyzrender-animation", open); window.removeEventListener("burette:xyzrender-style", style); };
+    return () => { window.removeEventListener("burette:xyzrender-selection", selected); window.removeEventListener("burette:xyzrender-item-removed", remove); window.removeEventListener("burette:xyzrender-active-item", select); window.removeEventListener("burette:xyzrender-animation", open); window.removeEventListener("burette:xyzrender-style", style); };
   }, []);
   return source && target ? createPortal(<section className="xyzrender-motion-controls flex flex-col gap-3 border-b border-border py-3">
     <div className="flex items-start gap-2">
       <div className="min-w-0 flex-1"><XyzrenderOrientationPanel key={`${source.documentId || source.path}:${source.itemId || ""}`} source={source} onPrepared={prepare} /></div>
       <Button variant="ghost" size="icon-sm" aria-label="Close orientation and animation" onClick={() => setSource(null)}><X /></Button>
     </div>
-    {animationSources.map(item => <div key={item.itemId || item.path} hidden={(item.itemId || item.path) !== (source.itemId || source.path)}>
-      <AnimationContent reserve={reserve} source={item} visible={(item.itemId || item.path) === (source.itemId || source.path)} suspended={false} initial={settings.current.get(item.itemId || item.path)} remember={remember} />
-    </div>)}
+    {animationSources.map(item => {
+      const visible = (item.itemId || item.path) === (source.itemId || source.path);
+      return <div key={item.itemId || item.path} hidden={!visible}>
+        <AnimationContent reserve={reserve} source={item} visible={visible} suspended={false} initial={settings.current.get(item.itemId || item.path)} remember={remember}
+          selection={visible && selection.documentId === item.documentId ? selection.items : []} />
+      </div>;
+    })}
   </section>, target) : null;
 }
 
-function AnimationContent({ source, reserve, suspended, visible, initial, remember }: { source: AnimationSource; reserve: (key: string, pixels: number) => boolean; suspended: boolean; visible: boolean; initial?: AnimationSettings; remember: (key: string, settings: AnimationSettings) => void }) {
+function AnimationContent({ source, reserve, suspended, visible, initial, remember, selection }: { source: AnimationSource; reserve: (key: string, pixels: number) => boolean; suspended: boolean; visible: boolean; initial?: AnimationSettings; remember: (key: string, settings: AnimationSettings) => void; selection: AnimationSource[] }) {
+  // xyzrender refuses GIF output for the 2D skeletal drawing.
+  const animatable = source.preset !== "skeletal";
+  // Rendering is expensive, so it starts only on an explicit request.
+  const [requested, setRequested] = useState(false);
+  // The canvas shows the preview until a GIF is applied or another item is edited.
+  const [live, setLive] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"apply" | "save" | null>(null);
   const [mode, setMode] = useState<Mode>(initial?.mode ?? "rotation");
   const [selectedAxis, setAxis] = useState(initial?.selectedAxis ?? "y");
-  // Miller directions need lattice data, not just molecular coordinates.
-  const crystalInput = (source.inputExtension || source.path.split('.').pop() || '').toLowerCase().replace(/^\./, '') === 'cif';
-  const axis = !crystalInput && /^-?\d{3}$/.test(selectedAxis) ? 'y' : selectedAxis;
+  const crystalInput = isCrystalSource(source);
+  const axis = axisFor(source, selectedAxis);
   const [amplitude, setAmplitude] = useState(initial?.amplitude ?? 45);
   const [rotate, setRotate] = useState(initial?.rotate ?? false);
   const [rebuildBonds, setRebuildBonds] = useState(initial?.rebuildBonds ?? false);
@@ -120,26 +148,35 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
   useEffect(() => () => exportController.current?.abort(), []);
   const [animation, setAnimation] = useState<AnimationFrames | null>(null);
   const [preview, setPreview] = useState(false);
-  const [range, setRange] = useState([0, 239]);
+  const [range, setRange] = useState([0, DEFAULT_FRAMES - 1]);
   const [playing, setPlaying] = useState(false);
-  const [fps, setFps] = useState(initial?.fps ?? 60);
-  const [size, setSize] = useState(initial?.size ?? 640);
-  const [frames, setFrames] = useState(initial?.frames ?? 240);
+  const [fps, setFps] = useState(initial?.fps ?? DEFAULT_FPS);
+  const [size, setSize] = useState(initial?.size ?? DEFAULT_SIZE);
+  const [frames, setFrames] = useState(initial?.frames ?? DEFAULT_FRAMES);
   useEffect(() => {
     remember(source.itemId || source.path, { mode, selectedAxis, amplitude, rotate, rebuildBonds, noise, anchor, forward, fps, size, frames });
   }, [source.itemId, source.path, remember, mode, selectedAxis, amplitude, rotate, rebuildBonds, noise, anchor, forward, fps, size, frames]);
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState(0);
   const [saved, setSaved] = useState<SavedXyzrenderFile | null>(null);
-  const [busy, setBusy] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [unavailable, setUnavailable] = useState("");
-  const [frame, setFrame] = useXyzrenderPlayback(animation, playing, fps, range, source.itemId, suspended, visible);
+  const [batch, setBatch] = useState<BatchProgress | null>(null);
+  const batchController = useRef<AbortController | null>(null);
+  useEffect(() => () => batchController.current?.abort(), []);
+  const batchRunning = Boolean(batch && !batch.finished);
+  const selectionKey = selection.map(item => item.itemId).join("\n");
+  useEffect(() => { setBatch(current => current?.finished ? null : current); }, [selectionKey]);
+  const animatableSelection = selection.filter(item => item.preset !== "skeletal");
+  const [frame, setFrame] = useXyzrenderPlayback(animation, playing, fps, range, source.itemId, source.documentId, suspended || !live || !animatable, visible);
   useEffect(() => {
+    if (!requested || !animatable) return;
     const reservationKey = source.itemId || source.path;
     if (!reserve(reservationKey, size * size * frames)) {
       setError("Animation memory is full. Reduce the image size or remove another animated structure.");
       setBusy(false);
+      setPendingAction(null);
       return;
     }
     const controller = new AbortController();
@@ -152,14 +189,17 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
         const { label: _label, previewSvg: _preview, ...input } = source;
         // Keep every motion frame from the first pass; refine only spatial resolution.
         // Trajectories retain their source frames, so do not render them twice.
-        const passes = mode === "trajectory" ? [size] : [Math.min(size, 256), size];
+        const passes = mode === "trajectory" || size <= DRAFT_THRESHOLD ? [size] : [256, size];
         let previewCount = animation?.frames.length || 0;
         for (const resolution of passes) {
           const draft = resolution !== size;
           const response = await renderXyzrender({ ...input, animation: { mode, axis, size: resolution, frames, fps: 10, amplitude, rotate, rebuildBonds, noise, anchor, forward } }, controller.signal);
           const payload = await response.json();
           if (!response.ok && (payload.code === 'animation_unavailable' || (mode === 'vibration' && /vibrat|frequen|normal.mode|imaginary/i.test(payload.error || '')))) {
-            if (!disposed) setUnavailable(mode === 'trajectory' ? 'This file contains one structure. A trajectory needs at least two coordinate frames.' : 'This file has no supported vibrational mode. Open a frequency calculation to animate vibrations.');
+            if (!disposed) {
+              setUnavailable(mode === 'trajectory' ? 'This file contains one structure. A trajectory needs at least two coordinate frames.' : 'This file has no supported vibrational mode. Open a frequency calculation to animate vibrations.');
+              setPendingAction(null);
+            }
             return;
           }
           if (disposed) return;
@@ -176,11 +216,14 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
           setRange(current => previousCount ? current.map(value => Math.min(decoded.frames.length - 1, Math.round(value * decoded.frames.length / previousCount))) : [0, decoded.frames.length - 1]);
           setFrame(value => previousCount ? Math.min(decoded.frames.length - 1, Math.round(value * decoded.frames.length / previousCount)) : 0);
           // Preserve pause and playback position when the detailed pass arrives.
-          if (!previousCount) setPlaying(true);
+          if (!previousCount) { setLive(true); setPlaying(true); }
           if (draft) previewCount = decoded.frames.length;
         }
       } catch (cause) {
-        if (!disposed) setError(controller.signal.aborted ? "Rendering timed out. Try again." : cause instanceof Error ? cause.message : "Could not render this animation. Try another motion or reduce the export size.");
+        if (!disposed) {
+          setError(controller.signal.aborted ? "Rendering timed out. Try again." : cause instanceof Error ? cause.message : "Could not render this animation. Try another motion or reduce the export size.");
+          setPendingAction(null);
+        }
       } finally {
         window.clearTimeout(timeout);
         if (!disposed) { reserve(reservationKey, retainedPixels); setBusy(false); }
@@ -188,27 +231,89 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
     };
     const debounce = window.setTimeout(() => void render(), 350);
     return () => { window.clearTimeout(debounce); disposed = true; controller.abort(); window.clearTimeout(timeout); reserve(reservationKey, 0); };
-  }, [source, mode, axis, size, frames, amplitude, rotate, rebuildBonds, noise, anchor, forward, retry, reserve]);
+  }, [requested, animatable, source, mode, axis, size, frames, amplitude, rotate, rebuildBonds, noise, anchor, forward, retry, reserve]);
   const position = (index: number) => mode === "rotation"
     ? `${Math.round(index * 360 / (animation?.frames.length || frames))}°`
     : `Frame ${index + 1}`;
+  const startRender = () => {
+    if (busy) return;
+    if (requested) setRetry(value => value + 1);
+    else setRequested(true);
+  };
   const save = async (applyToCanvas = false) => {
-    if (!animation || preview || busy) return;
+    if (!animation || preview || busy) {
+      if (!animatable || saving) return;
+      setPendingAction(applyToCanvas ? "apply" : "save");
+      startRender();
+      return;
+    }
     const controller = new AbortController(); exportController.current = controller;
     setSaving(true); setPlaying(false); setProgress(0); setError(""); setSaved(null);
     try {
-      const bytes = await encodeAnimation(animation, range[0], range[1], fps, setProgress, controller.signal);
-      let binary = "";
-      for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+      const gif = gifBytesToBase64(await encodeAnimation(animation, range[0], range[1], fps, setProgress, controller.signal));
       if (applyToCanvas) {
-        for (const iframe of document.querySelectorAll<HTMLIFrameElement>('iframe.viewer-iframe')) iframe.contentWindow?.postMessage({ source: 'burette-host', body: { type: 'applyXyzrenderAnimation', itemId: source.itemId, image: 'data:image/gif;base64,' + btoa(binary), commit: true } }, '*');
+        postToXyzrenderViewer(source.documentId, { type: 'applyXyzrenderAnimation', itemId: source.itemId, image: 'data:image/gif;base64,' + gif, commit: true });
+        setLive(false);
         return;
       }
-      const result = await saveXyzrenderFile(safeExportFileName(`${source.label.replace(/\.[^.]+$/, "")}-${mode}.gif`), "gif", btoa(binary), controller.signal);
+      const result = await saveXyzrenderFile(safeExportFileName(`${source.label.replace(/\.[^.]+$/, "")}-${mode}.gif`), "gif", gif, controller.signal);
       setSaved(result);
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setSaving(false); }
   };
+  // Apply or Save pressed before the first render finishes runs once frames arrive.
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  useEffect(() => {
+    if (!pendingAction || busy || preview || !animation) return;
+    setPendingAction(null);
+    void saveRef.current(pendingAction === "apply");
+  }, [pendingAction, busy, preview, animation]);
+  const togglePlayback = () => {
+    if (!animation) { startRender(); return; }
+    setLive(true);
+    setPlaying(value => !value);
+  };
+  // Selected structures render one after another with these motion settings;
+  // each GIF goes straight to its own card.
+  const applyToSelection = async () => {
+    const controller = new AbortController(); batchController.current = controller;
+    // The inspected item's live preview would repaint over its applied GIF.
+    setLive(false); setPlaying(false); setError(""); setSaved(null);
+    const progress: BatchProgress = { done: 0, total: animatableSelection.length, failed: [], skipped: selection.length - animatableSelection.length, finished: false };
+    setBatch({ ...progress });
+    for (const item of animatableSelection) {
+      if (controller.signal.aborted) break;
+      try {
+        const { label: _label, previewSvg: _preview, ...input } = item;
+        const image = await renderAnimationGifDataUrl({ ...input, animation: { mode, axis: axisFor(item, selectedAxis), size, frames, fps: 10, amplitude, rotate, rebuildBonds, noise, anchor, forward } }, fps, controller.signal);
+        postToXyzrenderViewer(item.documentId, { type: 'applyXyzrenderAnimation', itemId: item.itemId, image, commit: true });
+      } catch {
+        if (controller.signal.aborted) break;
+        progress.failed = [...progress.failed, item.label];
+      }
+      progress.done += 1;
+      setBatch({ ...progress });
+    }
+    setBatch({ ...progress, finished: true });
+  };
+  const batchStatus = !batch ? `${selection.length} structures selected. Each one is rendered with these motion settings and gets its own GIF.`
+    : !batch.finished ? `Animating ${Math.min(batch.done + 1, batch.total)} of ${batch.total}…`
+    : [batch.done < batch.total ? `Stopped after ${batch.done} of ${batch.total}` : `Applied to ${batch.done - batch.failed.length} of ${batch.total}`,
+      batch.failed.length ? `failed: ${batch.failed.join(", ")}` : "", batch.skipped ? `${batch.skipped} skeletal skipped` : ""].filter(Boolean).join(" · ");
+  const batchControls = selection.length > 1 && <div className="flex flex-col gap-2 border-t border-border pt-3">
+    <FieldDescription role="status">{batchStatus}</FieldDescription>
+    {batchRunning && batch && <Progress aria-label="Animating selected structures" value={batch.done * 100 / Math.max(1, batch.total)} />}
+    <div className="flex flex-wrap items-center gap-2">
+      <Button variant="outline" disabled={busy || saving || batchRunning || !animatableSelection.length} onClick={() => void applyToSelection()}>Apply to {selection.length} selected</Button>
+      {batchRunning && <Button variant="ghost" onClick={() => batchController.current?.abort()}>Cancel</Button>}
+    </div>
+  </div>;
+  if (!animatable) return <div className="flex flex-col gap-2 py-2">
+    <strong>Skeletal style can't be animated</strong>
+    <p className="text-sm text-muted-foreground">Skeletal is a flat 2D drawing, so xyzrender can't rotate it into a GIF. Choose another style below to animate this structure.</p>
+    {batchControls}
+  </div>;
   if (unavailable) return <div className="flex flex-col gap-3 py-2">
     <strong>{mode === 'trajectory' ? 'No trajectory in this file' : 'No vibration data in this file'}</strong>
     <p className="text-sm text-muted-foreground">{unavailable}</p>
@@ -219,9 +324,9 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
       <div className="flex min-w-0 flex-col gap-4">
         <Field>
           <div className="flex items-center justify-between gap-2"><FieldLabel>View · {position(frame)}</FieldLabel>
-            <Button size="sm" variant="outline" disabled={!animation || saving} onClick={() => setPlaying(value => !value)}>{playing ? "Pause" : "Play"}</Button></div>
+            <Button size="sm" variant="outline" disabled={busy || saving || batchRunning} onClick={togglePlayback}>{!animation ? "Preview" : playing && live ? "Pause" : "Play"}</Button></div>
           <Slider tone="neutral" aria-label="Molecule rotation" min={0} max={Math.max(1, (animation?.frames.length || frames) - 1)} step={1} value={[frame]} disabled={!animation || saving}
-            onValueChange={value => { setPlaying(false); setFrame(value[0]); }} />
+            onValueChange={value => { setLive(true); setPlaying(false); setFrame(value[0]); }} />
         </Field>
       </div>
       <FieldGroup className="gap-3">
@@ -279,15 +384,16 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
     {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     <div className="flex flex-col gap-3">
       <div role="status" className="flex items-center gap-2 text-muted-foreground">
-        <span>{busy ? (preview ? "Refining animation…" : "Rendering animation…") : saving ? `Saving GIF · ${Math.round(progress * 100)}%` : saved ? `Saved ${saved.name}` : error ? "Check the error above" : `${range[1] - range[0] + 1} frames · ${((range[1] - range[0] + 1) / fps).toFixed(1)} s`}</span>
+        <span>{busy ? (preview ? "Refining animation…" : "Rendering animation…") : saving ? `Saving GIF · ${Math.round(progress * 100)}%` : saved ? `Saved ${saved.name}` : error ? "Check the error above" : !animation ? "Not rendered yet" : `${range[1] - range[0] + 1} frames · ${((range[1] - range[0] + 1) / fps).toFixed(1)} s`}</span>
       </div>
       {(busy || saving) && <Progress aria-label={busy ? "Rendering animation" : "Saving GIF"} indeterminate={busy} value={busy ? undefined : progress * 100} />}
       <div className="flex flex-wrap items-center gap-2">
         {saved?.downloadUrl && <Button variant="outline" asChild><a href={saved.downloadUrl} download={saved.name}>Download again</a></Button>}
         {error && <Button variant="outline" onClick={() => setRetry(value => value + 1)}>Try again</Button>}
-        <Button disabled={busy || saving || preview || !animation} onClick={() => void save(true)}>Apply GIF to canvas</Button>
-        <Button variant="outline" disabled={busy || saving || preview || !animation} onClick={() => void save()}><Download data-icon="inline-start" />Save GIF</Button>
+        <Button disabled={busy || saving || preview || batchRunning || Boolean(pendingAction)} onClick={() => void save(true)}>Apply GIF to canvas</Button>
+        <Button variant="outline" disabled={busy || saving || preview || batchRunning || Boolean(pendingAction)} onClick={() => void save()}><Download data-icon="inline-start" />Save GIF</Button>
       </div>
+      {batchControls}
     </div>
   </div>;
 }

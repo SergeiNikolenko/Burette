@@ -9,13 +9,15 @@ for (const mode of ['default', 'illustrative']) {
 }
 
 // Exercise the toolbar apply path: no source reload, and restore the same camera.
-for (const preset of ['line', 'ball-and-stick', 'spacefill', 'illustrative-surface']) {
+for (const preset of ['automatic', 'line', 'ball-and-stick', 'spacefill', 'illustrative-surface']) {
   const calls = [];
   const camera = { position: [1, 2, 3], target: [0, 0, 0] };
   const viewer = { plugin: { state: { data: { getSnapshot: () => ({}) } } } };
   const bindings = {
     normalizeMolstarPreset: value => value,
-    molstarPresetOption: value => ({ value, label: value, legacyStyle: value }),
+    molstarPresetOption: value => value === 'automatic'
+      ? { value, label: value, provider: 'auto' }
+      : { value, label: value, legacyStyle: value },
     molstarPresetAppearance: () => 'illustrative',
     activeViewer: viewer, activeConfig: {}, window: {},
     configuredMolstarPreset: () => 'automatic', configuredMolstarStyle: () => 'illustrative',
@@ -26,7 +28,7 @@ for (const preset of ['line', 'ball-and-stick', 'spacefill', 'illustrative-surfa
     applyMolstarProviderPreset: async () => calls.push('base'),
     reloadMolstarStyle: async () => { throw Error('must not reload'); },
     applyMolstarStyle: async (_, value) => calls.push(value),
-    applyMolstarWaterLineRepresentation: async () => {},
+    applyMolstarWaterLineRepresentation: async () => calls.push('blue water'),
     applyMolstarAppearance: async (_, value) => calls.push(value),
     restoreMolstarCameraSnapshotNow: (_, value) => assert.equal(value, camera),
     waitForMolstarPresetPreviewDraw: async () => {},
@@ -37,6 +39,8 @@ for (const preset of ['line', 'ball-and-stick', 'spacefill', 'illustrative-surfa
   };
   const apply = new Function(...Object.keys(bindings), `${extract('applyMolstarPresetNow')}; return applyMolstarPresetNow;`)(...Object.values(bindings));
   await apply(preset, { preserveCamera: true });
-  assert.deepEqual(calls, [...(preset === 'illustrative-surface' ? ['base'] : []), preset, 'illustrative']);
+  assert.deepEqual(calls, preset === 'automatic'
+    ? ['base', 'blue water', 'illustrative']
+    : [...(preset === 'illustrative-surface' ? ['base'] : []), preset, 'blue water', 'illustrative']);
 }
 console.log('molstar style switch tests passed');

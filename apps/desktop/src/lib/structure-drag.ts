@@ -23,6 +23,8 @@ export type StructureDragPayload = {
   paths: string[];
   records: StructureDragRecord[];
   items?: StructureDragItem[];
+  /** File-system items the drag stands for when they differ from `paths`: a folder row drags the folder. */
+  entries?: string[];
   point?: StructureDragPoint | null;
 };
 
@@ -54,6 +56,7 @@ export function writeStructureDragPayload(dataTransfer: DataTransfer, input: Str
   const items = (input.items ?? []).map(normalizeStructureDragItem).filter((item): item is StructureDragItem => item !== null);
   if (paths.length === 0 && records.length === 0 && items.length === 0) return false;
   const payload: StructureDragPayload = { paths, records, items };
+  if (input.entries?.length) payload.entries = input.entries;
   dataTransfer.setData(STRUCTURE_DRAG_MIME, JSON.stringify(payload));
   const plainText = [
     ...paths,
@@ -97,6 +100,10 @@ export function readStructureDragPayload(dataTransfer: DataTransfer): StructureD
           payload.items ??= [];
           payload.items.push(...parsed.items);
         }
+        const entries = Array.isArray(parsed.entries)
+          ? parsed.entries.map((path) => (typeof path === "string" ? normalizeStructureDragPath(path) : "")).filter(Boolean)
+          : [];
+        if (entries.length > 0) payload.entries = entries;
       } else {
         readFallbackPayload = true;
       }

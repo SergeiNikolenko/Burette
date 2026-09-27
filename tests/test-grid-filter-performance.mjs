@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import ts from 'typescript';
+import ts from 'typescript-compiler-api';
 
 const source = readFileSync('PreviewExtension/Web/grid-viewer.js', 'utf8');
 function functionSource(name) {

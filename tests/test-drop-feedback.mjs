@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import ts from 'typescript';
+import ts from 'typescript-compiler-api';
 import { readFileSync } from 'node:fs';
 
 const { createElement } = await import('react');

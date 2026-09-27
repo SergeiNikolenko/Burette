@@ -595,7 +595,7 @@ rm -rf build
 bun install --frozen-lockfile --ignore-scripts
 bun run build:agent-shell
 pushd apps/desktop >/dev/null
-../../node_modules/.bin/vite build --config vite.config.ts
+../../node_modules/.bin/vp build --config vite.config.ts
 popd >/dev/null
 bun run build:tauri
 cargo build --release --bin burette-core-bridge

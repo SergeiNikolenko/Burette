@@ -1394,6 +1394,7 @@ function viewerHtml(
   <script src="${viewerAsset("renderer-view-state.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("color-picker.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("sequence-panel.js")}?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("native-viewer-menus.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("scene-file-actions.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("viewer.js")}?v=${runtimeAssetVersion}"></script>
 </body>
@@ -1650,8 +1651,10 @@ async function gridHtml(
   <script>window.BuretteGridRecords = ${serializeInlineJson(records)};</script>`}
   ${format === "dwar" ? `<script src="${gridAsset("openchemlib/openchemlib.js")}?v=${GRID_ASSET_VERSION}"></script>` : ""}
   <script src="${gridAsset("rdkit/RDKit_minimal.js")}?v=${GRID_ASSET_VERSION}"></script>
+  <script src="${gridAsset("native-viewer-menus.js")}?v=${GRID_ASSET_VERSION}"></script>
   <script src="${gridAsset("grid-ui.js")}?v=${GRID_ASSET_VERSION}"></script>
   <script src="${gridAsset("grid-viewer.js")}?v=${GRID_ASSET_VERSION}"></script>
+
 </body>
 </html>`);
 }

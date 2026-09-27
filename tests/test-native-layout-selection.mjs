@@ -19,7 +19,8 @@ const manager = { stats: { elementCount: 2 }, entries: new Map() };
 const unit = { id: 1, model: {}, elements: [0, 1] };
 manager.entries.set('protein', { selection: { elements: [{ unit, indices: [0, 1] }] } });
 let level = 'residue';
-const context = { window: {}, activeMolstarViewer: () => ({ plugin: { managers: { structure: { selection: manager } }, canvas3dContext: { canvas: {} } } }),
+const context = { window: {},
+  molstarStructureRuntime: () => ({ StructureElement: { Loci: { size: loci => loci.elements.reduce((count, element) => count + element.indices.length, 0) } } }), activeMolstarViewer: () => ({ plugin: { managers: { structure: { selection: manager } }, canvas3dContext: { canvas: {} } } }),
   molstarContextOrderedSetForEach: (indices, callback) => { for (const i of indices) if (callback(i) === false) break; },
   molstarContextAtomFromModelIndex: (_model, i) => ({ auth_asym_id: 'A', auth_seq_id: 336, auth_comp_id: 'MET', auth_atom_id: `C${i}`, atomIndex: i }),
   molstarSelectionLevel: () => level,

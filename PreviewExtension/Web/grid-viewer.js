@@ -348,6 +348,7 @@
 
   function postGridRowHover(index, cfg) {
     const row = Number.isSafeInteger(index) && index >= 0 ? gridRowByIndex(index) : null;
+    const match = row ? state.smartsMatches.get(Number(row.index)) : null;
     state.hoveredGridRowIndex = row ? index : null;
     if (row) state.lastGridRowIndex = index;
     let previewSvg = '';
@@ -357,6 +358,15 @@
         const cachedSvg = state.xyzrenderCardCache.get(xyzrenderCardKey(row, record))?.svg || '';
         if (cachedSvg.length <= HOVER_PREVIEW_SVG_LIMIT) previewSvg = cachedSvg;
       }
+    } else if (row) {
+      // The inspector shows the card's own drawing - substructure highlight and
+      // content fit included - so the two surfaces never disagree about a row.
+      // Only drawings that already exist are sent: drawing here would omit an
+      // invalid row as a side effect of hovering it.
+      const drawn = root?.querySelector(`[data-index="${index}"] svg[data-buret-rdkit-svg="true"]`)?.outerHTML
+        || state.svgCache.get(rdkitCardKey(row))
+        || '';
+      if (drawn.length <= HOVER_PREVIEW_SVG_LIMIT) previewSvg = drawn;
     }
     post('gridRowHover', '', {
       documentId: cfg?.documentId || null,
@@ -368,10 +378,23 @@
             molblock: String(row.molblock || ''),
             cardRenderer: state.cardRenderer,
             previewSvg,
+            useInputCoords: state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock),
+            highlightAtoms: Array.isArray(match?.atoms) ? match.atoms.slice(0, 256) : [],
+            highlightBonds: Array.isArray(match?.bonds) ? match.bonds.slice(0, 256) : [],
             props: hoverRowProps(row)
           }
         : null
     });
+  }
+
+  // Re-sends the row the inspector is showing after its drawing changed,
+  // without claiming the pointer is over it.
+  function repostInspectorRow(cfg) {
+    const hovered = state.hoveredGridRowIndex;
+    const index = Number.isSafeInteger(hovered) ? hovered : state.lastGridRowIndex;
+    if (!Number.isSafeInteger(index)) return;
+    postGridRowHover(index, cfg);
+    state.hoveredGridRowIndex = hovered;
   }
 
   // Marks the row the chemical-space map is pointing at, so a point under the
@@ -623,6 +646,15 @@
       }
       if (!data || (data.source !== 'burette-grid-host' && data.source !== 'burette-host')) return;
       const body = data.body || {};
+      // Applied in place like the structure viewer: the config already carries
+      // the token sets for both themes, so a theme change never reopens the grid.
+      if (body.type === 'setViewerTheme') {
+        const cfg = safeConfig();
+        if (!cfg) return;
+        cfg.theme = body.value === 'light' || body.value === 'dark' ? body.value : 'auto';
+        applyTheme(cfg);
+        return;
+      }
       if (body.type === 'gridSetColumnFilter') {
         applyGridColumnFilter(config(), String(body.columnId || ''), String(body.part || ''), body.value);
         return;
@@ -1746,10 +1778,13 @@
   }
 
   function installThemeListener(cfg) {
-    if (cfg.theme === 'light' || cfg.theme === 'dark' || !window.matchMedia) return;
+    if (!window.matchMedia) return;
     try {
       const media = window.matchMedia('(prefers-color-scheme: light)');
-      const update = () => applyTheme(cfg);
+      // Always installed: the host can switch a fixed theme back to Auto later.
+      const update = () => {
+        if (cfg.theme !== 'light' && cfg.theme !== 'dark') applyTheme(cfg);
+      };
       if (typeof media.addEventListener === 'function') media.addEventListener('change', update);
       else if (typeof media.addListener === 'function') media.addListener(update);
     } catch (_) {}
@@ -2084,10 +2119,7 @@
     refreshGridControls(cfg);
     applyGridPreferences(cfg);
     render(cfg);
-    const previewRowIndex = Number.isSafeInteger(state.hoveredGridRowIndex)
-      ? state.hoveredGridRowIndex
-      : state.lastGridRowIndex;
-    if (Number.isSafeInteger(previewRowIndex)) postGridRowHover(previewRowIndex, cfg);
+    repostInspectorRow(cfg);
   }
 
   function setGridViewMode(value, cfg) {
@@ -3142,6 +3174,9 @@
     state.totalRows = state.rows.length;
     const rendered = render(cfg);
     postChemicalSpaceVisibility(visibilityRows);
+    // The inspector keeps the last row on screen while the user types, so a new
+    // substructure query has to reach its drawing without another hover.
+    repostInspectorRow(cfg);
     return rendered;
   }
 
@@ -7589,6 +7624,14 @@
     });
     root.appendChild(menu);
     positionMoleculeContextMenu(menu, event.clientX, event.clientY);
+    queueMicrotask(() => {
+      if (config().appViewer !== true || window.parent === window || !menu.isConnected || menu.getAttribute('role') !== 'menu') return;
+      window.BuretteNativeViewerMenus?.show(menu, {
+        x: event.clientX, y: event.clientY,
+        post: body => { post(body.type, '', body); return true; },
+        close: () => { if (menu.isConnected) hideMoleculeContextMenu(); }
+      });
+    });
     (menu.querySelector('button:not(:disabled)') || menu).focus({ preventScroll: true });
     state.contextMenuOutsideHandler = outsideEvent => {
       if (!menu.contains(outsideEvent.target)) hideMoleculeContextMenu();
@@ -7648,7 +7691,9 @@
         let min = Infinity, max = -Infinity, sum = 0;
         for (const value of values) { min = Math.min(min, value); max = Math.max(max, value); sum += value; }
         const details = `Count: ${values.length} · Missing: ${rows.length - values.length}` + (values.length ? ` · Min: ${min} · Max: ${max} · Mean: ${(sum / values.length).toPrecision(5)}` : '');
-        showGridContextMenu(event, column.label, [], `${state.remoteMode ? 'Loaded rows only. ' : ''}${details}`).classList.add('buret-grid-statistics-menu');
+        const panel = showGridContextMenu(event, column.label, [], `${state.remoteMode ? 'Loaded rows only. ' : ''}${details}`);
+        panel.classList.add('buret-grid-statistics-menu');
+        panel.setAttribute('role', 'dialog');
       } },
     ]);
   }
@@ -7662,6 +7707,7 @@
       else state.tableColumnFilters[column.id] = draft;
       void refresh(cfg);
     } }]);
+    menu.setAttribute('role', 'dialog');
     fields.forEach(part => {
       const label = document.createElement('label');
       label.textContent = part === 'text' ? 'Contains' : part === 'min' ? 'Minimum' : 'Maximum';
@@ -8103,6 +8149,13 @@
       const start = () => enqueueRdkitCard(source, key, target);
       state.rdkitCardLazyJobs.set(target, start);
       state.rdkitCardLazyTargets.push(target);
+      // Finder can create an offscreen Quick Look WebView. Its intersection
+      // observer never reports visible cards, even though the preview is live.
+      // The preview is bounded to 750 records; render its initial cards eagerly.
+      if (config().quickLookViewer === true) {
+        startLazyRdkitCard(target);
+        continue;
+      }
       const observer = ensureRdkitCardObserver();
       if (observer) observer.observe(target);
       else window.setTimeout(() => startLazyRdkitCard(target), 0);
@@ -8169,7 +8222,7 @@
     if (state.rdkitCardRendering || !state.rdkitCardQueue.length) return;
     if (!state.rdkit && !state.rdkitError) return;
     state.rdkitCardRendering = true;
-    requestAnimationFrame(() => {
+    const renderBatch = () => {
       for (const job of state.rdkitCardQueue) job.priority = cardRenderPriority(job.target);
       state.rdkitCardQueue.sort(compareCardRenderJobs);
       const startedAt = nowMs();
@@ -8192,7 +8245,11 @@
         state.rdkitCardRendering = false;
         if (state.rdkitCardQueue.length) window.setTimeout(pumpRdkitCardQueue, 0);
       }
-    });
+    };
+    // Offscreen Quick Look WebViews may also suspend animation frames. Keep
+    // ordinary app/browser batches aligned to frames for interactive scrolling.
+    if (config().quickLookViewer === true) window.setTimeout(renderBatch, 0);
+    else requestAnimationFrame(renderBatch);
   }
 
   function sortXyzrenderCardQueue() {
@@ -8223,6 +8280,9 @@
     target.innerHTML = html;
     const card = target.closest('.buret-card');
     if (card) fitCardSVGs(card);
+    if (card?.hasAttribute('data-index') && Number(card.getAttribute('data-index')) === state.lastGridRowIndex) {
+      repostInspectorRow(config());
+    }
   }
 
   function resetRdkitCardObserver() {

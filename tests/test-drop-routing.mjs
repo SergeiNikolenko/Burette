@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import ts from 'typescript';
+import ts from 'typescript-compiler-api';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
 import { resolveDropActionChoices } from '../apps/desktop/src/lib/drop-actions.ts';

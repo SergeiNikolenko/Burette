@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import ts from 'typescript';
+import ts from 'typescript-compiler-api';
 
 const source = readFileSync('apps/desktop/src/components/batch-file-operations.tsx', 'utf8');
 const fragment = source.slice(source.indexOf('  const hasDirtyFile ='), source.indexOf('  const dialog ='));

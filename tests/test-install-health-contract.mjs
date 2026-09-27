@@ -67,7 +67,7 @@ assert.match(installLocalScript, /from build output/u);
 assert.doesNotMatch(installLocalScript, /XYZRENDER_CODESIGN_ENTITLEMENTS/u);
 
 for (const [input, defaultValue] of [
-  ["bun-version", '"1.3.8"'],
+  ["bun-version", '"1.4.2"'],
   ["install-dependencies", '"true"'],
   ["install-xyzrender", '"false"'],
 ]) {

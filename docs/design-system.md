@@ -94,6 +94,21 @@ The shell is a workspace, not a brand canvas.
   unpin, source path, elapsed time, copy confirmation). They do not create new
   commands or change scientific workflows.
 
+### Viewer Menus on macOS
+
+Scene and Composition object menus, viewport rail menus (camera, screenshot,
+animation and selection), Style/Appearance, Compute, Grid Actions and column
+context menus use the shared AppKit popup in the desktop app. The DOM controls
+remain their command model through `native-viewer-menus.js`; changes still use
+the existing scoped scene operations and undo handlers. Slider drags commit once
+when the menu closes. Commands run after native menu tracking finishes.
+
+Mol* canvas picking, xyzrender, collection molecule rows, and shell menus retain
+their existing native routes. Browser, Finder Quick Look and mobile keep their
+own supported presentation. Free-form measurement labels and column filters are
+editors, not command menus. The viewer bridge validates menu shape, disabled
+rows, option counts and nesting before opening AppKit.
+
 ### Sidebar And Search
 
 - Folder markers use the matching 24-unit Hugeicons `Folder01Icon` and

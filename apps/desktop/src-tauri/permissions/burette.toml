@@ -5,6 +5,7 @@ commands.allow = [
   "agent_integration_status",
   "frontend_log",
   "operate_sidebar_file",
+  "start_file_drag",
   "popup_macos_context_menu",
   "read_folder_contents",
   "ssh_hosts",

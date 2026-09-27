@@ -10,7 +10,7 @@ import "./annotation-layer.css";
 // many annotations as needed. Mol* selects the atoms or residues each region
 // covers. Menus and toolbars stay live; only the scene takes annotations. In
 // the Codex widget Send posts the batch as one chat message with a marked-up
-// frame of the view; elsewhere Send copies it.
+// frame of the view. The tool belongs only to the plugin workspace.
 
 const CLICK_BOX = 16;
 const MAX_ANNOTATIONS = 20;
@@ -24,6 +24,7 @@ type Phase = { kind: "idle" } | { kind: "sending" } | { kind: "done"; message: s
 export function AnnotateToggle({ className }: { className?: string }) {
   const active = useAnnotationStore((state) => state.active);
   const toggle = useAnnotationStore((state) => state.toggle);
+  if (!window.BuretteMcpWorkspace) return null;
   return (
     <button type="button" className={`annotate-toggle ${className ?? ""}`} data-active={active || undefined} aria-pressed={active}
       aria-label={active ? "Stop annotating" : "Annotate this view"} onMouseDown={(event) => event.preventDefault()} onClick={toggle}>

@@ -216,6 +216,7 @@ fn grid_html(
     } else {
         String::new()
     };
+    let native_menus_js = versioned_asset_url(&assets.join("native-viewer-menus.js"));
     let grid_ui_js = versioned_asset_url(&assets.join("grid-ui.js"));
     let grid_js = versioned_asset_url(&assets.join("grid-viewer.js"));
     format!(
@@ -249,6 +250,7 @@ fn grid_html(
   <script src="{rdkit_wasm_js}"></script>
   {openchemlib_script}
   <script src="{rdkit_js}"></script>
+  <script src="{native_menus_js}"></script>
   <script src="{grid_ui_js}"></script>
   <script src="{grid_js}"></script>
 </body>

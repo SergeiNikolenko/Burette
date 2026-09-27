@@ -1,4 +1,29 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { ViteDevServer } from "vite";
+
+// configureServer hooks run before Vite's Host/CORS middleware. These routes
+// can write files and start local programs, so CORS alone cannot protect them
+// from a cross-origin form or no-cors fetch.
+export function registerBrowserDevRequestGuard(server: ViteDevServer) {
+  server.middlewares.use("/__burette", (req, res, next) => {
+    const address = server.httpServer?.address();
+    const port = address && typeof address === "object" ? address.port : 0;
+    const protocol = server.config.server.https ? "https" : "http";
+    const hosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]);
+    const host = req.headers.host;
+    const origin = req.headers.origin;
+    const remote = req.socket.remoteAddress;
+    if (!port || !host || !hosts.has(host)
+      || !["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(remote ?? "")
+      || (origin !== undefined && origin !== `${protocol}://${host}`)
+      || req.headers["sec-fetch-site"] === "cross-site") {
+      sendJson(res, 403, { error: "Browser-dev operations require a local, same-origin request." }, "no-store");
+      return;
+    }
+    // CLI clients do not send Origin; same-origin browser GETs may omit it too.
+    next();
+  });
+}
 
 class RequestBodyTooLarge extends Error {
   constructor() {

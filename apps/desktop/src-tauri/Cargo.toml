@@ -1,6 +1,6 @@
 [package]
 name = "burette"
-version = "2026.9.29"
+version = "2026.9.38"
 description = "Tauri/Rust shell for local molecular previews"
 authors = ["Burette"]
 edition = "2021"
@@ -31,7 +31,7 @@ plist = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.11"
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled", "fallible_uint"] }
 # PostgreSQL only. SQLite queries go through the rusqlite above: sqlx's "sqlite"
 # feature bundles its own SQLite C library, and two bundled copies in one binary
 # collide on every sqlite3_* symbol at link time.
@@ -49,8 +49,8 @@ url = "2"
 uuid = { version = "1", features = ["v4", "fast-rng"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-tauri-plugin-sparkle-updater = { version = "=0.2.6", optional = true }
-cocoa = "0.26"
+tauri-plugin-sparkle-updater = { version = "=0.3.0", optional = true }
+cocoa = "0.27"
 core-foundation = "0.10"
 dispatch2 = "0.3"
 objc = "0.2"

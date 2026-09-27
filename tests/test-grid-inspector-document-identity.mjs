@@ -25,7 +25,7 @@ for (const showingXyzrender of [false, true]) {
   const engines = new Promise(resolve => { resolveEngines = resolve; });
   const env = {
     renderTokenRef: { current: 0 }, wellSize: { width: 120, height: 80 },
-    scaffold: { kind: "idle" }, showingScaffold: false, showingXyzrender,
+    scaffold: { kind: "idle" }, showingScaffold: false, showingXyzrender, cardDrawing: null,
     shown: { smiles: "CC", previewSvg: "<svg/>" },
     specCache: new Map(), svgCache: new Map(), wellNodeRef: { current: null }, theme: "auto",
     setSvg() {}, setSpec() {}, paperColour: () => [1, 1, 1],
@@ -40,6 +40,55 @@ for (const showingXyzrender of [false, true]) {
   assert.equal(engineUsed, false, "an unmounted inspector never computes for its previous document");
 }
 console.log("Inspector async-render disposal checks passed.");
+
+// The inspector must redraw a row at its own size instead of enlarging the
+// grid card's 260px SVG. The fallback artwork remains for rows without source.
+{
+  let enginesRequested = false;
+  const env = {
+    renderTokenRef: { current: 0 }, wellSize: { width: 120, height: 80 },
+    scaffold: { kind: "idle" }, showingScaffold: false, cardDrawing: null,
+    shown: { smiles: "CC", cardRenderer: "rdkit", previewSvg: "<svg/>" },
+    svgCache: new Map(), wellNodeRef: { current: null }, theme: "auto",
+    setSvg() {}, paperColour: () => [1, 1, 1],
+    loadDerivedEngines: () => { enginesRequested = true; return new Promise(() => {}); },
+  };
+  new Function(...Object.keys(env), effect)(...Object.values(env));
+  assert.equal(enginesRequested, true, "the inspector redraws from the molecular source");
+}
+console.log("Inspector large-drawing path checks passed.");
+
+// High resolution is applied to RDKit's layout, with the same SMARTS match
+// carried into the inspector instead of stretching the small card SVG.
+{
+  let options;
+  let coordsReset = 0;
+  const env = {
+    renderTokenRef: { current: 0 }, wellSize: { width: 360, height: 240 },
+    scaffold: { kind: "idle" }, showingScaffold: false, cardDrawing: null,
+    shown: { smiles: "CCO", highlightAtoms: [2], highlightBonds: [1] },
+    svgCache: new Map(), wellNodeRef: { current: null }, theme: "light",
+    setSvg() {}, setInvalidSource() {}, paperColour: () => [1, 1, 1],
+    structurePalette: () => undefined, PREVIEW_RENDER_SCALE: 2, SVG_CACHE_LIMIT: 200,
+    loadDerivedEngines: async () => ({ rdkit: { get_mol: () => ({
+      get_smiles: () => "CCO", set_new_coords() { coordsReset += 1; }, delete() {},
+      get_svg_with_highlights: (value) => { options = JSON.parse(value); return "<svg/>"; },
+    }) } }),
+  };
+  new Function(...Object.keys(env), effect)(...Object.values(env));
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual({ width: options.width, height: options.height, bondLineWidth: options.bondLineWidth, atoms: options.atoms, bonds: options.bonds },
+    { width: 720, height: 480, bondLineWidth: 2, atoms: [2], bonds: [1] });
+  assert.equal(coordsReset, 1, "SMILES previews receive fresh 2D coordinates");
+  env.shown = { molblock: "existing coordinates", useInputCoords: true };
+  env.renderTokenRef.current = 0;
+  new Function(...Object.keys(env), effect)(...Object.values(env));
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(coordsReset, 1, "input-coordinate previews preserve the grid's molecular layout");
+}
+console.log("Inspector high-resolution render checks passed.");
 
 // Draw explicit hydrogens with the inspector's real palettes. Their atom labels
 // and half-bonds must both remain visible on the dark paper.

@@ -11,24 +11,21 @@ const extraFsAllow = (process.env.BURETTE_DEV_FS_ALLOW ?? "").split(delimiter).f
 export default defineConfig({
   root: desktopRoot,
   plugins: lazyPlugins(async () => {
-    // tailwindcss must load here too: the desktop config carries it for native
-    // builds, but browser dev runs through this root config, and without the
-    // plugin every shadcn control (settings sliders, switches, selects) renders
-    // unstyled — collapsed tracks, stray chevrons.
-    const [{ default: react }, { browserDevXyzrenderPlugin }, { default: tailwindcss }] = await Promise.all([
-      import("@vitejs/plugin-react"),
-      import("./apps/desktop/vite.config"),
-      import("@tailwindcss/vite"),
-    ]);
-    return [tailwindcss(), react(), browserDevXyzrenderPlugin()];
+    // Keep dev, native builds and plugin builds on the same renderer adapters.
+    const { default: desktopConfig } = await import("./apps/desktop/vite.config");
+    return desktopConfig.plugins ?? [];
   }),
   define: {
+    global: "globalThis",
+    process: JSON.stringify({ env: {} }),
+    "process.env": "{}",
     "import.meta.env.BURETTE_REPO_ROOT": JSON.stringify(repoRoot),
   },
   // Plain `vite` does not read tsconfig `paths`, so the shadcn-style `@/` imports
   // only resolved under the desktop config's alias. Mirror it here for the
   // browser-dev flow that runs this root config directly.
   resolve: {
+    dedupe: ["react", "react-dom", "react/jsx-runtime", "react/jsx-dev-runtime"],
     alias: {
       "@": fileURLToPath(new URL("apps/desktop/src", import.meta.url)),
     },
@@ -75,7 +72,17 @@ export default defineConfig({
       "**/dist/**",
       "**/target/**",
       "PreviewExtension/Web/molstar.js",
+      "PreviewExtension/Web/mesoscale.js",
+      "PreviewExtension/Web/grid-ui.js",
+      "PreviewExtension/Web/sequence-panel.js",
       "PreviewExtension/Web/rdkit/**",
+      "PreviewExtension/Web/rdkit-conformer/**",
+      "PreviewExtension/Web/rdkit-compute/**",
+      "PreviewExtension/Web/openchemlib/**",
+      "plugins/burette-agent/browser-shell-dist/**",
+      "plugins/burette-agent/preview-web/**",
+      "plugins/burette-agent/mcp/lib/server-chunk-*.mjs",
+      "plugins/burette-agent/scripts/mvs-schema-validator.mjs",
     ],
     options: { typeAware: true, typeCheck: true },
   },

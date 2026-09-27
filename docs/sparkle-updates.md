@@ -1,6 +1,6 @@
 # Sparkle updates
 
-Burette can package Sparkle 2.9.6 with the pinned Tauri bridge 0.2.6. The
+Burette can package Sparkle 2.10.0 with the pinned Tauri bridge 0.3.0. The
 `sparkle-updater` Cargo feature is selected by `scripts/build.sh` when
 `BURETTE_SPARKLE_PUBLIC_KEY` is set. Release entrypoints require both signing
 keys and fail before building when either is missing. Development builds can
@@ -33,7 +33,7 @@ plugin is not installed by this startup path.
 ## Enable distribution
 
 1. Generate an app-specific key using the pinned SDK's
-   `build/sparkle/2.9.6/bin/generate_keys --account burette`. Keep the private key
+   `build/sparkle/2.10.0/bin/generate_keys --account burette`. Keep the private key
    in the login Keychain and a secure backup; do not put it in git or logs.
 2. Set the GitHub repository variable `BURETTE_SPARKLE_PUBLIC_KEY` to the printed
    base64 public key. Export the key through `generate_keys --account burette -x`
@@ -95,7 +95,7 @@ tests and remains required before declaring delivery operational.
   an isolated synthetic next version and serves its signed archive on loopback.
   The key JSON contains `public` and `private` base64 strings and stays outside
   the served directory. Use an ephemeral key embedded in the dev build. Build
-  the upstream 2.9.6 `sparkle-cli` scheme on this Mac and point `--probe`, then
+  the upstream 2.10.0 `sparkle-cli` scheme on this Mac and point `--probe`, then
   `--check-immediately`, at the printed feed and installed dev bundle. The
   invalid-signature feed must be rejected without replacing the installed app.
   Stop the server and delete the ephemeral private key after acceptance.

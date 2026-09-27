@@ -1,15 +1,11 @@
-import type { RDKitLoader, RDKitModule } from "@rdkit/rdkit";
+import type { RDKitLoader, RDKitModule } from "rdkit-compute";
+import rdkitWasmUrl from "rdkit-compute/dist/RDKit_minimal.wasm?url";
 import type {
   FingerprintChunkResult,
   FingerprintInputChunk,
   FingerprintInputRecord,
   FingerprintOutputRecord,
 } from "../lib/compute-cluster";
-
-type RDKitLoaderOptions = {
-  locateFile: () => string;
-  wasmBinary: Uint8Array;
-};
 
 type FingerprintWorkerRequest = {
   type: "fingerprintChunk";
@@ -24,10 +20,8 @@ type FingerprintWorkerResponse = {
   error?: string;
 };
 
-const rdkitWasmUrl = new URL(
-  "../../../../PreviewExtension/Web/rdkit/RDKit_minimal.wasm",
-  import.meta.url,
-).href;
+// cluster.v1 has a reviewed scientific baseline independent of the viewer's
+// newer RDKit. Keep the generated JS loader and WASM from the same package.
 let rdkitPromise: Promise<RDKitModule> | null = null;
 
 self.addEventListener("message", (event: MessageEvent<FingerprintWorkerRequest>) => {
@@ -93,18 +87,17 @@ async function loadRDKit(): Promise<RDKitModule> {
   if (!rdkitPromise) {
     rdkitPromise = (async () => {
       const [loaderModule, wasmResponse] = await Promise.all([
-        import("@rdkit/rdkit"),
+        import("rdkit-compute") as unknown as Promise<{ default: RDKitLoader }>,
         fetch(rdkitWasmUrl),
       ]);
       if (!wasmResponse.ok) {
         throw new Error(`Cannot load the verified RDKit wasm (${wasmResponse.status}).`);
       }
-      const loader = ((loaderModule as unknown as { default?: RDKitLoader }).default
-        ?? loaderModule) as unknown as (options: RDKitLoaderOptions) => Promise<RDKitModule>;
-      const rdkit = await loader({
+      const rdkitOptions = {
         locateFile: () => rdkitWasmUrl,
         wasmBinary: new Uint8Array(await wasmResponse.arrayBuffer()),
-      });
+      };
+      const rdkit = await loaderModule.default(rdkitOptions);
       if (rdkit.version() !== "2025.03.4") {
         throw new Error(`RDKit runtime version ${rdkit.version()} does not match 2025.03.4.`);
       }

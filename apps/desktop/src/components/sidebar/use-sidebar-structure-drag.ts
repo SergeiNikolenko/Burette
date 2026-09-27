@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type DragEvent as ReactDragEvent, type 
 
 import type { DropTargetContext } from "../../lib/drop-actions";
 import { describeDropTargetElement, type DropTargetDescriptor } from "../../lib/drop-target";
+import { canStartNativeFileDrag, startNativeFileDrag } from "../../lib/native-file-drag";
 import {
   structureDragMovementExceedsThreshold,
   writeStructureDragPayload,
@@ -110,6 +111,28 @@ export function useSidebarStructureDrag({
 
   const onDragStart = useCallback((event: ReactDragEvent<HTMLElement>) => {
     const payload = getPayload();
+    if (payload && canStartNativeFileDrag()) {
+      // An HTML drag reaches Finder only as text, so hand AppKit the real files.
+      event.preventDefault();
+      if (mouseDragRef.current) mouseDragRef.current.nativeDragStarted = true;
+      // AppKit's drag loop ends with a synthetic mouse-up; it must not open the row.
+      suppressClickRef.current = true;
+      setStructureDragActive(true);
+      void startNativeFileDrag(payload)
+        .then(({ inAppDrop }) => {
+          // AppKit does not always report a drop on this window to the
+          // webview; the drag then ends unaccepted and the page finishes it.
+          if (inAppDrop) runSidebarDropAtPoint(payload, inAppDrop.x, inAppDrop.y, state, actions);
+        })
+        .catch(() => {})
+        .finally(() => {
+          finishDrag();
+          window.setTimeout(() => {
+            suppressClickRef.current = false;
+          }, 0);
+        });
+      return;
+    }
     if (!payload || !writeStructureDragPayload(event.dataTransfer, payload)) {
       event.preventDefault();
       finishDrag();
@@ -117,7 +140,7 @@ export function useSidebarStructureDrag({
     }
     if (mouseDragRef.current) mouseDragRef.current.nativeDragStarted = true;
     setStructureDragActive(true);
-  }, [finishDrag, getPayload, setStructureDragActive]);
+  }, [actions, finishDrag, getPayload, setStructureDragActive, state]);
 
   const onClickCapture = useCallback((event: ReactMouseEvent<HTMLElement>) => {
     if (!suppressClickRef.current) return;

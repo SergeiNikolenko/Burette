@@ -27,22 +27,24 @@ struct MobilePreviewScreen: View {
     var body: some View {
         GeometryReader { _ in
             ZStack(alignment: .leading) {
-                MobilePreviewWebView(
-                    document: currentDocument,
-                    theme: previewCanvasTheme,
-                    style: model.style,
-                    waterRepresentation: model.water,
-                    molstarQuality: model.molstarQuality,
-                    panelState: panelState,
-                    controlAction: controlAction,
-                    contextMenuCommand: contextMenuCommand,
-                    contextMenu: $activeContextMenu,
-                    inspectorTarget: $inspectorTarget,
-                    logEntries: $logEntries,
-                    status: $status,
-                    lastError: $lastError
-                )
-                    .ignoresSafeArea()
+                if availableViewModes.contains(.structure3D) {
+                    MobilePreviewWebView(
+                        document: currentDocument,
+                        theme: previewCanvasTheme,
+                        style: model.style,
+                        waterRepresentation: model.water,
+                        molstarQuality: model.molstarQuality,
+                        panelState: panelState,
+                        controlAction: controlAction,
+                        contextMenuCommand: contextMenuCommand,
+                        contextMenu: $activeContextMenu,
+                        inspectorTarget: $inspectorTarget,
+                        logEntries: $logEntries,
+                        status: $status,
+                        lastError: $lastError
+                    )
+                        .ignoresSafeArea()
+                }
 
                 if viewMode == .text {
                     MobileTextArtifactView(document: currentDocument)
@@ -75,9 +77,11 @@ struct MobilePreviewScreen: View {
                     .ignoresSafeArea()
                     .zIndex(10)
 
-                statusOverlay
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-                    .zIndex(15)
+                if viewMode != .text {
+                    statusOverlay
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                        .zIndex(15)
+                }
 
                 if let playbackKind,
                    activeSheet == nil,

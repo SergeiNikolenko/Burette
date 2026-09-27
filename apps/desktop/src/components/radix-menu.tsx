@@ -154,7 +154,7 @@ function renderDropdownItem(item: MenuItemSpec, index: number) {
       </DropdownMenuCheckboxItem>
     );
   }
-  if (item.kind === "swatches" || item.kind === "select" || item.kind === "number") {
+  if (item.kind === "swatches" || item.kind === "select" || item.kind === "number" || item.kind === "text") {
     return renderControl(item);
   }
   if (item.kind === "submenu") {
@@ -198,7 +198,7 @@ function renderContextItem(item: MenuItemSpec, index: number) {
       </ContextMenuCheckboxItem>
     );
   }
-  if (item.kind === "swatches" || item.kind === "select" || item.kind === "number") {
+  if (item.kind === "swatches" || item.kind === "select" || item.kind === "number" || item.kind === "text") {
     return renderControl(item);
   }
   if (item.kind === "submenu") {
@@ -225,7 +225,7 @@ function renderContextItem(item: MenuItemSpec, index: number) {
 // Controls live outside the menu's roving focus: a select or a number field that
 // closed the menu on every keystroke would make a parameter impossible to set.
 // They stop selection and keypresses from reaching the menu instead.
-function renderControl(item: Extract<MenuItemSpec, { kind: "swatches" | "select" | "number" }>) {
+function renderControl(item: Extract<MenuItemSpec, { kind: "swatches" | "select" | "number" | "text" }>) {
   const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
   if (item.kind === "swatches") {
     return (
@@ -261,6 +261,22 @@ function renderControl(item: Extract<MenuItemSpec, { kind: "swatches" | "select"
             <option key={option} value={option}>{item.optionLabels?.[option] ?? option}</option>
           ))}
         </select>
+      </label>
+    );
+  }
+  if (item.kind === "text") {
+    return (
+      <label key={item.id} className="radix-menu-field" onKeyDown={stop}>
+        <span>{item.label}</span>
+        <input
+          type="text"
+          defaultValue={item.value}
+          placeholder={item.placeholder}
+          disabled={item.disabled}
+          onClick={stop}
+          onPointerDown={stop}
+          onChange={(event) => item.action?.(event.currentTarget.value)}
+        />
       </label>
     );
   }

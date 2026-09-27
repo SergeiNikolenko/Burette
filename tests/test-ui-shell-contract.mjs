@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
-import ts from 'typescript';
+import ts from 'typescript-compiler-api';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -623,7 +623,7 @@ assert.match(viewer, /const hasXyzrenderArtifact = Boolean\(document\.querySelec
 assert.match(viewer, /renderer !== 'xyzrender-external' && !hasXyzrenderArtifact/);
 assert.match(viewer, /function updateBrowserDevXyzrenderArtifact\(payload, requestedControls, requestedPreset\)/);
 assert.match(viewer, /if \(body\.type === 'setXyzrenderControls'\)/);
-assert.match(viewer, /String\(body\.documentId\) !== documentId && !hasXyzrenderArtifact/);
+assert.match(viewer, /if \(!addressedToThisDocument && !hasXyzrenderArtifact\) return;/);
 assert.match(viewer, /const options = \{ controls, preset \}/);
 assert.match(viewer, /requestBrowserDevXyzrenderUpdate\(options\)/);
 assert.match(viewer, /function rotatableArtifactControlsHTML\(\)/);
@@ -1455,7 +1455,6 @@ assert.match(appStartupEffectsHook, /const workspace = commonParentDirectory\(br
 assert.match(appStartupEffectsHook, /for \(const root of browserDevProjectRoots\) \{\s*addProjectRoot\(root\);/);
 assert.match(appStartupEffectsHook, /function uniqueParentDirectories\(paths: string\[\]\)/);
 assert.match(appStartupEffectsHook, /function commonParentDirectory\(paths: string\[\]\)/);
-assert.match(appStartupEffectsHook, /!isTauriRuntime\(\) \|\| documents\.length === 0/);
 assert.match(appStartupEffectsHook, /invoke<string\[\]>\("existing_paths", \{ paths \}\)/);
 assert.match(openEventsHook, /return startupOpenSettled/);
 assert.match(openEventsHook, /openPendingDocuments\(\{ replace: true \}, true\)/);
@@ -1507,7 +1506,7 @@ assert.match(appLayout, /const compactLeadingChrome = !tauriRuntime \|\| windowF
 // only reaches the DOM a render after the drag frame that produced it. React
 // contributes the leading-chrome inset (traffic lights) and the first-paint
 // seeds; `--sidebar-edge` / `--right-dock-edge` come from the observer.
-assert.match(appLayout, /const chromeLeadingInset = compactLeadingChrome\s*\?\s*"112px"\s*:\s*"calc\(92px \/ var\(--window-zoom, 1\) \+ 100px\)"/);
+assert.match(appLayout, /const chromeLeadingInset = compactLeadingChrome\s*\?\s*"112px"\s*:\s*viewportWidth <= 520\s*\?\s*"calc\(82px \/ var\(--window-zoom, 1\) \+ 40px\)"\s*:\s*"calc\(92px \/ var\(--window-zoom, 1\) \+ 100px\)"/);
 assert.match(appLayout, /"--chrome-leading-inset": chromeLeadingInset/);
 assert.doesNotMatch(appLayout, /tabChromeLeft/);
 assert.match(appLayout, /function usePanelEdgeVariables/);
@@ -1516,7 +1515,9 @@ assert.match(appLayout, /\{ elementRef: rightDockElementRef, property: "--right-
 assert.match(appLayout, /shell\.style\.setProperty\(entry\.property, `\$\{width\}px`\)/);
 assert.match(appLayout, /<header className="topbar">/);
 assert.match(appLayout, /const rightDockOpen = !settingsMode && !hostedMcpWidget && state\.rightDockOpen/);
-assert.match(appLayout, /const pluginSurface = Boolean\(window\.BuretteMcpWorkspace\) \|\| state\.buildInfo\.isAgentShell;/);
+assert.match(appLayout, /const pluginSurface = isAgentPluginSurface\(state\.buildInfo\.isAgentShell\);/);
+assert.match(appLayout, /\{!hostedMcpWidget && pluginSurface \? <AnnotateToggle /);
+assert.match(appLayout, /\{!hostedMcpWidget && pluginSurface \? <AnnotationLayer /);
 assert.match(appLayout, /const bottomDockOpen = !settingsMode && !hostedMcpWidget && !pluginSurface && state\.bottomDockOpen/);
 assert.match(appLayout, /"--right-dock-width": `\$\{rightDockOpen \? rightDockWidth : 0\}px`/);
 assert.match(appLayout, /"--chrome-height": hostedMcpWidget \? "0px" : undefined/);
@@ -1724,9 +1725,12 @@ assert.match(viewer, /const items = selectedItems\.length > 0 \? selectedItems :
 assert.match(viewer, /if \(requestSelectedXyzrenderSheetItemsUpdate\(\{ controls \}\)\) return;/);
 assert.match(viewer, /function applyXyzrenderSelectionPreset\(preset, controls\)/);
 assert.match(viewer, /async function applyXyzrenderSelectionVdw\(controls, preset\)/);
-assert.match(viewer, /if \(body\.selectionAction === 'vdw'\) \{\s*void applyXyzrenderSelectionVdw\(controls, preset\);\s*return;\s*\}/);
+assert.match(viewer, /if \(body\.selectionAction === 'vdw'\) \{\s*if \(addressedToThisDocument\) void applyXyzrenderSelectionVdw\(controls, preset\);\s*return;\s*\}/);
+assert.match(viewer, /if \(!groups\.length\) \{\s*requestXyzrenderVdwSelection\(controls, preset\);\s*return;\s*\}/);
+assert.doesNotMatch(viewer, /Select atoms first, then apply partial vdW spheres/);
+assert.match(viewer, /const selectionTargetsItem = addressedToThisDocument && \(typeof body\.itemId !== 'string'\s*\|\| xyzrenderSelectionGroups\(\)\.some\(group => group\.item\.dataset\.buretXyzrenderEditorId === body\.itemId\)\);/);
 assert.match(viewer, /if \(hasXyzrenderSelection\(\)\) \{\s*void applyXyzrenderSelectionPreset\(value, controls\);\s*return;\s*\}/s);
-assert.match(viewer, /if \(body\.type === 'setXyzrenderControls'\) \{[\s\S]*?if \(hasXyzrenderSelection\(\)\) \{\s*void applyXyzrenderSelectionPreset\(preset, controls\);\s*return;\s*\}[\s\S]*?const options = \{ controls, preset \};[\s\S]*?requestBrowserDevXyzrenderUpdate\(options\)/);
+assert.match(viewer, /if \(body\.type === 'setXyzrenderControls'\) \{[\s\S]*?if \(selectionTargetsItem && hasXyzrenderSelection\(\)\) \{\s*void applyXyzrenderSelectionPreset\(preset, controls\);\s*return;\s*\}[\s\S]*?const options = \{ controls, preset \};[\s\S]*?requestBrowserDevXyzrenderUpdate\(options\)/);
 assert.match(viewer, /function xyzrenderOrientationPayload\(options = \{\}\)/);
 assert.match(viewer, /postHostMessage\(\{ type: 'setXyzrenderControls', documentId, controls, preset, \.\.\.xyzrenderOrientationPayload\(options\) \}\)/);
 assert.match(viewer, /function xyzrenderAtomSelectorForElements\(item, elements\)/);
@@ -2700,7 +2704,7 @@ assert.match(structureInfoPanel, /<InspectorSection title="Composition"/);
 // Grid hover is rendered once in the inspector, above the filters, rather than
 // as a second popover over the molecule canvas.
 assert.match(structureInfoPanel, /<GridHoverMoleculeCard[\s\S]*key=\{document\.id\}[\s\S]*row=\{hoveredGridRow \?\? null\}[\s\S]*onInspectProperty=/);
-assert.doesNotMatch(gridHoverMolecule, /aria-label="Resize molecule preview"/);
+assert.match(gridHoverMolecule, /aria-label="Resize molecule preview"/);
 assert.match(gridHoverMolecule, /className="grid-hover-molecule-props-title">Data<\/span>/);
 assert.match(gridHoverMolecule, /aria-label="Resize data section"/);
 assert.match(gridHoverMolecule, /aria-expanded=\{propsOpen\}/);
@@ -2726,8 +2730,13 @@ assert.match(appGridControlMessagesHook, /body\?\.type === "gridRowHover"/);
 assert.match(appGridControlMessagesHook, /smiles: typeof raw\.smiles === "string" \? raw\.smiles : null/);
 assert.match(appGridControlMessagesHook, /raw\.cardRenderer === "xyzrender"/);
 assert.match(appGridControlMessagesHook, /raw\.previewSvg\.length <= 512_000/);
+assert.match(appGridControlMessagesHook, /highlightAtoms: highlightIndices\(raw\.highlightAtoms\)/);
+assert.match(appGridControlMessagesHook, /highlightBonds: highlightIndices\(raw\.highlightBonds\)/);
+assert.match(appGridControlMessagesHook, /useInputCoords: raw\.useInputCoords === true/);
 assert.match(gridViewer, /cardRenderer: state\.cardRenderer/);
 assert.match(gridViewer, /previewSvg/);
+assert.match(gridViewer, /highlightAtoms: Array\.isArray\(match\?\.atoms\) \? match\.atoms\.slice\(0, 256\)/);
+assert.match(gridViewer, /useInputCoords: state\.rdkitUseInputCoords/);
 assert.match(gridViewer, /state\.lastGridRowIndex/);
 assert.match(gridViewer, /HOVER_PREVIEW_SVG_LIMIT = 512_000/);
 assert.match(gridViewer, /columnId: String\(columnId\)\.slice\(0, 160\)/);
@@ -3905,10 +3914,11 @@ assert.match(sidebarSurface, /data-expanded=\{expanded \? "true" : "false"\}/);
 assert.match(sidebarSurface, /aria-hidden=\{!expanded\}/);
 assert.match(sidebarSurface, /className="project-folder-children"/);
 assert.doesNotMatch(sidebarSurface, /project-folder-disclosure/);
-assert.match(styles, /\.project-group-row \{[^}]*position: relative;[^}]*color: var\(--text-secondary\);[^}]*padding: 5px 64px 5px 10px;[^}]*overflow: hidden;/s);
+assert.match(styles, /\.project-group-row \{[^}]*position: relative;[^}]*color: var\(--text-secondary\);[^}]*padding: 5px 86px 5px 10px;[^}]*overflow: hidden;/s);
 assert.match(styles, /\.project-group-row:hover \{\s*background: var\(--surface-subtle\);\s*\}/);
 assert.match(styles, /\.project-folder-toggle-button \{[^}]*right: 30px;/s);
-assert.match(styles, /\.project-folder-row > \.project-folder-toggle-button \{\s*right: 4px;\s*\}/);
+assert.match(styles, /\.project-group-row > \.project-folder-toggle-button \{\s*right: 52px;\s*\}/);
+assert.match(styles, /\.project-folder-row:hover > \.project-row-pin/);
 assert.match(styles, /\.project-folder-name \{[^}]*flex: 1;/s);
 assert.match(styles, /\.project-folder-name-input \{[^}]*flex: 1;/s);
 assert.match(styles, /\n\.project \{[^}]*color: var\(--text-secondary\);/s);
@@ -5501,9 +5511,6 @@ assert.match(previewRuntimeCss, /\.buret-preview-dock-bottom \{/);
 assert.match(previewRuntimeCss, /\.buret-preview-dock-section-title/);
 assert.match(previewRuntimeCss, /\.buret-preview-dock-status-pill/);
 assert.match(previewRuntimeCss, /body\.buret-preview-dock-right-open \.buret-preview-dock-bottom/);
-assert.match(previewRuntimeCss, /\.buret-corner-button \{/);
-assert.match(previewRuntimeCss, /body\.burette-quicklook-host \{\s*--buret-toolbar-safe-top: 56px;/s);
-assert.match(previewRuntimeCss, /body\.burette-quicklook-host \.buret-corner-button \{/);
 assert.match(previewRuntimeCss, /transition: background 180ms ease, box-shadow 180ms ease;/);
 assert.match(
   previewRuntimeCss,
@@ -6192,7 +6199,9 @@ assert.doesNotMatch(appViewerStateMessagesHook, /body\.type === "mvsStoryChanged
 assert.match(previewViewer, /function sceneTreeDisplayLabel\(value\)/);
 assert.match(previewViewer, /if \(\/\^reflig\$\/i\.test\(words\)\) label = 'Reference ligand'/);
 assert.match(previewViewer, /if \(ligand\) label = `Ligand \$\{ligand\[1\]\}`/);
-assert.match(previewViewer, /note: String\(cell\.obj\.description \|\| display\.note \|\| display\.format \|\| ''\)/);
+// Measurement rows caption themselves with custom text and source; every other
+// row keeps the Mol* description.
+assert.match(previewViewer, /note: measurementName && measurementEditable\s*\?[\s\S]{0,200}?: String\(cell\.obj\.description \|\| display\.note \|\| display\.format \|\| ''\)/);
 // MolViewSpec internals do not belong in the tree: primitives are named after
 // what they draw, a residue query becomes a count, and the two halves of a scene
 // are separated.
@@ -7525,7 +7534,6 @@ assert.match(derivedColumnsHook, /fetchDerivedSourceRows\(documentId, afterSourc
 assert.match(derivedColumnsHook, /storeDerivedValues\(documentId, \{/);
 assert.match(derivedColumnsLib, /resources\.json\?raw/);
 assert.match(derivedColumnsLib, /RDKit_minimal\.wasm\?url/);
-assert.match(derivedColumnsLib, /const rdkitOptions = \{ locateFile: \(\) => wasmUrl, wasmBinary \}/);
 assert.match(derivedColumnsLib, /atob\(/);
 assert.match(viteConfig, /assetsInlineLimit:[\s\S]*RDKit_minimal\.wasm/);
 assert.match(derivedColumnsLib, /ocl\.Resources\.register\(JSON\.parse\(oclResourcesRaw\.default\)\)/);
@@ -8008,6 +8016,8 @@ assert.match(appPreferenceEffectsHook, /body: \{ type: LIVE_APPLIED_PREFERENCE_M
 assert.match(appPreferenceEffectsHook, /if \(liveKeys\) broadcastLiveAppliedPreferences\(liveKeys, preferences\)/);
 assert.match(previewViewer, /if \(body\.type === 'setViewerTheme'\) \{\s*const nextTheme = normalizeViewerTheme\(body\.value\);/s);
 assert.match(previewViewer, /setViewerTheme\(nextTheme, activeViewer\);/);
+// The molecule grid is a separate runtime and must follow the same live theme message.
+assert.match(gridViewer, /if \(body\.type === 'setViewerTheme'\) \{\s*const cfg = safeConfig\(\);\s*if \(!cfg\) return;\s*cfg\.theme = [^;]+;\s*applyTheme\(cfg\);/s);
 assert.match(previewViewer, /if \(body\.type === 'setViewerStyle'\) \{\s*const style = normalizeMolstarStyle\(body\.value\);\s*if \(style === 'default' \|\| style === 'illustrative'\) void requestMolstarAppearance\(style\);\s*else requestMolstarStyle\(style\);/s);
 assert.match(appMaintenanceHook, /Quick Look reset completed/);
 assert.match(appMaintenanceHook, /Quick Look reset reported issues/);
@@ -8040,7 +8050,7 @@ assert.match(shortcutDocs, /Clear Recent Structures/);
 assert.match(shortcutDocs, /<project>: <title>/);
 assert.doesNotMatch(readme, /executable path, built-in preset\/custom JSON config, and extra CLI flags/);
 assert.doesNotMatch(readme, /Finder file association registration/);
-assert.match(packageJson, /"packageManager": "bun@1\.3\.8"/);
+assert.match(packageJson, /"packageManager": "bun@1\.4\.2"/);
 assert.match(packageJson, /"workspaces": \[/);
 assert.match(packageJson, /"packages\/\*"/);
 assert.match(updateSource, /const installExtensions = \["\.zip"\]/);
@@ -8768,8 +8778,8 @@ assert.match(sidebarFileTreeNode, /items: draggableItems\.map\(\(item\) => \(\{/
 assert.match(sidebarFileTreeNode, /kind: "file"/);
 assert.match(sidebarFileTreeNode, /title: item\.title/);
 assert.match(sidebarFileTreeNode, /detail: item\.relativePath/);
-assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(project\.items\)/);
-assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(nodeItems\)/);
+assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(project\.items, project\.rootPath\)/);
+assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(nodeItems, folderPath\)/);
 assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(\[item\]\)/);
 assert.match(sidebarFileTreeNode, /className="project-group-row"[\s\S]*draggable=\{!renaming && project\.items\.length > 0\}/);
 assert.match(sidebarFileTreeNode, /className="project-folder-row"[\s\S]*draggable=\{nodeItems\.length > 0\}/);

@@ -26,6 +26,7 @@ import { registerBrowserDevAgentSessionRoute } from "./vite/browser-dev/agent-se
 import { registerBrowserDevConformerJobRoutes } from "./vite/browser-dev/conformer-jobs";
 import { registerBrowserDevInlineConformerRoute } from "./vite/browser-dev/conformer-inline";
 import { registerBrowserDevDescriptorRoutes } from "./vite/browser-dev/descriptors";
+import { registerBrowserDevRequestGuard } from "./vite/browser-dev/http";
 import { registerBrowserDevDesmondPreviewRoute } from "./vite/browser-dev/desmond";
 import {
   registerBrowserDevFileContentRoutes,
@@ -1560,76 +1561,64 @@ async function calculateBrowserDevDescriptors(body: Record<string, unknown>) {
 
 async function calculateBrowserDevGridDescriptors(body: Record<string, unknown>) {
   const documentId = typeof body.documentId === "string" && body.documentId ? body.documentId : "browser-dev-grid";
+  const existing = browserDevDescriptorJobs.get(documentId);
+  if (existing?.running) return existing;
   const sourcePath = typeof body.sourcePath === "string" ? body.sourcePath : typeof body.path === "string" ? body.path : "";
-  const rowIndexes = normalizeBrowserDevDescriptorRowIndexes(body.rowIndexes);
+  const rowIndexes = new Set(normalizeBrowserDevDescriptorRowIndexes(body.rowIndexes));
   const startedAtMs = Date.now();
-  const allRecords = await browserDevDescriptorGridRecords(sourcePath);
-  const selectedRecords = rowIndexes.length > 0
-    ? allRecords.filter((record) => rowIndexes.includes(record.index))
-    : allRecords;
-  const pythonPath = await browserDevDescriptorPython();
-  if (!pythonPath) {
-    const failed = browserDevDescriptorJobStatus(
-      documentId,
-      "failed",
-      allRecords.length,
-      [],
-      startedAtMs,
-      browserDevDescriptorInstallHint(),
-    );
-    browserDevDescriptorJobs.set(documentId, failed);
-    return failed;
-  }
-  let processedRows = 0;
   const rows: BrowserDevGridDescriptorResultRow[] = [];
-  browserDevDescriptorJobs.set(documentId, {
-    documentId,
-    status: "running",
-    running: true,
-    totalRows: allRecords.length,
-    processedRows,
-    calculatedRows: 0,
-    failedRows: 0,
-    message: "Calculating descriptors...",
-    startedAtMs,
-    finishedAtMs: null,
-    summary: null,
-    rows: [],
-  });
-  for (const chunk of chunkArray(selectedRecords, DESCRIPTOR_GRID_BATCH_SIZE)) {
-    const current = browserDevDescriptorJobs.get(documentId);
-    if (current?.status === "cancelled") return current;
-    const result = parseBrowserDevDescriptorRunnerOutput(await runBrowserDevDescriptorRunner(pythonPath, {
-      mode: "gridBatch",
-      descriptorSet: "all-2d",
-      rows: chunk.map((record) => ({
-        rowId: record.index,
-        index: record.index,
-        format: record.molblock ? "sdf" : "smiles",
-        text: record.molblock || record.smiles || "",
-        sourceLabel: record.name,
-      })),
-    }, DESCRIPTOR_GRID_BATCH_TIMEOUT_MS));
-    const resultRows = Array.isArray(result.rows) ? result.rows as Array<Record<string, unknown>> : [];
-    for (const resultRow of resultRows) {
-      const index = Number(resultRow.index);
-      const descriptorValues = browserDevDescriptorValuesFromResult(resultRow);
-      rows.push({
-        index,
-        rowId: Number.isFinite(Number(resultRow.rowId)) ? Number(resultRow.rowId) : index,
-        descriptors: descriptorValues,
-      });
+  let job = browserDevDescriptorJobStatus(documentId, "running", 0, rows, startedAtMs, "Preparing descriptors...");
+  browserDevDescriptorJobs.set(documentId, job);
+  // Cancellation replaces the stored snapshot. Check ownership after every
+  // await so a finished batch cannot revive a cancelled or restarted job.
+  const isCurrent = () => browserDevDescriptorJobs.get(documentId) === job;
+  const cancelled = () => browserDevDescriptorJobStatus(documentId, "cancelled", job.totalRows, rows, startedAtMs, "Descriptor calculation cancelled.");
+  try {
+    const allRecords = await browserDevDescriptorGridRecords(sourcePath);
+    if (!isCurrent()) return cancelled();
+    job.totalRows = allRecords.length;
+    const selectedRecords = rowIndexes.size > 0
+      ? allRecords.filter((record) => rowIndexes.has(record.index))
+      : allRecords;
+    const pythonPath = await browserDevDescriptorPython();
+    if (!isCurrent()) return cancelled();
+    if (!pythonPath) throw new Error(browserDevDescriptorInstallHint());
+    let processedRows = 0;
+    for (const chunk of chunkArray(selectedRecords, DESCRIPTOR_GRID_BATCH_SIZE)) {
+      const result = parseBrowserDevDescriptorRunnerOutput(await runBrowserDevDescriptorRunner(pythonPath, {
+        mode: "gridBatch",
+        descriptorSet: "all-2d",
+        rows: chunk.map((record) => ({
+          rowId: record.index,
+          index: record.index,
+          format: record.molblock ? "sdf" : "smiles",
+          text: record.molblock || record.smiles || "",
+          sourceLabel: record.name,
+        })),
+      }, DESCRIPTOR_GRID_BATCH_TIMEOUT_MS));
+      if (!isCurrent()) return cancelled();
+      const resultRows = Array.isArray(result.rows) ? result.rows as Array<Record<string, unknown>> : [];
+      for (const resultRow of resultRows) {
+        const index = Number(resultRow.index);
+        const descriptorValues = browserDevDescriptorValuesFromResult(resultRow);
+        rows.push({
+          index,
+          rowId: Number.isFinite(Number(resultRow.rowId)) ? Number(resultRow.rowId) : index,
+          descriptors: descriptorValues,
+        });
+      }
+      processedRows += chunk.length;
+      job = browserDevDescriptorJobStatus(documentId, "running", allRecords.length, rows, startedAtMs, `Calculated ${processedRows} of ${selectedRecords.length} selected rows.`);
+      job.processedRows = processedRows;
+      browserDevDescriptorJobs.set(documentId, job);
     }
-    processedRows += chunk.length;
-    const running = browserDevDescriptorJobStatus(documentId, "running", allRecords.length, rows, startedAtMs, `Calculated ${processedRows} of ${selectedRecords.length} selected rows.`);
-    running.running = true;
-    running.processedRows = processedRows;
-    running.finishedAtMs = null;
-    browserDevDescriptorJobs.set(documentId, running);
+    job = browserDevDescriptorJobStatus(documentId, "completed", allRecords.length, rows, startedAtMs, `Calculated descriptors for ${rows.length} rows.`);
+  } catch (error) {
+    if (!isCurrent()) return cancelled();
+    job = browserDevDescriptorJobStatus(documentId, "failed", job.totalRows, rows, startedAtMs, error instanceof Error ? error.message : String(error));
   }
-  const completed = browserDevDescriptorJobStatus(documentId, "completed", allRecords.length, rows, startedAtMs, `Calculated descriptors for ${rows.length} rows.`);
-  browserDevDescriptorJobs.set(documentId, completed);
-  return completed;
+  browserDevDescriptorJobs.set(documentId, job);
+  return job;
 }
 
 function browserDevDescriptorJobStatus(
@@ -1648,14 +1637,14 @@ function browserDevDescriptorJobStatus(
     running: status === "running",
     totalRows,
     processedRows: rows.length,
-    calculatedRows: rows.length,
+    calculatedRows: rows.length - failedRows,
     failedRows,
     message,
     startedAtMs,
     finishedAtMs: status === "running" ? null : Date.now(),
     summary: {
       totalRows,
-      calculatedRows: rows.length,
+      calculatedRows: rows.length - failedRows,
       failedRows,
       descriptorIdCount: descriptorIds.length,
       descriptorIds,
@@ -3571,6 +3560,7 @@ export function browserDevXyzrenderPlugin() {
   return {
     name: "burette-browser-dev-xyzrender",
     configureServer(server: import("vite").ViteDevServer) {
+      registerBrowserDevRequestGuard(server);
       registerBrowserDevSshRoutes(server, repoRoot);
       const fileRoutes = {
         collectDefaultDevFiles,

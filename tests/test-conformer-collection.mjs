@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import ts from 'typescript';
+import ts from 'typescript-compiler-api';
 
 const exports = {};
 new Function('exports', ts.transpile(readFileSync('apps/desktop/src/lib/conformer-collection.ts', 'utf8'), {

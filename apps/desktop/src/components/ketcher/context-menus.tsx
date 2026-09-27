@@ -24,6 +24,8 @@ function show(request: MenuRequest) {
 function hideAll() {
   for (const listener of listeners) listener(null);
 }
+export const contextMenu = { hideAll };
+
 // This is the only imperative API used by Ketcher's molecule canvas. Its original
 // hit testing, menu family selection and chemistry handlers stay in Ketcher.
 export function useContextMenu(defaults?: { id: string | number }) {

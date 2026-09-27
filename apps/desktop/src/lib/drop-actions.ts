@@ -1,6 +1,7 @@
 import type { DockingDocumentRequest, FepSetupRequest } from "../types";
 import { isMoleculeCollectionPath } from "./collection-documents";
 import { dockingCandidatesForDrop, isMolstarSceneImportSource, isMolstarCombineSource, isMolstarCoordinateTrajectorySource, isProteinLikeDockingSource, isTrajectoryDocumentRequest } from "./docking-documents";
+import { movableEntries } from "./move-into-folder";
 import type { StructureDragPayload, StructureDragRecord } from "./structure-drag";
 
 export type DropTargetContext =
@@ -95,6 +96,11 @@ export type DropAction =
       records: StructureDragRecord[];
     }
   | {
+      kind: "move-into-folder";
+      directory: string;
+      paths: string[];
+    }
+  | {
       kind: "show-inline-record-target-hint";
     };
 
@@ -121,13 +127,17 @@ export function resolveDropActionChoices(
   target: DropTargetContext,
   source: DropSourceContext = UNKNOWN_DROP_SOURCE,
 ): DropActionChoice[] {
-  if (payload.paths.length === 0 && payload.records.length === 0) return [];
   if (target.kind === "folder") {
     if (payload.records.length) return [choice("save-structure-records", "Save molecules in folder", "default", {
       kind: "open-structure-records", paths: payload.paths, records: payload.records, directory: target.directory,
     }, source)];
-    return workspaceDropActionChoices(payload, source);
+    // A folder row drags the folder itself, while its file paths feed viewers.
+    const paths = movableEntries(payload.entries ?? payload.paths, target.directory);
+    return paths.length ? [choice("move-into-folder", `Move to ${fileName(target.directory)}`, "default", {
+      kind: "move-into-folder", directory: target.directory, paths,
+    }, source)] : [];
   }
+  if (payload.paths.length === 0 && payload.records.length === 0) return [];
   if (target.kind === "workspace" || target.kind === "sidebar" || target.kind === "tab-strip") {
     return workspaceDropActionChoices(payload, source);
   }
@@ -180,9 +190,18 @@ export function resolveDropActionChoices(
   if (target.renderer === "molstar" && target.documentId
     && payload.paths.every(isMolstarSceneImportSource)
     && payload.records.every(record => isMolstarSceneImportSource(`record.${record.inputExtension}`))) {
-    return withOpenSeparately(payload, {
+    const appendChoice = choice("append-scene-files", "Add to scene", "default", {
       kind: "append-scene-files", targetDocumentId: target.documentId, payload,
-    }, "Add to scene", source);
+    }, source);
+    // Appended SDF records render side by side; only the docking view pages
+    // through them as poses, so ligands dropped on a receptor open there first.
+    const poseChoices = isLigandPoseDrop(payload, target)
+      ? tagChoicesWithSource(dockingActionChoices(target.documentPath, payload, target.dockingRequest), source)
+      : [];
+    if (poseChoices.length > 0) {
+      return withOpenSeparatelyChoices(payload, [...poseChoices, { ...appendChoice, confidence: "alternative" }], source);
+    }
+    return withOpenSeparatelyChoices(payload, [appendChoice], source);
   }
 
   const dockingChoices = dockingActionChoices(target.documentPath, payload, target.dockingRequest);
@@ -194,6 +213,16 @@ export function resolveDropActionChoices(
   }
 
   return [defaultWorkspaceDropChoice(payload, source)];
+}
+
+function isLigandPoseDrop(payload: StructureDragPayload, target: Extract<DropTargetContext, { kind: "active-viewer" }>) {
+  const docking = target.dockingRequest;
+  if (docking ? docking.sceneMode || isTrajectoryDocumentRequest(docking) : !isProteinLikeDockingSource(target.documentPath)) {
+    return false;
+  }
+  return payload.paths.length + payload.records.length > 0
+    && payload.paths.every((path) => fileExtension(path) === "sdf")
+    && payload.records.every((record) => record.inputExtension === "sdf");
 }
 
 function gridAppendPayload(payload: StructureDragPayload) {

@@ -4,6 +4,7 @@ import { SidebarTooltip } from "./sidebar-tooltip";
 import { Pin, PinFilled, DotsHorizontal } from "../ui/app-icons";
 import { SidebarFolderIcon } from "./sidebar-folder-icon";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { documentFallbackExtensions } from "../../lib/file-routing";
 import type { SidebarProject, SidebarProjectItem } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload, type StructureDragPayload } from "../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
@@ -72,7 +73,7 @@ export function ProjectGroup({
   const sidebarDrag = useSidebarStructureDrag({
     actions,
     disabled: renaming,
-    getPayload: () => sidebarProjectItemsDragPayload(project.items),
+    getPayload: () => sidebarProjectItemsDragPayload(project.items, project.rootPath),
     state,
   });
 
@@ -298,6 +299,13 @@ export function ProjectGroup({
           <FolderExpandCollapseIcon collapse={expanded} />
         </button>
         <span className="project-group-actions">
+          {project.rootPath && (
+            <FolderPinButton
+              pinned={project.isPinned}
+              title={project.title}
+              onToggle={() => actions.togglePinnedProjectRoot(project.rootPath!)}
+            />
+          )}
           <button
             type="button"
             className="project-group-menu-button"
@@ -426,7 +434,7 @@ function ProjectTreeNodeView({
   };
   const sidebarDrag = useSidebarStructureDrag({
     actions,
-    getPayload: () => sidebarProjectItemsDragPayload(nodeItems),
+    getPayload: () => sidebarProjectItemsDragPayload(nodeItems, folderPath),
     state,
   });
   const showAllChildren = showAllFolderPaths.has(node.path);
@@ -490,6 +498,14 @@ function ProjectTreeNodeView({
         >
           <FolderExpandCollapseIcon collapse={expanded} />
         </button>
+        {folderPath && (
+          <FolderPinButton
+            className="project-row-pin"
+            pinned={false}
+            title={displayName}
+            onToggle={() => actions.togglePinnedProjectRoot(folderPath)}
+          />
+        )}
       </div>
       <div
         className="project-folder-children-shell"
@@ -548,7 +564,11 @@ export function ProjectItem({
     state,
   });
   const openItem = () => {
-    if (item.documentId) {
+    // A CSV/TSV row can be bound to the hidden text copy that the grid and dock
+    // keep for source editing; reopen it instead so it lands in the molecule
+    // grid or the table viewer. Raw text stays an explicit Open As choice.
+    const textCopyOfTable = item.renderer === "text" && documentFallbackExtensions.has(item.extension.toLowerCase());
+    if (item.documentId && !textCopyOfTable) {
       actions.selectDocument(item.documentId);
       return;
     }
@@ -717,10 +737,12 @@ function projectTreeNodeItems(node: ProjectTreeNode): SidebarProjectItem[] {
 
 function sidebarProjectItemsDragPayload(
   items: SidebarProjectItem[],
+  folderPath?: string | null,
 ): StructureDragPayload | null {
   const draggableItems = items.filter((item) => item.path.trim().length > 0);
   if (draggableItems.length === 0) return null;
   return {
+    ...(folderPath ? { entries: [folderPath] } : {}),
     paths: draggableItems.map((item) => item.path),
     records: [],
     items: draggableItems.map((item) => ({
@@ -734,6 +756,30 @@ function sidebarProjectItemsDragPayload(
 
 function projectDepthStyle(depth: number): CSSProperties {
   return { "--project-depth": depth } as CSSProperties;
+}
+
+// Pinning a folder promotes it to a pinned project, same as the folder menu's Pin.
+function FolderPinButton({ pinned, title, onToggle, className }: {
+  pinned: boolean;
+  title: string;
+  onToggle: () => void;
+  className?: string;
+}) {
+  return (
+    <SidebarTooltip label={pinned ? "Unpin folder" : "Pin folder"}>
+      <button
+        type="button"
+        className={["pin-hit", pinned ? "pinned" : "", className ?? ""].filter(Boolean).join(" ")}
+        aria-label={(pinned ? "Unpin " : "Pin ") + title}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggle();
+        }}
+      >
+        <PinIcon pinned={pinned} />
+      </button>
+    </SidebarTooltip>
+  );
 }
 
 function PinIcon({ pinned }: { pinned: boolean }) {

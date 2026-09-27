@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { RDKitLoader, RDKitModule } from "@rdkit/rdkit";
+import type { MainModule as RDKitModule } from "@rdkit/rdkit";
 
 import { isTauriRuntime } from "./tauri";
 
@@ -102,8 +102,8 @@ export function loadDerivedEngines(): Promise<DerivedEngines> {
         // packaged frontend protocol. Bundle the predictor tables into the JS
         // chunk and register them without a runtime network request.
         import("../../../../node_modules/openchemlib/dist/resources.json?raw"),
-        import("@rdkit/rdkit") as unknown as Promise<{ default: RDKitLoader }>,
-        import("@rdkit/rdkit/dist/RDKit_minimal.wasm?url"),
+        import("@rdkit/rdkit"),
+        import("@rdkit/rdkit/RDKit_minimal.wasm?url"),
       ]);
       // The Actelion predictors (druglikeness, toxicity) refuse to run until
       // their rule tables are registered.
@@ -112,7 +112,15 @@ export function loadDerivedEngines(): Promise<DerivedEngines> {
       const wasmBinary = wasmUrl.startsWith("data:")
         ? Uint8Array.from(atob(wasmUrl.slice(wasmUrl.indexOf(",") + 1)), (char) => char.charCodeAt(0))
         : new Uint8Array(await (await fetch(wasmUrl)).arrayBuffer());
-      const rdkitOptions = { locateFile: () => wasmUrl, wasmBinary };
+      const compiled = await WebAssembly.compile(wasmBinary);
+      const rdkitOptions = {
+        locateFile: () => wasmUrl,
+        instantiateWasm(imports: WebAssembly.Imports, receive: (instance: WebAssembly.Instance, module: WebAssembly.Module) => void) {
+          const instance = new WebAssembly.Instance(compiled, imports);
+          receive(instance, compiled);
+          return instance.exports;
+        },
+      };
       const rdkit = await rdkitModule.default(rdkitOptions);
       return { ocl, rdkit };
     })().catch((error) => {

@@ -11,6 +11,8 @@ import type { DockDropInput } from "../lib/dock";
 import { buildFileDropPreview } from "../lib/drop-preview";
 import type { DropPreviewTarget, FileDropPreview } from "../lib/drop-preview";
 import { describeDropTargetElement } from "../lib/drop-target";
+import { requestMoveIntoFolder } from "../lib/move-into-folder";
+import { nativeFileDragPayload } from "../lib/native-file-drag";
 import { parentDirectory } from "../lib/sidebar-projects";
 import { TAB_DRAG_MIME, hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
@@ -328,6 +330,10 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       void openTextDocuments(action.paths);
       return;
     }
+    if (action.kind === "move-into-folder") {
+      requestMoveIntoFolder({ directory: action.directory, paths: action.paths });
+      return;
+    }
     if (action.kind === "open-structure-records") {
       if (action.paths.length > 0) void openDocuments(action.paths);
       if (action.records.length > 0 && openStructureRecords) {
@@ -387,7 +393,8 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     payload: StructureDragPayload,
     target: OpenDropTargetContext,
   ) => {
-    if (payload.paths.length === 0 || !isTauriRuntime()) {
+    // Folders dropped on a folder row move into it instead of becoming projects.
+    if (payload.paths.length === 0 || !isTauriRuntime() || target.kind === "folder") {
       runDropAction(payload, target, { kind: "finder" });
       return;
     }
@@ -441,7 +448,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       if (event.type === "enter") {
         if (event.paths.length) nativeTabDragRef.current = null;
         nativeDragPayloadRef.current = event.paths.length
-          ? { paths: event.paths, records: [] }
+          ? nativeFileDragPayload(event.paths) ?? { paths: event.paths, records: [] }
           : browserDragPayloadRef.current ?? { paths: [], records: [] };
         const point = tauriDropPoint(event.position) ?? { x: 0, y: 0 };
         const element = elementFromTauriDropPosition(event.position);
@@ -480,7 +487,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         // WKWebView's native handler consumes internal HTML drops too. Such
         // drags have no Finder paths, so use the bounded dragstart payload.
         const payload: StructureDragPayload = event.paths.length
-          ? { paths: event.paths, records: [], point }
+          ? { ...(nativeFileDragPayload(event.paths, { consume: true }) ?? { paths: event.paths, records: [] }), point }
           : { ...(nativeDragPayloadRef.current ?? browserDragPayloadRef.current ?? { paths: [], records: [] }), point };
         nativeDragPayloadRef.current = null;
         browserDragPayloadRef.current = null;
@@ -524,6 +531,8 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     // dragover exposes MIME types but protects getData(). Read our payload
     // after the source's dragstart handler has written it, while it is readable.
     const rememberBrowserDrag = (event: DragEvent) => {
+      // Sidebar rows cancel the HTML drag and start a native file drag instead.
+      if (event.defaultPrevented) return;
       cancelledBrowserDragRef.current = false;
       browserTabDragRef.current = event.dataTransfer?.getData(TAB_DRAG_MIME) || null;
       nativeTabDragRef.current = browserTabDragRef.current;

@@ -151,8 +151,9 @@ unregister_stale_dev_flavor_extensions() {
     [[ "$old_appex" == "$DEST_APPEX" ]] && continue
     case "$old_appex" in
       *"/Burette-"*.app/Contents/PlugIns/BurettePreview.appex)
+        [[ "$(plutil -extract CFBundleIdentifier raw -o - "$old_appex/Contents/Info.plist" 2>/dev/null || true)" == "$EXT_ID" ]] || continue
         pluginkit -r "$old_appex" 2>/dev/null || true
-        unregister_bundle "${old_appex%/Contents/PlugIns/*}.app"
+        unregister_bundle "${old_appex%/Contents/PlugIns/*}"
         ;;
     esac
   done < <(
@@ -164,9 +165,11 @@ unregister_stale_dev_flavor_extensions() {
 echo "Unregistering old Burette extensions, if any..."
 pkill -f "$DEST/Contents/MacOS/Burette" 2>/dev/null || true
 pkill -f "$DEST/Contents/MacOS/burette" 2>/dev/null || true
-pkill -f "$LEGACY_OLD_DEST/Contents/MacOS/MolstarQuickLook" 2>/dev/null || true
-pkill -f "$LEGACY_XYZ_DEST" 2>/dev/null || true
-pkill -f "$ROOT/build/Build/Products/Debug/MolstarQuickLook" 2>/dev/null || true
+if [[ "$IS_DEV_FLAVOR" != "1" ]]; then
+  pkill -f "$LEGACY_OLD_DEST/Contents/MacOS/MolstarQuickLook" 2>/dev/null || true
+  pkill -f "$LEGACY_XYZ_DEST" 2>/dev/null || true
+  pkill -f "$ROOT/build/Build/Products/Debug/MolstarQuickLook" 2>/dev/null || true
+fi
 pluginkit -r "$EXT_ID" 2>/dev/null || true
 unregister_stale_dev_flavor_extensions
 if [[ "$IS_DEV_FLAVOR" != "1" ]]; then
@@ -204,11 +207,11 @@ if [[ "$IS_DEV_FLAVOR" != "1" ]]; then
 fi
 
 unregister_bundle "$DEST"
-unregister_bundle "$LEGACY_OLD_DEST"
-unregister_bundle "$LEGACY_BURET_DEST"
-unregister_bundle "$LEGACY_XYZ_DEST"
 unregister_bundle "$APP"
 if [[ "$IS_DEV_FLAVOR" != "1" ]]; then
+  unregister_bundle "$LEGACY_OLD_DEST"
+  unregister_bundle "$LEGACY_BURET_DEST"
+  unregister_bundle "$LEGACY_XYZ_DEST"
   unregister_legacy_launch_services_bundles
 fi
 "$ROOT/scripts/prune-launch-services.sh" || true
@@ -275,7 +278,10 @@ assert_bundled_xyzrender_runner() {
 }
 
 mkdir -p "$DEST_DIR"
-rm -rf "$STAGING_DEST" "$DEST" "$LEGACY_OLD_DEST" "$LEGACY_BURET_DEST" "$LEGACY_XYZ_DEST"
+rm -rf "$STAGING_DEST" "$DEST"
+if [[ "$IS_DEV_FLAVOR" != "1" ]]; then
+  rm -rf "$LEGACY_OLD_DEST" "$LEGACY_BURET_DEST" "$LEGACY_XYZ_DEST"
+fi
 if [[ -e "$STAGING_DEST" || -e "$DEST" ]]; then
   echo "error: could not remove previous install staging or destination" >&2
   echo "  staging: $STAGING_DEST" >&2

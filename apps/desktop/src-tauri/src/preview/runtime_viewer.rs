@@ -869,6 +869,7 @@ mod tests {
             "molecule-preview-interactions.js",
             "renderer-view-state.js",
             "color-picker.js",
+            "native-viewer-menus.js",
             "scene-file-actions.js",
             "sequence-panel.js",
         ] {
@@ -1057,6 +1058,7 @@ mod tests {
 
         let referenced = referenced_asset_paths(&html, assets);
         for lazy in [
+            "native-viewer-menus.js",
             "scene-file-actions.js",
             "molstar.js",
             "rdkit/RDKit_minimal.js",
@@ -1125,12 +1127,18 @@ impl AssetProfile {
                 "molecule-preview-interactions.js",
                 "renderer-view-state.js",
                 "color-picker.js",
+                "native-viewer-menus.js",
                 "scene-file-actions.js",
                 "sequence-panel.js",
                 "viewer.js",
             ],
             Self::Mesoscale => &["mesoscale.js", "mesoscale.css"],
-            Self::Grid => &["grid-ui.js", "grid-viewer.js", "grid.css"],
+            Self::Grid => &[
+                "native-viewer-menus.js",
+                "grid-ui.js",
+                "grid-viewer.js",
+                "grid.css",
+            ],
             Self::ExternalXyzrender => &[
                 "molstar.css",
                 "viewer-runtime.css",
@@ -1142,6 +1150,7 @@ impl AssetProfile {
                 "molecule-preview-interactions.js",
                 "renderer-view-state.js",
                 "color-picker.js",
+                "native-viewer-menus.js",
                 "scene-file-actions.js",
                 "sequence-panel.js",
                 "viewer.js",
@@ -1318,6 +1327,7 @@ fn viewer_html(
     let trajectory_smoothing_js = asset_url(&assets.join("trajectory-smoothing.js"));
     let preset_preview_controller_js =
         asset_url(&assets.join("molstar-preset-preview-controller.js"));
+    let native_menus_js = asset_url(&assets.join("native-viewer-menus.js"));
     let scene_files_js = asset_url(&assets.join("scene-file-actions.js"));
     let superposition_panel_js = asset_url(&assets.join("superposition-panel.js"));
     let color_picker_js = asset_url(&assets.join("color-picker.js"));
@@ -1366,6 +1376,7 @@ fn viewer_html(
 <body class="{background_class}">
   <div id="app"></div>
   <script src="{shell_js}"></script>
+  <script src="{native_menus_js}"></script>
   <div id="status" class="hidden">Loading {title}...</div>
   {renderer_scripts}
   <script src="{config_js}"></script>

@@ -17,7 +17,7 @@ let visible = false;
 const canvas = {};
 const context = vm.createContext({
   Element: class {},
-  viewer: { plugin: { state: { behaviors: { cells: new Map([['focus', {
+  viewer: { plugin: { behaviors: { interaction: { hover: { subscribe: () => ({ unsubscribe() {} }) } } }, state: { behaviors: { cells: new Map([['focus', {
     transform: { transformer: { id: 'camera-focus-loci' } }, obj: { data: cameraFocus }
   }]]) } } } },
   document: {

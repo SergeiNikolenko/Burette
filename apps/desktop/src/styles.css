@@ -538,8 +538,9 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .calculate-properties-group {
   margin: 0 0 12px;
   padding: 8px 10px 10px;
-  border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border: 0.5px solid var(--line-subtle);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fg-base) 3%, transparent);
 }
 .calculate-properties-group legend {
   padding: 0 4px;
@@ -567,14 +568,17 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .radix-dialog-check-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  padding: 2px 0;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  padding: 3px 0;
   color: var(--text-primary);
 }
 .calculate-properties-option input[type="checkbox"],
 .radix-dialog-check-row input[type="checkbox"] {
   flex: none;
+  width: 14px;
+  height: 14px;
   margin: 0;
   accent-color: var(--accent);
 }
@@ -620,8 +624,9 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   margin-top: 4px;
 }
 .calculate-properties-count {
-  font-size: 11px;
-  color: var(--text-secondary);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 .calculate-properties-actions {
   margin-left: auto;
@@ -640,18 +645,19 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .calculated-column-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   margin: 0 0 12px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-secondary);
 }
 .calculated-column-field input,
 .calculated-column-field textarea,
 .calculated-column-field select:not([data-slot="native-select"]) {
-  padding: 6px 8px;
-  border: 1px solid var(--line-subtler);
-  border-radius: 6px;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 0.5px solid var(--line-subtle);
+  border-radius: 7px;
   background: var(--surface-input, transparent);
   color: var(--text-primary);
   font: inherit;
@@ -672,6 +678,18 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .calculated-column-field [data-slot="native-select-wrapper"] {
   width: 100%;
 }
+/* A dialog pop-up button: same height and fill as the capsule buttons, a
+   rounded rectangle so it reads as a menu and not an action. */
+.radix-dialog [data-slot="native-select"] {
+  height: 28px;
+  border: 0.5px solid var(--line-subtle);
+  border-radius: 7px;
+  background: var(--dialog-well);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 400;
+}
+.radix-dialog [data-slot="native-select"]:hover { background: var(--dialog-fill); }
 .calculated-column-problem {
   margin: -6px 0 12px;
   font-size: 13px;
@@ -755,8 +773,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   display: flex;
   flex: 0 0 auto;
   width: 100%;
-  height: clamp(150px, 22vh, 190px);
-  min-height: 150px;
+  min-height: 160px;
   align-items: center;
   justify-content: center;
   overflow: hidden;
@@ -787,6 +804,35 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .grid-hover-molecule-svg svg {
   width: 100%;
   height: 100%;
+}
+/* The grid card's own drawing is shown on the card's paper and in its square,
+   so the inspector matches the card instead of restyling the molecule. */
+.grid-hover-molecule-card-drawing {
+  box-sizing: border-box;
+  height: 100%;
+  max-width: 100%;
+  aspect-ratio: 1 / 1;
+  padding: 8px;
+  border-radius: 8px;
+  background: #ffffff;
+}
+.grid-hover-molecule-svg .grid-hover-molecule-card-drawing svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.grid-hover-molecule-preview-resize.resizable-handle-horizontal {
+  flex: 0 0 18px;
+  width: 100%;
+  height: 18px;
+  margin: 2px 0 -4px;
+  touch-action: none;
+}
+.grid-hover-molecule-preview-resize .resizable-handle-grip { opacity: 1; }
+.grid-hover-molecule-preview-resize + .grid-hover-molecule-props-bar {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 .grid-hover-molecule-empty {
   font-size: 12px;
@@ -1784,7 +1830,7 @@ kbd span { margin-left: 2px; }
   border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-secondary);
-  padding: 5px 64px 5px 10px;
+  padding: 5px 86px 5px 10px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1960,7 +2006,7 @@ kbd span { margin-left: 2px; }
   color: var(--text-secondary);
   /* Indentation comes from the nesting of .project-folder-children now, not from
      a per-row depth multiplier, so every level also gets a guide line for free. */
-  padding: 5px 40px 5px 6px;
+  padding: 5px 62px 5px 6px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1974,8 +2020,29 @@ kbd span { margin-left: 2px; }
   background: var(--surface-subtle);
   outline: none;
 }
-.project-folder-row > .project-folder-toggle-button {
-  right: 4px;
+.project-group-row > .project-folder-toggle-button {
+  right: 52px;
+}
+/* Folder pins appear on hover like structure pins; a pinned project keeps its pin. */
+.project-row-pin,
+.project-group-actions > .pin-hit:not(.pinned) {
+  opacity: 0;
+  pointer-events: none;
+  transition: color 140ms ease-out, opacity 140ms ease-out;
+}
+.project-folder-row > .project-row-pin {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+.project-group-row:hover > .project-group-actions > .pin-hit,
+.project-group-row:focus-within > .project-group-actions > .pin-hit,
+.project-folder-row:hover > .project-row-pin,
+.project-folder-row:focus-within > .project-row-pin {
+  opacity: 1;
+  pointer-events: auto;
 }
 .project-folder-name {
   min-width: 0;
@@ -2417,6 +2484,7 @@ img.radix-menu-item-icon {
   white-space: nowrap;
 }
 .radix-menu-field select,
+.radix-menu-field input[type="text"],
 .radix-menu-number-scrub :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]) {
   width: 62px;
   border: 1px solid var(--line-subtler);
@@ -2431,7 +2499,9 @@ img.radix-menu-item-icon {
   width: auto;
   max-width: 116px;
 }
+.radix-menu-field input[type="text"] { width: 116px; }
 .radix-menu-field select:focus-visible,
+.radix-menu-field input[type="text"]:focus-visible,
 .radix-menu-number-scrub :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]):focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 1px var(--focus-ring);
@@ -2873,11 +2943,6 @@ img.radix-menu-item-icon {
   width: 18px;
   height: 18px;
 }
-.dock-panel[data-area="right"] .dock-tab[data-active] {
-  width: auto;
-  max-width: 170px;
-  justify-content: flex-start;
-}
 .dock-panel[data-area="right"] .dock-tab:not([data-active]) span {
   display: none;
 }
@@ -2900,16 +2965,17 @@ img.radix-menu-item-icon {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* The fill is opaque in both themes, so a backdrop blur adds nothing but
+   WebKit's light fringe around the rounded edge. */
 .dock-tab:hover,
 .dock-tab[data-active],
 .dock-tab-shell:hover .dock-tab,
 .dock-tab-shell:focus-within .dock-tab {
   background: var(--tab-active-bg);
   color: var(--text-secondary);
-  backdrop-filter: blur(40px);
-  -webkit-backdrop-filter: blur(40px);
 }
-.dock-tab:active { transform: scale(0.985); }
+/* A pressed tab stays put: the shared Button nudges it down a pixel. */
+.dock-tab:active { translate: none; }
 .dock-tab-close {
   position: absolute;
   right: 5px;
@@ -2952,6 +3018,23 @@ img.radix-menu-item-icon {
 }
 .dock-panel[data-area="right"] .dock-tab-close {
   right: 5px;
+}
+/* In a narrow right dock the active tab is an icon too; only the pointed-at
+   tab opens up. If the active tab kept its label, clicking a tab to its right
+   would collapse it and slide the clicked tab out from under the pointer. */
+@container (width < 360px) {
+  .dock-panel[data-area="right"] .dock-tab-shell[data-active]:not(:hover, :focus-within) .dock-tab {
+    padding-right: 7px;
+  }
+
+  .dock-panel[data-area="right"] .dock-tab-shell[data-active]:not(:hover, :focus-within) .dock-tab span {
+    display: none;
+  }
+
+  .dock-panel[data-area="right"] .dock-tab-shell[data-active]:not(:hover, :focus-within) .dock-tab-close {
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 @container (min-width: 360px) {
   .dock-panel[data-area="right"] .dock-tab-shell {
@@ -8565,13 +8648,22 @@ input.structure-inspector-composition-search {
 .app-shell[data-structure-drag-active="true"] .viewer-iframe {
   pointer-events: none;
 }
+/* The table and file dialogs read as macOS sheets: an opaque panel (the
+   molecule behind must not bleed through as coloured smudges), a bold title
+   with no rule under it, capsule buttons with the accent-filled default action
+   on the right, and no close glyph when a Cancel button already does that. */
 .radix-dialog-overlay {
   position: fixed;
   inset: 0;
   z-index: 120;
-  background: color-mix(in srgb, black 18%, transparent);
+  background: color-mix(in srgb, black 12%, transparent);
 }
 .radix-dialog {
+  --dialog-inset: 20px;
+  --dialog-well: color-mix(in srgb, var(--fg-base) 5%, transparent);
+  --dialog-fill: color-mix(in srgb, var(--fg-base) 8%, transparent);
+  --dialog-fill-hover: color-mix(in srgb, var(--fg-base) 12%, transparent);
+  --dialog-hairline: color-mix(in srgb, var(--fg-base) 13%, transparent);
   position: fixed;
   z-index: 121;
   top: 50%;
@@ -8580,13 +8672,31 @@ input.structure-inspector-composition-search {
   max-height: min(560px, calc(100vh - 32px));
   overflow: auto;
   transform: translate(-50%, -50%);
-  border: 1px solid var(--line-subtle);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--bg-base) 92%, transparent);
+  border: 0.5px solid var(--dialog-hairline);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg-base) 95%, var(--fg-base) 5%);
   color: var(--text-secondary);
-  box-shadow: 0 22px 68px rgb(0 0 0 / 0.28);
-  backdrop-filter: blur(28px) saturate(1.2);
-  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  box-shadow:
+    0 0 0 0.5px rgb(0 0 0 / 0.12),
+    0 2px 8px rgb(0 0 0 / 0.08),
+    0 18px 50px rgb(0 0 0 / 0.22);
+  font-size: 13px;
+}
+.radix-dialog[data-state="open"] {
+  animation: radix-dialog-in 160ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.radix-dialog-overlay[data-state="open"] {
+  animation: radix-dialog-fade 160ms ease-out;
+}
+@keyframes radix-dialog-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.97); }
+}
+@keyframes radix-dialog-fade {
+  from { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .radix-dialog[data-state="open"],
+  .radix-dialog-overlay[data-state="open"] { animation: none; }
 }
 /* Keep actions visible when a long dialog body reaches the viewport limit. */
 .radix-dialog:has(> .radix-dialog-body) {
@@ -8604,34 +8714,38 @@ input.structure-inspector-composition-search {
   flex-shrink: 0;
 }
 .radix-dialog-header {
-  min-height: 48px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px 10px;
-  border-bottom: 1px solid var(--line-subtler);
+  padding: 18px var(--dialog-inset) 4px;
 }
 .radix-dialog-header h2 {
   margin: 0;
   color: var(--text-primary);
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 600;
+  line-height: 22px;
 }
 .radix-dialog-close {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
+  flex: none;
   border: 0;
-  border-radius: var(--control-radius);
-  background: transparent;
+  border-radius: 999px;
+  background: var(--dialog-fill);
   color: var(--text-muted);
   padding: 0;
   display: grid;
   place-items: center;
 }
+.radix-dialog-close svg { width: 11px; height: 11px; }
 .radix-dialog-close:hover {
-  background: var(--surface-subtle);
+  background: var(--dialog-fill-hover);
   color: var(--text-primary);
+}
+.radix-dialog:has(:is(.radix-dialog-footer, .radix-dialog-actions, .database-query-actions)) .radix-dialog-close {
+  display: none;
 }
 .radix-dialog :is(button, a, select):focus-visible {
   outline: 1px solid var(--focus-ring);
@@ -8640,7 +8754,7 @@ input.structure-inspector-composition-search {
 .radix-dialog-body,
 .radix-dialog-description {
   margin: 0;
-  padding: 14px 16px;
+  padding: 8px var(--dialog-inset) 12px;
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.45;
@@ -8652,8 +8766,8 @@ input.structure-inspector-composition-search {
 .radix-dialog-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 0 16px 16px;
+  gap: 10px;
+  padding: 8px var(--dialog-inset) var(--dialog-inset);
 }
 /* The footer of the table and file dialogs: actions sit at the right, and a
    .calculate-properties-footer pushes its status text to the left edge. */
@@ -8661,36 +8775,79 @@ input.structure-inspector-composition-search {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 0 16px 16px;
+  gap: 10px;
+  padding: 8px var(--dialog-inset) var(--dialog-inset);
 }
 .radix-dialog-footer.calculate-properties-footer {
   justify-content: space-between;
+  margin-top: 0;
+}
+/* Push buttons inside a dialog: macOS capsules, the default action filled
+   with the accent colour. */
+.radix-dialog .dock-action {
+  height: 28px;
+  min-width: 76px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--dialog-fill);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+}
+.radix-dialog .dock-action:hover { background: var(--dialog-fill-hover); }
+.radix-dialog .dock-action:active { transform: none; filter: brightness(0.94); }
+.radix-dialog .dock-action.calculate-properties-run {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: inset 0 0.5px 0 rgb(255 255 255 / 0.22), 0 0.5px 1px rgb(0 0 0 / 0.18);
+}
+.radix-dialog .dock-action.calculate-properties-run:hover {
+  background: color-mix(in srgb, var(--accent) 90%, black);
+}
+.radix-dialog .dock-action:disabled {
+  opacity: 0.42;
+  filter: none;
+  background: var(--dialog-fill);
+  box-shadow: none;
+  color: var(--text-primary);
 }
 /* A muted second line under the title: the path a dialog acts on. */
 .radix-dialog-subline {
-  margin: 0 0 12px;
+  margin: 0 0 14px;
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
 /* A bounded list inside the body that scrolls on its own instead of growing
-   the dialog past the viewport. */
+   the dialog past the viewport. It sits in an inset well like a macOS
+   grouped list. */
 .radix-dialog-scroll-list {
   display: grid;
+  align-content: start;
   max-height: 240px;
-  margin: 0 0 12px;
-  padding: 4px 8px;
+  margin: 6px 0 16px;
+  padding: 4px;
   overflow-y: auto;
-  border: 1px solid var(--line-subtler);
-  border-radius: 6px;
-  background: var(--surface-input, transparent);
+  border: 0.5px solid var(--dialog-hairline);
+  border-radius: 10px;
+  background: var(--dialog-well);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 13px;
+}
+.radix-dialog-scroll-list > .radix-dialog-check-row {
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.radix-dialog-scroll-list > .radix-dialog-check-row:hover {
+  background: var(--dialog-well);
 }
 .radix-dialog-body ul.radix-dialog-scroll-list {
-  padding-left: 24px;
+  padding: 6px 10px 6px 26px;
 }
 .database-query-form {
   display: grid;
@@ -9184,6 +9341,7 @@ img.settings-open-destination-icon {
   .agent-integration-content { width: 100%; padding: 80px 16px 64px; }
 }
 @media (max-width: 520px) {
+  .chrome-leading-controls .tab-history-controls { display: none; }
   .settings-panel-content { width: 100%; padding: 80px 24px 64px; }
   .agent-integration-content { width: 100%; padding: 80px 24px 64px; }
 }
@@ -9504,15 +9662,11 @@ img.settings-open-destination-icon {
 .project.selected { background: var(--surface-selected); }
 
 .file-operation-dialog { width: min(360px, calc(100vw - 32px)); }
-.file-operation-dialog .radix-dialog-header { min-height: 0; padding: 20px 20px 0; border: 0; }
-.file-operation-dialog .radix-dialog-header h2 { font-weight: 600; }
-.file-operation-dialog .radix-dialog-body { padding: 8px 20px 20px; overflow-wrap: anywhere; }
+.file-operation-dialog .radix-dialog-body { padding-bottom: 12px; overflow-wrap: anywhere; }
 .file-operation-dialog .radix-dialog-body p { margin: 0; }
 /* Here the description is the message itself, so it keeps the body type. */
 .file-operation-dialog .radix-dialog-subline { font-size: 13px; color: var(--text-secondary); }
 .file-operation-dialog .radix-dialog-body .radix-dialog-subline + * { margin-top: 10px; }
-.file-operation-dialog .radix-dialog-actions { padding: 0 20px 20px; }
-.file-operation-dialog .radix-dialog-actions button { min-height: 30px; padding: 5px 12px; }
 
 .file-operation-dialog-rename { width: min(320px, calc(100vw - 32px)); }
 .file-operation-dialog-rename .radix-dialog-body { padding-top: 14px; padding-bottom: 12px; }
@@ -9544,13 +9698,11 @@ img.settings-open-destination-icon {
 ) { color: var(--text-primary); }
 .sidebar .sidebar-tool-icon { opacity: 1; }
 
+/* The sidebar is translucent, so an opaque badge backing leaves a white spot. */
 .project-folder-icon .project-folder-badge {
   position: absolute;
-  right: -1px;
-  bottom: -1px;
-  border-radius: 50%;
-  background: var(--sidebar);
-  box-shadow: 0 0 0 1px var(--sidebar);
+  right: -5px;
+  bottom: -3px;
 }
 .project-folder-icon .project-folder-badge-cyan { color: #20cbd4; }
 .project-folder-icon .project-folder-badge-blue { color: #39b5ff; }

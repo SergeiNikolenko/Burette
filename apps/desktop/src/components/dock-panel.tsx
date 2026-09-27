@@ -1,5 +1,5 @@
 import { useSidebarStructureDrag } from "./sidebar/use-sidebar-structure-drag";
-import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
+import { activeViewerIframeForDocument, postToXyzrenderViewer } from "../lib/viewer-bridge";
 import type { AnimationSource } from "./xyzrender-animation-dialog";
 import { Switch } from "./ui/switch";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
@@ -755,10 +755,10 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
     lastAppliedSignature.current = xyzrenderDockSignature(nextControls, nextPreset);
     window.dispatchEvent(new CustomEvent("burette:xyzrender-style", { detail: { documentId: document.id, itemId: activeItem.current?.itemId, label: document.title, path: document.path, preset: nextPreset, controls: nextControls } }));
     if (activeItem.current?.itemId) {
-      for (const frame of window.document.querySelectorAll<HTMLIFrameElement>('iframe.viewer-iframe')) frame.contentWindow?.postMessage({ source: 'burette-host', body: {
+      postToXyzrenderViewer(document.id, {
         type: 'setXyzrenderControls', documentId: document.id, itemId: activeItem.current.itemId,
         controls: nextControls, preset: nextPreset, selectionAction: options.xyzrenderSelectionAction,
-      } }, '*');
+      });
       return;
     }
     void actions.reloadXyzrenderDocument(document, {
@@ -803,8 +803,13 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
         <XyzrenderPresetGallery
           preset={preset}
           onSelect={(value) => {
+            // xyzrender rejects vdW spheres on the 2D skeletal drawing.
+            const nextControls = value === "skeletal" && controlsRef.current.showVdw
+              ? { ...controlsRef.current, showVdw: false, vdwAtoms: null }
+              : controlsRef.current;
+            setControlsState(nextControls);
             setPresetState(value);
-            apply(controlsRef.current, value);
+            apply(nextControls, value);
           }}
         />
         <XyzrenderDisplayOptionsGallery
@@ -827,9 +832,18 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
               apply(nextControls, presetRef.current);
               return;
             }
+            // xyzrender cannot draw vdW spheres on the flat skeletal style.
+            const nextPreset = presetRef.current === "skeletal" ? "default" : presetRef.current;
+            setPresetState(nextPreset);
+            // Partial needs the viewer's atom selection (or asks for one), so the
+            // tile only lights up once the viewer reports the applied atoms.
+            if (mode === "partial") {
+              apply(currentControls, nextPreset, { xyzrenderSelectionAction: "vdw" });
+              return;
+            }
             const nextControls = { ...currentControls, showVdw: true, vdwAtoms: null };
             setControlsState(nextControls);
-            apply(nextControls, presetRef.current, mode === "partial" ? { xyzrenderSelectionAction: "vdw" } : {});
+            apply(nextControls, nextPreset);
           }}
         />
         <XyzrenderHullGallery

@@ -1,39 +1,40 @@
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import ts from "typescript";
+import ts from "typescript-compiler-api";
 import type { Plugin } from "vite";
 
-// Ketcher 3.15 publishes one bundle and has no component-slot API. Replace only
+// Ketcher 3.18 publishes one bundle and has no component-slot API. Replace only
 // its shared presentation primitives; retain the original form codecs, Redux
 // actions, chemistry services, and canvas. Hash each boundary so an upstream
 // update cannot silently bind a different component to the old prop contract.
 const primitives = {
-  ToolbarMultiToolItem: ["KetcherToolExpand", "46bd57bb10389d41fe5a870e1a4e1d4a69022197888f27169f64bb4c723c0e42", "micro-tools"],
+  ToolbarMultiToolItem: ["KetcherToolExpand", "65d6919047397da37f95bdb681554beae7872aedc973ab62dd6ef2a7e9d66345", "micro-tools"],
   NaturalAnaloguePicker: ["KetcherNaturalAnaloguePicker", "a4b525c9433ab0a132b538959f8909415704c07b9e7a7f2967f948a73a487266", "analogue"],
-  ModeControl: ["KetcherModeMenu", "9a9c8ab3bb6c6188be66ef24d603a194d4e3c2aa86fe7b04401dfffd90bd840f", "mode"],
-  MenuItemWithDropdown: ["KetcherCopyMenu", "e974e38c6b473257dedbd3c29823eac292990664952f23001f8f372c23b37134", "copy"],
+  ModeControl: ["KetcherModeMenu", "0595ccc27d93ef843dedcd37b832887671463c2f84512e808c8fb021187e863d", "mode"],
+  MenuItemWithDropdown: ["KetcherCopyMenu", "c01a0a837d6a9863f32b867db05cb6b60f1fbc91158406794430ad456bc90206", "copy"],
   StyledInput: ["KetcherInput", "713dbc0d1379c92a6da292030f8864d8a110ec2136857e3432b9da377f15bd03"],
-  ZoomControls: ["KetcherZoomMenu", "c9e6024d44b93351b64894d7c3da9e4658019ec604a597b1c85cf56e1c8d9b01", "zoom"],
-  ActionButton: ["KetcherToolButton", "2dc63d5a60a38101b83b2df5be604913f3454c9c2a4d852e6b9656cea3fce619", "element"],
-  Atom: ["KetcherToolButton", "9088afa95821aa168dbbdb8cd164a532ae4e5a3bd980256025adcb97b7b7beb1", "element"],
+  ZoomControls: ["KetcherZoomMenu", "ead5dcc2dace52301377a46d27581e0659c15e0305d4a7d8876fff4481ae9485", "zoom"],
+  ActionButton: ["KetcherToolButton", "0bf094cdb48eba39761058ed55e8d6dc010079152d737e1c74584d7f312da1b8", "element"],
+  Atom: ["KetcherToolButton", "f843a5d6b69ec115ec17940d988d90ecffe9fcbefe49dff5e038e9cba4e335d9", "element"],
   IconButtonBase: ["KetcherIconButton", "144231e80ffa149a5b2c9018262b0c03b3107a4124f2aab63e5b2abd1d445881"],
   Button: ["KetcherButton", "4ba70e36710083309f326cce3514c2e1f25ab46abbfc97f2abd49ce2c4ecf9d9"],
   "Input$2": ["KetcherInput", "d250e7dc2092c637e421af76e4000c322f6f52622e97172d4c91524374dca03a"],
   "Accordion$1": ["KetcherAccordion", "c79c2a51649129de971bdacb0619287ecbebb9aa003332a92a29099e7951c197"],
-  Accordion: ["KetcherSettingsAccordion", "12cdc477f741295ccdab572a2ca5bc2fbc6d7c74b4a86fa60856014853c1a6fe"],
-  Dialog: ["KetcherDialog", "e60cd78bb6e0e200e1cd90d6bd7a89eaf11b212f2c6162f01d634d4672ec0c4d"],
-  "Select$1": ["KetcherSelect", "d845d63b8e037f7571d1a811c9f83c412e00eb0cca1fbf4323c9dac5245a95b4"],
-  GenericInput: ["KetcherGenericInput", "b3196b29ae1b16ad2fd3da561129df6e7fb7938a3fefb1c01656a9365572d3ba"],
-  TextArea: ["KetcherTextarea", "6268697300dde96a049dd5cc8806c4a8eda829affd5354ad2efc0d06ad197479"],
-  CheckBox: ["KetcherCheckbox", "141c9a93c6efce0af604ef71e801e55bef8d7f152d76432abd73df8b83487b5e"],
-  Slider: ["KetcherSwitch", "32c4ebed08a1f0fcfef9e474fd8345067e542255918d5592e4741b0778fb78ab"],
+  Accordion: ["KetcherSettingsAccordion", "217219ed6913843389f2290bcbc91fb7c2f5aa2e7dd23cfeb3d1d5ff5f46a029"],
+  Dialog: ["KetcherDialog", "e68d8ba5dca7061f3cd93629366d2955de49ea6c0f2d24986ecb6c2e47f176e5"],
+  "Select$1": ["KetcherSelect", "1a2ec0e062b663058bd738ea614316499391d59f34c555e5c33f73a5685e4f8a"],
+  GenericInput: ["KetcherGenericInput", "477ced5e608e73181b128caf33bfc3b697ce1c291e39c73d6a4458d7d1e87076"],
+  TextArea: ["KetcherTextarea", "4324eebe1e8a58e54bf2d03d261ff72b713ad051fbab4ac86f5c7d60309d2c90"],
+  CheckBox: ["KetcherCheckbox", "11323478b58a067f831afbbf7a0a40d948b83b08b0afb1fa01429d3ab7454d42"],
+  Slider: ["KetcherSwitch", "4295b1ff55d2c1583767035192781769e5e54ee2a7fed60cde3925f17c0842e7"],
 } as const;
 
 const macroPrimitives = {
-  SubMenu: ["KetcherMacroToolMenu", "05bb9a1557a0bc1506f069c6e6d5ba768d4eca1bce3c209e48f2c5bcb8de6d26", "tools"],
+  SubMenu: ["KetcherMacroToolMenu", "205a773456918414949090541c7223b78a2477603202cf255f8fd7c3ae6651d5", "tools"],
   MenuItem: ["KetcherMacroMenuItem", "0d153d1201f708a98fe624c537ad49d4a232049d92283bfaa04c9c606867fdd6", "tool-item"],
-  StyledInput: ["KetcherInput", "46e4ad6c63c8285915e8a8ec600ee1b7862e5b86de23ff15efcda47c6b673feb"],
-  ZoomControls: ["KetcherZoomMenu", "65a70e7d55dc5c4b1cd9464674a9ff844f1d56485658aa21d22a8b78106ae9d2", "zoom"],
+  StyledInput: ["KetcherInput", "a41ff625ace21d9407a1231af73bacc96ed6f4ef10b4cabeba2b09018ff17f31"],
+  ZoomControls: ["KetcherZoomMenu", "3de482e34c4d475cde51f8f02ff6ebbd8c5218cbd3f0a0da88c51b78106dc0db", "zoom"],
 } as const;
 
 export function ketcherUiPlugin(): Plugin {
@@ -43,11 +44,11 @@ export function ketcherUiPlugin(): Plugin {
   const analogueModulePath = fileURLToPath(new URL("../src/components/ketcher/natural-analogue.tsx", import.meta.url));
   const transform = (code: string, id: string) => {
       const normalizedId = id.replaceAll("\\", "/");
-      const macro = normalizedId.endsWith("/ketcher-react/dist/index.modern-7545f4b2.js");
+      const macro = normalizedId.endsWith("/ketcher-react/dist/index.modern-55d8e3ef.js");
       if (!macro && !normalizedId.endsWith("/ketcher-react/dist/index.js")) return null;
       const contextImport = macro
-        ? "import { Menu as Menu$1, useContextMenu, Submenu, Item, Separator } from 'react-contexify';"
-        : "import { Submenu, Item, Separator, Menu, useContextMenu } from 'react-contexify';";
+        ? "import { Menu as Menu$1, useContextMenu, Submenu, Item, Separator, contextMenu } from 'react-contexify';"
+        : "import { Submenu, Item, Separator, Menu, contextMenu, useContextMenu } from 'react-contexify';";
       if (!code.includes(contextImport) || code.indexOf(contextImport) !== code.lastIndexOf(contextImport)) {
         throw new Error("Ketcher context menu import contract changed.");
       }
@@ -77,7 +78,7 @@ export function ketcherUiPlugin(): Plugin {
               .replace(/!isOpen && !isDisabled && jsx\(Icon, \{[\s\S]*?onClick: onOpenOptions\n    \}\)/u,
                 "jsx(__buretteKetcherToolExpand, { onClick: onOpenOptions, disabled: isDisabled, expanded: isOpen })");
           } else if (spec.length === 3 && spec[2] !== "element" && ts.isFunctionExpression(node)) {
-            const rendered = node.body.statements.findLast(ts.isReturnStatement);
+            const rendered = [...node.body.statements].reverse().find(ts.isReturnStatement);
             if (!rendered) throw new Error(`Ketcher render boundary is missing: ${name}.`);
             let props = macro
               ? "currentZoom, open: isExpanded, onOpen: onExpand, onClose, onZoomIn, onZoomOut, onZoomReset, align: 'end', shortcuts: { 'zoom-out': hotkeysShortcuts['zoom-minus'], 'zoom-in': hotkeysShortcuts['zoom-plus'], zoom: hotkeysShortcuts['zoom-reset'] }, input: jsx(ZoomInput, { onZoomSubmit, inputRef, currentZoom })"
@@ -100,7 +101,7 @@ export function ketcherUiPlugin(): Plugin {
           });
         }
       }
-      if (found.size !== Object.keys(bindings).length) throw new Error("Ketcher UI primitives are missing; expected ketcher-react 3.15.0.");
+      if (found.size !== Object.keys(bindings).length) throw new Error("Ketcher UI primitives are missing; expected ketcher-react 3.18.0.");
       for (const replacement of replacements.sort((a, b) => b.start - a.start)) {
         code = code.slice(0, replacement.start) + replacement.text + code.slice(replacement.end);
       }
@@ -114,6 +115,11 @@ export function ketcherUiPlugin(): Plugin {
     name: "burette-ketcher-ui",
     enforce: "pre",
     transform,
-    config: () => ({ optimizeDeps: { rolldownOptions: { plugins: [{ name: `burette-ketcher-ui-${createHash("sha256").update(JSON.stringify([primitives, macroPrimitives])).digest("hex").slice(0, 12)}`, transform, resolveId: (id: string) => [modulePath, menuModulePath, contextModulePath, analogueModulePath].includes(id) ? { id: `/@fs/${id}`, external: true } : null }] } } }),
+    config: () => ({
+      // Ketcher 3.18's SettingsService imports Node's events by name. Resolve
+      // the browser implementation in both the optimizer and production build.
+      resolve: { alias: { events: createRequire(import.meta.url).resolve("events/") } },
+      optimizeDeps: { rolldownOptions: { plugins: [{ name: `burette-ketcher-ui-${createHash("sha256").update(JSON.stringify([primitives, macroPrimitives])).digest("hex").slice(0, 12)}`, transform, resolveId: (id: string) => [modulePath, menuModulePath, contextModulePath, analogueModulePath].includes(id) ? { id: `/@fs/${id}`, external: true } : null }] } },
+    }),
   };
 }

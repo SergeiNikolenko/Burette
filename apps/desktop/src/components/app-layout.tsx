@@ -27,6 +27,7 @@ import { isHostedKetcherWidget, isHostedMcpWidget } from "../lib/hosted-mcp-widg
 import { HostedKetcherViewSwitch } from "./hosted-ketcher-view-switch";
 import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
 import { AnnotateToggle, AnnotationLayer } from "./annotation-layer";
+import { isAgentPluginSurface } from "../lib/native-mcp-workspace";
 
 // Collection grids may continue behind an overlay inspector; molecular viewers
 // must instead resize to the visible panel so their controls remain reachable.
@@ -318,16 +319,19 @@ export function AppLayout({
   // How far the leading window controls reach: the tab strip starts past them
   // when the sidebar is narrower than they are (or closed). The sidebar's own
   // edge comes from `--sidebar-edge`, measured rather than stored.
-  // The desktop inset splits into 92px of native traffic-light clearance
-  // (constant on screen, so divided by the window zoom like
-  // `.chrome-leading-controls`) plus 100px of zoomable toggle-and-gap space.
+  // The native traffic lights keep a fixed on-screen position as the page
+  // zooms. At narrow widths the history buttons disappear, so the tab strip
+  // only needs to clear the sidebar toggle beside those lights.
   const chromeLeadingInset = compactLeadingChrome
     ? "112px"
-    : "calc(92px / var(--window-zoom, 1) + 100px)";
+    : viewportWidth <= 520
+      ? "calc(82px / var(--window-zoom, 1) + 40px)"
+      : "calc(92px / var(--window-zoom, 1) + 100px)";
   const rightDockOpen = !settingsMode && !hostedMcpWidget && state.rightDockOpen;
   // The agent plugin surfaces (native widget and browser agent shell) have no
-  // bottom dock: its Jobs/compute tabs are excluded there.
-  const pluginSurface = Boolean(window.BuretteMcpWorkspace) || state.buildInfo.isAgentShell;
+  // bottom dock: its Jobs/compute tabs are excluded there. Annotate mode sends
+  // to the agent chat, so only these surfaces have it.
+  const pluginSurface = isAgentPluginSurface(state.buildInfo.isAgentShell);
   const bottomDockOpen = !settingsMode && !hostedMcpWidget && !pluginSurface && state.bottomDockOpen;
   const sidebarElementRef = useRef<HTMLDivElement | null>(null);
   const rightDockElementRef = useRef<HTMLDivElement | null>(null);
@@ -533,7 +537,7 @@ export function AppLayout({
           <div className="chrome-trailing-controls" data-tauri-drag-region>
             {!hostedMcpWidget ? <ActivityIndicator state={layoutState} actions={actions} /> : null}
             {!hostedMcpWidget && !window.BuretteMcpWorkspace ? <OpenInEditorMenu state={layoutState} actions={actions} /> : null}
-            {!hostedMcpWidget ? <AnnotateToggle className="chrome-button dock-toggle-button" /> : null}
+            {!hostedMcpWidget && pluginSurface ? <AnnotateToggle className="chrome-button dock-toggle-button" /> : null}
             {!hostedMcpWidget && !pluginSurface ? (
               <button
                 type="button"
@@ -725,7 +729,7 @@ export function AppLayout({
             </section>
           </ResizablePanel>
         </ResizablePanelGroup>
-        {!hostedMcpWidget ? <AnnotationLayer documentTitle={state.activeDocument?.title ?? "Burette"} picksResidues={state.activeDocument?.renderer === "molstar"} /> : null}
+        {!hostedMcpWidget && pluginSurface ? <AnnotationLayer documentTitle={state.activeDocument?.title ?? "Burette"} picksResidues={state.activeDocument?.renderer === "molstar"} /> : null}
       </section>
       <FileDropFeedback preview={dropPreview} />
     </main></WorkspaceMenus></SidebarFileOperations>

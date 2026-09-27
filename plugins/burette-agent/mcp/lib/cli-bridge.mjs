@@ -83,7 +83,7 @@ export async function runBuretteAgent(args, { timeoutMs = 30000 } = {}) {
       stderr,
       error: parsedStderr?.error || parsedStdout?.error || {
         code: "CLI_FAILED",
-        message: stderr.trim() || stdout.trim() || `burette-agent exited with ${exit.code}`,
+        message: exit.error?.message || stderr.trim() || stdout.trim() || `burette-agent exited with ${exit.code}`,
       },
     };
   }
@@ -99,13 +99,22 @@ export async function runBuretteAgent(args, { timeoutMs = 30000 } = {}) {
 
 function waitForChild(child, timeoutMs) {
   return new Promise(resolve => {
-    const timer = setTimeout(() => {
-      child.kill("SIGTERM");
-      resolve({ code: 124, signal: "TIMEOUT" });
-    }, timeoutMs);
-    child.on("close", (code, signal) => {
+    let timedOut = false;
+    let killTimer;
+    const finish = result => {
       clearTimeout(timer);
-      resolve({ code: code ?? 0, signal });
+      clearTimeout(killTimer);
+      resolve(result);
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      // Keep ownership until exit; a stuck CLI may ignore graceful termination.
+      killTimer = setTimeout(() => child.kill("SIGKILL"), 1000);
+    }, timeoutMs);
+    child.once("error", error => finish({ code: 127, signal: null, error }));
+    child.once("close", (code, signal) => {
+      finish(timedOut ? { code: 124, signal: "TIMEOUT" } : { code: code ?? 1, signal });
     });
   });
 }

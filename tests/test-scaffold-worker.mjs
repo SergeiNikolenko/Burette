@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Worker } from 'node:worker_threads';
 import { once } from 'node:events';
-import ts from 'typescript';
+import ts from 'typescript-compiler-api';
 import * as ocl from 'openchemlib';
 import { computeDerivedValue } from '../apps/desktop/src/lib/derived-column-compute.mjs';
 

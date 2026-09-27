@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import ts from "typescript";
+import ts from "typescript-compiler-api";
 import { ketcherUiPlugin } from "../apps/desktop/vite/ketcher-ui.ts";
 
 const path = new URL("../apps/desktop/node_modules/ketcher-react/dist/index.js", import.meta.url).pathname;
 const original = readFileSync(path, "utf8");
 const plugin = ketcherUiPlugin();
+// SettingsService must have a functioning browser EventEmitter, rather than
+// Vite's empty external placeholder for Node built-ins.
+const eventsPath = plugin.config().resolve.alias.events;
+const { default: browserEvents } = await import(eventsPath);
+const emitter = new browserEvents.EventEmitter();
+let notified;
+emitter.once("settings", value => { notified = value; });
+emitter.emit("settings", { zoom: 100 });
+assert.deepEqual(notified, { zoom: 100 });
 const patched = plugin.transform(original, path).code;
 const source = ts.createSourceFile("patched.js", patched, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 assert.deepEqual(source.parseDiagnostics, []);
@@ -31,7 +40,7 @@ console.log("Ketcher UI binding: version guard, codecs, syntax, optimizer identi
 
 // Both editor controllers keep their input parsing, event subscription and zoom
 // callbacks, while their presentation routes to the same shared menu.
-for (const filename of ["index.js", "index.modern-7545f4b2.js"]) {
+for (const filename of ["index.js", "index.modern-55d8e3ef.js"]) {
   const bundlePath = new URL(`../apps/desktop/node_modules/ketcher-react/dist/${filename}`, import.meta.url).pathname;
   const bundle = readFileSync(bundlePath, "utf8");
   const result = plugin.transform(bundle, bundlePath).code;
@@ -47,7 +56,7 @@ for (const filename of ["index.js", "index.modern-7545f4b2.js"]) {
 }
 console.log("Ketcher zoom menus: molecule and macro controller preservation passed");
 
-for (const [filename, names] of [["index.js", ["ModeControl", "MenuItemWithDropdown", "NaturalAnaloguePicker"]], ["index.modern-7545f4b2.js", ["SubMenu", "MenuItem"]]]) {
+for (const [filename, names] of [["index.js", ["ModeControl", "MenuItemWithDropdown", "NaturalAnaloguePicker"]], ["index.modern-55d8e3ef.js", ["SubMenu", "MenuItem"]]]) {
   const bundlePath = new URL(`../apps/desktop/node_modules/ketcher-react/dist/${filename}`, import.meta.url).pathname;
   const bundle = readFileSync(bundlePath, "utf8");
   const result = plugin.transform(bundle, bundlePath).code;

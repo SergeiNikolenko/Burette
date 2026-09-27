@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef } from "react";
 
 // Use the same packaged renderer, presets and menu as the main viewport.
-const assets = import.meta.glob<string>("../../../../PreviewExtension/Web/{molstar.js,molstar.css,viewer.js,viewer-shell.js,viewer-runtime.css,renderer-view-state.js,molstar-preset-preview-controller.js,color-picker.js,sequence-panel.js,scene-file-actions.js}", { eager: true, query: "?url", import: "default" });
+const assets = import.meta.glob<string>("../../../../PreviewExtension/Web/{molstar.js,molstar.css,viewer.js,viewer-shell.js,viewer-runtime.css,renderer-view-state.js,molstar-preset-preview-controller.js,color-picker.js,sequence-panel.js,native-viewer-menus.js,scene-file-actions.js}", { eager: true, query: "?url", import: "default" });
 const asset = (name: string) => new URL(assets[`../../../../PreviewExtension/Web/${name}`], window.location.href).href;
 
-export default function GridMolecule3D({ molblock, theme, onOpen }: { molblock: string; theme: string; onOpen: () => void }) {
+export default function GridMolecule3D({ molblock, theme, height, onOpen }: { molblock: string; theme: string; height: number; onOpen: () => void }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const initial = useRef(molblock);
   const open = useRef(onOpen);
@@ -16,7 +16,7 @@ export default function GridMolecule3D({ molblock, theme, onOpen }: { molblock: 
       molstarPreset: "automatic", molstarStyle: "illustrative", xyzrenderAvailable: false, sdfGrid: false,
       defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" } };
     const data = btoa(Array.from(new TextEncoder().encode(initial.current), byte => String.fromCharCode(byte)).join(""));
-    const scripts = ["molstar.js", "viewer-shell.js", "renderer-view-state.js", "molstar-preset-preview-controller.js", "color-picker.js", "sequence-panel.js", "scene-file-actions.js", "viewer.js"];
+    const scripts = ["molstar.js", "viewer-shell.js", "renderer-view-state.js", "molstar-preset-preview-controller.js", "color-picker.js", "sequence-panel.js", "native-viewer-menus.js", "scene-file-actions.js", "viewer.js"];
     return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:${theme === "dark" ? "dark" : "light"};background:${theme === "dark" ? "#111111" : "#ffffff"}}</style>
       <link rel="stylesheet" href="${asset("molstar.css")}"><link rel="stylesheet" href="${asset("viewer-runtime.css")}">
       <style>html,body,#app{margin:0;width:100%;height:100%;overflow:hidden}#status,.msp-toast-container,.msp-highlight-toast-wrapper{display:none!important}
@@ -51,5 +51,5 @@ export default function GridMolecule3D({ molblock, theme, onOpen }: { molblock: 
     const timer = window.setTimeout(send, 60);
     return () => { window.clearTimeout(timer); window.removeEventListener("message", ready); };
   }, [molblock, html]);
-  return <iframe ref={frame} className="grid-molecule-3d" title="Molecule 3D preview" srcDoc={html} sandbox="allow-scripts allow-same-origin allow-downloads" />;
+  return <iframe ref={frame} className="grid-molecule-3d" title="Molecule 3D preview" style={{ height }} srcDoc={html} sandbox="allow-scripts allow-same-origin allow-downloads" />;
 }

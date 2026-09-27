@@ -7,10 +7,10 @@ for (const name of ["document", "navigator", "HTMLElement", "Element", "Node", "
 Object.assign(globalThis, { window, IS_REACT_ACT_ENVIRONMENT: true });
 (window as any).BuretteMcpWorkspace = {};
 const beforeFetch = globalThis.fetch;
-globalThis.fetch = async (_url, options) => {
+globalThis.fetch = Object.assign(async (_url: Parameters<typeof fetch>[0], options?: Parameters<typeof fetch>[1]) => {
   const { targetId } = JSON.parse(options!.body as string);
   return Response.json({ iconUrl: `data:image/png;base64,${btoa(targetId)}` });
-};
+}, { preconnect: beforeFetch.preconnect });
 const { createElement, act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { OpenInEditorMenu } = await import("../apps/desktop/src/components/open-in-editor-menu");
@@ -32,12 +32,12 @@ const render = () => act(async () => root.render(createElement(OpenInEditorMenu,
 })));
 try {
   await render();
-  await act(async () => container.querySelector('[aria-label="Open in another application"]')!.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, button: 0 })));
+  await act(async () => container.querySelector('[aria-label="Open in another application"]')!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })));
   const submenu = [...document.querySelectorAll('[role="menuitem"]')].find(el => el.textContent === "Default for Open") as HTMLElement;
   assert.ok(submenu);
   await act(async () => {
     submenu.focus();
-    submenu.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    submenu.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
   });
   const choice = [...document.querySelectorAll('[role="menuitemcheckbox"]')].find(el => el.textContent === "Maestro") as HTMLElement;
   assert.ok(choice);

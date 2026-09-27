@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 // Collection > Calculate Descriptors reached the backend and started the worker,
 // but nothing on the host followed the job: descriptor_start_grid returns as soon
 // as the thread is spawned, and the only component that polled for the outcome
@@ -12,6 +12,8 @@
 // the grid re-reads a page so the new columns appear.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { Readable } from "node:stream";
+import { registerBrowserDevDescriptorRoutes } from "../apps/desktop/vite/browser-dev/descriptors.ts";
 
 const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -122,3 +124,100 @@ for (const command of ["descriptor_runtime_status", "descriptor_runtime_install"
 }
 
 console.log("descriptor job contract OK");
+
+// Exercise the real private runner with deterministic async boundaries, without
+// booting Vite or starting a Python/chemistry workload.
+const viteSource = source("apps/desktop/vite.config.ts");
+const functions = new Set([
+  "calculateBrowserDevGridDescriptors", "browserDevDescriptorJobStatus",
+  "browserDevDescriptorValuesFromResult", "normalizeBrowserDevDescriptorRowIndexes", "chunkArray",
+]);
+const declarations = [...viteSource.matchAll(/^(?:async )?function (\w+)/gm)];
+const runnerSource = declarations.flatMap((match, index) => functions.has(match[1])
+  ? [viteSource.slice(match.index, declarations[index + 1]?.index ?? viteSource.length)] : []).join("\n");
+const runnerJs = new Bun.Transpiler({ loader: "ts" }).transformSync(runnerSource);
+const deferred = () => {
+  let resolve, reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+};
+function fixture({ records, python, batch } = {}) {
+  const jobs = new Map();
+  let calls = 0;
+  const dependencies = {
+    browserDevDescriptorJobs: jobs,
+    browserDevDescriptorGridRecords: records ?? (async () => [{ index: 0, name: "ethanol", smiles: "CCO" }]),
+    browserDevDescriptorPython: python ?? (async () => "/fixture/python"),
+    browserDevDescriptorInstallHint: () => "Install descriptor runtime",
+    parseBrowserDevDescriptorRunnerOutput: value => value,
+    runBrowserDevDescriptorRunner: (...args) => { calls++; return batch ? batch(...args) : Promise.resolve({ rows: [{ index: 0, ok: true, values: [] }] }); },
+    DESCRIPTOR_GRID_BATCH_SIZE: 1,
+    DESCRIPTOR_GRID_BATCH_TIMEOUT_MS: 1000,
+  };
+  const run = new Function(...Object.keys(dependencies), `${runnerJs}; return calculateBrowserDevGridDescriptors;`)(...Object.values(dependencies));
+  let route;
+  registerBrowserDevDescriptorRoutes({ middlewares: { use(_, handler) { route = handler; } } }, { gridJobs: jobs });
+  const cancel = async () => {
+    const req = Object.assign(Readable.from([JSON.stringify({ documentId: "collection" })]), { method: "POST", url: "/grid-cancel" });
+    const res = { setHeader() {}, end() {} };
+    await route(req, res);
+    assert.equal(res.statusCode, 200);
+    return jobs.get("collection");
+  };
+  return { run: () => run({ documentId: "collection", path: "/fixture.smi" }), jobs, cancel, calls: () => calls };
+}
+
+for (const preparation of ["records", "python"]) {
+  const pending = deferred();
+  const entered = deferred();
+  const test = fixture({ [preparation]: () => { entered.resolve(); return pending.promise; } });
+  const result = test.run();
+  await entered.promise;
+  const cancelled = await test.cancel();
+  pending.resolve(preparation === "records" ? [{ index: 0, name: "ethanol", smiles: "CCO" }] : "/fixture/python");
+  assert.equal((await result).status, "cancelled");
+  assert.equal(test.jobs.get("collection"), cancelled);
+  assert.equal(test.calls(), 0, "cancelled preparation must not launch a worker");
+}
+
+for (const failure of [false, true]) {
+  const pending = deferred();
+  const entered = deferred();
+  const test = fixture({ batch: () => { entered.resolve(); return pending.promise; } });
+  const result = test.run();
+  await entered.promise;
+  assert.equal((await test.run()).status, "running");
+  assert.equal(test.calls(), 1, "a duplicate request must not spawn another worker");
+  const cancelled = await test.cancel();
+  if (failure) pending.reject(new Error("worker failed after cancellation"));
+  else pending.resolve({ rows: [{ index: 0, ok: true, values: [] }] });
+  assert.equal((await result).status, "cancelled");
+  assert.equal(test.jobs.get("collection"), cancelled, "an in-flight worker must not revive a cancelled run");
+}
+
+const failed = fixture({ batch: async () => { throw new Error("worker failed"); } });
+assert.equal((await failed.run()).status, "failed");
+assert.equal(failed.jobs.get("collection").running, false, "worker failures must not leave a permanent running status");
+const successful = fixture();
+assert.equal((await successful.run()).status, "completed");
+assert.equal(successful.jobs.get("collection").processedRows, 1);
+const invalidMolecule = fixture({ batch: async () => ({ rows: [{ index: 0, ok: false, error: "Invalid SMILES" }] }) });
+const invalidResult = await invalidMolecule.run();
+assert.deepEqual([invalidResult.processedRows, invalidResult.calculatedRows, invalidResult.failedRows], [1, 0, 1]);
+assert.equal(invalidResult.summary.calculatedRows, 0);
+
+const oldBatch = deferred();
+const oldEntered = deferred();
+let generation = 0;
+const restarted = fixture({ batch: () => {
+  if (++generation === 1) { oldEntered.resolve(); return oldBatch.promise; }
+  return Promise.resolve({ rows: [{ index: 0, ok: true, values: [] }] });
+} });
+const oldRun = restarted.run();
+await oldEntered.promise;
+await restarted.cancel();
+const newRun = await restarted.run();
+oldBatch.resolve({ rows: [{ index: 0, ok: false, error: "obsolete result" }] });
+assert.equal((await oldRun).status, "cancelled");
+assert.equal(restarted.jobs.get("collection"), newRun, "an old batch must not overwrite a restarted job");
+console.log("browser-dev descriptor cancellation, duplicate-run, and failure lifecycle checks passed");

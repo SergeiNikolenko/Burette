@@ -58,12 +58,12 @@ def main():
     assert archive.name == f"Burette-{info['CFBundleShortVersionString']}.zip"
     key = os.environ['BURETTE_SPARKLE_PRIVATE_KEY'].strip()
     seed = base64.b64decode(key, validate=True)
-    assert len(seed) == 32, 'Use the 32-byte seed exported by Sparkle 2.9.6 generate_keys'
+    assert len(seed) == 32, 'Use the 32-byte seed exported by Sparkle 2.10.0 generate_keys'
     public = subprocess.run(['openssl', 'pkey', '-inform', 'DER', '-pubout', '-outform', 'DER'],
                             input=bytes.fromhex('302e020100300506032b657004220420') + seed,
                             check=True, capture_output=True).stdout[-32:]
     assert base64.b64encode(public).decode() == info['SUPublicEDKey'], 'Signing key does not match the key embedded in the app'
-    signer = Path(__file__).resolve().parent.parent / 'build/sparkle/2.9.6/bin/sign_update'
+    signer = Path(__file__).resolve().parent.parent / 'build/sparkle/2.10.0/bin/sign_update'
     signature = subprocess.run([str(signer), '--ed-key-file', '-', '-p', str(archive)],
                                input=key + '\n', text=True, capture_output=True, check=True).stdout.strip()
     assert len(base64.b64decode(signature, validate=True)) == 64

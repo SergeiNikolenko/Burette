@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
-import ts from "typescript";
+import ts from "typescript-compiler-api";
 
 const source = await readFile("apps/desktop/src/hooks/use-app-file-actions.ts", "utf8");
 const availability = await readFile("apps/desktop/src/lib/browser-availability.ts", "utf8");
@@ -11,6 +11,7 @@ const statuses = [];
 const notices = [];
 let native = false;
 const context = {
+  window: {},
   useCallback: callback => callback,
   toast: { add: notice => notices.push(notice) },
   isTauriRuntime: () => native,

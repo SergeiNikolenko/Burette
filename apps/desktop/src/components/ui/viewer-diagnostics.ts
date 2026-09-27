@@ -15,7 +15,7 @@ export function warnViewerDevelopmentOnce({
   message: string;
   rootId: string;
 }) {
-  if (process.env.NODE_ENV === "production") return;
+  if (import.meta.env.PROD) return;
 
   const warningKey = `${rootId}:${code}`;
   if (emittedViewerDevelopmentWarnings.has(warningKey)) return;

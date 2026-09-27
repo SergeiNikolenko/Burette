@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-startup-runtime-refresh.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-startup-runtime-refresh.mjs", import.meta.url))]),
   "test-pose-camera-stability.mjs": () => import("./test-pose-camera-stability.mjs"),
   "test-collection-analysis-menu.mjs": () => import("./test-collection-analysis-menu.mjs"),
   "test-conformer-collection.mjs": () => import("./test-conformer-collection.mjs"),
@@ -18,6 +19,7 @@ const contractScripts = {
   "test-workspace-export-guards.mjs": () => import("./test-workspace-export-guards.mjs"),
   "test-workspace-file-menu.mjs": () => import("./test-workspace-file-menu.mjs"),
   "test-scene-file-actions.mjs": () => import("./test-scene-file-actions.mjs"),
+  "test-native-viewer-menus.mjs": () => import("./test-native-viewer-menus.mjs"),
   "test-native-context-menu.mjs": () => import("./test-native-context-menu.mjs"),
   "test-molecule-preview-interactions.mjs": () => import("./test-molecule-preview-interactions.mjs"),
   "test-expanded-context-menus.mjs": () => import("./test-expanded-context-menus.mjs"),
@@ -36,6 +38,7 @@ const contractScripts = {
   "test-docking-documents.mjs": () => import("./test-docking-documents.mjs"),
   "test-ui-shell-contract.mjs": () => import("./test-ui-shell-contract.mjs"),
   "test-molstar-style-switch.mjs": () => import("./test-molstar-style-switch.mjs"),
+  "test-molstar-label-theme.mjs": () => promisify(execFile)("bun", ["--preload", fileURLToPath(new URL("./fixtures/molstar-state-preload.mjs", import.meta.url)), fileURLToPath(new URL("./test-molstar-label-theme.mjs", import.meta.url))]),
   "test-molstar-preset-preview-controller.mjs": () => import("./test-molstar-preset-preview-controller.mjs"),
   "test-collection-documents.mjs": () => import("./test-collection-documents.mjs"),
   "test-structure-drag.mjs": () => import("./test-structure-drag.mjs"),

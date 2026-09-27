@@ -1,1 +1,1 @@
-xyzrender[smi]==0.3.1
+xyzrender[smi]==0.3.8
