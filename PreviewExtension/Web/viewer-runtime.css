@@ -2840,12 +2840,6 @@ body.burette-quicklook-host .buret-xyz-badge {
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
-body.burette-quicklook-host {
-  --buret-toolbar-safe-top: 56px;
-}
-body.burette-quicklook-host .buret-corner-button {
-  display: inline-flex;
-}
 body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-layout-left,
 body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-layout-right,
 body.burette-mobile-host.burette-quicklook-host .msp-plugin .msp-layout-top,

@@ -5511,9 +5511,6 @@ assert.match(previewRuntimeCss, /\.buret-preview-dock-bottom \{/);
 assert.match(previewRuntimeCss, /\.buret-preview-dock-section-title/);
 assert.match(previewRuntimeCss, /\.buret-preview-dock-status-pill/);
 assert.match(previewRuntimeCss, /body\.buret-preview-dock-right-open \.buret-preview-dock-bottom/);
-assert.match(previewRuntimeCss, /\.buret-corner-button \{/);
-assert.match(previewRuntimeCss, /body\.burette-quicklook-host \{\s*--buret-toolbar-safe-top: 56px;/s);
-assert.match(previewRuntimeCss, /body\.burette-quicklook-host \.buret-corner-button \{/);
 assert.match(previewRuntimeCss, /transition: background 180ms ease, box-shadow 180ms ease;/);
 assert.match(
   previewRuntimeCss,
