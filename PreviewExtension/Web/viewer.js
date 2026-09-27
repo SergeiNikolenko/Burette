@@ -24324,7 +24324,7 @@ SOFTWARE.
     { id: 'view', title: 'Visibility', direct: true, breakBefore: true },
     { id: 'represent', title: 'Appearance', direct: true, breakBefore: true },
     { id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true },
-    { id: 'align', title: 'Superposition' },
+    { id: 'align', title: 'Align' },
     { id: 'export', title: 'Export' },
     { id: 'search', title: 'Search' },
     { id: 'compute', title: 'Compute' },

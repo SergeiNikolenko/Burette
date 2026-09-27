@@ -213,7 +213,7 @@ assert.match(viewer, /\{ id: 'represent', title: 'Appearance', direct: true, bre
 assert.match(viewer, /\{ id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true \}/);
 assert.match(viewer, /\{ id: 'export', title: 'Export' \}/);
 assert.doesNotMatch(viewer, /\{ id: 'appearance', title: 'Appearance'/);
-assert.match(viewer, /\{ id: 'align', title: 'Superposition' \}/);
+assert.match(viewer, /\{ id: 'align', title: 'Align' \}/);
 assert.match(viewer, /\{ id: 'danger', title: 'Delete', direct: true, destructive: true, hideTitle: true, breakBefore: true \}/);
 assert.match(fn("showMolstarContextMenu"), /const actionTarget = \{ \.\.\.menuTarget, pickingLevel: mode \}/);
 assert.match(fn("showMolstarContextMenu"), /if \(!section\.hideTitle\)[\s\S]*moleculeMenuActionItem\(entry, menu, actionTarget/);
