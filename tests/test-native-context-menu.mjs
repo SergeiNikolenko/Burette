@@ -200,7 +200,9 @@ const molstarStubs = {
   molstarContextChainLabel: () => 'Chain A',
   activeMolstarViewer: () => ({}),
   molstarContextComponentRef: () => 'component',
-  sceneTreeColorTargets: () => new Map([['component', [{ representations: [{ cell: { transform: { ref: 'rep' } } }] }]]]),
+  sceneTreeColorTargets: () => new Map([['component', [{ cell: { transform: { ref: 'component' } }, representations: [{ cell: { transform: { ref: 'rep' } } }] }]]]),
+  sceneTreeIllustrativeTargets: (viewer, ref) => ref === 'component' ? [representation] : [],
+  sceneTreeRepresentationFlat: () => false,
   sceneTreeRepresentationTargets: () => new Map([['rep', { component: {}, representation }]]),
   sceneTreeNodes: () => [],
   sceneTreeNodeByRef: () => ({ label: 'Cartoon' }),
@@ -225,7 +227,7 @@ const molstarStubs = {
   captureMolstarSceneUndoSnapshot: label => ({ label }),
   pushMolstarEditUndoSnapshot: snapshot => calls.push(['undo', snapshot.label]),
   ...Object.fromEntries(['runSceneTreeSelectAction', 'duplicateSceneTreeRepresentation', 'streamSceneTreeReprAlpha',
-    'streamSceneTreeTheme', 'streamSceneTreeReprParam', 'applySceneTreeReprParam', 'setMolstarOutlineBrightness',
+    'streamSceneTreeTheme', 'streamSceneTreeReprParam', 'applySceneTreeReprParam', 'applySceneTreeIllustrative', 'setMolstarOutlineBrightness',
     'moleculeContextMenuAction', 'scheduleSceneTreeRender', 'setMolstarSelectionLevel', 'setStatus',
     'hideMolstarContextMenu', 'showMolstarContextMenu'].map(name => [name, log(name)])),
 };
@@ -261,7 +263,7 @@ const representMenu = byId(first.items, 'represent:menu');
 assert.equal(representMenu.iconUrl, 'data:image/svg+xml,icon');
 assert.deepEqual(representMenu.items.map(item => item.id || item.kind), [
   'molstar-menu-label-1', 'molstar-menu:representation-type', 'molstar-menu:representation-add', 'molstar-menu:opacity',
-  'molstar-menu:outline-brightness', 'separator', 'molstar-menu-label-2', 'molstar-menu:representation-color',
+  'molstar-menu:outline-brightness', 'molstar-menu:illustrative', 'separator', 'molstar-menu-label-2', 'molstar-menu:representation-color',
   'molstar-menu:tint', 'separator', 'molstar-menu:advanced',
 ]);
 assert.deepEqual(byId(representMenu.items, 'opacity'), {
@@ -285,6 +287,8 @@ byId(advancedMenu.items, 'param:sizeFactor').action(1.5);
 byId(representMenu.items, 'outline-brightness').action(80);
 assert.equal(calls.filter(([name]) => name === 'undo').length, 0);
 byId(representMenu.items, 'representation-type').action('surface');
+assert.equal(byId(representMenu.items, 'illustrative').checked, false);
+byId(representMenu.items, 'illustrative').action(true);
 byId(advancedMenu.items, 'param:ignoreLight').action(true);
 byId(advancedMenu.items, 'param:quality').action('high');
 byId(advancedMenu.items, 'representation-size').action('physical');
@@ -298,6 +302,8 @@ assert.deepEqual(calls, [
   ['setMolstarOutlineBrightness', 0.8],
   ['edit', 'undo representation-type'],
   ['runSceneTreeSelectAction', 'representation-type', 'rep', 'surface'],
+  ['edit', 'illustrative style of Cartoon'],
+  ['applySceneTreeIllustrative', 'component', true],
   ['edit', 'ignoreLight of Cartoon'],
   ['applySceneTreeReprParam', 'rep', 'ignoreLight', true],
   ['edit', 'quality of Cartoon'],
