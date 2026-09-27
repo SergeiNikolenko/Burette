@@ -14703,6 +14703,7 @@ SOFTWARE.
   function prepareXyzStructure(text, config) {
     const label = config.label || 'structure';
     const frames = splitXyzFrames(text);
+    if (!frames.length) throw new Error(`Invalid XYZ in ${label}: check atom counts and finite coordinates in every frame.`);
     if (frames.length > 1) {
       const overlay = buildXyzFrameOverlay(frames, label);
       return {

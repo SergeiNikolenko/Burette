@@ -10,6 +10,25 @@ import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 
 const viewerSource = await readFile('PreviewExtension/Web/viewer.js', 'utf8');
+const xyzContext = {
+  xyzParsedFrameCache: null,
+  normalizeElementSymbol: value => value,
+  buildXyzFrameOverlay: () => null,
+  readTrajectoryControlIndex: () => 0,
+};
+const splitStart = viewerSource.indexOf('  function splitXyzFrames(text)');
+const prepareStart = viewerSource.indexOf('  function prepareXyzStructure(text, config)');
+runInNewContext(
+  viewerSource.slice(splitStart, viewerSource.indexOf('  function buildXyzFrameOverlay(', splitStart))
+    + viewerSource.slice(prepareStart, viewerSource.indexOf('  function splitSdfRecords(', prepareStart)),
+  xyzContext,
+);
+const validFrame = '1\nframe\nH 0 0 0\n';
+assert.equal(xyzContext.prepareXyzStructure(validFrame, {}).format, 'xyz');
+assert.equal(xyzContext.prepareXyzStructure(validFrame + validFrame, {}).xyzFrameCount, 2);
+for (const text of ['5\ntruncated\nC NaN 0 0\n', '1\ninvalid\nC NaN 0 0\n', validFrame + '2\ntruncated second frame\nH 0 0 0\n']) {
+  assert.throws(() => xyzContext.prepareXyzStructure(text, { label: 'invalid.xyz' }), /Invalid XYZ.*atom counts and finite coordinates/u);
+}
 const readinessStart = viewerSource.indexOf('  function assertMolstarLoadReady(viewer, prepared)');
 const readinessEnd = viewerSource.indexOf('\n  // viewer-shell.js keeps the page transparent', readinessStart);
 assert.ok(readinessStart > 0 && readinessEnd > readinessStart);
