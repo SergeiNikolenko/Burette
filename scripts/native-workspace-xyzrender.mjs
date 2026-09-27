@@ -104,10 +104,12 @@ export async function renderNativeWorkspaceXyz(input, { source, execute = execut
     }
     const animationPath = join(directory, 'animation.gif');
     const animationArgs = input.animation ? xyzrenderAnimationArguments(input.animation, animationPath) : [];
-    const run = ref => execute(executable, [...args, ...(ref ? ['--ref', ref] : []), ...animationArgs], executionOptions);
+    const run = ref => execute(executable, [...args, ...(ref ? ['--ref', ref] : []), ...animationArgs],
+      { ...executionOptions, timeout: input.animation ? 45000 : executionOptions.timeout });
     let result;
     try { result = await run(refPath); }
     catch (error) {
+      if (error.killed && error.signal === 'SIGTERM') throw new Error('XYZRender exceeded its time limit. Try fewer animation frames or a smaller image.');
       if (!refPath || !`${error.stderr}${error.stdout}${error.message}`.includes('--ref is not supported for periodic structures')) throw error;
       throw new Error('XYZRender orientation references are not supported for periodic structures. Reset the orientation reference before rendering or exporting.');
     }

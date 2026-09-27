@@ -22,7 +22,8 @@ const hasRenderer = [join(homedir(), '.local/bin/xyzrender'), '/opt/homebrew/bin
   ...String(process.env.PATH || '').split(delimiter).filter(Boolean).map(path => join(path, 'xyzrender'))].some(existsSync);
 test('binary artifacts can exceed the SVG cap but cannot exceed 16 MiB', { skip: !hasRenderer }, async () => {
   let artifactSize = 600 * 1024;
-  const execute = async (_binary, args) => {
+  const execute = async (_binary, args, options) => {
+    assert.equal(options.timeout, 45000, 'animations get a bounded deadline below the app bridge timeout');
     await writeFile(args[args.indexOf('-o') + 1], '<svg/>');
     await writeFile(args[args.indexOf('-go') + 1], Buffer.alloc(artifactSize));
     return { stdout: '', stderr: '' };
