@@ -1,11 +1,14 @@
-import type { EventEmitter } from "events";
-
 const KETCHER_FAILURE_EVENT = "FAILURE";
+
+type FailureEventBus = {
+  once(event: string, listener: () => void): unknown;
+  removeListener(event: string, listener: () => void): unknown;
+};
 
 /** Ketcher 3.15 runAsyncAction emits FAILURE and resolves undefined on parse errors. */
 export async function rejectOnKetcherAsyncFailure<T>(
   operation: () => Promise<T>,
-  eventBus: Pick<EventEmitter, "once" | "removeListener">,
+  eventBus: FailureEventBus,
 ) {
   let failed = false;
   const markFailed = () => { failed = true; };
