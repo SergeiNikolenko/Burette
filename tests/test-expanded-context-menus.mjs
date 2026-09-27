@@ -18,6 +18,7 @@ const state = { tablePinnedColumns: new Set(['value']), tableColumnWidths: new M
 const functions = ['compare', 'tableActiveSort', 'tableColumnWidth', 'tableColumnWindow', 'tableColumnWidthStyle', 'tableVisibleColumns',
   'showGridContextMenu', 'hideMoleculeContextMenu', 'positionMoleculeContextMenu'];
 const runtime = new Function('window', 'document', 'root', 'state', `
+  const config = () => ({ appViewer: false });
   const TABLE_DEFAULT_COLUMN_WIDTH = 118, TABLE_COLUMN_OVERSCAN_PX = 200;
   function tableViewportWidth() { return 600; }
   function analysisDisplayValue(cell) { return cell?.value ?? ''; }

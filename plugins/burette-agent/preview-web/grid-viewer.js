@@ -7588,6 +7588,14 @@
     });
     root.appendChild(menu);
     positionMoleculeContextMenu(menu, event.clientX, event.clientY);
+    queueMicrotask(() => {
+      if (config().appViewer !== true || window.parent === window || !menu.isConnected || menu.getAttribute('role') !== 'menu') return;
+      window.BuretteNativeViewerMenus?.show(menu, {
+        x: event.clientX, y: event.clientY,
+        post: body => { post(body.type, '', body); return true; },
+        close: () => { if (menu.isConnected) hideMoleculeContextMenu(); }
+      });
+    });
     (menu.querySelector('button:not(:disabled)') || menu).focus({ preventScroll: true });
     state.contextMenuOutsideHandler = outsideEvent => {
       if (!menu.contains(outsideEvent.target)) hideMoleculeContextMenu();
@@ -7647,7 +7655,9 @@
         let min = Infinity, max = -Infinity, sum = 0;
         for (const value of values) { min = Math.min(min, value); max = Math.max(max, value); sum += value; }
         const details = `Count: ${values.length} · Missing: ${rows.length - values.length}` + (values.length ? ` · Min: ${min} · Max: ${max} · Mean: ${(sum / values.length).toPrecision(5)}` : '');
-        showGridContextMenu(event, column.label, [], `${state.remoteMode ? 'Loaded rows only. ' : ''}${details}`).classList.add('buret-grid-statistics-menu');
+        const panel = showGridContextMenu(event, column.label, [], `${state.remoteMode ? 'Loaded rows only. ' : ''}${details}`);
+        panel.classList.add('buret-grid-statistics-menu');
+        panel.setAttribute('role', 'dialog');
       } },
     ]);
   }
@@ -7661,6 +7671,7 @@
       else state.tableColumnFilters[column.id] = draft;
       void refresh(cfg);
     } }]);
+    menu.setAttribute('role', 'dialog');
     fields.forEach(part => {
       const label = document.createElement('label');
       label.textContent = part === 'text' ? 'Contains' : part === 'min' ? 'Minimum' : 'Maximum';

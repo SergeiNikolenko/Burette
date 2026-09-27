@@ -121,6 +121,9 @@ type SegmentedOption<T extends string> = {
 
 declare global {
   interface Window {
+    BuretteNativeViewerMenus?: { show(menu: HTMLElement, options: {
+      x: number; y: number; post: (body: Record<string, unknown>) => boolean; close: () => void;
+    }): boolean };
     BuretteGridUI?: GridUIApi;
   }
 }
@@ -608,6 +611,17 @@ function useMenu() {
 function ActionsMenu(props: GridControlProps) {
   const { open, setOpen, wrapRef, menuRef, menuStyle, onRun } = useMenu();
   const selectedCount = props.selectedCount;
+  React.useEffect(() => {
+    const menu = menuRef.current;
+    const config = (window as Window & { BuretteConfig?: { appViewer?: boolean } }).BuretteConfig;
+    if (!open || !menu || config?.appViewer !== true || window.parent === window) return;
+    const rect = wrapRef.current?.getBoundingClientRect();
+    window.BuretteNativeViewerMenus?.show(menu, {
+      x: rect?.left ?? 0, y: rect?.bottom ?? 0,
+      post: body => { window.parent.postMessage({ source: 'burette-grid', body }, '*'); return true; },
+      close: () => setOpen(false),
+    });
+  }, [open, menuRef, wrapRef, setOpen]);
 
   return (
     <div className="ab-menu-wrap ab-actions-menu" ref={wrapRef}>

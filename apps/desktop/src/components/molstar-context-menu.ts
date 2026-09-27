@@ -41,11 +41,11 @@ export function molstarContextMenuItems(entries: unknown, send: MolstarContextMe
         ? { iconUrl: entry.icon } : {};
       if (entry.kind === "item") {
         const caption = text(entry.text);
-        return caption ? [{ kind: "item", id, text: caption, ...icon, action: () => send(key) }] : [];
+        return caption ? [{ kind: "item", id, text: caption, ...(entry.disabled === true ? { disabled: true } : {}), ...icon, action: () => send(key) }] : [];
       }
       if (entry.kind === "checkbox") {
         const caption = text(entry.text);
-        return caption ? [{ kind: "checkbox", id, text: caption, checked: entry.checked === true, action: (checked) => send(key, checked) }] : [];
+        return caption ? [{ kind: "checkbox", id, text: caption, checked: entry.checked === true, ...(entry.disabled === true ? { disabled: true } : {}), action: (checked) => send(key, checked) }] : [];
       }
       if (entry.kind === "submenu") {
         const caption = text(entry.text);
@@ -64,7 +64,7 @@ export function molstarContextMenuItems(entries: unknown, send: MolstarContextMe
         }
         budget -= options.length;
         return label && options.length && depth < MAX_DEPTH && budget >= 0 ? [{
-          kind: "select", id, label, value: typeof entry.value === "string" ? entry.value : "", options, optionLabels,
+          kind: "select", id, label, ...(entry.disabled === true ? { disabled: true } : {}), value: typeof entry.value === "string" ? entry.value : "", options, optionLabels,
           action: (value) => send(key, value),
         }] : [];
       }

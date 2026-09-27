@@ -19,6 +19,7 @@ const contractScripts = {
   "test-workspace-export-guards.mjs": () => import("./test-workspace-export-guards.mjs"),
   "test-workspace-file-menu.mjs": () => import("./test-workspace-file-menu.mjs"),
   "test-scene-file-actions.mjs": () => import("./test-scene-file-actions.mjs"),
+  "test-native-viewer-menus.mjs": () => import("./test-native-viewer-menus.mjs"),
   "test-native-context-menu.mjs": () => import("./test-native-context-menu.mjs"),
   "test-molecule-preview-interactions.mjs": () => import("./test-molecule-preview-interactions.mjs"),
   "test-expanded-context-menus.mjs": () => import("./test-expanded-context-menus.mjs"),
