@@ -11,11 +11,19 @@ export function canStartNativeFileDrag() {
   return isTauriRuntime() && typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
 }
 
-/** Resolves when the drag ends: true when a destination accepted the files. */
-export function startNativeFileDrag(payload: StructureDragPayload) {
+type NativeFileDragOutcome = {
+  accepted: boolean;
+  /** Release point over this window, in client coordinates, when nothing took the files. */
+  inAppDrop: { x: number; y: number } | null;
+};
+
+/** Resolves when the drag ends. */
+export async function startNativeFileDrag(payload: StructureDragPayload) {
   const entries = payload.entries ?? payload.paths;
   activeDrag = { entries, payload };
-  return invoke<boolean>("start_file_drag", { paths: entries });
+  const outcome = await invoke<NativeFileDragOutcome>("start_file_drag", { paths: entries });
+  if (outcome.inAppDrop) activeDrag = null;
+  return outcome;
 }
 
 export function nativeFileDragPayload(paths: string[], { consume = false } = {}) {

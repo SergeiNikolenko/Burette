@@ -208,7 +208,10 @@ existing item with the same name is never replaced. Molecule records dropped on
 a row are still saved as new files there. On macOS, dragging a sidebar row
 starts a native file drag (`start_file_drag`), so Finder and other apps receive
 copies of the real files or folder; in-app drops of that drag keep the row's
-structure payload.
+structure payload. Right-dock file tabs use the same drag. AppKit does not
+always report a drop on Burette's own window to the webview, so when nothing
+accepts the drag and the button is released over the window, the command
+returns that point and the page runs the drop there.
 
 Grid row/cell menus use the desktop host menu when embedded in the workspace,
 with the web menu as a standalone fallback. Column-header menus remain owned
@@ -256,8 +259,10 @@ limits, result columns, and focused verification.
 Dropping structures or collection records onto a Mol* document appends them to
 that document's mounted scene. The receptor's representations and camera stay
 intact; SDF imports retain all models. Both native and browser drop routes use
-the same scene import operation as Add to Scene. Trajectory pairing retains its
-separate document workflow. Combined scenes can be saved through Export → Scene.
+the same scene import operation as Add to Scene. SDF ligands dropped onto a
+receptor or docking document default to the docking view instead, because only
+that view pages through SDF records as poses; Add to scene stays in the drop
+menu. Trajectory pairing retains its separate document workflow. Combined scenes can be saved through Export → Scene.
 SSH requests wait for the shared native worker rather than treating contention
 as a connection failure; refreshing a remote project keeps its cached tree visible.
 

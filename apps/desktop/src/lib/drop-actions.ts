@@ -190,9 +190,18 @@ export function resolveDropActionChoices(
   if (target.renderer === "molstar" && target.documentId
     && payload.paths.every(isMolstarSceneImportSource)
     && payload.records.every(record => isMolstarSceneImportSource(`record.${record.inputExtension}`))) {
-    return withOpenSeparately(payload, {
+    const appendChoice = choice("append-scene-files", "Add to scene", "default", {
       kind: "append-scene-files", targetDocumentId: target.documentId, payload,
-    }, "Add to scene", source);
+    }, source);
+    // Appended SDF records render side by side; only the docking view pages
+    // through them as poses, so ligands dropped on a receptor open there first.
+    const poseChoices = isLigandPoseDrop(payload, target)
+      ? tagChoicesWithSource(dockingActionChoices(target.documentPath, payload, target.dockingRequest), source)
+      : [];
+    if (poseChoices.length > 0) {
+      return withOpenSeparatelyChoices(payload, [...poseChoices, { ...appendChoice, confidence: "alternative" }], source);
+    }
+    return withOpenSeparatelyChoices(payload, [appendChoice], source);
   }
 
   const dockingChoices = dockingActionChoices(target.documentPath, payload, target.dockingRequest);
@@ -204,6 +213,16 @@ export function resolveDropActionChoices(
   }
 
   return [defaultWorkspaceDropChoice(payload, source)];
+}
+
+function isLigandPoseDrop(payload: StructureDragPayload, target: Extract<DropTargetContext, { kind: "active-viewer" }>) {
+  const docking = target.dockingRequest;
+  if (docking ? docking.sceneMode || isTrajectoryDocumentRequest(docking) : !isProteinLikeDockingSource(target.documentPath)) {
+    return false;
+  }
+  return payload.paths.length + payload.records.length > 0
+    && payload.paths.every((path) => fileExtension(path) === "sdf")
+    && payload.records.every((record) => record.inputExtension === "sdf");
 }
 
 function gridAppendPayload(payload: StructureDragPayload) {
