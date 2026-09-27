@@ -1,6 +1,7 @@
 import { toast } from "./ui/toast";
 import { appendScenePayload } from "../hooks/workspace-scene-import";
 import { resolveDropActionChoices, type DropActionChoice, type DropSourceContext, type DropTargetContext } from "../lib/drop-actions";
+import { requestMoveIntoFolder } from "../lib/move-into-folder";
 import { structureDragRecordsToFragments, type StructureDragPayload } from "../lib/structure-drag";
 import type { ShellActions } from "./types";
 import { showNativeContextMenu } from "./native-context-menu";
@@ -113,6 +114,10 @@ function runShellDropAction(
   if (action.kind === "open-structure-records") {
     if (action.paths.length > 0) void actions.openPaths(action.paths);
     if (action.records.length > 0) void actions.openStructureRecords(action.records, action.directory);
+    return;
+  }
+  if (action.kind === "move-into-folder") {
+    requestMoveIntoFolder({ directory: action.directory, paths: action.paths });
     return;
   }
   void actions.openPaths(payload.paths);

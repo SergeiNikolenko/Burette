@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, type DragEvent as ReactDragEvent, type 
 
 import type { DropTargetContext } from "../../lib/drop-actions";
 import { describeDropTargetElement, type DropTargetDescriptor } from "../../lib/drop-target";
+import { canStartNativeFileDrag, startNativeFileDrag } from "../../lib/native-file-drag";
 import {
   structureDragMovementExceedsThreshold,
   writeStructureDragPayload,
@@ -110,6 +111,23 @@ export function useSidebarStructureDrag({
 
   const onDragStart = useCallback((event: ReactDragEvent<HTMLElement>) => {
     const payload = getPayload();
+    if (payload && canStartNativeFileDrag()) {
+      // An HTML drag reaches Finder only as text, so hand AppKit the real files.
+      event.preventDefault();
+      if (mouseDragRef.current) mouseDragRef.current.nativeDragStarted = true;
+      // AppKit's drag loop ends with a synthetic mouse-up; it must not open the row.
+      suppressClickRef.current = true;
+      setStructureDragActive(true);
+      void startNativeFileDrag(payload)
+        .catch(() => false)
+        .finally(() => {
+          finishDrag();
+          window.setTimeout(() => {
+            suppressClickRef.current = false;
+          }, 0);
+        });
+      return;
+    }
     if (!payload || !writeStructureDragPayload(event.dataTransfer, payload)) {
       event.preventDefault();
       finishDrag();

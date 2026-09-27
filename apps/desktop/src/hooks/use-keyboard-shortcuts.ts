@@ -8,6 +8,7 @@ import { isTauriRuntime } from "../lib/tauri";
 import { requestTextFind } from "../lib/text-find";
 import { activateCommandHintTarget, watchCommandKeyHints } from "../lib/command-key-hints";
 import { useAnnotationStore } from "../stores/annotation-store";
+import { isAgentPluginSurface } from "../lib/native-mcp-workspace";
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -110,7 +111,7 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         }
         return;
       }
-      if (window.BuretteMcpWorkspace && commandKey && !event.altKey && !event.shiftKey && event.key === ".") {
+      if (commandKey && !event.altKey && !event.shiftKey && event.key === "." && isAgentPluginSurface(state.buildInfo.isAgentShell)) {
         event.preventDefault();
         useAnnotationStore.getState().toggle();
         return;

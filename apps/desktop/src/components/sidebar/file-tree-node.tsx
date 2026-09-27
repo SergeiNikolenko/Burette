@@ -72,7 +72,7 @@ export function ProjectGroup({
   const sidebarDrag = useSidebarStructureDrag({
     actions,
     disabled: renaming,
-    getPayload: () => sidebarProjectItemsDragPayload(project.items),
+    getPayload: () => sidebarProjectItemsDragPayload(project.items, project.rootPath),
     state,
   });
 
@@ -426,7 +426,7 @@ function ProjectTreeNodeView({
   };
   const sidebarDrag = useSidebarStructureDrag({
     actions,
-    getPayload: () => sidebarProjectItemsDragPayload(nodeItems),
+    getPayload: () => sidebarProjectItemsDragPayload(nodeItems, folderPath),
     state,
   });
   const showAllChildren = showAllFolderPaths.has(node.path);
@@ -717,10 +717,12 @@ function projectTreeNodeItems(node: ProjectTreeNode): SidebarProjectItem[] {
 
 function sidebarProjectItemsDragPayload(
   items: SidebarProjectItem[],
+  folderPath?: string | null,
 ): StructureDragPayload | null {
   const draggableItems = items.filter((item) => item.path.trim().length > 0);
   if (draggableItems.length === 0) return null;
   return {
+    ...(folderPath ? { entries: [folderPath] } : {}),
     paths: draggableItems.map((item) => item.path),
     records: [],
     items: draggableItems.map((item) => ({

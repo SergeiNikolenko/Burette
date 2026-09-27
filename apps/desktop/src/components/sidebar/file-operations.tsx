@@ -1,9 +1,10 @@
-import { createContext, useContext, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { Dialog } from "radix-ui";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { isTauriRuntime } from "../../lib/tauri";
 import { basename } from "../../lib/sidebar-projects";
+import { MOVE_INTO_FOLDER_EVENT, type MoveIntoFolderRequest } from "../../lib/move-into-folder";
 import { useMoleculeStore } from "../../stores/molecule-store";
 import { useShellStore } from "../../stores/shell-store";
 import type { MenuItemSpec } from "../menu-types";
@@ -14,10 +15,10 @@ import { CloseIcon } from "../close-icon";
 type Request =
   | { operation: "rename" | "renameFolder" | "createFolder"; path: string; name: string }
   | { operation: "duplicate" | "trash" | "trashFolder"; path: string }
-  | { operation: "saveCopy"; path: string; destination: string };
+  | { operation: "saveCopy" | "moveInto"; path: string; destination: string };
 type FileMenus = (path: string, kind?: "file" | "folder" | "project") => MenuItemSpec[];
 const FileOperationsContext = createContext<FileMenus>(() => []);
-const labels = { rename: "Rename File", duplicate: "Duplicate File", trash: "Move to Trash", saveCopy: "Save File Copy", renameFolder: "Rename Folder", createFolder: "New Folder", trashFolder: "Move Folder to Trash" };
+const labels = { rename: "Rename File", duplicate: "Duplicate File", trash: "Move to Trash", saveCopy: "Save File Copy", renameFolder: "Rename Folder", createFolder: "New Folder", trashFolder: "Move Folder to Trash", moveInto: "Move to Folder" };
 
 export function useSidebarFileMenus() { return useContext(FileOperationsContext); }
 
@@ -32,11 +33,13 @@ export function SidebarFileOperations({ state, actions, children }: {
   const running = useRef(false);
 
   const run = async (next: Request) => {
-    if (running.current) return;
+    if (running.current) return false;
     running.current = true;
     setBusy(true);
     setError("");
-    const folder = next.operation === "renameFolder" || next.operation === "trashFolder";
+    // A moved path may be a file or a folder; nothing lives below a file path.
+    const moving = next.operation === "moveInto";
+    const folder = moving || next.operation === "renameFolder" || next.operation === "trashFolder";
     const affects = (path: string) => path === next.path || (folder && path.startsWith(next.path + '/'));
     const changesSource = folder || next.operation === "rename" || next.operation === "trash";
     const wasOpen = useMoleculeStore.getState().tabs.filter(tab =>
@@ -48,7 +51,7 @@ export function SidebarFileOperations({ state, actions, children }: {
         await actions.closeTabs(wasOpen.map(tab => tab.id));
         if (useMoleculeStore.getState().tabs.some(tab => wasOpen.some(open => open.id === tab.id))) {
           setRequest(null);
-          return;
+          return false;
         }
       }
       const output = await invoke<string | null>("operate_sidebar_file", { request: next });
@@ -80,18 +83,37 @@ export function SidebarFileOperations({ state, actions, children }: {
       if (output && !folder && next.operation !== "createFolder" && next.operation !== "saveCopy") {
         await actions.openPaths([output]);
       }
+      if (output && moving && wasOpen.length) {
+        await actions.openPaths(wasOpen.flatMap(tab => "path" in tab.location ? [output + tab.location.path.slice(next.path.length)] : []));
+      }
       window.dispatchEvent(new Event("burette-folder-contents-changed"));
       setRequest(null);
+      return true;
     } catch (cause) {
       // Trash and Duplicate run without a dialog, so a failure opens one to report it.
       setRequest(next);
       setError(String(cause));
       if (!committed && changesSource && wasOpen.length) await actions.openPaths(wasOpen.flatMap(tab => "path" in tab.location ? [tab.location.path] : []));
+      return false;
     } finally {
       running.current = false;
       setBusy(false);
     }
   };
+
+  const runRef = useRef(run);
+  runRef.current = run;
+  useEffect(() => {
+    if (!isTauriRuntime()) return undefined;
+    const move = async (event: Event) => {
+      const { directory, paths } = (event as CustomEvent<MoveIntoFolderRequest>).detail;
+      for (const path of paths) {
+        if (!await runRef.current({ operation: "moveInto", path, destination: directory })) break;
+      }
+    };
+    window.addEventListener(MOVE_INTO_FOLDER_EVENT, move);
+    return () => window.removeEventListener(MOVE_INTO_FOLDER_EVENT, move);
+  }, []);
 
   const choose = (next: Request) => {
     setError("");

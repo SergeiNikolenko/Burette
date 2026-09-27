@@ -280,6 +280,7 @@ pub fn run() {
             commands::shell::read_viewer_runtime_file_base64,
             commands::shell::reveal_path,
             commands::file_operations::operate_sidebar_file,
+            commands::file_drag::start_file_drag,
             commands::context_menu::popup_macos_context_menu,
             commands::folder_contents::read_folder_contents,
             commands::ssh::ssh_hosts,
