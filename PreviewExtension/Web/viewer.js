@@ -191,6 +191,7 @@
   const molstarLassoSelectionResidueKeys = new Set();
   let xyzrenderLassoEnabled = false;
   let xyzrenderLassoStroke = null;
+  let pendingXyzrenderVdwRequest = null;
   let xyzrenderLassoOverlay = null;
   const xyzrenderSelectedElements = new Set();
   const xyzrenderStyledElements = new Set();
@@ -3183,14 +3184,19 @@
       const config = activeConfig || window.BuretteConfig || {};
       const documentId = String(config.documentId || '');
       const hasXyzrenderArtifact = Boolean(document.querySelector('.buret-external-artifact-root, .buret-xyzrender-sheet-item-base, .buret-external-artifact-object'));
-      if (body.documentId && documentId && String(body.documentId) !== documentId && !hasXyzrenderArtifact) return;
+      const addressedToThisDocument = !body.documentId || !documentId || String(body.documentId) === documentId;
+      if (!addressedToThisDocument && !hasXyzrenderArtifact) return;
       const controls = normalizeXyzrenderControls(body.controls || config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
       const preset = normalizeXyzrenderPreset(body.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
+      // The dock broadcasts item edits to every viewer frame. Atom selections belong
+      // to one document, so only its frame may act on them; the other tabs would
+      // otherwise report an empty selection.
+      if (addressedToThisDocument) pendingXyzrenderVdwRequest = null;
       if (body.selectionAction === 'vdw') {
-        void applyXyzrenderSelectionVdw(controls, preset);
+        if (addressedToThisDocument) void applyXyzrenderSelectionVdw(controls, preset);
         return;
       }
-      if (hasXyzrenderSelection()) {
+      if (addressedToThisDocument && hasXyzrenderSelection()) {
         void applyXyzrenderSelectionPreset(preset, controls);
         return;
       }
@@ -6208,7 +6214,10 @@
   function setXyzrenderLassoEnabled(enabled) {
     const next = enabled === true;
     xyzrenderLassoEnabled = next;
-    if (!next) cancelXyzrenderLassoStroke();
+    if (!next) {
+      cancelXyzrenderLassoStroke();
+      pendingXyzrenderVdwRequest = null;
+    }
     document.body?.classList.toggle('buret-xyzrender-lasso-active', xyzrenderLassoEnabled);
     updateMolstarLassoButton();
     setStatus(xyzrenderLassoEnabled ? '[web] xyzrender lasso enabled.' : '[web] xyzrender lasso disabled.');
@@ -13645,12 +13654,34 @@ SOFTWARE.
     }
   }
 
+  // Choosing partial vdW before any atoms are selected arms the lasso instead of
+  // failing; the next lasso selection receives the spheres.
+  function requestXyzrenderVdwSelection(controls, preset) {
+    pendingXyzrenderVdwRequest = { controls, preset };
+    if (!xyzrenderLassoEnabled) setXyzrenderLassoEnabled(true);
+    setStatus('Draw a lasso around the atoms that should get vdW spheres. Press Esc to cancel.', 'info', { visible: true });
+  }
+
+  function applyPendingXyzrenderVdwRequest() {
+    const request = pendingXyzrenderVdwRequest;
+    if (!request || !hasXyzrenderSelection()) return;
+    pendingXyzrenderVdwRequest = null;
+    void applyXyzrenderSelectionVdw(request.controls, request.preset);
+  }
+
   async function applyXyzrenderSelectionVdw(controls, preset) {
     const groups = xyzrenderSelectionGroups();
     if (!groups.length) {
-      setStatus('Select atoms first, then apply partial vdW spheres.', 'error');
+      requestXyzrenderVdwSelection(controls, preset);
       return;
     }
+    // Flat, tube, wire and skeletal SVGs carry no per-atom markers, so a lasso
+    // there selects bare graphics that cannot be mapped back to atoms.
+    if (!groups.some(group => xyzrenderAtomSelectorForElements(group.item, group.elements))) {
+      setStatus('This style does not expose individual atoms. Switch to Default or Paton, select atoms, then choose Partial again.', 'error');
+      return;
+    }
+    pendingXyzrenderVdwRequest = null;
     const normalizedPreset = normalizeXyzrenderPreset(preset);
     setStatus('[web] Applying partial vdW spheres to selected xyzrender atoms…');
     let updated = 0;
@@ -13673,6 +13704,11 @@ SOFTWARE.
         setXyzrenderSheetItemEntry(group.item, entry);
         group.item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || normalizedPreset || basePreset);
         setXyzrenderSheetItemVdwAtoms(group.item, atomSelector);
+        group.item.dataset.buretXyzrenderControls = JSON.stringify(nextControls);
+        // Report the new state so the dock highlights Partial for this item.
+        if (group.item.classList.contains('selected') || document.querySelectorAll('.buret-xyzrender-sheet-item').length === 1) {
+          publishXyzrenderItem(group.item);
+        }
         updated += atomSelector.split(',').reduce((count, part) => {
           const [start, end] = part.split('-').map(Number);
           return count + (end ? end - start + 1 : 1);
@@ -21193,6 +21229,7 @@ SOFTWARE.
     setStatus(selected > 0
       ? `[web] Selected ${selected} xyzrender ${label}${selected === 1 ? '' : 's'} with lasso.`
       : '[web] xyzrender lasso did not match visible graphics.');
+    applyPendingXyzrenderVdwRequest();
   }
 
   function selectXyzrenderElementsInLasso(item, points, additive) {

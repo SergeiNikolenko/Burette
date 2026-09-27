@@ -623,7 +623,7 @@ assert.match(viewer, /const hasXyzrenderArtifact = Boolean\(document\.querySelec
 assert.match(viewer, /renderer !== 'xyzrender-external' && !hasXyzrenderArtifact/);
 assert.match(viewer, /function updateBrowserDevXyzrenderArtifact\(payload, requestedControls, requestedPreset\)/);
 assert.match(viewer, /if \(body\.type === 'setXyzrenderControls'\)/);
-assert.match(viewer, /String\(body\.documentId\) !== documentId && !hasXyzrenderArtifact/);
+assert.match(viewer, /if \(!addressedToThisDocument && !hasXyzrenderArtifact\) return;/);
 assert.match(viewer, /const options = \{ controls, preset \}/);
 assert.match(viewer, /requestBrowserDevXyzrenderUpdate\(options\)/);
 assert.match(viewer, /function rotatableArtifactControlsHTML\(\)/);
@@ -1725,9 +1725,11 @@ assert.match(viewer, /const items = selectedItems\.length > 0 \? selectedItems :
 assert.match(viewer, /if \(requestSelectedXyzrenderSheetItemsUpdate\(\{ controls \}\)\) return;/);
 assert.match(viewer, /function applyXyzrenderSelectionPreset\(preset, controls\)/);
 assert.match(viewer, /async function applyXyzrenderSelectionVdw\(controls, preset\)/);
-assert.match(viewer, /if \(body\.selectionAction === 'vdw'\) \{\s*void applyXyzrenderSelectionVdw\(controls, preset\);\s*return;\s*\}/);
+assert.match(viewer, /if \(body\.selectionAction === 'vdw'\) \{\s*if \(addressedToThisDocument\) void applyXyzrenderSelectionVdw\(controls, preset\);\s*return;\s*\}/);
+assert.match(viewer, /if \(!groups\.length\) \{\s*requestXyzrenderVdwSelection\(controls, preset\);\s*return;\s*\}/);
+assert.doesNotMatch(viewer, /Select atoms first, then apply partial vdW spheres/);
 assert.match(viewer, /if \(hasXyzrenderSelection\(\)\) \{\s*void applyXyzrenderSelectionPreset\(value, controls\);\s*return;\s*\}/s);
-assert.match(viewer, /if \(body\.type === 'setXyzrenderControls'\) \{[\s\S]*?if \(hasXyzrenderSelection\(\)\) \{\s*void applyXyzrenderSelectionPreset\(preset, controls\);\s*return;\s*\}[\s\S]*?const options = \{ controls, preset \};[\s\S]*?requestBrowserDevXyzrenderUpdate\(options\)/);
+assert.match(viewer, /if \(body\.type === 'setXyzrenderControls'\) \{[\s\S]*?if \(addressedToThisDocument && hasXyzrenderSelection\(\)\) \{\s*void applyXyzrenderSelectionPreset\(preset, controls\);\s*return;\s*\}[\s\S]*?const options = \{ controls, preset \};[\s\S]*?requestBrowserDevXyzrenderUpdate\(options\)/);
 assert.match(viewer, /function xyzrenderOrientationPayload\(options = \{\}\)/);
 assert.match(viewer, /postHostMessage\(\{ type: 'setXyzrenderControls', documentId, controls, preset, \.\.\.xyzrenderOrientationPayload\(options\) \}\)/);
 assert.match(viewer, /function xyzrenderAtomSelectorForElements\(item, elements\)/);
