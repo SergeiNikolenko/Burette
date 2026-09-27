@@ -26,6 +26,9 @@ const render = async (path: string, open = false, fileActionsAvailable = true) =
 })));
 const path = "/project/Burette/samples/proteins/1htb.pdb";
 await render(path);
+assert.equal(container.querySelector('[aria-label="Annotate this view"]'), null, "Standalone workspaces must not expose plugin annotation");
+(window as any).BuretteMcpWorkspace = {};
+await render(path);
 assert.equal(container.querySelector(".workspace-file-breadcrumb")?.textContent, "Burettesamplesproteins1htb.pdb");
 assert.equal(container.querySelector(".workspace-file-breadcrumb")?.getAttribute("aria-label"), path);
 assert.equal(container.querySelector("[aria-current=page]")?.textContent, "1htb.pdb");
@@ -33,7 +36,7 @@ await act(async () => {
   for (const label of ["Copy file path", "Toggle right panel", "Annotate this view", "Open with default app"]) {
     (container.querySelector(`[aria-label="${label}"]`) as HTMLElement).click();
   }
-  container.querySelector('[aria-label="Open in another application"]')!.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, button: 0, ctrlKey: false }));
+  container.querySelector('[aria-label="Open in another application"]')!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, ctrlKey: false }));
 });
 assert.ok(document.querySelector('[role="menu"]'));
 await act(async () => (document.querySelector('[role="menuitem"]') as HTMLElement).click());

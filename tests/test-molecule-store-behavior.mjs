@@ -27,7 +27,7 @@ globalThis.window = {
   },
 };
 
-const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store.ts");
+const { getMoleculeSessionSnapshot, useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store.ts");
 
 function document(id, path, title = path.split("/").at(-1) ?? id, renderer = "molstar") {
   return {
@@ -352,3 +352,30 @@ await useMoleculeStore.persist.rehydrate();
 assert.equal(useMoleculeStore.getState().tabs.find(tab => tab.id === pinTarget.id)?.pinned, true);
 useMoleculeStore.getState().togglePinnedTab(pinTarget.id);
 assert.equal(useMoleculeStore.getState().tabs.find(tab => tab.id === pinTarget.id)?.pinned, false);
+
+resetStore();
+useMoleculeStore.getState().openFepNetworkTab({ kind: "fep-network", title: "Transient network" });
+useMoleculeStore.getState().addDocuments([document("resume-a", "/data/resume-a.pdb"), document("resume-b", "/data/resume-b.pdb")]);
+const resumeTabId = useMoleculeStore.getState().activeTabId;
+const session = getMoleculeSessionSnapshot(useMoleculeStore.getState());
+assert.equal(session.tabs[session.activeIndex]?.id, resumeTabId, "session selection refers to the serialized tabs after transient views are removed");
+useMoleculeStore.getState().restoreSession(session.tabs, session.activeIndex);
+assert.equal(useMoleculeStore.getState().activeTabId, resumeTabId, "session round-trip preserves the selected document");
+
+useMoleculeStore.getState().openFepNetworkTab({ kind: "fep-network" });
+assert.equal(getMoleculeSessionSnapshot(useMoleculeStore.getState()).activeIndex, null, "a transient active view cannot select an unrelated serialized tab");
+
+const restoredTabs = [
+  { id: "unavailable-view", location: { kind: "removed-page-kind" }, back: [], forward: [] },
+  { id: "resume-selected", location: { kind: "document", path: "/data/report.pdf" }, back: [], forward: [] },
+  { id: "resume-pinned", pinned: true, location: { kind: "document", path: "/data/pinned.pdf" }, back: [], forward: [] },
+];
+useMoleculeStore.getState().restoreSession(restoredTabs, 1);
+assert.deepEqual(
+  { ids: useMoleculeStore.getState().tabs.map(tab => tab.id), active: useMoleculeStore.getState().activeTabId },
+  { ids: ["resume-pinned", "resume-selected"], active: "resume-selected" },
+  "restore tracks the requested tab through unknown-kind filtering and pinned ordering",
+);
+useMoleculeStore.getState().restoreSession(restoredTabs.slice(1), 0);
+assert.equal(useMoleculeStore.getState().activeTabId, "resume-selected", "pin normalization must not change the selected tab");
+console.log("Session selection round-trip checks passed.");

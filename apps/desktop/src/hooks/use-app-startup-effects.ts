@@ -114,8 +114,11 @@ export function useAppStartupEffects({
 
   useEffect(() => {
     if (refreshedPersistedSessionRef.current) return;
-    if (!isTauriRuntime() || documents.length === 0) return;
+    if (!isTauriRuntime()) return;
+    // Only runtimes present at mount belong to the persisted session. Waiting
+    // for documents would rebuild fresh user opens and restored tabs twice.
     refreshedPersistedSessionRef.current = true;
+    if (documents.length === 0) return;
     const activePath = activeDocument?.path;
     const paths = documents
       .map((document) => document.path)
