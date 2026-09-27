@@ -77,3 +77,27 @@ plugins/burette-agent/browser-shell-dist/assets/molstar-Ixvy7bU4.js
 plugins/burette-agent/browser-shell-dist/assets/dist-Dv4k6zHo.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-BTcAHrJY.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-qDI2I3Uz.js
+
+# Regenerated chemistry, viewer, and document bundles from the 2026-09-27
+# dependency refresh. Entries are exact paths so newly added large blobs
+# continue to require review.
+plugins/burette-agent/browser-shell-dist/assets/indigo-ketcher-1.46.0-f_xBxuuS.wasm
+plugins/burette-agent/browser-shell-dist/assets/RDKit_minimal-boFmsFLJ.wasm
+plugins/burette-agent/preview-web/rdkit/RDKit_minimal.wasm
+PreviewExtension/Web/rdkit-compute/RDKit_minimal.wasm
+plugins/burette-agent/preview-web/rdkit-compute/RDKit_minimal.wasm
+plugins/burette-agent/browser-shell-dist/assets/molstar-aYkT4K5K.js
+plugins/burette-agent/browser-shell-dist/assets/index.modern-DbHBoiMi.js
+plugins/burette-agent/browser-shell-dist/assets/dist-AI8nF5wd.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-BVTXHz7L.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-B5FFbZlq.js
+plugins/burette-agent/browser-shell-dist/assets/pdf.worker.min-BmVo14Nb.mjs
+plugins/burette-agent/browser-shell-dist/assets/index.modern-CTLfnIRc.js
+plugins/burette-agent/browser-shell-dist/assets/plotly-basic.min-BQ3zVCYu.js
+plugins/burette-agent/browser-shell-dist/assets/scaffold.worker-KPvIzMRk.js
+plugins/burette-agent/browser-shell-dist/assets/openchemlib-Coybk2rH.js
+plugins/burette-agent/browser-shell-dist/assets/PptxViewJS.es-CaNrIpkL.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-Cdg51-7x.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-document.worker-BvhehinX.js
+plugins/burette-agent/browser-shell-dist/assets/chunk-FOHPRMQF-DjrQ5VX_.js
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-B2rrhIw8.js
