@@ -10,6 +10,7 @@ import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { localFileAction } from './local-file-actions.mjs';
 import { renderNativeWorkspaceXyz } from './native-workspace-xyzrender.mjs';
+import { createShellExports } from './agent-shell-exports.mjs';
 
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
@@ -175,6 +176,7 @@ if (typeof session.token !== 'string' || !session.token.trim()) fail('Missing se
 if (!['127.0.0.1', 'localhost', '::1'].includes(args.host)) fail('Agent shell must bind to a loopback host.');
 const serverOrigin = `http://${args.host.includes(':') ? `[${args.host}]` : args.host}:${args.port}`;
 const cookieName = `burette-shell-${args.port}`;
+const handleExport = createShellExports({ sessionDir, readJsonBody, sendJson });
 
 const server = createServer((req, res) => {
   void handleRequest(req, res).catch((error) => {
@@ -268,6 +270,10 @@ async function handleRequest(req, res) {
   }
   if (url.pathname === '/__burette/xyzrender') {
     await handleXyzrender(req, res, method);
+    return;
+  }
+  if (url.pathname === '/__burette/xyzrender-export' || url.pathname.startsWith('/__burette/xyzrender-export/')) {
+    await handleExport(req, res, method, url);
     return;
   }
   if (url.pathname === '/__burette/chemical-space-representation') {

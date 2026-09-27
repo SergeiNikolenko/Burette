@@ -3,13 +3,19 @@ import { access, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises
 import { homedir, tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { promisify } from 'node:util';
+import { rotateXyzrenderReference } from '../apps/desktop/src/lib/xyzrender-orientation.ts';
+import { xyzrenderAnimationArguments } from '../apps/desktop/vite/browser-dev/xyzrender-animation-options.ts';
 
 const executeFile = promisify(execFile);
 const presets = ['default', 'flat', 'paton', 'pmol', 'skeletal', 'bubble', 'tube', 'btube', 'mtube', 'wire', 'graph', 'vdw'];
 const maxBytes = 512 * 1024;
+const maxArtifactBytes = 16 * 1024 * 1024;
 
 /** App-only rendering: no arbitrary input/config/output paths or extra CLI flags. */
 export async function renderNativeWorkspaceXyz(input, { source, execute = executeFile } = {}) {
+  if (input.orientation !== undefined) rotateXyzrenderReference('1\nvalidate\nH 0 0 0\n', input.orientation);
+  if (input.animation) xyzrenderAnimationArguments(input.animation, 'animation.gif');
+  if (input.exportFormat !== undefined && !['svg', 'png', 'pdf', 'tiff'].includes(input.exportFormat)) throw new Error('Unsupported export format.');
   const controls = input.controls || {};
   if (controls.customConfigPath || controls.extraArguments || input.preset === 'custom') throw new Error('Native XYZRender supports built-in presets, not custom config paths or extra CLI arguments.');
   const preset = input.preset || 'default';
@@ -25,7 +31,7 @@ export async function renderNativeWorkspaceXyz(input, { source, execute = execut
     bytes = await readFile(source.path);
   }
   if (!bytes.length) throw new Error('Empty XYZRender input.');
-  if (extension === 'xyz' && input.activeModel != null) {
+  if (extension === 'xyz' && input.activeModel != null && !input.animation) {
     if (!Number.isSafeInteger(input.activeModel) || input.activeModel < 0) throw new Error('Invalid XYZ frame index.');
     const lines = bytes.toString('utf8').replace(/\r\n?/gu, '\n').trimEnd().split('\n');
     const frames = [];
@@ -77,21 +83,52 @@ export async function renderNativeWorkspaceXyz(input, { source, execute = execut
     if (controls.regions?.length > 16) throw new Error('Too many XYZRender regions.');
     for (const region of controls.regions || []) { if (!presets.includes(region.preset)) throw new Error('Unknown region preset.'); args.push('--region', selector(region.atoms), region.preset); }
     let refPath;
+    let orientationRef = input.orientationRef;
+    let baseOrientationRef = orientationRef;
     if (input.orientationRef) {
       if (typeof input.orientationRef !== 'string' || Buffer.byteLength(input.orientationRef) > 65536) throw new Error('Orientation reference exceeds 64 KiB.');
       refPath = join(directory, 'orientation.xyz');
       await writeFile(refPath, input.orientationRef);
     }
-    const run = ref => execute(executable, [...args, ...(ref ? ['--ref', ref] : [])], { timeout: 25000, maxBuffer: 65536 });
+    const executionOptions = { timeout: 25000, maxBuffer: 65536,
+      env: { ...process.env, PYTHON_CPU_COUNT: '2', OPENBLAS_NUM_THREADS: '1', OMP_NUM_THREADS: '1' } };
+    if (input.orientation !== undefined) {
+      refPath ||= join(directory, 'orientation.xyz');
+      if (!baseOrientationRef) {
+        await execute(executable, [...args, '--ref', refPath], executionOptions);
+        if ((await stat(refPath)).size > 65536) throw new Error('Orientation reference exceeds 64 KiB.');
+        baseOrientationRef = await readFile(refPath, 'utf8');
+      }
+      orientationRef = rotateXyzrenderReference(baseOrientationRef, input.orientation);
+      await writeFile(refPath, orientationRef);
+    }
+    const animationPath = join(directory, 'animation.gif');
+    const animationArgs = input.animation ? xyzrenderAnimationArguments(input.animation, animationPath) : [];
+    const run = ref => execute(executable, [...args, ...(ref ? ['--ref', ref] : []), ...animationArgs], executionOptions);
     let result;
     try { result = await run(refPath); }
     catch (error) {
       if (!refPath || !`${error.stderr}${error.stdout}${error.message}`.includes('--ref is not supported for periodic structures')) throw error;
-      result = await run(null);
+      throw new Error('XYZRender orientation references are not supported for periodic structures. Reset the orientation reference before rendering or exporting.');
     }
     if ((await stat(outputPath)).size > maxBytes) throw new Error('XYZRender SVG exceeds the native 512 KiB limit.');
     const svg = await readFile(outputPath, 'utf8');
     if (!svg.includes('<svg')) throw new Error('XYZRender produced no SVG.');
-    return { svg, preset, configArgument: preset, elapsedMs: Date.now() - startedAt, log: `${result.stdout || ''}${result.stderr || ''}`.slice(0, 4096), activeModel: input.activeModel, xyzrenderControls: controls };
+    const boundedArtifact = async path => {
+      if ((await stat(path)).size > maxArtifactBytes) throw new Error('XYZRender artifact exceeds 16 MiB. Reduce its size or frame count.');
+      return (await readFile(path)).toString('base64');
+    };
+    const gifBase64 = input.animation ? await boundedArtifact(animationPath) : undefined;
+    let artifactBase64;
+    if (input.exportFormat === 'svg') artifactBase64 = Buffer.from(svg).toString('base64');
+    else if (input.exportFormat) {
+      const exportPath = join(directory, `figure.${input.exportFormat}`);
+      const exportArgs = [...args];
+      exportArgs[exportArgs.indexOf('-o') + 1] = exportPath;
+      await execute(executable, [...exportArgs, ...(refPath ? ['--ref', refPath] : [])], executionOptions);
+      artifactBase64 = await boundedArtifact(exportPath);
+    }
+    return { svg, orientationRef, baseOrientationRef, gifBase64, artifactBase64, exportFormat: input.exportFormat,
+      preset, configArgument: preset, elapsedMs: Date.now() - startedAt, log: `${result.stdout || ''}${result.stderr || ''}`.slice(0, 4096), activeModel: input.activeModel, xyzrenderControls: controls };
   } finally { await rm(directory, { recursive: true, force: true }); }
 }

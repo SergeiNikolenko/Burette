@@ -22,6 +22,7 @@ const runtimeScripts = [
   'amber_nc_preview_extract.py',
   'agent-preview.mjs',
   'agent-shell-server.mjs',
+  'agent-shell-exports.mjs',
   'burette-agent.mjs',
   'burette-deep-links.mjs',
   'dev-namespace.mjs',
@@ -70,6 +71,10 @@ await run('bun', [resolve(repoRoot, 'scripts/build-local-viewer.mjs'), '--app-ro
 for (const script of runtimeScripts) {
   await cp(resolve(repoRoot, 'scripts', script), resolve(pluginRoot, 'scripts', script));
 }
+// Bundle the shared, typed orientation/animation validators into the installed
+// Node entrypoint; the package must not depend on a development checkout.
+await run('bun', ['build', resolve(repoRoot, 'scripts/native-workspace-xyzrender.mjs'),
+  '--outfile', resolve(pluginRoot, 'scripts/native-workspace-xyzrender.mjs'), '--target', 'node', '--format', 'esm']);
 if (!mcpOnly) {
 const storyTemplateAssets = resolve(pluginRoot, 'assets', 'mvs-story-templates');
 await rm(storyTemplateAssets, { recursive: true, force: true });

@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -102,6 +102,24 @@ try {
   }
   assert.equal((await render({ path: join(allowed, 'water.xyz'), controls: { extraArguments: '--output /private/file' } })).status, 400);
   assert.equal((await render({ inputExtension: 'xyz', inputDataBase64: 'A'.repeat(700000) })).status, 400);
+  const exportUrl = `${base}/__burette/xyzrender-export`;
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="1"/></svg>';
+  const exportBody = JSON.stringify({ format: 'svg', name: '../../water.svg', dataBase64: Buffer.from(svg).toString('base64') });
+  assert.equal((await fetch(exportUrl, { method: 'POST', body: exportBody })).status, 401);
+  const saved = await fetch(exportUrl, { method: 'POST', headers, body: exportBody });
+  assert.equal(saved.status, 200);
+  const artifact = await saved.json();
+  assert.ok(artifact.path.startsWith(join(session, 'exports') + '/'));
+  assert.equal(await readFile(artifact.path, 'utf8'), svg);
+  assert.equal((await fetch(base + artifact.downloadUrl)).status, 401);
+  const downloaded = await fetch(base + artifact.downloadUrl, { headers });
+  assert.match(downloaded.headers.get('content-disposition'), /^attachment;/u);
+  assert.equal(await downloaded.text(), svg);
+  assert.equal((await fetch(exportUrl + '/unknown', { headers })).status, 404);
+  assert.equal((await fetch(exportUrl, { method: 'POST', headers, body: JSON.stringify({ format: 'exe', dataBase64: 'AAAA' }) })).status, 400);
+  const moreExports = await Promise.all(Array.from({ length: 21 }, () => fetch(exportUrl, { method: 'POST', headers, body: exportBody })));
+  assert.equal(moreExports.filter(response => response.status === 200).length, 19);
+  assert.equal(moreExports.filter(response => response.status === 429).length, 2);
   const fileActionUrl = `${base}/__burette/file-action`;
   assert.equal((await fetch(fileActionUrl, { method: 'POST', body: JSON.stringify({ type: 'list_apps', path: join(allowed, 'ordinary.pdb') }) })).status, 401);
   for (const path of [join(outside, 'secret.pdb'), join(allowed, 'linked.pdb')]) {

@@ -82,7 +82,11 @@ export async function registerLocalViewer(server) {
     inputSchema: { ...locator, token: z.string().uuid(), presentationId: z.string().uuid().optional(), close: z.boolean().optional(), source: z.boolean().optional(), documentId: z.string().uuid().optional(), offset: z.number().int().nonnegative().optional(), state: z.record(z.string(), z.unknown()).optional(), completed: z.record(z.string(), z.unknown()).optional(),
       fileAction: z.object({ type: z.enum(['list_apps', 'app_icon', 'reveal', 'open_default', 'open_with']), documentId: z.string().uuid(), targetId: z.string().max(24).optional() }).optional(),
       checkpoint: z.object({ key: z.string().max(64), value: z.string().max(699052).optional() }).optional(),
-      xyzrender: z.object({ documentId: z.string().uuid().optional(), inputDataBase64: z.string().max(699052).optional(), inputExtension: z.string().max(8).optional(), preset: z.string().max(24).optional(), orientationRef: z.string().max(65536).nullable().optional(), activeModel: z.number().int().nonnegative().nullable().optional(), controls: z.record(z.string(), z.unknown()).refine(value => JSON.stringify(value).length <= 16384).optional() }).optional(),
+      xyzrender: z.object({ documentId: z.string().uuid().optional(), inputDataBase64: z.string().max(699052).optional(), inputExtension: z.string().max(8).optional(), preset: z.string().max(24).optional(), orientationRef: z.string().max(65536).nullable().optional(),
+        orientation: z.array(z.number().min(-360).max(360)).length(3).optional(),
+        animation: z.record(z.string(), z.unknown()).refine(value => JSON.stringify(value).length <= 4096).optional(),
+        exportFormat: z.enum(['svg', 'png', 'pdf', 'tiff']).optional(),
+        activeModel: z.number().int().nonnegative().nullable().optional(), controls: z.record(z.string(), z.unknown()).refine(value => JSON.stringify(value).length <= 16384).optional() }).optional(),
       asset: z.object({ manifest: z.boolean().optional(), path: z.string().max(256).optional(), offset: z.number().int().nonnegative().optional() }).optional() },
     annotations: { ...annotations, readOnlyHint: false, idempotentHint: false }, _meta: { ui: { visibility: ['app'] } },
   }, input => operation({ operation: 'exchange', ...input }, true));

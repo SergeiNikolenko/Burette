@@ -1,3 +1,5 @@
+import { createWorkspaceDownloads } from './native-workspace-downloads.mjs';
+
 const json = (value, status = 200) => Response.json(value, { status });
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -7,6 +9,7 @@ const settleTimeouts = { open_files: 10000, focus: 6000, open_file: 6000 };
 
 export function createWorkspaceTransport({ descriptor, assets, exchange, isClosed, observe, setDisplayMode, decorateState = value => value, agent = null, prepareOpen = () => {} }) {
   const originals = window.fetch.bind(window);
+  const downloads = createWorkspaceDownloads();
   const startupIds = new Set();
   // Actions being executed locally or acknowledged after settling. The host
   // re-lists an action until its acknowledgement lands; never run it twice.
@@ -189,10 +192,11 @@ export function createWorkspaceTransport({ descriptor, assets, exchange, isClose
       const action = body();
       return json(await exchange({ fileAction: { type: action.type, documentId: documentFor(action.path).id, targetId: action.targetId } }));
     }
+    if (path === '/__burette/xyzrender-export' && method === 'POST') return json(downloads.save(body()));
     if (path === '/__burette/xyzrender') {
-      const { path: inputPath, inputDataBase64, inputExtension, preset, orientationRef, activeModel, controls } = body();
+      const { path: inputPath, inputDataBase64, inputExtension, preset, orientationRef, orientation, animation, exportFormat, activeModel, controls } = body();
       const documentId = inputDataBase64 ? undefined : documentFor(inputPath).id;
-      const render = () => exchange({ xyzrender: { documentId, inputDataBase64, inputExtension, preset, orientationRef, activeModel, controls } });
+      const render = () => exchange({ xyzrender: { documentId, inputDataBase64, inputExtension, preset, orientationRef, orientation, animation, exportFormat, activeModel, controls } });
       const tracked = agent && descriptor.documents.some(item => item.path === inputPath);
       return json(await (tracked ? agent.xyzrender(inputPath, { preset, controls }, render) : render()));
     }
@@ -223,6 +227,6 @@ export function createWorkspaceTransport({ descriptor, assets, exchange, isClose
     return json({ error: `This operation is not available in the native workspace: ${path}` }, 404);
   }
   return { fetch: (input, init) => request(input, init).catch(error => json({ error: error.message }, 400)), state,
-    dispose() { latest = {}; initialAction = null; pendingStartup = null; startupIds.clear(); sources.clear(); handled.clear(); handed.clear(); },
+    dispose() { downloads.dispose(); latest = {}; initialAction = null; pendingStartup = null; startupIds.clear(); sources.clear(); handled.clear(); handed.clear(); },
   };
 }

@@ -97,6 +97,11 @@ sync with main. Shared icon snapshot updates must be deliberate and reviewed.
 
 The packaged Browser shell serves `/__burette/xyzrender` through the same
 bounded renderer as the native workspace (512 KiB input/SVG, built-in presets).
+Orientation uses bounded three-axis rotations and returns the reference used by
+the editor. App-only animation and figure responses are capped at 16 MiB per
+artifact (the same limit as the Browser-dev editor) and 25 seconds per renderer
+process; they are not copied into model-visible content. Browser exports are saved inside
+the authenticated session directory (up to 20 files) and offered as downloads.
 Disk inputs still use the shell's authorized file descriptor reads; virtual
 sketches supply inline bytes. Automatic trajectory pairing only considers
 files in the source directory, never an unrelated nested simulation.
@@ -227,6 +232,13 @@ Verify the same interactions after installing the native package; these checks
 do not certify the host's composer attachment or native header rendering.
 
 ## Host-owned Open menu API
+
+XYZRender exports in the native card are bounded local Blob downloads (16 MiB
+per artifact, 20 per card), released on unmount. They do not write a host path
+through MCP. The browser/host controls final file delivery: a generated download
+URL and passing transport tests do not prove that a host saved the file.
+Browser-agent-shell exports instead use its authenticated session-private
+`exports` directory. Keep these acceptance checks separate.
 
 The Codex file pane's native Open/Open With menu is not a component exported by
 the installed MCP Apps SDK. Do not emulate host chrome and call it native.

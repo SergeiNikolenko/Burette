@@ -3,10 +3,11 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { test } from 'node:test';
+import { createWorkspaceDownloads } from '../plugins/burette-agent/ui/native-workspace-downloads.mjs';
 
-const code = (await readFile(new URL('../plugins/burette-agent/ui/native-workspace-transport.mjs', import.meta.url), 'utf8')).replace('export function', 'function');
+const code = (await readFile(new URL('../plugins/burette-agent/ui/native-workspace-transport.mjs', import.meta.url), 'utf8')).replace(/^import .*;\n/mu, '').replace('export function', 'function');
 function transport(options) {
-  const context = vm.createContext({ window: { fetch }, location: { origin: 'https://fixture.invalid' }, crypto, URL, Response, Request, Uint8Array, TextDecoder, TextEncoder, atob, setTimeout });
+  const context = vm.createContext({ createWorkspaceDownloads, window: { fetch }, location: { origin: 'https://fixture.invalid' }, crypto, URL, Response, Request, Uint8Array, TextDecoder, TextEncoder, atob, setTimeout });
   vm.runInContext(code, context);
   return context.createWorkspaceTransport({ assets: {}, isClosed: () => false, observe() {}, ...options });
 }
@@ -14,6 +15,26 @@ const path = '/authorized/molecule.smi';
 const bytes = new TextEncoder().encode('CCO');
 const document = { id: 'document-1', path, format: 'smi', byteCount: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
 const descriptor = { view: 'auto', documents: [document] };
+
+test('native export produces a bounded local download and revokes it on dispose', async () => {
+  const bridge = transport({ descriptor, exchange: () => assert.fail('Downloads must not cross MCP') });
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg"><circle r="1"/></svg>';
+  const post = body => bridge.fetch('/__burette/xyzrender-export', { method: 'POST', body: JSON.stringify(body) });
+  const input = { name: '../../water.svg', format: 'svg', dataBase64: Buffer.from(svg).toString('base64') };
+  assert.equal((await post({ ...input, format: '__proto__' })).status, 400);
+  assert.equal((await post({ ...input, dataBase64: 'AAAA' })).status, 400);
+  const saved = await (await post(input)).json();
+  assert.equal(saved.path, '');
+  assert.ok(!saved.name.includes('/'));
+  assert.match(saved.downloadUrl, /^blob:/u);
+  const response = await fetch(saved.downloadUrl);
+  assert.equal(response.headers.get('content-type'), 'image/svg+xml');
+  assert.equal(await response.text(), svg);
+  for (let i = 1; i < 20; i++) assert.equal((await post(input)).status, 200);
+  assert.equal((await post(input)).status, 400);
+  bridge.dispose();
+  await assert.rejects(fetch(saved.downloadUrl));
+});
 
 test('heartbeat publishes asynchronously restored readiness to both the loading cover and host', async () => {
   let restored = false;
@@ -43,6 +64,9 @@ test('native file icons and XYZRender cross only the private authorized exchange
   ]);
   assert.equal((await post('/__burette/xyzrender', { path: '/etc/passwd' })).status, 400);
   assert.equal(requests.length, 2);
+  const options = { orientation: [0, 45, 0], animation: { mode: 'rotation', frames: 4, size: 128 }, exportFormat: 'png' };
+  assert.equal((await post('/__burette/xyzrender', { path, ...options })).status, 200);
+  assert.deepEqual(requests.at(-1), { xyzrender: { documentId: document.id, ...options } });
 });
 
 test('native transport reads only snapshotted files and verifies bytes', async () => {
