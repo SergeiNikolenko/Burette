@@ -127,6 +127,7 @@ export function AnnotationLayer({ documentTitle, picksResidues }: { documentTitl
     const comment = current.comment.trim().slice(0, 2000);
     setDraft(null);
     if (current.id != null) {
+      setPhase({ kind: "idle" });
       setSnapshot(null); setPreviewVisible(false);
       setAnnotations(comment ? annotations.map((item) => item.id === current.id ? { ...item, comment } : item) : annotations.filter((item) => item.id !== current.id));
       return;
@@ -136,6 +137,7 @@ export function AnnotationLayer({ documentTitle, picksResidues }: { documentTitl
     try {
       const target = current.target !== undefined ? current.target : await describeRegion(layerRef.current, current.rect, granularity);
       if (revision !== generation.current) return;
+      setPhase({ kind: "idle" });
       setSnapshot(null); setPreviewVisible(false);
       setAnnotations(items => [...items, { id: nextId.current++, rect: current.rect, pin: current.pin, comment, target }].slice(0, MAX_ANNOTATIONS));
     } finally {
