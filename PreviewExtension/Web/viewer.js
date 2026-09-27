@@ -2324,6 +2324,23 @@
   function applyViewerBackground(viewer = activeViewer) {
     applyDocumentBackground();
     applyStaticRendererTheme();
+    // Mol* draws measurement/atom labels in WebGL, so CSS theme tokens cannot
+    // recolour them. Its manager updates existing labels and defaults for new
+    // distances, angles, dihedrals and labels without rebuilding the scene.
+    const measurements = viewer?.plugin?.managers?.structure?.measurement;
+    if (measurements) {
+      const lightBackground = transparentBackground
+        ? resolveViewerTheme() === 'light' : resolvedCanvasBackground() === 'white';
+      const textColor = lightBackground ? 0x0d0d0d : 0xfcfcfc;
+      const { options, distances, angles, dihedrals, labels } = measurements.state;
+      // Background refreshes also happen after Story state updates. Avoid
+      // triggering another state update when the label palette already matches.
+      if (options.textColor !== textColor || [...distances, ...angles, ...dihedrals, ...labels]
+        .some(cell => cell.transform.params.textColor !== textColor)) {
+        measurements.setOptions({ ...options, textColor })
+          .catch(error => debug('Mol* label theme failed: ' + (error?.message || String(error))));
+      }
+    }
     const canvas3d = viewer?.plugin?.canvas3d;
     if (!canvas3d) return;
     try {
