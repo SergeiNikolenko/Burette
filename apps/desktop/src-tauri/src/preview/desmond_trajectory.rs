@@ -167,7 +167,7 @@ fn dtr_frame_files(trj_dir: &Path) -> Result<Vec<PathBuf>, String> {
 
 fn cache_key(cms: &Path, frame_files: &[PathBuf]) -> Result<String, String> {
     // Invalidate old time units and same-chain overflow residue collisions.
-    let mut stamp = String::from("standard-dcd-time-unique-residues-v3;");
+    let mut stamp = String::from("standard-dcd-time-component-residues-v4;");
     for path in std::iter::once(cms).chain(frame_files.iter().map(PathBuf::as_path)) {
         let metadata = fs::metadata(path).map_err(|err| err.to_string())?;
         let modified = metadata

@@ -62,6 +62,12 @@ DCD files use standard AKMA time (0.04888821 ps/unit). The version-locked
 Mol* 5.11 adapter corrects its inverse conversion, saved-step stride (NSAVC),
 initial step and empty-cell handling. Desmond cache publication is atomic and
 truncated DCD cache entries are rebuilt. Long Desmond runs still use a bounded
+preview topology in PDB format: independent CT components and overflow residue
+blocks get unused one-character chain identifiers, without changing atom order.
+These are derived display identifiers, not original CMS chain identifiers.
+The finite PDB atom/chain namespace is a limitation; conversion fails rather
+than silently merging residues when no distinct identifier remains. The CMS
+source file is not modified. Long trajectories use a bounded
 preview subset, not all source frames; its DCD spacing is an average of sampled
 times and is unsuitable for time-resolved quantitative analysis.
 This visual spline is not constrained MD: do not use derived solute bond lengths,

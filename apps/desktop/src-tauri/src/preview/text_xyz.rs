@@ -1629,27 +1629,45 @@ pub(crate) fn desmond_topology_from_cms(data: &[u8]) -> Option<DesmondTopology> 
         .iter()
         .map(|atom| atom.chain_name.clone())
         .collect::<std::collections::HashSet<_>>();
-    let mut overflow_chains = std::collections::HashMap::new();
-    for atom in &mut atoms {
-        if is_maestro_water_atom(atom) {
-            atom.residue_name = "HOH".to_string();
-        }
-        if !(-999..=9999).contains(&atom.residue_number) {
-            let residue = i64::from(atom.residue_number) - 1;
-            let key = (atom.chain_name.clone(), residue.div_euclid(9999));
-            if let std::collections::hash_map::Entry::Vacant(entry) =
-                overflow_chains.entry(key.clone())
-            {
-                let chain = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-                    .chars()
-                    .map(|ch| ch.to_string())
-                    .find(|chain| !used_chains.contains(chain))?;
-                used_chains.insert(chain.clone());
-                entry.insert(chain);
+    let mut remapped_chains = std::collections::HashMap::new();
+    let mut chain_owners = std::collections::HashMap::new();
+    let mut offset = 0;
+    // CTs have independent residue namespaces: counterions and salt may both
+    // call their first sodium "A/1". Keep those components distinct as well.
+    for (component, (count, _)) in components.iter().enumerate() {
+        for atom in &mut atoms[offset..offset + count] {
+            if is_maestro_water_atom(atom) {
+                atom.residue_name = "HOH".to_string();
             }
-            atom.chain_name = overflow_chains.get(&key)?.clone();
-            atom.residue_number = (residue.rem_euclid(9999) + 1) as i32;
+            let owner = *chain_owners
+                .entry(atom.chain_name.clone())
+                .or_insert(component);
+            let overflow = !(-999..=9999).contains(&atom.residue_number);
+            if owner != component || overflow {
+                let residue = i64::from(atom.residue_number) - 1;
+                let block = if overflow {
+                    residue.div_euclid(9999)
+                } else {
+                    0
+                };
+                let key = (component, atom.chain_name.clone(), block);
+                if let std::collections::hash_map::Entry::Vacant(entry) =
+                    remapped_chains.entry(key.clone())
+                {
+                    let chain = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+                        .chars()
+                        .map(|ch| ch.to_string())
+                        .find(|chain| !used_chains.contains(chain))?;
+                    used_chains.insert(chain.clone());
+                    entry.insert(chain);
+                }
+                atom.chain_name = remapped_chains.get(&key)?.clone();
+                if overflow {
+                    atom.residue_number = (residue.rem_euclid(9999) + 1) as i32;
+                }
+            }
         }
+        offset += count;
     }
     Some(DesmondTopology {
         pdb: maestro_atoms_to_pdb(&atoms).into_bytes(),
@@ -3221,6 +3239,56 @@ footer
         assert!(!xyz.contains("C 0.000000 0.100000 0.200000"));
         assert!(xyz.contains("O -1.000000 0.000000 0.000000"));
         assert!(xyz.contains("H -1.500000 0.750000 0.000000"));
+    }
+
+    #[test]
+    fn desmond_components_keep_independent_residue_namespaces() {
+        let block = |kind, rows: &str| {
+            format!(
+                r#"
+f_m_ct {{
+ s_ffio_ct_type
+ :::
+ {kind}
+ m_atom[{}] {{
+ i_m_atomic_number
+ r_m_x_coord
+ r_m_y_coord
+ r_m_z_coord
+ s_m_pdb_residue_name
+ s_m_pdb_atom_name
+ i_m_residue_number
+ s_m_chain_name
+ :::
+{rows}
+ :::
+ }}
+}}
+"#,
+                rows.lines().count()
+            )
+        };
+        let first = "11 0 0 0 NA NA 1 A";
+        let second = "11 10 0 0 NA NA 1 A";
+        let cms = block("full_system", &format!("{first}\n{second}"))
+            + &block("ion", first)
+            + &block("ion", second);
+        let topology = super::desmond_topology_from_cms(cms.as_bytes()).unwrap();
+        let pdb = String::from_utf8(topology.pdb).unwrap();
+        let rows = pdb
+            .lines()
+            .filter(|row| row.starts_with("HETATM"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rows.iter().map(|row| &row[21..26]).collect::<Vec<_>>(),
+            vec!["A   1", "B   1"]
+        );
+        assert_eq!(
+            rows.iter()
+                .map(|row| row[30..38].trim())
+                .collect::<Vec<_>>(),
+            vec!["0.000", "10.000"]
+        );
     }
 
     #[test]
