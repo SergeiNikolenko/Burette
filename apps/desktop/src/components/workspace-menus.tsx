@@ -71,14 +71,18 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
     const disk = diskMenu(path, root ? "project" : "folder");
     const item = (id: string, text: string, action: () => unknown | Promise<unknown>) => menuItem(id, text, run(action));
     const paths = project.items.filter(file => root || file.path.startsWith(path + '/')).map(file => file.path);
-    const compatible = paths.length > 1 && paths.every(path => fileCapabilities(path).scene);
+    // Mixed folders (structures next to notes or scripts) still open their structures as one scene.
+    const scenePaths = paths.filter(path => fileCapabilities(path).scene);
+    const compatible = paths.length > 1 && scenePaths.length === paths.length;
     const openFolder = (mode: string) => () => setBatch({ path, mode });
     const pinned = state.sidebarProjects.some(project => project.rootPath === path && project.isPinned);
     return menuSections(
       submenu("folder-open", "Open", [
         item("open-folder", "In Tabs…", openFolder("tabs")),
         ...(isTauriRuntime() ? [item("open-window", "In New Window…", openFolder("window"))] : []),
-        ...(compatible ? [item("open-together", "Together…", openFolder("together")),
+        ...(scenePaths.length > 1 && scenePaths.length <= 200 ? [item("open-together", "In One Scene",
+          () => actions.openDockingDocument(scenePaths[0], scenePaths.slice(1), { sceneMode: "structureAll" }))] : []),
+        ...(compatible ? [
           ...(paths.every(path => fileCapabilities(path).protein) ? [item("open-aligned", "Aligned…", openFolder("aligned"))] : []),
           ...(paths.every(path => fileCapabilities(path).poses) ? [item("open-poses", "As Poses…", openFolder("poses"))] : [])] : []),
         ...submenu("add-scene", "Add to Scene", workflows.sceneTargets(paths).map((target, index) => item(`add-scene-${index}`, target.title, openFolder(`scene:${target.id}`)))),
