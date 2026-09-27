@@ -827,9 +827,15 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
               apply(nextControls, presetRef.current);
               return;
             }
+            // Partial needs the viewer's atom selection (or asks for one), so the
+            // tile only lights up once the viewer reports the applied atoms.
+            if (mode === "partial") {
+              apply(currentControls, presetRef.current, { xyzrenderSelectionAction: "vdw" });
+              return;
+            }
             const nextControls = { ...currentControls, showVdw: true, vdwAtoms: null };
             setControlsState(nextControls);
-            apply(nextControls, presetRef.current, mode === "partial" ? { xyzrenderSelectionAction: "vdw" } : {});
+            apply(nextControls, presetRef.current);
           }}
         />
         <XyzrenderHullGallery
