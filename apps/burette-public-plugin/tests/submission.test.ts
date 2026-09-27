@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
-import initRDKit, { type RDKitLoader } from "@rdkit/rdkit";
+import initRDKit from "@rdkit/rdkit";
 import { VIEWER_RESOURCE_URI } from "../lib/widget";
 import { prepareStructureText } from "../lib/structure-service";
 
@@ -81,8 +81,7 @@ describe("plugin submission bundle", () => {
       elements: { C: 24, O: 10 },
       names: ["Salicylic acid", "Aspirin", "Methyl salicylate"],
     });
-    // The package exports a CommonJS loader but its declarations only name its type.
-    const rdkit = await (initRDKit as unknown as RDKitLoader)();
+    const rdkit = await initRDKit();
     const records = sdf.split(/^\$\$\$\$\s*$/mu).filter((record) => record.trim());
     expect(records).toHaveLength(3);
     for (const [index, record] of records.entries()) {
