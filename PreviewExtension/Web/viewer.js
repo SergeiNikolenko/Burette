@@ -3439,11 +3439,7 @@
   }
 
   function requestGenerated3DCameraView(viewer) {
-    requestMolstarStructureFocus(viewer, {
-      reason: 'generated-3d',
-      durationMs: 650,
-      radiusScale: document.body?.classList.contains('burette-mobile-host') ? 0.58 : 0.88
-    });
+    requestMolstarStructureFocus(viewer, { reason: 'generated-3d', durationMs: 650 });
   }
 
   function scheduleMolstarStructureFocus(viewer, options = {}) {
@@ -3475,6 +3471,77 @@
     return !!config?.molstarContextFocus && typeof config.molstarContextFocus === 'object';
   }
 
+  // Fraction of the viewport half-width and half-height the fitted atoms may fill,
+  // and the margin that keeps drawn atom spheres at the edge inside the frame.
+  const MOLSTAR_FOCUS_FILL = 0.9;
+  const MOLSTAR_FOCUS_ATOM_PADDING = 2;
+  const MOLSTAR_FOCUS_SAMPLE_LIMIT = 250000;
+
+  // Mol*'s reset fits the bounding sphere into the short side of the viewport. An
+  // elongated protein seen end-on then covers about half of the preview, so the
+  // camera distance is fitted to the visible atoms projected along the view instead.
+  function fittedMolstarStructureFocus(viewer, camera, direction, up) {
+    const structures = (viewer?.plugin?.managers?.structure?.hierarchy?.current?.structures || [])
+      .filter(entry => !entry?.cell?.state?.isHidden)
+      .map(entry => entry?.cell?.obj?.data)
+      .filter(structure => Array.isArray(structure?.units));
+    const viewport = camera.viewport;
+    const fov = Number(camera.state?.fov);
+    if (!structures.length || !(viewport?.width > 0) || !(viewport?.height > 0) || !(fov > 0)) return null;
+    const norm = vector => {
+      const length = Math.hypot(vector[0], vector[1], vector[2]);
+      return length > 1e-6 ? vector.map(value => value / length) : null;
+    };
+    const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    const back = norm(Array.from(direction).slice(0, 3));
+    const right = back && norm(cross(Array.from(up).slice(0, 3), back));
+    if (!right) return null;
+    const trueUp = cross(back, right);
+    const total = structures.reduce((sum, structure) => sum + (Number(structure.elementCount) || 0), 0);
+    const stride = Math.max(1, Math.ceil(total / MOLSTAR_FOCUS_SAMPLE_LIMIT));
+    const pad = MOLSTAR_FOCUS_ATOM_PADDING;
+    const tangents = [Math.tan(fov / 2) * MOLSTAR_FOCUS_FILL * viewport.width / viewport.height, Math.tan(fov / 2) * MOLSTAR_FOCUS_FILL];
+    // In view coordinates a camera at (cx, cy, depth) frames an atom when
+    // |x - cx| <= tanX * (depth - z), and likewise for y. Per axis the nearest
+    // depth is (upper - lower) / (2 tan) and the centre is their midpoint, which
+    // also balances the larger-looking atoms closest to the camera.
+    const upper = [-Infinity, -Infinity];
+    const lower = [Infinity, Infinity];
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    const point = [0, 0, 0];
+    for (const structure of structures) {
+      for (const unit of structure.units) {
+        const elements = unit?.elements;
+        const conformation = unit?.conformation;
+        if (!elements || typeof conformation?.position !== 'function') continue;
+        for (let index = 0; index < elements.length; index += stride) {
+          conformation.position(elements[index], point);
+          const view = [right, trueUp, back].map(axis => axis[0] * point[0] + axis[1] * point[1] + axis[2] * point[2]);
+          for (let axis = 0; axis < 3; axis += 1) {
+            if (view[axis] < min[axis]) min[axis] = view[axis];
+            if (view[axis] > max[axis]) max[axis] = view[axis];
+          }
+          for (let axis = 0; axis < 2; axis += 1) {
+            upper[axis] = Math.max(upper[axis], view[axis] + pad + tangents[axis] * view[2]);
+            lower[axis] = Math.min(lower[axis], view[axis] - pad - tangents[axis] * view[2]);
+          }
+        }
+      }
+    }
+    if (!(max[2] >= min[2])) return null;
+    const center = [(upper[0] + lower[0]) / 2, (upper[1] + lower[1]) / 2, (min[2] + max[2]) / 2];
+    const depth = Math.max(...[0, 1].map(axis => (upper[axis] - lower[axis]) / (2 * tangents[axis])));
+    const toWorld = view => [0, 1, 2].map(axis => right[axis] * view[0] + trueUp[axis] * view[1] + back[axis] * view[2]);
+    return {
+      target: toWorld(center),
+      position: toWorld([center[0], center[1], depth]),
+      up: trueUp,
+      // Mol* derives the clipping planes from this radius around the target.
+      radius: Math.hypot(...center.map((value, axis) => Math.max(value - min[axis], max[axis] - value))) + pad
+    };
+  }
+
   function requestMolstarStructureFocus(viewer, options = {}) {
     const canvas3d = viewer?.plugin?.canvas3d;
     const camera = canvas3d?.camera;
@@ -3485,17 +3552,15 @@
       const radius = Number(sphere?.radius);
       const target = center && center.length >= 3 ? [center[0], center[1], center[2]] : camera.target;
       const safeRadius = Number.isFinite(radius) && radius > 0 ? radius : Number(camera.state?.radius || 10);
-      const configuredScale = Number(options.radiusScale);
-      const radiusScale = Number.isFinite(configuredScale) && configuredScale > 0
-        ? configuredScale
-        : (document.body?.classList.contains('burette-mobile-host') ? 0.58 : 0.88);
+      const radiusScale = document.body?.classList.contains('burette-mobile-host') ? 0.58 : 0.88;
       const up = Array.isArray(options.up) && options.up.length >= 3 ? options.up : [0, 1, 0];
       const direction = Array.isArray(options.direction) && options.direction.length >= 3
         ? options.direction
         : [0.85, -0.38, 0.92];
-      const snapshot = typeof camera.getFocus === 'function'
+      const fitted = fittedMolstarStructureFocus(viewer, camera, direction, up);
+      const snapshot = fitted || (typeof camera.getFocus === 'function'
         ? camera.getFocus(target, Math.max(0.1, safeRadius * radiusScale), up, direction)
-        : null;
+        : null);
       if (snapshot) snapshot.mode = 'perspective';
       canvas3d.requestCameraReset({
         snapshot: snapshot || undefined,
@@ -28083,6 +28148,20 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {
       molstarStructureFocusSerial += 1;
       restoreMolstarCameraSnapshotNow(viewer, savedCamera);
+    } else if (isQuickLookHost() && !hasMolstarContextFocus(config)) {
+      // Quick Look keeps the file's orientation and never animates the camera; it
+      // only trades Mol*'s bounding-sphere distance for the atom-fitted one. An MVS
+      // scene brings its own camera.
+      const cameraState = viewer.plugin.canvas3d?.camera?.state;
+      if (cameraState && prepared.kind !== 'mvs') {
+        scheduleMolstarStructureFocus(viewer, {
+          reason: 'quick-look-frame',
+          durationMs: 0,
+          force: true,
+          direction: [0, 1, 2].map(axis => cameraState.position[axis] - cameraState.target[axis]),
+          up: Array.from(cameraState.up)
+        });
+      }
     } else if (!hasMolstarContextFocus(config)) {
       scheduleMolstarStructureFocus(viewer, { reason: 'initial-load', durationMs: 120 });
     }
