@@ -7,6 +7,7 @@
 // checkmark anywhere shifts both by one state column.
 
 #import <AppKit/AppKit.h>
+#import <Carbon/Carbon.h>
 #import <objc/message.h>
 
 typedef void (*BuretteMenuValueCallback)(void *context, const char *itemId, double number, const char *colour);
@@ -135,6 +136,149 @@ static NSColor *BuretteColourFromHex(NSString *hex) {
     if (_step > 0) value = round(value / _step) * _step;
     [self showValue:value];
     if (_callback) _callback(_context, _itemId.UTF8String, value, NULL);
+}
+
+@end
+
+// MARK: - Editable text
+
+@interface BuretteMenuTextView : NSView
+@end
+
+// Menu tracking keeps keyboard events for itself, so a text field in a menu
+// never sees them. While the menu is on screen the view takes raw key events
+// from the Carbon dispatcher, the only place they still pass through, and edits
+// the field itself. Navigation keys stay with the menu.
+@implementation BuretteMenuTextView {
+    NSString *_itemId;
+    NSTextField *_label;
+    NSTextField *_field;
+    BuretteMenuValueCallback _callback;
+    void *_context;
+    EventHandlerRef _keyHandler;
+}
+
+static OSStatus BuretteMenuTextKeyHandler(EventHandlerCallRef next, EventRef eventRef, void *userData) {
+    (void)next;
+    BuretteMenuTextView *view = (__bridge BuretteMenuTextView *)userData;
+    NSEvent *event = [NSEvent eventWithEventRef:eventRef];
+    return event && [view handleKey:event] ? noErr : eventNotHandledErr;
+}
+
+- (instancetype)initWithId:(NSString *)itemId title:(NSString *)title value:(NSString *)value
+               placeholder:(NSString *)placeholder callback:(BuretteMenuValueCallback)callback context:(void *)context {
+    self = [super initWithFrame:NSMakeRect(0, 0, BuretteMenuRowWidth, 50)];
+    if (!self) return nil;
+    _itemId = [itemId copy];
+    _callback = callback;
+    _context = context;
+    self.autoresizingMask = NSViewWidthSizable;
+    _label = [NSTextField labelWithString:title];
+    _label.font = [NSFont menuFontOfSize:0];
+    _field = [NSTextField textFieldWithString:value];
+    _field.placeholderString = placeholder;
+    _field.font = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
+    // Typing arrives through the key handler below; a field editor would fight it.
+    _field.editable = NO;
+    _field.selectable = NO;
+    for (NSView *view in @[_label, _field]) {
+        view.translatesAutoresizingMaskIntoConstraints = NO;
+        [self addSubview:view];
+    }
+    [NSLayoutConstraint activateConstraints:@[
+        [_label.topAnchor constraintEqualToAnchor:self.topAnchor constant:2],
+        [_field.topAnchor constraintEqualToAnchor:_label.bottomAnchor constant:3],
+        [_field.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-BuretteMenuTrailing],
+        [_field.heightAnchor constraintEqualToConstant:23],
+    ]];
+    return self;
+}
+
+- (void)viewWillMoveToWindow:(NSWindow *)window {
+    [super viewWillMoveToWindow:window];
+    NSMenuItem *item = self.enclosingMenuItem;
+    if (!item) return;
+    for (NSLayoutConstraint *constraint in self.constraints) {
+        if (constraint.identifier) [self removeConstraint:constraint];
+    }
+    NSLayoutConstraint *label = [_label.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:BuretteMenuTitleLeading(item)];
+    NSLayoutConstraint *field = [_field.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:BuretteMenuTitleLeading(item)];
+    label.identifier = @"column";
+    field.identifier = @"column";
+    [NSLayoutConstraint activateConstraints:@[label, field]];
+}
+
+- (void)viewDidMoveToWindow {
+    [super viewDidMoveToWindow];
+    if (self.window && !_keyHandler) {
+        const EventTypeSpec keys[] = {
+            { kEventClassKeyboard, kEventRawKeyDown },
+            { kEventClassKeyboard, kEventRawKeyRepeat },
+        };
+        InstallEventHandler(GetEventDispatcherTarget(), BuretteMenuTextKeyHandler, 2, keys,
+                            (__bridge void *)self, &_keyHandler);
+    } else if (!self.window) {
+        [self removeKeyHandler];
+    }
+}
+
+- (void)removeKeyHandler {
+    if (_keyHandler) RemoveEventHandler(_keyHandler);
+    _keyHandler = NULL;
+}
+
+- (void)dealloc {
+    [self removeKeyHandler];
+}
+
+- (BOOL)handleKey:(NSEvent *)event {
+    NSEventModifierFlags modifiers = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+    NSString *text = _field.stringValue;
+    switch (event.keyCode) {
+        case kVK_Delete:
+            if (modifiers & NSEventModifierFlagCommand) text = @"";
+            else if (text.length) {
+                NSRange last = [text rangeOfComposedCharacterSequenceAtIndex:text.length - 1];
+                text = [text substringToIndex:last.location];
+            }
+            [self setText:text];
+            return YES;
+        case kVK_Return: case kVK_ANSI_KeypadEnter: case kVK_Escape: case kVK_Tab:
+        case kVK_UpArrow: case kVK_DownArrow: case kVK_LeftArrow: case kVK_RightArrow:
+        case kVK_ForwardDelete: case kVK_Home: case kVK_End: case kVK_PageUp: case kVK_PageDown:
+            return NO;
+        default:
+            break;
+    }
+    if (modifiers & NSEventModifierFlagCommand) {
+        if (![event.charactersIgnoringModifiers.lowercaseString isEqualToString:@"v"]) return NO;
+        NSString *pasted = [NSPasteboard.generalPasteboard stringForType:NSPasteboardTypeString];
+        if (pasted.length) [self setText:[text stringByAppendingString:pasted]];
+        return YES;
+    }
+    if (modifiers & NSEventModifierFlagControl) return NO;
+    NSMutableString *typed = [NSMutableString string];
+    [event.characters enumerateSubstringsInRange:NSMakeRange(0, event.characters.length)
+                                         options:NSStringEnumerationByComposedCharacterSequences
+                                      usingBlock:^(NSString *character, __unused NSRange range,
+                                                   __unused NSRange enclosing, __unused BOOL *stop) {
+        unichar first = [character characterAtIndex:0];
+        // Control characters and the private-use range AppKit gives function keys.
+        if (first >= 0x20 && first != 0x7f && (first < 0xF700 || first > 0xF8FF)) [typed appendString:character];
+    }];
+    if (!typed.length) return NO;
+    [self setText:[text stringByAppendingString:typed]];
+    return YES;
+}
+
+- (void)setText:(NSString *)text {
+    // The host refuses values over 1024 UTF-8 bytes; trim whole characters.
+    while ([text lengthOfBytesUsingEncoding:NSUTF8StringEncoding] > 1024) {
+        text = [text substringToIndex:[text rangeOfComposedCharacterSequenceAtIndex:text.length - 1].location];
+    }
+    if ([text isEqualToString:_field.stringValue]) return;
+    _field.stringValue = text;
+    if (_callback) _callback(_context, _itemId.UTF8String, 0, text.UTF8String);
 }
 
 @end
@@ -404,6 +548,14 @@ NSMenuItem *burette_menu_colour_item(NSString *itemId, NSArray<NSString *> *colo
     NSMenuItem *item = [[NSMenuItem alloc] init];
     item.view = [[BuretteMenuColourView alloc] initWithId:itemId colours:palette active:BuretteColourFromHex(active)
                                                  callback:callback context:context];
+    return item;
+}
+
+NSMenuItem *burette_menu_text_item(NSString *itemId, NSString *title, NSString *value,
+                                  NSString *placeholder, BuretteMenuValueCallback callback, void *context) {
+    NSMenuItem *item = [[NSMenuItem alloc] init];
+    item.view = [[BuretteMenuTextView alloc] initWithId:itemId title:title value:value
+                                           placeholder:placeholder callback:callback context:context];
     return item;
 }
 

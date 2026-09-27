@@ -34,6 +34,13 @@ pub(crate) enum MenuEntry {
         step: f64,
         unit: Option<String>,
     },
+    /// An editable AppKit text field embedded in the menu.
+    Text {
+        id: String,
+        text: String,
+        value: String,
+        placeholder: Option<String>,
+    },
     /// A scrolling row of colour swatches with an inline hue picker.
     Colours {
         id: String,
@@ -124,7 +131,10 @@ fn validate(items: &[MenuEntry], at: Option<&MenuPosition>) -> Result<(), String
                 MenuEntry::Item { subtitle, .. } | MenuEntry::Submenu { subtitle, .. } => {
                     subtitle.as_deref()
                 }
-                MenuEntry::Separator | MenuEntry::Slider { .. } | MenuEntry::Colours { .. } => None,
+                MenuEntry::Separator
+                | MenuEntry::Slider { .. }
+                | MenuEntry::Text { .. }
+                | MenuEntry::Colours { .. } => None,
             };
             if subtitle.is_some_and(|value| value.len() > 1024 || value.contains('\0')) {
                 return Err("Invalid context menu subtitle".into());
@@ -149,6 +159,22 @@ fn validate(items: &[MenuEntry], at: Option<&MenuPosition>) -> Result<(), String
                         return Err("Invalid context menu slider".into());
                     }
                     (id, text, symbol, &None)
+                }
+                MenuEntry::Text {
+                    id,
+                    text,
+                    value,
+                    placeholder,
+                } => {
+                    if value.len() > 1024
+                        || value.contains('\0')
+                        || placeholder
+                            .as_ref()
+                            .is_some_and(|value| value.len() > 200 || value.contains('\0'))
+                    {
+                        return Err("Invalid context menu text field".into());
+                    }
+                    (id, text, &None, &None)
                 }
                 MenuEntry::Colours { id, colors, active } => {
                     if colors.len() > 64
@@ -288,6 +314,14 @@ mod macos {
             id: id,
             colours: id,
             active: id,
+            callback: ValueCallback,
+            context: *mut c_void,
+        ) -> id;
+        fn burette_menu_text_item(
+            id: id,
+            title: id,
+            value: id,
+            placeholder: id,
             callback: ValueCallback,
             context: *mut c_void,
         ) -> id;
@@ -454,6 +488,23 @@ mod macos {
                     let _: () = msg_send![menu, addItem: item];
                     continue;
                 }
+                MenuEntry::Text {
+                    id,
+                    text,
+                    value,
+                    placeholder,
+                } => {
+                    let item = burette_menu_text_item(
+                        string(id),
+                        string(text),
+                        string(value),
+                        placeholder.as_deref().map_or(nil, |value| string(value)),
+                        value_changed,
+                        live,
+                    );
+                    let _: () = msg_send![menu, addItem: item];
+                    continue;
+                }
                 MenuEntry::Colours { id, colors, active } => {
                     let palette: id = msg_send![class!(NSMutableArray), array];
                     for colour in colors {
@@ -526,7 +577,10 @@ mod macos {
                     let child = make_menu(items, target, ids, live);
                     let _: () = msg_send![item, setSubmenu: child];
                 }
-                MenuEntry::Separator | MenuEntry::Slider { .. } | MenuEntry::Colours { .. } => {
+                MenuEntry::Separator
+                | MenuEntry::Slider { .. }
+                | MenuEntry::Text { .. }
+                | MenuEntry::Colours { .. } => {
                     unreachable!()
                 }
             }

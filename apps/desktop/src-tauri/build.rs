@@ -8,6 +8,8 @@ fn main() {
             .flag("-fobjc-arc")
             .compile("burette_context_menu_controls");
         println!("cargo:rustc-link-lib=framework=AppKit");
+        // Menu text fields read raw key events from the Carbon dispatcher.
+        println!("cargo:rustc-link-lib=framework=Carbon");
     }
     tauri_build::build()
 }

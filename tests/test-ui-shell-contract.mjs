@@ -6197,7 +6197,9 @@ assert.doesNotMatch(appViewerStateMessagesHook, /body\.type === "mvsStoryChanged
 assert.match(previewViewer, /function sceneTreeDisplayLabel\(value\)/);
 assert.match(previewViewer, /if \(\/\^reflig\$\/i\.test\(words\)\) label = 'Reference ligand'/);
 assert.match(previewViewer, /if \(ligand\) label = `Ligand \$\{ligand\[1\]\}`/);
-assert.match(previewViewer, /note: String\(cell\.obj\.description \|\| display\.note \|\| display\.format \|\| ''\)/);
+// Measurement rows caption themselves with custom text and source; every other
+// row keeps the Mol* description.
+assert.match(previewViewer, /note: measurementName && measurementEditable\s*\?[\s\S]{0,200}?: String\(cell\.obj\.description \|\| display\.note \|\| display\.format \|\| ''\)/);
 // MolViewSpec internals do not belong in the tree: primitives are named after
 // what they draw, a residue query becomes a count, and the two halves of a scene
 // are separated.

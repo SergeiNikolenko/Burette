@@ -63,6 +63,7 @@ type NativeEntry =
   | { kind: "item"; id: string; text: string; enabled: boolean; symbol?: string; image?: string; subtitle?: string; accelerator?: string; checked?: boolean }
   | { kind: "submenu"; id: string; text: string; enabled: boolean; symbol?: string; image?: string; subtitle?: string; items: NativeEntry[] }
   | { kind: "slider"; id: string; text: string; symbol?: string; value: number; min: number; max: number; step: number; unit?: string }
+  | { kind: "text"; id: string; text: string; value: string; placeholder?: string }
   | { kind: "colours"; id: string; colors: string[]; active?: string };
 type PopupResult = { kind: "shown"; selection: string | null } | { kind: "unsupported" };
 type MenuValue = { session: string; id: string; value: number | string };
@@ -90,6 +91,11 @@ export async function showMacContextMenu(spec: MenuItemSpec[], at?: { x: number;
       const min = entry.min ?? 0;
       return [{ kind: "slider", id: entry.id, text: entry.label, value: entry.value, min, max: entry.max ?? Math.max(min + 1, entry.value),
         step: entry.step ?? 0, ...(entry.unit ? { unit: entry.unit } : {}), ...(entry.nativeSymbol ? { symbol: entry.nativeSymbol } : {}) }];
+    }
+    if (entry.kind === "text") {
+      if (entry.action && !entry.disabled) live.set(entry.id, (value) => entry.action?.(String(value)));
+      return [{ kind: "text", id: entry.id, text: entry.label, value: entry.value,
+        ...(entry.placeholder ? { placeholder: entry.placeholder } : {}) }];
     }
     if (entry.kind === "swatches") {
       if (entry.action) live.set(entry.id, (value) => entry.action?.(String(value)));
