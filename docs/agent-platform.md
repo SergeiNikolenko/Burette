@@ -151,8 +151,11 @@ References are local to the loaded scene; refresh them after reloading a file.
 
 ## Annotate Mode
 
-Cmd+. or the header Annotate button covers the workspace with an annotation
-layer. A drag marks a region; a click marks the element under the pointer. Each
+Annotation controls, their overlay, and Cmd+. are available only in a plugin
+workspace with `BuretteMcpWorkspace`. The desktop app and ordinary browser-dev
+workspace do not expose this tool. In the plugin, Cmd+. or the header Annotate
+button covers the workspace with an annotation layer. A drag marks a region;
+a click marks the element under the pointer. Each
 annotation carries a comment and a bounded description of its target:
 
 - The host asks the viewer frame with the `describe_region` agent action
@@ -174,8 +177,8 @@ frame of the Mol* view with every mark drawn and numbered (the
 `annotation_snapshot` agent action, within the 1 MiB image budget), and a
 `Burette · N annotations` composer card carrying the structured targets. Hosts
 that take no images in widget messages get the frame in the card instead.
-Other surfaces have no chat and Send copies the numbered summary to the
-clipboard. Send and Cancel both clear the selection the layer added. The bottom
+Plugin hosts without a chat bridge copy the numbered summary to the clipboard.
+Send and Cancel both clear the selection the layer added. The bottom
 dock and its toggle are hidden on plugin surfaces.
 
 ## MolViewSpec Story Contract
@@ -318,6 +321,15 @@ and fetch the artifact explicitly when they need the omitted detail.
 The MCP CLI bridge limits combined stdout/stderr to 4 MiB, terminates a child
 that exceeds the limit, and reports `CLI_OUTPUT_LIMIT` without forwarding partial
 output. UTF-8 output is decoded after collection to preserve split characters.
+Timeouts terminate the child gracefully, force termination after one second if
+needed, and wait for its exit before returning. Signal termination is a failure.
+
+The local MCP `fetch` tool accepts public HTTP(S) URLs without credentials.
+It checks every DNS answer and redirect against non-public address ranges and
+connects directly to a validated address, preserving the original HTTP host and
+TLS hostname. At most three redirects and 1,000,000 response bytes are read;
+the timeout includes DNS resolution and body reading. A byte-limited response
+sets `truncated: true`, even when no further retained text can be paged through.
 
 ## Agent RCA
 

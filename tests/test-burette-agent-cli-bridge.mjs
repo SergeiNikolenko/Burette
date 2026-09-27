@@ -16,6 +16,12 @@ try {
     const mode = process.argv[2];
     if (mode === 'valid') {
       process.stdout.write(JSON.stringify({ ok: true, result: 'ю'.repeat(1024 * 1024) }));
+    } else if (mode === 'signal') {
+      process.kill(process.pid, 'SIGTERM');
+    } else if (mode === 'ignore-term') {
+      process.on('SIGTERM', () => {});
+      process.stdout.write(JSON.stringify({ pid: process.pid }));
+      setInterval(() => {}, 1000);
     } else {
       const stream = mode === 'stderr' ? process.stderr : process.stdout;
       for (let index = 0; index < 80; index++) stream.write('x'.repeat(65536));
@@ -31,6 +37,20 @@ try {
     assert.equal(limited.error.code, 'CLI_OUTPUT_LIMIT');
     assert.equal(limited.stdout, '');
     assert.equal(limited.stderr, '');
+  }
+  const signaled = await runBuretteAgent(['signal']);
+  assert.equal(signaled.ok, false, 'signal termination must never be reported as CLI success');
+  assert.equal(signaled.signal, 'SIGTERM');
+  assert.equal(signaled.error.code, 'CLI_FAILED');
+  const timedOut = await runBuretteAgent(['ignore-term'], { timeoutMs: 1500 });
+  const timedOutPid = JSON.parse(timedOut.stdout).pid;
+  try {
+    assert.equal(timedOut.ok, false);
+    assert.equal(timedOut.exitCode, 124);
+    assert.equal(timedOut.signal, 'TIMEOUT');
+    assert.throws(() => process.kill(timedOutPid, 0), { code: 'ESRCH' }, 'timed-out CLI must be reaped before returning');
+  } finally {
+    try { process.kill(timedOutPid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
   }
   console.log('burette agent CLI bridge output bounds tests passed');
 } finally {
