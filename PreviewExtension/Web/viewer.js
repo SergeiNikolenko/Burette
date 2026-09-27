@@ -4834,8 +4834,10 @@
       if (storySnapshot) {
         updateMolstarPresentationConfig(value, appearance, legacyStyle);
         await viewer.plugin.state.setSnapshot(storySnapshot);
-      } else if (option.provider) await applyMolstarProviderPreset(viewer, option);
-      else if (molstarStoryState().available) await reloadMolstarStyle(viewer, legacyStyle, serial, appearance);
+      } else if (option.provider) {
+        await applyMolstarProviderPreset(viewer, option);
+        await applyMolstarWaterLineRepresentation(viewer);
+      } else if (molstarStoryState().available) await reloadMolstarStyle(viewer, legacyStyle, serial, appearance);
       else {
         // Keep parsed models, trajectories, selections and the camera alive.
         // Ghost Surface needs a base representation before adding its envelope.
