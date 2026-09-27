@@ -338,7 +338,8 @@ function settingsReturnTabId(state: MoleculeState) {
 
 function activeTabIdOrFirst(tabs: MoleculeTab[], activeTabId: string | null) {
   if (activeTabId && tabs.some((tab) => tab.id === activeTabId)) return activeTabId;
-  return tabs[0]?.id ?? null;
+  // Settings is hidden from the tab strip and is only selected explicitly.
+  return tabs.find((tab) => tab.location.kind !== "settings")?.id ?? null;
 }
 
 function moveTabToIndex(tabs: MoleculeTab[], id: string, toIndex: number) {
@@ -356,8 +357,13 @@ function moveTabToIndex(tabs: MoleculeTab[], id: string, toIndex: number) {
 }
 
 function ensureTabs(tabs: MoleculeTab[]) {
-  if (!tabs.length && typeof window !== "undefined" && window.BuretteMcpWorkspace) return tabs;
-  return tabs.length > 0 ? [...tabs].sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))) : [createLauncherTab()];
+  const next = [...tabs];
+  // A retained Settings page does not count as an open workspace tab.
+  if (!next.some((tab) => tab.location.kind !== "settings")
+    && !(typeof window !== "undefined" && window.BuretteMcpWorkspace)) {
+    next.push(createLauncherTab());
+  }
+  return next.sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)));
 }
 
 function collapseDuplicateKetcherTabs(tabs: MoleculeTab[], preferredActiveId: string | null = null) {

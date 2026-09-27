@@ -379,3 +379,58 @@ assert.deepEqual(
 useMoleculeStore.getState().restoreSession(restoredTabs.slice(1), 0);
 assert.equal(useMoleculeStore.getState().activeTabId, "resume-selected", "pin normalization must not change the selected tab");
 console.log("Session selection round-trip checks passed.");
+// Settings stays in the store after Back, but is hidden from the tab strip.
+// All close routes must select a visible tab or return to the launcher.
+for (const close of [
+  state => state.closeTab(state.activeTabId),
+  state => state.closeActiveDocument(),
+  state => state.closeDocument(state.activeDocumentId),
+  state => state.pruneMissingFileTabs(["/data/last.pdb"], []),
+]) {
+  resetStore();
+  useMoleculeStore.getState().addDocuments([document("last", "/data/last.pdb")]);
+  useMoleculeStore.getState().openSettingsTab("appearance");
+  const settingsId = useMoleculeStore.getState().activeTabId;
+  useMoleculeStore.getState().activateLastNonSettingsTab();
+  close(useMoleculeStore.getState());
+  const state = useMoleculeStore.getState();
+  const visibleTabs = state.tabs.filter(tab => tab.location.kind !== "settings");
+  assert.deepEqual(visibleTabs.map(tab => tab.location), [{ kind: "launcher" }]);
+  assert.equal(state.activeTabId, visibleTabs[0].id);
+  assert.equal(state.activeDocumentId, null);
+  state.openSettingsTab("appearance");
+  assert.equal(useMoleculeStore.getState().activeTabId, settingsId);
+  useMoleculeStore.getState().activateLastNonSettingsTab();
+  assert.equal(useMoleculeStore.getState().activeTabId, visibleTabs[0].id);
+}
+
+resetStore();
+useMoleculeStore.getState().openSettingsTab();
+useMoleculeStore.getState().activateLastNonSettingsTab();
+useMoleculeStore.getState().addDocuments([
+  document("first", "/data/first.pdb"), document("second", "/data/second.pdb"),
+]);
+// Settings is first in storage order, ahead of both visible tabs.
+assert.equal(useMoleculeStore.getState().tabs[0].location.kind, "settings");
+useMoleculeStore.getState().setActiveDocument("first");
+useMoleculeStore.getState().closeActiveDocument();
+assert.equal(useMoleculeStore.getState().activeDocumentId, "second");
+useMoleculeStore.getState().openSettingsTab();
+const activeSettingsId = useMoleculeStore.getState().activeTabId;
+useMoleculeStore.getState().closeDocument("second");
+assert.equal(useMoleculeStore.getState().activeTabId, activeSettingsId,
+  "closing a background document preserves explicitly opened Settings");
+useMoleculeStore.getState().activateLastNonSettingsTab();
+useMoleculeStore.getState().closeActiveDocument();
+assert.equal(useMoleculeStore.getState().tabs.find(tab => tab.id === useMoleculeStore.getState().activeTabId).location.kind,
+  "launcher", "closing the launcher must not expose hidden Settings either");
+
+resetStore();
+window.BuretteMcpWorkspace = { storage: globalThis.localStorage };
+useMoleculeStore.getState().addDocuments([document("widget", "/data/widget.pdb")]);
+useMoleculeStore.getState().closeActiveDocument();
+assert.deepEqual({ tabs: useMoleculeStore.getState().tabs, activeTabId: useMoleculeStore.getState().activeTabId },
+  { tabs: [], activeTabId: null }, "embedded workspaces retain their empty state without a launcher");
+delete window.BuretteMcpWorkspace;
+
+console.log("tab close navigation checks passed");
