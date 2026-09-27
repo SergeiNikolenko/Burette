@@ -60,7 +60,7 @@ export function WorkspaceFileHeader({ activeFile, rootPath, rightDockOpen, defau
           )} />
       </div> : null}
       <div className="workspace-file-panels" role="group" aria-label="Workspace panels">
-        <AnnotateToggle className="workspace-file-icon-button" />
+        <AnnotateToggle />
         <button type="button" className="workspace-file-icon-button" aria-label="Toggle right panel" aria-pressed={rightDockOpen}
           onClick={() => actions.toggleDock("right")}>
           <SidebarRight size={18} aria-hidden />

@@ -35,37 +35,71 @@ span.annotation-pin {pointer-events: none}
   border: 0; border-radius: 50%; background: #f4f4f4; color: #161616; cursor: pointer;
 }
 .annotation-submit:disabled {background: #4a4a4a; color: #9a9a9a; cursor: default}
+/* Reference dimensions are CSS pixels (the supplied captures are @2x). */
+.annotation-layer {pointer-events:none}
+.annotation-surface, .annotation-pin, .annotation-composer, .annotation-bar,
+.annotation-selection-options, .annotation-screenshot-preview {pointer-events:auto}
+.annotation-layer[data-passthrough] .annotation-surface {pointer-events:none}
 .annotation-bar {
-  position: absolute; left: 50%; bottom: 20px; height: 40px; box-sizing: border-box;
-  display: flex; align-items: center; gap: 10px; padding: 0 6px 0 10px; white-space: nowrap;
-  border: 1px solid rgb(255 255 255 / 8%); border-radius: 14px; background: rgb(28 28 28 / 97%); color: #f4f4f4;
-  box-shadow: 0 10px 28px rgb(0 0 0 / 30%);
+  position:absolute; left:50%; bottom:20px; height:40px; max-width:calc(100% - 16px); box-sizing:border-box;
+  display:flex; align-items:center; gap:6px; padding:6px 10px; white-space:nowrap;
+  border:0; border-radius:13px; background:#242424; color:#f5f5f5;
+  box-shadow:0 6px 24px #0003; z-index:3;
 }
 .annotation-grip {
-  width: 10px; height: 16px; cursor: grab; touch-action: none; opacity: .55;
-  background: radial-gradient(circle, currentColor 1.3px, transparent 1.5px) 0 0 / 5px 5.33px;
+  flex:none; width:8px; height:16px; margin-right:8px; cursor:grab; touch-action:none; color:#a0a0a0;
+  background:radial-gradient(circle,currentColor 1px,transparent 1.2px) 0 0 / 4px 5px;
 }
-.annotation-granularity {display: flex; gap: 2px; padding: 2px; border-radius: 9px; background: rgb(255 255 255 / 7%)}
-.annotation-granularity button {
-  height: 26px; padding: 0 9px; border: 0; border-radius: 7px; background: transparent; color: #b4b4b4; font: inherit; font-size: 13px; cursor: pointer;
+.annotation-grip:active {cursor:grabbing}
+.annotation-bar-label {font-size:14px; line-height:20px; margin-right:6px}
+.annotation-tool {
+  position:relative; display:grid; place-items:center; flex:none; width:28px; height:28px; padding:0;
+  border:0; border-radius:10px; background:transparent; color:#999; cursor:pointer;
 }
-.annotation-granularity button[data-active] {background: rgb(255 255 255 / 14%); color: #f4f4f4}
-.annotation-granularity button:disabled {cursor: default}
-.annotation-bar-label {padding-right: 4px}
-.annotation-bar-label[data-error] {color: #ff8a80; max-width: 360px; overflow: hidden; text-overflow: ellipsis}
-.annotation-bar-divider {width: 1px; height: 18px; background: rgb(255 255 255 / 16%)}
-.annotation-cancel, .annotation-send {
-  height: 30px; padding: 0 10px; border: 0; border-radius: 9px; font: inherit; cursor: pointer;
+.annotation-tool:first-of-type {color:#f5f5f5}
+.annotation-tool:hover, .annotation-tool[aria-pressed=true] {background:#363636; color:#f5f5f5}
+.annotation-tool:disabled {color:#555; cursor:default; background:transparent}
+.annotation-tool:focus-visible,.annotation-send:focus-visible,.annotation-selection-options button:focus-visible {outline:2px solid #59adff; outline-offset:2px}
+.annotation-send {
+  flex:none; height:28px; padding:0 10px; border:0; border-radius:10px; background:#006bcb; color:#fff;
+  font:inherit; font-size:14px; font-weight:400; cursor:pointer;
 }
-.annotation-cancel {background: transparent; color: #e8e8e8}
-.annotation-cancel:disabled {opacity: .5; cursor: default}
-.annotation-cancel:hover {background: rgb(255 255 255 / 8%)}
-.annotation-send {padding: 0 12px; background: #2f6fed; color: #fff; font-weight: 500}
-.annotation-send:disabled {opacity: .5; cursor: default}
-.annotate-toggle[data-active] {
-  width: auto !important; padding: 0 10px 0 8px !important; gap: 6px; border-radius: 999px !important;
-  background: rgb(59 130 246 / 14%) !important; color: #2563eb;
+.annotation-send:hover:not(:disabled) {background:#087ee2}
+.annotation-send:disabled {opacity:.45; cursor:default}
+.annotation-close {margin-left:0}
+.annotation-bar .shortcut-tooltip {
+  position:absolute; bottom:calc(100% + 9px); top:auto; left:50%; right:auto; width:max-content;
+  transform:translateX(-50%); padding:8px 12px; border:1px solid #393939; border-radius:13px;
+  background:#242424; color:#f5f5f5; box-shadow:0 3px 10px #0002; font:400 14px/1.3 system-ui,sans-serif;
+  visibility:hidden; opacity:0; pointer-events:none; z-index:10;
 }
-[data-theme="dark"] .annotate-toggle[data-active], .dark .annotate-toggle[data-active] {background: rgb(59 130 246 / 18%) !important; color: #7aa7f7}
-@keyframes annotation-pop {from {opacity: 0; transform: scale(.96)} to {opacity: 1; transform: none}}
-@media (prefers-reduced-motion: reduce) {.annotation-composer {animation: none}}
+.annotation-tool:hover>.shortcut-tooltip,.annotation-tool:focus-visible>.shortcut-tooltip {visibility:visible; opacity:1; transform:translateX(-50%)}
+.annotation-selection-options {position:absolute; top:12px; right:12px; display:flex; gap:2px; padding:3px; border-radius:10px; background:#242424; box-shadow:0 3px 12px #0002}
+.annotation-selection-options button {border:0; background:transparent; color:#aaa; border-radius:7px; padding:5px 9px; font:inherit; font-size:12px; cursor:pointer}
+.annotation-selection-options button[aria-checked=true] {background:#343e49; color:#67b4ff}
+.annotation-screenshot-preview {position:absolute; bottom:72px; right:16px; margin:0; width:220px; max-width:calc(100% - 32px); padding:6px; background:#242424; border:1px solid #424242; border-radius:12px; color:#eee; box-shadow:0 6px 24px #0004}
+.annotation-screenshot-preview img {display:block; width:100%; max-height:160px; object-fit:contain; border-radius:7px}
+.annotation-screenshot-preview figcaption {padding:6px 4px 2px; font-size:12px}
+.annotation-error {position:absolute; left:50%; bottom:70px; transform:translateX(-50%); max-width:calc(100% - 32px); padding:8px 12px; border-radius:10px; background:#422929; color:#ffb4ab; font-size:12px}
+/* Always labelled and prominent, including before the user discovers the tool. */
+.annotate-toggle.annotate-toggle, .workspace-file-header .annotate-toggle.annotate-toggle {
+  position:relative; display:inline-flex; align-items:center; justify-content:center; flex:none;
+  width:auto; height:32px; padding:0 12px; gap:7px; border:1px solid var(--line-subtle,#ddd); border-radius:999px;
+  background:var(--surface-hover,#eeeeef); color:var(--text-primary,#242424); font:400 14px/1.3 system-ui,sans-serif;
+  cursor:pointer; box-shadow:0 1px 2px #0000000d;
+}
+.annotate-toggle.annotate-toggle:hover {background:color-mix(in srgb,var(--text-primary,#222) 12%,var(--bg-base,#fff))}
+.annotate-toggle.annotate-toggle[data-active] {background:#e0efff; color:#0065bc; border-color:#a8d3ff}
+[data-theme="dark"] .annotate-toggle.annotate-toggle,.dark .annotate-toggle.annotate-toggle {background:#363636; border-color:#414141; color:#f5f5f5}
+[data-theme="dark"] .annotate-toggle.annotate-toggle[data-active],.dark .annotate-toggle.annotate-toggle[data-active] {background:#323f4b; border-color:#3c5369; color:#58a9f3}
+.annotate-toggle.annotate-toggle:focus-visible {outline:2px solid #59adff; outline-offset:2px}
+.annotate-toggle.annotate-toggle>.shortcut-tooltip {width:max-content; max-width:320px; white-space:normal; padding:8px 12px; border-radius:16px; background:#242424; border:1px solid #393939; color:#f5f5f5; font:400 14px/1.3 system-ui,sans-serif; text-align:center}
+.annotate-toggle[data-active]>.shortcut-tooltip {width:320px}
+@keyframes annotation-pop {from {opacity:0; transform:scale(.96)} to {opacity:1; transform:none}}
+@media(max-width:400px) {.annotation-bar {gap:3px; padding:6px}.annotation-grip {margin-right:3px}.annotation-bar-label {font-size:12px; margin-right:1px}.annotation-tool {width:26px}.annotation-send {padding:0 8px}}
+@media(prefers-reduced-motion:reduce) {.annotation-composer {animation:none}}
+
+.annotate-toggle.annotate-toggle>.shortcut-tooltip {position:absolute; top:calc(100% + 8px); right:0; left:auto; visibility:hidden; opacity:0; pointer-events:none; z-index:80}
+.annotate-toggle.annotate-toggle:hover>.shortcut-tooltip,.annotate-toggle.annotate-toggle:focus-visible>.shortcut-tooltip {visibility:visible; opacity:1}
+
+.annotation-layer[data-passthrough] .annotation-pin {pointer-events:none}
