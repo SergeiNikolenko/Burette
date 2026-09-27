@@ -182,6 +182,9 @@ export function useAppGridControlMessages({
         && raw.previewSvg.trimStart().startsWith("<svg")
         ? raw.previewSvg
         : null;
+      const highlightIndices = (value: unknown) => Array.isArray(value)
+        ? value.filter((item): item is number => Number.isSafeInteger(item) && item >= 0).slice(0, 256)
+        : [];
       const row = raw && Number.isSafeInteger(index) && index >= 0
         ? {
             index,
@@ -190,6 +193,9 @@ export function useAppGridControlMessages({
             molblock: typeof raw.molblock === "string" ? raw.molblock : null,
             cardRenderer: raw.cardRenderer === "xyzrender" ? "xyzrender" as const : "rdkit" as const,
             previewSvg,
+            useInputCoords: raw.useInputCoords === true,
+            highlightAtoms: highlightIndices(raw.highlightAtoms),
+            highlightBonds: highlightIndices(raw.highlightBonds),
             props,
           }
         : null;

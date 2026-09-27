@@ -773,8 +773,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   display: flex;
   flex: 0 0 auto;
   width: 100%;
-  height: clamp(150px, 22vh, 190px);
-  min-height: 150px;
+  min-height: 160px;
   align-items: center;
   justify-content: center;
   overflow: hidden;
@@ -821,6 +820,19 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   display: block;
   width: 100%;
   height: 100%;
+}
+.grid-hover-molecule-preview-resize.resizable-handle-horizontal {
+  flex: 0 0 18px;
+  width: 100%;
+  height: 18px;
+  margin: 2px 0 -4px;
+  touch-action: none;
+}
+.grid-hover-molecule-preview-resize .resizable-handle-grip { opacity: 1; }
+.grid-hover-molecule-preview-resize + .grid-hover-molecule-props-bar {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 .grid-hover-molecule-empty {
   font-size: 12px;

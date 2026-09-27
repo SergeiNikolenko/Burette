@@ -116,6 +116,11 @@ Collection tables show a floating molecule preview when hovering the Mol cell
 with the right dock closed. Opening the dock dismisses that preview. The shell
 includes `rightDockOpen` in its `gridViewportCover` message; standalone grid
 previews default to showing the hover preview when this field is absent.
+The right-dock molecule preview has a persistent height handle, shared by 2D
+and 3D modes. Its 2D structure is drawn from the row's molecular source at the
+measured preview size instead of enlarging the grid card's 260px SVG; SMARTS
+highlight atom and bond indices and the input-coordinate choice travel with
+the bounded hover message.
 
 Clicking a Chemical Space point reveals its source molecule in the collection
 cards or table. The `chemicalSpaceSelectionChanged` message optionally includes

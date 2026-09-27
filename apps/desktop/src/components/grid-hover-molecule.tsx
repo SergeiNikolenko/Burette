@@ -16,6 +16,7 @@ const GridMolecule3D = lazy(() => import("./grid-molecule-3d"));
 
 const PROPS_HEIGHT_STORAGE_KEY = "burette-grid-hover-molecule-props-height";
 const PROPS_OPEN_STORAGE_KEY = "burette-grid-hover-molecule-props-open";
+const PREVIEW_HEIGHT_STORAGE_KEY = "burette-grid-hover-molecule-preview-height";
 // Kept as a compatibility contract for the chemical-space panel. The inspector
 // preview is now always the single hover surface, so it is never hidden.
 export const HOVER_CARD_VISIBILITY_EVENT = "burette:hover-preview-card-visibility";
@@ -26,6 +27,10 @@ export function hoverPreviewCardHidden(): boolean {
 
 const PROPS_MIN_HEIGHT = 56;
 const PROPS_DEFAULT_HEIGHT = 132;
+const PREVIEW_MIN_HEIGHT = 160;
+const PREVIEW_DEFAULT_HEIGHT = 260;
+const PREVIEW_MAX_HEIGHT = 720;
+const PREVIEW_RENDER_SCALE = 2;
 
 // Numbers arrive as raw strings; long floats read badly in a tile, so they
 // render with magnitude-aware precision (8.3010302 -> 8.301, 597.8316 -> 597.8).
@@ -43,6 +48,13 @@ function formatPropValue(value: string): string {
 function storedPropsHeight(): number {
   const raw = Number(window.localStorage.getItem(PROPS_HEIGHT_STORAGE_KEY));
   return Number.isFinite(raw) && raw >= PROPS_MIN_HEIGHT ? raw : PROPS_DEFAULT_HEIGHT;
+}
+
+function storedPreviewHeight(): number {
+  const raw = Number(window.localStorage.getItem(PREVIEW_HEIGHT_STORAGE_KEY));
+  return Number.isFinite(raw) && raw >= PREVIEW_MIN_HEIGHT
+    ? Math.min(raw, PREVIEW_MAX_HEIGHT)
+    : PREVIEW_DEFAULT_HEIGHT;
 }
 
 // DataWarrior keeps a full-size drawing of the current row in the corner of
@@ -153,19 +165,45 @@ export function GridHoverMoleculeCard({
   // make the preview useless while moving between rows.
   const shown = row ?? lastRowRef.current;
 
-  // An RDKit grid sends the card's own drawing, so the inspector shows the row
-  // exactly as the card does: same layout, same fit, same substructure match.
-  const shownPreviewSvg = shown?.cardRenderer === "rdkit" ? shown.previewSvg ?? "" : "";
+  // The grid sends a 260px card SVG. Enlarging it also enlarges bond strokes,
+  // so only use that artwork when the molecular source cannot be redrawn.
   const cardDrawing = useMemo(() => {
-    if (showingScaffold || !shownPreviewSvg.trim()) return null;
-    const clean = DOMPurify.sanitize(shownPreviewSvg, { USE_PROFILES: { svg: true } });
+    if (showingScaffold || (shown?.molblock ?? "").trim() || (shown?.smiles ?? "").trim()) return null;
+    const clean = DOMPurify.sanitize(shown?.cardRenderer === "rdkit" ? shown.previewSvg ?? "" : "", { USE_PROFILES: { svg: true } });
     return clean.trimStart().startsWith("<svg") ? clean : null;
-  }, [showingScaffold, shownPreviewSvg]);
+  }, [showingScaffold, shown]);
 
   const molecularSource = showingScaffold && scaffold.kind === "found"
     ? scaffold.smiles
     : (shown?.molblock ?? "").trim() ? shown?.molblock ?? "" : (shown?.smiles ?? "").trim();
   const hideMolecularPreview = !showingScaffold && !cardDrawing && (!molecularSource || invalidSource === molecularSource);
+
+  const [previewHeight, setPreviewHeight] = useState(storedPreviewHeight);
+  const previewResizeRef = useRef<{ pointerY: number; height: number } | null>(null);
+  const savePreviewHeight = useCallback((height: number) => {
+    const next = Math.min(PREVIEW_MAX_HEIGHT, Math.max(PREVIEW_MIN_HEIGHT, height));
+    setPreviewHeight(next);
+    window.localStorage.setItem(PREVIEW_HEIGHT_STORAGE_KEY, String(next));
+  }, []);
+  const onPreviewResizeStart = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    previewResizeRef.current = { pointerY: event.clientY, height: previewHeight };
+  }, [previewHeight]);
+  const onPreviewResizeMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const start = previewResizeRef.current;
+    if (!start) return;
+    setPreviewHeight(Math.min(PREVIEW_MAX_HEIGHT, Math.max(PREVIEW_MIN_HEIGHT, start.height + event.clientY - start.pointerY)));
+  }, []);
+  const onPreviewResizeEnd = useCallback(() => {
+    if (!previewResizeRef.current) return;
+    previewResizeRef.current = null;
+    setPreviewHeight((height) => {
+      window.localStorage.setItem(PREVIEW_HEIGHT_STORAGE_KEY, String(height));
+      return height;
+    });
+  }, []);
 
   // A callback ref, not a mount effect: the card is unmounted while nothing is
   // hovered and while it is collapsed, so an effect with an empty dependency
@@ -207,7 +245,9 @@ export function GridHoverMoleculeCard({
       return;
     }
     const paper = paperColour(wellNodeRef.current, theme);
-    const sizedKey = `${theme} ${paper.join(",")} ${wellSize.width}x${wellSize.height} ${source}`;
+    const atoms = showingScaffold ? [] : shown?.highlightAtoms ?? [];
+    const bonds = showingScaffold ? [] : shown?.highlightBonds ?? [];
+    const sizedKey = `${theme} ${paper.join(",")} ${wellSize.width}x${wellSize.height} ${shown?.useInputCoords === true} ${atoms.join(",")} ${bonds.join(",")} ${source}`;
     const cachedSvg = svgCache.get(sizedKey);
     if (cachedSvg !== undefined) {
       setSvg(cachedSvg);
@@ -228,13 +268,16 @@ export function GridHoverMoleculeCard({
           return;
         }
         try {
-          mol.set_new_coords();
+          if (showingScaffold || !shown?.useInputCoords) mol.set_new_coords();
           const palette = structurePalette(theme);
           const rendered = mol.get_svg_with_highlights(JSON.stringify({
-            width: wellSize.width,
-            height: wellSize.height,
+            width: wellSize.width * PREVIEW_RENDER_SCALE,
+            height: wellSize.height * PREVIEW_RENDER_SCALE,
             backgroundColour: paper,
             padding: 0.04,
+            bondLineWidth: 2,
+            atoms,
+            bonds,
             ...(palette ? { atomColourPalette: palette } : {}),
           }));
           if (svgCache.size >= SVG_CACHE_LIMIT) svgCache.clear();
@@ -359,11 +402,12 @@ export function GridHoverMoleculeCard({
         </div>}
         {badge ? <span className="grid-hover-molecule-index">{badge}</span> : null}
       </header>
-      {!hideMolecularPreview && (previewMode === "3d" && !showingScaffold ? <Suspense fallback={<div className="grid-molecule-3d" />}>
-        <GridMolecule3D key={documentId} molblock={shown?.molblock ?? ""} theme={theme} onOpen={() => { if (shown) postGridCommand(documentId, "structure.open-in-molstar", shown.index); }} />
+      {!hideMolecularPreview && (previewMode === "3d" && !showingScaffold ? <Suspense fallback={<div className="grid-molecule-3d" style={{ height: previewHeight }} />}>
+        <GridMolecule3D key={documentId} molblock={shown?.molblock ?? ""} theme={theme} height={previewHeight} onOpen={() => { if (shown) postGridCommand(documentId, "structure.open-in-molstar", shown.index); }} />
       </Suspense> : <div
         ref={attachWell}
         className="grid-hover-molecule-svg"
+        style={{ height: previewHeight }}
         role="button"
         tabIndex={0}
         title={`Edit ${label} in Ketcher`}
@@ -385,6 +429,31 @@ export function GridHoverMoleculeCard({
           <span className="grid-hover-molecule-empty">Structure preview unavailable</span>
         )}
       </div>)}
+      {!hideMolecularPreview ? <div
+        className="resizable-handle resizable-handle-horizontal grid-hover-molecule-preview-resize"
+        role="separator"
+        tabIndex={0}
+        aria-orientation="horizontal"
+        aria-label="Resize molecule preview"
+        aria-valuemin={PREVIEW_MIN_HEIGHT}
+        aria-valuenow={previewHeight}
+        aria-valuemax={PREVIEW_MAX_HEIGHT}
+        aria-valuetext={`${Math.round(previewHeight)} pixels`}
+        title="Drag to resize preview · Double-click to reset"
+        onPointerDown={onPreviewResizeStart}
+        onPointerMove={onPreviewResizeMove}
+        onPointerUp={onPreviewResizeEnd}
+        onPointerCancel={onPreviewResizeEnd}
+        onLostPointerCapture={onPreviewResizeEnd}
+        onDoubleClick={() => savePreviewHeight(PREVIEW_DEFAULT_HEIGHT)}
+        onKeyDown={(event) => {
+          if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          savePreviewHeight(event.key === "Home" ? PREVIEW_MIN_HEIGHT
+            : event.key === "End" ? PREVIEW_MAX_HEIGHT
+            : previewHeight + (event.key === "ArrowDown" ? 32 : -32));
+        }}
+      ><span className="resizable-handle-grip" aria-hidden="true" /></div> : null}
       {!showingScaffold && visibleProps.length ? (
         <>
           <div className="grid-hover-molecule-props-bar">
