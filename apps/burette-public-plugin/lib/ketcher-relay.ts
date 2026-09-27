@@ -70,6 +70,14 @@ export function hostedKetcherSnapshot(surfaceId: string) {
   return surface ? snapshot(surface) : null;
 }
 
+// A tool result may mount a fresh card instead of updating the existing one.
+// Carry its initial drawing without turning read-only replies into mutations.
+export function hostedKetcherInitialSeed(surfaceId: string) {
+  pruneExpiredSurfaces();
+  const surface = surfaces.get(surfaceId);
+  return surface ? seedFor(surface) : null;
+}
+
 export function executeHostedKetcherAction(rawAction: unknown): HostedKetcherActionResult {
   pruneExpiredSurfaces();
   const validated = validateKetcherAction(rawAction);

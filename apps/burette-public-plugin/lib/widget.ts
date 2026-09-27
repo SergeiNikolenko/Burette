@@ -138,7 +138,11 @@ function createWidgetHtml(assetOrigin: string, ketcherWidget: boolean): string {
         const acceptKetcherResult = (value) => {
           if (!window.__BURETTE_HOSTED_KETCHER_WIDGET__) return;
           const containers = [value, value?._meta, value?.meta, value?.structuredContent, value?.structuredContent?._meta];
-          const source = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherSeed"));
+          let source = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherSeed"));
+          if (!source && window.__BURETTE_HOSTED_KETCHER_SEED__ === null) {
+            const initial = containers.find((candidate) => candidate && typeof candidate === "object" && Object.hasOwn(candidate, "ketcherInitialSeed"));
+            if (initial) source = { ketcherSeed: initial.ketcherInitialSeed };
+          }
           if (!source) return;
           const meta = source.ketcherSeed;
           if (meta == null) {

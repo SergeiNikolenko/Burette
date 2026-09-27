@@ -32,6 +32,9 @@ The hosted plugin is a separate runtime boundary from the local desktop bridge:
 - `preview_pdb_structure` accepts one four-character public PDB ID.
 - `open_ketcher` and `control_ketcher` expose an isolated revision-checked
   chemical editor surface with bounded inline structures and exports.
+  Successful control results include app-only initial drawing metadata so a
+  newly mounted result card is not blank. An already initialized card ignores
+  this initial drawing; reads do not overwrite its current sketch.
 - The model receives bounded structured composition data. Raw structure text is
   placed only in result `_meta` for the sandboxed Burette workspace.
 - Downloads are capped at 3 MiB and 200,000 lines, redirects are revalidated,
@@ -148,6 +151,13 @@ Use it as `selector.structure` to distinguish identical residue addresses across
 CIF data blocks. `focusLigand` retains that reference when resolving an index or
 saving a selection, and scopes both selection and camera focus to that structure.
 References are local to the loaded scene; refresh them after reloading a file.
+
+## Widget compute availability
+
+Native MCP workspaces and hosted ChatGPT widgets do not expose the desktop
+Metal compute transport. Their Ketcher/Mol* surfaces therefore omit Compute
+actions; viewing a sketch in Mol* is not 3D conformer generation. Desktop and
+browser-agent-shell compute remain separate, backend-dependent workflows.
 
 ## Annotate Mode
 

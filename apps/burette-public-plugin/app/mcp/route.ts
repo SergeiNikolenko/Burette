@@ -41,6 +41,7 @@ import {
 import {
   createHostedKetcherSurface,
   executeHostedKetcherAction,
+  hostedKetcherInitialSeed,
   hostedKetcherSnapshot,
 } from "@/lib/ketcher-relay";
 
@@ -301,6 +302,7 @@ function createServer(): McpServer {
           action,
         },
         _meta: {
+          ...(result.ok ? { ketcherInitialSeed: hostedKetcherInitialSeed(validation.value.surfaceId) } : {}),
           ...(result.ok && result.result && Object.hasOwn(result.result, "ketcherSeed")
             ? { ketcherSeed: result.result.ketcherSeed }
             : {}),
