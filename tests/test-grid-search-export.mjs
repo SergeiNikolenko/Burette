@@ -25,9 +25,9 @@ const timers = new Map();
 let renders = 0;
 const identity = (value) => value;
 const searchNames = ["queryLooksLikeExplicitSMARTS", "queryLooksLikeSMILESFragment", "queryLooksLikeSMARTS", "shouldFallbackSMARTSToTextSearch", "setUnifiedSearchQuery", "scheduleSearch", "normalizedSearchText", "refresh", "normalize", "filterBySMARTS"];
-const search = new Function("state", "capabilities", "setTimeout", "clearTimeout", "refreshGridControls", "resetGridWindowForNewResultSet", "currentLocalCollectionRows", "filterByChemicalSpaceSelection", "filterByTableColumnControls", "filterByDescriptorControls", "compareWithDescriptorSort", "render", "postChemicalSpaceVisibility", "substructureMatch",
+const search = new Function("state", "capabilities", "setTimeout", "clearTimeout", "refreshGridControls", "resetGridWindowForNewResultSet", "currentLocalCollectionRows", "filterByChemicalSpaceSelection", "filterByTableColumnControls", "filterByDescriptorControls", "compareWithDescriptorSort", "render", "postChemicalSpaceVisibility", "repostInspectorRow", "substructureMatch",
   searchNames.map(declaration).join("\n") + "\nreturn { scheduleSearch, setUnifiedSearchQuery, refresh, normalizedSearchText, filterBySMARTS };"
-)(state, () => ({ substructureSearch: true }), (fn) => { timers.set(++nextTimer, fn); return nextTimer; }, id => timers.delete(id), () => {}, () => {}, () => state.all, identity, identity, identity, () => 0, () => { renders++; }, () => {}, (row) => row.smiles.includes("CC") ? { atoms: [0, 1], bonds: [] } : null);
+)(state, () => ({ substructureSearch: true }), (fn) => { timers.set(++nextTimer, fn); return nextTimer; }, id => timers.delete(id), () => {}, () => {}, () => state.all, identity, identity, identity, () => 0, () => { renders++; }, () => {}, () => {}, (row) => row.smiles.includes("CC") ? { atoms: [0, 1], bonds: [] } : null);
 
 search.scheduleSearch("C", {});
 search.scheduleSearch("CC", {});

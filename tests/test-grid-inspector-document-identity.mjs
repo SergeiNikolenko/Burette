@@ -25,7 +25,7 @@ for (const showingXyzrender of [false, true]) {
   const engines = new Promise(resolve => { resolveEngines = resolve; });
   const env = {
     renderTokenRef: { current: 0 }, wellSize: { width: 120, height: 80 },
-    scaffold: { kind: "idle" }, showingScaffold: false, showingXyzrender,
+    scaffold: { kind: "idle" }, showingScaffold: false, showingXyzrender, cardDrawing: null,
     shown: { smiles: "CC", previewSvg: "<svg/>" },
     specCache: new Map(), svgCache: new Map(), wellNodeRef: { current: null }, theme: "auto",
     setSvg() {}, setSpec() {}, paperColour: () => [1, 1, 1],
@@ -40,6 +40,23 @@ for (const showingXyzrender of [false, true]) {
   assert.equal(engineUsed, false, "an unmounted inspector never computes for its previous document");
 }
 console.log("Inspector async-render disposal checks passed.");
+
+// The grid's card drawing is shown as-is, so the inspector must not spend an
+// RDKit render of its own on a row that already arrived drawn.
+{
+  let enginesRequested = false;
+  const env = {
+    renderTokenRef: { current: 0 }, wellSize: { width: 120, height: 80 },
+    scaffold: { kind: "idle" }, showingScaffold: false, cardDrawing: "<svg/>",
+    shown: { smiles: "CC", cardRenderer: "rdkit", previewSvg: "<svg/>" },
+    svgCache: new Map(), wellNodeRef: { current: null }, theme: "auto",
+    setSvg() {}, paperColour: () => [1, 1, 1],
+    loadDerivedEngines: () => { enginesRequested = true; return new Promise(() => {}); },
+  };
+  new Function(...Object.keys(env), effect)(...Object.values(env));
+  assert.equal(enginesRequested, false, "a row drawn by the grid card is not redrawn by the inspector");
+}
+console.log("Inspector card-drawing reuse checks passed.");
 
 // Draw explicit hydrogens with the inspector's real palettes. Their atom labels
 // and half-bonds must both remain visible on the dark paper.
