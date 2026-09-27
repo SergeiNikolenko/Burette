@@ -17,7 +17,7 @@ const actionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
 const externalActionSchema = z.object({ type: z.string().trim().min(1) }).passthrough();
 const ketcherActionSchema = z.object({
   apiVersion: z.string().trim().min(1),
-  type: z.string().trim().min(1),
+  type: z.enum(["control_ketcher"]),
   actionId: z.string().trim().min(1).optional(),
   surfaceId: z.string().trim().min(1),
   expectedRevision: z.number().int().min(0),

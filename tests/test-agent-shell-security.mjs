@@ -19,6 +19,10 @@ try {
   await writeFile(join(dist, 'index.html'), '<!doctype html><title>Shell fixture</title>');
   await writeFile(join(session, 'session.json'), JSON.stringify({ token: 'fixture-secret-token', sessionDir: session }));
   await writeFile(join(allowed, 'ordinary.pdb'), 'HEADER ALLOWED');
+  await writeFile(join(allowed, 'water.xyz'), '3\nwater\nO 0 0 0\nH 1 0 0\nH 0 1 0\n');
+  const bin = join(root, 'bin');
+  await mkdir(bin);
+  await writeFile(join(bin, 'xyzrender'), '', { mode: 0o755 });
   await writeFile(join(outside, 'secret.pdb'), 'SYNTHETIC SECRET');
   await symlink(join(outside, 'secret.pdb'), join(allowed, 'linked.pdb'));
   await symlink(outside, join(allowed, 'linked-dir'));
@@ -30,9 +34,20 @@ try {
   const preload = join(root, 'swap-before-open.mjs');
   await writeFile(preload, `
     import fs from 'node:fs/promises';
+    import childProcess from 'node:child_process';
+    import { promisify } from 'node:util';
     import { syncBuiltinESMExports } from 'node:module';
     import { dirname, join } from 'node:path';
     const originalOpen = fs.open;
+    const originalExecFile = childProcess.execFile;
+    childProcess.execFile = (file, args, options, callback) => {
+      if (!String(file).endsWith('/xyzrender')) return originalExecFile(file, args, options, callback);
+      fs.writeFile(args[args.indexOf('-o') + 1], '<svg xmlns="http://www.w3.org/2000/svg"><circle r="1"/></svg>')
+        .then(() => callback(null, '', ''), callback);
+    };
+    childProcess.execFile[promisify.custom] = (file, args, options) => new Promise((resolve, reject) => {
+      childProcess.execFile(file, args, options, (error, stdout, stderr) => error ? reject(error) : resolve({ stdout, stderr }));
+    });
     fs.open = async (path, ...args) => {
       if (String(path).endsWith('/race/secret.pdb')) {
         const directory = dirname(path);
@@ -44,7 +59,7 @@ try {
     syncBuiltinESMExports();
   `);
   // Node's built-in export synchronization makes the path-swap injection deterministic.
-  child = spawn(process.versions.bun ? 'node' : process.execPath, ['--import', preload, 'scripts/agent-shell-server.mjs', '--dist', dist, '--session-dir', session, '--allow', allowed, '--host', '127.0.0.1', '--port', String(port)], { stdio: ['ignore', 'pipe', 'pipe'] });
+  child = spawn(process.versions.bun ? 'node' : process.execPath, ['--import', preload, 'scripts/agent-shell-server.mjs', '--dist', dist, '--session-dir', session, '--allow', allowed, '--host', '127.0.0.1', '--port', String(port)], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
   await Promise.race([once(child.stdout, 'data'), once(child, 'exit').then(() => { throw new Error('Server exited'); })]);
   const base = `http://127.0.0.1:${port}`;
   const bootstrap = await fetch(`${base}/?shellToken=fixture-secret-token`);
@@ -69,6 +84,24 @@ try {
     assert.equal((await fetch(url, { ...options, headers: { Cookie: cookie, Origin: base } })).status, 200);
   }
   assert.match(bootstrap.headers.get('set-cookie'), /HttpOnly; SameSite=Strict/);
+  const xyzUrl = `${base}/__burette/xyzrender`;
+  const render = body => fetch(xyzUrl, { method: 'POST', headers, body: JSON.stringify(body) });
+  assert.equal((await fetch(xyzUrl, { method: 'POST', body: '{}' })).status, 401);
+  assert.equal((await fetch(xyzUrl, { headers })).status, 405);
+  for (const path of [join(outside, 'secret.pdb'), join(allowed, 'linked.pdb')]) {
+    assert.equal((await render({ path })).status, 400, 'rendering cannot read unauthorized files');
+  }
+  for (const body of [
+    { path: join(allowed, 'water.xyz'), preset: 'flat' },
+    { path: 'burette-ketcher://sketch.xyz', inputExtension: 'xyz', inputDataBase64: Buffer.from('1\nH\nH 0 0 0\n').toString('base64') },
+  ]) {
+    const response = await render(body);
+    const payload = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(payload));
+    assert.match(payload.svg, /<svg/);
+  }
+  assert.equal((await render({ path: join(allowed, 'water.xyz'), controls: { extraArguments: '--output /private/file' } })).status, 400);
+  assert.equal((await render({ inputExtension: 'xyz', inputDataBase64: 'A'.repeat(700000) })).status, 400);
   const fileActionUrl = `${base}/__burette/file-action`;
   assert.equal((await fetch(fileActionUrl, { method: 'POST', body: JSON.stringify({ type: 'list_apps', path: join(allowed, 'ordinary.pdb') }) })).status, 401);
   for (const path of [join(outside, 'secret.pdb'), join(allowed, 'linked.pdb')]) {
@@ -99,7 +132,7 @@ try {
   assert.equal(read.status, 200);
   assert.equal(await read.text(), 'HEADER ALLOWED');
   const listing = await fetch(`${base}/__burette/dev-files?${new URLSearchParams({ root: allowed })}`, { headers });
-  assert.deepEqual((await listing.json()).files, [join(allowed, 'ordinary.pdb')]);
+  assert.deepEqual((await listing.json()).files, [join(allowed, 'ordinary.pdb'), join(allowed, 'water.xyz')]);
   await writeFile(join(allowed, 'ordinary.xtc'), 'SYNTHETIC TRAJECTORY');
   const paired = await fetch(`${base}/__burette/trajectory-pair?${new URLSearchParams({ path: join(allowed, 'ordinary.pdb') })}`, { headers });
   assert.equal(paired.status, 200);
@@ -107,6 +140,19 @@ try {
   assert.deepEqual({ topologyPath: pair.topologyPath, trajectoryPath: pair.trajectoryPath }, {
     topologyPath: join(allowed, 'ordinary.pdb'), trajectoryPath: join(allowed, 'ordinary.xtc'),
   }, 'The shared shell needs both file identities to classify and navigate the paired document');
+  const pairFor = path => fetch(
+    `${base}/__burette/trajectory-pair?${new URLSearchParams({ path })}`, { headers },
+  );
+  // A nested simulation must not turn an ordinary structure into an unrelated
+  // paired trajectory, even when the parent directory is authorized.
+  const isolated = join(allowed, 'isolated');
+  await mkdir(isolated);
+  await writeFile(join(isolated, 'mini.pdb'), 'HEADER MINI');
+  await mkdir(join(isolated, 'md'));
+  await writeFile(join(isolated, 'md', 'run.xtc'), 'SYNTHETIC TRAJECTORY');
+  await writeFile(join(isolated, 'md', 'run.gro'), 'SYNTHETIC TOPOLOGY');
+  assert.equal((await pairFor(join(isolated, 'mini.pdb'))).status, 404);
+  assert.equal((await pairFor(join(isolated, 'md', 'run.xtc'))).status, 200);
   await mkdir(join(allowed, 'race'));
   await writeFile(join(allowed, 'race', 'secret.pdb'), 'HEADER BEFORE SWAP');
   const raced = await fetch(`${base}/__burette/read-file?${new URLSearchParams({ path: join(allowed, 'race', 'secret.pdb') })}`, { headers });

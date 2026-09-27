@@ -95,6 +95,12 @@ sync with main. Shared icon snapshot updates must be deliberate and reviewed.
 
 ## Build and install
 
+The packaged Browser shell serves `/__burette/xyzrender` through the same
+bounded renderer as the native workspace (512 KiB input/SVG, built-in presets).
+Disk inputs still use the shell's authorized file descriptor reads; virtual
+sketches supply inline bytes. Automatic trajectory pairing only considers
+files in the source directory, never an unrelated nested simulation.
+
 Run from the verified native source checkout:
 
 ```sh
