@@ -3151,6 +3151,10 @@
       handleMolstarNativeMenuResult(body);
       return;
     }
+    if (event.source === window.parent && body.type === 'sceneTreeContextMenuResult') {
+      handleSceneTreeNativeMenuResult(body);
+      return;
+    }
     if (body.type === 'xyzrenderContextMenuResult') {
       const pending = xyzrenderContextMenuPending;
       if (!pending || pending.requestId !== body.requestId) return;
@@ -7168,9 +7172,9 @@
 
   // Scene tree: a Burette-styled stand-in for the Mol* left object tree. It mirrors
   // the same hierarchy Mol* shows — data, model, assembly, components, their
-  // representations — but as a compact draggable overlay. Rows carry only the two
-  // controls Mol* puts there (visibility, remove); focus and colouring live in the
-  // right-click menu. The Mol* panel itself stays reachable under the `L` button.
+  // representations — but as a compact draggable overlay. In the desktop app the
+  // right-click menu and a measurement's settings button open the host's native
+  // menu; other hosts fall back to the in-page menu.
   const SCENE_TREE_SVG_NS = 'http://www.w3.org/2000/svg';
   // Same left-edge type colours Mol* paints on `.msp-type-class-*` tree rows.
   const SCENE_TREE_TYPE_COLOR = {
@@ -7232,6 +7236,7 @@ SOFTWARE.
   let sceneTreeRenderHandle = 0;
   let sceneTreeHoverRef = '';
   let sceneTreeMenuRef = '';
+  let sceneTreeNativeMenuPending = null;
   let sceneTreeSelectedRef = '';
   let sceneTreeMenuPointerStart = null;
   const sceneTreePickerUndoSnapshots = new WeakMap();
@@ -7448,6 +7453,31 @@ SOFTWARE.
     return { label: display.label, note: '', format: display.format };
   }
 
+  function sceneTreeMeasurementSource(cell) {
+    const selections = cell?.obj?.data;
+    const StructureElement = window.molstar?.lib?.structure?.StructureElement;
+    const Props = window.molstar?.lib?.structure?.StructureProperties;
+    if (!Array.isArray(selections) || !StructureElement?.Loci?.getFirstLocation || !Props) return '';
+    const names = selections.slice(0, 4).map(selection => {
+      const loci = selection?.loci;
+      if (loci?.kind !== 'element-loci') return null;
+      const location = StructureElement.Loci.getFirstLocation(loci);
+      if (!location) return null;
+      const residue = molstarContextResidueLabel({
+        auth_comp_id: Props.residue.auth_comp_id(location),
+        auth_asym_id: Props.chain.auth_asym_id(location),
+        auth_seq_id: Props.residue.auth_seq_id(location)
+      });
+      const atom = StructureElement.Loci.size(loci) === 1
+        ? String(Props.atom.auth_atom_id(location) || '').trim() : '';
+      return { residue, atom };
+    }).filter(Boolean);
+    if (!names.length) return '';
+    const residue = names.every(name => name.residue === names[0].residue) ? names[0].residue : '';
+    const atoms = names.every(name => name.atom) ? names.map(name => name.atom).join('–') : '';
+    return [residue, atoms].filter(Boolean).join(' · ') || names.map(name => name.residue).join('–');
+  }
+
   function sceneTreeNodes(viewer) {
     const state = viewer?.plugin?.state?.data;
     if (!state?.cells) return [];
@@ -7510,10 +7540,22 @@ SOFTWARE.
           const rawLabel = String(cell.obj.label || 'Node');
           const display = sceneTreeRowLabel(cell, rawLabel);
           const label = display.label;
+          const measurementName = ['Label', 'Distance', 'Angle', 'Dihedral'].includes(label);
+          const measurementTargets = measurementEditable ? sceneTreeMeasurementTargets(viewer, nodeRef) : [];
+          const customText = measurementName ? sceneTreeMeasurementValue(measurementTargets, 'custom-text') : undefined;
+          const measurementSource = measurementName ? sceneTreeMeasurementSource(nodeCell) : '';
+          const nested = build(chain);
+          // Mol* stores a measurement and its shape representation as two cells.
+          // The second identical row has no separate user task or settings.
+          const visibleChildren = measurementName && nested.length === 1
+            && nested[0].label === label && nested[0].measurementEditable ? nested[0].children : nested;
           nodes.push({
             ref: nodeRef,
             label,
-            note: String(cell.obj.description || display.note || display.format || ''),
+            note: measurementName && measurementEditable
+              ? ([typeof customText === 'string' ? customText.trim() : '', measurementSource]
+                .filter(Boolean).join(' · '))
+              : String(cell.obj.description || display.note || display.format || ''),
             sourceLabel: rawLabel === label ? '' : rawLabel,
             group: String(cell.obj.type?.name || '') === 'Primitive Data' ? 'annotations' : 'structures',
             typeClass: String(cell.obj.type?.typeClass || 'Object'),
@@ -7524,7 +7566,7 @@ SOFTWARE.
               && Array.isArray(nodeCell?.obj?.data?.units)
               && nodeCell.obj.data.units.length > 0,
             ...(components ? sceneTreeColorState(components) : { theme: '', value: null }),
-            children: build(chain)
+            children: visibleChildren
           });
         }
       }
@@ -7642,7 +7684,7 @@ SOFTWARE.
       dot.title = `Colour ${node.label}`;
       actions.appendChild(dot);
     } else if (node.measurementEditable) {
-      actions.appendChild(sceneTreeActionButton('menu', `Settings for ${node.label}`, SCENE_TREE_ICON.settings));
+      actions.appendChild(sceneTreeActionButton('menu', `Edit ${node.label} settings`, SCENE_TREE_ICON.settings));
     }
     if (node.focusSaveable) {
       actions.appendChild(sceneTreeActionButton('save-focus', `Save ${node.label}`, SCENE_TREE_ICON.plus));
@@ -7946,6 +7988,13 @@ SOFTWARE.
   function focusSceneTreeNode(ref) {
     const plugin = activeMolstarViewer()?.plugin;
     const data = plugin?.state?.data?.cells?.get(ref)?.obj?.data;
+    if (Array.isArray(data)) {
+      const loci = data.map(selection => selection?.loci).filter(Boolean);
+      if (loci.length && typeof plugin?.managers?.camera?.focusLoci === 'function') {
+        plugin.managers.camera.focusLoci(loci, { durationMs: 250 });
+      }
+      return;
+    }
     // A Mol* Structure carries its extent on `boundary`, not `boundingSphere`;
     // representation cells keep theirs one level down on the structure they draw.
     const sphere = data?.boundary?.sphere || data?.sourceData?.boundary?.sphere;
@@ -8275,7 +8324,7 @@ SOFTWARE.
     'line-size': { keys: ['linesSize'], label: 'Thickness', min: 0.01, max: 5, step: 0.01 },
     'dash-length': { keys: ['dashLength'], label: 'Dash length', min: 0.01, max: 0.2, step: 0.01 },
     'arc-scale': { keys: ['arcScale'], label: 'Arc radius', min: 0.01, max: 1, step: 0.01 },
-    'text-size': { keys: ['textSize'], label: 'Text size', min: 0.1, max: 10, step: 0.1 },
+    'text-size': { keys: ['textSize'], label: 'Text size', min: 0.1, max: 10, step: 0.01 },
     'sector-opacity': { keys: ['sectorOpacity'], label: 'Sector opacity', min: 0, max: 1, step: 0.01 },
     'border-width': { keys: ['borderWidth'], label: 'Text border', min: 0, max: 0.5, step: 0.01 },
     'custom-text': { keys: ['customText'], label: 'Custom text' }
@@ -8346,7 +8395,7 @@ SOFTWARE.
     caption.textContent = definition.label;
     const swatches = document.createElement('div');
     swatches.className = 'buret-tree-swatches buret-tree-swatches-inline';
-    for (const entry of SCENE_TREE_UNIFORM_COLORS) {
+    for (const entry of SCENE_TREE_UNIFORM_COLORS.slice(0, 8)) {
       const swatch = document.createElement('button');
       swatch.type = 'button';
       swatch.className = 'buret-tree-swatch';
@@ -8360,6 +8409,14 @@ SOFTWARE.
       swatches.appendChild(swatch);
     }
     row.append(caption, swatches);
+    const custom = document.createElement('input');
+    custom.type = 'color';
+    custom.className = 'buret-tree-custom-color';
+    custom.dataset.sceneTreeMeasurementCustomColor = field;
+    custom.value = sceneTreeColorHex(Number.isFinite(current) ? current : 0x7da5c7);
+    custom.setAttribute('aria-label', `Custom ${definition.label.toLowerCase()} color`);
+    custom.title = `Custom ${definition.label.toLowerCase()} color`;
+    row.appendChild(custom);
     menu.appendChild(row);
   }
 
@@ -8409,10 +8466,14 @@ SOFTWARE.
   }
 
   function sceneTreeMeasurementMenu(menu, targets) {
-    sceneTreeMenuSection(menu, 'Measurement');
-    sceneTreeMeasurementSwatches(menu, targets, 'geometry-color');
-    for (const field of ['line-size', 'dash-length', 'arc-scale', 'sector-opacity']) {
-      sceneTreeMeasurementSlider(menu, targets, field);
+    const geometryFields = ['geometry-color', 'line-size', 'dash-length', 'arc-scale', 'sector-opacity']
+      .filter(field => targets.some(target => sceneTreeMeasurementParam(target, field)));
+    if (geometryFields.length) {
+      sceneTreeMenuSection(menu, 'Measurement');
+      if (geometryFields.includes('geometry-color')) sceneTreeMeasurementSwatches(menu, targets, 'geometry-color');
+      for (const field of geometryFields.filter(field => field !== 'geometry-color')) {
+        sceneTreeMeasurementSlider(menu, targets, field);
+      }
     }
     sceneTreeMenuSection(menu, 'Label');
     sceneTreeMeasurementText(menu, targets);
@@ -8936,9 +8997,10 @@ SOFTWARE.
     const menu = document.createElement('div');
     menu.id = 'buret-scene-tree-menu';
     menu.className = 'buret-tree-menu';
+    if (measurementTargets.length) menu.classList.add('buret-tree-measurement-editor');
     menu.dataset.ref = ref;
-    menu.setAttribute('role', 'menu');
-    menu.setAttribute('aria-label', `${node.label} actions`);
+    menu.setAttribute('role', measurementTargets.length ? 'dialog' : 'menu');
+    menu.setAttribute('aria-label', measurementTargets.length ? `${node.label} settings` : `${node.label} actions`);
 
     const header = document.createElement('div');
     header.className = 'buret-tree-menu-header';
@@ -8948,10 +9010,18 @@ SOFTWARE.
     header.setAttribute('data-buret-panel-handle', '');
     const heading = document.createElement('span');
     heading.className = 'buret-tree-menu-heading';
-    heading.textContent = node.label;
+    heading.textContent = measurementTargets.length ? `${node.label} settings` : node.label;
     heading.title = node.label;
     header.appendChild(heading);
-    if (node.note) {
+    if (measurementTargets.length) {
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'buret-tree-editor-close';
+      close.dataset.sceneTreeAction = 'close-editor';
+      close.setAttribute('aria-label', 'Close settings');
+      close.appendChild(sceneTreeIconElement(APP_ICON_DATA.X));
+      header.appendChild(close);
+    } else if (node.note) {
       const note = document.createElement('span');
       note.className = 'buret-tree-menu-note';
       note.textContent = node.note;
@@ -8959,10 +9029,12 @@ SOFTWARE.
     }
     menu.appendChild(header);
 
-    menu.appendChild(sceneTreeMenuItem('Focus', 'focus', { icon: SCENE_TREE_ICON.focus }));
-    menu.appendChild(sceneTreeMenuItem(node.hidden ? 'Show' : 'Hide', 'visibility', {
-      icon: node.hidden ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye
-    }));
+    if (!measurementTargets.length) {
+      menu.appendChild(sceneTreeMenuItem('Focus', 'focus', { icon: SCENE_TREE_ICON.focus }));
+      menu.appendChild(sceneTreeMenuItem(node.hidden ? 'Show' : 'Hide', 'visibility', {
+        icon: node.hidden ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye
+      }));
+    }
 
     if (isAssemblySymmetry) {
       sceneTreeAssemblySymmetryMenu(menu, viewer, ref);
@@ -8993,17 +9065,19 @@ SOFTWARE.
       }
     }
 
-    sceneTreeMenuSection(menu, isLassoSelection ? 'Selection' : '');
-    if (isLassoSelection) {
+    if (!measurementTargets.length) sceneTreeMenuSection(menu, isLassoSelection ? 'Selection' : '');
+    if (isLassoSelection && !measurementTargets.length) {
       menu.appendChild(sceneTreeMenuItem('Delete selected atoms', 'delete-lasso-atoms', {
         icon: SCENE_TREE_ICON.trash,
         destructive: true
       }));
     }
-    menu.appendChild(sceneTreeMenuItem(isLassoSelection ? 'Remove selection object' : 'Remove', 'remove', {
-      icon: SCENE_TREE_ICON.trash,
-      destructive: !isLassoSelection
-    }));
+    if (!measurementTargets.length) {
+      menu.appendChild(sceneTreeMenuItem(isLassoSelection ? 'Remove selection object' : 'Remove', 'remove', {
+        icon: SCENE_TREE_ICON.trash,
+        destructive: !isLassoSelection
+      }));
+    }
 
     document.body.appendChild(menu);
     const rect = menu.getBoundingClientRect();
@@ -9013,6 +9087,97 @@ SOFTWARE.
     menu.style.top = `${Math.round(top)}px`;
     initViewportPanelDrag(menu);
     queueMicrotask(() => showNativeViewerMenu(menu, clientX, clientY, closeSceneTreeMenu));
+  }
+
+  // Measurements get their own native menu so the custom text is an inline
+  // field; other rows go through openSceneTreeMenu and the shared adapter.
+  function showNativeMeasurementMenu(ref, event) {
+    const config = activeConfig || window.BuretteConfig || {};
+    if (config.appViewer !== true || document.body?.classList.contains('burette-mobile-host')) return false;
+    const viewer = activeMolstarViewer();
+    const node = sceneTreeNodeByRef(sceneTreeNodes(viewer), ref);
+    const measurementTargets = node ? sceneTreeMeasurementTargets(viewer, ref) : [];
+    if (!measurementTargets.length) return false;
+    const session = { requestId: `scene-tree-menu-${++molstarNativeMenuSerial}`, ref,
+      point: { x: event.clientX, y: event.clientY }, handlers: new Map(), undo: new Map() };
+    const item = (id, text, run) => {
+      session.handlers.set(id, run);
+      return { kind: 'item', id, text };
+    };
+    const items = [
+      { kind: 'label', text: node.label },
+      item('focus', 'Focus', () => focusSceneTreeNode(ref)),
+      item('visibility', node.hidden ? 'Show' : 'Hide', () =>
+        runMolstarSceneEdit(`visibility of ${node.label}`, () => toggleSceneTreeVisibility(ref)))
+    ];
+    const addField = (field, kind) => {
+      if (!measurementTargets.some(target => sceneTreeMeasurementParam(target, field))) return;
+      const definition = SCENE_TREE_MEASUREMENT_FIELDS[field];
+      const current = sceneTreeMeasurementValue(measurementTargets, field);
+      const fallback = measurementTargets.map(target => sceneTreeMeasurementParam(target, field)?.value)
+        .find(value => value !== undefined);
+      const value = current === null ? fallback : current;
+      const id = `measurement:${field}`;
+      const name = kind === 'swatches' ? `${definition.label} colour` : definition.label;
+      session.handlers.set(id, next => {
+        let parsed = String(next).slice(0, 1024);
+        if (kind === 'swatches') {
+          if (!/^#[0-9a-f]{6}$/i.test(parsed)) return;
+          parsed = Number.parseInt(parsed.slice(1), 16);
+        } else if (kind === 'number') {
+          parsed = Number(next);
+          if (!Number.isFinite(parsed)) return;
+        }
+        // One undo step per control, pushed when the menu closes.
+        if (!session.undo.has(id)) session.undo.set(id,
+          captureMolstarSceneUndoSnapshot(`${name.toLowerCase()} of ${node.label}`));
+        void streamSceneTreeMeasurementParam(ref, field, parsed);
+      });
+      if (kind === 'swatches') {
+        items.push({ kind: 'label', text: name });
+        items.push({ kind, id,
+          colors: SCENE_TREE_UNIFORM_COLORS.map(entry => sceneTreeColorHex(entry.value)),
+          ...(Number.isFinite(value) ? { active: sceneTreeColorHex(value) } : {}) });
+      } else if (kind === 'number' && Number.isFinite(value)) {
+        items.push({ kind, id, label: definition.label, value,
+          min: definition.min, max: definition.max, step: definition.step });
+      } else if (kind === 'text') {
+        items.push({ kind, id, label: definition.label,
+          value: typeof value === 'string' ? value : '',
+          placeholder: current === null ? 'Mixed' : 'Automatic value' });
+      }
+    };
+    // A label has no geometry, so its menu starts straight at the text settings.
+    if (['geometry-color', 'line-size', 'dash-length', 'arc-scale', 'sector-opacity']
+      .some(field => measurementTargets.some(target => sceneTreeMeasurementParam(target, field)))) {
+      items.push({ kind: 'separator' }, { kind: 'label', text: 'Measurement' });
+    }
+    addField('geometry-color', 'swatches');
+    for (const field of ['line-size', 'dash-length', 'arc-scale', 'sector-opacity']) addField(field, 'number');
+    items.push({ kind: 'separator' }, { kind: 'label', text: 'Label' });
+    addField('custom-text', 'text');
+    addField('text-color', 'swatches');
+    for (const field of ['text-size', 'border-width']) addField(field, 'number');
+    items.push({ kind: 'separator' });
+    items.push(item('remove', 'Remove', () =>
+      runMolstarSceneEdit(`removing ${node.label}`, () => removeSceneTreeNode(ref))));
+    sceneTreeNativeMenuPending = session;
+    if (postHostMessage({ type: 'sceneTreeContextMenu', requestId: session.requestId,
+      clientX: event.clientX, clientY: event.clientY, items })) return true;
+    sceneTreeNativeMenuPending = null;
+    return false;
+  }
+
+  function handleSceneTreeNativeMenuResult(body) {
+    const session = sceneTreeNativeMenuPending;
+    if (!session || body.requestId !== session.requestId) return;
+    if (body.event === 'select') {
+      session.handlers.get(String(body.id || ''))?.(body.value);
+      return;
+    }
+    sceneTreeNativeMenuPending = null;
+    if (body.event === 'unsupported') openSceneTreeMenu(session.ref, session.point.x, session.point.y);
+    else for (const snapshot of session.undo.values()) pushMolstarEditUndoSnapshot(snapshot);
   }
 
   function molstarSceneMenuUndoLabel(action, ref, control) {
@@ -9154,9 +9319,16 @@ SOFTWARE.
     const ref = control.closest('[data-ref]')?.dataset.ref;
     if (!ref) return;
     const action = control.dataset.sceneTreeAction;
+    if (action === 'close-editor') {
+      closeSceneTreeMenu();
+      return;
+    }
     if (action === 'menu') {
       const rect = control.getBoundingClientRect();
-      openSceneTreeMenu(ref, rect.left, rect.bottom + 4);
+      closeSceneTreeMenu();
+      if (!showNativeMeasurementMenu(ref, { clientX: rect.left, clientY: rect.bottom + 4 })) {
+        openSceneTreeMenu(ref, rect.left, rect.bottom + 4);
+      }
       return;
     }
     const sceneUndoLabel = molstarSceneMenuUndoLabel(action, ref, control);
@@ -9181,7 +9353,10 @@ SOFTWARE.
     const row = event.target.closest('.buret-tree-row');
     if (!row?.dataset.ref) return;
     event.preventDefault();
-    openSceneTreeMenu(row.dataset.ref, event.clientX, event.clientY);
+    closeSceneTreeMenu();
+    if (!showNativeMeasurementMenu(row.dataset.ref, event)) {
+      openSceneTreeMenu(row.dataset.ref, event.clientX, event.clientY);
+    }
   }
 
   // Named apart from moveViewportPanel: that one places Mol*'s own panels and
@@ -10845,6 +11020,16 @@ SOFTWARE.
         const sceneUndoLabel = `${control.dataset.sceneTreeMeasurementParam} of ${node?.label || 'measurement'}`;
         void runMolstarSceneEdit(sceneUndoLabel, () => (
           applySceneTreeMeasurementParam(ref, control.dataset.sceneTreeMeasurementParam, control.value)
+        ));
+      });
+      document.addEventListener('change', event => {
+        const control = event.target.closest('[data-scene-tree-measurement-custom-color]');
+        const ref = control?.closest('[data-ref]')?.dataset.ref;
+        if (!control || !ref || !/^#[0-9a-f]{6}$/i.test(control.value)) return;
+        const node = sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref);
+        void runMolstarSceneEdit(`measurement colour of ${node?.label || 'measurement'}`, () => (
+          applySceneTreeMeasurementParam(ref, control.dataset.sceneTreeMeasurementCustomColor,
+            Number.parseInt(control.value.slice(1), 16))
         ));
       });
       // The point of the theme list: the scene takes each theme as the pointer

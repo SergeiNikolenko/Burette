@@ -538,8 +538,9 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .calculate-properties-group {
   margin: 0 0 12px;
   padding: 8px 10px 10px;
-  border: 1px solid var(--line-subtler);
-  border-radius: 8px;
+  border: 0.5px solid var(--line-subtle);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fg-base) 3%, transparent);
 }
 .calculate-properties-group legend {
   padding: 0 4px;
@@ -567,14 +568,17 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .radix-dialog-check-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  padding: 2px 0;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  padding: 3px 0;
   color: var(--text-primary);
 }
 .calculate-properties-option input[type="checkbox"],
 .radix-dialog-check-row input[type="checkbox"] {
   flex: none;
+  width: 14px;
+  height: 14px;
   margin: 0;
   accent-color: var(--accent);
 }
@@ -620,8 +624,9 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   margin-top: 4px;
 }
 .calculate-properties-count {
-  font-size: 11px;
-  color: var(--text-secondary);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
 }
 .calculate-properties-actions {
   margin-left: auto;
@@ -640,18 +645,19 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .calculated-column-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   margin: 0 0 12px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--text-secondary);
 }
 .calculated-column-field input,
 .calculated-column-field textarea,
 .calculated-column-field select:not([data-slot="native-select"]) {
-  padding: 6px 8px;
-  border: 1px solid var(--line-subtler);
-  border-radius: 6px;
+  min-height: 28px;
+  padding: 4px 9px;
+  border: 0.5px solid var(--line-subtle);
+  border-radius: 7px;
   background: var(--surface-input, transparent);
   color: var(--text-primary);
   font: inherit;
@@ -672,6 +678,18 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .calculated-column-field [data-slot="native-select-wrapper"] {
   width: 100%;
 }
+/* A dialog pop-up button: same height and fill as the capsule buttons, a
+   rounded rectangle so it reads as a menu and not an action. */
+.radix-dialog [data-slot="native-select"] {
+  height: 28px;
+  border: 0.5px solid var(--line-subtle);
+  border-radius: 7px;
+  background: var(--dialog-well);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 400;
+}
+.radix-dialog [data-slot="native-select"]:hover { background: var(--dialog-fill); }
 .calculated-column-problem {
   margin: -6px 0 12px;
   font-size: 13px;
@@ -2443,6 +2461,7 @@ img.radix-menu-item-icon {
   white-space: nowrap;
 }
 .radix-menu-field select,
+.radix-menu-field input[type="text"],
 .radix-menu-number-scrub :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]) {
   width: 62px;
   border: 1px solid var(--line-subtler);
@@ -2457,7 +2476,9 @@ img.radix-menu-item-icon {
   width: auto;
   max-width: 116px;
 }
+.radix-menu-field input[type="text"] { width: 116px; }
 .radix-menu-field select:focus-visible,
+.radix-menu-field input[type="text"]:focus-visible,
 .radix-menu-number-scrub :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]):focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 1px var(--focus-ring);
@@ -8604,13 +8625,22 @@ input.structure-inspector-composition-search {
 .app-shell[data-structure-drag-active="true"] .viewer-iframe {
   pointer-events: none;
 }
+/* The table and file dialogs read as macOS sheets: an opaque panel (the
+   molecule behind must not bleed through as coloured smudges), a bold title
+   with no rule under it, capsule buttons with the accent-filled default action
+   on the right, and no close glyph when a Cancel button already does that. */
 .radix-dialog-overlay {
   position: fixed;
   inset: 0;
   z-index: 120;
-  background: color-mix(in srgb, black 18%, transparent);
+  background: color-mix(in srgb, black 12%, transparent);
 }
 .radix-dialog {
+  --dialog-inset: 20px;
+  --dialog-well: color-mix(in srgb, var(--fg-base) 5%, transparent);
+  --dialog-fill: color-mix(in srgb, var(--fg-base) 8%, transparent);
+  --dialog-fill-hover: color-mix(in srgb, var(--fg-base) 12%, transparent);
+  --dialog-hairline: color-mix(in srgb, var(--fg-base) 13%, transparent);
   position: fixed;
   z-index: 121;
   top: 50%;
@@ -8619,13 +8649,31 @@ input.structure-inspector-composition-search {
   max-height: min(560px, calc(100vh - 32px));
   overflow: auto;
   transform: translate(-50%, -50%);
-  border: 1px solid var(--line-subtle);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--bg-base) 92%, transparent);
+  border: 0.5px solid var(--dialog-hairline);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg-base) 95%, var(--fg-base) 5%);
   color: var(--text-secondary);
-  box-shadow: 0 22px 68px rgb(0 0 0 / 0.28);
-  backdrop-filter: blur(28px) saturate(1.2);
-  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+  box-shadow:
+    0 0 0 0.5px rgb(0 0 0 / 0.12),
+    0 2px 8px rgb(0 0 0 / 0.08),
+    0 18px 50px rgb(0 0 0 / 0.22);
+  font-size: 13px;
+}
+.radix-dialog[data-state="open"] {
+  animation: radix-dialog-in 160ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+.radix-dialog-overlay[data-state="open"] {
+  animation: radix-dialog-fade 160ms ease-out;
+}
+@keyframes radix-dialog-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(0.97); }
+}
+@keyframes radix-dialog-fade {
+  from { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .radix-dialog[data-state="open"],
+  .radix-dialog-overlay[data-state="open"] { animation: none; }
 }
 /* Keep actions visible when a long dialog body reaches the viewport limit. */
 .radix-dialog:has(> .radix-dialog-body) {
@@ -8643,34 +8691,38 @@ input.structure-inspector-composition-search {
   flex-shrink: 0;
 }
 .radix-dialog-header {
-  min-height: 48px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px 10px;
-  border-bottom: 1px solid var(--line-subtler);
+  padding: 18px var(--dialog-inset) 4px;
 }
 .radix-dialog-header h2 {
   margin: 0;
   color: var(--text-primary);
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 600;
+  line-height: 22px;
 }
 .radix-dialog-close {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
+  flex: none;
   border: 0;
-  border-radius: var(--control-radius);
-  background: transparent;
+  border-radius: 999px;
+  background: var(--dialog-fill);
   color: var(--text-muted);
   padding: 0;
   display: grid;
   place-items: center;
 }
+.radix-dialog-close svg { width: 11px; height: 11px; }
 .radix-dialog-close:hover {
-  background: var(--surface-subtle);
+  background: var(--dialog-fill-hover);
   color: var(--text-primary);
+}
+.radix-dialog:has(:is(.radix-dialog-footer, .radix-dialog-actions, .database-query-actions)) .radix-dialog-close {
+  display: none;
 }
 .radix-dialog :is(button, a, select):focus-visible {
   outline: 1px solid var(--focus-ring);
@@ -8679,7 +8731,7 @@ input.structure-inspector-composition-search {
 .radix-dialog-body,
 .radix-dialog-description {
   margin: 0;
-  padding: 14px 16px;
+  padding: 8px var(--dialog-inset) 12px;
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.45;
@@ -8691,8 +8743,8 @@ input.structure-inspector-composition-search {
 .radix-dialog-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 0 16px 16px;
+  gap: 10px;
+  padding: 8px var(--dialog-inset) var(--dialog-inset);
 }
 /* The footer of the table and file dialogs: actions sit at the right, and a
    .calculate-properties-footer pushes its status text to the left edge. */
@@ -8700,36 +8752,79 @@ input.structure-inspector-composition-search {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 0 16px 16px;
+  gap: 10px;
+  padding: 8px var(--dialog-inset) var(--dialog-inset);
 }
 .radix-dialog-footer.calculate-properties-footer {
   justify-content: space-between;
+  margin-top: 0;
+}
+/* Push buttons inside a dialog: macOS capsules, the default action filled
+   with the accent colour. */
+.radix-dialog .dock-action {
+  height: 28px;
+  min-width: 76px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--dialog-fill);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+}
+.radix-dialog .dock-action:hover { background: var(--dialog-fill-hover); }
+.radix-dialog .dock-action:active { transform: none; filter: brightness(0.94); }
+.radix-dialog .dock-action.calculate-properties-run {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: inset 0 0.5px 0 rgb(255 255 255 / 0.22), 0 0.5px 1px rgb(0 0 0 / 0.18);
+}
+.radix-dialog .dock-action.calculate-properties-run:hover {
+  background: color-mix(in srgb, var(--accent) 90%, black);
+}
+.radix-dialog .dock-action:disabled {
+  opacity: 0.42;
+  filter: none;
+  background: var(--dialog-fill);
+  box-shadow: none;
+  color: var(--text-primary);
 }
 /* A muted second line under the title: the path a dialog acts on. */
 .radix-dialog-subline {
-  margin: 0 0 12px;
+  margin: 0 0 14px;
   color: var(--text-muted);
   font-size: 11px;
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
 /* A bounded list inside the body that scrolls on its own instead of growing
-   the dialog past the viewport. */
+   the dialog past the viewport. It sits in an inset well like a macOS
+   grouped list. */
 .radix-dialog-scroll-list {
   display: grid;
+  align-content: start;
   max-height: 240px;
-  margin: 0 0 12px;
-  padding: 4px 8px;
+  margin: 6px 0 16px;
+  padding: 4px;
   overflow-y: auto;
-  border: 1px solid var(--line-subtler);
-  border-radius: 6px;
-  background: var(--surface-input, transparent);
+  border: 0.5px solid var(--dialog-hairline);
+  border-radius: 10px;
+  background: var(--dialog-well);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 13px;
+}
+.radix-dialog-scroll-list > .radix-dialog-check-row {
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+.radix-dialog-scroll-list > .radix-dialog-check-row:hover {
+  background: var(--dialog-well);
 }
 .radix-dialog-body ul.radix-dialog-scroll-list {
-  padding-left: 24px;
+  padding: 6px 10px 6px 26px;
 }
 .database-query-form {
   display: grid;
@@ -9544,15 +9639,11 @@ img.settings-open-destination-icon {
 .project.selected { background: var(--surface-selected); }
 
 .file-operation-dialog { width: min(360px, calc(100vw - 32px)); }
-.file-operation-dialog .radix-dialog-header { min-height: 0; padding: 20px 20px 0; border: 0; }
-.file-operation-dialog .radix-dialog-header h2 { font-weight: 600; }
-.file-operation-dialog .radix-dialog-body { padding: 8px 20px 20px; overflow-wrap: anywhere; }
+.file-operation-dialog .radix-dialog-body { padding-bottom: 12px; overflow-wrap: anywhere; }
 .file-operation-dialog .radix-dialog-body p { margin: 0; }
 /* Here the description is the message itself, so it keeps the body type. */
 .file-operation-dialog .radix-dialog-subline { font-size: 13px; color: var(--text-secondary); }
 .file-operation-dialog .radix-dialog-body .radix-dialog-subline + * { margin-top: 10px; }
-.file-operation-dialog .radix-dialog-actions { padding: 0 20px 20px; }
-.file-operation-dialog .radix-dialog-actions button { min-height: 30px; padding: 5px 12px; }
 
 .file-operation-dialog-rename { width: min(320px, calc(100vw - 32px)); }
 .file-operation-dialog-rename .radix-dialog-body { padding-top: 14px; padding-bottom: 12px; }
