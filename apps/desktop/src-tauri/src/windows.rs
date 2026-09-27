@@ -12,10 +12,10 @@ pub(crate) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-";
 
 const DEFAULT_WORKSPACE_WINDOW_WIDTH: f64 = 1180.0;
 const DEFAULT_WORKSPACE_WINDOW_HEIGHT: f64 = 760.0;
-const MIN_WORKSPACE_WINDOW_WIDTH: f64 = 820.0;
-const MIN_WORKSPACE_WINDOW_HEIGHT: f64 = 520.0;
-const MIN_REASONABLE_WINDOW_WIDTH: u32 = 640;
-const MIN_REASONABLE_WINDOW_HEIGHT: u32 = 420;
+const MIN_WORKSPACE_WINDOW_WIDTH: f64 = 390.0;
+const MIN_WORKSPACE_WINDOW_HEIGHT: f64 = 440.0;
+const MIN_REASONABLE_WINDOW_WIDTH: u32 = 320;
+const MIN_REASONABLE_WINDOW_HEIGHT: u32 = 320;
 
 pub(crate) fn runtime_document_id(window_label: &str, document_id: &str) -> String {
     format!("{window_label}:{document_id}")
