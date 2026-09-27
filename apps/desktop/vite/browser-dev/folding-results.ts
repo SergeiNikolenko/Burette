@@ -394,7 +394,7 @@ function browserDevModelOutputsForArtifacts(artifacts: Array<{ path: string; tit
         const value = JSON.parse(readFileSync(artifact.path, "utf8"));
         collectBrowserDevJsonMetrics(value, "", metrics, metricKeys);
         plddtProfile ||= browserDevPlddtProfileForJson(value, artifact);
-        const preview = matrixPreview ? null : browserDevMatrixPreviewForJson(value, artifact);
+        const preview: BrowserDevFoldingModel["matrixPreview"] = matrixPreview ? null : browserDevMatrixPreviewForJson(value, artifact);
         if (preview) {
           addBrowserDevMatrixMetric(preview, metrics, metricKeys);
           matrixPreview = preview;
@@ -519,7 +519,7 @@ function browserDevMatrixPreviewForAbcfoldHtml(artifact: { path: string; title: 
   const sessionText = browserDevHtmlJsonScriptContent(readFileSync(artifact.path, "utf8"), "session-data");
   if (!sessionText) return null;
   const session = JSON.parse(sessionText);
-  const scoresContent = browserDevJsonObjectPayload(session)?.scoresFile;
+  const scoresContent = browserDevJsonObjectPayload(browserDevJsonObjectPayload(session)?.scoresFile);
   if (scoresContent && typeof scoresContent === "object" && !Array.isArray(scoresContent) && typeof scoresContent.content === "string") {
     return browserDevMatrixPreviewForJson(JSON.parse(scoresContent.content), artifact);
   }
@@ -633,11 +633,11 @@ function browserDevHtmlJsonScriptContent(html: string, scriptId: string) {
   return html.slice(contentStart + 1, contentEnd).trim();
 }
 
-function matchingBrowserDevFoldingArtifacts(
+function matchingBrowserDevFoldingArtifacts<T extends { path: string }>(
   structure: { path: string },
   modelIndex: number | null,
   structures: Array<{ path: string }>,
-  artifacts: Array<{ path: string }>,
+  artifacts: T[],
 ) {
   const stem = fileTitle(structure.path).replace(/\.[^.]+$/u, "").toLowerCase();
   return artifacts.filter((artifact) => {

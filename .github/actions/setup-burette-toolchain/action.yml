@@ -4,7 +4,7 @@ description: Install the shared Bun and optional native preview tooling used by 
 inputs:
   bun-version:
     description: Bun version to install.
-    default: "1.3.8"
+    default: "1.4.2"
   install-dependencies:
     description: Run bun install with the frozen lockfile.
     default: "true"

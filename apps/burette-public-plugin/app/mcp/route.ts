@@ -4,8 +4,7 @@ import {
   registerAppTool,
   RESOURCE_MIME_TYPE,
 } from "@modelcontextprotocol/ext-apps/server";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { McpServer, WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/server";
 import { z } from "zod/v4";
 import {
   fileReferenceSchema,
@@ -222,7 +221,7 @@ function createServer(): McpServer {
       ...NOAUTH_TOOL_SECURITY,
       _meta: ketcherToolMeta("Opening Ketcher editor…", "Ketcher editor ready"),
     },
-    async ({ structure }) => {
+    async ({ structure }: { structure?: z.infer<typeof ketcherStructureSchema> }) => {
       const created = createHostedKetcherSurface(structure);
       if (!created.ok) {
         return {
@@ -277,7 +276,7 @@ function createServer(): McpServer {
       ...NOAUTH_TOOL_SECURITY,
       _meta: ketcherToolMeta("Applying Ketcher action…", "Ketcher action complete"),
     },
-    async ({ action: rawAction }) => {
+    async ({ action: rawAction }: { action: z.infer<typeof ketcherActionInputSchema> }) => {
       const action = rawAction.actionId
         ? rawAction
         : { ...rawAction, actionId: `ketcher-${randomUUID()}` };
@@ -322,7 +321,7 @@ function createServer(): McpServer {
           "One ChatGPT-authorized molecular structure attachment.",
         ),
       },
-      outputSchema: publicStructureOutputSchema,
+      outputSchema: z.object(publicStructureOutputSchema),
       annotations: TOOL_ANNOTATIONS,
       ...NOAUTH_TOOL_SECURITY,
       _meta: {
@@ -330,7 +329,7 @@ function createServer(): McpServer {
         "openai/fileParams": ["structureFile"],
       },
     },
-    async ({ structureFile }) => {
+    async ({ structureFile }: { structureFile: z.infer<typeof fileReferenceSchema> }) => {
       try {
         const prepared = await prepareAttachedStructure(structureFile);
         return {
@@ -363,7 +362,7 @@ function createServer(): McpServer {
       description:
         "Use this when the user asks to select or focus part of a structure, clear the selection, reset the camera, or hide/show polymers, ligands, ions, or water. Re-render the PDB entry or authorized attachment with up to eight allowlisted viewer actions.",
       inputSchema: molecularSceneInputSchema,
-      outputSchema: publicStructureOutputSchema,
+      outputSchema: z.object(publicStructureOutputSchema),
       annotations: RCSB_TOOL_ANNOTATIONS,
       ...NOAUTH_TOOL_SECURITY,
       _meta: {
@@ -371,7 +370,7 @@ function createServer(): McpServer {
         "openai/fileParams": ["structureFile"],
       },
     },
-    async (input) => {
+    async (input: z.infer<typeof molecularSceneInputSchema>) => {
       try {
         const prepared = input.source === "pdb"
           ? await preparePdbStructure(input.pdbId!)
@@ -413,12 +412,12 @@ function createServer(): McpServer {
           .regex(/^[0-9][A-Za-z0-9]{3}$/u)
           .describe("Four-character PDB ID, for example 1CRN."),
       },
-      outputSchema: publicStructureOutputSchema,
+      outputSchema: z.object(publicStructureOutputSchema),
       annotations: RCSB_TOOL_ANNOTATIONS,
       ...NOAUTH_TOOL_SECURITY,
       _meta: viewerToolMeta("Retrieving PDB structure…", "PDB structure ready"),
     },
-    async ({ pdbId }) => {
+    async ({ pdbId }: { pdbId: string }) => {
       try {
         const prepared = await preparePdbStructure(pdbId);
         return {

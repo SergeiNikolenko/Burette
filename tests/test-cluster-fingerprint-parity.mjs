@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
-import initRDKitModule from "@rdkit/rdkit";
+import initRDKitModule from "rdkit-compute";
 
 const fixture = JSON.parse(readFileSync(
   new URL("../schemas/compute/fixtures/rdkit-morgan-known-answer.v1.json", import.meta.url),

@@ -20,7 +20,7 @@ export function FileViewerDocument({
 }: FileViewerDocumentProps) {
   const isInsideViewport = useIsInsideFileViewerViewport();
 
-  if (process.env.NODE_ENV !== "production" && !isInsideViewport) {
+  if (import.meta.env.DEV && !isInsideViewport) {
     throw new Error(
       "FileViewerDocument must be rendered inside FileViewerViewport.",
     );

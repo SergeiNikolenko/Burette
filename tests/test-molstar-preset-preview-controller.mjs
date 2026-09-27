@@ -79,23 +79,23 @@ assert.equal(typeof factory?.retainPointerTarget, "function");
     }
   }
   assert.deepEqual(
-    factory.computePreviewContentBounds({
+    { ...factory.computePreviewContentBounds({
       data: pixels,
       width,
       height,
       background: [0, 0, 0],
       paddingRatio: 0,
       minPadding: 0,
-    }),
+    }) },
     { x: 1, y: 2, width: 4, height: 4 },
   );
   assert.deepEqual(
-    factory.computePreviewContentBounds({
+    { ...factory.computePreviewContentBounds({
       data: new Uint8ClampedArray(width * height * 4),
       width,
       height,
       transparent: true,
-    }),
+    }) },
     { x: 0, y: 0, width, height },
   );
 
@@ -108,14 +108,14 @@ assert.equal(typeof factory?.retainPointerTarget, "function");
     }
   }
   assert.deepEqual(
-    factory.computePreviewContentBounds({
+    { ...factory.computePreviewContentBounds({
       data: widePixels,
       width,
       height,
       background: [0, 0, 0],
       paddingRatio: 0,
       minPadding: 0,
-    }),
+    }) },
     { x: 2, y: 3, width: 8, height: 2 },
   );
 }

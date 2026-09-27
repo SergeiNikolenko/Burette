@@ -150,7 +150,7 @@ export const FileViewerViewport = React.forwardRef<
     [ref],
   );
 
-  if (process.env.NODE_ENV !== "production" && !isInsideInset) {
+  if (import.meta.env.DEV && !isInsideInset) {
     throw new Error(
       "FileViewerViewport must be rendered inside FileViewerInset.",
     );

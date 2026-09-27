@@ -8,7 +8,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const root = path.resolve(import.meta.dirname, '..');
-const signer = path.join(root, 'build/sparkle/2.9.6/bin/sign_update');
+const signer = path.join(root, 'build/sparkle/2.10.0/bin/sign_update');
 assert.ok(fs.existsSync(signer), 'Run scripts/prepare-sparkle.sh before this signing integration test');
 const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'burette-sparkle-test-'));
 try {

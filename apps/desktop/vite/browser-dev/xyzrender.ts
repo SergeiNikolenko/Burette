@@ -115,13 +115,14 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
         : null;
       const inputExtension = options.normalizeInputExtension(typeof body.inputExtension === "string" ? body.inputExtension : null);
       const animation = body.animation;
+      const animationMode = animation && typeof animation === "object" && "mode" in animation ? animation.mode : undefined;
       const exportFormat = body.exportFormat;
       if (exportFormat !== undefined && !['svg', 'png', 'pdf', 'tiff'].includes(String(exportFormat))) { sendJson(res, 400, { error: 'Unsupported export format' }); return; }
       try { if (animation) xyzrenderAnimationArguments(animation, 'animation.gif'); }
       catch (error) { sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) }); return; }
       const activeModel = animation ? null : activeModelIndex(body.activeModel);
       const periodicReference = orientationRef && isPeriodicXyz(orientationRef) && body.orientation === undefined;
-      const orientedCell = periodicReference && !['trajectory', 'vibration'].includes(String(animation?.mode))
+      const orientedCell = orientationRef && periodicReference && !['trajectory', 'vibration'].includes(String(animationMode))
         ? Buffer.from(orientationRef, 'utf8') : null;
       if (periodicReference) orientationRef = null;
       const executable = options.resolveExecutable();
@@ -152,7 +153,7 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
           effectiveInputPath = join(tempDirectory, `animation-input${extname(inputPath)}`);
           await writeFile(effectiveInputPath, await readFile(inputPath));
         }
-        if (animation?.mode === 'trajectory' && extname(effectiveInputPath).toLowerCase() === '.xyz' && splitXyzFrameTexts(await readFile(effectiveInputPath)).length < 2) {
+        if (animationMode === 'trajectory' && extname(effectiveInputPath).toLowerCase() === '.xyz' && splitXyzFrameTexts(await readFile(effectiveInputPath)).length < 2) {
           sendJson(res, 422, { error: 'Trajectory needs at least two coordinate frames. This file contains one structure.', code: 'animation_unavailable' });
           return;
         }
@@ -179,7 +180,7 @@ export function registerBrowserDevXyzrenderRoute(server: ViteDevServer, options:
           );
         };
         let baseOrientationRef = orientationRef;
-        let initialRender: { stdout: string; stderr: string } | undefined;
+        let initialRender: Awaited<ReturnType<typeof options.execFileAsync>> | undefined;
         if (body.orientation !== undefined) {
           if (!baseOrientationRef) {
             const baseArgs = options.buildArgs(effectiveInputPath, outputPath, preset, orientationRefPath, controls);

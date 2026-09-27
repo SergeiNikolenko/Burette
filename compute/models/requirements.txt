@@ -1,5 +1,6 @@
+# Uni-Mol 0.1.6 requires NumPy >=2.0,<2.3; 2.2.6 is the latest compatible release.
 numpy==2.2.6
-rdkit==2026.3.4
-torch==2.13.0
-transformers==5.14.1
+rdkit==2026.3.6
+torch==2.14.0
+transformers==5.17.0
 unimol-tools==0.1.6

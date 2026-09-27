@@ -87,7 +87,7 @@ export function useFileViewerSidebarController({
     [setSidebarSizeElement, shell.elementRegistry],
   );
 
-  if (process.env.NODE_ENV !== "production" && !isInsideContent) {
+  if (import.meta.env.DEV && !isInsideContent) {
     throw new Error(
       "FileViewerSidebar must be rendered inside FileViewerContent.",
     );

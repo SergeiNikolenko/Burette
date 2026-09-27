@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
-import ts from "typescript";
+import ts from "typescript-compiler-api";
 
 // Exercise the actual transfer loop with a delayed chemical service. A local
 // MOL import must paint even while that service is still unavailable.

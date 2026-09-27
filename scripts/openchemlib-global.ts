@@ -1,4 +1,4 @@
-import OpenChemLib from "openchemlib";
+import * as OpenChemLib from "openchemlib";
 
 Object.defineProperty(globalThis, "BuretteOpenChemLib", {
   configurable: false,

@@ -433,7 +433,7 @@ for (const baseline of [
 }
 assert.match(worker, /rdkit\.version\(\) !== "2025\.03\.4"/);
 assert.match(worker, /fingerprint\.byteLength !== expectedBytes/);
-assert.match(worker, /PreviewExtension\/Web\/rdkit\/RDKit_minimal\.wasm/);
+assert.match(worker, /rdkit-compute\/dist\/RDKit_minimal\.wasm\?url/);
 
 assert.match(bridge, /body\?\.type !== "clusterMolecules"/);
 assert.match(bridge, /result\.backend === "nativeMetal" \? "Metal GPU" : "reference CPU"/);

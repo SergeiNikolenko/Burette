@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import ts from 'typescript';
+import ts from 'typescript-compiler-api';
 const source = readFileSync(new URL('../apps/desktop/src/lib/compute-analysis.ts', import.meta.url), 'utf8');
 const code = ts.transpile(source, { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 });
 for (const scenario of ['success', 'partial', 'all-failed', 'stale', 'cancel', 'cancel-race', 'failure']) {

@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
 import assert from "node:assert/strict";
+import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { encodePng, renderSkySupersampled } from "../scripts/render-dmg-sky.mjs";
@@ -22,11 +23,14 @@ const png = encodePng(32, 20, rgb);
 assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
 assert.equal(png.readUInt32BE(16), 32);
 assert.equal(png.readUInt32BE(20), 20);
-assert.equal(
-  digest(png),
-  "ec99440d39398495989e0950ecbe87d19bf722d24be67bb16dc3ca8f6cef3240",
-  "the deterministic PNG encoding changed",
-);
+// Compression bytes vary across zlib versions; decoded pixels are the contract.
+const { PNG } = createRequire(realpathSync(new URL('../node_modules/molstar/package.json', import.meta.url)))('pngjs');
+const decoded = PNG.sync.read(png);
+const rgba = Buffer.alloc(32 * 20 * 4, 255);
+for (let pixel = 0; pixel < 32 * 20; pixel++) {
+  rgba.set(rgb.subarray(pixel * 3, pixel * 3 + 3), pixel * 4);
+}
+assert.deepEqual(decoded.data, rgba);
 
 const sky = readFileSync(join(repoRoot, "packaging/dmg/sky.png"));
 assert.equal(sky.readUInt32BE(16), 1320);

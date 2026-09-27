@@ -30,7 +30,7 @@ export function useControllableState<T>({
   const value = isControlled ? prop : uncontrolledProp
 
   /* eslint-disable react-hooks/rules-of-hooks */
-  if (process.env.NODE_ENV !== "production") {
+  if (import.meta.env.DEV) {
     const isControlledRef = React.useRef(prop !== undefined)
     React.useEffect(() => {
       const wasControlled = isControlledRef.current
