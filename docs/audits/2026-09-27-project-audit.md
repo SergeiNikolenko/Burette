@@ -23,6 +23,7 @@
 | P2 | MCP timeout возвращал управление до завершения зависшего дочернего процесса | SIGTERM, затем SIGKILL через секунду с ожиданием завершения; завершение сигналом считается ошибкой. Интеграционные тесты CLI bridge. |
 | P2 | Quick Look мог показывать ошибку предыдущей навигации или падать на переполнении счётчика атомов | Проверяется идентичность WKNavigation, отменённые переходы игнорируются, арифметика счётчиков ограничена. Исполняемые Swift-регрессии. |
 | P2 | Thumbnail читал большой файл до проверки размера, путал GRO-скорости с координатами и единицы CUBE | Ограниченное чтение, фиксированные поля GRO, сохранение пустых заголовков, перевод Bohr → Å. Исполняемые Swift-тесты. |
+| P2 | Finder Quick Look оставлял изображения SDF в состоянии загрузки во внеэкранном WebView | Для Quick Look начальные карточки запускаются без сигнала IntersectionObserver и ожидаемого animation frame. Установленное dev-расширение прошло semantic smoke на двух молекулах. |
 | P2 | Инструмент аннотаций отображался за пределами плагина | Кнопка, overlay и Cmd+. доступны только при `BuretteMcpWorkspace`. Проверены обычный и plugin-контексты заголовка; в browser-dev кнопка отсутствует. |
 | P2 | iOS предлагал неработающий выбор xyzrender и запускал 3D-viewer для текстовых документов | Настройки показывают фактический Mol*; 3D-viewer создаётся только для поддерживаемых документов, его статус не перекрывает текст. |
 
@@ -74,7 +75,7 @@ plugin bundle и `vendor-assets.lock.json`. Сверка выполнялась 
 | Локальный MCP/CLI | Исходный и собранный MCP, plugin integrity, CLI timeout и синтаксические проверки прошли. |
 | Hosted MCP | Wire-тесты 6/6, 85 assertions; production Next.js build прошёл на Gauss. |
 | Browser-dev | PDB → SDF; карточки → таблица; поиск без результатов; Ketcher import/export → Mol*; светлая/тёмная тема; аннотации отсутствуют. |
-| Quick Look | Swift parser/navigation/thumbnail tests и Xcode build прошли. Установленный dev-bundle: PDB и CIF passed; SDF не прошёл semantic smoke (RDKit загружен, изображения остаются pending). |
+| Quick Look | Swift parser/navigation/thumbnail tests и Xcode build прошли. Установленное dev-расширение прошло PDB, CIF и SDF semantic smoke; SDF отрисовал оба RDKit-изображения. |
 | iOS | Generic iOS и Simulator builds прошли; приложение установлено и запущено в отдельном iPhone 17 Pro Simulator/iOS 26.5. |
 | Упаковка macOS | Финальный flavored build, codesign verification и установка `Burette-auditde6e.app` прошли; handshake, capabilities и отклонение replay проверены на Apple M2 Pro. |
 | Метаданные | Форматы, версии релиза, vendor integrity, plugin mirror и Sparkle signing/appcast fixtures проверены. |
@@ -96,10 +97,9 @@ plugin bundle и `vendor-assets.lock.json`. Сверка выполнялась 
 - Сохраняются предупреждения линтера и сборщика о крупных научных bundles;
   аудит не маскирует их повышением лимитов.
 - Визуальная проверка нативных окон ожидает разблокировки Mac; запуск процесса
-  Simulator сам по себе не доказывает корректный рендеринг. Native SDF требует
-  повторного прогона после разблокировки: `rdkitLoaded=true`, `rdkitPending=2`,
-  `rdkitImages=false`. Зависание ожидающего animation frame в невидимом WKWebView
-  — возможная причина, но она не доказана. Этот сценарий остаётся открытым.
+  Simulator сам по себе не доказывает корректный рендеринг. Для Quick Look есть
+  отдельное подтверждение содержимого через native semantic smoke и журналы
+  установленного расширения.
 
 Локальные журналы и снимки: `build/reports/audit-2026-09-27/`.
 `03-ketcher-before-fix.png` показывает воспроизведение пустого редактора;
