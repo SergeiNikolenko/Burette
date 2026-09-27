@@ -1789,7 +1789,7 @@ kbd span { margin-left: 2px; }
   border-radius: var(--control-radius);
   background: transparent;
   color: var(--text-secondary);
-  padding: 5px 64px 5px 10px;
+  padding: 5px 86px 5px 10px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1965,7 +1965,7 @@ kbd span { margin-left: 2px; }
   color: var(--text-secondary);
   /* Indentation comes from the nesting of .project-folder-children now, not from
      a per-row depth multiplier, so every level also gets a guide line for free. */
-  padding: 5px 40px 5px 6px;
+  padding: 5px 62px 5px 6px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1979,8 +1979,29 @@ kbd span { margin-left: 2px; }
   background: var(--surface-subtle);
   outline: none;
 }
-.project-folder-row > .project-folder-toggle-button {
-  right: 4px;
+.project-group-row > .project-folder-toggle-button {
+  right: 52px;
+}
+/* Folder pins appear on hover like structure pins; a pinned project keeps its pin. */
+.project-row-pin,
+.project-group-actions > .pin-hit:not(.pinned) {
+  opacity: 0;
+  pointer-events: none;
+  transition: color 140ms ease-out, opacity 140ms ease-out;
+}
+.project-folder-row > .project-row-pin {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+}
+.project-group-row:hover > .project-group-actions > .pin-hit,
+.project-group-row:focus-within > .project-group-actions > .pin-hit,
+.project-folder-row:hover > .project-row-pin,
+.project-folder-row:focus-within > .project-row-pin {
+  opacity: 1;
+  pointer-events: auto;
 }
 .project-folder-name {
   min-width: 0;

@@ -298,6 +298,13 @@ export function ProjectGroup({
           <FolderExpandCollapseIcon collapse={expanded} />
         </button>
         <span className="project-group-actions">
+          {project.rootPath && (
+            <FolderPinButton
+              pinned={project.isPinned}
+              title={project.title}
+              onToggle={() => actions.togglePinnedProjectRoot(project.rootPath!)}
+            />
+          )}
           <button
             type="button"
             className="project-group-menu-button"
@@ -490,6 +497,14 @@ function ProjectTreeNodeView({
         >
           <FolderExpandCollapseIcon collapse={expanded} />
         </button>
+        {folderPath && (
+          <FolderPinButton
+            className="project-row-pin"
+            pinned={false}
+            title={displayName}
+            onToggle={() => actions.togglePinnedProjectRoot(folderPath)}
+          />
+        )}
       </div>
       <div
         className="project-folder-children-shell"
@@ -736,6 +751,30 @@ function sidebarProjectItemsDragPayload(
 
 function projectDepthStyle(depth: number): CSSProperties {
   return { "--project-depth": depth } as CSSProperties;
+}
+
+// Pinning a folder promotes it to a pinned project, same as the folder menu's Pin.
+function FolderPinButton({ pinned, title, onToggle, className }: {
+  pinned: boolean;
+  title: string;
+  onToggle: () => void;
+  className?: string;
+}) {
+  return (
+    <SidebarTooltip label={pinned ? "Unpin folder" : "Pin folder"}>
+      <button
+        type="button"
+        className={["pin-hit", pinned ? "pinned" : "", className ?? ""].filter(Boolean).join(" ")}
+        aria-label={(pinned ? "Unpin " : "Pin ") + title}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggle();
+        }}
+      >
+        <PinIcon pinned={pinned} />
+      </button>
+    </SidebarTooltip>
+  );
 }
 
 function PinIcon({ pinned }: { pinned: boolean }) {
