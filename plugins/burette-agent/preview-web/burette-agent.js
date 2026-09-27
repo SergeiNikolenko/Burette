@@ -568,6 +568,9 @@
     const selectionId = rememberSelection(ligandSelector, counts, args.label || `ligand:${ligand.label_comp_id}`);
     const focusExtraRadius = Number(args.extraRadius ?? args.radiusA ?? DEFAULT_CONTACT_RADIUS_A);
     applyMolstarInteractivity(ligandSelector, 'select', { mode: 'replace', granularity: 'residue', warnings });
+    // The focused ligand becomes the current selection so selection-scoped
+    // follow-ups (capture scope "ligand", observe) resolve the same residue.
+    assertMolstarSelectionApplied(ligandSelector, counts.atoms);
     applyMolstarInteractivity(ligandSelector, 'focus', {
       durationMs: args.durationMs,
       extraRadius: Number.isFinite(focusExtraRadius) && focusExtraRadius > 0 ? focusExtraRadius : DEFAULT_CONTACT_RADIUS_A,
@@ -602,6 +605,18 @@
 
   function commandContacts(args = {}, warnings) {
     return computeContacts(args, warnings);
+  }
+
+  // Mol* resolves schemas independently of the JSON counts above. If it resolves
+  // nothing, select and focus are silent no-ops, so report that instead of ok.
+  function assertMolstarSelectionApplied(selector, expectedAtoms) {
+    if (typeof state.viewer?.structureInteractivity !== 'function') return;
+    const stats = state.plugin?.managers?.structure?.selection?.stats;
+    if (!stats || !Number.isFinite(stats.elementCount)) return;
+    if (stats.elementCount < expectedAtoms) {
+      throw coded('MOLSTAR_ERROR', 'Mol* did not resolve the requested atoms, so the viewer selection and camera were not changed.',
+        { selector, expectedAtoms, selectedAtoms: stats.elementCount });
+    }
   }
 
   function commandResetCamera(args = {}, warnings) {
@@ -1561,6 +1576,15 @@
     const schema = {};
     for (const field of SCHEMA_FIELDS) {
       if (selector[field] != null) schema[field] = selector[field];
+    }
+    // Atom records report the operator name (for example ASM_1) as instance_id,
+    // while the Mol* schema compares instance_id with operator.instanceId. Pass
+    // the name through the schema field that compares names, otherwise every
+    // ligand selector (which always carries instance_id) matches nothing and
+    // select/focus silently leave the viewer unchanged.
+    if (schema.instance_id != null) {
+      schema.operator_name = schema.instance_id;
+      delete schema.instance_id;
     }
     return Object.keys(schema).length ? schema : null;
   }

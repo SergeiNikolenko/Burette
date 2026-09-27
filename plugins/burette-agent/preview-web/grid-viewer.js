@@ -577,9 +577,50 @@
     notifyGridMenuState(cfg);
   }
 
+  // Annotate mode: report the rows (or, between rows, the text) under a
+  // rectangle in this document's client pixels. Bounded for the agent context.
+  function describeGridRegion(rect) {
+    const box = { left: Number(rect?.left), top: Number(rect?.top) };
+    box.right = box.left + Number(rect?.width);
+    box.bottom = box.top + Number(rect?.height);
+    if (!Object.values(box).every(Number.isFinite)) return { ok: false, command: 'describe_region', error: { code: 'INVALID_ARGS' } };
+    const overlaps = r => r.width > 0 && r.height > 0 && r.right >= box.left && r.left <= box.right && r.bottom >= box.top && r.top <= box.bottom;
+    // A row counts when the region covers a real share of it (or sits inside
+    // it), so a region that grazes a neighbouring card does not pull it in.
+    const boxArea = Math.max(1, (box.right - box.left) * (box.bottom - box.top));
+    const rows = [...document.querySelectorAll('.buret-card[data-index], .buret-grid-table-row[data-index]')].filter(row => {
+      const r = row.getBoundingClientRect();
+      if (!overlaps(r)) return false;
+      const shared = Math.max(0, Math.min(r.right, box.right) - Math.max(r.left, box.left)) * Math.max(0, Math.min(r.bottom, box.bottom) - Math.max(r.top, box.top));
+      return shared >= 0.3 * Math.min(r.width * r.height, boxArea);
+    });
+    if (rows.length) {
+      // A click snaps the host's box to the card or table row it landed on.
+      const clicked = rows.length === 1 && box.right - box.left <= 24 && box.bottom - box.top <= 24 ? rows[0].getBoundingClientRect() : null;
+      return { ok: true, command: 'describe_region', result: { surface: 'grid', rowCount: rows.length,
+        ...(clicked ? { box: { left: clicked.left, top: clicked.top, width: clicked.width, height: clicked.height } } : {}),
+        sourceIndexes: rows.slice(0, 64).map(row => Number(row.getAttribute('data-index'))).filter(Number.isSafeInteger),
+        text: rows.slice(0, 8).map(row => row.innerText.replace(/\s+/g, ' ').trim().slice(0, 160)).join('\n') } };
+    }
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    let text = '';
+    for (let node = walker.nextNode(); node && text.length < 1200; node = walker.nextNode()) {
+      if (!node.nodeValue.trim()) continue;
+      range.selectNodeContents(node);
+      if ([...range.getClientRects()].some(overlaps)) text += `${node.nodeValue.trim()} `;
+    }
+    return { ok: true, command: 'describe_region', result: { surface: 'document', text: text.trim().slice(0, 1200) } };
+  }
+
   function installHostMessageListener() {
     window.addEventListener('message', event => {
       const data = event.data;
+      if (data?.source === 'burette-agent-host' && data.body?.type === 'agent-action' && data.body.action?.type === 'describe_region') {
+        event.source?.postMessage({ source: 'burette-agent-viewer',
+          body: { type: 'agent-action-result', id: data.body.id, result: describeGridRegion(data.body.action.rect) } }, '*');
+        return;
+      }
       if (!data || (data.source !== 'burette-grid-host' && data.source !== 'burette-host')) return;
       const body = data.body || {};
       if (body.type === 'gridSetColumnFilter') {
@@ -4074,6 +4115,7 @@
     footer.hidden = !footerText;
     updateGridRail();
     notifyGridMenuState(cfg);
+    notifyGridAgentState(cfg, total, visible);
   }
 
   function moleculeCountLabel(count) {
@@ -4710,6 +4752,72 @@
     if (signature === state.gridFilterModelSignature) return;
     state.gridFilterModelSignature = signature;
     post('gridFilterModel', '[grid] Column filter model.', { model });
+  }
+
+  // Read-only grid state for the agent observe payload. Every field is bounded
+  // so a 1M-row selection or a long query never reaches agent context in full.
+  const GRID_AGENT_MAX_SELECTED_IDS = 50;
+  const GRID_AGENT_MAX_FILTERS = 20;
+  const GRID_AGENT_MAX_TEXT = 256;
+
+  function gridAgentText(value) {
+    return String(value ?? '').slice(0, GRID_AGENT_MAX_TEXT);
+  }
+
+  function gridAgentFilters() {
+    const filters = [];
+    for (const filter of state.descriptorFilters || []) {
+      if (!filter?.id) continue;
+      const row = { id: gridAgentText(`descriptor:${filter.id}`), type: 'number' };
+      if (Number.isFinite(Number(filter.min))) row.min = Number(filter.min);
+      if (Number.isFinite(Number(filter.max))) row.max = Number(filter.max);
+      filters.push(row);
+    }
+    for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
+      if (!filter || tableColumnFilterEmpty(filter)) continue;
+      const row = { id: gridAgentText(columnId), type: filter.type === 'number' ? 'number' : 'text' };
+      if (row.type === 'number') {
+        if (String(filter.min ?? '').trim() && Number.isFinite(Number(filter.min))) row.min = Number(filter.min);
+        if (String(filter.max ?? '').trim() && Number.isFinite(Number(filter.max))) row.max = Number(filter.max);
+      } else {
+        row.text = gridAgentText(String(filter.text || '').trim());
+      }
+      filters.push(row);
+    }
+    return filters;
+  }
+
+  function notifyGridAgentState(cfg, totalRows, visibleRows) {
+    if (cfg?.appViewer !== true) return;
+    const sort = tableActiveSort();
+    const selectedRowIds = [];
+    for (const index of state.selected) {
+      if (selectedRowIds.length >= GRID_AGENT_MAX_SELECTED_IDS) break;
+      const numeric = Number(index);
+      if (Number.isSafeInteger(numeric) && numeric >= 0) selectedRowIds.push(numeric);
+    }
+    const filters = gridAgentFilters();
+    const query = String(state.query || '');
+    const payload = {
+      sort: sort ? { key: gridAgentText(sort.columnId), direction: sort.direction } : { key: 'index', direction: 'asc' },
+      searchQuery: query.slice(0, GRID_AGENT_MAX_TEXT),
+      searchQueryTruncated: query.length > GRID_AGENT_MAX_TEXT,
+      smartsSearch: Boolean(state.smarts),
+      filters: filters.slice(0, GRID_AGENT_MAX_FILTERS),
+      filterCount: filters.length,
+      chemicalSpaceFilterActive: state.chemicalSpaceFilterActive === true,
+      selectedCount: state.selected.size,
+      selectedRowIds,
+      selectionTruncated: state.selected.size > selectedRowIds.length,
+      totalRows: Math.max(0, Number(totalRows) || 0),
+      visibleRows: Math.max(0, Number(visibleRows) || 0),
+      viewMode: gridAgentText(state.viewMode),
+      indexing: state.indexing === true,
+    };
+    const signature = JSON.stringify(payload);
+    if (signature === state.gridAgentStateSignature) return;
+    state.gridAgentStateSignature = signature;
+    post('gridAgentState', '', { gridState: payload });
   }
 
   // How far the right dock floats over the grid. A spilling grid keeps its full

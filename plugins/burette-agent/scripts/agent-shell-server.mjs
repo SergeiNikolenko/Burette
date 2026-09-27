@@ -9,6 +9,7 @@ import { gunzipSync } from 'node:zlib';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { localFileAction } from './local-file-actions.mjs';
+import { renderNativeWorkspaceXyz } from './native-workspace-xyzrender.mjs';
 
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
@@ -265,6 +266,10 @@ async function handleRequest(req, res) {
     await handleNativeCompute(req, res, method);
     return;
   }
+  if (url.pathname === '/__burette/xyzrender') {
+    await handleXyzrender(req, res, method);
+    return;
+  }
   if (url.pathname === '/__burette/chemical-space-representation') {
     await handleChemicalSpaceRepresentation(req, res, method);
     return;
@@ -274,6 +279,31 @@ async function handleRequest(req, res) {
     return;
   }
   await handleStatic(res, method, url);
+}
+
+async function handleXyzrender(req, res, method) {
+  if (method !== 'POST') {
+    sendJson(res, 405, { error: 'Method not allowed' });
+    return;
+  }
+  try {
+    const input = await readJsonBody(req, 800 * 1024);
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid XYZRender request.');
+    // Resolve disk input through the shell's descriptor-based authorization.
+    // Generated sketches already carry bytes; their virtual paths are not files.
+    if (!input.inputDataBase64) {
+      if (typeof input.path !== 'string') throw new Error('XYZRender requires an authorized source.');
+      const file = await openAllowedFile(input.path);
+      try {
+        if ((await file.stat()).size > 512 * 1024) throw new Error('XYZRender input exceeds 512 KiB.');
+        input.inputDataBase64 = (await file.readFile()).toString('base64');
+        input.inputExtension = fileExtension(input.path);
+      } finally { await file.close(); }
+    }
+    sendJson(res, 200, await renderNativeWorkspaceXyz(input));
+  } catch (error) {
+    sendJson(res, 400, { error: error instanceof Error ? error.message : String(error) });
+  }
 }
 
 async function handleChemicalSpaceRepresentation(req, res, method) {
@@ -562,6 +592,7 @@ async function createTrajectoryPairPayload(filePath) {
   const files = [];
   await collectDevFiles(dirname(filePath), files);
   const candidates = Array.from(new Set([filePath, ...files]))
+    .filter((candidate) => dirname(candidate) === dirname(filePath))
     .filter((candidate) => isAllowed(candidate) && TRAJECTORY_PAIR_EXTENSIONS.has(fileExtension(candidate)));
   const coordinatePath = TRAJECTORY_COORDINATE_EXTENSIONS.has(extension)
     ? filePath
