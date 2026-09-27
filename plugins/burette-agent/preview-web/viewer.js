@@ -3098,6 +3098,20 @@
       for (const node of content.querySelectorAll('svg, .buret-xyzrender-animation-image')) node.style.visibility = 'hidden';
       return;
     }
+    // A preview ends when the inspector moves to another item: show the item's
+    // applied GIF, or its static drawing, again.
+    if (event.source === window.parent && body.type === 'clearXyzrenderAnimationPreview') {
+      const item = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item')).find(node => node.dataset.buretXyzrenderEditorId === body.itemId);
+      const content = item?.querySelector('.buret-xyzrender-sheet-item-body');
+      const canvas = content?.querySelector(':scope > .buret-xyzrender-animation-canvas');
+      if (!canvas) return;
+      canvas.remove();
+      const image = content.querySelector('.buret-xyzrender-animation-image');
+      if (image) image.style.visibility = 'visible';
+      const svg = content.querySelector(':scope > svg');
+      if (svg) svg.style.visibility = image ? 'hidden' : '';
+      return;
+    }
     if (event.source === window.parent && body.type === 'applyXyzrenderAnimation') {
       const item = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item')).find(node => node.dataset.buretXyzrenderEditorId === body.itemId);
       const content = item?.querySelector('.buret-xyzrender-sheet-item-body');
@@ -3196,7 +3210,10 @@
         if (addressedToThisDocument) void applyXyzrenderSelectionVdw(controls, preset);
         return;
       }
-      if (addressedToThisDocument && hasXyzrenderSelection()) {
+      // Atom selections only redirect a style meant for the item that holds them.
+      const selectionTargetsItem = addressedToThisDocument && (typeof body.itemId !== 'string'
+        || xyzrenderSelectionGroups().some(group => group.item.dataset.buretXyzrenderEditorId === body.itemId));
+      if (selectionTargetsItem && hasXyzrenderSelection()) {
         void applyXyzrenderSelectionPreset(preset, controls);
         return;
       }
@@ -12896,17 +12913,15 @@ SOFTWARE.
       const position = sheetItemCenterPosition(original);
       const body = original.querySelector('.buret-xyzrender-sheet-item-body');
       const snapshot = body.cloneNode(true);
-      const canvas = body.querySelector('.buret-xyzrender-animation-canvas');
-      if (canvas) {
-        // Canvas pixels are not serialized by innerHTML. Freeze the visible preview
-        // in the duplicate; committed GIF images already retain their animation.
-        snapshot.querySelectorAll('.buret-xyzrender-animation-image').forEach(image => image.remove());
-        const image = document.createElement('img');
-        image.className = 'buret-xyzrender-animation-image';
-        image.style.cssText = canvas.style.cssText;
-        image.style.visibility = 'visible';
-        image.src = canvas.toDataURL('image/png');
-        snapshot.querySelector('.buret-xyzrender-animation-canvas').replaceWith(image);
+      const previewCanvas = snapshot.querySelector(':scope > .buret-xyzrender-animation-canvas');
+      if (previewCanvas) {
+        // A live preview belongs to the original only. The copy shows the
+        // applied GIF, if any, or the static drawing.
+        previewCanvas.remove();
+        const image = snapshot.querySelector('.buret-xyzrender-animation-image');
+        if (image) image.style.visibility = 'visible';
+        const svg = snapshot.querySelector(':scope > svg');
+        if (svg) svg.style.visibility = image ? 'hidden' : '';
       }
       const copy = addXyzrenderSheetItem(sheet, snapshot.innerHTML,
         sheetItemExportLabel(original), { x: position.left + 40, y: position.top + 40 }, 1, getStageScale, xyzrenderSheetItemEntry(original));
@@ -12920,6 +12935,7 @@ SOFTWARE.
     });
     clearRotatableArtifactSelection(root);
     copies.forEach(copy => copy.classList.add('selected'));
+    publishXyzrenderSelection(root);
   }
 
   function arrangeXyzrenderSheetItems(item) {
@@ -13239,7 +13255,10 @@ SOFTWARE.
         try {
           const payload = await renderXyzrenderSheetItemPayload(entry, preset, controls);
           sheetItemSerial += 1;
-          addXyzrenderSheetItem(sheet, payload.svg, label, point, sheetItemSerial, getStageScale, entry);
+          const item = addXyzrenderSheetItem(sheet, payload.svg, label, point, sheetItemSerial, getStageScale, entry);
+          // Record the style the item was drawn with before the document's changes.
+          item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || preset);
+          item.dataset.buretXyzrenderControls = JSON.stringify(controls);
         } catch (error) {
           failed = true;
           setStatus(`Could not add ${label} to xyzrender sheet: ${error instanceof Error ? error.message : String(error)}`, 'error');
@@ -13735,6 +13754,7 @@ SOFTWARE.
       return revision;
     });
     let updated = 0;
+    let updatedBase = false;
     for (const [index, item] of items.entries()) {
       const revision = revisions[index];
       const entry = xyzrenderSheetItemEntry(item);
@@ -13756,17 +13776,22 @@ SOFTWARE.
         const background = item.querySelector('.buret-xyzrender-sheet-item-background');
         if (background) background.style.display = itemControls.transparentBackground ? 'none' : '';
         updated += 1;
+        if (item.classList.contains('buret-xyzrender-sheet-item-base')) updatedBase = true;
       } catch (error) {
         setStatus(`Could not update ${sheetEntryLabel(entry)}: ${error instanceof Error ? error.message : String(error)}`, 'error');
       }
     }
     if (updated > 0) {
-      activeConfig = { ...config, xyzrenderControls: controls, xyzrenderPreset: preset,
-        externalArtifact: { ...config.externalArtifact, preset } };
-      window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
-      postHostMessage({ type: 'rendererChanged', documentId: config.documentId,
-        renderer: 'xyzrender-external', preset, controls, presetOptions: config.xyzrenderPresetOptions || [] });
-      configureRendererControls(activeConfig);
+      // Only the document's own structure defines its style. Duplicates and
+      // added structures keep their appearance on the item alone.
+      if (updatedBase) {
+        activeConfig = { ...config, xyzrenderControls: controls, xyzrenderPreset: preset,
+          externalArtifact: { ...config.externalArtifact, preset } };
+        window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
+        postHostMessage({ type: 'rendererChanged', documentId: config.documentId,
+          renderer: 'xyzrender-external', preset, controls, presetOptions: config.xyzrenderPresetOptions || [] });
+        configureRendererControls(activeConfig);
+      }
       const badge = document.querySelector('.buret-xyz-badge span');
       if (badge) badge.textContent = `${updated} selected · ${preset}`;
       setStatus(`[web] Updated ${updated} selected xyzrender structure${updated === 1 ? '' : 's'}.`);
@@ -13999,13 +14024,16 @@ SOFTWARE.
     root.querySelectorAll('.buret-xyzrender-sheet-item').forEach(item => {
       item.classList.add('selected');
     });
+    publishXyzrenderSelection(root);
   }
 
   function clearRotatableArtifactSelection(root = document) {
-    root.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => {
+    const selected = root.querySelectorAll('.buret-xyzrender-sheet-item.selected');
+    selected.forEach(existing => {
       existing.classList.remove('selected');
       existing.classList.remove('rotating', 'resizing', 'dragging');
     });
+    if (selected.length) publishXyzrenderSelection(root);
   }
 
   function installRotatableArtifactSelectionClear(root) {
@@ -14366,31 +14394,51 @@ SOFTWARE.
     resetRotatableArtifactRotateRadius(item);
   }
 
-  function publishXyzrenderItem(item, type = 'xyzrenderActiveItem') {
-    const config = activeConfig || window.BuretteConfig || {};
-    if (!item || config.appViewer !== true) return;
+  function xyzrenderItemPayload(item, config) {
     const entry = xyzrenderSheetItemEntry(item);
     // Freeze each item's initial appearance before document defaults can change.
     for (const node of document.querySelectorAll('.buret-xyzrender-sheet-item')) {
       node.dataset.buretXyzrenderPreset ||= config.xyzrenderPreset || 'default';
       node.dataset.buretXyzrenderControls ||= JSON.stringify(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS);
     }
-    item.dataset.buretXyzrenderEditorId ||= `xyzr-${Date.now()}-${++xyzrenderSheetRequestSerial}`;
-    postHostMessage({
-          itemId: item.dataset.buretXyzrenderEditorId,
-          type, documentId: config.documentId, label: sheetEntryLabel(entry).split('/').pop(),
-          path: sheetEntryLabel(entry), inputDataBase64: sheetEntryInputDataBase64(entry),
-          animationSourcePath: entry?.animationSourcePath,
-          animationSourceExtension: entry?.animationSourceExtension,
-          inputExtension: sheetEntryInputExtension(entry),
-          previewSvg: item.querySelector('.buret-xyzrender-sheet-item-body > svg')?.outerHTML || '',
-          preset: item.dataset.buretXyzrenderPreset || config.xyzrenderPreset || 'default',
-          controls: normalizeXyzrenderControls({ ...(item.dataset.buretXyzrenderControls ? JSON.parse(item.dataset.buretXyzrenderControls) : config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS), regions: xyzrenderSheetItemRegions(item), vdwAtoms: xyzrenderSheetItemVdwAtoms(item) || config.xyzrenderControls?.vdwAtoms }, config),
-          orientationRef: item.dataset.buretXyzrenderOrientationRef || captureCurrentXyzrenderOrientationRef()?.text,
-          orientationBaseRef: item.dataset.buretXyzrenderOrientationBase,
-          angles: item.dataset.buretXyzrenderOrientationAngles ? JSON.parse(item.dataset.buretXyzrenderOrientationAngles) : undefined,
+    // Ids route host messages to one item, so they must stay unique across tabs.
+    item.dataset.buretXyzrenderEditorId ||= `xyzr-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+    return {
+      itemId: item.dataset.buretXyzrenderEditorId,
+      documentId: config.documentId, label: sheetEntryLabel(entry).split('/').pop(),
+      path: sheetEntryLabel(entry), inputDataBase64: sheetEntryInputDataBase64(entry),
+      animationSourcePath: entry?.animationSourcePath,
+      animationSourceExtension: entry?.animationSourceExtension,
+      inputExtension: sheetEntryInputExtension(entry),
+      preset: item.dataset.buretXyzrenderPreset || config.xyzrenderPreset || 'default',
+      controls: normalizeXyzrenderControls({ ...(item.dataset.buretXyzrenderControls ? JSON.parse(item.dataset.buretXyzrenderControls) : config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS), regions: xyzrenderSheetItemRegions(item), vdwAtoms: xyzrenderSheetItemVdwAtoms(item) || config.xyzrenderControls?.vdwAtoms }, config),
+      orientationRef: item.dataset.buretXyzrenderOrientationRef || captureCurrentXyzrenderOrientationRef()?.text,
+      orientationBaseRef: item.dataset.buretXyzrenderOrientationBase,
+      angles: item.dataset.buretXyzrenderOrientationAngles ? JSON.parse(item.dataset.buretXyzrenderOrientationAngles) : undefined,
+    };
+  }
 
+  // Batch animation acts on every selected structure, not only the inspected one.
+  function xyzrenderSelectionPayload(root, config) {
+    const selected = selectedXyzrenderSheetItems(root);
+    return selected.length > 1 ? selected.map(node => xyzrenderItemPayload(node, config)) : [];
+  }
+
+  function publishXyzrenderItem(item, type = 'xyzrenderActiveItem') {
+    const config = activeConfig || window.BuretteConfig || {};
+    if (!item || config.appViewer !== true) return;
+    const root = item.closest?.('.buret-external-artifact-root') || document;
+    postHostMessage({
+      ...xyzrenderItemPayload(item, config), type,
+      previewSvg: item.querySelector('.buret-xyzrender-sheet-item-body > svg')?.outerHTML || '',
+      selection: xyzrenderSelectionPayload(root, config),
     });
+  }
+
+  function publishXyzrenderSelection(root = document) {
+    const config = activeConfig || window.BuretteConfig || {};
+    if (config.appViewer !== true) return;
+    postHostMessage({ type: 'xyzrenderSelection', documentId: config.documentId, selection: xyzrenderSelectionPayload(root, config) });
   }
 
   async function openXyzrender3DEditor() {

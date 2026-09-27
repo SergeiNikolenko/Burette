@@ -10,6 +10,7 @@ import { Field, FieldLabel, FieldGroup } from './ui/field';
 import { Button } from './ui/button';
 import { Alert, AlertDescription } from './ui/alert';
 import type { AnimationSource } from './xyzrender-animation-dialog';
+import { postToXyzrenderViewer } from '../lib/viewer-bridge';
 
 type RenderedOrientation = { svg: string; orientationRef: string; baseOrientationRef: string };
 function MolecularOrientationPanel({ source, onPrepared }: { source: AnimationSource; onPrepared: (source: AnimationSource) => void }) {
@@ -27,6 +28,10 @@ function MolecularOrientationPanel({ source, onPrepared }: { source: AnimationSo
 
   const latestAngles = useRef(angles);
   latestAngles.current = angles;
+  // Opening the editor or selecting an item must not redraw it; only an
+  // angle the user changed re-renders and replaces the item's artwork.
+  const edited = useRef(false);
+  const editAngles = (next: (current: number[]) => number[]) => { edited.current = true; setAngles(next); };
   const requestRender = useRef<() => void>(() => {});
   useEffect(() => {
     let disposed = false;
@@ -60,24 +65,22 @@ function MolecularOrientationPanel({ source, onPrepared }: { source: AnimationSo
       finally { running = false; if (!disposed) setBusy(false); }
     };
     requestRender.current = () => { void render(); };
-    void render();
     return () => { disposed = true; controller.abort(); requestRender.current = () => {}; };
   }, [source]);
-  useEffect(() => { requestRender.current(); }, [angles]);
+  useEffect(() => { if (edited.current) requestRender.current(); }, [angles]);
   const nextSource = () => ({ ...source, previewSvg: result?.svg || source.previewSvg, orientationRef: result?.orientationRef || source.orientationRef, orientationBaseRef: result?.baseOrientationRef || source.orientationBaseRef, angles });
   useEffect(() => { onPrepared(nextSource()); }, [result, source, onPrepared]);
   const apply = () => {
     if (!result) return;
-    for (const frame of document.querySelectorAll<HTMLIFrameElement>('iframe.viewer-iframe')) frame.contentWindow?.postMessage({ source: 'burette-host', body: {
+    postToXyzrenderViewer(source.documentId, {
       type: 'applyXyzrenderOrientation', itemId: source.itemId, svg: result.svg, orientationRef: result.orientationRef, orientationBaseRef: result.baseOrientationRef, angles, controls: source.controls,
-    } }, '*');
-
+    });
   };
   useEffect(() => { if (result) apply(); }, [result]);
   return <div className="flex flex-col gap-4">
     <div>
       <FieldGroup className="xyzrender-angle-fields">{['X', 'Y', 'Z'].map((axis, index) => <Field key={axis} orientation="horizontal" className="xyzrender-angle-row"><FieldLabel>{axis}</FieldLabel>
-        <ScrubNumberField aria-label={`${axis} orientation`} formatValue={value => `${value}°`} min={-180} max={180} step={1} smallStep={1} value={angles[index]} onValueChange={value => setAngles(current => current.map((angle, i) => i === index ? value : angle))} className="min-w-0 flex-1" />
+        <ScrubNumberField aria-label={`${axis} orientation`} formatValue={value => `${value}°`} min={-180} max={180} step={1} smallStep={1} value={angles[index]} onValueChange={value => editAngles(current => current.map((angle, i) => i === index ? value : angle))} className="min-w-0 flex-1" />
       </Field>)}
       </FieldGroup>
     </div>
@@ -90,7 +93,7 @@ function MolecularOrientationPanel({ source, onPrepared }: { source: AnimationSo
           void exportXyzrenderFigure(nextSource(), format, controller.signal).then(file => { if (file) setSaved(file.name); }).catch(cause => { if (!controller.signal.aborted) setError(String(cause)); }).finally(() => setSaving(false));
         }}>Save {format.toUpperCase()}</DropdownMenuItem>)}</DropdownMenuGroup></DropdownMenuContent>
       </DropdownMenu>
-      <Button variant="ghost" size="sm" className="ml-auto" onClick={() => setAngles([0, 0, 0])}><ArrowRotateCcw />Reset angles</Button>
+      <Button variant="ghost" size="sm" className="ml-auto" onClick={() => editAngles(() => [0, 0, 0])}><ArrowRotateCcw />Reset angles</Button>
 </div>
   </div>;
 }

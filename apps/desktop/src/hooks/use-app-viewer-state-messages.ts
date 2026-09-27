@@ -23,6 +23,17 @@ type SetStructureStories = (
   ) => Record<string, StructureStory | null>,
 ) => void;
 
+// The viewer lists every selected xyzrender item so the animation inspector can
+// render them as a batch; one or zero selected items send an empty list.
+function dispatchXyzrenderSelection(body: Record<string, unknown>) {
+  const selection = Array.isArray(body.selection) ? body.selection : [];
+  const items = selection.length <= 500 ? selection.filter((item): item is Record<string, unknown> =>
+    Boolean(item) && typeof item === "object" && typeof item.itemId === "string" && typeof item.path === "string") : [];
+  window.dispatchEvent(new CustomEvent("burette:xyzrender-selection", {
+    detail: { documentId: body.documentId, items: items.map(item => ({ ...item, previewSvg: "" })) },
+  }));
+}
+
 type UseAppViewerStateMessagesOptions = {
   updateDirtyGridDocument: (documentId: string, dirty: boolean) => void;
   activeDocument: ViewerDocument | null;
@@ -106,14 +117,21 @@ export function useAppViewerStateMessages({
 
     if (sourceName === "burette-viewer" && body?.type === "xyzrenderActiveItem") {
       if (body.documentId === activeDocument?.id && typeof body.itemId === "string" && typeof body.path === "string" && typeof body.previewSvg === "string" && body.previewSvg.length <= 2_000_000) {
+        dispatchXyzrenderSelection(body);
         window.dispatchEvent(new CustomEvent("burette:xyzrender-active-item", { detail: body }));
       }
+      return true;
+    }
+
+    if (sourceName === "burette-viewer" && body?.type === "xyzrenderSelection") {
+      if (body.documentId === activeDocument?.id) dispatchXyzrenderSelection(body);
       return true;
     }
 
     if (sourceName === "burette-viewer" && body?.type === "openXyzrenderAnimation") {
       if (typeof body.path === "string" && typeof body.previewSvg === "string" && body.previewSvg.length <= 2_000_000) {
         openDockTab("right", "xyzrender");
+        dispatchXyzrenderSelection(body);
         window.dispatchEvent(new CustomEvent("burette:xyzrender-animation", { detail: body }));
       }
       return true;

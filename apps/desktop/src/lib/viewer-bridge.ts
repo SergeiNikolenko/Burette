@@ -60,6 +60,14 @@ export function activeViewerIframeForDocument(documentId: string, renderer?: str
   );
 }
 
+// xyzrender sheet items are addressed per viewer: another tab can show the
+// same file, and broadcasting would edit or animate its copies as well.
+export function postToXyzrenderViewer(documentId: string | undefined, body: Record<string, unknown>) {
+  const owner = documentId ? activeViewerIframeForDocument(documentId) : null;
+  const frames = owner ? [owner] : Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe"));
+  for (const frame of frames) frame.contentWindow?.postMessage({ source: "burette-host", body }, "*");
+}
+
 // Request/ack transport for workspace commands that must finish before the next
 // operation. Both the frame and request id are checked, including hidden tabs.
 export async function requestViewerAction(documentId: string, action: Record<string, unknown>, timeoutMs = 60000) {
