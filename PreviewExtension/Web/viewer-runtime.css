@@ -2078,15 +2078,6 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
 }
 .buret-renderer-control.visible { display: flex; }
 .buret-mode-button { width: 34px; min-width: 34px; padding: 0; }
-.buret-panel-icon { position: relative !important; display: inline-flex; width: 16px; height: 16px; flex: none; }
-.buret-panel-icon svg { width: 16px; height: 16px; }
-.buret-panel-icon [data-panel-label] {
-  position: absolute !important; top: 20.833333%; width: 37.5%; height: 58.333333%;
-  display: flex; align-items: center; justify-content: center;
-  font: 500 7px/1 system-ui; letter-spacing: 0; pointer-events: none;
-}
-.buret-panel-icon [data-panel-label="left"] { left: 41.666667%; }
-.buret-panel-icon [data-panel-label="right"] { left: 20.833333%; }
 .buret-mode-button svg { width: 18px; height: 18px; }
 .buret-molstar-preset-slot { display: none; align-items: center; }
 .buret-molstar-preset-slot.visible { display: flex; }
