@@ -2931,6 +2931,8 @@
     positionGenerate3DMenu(anchor);
     anchor.setAttribute('aria-expanded', 'true');
     menu.querySelector('[role="menuitem"]')?.focus?.();
+    const rect = anchor.getBoundingClientRect();
+    showNativeViewerMenu(menu, rect.left, rect.bottom, hideGenerate3DMenu);
   }
 
   function positionGenerate3DMenu(anchor = document.querySelector('[data-buret-action="generate-3d-conformer"]')) {
@@ -4504,6 +4506,8 @@
     positionMolstarPresetMenu(anchor);
     const selected = menu.querySelector('[aria-checked="true"]');
     focusMolstarPresetControl(setMolstarPresetMenuRovingItem(menu, selected), pointerFocus);
+    const rect = anchor.getBoundingClientRect();
+    showNativeViewerMenu(menu, rect.left, rect.bottom, hideMolstarPresetMenu);
   }
 
   function escapeHtml(value) {
@@ -8982,6 +8986,7 @@ SOFTWARE.
     menu.style.left = `${Math.round(left)}px`;
     menu.style.top = `${Math.round(top)}px`;
     initViewportPanelDrag(menu);
+    queueMicrotask(() => showNativeViewerMenu(menu, clientX, clientY, closeSceneTreeMenu));
   }
 
   function molstarSceneMenuUndoLabel(action, ref, control) {
@@ -9469,6 +9474,8 @@ SOFTWARE.
     document.body.appendChild(menu);
     trigger.setAttribute('aria-expanded', 'true');
     positionOpenViewportMenu(trigger.closest('#buret-viewport-rail, .buret-seq-footer'));
+    const anchor = trigger.getBoundingClientRect();
+    showNativeViewerMenu(menu, anchor.left, anchor.bottom, closeViewportMenu);
   }
 
   function viewportMenuItem(menu, label, action, options = {}) {
@@ -24735,6 +24742,35 @@ SOFTWARE.
     if (postHostMessage({ type: 'molstarContextMenu', requestId: session.requestId, ...point, items })) return true;
     molstarNativeMenuPending = null;
     return false;
+  }
+
+  // Scene, Composition and rail menus share private scene-edit handlers. The
+  // adapter owns presentation; the viewer retains ref scoping and undo history.
+  function showNativeViewerMenu(menu, clientX, clientY, close) {
+    const config = activeConfig || window.BuretteConfig || {};
+    if (config.appViewer !== true || document.body.classList.contains('burette-mobile-host')
+      || !menu.isConnected || !window.BuretteNativeViewerMenus) return false;
+    const undo = new Map();
+    return window.BuretteNativeViewerMenus.show(menu, {
+      post: postHostMessage, x: clientX, y: clientY,
+      finishControl: commitSceneTreeControlUndo,
+      close: () => { for (const snapshot of undo.values()) pushMolstarEditUndoSnapshot(snapshot); if (document.getElementById(menu.id) === menu) close(); },
+      color(control, value) {
+        const ref = control.closest('[data-ref]')?.dataset.ref;
+        if (!ref) {
+          control.dataset.viewportColor = String(value);
+          control.click();
+          return;
+        }
+        const action = control.dataset.sceneTreeAction;
+        const field = control.dataset.sceneTreeMeasurementColor;
+        const key = field || action;
+        if (!undo.has(key)) undo.set(key, captureMolstarSceneUndoSnapshot(`colour of ${sceneTreeNodeByRef(sceneTreeNodes(activeMolstarViewer()), ref)?.label || 'scene object'}`));
+        if (field) void streamSceneTreeMeasurementParam(ref, field, value);
+        else void streamSceneTreeTheme(ref, action, 'tint', value);
+      }
+    });
+
   }
 
   function handleMolstarNativeMenuResult(body) {

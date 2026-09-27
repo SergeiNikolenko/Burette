@@ -53,7 +53,7 @@ export function useAppXyzrenderSheetMessages({
     }
     if (body?.type === "molstarContextMenu") {
       const requestId = body.requestId;
-      if (sourceName !== "burette-viewer" || typeof requestId !== "string" || requestId.length > 128) return true;
+      if ((sourceName !== "burette-viewer" && sourceName !== "burette-grid") || typeof requestId !== "string" || requestId.length > 128) return true;
       const reply = (result: { event: "select" | "closed" | "unsupported"; id?: string; value?: string | number | boolean }) =>
         postMessageToViewerSource(source, { source: "burette-host", body: { type: "molstarContextMenuResult", requestId, ...result } });
       // Browser-dev keeps the viewer's own menu; only the desktop app has NSMenu.

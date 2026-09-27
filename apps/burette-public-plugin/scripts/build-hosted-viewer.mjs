@@ -30,6 +30,7 @@ const VIEWER_FILES = [
   "molecule-preview-interactions.js",
   "color-picker.js",
   "sequence-panel.js",
+  "native-viewer-menus.js",
   "scene-file-actions.js",
   "renderer-view-state.js",
   "viewer.js",

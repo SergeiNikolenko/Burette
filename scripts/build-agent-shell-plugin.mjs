@@ -33,6 +33,7 @@ const requiredPreviewAssets = [
   'xyzrender-3d-editor.js',
   'color-picker.js',
   'sequence-panel.js',
+  'native-viewer-menus.js',
   'scene-file-actions.js',
   'molstar.js',
   'molstar.css',

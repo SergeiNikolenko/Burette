@@ -16,6 +16,7 @@
       "xyzrender-3d-editor.js",
       "color-picker.js",
       "sequence-panel.js",
+      "native-viewer-menus.js",
       "scene-file-actions.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
@@ -26,6 +27,7 @@
       "mesoscale.css"
     ],
     "desktop-grid": [
+      "native-viewer-menus.js",
       "grid-viewer.js",
       "openchemlib/openchemlib.js",
       "grid.css",
@@ -52,6 +54,7 @@
       "xyzrender-3d-editor.js",
       "color-picker.js",
       "sequence-panel.js",
+      "native-viewer-menus.js",
       "scene-file-actions.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
@@ -62,6 +65,7 @@
       "mesoscale.css"
     ],
     "quicklook-grid": [
+      "native-viewer-menus.js",
       "grid-viewer.js",
       "openchemlib/openchemlib.js",
       "grid.css",
@@ -69,6 +73,7 @@
       "rdkit/RDKit_minimal.wasm"
     ],
     "external-artifact": [
+      "native-viewer-menus.js",
       "viewer-runtime.css",
       "viewer-shell.js",
       "burette-agent.js",
