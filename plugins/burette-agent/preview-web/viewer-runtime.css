@@ -1755,7 +1755,10 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  white-space: nowrap;
+  width: max-content;
+  white-space: normal;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
   transform: translateY(-4px) scale(0.98);
   transform-origin: top center;
   transition: opacity 110ms ease-out, transform 130ms ease-out, visibility 0s linear 110ms;
