@@ -9,7 +9,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
-import { ChevronDown, SettingsSlider as SlidersHorizontal } from "@/components/ui/app-icons";
+import { ChevronDown, SettingsSlider as SlidersHorizontal, X } from "@/components/ui/app-icons";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -21,7 +21,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Field, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
@@ -74,6 +74,7 @@ import {
 import { isTauriRuntime } from "../lib/tauri";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "../lib/viewer-bridge";
 import type { ViewerDocument } from "../types";
+import { ChemicalSpaceGroupLegend } from "./chemical-space-group-legend";
 import { ChemicalSpaceViewControls } from "./chemical-space-view-controls";
 import { useChemicalSpaceSetting } from "../hooks/use-chemical-space-setting";
 import { useThemePortalContainer } from "./radix-menu";
@@ -104,8 +105,18 @@ type StudyState = {
   range: [number, number];
   frames: number;
 };
+// The options and swept values travel with the frames, so the timeline can name
+// the value on screen and "Use" can rebuild exactly the map being shown.
 type CompletedStudy = {
   results: ChemicalSpaceResult[];
+  parameter: StudyParameter;
+  values: number[];
+  base: ChemicalSpaceOptions;
+};
+const STUDY_PARAMETER_NAMES: Record<StudyParameter, string> = {
+  neighbors: "Neighbors",
+  minDist: "Minimum distance",
+  learningRate: "Learning rate",
 };
 type GridIndexState = {
   recordsIndexed: number;
@@ -298,6 +309,9 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
   const [activityColumnId, setActivityColumnId] = useChemicalSpaceSetting<string | null>(documentSettingsKey, "activityColumnId", null);
   const [activityDirection, setActivityDirection] = useChemicalSpaceSetting<ActivityDirection>(documentSettingsKey, "activityDirection", "higherActive");
   const [activityValues, setActivityValues] = useState<Map<number, number>>(new Map());
+  // One colour channel, two layers that want it: activity paints over groups
+  // point by point, which hid the groups entirely, so the user picks one.
+  const [mapColoring, setMapColoring] = useChemicalSpaceSetting<"activity" | "groups">(documentSettingsKey, "mapColoring", "activity");
   const [cliffsEnabled, setCliffsEnabled] = useChemicalSpaceSetting(documentSettingsKey, "cliffsEnabled", false);
   const [cliffMinSimilarity, setCliffMinSimilarity] = useChemicalSpaceSetting(documentSettingsKey, "cliffMinSimilarity", 0.6);
   const [cliffMinDelta, setCliffMinDelta] = useChemicalSpaceSetting(documentSettingsKey, "cliffMinDelta", 1);
@@ -872,7 +886,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
           ));
       if (controller.signal.aborted) return;
       const aligned = alignStudyResults(results);
-      setCompletedStudy({ results: aligned });
+      setCompletedStudy({ results: aligned, parameter: study.parameter, values, base: draft });
       setStudyPosition(0);
       setStudyPlaying(true);
       setProgress(null);
@@ -917,9 +931,24 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
     if (!rankedClusters) return null;
     const sizes = [...clusterSizes(rankedClusters).values()];
     const singles = sizes.filter((size) => size === 1).length;
-    return `${rankedClusters.clusterCount} group${rankedClusters.clusterCount === 1 ? "" : "s"}`
-      + ` · biggest ${Math.max(...sizes)}`
-      + (singles > 0 ? ` · ${singles} single${singles === 1 ? "" : "s"}` : "");
+    // A molecule with no neighbour above the cutoff is not a group, so it is
+    // counted apart instead of inflating the group count.
+    const groups = sizes.length - singles;
+    return `${groups} group${groups === 1 ? "" : "s"}`
+      + ` · largest ${Math.max(...sizes)}`
+      + (singles > 0 ? ` · ${singles} unclustered` : "");
+  }, [rankedClusters]);
+  const groupCount = useMemo(
+    () => rankedClusters ? [...clusterSizes(rankedClusters).values()].filter((size) => size > 1).length : 0,
+    [rankedClusters],
+  );
+  const colorByGroups = clusterMode !== "off" && (mapColoring === "groups" || !activityColumnId);
+  const groupLegend = useMemo(() => {
+    if (!rankedClusters) return null;
+    const sizes = clusterSizes(rankedClusters);
+    const coloured = Array.from({ length: Math.min(CLUSTER_COLORS.length, sizes.size) }, (_, rank) => sizes.get(rank) ?? 0);
+    const colouredTotal = coloured.reduce((sum, size) => sum + size, 0);
+    return { sizes: coloured, otherCount: rankedClusters.clusterIds.length - colouredTotal };
   }, [rankedClusters]);
   const embeddingDirty = (Object.keys(draft) as Array<keyof ChemicalSpaceOptions>)
     .some((key) => draft[key] !== options[key]);
@@ -965,6 +994,14 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
       filterToSelection: false,
     });
   }, [postToGrid]);
+  const selectGroup = (rank: number) => {
+    if (!rankedClusters) return;
+    const members = rankedClusters.sourceRecordIds
+      .filter((_, index) => rankedClusters.clusterIds[index] === rank)
+      .slice(0, GRID_SELECTION_BRIDGE_LIMIT);
+    setSelected(new Set(members));
+    postToGrid({ type: "chemicalSpaceSelectionChanged", sourceRecordIds: members, filterToSelection: false });
+  };
   // Primary controls remain visible in either dock. Only secondary scope
   // and timing details fold away when the panel is narrow.
   const controlsRowRef = useRef<HTMLDivElement | null>(null);
@@ -1092,7 +1129,12 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
               aria-label="Activity colour column"
               value={activityColumnId ?? ""}
               disabled={activityColumns.length === 0}
-              onChange={(event) => setActivityColumnId(event.currentTarget.value || null)}
+              onChange={(event) => {
+                const columnId = event.currentTarget.value || null;
+                setActivityColumnId(columnId);
+                // Picking a column is asking to see it, even over the groups.
+                if (columnId) setMapColoring("activity");
+              }}
             >
               <NativeSelectOption value="">Activity: none</NativeSelectOption>
               {activityColumns.map((column) => (
@@ -1211,13 +1253,13 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
             <ChemicalSpaceCanvas
               documentKey={documentSettingsKey}
               result={displayedResult}
-              clusters={rankedClusters}
+              clusters={colorByGroups ? rankedClusters : null}
               selected={selected}
               hovered={hovered}
               preview={inspectorShowsMolecule ? null : preview}
               pointScale={pointScale}
               tmapLineScale={tmapLineScale}
-              activityColors={activityColoring?.colors ?? null}
+              activityColors={colorByGroups ? null : activityColoring?.colors ?? null}
               visibleSourceIds={scope === "filtered" ? null : visibleSourceIds}
               cliffs={cliffs}
               cliffScores={cliffScores}
@@ -1293,7 +1335,16 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
               onStop={stopCalculation}
             />
           )}
-          {displayedResult && activityColoring ? (
+          {displayedResult && colorByGroups && groupLegend ? (
+            <ChemicalSpaceGroupLegend
+              sizes={groupLegend.sizes}
+              colors={CLUSTER_COLORS}
+              neutralColor={displayedResult.dimensions === 3 ? "var(--foreground)" : UNGROUPED_POINT_COLOR}
+              otherCount={groupLegend.otherCount}
+              cutoff={clusterCutoffShown}
+              onSelectGroup={selectGroup}
+            />
+          ) : displayedResult && activityColoring ? (
             <ActivityLegend
               label={activityColumns.find((column) => column.id === activityColumnId)?.label ?? "Activity"}
               coloring={activityColoring}
@@ -1315,16 +1366,17 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
               deltaStep={cliffDeltaStep}
               previews={moleculePreviews}
               activityValues={activityValues}
+              onClose={() => setCliffsEnabled(false)}
             />
           ) : null}
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-3 py-1.5">
-          <div className="flex shrink-0 items-center gap-0.5" role="group" aria-label="Chemical-space tools">
+          <div className="flex min-w-0 flex-wrap items-center gap-0.5" role="group" aria-label="Chemical-space tools">
           <Popover>
             <PopoverTrigger asChild>
               <Button className="shrink-0 text-muted-foreground" variant="ghost" size="xs">
-                Embedding
+                Layout
                 {embeddingDirty ? (
                   <span
                     className="ml-0.5 size-1.5 rounded-full bg-primary"
@@ -1341,19 +1393,29 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
               className="max-h-[min(70vh,32rem)] w-72 overflow-y-auto"
             >
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-foreground">{methodLabel(draft.method)}</span>
+                <span className="text-sm font-medium text-foreground">{methodLabel(draft.method)} layout</span>
                 <span className="text-xs text-muted-foreground">
-                  {draft.method === "tmap"
-                    ? `k=${draft.neighbors} · Metal kNN → minimum spanning tree`
-                    : `k=${draft.neighbors} · min dist=${draft.minDist.toFixed(2)}`}
+                  {embeddingDirty
+                    ? "Changed — rebuild the map to apply."
+                    : draft.method === "tmap"
+                      ? "Links each molecule to its nearest neighbours and draws the tree they form."
+                      : "Places molecules with similar fingerprints close together."}
                 </span>
               </div>
               <FieldGroup className="gap-3">
-                <ParameterField label="Neighbors" value={draft.neighbors}>
+                <ParameterField
+                  label="Neighbors"
+                  value={draft.neighbors}
+                  hint="Fewer keeps local detail; more keeps the overall shape."
+                >
                   <Slider tone="neutral" min={2} max={64} step={1} value={[draft.neighbors]} onValueChange={([neighbors]) => setDraft((value) => ({ ...value, neighbors }))} />
                 </ParameterField>
                 {draft.method !== "tmap" ? (
-                  <ParameterField label="Minimum distance" value={draft.minDist.toFixed(2)}>
+                  <ParameterField
+                    label="Minimum distance"
+                    value={draft.minDist.toFixed(2)}
+                    hint="Lower packs similar molecules into tighter clumps."
+                  >
                     <Slider tone="neutral" min={0} max={1} step={0.01} value={[draft.minDist]} onValueChange={([minDist]) => setDraft((value) => ({ ...value, minDist }))} />
                   </ParameterField>
                 ) : null}
@@ -1406,17 +1468,20 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                   disabled={!embeddingDirty || Boolean(progress)}
                   onClick={() => commitOptions({ ...draft })}
                 >
-                  Rebuild on Metal
+                  Rebuild map
                 </Button>
               </div>
             </PopoverContent>
           </Popover>
           <Popover>
             <PopoverTrigger asChild>
-              <Button className="shrink-0 text-muted-foreground" variant="ghost" size="xs">
-                {clusterMode === "off" || !rankedClusters
-                  ? "Grouping"
-                  : `Grouping · ${rankedClusters.clusterCount}`}
+              {/* Outline marks a layer that is drawn on the map, the same as Cliffs. */}
+              <Button
+                className={clusterMode === "off" ? "shrink-0 text-muted-foreground" : "shrink-0"}
+                variant={clusterMode === "off" ? "ghost" : "outline"}
+                size="xs"
+              >
+                {clusterMode === "off" || !rankedClusters ? "Groups" : `Groups · ${groupCount}`}
               </Button>
             </PopoverTrigger>
             <PopoverContent
@@ -1428,11 +1493,11 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
               data-testid="chemical-space-cluster-controls"
             >
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-foreground">Butina · Tanimoto</span>
+                <span className="text-sm font-medium text-foreground">Groups of similar molecules</span>
                 <span className="text-xs text-muted-foreground">
                   {clusterMode === "off"
-                    ? "Collects molecules that share a series into groups."
-                    : `Tanimoto ≥ ${clusterCutoffShown.toFixed(2)}${clusterMode === "auto" ? " · chosen for you" : ""}`}
+                    ? "Collects molecules that share a series into groups and colours the map by them."
+                    : `Butina clustering · similarity ≥ ${clusterCutoffShown.toFixed(2)} · ${clusterMode === "auto" ? "picked automatically" : "set by you"}`}
                 </span>
               </div>
               {clusterMode === "off" ? (
@@ -1441,6 +1506,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                   onClick={() => {
                     setClusterCutoff(CLUSTER_START_CUTOFF);
                     setClusterMode("auto");
+                    setMapColoring("groups");
                   }}
                 >
                   Group similar
@@ -1452,8 +1518,31 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                       ? "Grouping on Metal…"
                       : clusterError ?? clusterSummary ?? "No groups"}
                   </p>
+                  {activityColumnId ? (
+                    <Field className="gap-1.5">
+                      <FieldLabel className="text-xs">Colour the map by</FieldLabel>
+                      <ToggleGroup
+                        className="w-full"
+                        type="single"
+                        variant="outline"
+                        size="sm"
+                        spacing={0}
+                        value={colorByGroups ? "groups" : "activity"}
+                        aria-label="Colour the map by"
+                        onValueChange={(value) => {
+                          if (value === "groups" || value === "activity") setMapColoring(value);
+                        }}
+                      >
+                        <ToggleGroupItem className="flex-1" value="groups">Groups</ToggleGroupItem>
+                        <ToggleGroupItem className="min-w-0 flex-1" value="activity">
+                          <span className="truncate">{activityColumnLabel}</span>
+                        </ToggleGroupItem>
+                      </ToggleGroup>
+                    </Field>
+                  ) : null}
                   {/* The nudges are the cutoff for anyone who would rather not
-                      think in Tanimoto; the slider below is the same knob, named. */}
+                      think in Tanimoto; the slider below is the same knob, named.
+                      A lower cutoff lets more molecules in, so groups get larger. */}
                   <div className="flex items-center gap-1.5">
                     <Button
                       className="flex-1"
@@ -1462,7 +1551,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                       disabled={clusterRunning || clusterCutoffShown - CLUSTER_CUTOFF_STEP < CLUSTER_MIN_CUTOFF}
                       onClick={() => nudgeClusterCutoff(-CLUSTER_CUTOFF_STEP)}
                     >
-                      Coarser
+                      Larger groups
                     </Button>
                     <Button
                       className="flex-1"
@@ -1471,7 +1560,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                       disabled={clusterRunning || clusterCutoffShown + CLUSTER_CUTOFF_STEP > CLUSTER_MAX_CUTOFF}
                       onClick={() => nudgeClusterCutoff(CLUSTER_CUTOFF_STEP)}
                     >
-                      Finer
+                      Tighter groups
                     </Button>
                   </div>
                   <Collapsible className="group/cutoff">
@@ -1483,7 +1572,11 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                     </CollapsibleTrigger>
                     <CollapsibleContent>
                       <div className="pt-2">
-                        <ParameterField label="Tanimoto ≥" value={clusterCutoffShown.toFixed(2)}>
+                        <ParameterField
+                          label="Similarity within a group"
+                          value={`≥ ${clusterCutoffShown.toFixed(2)}`}
+                          hint="Every member is at least this Tanimoto-similar to its group's centre."
+                        >
                           <Slider
                             tone="neutral"
                             min={CLUSTER_MIN_CUTOFF}
@@ -1499,6 +1592,9 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
+                  <p className="text-[11px] text-muted-foreground">
+                    Click a point on the map to select its whole group in Grid.
+                  </p>
                   <Button
                     className="w-full"
                     size="xs"
@@ -1529,7 +1625,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                   setCliffsEnabled((value) => !value);
                 }}
               >
-                {cliffsEnabled ? `Cliffs · ${cliffs.length}` : "Find cliffs"}
+                {cliffsEnabled ? `Cliffs · ${cliffs.length}` : "Activity cliffs"}
               </Button>
             </TooltipTrigger>
             <TooltipContent showArrow={false}>
@@ -1540,7 +1636,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
           </Tooltip>
           <Popover open={studyOpen} onOpenChange={setStudyOpen}>
             <PopoverTrigger asChild>
-              <Button className="shrink-0 text-muted-foreground" variant="ghost" size="xs">Study</Button>
+              <Button className="shrink-0 text-muted-foreground" variant="ghost" size="xs">Compare values</Button>
             </PopoverTrigger>
             <PopoverContent
               align="start"
@@ -1550,9 +1646,9 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
               className="w-72"
             >
               <div className="flex flex-col gap-0.5">
-                <span className="text-sm font-medium text-foreground">Parameter study</span>
+                <span className="text-sm font-medium text-foreground">Compare parameter values</span>
                 <span className="text-xs text-muted-foreground">
-                  Sweeps one parameter and animates the maps it produces.
+                  Builds one map per value and plays them in order, so you can watch the parameter reshape the map.
                 </span>
               </div>
               <FieldGroup className="gap-3">
@@ -1564,17 +1660,17 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                     value={study.parameter}
                     onChange={(event) => setStudy(studyDefaults(event.currentTarget.value as StudyParameter))}
                   >
-                    <NativeSelectOption value="neighbors">Neighbors</NativeSelectOption>
+                    <NativeSelectOption value="neighbors">{STUDY_PARAMETER_NAMES.neighbors}</NativeSelectOption>
                     {draft.method !== "tmap" ? (
                       <>
-                        <NativeSelectOption value="minDist">Minimum distance</NativeSelectOption>
-                        <NativeSelectOption value="learningRate">Learning rate</NativeSelectOption>
+                        <NativeSelectOption value="minDist">{STUDY_PARAMETER_NAMES.minDist}</NativeSelectOption>
+                        <NativeSelectOption value="learningRate">{STUDY_PARAMETER_NAMES.learningRate}</NativeSelectOption>
                       </>
                     ) : null}
                   </NativeSelect>
                 </Field>
                 <ParameterField
-                  label="Sweep range"
+                  label="From – to"
                   value={`${formatStudyValue(study.parameter, study.range[0])}–${formatStudyValue(study.parameter, study.range[1])}`}
                 >
                   <Slider
@@ -1584,7 +1680,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                     onValueChange={(range) => setStudy((value) => ({ ...value, range: range as [number, number] }))}
                   />
                 </ParameterField>
-                <ParameterField label="Frames" value={study.frames}>
+                <ParameterField label="Maps" value={study.frames}>
                   <Slider
                     tone="neutral"
                     min={3}
@@ -1604,8 +1700,12 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                   void runStudy();
                 }}
               >
-                Run animated study on Metal
+                Build {study.frames} maps
               </Button>
+              {/* Every frame is a full embedding, which the button alone hid. */}
+              <p className="text-[11px] text-muted-foreground">
+                Takes {estimatedEmbeddingDuration(effectiveRecordCount * study.frames)}.
+              </p>
             </PopoverContent>
           </Popover>
           </div>
@@ -1654,6 +1754,41 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                   setStudyPosition(value);
                 }}
               />
+              {/* Frames in between are interpolated, so the label and "Use" both
+                  name the nearest real map. */}
+              <span className="min-w-0 shrink truncate font-mono text-xs text-muted-foreground">
+                {STUDY_PARAMETER_NAMES[completedStudy.parameter]}{" "}
+                {formatStudyValue(completedStudy.parameter, completedStudy.values[Math.round(studyPosition)] ?? 0)}
+              </span>
+              <Button
+                className="shrink-0"
+                size="xs"
+                variant="outline"
+                title="Rebuild the map with this value"
+                onClick={() => {
+                  const value = completedStudy.values[Math.round(studyPosition)];
+                  if (value === undefined) return;
+                  const next = { ...completedStudy.base, [completedStudy.parameter]: value };
+                  setDraft(next);
+                  commitOptions(next);
+                }}
+              >
+                Use
+              </Button>
+              <Button
+                className="shrink-0"
+                size="icon-xs"
+                variant="ghost"
+                aria-label="Close comparison"
+                title="Back to the current map"
+                onClick={() => {
+                  setCompletedStudy(null);
+                  setStudyPlaying(false);
+                  setStudyPosition(0);
+                }}
+              >
+                <X />
+              </Button>
             </div>
           ) : null}
           {needsConfirmation ? (
@@ -1684,6 +1819,7 @@ function CliffTable({
   deltaStep,
   previews,
   activityValues,
+  onClose,
 }: {
   cliffs: ActivityCliff[];
   activityLabel: string;
@@ -1697,6 +1833,7 @@ function CliffTable({
   deltaStep: number;
   previews: Map<number, MoleculePreview>;
   activityValues: Map<number, number>;
+  onClose: () => void;
 }) {
   const [sortBy, setSortBy] = useState<"sali" | "delta" | "similarity">("sali");
   const activeCliff = activeCliffIndex === null ? null : cliffs[activeCliffIndex] ?? null;
@@ -1706,10 +1843,11 @@ function CliffTable({
       .sort((left, right) => right.cliff[sortBy] - left.cliff[sortBy]),
     [cliffs, sortBy],
   );
-  const header = (key: "sali" | "delta" | "similarity", label: string) => (
+  const header = (key: "sali" | "delta" | "similarity", label: string, description: string) => (
     <button
       type="button"
       className={`text-right tabular-nums ${sortBy === key ? "text-foreground" : "text-muted-foreground"}`}
+      title={`${description} Click to sort.`}
       onClick={() => setSortBy(key)}
     >
       {label}{sortBy === key ? " ↓" : ""}
@@ -1717,16 +1855,23 @@ function CliffTable({
   );
   return (
     <div className="pointer-events-auto absolute right-3 top-3 flex max-h-[min(65%,22rem)] w-60 flex-col overflow-hidden rounded-md border border-border bg-background/90 text-[11px] shadow-sm backdrop-blur">
-      <div className="flex items-center justify-between border-b border-border px-2 py-1 font-medium text-foreground">
-        <span>Activity cliffs · {activityLabel}</span>
-        <span className="text-muted-foreground">{cliffs.length}</span>
+      <div className="flex flex-col gap-0.5 border-b border-border py-1 pl-2 pr-1">
+        <div className="flex items-center gap-1 font-medium text-foreground">
+          <span className="min-w-0 flex-1 truncate">Activity cliffs · {activityLabel}</span>
+          <Button size="icon-xs" variant="ghost" aria-label="Hide activity cliffs" onClick={onClose}>
+            <X />
+          </Button>
+        </div>
+        <span className="pr-1 text-muted-foreground">
+          Look-alike pairs whose {activityLabel} differs sharply. Click a pair to compare.
+        </span>
       </div>
       {/* The thresholds live with the result they filter. Keeping them in a
           global menu meant tightening them until the table emptied also took
           the controls away, with no way back. */}
       <div className="flex flex-col gap-1.5 border-b border-border px-2 py-1.5">
-        <label className="flex items-center gap-2 text-[10px] text-muted-foreground">
-          <span className="w-16 shrink-0">min sim</span>
+        <label className="flex items-center gap-2 text-muted-foreground">
+          <span className="w-20 shrink-0">Similarity ≥</span>
           <Slider
             className="flex-1"
             tone="neutral"
@@ -1738,8 +1883,10 @@ function CliffTable({
           />
           <span className="w-7 shrink-0 text-right font-mono">{minSimilarity.toFixed(2)}</span>
         </label>
-        <label className="flex items-center gap-2 text-[10px] text-muted-foreground">
-          <span className="w-16 shrink-0 truncate">min Δ</span>
+        <label className="flex items-center gap-2 text-muted-foreground">
+          <span className="w-20 shrink-0 truncate" title={`Smallest ${activityLabel} difference that counts as a cliff`}>
+            {activityLabel} gap ≥
+          </span>
           <Slider
             className="flex-1"
             tone="neutral"
@@ -1787,15 +1934,15 @@ function CliffTable({
         </div>
       ) : null}
       <div className="grid grid-cols-[1fr_2.2rem_2.6rem_2.8rem] gap-1 border-b border-border px-2 py-1">
-        <span className="text-muted-foreground">pair</span>
-        {header("similarity", "sim")}
-        {header("delta", "Δ")}
-        {header("sali", "SALI")}
+        <span className="truncate text-muted-foreground">Pair (Grid rows)</span>
+        {header("similarity", "Sim", "Tanimoto similarity of the two structures.")}
+        {header("delta", "Δ", `Difference in ${activityLabel}.`)}
+        {header("sali", "SALI", "Structure–activity landscape index: Δ ÷ (1 − similarity). Higher is a sharper cliff.")}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {sorted.length === 0 ? (
           <p className="px-2 py-3 text-center text-[11px] text-muted-foreground">
-            No pair clears both thresholds.
+            No pair clears both thresholds. Lower one of them.
           </p>
         ) : null}
         {sorted.map(({ cliff, cliffIndex }) => (
@@ -1860,7 +2007,18 @@ function ActivityLegend({
   );
 }
 
-function ParameterField({ label, value, children }: { label: string; value: string | number; children: ReactNode }) {
+function ParameterField({
+  label,
+  value,
+  hint,
+  children,
+}: {
+  label: string;
+  value: string | number;
+  /** What moving the slider does to the map, for anyone who does not think in UMAP. */
+  hint?: string;
+  children: ReactNode;
+}) {
   return (
     <Field>
       <FieldLabel className="flex w-full justify-between text-xs">
@@ -1868,6 +2026,7 @@ function ParameterField({ label, value, children }: { label: string; value: stri
         <span className="font-mono text-muted-foreground">{value}</span>
       </FieldLabel>
       {children}
+      {hint ? <FieldDescription className="text-[11px]">{hint}</FieldDescription> : null}
     </Field>
   );
 }
@@ -1900,6 +2059,9 @@ type ChemicalSpaceCanvasProps = {
 const DEFAULT_CAMERA_2D = { yaw: -0.45, pitch: 0.35, zoom: 1, panX: 0, panY: 0 };
 
 const DIMMED_POINT_COLOR = "#71717a";
+// The default 2D point blue sits between two group colours, so with groups on
+// the molecules outside the ten coloured groups turn grey instead.
+const UNGROUPED_POINT_COLOR = "#a1a1aa";
 
 function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
   const normalized = useMemo(
@@ -2218,7 +2380,7 @@ function ChemicalSpace2D({
         : activityColor
           ? activityColor
           : clusterId === null || clusterId >= CLUSTER_COLORS.length
-            ? pointColor
+            ? clusters ? UNGROUPED_POINT_COLOR : pointColor
             : CLUSTER_COLORS[clusterId];
       baseContext.globalAlpha = dimmed
         ? Math.min(0.18, basePointOpacity)
@@ -2548,39 +2710,6 @@ function ChemicalSpace2D({
       {selected.size > 0 ? (
         <div className="pointer-events-none absolute bottom-2 left-2 rounded-md border border-border bg-background/85 px-2 py-1 text-[10px] text-muted-foreground backdrop-blur">
           {selected.size.toLocaleString()} selected
-        </div>
-      ) : null}
-      {clusters ? <ClusterLegend clusters={clusters} /> : null}
-    </div>
-  );
-}
-
-function ClusterLegend({ clusters }: { clusters: ChemicalSpaceClusterResult }) {
-  const counts = new Map<number, number>();
-  for (const clusterId of clusters.clusterIds) {
-    counts.set(clusterId, (counts.get(clusterId) ?? 0) + 1);
-  }
-  const visible = [...counts.entries()]
-    .sort((left, right) => right[1] - left[1])
-    .slice(0, 8);
-  return (
-    <div className="pointer-events-none absolute right-2 top-2 max-w-48 rounded-lg border border-border bg-background/90 p-2 shadow-sm backdrop-blur">
-      <div className="mb-1 text-[10px] font-medium">Butina clusters</div>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-        {visible.map(([clusterId, count]) => (
-          <div key={clusterId} className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-            <span
-              className="size-2 rounded-full"
-              style={{ backgroundColor: CLUSTER_COLORS[clusterId] ?? DIMMED_POINT_COLOR }}
-            />
-            <span>#{clusterId + 1}</span>
-            <span className="font-mono">{count}</span>
-          </div>
-        ))}
-      </div>
-      {clusters.clusterCount > visible.length ? (
-        <div className="mt-1 text-[10px] text-muted-foreground">
-          +{clusters.clusterCount - visible.length} more
         </div>
       ) : null}
     </div>
