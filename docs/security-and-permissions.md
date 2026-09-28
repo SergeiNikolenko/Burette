@@ -21,7 +21,10 @@ with a selection-copy fallback.
 - Browser-dev filesystem access must be explicit. Use `BURETTE_DEV_FS_ALLOW`
   for extra local roots during browser testing.
 - Quick Look receives a file selected by Finder or a forced preview command. It
-  should not scan unrelated directories to discover additional data.
+  should not scan unrelated directories to discover additional data. The one
+  exception is a molecular-dynamics coordinate file (`.xtc`, `.trr`, `.dcd`,
+  ...): Quick Look lists the file's own folder, without recursion, to find its
+  topology (`.pdb`, `.gro`, ...) and reads only that pair.
 - Large molecular files should stay path-based unless a runtime explicitly
   needs inline data.
 
@@ -90,9 +93,16 @@ in `PreviewExtension/BurettePreview.entitlements`:
 - `com.apple.security.files.user-selected.read-only`
 - `com.apple.security.files.user-selected.executable`
 - `com.apple.security.network.client`
+- `com.apple.security.temporary-exception.files.home-relative-path.read-only`
+  (`/`) and `com.apple.security.temporary-exception.files.absolute-path.read-only`
+  (`/Volumes/`)
 
-Keep the extension read-only over user files; do not add write entitlements or
-broaden file access for preview features.
+The sandbox only hands the extension the file Finder selected, so the read-only
+temporary exceptions exist for the trajectory pair lookup above: without them a
+coordinate file previews with no topology and no playback. They cover the home
+folder and external volumes only. Keep the extension read-only over user files;
+do not add write entitlements, and do not use these exceptions to read beyond
+the selected file's folder.
 
 ## Browser And Agent Surfaces
 

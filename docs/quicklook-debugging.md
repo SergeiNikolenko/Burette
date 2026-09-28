@@ -129,6 +129,15 @@ For a real desktop file:
 BURETTE_DEV_FLAVOR=chat85b0 ./scripts/force-preview.sh ~/Desktop/1HTB.pdb
 ```
 
+With a dev flavor, `force-preview.sh` previews a link to the file in a
+temporary folder, so previews that read sibling files (an MD trajectory and its
+topology) find nothing there. Preview the original path with the flavored
+content type instead:
+
+```bash
+qlmanage -p -c com.local.burette10.dev.chat85b0.molecular-dynamics ~/Desktop/run/traj.xtc
+```
+
 ## Logs And Cache
 
 Primary extension log:
@@ -201,6 +210,11 @@ between desktop previews and Finder previews are documented in
 - Launch Services is still pointing at an older app bundle.
 - A deleted or trashed dev build is still registered and owns a shared UTI.
 - The selected file type is not registered to the expected forced content type.
+- A feature depends on a helper process. The Quick Look sandbox denies
+  `process-fork`, so `burette-core-bridge` never answers there and
+  `previewPlan` is always unavailable. Behavior keyed on the plan needs a Swift
+  fallback. In zsh, read sandbox denials with `/usr/bin/log stream`; the bare
+  `log` name is a shell builtin.
 
 ## Quick Look RCA
 
