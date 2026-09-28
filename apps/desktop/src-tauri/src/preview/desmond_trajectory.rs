@@ -285,13 +285,14 @@ fn decode_frame(bytes: &[u8]) -> Result<DecodedFrame, String> {
             (Some("POSITION"), "float") => {
                 positions = Some(
                     value
-                        .chunks_exact(4)
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .map(|raw| {
-                            let raw: [u8; 4] = raw.try_into().unwrap_or_default();
                             if little_endian {
-                                f32::from_le_bytes(raw)
+                                f32::from_le_bytes(*raw)
                             } else {
-                                f32::from_be_bytes(raw)
+                                f32::from_be_bytes(*raw)
                             }
                         })
                         .collect(),
@@ -300,13 +301,14 @@ fn decode_frame(bytes: &[u8]) -> Result<DecodedFrame, String> {
             (Some("POSITION"), "double") => {
                 positions = Some(
                     value
-                        .chunks_exact(8)
+                        .as_chunks::<8>()
+                        .0
+                        .iter()
                         .map(|raw| {
-                            let raw: [u8; 8] = raw.try_into().unwrap_or_default();
                             (if little_endian {
-                                f64::from_le_bytes(raw)
+                                f64::from_le_bytes(*raw)
                             } else {
-                                f64::from_be_bytes(raw)
+                                f64::from_be_bytes(*raw)
                             }) as f32
                         })
                         .collect(),
