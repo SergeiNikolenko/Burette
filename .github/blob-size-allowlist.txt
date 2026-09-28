@@ -89,7 +89,7 @@ plugins/burette-agent/preview-web/rdkit-compute/RDKit_minimal.wasm
 plugins/burette-agent/browser-shell-dist/assets/molstar-aYkT4K5K.js
 plugins/burette-agent/browser-shell-dist/assets/index.modern-DbHBoiMi.js
 plugins/burette-agent/browser-shell-dist/assets/dist-AI8nF5wd.js
-plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-BVTXHz7L.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-BVTXHz7J.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-B5FFbZlq.js
 plugins/burette-agent/browser-shell-dist/assets/pdf.worker.min-BmVo14Nb.mjs
 plugins/burette-agent/browser-shell-dist/assets/index.modern-CTLfnIRc.js
@@ -119,3 +119,5 @@ plugins/burette-agent/browser-shell-dist/assets/dist-_ca1w920.js
 plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-BEGxipAS.js
 plugins/burette-agent/browser-shell-dist/assets/molstar-B7BC_Jy4.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-CtZdJnTM.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-kixYkB-1.js
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-C-RITij7.js
