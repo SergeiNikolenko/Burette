@@ -36,6 +36,43 @@ Mol* interactive preview is used for:
   coordinate pairs (for example XTC/TRR next to a topology), and trajectories
   without a topology through synthetic topology generation
 
+Single native trajectories play through a registered Mol* animation using native
+`ModelFromTrajectory` transforms. Its relative stride uses a conservative 1/16-loop cap and coprime stride
+at saturation to avoid short-cycle absolute-time aliasing under slow rendering; target FPS describes source-frame
+progress, not guaranteed redraw FPS. Stop drains the in-flight update before
+seek or scene replacement; resume advances from the displayed frame. Segmented
+tracks use the same stride policy with their own bounds. Ordinary playback
+does not implicitly enable smoothing; unused native animation controls must not
+start a competing trajectory clock.
+
+Pose/overlay collections retain their bounded controls. Smooth motion
+is a separate derived-coordinate operation, not new molecular-dynamics data.
+Paired MD smoothing writes DCD coordinates and reuses the original topology,
+rather than repeating the topology in a multi-model PDB. On macOS the result is
+staged inside the document's preview runtime and read through its scoped file
+bridge. The Info panel shows smoothing as enabled only after the viewer confirms
+that it loaded the result; returning to Original also waits for acknowledgement.
+Failed loads restore the prior scene and do not commit the smoothed state.
+The Python smoothing path splines only solute coordinates. Recognised water and
+ions retain their per-frame coordinates, subject only to the common rigid Align
+transform. Frames outside selected keyframe bounds are copied unchanged.
+Unaligned DCD keeps per-frame unit cells; aligned DCD explicitly omits cells
+because a rotated lattice basis cannot be represented by DCD lengths/angles.
+DCD files use standard AKMA time (0.04888821 ps/unit). The version-locked
+Mol* 5.11 adapter corrects its inverse conversion, saved-step stride (NSAVC),
+initial step and empty-cell handling. Desmond cache publication is atomic and
+truncated DCD cache entries are rebuilt. Long Desmond runs still use a bounded
+preview topology in PDB format: independent CT components and overflow residue
+blocks get unused one-character chain identifiers, without changing atom order.
+These are derived display identifiers, not original CMS chain identifiers.
+The finite PDB atom/chain namespace is a limitation; conversion fails rather
+than silently merging residues when no distinct identifier remains. The CMS
+source file is not modified. Long trajectories use a bounded
+preview subset, not all source frames; its DCD spacing is an average of sampled
+times and is unsuitable for time-resolved quantitative analysis.
+This visual spline is not constrained MD: do not use derived solute bond lengths,
+contacts, or energies as scientific trajectory measurements.
+
 For standard mmCIF/BinaryCIF previews, coordinate-bearing data blocks load
 as separate structures in the same scene, preserving their original coordinates.
 This includes PyMOL exports with a protein and ligand in separate blocks.

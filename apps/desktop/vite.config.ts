@@ -27,7 +27,6 @@ import { registerBrowserDevConformerJobRoutes } from "./vite/browser-dev/conform
 import { registerBrowserDevInlineConformerRoute } from "./vite/browser-dev/conformer-inline";
 import { registerBrowserDevDescriptorRoutes } from "./vite/browser-dev/descriptors";
 import { registerBrowserDevRequestGuard } from "./vite/browser-dev/http";
-import { registerBrowserDevDesmondPreviewRoute } from "./vite/browser-dev/desmond";
 import {
   registerBrowserDevFileContentRoutes,
   registerBrowserDevFileDiscoveryRoute,
@@ -115,7 +114,6 @@ const DEV_FILE_SCAN_MAX_FILES = 2_000;
 const DEV_FILE_SCAN_MAX_DIRECTORIES = 400;
 const DEV_FILE_SCAN_MAX_ENTRIES = 20_000;
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
-const DESMOND_PREVIEW_TARGET_MB = 24;
 const RDKIT_WASM_PATH = join(repoRoot, "PreviewExtension", "Web", "rdkit", "RDKit_minimal.wasm");
 const RDKIT_CONFORMER_SCRIPT_PATH = join(repoRoot, "scripts", "rdkit_conformer.py");
 const MDSMOOTH_RUNNER_PATH = join(repoRoot, "scripts", "mdsmooth_runner.py");
@@ -298,8 +296,6 @@ const MOLECULAR_BINARY_METADATA_EXTENSIONS = new Set([
   "chk", "checkpoint", "coor", "dcd", "dms", "edr", "gsd", "h5md", "namdbin", "nc",
   "ncdf", "ncrst", "nctraj", "netcdf", "tng", "tpr", "trr", "trz", "xtc",
 ]);
-const SCHRODINGER_RUN = "/opt/schrodinger/suites2026-1/run";
-const DESMOND_PREVIEW_EXTRACTOR = join(repoRoot, "scripts", "desmond_preview_extract.py");
 const XYZRENDER_PRESET_OPTIONS = [
   { value: "default", label: "Default" },
   { value: "flat", label: "Flat" },
@@ -987,26 +983,6 @@ function browserDevXyzrenderStatus() {
         source: null,
         installHint: "Install xyzrender in ~/.local/bin or make it available on PATH.",
         message: "External xyzrender executable was not found.",
-      };
-}
-
-function browserDevSchrodingerStatus() {
-  const configuredRun = process.env.SCHRODINGER ? join(process.env.SCHRODINGER, "run") : "";
-  const executable = [configuredRun, SCHRODINGER_RUN].filter(Boolean).find((candidate) => existsSync(candidate)) ?? null;
-  return executable
-    ? {
-        installed: true,
-        executablePath: executable,
-        source: sourceForRuntimePath(executable),
-        installHint: "Schrodinger runtime is available.",
-        message: "Schrodinger runtime is available",
-      }
-    : {
-        installed: false,
-        executablePath: null,
-        source: null,
-        installHint: "Install Schrodinger or set SCHRODINGER to a suite directory that contains run.",
-        message: "Schrodinger runtime was not found",
       };
 }
 
@@ -3617,7 +3593,6 @@ export function browserDevXyzrenderPlugin() {
         conformerStatus: browserDevConformerStatus,
         descriptorStatus: browserDevDescriptorStatus,
         rdkitConformerStatus: browserDevConformerPythonStatus,
-        schrodingerStatus: browserDevSchrodingerStatus,
         xtbStatus: browserDevXtbStatus,
         xyzrenderStatus: browserDevXyzrenderStatus,
       });
@@ -3628,14 +3603,6 @@ export function browserDevXyzrenderPlugin() {
       registerBrowserDevModelRuntimeRoutes(server, repoRoot);
       registerBrowserDevFileContentRoutes(server, fileRoutes);
       registerBrowserDevFoldingResultRoute(server, { isDevFileReadAllowed });
-      registerBrowserDevDesmondPreviewRoute(server, {
-        desmondPreviewExtractor: DESMOND_PREVIEW_EXTRACTOR,
-        execFileAsync,
-        isDevFileReadAllowed,
-        resolveStructureFileBundle,
-        schrodingerRun: SCHRODINGER_RUN,
-        targetMb: DESMOND_PREVIEW_TARGET_MB,
-      });
       registerBrowserDevXyzrenderRoute(server, {
         buildArgs: buildXyzrenderArgs,
         execFileAsync,
@@ -3796,6 +3763,8 @@ function existingDirectoryCandidate(candidates: string[]) {
   return candidates.find((candidate) => existsSync(candidate) && statSync(candidate).isDirectory()) || null;
 }
 
+// Browser-dev opens a Desmond bundle as its static .cms; only the desktop app
+// decodes the DTR frames (src-tauri/src/preview/desmond_trajectory.rs).
 function resolveStructureFileBundle(path: string): StructureFileBundle {
   return resolveDesmondFileBundle(path) ?? resolveMdFileBundle(path) ?? {
     kind: "single",
@@ -3882,10 +3851,6 @@ function resolveMdFileBundle(path: string): StructureFileBundle | null {
     };
   }
   return null;
-}
-
-function isDesmondPreviewCandidate(path: string) {
-  return resolveDesmondFileBundle(path) !== null;
 }
 
 function normalizeOrientationRef(value: string | null) {

@@ -85,6 +85,19 @@ describe("MCP wire contract", () => {
       const result = await control(command, extra);
       expect(result.structuredContent.ok).toBe(ok);
       expect(result._meta).not.toHaveProperty("ketcherSeed");
+      if (ok) {
+        expect(result._meta?.ketcherInitialSeed).toEqual({ surfaceId, format: "smiles", content: "CCO" });
+        const freshListeners = new Map<string, (event: unknown) => void>();
+        const freshWindow = { ...widgetWindow, parent: {},
+          addEventListener: (type: string, listener: (event: unknown) => void) => freshListeners.set(type, listener),
+          dispatchEvent: () => {},
+        };
+        runInNewContext(bootstrap!, { window: freshWindow, TextEncoder, CustomEvent });
+        freshListeners.get("message")?.({ source: freshWindow.parent,
+          data: { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: result },
+        });
+        expect(freshWindow.__BURETTE_HOSTED_KETCHER_SEED__?.content).toBe("CCO");
+      }
       deliver(result);
       expect(widgetWindow.__BURETTE_HOSTED_KETCHER_SEED__?.content).toBe("CCO");
       expect(seedEvents).toBe(1);

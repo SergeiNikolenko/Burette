@@ -22,7 +22,8 @@ import kinetic as core_kinetic  # noqa: E402
 import learned as core_learned  # noqa: E402
 
 
-DEFAULT_SELECTION = "not (resname HOH WAT SOL TIP3 TIP4 NA CL K MG CA ZN)"
+PRESERVED_SELECTION = "resname HOH WAT SOL TIP3 TIP4 TIP5 TIP3P TIP4P TIP5P T3P T4P T5P NA CL K MG CA ZN"
+DEFAULT_SELECTION = f"not ({PRESERVED_SELECTION})"
 SIGNALS = ("rmsd", "pc1", "ic1", "dpca", "deeptica")
 
 
@@ -126,8 +127,12 @@ def interpolate(frames: np.ndarray, keyframes: np.ndarray):
     still passes exactly through each keyframe but arrives and leaves along the
     same tangent, so the motion carries through them.
     """
-    output = np.empty_like(frames)
-    keys = np.asarray(keyframes, dtype=int)
+    # includeEnds=False and kinetic selection need not include the boundaries.
+    # Keep uncovered frames exactly, never expose uninitialised coordinates.
+    output = frames.copy()
+    keys = np.unique(np.asarray(keyframes, dtype=int))
+    if np.any(keys < 0) or np.any(keys >= len(frames)):
+        raise ValueError("Interpolation keyframe is outside the trajectory.")
     if len(keys) < 2:
         return frames.copy()
     anchors = frames[keys]
@@ -141,17 +146,38 @@ def interpolate(frames: np.ndarray, keyframes: np.ndarray):
         p1 = anchors[index]
         p2 = anchors[index + 1]
         p3 = anchors[min(last, index + 2)]
+        t0 = keys[index - 1] if index else start - count
+        t3 = keys[index + 2] if index + 2 <= last else end + count
+        # Keys are not evenly spaced. Scale shared derivatives by each segment's
+        # duration; a uniform Catmull-Rom polynomial creates velocity jumps at
+        # unequal intervals even though it looks smooth in parameter space.
+        m1 = (p2 - p0) * count / (end - t0)
+        m2 = (p3 - p1) * count / (t3 - start)
         for offset in range(count + 1):
             t = 0.0 if count == 0 else offset / count
             t2 = t * t
             t3 = t2 * t
-            output[start + offset] = 0.5 * (
-                2.0 * p1
-                + (-p0 + p2) * t
-                + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
-                + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
-            )
+            output[start + offset] = ((2*t3 - 3*t2 + 1)*p1
+                                      + (t3 - 2*t2 + t)*m1
+                                      + (-2*t3 + 3*t2)*p2
+                                      + (t3 - t2)*m2)
     return output
+
+
+def smooth_solute(universe, aligned_frames: np.ndarray, keyframes: np.ndarray):
+    """Spline the solute only; solvent/ions retain each aligned source frame.
+
+    This is a visualisation, not an MD integrator or a constrained trajectory.
+    The signal atom selection determines keyframes, not which atoms move.
+    """
+    try:
+        mobile = universe.select_atoms(DEFAULT_SELECTION).indices
+    except (AttributeError, ValueError):
+        # XYZ has no residue identities; retain its established all-atom path.
+        mobile = np.arange(aligned_frames.shape[1])
+    result = aligned_frames.copy()
+    result[:, mobile] = interpolate(aligned_frames[:, mobile], keyframes)
+    return result
 
 
 def has_residue_topology(universe) -> bool:
@@ -173,6 +199,24 @@ def write_pdb(path: Path, universe, frames: np.ndarray):
 
     with mda.Writer(str(path), n_atoms=universe.atoms.n_atoms, multiframe=True) as writer:
         for frame in frames:
+            universe.atoms.positions = frame
+            writer.write(universe.atoms)
+
+
+def write_dcd(path: Path, universe, frames: np.ndarray, *, aligned=False):
+    """Keep paired MD output as coordinates, not repeated PDB topology."""
+    import MDAnalysis as mda
+
+    with mda.Writer(str(path), n_atoms=universe.atoms.n_atoms,
+                    dt=float(universe.trajectory.dt)) as writer:
+        for index, frame in enumerate(frames):
+            # Reading a frame restores its own box, rather than repeating the
+            # last box on every frame. A rotated box basis cannot be encoded by
+            # DCD lengths/angles: aligned output is explicitly non-periodic.
+            if index < len(universe.trajectory):
+                universe.trajectory[index]
+            if aligned:
+                universe.dimensions = None
             universe.atoms.positions = frame
             writer.write(universe.atoms)
 
@@ -256,15 +300,24 @@ def analyze(request: dict):
             "cosineContentHigh": bool(filtered_result.cosine_content_high),
         })
 
-    smoothed = interpolate(aligned_all, np.sort(keyframes))
+    smoothed = smooth_solute(universe, aligned_all, np.sort(keyframes))
     keeps_topology = has_residue_topology(universe)
-    output_format = "pdb" if keeps_topology else "xyz"
+    paired_coordinates = bool(topology and Path(topology).resolve() != Path(trajectory).resolve())
+    output_format = "dcd" if paired_coordinates else "pdb" if keeps_topology else "xyz"
     requested_output = str(request.get("outputPath") or "").strip()
+    if requested_output:
+        output_format = Path(requested_output).suffix.lower().lstrip(".")
+        if output_format not in {"pdb", "xyz", "dcd"}:
+            raise ValueError("Smoothing output must be PDB, XYZ or DCD.")
+        if output_format == "dcd" and not paired_coordinates:
+            raise ValueError("DCD smoothing output requires a separate topology.")
     output_path = Path(requested_output) if requested_output else Path(trajectory).with_name(
         f"{Path(trajectory).stem}.mdsmooth.{output_format}"
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    if keeps_topology:
+    if output_format == "dcd":
+        write_dcd(output_path, universe, smoothed, aligned=request.get("align") is not False)
+    elif output_format == "pdb":
         write_pdb(output_path, universe, smoothed)
     else:
         write_xyz(output_path, universe, smoothed)
@@ -286,6 +339,8 @@ def analyze(request: dict):
         "spectrum": spectrum_payload(np.asarray(raw)),
         "diagnostics": diagnostics,
         "interpolation": "catmull-rom",
+        "coordinatePolicy": "solute-spline; solvent-and-ions-per-source-frame",
+        "periodicCellPolicy": "omitted-after-alignment" if request.get("align") is not False else "source-per-frame",
     }
 
 

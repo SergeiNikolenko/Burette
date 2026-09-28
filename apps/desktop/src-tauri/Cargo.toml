@@ -1,6 +1,6 @@
 [package]
 name = "burette"
-version = "2026.9.39"
+version = "2026.9.40"
 description = "Tauri/Rust shell for local molecular previews"
 authors = ["Burette"]
 edition = "2021"
@@ -41,7 +41,7 @@ sqlx = { version = "0.9", default-features = false, features = [
   "postgres",
 ] }
 rustix = { version = "1.1", features = ["fs", "process"] }
-tauri = { version = "2", features = ["macos-private-api", "protocol-asset", "test", "tray-icon"] }
+tauri = { version = "2", features = ["macos-private-api", "protocol-asset", "test"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"

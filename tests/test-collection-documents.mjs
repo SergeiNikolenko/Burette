@@ -39,6 +39,26 @@ assert.equal((sdf.text.match(/\$\$\$\$/g) ?? []).length, 2);
 const sdfWithInlineDollars = "Named in title\n  CDK\n\nM  END\n> <Name>\nPreferred name\n\n> <NOTE>\nprice $$$$ marker\n\n$$$$\n";
 assert.equal(splitSdfCollectionRecords(sdfWithInlineDollars).length, 1);
 const parsedSdf = parseSdfCollectionRecords(sdfWithInlineDollars);
+// Use the real card renderer's parser: a blank MOL title is structurally
+// significant, including after an SDF record separator and collection merge.
+const rdkit = await (await import("@rdkit/rdkit")).default();
+const aspirin = rdkit.get_mol("CC(=O)Oc1ccccc1C(=O)O");
+try {
+  const unnamed = aspirin.get_molblock().replace(/^[^\n]*/u, "");
+  const merged = mergeCollectionSources([
+    { path: "/tmp/one.sdf", extension: "sdf", text: `${unnamed}\n$$$$\n` },
+    { path: "/tmp/two.sdf", extension: "sdf", text: `${unnamed}\n$$$$\n` },
+  ]);
+  const sketches = parseSdfCollectionRecords(merged.text);
+  assert.equal(sketches.length, 2);
+  for (const row of sketches) {
+    assert.equal(row.molblock, unnamed.trimEnd());
+    const rendered = rdkit.get_mol(row.molblock);
+    assert.ok(rendered, "unnamed sketch must remain a valid card molecule");
+    try { assert.equal(rendered.get_num_atoms(), 13); }
+    finally { rendered.delete(); }
+  }
+} finally { aspirin.delete(); }
 assert.equal(parsedSdf.length, 1);
 assert.equal(parsedSdf[0].name, "Preferred name");
 assert.equal(parsedSdf[0].molblock.endsWith("M  END"), true);

@@ -186,3 +186,4 @@ assert.deepEqual(selectionContext?.structuredContent.burette.activeSelection.ato
 assert.equal(createSelectionContext(null, "document-1").structuredContent.burette.activeSelection, null);
 
 console.log("Hosted MCP widget contract tests passed");
+await import('./test-hosted-scene-actions.mjs');

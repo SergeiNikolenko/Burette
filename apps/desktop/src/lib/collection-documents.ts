@@ -107,7 +107,9 @@ export function splitSdfCollectionRecords(text: string) {
   const records: string[] = [];
   let lines: string[] = [];
   const finish = () => {
-    const record = lines.join("\n").trim();
+    // The first MOL header line may be an empty title. Trimming its start
+    // shifts the counts/atom lines and makes a valid sketch unreadable to RDKit.
+    const record = lines.join("\n").trimEnd();
     lines = [];
     if (record) records.push(record);
   };

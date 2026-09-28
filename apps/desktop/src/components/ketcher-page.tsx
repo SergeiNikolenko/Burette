@@ -1185,7 +1185,7 @@ export function KetcherPage({
               <TooltipContent showArrow={false}>Open sketch in xyzrender</TooltipContent>
             </Tooltip>
           </div>
-          <Tooltip>
+          {!window.BuretteMcpWorkspace && !(import.meta.env.PROD && import.meta.env.VITE_BURETTE_AGENT_SHELL === "1") && <Tooltip>
           <RadixDropdownMenu
             align="end"
             contentClassName="ketcher-ui-menu"
@@ -1230,7 +1230,7 @@ export function KetcherPage({
             )}
           />
           <TooltipContent showArrow={false}>Native molecular compute</TooltipContent>
-          </Tooltip>
+          </Tooltip>}
           <Tooltip>
           <RadixDropdownMenu
             align="end"

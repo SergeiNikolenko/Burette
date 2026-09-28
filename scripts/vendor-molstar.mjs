@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { molstarStatePreconditionPlugin } from './molstar-state-precondition.mjs';
+import { molstarDcdTimePlugin } from './molstar-dcd-time.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -44,7 +45,7 @@ const buildResult = await Bun.build({
   write: false,
   loader: { '.jpg': 'dataurl' },
   define: { 'process.env.NODE_ENV': JSON.stringify('production') },
-  plugins: [molstarStatePreconditionPlugin],
+  plugins: [molstarStatePreconditionPlugin, molstarDcdTimePlugin],
 });
 if (!buildResult.success) {
   for (const log of buildResult.logs) console.error(log);

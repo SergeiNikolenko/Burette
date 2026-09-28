@@ -19,6 +19,7 @@ interface ImportMeta {
 interface Window {
   __BURETTE_HOSTED_MCP_BRIDGE_READY__?: boolean;
   __BURETTE_HOSTED_MCP_RESULTS__?: unknown[];
+  __BURETTE_HOSTED_OPENAI_GLOBALS__?: { toolOutput?: unknown; toolResponseMetadata?: unknown };
   __BURETTE_HOSTED_MCP_WIDGET__?: boolean;
   __BURETTE_HOSTED_KETCHER_WIDGET__?: boolean;
   __BURETTE_HOSTED_KETCHER_SEED__?: {

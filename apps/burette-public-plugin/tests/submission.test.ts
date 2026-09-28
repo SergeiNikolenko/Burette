@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { createHash } from "node:crypto";
+import initRDKit from "@rdkit/rdkit";
 import { VIEWER_RESOURCE_URI } from "../lib/widget";
+import { prepareStructureText } from "../lib/structure-service";
 
 const packageRoot = resolve(import.meta.dir, "..");
 const submission = JSON.parse(
@@ -60,15 +63,33 @@ describe("plugin submission bundle", () => {
         testCase.tools_triggered,
       );
     }
-    expect(submission.test_cases.map((testCase) => testCase.tools_triggered)).toEqual([
-      "preview_molecular_file",
-      "preview_molecular_file",
-      "preview_molecular_file",
-      "preview_pdb_structure",
-      "open_ketcher",
-    ]);
+    expect(new Set(submission.test_cases.map((testCase) => testCase.tools_triggered)))
+      .toEqual(new Set(publicToolNames));
     for (const testCase of submission.negative_test_cases) {
       expect(testCase.tools_triggered).toBeNull();
+    }
+  });
+
+  test("ships a chemically valid three-record handoff matching the reviewer expectations", async () => {
+    const fixture = JSON.parse(readFileSync(resolve(packageRoot, "submission/review-fixtures.json"), "utf8"));
+    const sdf = readFileSync(resolve(packageRoot, fixture.file), "utf8");
+    expect(createHash("sha256").update(sdf).digest("hex")).toBe(fixture.sha256);
+    const summary = prepareStructureText(sdf, "salicylate-series.sdf", "attachment").summary;
+    expect({ counts: summary.counts, elements: summary.components.elements,
+      names: summary.components.molecules?.map((molecule) => molecule.title) }).toEqual({
+      counts: { molecules: 3, atoms: 34, bonds: 34, elements: 2 },
+      elements: { C: 24, O: 10 },
+      names: ["Salicylic acid", "Aspirin", "Methyl salicylate"],
+    });
+    const rdkit = await initRDKit();
+    const records = sdf.split(/^\$\$\$\$\s*$/mu).filter((record) => record.trim());
+    expect(records).toHaveLength(3);
+    for (const [index, record] of records.entries()) {
+      const molecule = rdkit.get_mol(record.trim());
+      if (!molecule) throw new Error(`Review fixture molecule ${index + 1} is invalid.`);
+      try {
+        expect(molecule.get_smiles()).toBe(fixture.molecules[index].canonicalSmiles);
+      } finally { molecule.delete(); }
     }
   });
 

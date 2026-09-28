@@ -57,7 +57,6 @@ const [
   shellCommandsSource,
   quickLookCommand,
   updaterCommand,
-  tray,
   windowsSource,
   rendererPolicySource,
   previewIndex,
@@ -143,7 +142,6 @@ const [
   source('apps/desktop/src/lib/shell-commands.ts'),
   source('apps/desktop/src-tauri/src/commands/quicklook.rs'),
   source('apps/desktop/src-tauri/src/commands/updater.rs'),
-  source('apps/desktop/src-tauri/src/tray.rs'),
   source('apps/desktop/src-tauri/src/windows.rs'),
   source('PreviewExtension/RendererPolicy.swift'),
   source('apps/desktop/src-tauri/src/preview/mod.rs'),
@@ -635,9 +633,10 @@ assert.match(documentsCommand, /fn looks_like_supported_structure_file/);
 assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_preview_cache/);
 assert.match(runtimeDoctorCommand, /#\[tauri::command\]\s+pub\(crate\) fn external_runtime_doctor/);
 assert.match(runtimeDoctorCommand, /burette\.external-runtime-doctor\.v1/);
-for (const checkId of ['xyzrender', 'descriptors-python', 'rdkit-conformer-python', 'crest', 'prism', 'xtb', 'schrodinger']) {
+for (const checkId of ['xyzrender', 'descriptors-python', 'rdkit-conformer-python', 'crest', 'prism', 'xtb']) {
   assert.match(runtimeDoctorCommand, new RegExp(`"${checkId}"`));
 }
+assert.doesNotMatch(runtimeDoctorCommand, /schrodinger/i);
 assert.match(runtimeDoctorCommand, /descriptors::descriptor_runtime_status\(\)/);
 assert.match(runtimeDoctorCommand, /documents::conformer_python_runtime_status\(\)/);
 assert.match(runtimeDoctorCommand, /conformer::conformer_status\(\)/);
@@ -1127,18 +1126,8 @@ assert.match(previewXyzrender, /"--esp"/);
 assert.match(previewXyzrender, /"--nci-surf"/);
 assert.match(previewRuntimeViewer, /"surfaceMode"/);
 
-assert.match(tray, /fn status_image\(\) -> tauri::image::Image<'static>/);
-assert.match(tray, /\.icon\(status_image\(\)\)/);
-assert.match(tray, /\.icon_as_template\(true\)/);
-assert.match(tray, /pub\(crate\) fn show_main_window/);
-assert.match(tray, /pub\(crate\) fn hide_main_window/);
-assert.match(tray, /tray\.new-window/);
-assert.match(tray, /windows::open_new_workspace_window\(app\)/);
-assert.match(tray, /windows::focus_or_create_workspace_window\(app, Some\(windows::MAIN_WINDOW_LABEL\)\)/);
-assert.match(tray, /menu::emit_command_to_window\(&window, "file\.open", None\)/);
-assert.match(tray, /menu::emit_command_to_window\(&window, "settings\.open", None\)/);
-assert.doesNotMatch(tray, /default_window_icon/);
-assert.doesNotMatch(tray, /\.title\("B"\)/);
+// Burette has no menu bar extra; the Dock menu and app reopen cover its actions.
+assert.doesNotMatch(lib, /mod tray;/);
 assert.match(lib, /mod windows;/);
 assert.match(lib, /windows::focused_window_label\(app\)/);
 assert.match(lib, /RunEvent::Reopen/);
@@ -1165,7 +1154,7 @@ assert.match(windowsSource, /pub\(crate\) fn runtime_document_id/);
 assert.match(windowsSource, /unregister_prefix/);
 assert.match(lib, /let launch_mode = startup::LaunchMode::current\(&argv\);/);
 assert.match(lib, /launch_mode\.is_register\(\) && startup_paths\.is_empty\(\)/);
-assert.match(lib, /tray::hide_main_window\(app\.handle\(\)\);/);
+assert.match(lib, /windows::hide_workspace_application\(app\.handle\(\)\);/);
 assert.match(lib, /tauri::ActivationPolicy::Regular/);
 assert.match(lib, /tauri::ActivationPolicy::Accessory/);
 assert.match(lib, /commands::documents::pick_open_targets/);
@@ -1444,7 +1433,6 @@ assert.match(nativeMenuSource, /MAX_PENDING_COMMANDS_PER_WINDOW/);
 assert.match(nativeMenuSource, /pending\.drain\(window\.label\(\)\)/);
 assert.match(nativeMenuSource, /window\.emit\(MENU_COMMAND_EVENT, \(\)\)/);
 assert.doesNotMatch(nativeMenuSource, /strictly_focused_window/);
-assert.match(tray, /menu::request_quit\(app\)/);
 assert.doesNotMatch(nativeMenuSource, /DirtyWindowRegistry/);
 assert.match(nativeMenuSource, /ExitPreflightCoordinator/);
 assert.match(nativeMenuSource, /QuitGuard/);
@@ -1478,7 +1466,6 @@ assert.match(nativeMenuSource, /finish_validation/);
 assert.match(nativeMenuSource, /Window contents changed during exit confirmation/);
 assert.match(nativeMenuSource, /pending\.expected_windows != \*live_windows|&pending\.expected_windows != live_windows/);
 assert.match(menuEvents, /if exit_transition_is_active\(app\) \{\s*return;/);
-assert.match(tray, /if menu::exit_transition_is_active\(app\)/);
 assert.match(windowsSource, /if crate::menu::exit_transition_is_active\(app\)/);
 assert.match(lib, /if menu::exit_transition_is_active\(app\)/);
 assert.match(

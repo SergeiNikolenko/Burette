@@ -2,11 +2,63 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { request } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
+
+const viewerSource = await readFile('PreviewExtension/Web/viewer.js', 'utf8');
+const xyzContext = {
+  xyzParsedFrameCache: null,
+  normalizeElementSymbol: value => value,
+  buildXyzFrameOverlay: () => null,
+  readTrajectoryControlIndex: () => 0,
+};
+const splitStart = viewerSource.indexOf('  function splitXyzFrames(text)');
+const prepareStart = viewerSource.indexOf('  function prepareXyzStructure(text, config)');
+runInNewContext(
+  viewerSource.slice(splitStart, viewerSource.indexOf('  function buildXyzFrameOverlay(', splitStart))
+    + viewerSource.slice(prepareStart, viewerSource.indexOf('  function splitSdfRecords(', prepareStart)),
+  xyzContext,
+);
+const validFrame = '1\nframe\nH 0 0 0\n';
+assert.equal(xyzContext.prepareXyzStructure(validFrame, {}).format, 'xyz');
+assert.equal(xyzContext.prepareXyzStructure(validFrame + validFrame, {}).xyzFrameCount, 2);
+for (const text of ['5\ntruncated\nC NaN 0 0\n', '1\ninvalid\nC NaN 0 0\n', validFrame + '2\ntruncated second frame\nH 0 0 0\n']) {
+  assert.throws(() => xyzContext.prepareXyzStructure(text, { label: 'invalid.xyz' }), /Invalid XYZ.*atom counts and finite coordinates/u);
+}
+const readinessStart = viewerSource.indexOf('  function assertMolstarLoadReady(viewer, prepared)');
+const readinessEnd = viewerSource.indexOf('\n  // viewer-shell.js keeps the page transparent', readinessStart);
+assert.ok(readinessStart > 0 && readinessEnd > readinessStart);
+const readinessContext = { currentMolstarStructureCount: viewer => viewer.structureCount };
+runInNewContext(`${viewerSource.slice(readinessStart, readinessEnd)}\nthis.assertMolstarLoadReady = assertMolstarLoadReady;`, readinessContext);
+const validXyzViewer = { structureCount: 1, plugin: { state: { data: { cells: new Map() } } } };
+assert.equal(readinessContext.assertMolstarLoadReady(validXyzViewer, { format: 'xyz', label: 'valid.xyz' }), undefined);
+let readyAfterInvalidXyz = false;
+assert.throws(
+  () => {
+    readinessContext.assertMolstarLoadReady({ ...validXyzViewer, structureCount: 0 }, { format: 'xyz', label: 'invalid.xyz' });
+    readyAfterInvalidXyz = true;
+  },
+  /loaded no molecular structures for invalid\.xyz; viewer readiness was withheld/,
+);
+assert.equal(readyAfterInvalidXyz, false);
+const parserFailure = { status: 'error', errorText: 'Could not parse XYZ coordinates.' };
+assert.throws(
+  () => readinessContext.assertMolstarLoadReady({
+    ...validXyzViewer,
+    plugin: { state: { data: { cells: new Map([['parser', parserFailure]]) } } },
+  }, { format: 'xyz', label: 'invalid.xyz' }),
+  /Could not parse XYZ coordinates\.; viewer readiness was withheld/,
+);
+assert.equal(readinessContext.assertMolstarLoadReady({ structureCount: 0 }, { kind: 'volume' }), undefined);
+assert.match(viewerSource, /await withTimeout\(\s*loadPreparedStructure\(viewer, prepared\)[\s\S]*?assertMolstarLoadReady\(viewer, prepared\);\s*if \(config\.demoSnapshotUrl\)/);
+const readinessCall = viewerSource.indexOf('    assertMolstarLoadReady(viewer, prepared);', viewerSource.indexOf('async function startMolstar'));
+const agentReady = viewerSource.indexOf("postHostMessage({ type: 'agentReady'", readinessCall);
+const sceneReady = viewerSource.indexOf('window.BuretteNativeSceneReady();', readinessCall);
+assert.ok(readinessCall > 0 && agentReady > readinessCall && sceneReady > readinessCall);
 
 const root = await mkdtemp(join(tmpdir(), 'burette-shell-security-'));
 let child;
@@ -87,6 +139,36 @@ try {
   assert.equal(await read.text(), 'HEADER ALLOWED');
   const listing = await fetch(`${base}/__burette/dev-files?${new URLSearchParams({ root: allowed })}`, { headers });
   assert.deepEqual((await listing.json()).files, [join(allowed, 'ordinary.pdb')]);
+  const pairFor = path => fetch(
+    `${base}/__burette/trajectory-pair?${new URLSearchParams({ path })}`, { headers },
+  );
+  // A nested simulation must not turn an ordinary structure into an unrelated
+  // paired trajectory, even when the parent directory is authorized.
+  const isolated = join(allowed, 'isolated');
+  await mkdir(isolated);
+  await writeFile(join(isolated, 'mini.pdb'), 'HEADER MINI');
+  await mkdir(join(isolated, 'md'));
+  await writeFile(join(isolated, 'md', 'run.xtc'), 'SYNTHETIC TRAJECTORY');
+  await writeFile(join(isolated, 'md', 'run.gro'), 'SYNTHETIC TOPOLOGY');
+  assert.equal((await pairFor(join(isolated, 'mini.pdb'))).status, 404);
+  const xtcPairResponse = await pairFor(join(isolated, 'md', 'run.xtc'));
+  assert.equal(xtcPairResponse.status, 200);
+  const xtcPair = await xtcPairResponse.json();
+  assert.equal(xtcPair.docking.ligands[0].binary, true);
+
+  const lammps = join(allowed, 'lammps-pair');
+  await mkdir(lammps);
+  await writeFile(join(lammps, 'paired.pdb'), 'HEADER PAIRED');
+  await writeFile(join(lammps, 'paired.lammpstrj'), 'ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n0\n');
+  const lammpsPairResponse = await pairFor(join(lammps, 'paired.pdb'));
+  assert.equal(lammpsPairResponse.status, 200);
+  const lammpsPair = await lammpsPairResponse.json();
+  assert.equal(lammpsPair.docking.ligands[0].format, 'lammpstrj');
+  assert.equal(lammpsPair.docking.ligands[0].binary, false);
+  assert.equal(
+    Buffer.from(lammpsPair.payloads.ligands[0].dataBase64, 'base64').toString(),
+    'ITEM: TIMESTEP\n0\nITEM: NUMBER OF ATOMS\n0\n',
+  );
   await mkdir(join(allowed, 'race'));
   await writeFile(join(allowed, 'race', 'secret.pdb'), 'HEADER BEFORE SWAP');
   const raced = await fetch(`${base}/__burette/read-file?${new URLSearchParams({ path: join(allowed, 'race', 'secret.pdb') })}`, { headers });

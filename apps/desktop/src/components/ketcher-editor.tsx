@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps 
 import type { Ketcher, Struct } from "ketcher-core";
 import { installKetcherBrowserRequire, installKetcherRaphaelBrowserModules } from "../lib/ketcher-browser-require";
 import { deserializeKetcherMolfile, normalizeKetcherMolfileNames } from "../lib/ketcher-workflow";
+import { rejectOnKetcherAsyncFailure } from "../lib/ketcher-async-failure";
 import { Spinner } from "@/components/ui/spinner";
 import "ketcher-react/dist/index.css";
 
@@ -134,6 +135,7 @@ function createKetcherEditorApi(
   root: HTMLElement | null,
 ): KetcherEditorApi {
   const editorInstance = instance as KetcherWithEditorStruct;
+  let setMoleculeQueue: Promise<void> = Promise.resolve();
   const currentZoomTool = () => editorInstance.editor.zoomTool ?? ZoomTool.instance;
   const selectionSource = editorInstance.editor.selectionChange ?? editorInstance.editor.event?.selectionChange;
   const api: KetcherEditorApi = {
@@ -213,9 +215,13 @@ function createKetcherEditorApi(
     setMolfile: async (molfile: string) => {
       setMolfileDirectly(instance, MolSerializer, molfile);
     },
-    setMolecule: ((...args: Parameters<Ketcher["setMolecule"]>) => (
-      callKetcherWhenReady(() => instance.setMolecule(...args))
-    )) as Ketcher["setMolecule"],
+    setMolecule: ((...args: Parameters<Ketcher["setMolecule"]>) => {
+      const operation = setMoleculeQueue.then(() => callKetcherWhenReady(() => (
+        rejectOnKetcherAsyncFailure(() => instance.setMolecule(...args), editorInstance.eventBus)
+      )));
+      setMoleculeQueue = operation.then(() => undefined, () => undefined);
+      return operation;
+    }) as Ketcher["setMolecule"],
     setZoom: ((value: number) => {
       editorInstance.editor.zoomTool?.zoomTo?.(value);
       editorInstance.editor.zoom(value);

@@ -4,10 +4,10 @@ use serde_json::{json, Value};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::SystemTime;
-use tauri::{Manager, Runtime};
+use tauri::Runtime;
 
+use super::desmond_trajectory::desmond_trajectory_files;
 use super::formats::{
     format_for_extension, normalize_renderer_mode, preview_plan_for_extension, resolve_renderer,
     structure_path_extension,
@@ -25,8 +25,6 @@ const DEFAULT_DESKTOP_PREVIEW_LIMIT_MIB: u64 = 1024;
 const MIN_DESKTOP_PREVIEW_LIMIT_MIB: u64 = 1;
 const MAX_DESKTOP_PREVIEW_LIMIT_MIB: u64 = 4096;
 const MAESTRO_PREVIEW_READ_LIMIT: u64 = 64 * 1024 * 1024;
-const DESMOND_PREVIEW_TARGET_MB: &str = "24";
-const SCHRODINGER_RUN: &str = "/opt/schrodinger/suites2026-1/run";
 const MD_COORDINATE_EXTENSIONS: &[&str] = &[
     "xtc",
     "trr",
@@ -622,6 +620,14 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         return Err(format!("{} is not a file", canonical.display()));
     }
     let extension = structure_path_extension(&canonical);
+    // Checked before the size guards: `clickme.dtr` is an empty pointer file and
+    // the trajectory is read frame by frame, never whole.
+    let desmond_preview_error =
+        match open_desmond_trajectory_document(app, &canonical, &extension, preferences) {
+            Some(Ok(document)) => return Ok(document),
+            Some(Err(error)) => Some(error),
+            None => None,
+        };
     let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
     let is_sdf = matches!(extension.as_str(), "sd" | "sdf");
     let streamed_table = matches!(
@@ -643,37 +649,6 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     if metadata.len() == 0 {
         return Err(format!("{} is empty", canonical.display()));
     }
-    let desmond_preview_error = match create_desmond_trajectory_preview(app, &canonical, &extension)
-    {
-        Ok(Some(desmond_preview)) => {
-            let format = format_for_extension("pdb")?;
-            let runtime = create_runtime(
-                app,
-                &canonical,
-                "pdb",
-                &format,
-                "molstar",
-                &desmond_preview,
-                preferences,
-                reload_options,
-            )?;
-            return Ok(ViewerDocument {
-                id: stable_id(&canonical),
-                path: canonical.to_string_lossy().to_string(),
-                title: file_title(&canonical),
-                extension,
-                renderer: runtime.renderer,
-                runtime_path: runtime.path.to_string_lossy().to_string(),
-                byte_count: metadata.len(),
-                viewer_profile: runtime.viewer_profile,
-                is_virtual: false,
-                docking_request: None,
-                open_claim_id: None,
-            });
-        }
-        Ok(None) => None,
-        Err(error) => Some(error),
-    };
     if let Some(bundle) = resolve_molstar_md_file_bundle(&canonical, &extension) {
         return open_md_trajectory_document(app, bundle, preferences);
     }
@@ -903,89 +878,55 @@ fn is_lammps_data_extension(extension: &str) -> bool {
     matches!(extension, "data" | "lammps" | "lmp")
 }
 
-fn create_desmond_trajectory_preview<R: Runtime>(
+/// Opens a Desmond CMS/DTR pair as a Mol* trajectory of the full system.
+///
+/// Returns `None` for anything that is not a Desmond pair, and an error when the
+/// pair exists but cannot be converted, so the caller can fall back to the static
+/// CMS structure.
+fn open_desmond_trajectory_document<R: Runtime>(
     app: &tauri::AppHandle<R>,
     path: &Path,
     extension: &str,
-) -> Result<Option<Vec<u8>>, String> {
-    let bundle = resolve_structure_file_bundle(path, extension);
-    if bundle.kind != StructureBundleKind::Desmond || !is_desmond_preview_candidate(path, extension)
-    {
-        return Ok(None);
-    }
-    let extractor = desmond_preview_extractor_path(app)?;
-    if !Path::new(SCHRODINGER_RUN).exists() {
-        return Err("Schrodinger Desmond preview extractor is unavailable.".to_string());
-    }
-    let temp_dir =
-        std::env::temp_dir().join(format!("burette-desmond-preview-{}", uuid::Uuid::new_v4()));
-    fs::create_dir_all(&temp_dir).map_err(|err| err.to_string())?;
-    let output_path = temp_dir.join("desmond-preview.pdb");
-    let output = Command::new(SCHRODINGER_RUN)
-        .arg("python3")
-        .arg(&extractor)
-        .arg(&bundle.input_path)
-        .arg("--frames")
-        .arg("0")
-        .arg("--atoms")
-        .arg("0")
-        .arg("--target-mb")
-        .arg(DESMOND_PREVIEW_TARGET_MB)
-        .arg("--output")
-        .arg(&output_path)
-        .output()
-        .map_err(|err| format!("Could not start Schrodinger Desmond preview extractor: {err}"));
-    let result = match output {
-        Ok(output) if output.status.success() => fs::read(&output_path)
-            .map_err(|err| format!("Could not read Desmond trajectory preview: {err}"))
-            .and_then(|data| {
-                if data.is_empty() {
-                    Err("Desmond preview extractor produced an empty PDB file.".to_string())
-                } else {
-                    Ok(data)
-                }
-            }),
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            let details = if stderr.is_empty() { stdout } else { stderr };
-            Err(format!(
-                "Desmond preview extractor failed with exit status {}. {}",
-                output.status, details
-            ))
-        }
-        Err(error) => Err(error),
+    preferences: &ViewerPreferences,
+) -> Option<Result<ViewerDocument, String>> {
+    let bundle = resolve_desmond_file_bundle(path, extension)?;
+    let attachment = |role: StructureAttachmentRole| {
+        bundle
+            .attachments
+            .iter()
+            .find(|attachment| attachment.role == role)
+            .map(|attachment| attachment.path.clone())
     };
-    let _ = fs::remove_dir_all(&temp_dir);
-    result.map(Some)
-}
-
-fn desmond_preview_extractor_path<R: Runtime>(
-    app: &tauri::AppHandle<R>,
-) -> Result<PathBuf, String> {
-    if let Ok(resource) = app.path().resolve(
-        "desmond_preview_extract.py",
-        tauri::path::BaseDirectory::Resource,
-    ) {
-        if resource.exists() {
-            return Ok(resource);
-        }
-    }
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let repo_root = manifest_dir
-        .parent()
-        .and_then(Path::parent)
-        .and_then(Path::parent)
-        .unwrap_or(&manifest_dir);
-    let source = repo_root.join("scripts").join("desmond_preview_extract.py");
-    if source.exists() {
-        return Ok(source);
-    }
-    Err("Schrodinger Desmond preview extractor is unavailable.".to_string())
-}
-
-fn is_desmond_preview_candidate(path: &Path, extension: &str) -> bool {
-    resolve_desmond_file_bundle(path, extension).is_some()
+    let (Some(cms), Some(trj_dir)) = (
+        attachment(StructureAttachmentRole::Topology),
+        attachment(StructureAttachmentRole::Trajectory),
+    ) else {
+        return None;
+    };
+    Some(
+        desmond_trajectory_files(app, &cms, &trj_dir).and_then(|files| {
+            open_md_trajectory_document(
+                app,
+                StructureFileBundle {
+                    kind: StructureBundleKind::Md,
+                    // Opening `clickme.dtr` shows the run under its CMS name.
+                    primary_path: bundle.primary_path.clone(),
+                    input_path: bundle.primary_path.clone(),
+                    attachments: vec![
+                        StructureAttachment {
+                            role: StructureAttachmentRole::Topology,
+                            path: files.topology,
+                        },
+                        StructureAttachment {
+                            role: StructureAttachmentRole::Trajectory,
+                            path: files.trajectory,
+                        },
+                    ],
+                },
+                preferences,
+            )
+        }),
+    )
 }
 
 fn resolve_structure_file_bundle(path: &Path, extension: &str) -> StructureFileBundle {

@@ -10,7 +10,6 @@ type BrowserDevRuntimeDoctorRoutes = {
   conformerStatus: () => Promise<RuntimeStatusPayload>;
   descriptorStatus: () => Promise<RuntimeStatusPayload>;
   rdkitConformerStatus: () => Promise<RuntimeStatusPayload>;
-  schrodingerStatus: () => RuntimeStatusPayload;
   xtbStatus: () => Promise<RuntimeStatusPayload>;
   xyzrenderStatus: () => RuntimeStatusPayload;
 };
@@ -28,7 +27,6 @@ export async function browserDevRuntimeDoctorReport(routes: BrowserDevRuntimeDoc
     routes.xtbStatus(),
   ]);
   const xyzrenderStatus = routes.xyzrenderStatus();
-  const schrodingerStatus = routes.schrodingerStatus();
 
   return {
     schema: DOCTOR_SCHEMA,
@@ -40,7 +38,6 @@ export async function browserDevRuntimeDoctorReport(routes: BrowserDevRuntimeDoc
       checkFromPayload("crest", "CREST", "conformer-tool", payloadObject(conformerStatus.crest), "installed", "executable"),
       checkFromPayload("prism", "PRISM Pruner", "conformer-tool", payloadObject(conformerStatus.prism), "installed", "executable"),
       checkFromPayload("xtb", "xTB", "semiempirical-tool", xtbStatus, "installed", "executablePath"),
-      checkFromPayload("schrodinger", "Schrodinger", "external-suite", schrodingerStatus, "installed", "executablePath"),
     ],
   };
 }

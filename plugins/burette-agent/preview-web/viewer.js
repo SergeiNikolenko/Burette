@@ -1571,6 +1571,7 @@
   window.BuretteViewerActions = { run: executeBuretteAgentAction };
 
   let hostedMcpActionsApplied = false;
+  let hostedMcpSceneInitialized = false;
   function hostedMcpSelectionFromResults(actions, results) {
     let selection = null;
     for (let index = 0; index < actions.length; index++) {
@@ -1598,6 +1599,7 @@
   }
 
   async function applyHostedMcpActions() {
+    if (!hostedMcpSceneInitialized) return;
     if (hostedMcpActionsApplied) return;
     const requestedActions = Array.isArray(window.BuretteConfig?.hostedMcpActions)
       ? window.BuretteConfig.hostedMcpActions.slice(0, 8)
@@ -1605,8 +1607,13 @@
     if (!requestedActions.length) return;
     hostedMcpActionsApplied = true;
     try {
-      await window.BuretteHostedAppBridge?.ready;
-      const actions = window.BuretteHostedAppBridge?.sanitizeViewerActions?.(requestedActions) || [];
+      // The React-hosted viewer is a same-origin srcdoc child; the MCP Apps
+      // connection belongs to its parent shell. Re-read after readiness because
+      // initialization replaces the shell's temporary bridge object.
+      const bridgeWindow = window.BuretteHostedAppBridge ? window : window.parent;
+      if (!bridgeWindow?.BuretteHostedAppBridge) throw new Error('Hosted scene bridge is unavailable.');
+      await bridgeWindow.BuretteHostedAppBridge.ready;
+      const actions = bridgeWindow.BuretteHostedAppBridge?.sanitizeViewerActions?.(requestedActions) || [];
       if (actions.length !== requestedActions.length) {
         throw new Error('Hosted scene contained an action outside the public Burette allowlist.');
       }
@@ -1903,8 +1910,8 @@
   let activeConfig = null;
   let activeMolstarPrepared = null;
   let trajectorySmoothingState = null;
+  let trajectorySmoothingSwitchPending = false;
   let pendingTrajectoryPlaybackRestore = null;
-  let viewportTrajectoryAnimationEpoch = 0;
   let activeSdfPoseMode = 'single';
   let activeSdfCollectionLayout = 'overlap';
   let activeSdfCollectionVisibilityState = null;
@@ -2265,7 +2272,8 @@
   }
 
   function resolvedCanvasBackground() {
-    if (canvasBackground === 'auto') return resolveViewerTheme() === 'light' ? 'white' : 'graphite';
+    if (canvasBackground === 'auto') return resolveViewerTheme() === 'light' ? 'white'
+      : window.BuretteConfig?.hostedMcpWidgetBootstrap === true ? 'black' : 'graphite';
     return canvasBackground;
   }
 
@@ -2927,13 +2935,13 @@
 
   function showGenerate3DMenu(anchor) {
     const menu = document.querySelector('[data-buret-generate-3d-menu]');
-    if (!menu || anchor?.classList?.contains('hidden') || anchor?.disabled) return;
+    if (!menu || !anchor || anchor.classList.contains('hidden') || anchor.disabled) return;
+    hideMolstarPresetMenu();
+    closeViewportMenu();
     menu.classList.remove('hidden');
     positionGenerate3DMenu(anchor);
     anchor.setAttribute('aria-expanded', 'true');
     menu.querySelector('[role="menuitem"]')?.focus?.();
-    const rect = anchor.getBoundingClientRect();
-    showNativeViewerMenu(menu, rect.left, rect.bottom, hideGenerate3DMenu);
   }
 
   function positionGenerate3DMenu(anchor = document.querySelector('[data-buret-action="generate-3d-conformer"]')) {
@@ -3027,6 +3035,9 @@
 
   function requestMolecularCompute(operation = 'generate3d', options = {}) {
     const config = activeConfig || window.BuretteConfig || {};
+    // MCP widgets have no native-compute transport. Do not advertise or send
+    // desktop compute actions just because the document happens to be an SDF.
+    if (config.hostedMcpWidgetBootstrap === true || config.visualizationOnly === true) return;
     const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (!['sdf', 'sd', 'mol'].includes(format)) {
       setStatus('Native molecular compute supports SDF and MOL structures in Molstar.', 'error');
@@ -3058,6 +3069,7 @@
   }
 
   function canGenerate3DConformerFromConfig(config, renderer) {
+    if (config?.hostedMcpWidgetBootstrap === true || config?.visualizationOnly === true) return false;
     const format = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format);
     return renderer === 'molstar' && ['sdf', 'sd', 'mol'].includes(format);
   }
@@ -3575,12 +3587,15 @@
 
   function observeMolstarViewportPanel() {
     if (molstarViewportPanelObserver || !document.body) return;
-    const update = () => refreshMolstarViewportPanelState();
+    const update = records => {
+      if (!records || hasEffectiveLayoutMutation(records)) refreshMolstarViewportPanelState();
+    };
     molstarViewportPanelObserver = new MutationObserver(update);
     molstarViewportPanelObserver.observe(document.body, {
       childList: true,
       subtree: true,
       attributes: true,
+      attributeOldValue: true,
       attributeFilter: ['class', 'style', 'hidden']
     });
     update();
@@ -4591,6 +4606,7 @@
     const menu = document.querySelector('[data-buret-molstar-preset-menu]');
     if (!menu || !anchor || anchor.disabled) return;
     hideGenerate3DMenu();
+    closeViewportMenu();
     populateMolstarPresetMenu(menu);
     updateMolstarPresetControl(document.getElementById('buret-toolbar'), configuredMolstarPreset(activeConfig || window.BuretteConfig || {}));
     menu.classList.remove('hidden');
@@ -4598,8 +4614,6 @@
     positionMolstarPresetMenu(anchor);
     const selected = menu.querySelector('[aria-checked="true"]');
     focusMolstarPresetControl(setMolstarPresetMenuRovingItem(menu, selected), pointerFocus);
-    const rect = anchor.getBoundingClientRect();
-    showNativeViewerMenu(menu, rect.left, rect.bottom, hideMolstarPresetMenu);
   }
 
   function escapeHtml(value) {
@@ -6890,11 +6904,14 @@
   function installMolstarFloatingPanelTracking() {
     if (floatingPanelTrackingInstalled || !document.body) return;
     floatingPanelTrackingInstalled = true;
-    const observer = new MutationObserver(scheduleFloatingLayoutRefresh);
+    const observer = new MutationObserver(records => {
+      if (hasEffectiveLayoutMutation(records)) scheduleFloatingLayoutRefresh();
+    });
     observer.observe(document.body, {
       childList: true,
       subtree: true,
       attributes: true,
+      attributeOldValue: true,
       attributeFilter: ['class', 'style', 'hidden', 'aria-hidden']
     });
     window.addEventListener('resize', scheduleFloatingLayoutRefresh);
@@ -7200,19 +7217,28 @@
   function syncLeftPanelVisibility() {
     document.querySelectorAll('.msp-layout-region.msp-layout-left').forEach(region => {
       if (layoutState.left === 'hidden') {
-        region.style.display = 'none';
-        region.setAttribute('aria-hidden', 'true');
+        if (region.style.display !== 'none') region.style.display = 'none';
+        if (region.getAttribute('aria-hidden') !== 'true') region.setAttribute('aria-hidden', 'true');
       } else {
-        region.style.display = '';
-        region.removeAttribute('aria-hidden');
+        if (region.style.display) region.style.display = '';
+        if (region.hasAttribute('aria-hidden')) region.removeAttribute('aria-hidden');
       }
     });
+  }
+
+  // DOM setters can emit mutation records even for an identical value. Our
+  // layout observers also write styles, so ignore no-op/net-zero attribute
+  // changes rather than scheduling another layout pass from our own writes.
+  function hasEffectiveLayoutMutation(records) {
+    return records.some(record => record.type !== 'attributes'
+      || record.oldValue !== record.target.getAttribute(record.attributeName));
   }
 
   function installLeftPanelVisibilityGuard() {
     if (leftPanelVisibilityGuardInstalled || !document.body) return;
     leftPanelVisibilityGuardInstalled = true;
-    const observer = new MutationObserver(() => {
+    const observer = new MutationObserver(records => {
+      if (!hasEffectiveLayoutMutation(records)) return;
       if (layoutState.left === 'hidden') syncLeftPanelVisibility();
       stripMolstarSequenceTooltips();
       installSequenceCloseButton();
@@ -7220,6 +7246,7 @@
     });
     observer.observe(document.body, {
       attributes: true,
+      attributeOldValue: true,
       attributeFilter: ['class', 'style'],
       childList: true,
       subtree: true
@@ -8632,10 +8659,11 @@ SOFTWARE.
     return updateSceneTreeRepresentation(ref, old => ({ ...old, type: { name: type, params: {} } }));
   }
 
-  function applySceneTreeReprAlpha(ref, alpha) {
-    return updateSceneTreeRepresentation(ref, old => ({
+  async function applySceneTreeReprAlpha(ref, alpha) {
+    await updateSceneTreeRepresentation(ref, old => ({
       ...old, type: { ...old.type, params: { ...old.type.params, alpha } }
     }));
+    syncMolstarOutlineTransparency(activeMolstarViewer());
   }
 
   function applySceneTreeReprColor(ref, choice, value) {
@@ -9800,6 +9828,8 @@ SOFTWARE.
   function openViewportMenu(trigger, label, build) {
     const wasOpen = trigger.getAttribute('aria-expanded') === 'true';
     closeViewportMenu();
+    hideGenerate3DMenu();
+    hideMolstarPresetMenu();
     if (wasOpen) return;
     const menu = document.createElement('div');
     menu.id = 'buret-viewport-menu';
@@ -9810,8 +9840,6 @@ SOFTWARE.
     document.body.appendChild(menu);
     trigger.setAttribute('aria-expanded', 'true');
     positionOpenViewportMenu(trigger.closest('#buret-viewport-rail, .buret-seq-footer'));
-    const anchor = trigger.getBoundingClientRect();
-    showNativeViewerMenu(menu, anchor.left, anchor.bottom, closeViewportMenu);
   }
 
   function viewportMenuItem(menu, label, action, options = {}) {
@@ -10310,12 +10338,6 @@ SOFTWARE.
   }
 
   function viewportAnimationApplicability(animation, plugin) {
-    if (animation?.name === 'built-in.animate-model-index'
-      && activeTrajectoryPlaybackControl
-      && !trajectorySmoothingState
-      && !activeTrajectoryPlaybackControl.canInterpolate()) {
-      return { canApply: false, reason: 'Build a smoothed trajectory before animating this format' };
-    }
     if (typeof animation?.canApply !== 'function') return { canApply: true };
     try {
       return animation.canApply(plugin) || { canApply: true };
@@ -10325,36 +10347,9 @@ SOFTWARE.
     }
   }
 
-  function interpolatedTrajectoryFrameCount(sourceFrameCount) {
-    const count = Math.max(2, Math.trunc(Number(sourceFrameCount) || 2));
-    if (count >= 60) return count;
-    return Math.min(600, Math.max(60, (count - 1) * 8 + 1));
-  }
-
-  function cancelViewportTrajectoryAnimation() {
-    viewportTrajectoryAnimationEpoch += 1;
-  }
-
   async function playViewportTrajectoryAnimation() {
-    const animationEpoch = ++viewportTrajectoryAnimationEpoch;
-    const viewer = activeViewer;
-    let playback = activeTrajectoryPlaybackControl;
+    const playback = activeTrajectoryPlaybackControl;
     if (!playback) throw new Error('Trajectory playback controls are unavailable for this scene.');
-    playback.stop();
-    if (trajectorySmoothingState?.view === 'original') {
-      const restored = await setTrajectorySmoothingViewFromAction({ view: 'smoothed' });
-      if (!restored.ok) throw new Error(restored.error?.message || 'The smoothed trajectory could not be restored.');
-    } else if (!trajectorySmoothingState) {
-      if (!playback.canInterpolate()) throw new Error('Build a smoothed trajectory before animating this format.');
-      const smoothed = await applyTrajectorySmoothingFromAction({
-        preset: 'balanced',
-        outputFrames: interpolatedTrajectoryFrameCount(playback.frameCount())
-      });
-      if (!smoothed.ok) throw new Error(smoothed.error?.message || 'The trajectory could not be interpolated.');
-    }
-    if (animationEpoch !== viewportTrajectoryAnimationEpoch || activeViewer !== viewer) return;
-    playback = activeTrajectoryPlaybackControl;
-    if (!playback) throw new Error('Trajectory playback controls were lost while preparing the animation.');
     playback.play();
     updateViewportAnimateState();
   }
@@ -10369,7 +10364,6 @@ SOFTWARE.
         .catch(error => setStatus(`[web] Trajectory animation failed. ${error?.message || error}`, 'error'));
       return;
     }
-    cancelViewportTrajectoryAnimation();
     Promise.resolve(manager.play(animation, viewportAnimationParams(animation, plugin)))
       .then(() => updateViewportAnimateState())
       .catch(error => setStatus(`[web] Animation failed. ${error?.message || error}`, 'error'));
@@ -10739,7 +10733,6 @@ SOFTWARE.
     } else if (action === 'animation-play') {
       playViewportAnimation(Number(control.dataset.animationIndex));
     } else if (action === 'animation-stop') {
-      cancelViewportTrajectoryAnimation();
       plugin.managers.animation.stop();
       activeTrajectoryPlaybackControl?.stop();
       updateViewportAnimateState();
@@ -11387,6 +11380,23 @@ SOFTWARE.
       return Array.from(viewer?.plugin?.managers?.structure?.hierarchy?.current?.structures || []).length;
     } catch (_) {
       return 0;
+    }
+  }
+
+  function assertMolstarLoadReady(viewer, prepared) {
+    const cells = viewer?.plugin?.state?.data?.cells;
+    const failedCell = cells && typeof cells.values === 'function'
+      ? Array.from(cells.values()).find(cell => cell?.status === 'error')
+      : null;
+    if (failedCell) {
+      const transform = failedCell.transform?.transformer?.definition?.display?.name || 'Mol* parser';
+      const detail = String(failedCell.errorText || '').trim().slice(0, 240);
+      throw new Error(`Mol* could not load ${prepared?.label || 'the structure'} (${transform})${detail ? `: ${detail}` : ''}; viewer readiness was withheld.`);
+    }
+    // Volume-only maps and MVS scenes can be valid without molecular structures.
+    if (prepared?.kind === 'volume' || prepared?.kind === 'mvs') return;
+    if (currentMolstarStructureCount(viewer) < 1) {
+      throw new Error(`Mol* loaded no molecular structures for ${prepared?.label || 'the input'}; viewer readiness was withheld.`);
     }
   }
 
@@ -12389,7 +12399,6 @@ SOFTWARE.
   }
 
   const DEFAULT_TRAJECTORY_LOOP_FPS = 20;
-  const NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD = 25;
 
   function trajectoryLoopFpsStorageKey(config, prepared) {
     return `${trajectoryControlStorageKey(config, prepared)}.fps.v1`;
@@ -15116,6 +15125,7 @@ SOFTWARE.
   function prepareXyzStructure(text, config) {
     const label = config.label || 'structure';
     const frames = splitXyzFrames(text);
+    if (!frames.length) throw new Error(`Invalid XYZ in ${label}: check atom counts and finite coordinates in every frame.`);
     if (frames.length > 1) {
       const overlay = buildXyzFrameOverlay(frames, label);
       return {
@@ -16126,9 +16136,17 @@ SOFTWARE.
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
   }
 
-  function applyXyzFrameOverlayVisibility(viewer, prepared, activePose = 0, options = {}) {
-    return queueMolstarSceneRebuild(() => applyXyzFrameOverlayVisibilityNow(viewer, prepared, activePose, options),
-      options.contextOpacity != null || options.contextColor != null ? prepared : null);
+  async function applyXyzFrameOverlayVisibility(viewer, prepared, activePose = 0, options = {}) {
+    // External style/opacity/All changes can replace a native trajectory with a
+    // single-frame overlay. Drain its clock before rebuilding. Internal stepping
+    // and Align already own the playback queue and must not await themselves.
+    const resume = options.installControls === false ? () => {} : await pauseTrajectoryForRebuild();
+    try {
+      await queueMolstarSceneRebuild(() => applyXyzFrameOverlayVisibilityNow(viewer, prepared, activePose, options),
+        options.contextOpacity != null || options.contextColor != null ? prepared : null);
+    } finally {
+      resume();
+    }
   }
 
   async function applyXyzFrameOverlayVisibilityNow(viewer, prepared, activePose = 0, options = {}) {
@@ -16765,7 +16783,9 @@ SOFTWARE.
 
   // `includeTransparent` is always written out: the outline otherwise skips
   // translucent geometry, which makes the illustrative contour disappear as soon
-  // as a chain's opacity is lowered.
+  // as a chain's opacity is lowered. Water lines are translucent too, and an
+  // outline over them draws every solvent molecule in black, so by default the
+  // contour only reaches translucent geometry that is not water.
   async function applyMolstarIllustrativePostprocessing(viewer, options = {}) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
@@ -16793,7 +16813,7 @@ SOFTWARE.
                   threshold: 0.33
                 }),
             color: molstarOutlineColor(),
-            includeTransparent: options.includeTransparent !== false
+            includeTransparent: options.includeTransparent ?? molstarHasTranslucentNonWater(plugin)
           }
         },
         occlusion: {
@@ -16815,6 +16835,30 @@ SOFTWARE.
         shadow: { name: 'off', params: {} }
       }
     });
+  }
+
+  function molstarHasTranslucentNonWater(plugin) {
+    for (const structure of plugin?.managers?.structure?.hierarchy?.current?.structures || []) {
+      for (const component of structure.components || []) {
+        if (isMolstarWaterComponent(component)) continue;
+        for (const representation of component.representations || []) {
+          if (representation.transparency) return true;
+          const alpha = representation.cell?.transform?.params?.type?.params?.alpha;
+          if (typeof alpha === 'number' && alpha < 1) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Opacity edits change which geometry the illustrative contour has to reach.
+  function syncMolstarOutlineTransparency(viewer) {
+    const canvas = viewer?.plugin?.canvas3d;
+    const outline = canvas?.props?.postprocessing?.outline;
+    if (outline?.name !== 'on') return;
+    const includeTransparent = molstarHasTranslucentNonWater(viewer.plugin);
+    if (outline.params.includeTransparent === includeTransparent) return;
+    canvas.setProps({ postprocessing: { outline: { name: 'on', params: { ...outline.params, includeTransparent } } } });
   }
 
   async function applyMolstarStyle(viewer, style) {
@@ -17352,6 +17396,7 @@ SOFTWARE.
               });
             }
           }
+          if (edit.operation === 'opacity') syncMolstarOutlineTransparency(viewer);
         }
       }, { canUndo: `${operation} ${label}`, rethrowErrors: true });
       molstarCompositionQueries.delete(query);
@@ -17537,6 +17582,11 @@ SOFTWARE.
     const representation = representationForSceneComponentKind(kind);
     let created = 0;
     for (const component of components) {
+      // "Keep protein visible" is idempotent, not another overlapping cartoon.
+      if (component.representations?.some(repr => repr.cell?.obj?.data?.repr?.state?.visible === true)) {
+        created += 1;
+        continue;
+      }
       try {
         await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation, { tag: `burette-${kind}` });
         created += 1;
@@ -17804,7 +17854,9 @@ SOFTWARE.
       const plugin = viewer.plugin;
       const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
       for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
-        await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', { useDefaultIfSingleModel: true });
+        await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', {
+          useDefaultIfSingleModel: activeConfig?.hostedMcpWidgetBootstrap !== true
+        });
       }
       if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
       await applyMolstarWaterLineRepresentation(viewer);
@@ -17812,14 +17864,18 @@ SOFTWARE.
       return;
     }
     const plugin = viewer.plugin;
-    if (prepared.format !== 'mmcif' && prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
+    if (activeConfig?.hostedMcpWidgetBootstrap !== true && prepared.format !== 'mmcif' && prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
       await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
     const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
     for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
-      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
+      // Hosted counts and author-residue selectors describe the supplied
+      // coordinates, not automatically generated biological-assembly copies.
+      const presetOptions = activeConfig?.hostedMcpWidgetBootstrap === true
+        ? { structure: { name: 'model', params: {} } } : undefined;
+      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', presetOptions);
     }
     if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
     await applyMolstarWaterLineRepresentation(viewer);
@@ -18131,6 +18187,28 @@ SOFTWARE.
   let activeStructureAlignmentControl = null;
   let activeSuperpositionPanel = null;
   let activeTrajectoryPlaybackControl = null;
+  let trajectoryPlaybackIntent = 0;
+  let trajectoryRebuildPause = null;
+  async function pauseTrajectoryForRebuild() {
+    if (trajectoryRebuildPause?.viewer !== activeViewer) trajectoryRebuildPause = null;
+    const state = trajectoryRebuildPause || (trajectoryRebuildPause = {
+      viewer: activeViewer, intent: trajectoryPlaybackIntent,
+      resume: activeTrajectoryPlaybackControl?.isPlaying() === true, depth: 0
+    });
+    state.depth += 1;
+    await activeTrajectoryPlaybackControl?.stop({ preserveIntent: true });
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      if (--state.depth > 0) return;
+      if (trajectoryRebuildPause === state) trajectoryRebuildPause = null;
+      if (state.resume && state.viewer === activeViewer && state.intent === trajectoryPlaybackIntent) {
+        activeTrajectoryPlaybackControl?.play({ preserveIntent: true });
+      }
+    };
+  }
+
 
   const BURETTE_SUPERPOSITION_TAG_PREFIX = 'BuretteSuperpositionTransform:';
 
@@ -18866,17 +18944,6 @@ SOFTWARE.
     }) || null;
   }
 
-  function nativeAnimationSelectButton() {
-    const roots = Array.from(document.querySelectorAll('.msp-viewport-top-left-controls, .msp-animation-viewport-controls'));
-    for (const root of roots) {
-      const button = Array.from(root.querySelectorAll('button')).find(candidate => (
-        /\bselect animation\b/i.test(`${candidate.getAttribute('title') || ''} ${candidate.getAttribute('aria-label') || ''}`)
-      ));
-      if (button) return button;
-    }
-    return null;
-  }
-
   function readNativeTrajectoryPositionFromDom(expectedCount) {
     const root = nativeTrajectoryControlsRoot();
     const text = root?.textContent || '';
@@ -19173,6 +19240,9 @@ SOFTWARE.
   async function replaceTrajectorySmoothingPrepared(prepared, playbackOverride = null) {
     if (!activeViewer?.plugin || !prepared) throw new Error('The Mol* trajectory viewer is not ready.');
     if (typeof activeViewer.plugin.clear !== 'function') throw new Error('Mol* cannot replace this trajectory in place.');
+    if (trajectorySmoothingSwitchPending) throw new Error('A trajectory replacement is already in progress.');
+    trajectorySmoothingSwitchPending = true;
+    const previousPrepared = activeMolstarPrepared;
     const currentPlayback = currentTrajectoryPlaybackSnapshot();
     const playbackSnapshot = playbackOverride ? {
       frameIndex: Math.max(0, Math.trunc(Number(playbackOverride.frameIndex) || 0)),
@@ -19181,13 +19251,29 @@ SOFTWARE.
     } : currentPlayback;
     pendingTrajectoryPlaybackRestore = playbackSnapshot;
     try {
+      await activeTrajectoryPlaybackControl?.stop();
+      await activeViewer.plugin.managers?.animation?.stop();
       await activeViewer.plugin.clear();
       await loadPreparedStructure(activeViewer, prepared);
       await restoreTrajectoryPlaybackSnapshot(playbackSnapshot);
       applyLayoutState(activeViewer);
       scheduleLayoutStateReapply(activeViewer);
       try { activeViewer.handleResize(); } catch (_) {}
+    } catch (error) {
+      if (previousPrepared) {
+        pendingTrajectoryPlaybackRestore = currentPlayback;
+        try {
+          await activeTrajectoryPlaybackControl?.stop();
+          await activeViewer.plugin.clear();
+          await loadPreparedStructure(activeViewer, previousPrepared);
+          await restoreTrajectoryPlaybackSnapshot(currentPlayback);
+        } catch (rollbackError) {
+          throw new Error(`${error?.message || error}; restoring the previous trajectory also failed: ${rollbackError?.message || rollbackError}`);
+        }
+      }
+      throw error;
     } finally {
+      trajectorySmoothingSwitchPending = false;
       pendingTrajectoryPlaybackRestore = null;
     }
   }
@@ -19221,8 +19307,9 @@ SOFTWARE.
         nativeTrajectoryControls: true,
         controlLabel: 'Frame'
       };
-      trajectorySmoothingState = { originalPrepared, smoothedPrepared, result, view: 'smoothed' };
       await replaceTrajectorySmoothingPrepared(smoothedPrepared);
+      trajectorySmoothingState = { originalPrepared, smoothedPrepared, result, view: 'smoothed',
+        originalSegmentStartFrame: 0, originalFrameCount: originalPrepared.poseCount };
       updateTrajectorySmoothingButtons();
       postHostMessage({
         type: 'trajectorySmoothingChanged',
@@ -19253,9 +19340,12 @@ SOFTWARE.
       return agentActionFailure('apply_external_trajectory_smoothing', 'NOT_AVAILABLE', 'The smoothed trajectory is unavailable.');
     }
     try {
-      const response = await fetch(String(action.sourceUrl), { cache: 'no-store' });
-      if (!response.ok) throw new Error(`Could not read smoothed trajectory: ${response.status}`);
-      const data = await response.text();
+      const binaryCoordinates = action.sourceFormat === 'dcd';
+      if (binaryCoordinates && !originalPrepared.trajectoryPair) {
+        throw new Error('Binary smoothing needs the original paired topology.');
+      }
+      const bytes = await loadPayloadBytes(String(action.sourceUrl));
+      const data = binaryCoordinates ? bytes : new TextDecoder('utf-8').decode(bytes);
       const frameCount = Math.max(2, Math.trunc(Number(action.frameCount) || 2));
       // Smoothing keeps the topology whenever the run had one, and then hands back a
       // multi-model PDB. Reading that as XYZ would throw away the residues and chains
@@ -19279,10 +19369,22 @@ SOFTWARE.
         trajectorySegments: [],
         smoothingSourcePath: String(action.sourcePath || '')
       };
-      trajectorySmoothingState = {
+      if (binaryCoordinates) {
+        const originalPair = originalPrepared.trajectoryPair;
+        const coordinateEntry = { ...originalPair.coordinateEntry, data, format: 'dcd',
+          label: `${originalPair.coordinateEntry.label} - smoothed`, sourcePath: action.sourcePath || '' };
+        Object.assign(smoothedPrepared, {
+          kind: 'docking', data: originalPrepared.data, format: originalPrepared.format,
+          entries: [...originalPrepared.entries.filter(entry => !isDockingTrajectoryPairEntry(entry, originalPair)),
+            originalPair.modelEntry, coordinateEntry],
+          trajectoryPair: { ...originalPair, coordinateEntry, coordinateEntries: [coordinateEntry], trajectorySegments: [] }
+        });
+      }
+      const nextSmoothingState = {
         originalPrepared,
         smoothedPrepared,
         result: { frameCount, interpolation: action.interpolation || 'linear' },
+        originalFrameCount: frameCount,
         originalFrameIndex: Math.max(0, Math.trunc(Number(action.originalFrameIndex) || 0)),
         originalSegmentStartFrame: Math.max(0, Math.trunc(Number(action.originalSegmentStartFrame) || 0)),
         smoothedFrameIndex: Math.max(0, Math.trunc(Number(action.frameIndex) || 0)),
@@ -19292,6 +19394,7 @@ SOFTWARE.
         frameIndex: action.frameIndex,
         playing: action.playing
       });
+      trajectorySmoothingState = nextSmoothingState;
       updateTrajectorySmoothingButtons();
       postHostMessage({ type: 'trajectorySmoothingChanged', documentId: activeConfig?.documentId || '', view: 'smoothed' });
       return { ok: true, command: 'apply_external_trajectory_smoothing', result: { frameCount } };
@@ -19307,14 +19410,18 @@ SOFTWARE.
     const view = action.view === 'original' ? 'original' : 'smoothed';
     try {
       const currentPlayback = currentTrajectoryPlaybackSnapshot();
+      const segmentStart = trajectorySmoothingState.originalSegmentStartFrame || 0;
+      const originalSpan = Math.max(1, (trajectorySmoothingState.originalFrameCount || trajectorySmoothingState.originalPrepared.poseCount) - 1);
+      const smoothedSpan = Math.max(1, trajectorySmoothingState.smoothedPrepared.poseCount - 1);
       if (trajectorySmoothingState.view === 'original' && currentPlayback) {
         trajectorySmoothingState.originalFrameIndex = currentPlayback.frameIndex;
         trajectorySmoothingState.smoothedFrameIndex = Math.max(
           0,
-          currentPlayback.frameIndex - trajectorySmoothingState.originalSegmentStartFrame
+          Math.round((currentPlayback.frameIndex - segmentStart) * smoothedSpan / originalSpan)
         );
       } else if (trajectorySmoothingState.view === 'smoothed' && currentPlayback) {
         trajectorySmoothingState.smoothedFrameIndex = currentPlayback.frameIndex;
+        trajectorySmoothingState.originalFrameIndex = segmentStart + Math.round(currentPlayback.frameIndex * originalSpan / smoothedSpan);
       }
       const prepared = view === 'original' ? trajectorySmoothingState.originalPrepared : trajectorySmoothingState.smoothedPrepared;
       const frameIndex = view === 'original'
@@ -19960,6 +20067,9 @@ SOFTWARE.
     let loopBusy = false;
     let loopEpoch = 0;
     let loopStartedAt = 0;
+    let loopFrameCarry = 0;
+    let loopStepMs = 0;
+    let nativeLoopQueue = Promise.resolve();
     let poseUpdateQueue = Promise.resolve();
     let poseRepeatDelayTimer = null;
     let poseRepeatTimer = null;
@@ -20192,11 +20302,7 @@ SOFTWARE.
     speed.step = '0.1';
     speed.inputMode = 'decimal';
     speed.value = playbackRestore?.fps || formatTrajectoryFps(readTrajectoryLoopFps(activeConfig, prepared));
-    speed.title = 'Frames per second (FPS)';
-    const updateSpeedMode = () => {
-      const fps = Number(speed.value);
-      speed.classList.toggle('buret-docking-pose-speed-skip', Number.isFinite(fps) && fps > NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD);
-    };
+    speed.title = 'Target source frames per second; under load frames may be skipped and speed is capped, not guaranteed redraw FPS';
     const slider = document.createElement('input');
     slider.className = 'buret-docking-pose-slider';
     slider.type = 'range';
@@ -20314,12 +20420,17 @@ SOFTWARE.
     const setLoopActive = (active) => {
       loopEpoch += 1;
       loopActive = Boolean(active);
+      if (!active) queueNativeLoop(false);
       if (!active && loopTimer) {
         clearTimeout(loopTimer);
         loopTimer = null;
         loopBusy = false;
       }
-      if (active) loopStartedAt = loopNow();
+      if (active) {
+        loopStartedAt = loopNow();
+        loopFrameCarry = 0;
+        loopStepMs = 0;
+      }
       loop.classList.toggle('active', Boolean(active));
       loop.textContent = active ? 'Stop' : 'Loop';
       loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
@@ -20339,7 +20450,6 @@ SOFTWARE.
       updateViewportAnimateState();
     };
     updateControls();
-    updateSpeedMode();
     const loopDelayMs = () => {
       const delay = trajectoryFpsToDelay(speed.value, prepared);
       return Number.isFinite(delay) && delay > 0 ? delay : 1200;
@@ -20347,13 +20457,60 @@ SOFTWARE.
     const loopNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
       ? performance.now()
       : Date.now();
-    // The loop advances one frame per tick. In WKWebView a frame step can take
-    // longer than a frame at high fps; picking the target from wall-clock time
-    // then jumps half the loop ahead and back again, so the playhead only ever
-    // alternates between two frames instead of playing.
+    // Real trajectories use Mol*'s own animation manager. The custom scheduler
+    // below remains only for pose collections/overlays and bounded segments.
+    const nativePlayback = window.molstar?.BuretteTrajectoryPlayback?.forPlugin(viewer.plugin);
+    let nativeLoopOwned = false;
+    const nativeLoopAnimation = () => prepared.nativeTrajectoryControls && !hasTrajectorySegments
+      && !xyzSingleFrameSceneActive(viewer) ? nativePlayback?.animation : null;
+    nativePlayback?.configure({
+      modelRef: nativeTrajectoryModelTransform(prepared.poseCount)?.ref,
+      onFinished: () => setLoopActive(false),
+      beforeFrame: () => clearMolstarTrajectoryHover(viewer.plugin),
+      onError: error => {
+        setLoopActive(false);
+        setStatus(`[web] Mol* trajectory playback failed: ${error?.message || error}`, 'error');
+      }
+    });
+    function queueNativeLoop(playing) {
+      const animation = nativeLoopAnimation();
+      const epoch = loopEpoch;
+      const manager = viewer.plugin.managers.animation;
+      nativeLoopQueue = nativeLoopQueue.then(async () => {
+        if (playing) {
+          if (!animation || !loopActive || epoch !== loopEpoch || !hostViewerVisible) return;
+          nativeLoopOwned = true;
+          await manager.play(animation, {
+            mode: { name: 'loop', params: { direction: 'forward' } },
+            duration: { name: 'sequential', params: { maxFps: 1000 / loopDelayMs() } }
+          });
+        } else if (nativeLoopOwned) {
+          // Stop the captured owner even after Align changes native eligibility.
+          nativeLoopOwned = false;
+          if (manager.current?.anim === nativePlayback?.animation) await manager.stop();
+        }
+      }).catch(error => {
+        setLoopActive(false);
+        setStatus(`[web] Mol* trajectory playback failed: ${error?.message || error}`, 'error');
+      });
+      return nativeLoopQueue;
+    }
+    // Advance relative to the displayed frame, accounting for elapsed time even
+    // when rAF/timer cadence is slower than a fast coordinate update. Saturated
+    // skipping shares Mol*'s conservative cap and coprime-stride protection.
+    const loopStride = (loopBounds) => {
+      if (loopStepMs === 0) {
+        loopFrameCarry = 0;
+        return 1;
+      }
+      const due = loopFrameCarry + Math.max(0, loopNow() - loopStartedAt) / loopDelayMs();
+      const stride = window.molstar.BuretteTrajectoryPlayback.stride(loopBounds.count, due);
+      loopFrameCarry = due % 1;
+      return stride;
+    };
     const loopTargetIndex = () => {
       const loopBounds = trajectoryControlBounds(activePose);
-      return loopBounds.start + ((activePose - loopBounds.start + 1) % loopBounds.count);
+      return loopBounds.start + ((activePose - loopBounds.start + loopStride(loopBounds)) % loopBounds.count);
     };
     const loopNextDelay = () => {
       const elapsed = Math.max(0, loopNow() - loopStartedAt);
@@ -20361,6 +20518,10 @@ SOFTWARE.
     };
     const scheduleLoopStep = (delayMs = loopNextDelay(), expectedLoopEpoch = loopEpoch) => {
       if (!hostViewerVisible) return;
+      if (nativeLoopAnimation()) {
+        queueNativeLoop(true);
+        return;
+      }
       loopTimer = window.setTimeout(() => {
         loopTimer = null;
         if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
@@ -20381,6 +20542,7 @@ SOFTWARE.
         void setPose(nextIndex, { loopStep: true, loopEpoch: expectedLoopEpoch }).finally(() => {
           loopBusy = false;
           if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
+          loopStepMs = loopNow() - loopStartedAt;
           scheduleLoopStep(undefined, expectedLoopEpoch);
         });
       }, Math.max(minimumTrajectoryLoopTimerDelay(prepared), delayMs));
@@ -20388,38 +20550,58 @@ SOFTWARE.
     const trajectoryPlaybackControl = {
       visibilityChanged: () => {
         if (loopTimer !== null) { window.clearTimeout(loopTimer); loopTimer = null; }
+        if (nativeLoopAnimation()) {
+          queueNativeLoop(hostViewerVisible && loopActive);
+          return;
+        }
         if (hostViewerVisible && loopActive) {
           loopStartedAt = loopNow();
+          loopFrameCarry = 0;
+          loopStepMs = 0;
           scheduleLoopStep();
         }
       },
-      play: () => {
+      play: (options = {}) => {
+        if (!options.preserveIntent) trajectoryPlaybackIntent += 1;
+        if (trajectoryRebuildPause?.viewer !== activeViewer) trajectoryRebuildPause = null;
+        if (trajectoryRebuildPause) {
+          trajectoryRebuildPause.resume = true;
+          trajectoryRebuildPause.intent = trajectoryPlaybackIntent;
+          return;
+        }
         if (loopActive) return;
         setLoopActive(true);
         scheduleLoopStep();
       },
-      stop: () => {
-        if (loopActive) setLoopActive(false);
+      stop: async (options = {}) => {
+        if (!options.preserveIntent) trajectoryPlaybackIntent += 1;
+        setLoopActive(false);
+        await nativeLoopQueue;
+        await poseUpdateQueue;
       },
       isPlaying: () => loopActive,
-      frameCount: () => prepared.poseCount,
-      canInterpolate: () => (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay')
-        && (normalizeFormat(activeMolstarPrepared?.format) === 'pdb' || normalizeFormat(activeMolstarPrepared?.format) === 'xyz')
+      frameCount: () => prepared.poseCount
     };
     activeTrajectoryPlaybackControl = trajectoryPlaybackControl;
     const setPose = (index, options = {}) => {
       const requestedIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       let queuedOptions = options;
+      if (options.loopStep !== true && loopActive) queueNativeLoop(false);
       if (options.loopStep !== true && loopActive) {
         loopEpoch += 1;
         loopStartedAt = loopNow();
+        loopFrameCarry = 0;
+        loopStepMs = 0;
         if (loopTimer) {
           clearTimeout(loopTimer);
           loopTimer = null;
         }
         queuedOptions = { ...options, loopEpoch };
       }
-      const queued = poseUpdateQueue.then(() => performSetPose(requestedIndex, queuedOptions));
+      const queued = poseUpdateQueue.then(() => nativeLoopQueue).then(() => {
+        if (options.loopStep === true && (!loopActive || options.loopEpoch !== loopEpoch)) return;
+        return performSetPose(requestedIndex, queuedOptions);
+      });
       poseUpdateQueue = queued.catch(() => {});
       return queued;
     };
@@ -20442,14 +20624,7 @@ SOFTWARE.
           if (!switched) throw new Error('Mol* trajectory controls are not available.');
           activePose = readNativeTrajectoryPosition(prepared.poseCount)?.index ?? nextIndex;
           updateControls();
-          if (options.loopStep !== true && loopActive && options.loopEpoch === loopEpoch) {
-            loopStartedAt = loopNow();
-            if (loopTimer) {
-              clearTimeout(loopTimer);
-              loopTimer = null;
-            }
-            scheduleLoopStep(loopDelayMs(), loopEpoch);
-          }
+
         } else if (prepared.kind === 'sdf-collection') {
           await applySdfCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: false });
           activePose = nextIndex;
@@ -20474,6 +20649,10 @@ SOFTWARE.
           await reloadActiveMolstarStructure();
           activePose = nextIndex;
           return;
+        }
+        if (options.loopStep !== true && loopActive && options.loopEpoch === loopEpoch) {
+          loopStartedAt = loopNow();
+          scheduleLoopStep(loopDelayMs(), loopEpoch);
         }
         if (shouldFocus) scheduleMolstarStructureFocus(viewer, { reason: 'pose-selection', durationMs: 180, force: true });
         notifyDockingPoseChanged(activePose, prepared);
@@ -20540,11 +20719,13 @@ SOFTWARE.
         if (alignmentAbortController) { alignmentAbortController.abort(); return; }
         alignmentAbortController = new AbortController();
         align.textContent = 'Cancel';
+        const resumePlayback = await pauseTrajectoryForRebuild();
         const enabling = xyzFrameAlignment?.signature !== xyzAlignSignature;
         try {
           let result = null;
           if (enabling) {
             result = await alignXyzFramesToFirst(xyzAlignFrames, alignmentAbortController.signal);
+            if (alignmentAbortController.signal.aborted || alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner) throw new DOMException('Alignment cancelled', 'AbortError');
             xyzFrameAlignment = { signature: xyzAlignSignature, frames: result.frames };
           } else {
             xyzFrameAlignment = null;
@@ -20566,12 +20747,15 @@ SOFTWARE.
             if ((alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) return;
             if (enabling) xyzFrameAlignment = null;
             setStatus(error?.name === 'AbortError' ? '[web] Alignment cancelled.' : `[web] Could not align structures.\n\n${error?.message || String(error)}`, error?.name === 'AbortError' ? undefined : 'error');
-          }).finally(() => { align.disabled = false; alignmentAbortController = null; if (align.textContent === 'Cancel') align.textContent = 'Align'; });
+          }).finally(() => { align.disabled = false; alignmentAbortController = null; if (align.textContent === 'Cancel') align.textContent = 'Align';
+            resumePlayback();
+          });
         } catch (error) {
-          if ((alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) { alignmentAbortController = null; return; }
+          if ((alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) { alignmentAbortController = null; resumePlayback(); return; }
           if (enabling) xyzFrameAlignment = null;
           align.disabled = false; alignmentAbortController = null; if (align.textContent === 'Cancel') align.textContent = 'Align';
           setStatus(error?.name === 'AbortError' ? '[web] Alignment cancelled.' : `[web] Could not align structures.\n\n${error?.message || String(error)}`, error?.name === 'AbortError' ? undefined : 'error');
+          resumePlayback();
           return Promise.resolve();
         }
       };
@@ -20581,6 +20765,7 @@ SOFTWARE.
         if (alignmentAbortController) { alignmentAbortController.abort(); return; }
         alignmentAbortController = new AbortController();
         align.textContent = 'Cancel';
+        const resumePlayback = await pauseTrajectoryForRebuild();
         const enabling = sdfCollectionAlignment?.signature !== sdfAlignSignature;
         try {
           let result = null;
@@ -20630,10 +20815,13 @@ SOFTWARE.
             if ((alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) return;
             revertFailedSdfCollectionAlignment(enabling);
             setStatus(error?.name === 'AbortError' ? '[web] Alignment cancelled.' : `[web] Could not align molecules.\n\n${error?.message || String(error)}`, error?.name === 'AbortError' ? undefined : 'error');
-          }).finally(() => { align.disabled = false; alignmentAbortController = null; if (align.textContent === 'Cancel') align.textContent = 'Align'; });
+          }).finally(() => { align.disabled = false; alignmentAbortController = null; if (align.textContent === 'Cancel') align.textContent = 'Align';
+            resumePlayback();
+          });
         } catch (error) {
-          if ((alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) { alignmentAbortController = null; return; }
+          if ((alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) { alignmentAbortController = null; resumePlayback(); return; }
           revertFailedSdfCollectionAlignment(enabling);
+          resumePlayback();
           align.disabled = false; alignmentAbortController = null; if (align.textContent === 'Cancel') align.textContent = 'Align';
           setStatus(error?.name === 'AbortError' ? '[web] Alignment cancelled.' : `[web] Could not align molecules.\n\n${error?.message || String(error)}`, error?.name === 'AbortError' ? undefined : 'error');
           return Promise.resolve();
@@ -20656,10 +20844,15 @@ SOFTWARE.
       );
       activeStructureAlignmentControl = structureAlignmentControl;
       align.addEventListener('click', () => {
-        const operation = structureAlignmentControl?.isAligned()
-          ? structureAlignmentControl.reset()
-          : structureAlignmentControl?.apply({ method: 'auto' });
-        Promise.resolve(operation).catch(() => {});
+        let resume = () => {};
+        void pauseTrajectoryForRebuild().then(async release => {
+          resume = release;
+          if (alignmentControlsDisposed) return;
+          if (structureAlignmentControl?.isAligned()) await structureAlignmentControl.reset();
+          else await structureAlignmentControl?.apply({ method: 'auto' });
+        }).catch(() => {}).finally(() => {
+          resume();
+        });
       });
     }
     activeStructurePoseSetter = setPose;
@@ -20757,23 +20950,13 @@ SOFTWARE.
       }
       const open = !isAnimationOptionsOpen();
       setAnimationOptionsOpen(open);
-      if (!open || hasTrajectorySegments) return;
-      const button = nativeAnimationSelectButton();
-      if (button && !button.disabled && button.getAttribute('aria-disabled') !== 'true') {
-        button.click();
-      } else {
-        setStatus('[web] Mol* animation selector is not available for this document.', 'error');
-      }
+
     });
     bindPoseStepButton(previous, -1);
     bindPoseStepButton(next, 1);
     loop.addEventListener('click', () => {
-      if (loopActive) {
-        setLoopActive(false);
-        return;
-      }
-      setLoopActive(true);
-      scheduleLoopStep();
+      if (loopActive) void trajectoryPlaybackControl.stop();
+      else trajectoryPlaybackControl.play();
     });
     smooth.addEventListener('click', () => {
       const posted = postHostMessage({
@@ -20787,13 +20970,11 @@ SOFTWARE.
       const delay = loopDelayMs();
       const fps = trajectoryDelayToFps(delay, prepared);
       speed.value = formatTrajectoryFps(fps);
-      updateSpeedMode();
       try { localStorage.setItem(trajectoryLoopFpsStorageKey(activeConfig, prepared), String(fps)); } catch (_) {}
       if (!loopActive) return;
       setLoopActive(false);
       loop.click();
     });
-    speed.addEventListener('input', updateSpeedMode);
     slider.addEventListener('input', () => {
       const controlBounds = trajectoryControlBounds(activePose);
       const previewIndex = controlBounds.start + Math.max(0, Math.min(controlBounds.count - 1, Number(slider.value) - 1));
@@ -20905,6 +21086,7 @@ SOFTWARE.
         if (loopTimer) clearTimeout(loopTimer);
         loopTimer = null;
         loopActive = false;
+        queueNativeLoop(false);
       } else {
         setLoopActive(false);
       }
@@ -28080,7 +28262,6 @@ SOFTWARE.
     molstarPresetPreviewStateCleanup?.();
     molstarPresetPreviewStateCleanup = null;
     disposeMolstarPresetPreview();
-    cancelViewportTrajectoryAnimation();
     cancelScheduledMolstarWaterRepresentation();
     notifyMolstarSelectionChanged(null);
     molstarSelectionHostSignature = '';
@@ -28187,6 +28368,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       45000,
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
+    assertMolstarLoadReady(viewer, prepared);
     if (config.demoSnapshotUrl) {
       const response = await fetch(config.demoSnapshotUrl);
       if (!response.ok) throw new Error('Could not load the saved demo scene.');
@@ -28286,6 +28468,13 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
         hideStatus(readyPayload);
         window.BuretteNativeSceneReady();
       } else setTimeout(() => hideStatus(readyPayload), isQuickLookHost() ? 0 : 700);
+    }
+    // Apply authored actions only after presets and initial framing finish.
+    // Agent readiness alone precedes those steps, which otherwise overwrite focus.
+    hostedMcpSceneInitialized = true;
+    if (Array.isArray(config.hostedMcpActions) && config.hostedMcpActions.length) {
+      molstarStructureFocusSerial += 1;
+      await applyHostedMcpActions();
     }
   }
 

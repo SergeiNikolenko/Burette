@@ -26,6 +26,7 @@ export type RegionTarget = {
 };
 
 export type Annotation = { id: number; rect: RegionRect; pin: { x: number; y: number }; comment: string; target: RegionTarget | null };
+export type AnnotationImage = { data: string; mimeType: string };
 
 const REGION_TIMEOUT_MS = 8000;
 const MAX_TEXT = 1200;
@@ -108,8 +109,9 @@ export function clearRegionSelection(annotations: Annotation[]) {
 // One frame of the Mol* view with every mark numbered on it.
 export async function captureAnnotatedView(annotations: Annotation[]) {
   const first = annotations.find((annotation) => annotation.target?.surface === "molstar");
-  const frame = first && viewerFrames().find((candidate) => {
+  const frame = viewerFrames().find((candidate) => {
     const r = candidate.getBoundingClientRect();
+    if (!first) return r.width > 0 && r.height > 0;
     const x = first.rect.left + first.rect.width / 2, y = first.rect.top + first.rect.height / 2;
     return r.width > 0 && x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
   });
@@ -194,14 +196,14 @@ export function annotationContext(documentTitle: string, annotations: Annotation
 
 // The Codex native widget posts the batch into the chat as one message; every
 // other surface (desktop, browser shell) has no chat, so Send copies it.
-export async function deliverAnnotations(documentTitle: string, annotations: Annotation[]): Promise<"sent" | "copied"> {
+export async function deliverAnnotations(documentTitle: string, annotations: Annotation[], snapshot?: AnnotationImage | null): Promise<"sent" | "copied"> {
   const text = annotationText(documentTitle, annotations);
   const workspace = window.BuretteMcpWorkspace;
   if (!workspace?.sendAnnotations) {
     await writeClipboardText(text);
     return "copied";
   }
-  const image = await captureAnnotatedView(annotations).catch(() => null);
+  const image = snapshot ?? await captureAnnotatedView(annotations).catch(() => null);
   await workspace.sendAnnotations({ text, context: annotationContext(documentTitle, annotations), image });
   return "sent";
 }

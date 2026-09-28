@@ -2,7 +2,6 @@ use crate::commands::{conformer, descriptors, documents, xtb};
 use crate::preview::xyzrender;
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
 use tauri::Runtime;
 
 const DOCTOR_SCHEMA: &str = "burette.external-runtime-doctor.v1";
@@ -96,7 +95,6 @@ pub(crate) fn external_runtime_doctor<R: Runtime>(
                 "installed",
                 "executablePath",
             ),
-            schrodinger_check(),
         ],
     }
 }
@@ -155,44 +153,6 @@ fn check_from_payload(
     }
 }
 
-fn schrodinger_check() -> ExternalRuntimeDoctorCheck {
-    let executable = schrodinger_candidates()
-        .into_iter()
-        .find(|path| path.is_file() && is_executable(path));
-    let payload = match executable.as_deref() {
-        Some(path) => json!({
-            "installed": true,
-            "executablePath": path.to_string_lossy(),
-            "source": source_for_path(&path.to_string_lossy()),
-            "message": "Schrodinger runtime is available"
-        }),
-        None => json!({
-            "installed": false,
-            "executablePath": Value::Null,
-            "source": Value::Null,
-            "message": "Schrodinger runtime was not found",
-            "installHint": "Install Schrodinger or set SCHRODINGER to a suite directory that contains run."
-        }),
-    };
-    check_from_payload(
-        "schrodinger",
-        "Schrodinger",
-        "external-suite",
-        &payload,
-        "installed",
-        "executablePath",
-    )
-}
-
-fn schrodinger_candidates() -> Vec<PathBuf> {
-    let mut candidates = Vec::new();
-    if let Some(root) = std::env::var_os("SCHRODINGER") {
-        candidates.push(PathBuf::from(root).join("run"));
-    }
-    candidates.push(PathBuf::from("/opt/schrodinger/suites2026-1/run"));
-    candidates
-}
-
 fn source_for_path(path: &str) -> String {
     if path.contains("xyzrender-runtime") {
         "bundled".into()
@@ -206,19 +166,6 @@ fn source_for_path(path: &str) -> String {
     } else {
         "resolved-path".into()
     }
-}
-
-#[cfg(unix)]
-fn is_executable(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path)
-        .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
-}
-
-#[cfg(not(unix))]
-fn is_executable(path: &Path) -> bool {
-    path.exists()
 }
 
 #[cfg(test)]

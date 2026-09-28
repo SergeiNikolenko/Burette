@@ -556,6 +556,7 @@ async function createTrajectoryPairPayload(filePath) {
   const files = [];
   await collectDevFiles(dirname(filePath), files);
   const candidates = Array.from(new Set([filePath, ...files]))
+    .filter((candidate) => dirname(candidate) === dirname(filePath))
     .filter((candidate) => isAllowed(candidate) && TRAJECTORY_PAIR_EXTENSIONS.has(fileExtension(candidate)));
   const coordinatePath = TRAJECTORY_COORDINATE_EXTENSIONS.has(extension)
     ? filePath
@@ -619,7 +620,9 @@ function trajectorySource(path, bytes) {
     source: {
       path,
       format: trajectoryMolstarFormat(extension),
-      binary: TRAJECTORY_COORDINATE_EXTENSIONS.has(extension) || extension === 'tpr',
+      // LAMMPS dump trajectories are text even though they contain coordinates.
+      binary: extension !== 'lammpstrj'
+        && (TRAJECTORY_COORDINATE_EXTENSIONS.has(extension) || extension === 'tpr'),
       label: basename(path),
     },
     dataBase64: bytes.toString('base64'),

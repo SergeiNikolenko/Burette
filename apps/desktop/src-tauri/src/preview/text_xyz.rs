@@ -45,6 +45,16 @@ struct MaestroPdbBlock {
     atoms: Vec<MaestroAtom>,
 }
 
+/// The full Desmond system as one PDB model, in trajectory atom order.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct DesmondTopology {
+    pub(crate) pdb: Vec<u8>,
+    /// `(atoms, pseudo particles)` for every component CT, in file order. A
+    /// Desmond trajectory stores each component's atoms followed by its force
+    /// field pseudo particles (virtual sites), which the PDB model does not have.
+    pub(crate) components: Vec<(usize, usize)>,
+}
+
 pub(crate) fn converted_data_from_text(
     data: &[u8],
     extension: &str,
@@ -1584,6 +1594,116 @@ fn maestro_pdb_data_from_text(data: &[u8], extension: &str) -> Option<ConvertedS
     })
 }
 
+/// Builds the topology a Desmond trajectory plays against.
+///
+/// Water keeps its place in the model (Mol* replaces every coordinate per frame,
+/// so atoms cannot be split into staged entries) but is renamed to `HOH`, and
+/// overflow residue numbers use a separate unused chain. Wrapping inside the
+/// same chain merges distinct waters in Mol* even when the atoms stay in order.
+pub(crate) fn desmond_topology_from_cms(data: &[u8]) -> Option<DesmondTopology> {
+    let decoded = decode_structure_text(data, "cms")?;
+    let text = decoded.replace("\r\n", "\n").replace('\r', "\n");
+    let lines: Vec<&str> = text.lines().collect();
+    let blocks = parse_maestro_pdb_blocks(&lines, MAESTRO_PDB_PREVIEW_ATOM_LIMIT)?;
+    let is_full_system = |ct_type: &str| ct_type.eq_ignore_ascii_case("full_system");
+    let components = maestro_ct_particle_counts(&lines)
+        .into_iter()
+        .filter(|(ct_type, _, _)| !is_full_system(ct_type))
+        .map(|(_, atoms, pseudo)| (atoms, pseudo))
+        .collect::<Vec<_>>();
+    let mut atoms = blocks
+        .iter()
+        .find(|block| is_full_system(&block.ct_type))
+        .map(|block| block.atoms.clone())
+        .unwrap_or_else(|| {
+            blocks
+                .iter()
+                .flat_map(|block| block.atoms.iter().cloned())
+                .collect()
+        });
+    let component_atoms = components.iter().map(|(atoms, _)| atoms).sum::<usize>();
+    if components.is_empty() || atoms.len() != component_atoms {
+        return None;
+    }
+    let mut used_chains = atoms
+        .iter()
+        .map(|atom| atom.chain_name.clone())
+        .collect::<std::collections::HashSet<_>>();
+    let mut remapped_chains = std::collections::HashMap::new();
+    let mut chain_owners = std::collections::HashMap::new();
+    let mut offset = 0;
+    // CTs have independent residue namespaces: counterions and salt may both
+    // call their first sodium "A/1". Keep those components distinct as well.
+    for (component, (count, _)) in components.iter().enumerate() {
+        for atom in &mut atoms[offset..offset + count] {
+            if is_maestro_water_atom(atom) {
+                atom.residue_name = "HOH".to_string();
+            }
+            let owner = *chain_owners
+                .entry(atom.chain_name.clone())
+                .or_insert(component);
+            let overflow = !(-999..=9999).contains(&atom.residue_number);
+            if owner != component || overflow {
+                let residue = i64::from(atom.residue_number) - 1;
+                let block = if overflow {
+                    residue.div_euclid(9999)
+                } else {
+                    0
+                };
+                let key = (component, atom.chain_name.clone(), block);
+                if let std::collections::hash_map::Entry::Vacant(entry) =
+                    remapped_chains.entry(key.clone())
+                {
+                    let chain = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+                        .chars()
+                        .map(|ch| ch.to_string())
+                        .find(|chain| !used_chains.contains(chain))?;
+                    used_chains.insert(chain.clone());
+                    entry.insert(chain);
+                }
+                atom.chain_name = remapped_chains.get(&key)?.clone();
+                if overflow {
+                    atom.residue_number = (residue.rem_euclid(9999) + 1) as i32;
+                }
+            }
+        }
+        offset += count;
+    }
+    Some(DesmondTopology {
+        pdb: maestro_atoms_to_pdb(&atoms).into_bytes(),
+        components,
+    })
+}
+
+/// Reads `(ct type, m_atom count, ffio_pseudo count)` for every CT header.
+fn maestro_ct_particle_counts(lines: &[&str]) -> Vec<(String, usize, usize)> {
+    fn block_count(line: &str, name: &str) -> Option<usize> {
+        line.strip_prefix(name)?
+            .strip_prefix('[')?
+            .split(']')
+            .next()?
+            .parse()
+            .ok()
+    }
+    let mut cts: Vec<(String, usize, usize)> = Vec::new();
+    let mut index = 0;
+    while index < lines.len() {
+        let trimmed = lines[index].trim();
+        index += 1;
+        if trimmed == "f_m_ct {" {
+            let ct_type = parse_maestro_ct_type(lines, &mut index).unwrap_or_default();
+            cts.push((ct_type, 0, 0));
+        } else if let (Some(count), Some(ct)) = (block_count(trimmed, "m_atom"), cts.last_mut()) {
+            ct.1 = count;
+        } else if let (Some(count), Some(ct)) =
+            (block_count(trimmed, "ffio_pseudo"), cts.last_mut())
+        {
+            ct.2 = count;
+        }
+    }
+    cts
+}
+
 fn gro_pdb_data_from_text(data: &[u8], label: &str) -> Option<ConvertedStructureData> {
     let decoded = decode_structure_text(data, "gro")?;
     let text = decoded.replace("\r\n", "\n").replace('\r', "\n");
@@ -1786,7 +1906,18 @@ fn is_maestro_water_atom(atom: &MaestroAtom) -> bool {
 fn is_maestro_water_residue(residue_name: &str) -> bool {
     matches!(
         residue_name.trim().to_ascii_uppercase().as_str(),
-        "SOL" | "WAT" | "HOH" | "H2O" | "TIP" | "TP3" | "TP4" | "SPC" | "DOD"
+        "SOL"
+            | "WAT"
+            | "HOH"
+            | "H2O"
+            | "TIP"
+            | "TP3"
+            | "TP4"
+            | "T3P"
+            | "T4P"
+            | "T5P"
+            | "SPC"
+            | "DOD"
     )
 }
 
@@ -3108,6 +3239,115 @@ footer
         assert!(!xyz.contains("C 0.000000 0.100000 0.200000"));
         assert!(xyz.contains("O -1.000000 0.000000 0.000000"));
         assert!(xyz.contains("H -1.500000 0.750000 0.000000"));
+    }
+
+    #[test]
+    fn desmond_components_keep_independent_residue_namespaces() {
+        let block = |kind, rows: &str| {
+            format!(
+                r#"
+f_m_ct {{
+ s_ffio_ct_type
+ :::
+ {kind}
+ m_atom[{}] {{
+ i_m_atomic_number
+ r_m_x_coord
+ r_m_y_coord
+ r_m_z_coord
+ s_m_pdb_residue_name
+ s_m_pdb_atom_name
+ i_m_residue_number
+ s_m_chain_name
+ :::
+{rows}
+ :::
+ }}
+}}
+"#,
+                rows.lines().count()
+            )
+        };
+        let first = "11 0 0 0 NA NA 1 A";
+        let second = "11 10 0 0 NA NA 1 A";
+        let cms = block("full_system", &format!("{first}\n{second}"))
+            + &block("ion", first)
+            + &block("ion", second);
+        let topology = super::desmond_topology_from_cms(cms.as_bytes()).unwrap();
+        let pdb = String::from_utf8(topology.pdb).unwrap();
+        let rows = pdb
+            .lines()
+            .filter(|row| row.starts_with("HETATM"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rows.iter().map(|row| &row[21..26]).collect::<Vec<_>>(),
+            vec!["A   1", "B   1"]
+        );
+        assert_eq!(
+            rows.iter()
+                .map(|row| row[30..38].trim())
+                .collect::<Vec<_>>(),
+            vec!["0.000", "10.000"]
+        );
+    }
+
+    #[test]
+    fn desmond_overflow_waters_keep_distinct_residue_addresses() {
+        let block = |kind| {
+            format!(
+                r#"
+f_m_ct {{
+ s_ffio_ct_type
+ :::
+ {kind}
+ m_atom[7] {{
+ i_m_atomic_number
+ r_m_x_coord
+ r_m_y_coord
+ r_m_z_coord
+ s_m_pdb_residue_name
+ s_m_pdb_atom_name
+ i_m_residue_number
+ s_m_chain_name
+ :::
+ 8 0 0 0 T3P O 1 A
+ 1 1 0 0 T3P H1 1 A
+ 1 0 1 0 T3P H2 1 A
+ 8 10 0 0 T3P O 10000 A
+ 1 11 0 0 T3P H1 10000 A
+ 1 10 1 0 T3P H2 10000 A
+ 6 20 0 0 ALA CA -2 B
+ :::
+ }}
+}}
+"#
+            )
+        };
+        let cms = block("full_system") + &block("solvent");
+        let topology = super::desmond_topology_from_cms(cms.as_bytes()).unwrap();
+        let pdb = String::from_utf8(topology.pdb).unwrap();
+        let rows = pdb
+            .lines()
+            .filter(|line| line.starts_with("ATOM") || line.starts_with("HETATM"))
+            .collect::<Vec<_>>();
+        assert_eq!(rows.len(), 7);
+        assert_eq!(
+            rows.iter().map(|row| &row[21..26]).collect::<Vec<_>>(),
+            vec!["A   1", "A   1", "A   1", "C   1", "C   1", "C   1", "B  -2"]
+        );
+        assert_eq!(
+            rows.iter()
+                .take(6)
+                .map(|row| &row[17..20])
+                .collect::<Vec<_>>(),
+            vec!["HOH"; 6]
+        );
+        assert_eq!(
+            rows.iter()
+                .map(|row| row[30..38].trim())
+                .collect::<Vec<_>>(),
+            vec!["0.000", "1.000", "0.000", "10.000", "11.000", "10.000", "20.000"]
+        );
     }
 
     #[test]

@@ -332,7 +332,7 @@ assert.doesNotMatch(gridViewer, /chemicalSpacePreviewTimer/);
 assert.doesNotMatch(gridViewer, /syncChemicalSpaceHover/);
 assert.doesNotMatch(gridCss, /buret-chemical-space-hover/);
 assert.match(gridViewer, /svg\.slice\(0, 262144\)/);
-assert.match(chemicalSpacePanel, /Run animated study on Metal/);
+assert.match(chemicalSpacePanel, /Build \{study\.frames\} maps/);
 assert.match(chemicalSpacePanel, /interpolateStudyResult/);
 assert.match(chemicalSpacePanel, /data-testid="parameter-study-timeline"/);
 assert.match(chemicalSpacePanel, /studyRunning \? \(/);
@@ -342,7 +342,15 @@ assert.match(chemicalSpacePanel, /indeterminate=\{value === null\}/);
 assert.match(progressComponent, /data-indeterminate=\{indeterminate \|\| undefined\}/);
 assert.match(progressComponent, /burette-progress-indeterminate_1\.2s_ease-in-out_infinite/);
 assert.match(desktopStyles, /@keyframes burette-progress-indeterminate/);
-assert.doesNotMatch(chemicalSpacePanel, /studyParameterLabel/);
+// Interpolated frames look like real maps, so the timeline names the nearest
+// swept value and can rebuild with it or put the comparison away.
+assert.match(chemicalSpacePanel, /STUDY_PARAMETER_NAMES\[completedStudy\.parameter\]/);
+assert.match(chemicalSpacePanel, /\{ \.\.\.completedStudy\.base, \[completedStudy\.parameter\]: value \}/);
+assert.match(chemicalSpacePanel, /aria-label="Close comparison"/);
+// Activity colour used to override group colour point by point, so turning
+// grouping on changed nothing visible on an activity-coloured map.
+assert.match(chemicalSpacePanel, /activityColors=\{colorByGroups \? null : activityColoring\?\.colors \?\? null\}/);
+assert.match(chemicalSpacePanel, /<ChemicalSpaceGroupLegend/);
 assert.ok(
   chemicalSpacePanel.indexOf('data-testid="parameter-study-timeline"')
     > chemicalSpacePanel.indexOf("<PopoverTrigger asChild>"),
@@ -355,8 +363,8 @@ assert.doesNotMatch(chemicalSpacePanel, /DropdownMenu/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/popover"/);
 assert.match(chemicalSpacePanel, /from "@\/components\/ui\/collapsible"/);
 assert.match(chemicalSpacePanel, />\s*Reset to defaults\s*<\/Button>/);
-assert.match(chemicalSpacePanel, />\s*Rebuild on Metal\s*<\/Button>/);
-assert.match(chemicalSpacePanel, />\s*Run animated study on Metal\s*<\/Button>/);
+assert.match(chemicalSpacePanel, />\s*Rebuild map\s*<\/Button>/);
+assert.match(chemicalSpacePanel, />\s*Build \{study\.frames\} maps\s*<\/Button>/);
 // Editing a slider only stages the change, so the commit button has to say so.
 assert.match(chemicalSpacePanel, /disabled=\{!embeddingDirty \|\| Boolean\(progress\)\}/);
 assert.match(chemicalSpacePanel, /data-testid="chemical-space-visual-controls"/);

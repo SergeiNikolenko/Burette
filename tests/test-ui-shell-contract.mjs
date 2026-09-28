@@ -208,7 +208,6 @@ const [
   browserDevConformerInline,
   browserDevConformerJobs,
   browserDevDescriptors,
-  browserDevDesmond,
   browserDevMsbuddy,
   browserDevRuntimeDoctor,
   browserDevXtb,
@@ -239,7 +238,6 @@ const [
   patchWebAssetsScript,
   hostedViewerBuildScript,
   hostedMobileViewer,
-  desmondPreviewExtract,
   fepGraphmlSample,
   rdkitConformer,
   databaseLib,
@@ -432,7 +430,6 @@ const [
   source('apps/desktop/vite/browser-dev/conformer-inline.ts'),
   source('apps/desktop/vite/browser-dev/conformer-jobs.ts'),
   source('apps/desktop/vite/browser-dev/descriptors.ts'),
-  source('apps/desktop/vite/browser-dev/desmond.ts'),
   source('apps/desktop/vite/browser-dev/msbuddy.ts'),
   source('apps/desktop/vite/browser-dev/runtime-doctor.ts'),
   source('apps/desktop/vite/browser-dev/xtb.ts'),
@@ -463,7 +460,6 @@ const [
   source('scripts/patch-web-assets.sh'),
   source('apps/burette-public-plugin/scripts/build-hosted-viewer.mjs'),
   source('apps/burette-public-plugin/assets/burette-hosted-mobile.js'),
-  source('scripts/desmond_preview_extract.py'),
   source('samples/fep/ligand_network.graphml'),
   source('scripts/rdkit_conformer.py'),
   source('apps/desktop/src/lib/database.ts'),
@@ -684,9 +680,6 @@ assert.match(browserDevDocuments, /const shouldOpenTrajectoryInMolstar = traject
 assert.match(browserDevDocuments, /function countXyzFrames\(text: string\)/);
 assert.match(browserDevDocuments, /function countPdbModels\(text: string\)/);
 assert.match(viewer, /window\.BuretteConfig\?\.hostedMcpWidgetBootstrap === true \|\| window\.BuretteConfig\?\.defaultToolbarCollapsed === true\) \{\s*setToolbarCollapsed\(toolbar, true, viewer, false\);\s*return;/);
-assert.match(browserDevDocuments, /requestBrowserDevDesmondPreview/);
-assert.match(browserDevDocuments, /\/__burette\/desmond-preview\?path=/);
-assert.match(browserDevDocuments, /`\$\{path\}\.desmond-preview\.pdb`/);
 assert.match(viteConfig, /return Number\.isFinite\(number\) && number > 0 \? number : null;/);
 assert.match(viteConfig, /base: "\.\/"/);
 assert.doesNotMatch(viteConfig, /const KETCHER_CHUNK_PACKAGES = \[/);
@@ -766,32 +759,6 @@ assert.match(previewRuntimeViewer, /window\.BuretteRDKitWasmURL = \{rdkit_wasm:\
 assert.match(previewRuntimeViewer, /VIEWER_MOLSTAR_CSP[^\n]*script-src[^\n]*'wasm-unsafe-eval'/);
 assert.match(buildScript, /built desktop app Resources\/Web was overwritten by the preview shell/);
 assert.match(buildScript, /Contents\/Resources\/ViewerWeb\/viewer-shell\.js/);
-assert.match(desmondPreviewExtract, /from schrodinger\.application\.desmond\.packages import topo, traj/);
-assert.match(desmondPreviewExtract, /def resolve_inputs/);
-assert.match(desmondPreviewExtract, /for suffix in \("-out", "_out", "-in", "_in"\)/);
-assert.match(desmondPreviewExtract, /re\.sub\(r"_replica_\(\\d\+\)\$", r"_replica\\1", base\)/);
-assert.match(desmondPreviewExtract, /for candidate_base in candidate_bases\(base\):/);
-assert.doesNotMatch(desmondPreviewExtract, /casebook|source_files|mnt__/);
-assert.match(desmondPreviewExtract, /BACKBONE_NAMES = \{"N", "CA", "C", "O", "P"\}/);
-assert.match(desmondPreviewExtract, /LIPID_RESIDUES = \{"POPC", "POPE", "POPG", "POPS", "DPPC", "DOPC", "CHL", "CHOL"\}/);
-assert.match(desmondPreviewExtract, /ligand_or_ion_heavy = \[/);
-assert.match(desmondPreviewExtract, /lipid_heavy = \[/);
-assert.match(desmondPreviewExtract, /parser\.add_argument\("--frames"/);
-assert.match(desmondPreviewExtract, /0 means all frames/);
-assert.match(desmondPreviewExtract, /def adaptive_atom_limit/);
-assert.match(desmondPreviewExtract, /def desmond_box_from_cfg/);
-assert.match(desmondPreviewExtract, /def pdb_cryst1_line/);
-assert.doesNotMatch(desmondPreviewExtract, /def write_pdb_box/);
-assert.match(desmondPreviewExtract, /CRYST1/);
-assert.match(desmondPreviewExtract, /time_ps=\{frame_time_ps:\.6f\}/);
-assert.match(desmondPreviewExtract, /write_pdb_frame\(\s*output,/);
-assert.doesNotMatch(desmondPreviewExtract, /CONECT/);
-assert.match(desmondPreviewExtract, /frame_time_ps\(frame\),/);
-assert.match(desmondPreviewExtract, /ligand_quota = max\(64, atom_limit \/\/ 5\)/);
-assert.match(desmondPreviewExtract, /backbone_quota = max\(128, atom_limit \/\/ 2\)/);
-assert.match(desmondPreviewExtract, /0 means all atoms unless --target-mb is set/);
-assert.match(desmondPreviewExtract, /parser\.add_argument\("--target-mb"/);
-assert.match(desmondPreviewExtract, /parser\.add_argument\("--output"/);
 assert.match(viteConfig, /plugins: \[tailwindcss\(\), react\(\), ketcherUiPlugin\(\), ketcherRaphaelImportShimPlugin\(\), deferKetcherCssPlugin\(\), browserDevXyzrenderPlugin\(\),/);
 assert.doesNotMatch(viteConfig, /join\(homedir\(\), "Desktop"\),/);
 assert.match(viteConfig, /join\(homedir\(\), "Desktop", "BurettePreviewSamples"\)/);
@@ -858,7 +825,6 @@ assert.match(viteConfig, /"import\.meta\.env\.BURETTE_BROWSER_DEV_GENERATED_FILE
 assert.match(viteConfig, /registerBrowserDevRuntimeDoctorRoute\(server,/);
 assert.match(viteConfig, /xyzrenderStatus: browserDevXyzrenderStatus/);
 assert.match(viteConfig, /rdkitConformerStatus: browserDevConformerPythonStatus/);
-assert.match(viteConfig, /schrodingerStatus: browserDevSchrodingerStatus/);
 assert.match(browserDevRuntimeDoctor, /server\.middlewares\.use\("\/__burette\/external-runtime-doctor"/);
 assert.match(browserDevRuntimeDoctor, /burette\.external-runtime-doctor\.v1/);
 assert.match(browserDevRuntimeDoctor, /runtime: "browser-dev"/);
@@ -897,14 +863,6 @@ assert.match(viteConfig, /function languageForTextExtension/);
 assert.match(browserDevFiles, /server\.middlewares\.use\("\/__burette\/file-bundle"/);
 assert.match(viteConfig, /registerBrowserDevAppIconRoute\(server, BROWSER_DEV_APP_ICONS, execFileAsync\)/);
 assert.match(browserDevAssets, /server\.middlewares\.use\("\/__burette\/app-icon\/"/);
-assert.match(viteConfig, /const SCHRODINGER_RUN = "\/opt\/schrodinger\/suites2026-1\/run"/);
-assert.match(viteConfig, /const DESMOND_PREVIEW_TARGET_MB = 24/);
-assert.match(viteConfig, /desmond_preview_extract\.py/);
-assert.match(viteConfig, /registerBrowserDevDesmondPreviewRoute\(server,/);
-assert.match(browserDevDesmond, /"--frames",\s*"0",\s*"--atoms",\s*"0",\s*"--target-mb",\s*String\(options\.targetMb\)/s);
-assert.match(browserDevDesmond, /timeout: 0/);
-assert.match(browserDevDesmond, /server\.middlewares\.use\("\/__burette\/desmond-preview"/);
-assert.match(viteConfig, /function isDesmondPreviewCandidate/);
 assert.match(viteConfig, /function resolveStructureFileBundle\(path: string\): StructureFileBundle/);
 assert.match(viteConfig, /function resolveDesmondFileBundle\(path: string\): StructureFileBundle \| null/);
 assert.match(viteConfig, /function resolveMdFileBundle\(path: string\): StructureFileBundle \| null/);
@@ -914,14 +872,15 @@ assert.match(viteConfig, /base\.replace\(\/_replica_\(\\d\+\)\$\/u, "_replica\$1
 assert.match(viteConfig, /candidateDesmondBaseNames\(base\)\.flatMap/);
 assert.doesNotMatch(viteConfig, /casebook|source_files|mnt__/);
 assert.match(viteConfig, /"dtr"/);
-assert.match(tauriConfig, /"[^"]*scripts\/desmond_preview_extract\.py": "desmond_preview_extract\.py"/);
-assert.match(previewRuntimeSource, /fn create_desmond_trajectory_preview/);
-assert.match(previewRuntimeSource, /let desmond_preview_error\s*=\s*match create_desmond_trajectory_preview/);
-assert.match(previewRuntimeSource, /Ok\(None\) => None,\s*Err\(error\) => Some\(error\),/);
+// Desktop reads Desmond DTR frames natively. Burette never runs a Schrodinger
+// suite, so neither the app nor browser-dev reaches for its `run` launcher.
+assert.doesNotMatch(tauriConfig, /desmond_preview_extract\.py/);
+assert.doesNotMatch(viteConfig, /desmond_preview_extract|schrodingerStatus|\/opt\/schrodinger/);
+assert.doesNotMatch(browserDevDocuments, /desmond-preview/);
+assert.match(previewRuntimeSource, /fn open_desmond_trajectory_document/);
+assert.match(previewRuntimeSource, /let desmond_preview_error\s*=\s*match open_desmond_trajectory_document\(/);
+assert.doesNotMatch(previewRuntimeSource, /SCHRODINGER_RUN/);
 assert.match(previewRuntimeSource, /Desmond trajectory preview also failed: \{error\}/);
-assert.match(previewRuntimeSource, /const DESMOND_PREVIEW_TARGET_MB: &str = "24"/);
-assert.match(previewRuntimeSource, /\.arg\("--frames"\)\s*\.arg\("0"\)\s*\.arg\("--atoms"\)\s*\.arg\("0"\)\s*\.arg\("--target-mb"\)\s*\.arg\(DESMOND_PREVIEW_TARGET_MB\)/s);
-assert.match(previewRuntimeSource, /fn is_desmond_preview_candidate/);
 assert.match(previewRuntimeSource, /fn resolve_structure_file_bundle\(path: &Path, extension: &str\) -> StructureFileBundle/);
 assert.match(previewRuntimeSource, /fn resolve_desmond_file_bundle\(path: &Path, extension: &str\) -> Option<StructureFileBundle>/);
 assert.match(previewRuntimeSource, /fn resolve_md_file_bundle\(path: &Path, extension: &str\) -> Option<StructureFileBundle>/);
@@ -2937,7 +2896,7 @@ assert.match(structureInfoPanel, /Playing · /);
 assert.match(structureInfoPanel, /TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO/);
 assert.match(structureInfoPanel, /await runMdsmooth\(/);
 assert.match(structureInfoPanel, /type: "apply_external_trajectory_smoothing"/);
-assert.match(structureInfoPanel, /playing: Boolean\(playback\?\.playing\)/);
+assert.match(structureInfoPanel, /playing: Boolean\(currentPlayback\?\.playing\)/);
 assert.doesNotMatch(structureInfoPanel, /Turn smoothing off/);
 assert.doesNotMatch(structureInfoPanel, /Open smoothed trajectory/);
 assert.match(previewViewer, /function applyExternalTrajectorySmoothingFromAction/);
@@ -2994,8 +2953,8 @@ for (const [document, playback, expected] of [
   [{ path: '/scene.pdb', dockingRequest: { receptorPath: '/top.pdb', ligandPaths: ['/first.xtc'] } }, null, { trajectoryPath: '/first.xtc', topologyPath: '/top.pdb' }],
 ]) assert.deepEqual(trajectoryPaths(document, playback), expected);
 assert.match(structureInfoPanel, /const pair = trajectoryPathsFor\(document, playback\)/);
-assert.match(structureInfoPanel, /originalFrameIndex: playback\?\.globalFrameIndex \?\? 0/);
-assert.match(structureInfoPanel, /sourcePath: playback\?\.sourcePath \|\| ""/);
+assert.match(structureInfoPanel, /originalFrameIndex: currentPlayback\?\.globalFrameIndex \?\? 0/);
+assert.match(structureInfoPanel, /sourcePath: currentPlayback\?\.sourcePath \|\| ""/);
 assert.match(structureInfoPanel, /setTrajectorySmoothingTargetFrames\(Math\.max\(\s*2,\s*Math\.round\(playback\.frameCount \* TRAJECTORY_SMOOTHING_PRESET_TARGET_RATIO\[trajectorySmoothingPreset\]\),?\s*\)\)/);
 assert.match(structureInfoPanel, /if \(detail\.view === "smoothed"\) setTrajectorySmoothingBuilt\(true\)/);
 assert.match(structureInfoPanel, /role="slider"/);
@@ -3470,8 +3429,8 @@ assert.match(ketcherEditor, /getKet: \(\(\.\.\.args: Parameters<Ketcher\["getKet
 assert.match(ketcherEditor, /callKetcherWhenReady\(\(\) => instance\.getKet\(\.\.\.args\)\)/);
 assert.match(ketcherEditor, /getMolfile: \(async \(\.\.\.args: Parameters<Ketcher\["getMolfile"\]>\) => \{/);
 assert.match(ketcherEditor, /const molfile = await callKetcherWhenReady\(\(\) => instance\.getMolfile\(\.\.\.args\)\)/);
-assert.match(ketcherEditor, /setMolecule: \(\(\.\.\.args: Parameters<Ketcher\["setMolecule"\]>\) => \(/);
-assert.match(ketcherEditor, /callKetcherWhenReady\(\(\) => instance\.setMolecule\(\.\.\.args\)\)/);
+assert.match(ketcherEditor, /setMolecule: \(\(\.\.\.args: Parameters<Ketcher\["setMolecule"\]>\) => \{/);
+assert.match(ketcherEditor, /setMoleculeQueue\.then\(\(\) => callKetcherWhenReady\(\(\) => \(\s*rejectOnKetcherAsyncFailure\(\(\) => instance\.setMolecule\(\.\.\.args\), editorInstance\.eventBus\)/s);
 assert.match(ketcherEditor, /async function callKetcherWhenReady<T>\(operation: \(\) => Promise<T>\)/);
 assert.match(ketcherEditor, /if \(!isKetcherInstanceError\(error\)\) break/);
 assert.match(ketcherEditor, /return normalizeKetcherMolfileNames\(molfile\.trim\(\) \? molfile : serializeCurrentMolfile\(instance, MolSerializer\)\)/);
@@ -4723,7 +4682,7 @@ assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v\d+"/);
-assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v86"/);
+assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v87"/);
 assert.match(
   browserDevDocuments,
   /viewerProfile === "mesoscale"\) return !document\.runtimePath\.includes\(MESOSCALE_ASSET_VERSION\)/,
@@ -5462,17 +5421,14 @@ assert.match(previewViewer, /spin: \{ value: 0\.1, min: 0\.01, max: 1, step: 0\.
 assert.match(previewViewer, /if \('playOnce' in params\) params\.playOnce = true;/);
 assert.match(previewViewer, /manager\.play\(animation, viewportAnimationParams\(animation, plugin\)\)/);
 assert.match(previewViewer, /animation\.name === 'built-in\.animate-model-index' && activeTrajectoryPlaybackControl/);
-assert.match(previewViewer, /applyTrajectorySmoothingFromAction\(\{[\s\S]*outputFrames: interpolatedTrajectoryFrameCount\(playback\.frameCount\(\)\)/);
+assert.doesNotMatch(previewViewer, /Build a smoothed trajectory before animating this format/);
 assert.match(previewViewer, /playback = activeTrajectoryPlaybackControl;[\s\S]*playback\.play\(\);/);
 assert.match(previewViewer, /activeTrajectoryPlaybackControl\?\.stop\(\)/);
 assert.match(previewViewer, /prepared\.kind === 'trajectory' \|\| prepared\.kind === 'xyz-frame-overlay'/);
-assert.match(previewViewer, /const animationEpoch = \+\+viewportTrajectoryAnimationEpoch;/);
-assert.match(previewViewer, /if \(animationEpoch !== viewportTrajectoryAnimationEpoch \|\| activeViewer !== viewer\) return;/);
-assert.match(previewViewer, /action === 'animation-stop'[\s\S]*cancelViewportTrajectoryAnimation\(\);/);
+assert.match(previewViewer, /await manager\.play\(animation, \{[\s\S]*maxFps: 1000 \/ loopDelayMs\(\)/);
+assert.doesNotMatch(previewViewer, /viewportTrajectoryAnimationEpoch/);
 // Disposal tears down the preset preview and the trajectory animation alike.
-assert.match(previewViewer, /function disposeActiveMolstarViewer\(\) \{[\s\S]*?cancelViewportTrajectoryAnimation\(\);/);
-assert.match(previewViewer, /Build a smoothed trajectory before animating this format/);
-assert.match(previewViewer, /!activeTrajectoryPlaybackControl\.canInterpolate\(\)/);
+assert.doesNotMatch(previewViewer, /playback\.canInterpolate\(\)/);
 assert.match(previewViewer, /plugin\?\.behaviors\?\.state\?\.isAnimating\?\.subscribe\?\.\(updateViewportAnimateState\)/);
 // Mol*'s Procedural Animation panel is carried into the same Animate menu with
 // all three upstream actions: a uniform dynamics wiggle, uncertainty-weighted
@@ -5751,7 +5707,7 @@ assert.match(previewViewer, /type: 'ball-and-stick'/);
 assert.match(previewViewer, /type: 'cartoon'/);
 assert.match(previewViewer, /function normalizeMolstarStyle\(value\)/);
 assert.match(previewViewer, /function configuredMolstarStyle\(config\)/);
-assert.match(previewViewer, /if \(canvasBackground === 'auto'\) return resolveViewerTheme\(\) === 'light' \? 'white' : 'graphite';/);
+assert.match(previewViewer, /if \(canvasBackground === 'auto'\) return resolveViewerTheme\(\) === 'light' \? 'white'\s*: window\.BuretteConfig\?\.hostedMcpWidgetBootstrap === true \? 'black' : 'graphite';/);
 assert.match(previewViewer, /\.buret-xyzrender-sheet-item \{[^}]*transform: translate\(-50%, -50%\) rotate\(var\(--buret-sheet-rotation\)\);/s);
 assert.match(previewViewer, /\.buret-xyzrender-sheet-item-large \{[^}]*width: max\(180px, min\(calc\(100vw - 220px\), 860px\)\);[^}]*height: max\(180px, min\(calc\(100vh - 230px\), 620px\)\);/s);
 assert.match(previewViewer, /\.buret-xyzrender-sheet-item-large \.buret-xyzrender-sheet-item-background \{[^}]*border-radius: 8px;[^}]*box-shadow: 0 2px 8px rgba\(0,0,0,0\.10\);/s);
@@ -5765,7 +5721,7 @@ assert.match(previewViewer, /\.buret-xyzrender-sheet-rotate-handle \{[^}]*width:
 assert.match(previewViewer, /\.buret-xyzrender-resize-n,\s*\.buret-xyzrender-resize-s \{[^}]*width: 84px;[^}]*height: 30px;/);
 assert.match(previewViewer, /\.buret-xyzrender-resize-ne,\s*\.buret-xyzrender-resize-nw,\s*\.buret-xyzrender-resize-se,\s*\.buret-xyzrender-resize-sw \{[^}]*width: 38px;[^}]*height: 38px;/);
 assert.match(previewViewer, /if \(region === 'left'\) layoutState\.left = layoutState\.left === 'full' \? 'hidden' : 'full'/);
-assert.match(previewViewer, /await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default'\)/);
+assert.match(previewViewer, /await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default', presetOptions\)/);
 assert.doesNotMatch(previewViewer, /typeParams: \{ sizeFactor: 0\.16, ignoreLight: true \}/);
 assert.match(previewViewer, /const style = configuredMolstarStyle\(activeConfig\)/);
 assert.match(previewViewer, /function isMolstarWaterComponent\(component\)/);
@@ -6012,7 +5968,7 @@ const disposeActiveMolstarViewerSource = previewViewer.slice(
 );
 assert.match(disposeActiveMolstarViewerSource, /molstarStyleApplySerial \+= 1;/);
 assert.match(disposeActiveMolstarViewerSource, /disposeMolstarPresetPreview\(\);[\s\S]*?setMolstarStructureDirty\(false\);/);
-assert.match(disposeActiveMolstarViewerSource, /disposeMolstarPresetPreview\(\);\s*cancelViewportTrajectoryAnimation\(\);/);
+assert.match(disposeActiveMolstarViewerSource, /disposeMolstarPresetPreview\(\);/);
 assert.match(previewViewer, /function startMolstar\(config, cb\)/);
 const startMolstarSource = previewViewer.slice(
   previewViewer.indexOf('async function startMolstar(config, cb)'),
@@ -6170,7 +6126,7 @@ assert.match(previewViewer, /illustrative: \{ ignoreLight: true \}/);
 // its post-processing back off.
 assert.match(previewViewer, /await applyMolstarIllustrativePostprocessing\(viewer, \{ includeTransparent: true \}\)/);
 assert.match(previewViewer, /sceneTreeMenuSlider\(menu, 'Outline brightness', 'outline-brightness', Math\.round\(molstarOutlineBrightness \* 100\)\)/);
-assert.match(previewViewer, /includeTransparent: options\.includeTransparent !== false/);
+assert.match(previewViewer, /includeTransparent: options\.includeTransparent \?\? molstarHasTranslucentNonWater\(plugin\)/);
 assert.match(previewViewer, /setMolstarOutlineBrightness\(percent \/ 100\)/);
 assert.match(previewViewer, /await applyMolstarNonIllustrativePostprocessing\(viewer\);\s*\}\s*if \(current\?\.snapshot\)/);
 // Both spellings of the action share one path, so style preservation and step
@@ -6726,7 +6682,6 @@ assert.match(previewRuntimeCss, /\.buret-generate-3d-menu \{[^}]*backdrop-filter
 assert.match(previewRuntimeCss, /body \.msp-plugin \.msp-selection-viewport-controls-actions \{[^}]*background: var\(--buret-menu-background\) !important;[^}]*backdrop-filter: none !important;/);
 assert.match(previewViewer, /root\.style\.setProperty\('--buret-menu-background', background\);/);
 assert.match(previewViewer, /function readNativeTrajectoryPosition\(expectedCount\)/);
-assert.match(previewViewer, /function nativeAnimationSelectButton\(\)/);
 assert.match(previewViewer, /function trajectoryControlsForPrepared\(prepared\)/);
 assert.match(previewViewer, /if \(prepared\?\.kind === 'sdf-collection'\) \{/);
 assert.match(previewViewer, /if \(prepared\?\.kind === 'docking' && prepared\?\.sdfPoseOverlayAvailable === true\) \{/);
@@ -6787,7 +6742,7 @@ assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.dockingSc
 assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.sdfPoseOverlayAvailable === true[\s\S]*await applyDockingPoseCollectionVisibility\(viewer, activeMolstarPrepared \|\| prepared, nextIndex, \{ focus: false \}\);[\s\S]*activePose = nextIndex;/);
 assert.match(previewViewer, /const sceneStructures = \[\];[\s\S]*sceneStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\);[\s\S]*await applySdfCollectionMolstarStyle\(viewer, resolvedContextStyle, sceneStructures, 1, 'colored'\);/);
 assert.match(previewViewer, /function minimumTrajectoryLoopDelay\(prepared\)/);
-assert.match(previewViewer, /const NATIVE_TRAJECTORY_LOOP_SKIP_FPS_THRESHOLD = 25/);
+assert.doesNotMatch(previewViewer, /buret-docking-pose-speed-skip/);
 assert.doesNotMatch(previewViewer, /NATIVE_TRAJECTORY_LOOP_MAX_FPS/);
 assert.match(previewViewer, /return prepared\?\.nativeTrajectoryControls \? 0 : minimumTrajectoryLoopTimerDelay\(prepared\)/);
 assert.match(previewViewer, /function minimumTrajectoryLoopTimerDelay\(prepared\)/);
@@ -6855,7 +6810,7 @@ assert.match(structureInfoPanel, /function normalizeSdfContextOpacity\(value: st
 assert.match(previewViewer, /function queueMolstarSceneRebuild\(run, appearanceKey = null\)/);
 assert.match(previewViewer, /function applySdfCollectionVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applySdfCollectionVisibilityNow\(viewer, prepared, activePose, options\),[\s\S]*?prepared : null\);/);
 assert.match(previewViewer, /function applyDockingPoseCollectionVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyDockingPoseCollectionVisibilityNow\(viewer, prepared, activePose, options\),[\s\S]*?prepared : null\);/);
-assert.match(previewViewer, /function applyXyzFrameOverlayVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyXyzFrameOverlayVisibilityNow\(viewer, prepared, activePose, options\),[\s\S]*?prepared : null\);/);
+assert.match(previewViewer, /async function applyXyzFrameOverlayVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{[\s\S]*?await queueMolstarSceneRebuild\(\(\) => applyXyzFrameOverlayVisibilityNow\(viewer, prepared, activePose, options\),[\s\S]*?prepared : null\);/);
 assert.match(previewViewer, /function applyDockingSceneVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyDockingSceneVisibilityNow\(viewer, prepared, activePose, options\),[\s\S]*?prepared : null\);/);
 assert.match(previewViewer, /if \(prepared\.kind === 'sdf-collection'\) \{\s*await applySdfCollectionVisibilityNow\(viewer, prepared,/);
 assert.match(previewViewer, /await applyXyzFrameOverlayVisibilityNow\(viewer, prepared, readTrajectoryControlIndex\(/);
@@ -6991,7 +6946,7 @@ assert.match(previewViewer, /speed\.setAttribute\('aria-label', `\$\{controlLabe
 assert.doesNotMatch(previewViewer, /speed\.max/);
 assert.match(previewViewer, /speed\.inputMode = 'decimal'/);
 assert.match(previewViewer, /speed\.value = playbackRestore\?\.fps \|\| formatTrajectoryFps\(readTrajectoryLoopFps\(activeConfig, prepared\)\)/);
-assert.match(previewViewer, /speed\.title = 'Frames per second \(FPS\)'/);
+assert.match(previewViewer, /speed\.title = 'Target source frames per second; under load frames may be skipped and speed is capped, not guaranteed redraw FPS'/);
 assert.match(previewViewer, /function createStructureOverlayToggleButton\(prepared = activeMolstarPrepared\)/);
 assert.match(previewViewer, /button\.dataset\.buretAction = 'structure-overlay-toggle'/);
 assert.match(previewViewer, /root\.classList\.add\('buret-docking-poses-overlay-only'\)/);
@@ -7001,7 +6956,6 @@ assert.match(previewViewer, /if \(!toggleRow\) root\.append\(animationRow\);/);
 assert.match(previewViewer, /animation\.addEventListener\('contextmenu'/);
 assert.match(previewViewer, /const animationControlLabel = hasTrajectorySegments \? 'Toggle trajectory playback options' : 'Select Molstar animation'/);
 assert.match(previewViewer, /animation\.setAttribute\('aria-label', collapsed \? 'Show playback controls' : animationControlLabel\)/);
-assert.match(previewViewer, /if \(!open \|\| hasTrajectorySegments\) return;\s*const button = nativeAnimationSelectButton\(\)/);
 assert.match(previewViewer, /function pdbTrajectoryTimesPs\(data\)/);
 assert.match(previewViewer, /function trajectoryPoseLabel\(prepared, controlLabel, activePose\)/);
 assert.match(previewViewer, /Time \$\{timeNs\} ns - \$\{indexText\}/);
@@ -7029,14 +6983,19 @@ assert.match(previewViewer, /localStorage\.setItem\(trajectoryLoopFpsStorageKey\
 assert.match(previewViewer, /loop\.addEventListener\('click', \(\) => \{/);
 assert.match(previewViewer, /let loopActive = Boolean\(playbackRestore\?\.playing\)/);
 assert.match(previewViewer, /loopActive = Boolean\(active\)/);
-assert.match(previewViewer, /const open = !isAnimationOptionsOpen\(\);\s*setAnimationOptionsOpen\(open\);\s*if \(!open \|\| hasTrajectorySegments\) return;/);
+assert.match(previewViewer, /const open = !isAnimationOptionsOpen\(\);\s*setAnimationOptionsOpen\(open\);/);
 assert.match(previewViewer, /const loopTargetIndex = \(\) => \{/);
 assert.match(previewViewer, /const trajectoryControlBounds = \(poseIndex\) => \{/);
 assert.match(previewViewer, /currentIndex\.textContent = `\$\{poseIndex - current\.segment\.startFrame \+ 1\}\/\$\{current\.segment\.frameCount\} · \$\{current\.index \+ 1\}\/\$\{trajectorySegments\.length\}`/);
-// A slow frame step must not let wall-clock time pick the next frame: the loop
+// A slow frame step must not let wall-clock time pick an absolute frame: the loop
 // would alternate between two frames instead of playing (WKWebView regression).
+// It still has to skip the frames that fell due, or fps above the step rate is
+// ignored, so the loop moves forward by a bounded stride from the current frame.
 assert.match(previewViewer, /const loopBounds = trajectoryControlBounds\(activePose\)/);
-assert.match(previewViewer, /return loopBounds\.start \+ \(\(activePose - loopBounds\.start \+ 1\) % loopBounds\.count\)/);
+assert.match(previewViewer, /return loopBounds\.start \+ \(\(activePose - loopBounds\.start \+ loopStride\(loopBounds\)\) % loopBounds\.count\)/);
+assert.match(previewViewer, /const stride = window\.molstar\.BuretteTrajectoryPlayback\.stride\(loopBounds\.count, due\);/);
+// A loop that keeps up must still show every frame.
+assert.match(previewViewer, /const loopStride = \(loopBounds\) => \{\s*if \(loopStepMs === 0\) \{\s*loopFrameCarry = 0;\s*return 1;/);
 assert.doesNotMatch(previewViewer, /loopStartPose/);
 assert.match(previewViewer, /const scheduleLoopStep = \(delayMs = loopNextDelay\(\), expectedLoopEpoch = loopEpoch\) => \{/);
 assert.match(previewViewer, /loopTimer = window\.setTimeout\(\(\) => \{/);
@@ -7117,7 +7076,6 @@ assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{[\s\S]*appearance: textfield;/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-all \{[\s\S]*min-width: 34px;/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed \{[\s\S]*width: 44px;/);
-assert.match(previewRuntimeCss, /\.buret-docking-pose-speed\.buret-docking-pose-speed-skip \{[\s\S]*#f59e0b/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-speed::-webkit-inner-spin-button,\s*\.buret-docking-pose-speed::-webkit-outer-spin-button \{[\s\S]*-webkit-appearance: none;/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{[\s\S]*flex: 1 1 0;/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses-trajectory-segments \.buret-docking-pose-animation \{[\s\S]*width: 100%;/);
@@ -8077,8 +8035,9 @@ assert.match(browserDevDocuments, /async function gridHtml\(\s*path: string,\s*d
 assert.match(browserDevDocuments, /documentId,\s*sourcePath: path,/);
 assert.match(browserDevDocuments, /body\.documentId = String\(window\.BuretteConfig\.documentId\)/);
 assert.match(browserDevDocuments, /window\.BuretteGridRecords =/);
-assert.match(browserDevDocuments, /openchemlib\/openchemlib\.js\?v=\$\{GRID_ASSET_VERSION\}/);
-assert.equal(browserDevDocuments.match(/rdkitWasmPath: RDKIT_WASM_PATH/g)?.length, 2);
+assert.match(browserDevDocuments, /gridAsset\("openchemlib\/openchemlib\.js"\)\}\?v=\$\{GRID_ASSET_VERSION\}/);
+assert.equal(browserDevDocuments.match(/rdkitWasmPath: RDKIT_WASM_PATH/g)?.length, 1);
+assert.match(browserDevDocuments, /rdkitWasmPath: hosted \? gridAsset\("rdkit\/RDKit_minimal\.wasm"\) : RDKIT_WASM_PATH/);
 assert.doesNotMatch(browserDevDocuments, /BuretteRDKitWasmBase64/);
 assert.match(gridViewer, /cfg\.appViewer === true && cfg\.gridDataMode === 'bridge'/);
 assert.match(gridViewer, /\(cfg\.appViewer === true \|\| cfg\.quickLookViewer === true\) && !!caps\.rendererSwitch/);
@@ -8921,3 +8880,5 @@ assert.match(ketcherPage, /isActive && panelMode && dockPortalElement \? createP
 assert.match(ketcherPage, /actions\.setDockTool\("right", "ketcher"\)/);
 assert.match(ketcherPage, /onValueChange=\{\(value\) => \{ setOutput\(value\); setLiveImportDirty\(true\); \}\}/);
 assert.match(ketcherPage, /state\.rightDockOpen, state\.rightDockTool, state\.rightDockActiveTab/);
+
+await import('./test-widget-compute-capability.mjs');

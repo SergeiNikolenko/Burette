@@ -52,7 +52,6 @@ After Stage 1 is green, split browser-dev handlers by endpoint group:
 - `files.ts`: `/__burette/dev-files`, `/read-file`, `/read-text-file`,
   `/file-bundle`;
 - `assets.ts`: `/__burette/rdkit-wasm`, `/app-icon/`;
-- `desmond.ts`: `/__burette/desmond-preview`;
 - `xyzrender.ts`: `/__burette/xyzrender`;
 - `descriptors.ts`: `/__burette/descriptors`;
 - `msbuddy.ts`: `/__burette/msbuddy`;
@@ -76,7 +75,7 @@ Current Stage 2 progress:
 
 - browser-dev route registration has been split out of `vite.config.ts` by
   endpoint group under `apps/desktop/vite/browser-dev/`;
-- file discovery/content, assets, Desmond, xyzrender, descriptors, MSBuddy,
+- file discovery/content, assets, xyzrender, descriptors, MSBuddy,
   inline conformer generation, conformer job lifecycle, xTB job lifecycle, and
   agent-session endpoints now live in dedicated modules;
 - `vite.config.ts` is now the composition point for these route modules instead
@@ -269,8 +268,8 @@ Current Stage 3 progress:
   command permissions remain limited to shell windows and bundled preview
   runtime artifacts do not call Tauri IPC directly;
 - external runtime doctor now has a read-only backend aggregate for xyzrender,
-  descriptor Python/RDKit, RDKit conformer Python, CREST, PRISM, xTB,
-  and Schrodinger status sources, exposed through trusted shell
+  descriptor Python/RDKit, RDKit conformer Python, CREST, PRISM, and xTB
+  status sources, exposed through trusted shell
   maintenance/settings actions and a browser-dev parity endpoint;
 - `App.tsx` still owns the top-level shell composition and remaining runtime
   hardening boundaries. These are the remaining high-risk slices and should
@@ -299,7 +298,7 @@ the high-risk runtime boundaries intact.
 | Runtime cache contract | Partial | `clear_preview_cache` now delegates to a tested cache-directory helper that preserves `viewer/assets` and removes volatile preview/render/cache entries; preview runtime localStorage/sessionStorage keys are inventoried by `tests/test-runtime-storage-contract.mjs`; broader storage/cache behavior review remains pending. |
 | Folder scanner job | Partial | Project/sidebar folder scanning now has backend file and directory limits with Rust tests; a fully cancellable/background scanner with user-visible truncation status remains pending. |
 | Renderer policy contract | Partial | Core renderer selection now has an explicit matrix test for Molstar/external xyzrender/grid-request/trajectory/external-only routing; browser-dev and Quick Look parity checks still need a higher-level surface test. |
-| External runtime doctor | Complete for current scope | A read-only Tauri/browser-dev doctor report now aggregates xyzrender, descriptor Python/RDKit, RDKit conformer Python, CREST, PRISM, xTB, and Schrodinger status sources and is surfaced through trusted shell settings/command-palette actions. |
+| External runtime doctor | Complete for current scope | A read-only Tauri/browser-dev doctor report now aggregates xyzrender, descriptor Python/RDKit, RDKit conformer Python, CREST, PRISM, and xTB status sources and is surfaced through trusted shell settings/command-palette actions. |
 | Diagnostics privacy | Partial | Diagnostics export action is extracted and diagnostics bundle local-path redaction is covered by Rust tests; broader privacy review for every copied artifact remains pending. |
 | Viewer runtime decomposition | Not started | `PreviewExtension/Web/viewer.js` remains undecomposed as planned until stronger contracts exist (the file itself keeps growing with feature work, and companions such as `viewer-shell.js`, `viewer-bootstrap.js`, and `trajectory-smoothing.js` now exist beside it). |
 | CSS split | Not started | No CSS mechanical split has been attempted. |
