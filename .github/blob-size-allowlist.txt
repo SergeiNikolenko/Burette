@@ -115,3 +115,7 @@ plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-BGyBJOfz.js
 
 # Viewer regenerated after integration of the panel-toggle repair.
 plugins/burette-agent/browser-shell-dist/assets/viewer-BjXButBs.js
+plugins/burette-agent/browser-shell-dist/assets/dist-_ca1w920.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-BEGxipAS.js
+plugins/burette-agent/browser-shell-dist/assets/molstar-B7BC_Jy4.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-CtZdJnTM.js
