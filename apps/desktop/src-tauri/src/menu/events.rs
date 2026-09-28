@@ -253,7 +253,7 @@ pub(crate) fn emit_command_to_focused_window<R: Runtime>(
     }
 }
 
-pub(crate) fn emit_command_to_window<R: Runtime>(
+fn emit_command_to_window<R: Runtime>(
     window: &tauri::WebviewWindow<R>,
     command: &str,
     recent_path: Option<String>,

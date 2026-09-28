@@ -85,7 +85,7 @@ contains only documents that describe the active project.
 - Apple-platform agent routes are dispatched from [AGENTS.md](../AGENTS.md):
   use `@build-ios-apps`, `@build-macos-apps`, `@product-design`, and
   `$apple-design` where those platform/design rules apply.
-- [Launch modes](launch-modes.md): normal, file-open, tray, and registration
+- [Launch modes](launch-modes.md): normal, file-open, Dock/menu, and registration
   launch semantics.
 - [Releasing](releasing.md): version, build, signing, update, and artifact
   requirements.

@@ -8,7 +8,6 @@ mod state;
 use tauri::Manager;
 
 pub(crate) use build::configure_menu;
-pub(crate) use events::emit_command_to_window;
 pub(crate) use events::handle_event;
 pub(crate) use quit::{
     authorize_exit, confirm_exit, exit_transition_is_active, request_quit, request_system_quit,
