@@ -1,9 +1,18 @@
 # Burette — portal copy
 
+## Current candidate pack — 2026-09-27
+
+Use [review-cases.md](review-cases.md) for the five independent positive and
+three negative cases, precise expectations and pending acceptance gates.
+[demo-storyboard.md](demo-storyboard.md) is the proposed recording script, not
+a recorded video. The new salicylate SDF fixture is prepared locally but must
+be published and hash-verified before submitting its URL. Do not submit this
+candidate pack until those gates pass.
+
 ## Listing
 
 - **Plugin name:** Burette
-- **Short description:** Preview molecular structures
+- **Short description:** Explore molecular structures
 - **Category:** Education
 - **Website:** https://burette-landing.vercel.app
 - **Support:** https://burette-landing.vercel.app/support
@@ -16,7 +25,7 @@
   rescanning the MCP endpoint.
 - **Live ChatGPT proof:** replace this field with a fresh reviewer-accessible
   conversation URL created from the rescanned production plugin.
-- **Desktop demo video:** https://burette-landing.vercel.app/assets/burette-chatgpt-plugin-demo.mp4
+- **Historical desktop video (not acceptance evidence for this build):** https://burette-landing.vercel.app/assets/burette-chatgpt-plugin-demo.mp4
 - **Physical iPhone demo video:** record and upload a fresh run after the
   production resubmission build is deployed.
 - **Mobile verification:** verify the rescanned production version on a
@@ -42,12 +51,11 @@ account, and do not control local files or desktop sessions.
 
 ## Starter prompts
 
-1. Preview the attached SDF and summarize its molecules and elements.
-2. Open PDB 1CRN in the Burette molecular preview.
-3. Visualize this mmCIF file and tell me how many chains and residues it has.
-4. Preview the attached XYZ geometry and identify the element counts.
-5. Open Ketcher and sketch ethanol from the SMILES CCO.
-6. Open PDB 1HTB and focus the NAD ligand, hiding the water.
+1. Open PDB 1STP and distinguish its protein, bound ligand, and solvent.
+2. Show the bound biotin in 1STP, focus it, and hide water while keeping the protein visible.
+3. Review this attached SDF collection and check its molecule names and stored atom counts.
+4. Draw salicylic acid from SMILES O=C(O)c1ccccc1O in Ketcher.
+5. Replace my Ketcher sketch with aspirin and read back the final SMILES.
 
 ## Release notes
 

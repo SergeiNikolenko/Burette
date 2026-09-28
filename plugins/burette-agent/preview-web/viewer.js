@@ -1571,6 +1571,7 @@
   window.BuretteViewerActions = { run: executeBuretteAgentAction };
 
   let hostedMcpActionsApplied = false;
+  let hostedMcpSceneInitialized = false;
   function hostedMcpSelectionFromResults(actions, results) {
     let selection = null;
     for (let index = 0; index < actions.length; index++) {
@@ -1598,6 +1599,7 @@
   }
 
   async function applyHostedMcpActions() {
+    if (!hostedMcpSceneInitialized) return;
     if (hostedMcpActionsApplied) return;
     const requestedActions = Array.isArray(window.BuretteConfig?.hostedMcpActions)
       ? window.BuretteConfig.hostedMcpActions.slice(0, 8)
@@ -1605,8 +1607,13 @@
     if (!requestedActions.length) return;
     hostedMcpActionsApplied = true;
     try {
-      await window.BuretteHostedAppBridge?.ready;
-      const actions = window.BuretteHostedAppBridge?.sanitizeViewerActions?.(requestedActions) || [];
+      // The React-hosted viewer is a same-origin srcdoc child; the MCP Apps
+      // connection belongs to its parent shell. Re-read after readiness because
+      // initialization replaces the shell's temporary bridge object.
+      const bridgeWindow = window.BuretteHostedAppBridge ? window : window.parent;
+      if (!bridgeWindow?.BuretteHostedAppBridge) throw new Error('Hosted scene bridge is unavailable.');
+      await bridgeWindow.BuretteHostedAppBridge.ready;
+      const actions = bridgeWindow.BuretteHostedAppBridge?.sanitizeViewerActions?.(requestedActions) || [];
       if (actions.length !== requestedActions.length) {
         throw new Error('Hosted scene contained an action outside the public Burette allowlist.');
       }
@@ -2265,7 +2272,8 @@
   }
 
   function resolvedCanvasBackground() {
-    if (canvasBackground === 'auto') return resolveViewerTheme() === 'light' ? 'white' : 'graphite';
+    if (canvasBackground === 'auto') return resolveViewerTheme() === 'light' ? 'white'
+      : window.BuretteConfig?.hostedMcpWidgetBootstrap === true ? 'black' : 'graphite';
     return canvasBackground;
   }
 
@@ -3027,6 +3035,9 @@
 
   function requestMolecularCompute(operation = 'generate3d', options = {}) {
     const config = activeConfig || window.BuretteConfig || {};
+    // MCP widgets have no native-compute transport. Do not advertise or send
+    // desktop compute actions just because the document happens to be an SDF.
+    if (config.hostedMcpWidgetBootstrap === true || config.visualizationOnly === true) return;
     const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (!['sdf', 'sd', 'mol'].includes(format)) {
       setStatus('Native molecular compute supports SDF and MOL structures in Molstar.', 'error');
@@ -3058,6 +3069,7 @@
   }
 
   function canGenerate3DConformerFromConfig(config, renderer) {
+    if (config?.hostedMcpWidgetBootstrap === true || config?.visualizationOnly === true) return false;
     const format = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format);
     return renderer === 'molstar' && ['sdf', 'sd', 'mol'].includes(format);
   }
@@ -11371,6 +11383,23 @@ SOFTWARE.
     }
   }
 
+  function assertMolstarLoadReady(viewer, prepared) {
+    const cells = viewer?.plugin?.state?.data?.cells;
+    const failedCell = cells && typeof cells.values === 'function'
+      ? Array.from(cells.values()).find(cell => cell?.status === 'error')
+      : null;
+    if (failedCell) {
+      const transform = failedCell.transform?.transformer?.definition?.display?.name || 'Mol* parser';
+      const detail = String(failedCell.errorText || '').trim().slice(0, 240);
+      throw new Error(`Mol* could not load ${prepared?.label || 'the structure'} (${transform})${detail ? `: ${detail}` : ''}; viewer readiness was withheld.`);
+    }
+    // Volume-only maps and MVS scenes can be valid without molecular structures.
+    if (prepared?.kind === 'volume' || prepared?.kind === 'mvs') return;
+    if (currentMolstarStructureCount(viewer) < 1) {
+      throw new Error(`Mol* loaded no molecular structures for ${prepared?.label || 'the input'}; viewer readiness was withheld.`);
+    }
+  }
+
   // viewer-shell.js keeps the page transparent and its chrome hidden from the first
   // parse, so the host surface stays on screen instead of the default black shell,
   // a bare canvas and chrome mounting piece by piece. The finished scene (or an
@@ -15096,6 +15125,7 @@ SOFTWARE.
   function prepareXyzStructure(text, config) {
     const label = config.label || 'structure';
     const frames = splitXyzFrames(text);
+    if (!frames.length) throw new Error(`Invalid XYZ in ${label}: check atom counts and finite coordinates in every frame.`);
     if (frames.length > 1) {
       const overlay = buildXyzFrameOverlay(frames, label);
       return {
@@ -17552,6 +17582,11 @@ SOFTWARE.
     const representation = representationForSceneComponentKind(kind);
     let created = 0;
     for (const component of components) {
+      // "Keep protein visible" is idempotent, not another overlapping cartoon.
+      if (component.representations?.some(repr => repr.cell?.obj?.data?.repr?.state?.visible === true)) {
+        created += 1;
+        continue;
+      }
       try {
         await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation, { tag: `burette-${kind}` });
         created += 1;
@@ -17819,7 +17854,9 @@ SOFTWARE.
       const plugin = viewer.plugin;
       const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
       for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
-        await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', { useDefaultIfSingleModel: true });
+        await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', {
+          useDefaultIfSingleModel: activeConfig?.hostedMcpWidgetBootstrap !== true
+        });
       }
       if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
       await applyMolstarWaterLineRepresentation(viewer);
@@ -17827,14 +17864,18 @@ SOFTWARE.
       return;
     }
     const plugin = viewer.plugin;
-    if (prepared.format !== 'mmcif' && prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
+    if (activeConfig?.hostedMcpWidgetBootstrap !== true && prepared.format !== 'mmcif' && prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
       await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
     const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
     for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
-      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
+      // Hosted counts and author-residue selectors describe the supplied
+      // coordinates, not automatically generated biological-assembly copies.
+      const presetOptions = activeConfig?.hostedMcpWidgetBootstrap === true
+        ? { structure: { name: 'model', params: {} } } : undefined;
+      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', presetOptions);
     }
     if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
     await applyMolstarWaterLineRepresentation(viewer);
@@ -28327,6 +28368,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       45000,
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
+    assertMolstarLoadReady(viewer, prepared);
     if (config.demoSnapshotUrl) {
       const response = await fetch(config.demoSnapshotUrl);
       if (!response.ok) throw new Error('Could not load the saved demo scene.');
@@ -28426,6 +28468,13 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
         hideStatus(readyPayload);
         window.BuretteNativeSceneReady();
       } else setTimeout(() => hideStatus(readyPayload), isQuickLookHost() ? 0 : 700);
+    }
+    // Apply authored actions only after presets and initial framing finish.
+    // Agent readiness alone precedes those steps, which otherwise overwrite focus.
+    hostedMcpSceneInitialized = true;
+    if (Array.isArray(config.hostedMcpActions) && config.hostedMcpActions.length) {
+      molstarStructureFocusSerial += 1;
+      await applyHostedMcpActions();
     }
   }
 

@@ -2106,7 +2106,8 @@
       });
       if (keys.size >= 24) break;
     }
-    for (const key of [...keys].sort()) options.push({ value: `prop:${key}`, label: key });
+    for (const key of [...keys].sort()) options.push({ value: `prop:${key}`,
+      label: options.some(option => option.label.toLowerCase() === key.toLowerCase()) ? `${key} (file)` : key });
     return options;
   }
 
@@ -5066,7 +5067,7 @@
     for (const key of propColumns) {
       columns.push({
         id: `prop:${key}`,
-        label: key,
+        label: columns.some(column => column.label.toLowerCase() === key.toLowerCase()) ? `${key} (file)` : key,
         type: inferPropColumnType(rows, key),
         kind: 'property',
         get: row => row.props?.[key] ?? ''

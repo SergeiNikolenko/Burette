@@ -398,8 +398,11 @@ describe("viewer resource contract", () => {
     expect(html).toContain("background: #000000;");
     expect(html).toContain("html, body, #root, #app { min-height: 0; height: 100%; }");
     expect(html).not.toContain("background: #111315;");
-    // A narrow chat column must not collapse the Ketcher editor.
-    expect(createKetcherWidgetHtml("https://burette.example")).not.toContain("min-height: 0; height: 100%;");
+    // Both editors fill the height allocated by the host, not 80% of it.
+    for (const widget of [html, createKetcherWidgetHtml("https://burette.example")]) {
+      expect(widget).toContain("html { height: 100vh; }");
+      expect(widget).not.toContain("height: min(80vh, 760px)");
+    }
   });
 
   test("builds the stable hosted shell entry assets", () => {

@@ -106,3 +106,12 @@ plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-DSoiEezx.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-DQSmqDX9.js
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-B1sappZd.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-B3AJSIFE.js
+
+# Rebuilt packaged runtime for the hosted review workflow repairs.
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-j8K2nAZT.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-9JAFqKqA.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CETyIt6z.js
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-BGyBJOfz.js
+
+# Viewer regenerated after integration of the panel-toggle repair.
+plugins/burette-agent/browser-shell-dist/assets/viewer-BjXButBs.js

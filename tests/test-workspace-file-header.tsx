@@ -26,14 +26,14 @@ const render = async (path: string, open = false, fileActionsAvailable = true) =
 })));
 const path = "/project/Burette/samples/proteins/1htb.pdb";
 await render(path);
-assert.equal(container.querySelector('[aria-label="Annotate this view"]'), null, "Standalone workspaces must not expose plugin annotation");
+assert.equal(container.querySelector('[aria-label="Annotate"]'), null, "Standalone workspaces must not expose plugin annotation");
 (window as any).BuretteMcpWorkspace = {};
 await render(path);
 assert.equal(container.querySelector(".workspace-file-breadcrumb")?.textContent, "Burettesamplesproteins1htb.pdb");
 assert.equal(container.querySelector(".workspace-file-breadcrumb")?.getAttribute("aria-label"), path);
 assert.equal(container.querySelector("[aria-current=page]")?.textContent, "1htb.pdb");
 await act(async () => {
-  for (const label of ["Copy file path", "Toggle right panel", "Annotate this view", "Open with default app"]) {
+  for (const label of ["Copy file path", "Toggle right panel", "Annotate", "Open with default app"]) {
     (container.querySelector(`[aria-label="${label}"]`) as HTMLElement).click();
   }
   container.querySelector('[aria-label="Open in another application"]')!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, ctrlKey: false }));
@@ -42,7 +42,7 @@ assert.ok(document.querySelector('[role="menu"]'));
 await act(async () => (document.querySelector('[role="menuitem"]') as HTMLElement).click());
 assert.deepEqual(calls, [["copy", path, "file"], ["dock", "right"], ["default", path], ["editor", path]]);
 assert.equal(container.querySelector('[aria-label="Toggle bottom panel"]'), null);
-assert.equal(container.querySelector('[aria-label="Stop annotating"]')?.textContent?.startsWith("Annotating"), true);
+assert.equal(container.querySelector('[aria-label="Annotate"][aria-pressed="true"]')?.textContent?.startsWith("Annotate"), true);
 await render("/other/mini.pdb", true);
 assert.equal(container.querySelector("[aria-current=page]")?.textContent, "mini.pdb");
 assert.equal(container.querySelectorAll('[aria-pressed="true"]').length, 2);

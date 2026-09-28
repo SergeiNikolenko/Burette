@@ -435,6 +435,13 @@ export async function openBrowserDevMolstarContextDocument(
   const contextFocus = browserDevMolstarContextFocus(contextDocument.context);
   if (entries.length === 1) {
     const entry = entries[0];
+    if (hostedMcpWidget && entry.format.molstarFormat === "sdf"
+      && !((contextDocument.context?.hostedMcpActions as unknown[] | undefined)?.length)
+      && parseSdfCollectionRecords(decodeUtf8(entry.bytes)).length > 1) {
+      const document = await openBrowserDevTextDocument(label, "sdf", decodeUtf8(entry.bytes),
+        { ...preferences, rendererMode: "grid2d" }, undefined, id);
+      return { ...document, title: label };
+    }
     if (entry.role === "ligand" && entry.extension === "sdf" && entry.format.molstarFormat === "sdf") {
       const document = await openBrowserDevTextDocument(
         `${label}.sdf`,
@@ -1310,6 +1317,11 @@ function viewerHtml(
     // viewer: the sandbox blocks inline scripts, and the toolbar starts collapsed.
     ...(isHostedMcpWidget() ? { hostedMcpWidgetBootstrap: true } : {}),
   };
+  // The prebuilt plugin shell has no desktop native-compute transport. Vite
+  // development and packaged desktop runtimes retain their own capabilities.
+  if (import.meta.env.PROD && import.meta.env.VITE_BURETTE_AGENT_SHELL === "1") {
+    Object.assign(config, { visualizationOnly: true });
+  }
   if (mesoscale) {
     return mesoscaleViewerHtml(label, bytes, config, visuals.transparentBackground);
   }
@@ -1339,7 +1351,7 @@ function viewerHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   ${hostedMcpBootstrap ? "" : `<base href="${WEB_ASSETS_BASE}" />`}
   <title>Burette - ${escapeHtml(label)}</title>
-  <style>html{color-scheme:${visuals.theme === "auto" ? "light dark" : visuals.theme};background:${visuals.transparentBackground ? "transparent" : visuals.theme === "light" ? "#ffffff" : "#111111"}}body{background:inherit}${visuals.theme === "auto" && !visuals.transparentBackground ? "@media(prefers-color-scheme:light){html{background:#ffffff}}" : ""}</style>
+  <style>html{color-scheme:${visuals.theme === "auto" ? "light dark" : visuals.theme};background:${visuals.transparentBackground ? "transparent" : visuals.theme === "light" ? "#ffffff" : hostedMcpBootstrap ? "#000000" : "#111111"}}body{background:inherit}${visuals.theme === "auto" && !visuals.transparentBackground ? "@media(prefers-color-scheme:light){html{background:#ffffff}}" : ""}</style>
   <link rel="stylesheet" href="${viewerAsset("viewer-runtime.css")}?v=${runtimeAssetVersion}" />
 </head>
 <body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">
@@ -1511,6 +1523,8 @@ async function gridHtml(
   preferences: ViewerPreferences,
   byteCount: number,
 ) {
+  const hosted = isHostedMcpWidget();
+  const gridAsset = (name: string) => hosted ? `${WEB_ASSETS_BASE.replace(/\/$/u, "")}/${name}` : name;
   const label = fileTitle(path);
   const visuals = resolvePreviewVisuals(preferences);
   const hasMoleculeRecords = records.some((record) => Boolean(record.smiles?.trim() || record.molblock?.trim() || record.idcode?.trim()));
@@ -1522,7 +1536,8 @@ async function gridHtml(
     sourcePath: path,
     label,
     byteCount,
-    host: "browser-dev",
+    host: hosted ? "hosted" : "browser-dev",
+    ...(hosted ? { hostedMcpWidgetBootstrap: true } : {}),
     quickLookBuild: "burette-browser-dev-grid2d",
     debug: false,
     appViewer: true,
@@ -1539,7 +1554,7 @@ async function gridHtml(
     recordsIncluded: records.length,
     recordsTruncated: false,
     pageSize: 720,
-    rdkitWasmPath: RDKIT_WASM_PATH,
+    rdkitWasmPath: hosted ? gridAsset("rdkit/RDKit_minimal.wasm") : RDKIT_WASM_PATH,
     xyzrenderPreset: "default",
     xyzrenderPresetOptions: [
       { value: "default", label: "Default" },
@@ -1584,10 +1599,10 @@ async function gridHtml(
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <base href="${WEB_ASSETS_BASE}" />
+  ${hosted ? "" : `<base href="${WEB_ASSETS_BASE}" />`}
   <title>Burette Grid - ${escapeHtml(label)}</title>
-  <link rel="stylesheet" href="grid.css?v=${GRID_ASSET_VERSION}" />
-  <script>
+  <link rel="stylesheet" href="${gridAsset("grid.css")}?v=${GRID_ASSET_VERSION}" />
+  ${hosted ? "" : `<script>
     window.__mqlPost = function (type, message, payload) {
       try {
         const body = { type, message: String(message || ''), ...(payload || {}) };
@@ -1598,20 +1613,23 @@ async function gridHtml(
     window.BuretteInlineMode = true;
     window.BuretteGridMode = true;
     window.BuretteDebug = false;
-  </script>
+  </script>`}
 </head>
 <body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">
   <div id="app"></div>
   <div id="status">Loading molecule grid...</div>
-  <script>
+  ${hosted ? `<script id="burette-runtime-config" type="application/json">${serializeInlineJson(config)}</script>
+  <script id="burette-grid-records" type="application/json">${serializeInlineJson(records)}</script>
+  <script src="${gridAsset("viewer-bootstrap.js")}?v=${GRID_ASSET_VERSION}"></script>` : `<script>
     window.BuretteConfig = ${serializeInlineJson(config)};
   </script>
-  <script>window.BuretteGridRecords = ${serializeInlineJson(records)};</script>
-  ${format === "dwar" ? `<script src="openchemlib/openchemlib.js?v=${GRID_ASSET_VERSION}"></script>` : ""}
-  <script src="rdkit/RDKit_minimal.js?v=${GRID_ASSET_VERSION}"></script>
-  <script src="native-viewer-menus.js?v=${GRID_ASSET_VERSION}"></script>
-  <script src="grid-ui.js?v=${GRID_ASSET_VERSION}"></script>
-  <script src="grid-viewer.js?v=${GRID_ASSET_VERSION}"></script>
+  <script>window.BuretteGridRecords = ${serializeInlineJson(records)};</script>`}
+  ${format === "dwar" ? `<script src="${gridAsset("openchemlib/openchemlib.js")}?v=${GRID_ASSET_VERSION}"></script>` : ""}
+  <script src="${gridAsset("rdkit/RDKit_minimal.js")}?v=${GRID_ASSET_VERSION}"></script>
+  <script src="${gridAsset("native-viewer-menus.js")}?v=${GRID_ASSET_VERSION}"></script>
+  <script src="${gridAsset("grid-ui.js")}?v=${GRID_ASSET_VERSION}"></script>
+  <script src="${gridAsset("grid-viewer.js")}?v=${GRID_ASSET_VERSION}"></script>
+
 </body>
 </html>`);
 }

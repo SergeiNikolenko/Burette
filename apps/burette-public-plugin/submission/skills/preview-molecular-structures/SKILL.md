@@ -17,6 +17,10 @@ Use Burette for bounded molecular inspection and transient chemical sketching.
   chain, residue range, or component; clear a selection; reset the camera; or
   hide/show polymers, ligands, ions, or water. Pass the same PDB ID or authorized
   attachment again because the public server does not retain widget sessions.
+  When the source and selector are supplied, call this tool directly once:
+  it loads the structure and applies the actions, so a preliminary preview is
+  unnecessary. Do not split opening, selecting, focusing, and hiding waters
+  across multiple cards.
 - Use `open_ketcher` when the user asks to draw or edit a small chemical
   structure in the hosted widget. Seed only bounded inline KET, MOL, RXN, or
   SMILES content when it is supplied.
@@ -27,6 +31,9 @@ Use Burette for bounded molecular inspection and transient chemical sketching.
   boundary and never writes silently.
 - If several supported attachments are present and the target is unclear, ask
   which single structure to open.
+- If no structure is identified in this conversation, ask for an attachment or
+  PDB ID before any molecular call. Do not borrow an identifier from another
+  chat, a cached widget, a suggested demo, or earlier unrelated activity.
 
 ## Present the result
 
@@ -38,11 +45,17 @@ Use Burette for bounded molecular inspection and transient chemical sketching.
    representations, and use measurements directly in the result.
 4. State format limitations or parser notes when the result includes them.
 5. Treat `burette.activeSelection` from widget context as the user's current
-   selection. Do not claim an action succeeded until the widget reports its
-   bounded scene result.
+   selection only when its source matches the structure explicitly opened in
+   this conversation. Tool-returned data and a prepared scene are not a loaded
+   view. Do not say “done”, “selected”, “focused”, or “hidden” until the widget
+   reports those applied actions. If there is no acknowledgement, explicitly
+   state that rendering/application is unconfirmed, not completed.
 
 ## Boundaries
 
+- For unsupported docking, affinity, simulation, or local overwrite requests,
+  explain the limitation without opening a preview as a substitute. Offer
+  inspection separately; a PDB ID in a docking request is not an inspection request.
 - Do not claim that this public plugin edits, overwrites, or deletes molecular
   source files. Ketcher edits exist only in the ephemeral hosted widget relay.
 - Do not claim local macOS app control, docking, simulation, structure

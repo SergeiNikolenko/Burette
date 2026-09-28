@@ -3429,8 +3429,8 @@ assert.match(ketcherEditor, /getKet: \(\(\.\.\.args: Parameters<Ketcher\["getKet
 assert.match(ketcherEditor, /callKetcherWhenReady\(\(\) => instance\.getKet\(\.\.\.args\)\)/);
 assert.match(ketcherEditor, /getMolfile: \(async \(\.\.\.args: Parameters<Ketcher\["getMolfile"\]>\) => \{/);
 assert.match(ketcherEditor, /const molfile = await callKetcherWhenReady\(\(\) => instance\.getMolfile\(\.\.\.args\)\)/);
-assert.match(ketcherEditor, /setMolecule: \(\(\.\.\.args: Parameters<Ketcher\["setMolecule"\]>\) => \(/);
-assert.match(ketcherEditor, /callKetcherWhenReady\(\(\) => instance\.setMolecule\(\.\.\.args\)\)/);
+assert.match(ketcherEditor, /setMolecule: \(\(\.\.\.args: Parameters<Ketcher\["setMolecule"\]>\) => \{/);
+assert.match(ketcherEditor, /setMoleculeQueue\.then\(\(\) => callKetcherWhenReady\(\(\) => \(\s*rejectOnKetcherAsyncFailure\(\(\) => instance\.setMolecule\(\.\.\.args\), editorInstance\.eventBus\)/s);
 assert.match(ketcherEditor, /async function callKetcherWhenReady<T>\(operation: \(\) => Promise<T>\)/);
 assert.match(ketcherEditor, /if \(!isKetcherInstanceError\(error\)\) break/);
 assert.match(ketcherEditor, /return normalizeKetcherMolfileNames\(molfile\.trim\(\) \? molfile : serializeCurrentMolfile\(instance, MolSerializer\)\)/);
@@ -5707,7 +5707,7 @@ assert.match(previewViewer, /type: 'ball-and-stick'/);
 assert.match(previewViewer, /type: 'cartoon'/);
 assert.match(previewViewer, /function normalizeMolstarStyle\(value\)/);
 assert.match(previewViewer, /function configuredMolstarStyle\(config\)/);
-assert.match(previewViewer, /if \(canvasBackground === 'auto'\) return resolveViewerTheme\(\) === 'light' \? 'white' : 'graphite';/);
+assert.match(previewViewer, /if \(canvasBackground === 'auto'\) return resolveViewerTheme\(\) === 'light' \? 'white'\s*: window\.BuretteConfig\?\.hostedMcpWidgetBootstrap === true \? 'black' : 'graphite';/);
 assert.match(previewViewer, /\.buret-xyzrender-sheet-item \{[^}]*transform: translate\(-50%, -50%\) rotate\(var\(--buret-sheet-rotation\)\);/s);
 assert.match(previewViewer, /\.buret-xyzrender-sheet-item-large \{[^}]*width: max\(180px, min\(calc\(100vw - 220px\), 860px\)\);[^}]*height: max\(180px, min\(calc\(100vh - 230px\), 620px\)\);/s);
 assert.match(previewViewer, /\.buret-xyzrender-sheet-item-large \.buret-xyzrender-sheet-item-background \{[^}]*border-radius: 8px;[^}]*box-shadow: 0 2px 8px rgba\(0,0,0,0\.10\);/s);
@@ -5721,7 +5721,7 @@ assert.match(previewViewer, /\.buret-xyzrender-sheet-rotate-handle \{[^}]*width:
 assert.match(previewViewer, /\.buret-xyzrender-resize-n,\s*\.buret-xyzrender-resize-s \{[^}]*width: 84px;[^}]*height: 30px;/);
 assert.match(previewViewer, /\.buret-xyzrender-resize-ne,\s*\.buret-xyzrender-resize-nw,\s*\.buret-xyzrender-resize-se,\s*\.buret-xyzrender-resize-sw \{[^}]*width: 38px;[^}]*height: 38px;/);
 assert.match(previewViewer, /if \(region === 'left'\) layoutState\.left = layoutState\.left === 'full' \? 'hidden' : 'full'/);
-assert.match(previewViewer, /await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default'\)/);
+assert.match(previewViewer, /await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default', presetOptions\)/);
 assert.doesNotMatch(previewViewer, /typeParams: \{ sizeFactor: 0\.16, ignoreLight: true \}/);
 assert.match(previewViewer, /const style = configuredMolstarStyle\(activeConfig\)/);
 assert.match(previewViewer, /function isMolstarWaterComponent\(component\)/);
@@ -8035,8 +8035,9 @@ assert.match(browserDevDocuments, /async function gridHtml\(\s*path: string,\s*d
 assert.match(browserDevDocuments, /documentId,\s*sourcePath: path,/);
 assert.match(browserDevDocuments, /body\.documentId = String\(window\.BuretteConfig\.documentId\)/);
 assert.match(browserDevDocuments, /window\.BuretteGridRecords =/);
-assert.match(browserDevDocuments, /openchemlib\/openchemlib\.js\?v=\$\{GRID_ASSET_VERSION\}/);
-assert.equal(browserDevDocuments.match(/rdkitWasmPath: RDKIT_WASM_PATH/g)?.length, 2);
+assert.match(browserDevDocuments, /gridAsset\("openchemlib\/openchemlib\.js"\)\}\?v=\$\{GRID_ASSET_VERSION\}/);
+assert.equal(browserDevDocuments.match(/rdkitWasmPath: RDKIT_WASM_PATH/g)?.length, 1);
+assert.match(browserDevDocuments, /rdkitWasmPath: hosted \? gridAsset\("rdkit\/RDKit_minimal\.wasm"\) : RDKIT_WASM_PATH/);
 assert.doesNotMatch(browserDevDocuments, /BuretteRDKitWasmBase64/);
 assert.match(gridViewer, /cfg\.appViewer === true && cfg\.gridDataMode === 'bridge'/);
 assert.match(gridViewer, /\(cfg\.appViewer === true \|\| cfg\.quickLookViewer === true\) && !!caps\.rendererSwitch/);
@@ -8879,3 +8880,5 @@ assert.match(ketcherPage, /isActive && panelMode && dockPortalElement \? createP
 assert.match(ketcherPage, /actions\.setDockTool\("right", "ketcher"\)/);
 assert.match(ketcherPage, /onValueChange=\{\(value\) => \{ setOutput\(value\); setLiveImportDirty\(true\); \}\}/);
 assert.match(ketcherPage, /state\.rightDockOpen, state\.rightDockTool, state\.rightDockActiveTab/);
+
+await import('./test-widget-compute-capability.mjs');

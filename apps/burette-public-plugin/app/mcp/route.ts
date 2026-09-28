@@ -40,6 +40,7 @@ import {
 import {
   createHostedKetcherSurface,
   executeHostedKetcherAction,
+  hostedKetcherInitialSeed,
   hostedKetcherSnapshot,
 } from "@/lib/ketcher-relay";
 
@@ -300,6 +301,7 @@ function createServer(): McpServer {
           action,
         },
         _meta: {
+          ...(result.ok ? { ketcherInitialSeed: hostedKetcherInitialSeed(validation.value.surfaceId) } : {}),
           ...(result.ok && result.result && Object.hasOwn(result.result, "ketcherSeed")
             ? { ketcherSeed: result.result.ketcherSeed }
             : {}),
@@ -360,13 +362,13 @@ function createServer(): McpServer {
     {
       title: "Render a molecular scene",
       description:
-        "Use this when the user asks to select or focus part of a structure, clear the selection, reset the camera, or hide/show polymers, ligands, ions, or water. Re-render the PDB entry or authorized attachment with up to eight allowlisted viewer actions.",
+        "Open a PDB entry or authorized attachment AND apply up to eight viewer actions in ONE call. Use directly when the user asks to select/focus a ligand or residues, reset the camera, or hide/show components. Require a source explicitly identified in this conversation; if missing, ask for a file or PDB ID instead of borrowing one from cached widget context or another chat. Do not call preview_pdb_structure or preview_molecular_file first when the source and selector are already provided. This tool loads the structure itself. Never repeat the same call to poll for rendering or confirm success: each call creates another scene card, not a status check. If applied-action acknowledgement is absent, state that rendering is unconfirmed rather than retrying. The result confirms preparation only, not a displayed scene or applied actions; claim completion only after the widget reports applied actions.",
       inputSchema: molecularSceneInputSchema,
       outputSchema: z.object(publicStructureOutputSchema),
       annotations: RCSB_TOOL_ANNOTATIONS,
       ...NOAUTH_TOOL_SECURITY,
       _meta: {
-        ...viewerToolMeta("Preparing molecular scene…", "Molecular scene ready"),
+        ...viewerToolMeta("Preparing molecular scene…", "Molecular scene prepared"),
         "openai/fileParams": ["structureFile"],
       },
     },
@@ -384,7 +386,7 @@ function createServer(): McpServer {
         return {
           content: [{
             type: "text" as const,
-            text: `${structureSummaryText(prepared.summary)} ${input.actions.length} viewer action${input.actions.length === 1 ? " was" : "s were"} requested; the widget will report which actions were applied.`,
+            text: `${structureSummaryText(prepared.summary)} ${input.actions.length} viewer action${input.actions.length === 1 ? " was" : "s were"} requested; the widget will report which actions were applied. Do not repeat this request as a status check: it would create a duplicate card. Without a widget acknowledgement, report preparation only, not completion.`,
           }],
           structuredContent: prepared.summary,
           _meta: {
@@ -404,7 +406,7 @@ function createServer(): McpServer {
     {
       title: "Preview a PDB structure",
       description:
-        "Retrieve one public Protein Data Bank entry by its four-character PDB ID, return bounded composition counts, and render an interactive 3D preview. Use only when the user asks for a specific PDB entry.",
+        "Retrieve one public Protein Data Bank entry by its four-character PDB ID, return bounded composition counts, and open an interactive preview of the supplied coordinates, not a generated biological assembly. Call once for an explicitly requested inspection; the same result already contains composition counts, so do not repeat the call to obtain them. Do NOT call this tool as a substitute for unsupported docking, affinity scoring, simulation, or local-file overwrite requests, even if a PDB ID is mentioned: explain the limitation first and offer inspection without opening a viewer unless requested. For requests that also select, focus, or hide/show components, use render_molecular_scene directly instead; do not preview first. Prepared data is not proof that the widget has displayed it.",
       inputSchema: {
         pdbId: z
           .string()

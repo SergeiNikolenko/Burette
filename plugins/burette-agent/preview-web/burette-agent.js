@@ -1526,8 +1526,12 @@
       try { viewer.structureInteractivity({ action: 'highlight' }); } catch (_) {}
     }
     const focusOptions = {
-      durationMs: Number(options.durationMs) || 250,
-      extraRadius: Number(options.extraRadius) || undefined,
+      durationMs: Number.isFinite(Number(options.durationMs)) && Number(options.durationMs) >= 0
+        ? Number(options.durationMs) : 250,
+      // Mol* spreads options over defaults: an explicit undefined replaces its
+      // finite default radius and poisons the camera with NaN. Omit it instead.
+      ...(Number.isFinite(Number(options.extraRadius)) && Number(options.extraRadius) >= 0
+        ? { extraRadius: Number(options.extraRadius) } : {}),
       optimizeDirection: options.optimizeDirection !== false,
       zoomOut: options.zoomOut !== false
     };

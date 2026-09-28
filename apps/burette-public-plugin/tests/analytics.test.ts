@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { OPTIONS, POST } from "../app/api/analytics/view/route";
+import { getAppOrigin } from "../lib/origin";
 
 const originalFetch = globalThis.fetch;
 type FetchImplementation = (
@@ -45,9 +46,10 @@ describe("hosted widget analytics", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
-    expect(forwardedUrl).toBe("http://localhost:3000/_vercel/insights/view");
+    const appOrigin = getAppOrigin();
+    expect(forwardedUrl).toBe(`${appOrigin}/_vercel/insights/view`);
     expect(JSON.parse(forwardedBody)).toMatchObject({
-      o: "http://localhost:3000/mcp/widget",
+      o: `${appOrigin}/mcp/widget`,
       sdkn: "@vercel/analytics",
       sdkv: "2.0.1",
       dp: "/mcp/widget",

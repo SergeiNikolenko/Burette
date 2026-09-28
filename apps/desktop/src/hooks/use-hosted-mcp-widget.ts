@@ -8,6 +8,7 @@ import {
   isHostedKetcherWidget,
   isHostedMcpWidget,
   isHostedMcpToolResultMessage,
+  isHostedMcpStructureFailure,
   parseHostedMcpStructureMessage,
   parseHostedMcpStructureResult,
   selectHostedMcpInitialStructure,
@@ -30,6 +31,7 @@ export function useHostedMcpWidget({
 }: UseHostedMcpWidgetOptions) {
   const openedDocumentPathRef = useRef<string | null>(null);
   const openedStructureRef = useRef<HostedMcpStructure | null>(null);
+  const receivedStructureRef = useRef<HostedMcpStructure | null>(null);
   const openSequenceRef = useRef(0);
 
   useEffect(() => {
@@ -54,11 +56,13 @@ export function useHostedMcpWidget({
     const clearOpenedStructure = () => {
       openSequenceRef.current += 1;
       openedStructureRef.current = null;
+      receivedStructureRef.current = null;
       forgetOpenedDocument();
       closeAllDocuments();
     };
 
     const openStructure = (structure: HostedMcpStructure) => {
+      receivedStructureRef.current = structure;
       const opened = openedStructureRef.current;
       if (
         opened?.label === structure.label
@@ -109,22 +113,41 @@ export function useHostedMcpWidget({
     const onMessage = (event: MessageEvent) => {
       if (event.source !== window.parent) return;
       if (!isHostedMcpToolResultMessage(event.data)) return;
+      if (isHostedMcpStructureFailure(event.data.params ?? event.data.result)) {
+        clearOpenedStructure();
+        return;
+      }
       const structure = parseHostedMcpStructureMessage(event.data);
       if (structure) openStructure(structure);
-      else clearOpenedStructure();
+    };
+    // The host may deliver output and widget-only metadata in separate events.
+    // Keep their latest values instead of treating an incomplete delta as clear.
+    const globalsSnapshot: { toolOutput?: unknown; toolResponseMetadata?: unknown } = {
+      ...window.__BURETTE_HOSTED_OPENAI_GLOBALS__,
+      ...(window.openai?.toolOutput !== undefined ? { toolOutput: window.openai.toolOutput } : {}),
+      ...(window.openai?.toolResponseMetadata !== undefined
+        ? { toolResponseMetadata: window.openai.toolResponseMetadata } : {}),
     };
     const onOpenAiGlobals = (event: Event) => {
       const globals = (event as CustomEvent<{ globals?: {
         toolOutput?: unknown;
         toolResponseMetadata?: unknown;
       } }>).detail?.globals;
-      if (globals?.toolOutput === undefined) return;
-      const structure = parseHostedMcpStructureResult({
-        structuredContent: globals.toolOutput,
-        _meta: globals.toolResponseMetadata,
-      });
+      if (!globals) return;
+      if (Object.hasOwn(globals, "toolOutput")) globalsSnapshot.toolOutput = globals.toolOutput;
+      if (Object.hasOwn(globals, "toolResponseMetadata")) {
+        globalsSnapshot.toolResponseMetadata = globals.toolResponseMetadata;
+      }
+      if (!Object.hasOwn(globals, "toolOutput") && !Object.hasOwn(globals, "toolResponseMetadata")) return;
+      const result = {
+        structuredContent: globalsSnapshot.toolOutput,
+        _meta: globalsSnapshot.toolResponseMetadata,
+      };
+      const structure = parseHostedMcpStructureResult(result);
+      if (isHostedMcpStructureFailure(result)) { clearOpenedStructure(); return; }
       if (structure) openStructure(structure);
-      else clearOpenedStructure();
+      // Missing metadata is not a failed/empty tool result. A complete MCP
+      // error still clears the scene through onMessage above.
     };
 
     window.addEventListener("message", onMessage);
@@ -132,14 +155,18 @@ export function useHostedMcpWidget({
     window.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = true;
 
     const queuedResults = window.__BURETTE_HOSTED_MCP_RESULTS__?.splice(0) ?? [];
+    const snapshotResult = { structuredContent: globalsSnapshot.toolOutput, _meta: globalsSnapshot.toolResponseMetadata };
     const initialStructure = selectHostedMcpInitialStructure(
       queuedResults,
-      window.openai?.toolOutput !== undefined ? {
-        structuredContent: window.openai.toolOutput,
-        _meta: window.openai.toolResponseMetadata,
-      } : undefined,
+      snapshotResult,
     );
     if (initialStructure) openStructure(initialStructure);
+    else if (!queuedResults.some(isHostedMcpStructureFailure)
+      && !isHostedMcpStructureFailure(snapshotResult) && receivedStructureRef.current) {
+      // MCP-only hosts have no window.openai snapshot after the initial queue
+      // is consumed. Restore the last received payload on effect restart.
+      openStructure(receivedStructureRef.current);
+    }
     else if (queuedResults.length > 0 || window.openai?.toolOutput !== undefined) {
       clearOpenedStructure();
     }
@@ -149,6 +176,8 @@ export function useHostedMcpWidget({
       window.removeEventListener("openai:set_globals", onOpenAiGlobals);
       window.__BURETTE_HOSTED_MCP_BRIDGE_READY__ = false;
       window.__BURETTE_HOSTED_MCP_RESULTS__ = [];
+      openSequenceRef.current += 1;
+      openedStructureRef.current = null;
       forgetOpenedDocument();
       delete document.documentElement.dataset.hostedMcpWidget;
     };

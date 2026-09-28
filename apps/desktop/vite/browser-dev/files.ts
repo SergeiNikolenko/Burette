@@ -651,5 +651,6 @@ function trajectoryMolstarFormat(extension: string) {
 }
 
 function trajectorySourceIsBinary(extension: string) {
-  return TRAJECTORY_COORDINATE_FORMATS.has(extension) || extension === "tpr";
+  // LAMMPS dump trajectories are text even though they contain coordinates.
+  return extension !== "lammpstrj" && (TRAJECTORY_COORDINATE_FORMATS.has(extension) || extension === "tpr");
 }

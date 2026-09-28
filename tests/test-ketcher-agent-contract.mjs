@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
+import { z } from "zod";
 import {
   KETCHER_AGENT_API_VERSION,
   applyInteractionRevision,
@@ -10,6 +13,14 @@ import {
 } from "../packages/ketcher-agent-contract/index.mjs";
 
 const initial = createRevisionState("desktop-ketcher:tab-1", "ready");
+// The public tool must reject misrouted actions before the generic viewer
+// fallback can turn an editor request into a misleading NO_VIEWER error.
+const registration = readFileSync(new URL("../plugins/burette-agent/mcp/registrations/molecular-workspace/register.mjs", import.meta.url), "utf8");
+const schemaSource = registration.slice(registration.indexOf("const ketcherActionSchema ="), registration.indexOf("const OBSERVE_ARRAY_LIMIT"));
+const toolSchema = runInNewContext(schemaSource + "; ketcherActionSchema", { z });
+const toolAction = { apiVersion: KETCHER_AGENT_API_VERSION, type: "control_ketcher", command: "set_structure", surfaceId: "test", expectedRevision: 0, format: "smiles", content: "CCO" };
+assert.equal(toolSchema.safeParse(toolAction).success, true);
+assert.equal(toolSchema.safeParse({ ...toolAction, type: "set_structure" }).success, false);
 assert.equal(initial.dirty, false);
 const edited = applyStructuralRevision(initial);
 assert.equal(edited.structureRevision, 1);

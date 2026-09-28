@@ -11,7 +11,7 @@
       body.documentId = String(window.BuretteConfig.documentId);
     }
     if (window.parent && window.parent !== window) {
-      try { window.parent.postMessage({ source: 'burette-viewer', body }, '*'); } catch (_) {}
+      try { window.parent.postMessage({ source: window.BuretteGridMode ? 'burette-grid' : 'burette-viewer', body }, '*'); } catch (_) {}
     }
   };
   const nativeHandler = window.webkit?.messageHandlers?.burette;
@@ -26,5 +26,9 @@
   window.BurettePanelControlsVisible = false;
   window.BuretteCacheBuster = String(Date.now());
   window.BuretteConfig = readJson('burette-runtime-config') || {};
+  if (window.BuretteConfig.mode === 'grid2d') {
+    window.BuretteGridMode = true;
+    window.BuretteGridRecords = readJson('burette-grid-records') || [];
+  }
   window.BuretteDataBase64 = readJson('burette-runtime-data') || '';
 })();
