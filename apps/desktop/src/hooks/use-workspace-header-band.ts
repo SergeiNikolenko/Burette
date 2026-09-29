@@ -40,6 +40,8 @@ export function useWorkspaceHeaderBand(header: RefObject<HTMLElement | null>, do
     };
     const schedule = () => { scheduled ||= requestAnimationFrame(measure); };
     const attach = () => {
+      // A frame load can arrive while a retry is pending; keep a single chain.
+      clearTimeout(retry);
       viewerObserver?.disconnect();
       const view = frame.contentWindow as (Window & typeof globalThis) | null;
       const doc = frame.contentDocument;
