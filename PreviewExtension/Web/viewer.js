@@ -6393,18 +6393,10 @@
   }
 
   function restoreToolbarCollapsed(toolbar, viewer) {
-    const placement = window.BuretteNativeFirstFrame ? window.parent?.BuretteMcpWorkspace?.placement : null;
-    if (placement) {
-      let previousMode;
-      const sync = () => {
-        const mode = placement.getSnapshot().mode;
-        if (previousMode === mode) return;
-        previousMode = mode;
-        setToolbarCollapsed(toolbar, mode === 'inline', viewer, false);
-      };
-      sync();
-      const unsubscribe = placement.subscribe(sync);
-      window.addEventListener('pagehide', unsubscribe, { once: true });
+    // The native Codex widget places these controls in its file header row,
+    // where they stay open in every placement.
+    if (window.BuretteNativeFirstFrame) {
+      setToolbarCollapsed(toolbar, false, viewer, false);
       return;
     }
     if (window.BuretteConfig?.hostedMcpWidgetBootstrap === true || window.BuretteConfig?.defaultToolbarCollapsed === true) {
