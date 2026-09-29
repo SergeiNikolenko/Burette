@@ -18,10 +18,13 @@ type SidebarMouseDrag = {
   nativeDragStarted: boolean;
 };
 
+/** Remote rows return a promise: their files download only after the drop lands on the app. */
+type SidebarDragPayloadSource = () => StructureDragPayload | Promise<StructureDragPayload | null> | null;
+
 type SidebarStructureDragOptions = {
   actions: ShellActions;
   disabled?: boolean;
-  getPayload: () => StructureDragPayload | null;
+  getPayload: SidebarDragPayloadSource;
   state: ShellViewState;
 };
 
@@ -82,14 +85,11 @@ export function useSidebarStructureDrag({
     const handleMouseUp = (upEvent: MouseEvent) => {
       const drag = mouseDragRef.current;
       if (drag?.active && !drag.nativeDragStarted) {
-        const payload = getPayload();
-        if (payload) {
-          suppressClickRef.current = true;
-          runSidebarDropAtPoint(payload, upEvent.clientX, upEvent.clientY, state, actions);
-          window.setTimeout(() => {
-            suppressClickRef.current = false;
-          }, 0);
-        }
+        suppressClickRef.current = true;
+        runSidebarDropAtPoint(getPayload, upEvent.clientX, upEvent.clientY, state, actions);
+        window.setTimeout(() => {
+          suppressClickRef.current = false;
+        }, 0);
       }
       finishDrag();
     };
@@ -111,6 +111,11 @@ export function useSidebarStructureDrag({
 
   const onDragStart = useCallback((event: ReactDragEvent<HTMLElement>) => {
     const payload = getPayload();
+    // Async payloads have no local files to hand AppKit or the DataTransfer.
+    if (payload instanceof Promise) {
+      event.preventDefault();
+      return;
+    }
     if (payload && canStartNativeFileDrag()) {
       // An HTML drag reaches Finder only as text, so hand AppKit the real files.
       event.preventDefault();
@@ -122,7 +127,7 @@ export function useSidebarStructureDrag({
         .then(({ inAppDrop }) => {
           // AppKit does not always report a drop on this window to the
           // webview; the drag then ends unaccepted and the page finishes it.
-          if (inAppDrop) runSidebarDropAtPoint(payload, inAppDrop.x, inAppDrop.y, state, actions);
+          if (inAppDrop) runSidebarDropAtPoint(() => payload, inAppDrop.x, inAppDrop.y, state, actions);
         })
         .catch(() => {})
         .finally(() => {
@@ -158,22 +163,39 @@ export function useSidebarStructureDrag({
 }
 
 function runSidebarDropAtPoint(
-  payload: StructureDragPayload,
+  getPayload: SidebarDragPayloadSource,
   clientX: number,
   clientY: number,
   state: ShellViewState,
   actions: ShellActions,
 ) {
-  if (typeof document === "undefined" || (clientX <= 0 && clientY <= 0)) return false;
+  if (typeof document === "undefined" || (clientX <= 0 && clientY <= 0)) return;
   const element = document.elementFromPoint(clientX, clientY);
-  if (!element?.closest(".app-shell")) return false;
+  if (!element?.closest(".app-shell")) return;
   const target = sidebarDropTarget(element, state);
+  const point = { x: clientX, y: clientY };
+  const payload = getPayload();
+  if (payload instanceof Promise) {
+    void payload.then((resolved) => {
+      if (resolved) runSidebarDropOnTarget(resolved, target, point, actions);
+    });
+  } else if (payload) {
+    runSidebarDropOnTarget(payload, target, point, actions);
+  }
+}
+
+function runSidebarDropOnTarget(
+  payload: StructureDragPayload,
+  target: SidebarDropTarget,
+  point: StructureDragPoint,
+  actions: ShellActions,
+) {
   if (target.kind === "dock") {
     void actions.openDockPayload({ area: target.area, tabKind: target.tabKind, payload });
-    return true;
+    return;
   }
   const choices = shellDropActionChoices(payload, target, { kind: "sidebar" });
-  return runShellDropActionChoices(actions, payload, choices, { x: clientX, y: clientY });
+  runShellDropActionChoices(actions, payload, choices, point);
 }
 
 function sidebarDropTarget(element: Element | null, state: ShellViewState): SidebarDropTarget {

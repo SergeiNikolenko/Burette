@@ -7,8 +7,9 @@ import { Button } from "../ui/button";
 import { NativeDropdownMenu } from "../native-dropdown-menu";
 import { SshProjectDialog } from "./ssh-project-dialog";
 import { removeSshConnection, saveSshConnection, sshList, useSshProjects, useSshConnections, type SshConnection } from "../../lib/ssh-projects";
+import type { ShellActions, ShellViewState } from "../types";
 
-export function SshProjects({ onOpen, query = "", organization = "project", sort = "manual" }: { onOpen: (paths: string[]) => void | Promise<void>; query?: string; organization?: ProjectOrganization; sort?: ProjectSort }) {
+export function SshProjects({ actions, state, query = "", organization = "project", sort = "manual" }: { actions: ShellActions; state: ShellViewState; query?: string; organization?: ProjectOrganization; sort?: ProjectSort }) {
   const projects = useSshProjects();
   const connections = useSshConnections();
   const checked = useRef(new Set<string>());
@@ -33,7 +34,7 @@ export function SshProjects({ onOpen, query = "", organization = "project", sort
   }
   return <>{[...groups].sort(([a], [b]) => Number(b === "Pinned projects") - Number(a === "Pinned projects")).map(([name, items]) => <div key={name} className="ssh-project-section" role="group" aria-label={name || "Remote projects"}>
     {name && <div className="ssh-project-section-title">{name}</div>}
-    {items.map(project => <RemoteProject key={`${project.id}:${project.host}:${project.root}`} project={project} connection={connections.find(c => c.host === project.host)} onOpen={onOpen} />)}
+    {items.map(project => <RemoteProject key={`${project.id}:${project.host}:${project.root}`} project={project} connection={connections.find(c => c.host === project.host)} onOpen={actions.openPaths} actions={actions} state={state} />)}
   </div>)}</>;
 }
 export function SshConnections() {
