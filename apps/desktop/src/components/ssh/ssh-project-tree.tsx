@@ -50,7 +50,8 @@ export function RemoteProject({ project, connection, onOpen }: { project: SshPro
           for (const record of records) {
             const { discovered: _discovered, expanded: _expanded, ...listing } = record;
             next.delete(record.path);
-            next.set(record.path, { time: Date.now(), value: listing });
+            // A subfolder cut short by the shared scan budget is stale, so opening it searches it again.
+            next.set(record.path, { time: record === value || !record.truncated ? Date.now() : 0, value: listing });
           }
           while (next.size > 128) {
             const candidates = [...next.keys()].filter(path => path !== "." && path !== operation.path && !operation.path.startsWith(`${path}/`));
@@ -85,7 +86,8 @@ export function RemoteProject({ project, connection, onOpen }: { project: SshPro
   }
   function children(path: string): ReactNode {
     if (!expanded.has(path)) return null;
-    const directory = directories.get(path)?.value;
+    const cached = directories.get(path);
+    const directory = cached?.value;
     return <div className={path === "." ? "project-children" : "project-folder-children"} role="group">
       {pending?.type === "list" && pending.path === path && <span className="ssh-tree-status" role="status">Loading…</span>}
       {failure?.operation.path === path && <div className="ssh-tree-error" role="alert">{failure.message}<button onClick={() => void run(failure.operation, true)}>Retry</button></div>}
@@ -116,8 +118,11 @@ export function RemoteProject({ project, connection, onOpen }: { project: SshPro
         </div>;
       })}
       {directory && directory.entries.length > (limits[path] ?? 100) && <button className="project-show-more" onClick={() => setLimits(previous => ({ ...previous, [path]: (previous[path] ?? 100) + 100 }))}>Show more ({directory.entries.length - (limits[path] ?? 100)})</button>}
-      {directory && !directory.entries.length && <span className="ssh-tree-status">No chemical structures found</span>}
-      {(directory?.partial || directory?.truncated) && <span className="ssh-tree-status">Search limit reached. Expand a folder to continue.</span>}
+      {directory && !directory.entries.length && !directory.truncated && <span className="ssh-tree-status">No chemical structures found</span>}
+      {directory?.truncated && (cached?.time
+        ? <span className="ssh-tree-status">Only the first 2,000 items in this folder were checked.</span>
+        : <div className="ssh-tree-status">Search stopped before the end of this folder.<button onClick={() => void run({ type: "list", path }, true)}>Search this folder</button></div>)}
+      {directory?.partial && !directory.truncated && <span className="ssh-tree-status">Some folders weren't fully searched. Open one to search it.</span>}
     </div>;
   }
   return <div className="project-group ssh-project-tree">

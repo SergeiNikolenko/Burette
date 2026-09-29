@@ -9728,7 +9728,7 @@ img.settings-open-destination-icon {
 
 .ssh-tree-status, .ssh-tree-error { padding: 5px 6px; font-size: 12px; color: var(--text-muted); }
 .ssh-tree-error { color: var(--destructive); overflow-wrap: anywhere; }
-.ssh-tree-error button { display: block; text-decoration: underline; }
+.ssh-tree-error button, .ssh-tree-status button { display: block; text-decoration: underline; }
 .ssh-activity { width: 9px; height: 9px; flex: 0 0 9px; border: 1px solid var(--text-faint); border-top-color: transparent; border-radius: 50%; background: transparent; animation: anim-icon-orbit-spin 800ms linear infinite; }
 @media (prefers-reduced-motion: reduce) { .ssh-activity { animation: none; } }
 
