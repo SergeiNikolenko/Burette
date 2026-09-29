@@ -1,3 +1,5 @@
+import { NativeWorkspaceMenu, NativeWorkspaceSidebar } from "./native-workspace-navigation";
+import { useNativeWorkspacePlacement } from "../hooks/use-native-workspace-placement";
 import { MobileWebDemoLayout } from "./mobile-web-demo-layout";
 import { XyzrenderAnimationDialog } from "./xyzrender-animation-dialog";
 import { useGroupPixelGuard } from "./ui/use-group-pixel-guard";
@@ -301,14 +303,19 @@ export function AppLayout({
       stopResizeListener?.();
     };
   }, [tauriRuntime]);
+  const placement = useNativeWorkspacePlacement();
+  const [nativeNavigationOpen, setNativeNavigationOpen] = useState(true);
+  const nativeExpanded = placement?.mode === "fullscreen" && viewportWidth >= 760;
   const hostedMcpWidget = isHostedMcpWidget();
   const heroEmbed = isWebDemoHeroEmbed();
   const maxSidebarWidth = Math.max(280, Math.min(420, Math.floor(viewportWidth * 0.35)));
   const settingsMode = state.page === "settings";
   const chromeVisible = !settingsMode && !hostedMcpWidget;
   // Hiding only the panel's content leaves react-resizable-panels' wrapper wide.
-  // The native host owns navigation, even when desktop sidebar state was restored.
-  const sidebarVisible = !window.BuretteMcpWorkspace && (settingsMode || (!hostedMcpWidget && state.sidebarOpen));
+  // Expanded plugin workspaces own a navigation panel; compact cards keep the menu.
+  const sidebarVisible = window.BuretteMcpWorkspace
+    ? nativeExpanded && nativeNavigationOpen
+    : settingsMode || (!hostedMcpWidget && state.sidebarOpen);
   const sidebarWidth = clampSidebarWidth(state.sidebarWidth, maxSidebarWidth);
   const sidebarLayoutWidth = sidebarVisible ? sidebarWidth : 0;
   const workbenchWidth = viewportWidth - sidebarLayoutWidth;
@@ -569,7 +576,8 @@ export function AppLayout({
         </>
       )}
       {window.BuretteMcpWorkspace ? <>
-        <OpenInEditorMenu state={layoutState} actions={actions} presentation="file-header" />
+        <OpenInEditorMenu state={layoutState} actions={actions} presentation="file-header" navigation={items => <NativeWorkspaceMenu fileItems={items} state={layoutState} actions={actions} sidebarVisible={sidebarVisible}
+          onToggleSidebar={nativeExpanded ? () => setNativeNavigationOpen(open => !open) : undefined} />} />
       </> : null}
       {isHostedKetcherWidget() ? <HostedKetcherViewSwitch state={state} actions={actions} /> : null}
       <section className="workspace">
@@ -612,7 +620,7 @@ export function AppLayout({
             groupResizeBehavior="preserve-pixel-size"
           >
             <div className="sidebar-shell-inner">
-              <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />
+              {window.BuretteMcpWorkspace ? <NativeWorkspaceSidebar state={layoutState} actions={actions} /> : <Sidebar state={layoutState} actions={actions} open={sidebarVisible} />}
             </div>
           </ResizablePanel>
           {chromeVisible && !window.BuretteMcpWorkspace ? (

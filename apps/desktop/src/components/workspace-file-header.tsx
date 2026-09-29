@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { AnnotateToggle } from "./annotation-layer";
 import { useWorkspaceHeaderBand } from "../hooks/use-workspace-header-band";
 import { RadixDropdownMenu } from "./radix-menu";
@@ -8,7 +8,8 @@ import type { ShellActions } from "./types";
 import type { MenuItemSpec } from "./menu-types";
 import "./workspace-file-header.css";
 
-export function WorkspaceFileHeader({ activeFile, rootPath, bandDocumentId = null, rightDockOpen, defaultApplicationIconUrl, items, actions, fileActionsAvailable = true, onOpen, openLabel = "Open with default app" }: {
+export function WorkspaceFileHeader({ activeFile, rootPath, bandDocumentId = null, rightDockOpen, defaultApplicationIconUrl, items, actions, fileActionsAvailable = true, onOpen, openLabel = "Open with default app", navigation }: {
+  navigation?: ReactNode;
   activeFile: { path: string; label: string };
   rootPath?: string | null;
   /** A viewer document whose own controls share this row. */
@@ -31,6 +32,7 @@ export function WorkspaceFileHeader({ activeFile, rootPath, bandDocumentId = nul
   // annotation tool, an address field with the file path, Open and panels.
   return (
     <header ref={headerRef} className="workspace-file-header" aria-label="Current file" data-band={bandDocumentId ? "" : undefined}>
+      {navigation}
       <AnnotateToggle className="workspace-file-pill" />
       <div className="workspace-file-path workspace-file-pill">
         <div className="workspace-file-breadcrumb" aria-label={fileActionsAvailable ? activeFile.path : activeFile.label} title={fileActionsAvailable ? activeFile.path : "Unsaved structure"}>

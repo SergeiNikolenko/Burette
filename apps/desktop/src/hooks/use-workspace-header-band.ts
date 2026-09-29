@@ -24,7 +24,9 @@ export function useWorkspaceHeaderBand(header: RefObject<HTMLElement | null>, do
       // toolbar. The slot ends before the trailing pills, or before the
       // viewer's own edge when the right dock takes that part of the row;
       // neither bound depends on the slot, so nothing feeds back.
-      const trailingLeft = slot.nextElementSibling?.getBoundingClientRect().left ?? frameRect.right;
+      let trailing = slot.nextElementSibling;
+      while (trailing && trailing.getBoundingClientRect().width === 0) trailing = trailing.nextElementSibling;
+      const trailingLeft = trailing?.getBoundingClientRect().left ?? frameRect.right;
       const slotEnd = Math.min(trailingLeft - 8, frameRect.right - 12);
       root.style.setProperty("--band-slot-margin", `${Math.max(0, Math.round(trailingLeft - 8 - slotEnd))}px`);
       const slotRight = slotEnd;

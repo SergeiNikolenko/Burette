@@ -152,6 +152,14 @@ CIF data blocks. `focusLigand` retains that reference when resolving an index or
 saving a selection, and scopes both selection and camera focus to that structure.
 References are local to the loaded scene; refresh them after reloading a file.
 
+## Native workspace navigation
+
+The expanded native plugin workspace shows Home, Ketcher and its open pages
+in a sidebar at widths of 760 px and above. Compact cards use the Burette menu
+in the existing file toolbar. Home selects an existing start page or creates
+one without closing documents, so viewers and sketches retain their state.
+The host owns placement and theme; switching placement preserves the workspace.
+
 ## Widget compute availability
 
 Native MCP workspaces and hosted ChatGPT widgets do not expose the desktop
