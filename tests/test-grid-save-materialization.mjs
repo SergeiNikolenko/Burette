@@ -183,8 +183,8 @@ console.log("Grid save materialization behavior checks passed.");
   const rdkit = await initRDKit();
   const omitted = [];
   const current = { rdkit, smartsMatches: new Map(), svgCache: new Map(), rdkitUseInputCoords: false };
-  const draw = new Function('state', 'rowReactionText', 'rdkitCardKey', 'omitInvalidCard', `${functionSource('drawRdkit')} return drawRdkit;`)(
-    current, () => '', row => row.smiles, row => omitted.push(row.index),
+  const draw = new Function('state', 'rowReactionText', 'rdkitCardKey', 'omitInvalidCard', 'applyHydrogenDisplay', `${functionSource('drawRdkit')}\nreturn drawRdkit;`)(
+    current, () => '', row => row.smiles, row => omitted.push(row.index), (_mol, match) => match,
   );
   assert.equal(draw({ index: 0, smiles: 'not-a-smiles((' }), '');
   assert.equal(draw({ index: 1, smiles: '' }), '');
