@@ -51,7 +51,18 @@
 .workspace-file-menu {min-width:240px; padding:6px; border:1px solid var(--line-subtle, #e6e6e6); border-radius:18px; background:var(--bg-base, #fff); box-shadow:0 4px 16px #00000012}
 .workspace-file-header button[aria-expanded="true"] > .shortcut-tooltip {visibility:hidden; opacity:0}
 .workspace-file-menu [role="menuitem"] {min-height:32px; border-radius:12px; font-size:14px}
+/* Over a Mol* viewer the header floats on the viewer's own top band and the
+   viewer's controls (scene tree, Seq, Style) fill the leading edge and the slot;
+   see use-workspace-header-band.ts. */
+.workspace-file-header[data-band] {position:absolute; inset:0 0 auto; background:transparent; pointer-events:none; padding-left:var(--band-leading, 10px)}
+.workspace-file-header[data-band] > :not(.workspace-file-band-slot) {pointer-events:auto}
+.workspace-file-band-slot {flex:none; width:var(--band-controls, 0px); margin-left:auto; margin-right:var(--band-slot-margin, 0px)}
+.workspace-file-header[data-band-compact] .workspace-file-path {display:none}
+.app-shell:has(> .workspace-file-header[data-band]) .dock-panel[data-area="right"] {padding-top:50px; box-sizing:border-box}
 @container (max-width:520px) {
   .workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill {width:34px; padding:0}
   .workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill>span:not(.shortcut-tooltip) {display:none}
+  /* Sharing the row with the viewer controls leaves no room for the path. */
+  .workspace-file-header[data-band] .workspace-file-path {display:none}
+  .workspace-file-header[data-band] .workspace-file-open-primary {font-size:0; gap:0}
 }
