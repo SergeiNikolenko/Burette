@@ -11313,7 +11313,12 @@ SOFTWARE.
     if (tooltip) tooltip.textContent = label;
   }
 
-  function loadScript(src, label, timeoutMs) {
+  async function loadScript(src, label, timeoutMs) {
+    // Hosted MCP widgets have no web server: relative runtime scripts that load
+    // later, such as Mol* after an xyzrender start, come from the asset transport.
+    if (window.BuretteResolveRuntimeAsset && !/^[a-z][a-z\d+.-]*:/iu.test(src)) {
+      src = await window.BuretteResolveRuntimeAsset(src);
+    }
     return new Promise(function (resolve, reject) {
       setStatus('Loading ' + label + '…');
       var script = document.createElement('script');
