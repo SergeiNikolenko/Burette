@@ -7,6 +7,13 @@
   height:50px; padding:0 10px; background:var(--bg-base, #fff); color:var(--text-primary, #161616);
   font:400 14px/1.4 system-ui, sans-serif; z-index:20; container-type:inline-size;
 }
+/* Dark Codex toolbar pills are filled a step above the strip, without borders. */
+[data-theme="dark"] .workspace-file-header {
+  --file-pill-bg:color-mix(in srgb, #fff 11%, var(--bg-base, #111)); --file-pill-line:transparent;
+  --file-pill-hover:color-mix(in srgb, #fff 16%, var(--bg-base, #111)); --file-pill-icon:#d4d4d4;
+}
+[data-theme="dark"] .workspace-file-header .workspace-file-pill {box-shadow:none}
+[data-theme="dark"] .workspace-file-header .workspace-file-parent {color:#bdbdbd}
 .workspace-file-header .workspace-file-pill {
   display:flex; align-items:center; flex:none; height:34px; box-sizing:border-box;
   border:1px solid var(--file-pill-line); border-radius:999px; background:var(--file-pill-bg); box-shadow:0 1px 2px #0000000a;
