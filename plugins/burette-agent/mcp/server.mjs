@@ -12,6 +12,8 @@ import { registerMoleculeTable } from "./registrations/molecule-table/register.m
 import { registerTrajectoryReview } from "./registrations/trajectory-review/register.mjs";
 import { registerLocalViewer } from "./registrations/local-viewer/register.mjs";
 import { registerDeepLinks } from "./registrations/deep-links/register.mjs";
+import { registerMentions } from "./registrations/mentions/register.mjs";
+import { addToolIcons, buretteIcons } from "./lib/tool-icons.mjs";
 
 const pluginManifest = JSON.parse(readFileSync(pluginPath(".codex-plugin", "plugin.json"), "utf8"));
 
@@ -19,6 +21,7 @@ const server = new McpServer(
   {
     name: pluginManifest.name,
     version: pluginManifest.version,
+    icons: buretteIcons,
   },
   {
     instructions:
@@ -34,6 +37,8 @@ registerMoleculeTable(server);
 registerTrajectoryReview(server);
 registerMolecularReport(server);
 await registerLocalViewer(server);
+registerMentions(server);
+addToolIcons(server, ["burette.open_app", "burette.open_tab", "burette.open_file", "burette.mentions"]);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

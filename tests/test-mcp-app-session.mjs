@@ -120,7 +120,9 @@ test('Codex file viewer entrypoint opens the host-provided path in the workspace
     assert.equal(result.isError, undefined);
     assert.deepEqual({ workspace: session.workspace, mode: session.requestedDisplayMode, path: session.documents[0].path },
       { workspace: true, mode: 'fullscreen', path });
-    assert.equal((await open({ file }, { _meta: {} })).isError, true);
+    // Without the path the opener hands the FileInput back for the app to repeat.
+    const pending = await open({ file }, { _meta: {} });
+    assert.deepEqual({ isError: pending.isError, session: pending._meta, fileInput: pending.structuredContent.fileInput }, { isError: undefined, session: undefined, fileInput: file });
   } finally {
     if (session?.sessionId) await rm(join(tmpdir(), 'burette-mcp-app', session.sessionId), { recursive: true, force: true });
   }

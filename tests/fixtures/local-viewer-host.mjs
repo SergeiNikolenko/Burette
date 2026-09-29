@@ -25,8 +25,10 @@ frame.addEventListener('load', () => {
   };
   inspect(frame.contentWindow);
 });
+// ?deepLink=/example/caffeine opens the app the way a Codex deep link does.
+const deepLink = new URLSearchParams(location.search).get('deepLink');
 const bridge = new AppBridge(null, { name: 'Burette test host', version: '1.0.0' }, { serverTools: {}, updateModelContext: { text: {}, image: {} } }, {
-  hostContext: { displayMode: 'inline', availableDisplayModes: ['inline', 'fullscreen'], theme: 'light' },
+  hostContext: { displayMode: 'inline', availableDisplayModes: ['inline', 'fullscreen'], theme: 'light', ...(deepLink ? { 'openai/deepLink': { url: deepLink } } : {}) },
 });
 bridge.onupdatemodelcontext = async context => {
   let output = document.getElementById('selection-context');
@@ -44,6 +46,7 @@ bridge.onupdatemodelcontext = async context => {
   return {};
 };
 bridge.oncalltool = async request => {
+  if (request.name === 'burette.open_deep_link') return (await fetch('/deep-link', { method: 'POST', body: JSON.stringify(request.arguments) })).json();
   exchangeCount++;
   return (await fetch('/exchange', { method: 'POST', body: JSON.stringify(request.arguments) })).json();
 };

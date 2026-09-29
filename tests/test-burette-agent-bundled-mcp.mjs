@@ -79,6 +79,7 @@ try {
     clientInfo: { name: "burette-bundled-mcp-test", version: "1.0.0" },
   });
   assert.equal(initialized.serverInfo.name, "burette");
+  assert.equal(initialized.serverInfo.icons[0].mimeType, "image/svg+xml");
   send({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
 
   const listed = await request("tools/list");
@@ -101,6 +102,12 @@ try {
     const opened = await request('tools/call', { name, arguments: {} });
     assert.deepEqual({ documents: opened.structuredContent.documents, entrypoint: opened.structuredContent.entrypoint }, { documents: [], entrypoint: type });
   }
+  // Host navigation shows each entrypoint with the monochrome glyph.
+  for (const name of ['burette.open_file', 'burette.open_tab', 'burette.open_app']) {
+    assert.match(Buffer.from(listed.tools.find(tool => tool.name === name).icons[0].src.split(',')[1], 'base64').toString(), /currentColor/u);
+  }
+  const mentions = listed.tools.find(tool => tool.name === 'burette.mentions');
+  assert.deepEqual(mentions._meta, { 'openai/extensions': { 'mentions/search': {} }, ui: { visibility: ['app'] } });
   const workspaceResource = await request('resources/read', { uri: workspaceTool._meta.ui.resourceUri });
   assert.match(workspaceResource.contents[0].text, /BuretteMcpWorkspace/u);
   assert.deepEqual(workspaceResource.contents[0]._meta.ui.csp.frameDomains, ['blob:']);
@@ -213,8 +220,12 @@ try {
   assert.equal(added.isError, undefined);
   assert.equal(added.structuredContent.sessionId, inlineSessionId);
   assert.equal(added._meta?.session, undefined, 'Control must not initialize another viewer');
+  const linked = await request('tools/call', { name: 'burette.open_deep_link', arguments: { sessionId: inlineSessionId, url: '/example/caffeine' } });
+  assert.equal(linked.isError, undefined);
+  const badLink = await request('tools/call', { name: 'burette.open_deep_link', arguments: { sessionId: inlineSessionId, url: '/open?path=relative.pdb' } });
+  assert.match(badLink.content[0].text, /cannot open the link/u);
   const updated = await request('tools/call', { name: 'burette.inline_viewer_exchange', arguments: opened._meta.session });
-  assert.equal(updated._meta.payload.documents.length, 3);
+  assert.deepEqual(updated._meta.payload.documents.map(item => path.basename(item.path)), ['1htb.pdb', 'docking_story.mvsx', 'mini.pdb', 'caffeine.xyz']);
   assert.equal(updated._meta.payload.actions[0].action.type, 'open_files');
   console.log("burette-agent bundled MCP tests passed");
 } finally {

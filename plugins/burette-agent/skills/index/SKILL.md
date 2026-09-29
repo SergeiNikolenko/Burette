@@ -158,6 +158,8 @@ Choose the smallest focused workflow that covers the request:
   table, chart, or report panels with provenance.
 - [visual-qa](../visual-qa/SKILL.md): verify Browser preview and real desktop
   app state with Browser or Computer.
+- [setup](../setup/SKILL.md): first run after installation; open the bundled
+  example and point to the sidebar app, thread tab, file viewer and mentions.
 
 ## Operating Principle
 

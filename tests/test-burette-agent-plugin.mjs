@@ -33,6 +33,7 @@ const manifest = JSON.parse(await read(".codex-plugin/plugin.json"));
 assert.equal(manifest.name, "burette");
 assert.equal(manifest.skills, "./skills/");
 assert.equal(manifest.mcpServers, "./.mcp.json");
+assert.equal(manifest.extensions["com.openai"].onboardingSkill, "./skills/setup/SKILL.md");
 assert.equal(manifest.interface.displayName, "Burette");
 assert.equal(manifest.interface.composerIcon, "./assets/composer-icon.png");
 assert.equal(manifest.interface.logo, "./assets/app-icon.png");
@@ -101,6 +102,7 @@ const skillInvocationPolicies = [
   ["molstar-scene", false],
   ["mvs-story", false],
   ["open-workspace", false],
+  ["setup", false],
   ["trajectory-review", false],
   ["user-context", false],
   ["visual-qa", false],

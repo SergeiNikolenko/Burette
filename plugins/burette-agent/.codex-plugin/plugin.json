@@ -1,6 +1,6 @@
 {
   "name": "burette",
-  "version": "0.2.45+local.20260929.1",
+  "version": "0.2.46+local.20260929.1",
   "description": "A universal molecular viewer for proteins, ligands, and molecular structures, with 3D visualization and 2D editing.",
   "author": {
     "name": "Burette contributors",
@@ -21,6 +21,11 @@
   ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/setup/SKILL.md"
+    }
+  },
   "interface": {
     "displayName": "Burette",
     "shortDescription": "Universal molecular viewer",

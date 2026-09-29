@@ -43,6 +43,27 @@ export async function startNativeWorkspace(app, initialResult) {
   const entrypoint = initialResult.structuredContent?.entrypoint;
   const idleContext = () => entrypoint && session ? { content: [{ type: 'text', annotations: { audience: ['assistant'] },
     text: `The user has a Burette workspace open in this ${entrypoint === 'global' ? 'app' : 'thread'} (sessionId ${session.sessionId}). To show files there, call burette.control_inline_viewer with {sessionId, action:{type:"open_files",paths:[absolute paths]}}; observe it with burette.observe_inline_viewer. Do not open another workspace for this.` }] } : { content: [] };
+  // A Codex deep link names files for the sidebar app; they are added once the
+  // mounted workspace accepts files. The host learns that from the exchange
+  // after this observation, so an early rejection is retried a few times.
+  let deepLink = app.getHostContext()?.['openai/deepLink']?.url;
+  let pendingDeepLink = deepLink;
+  let deepLinkAttempts = 0;
+  let openingDeepLink = false;
+  function openDeepLink(state) {
+    if (!pendingDeepLink || openingDeepLink || !session || state.capabilities?.addFiles !== true) return;
+    const url = pendingDeepLink;
+    pendingDeepLink = undefined;
+    if (url === '/') return;
+    openingDeepLink = true;
+    void app.callServerTool({ name: 'burette.open_deep_link', arguments: { sessionId: session.sessionId, url } })
+      .then(result => { if (result.isError) throw new Error(result.content?.[0]?.text || `Could not open ${url}.`); deepLinkAttempts = 0; })
+      .catch(error => {
+        if (++deepLinkAttempts < 5 && !pendingDeepLink) pendingDeepLink = url;
+        else app.sendLog({ level: 'warning', logger: 'burette', data: error.message }).catch(() => {});
+      })
+      .finally(() => { openingDeepLink = false; });
+  }
   let contextSignature = '';
   let sendingAnnotations = false;
   let contextQueue = Promise.resolve();
@@ -98,6 +119,7 @@ export async function startNativeWorkspace(app, initialResult) {
     placement.observe(state);
     latestState = state;
     reveal();
+    openDeepLink(state);
     if (state.error) fail(state.error);
     const selection = state.scene?.selection?.counts;
     const editor = state.chemicalEditor;
@@ -113,6 +135,9 @@ export async function startNativeWorkspace(app, initialResult) {
             structuredContent: { burette: { collectionSelection: { documentId: state.activeDocument.id, ...grid } } },
             presentation: { composerAttachmentLayout: 'card', composerLabel: `Burette · ${state.activeDocument.title}` },
           } : idleContext();
+    // Hosts label a text attachment with its `openai/title`.
+    const label = context.presentation?.composerLabel;
+    if (label) context.content = context.content.map(block => block.type === 'text' ? { ...block, _meta: { ...block._meta, 'openai/title': label } } : block);
     const signature = JSON.stringify(context);
     // An annotation batch owns the model context until its message is posted.
     if (sendingAnnotations || signature === contextSignature || !app.getHostCapabilities()?.updateModelContext) return;
@@ -219,6 +244,12 @@ export async function startNativeWorkspace(app, initialResult) {
   app.onhostcontextchanged = context => {
     if (lifetime.closed) return;
     placement.update(context);
+    const link = context['openai/deepLink']?.url;
+    if (link && link !== deepLink) {
+      deepLink = pendingDeepLink = link;
+      deepLinkAttempts = 0;
+      if (transport) observe(transport.state());
+    }
     if (context.theme === 'light' || context.theme === 'dark') {
       document.documentElement.dataset.theme = context.theme;
       if (window.BuretteMcpWorkspace) window.BuretteMcpWorkspace.theme = context.theme;

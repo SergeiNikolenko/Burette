@@ -1,4 +1,4 @@
-import { isAbsolute } from 'node:path';
+import { extname, isAbsolute } from 'node:path';
 import { snapshotNativeResources } from '../../lib/native-resource-snapshot.mjs';
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
@@ -23,6 +23,23 @@ const layerOperation = z.object({
 // Molecular formats the native workspace opens; generic tables stay with the
 // host's own viewer.
 const fileViewerExtensions = ['.pdb', '.ent', '.pdbqt', '.cif', '.mmcif', '.sdf', '.sd', '.mol', '.smi', '.smiles', '.xyz', '.ket', '.rxn', '.mvsj', '.mvsx'];
+const examples = { '1htb': '1htb.pdb', caffeine: 'caffeine.xyz' };
+
+// App-relative deep links into the Burette sidebar app, e.g.
+// codex://plugins/burette@<marketplace>/app/burette.open_app?path=%2Fpdb%2F1HTB.
+// Returns the files to add to the open workspace, or null for the home page.
+async function deepLinkFiles(url) {
+  const link = new URL(url, 'burette-app:/');
+  const [kind, value, ...rest] = link.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+  if (!kind) return null;
+  if (kind === 'pdb' && value && !rest.length && pdbIdSchema.safeParse(value).success) return { paths: [await resolvePdbEntry(value)] };
+  if (kind === 'example' && Object.hasOwn(examples, value) && !rest.length) {
+    return { paths: [pluginPath('assets', 'examples', examples[value])], view: value === 'caffeine' ? 'xyzrender' : 'auto' };
+  }
+  const path = link.searchParams.get('path');
+  if (kind === 'open' && !value && path && isAbsolute(path) && fileViewerExtensions.includes(extname(path).toLowerCase())) return { paths: [path] };
+  throw new Error(`Burette cannot open the link ${link.pathname}${link.search}.`);
+}
 const openRequestId = z.string().uuid().optional().describe('A fresh UUID v4 for each intentional workspace. Reuse the same ID and paths/options when retrying a timed-out opener; it reuses the snapshot/session and the newest card takes it over.');
 
 async function runOperation(input, privateResult, assetRoot) {
@@ -35,7 +52,8 @@ async function runOperation(input, privateResult, assetRoot) {
   const capture = captureToolResult(result);
   if (capture) return capture;
   const { token, presentationId, ...publicResult } = result;
-  return { ...(result.status === 'failed' ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify(publicResult) }], structuredContent: publicResult, ...(token ? { _meta: { session: { sessionId: result.sessionId, token, ...(presentationId ? { presentationId } : {}) } } } : {}) };
+  // The JSON text only mirrors structuredContent for older clients.
+  return { ...(result.status === 'failed' ? { isError: true } : {}), content: [{ type: 'text', text: JSON.stringify(publicResult), annotations: { audience: ['assistant'] } }], structuredContent: publicResult, ...(token ? { _meta: { session: { sessionId: result.sessionId, token, ...(presentationId ? { presentationId } : {}) } } } : {}) };
 }
 
 export async function registerLocalViewer(server) {
@@ -60,14 +78,15 @@ export async function registerLocalViewer(server) {
     if ([input.file, input.structure, input.example, pdbId].filter(value => value != null).length !== 1) {
       return { isError: true, content: [{ type: 'text', text: 'Provide exactly one of file, pdbId, structure, or example.' }] };
     }
-    let file = input.example ? pluginPath('assets', 'examples', input.example === '1htb' ? '1htb.pdb' : 'caffeine.xyz') : input.file;
+    let file = input.example ? pluginPath('assets', 'examples', examples[input.example]) : input.file;
     try { if (pdbId) file = await resolvePdbEntry(pdbId); }
     catch (error) { return { isError: true, content: [{ type: 'text', text: error.message }] }; }
     return operation({ operation: 'open', ...input, file, view: input.view ?? (input.example === 'caffeine' ? 'xyzrender' : 'auto'), workspace: true, displayMode: input.displayMode ?? (input.view === 'ketcher' ? 'inline' : 'fullscreen') });
   });
   // OpenAI MCP Extensions file entrypoint: Codex offers Burette as the viewer
-  // for these files. The argument only carries an opaque host URI; the host adds
-  // the opened file's trusted absolute path to the call metadata.
+  // for these files. The argument only carries an opaque host URI. The host adds
+  // the opened file's trusted absolute path to calls the mounted app makes, so
+  // an opening call without it asks the app to repeat the call itself.
   registerAppTool(server, 'burette.open_file', {
     title: 'Burette',
     description: 'Codex file viewer entrypoint for molecular files. Models should call burette.open_workspace or burette.open_viewer instead.',
@@ -77,7 +96,7 @@ export async function registerLocalViewer(server) {
   }, (input, extra) => {
     const path = extra?._meta?.['openai/resource']?.path;
     if (typeof path !== 'string' || !isAbsolute(path)) {
-      return { isError: true, content: [{ type: 'text', text: `Codex did not provide a local path for ${input.file.name}.` }] };
+      return { content: [{ type: 'text', text: `Opening ${input.file.name} in Burette.` }], structuredContent: { fileInput: input.file } };
     }
     return operation({ operation: 'open', file: path, view: 'auto', workspace: true, displayMode: 'fullscreen', entrypoint: 'file' });
   });
@@ -94,6 +113,17 @@ export async function registerLocalViewer(server) {
       _meta: { ui: { resourceUri: workspaceUri, visibility: ['app'] }, 'openai/ui': { entrypoints: [{ type }] } },
     }, () => operation({ operation: 'open', empty: true, workspace: true, view: 'auto', entrypoint: type }));
   }
+  registerAppTool(server, 'burette.open_deep_link', {
+    title: 'Open Burette link', description: 'Private sidebar-app transport: opens the files a Codex deep link names in the mounted workspace.',
+    inputSchema: { ...locator, url: z.string().startsWith('/').max(4096) },
+    annotations: { ...annotations, readOnlyHint: false, idempotentHint: false, openWorldHint: true }, _meta: { ui: { visibility: ['app'] } },
+  }, async ({ sessionId, url }) => {
+    let files;
+    try { files = await deepLinkFiles(url); }
+    catch (error) { return { isError: true, content: [{ type: 'text', text: error.message }] }; }
+    if (!files) return { content: [], structuredContent: { opened: [] } };
+    return operation({ operation: 'act', sessionId, action: { type: 'open_files', paths: files.paths, view: files.view || 'auto' }, waitMs: 0 });
+  });
   registerAppTool(server, 'burette.open_inline_viewer', {
     title: 'Open compact inline Burette viewer',
     description: 'Open a compact inline MCP viewer of one local PDB/mmCIF file. It is single-document: no open_files, tabs, Ketcher, Story, docking, panels or xyzrender. For those, or a native side pane, use burette.open_viewer. This App has no localhost server or upload. Wait for observe_inline_viewer.ready before controlling; fullscreen changes placement on the same session.',

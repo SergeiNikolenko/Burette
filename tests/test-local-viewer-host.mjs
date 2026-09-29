@@ -15,7 +15,7 @@ const hostJs = await bundle.outputs[0].text();
 const server = createServer(async (request, response) => {
   try {
     response.setHeader('Cache-Control', 'no-store');
-    if (request.url === '/') {
+    if (request.url === '/' || request.url.startsWith('/?')) {
       response.setHeader('Content-Type', 'text/html');
       response.end('<!doctype html><meta charset="utf-8"><title>Burette MCP App protocol fixture</title><h1>MCP App test host — not native Codex</h1><iframe title="Burette" style="width:95vw;height:240px" sandbox="allow-scripts allow-same-origin"></iframe><script type="module" src="/host.js"></script>');
     } else if (request.url === '/host.js') {
@@ -37,6 +37,17 @@ const server = createServer(async (request, response) => {
       const payload = await runMcpAppOperation({ ...JSON.parse(body), operation: 'exchange' });
       response.setHeader('Content-Type', 'application/json');
       response.end(JSON.stringify({ content: [], _meta: { payload } }));
+    } else if (request.url === '/deep-link' && request.method === 'POST') {
+      // Bundled example links only; the MCP tests cover the full link grammar.
+      let body = '';
+      for await (const chunk of request) body += chunk;
+      const { sessionId, url } = JSON.parse(body);
+      const example = { '/example/1htb': '1htb.pdb', '/example/caffeine': 'caffeine.xyz' }[url];
+      if (!example) throw new Error(`Fixture cannot open ${url}.`);
+      const path = new URL(`../plugins/burette-agent/assets/examples/${example}`, import.meta.url).pathname;
+      const payload = await runMcpAppOperation({ operation: 'act', sessionId, action: { type: 'open_files', paths: [path], view: example.endsWith('.xyz') ? 'xyzrender' : 'auto' }, waitMs: 0 });
+      response.setHeader('Content-Type', 'application/json');
+      response.end(JSON.stringify({ content: [], structuredContent: payload }));
     } else { response.writeHead(404).end(); }
   } catch (error) { response.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ isError: true, content: [{ type: 'text', text: error.message }] })); }
 });

@@ -1,0 +1,5 @@
+interface:
+  display_name: "Set up Burette"
+  short_description: "Check the viewer and find Burette in Codex"
+policy:
+  allow_implicit_invocation: false
