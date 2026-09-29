@@ -9,6 +9,7 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { isHostedMcpWidget } from "@/lib/hosted-mcp-widget";
 import type { ShellActions } from "../types";
+import { NativeWorkspaceHome } from "./native-workspace-home";
 
 function HostedStructurePending() {
   const [timedOut, setTimedOut] = useState(false);
@@ -34,6 +35,8 @@ function HostedStructurePending() {
 
 export function WelcomeScreen({ actions }: { actions: ShellActions }) {
   if (isHostedMcpWidget()) return <HostedStructurePending />;
+  const home = window.BuretteMcpWorkspace?.home;
+  if (home) return <NativeWorkspaceHome actions={actions} home={home} />;
   return (
     <Empty className="new-tab-page border-0 gap-5">
       <EmptyHeader className="new-tab-copy">

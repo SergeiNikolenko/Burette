@@ -80,6 +80,9 @@ The shell is a workspace, not a brand canvas.
 - `node scripts/sync-app-icons.mjs` regenerates the React data/exports and the
   inline preview data, and mirrors `viewer.js` into the packaged plugin. Update
   the reviewed snapshot before regenerating; do not edit generated glyph data.
+- `Annotate` follows the Codex annotation glyph: three rounded frame corners
+  drawn for Burette plus the Apps SDK `Cursor` path scaled by 0.62 and offset by
+  10.3 into the open corner.
 - Existing animation classes, interaction state, labels, dimensions and focus
   behavior belong to the control and survive an icon replacement. Filled SDK
   paths retain their original geometry regardless of a caller's stroke width.
