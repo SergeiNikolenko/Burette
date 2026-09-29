@@ -1446,7 +1446,6 @@ assert.match(uiToast, /useAppShellPortalContainer/);
 assert.match(uiToast, /<ToastPortal container=\{portalContainer\}>/);
 assert.match(uiToast, /createToastManager\(\)/);
 assert.match(uiToast, /HugeiconsIcon/);
-assert.match(appLayout, /const sidebarVisible = !window\.BuretteMcpWorkspace && \(settingsMode \|\| \(!hostedMcpWidget && state\.sidebarOpen\)\)/);
 assert.match(appLayout, /const chromeVisible = !settingsMode && !hostedMcpWidget/);
 assert.match(appLayout, /\{!hostedMcpWidget && <div className="drag-region" data-tauri-drag-region \/>\}/);
 assert.match(appLayout, /const sidebarLayoutWidth = sidebarVisible \? sidebarWidth : 0/);

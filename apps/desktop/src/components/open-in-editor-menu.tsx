@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { RadixDropdownMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
@@ -18,7 +18,7 @@ type ActiveFile = {
   label: string;
 };
 
-export function OpenInEditorMenu({ state, actions, presentation = "chrome" }: { state: ShellViewState; actions: ShellActions; presentation?: "chrome" | "file-header" }) {
+export function OpenInEditorMenu({ state, actions, presentation = "chrome", navigation }: { state: ShellViewState; actions: ShellActions; presentation?: "chrome" | "file-header"; navigation?: (items: MenuItemSpec[]) => ReactNode }) {
   const activeFile = useMemo(() => activeFileFromState(state), [state]);
   const filePath = activeFile && isLocalFilePath(activeFile.path) ? activeFile.path : null;
   const localFinderIconUrl = useFinderIconUrl();
@@ -111,7 +111,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome" }: { 
     ];
   }, [actions, activeFile, defaultApplicationIconUrl, finderIconUrl, loadedPath, loading, targets, nativeIcons, state.preferences.openInDefaultDestination]);
 
-  if (!activeFile) return null;
+  if (!activeFile) return navigation ? <header className="workspace-file-header" aria-label="Workspace">{navigation([])}</header> : null;
   if (!filePath && presentation !== "file-header") return null;
 
   const visibleTargets = targets.length > 0 ? targets : browserDevPreviewTargets(activeFile.path);
@@ -128,7 +128,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome" }: { 
       .filter((path): path is string => Boolean(path && activeFile.path.startsWith(`${path}/`)))
       .sort((a, b) => b.length - a.length)[0];
     const renderer = state.activeDocument?.renderer;
-    return <WorkspaceFileHeader activeFile={activeFile} rootPath={rootPath}
+    return <WorkspaceFileHeader navigation={navigation?.(items)} activeFile={activeFile} rootPath={rootPath}
       bandDocumentId={renderer === "molstar" || renderer === "xyzrender-external" ? state.activeDocument?.id ?? null : null}
       fileActionsAvailable={Boolean(filePath)}
       rightDockOpen={state.rightDockOpen}

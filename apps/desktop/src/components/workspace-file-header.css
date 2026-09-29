@@ -60,6 +60,8 @@
 .workspace-file-header[data-band-compact] .workspace-file-path {display:none}
 .app-shell:has(> .workspace-file-header[data-band]) .dock-panel[data-area="right"] {padding-top:50px; box-sizing:border-box}
 @container (max-width:520px) {
+  /* The workspace menu includes these file actions on narrow cards. */
+  .workspace-file-header:has([aria-label="Workspace pages"]) .workspace-file-open {display:none}
   .workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill {width:34px; padding:0}
   .workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill>span:not(.shortcut-tooltip) {display:none}
   /* Sharing the row with the viewer controls leaves no room for the path. */
