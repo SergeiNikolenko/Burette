@@ -40,7 +40,7 @@ assert.match(buildScript, /External Homebrew dependency/);
 assert.match(buildScript, /build_compute_metal_runtime/);
 assert.match(buildScript, /compute\/metal\/build-metallib\.sh/);
 assert.match(buildScript, /assert_bundled_compute_metal_runtime/);
-assert.match(buildScript, /cargo build --release -p burette --bin burette-compute-service --features tauri\/custom-protocol/);
+assert.match(buildScript, /burette-compute-service helper missing/);
 assert.match(buildScript, /Contents\/Helpers\/burette-compute-service/);
 assert.match(buildScript, /smoke_bundled_compute_service/);
 assert.match(buildScript, /check-compute-service\.mjs/);

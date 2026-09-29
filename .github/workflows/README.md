@@ -14,7 +14,6 @@ Quick Look behavior.
 
 ## Build Caches
 
-- Bun packages are cached by `setup-burette-toolchain`, keyed on `bun.lock`.
 - Native, nightly, and release jobs set `CARGO_TARGET_DIR` outside the
   workspace because `scripts/build.sh` compiles from a throwaway copy. They share
   the `native-release` Rust cache: nightly runs on `main` save it, PR builds
