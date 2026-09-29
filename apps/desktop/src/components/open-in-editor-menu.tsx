@@ -127,7 +127,9 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome" }: { 
     const rootPath = state.sidebarProjects.map(project => project.rootPath)
       .filter((path): path is string => Boolean(path && activeFile.path.startsWith(`${path}/`)))
       .sort((a, b) => b.length - a.length)[0];
+    const renderer = state.activeDocument?.renderer;
     return <WorkspaceFileHeader activeFile={activeFile} rootPath={rootPath}
+      bandDocumentId={renderer === "molstar" || renderer === "xyzrender-external" ? state.activeDocument?.id ?? null : null}
       fileActionsAvailable={Boolean(filePath)}
       rightDockOpen={state.rightDockOpen}
       defaultApplicationIconUrl={preferredIconUrl} items={items} actions={actions} openLabel={label}

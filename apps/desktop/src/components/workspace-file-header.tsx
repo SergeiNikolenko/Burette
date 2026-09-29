@@ -1,4 +1,6 @@
+import { useRef } from "react";
 import { AnnotateToggle } from "./annotation-layer";
+import { useWorkspaceHeaderBand } from "../hooks/use-workspace-header-band";
 import { RadixDropdownMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import { ChevronDown, ChevronRight, Copy, SidebarRight } from "./ui/app-icons";
@@ -6,9 +8,11 @@ import type { ShellActions } from "./types";
 import type { MenuItemSpec } from "./menu-types";
 import "./workspace-file-header.css";
 
-export function WorkspaceFileHeader({ activeFile, rootPath, rightDockOpen, defaultApplicationIconUrl, items, actions, fileActionsAvailable = true, onOpen, openLabel = "Open with default app" }: {
+export function WorkspaceFileHeader({ activeFile, rootPath, bandDocumentId = null, rightDockOpen, defaultApplicationIconUrl, items, actions, fileActionsAvailable = true, onOpen, openLabel = "Open with default app" }: {
   activeFile: { path: string; label: string };
   rootPath?: string | null;
+  /** A viewer document whose own controls share this row. */
+  bandDocumentId?: string | null;
   fileActionsAvailable?: boolean;
   rightDockOpen: boolean;
   defaultApplicationIconUrl: string | null;
@@ -21,10 +25,12 @@ export function WorkspaceFileHeader({ activeFile, rootPath, rightDockOpen, defau
     ? `${rootPath.split("/").filter(Boolean).at(-1)}/${activeFile.path.slice(rootPath.length + 1)}`
     : activeFile.path;
   const segments = fileActionsAvailable ? displayPath.split("/").filter(Boolean) : [activeFile.label];
+  const headerRef = useRef<HTMLElement>(null);
+  useWorkspaceHeaderBand(headerRef, bandDocumentId);
   // Laid out like the Codex Browser toolbar: separate rounded pills for the
   // annotation tool, an address field with the file path, Open and panels.
   return (
-    <header className="workspace-file-header" aria-label="Current file">
+    <header ref={headerRef} className="workspace-file-header" aria-label="Current file" data-band={bandDocumentId ? "" : undefined}>
       <AnnotateToggle className="workspace-file-pill" />
       <div className="workspace-file-path workspace-file-pill">
         <div className="workspace-file-breadcrumb" aria-label={fileActionsAvailable ? activeFile.path : activeFile.label} title={fileActionsAvailable ? activeFile.path : "Unsaved structure"}>
@@ -47,6 +53,7 @@ export function WorkspaceFileHeader({ activeFile, rootPath, rightDockOpen, defau
           <ShortcutTooltip label="Copy file path" />
         </button> : <span className="workspace-file-unsaved">Unsaved</span>}
       </div>
+      {bandDocumentId ? <div className="workspace-file-band-slot" aria-hidden /> : null}
       {fileActionsAvailable ? <div className="workspace-file-open workspace-file-pill">
         <button type="button" className="workspace-file-open-primary" aria-label={openLabel}
           onClick={onOpen ?? (() => void actions.openPathWithDefaultApp(activeFile.path))}>
