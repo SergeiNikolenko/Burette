@@ -10,6 +10,8 @@ jobs:
     name: Packaged App And Quick Look Smoke
     runs-on: macos-latest
     timeout-minutes: 45
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/../burette-native-target
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -18,6 +20,14 @@ jobs:
         uses: ./.github/actions/setup-burette-toolchain
         with:
           install-xyzrender: "true"
+
+      # Scheduled runs use the default branch, so this warms the cache that PR native
+      # builds and releases restore.
+      - name: Cache Rust release build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: native-release
+          workspaces: ". -> ../burette-native-target"
 
       - name: Build flavored app
         env:

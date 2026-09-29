@@ -599,7 +599,9 @@ pushd apps/desktop >/dev/null
 popd >/dev/null
 bun run build:tauri
 cargo build --release --bin burette-core-bridge
-cargo build --release --bin burette-compute-service
+# `tauri build` runs `cargo build --bins`, so burette-compute-service is already
+# built with Tauri's features and MACOSX_DEPLOYMENT_TARGET. A separate cargo
+# call would recompile tauri and the burette crate with a different environment.
 XCODE_SIGN_ARGS=(CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGNING_ALLOWED=YES)
 if [[ -n "$DEVELOPMENT_TEAM" ]]; then
   XCODE_SIGN_ARGS+=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM")
@@ -627,6 +629,7 @@ COMPUTE_SERVICE="$TAURI_TARGET_DIR/release/burette-compute-service"
 [[ -d "$QUICKLOOK_APPEX" ]] || { echo "error: Quick Look extension missing: $QUICKLOOK_APPEX" >&2; exit 1; }
 [[ -d "$THUMBNAIL_APPEX" ]] || { echo "error: Quick Look thumbnail extension missing: $THUMBNAIL_APPEX" >&2; exit 1; }
 [[ -x "$CORE_BRIDGE" ]] || { echo "error: burette-core bridge helper missing: $CORE_BRIDGE" >&2; exit 1; }
+[[ -x "$COMPUTE_SERVICE" ]] || { echo "error: burette-compute-service helper missing: $COMPUTE_SERVICE" >&2; exit 1; }
 ditto --norsrc --noextattr "$CORE_BRIDGE" "$QUICKLOOK_APPEX/Contents/Resources/burette-core-bridge"
 chmod 755 "$QUICKLOOK_APPEX/Contents/Resources/burette-core-bridge"
 mkdir -p "$TAURI_BUILT_APP/Contents/PlugIns"

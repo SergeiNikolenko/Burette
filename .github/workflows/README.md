@@ -6,9 +6,18 @@ Quick Look behavior.
 
 ## Pull Requests
 
-- `ci.yml` always runs `bun run ci:fast` on macOS.
+- `ci.yml` always runs `scripts/ci-fast.sh` on macOS as two parallel jobs: `js`
+  (lint, typecheck, JS tests) and `rust` (fmt, clippy, unit tests with a cached
+  target directory).
 - `ci.yml` builds the native bundle only when a PR changes native, package, or
-  build/install files.
+  build/install files. The native build runs in parallel with fast validation.
+
+## Build Caches
+
+- Native, nightly, and release jobs set `CARGO_TARGET_DIR` outside the
+  workspace because `scripts/build.sh` compiles from a throwaway copy. They share
+  the `native-release` Rust cache: nightly runs on `main` save it, PR builds
+  restore and refresh it, and release builds only restore it.
 - `blob-size-policy.yml` rejects accidental large blobs unless the path is
   explicitly allow-listed.
 

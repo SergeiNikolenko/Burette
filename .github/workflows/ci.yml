@@ -12,7 +12,7 @@ env:
 jobs:
   changes:
     name: Detect Build Scope
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     outputs:
       native: ${{ steps.scope.outputs.native }}
     steps:
@@ -52,8 +52,14 @@ jobs:
           echo "native=$native" >> "$GITHUB_OUTPUT"
 
   validate:
-    name: Fast PR Validation
+    name: Fast PR Validation (${{ matrix.scope }})
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        scope:
+          - js
+          - rust
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -65,16 +71,29 @@ jobs:
         with:
           install-dependencies: "false"
 
+      - name: Cache Rust build
+        if: matrix.scope == 'rust'
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: fast-validation
+
+      - name: Use all runner cores for cargo
+        if: matrix.scope == 'rust'
+        run: echo "CARGO_BUILD_JOBS=$(sysctl -n hw.ncpu)" >> "$GITHUB_ENV"
+
       - name: Run fast CI
-        run: bun run ci:fast
+        run: bash scripts/ci-fast.sh ${{ matrix.scope }}
 
   native-build:
     name: Native Bundle Build
+    # Runs in parallel with fast validation; macOS minutes are free for this public repo.
     needs:
       - changes
-      - validate
     if: github.event_name == 'pull_request' && needs.changes.outputs.native == 'true'
     runs-on: macos-latest
+    env:
+      # Keep the release target outside build.sh's throwaway source copy so it can be cached.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/../burette-native-target
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -85,6 +104,12 @@ jobs:
         uses: ./.github/actions/setup-burette-toolchain
         with:
           install-xyzrender: "true"
+
+      - name: Cache Rust release build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: native-release
+          workspaces: ". -> ../burette-native-target"
 
       - name: Build native bundle
         env:
@@ -109,4 +134,3 @@ jobs:
           name: native-acceptance-${{ github.event.number }}-${{ github.sha }}
           path: build/native-acceptance.zip
           retention-days: 7
-

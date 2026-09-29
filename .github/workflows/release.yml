@@ -17,6 +17,8 @@ jobs:
   release:
     name: Build and Publish Release
     runs-on: macos-latest
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/../burette-native-target
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -27,6 +29,15 @@ jobs:
         uses: ./.github/actions/setup-burette-toolchain
         with:
           install-xyzrender: "true"
+
+      # Restores dependency artifacts warmed by the nightly build on main.
+      # Workspace crates are always rebuilt; tag runs do not save a cache.
+      - name: Cache Rust release build
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: native-release
+          workspaces: ". -> ../burette-native-target"
+          save-if: "false"
 
       - name: Validate release version
         run: bun run check:release
