@@ -297,7 +297,7 @@ export function FileBrowser({
                   expandFoldersByDefault={isWebDemoWorkspace() && project.rootPath === webDemoProjectRoot()}
                 />
               ))}
-              <SshProjects onOpen={actions.openPaths} query={sidebarQuery} organization={organization.organization} sort={organization.sort} />
+              <SshProjects actions={actions} state={state} query={sidebarQuery} organization={organization.organization} sort={organization.sort} />
             </div>
           )
         )}

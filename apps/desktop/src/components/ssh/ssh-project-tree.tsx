@@ -2,7 +2,7 @@ import { SshProjectCard, useSshProjectMenu } from "./ssh-project-details";
 import { useSshStatus } from "../../lib/ssh-connection-status";
 import { SshDeleteFolderDialog } from "./ssh-delete-folder-dialog";
 import { FolderExpandCollapseIcon } from "../sidebar/folder-expand-collapse-icon";
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { MarqueeName } from "../marquee-name";
 import { SidebarFolderIcon } from "../sidebar/sidebar-folder-icon";
 import { FileKindIcon, fileKindForPath } from "../sidebar/file-kind-icon";
@@ -10,11 +10,17 @@ import { DotsHorizontal } from "../ui/app-icons";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "../ui/hover-card";
 import { NativeDropdownMenu } from "../native-dropdown-menu";
 import { saveSshProject, sshList, sshPreview, type SshConnection, type SshDirectory, type SshProject } from "../../lib/ssh-projects";
+import type { StructureDragPayload } from "../../lib/structure-drag";
+import { useSidebarStructureDrag } from "../sidebar/use-sidebar-structure-drag";
+import type { ShellActions, ShellViewState } from "../types";
 
 import { copyTextWithSelectionFallback } from "../../lib/clipboard";
 
+// Every download takes its own slot in the 256-entry SSH preview cache.
+const MAX_DROPPED_REMOTE_FILES = 64;
+
 type Operation = { type: "list" | "preview"; path: string };
-export function RemoteProject({ project, connection, onOpen }: { project: SshProject; connection?: SshConnection; onOpen: (paths: string[]) => void | Promise<void> }) {
+export function RemoteProject({ project, connection, onOpen, actions, state }: { project: SshProject; connection?: SshConnection; onOpen: (paths: string[]) => void | Promise<void>; actions: ShellActions; state: ShellViewState }) {
   const [expanded, setExpanded] = useState(new Set<string>());
   const [directories, setDirectories] = useState(new Map<string, { time: number; value: SshDirectory }>());
   const [pending, setPending] = useState<Operation | null>(null);
@@ -23,10 +29,18 @@ export function RemoteProject({ project, connection, onOpen }: { project: SshPro
   const [selected, setSelected] = useState("");
   const [limits, setLimits] = useState<Record<string, number>>({});
   const [deleting, setDeleting] = useState<{ path: string; fullPath: string } | null>(null);
+  const [dropNotice, setDropNotice] = useState<{ path: string; message: string; error: boolean } | null>(null);
   const lock = useRef(false);
   const queued = useRef<Array<{ operation: Operation; refresh: boolean }>>([]);
+  const dragSource = useRef<{ path: string; directory: boolean } | null>(null);
   const projectMenu = useSshProjectMenu(project, connection);
   const enabled = connection?.enabled !== false;
+  const drag = useSidebarStructureDrag({
+    actions,
+    disabled: !enabled,
+    getPayload: () => dragSource.current ? downloadDragged(dragSource.current) : null,
+    state,
+  });
   const health = useSshStatus(project.host);
   const status = !enabled ? "Disabled" : pending ? "Connecting…" : failure ? "Connection or file error" : (health ? health.available : !!lastSuccess) ? "Available" : "Connects when needed";
   async function run(operation: Operation, refresh = false) {
@@ -73,11 +87,53 @@ export function RemoteProject({ project, connection, onOpen }: { project: SshPro
       }
       setLastSuccess(Date.now());
     } catch (error) { setFailure({ operation, message: String(error) }); }
-    finally {
-      lock.current = false; setPending(null);
-      const next = queued.current.shift();
-      if (next) void run(next.operation, next.refresh);
-    }
+    finally { release(); }
+  }
+  function release() {
+    lock.current = false; setPending(null);
+    const next = queued.current.shift();
+    if (next) void run(next.operation, next.refresh);
+  }
+  // A dropped folder brings the structures discovery finds in it, like expanding it would.
+  async function downloadDragged({ path, directory }: { path: string; directory: boolean }): Promise<StructureDragPayload | null> {
+    if (lock.current) return null;
+    lock.current = true;
+    setPending({ type: "preview", path }); setDropNotice(null);
+    try {
+      let files = [path];
+      if (directory) {
+        const listing = await sshList(project.host, project.root, path, true);
+        files = [listing, ...(listing.discovered ?? [])].flatMap(record => record.entries
+          .filter(entry => !entry.directory)
+          .map(entry => record.path === "." ? entry.name : `${record.path}/${entry.name}`));
+        if (!files.length) throw new Error("No chemical structures found in this folder");
+        if (files.length > MAX_DROPPED_REMOTE_FILES) {
+          setDropNotice({ path, message: `Added the first ${MAX_DROPPED_REMOTE_FILES} of ${files.length} structures`, error: false });
+          files = files.slice(0, MAX_DROPPED_REMOTE_FILES);
+        }
+      }
+      const paths: string[] = [];
+      for (const file of files) paths.push(await sshPreview(project, file));
+      setLastSuccess(Date.now());
+      return {
+        paths,
+        records: [],
+        items: files.map((file, index) => ({ kind: "file" as const, title: file.split("/").pop() ?? file, detail: file, path: paths[index] })),
+      };
+    } catch (error) {
+      setDropNotice({ path, message: String(error), error: true });
+      return null;
+    } finally { release(); }
+  }
+  function startDrag(event: ReactMouseEvent<HTMLElement>, path: string, directory: boolean) {
+    dragSource.current = { path, directory };
+    drag.onMouseDown(event);
+  }
+  function dropStatus(path: string) {
+    if (dropNotice?.path !== path) return null;
+    return dropNotice.error
+      ? <div className="ssh-tree-error" role="alert">{dropNotice.message}</div>
+      : <span className="ssh-tree-status" role="status">{dropNotice.message}</span>;
   }
   function toggle(path: string) {
     const opening = !expanded.has(path);
@@ -95,8 +151,9 @@ export function RemoteProject({ project, connection, onOpen }: { project: SshPro
         const child = path === "." ? entry.name : `${path}/${entry.name}`;
         const kind = fileKindForPath(entry.name);
         return entry.directory ? <div className="project-folder-node" key={child}>
-          <div className="project-folder-row" role="treeitem" tabIndex={0} aria-expanded={expanded.has(child)} aria-label={entry.name} onClick={() => toggle(child)} onKeyDown={event => { if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); toggle(child); } }}>
+          <div className="project-folder-row" role="treeitem" tabIndex={0} aria-expanded={expanded.has(child)} aria-label={entry.name} onMouseDown={event => startDrag(event, child, true)} onClickCapture={drag.onClickCapture} onClick={() => toggle(child)} onKeyDown={event => { if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); toggle(child); } }}>
             <SidebarFolderIcon expanded={expanded.has(child)} /><MarqueeName className="project-folder-name">{entry.name}</MarqueeName>
+            {pending?.type === "preview" && pending.path === child && <span className="ssh-activity" aria-label="Downloading" />}
             <span className="project-group-actions" onClick={event => event.stopPropagation()}>
               <button type="button" className="project-group-menu-button" aria-label={`${expanded.has(child) ? "Collapse" : "Expand"} ${entry.name}`} onClick={() => { if (expanded.has(child)) setExpanded(previous => new Set([...previous].filter(path => path !== child && !path.startsWith(`${child}/`)))); else toggle(child); }}><FolderExpandCollapseIcon collapse={expanded.has(child)} /></button>
               <NativeDropdownMenu items={[
@@ -108,13 +165,14 @@ export function RemoteProject({ project, connection, onOpen }: { project: SshPro
                 { kind: "item", id: "delete", text: "Delete folder from server…", disabled: !!pending, action: () => setDeleting({ path: child, fullPath: `${directory!.root.replace(/\/$/, "")}/${child}` }) },
               ]} trigger={<button className="project-group-menu-button" aria-label={`Options for ${entry.name}`}><DotsHorizontal size={14} /></button>} />
             </span>
-          </div>{children(child)}
+          </div>{dropStatus(child)}{children(child)}
         </div> : <div key={child}>
-          <button className={`project${selected === child ? " active" : ""}`} role="treeitem" aria-selected={selected === child} data-sidebar-structure-path={`ssh://${project.host}/${project.root}/${child}`} disabled={pending?.type === "preview"} onClick={() => void run({ type: "preview", path: child })}>
+          <button className={`project${selected === child ? " active" : ""}`} role="treeitem" aria-selected={selected === child} data-sidebar-structure-path={`ssh://${project.host}/${project.root}/${child}`} disabled={pending?.type === "preview"} onMouseDown={event => startDrag(event, child, false)} onClickCapture={drag.onClickCapture} onClick={() => void run({ type: "preview", path: child })}>
             <span className="project-icon" data-file-kind={kind} aria-hidden="true"><FileKindIcon kind={kind} /></span><MarqueeName className="project-name">{entry.name}</MarqueeName>
             {pending?.path === child && <span className="ssh-activity" aria-label="Downloading" />}
           </button>
           {failure?.operation.path === child && <div className="ssh-tree-error" role="alert">{failure.message}<button onClick={() => void run(failure.operation, true)}>Retry</button></div>}
+          {dropStatus(child)}
         </div>;
       })}
       {directory && directory.entries.length > (limits[path] ?? 100) && <button className="project-show-more" onClick={() => setLimits(previous => ({ ...previous, [path]: (previous[path] ?? 100) + 100 }))}>Show more ({directory.entries.length - (limits[path] ?? 100)})</button>}
