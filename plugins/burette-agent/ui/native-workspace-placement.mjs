@@ -45,9 +45,11 @@ export function createWorkspacePlacement(app, status) {
     // Keep this inline presentation stable through parsing and first render.
     const height = inlineHeight || workspaceContentHeight(content, width, document);
     inlineHeight = height;
-    // Inline cards have a stable content budget. Use the side pane for more room.
-    document.documentElement.style.height = `${height}px`;
-    document.body.style.height = `${height}px`;
+    // Inline cards request a stable content budget. A taller frame (thread
+    // tabs, host-resized cards) is filled; the request itself never follows it.
+    const filled = Math.max(height, window.innerHeight || 0);
+    document.documentElement.style.height = `${filled}px`;
+    document.body.style.height = `${filled}px`;
     if (height === lastHeight) return;
     lastHeight = height;
     void app.sendSizeChanged({ height }).catch(() => { lastHeight = 0; });

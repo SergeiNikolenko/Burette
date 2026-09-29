@@ -92,15 +92,15 @@ test('incomplete host mode list still allows a request and rejection keeps the w
   assert.match(status.textContent, /Host declined/);
 });
 
-test('inline card retains its fixed budget without resize feedback', () => {
+test('inline card fills taller frames but never requests more than its budget', () => {
   const { placement, document, sizes, events, window } = fixture();
   for (const height of [520, 760, 280, 450]) {
     window.innerHeight = height;
     events.get('resize')();
     placement.update({ containerDimensions: { width: 560, height } });
     placement.observe({ activeSurface: { kind: 'ketcher' } });
-    assert.equal(document.body.style.height, '480px');
-    assert.equal(document.documentElement.style.height, '480px');
+    const filled = `${Math.max(480, height)}px`;
+    assert.deepEqual([document.body.style.height, document.documentElement.style.height], [filled, filled]);
   }
   assert.deepEqual(structuredClone(sizes), [{ height: 480 }]);
 });
