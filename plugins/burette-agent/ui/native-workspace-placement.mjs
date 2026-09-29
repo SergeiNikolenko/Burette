@@ -15,11 +15,11 @@ export function createWorkspacePlacement(app, status) {
     .workspace-placement-trigger[data-slot="button"]:focus-visible{outline:1px solid #666;outline-offset:2px;box-shadow:none}
     .workspace-placement-error{max-width:240px;margin-bottom:8px;padding:8px 10px;border-radius:8px;background:#b42318;color:#fff;font:12px/1.4 system-ui}
     #root .app-shell{--chrome-height:0px;--chrome-drag-height:0px}
-    #root :is(.topbar,.chrome-leading-controls,.chrome-trailing-controls,.drag-region,.workspace-sidebar-panel,.workspace-sidebar-handle){display:none}
+    #root :is(.topbar,.chrome-leading-controls,.chrome-trailing-controls,.drag-region,.workspace-sidebar-handle){display:none}
     /* Resizable panels carry inline layout styles; a hidden sidebar must not
        retain its saved share of the native card. */
-    #root .workspace-sidebar-panel{display:none!important;flex:0 0 0px!important}
-    #root .workspace-center-panel{flex:1 1 100%!important;width:100%;max-width:100%}
+    body:not([data-display-mode="fullscreen"]) #root .workspace-sidebar-panel{display:none!important;flex:0 0 0px!important}
+    body:not([data-display-mode="fullscreen"]) #root .workspace-center-panel{flex:1 1 100%!important;width:100%;max-width:100%}
     #status{flex:none;max-height:72px;overflow:auto}
   `;
   document.head.appendChild(style);

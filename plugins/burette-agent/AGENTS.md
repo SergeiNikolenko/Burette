@@ -41,7 +41,8 @@ registrations, validation helpers, and plugin-local scripts.
   Compute menus, Jobs panels, engine installers, or calculation settings.
 - Preserve the `visualizationOnly` preview contract when updating shared Mol*
   and grid assets. Desktop and Quick Look capabilities remain separate.
-- The plugin hides the project sidebar. The inline native widget hides the bottom
+- The plugin hides the desktop project sidebar. Expanded native workspaces
+  may show the shared Home/Ketcher/open-pages navigation instead. The inline native widget hides the bottom
   dock and its toggle/resize handle; the side pane retains it. The right dock remains available
   for visualization and text. Exclude Chemical Space, Jobs and folding/compute
   tabs from both restored tabs and add-tab menus. Ketcher uses right Text.
