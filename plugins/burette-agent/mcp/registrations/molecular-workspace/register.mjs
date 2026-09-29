@@ -9,6 +9,7 @@ import {
   resolveWorkspaceSession,
   updateWorkspaceSession,
 } from "../../lib/session-registry.mjs";
+import { pdbIdSchema, resolvePdbEntry } from "../../lib/pdb-entry.mjs";
 import { componentSelector, editStructureFragmentFile, extractStructureComponentFile } from "../../lib/structure-components.mjs";
 import { summarizeStructureFile } from "../../lib/structure-summary.mjs";
 import { toolText } from "../../lib/tool-response.mjs";
@@ -139,9 +140,10 @@ export function registerMolecularWorkspace(server) {
     "burette.open_workspace",
     {
       title: "Open Burette Workspace",
-      description: "Default opening tool: start the full Burette workspace and return its clickable URL and stable workspaceSessionId. Show that URL in the Codex right-side Browser; do not also open an inline viewer. additionalFiles open as separate Burette tabs; use scene: structureAll only when the user asks to show structures together on one canvas.",
+      description: "Preferred way to show a structure in Codex: start the full Burette workspace for a local file or a public PDB ID and return its clickable URL and stable workspaceSessionId. Open that URL in the Codex in-app Browser in the right-side pane, where the Browser toolbar provides comments and annotations; do not also open an inline viewer. Use burette.open_viewer only when the user asks for a card or widget in the chat, or the Browser is unavailable. additionalFiles open as separate Burette tabs; use scene: structureAll only when the user asks to show structures together on one canvas.",
       inputSchema: {
-        file: z.string().trim(),
+        file: z.string().trim().min(1).optional().describe("Absolute local structure path; mutually exclusive with pdbId."),
+        pdbId: pdbIdSchema.optional(),
         additionalFiles: z.array(z.string().trim().min(1)).max(63).optional(),
         scene: z.enum(["structureAll", "structurePoses"]).optional(),
         mode: z.enum(["auto", "browser-agent-shell", "browser-dev-shell", "browser-preview", "desktop-app"]).default("auto"),
@@ -163,7 +165,16 @@ export function registerMolecularWorkspace(server) {
         },
       },
     },
-    async input => {
+    async rawInput => {
+      if (Boolean(rawInput.file) === Boolean(rawInput.pdbId)) {
+        return publicContractFailure("burette.open_workspace", { message: "Provide exactly one of file or pdbId." });
+      }
+      let input = rawInput;
+      try {
+        if (rawInput.pdbId) input = { ...rawInput, file: await resolvePdbEntry(rawInput.pdbId) };
+      } catch (error) {
+        return publicContractFailure("burette.open_workspace", { message: error instanceof Error ? error.message : String(error) });
+      }
       const mode = input.mode || "auto";
       const args = ["open", "--mode", mode];
       if (input.app) args.push("--app", input.app);

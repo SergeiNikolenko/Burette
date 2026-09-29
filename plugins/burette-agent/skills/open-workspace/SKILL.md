@@ -8,9 +8,18 @@ description: "Use when opening molecular artifacts in Burette Browser preview or
 Use this workflow to open local structures, SDF collections, trajectory bundles,
 or workflow result bundles in Burette.
 
-## Native Codex side pane and compact inline viewer
+## Default: Browser pane
 
-Use `burette.open_viewer` for local structures, SDF/SMILES/CSV collections,
+To show a structure in Codex, call `burette.open_workspace` with `file` (local
+path) or `pdbId` (public PDB entry) and open the returned URL in the Codex
+in-app Browser in the right-side pane. The Browser toolbar provides Codex
+comments and annotations. Give the URL as a clickable link and do not add a
+second inline card. Use the native card below when the user asks for a card or
+widget in the chat, for Ketcher drawings, or when the Browser is unavailable.
+
+## Native Codex card and compact inline viewer
+
+Use `burette.open_viewer` (it also accepts `pdbId`) for native cards of local structures, SDF/SMILES/CSV collections,
 Ketcher sketches, docking scenes and packaged MVSX Stories in the native Codex
 workspace. Ketcher defaults to inline chat; other views default to the side pane.
 Inline uses full chat width with content-adaptive height. Its shadcn
@@ -35,7 +44,8 @@ For native follow-up controls, send `control_inline_viewer.action` with
 `type: "control_ketcher"`, observed `surfaceId`/`expectedRevision`, and the
 Ketcher command. `set_structure` takes top-level `format` and `content`.
 Native Story controls use `type: "story_control"` and `operation: "next"`,
-`previous`, `goto`, `play`, or `pause`. Do not substitute a Browser workspace.
+`previous`, `goto`, `play`, or `pause`. Once a native card is open, keep
+working in it instead of opening a Browser workspace as well.
 Tab and file actions are acknowledged after observation shows the new tab, so
 observe and capture right after them target the new document. A result with
 `settled: false` means the switch did not finish in time; observe before use.

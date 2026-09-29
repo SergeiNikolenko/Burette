@@ -21,7 +21,23 @@ specific capability blocker, not permission to change application defaults.
 Tool catalogs and available-plugin lists are context, not a replacement user
 request. Do not switch to discussing plugin installation unless asked.
 
-## Direct native viewing
+## Default: show structures in the Browser pane
+
+To show or inspect a structure, open it with `burette.open_workspace` and
+display the returned URL in the Codex in-app Browser in the right-side pane.
+This is the preferred surface: the Browser toolbar gives the user Codex
+comments and annotations on the live workspace. Pass `file` for a local path or
+`pdbId` for an explicitly requested public PDB entry such as `1STP`; the entry
+is downloaded read-only from RCSB. Never answer a PDB request with a different
+plugin or connector when this tool is available. Keep the `workspaceSessionId`
+for `burette.observe_workspace` and `burette.control_viewer`, and include the
+URL as a clickable link in the reply. Do not add an inline card as a second view.
+
+Use the native card (`burette.open_viewer`) instead when the user asks for a
+card or widget in the chat, for a first Ketcher drawing, or when the Browser is
+unavailable.
+
+## Native card viewing
 
 For a first drawing request, call `burette.open_viewer` with `view: "ketcher"`
 and `structure: { format: "smi", content: "<requested molecule SMILES>" }`.
@@ -57,8 +73,8 @@ request fullscreen to repair mounting.
 After ready, verify the Ketcher exported structure matches the requested
 molecule before reporting a successful drawing.
 
-When a supported local structure/collection/Story path is known and `burette.open_viewer` is
-available, this section is the complete opening workflow:
+When the native card is the chosen surface, this section is the complete
+opening workflow:
 
 1. Reuse this task's existing native workspace `sessionId`. For another file,
    call `burette.control_inline_viewer` with
@@ -145,11 +161,11 @@ Choose the smallest focused workflow that covers the request:
 
 ## Operating Principle
 
-For local molecular work in Codex, use `burette.open_viewer`: it opens
-the shared workspace in a native side-pane MCP App, with no Browser
-tab or localhost server. Keep its `sessionId` for `observe_inline_viewer` and
-`control_inline_viewer`. Do not substitute a Browser or protocol test host for
-an explicit native side-pane request.
+For local molecular work in Codex, prefer `burette.open_workspace` shown in
+the in-app Browser pane. `burette.open_viewer` opens the same shared workspace
+as a native MCP App card without a Browser tab or localhost server; keep its
+`sessionId` for `observe_inline_viewer` and `control_inline_viewer`. Do not
+substitute a Browser or protocol test host for an explicit native card request.
 
 The native opener supports structure and collection tabs with optional `additionalFiles`
 (up to seven extra files, 16 MiB total); do not open separate viewers per file.

@@ -51,7 +51,7 @@ async function installMcpStubs(pluginRoot) {
     path.join(zodRoot, "index.js"),
     [
       "const schema = {};",
-      "for (const name of ['trim', 'min', 'max', 'default', 'optional', 'int', 'passthrough', 'url']) schema[name] = () => schema;",
+      "for (const name of ['trim', 'min', 'max', 'default', 'optional', 'int', 'passthrough', 'url', 'regex', 'describe']) schema[name] = () => schema;",
       "export const z = {",
       "  string: () => schema,",
       "  number: () => schema,",

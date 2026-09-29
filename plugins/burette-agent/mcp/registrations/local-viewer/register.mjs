@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { runMcpAppOperation } from '../../../../../scripts/mcp-app-session.mjs';
 import { captureToolResult } from '../../../../../scripts/mcp-app-capture.mjs';
 import { pluginPath } from '../../lib/plugin-root.mjs';
+import { pdbIdSchema, resolvePdbEntry } from '../../lib/pdb-entry.mjs';
 
 const uri = 'ui://burette/local-viewer.html';
 const workspaceUri = 'ui://burette/native-workspace-v1.html';
@@ -44,18 +45,20 @@ export async function registerLocalViewer(server) {
   }));
   registerAppTool(server, 'burette.open_viewer', {
     title: 'Burette',
-    description: 'Create the first native Burette workspace. Ketcher opens inline in chat by default; other views use the side pane. For drawing, use view ketcher and structure with the actual molecule, never a placeholder file. Bundled example 1htb or caffeine works without a project folder. Otherwise provide file. Reuse an existing session with control_inline_viewer. Supports structures, collections, sketches, docking and MVSX; up to 8 files/16 MiB. view xyzrender opens small molecules as xyzrender SVG; proteins above 1500 atoms, SDF collections, sources over 512 KiB or failed renders stay in Mol*: read notes and activeDocument.externalRenderer. Keep sessionId. Creation is not rendering: observe readiness before claiming a molecule is shown. awaiting_mount is host mounting (Codex mounts cards only while the chat is visible), not a missing folder or failure; after one short re-check, finish and say the card appears when the chat is opened. Never switch to the desktop app to repair it.',
-    inputSchema: { file: z.string().min(1).optional(),
+    description: 'Create a native Burette workspace card in the chat or native side pane. To just show a structure, prefer burette.open_workspace in the Codex in-app Browser pane; use this card when the user asks for a card, widget or Ketcher drawing, or the Browser is unavailable. Ketcher opens inline in chat by default; other views use the side pane. For drawing, use view ketcher and structure with the actual molecule, never a placeholder file. Bundled example 1htb or caffeine works without a project folder. Otherwise provide file or pdbId. Reuse an existing session with control_inline_viewer. Supports structures, collections, sketches, docking and MVSX; up to 8 files/16 MiB. view xyzrender opens small molecules as xyzrender SVG; proteins above 1500 atoms, SDF collections, sources over 512 KiB or failed renders stay in Mol*: read notes and activeDocument.externalRenderer. Keep sessionId. Creation is not rendering: observe readiness before claiming a molecule is shown. awaiting_mount is host mounting (Codex mounts cards only while the chat is visible), not a missing folder or failure; after one short re-check, finish and say the card appears when the chat is opened. Never switch to the desktop app to repair it.',
+    inputSchema: { file: z.string().min(1).optional(), pdbId: pdbIdSchema.optional(),
       example: z.enum(['1htb', 'caffeine']).optional().describe('Bundled protein or 3D xyzrender example; mutually exclusive with file and structure.'),
       structure: z.object({ format: z.enum(['smi', 'mol', 'sdf', 'ket']), content: z.string().min(1).max(65536) }).strict().optional().describe('For Ketcher, pass the requested molecule directly instead of a file. Aspirin: {format:"smi",content:"CC(=O)Oc1ccccc1C(=O)O"}. Requires view ketcher. No project folder or placeholder file needed.'),
       displayMode: z.enum(['inline', 'fullscreen']).optional().describe('Ketcher defaults to inline chat; other views default to side pane. Only expand on request.'),
       openRequestId, additionalFiles: z.array(z.string().min(1)).max(7).optional(), view: z.enum(['auto', 'ketcher', 'docking', 'xyzrender']).optional() }, annotations: { ...annotations, readOnlyHint: false, idempotentHint: false },
     _meta: { ui: { resourceUri: workspaceUri } },
-  }, input => {
-    if ([input.file, input.structure, input.example].filter(value => value != null).length !== 1) {
-      return { isError: true, content: [{ type: 'text', text: 'Provide exactly one of file, structure, or example.' }] };
+  }, async ({ pdbId, ...input }) => {
+    if ([input.file, input.structure, input.example, pdbId].filter(value => value != null).length !== 1) {
+      return { isError: true, content: [{ type: 'text', text: 'Provide exactly one of file, pdbId, structure, or example.' }] };
     }
-    const file = input.example ? pluginPath('assets', 'examples', input.example === '1htb' ? '1htb.pdb' : 'caffeine.xyz') : input.file;
+    let file = input.example ? pluginPath('assets', 'examples', input.example === '1htb' ? '1htb.pdb' : 'caffeine.xyz') : input.file;
+    try { if (pdbId) file = await resolvePdbEntry(pdbId); }
+    catch (error) { return { isError: true, content: [{ type: 'text', text: error.message }] }; }
     return operation({ operation: 'open', ...input, file, view: input.view ?? (input.example === 'caffeine' ? 'xyzrender' : 'auto'), workspace: true, displayMode: input.displayMode ?? (input.view === 'ketcher' ? 'inline' : 'fullscreen') });
   });
   registerAppTool(server, 'burette.open_inline_viewer', {
