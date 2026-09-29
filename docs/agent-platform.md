@@ -267,6 +267,13 @@ Ketcher, reaction, and MolViewSpec extensions). The host calls it with an opaque
 `_meta["openai/resource"].path`; the tool opens that path as a full workspace
 session in the same resource. It is app-only, so models keep using the openers
 below. An opener error is shown in the card instead of the loading state.
+`burette.open_tab` (`type: "thread"`, titled Molecule Workspace) and
+`burette.open_app` (`type: "global"`, the Burette sidebar app) are called with
+`{}` and open an empty workspace session (`documents: []`, `entrypoint` set).
+It shows the welcome screen, where the user opens or drops files. The widget
+publishes an assistant-only model context naming the session, so the model adds
+files with `control_inline_viewer` `open_files` instead of opening a duplicate
+workspace. The first added file becomes the session's primary `source`.
 `burette.open_inline_viewer` retains the separate compact PDB/mmCIF resource
 `ui://burette/local-viewer.html`. Both use `observe_inline_viewer` and
 `control_inline_viewer` with the returned `sessionId`. The native workspace

@@ -126,6 +126,28 @@ test('Codex file viewer entrypoint opens the host-provided path in the workspace
   }
 });
 
+test('thread and sidebar entrypoints open an empty workspace that the agent fills', async t => {
+  const handlers = new Map();
+  await registerLocalViewer({ registerResource() {}, registerTool(name, metadata, handler) { handlers.set(name, handler); } });
+  const file = new URL('../samples/mini.pdb', import.meta.url).pathname;
+  await assert.rejects(run({ operation: 'open', empty: true, file, workspace: true }), /empty workspace/u);
+  for (const [name, entrypoint] of [['burette.open_tab', 'thread'], ['burette.open_app', 'global']]) {
+    const opened = await handlers.get(name)({});
+    const session = opened.structuredContent;
+    const dir = join(tmpdir(), 'burette-mcp-app', session.sessionId);
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    assert.deepEqual({ documents: session.documents, entrypoint: session.entrypoint, mode: session.requestedDisplayMode }, { documents: [], entrypoint, mode: 'inline' });
+    const exchange = input => run({ operation: 'exchange', sessionId: session.sessionId, token: opened._meta.session.token, ...input });
+    await exchange({ state: { ready: false, tabs: [], capabilities: { addFiles: true } } });
+    assert.equal((await run({ operation: 'observe', sessionId: session.sessionId })).lifecycle.status, 'empty');
+    await run({ operation: 'act', sessionId: session.sessionId, action: { type: 'open_files', paths: [file] } });
+    const { documents } = await exchange({});
+    assert.equal(documents[0].path, file);
+    const source = await exchange({ source: true, documentId: documents[0].id });
+    assert.deepEqual(Buffer.from(source.dataBase64, 'base64'), await readFile(file));
+  }
+});
+
 test('MCP sources preserve MVSX archive bytes and mark only the archive as binary', async () => {
   const file = new URL('../samples/mvs/docking_story.mvsx', import.meta.url).pathname;
   const pdb = new URL('../samples/mini.pdb', import.meta.url).pathname;

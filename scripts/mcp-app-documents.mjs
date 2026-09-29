@@ -49,7 +49,12 @@ export async function appendMcpDocuments(sessionDir, files) {
     if (!session.workspace) throw new Error('Adding files requires the full native workspace.');
     const { paths, snapshots } = await snapshotMcpDocuments(files, true, session.documents);
     if (snapshots.length) {
-      for (const item of snapshots) await writeFile(join(sessionDir, `source-${item.document.id}`), item.bytes, { mode: 0o600 });
+      // The first document of a session always lives at `source`, including
+      // the first file added to a workspace that opened empty.
+      for (const [index, item] of snapshots.entries()) {
+        const name = session.documents.length === 0 && index === 0 ? 'source' : `source-${item.document.id}`;
+        await writeFile(join(sessionDir, name), item.bytes, { mode: 0o600 });
+      }
       session.documents.push(...snapshots.map(item => item.document));
       const temporary = join(sessionDir, `session-${randomUUID()}.tmp`);
       await writeFile(temporary, JSON.stringify(session), { mode: 0o600 });

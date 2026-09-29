@@ -21,9 +21,12 @@ export async function startNativeWorkspace(app, initialResult) {
   let startupFailed = false;
   let latestState;
   let loadingDeadline;
+  // A tab or sidebar entrypoint opens without files: its welcome screen is
+  // the first render, so no document has to become ready first.
+  let emptyWorkspace = false;
   function reveal() {
-    if (!startupFailed && runtimeLoaded && latestState?.ready && !latestState.error &&
-      (latestState.activeDocument?.renderer !== 'molstar' || paintedDocuments.has(latestState.activeDocument.id))) {
+    if (!startupFailed && runtimeLoaded && latestState && !latestState.error && (emptyWorkspace || (latestState.ready &&
+      (latestState.activeDocument?.renderer !== 'molstar' || paintedDocuments.has(latestState.activeDocument.id))))) {
       root.inert = false;
       clearTimeout(loadingDeadline);
       status.hidden = true;
@@ -35,6 +38,11 @@ export async function startNativeWorkspace(app, initialResult) {
     root.inert = true;
     showWorkspaceFailure(status, message);
   }
+  // A workspace the user opened from a host entrypoint is unknown to the model,
+  // so its idle context names the session the model can add files to.
+  const entrypoint = initialResult.structuredContent?.entrypoint;
+  const idleContext = () => entrypoint && session ? { content: [{ type: 'text', annotations: { audience: ['assistant'] },
+    text: `The user has a Burette workspace open in this ${entrypoint === 'global' ? 'app' : 'thread'} (sessionId ${session.sessionId}). To show files there, call burette.control_inline_viewer with {sessionId, action:{type:"open_files",paths:[absolute paths]}}; observe it with burette.observe_inline_viewer. Do not open another workspace for this.` }] } : { content: [] };
   let contextSignature = '';
   let sendingAnnotations = false;
   let contextQueue = Promise.resolve();
@@ -104,7 +112,7 @@ export async function startNativeWorkspace(app, initialResult) {
           ? { content: [{ type: 'text', text: `Burette · ${state.activeDocument.title}. ${grid.selectedCount} selected collection rows. Source indexes (zero-based): ${grid.selectedSourceIndexes.join(', ')}${grid.selectionTruncated ? ' (bounded sample)' : ''}.` }],
             structuredContent: { burette: { collectionSelection: { documentId: state.activeDocument.id, ...grid } } },
             presentation: { composerAttachmentLayout: 'card', composerLabel: `Burette · ${state.activeDocument.title}` },
-          } : { content: [] };
+          } : idleContext();
     const signature = JSON.stringify(context);
     // An annotation batch owns the model context until its message is posted.
     if (sendingAnnotations || signature === contextSignature || !app.getHostCapabilities()?.updateModelContext) return;
@@ -159,6 +167,7 @@ export async function startNativeWorkspace(app, initialResult) {
       assets = createWorkspaceAssets({ manifest, exchange, isClosed: () => lifetime.closed });
       checkpoint = await createWorkspaceCheckpoint({ exchange, sessionId: session.sessionId });
       const descriptor = { ...result.structuredContent, ...(checkpoint.restored ? { view: 'auto' } : {}), documents: mounted.documents || result.structuredContent.documents };
+      emptyWorkspace = descriptor.documents.length === 0;
       const agent = createWorkspaceAgent({ displayMode: () => placement.mode });
       if (descriptor.view === 'xyzrender') agent.request(descriptor.documents.map(item => item.path), 'xyzrender');
       transport = createWorkspaceTransport({ descriptor, assets, exchange, isClosed: () => lifetime.closed, observe,

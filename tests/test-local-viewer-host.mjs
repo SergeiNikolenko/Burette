@@ -6,7 +6,9 @@ import { runMcpAppOperation } from '../scripts/mcp-app-session.mjs';
 const native = process.argv.includes('--native');
 const legacyResource = process.argv.includes('--legacy-resource');
 const files = process.argv.slice(2).filter(arg => !arg.startsWith('--'));
-const session = await runMcpAppOperation({ operation: 'open', file: files[0] || new URL('../samples/structures/proteins/1htb.pdb', import.meta.url).pathname, additionalFiles: files.length ? files.slice(1) : [new URL('../samples/mini.pdb', import.meta.url).pathname], displayMode: 'fullscreen', ...(native ? { workspace: true, view: process.argv.includes('--ketcher') ? 'ketcher' : process.argv.includes('--docking') ? 'docking' : 'auto' } : {}) });
+// --empty opens the workspace a Codex thread tab or sidebar entrypoint shows.
+const empty = native && process.argv.includes('--empty');
+const session = empty ? await runMcpAppOperation({ operation: 'open', empty: true, workspace: true, view: 'auto', displayMode: 'fullscreen', entrypoint: 'thread' }) : await runMcpAppOperation({ operation: 'open', file: files[0] || new URL('../samples/structures/proteins/1htb.pdb', import.meta.url).pathname, additionalFiles: files.length ? files.slice(1) : [new URL('../samples/mini.pdb', import.meta.url).pathname], displayMode: 'fullscreen', ...(native ? { workspace: true, view: process.argv.includes('--ketcher') ? 'ketcher' : process.argv.includes('--docking') ? 'docking' : 'auto' } : {}) });
 const bundle = await Bun.build({ entrypoints: [new URL('./fixtures/local-viewer-host.mjs', import.meta.url).pathname], target: 'browser', format: 'esm' });
 if (!bundle.success) throw new Error(bundle.logs.join('\n'));
 const hostJs = await bundle.outputs[0].text();
@@ -25,7 +27,7 @@ const server = createServer(async (request, response) => {
       response.end(await readFile(new URL(`../plugins/burette-agent/assets/${native && !legacyResource ? 'native-workspace' : 'local-viewer'}.html`, import.meta.url), 'utf8'));
     } else if (request.url === '/result') {
       response.setHeader('Content-Type', 'application/json');
-      response.end(JSON.stringify({ content: [], structuredContent: { requestedDisplayMode: session.requestedDisplayMode, documents: session.documents, workspace: session.workspace, view: session.view }, _meta: { session: { sessionId: session.sessionId, token: session.token, presentationId: session.presentationId } } }));
+      response.end(JSON.stringify({ content: [], structuredContent: { requestedDisplayMode: session.requestedDisplayMode, documents: session.documents, workspace: session.workspace, view: session.view, entrypoint: session.entrypoint }, _meta: { session: { sessionId: session.sessionId, token: session.token, presentationId: session.presentationId } } }));
     } else if (request.url === '/exchange' && request.method === 'POST') {
       let body = '';
       for await (const chunk of request) {

@@ -27,11 +27,17 @@ export async function openMcpSession(root, input, create) {
     || typeof structure.content !== 'string' || !structure.content.trim() || Buffer.byteLength(structure.content) > 65536)) {
     fail('INVALID_OPEN_REQUEST', 'Provide either a file or a Ketcher structure (smi, mol, sdf, ket; nonempty, at most 64 KiB).');
   }
-  const paths = structure == null ? [input.file, ...(input.additionalFiles || [])] : [];
+  // Host entrypoints (a thread tab or the sidebar app) open with no arguments,
+  // so a workspace may start empty and receive files later.
+  const empty = input.empty === true;
+  if (empty && (!input.workspace || input.file != null || structure != null || input.additionalFiles?.length || (input.view ?? 'auto') !== 'auto')) {
+    fail('INVALID_OPEN_REQUEST', 'An empty workspace takes no files, structure or view.');
+  }
+  const paths = structure == null && !empty ? [input.file, ...(input.additionalFiles || [])] : [];
   if (paths.some(path => typeof path !== 'string' || !path || path.length > 4096)) fail('INVALID_OPEN_REQUEST', 'Provide nonempty file paths of at most 4096 characters.');
   const fingerprint = createHash('sha256').update(JSON.stringify({ paths: paths.map(path => resolve(path)),
     structure: structure == null ? null : { format: structure.format, content: structure.content },
-    workspace: !!input.workspace, view: input.view || 'auto', displayMode: input.displayMode || 'inline' })).digest('hex');
+    workspace: !!input.workspace, empty, view: input.view || 'auto', displayMode: input.displayMode || 'inline' })).digest('hex');
   const sessionId = key?.toLowerCase() || randomUUID(), dir = join(root, sessionId);
   await mkdir(root, { recursive: true, mode: 0o700 });
   let claimed = false;

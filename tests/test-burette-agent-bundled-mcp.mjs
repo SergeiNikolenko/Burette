@@ -94,6 +94,13 @@ try {
   const [fileEntrypoint] = fileViewerTool._meta['openai/ui'].entrypoints;
   assert.equal(fileEntrypoint.type, 'file');
   assert.ok(['.pdb', '.cif', '.sdf', '.xyz'].every(extension => fileEntrypoint.extensions.includes(extension)));
+  // Hosts open thread and sidebar entrypoints with `{}` arguments.
+  for (const [name, type] of [['burette.open_tab', 'thread'], ['burette.open_app', 'global']]) {
+    const tool = listed.tools.find(item => item.name === name);
+    assert.deepEqual({ uri: tool._meta.ui.resourceUri, entrypoints: tool._meta['openai/ui'].entrypoints }, { uri: workspaceTool._meta.ui.resourceUri, entrypoints: [{ type }] });
+    const opened = await request('tools/call', { name, arguments: {} });
+    assert.deepEqual({ documents: opened.structuredContent.documents, entrypoint: opened.structuredContent.entrypoint }, { documents: [], entrypoint: type });
+  }
   const workspaceResource = await request('resources/read', { uri: workspaceTool._meta.ui.resourceUri });
   assert.match(workspaceResource.contents[0].text, /BuretteMcpWorkspace/u);
   assert.deepEqual(workspaceResource.contents[0]._meta.ui.csp.frameDomains, ['blob:']);

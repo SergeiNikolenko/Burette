@@ -79,8 +79,21 @@ export async function registerLocalViewer(server) {
     if (typeof path !== 'string' || !isAbsolute(path)) {
       return { isError: true, content: [{ type: 'text', text: `Codex did not provide a local path for ${input.file.name}.` }] };
     }
-    return operation({ operation: 'open', file: path, view: 'auto', workspace: true, displayMode: 'fullscreen' });
+    return operation({ operation: 'open', file: path, view: 'auto', workspace: true, displayMode: 'fullscreen', entrypoint: 'file' });
   });
+  // Thread and global entrypoints: the user opens an empty workspace as a tab
+  // beside the chat or as the Burette app in the sidebar. Hosts call them with
+  // `{}` and show the tool title; a thread tab title should not repeat the
+  // plugin name, while the sidebar app keeps it.
+  for (const [name, type, title] of [['burette.open_tab', 'thread', 'Molecule Workspace'], ['burette.open_app', 'global', 'Burette']]) {
+    registerAppTool(server, name, {
+      title,
+      description: 'Codex entrypoint that opens an empty Burette workspace. Models should call burette.open_workspace or burette.open_viewer instead.',
+      inputSchema: {},
+      annotations: { ...annotations, readOnlyHint: false, idempotentHint: false },
+      _meta: { ui: { resourceUri: workspaceUri, visibility: ['app'] }, 'openai/ui': { entrypoints: [{ type }] } },
+    }, () => operation({ operation: 'open', empty: true, workspace: true, view: 'auto', entrypoint: type }));
+  }
   registerAppTool(server, 'burette.open_inline_viewer', {
     title: 'Open compact inline Burette viewer',
     description: 'Open a compact inline MCP viewer of one local PDB/mmCIF file. It is single-document: no open_files, tabs, Ketcher, Story, docking, panels or xyzrender. For those, or a native side pane, use burette.open_viewer. This App has no localhost server or upload. Wait for observe_inline_viewer.ready before controlling; fullscreen changes placement on the same session.',
