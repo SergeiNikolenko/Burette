@@ -222,8 +222,10 @@ try {
   assert.equal(added._meta?.session, undefined, 'Control must not initialize another viewer');
   const linked = await request('tools/call', { name: 'burette.open_deep_link', arguments: { sessionId: inlineSessionId, url: '/example/caffeine' } });
   assert.equal(linked.isError, undefined);
-  const badLink = await request('tools/call', { name: 'burette.open_deep_link', arguments: { sessionId: inlineSessionId, url: '/open?path=relative.pdb' } });
-  assert.match(badLink.content[0].text, /cannot open the link/u);
+  for (const url of ['/open?path=relative.pdb', '/example/1htb#bad', '//evil.example/example/1htb']) {
+    const badLink = await request('tools/call', { name: 'burette.open_deep_link', arguments: { sessionId: inlineSessionId, url } });
+    assert.match(badLink.content[0].text, /cannot open the link/u, url);
+  }
   const updated = await request('tools/call', { name: 'burette.inline_viewer_exchange', arguments: opened._meta.session });
   assert.deepEqual(updated._meta.payload.documents.map(item => path.basename(item.path)), ['1htb.pdb', 'docking_story.mvsx', 'mini.pdb', 'caffeine.xyz']);
   assert.equal(updated._meta.payload.actions[0].action.type, 'open_files');

@@ -6,9 +6,12 @@ import { z } from 'zod';
 const MAX_ITEMS = 8;
 const suggestions = ['1HTB', '4HHB', '1STP', '6LU7'];
 const pdbId = /^[0-9][A-Za-z0-9]{3}$/u;
+// Titles never change; the composer asks again on every keystroke.
+const knownTitles = new Map();
 
-async function rcsb(url, body) {
-  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(4000) });
+// Short budgets keep the composer responsive when RCSB is slow or offline.
+async function rcsb(url, body, timeoutMs) {
+  const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
   if (response.status === 204) return null;
   if (!response.ok) throw new Error(`RCSB returned HTTP ${response.status}.`);
   return response.json();
@@ -20,14 +23,19 @@ async function searchIds(query) {
   const found = await rcsb('https://search.rcsb.org/rcsbsearch/v2/query', {
     query: { type: 'terminal', service: 'full_text', parameters: { value: query } },
     return_type: 'entry', request_options: { paginate: { start: 0, rows: MAX_ITEMS } },
-  });
+  }, 2500);
   return (found?.result_set || []).map(item => item.identifier).filter(id => pdbId.test(id));
 }
 
 // Null when RCSB is unreachable: the IDs are then offered untitled.
 async function titles(ids) {
-  const found = await rcsb('https://data.rcsb.org/graphql', { query: `{entries(entry_ids:${JSON.stringify(ids)}){rcsb_id struct{title}}}` }).catch(() => null);
-  return found?.data ? new Map((found.data.entries || []).filter(Boolean).map(entry => [entry.rcsb_id, entry.struct?.title || ''])) : null;
+  const missing = ids.filter(id => !knownTitles.has(id));
+  if (missing.length) {
+    const found = await rcsb('https://data.rcsb.org/graphql', { query: `{entries(entry_ids:${JSON.stringify(missing)}){rcsb_id struct{title}}}` }, 1500).catch(() => null);
+    if (!found?.data) return null;
+    for (const entry of (found.data.entries || []).filter(Boolean)) knownTitles.set(entry.rcsb_id, entry.struct?.title || '');
+  }
+  return knownTitles;
 }
 
 export async function searchMentions(query) {

@@ -29,6 +29,8 @@ const examples = { '1htb': '1htb.pdb', caffeine: 'caffeine.xyz' };
 // codex://plugins/burette@<marketplace>/app/burette.open_app?path=%2Fpdb%2F1HTB.
 // Returns the files to add to the open workspace, or null for the home page.
 async function deepLinkFiles(url) {
+  // Only app paths: no authority (//host), fragment or backslash tricks.
+  if (!/^\/(?!\/)[^#\\]*$/u.test(url)) throw new Error('Burette cannot open the link: it is not an app path.');
   const link = new URL(url, 'burette-app:/');
   const [kind, value, ...rest] = link.pathname.split('/').filter(Boolean).map(decodeURIComponent);
   if (!kind) return null;
