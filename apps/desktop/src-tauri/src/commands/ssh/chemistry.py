@@ -13,7 +13,6 @@ def chemical_file(directory, name, size, extensions, budget):
     if extension not in AMBIGUOUS:
         return True
     if budget['sniff'] <= 0:
-        budget['partial'] = True
         return None
     descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
     with os.fdopen(descriptor, 'rb') as source:
@@ -38,7 +37,7 @@ def chemical_file(directory, name, size, extensions, budget):
     return bool(re.search(r'\$molecule\b|\$DATA\b|\bATOMIC_POSITIONS\b|Standard orientation:|Input orientation:|ORCA.*?PROGRAM|\bNWChem\b|%block\s+AtomicCoordinates|^\s*#[pn]?\s+.*(?:hf|b3lyp|pm[367]|mp2|wb97)', text, re.I | re.M | re.S))
 
 def chemistry_tree(directory, root, relative, extensions):
-    budget = {'entries': 2000, 'sniff': 1024 * 1024, 'partial': False}
+    budget = {'entries': 2000, 'sniff': 1024 * 1024}
     deadline = time.monotonic() + 1.5
     queue = deque([(relative, [], 0)])
     records = {}
@@ -53,7 +52,8 @@ def chemistry_tree(directory, root, relative, extensions):
             truncated = False
             with os.scandir(fd) as children:
                 for index, entry in enumerate(children):
-                    if index >= MAX_ENTRIES or budget['entries'] <= 0 or time.monotonic() >= deadline:
+                    # The shared budget only bounds descendants; the opened folder is always listed in full.
+                    if index >= MAX_ENTRIES or (depth and (budget['entries'] <= 0 or time.monotonic() >= deadline)):
                         truncated = True
                         break
                     budget['entries'] -= 1
@@ -65,7 +65,8 @@ def chemistry_tree(directory, root, relative, extensions):
                             entries.append(dict(name=entry.name, directory=True, size=info.st_size))
                     elif stat.S_ISREG(info.st_mode):
                         match = chemical_file(fd, entry.name, info.st_size, extensions, budget)
-                        if match:
+                        # Past the sniff budget the opened folder shows unchecked candidates instead of hiding them.
+                        if match or (match is None and not depth):
                             entries.append(dict(name=entry.name, directory=False, size=info.st_size))
                         elif match is None:
                             truncated = True
@@ -110,5 +111,5 @@ def chemistry_tree(directory, root, relative, extensions):
     result = records.get(relative, dict(root=root, path=relative, entries=[], truncated=True))
     result['discovered'] = [record for path, record in records.items() if path != relative and path in keep]
     result['expanded'] = sorted(expanded)
-    result['partial'] = bool(unresolved) or budget['partial']
+    result['partial'] = bool(unresolved)
     return result

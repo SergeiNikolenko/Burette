@@ -60,3 +60,32 @@ test("SSH expansion queues every requested folder and the root control collapses
     globalThis.fetch = originalFetch;
   }
 });
+
+test("SSH subfolders cut short by the scan budget are searched again when opened", async () => {
+  const originalFetch = globalThis.fetch;
+  const paths: string[] = [];
+  globalThis.fetch = (async (_url: unknown, options: RequestInit) => {
+    const { path } = JSON.parse(String(options.body));
+    paths.push(path);
+    const listing = path === "."
+      ? { root: "/data", path, entries: [{ name: "a", directory: true }], truncated: false, partial: true, discovered: [{ root: "/data", path: "a", entries: [], truncated: true }] }
+      : { root: "/data", path, entries: [{ name: "late.pdb", directory: false }], truncated: false, partial: false };
+    return new Response(JSON.stringify(listing), { headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  const click = async (label: string) => { await act(async () => { container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!.click(); }); };
+  try {
+    await act(async () => { root.render(<RemoteProject project={{ id: "test", name: "Remote", host: "fixture", root: "/data" }} onOpen={() => {}} />); });
+    await click("Expand Remote");
+    expect(container.textContent).toContain("Some folders weren't fully searched. Open one to search it.");
+    await click("Expand a");
+    expect(paths).toEqual([".", "a"]);
+    expect(container.textContent).toContain("late.pdb");
+    expect(container.textContent).not.toContain("Search stopped");
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    globalThis.fetch = originalFetch;
+  }
+});

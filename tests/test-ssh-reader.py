@@ -84,6 +84,18 @@ class RemoteReader(unittest.TestCase):
             result = json.loads(self.request(root, 'discover', 'config', extensions=extensions).stdout)
             self.assertEqual([entry['name'] for entry in result['entries']], ['compounds.csv'])
 
+    def test_opened_folder_is_listed_past_the_shared_budget(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            (root / 'logs').mkdir()
+            for i in range(20): (root / f'logs/{i:02}.log').write_bytes(b'x' * 65536)
+            result = json.loads(self.request(root, 'discover', extensions=['log']).stdout)
+            self.assertEqual((result['entries'], result['partial']), ([dict(name='logs', directory=True, size=result['entries'][0]['size'])], True))
+            result = json.loads(self.request(root, 'discover', 'logs', extensions=['log']).stdout)
+            self.assertEqual((result['truncated'], result['partial']), (False, False))
+            # Sixteen 64 KiB sniffs spend the budget; the other four stay visible as candidates.
+            self.assertEqual(len(result['entries']), 4)
+
     def test_session_recovers_after_bad_request(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)
