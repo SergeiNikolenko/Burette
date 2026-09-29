@@ -43,6 +43,7 @@ type GridControlProps = {
   cardRenderer: "rdkit" | "xyzrender";
   xyzrenderPreset: string;
   xyzrenderPresetOptions: XyzrenderPresetOption[];
+  hydrogenDisplay: HydrogenDisplay;
   ketcherOpen: boolean;
   molstarOpen: boolean;
   ketcherPending: boolean;
@@ -96,6 +97,7 @@ type GridControlProps = {
   onToggleTableFilters: () => void;
   onSetCardRenderer: (value: "rdkit" | "xyzrender") => void;
   onXyzrenderPresetChange: (value: string) => void;
+  onHydrogenDisplayChange: (value: HydrogenDisplay) => void;
   onOpenKetcher: () => void;
   onAlignSelectedPoses: () => void;
   onEvaluateSemiempirical: () => void;
@@ -108,6 +110,8 @@ type GridControlProps = {
   onRendererSwitch: (value: "molstar") => void;
   onRdkitUseInputCoordsChange: (checked: boolean) => void;
 };
+
+type HydrogenDisplay = "all" | "none";
 
 type GridUIApi = {
   mountGridControls: (container: Element, props: GridControlProps) => void;
@@ -252,6 +256,26 @@ function XyzrenderStyleControl(props: GridControlProps) {
         ))}
       </select>
     </label>
+  );
+}
+
+// React owns the pressed state here: grid-viewer re-renders the toolbar with the
+// new mode instead of syncing this button by id.
+function HydrogenToggle(props: GridControlProps) {
+  if (!props.substructureSearch) return null;
+  const shown = props.hydrogenDisplay === "all";
+  return (
+    <button
+      id="grid-hydrogens"
+      className="ab-btn"
+      type="button"
+      aria-pressed={shown ? "true" : "false"}
+      aria-label="Show hydrogens"
+      onClick={() => props.onHydrogenDisplayChange(shown ? "none" : "all")}
+    >
+      H
+      <ControlTooltip label={shown ? "Hide hydrogens" : "Show all hydrogens"} />
+    </button>
   );
 }
 
@@ -708,6 +732,7 @@ function GridActionToolbar(props: GridControlProps) {
         </label>
       ) : null}
       <XyzrenderStyleControl {...props} />
+      <HydrogenToggle {...props} />
       {/* A pressed-state button rather than a checkbox: grid-viewer owns both the
           `hidden` on the wrapper and the pressed state on the button by id. */}
       <span id="rdkit-use-input-coords-control" className="buret-rdkit-coords-control" hidden>

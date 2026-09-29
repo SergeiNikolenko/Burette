@@ -11,6 +11,10 @@
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const HOVER_PREVIEW_SVG_LIMIT = 512_000;
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
+  // The toolbar H toggle. Values match the xyzrender display option: 'none'
+  // folds hydrogens into heteroatom labels (OH, NH2), 'all' draws every H.
+  const HYDROGEN_DISPLAY_STORAGE_KEY = 'buret.grid.hydrogenDisplay';
+  const HYDROGEN_DISPLAY_MODES = ['none', 'all'];
   const CLUSTER_CUTOFF_STORAGE_KEY = 'buret.grid.clusterCutoff';
   const GRID_SELECTION_BRIDGE_LIMIT = 100000;
   const CHEMICAL_SPACE_RECORD_LIMIT = 20000;
@@ -132,6 +136,7 @@
     cardRenderer: storedCardRenderer(),
     xyzrenderPreset: null,
     rdkitUseInputCoords: storedBoolean(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, false),
+    hydrogenDisplay: storedChoice(HYDROGEN_DISPLAY_STORAGE_KEY, HYDROGEN_DISPLAY_MODES, 'none'),
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
     hiddenRows: new Set(),
     deletedPropColumns: new Set(),
@@ -1840,6 +1845,7 @@
       cardRenderer: state.cardRenderer,
       xyzrenderPreset: currentXyzrenderPreset(cfg),
       xyzrenderPresetOptions: xyzrenderPresetOptions(cfg),
+      hydrogenDisplay: state.hydrogenDisplay,
       ketcherOpen: caps.ketcherOpen,
       molstarOpen: caps.molstarOpen,
       ...gridSelectionState(),
@@ -1897,6 +1903,7 @@
       onToggleTableFilters() { toggleTableFilters(cfg); },
       onSetCardRenderer(value) { setCardRenderer(value, cfg); },
       onXyzrenderPresetChange(value) { setXyzrenderPreset(value, cfg); },
+      onHydrogenDisplayChange(value) { setHydrogenDisplay(value, cfg); },
       onOpenKetcher() { requestSelectedKetcherDocument(cfg); },
       onAlignSelectedPoses() { requestSelectedPoseAlignment(cfg); },
       onEvaluateSemiempirical() { requestSelectedSemiempiricalEvaluation(cfg); },
@@ -2088,6 +2095,24 @@
     refreshGridControls(cfg);
     applyGridPreferences(cfg);
     if (state.cardRenderer === 'xyzrender') render(cfg);
+  }
+
+  // Both card caches are keyed by the mode, so switching back redraws from
+  // cache; only queued xyzrender jobs for the old mode are dropped.
+  function setHydrogenDisplay(value, cfg) {
+    const next = HYDROGEN_DISPLAY_MODES.includes(value) ? value : 'none';
+    if (state.hydrogenDisplay === next) return;
+    state.hydrogenDisplay = next;
+    store(HYDROGEN_DISPLAY_STORAGE_KEY, next);
+    resetXyzrenderCardObserver();
+    resetCardRenderQueues();
+    refreshGridControls(cfg);
+    render(cfg);
+    repostInspectorRow(cfg);
+  }
+
+  function xyzrenderCardControls() {
+    return { displayHydrogens: state.hydrogenDisplay };
   }
 
   function propertyOptionList(cfg) {
@@ -3363,16 +3388,20 @@
     try {
       mol = state.rdkit.get_mol(row.molblock || row.smiles || '');
       if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) return null;
-      const raw = mol.get_substruct_match(qmol);
-      const parsed = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw;
-      const atoms = Array.isArray(parsed?.atoms) ? parsed.atoms.filter(Number.isInteger) : [];
-      const bonds = Array.isArray(parsed?.bonds) ? parsed.bonds.filter(Number.isInteger) : [];
-      return atoms.length ? { atoms, bonds } : null;
+      return molSubstructureMatch(mol, qmol);
     } catch (_) {
       return null;
     } finally {
       try { mol?.delete?.(); } catch {}
     }
+  }
+
+  function molSubstructureMatch(mol, qmol) {
+    const raw = mol.get_substruct_match(qmol);
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw;
+    const atoms = Array.isArray(parsed?.atoms) ? parsed.atoms.filter(Number.isInteger) : [];
+    const bonds = Array.isArray(parsed?.bonds) ? parsed.bonds.filter(Number.isInteger) : [];
+    return atoms.length ? { atoms, bonds } : null;
   }
 
   function compare(a, b, key) {
@@ -7926,7 +7955,7 @@
   function rdkitCardKey(row) {
     const match = state.smartsMatches.get(Number(row.index));
     const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
-    return `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}`;
+    return `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|H:${state.hydrogenDisplay}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}`;
   }
 
   function drawRdkitPlaceholder(row) {
@@ -8009,7 +8038,7 @@
       if (state.svgCache.has(reactionKey)) return state.svgCache.get(reactionKey);
       return drawRdkitReaction(row, reactionText, reactionKey);
     }
-    const match = state.smartsMatches.get(Number(row.index));
+    let match = state.smartsMatches.get(Number(row.index));
     const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
     const key = rdkitCardKey(row);
     if (state.svgCache.has(key)) return state.svgCache.get(key);
@@ -8022,6 +8051,7 @@
         omitInvalidCard(row);
         return '';
       }
+      match = applyHydrogenDisplay(mol, match);
       try {
         if (!useInputCoords) {
           try { mol.set_new_coords?.(); } catch (_) {}
@@ -8056,6 +8086,26 @@
     state.svgCache.set(key, html);
     while (state.svgCache.size > RDKIT_SVG_CACHE_LIMIT) state.svgCache.delete(state.svgCache.keys().next().value);
     return html;
+  }
+
+  // Added H are appended after the heavy atoms, so a match found on the file's
+  // atoms still holds; removal renumbers atoms, so the highlight is re-matched.
+  function applyHydrogenDisplay(mol, match) {
+    if (state.hydrogenDisplay === 'all') {
+      try { mol.add_hs_in_place?.(); } catch (_) {}
+      return match;
+    }
+    try { mol.remove_hs_in_place?.(); } catch (_) { return match; }
+    if (!match) return match;
+    let qmol = null;
+    try {
+      qmol = state.rdkit.get_qmol(state.smarts.trim());
+      return qmol ? molSubstructureMatch(mol, qmol) : null;
+    } catch (_) {
+      return null;
+    } finally {
+      try { qmol?.delete?.(); } catch (_) {}
+    }
   }
 
   function fillMissingSmilesFromMolblocks() {
@@ -8308,7 +8358,7 @@
   }
 
   function xyzrenderCardKey(row, record) {
-    return `${row.index}|${record.inputExtension}|${currentXyzrenderPreset(config())}|${hash(xyzrenderCardInputText(row, record))}|${state.smarts}`;
+    return `${row.index}|${record.inputExtension}|${currentXyzrenderPreset(config())}|H:${state.hydrogenDisplay}|${hash(xyzrenderCardInputText(row, record))}|${state.smarts}`;
   }
 
   function scheduleXyzrenderCard(card, row, cfg) {
@@ -8465,6 +8515,7 @@
       const request = {
         path: record.path,
         preset: currentXyzrenderPreset(cfg),
+        controls: xyzrenderCardControls(),
         inputDataBase64: textToBase64(xyzrenderCardInputText(row, record)),
         inputExtension: record.inputExtension
       };
@@ -8478,6 +8529,7 @@
           body: JSON.stringify({
             path: request.path,
             preset: request.preset,
+            controls: request.controls,
             inputDataBase64: request.inputDataBase64,
             inputExtension: request.inputExtension
           })
@@ -8519,6 +8571,7 @@
           id: job.key,
           path: job.record.path,
           preset: currentXyzrenderPreset(job.cfg),
+          controls: xyzrenderCardControls(),
           inputDataBase64: textToBase64(xyzrenderCardInputText(job.row, job.record)),
           inputExtension: job.record.inputExtension
         }))
