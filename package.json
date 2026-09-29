@@ -1,6 +1,6 @@
 {
   "name": "burette",
-  "version": "2026.9.41",
+  "version": "2026.9.42",
   "private": true,
   "description": "macOS desktop app and Quick Look extension for molecular previews: Mol* 3D, xyzrender SVG, and RDKit grids.",
   "packageManager": "bun@1.4.2",

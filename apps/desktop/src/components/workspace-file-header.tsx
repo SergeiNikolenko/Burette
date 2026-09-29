@@ -21,9 +21,12 @@ export function WorkspaceFileHeader({ activeFile, rootPath, rightDockOpen, defau
     ? `${rootPath.split("/").filter(Boolean).at(-1)}/${activeFile.path.slice(rootPath.length + 1)}`
     : activeFile.path;
   const segments = fileActionsAvailable ? displayPath.split("/").filter(Boolean) : [activeFile.label];
+  // Laid out like the Codex Browser toolbar: separate rounded pills for the
+  // annotation tool, an address field with the file path, Open and panels.
   return (
     <header className="workspace-file-header" aria-label="Current file">
-      <div className="workspace-file-path">
+      <AnnotateToggle className="workspace-file-pill" />
+      <div className="workspace-file-path workspace-file-pill">
         <div className="workspace-file-breadcrumb" aria-label={fileActionsAvailable ? activeFile.path : activeFile.label} title={fileActionsAvailable ? activeFile.path : "Unsaved structure"}>
           <span className="workspace-file-ancestors">
           {segments.slice(0, -1).map((segment, index) => (
@@ -44,7 +47,7 @@ export function WorkspaceFileHeader({ activeFile, rootPath, rightDockOpen, defau
           <ShortcutTooltip label="Copy file path" />
         </button> : <span className="workspace-file-unsaved">Unsaved</span>}
       </div>
-      {fileActionsAvailable ? <div className="workspace-file-open">
+      {fileActionsAvailable ? <div className="workspace-file-open workspace-file-pill">
         <button type="button" className="workspace-file-open-primary" aria-label={openLabel}
           onClick={onOpen ?? (() => void actions.openPathWithDefaultApp(activeFile.path))}>
           {defaultApplicationIconUrl ? <img src={defaultApplicationIconUrl} alt="" /> : null}
@@ -59,14 +62,11 @@ export function WorkspaceFileHeader({ activeFile, rootPath, rightDockOpen, defau
             </button>
           )} />
       </div> : null}
-      <div className="workspace-file-panels" role="group" aria-label="Workspace panels">
-        <AnnotateToggle />
-        <button type="button" className="workspace-file-icon-button" aria-label="Toggle right panel" aria-pressed={rightDockOpen}
-          onClick={() => actions.toggleDock("right")}>
-          <SidebarRight size={18} aria-hidden />
-          <ShortcutTooltip label={rightDockOpen ? "Hide right panel" : "Show right panel"} />
-        </button>
-      </div>
+      <button type="button" className="workspace-file-icon-button workspace-file-pill" aria-label="Toggle right panel" aria-pressed={rightDockOpen}
+        onClick={() => actions.toggleDock("right")}>
+        <SidebarRight size={18} aria-hidden />
+        <ShortcutTooltip label={rightDockOpen ? "Hide right panel" : "Show right panel"} />
+      </button>
     </header>
   );
 }
