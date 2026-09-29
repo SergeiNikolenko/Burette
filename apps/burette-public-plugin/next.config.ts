@@ -60,6 +60,10 @@ const nextConfig: NextConfig = {
         source: "/burette-viewer/:path*",
         headers: crossOriginAssetHeaders,
       },
+      {
+        source: "/icons/:path*",
+        headers: crossOriginAssetHeaders,
+      },
     ];
   },
 };

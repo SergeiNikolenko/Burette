@@ -74,12 +74,19 @@ async function callServerTool(
 const queuedCalls = Array.isArray(window.__BURETTE_HOSTED_APP_QUEUE__)
   ? window.__BURETTE_HOSTED_APP_QUEUE__.splice(0)
   : [];
+// The viewer reports an empty selection on load; only clear the model context
+// after something was selected, so hosts do not show an empty context card.
+let selectionShared = false;
 const bridge = {
   setSource(source: unknown) {
     sourceDescriptor = source;
   },
   updateSelection(selection: unknown, documentId: string) {
-    return updateModelContext(createSelectionContext(selection, documentId, sourceDescriptor));
+    const context = createSelectionContext(selection, documentId, sourceDescriptor);
+    const empty = context.structuredContent.burette.activeSelection === null;
+    if (empty && !selectionShared) return Promise.resolve(false);
+    selectionShared = !empty;
+    return updateModelContext(context);
   },
   updateScene(report: unknown) {
     return updateModelContext(createSceneContext(report, sourceDescriptor));

@@ -154,11 +154,14 @@ function ketcherReadyText(snapshot: ReturnType<typeof hostedKetcherSnapshot> | u
 }
 
 function createServer(): McpServer {
+  const appOrigin = getAppOrigin();
+  // Hosts show this icon next to widget context cards above the composer.
   const server = new McpServer({
     name: "burette-molecular-viewer",
+    title: "Burette",
     version: "0.1.0",
+    icons: [{ src: `${appOrigin}/icons/burette-app-icon.png`, mimeType: "image/png", sizes: ["512x512"] }],
   });
-  const appOrigin = getAppOrigin();
 
   registerAppResource(
     server,
