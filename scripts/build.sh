@@ -599,7 +599,9 @@ pushd apps/desktop >/dev/null
 popd >/dev/null
 bun run build:tauri
 cargo build --release --bin burette-core-bridge
-cargo build --release --bin burette-compute-service
+# Match the feature set `tauri build` used so cargo reuses the release artifacts
+# instead of recompiling tauri and the burette crate.
+cargo build --release -p burette --bin burette-compute-service --features tauri/custom-protocol
 XCODE_SIGN_ARGS=(CODE_SIGN_IDENTITY="$SIGN_IDENTITY" CODE_SIGNING_ALLOWED=YES)
 if [[ -n "$DEVELOPMENT_TEAM" ]]; then
   XCODE_SIGN_ARGS+=(CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM")

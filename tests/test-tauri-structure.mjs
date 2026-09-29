@@ -718,7 +718,7 @@ assert.match(buildScript, /dev-namespace\.mjs" patch-tree "\$SAFE_ROOT"/);
 assert.match(buildScript, /Developer ID Application:/);
 assert.match(buildScript, /hardenedRuntime/);
 assert.match(buildScript, /cargo build --release --bin burette-core-bridge/);
-assert.match(buildScript, /cargo build --release --bin burette-compute-service/);
+assert.match(buildScript, /cargo build --release -p burette --bin burette-compute-service --features tauri\/custom-protocol/);
 assert.match(buildScript, /Contents\/Helpers\/burette-compute-service/);
 assert.match(buildScript, /rm -f "\$app\/Contents\/MacOS\/burette-compute-service"/);
 assert.match(tauriCargoSource, /default-run\s*=\s*"burette"/);
