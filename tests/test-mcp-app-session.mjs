@@ -108,6 +108,24 @@ test('registered workspace opener requests side-pane placement by default', asyn
   }
 });
 
+test('Codex file viewer entrypoint opens the host-provided path in the workspace', async () => {
+  const handlers = new Map();
+  await registerLocalViewer({ registerResource() {}, registerTool(name, metadata, handler) { handlers.set(name, handler); } });
+  const open = handlers.get('burette.open_file');
+  const file = { name: 'mini.pdb', resourceUri: 'codex-resource://viewer-1' };
+  const path = new URL('../samples/mini.pdb', import.meta.url).pathname;
+  const result = await open({ file }, { _meta: { 'openai/resource': { path } } });
+  const session = result.structuredContent;
+  try {
+    assert.equal(result.isError, undefined);
+    assert.deepEqual({ workspace: session.workspace, mode: session.requestedDisplayMode, path: session.documents[0].path },
+      { workspace: true, mode: 'fullscreen', path });
+    assert.equal((await open({ file }, { _meta: {} })).isError, true);
+  } finally {
+    if (session?.sessionId) await rm(join(tmpdir(), 'burette-mcp-app', session.sessionId), { recursive: true, force: true });
+  }
+});
+
 test('MCP sources preserve MVSX archive bytes and mark only the archive as binary', async () => {
   const file = new URL('../samples/mvs/docking_story.mvsx', import.meta.url).pathname;
   const pdb = new URL('../samples/mini.pdb', import.meta.url).pathname;

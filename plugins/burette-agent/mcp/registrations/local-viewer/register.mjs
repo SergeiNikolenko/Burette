@@ -1,3 +1,4 @@
+import { isAbsolute } from 'node:path';
 import { snapshotNativeResources } from '../../lib/native-resource-snapshot.mjs';
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
@@ -19,6 +20,9 @@ const layerOperation = z.object({
     color: z.object({ name: z.enum(['element-symbol', 'chain-id', 'uniform']), value: z.string().regex(/^#[0-9a-f]{6}$/i).optional() }).strict(),
   }).strict().optional(),
 }).strict();
+// Molecular formats the native workspace opens; generic tables stay with the
+// host's own viewer.
+const fileViewerExtensions = ['.pdb', '.ent', '.pdbqt', '.cif', '.mmcif', '.sdf', '.sd', '.mol', '.smi', '.smiles', '.xyz', '.ket', '.rxn', '.mvsj', '.mvsx'];
 const openRequestId = z.string().uuid().optional().describe('A fresh UUID v4 for each intentional workspace. Reuse the same ID and paths/options when retrying a timed-out opener; it reuses the snapshot/session and the newest card takes it over.');
 
 async function runOperation(input, privateResult, assetRoot) {
@@ -38,7 +42,7 @@ export async function registerLocalViewer(server) {
   const resources = await snapshotNativeResources(pluginPath('assets'));
   const operation = (input, privateResult = false) => runOperation(input, privateResult, resources.assetRoot);
   registerAppResource(server, 'burette-native-workspace', workspaceUri, { mimeType: RESOURCE_MIME_TYPE }, async () => ({
-    contents: [{ uri: workspaceUri, mimeType: RESOURCE_MIME_TYPE, text: resources.workspace, _meta: { ui: { csp: { connectDomains: ['blob:'], resourceDomains: ['blob:', 'data:'], frameDomains: ['blob:'] }, prefersBorder: false } } }],
+    contents: [{ uri: workspaceUri, mimeType: RESOURCE_MIME_TYPE, text: resources.workspace, _meta: { ui: { csp: { connectDomains: ['blob:'], resourceDomains: ['blob:', 'data:'], frameDomains: ['blob:'] }, prefersBorder: false }, 'openai/ui': { availableDisplayModes: ['inline', 'fullscreen'] } } }],
   }));
   registerAppResource(server, 'burette-local-viewer', uri, { mimeType: RESOURCE_MIME_TYPE }, async () => ({
     contents: [{ uri, mimeType: RESOURCE_MIME_TYPE, text: resources.compact, _meta: { ui: { csp: { connectDomains: ['blob:'], resourceDomains: ['blob:', 'data:'], frameDomains: ['blob:'] }, prefersBorder: true } } }],
@@ -60,6 +64,22 @@ export async function registerLocalViewer(server) {
     try { if (pdbId) file = await resolvePdbEntry(pdbId); }
     catch (error) { return { isError: true, content: [{ type: 'text', text: error.message }] }; }
     return operation({ operation: 'open', ...input, file, view: input.view ?? (input.example === 'caffeine' ? 'xyzrender' : 'auto'), workspace: true, displayMode: input.displayMode ?? (input.view === 'ketcher' ? 'inline' : 'fullscreen') });
+  });
+  // OpenAI MCP Extensions file entrypoint: Codex offers Burette as the viewer
+  // for these files. The argument only carries an opaque host URI; the host adds
+  // the opened file's trusted absolute path to the call metadata.
+  registerAppTool(server, 'burette.open_file', {
+    title: 'Burette',
+    description: 'Codex file viewer entrypoint for molecular files. Models should call burette.open_workspace or burette.open_viewer instead.',
+    inputSchema: { file: z.object({ name: z.string().min(1), resourceUri: z.string().min(1) }) },
+    annotations: { ...annotations, readOnlyHint: false, idempotentHint: false },
+    _meta: { ui: { resourceUri: workspaceUri, visibility: ['app'] }, 'openai/ui': { entrypoints: [{ type: 'file', extensions: fileViewerExtensions }] } },
+  }, (input, extra) => {
+    const path = extra?._meta?.['openai/resource']?.path;
+    if (typeof path !== 'string' || !isAbsolute(path)) {
+      return { isError: true, content: [{ type: 'text', text: `Codex did not provide a local path for ${input.file.name}.` }] };
+    }
+    return operation({ operation: 'open', file: path, view: 'auto', workspace: true, displayMode: 'fullscreen' });
   });
   registerAppTool(server, 'burette.open_inline_viewer', {
     title: 'Open compact inline Burette viewer',

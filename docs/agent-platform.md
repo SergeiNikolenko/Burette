@@ -259,6 +259,14 @@ do not invent a second local session protocol.
 
 `burette.open_viewer` opens the full shared visualization workspace through
 `ui://burette/native-workspace-v1.html` as a compact native chat workspace.
+`burette.open_file` is the OpenAI MCP Extensions file entrypoint
+(`_meta["openai/ui"].entrypoints` with `type: "file"`): Codex desktop offers
+Burette as the viewer for molecular files (PDB, mmCIF, SDF, MOL, SMILES, XYZ,
+Ketcher, reaction, and MolViewSpec extensions). The host calls it with an opaque
+`file.resourceUri` and adds the trusted absolute path as
+`_meta["openai/resource"].path`; the tool opens that path as a full workspace
+session in the same resource. It is app-only, so models keep using the openers
+below. An opener error is shown in the card instead of the loading state.
 `burette.open_inline_viewer` retains the separate compact PDB/mmCIF resource
 `ui://burette/local-viewer.html`. Both use `observe_inline_viewer` and
 `control_inline_viewer` with the returned `sessionId`. The native workspace

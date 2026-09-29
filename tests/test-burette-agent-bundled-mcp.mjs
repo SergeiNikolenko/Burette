@@ -89,6 +89,11 @@ try {
   const compactTool = listed.tools.find(tool => tool.name === 'burette.open_inline_viewer');
   assert.equal(workspaceTool._meta.ui.resourceUri, 'ui://burette/native-workspace-v1.html');
   assert.equal(compactTool._meta.ui.resourceUri, 'ui://burette/local-viewer.html');
+  const fileViewerTool = listed.tools.find(tool => tool.name === 'burette.open_file');
+  assert.equal(fileViewerTool._meta.ui.resourceUri, workspaceTool._meta.ui.resourceUri);
+  const [fileEntrypoint] = fileViewerTool._meta['openai/ui'].entrypoints;
+  assert.equal(fileEntrypoint.type, 'file');
+  assert.ok(['.pdb', '.cif', '.sdf', '.xyz'].every(extension => fileEntrypoint.extensions.includes(extension)));
   const workspaceResource = await request('resources/read', { uri: workspaceTool._meta.ui.resourceUri });
   assert.match(workspaceResource.contents[0].text, /BuretteMcpWorkspace/u);
   assert.deepEqual(workspaceResource.contents[0]._meta.ui.csp.frameDomains, ['blob:']);
