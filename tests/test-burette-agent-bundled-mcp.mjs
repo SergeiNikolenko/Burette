@@ -229,6 +229,13 @@ try {
   const updated = await request('tools/call', { name: 'burette.inline_viewer_exchange', arguments: opened._meta.session });
   assert.deepEqual(updated._meta.payload.documents.map(item => path.basename(item.path)), ['1htb.pdb', 'docking_story.mvsx', 'mini.pdb', 'caffeine.xyz']);
   assert.equal(updated._meta.payload.actions[0].action.type, 'open_files');
+  // The start page lists what earlier viewers opened; only the app calls it.
+  assert.deepEqual(listed.tools.find(tool => tool.name === 'burette.recent_files')._meta, { ui: { visibility: ['app'] } });
+  const recent = await request('tools/call', { name: 'burette.recent_files', arguments: {} });
+  const caffeine = updated._meta.payload.documents.find(item => item.label === 'caffeine.xyz');
+  const { openedAt, ...entry } = recent.structuredContent.files.find(file => file.path === caffeine.path) ?? {};
+  assert.deepEqual(entry, { path: caffeine.path, label: 'caffeine.xyz', format: 'xyz' });
+  assert.ok(!Number.isNaN(Date.parse(openedAt)) && recent.structuredContent.files.length <= 8);
   console.log("burette-agent bundled MCP tests passed");
 } finally {
   if (child.exitCode === null) child.kill("SIGTERM");

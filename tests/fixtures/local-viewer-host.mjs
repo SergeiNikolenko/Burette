@@ -4,7 +4,8 @@ import { AppBridge, PostMessageTransport } from '@modelcontextprotocol/ext-apps/
 const frame = document.querySelector('iframe');
 let exchangeCount = 0;
 let renderedPlugin;
-let theme = 'light';
+// ?theme=dark starts the host dark, like a dark Codex window.
+let theme = new URLSearchParams(location.search).get('theme') === 'dark' ? 'dark' : 'light';
 let inlineWidth = '95vw';
 const runtimeErrors = [];
 frame.addEventListener('load', () => {
@@ -27,8 +28,8 @@ frame.addEventListener('load', () => {
 });
 // ?deepLink=/example/caffeine opens the app the way a Codex deep link does.
 const deepLink = new URLSearchParams(location.search).get('deepLink');
-const bridge = new AppBridge(null, { name: 'Burette test host', version: '1.0.0' }, { serverTools: {}, updateModelContext: { text: {}, image: {} } }, {
-  hostContext: { displayMode: 'inline', availableDisplayModes: ['inline', 'fullscreen'], theme: 'light', ...(deepLink ? { 'openai/deepLink': { url: deepLink } } : {}) },
+const bridge = new AppBridge(null, { name: 'Burette test host', version: '1.0.0' }, { serverTools: {}, updateModelContext: { text: {}, image: {} }, message: { text: {} } }, {
+  hostContext: { displayMode: 'inline', availableDisplayModes: ['inline', 'fullscreen'], theme, ...(deepLink ? { 'openai/deepLink': { url: deepLink } } : {}) },
 });
 bridge.onupdatemodelcontext = async context => {
   let output = document.getElementById('selection-context');
@@ -45,7 +46,20 @@ bridge.onupdatemodelcontext = async context => {
   });
   return {};
 };
+// Messages the app posts to the chat are shown under the frame.
+bridge.onmessage = async ({ content }) => {
+  let output = document.getElementById('chat-messages');
+  if (!output) {
+    output = document.createElement('pre');
+    output.id = 'chat-messages';
+    document.body.appendChild(output);
+  }
+  output.textContent += `user: ${content.filter(item => item.type === 'text').map(item => item.text).join(' ')}\n`;
+  return {};
+};
 bridge.oncalltool = async request => {
+  if (request.name === 'burette.mentions') return (await fetch(`/mentions?query=${encodeURIComponent(request.arguments.query)}`)).json();
+  if (request.name === 'burette.recent_files') return (await fetch('/recent')).json();
   if (request.name === 'burette.open_deep_link') return (await fetch('/deep-link', { method: 'POST', body: JSON.stringify(request.arguments) })).json();
   exchangeCount++;
   return (await fetch('/exchange', { method: 'POST', body: JSON.stringify(request.arguments) })).json();
@@ -64,7 +78,7 @@ for (const [label, action] of [
     let report = document.getElementById('lifetime-report');
     if (!report) { report = document.createElement('pre'); report.id = 'lifetime-report'; document.body.prepend(report); }
     report.textContent = JSON.stringify({ exchangeCount, viewport: { width: frame.clientWidth, height: frame.clientHeight }, canvases: [viewer, ...children].reduce((count, child) => count + child.document.querySelectorAll('canvas').length, 0),
-      frames: children.length, assets: viewer.BuretteMcpWorkspace?.snapshot(), usedJSHeapBytes: viewer.performance.memory?.usedJSHeapSize,
+      frames: children.length, theme: viewer.document.documentElement.dataset.theme, assets: viewer.BuretteMcpWorkspace?.snapshot(), usedJSHeapBytes: viewer.performance.memory?.usedJSHeapSize,
       runtimeErrors: runtimeErrors.slice(-20),
       viewerPresent: Boolean(viewer.BuretteViewer), agentAttached: Boolean(viewer.BuretteAgent?._state.plugin),
       sourceRetained: Boolean(viewer.BuretteDataBytes), closed: viewer.BuretteViewerDisposed === true || viewer.BuretteMcpWorkspace?.closed === true,

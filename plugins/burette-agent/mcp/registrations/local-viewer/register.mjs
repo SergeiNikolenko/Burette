@@ -2,7 +2,7 @@ import { extname, isAbsolute } from 'node:path';
 import { snapshotNativeResources } from '../../lib/native-resource-snapshot.mjs';
 import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { z } from 'zod';
-import { runMcpAppOperation } from '../../../../../scripts/mcp-app-session.mjs';
+import { recentMcpDocuments, runMcpAppOperation } from '../../../../../scripts/mcp-app-session.mjs';
 import { captureToolResult } from '../../../../../scripts/mcp-app-capture.mjs';
 import { pluginPath } from '../../lib/plugin-root.mjs';
 import { pdbIdSchema, resolvePdbEntry } from '../../lib/pdb-entry.mjs';
@@ -126,6 +126,10 @@ export async function registerLocalViewer(server) {
     if (!files) return { content: [], structuredContent: { opened: [] } };
     return operation({ operation: 'act', sessionId, action: { type: 'open_files', paths: files.paths, view: files.view || 'auto' }, waitMs: 0 });
   });
+  server.registerTool('burette.recent_files', {
+    title: 'Recent Burette files', description: 'Private start-page transport: the newest local files earlier Burette viewers opened.',
+    inputSchema: {}, annotations: { ...annotations, readOnlyHint: true, idempotentHint: true }, _meta: { ui: { visibility: ['app'] } },
+  }, async () => ({ content: [], structuredContent: { files: await recentMcpDocuments() } }));
   registerAppTool(server, 'burette.open_inline_viewer', {
     title: 'Open compact inline Burette viewer',
     description: 'Open a compact inline MCP viewer of one local PDB/mmCIF file. It is single-document: no open_files, tabs, Ketcher, Story, docking, panels or xyzrender. For those, or a native side pane, use burette.open_viewer. This App has no localhost server or upload. Wait for observe_inline_viewer.ready before controlling; fullscreen changes placement on the same session.',

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, open, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, readdir, readFile, realpath, rename, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -37,6 +37,32 @@ async function readSession(sessionId) {
     if (error.code === 'ENOENT') return null;
     throw error;
   }
+}
+
+// Start page of an empty workspace: the newest files earlier viewers opened.
+// Session files are rewritten when files are added, so their mtime orders them.
+export async function recentMcpDocuments(limit = 8) {
+  const entries = await readdir(root, { withFileTypes: true }).catch(error => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  });
+  const sessions = (await Promise.all(entries.filter(entry => entry.isDirectory() && /^[0-9a-f-]{36}$/u.test(entry.name)).map(entry => {
+    const path = join(root, entry.name, 'session.json');
+    return stat(path).then(info => ({ path, openedAt: info.mtimeMs }), () => null);
+  }))).filter(Boolean).sort((a, b) => b.openedAt - a.openedAt).slice(0, 64);
+  // Sketches live inside session directories and die with them.
+  const sessionRoots = entries.length ? [root, await realpath(root)] : [];
+  const recent = new Map();
+  for (const session of sessions) {
+    const documents = await readFile(session.path, 'utf8').then(text => JSON.parse(text).documents, () => null);
+    for (const document of Array.isArray(documents) ? documents.toReversed() : []) {
+      const { path, label, format } = document || {};
+      if (recent.size >= limit || typeof path !== 'string' || recent.has(path) || sessionRoots.some(prefix => path.startsWith(`${prefix}/`))) continue;
+      if (await stat(path).then(info => info.isFile(), () => false)) recent.set(path, { path, label, format, openedAt: new Date(session.openedAt).toISOString() });
+    }
+    if (recent.size >= limit) break;
+  }
+  return [...recent.values()];
 }
 
 // The CLI owns this transport. MCP only forwards bounded operations to it.

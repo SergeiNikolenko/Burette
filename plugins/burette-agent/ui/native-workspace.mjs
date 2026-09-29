@@ -64,6 +64,22 @@ export async function startNativeWorkspace(app, initialResult) {
       })
       .finally(() => { openingDeepLink = false; });
   }
+  async function callTool(name, args) {
+    const result = await app.callServerTool({ name, arguments: args });
+    if (result.isError) throw new Error(result.content?.[0]?.text || `${name} failed.`);
+    return result;
+  }
+  // Start-page operations of the shell's welcome screen.
+  const home = {
+    open: async link => { await callTool('burette.open_deep_link', { sessionId: session.sessionId, url: link }); },
+    search: async query => (await callTool('burette.mentions', { query })).structuredContent?.items ?? [],
+    recent: async () => (await callTool('burette.recent_files', {})).structuredContent?.files ?? [],
+    async ask(text) {
+      if (!app.getHostCapabilities()?.message) throw new Error('This chat does not accept messages from Burette.');
+      const result = await app.sendMessage({ role: 'user', content: [{ type: 'text', text }] });
+      if (result?.isError) throw new Error('The chat rejected the message.');
+    },
+  };
   let contextSignature = '';
   let sendingAnnotations = false;
   let contextQueue = Promise.resolve();
@@ -215,7 +231,7 @@ export async function startNativeWorkspace(app, initialResult) {
         initialPaths: !checkpoint.restored && ['auto', 'xyzrender'].includes(descriptor.view) ? descriptor.documents.map(item => item.path) : [],
         initialRenderer: descriptor.view === 'xyzrender' ? 'xyzrender-external' : undefined,
         restore: checkpoint.restored, storage: checkpoint.storage, authorizedPaths: descriptor.documents.map(item => item.path),
-        fetch: transport.fetch, Worker: WorkspaceWorker, preparePreview: prepareWorkspacePreview, sendAnnotations,
+        fetch: transport.fetch, Worker: WorkspaceWorker, preparePreview: prepareWorkspacePreview, sendAnnotations, home,
       };
       window.fetch = transport.fetch;
       window.Worker = WorkspaceWorker;

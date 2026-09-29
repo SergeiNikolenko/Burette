@@ -1,6 +1,8 @@
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { runMcpAppOperation } from '../scripts/mcp-app-session.mjs';
+import { recentMcpDocuments, runMcpAppOperation } from '../scripts/mcp-app-session.mjs';
+import { resolvePdbEntry } from '../plugins/burette-agent/mcp/lib/pdb-entry.mjs';
+import { searchMentions } from '../plugins/burette-agent/mcp/registrations/mentions/register.mjs';
 
 // Start explicitly with Bun, then inspect the printed URL with the built-in Browser.
 const native = process.argv.includes('--native');
@@ -38,16 +40,25 @@ const server = createServer(async (request, response) => {
       response.setHeader('Content-Type', 'application/json');
       response.end(JSON.stringify({ content: [], _meta: { payload } }));
     } else if (request.url === '/deep-link' && request.method === 'POST') {
-      // Bundled example links only; the MCP tests cover the full link grammar.
+      // Examples, PDB entries and absolute paths; the MCP tests cover the full link grammar.
       let body = '';
       for await (const chunk of request) body += chunk;
       const { sessionId, url } = JSON.parse(body);
       const example = { '/example/1htb': '1htb.pdb', '/example/caffeine': 'caffeine.xyz' }[url];
-      if (!example) throw new Error(`Fixture cannot open ${url}.`);
-      const path = new URL(`../plugins/burette-agent/assets/examples/${example}`, import.meta.url).pathname;
-      const payload = await runMcpAppOperation({ operation: 'act', sessionId, action: { type: 'open_files', paths: [path], view: example.endsWith('.xyz') ? 'xyzrender' : 'auto' }, waitMs: 0 });
+      const pdbId = /^\/pdb\/([0-9][A-Za-z0-9]{3})$/u.exec(url)?.[1];
+      const openPath = url.startsWith('/open?') ? new URL(url, 'http://fixture').searchParams.get('path') : null;
+      if (!example && !pdbId && !openPath) throw new Error(`Fixture cannot open ${url}.`);
+      const path = example ? new URL(`../plugins/burette-agent/assets/examples/${example}`, import.meta.url).pathname : openPath || await resolvePdbEntry(pdbId);
+      const payload = await runMcpAppOperation({ operation: 'act', sessionId, action: { type: 'open_files', paths: [path], view: example?.endsWith('.xyz') ? 'xyzrender' : 'auto' }, waitMs: 0 });
       response.setHeader('Content-Type', 'application/json');
       response.end(JSON.stringify({ content: [], structuredContent: payload }));
+    } else if (request.url.startsWith('/mentions?')) {
+      const items = await searchMentions(new URL(request.url, 'http://fixture').searchParams.get('query') || '');
+      response.setHeader('Content-Type', 'application/json');
+      response.end(JSON.stringify({ content: [], structuredContent: { items } }));
+    } else if (request.url === '/recent') {
+      response.setHeader('Content-Type', 'application/json');
+      response.end(JSON.stringify({ content: [], structuredContent: { files: await recentMcpDocuments() } }));
     } else { response.writeHead(404).end(); }
   } catch (error) { response.writeHead(400, { 'Content-Type': 'application/json' }).end(JSON.stringify({ isError: true, content: [{ type: 'text', text: error.message }] })); }
 });
