@@ -16,7 +16,6 @@
   const TOOLBAR_ORIENTATION_HYSTERESIS = 48;
   const PANEL_CLOSE_HIT_WIDTH = 38;
   const MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX = 4;
-  const FINDER_PREVIEW_MAX_WIDTH_PX = 760;
   const MOLSTAR_TOUCH_CONTEXT_MENU_DELAY_MS = 520;
   const MOLSTAR_TOUCH_CONTEXT_MENU_MOVE_THRESHOLD_PX = 12;
   const MOLSTAR_TOUCH_PICK_RADIUS_PX = 18;
@@ -28,7 +27,7 @@
   const MOLSTAR_LASSO_PREVIEW_ATOM_LIMIT = 128;
   const MOLSTAR_LASSO_COMPONENT_KEY = 'burette-lasso-selection';
   const MOLSTAR_LASSO_COMPONENT_TAG = 'burette-lasso-selection-object';
-  const MOLSTAR_PREVIEW_RDKIT_SVG_SIZE = 420;
+  const MOLSTAR_PREVIEW_RDKIT_SVG_SIZE = 260;
   const MOLSTAR_STANDALONE_PREVIEW_MAX_ATOMS = 300;
   const MOLSTAR_EDIT_HISTORY_LIMIT = 20;
   const MOLSTAR_PRESET_PREVIEW_CLOSE_DELAY_MS = 700;
@@ -37,7 +36,6 @@
   const SDF_CONTEXT_STYLE_STORAGE_KEY = 'buret.sdf.contextStyle';
   const SDF_CONTEXT_OPACITY_STORAGE_KEY = 'buret.sdf.contextOpacity';
   const SDF_CONTEXT_COLOR_STORAGE_KEY = 'buret.sdf.contextColor';
-  const MOLSTAR_OUTLINE_BRIGHTNESS_STORAGE_KEY = 'buret.molstar.outlineBrightness';
   const XYZ_FRAME_MODE_STORAGE_KEY = 'buret.xyz.frameMode';
   const XYZ_FRAME_OVERLAY_BACKGROUND_LIMIT = 80;
   const MAX_STRUCTURE_OVERLAY_FRAME_COUNT = 50;
@@ -65,7 +63,7 @@
     { value: 'illustrative-surface', label: 'Ghost Surface', group: 'Burette', legacyStyle: 'illustrative-surface' },
     { value: 'ball-and-stick', label: 'Ball & Stick', group: 'Burette', legacyStyle: 'ball-and-stick' },
     { value: 'spacefill', label: 'Spacefill by Element', group: 'Burette', legacyStyle: 'spacefill' },
-    { value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line' },
+    { value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line', defaultAppearance: 'default' },
     { value: 'atomic-detail', label: 'Atomic Detail', group: 'Basic', provider: 'preset-structure-representation-atomic-detail' },
     { value: 'polymer-cartoon', label: 'Polymer Cartoon', group: 'Basic', provider: 'preset-structure-representation-polymer-cartoon' },
     { value: 'polymer-ligand', label: 'Polymer & Ligand', group: 'Basic', provider: 'preset-structure-representation-polymer-and-ligand' },
@@ -141,7 +139,6 @@
   const xyzrenderSheetRequests = new Map();
   const xyzrenderSheetItemEntries = new WeakMap();
   let molstarWindowResizeHandler = null;
-  let molstarOutlineBrightness = 0;
   let molstarContainerResizeCleanup = null;
   let molstarContextMenuCleanup = null;
   let molstarBrowserAnnotationTargetCleanup = null;
@@ -152,8 +149,10 @@
   let molstarStoryRestoredStateId = null;
   let molstarStoryDetailsTimer = 0;
   let molstarStoryDetailsHideTimer = 0;
+  let molstarStoryPreviewTimer = 0;
   let molstarStoryStepInFlight = false;
   let molstarStoryStepQueue = Promise.resolve();
+  let molstarStoryStepRequested = 0;
   let molstarStoryReportTimer = 0;
   let molstarStoryReportedAt = 0;
   const MOLSTAR_STORY_REPORT_INTERVAL_MS = 120;
@@ -178,6 +177,7 @@
   const MOLSTAR_STORY_REBUILT_STYLES = new Set(['illustrative-surface', 'cartoon', 'polymer-ligand']);
   const molstarStoryAuthoredRepresentations = new WeakMap();
   const MOLSTAR_STORY_TRANSITION_MS = 700;
+  const MOLSTAR_STORY_PREVIEW_DWELL_MS = 240;
   const MOLSTAR_STORY_DETAILS_DWELL_MS = 500;
   const MOLSTAR_STORY_STEP_SETTLE_TIMEOUT_MS = 700;
   let molstarContextMenuPick = null;
@@ -212,12 +212,15 @@
   // The card is destroyed and rebuilt whenever the selection changes, so the size
   // and the corner the user dragged it to live out here instead of on the element.
   let molstarMoleculePreviewGeometry = null;
-  // Hiding the card leaves the selection alone and parks it in a restore chip.
-  // The hidden state lasts until explicit restore or document teardown.
+  let molstarMoleculePreviewSize = 's';
+  // Closing the card (×) leaves the selection alone but parks the card: nothing
+  // re-shows it until the next genuine click. Minimizing tucks it into a chip in
+  // the corner that the same molecule pops back out of.
   let molstarMoleculePreviewSuppressed = false;
   let molstarMoleculePreviewMinimized = false;
   let molstarMoleculePreviewMinimizedTarget = null;
   let molstarMoleculePreviewChip = null;
+  let molstarPreviewRevealStart = null;
   let molstarSelectionHostSignature = '';
   let molstarPreviewRdkit = null;
   let molstarPreviewRdkitPromise = null;
@@ -254,8 +257,10 @@
       if (window.BuretteConfig && window.BuretteConfig.previewRequestID) {
         body.requestID = String(window.BuretteConfig.previewRequestID);
       }
+      if (body.type === 'selectionChanged') {
+        window.dispatchEvent(new CustomEvent('burette-selection-changed', { detail: body }));
+      }
       const hasWebkitBridge = !!window.webkit?.messageHandlers?.burette;
-      if (body.type === 'selectionChanged') window.dispatchEvent(new CustomEvent('burette-selection-changed', { detail: body }));
       window.webkit?.messageHandlers?.burette?.postMessage(body);
       if (hasWebkitBridge) return true;
       if (window.parent && window.parent !== window) {
@@ -329,7 +334,6 @@
   function installMolstarControlTooltips() {
     if (window.__buretteMolstarControlTooltipsInstalled) return;
     window.__buretteMolstarControlTooltipsInstalled = true;
-    document.body.classList.add('buret-control-tooltips');
     document.addEventListener('pointerover', event => {
       const control = molstarTooltipControlFromEvent(event);
       if (control) showMolstarControlTooltip(control);
@@ -344,8 +348,6 @@
       if (control) showMolstarControlTooltip(control);
     }, true);
     document.addEventListener('focusout', hideMolstarControlTooltip, true);
-    document.addEventListener('pointerdown', hideMolstarControlTooltip, true);
-    document.addEventListener('click', hideMolstarControlTooltip, true);
     window.addEventListener('resize', () => {
       if (molstarControlTooltipTarget) positionMolstarControlTooltip(molstarControlTooltipTarget);
     });
@@ -356,20 +358,18 @@
     const target = event.target;
     if (!target?.closest) return null;
     const control = target.closest(
-      '#buret-toolbar button, .buret-viewport-rail button, ' +
-      '.buret-corner-toggle, .buret-docking-poses button, ' +
       '.msp-plugin button[aria-label], .msp-plugin button[title], ' +
       '.msp-plugin [role="button"][aria-label], .msp-plugin [role="button"][title], ' +
       '.msp-plugin select[aria-label], .msp-plugin select[title], ' +
       '.msp-plugin input[aria-label], .msp-plugin input[title]'
     );
-    if (!control || control.closest('.buret-preview-dock, .buret-generate-3d-control')) return null;
+    if (!control || control.closest('#buret-toolbar, .buret-preview-dock, .buret-generate-3d-control')) return null;
     if (control.closest('.msp-hover-box-wrapper, .buret-seq-header, .buret-seq-footer')) return null;
     return control;
   }
 
   function molstarTooltipLabel(control) {
-    const label = (control.querySelector(':scope > .buret-tooltip')?.textContent || control.getAttribute('aria-label') || control.dataset.buretHint || control.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
+    const label = (control.getAttribute('aria-label') || control.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
     if (!label || label.length > 96) return '';
     return label;
   }
@@ -380,18 +380,12 @@
     molstarControlTooltip.className = 'buret-molstar-tooltip';
     molstarControlTooltip.setAttribute('role', 'tooltip');
     molstarControlTooltip.setAttribute('aria-hidden', 'true');
-    if (typeof molstarControlTooltip.showPopover === 'function') molstarControlTooltip.setAttribute('popover', 'manual');
     document.body.appendChild(molstarControlTooltip);
     return molstarControlTooltip;
   }
 
   function showMolstarControlTooltip(control) {
     const label = molstarTooltipLabel(control);
-    // The top-layer hint replaces both the local bubble and the native title.
-    if (control.hasAttribute('title')) {
-      control.dataset.buretHint = control.getAttribute('title');
-      control.removeAttribute('title');
-    }
     if (!label) {
       hideMolstarControlTooltip();
       return;
@@ -401,7 +395,6 @@
     tooltip.textContent = label;
     tooltip.classList.add('visible');
     tooltip.setAttribute('aria-hidden', 'false');
-    if (tooltip.hasAttribute('popover')) tooltip.showPopover();
     positionMolstarControlTooltip(control);
   }
 
@@ -426,7 +419,6 @@
     molstarControlTooltipTarget = null;
     if (!molstarControlTooltip) return;
     molstarControlTooltip.classList.remove('visible');
-    if (molstarControlTooltip.hasAttribute('popover')) molstarControlTooltip.hidePopover();
     molstarControlTooltip.setAttribute('aria-hidden', 'true');
   }
 
@@ -510,7 +502,6 @@
   let statusHideTimer = null;
   function setStatus(message, kind = 'info', options = {}) {
     const text = String(message || '');
-    if (kind === 'error' || text.startsWith('[web] Rendered ')) revealViewer();
     if (status) {
       if (statusHideTimer) {
         window.clearTimeout(statusHideTimer);
@@ -645,34 +636,27 @@
 
   async function executeBuretteAgentAction(action) {
     const type = String(action?.type || '');
-    if (type === 'workspace_scene_state') {
-      return { ok: true, result: { ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length) } };
-    }
-    if (type === 'align_scene_files') {
-      if (!activeStructureAlignmentControl) throw new Error('This scene does not support structure alignment.');
-      await activeStructureAlignmentControl.apply({ method: 'auto' });
-      return { ok: true, result: { aligned: true } };
-    }
-    if (type === 'export_scene_structure') {
-      const payload = molstarModifiedStructureExportPayloadForFormat(action.format);
-      if (new TextEncoder().encode(payload.text).length > 24 * 1024 * 1024) throw new Error('Structure export exceeds 24 MB.');
-      return { ok: true, result: payload };
-    }
-    if (type === 'copy_scene_sequence') {
-      if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
-      return { ok: true, result: { text: window.BuretteSceneFiles.sequence(activeMolstarViewer()) } };
-    }
-    if (type === 'append_scene_files') {
-      if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
-      return window.BuretteSceneFiles.append(activeMolstarViewer(), action, {
-        load: loadMolstarEntry, capture: captureMolstarCameraSnapshot, restore: restoreMolstarCameraSnapshotNow
-      });
+    if (type === 'dispose_viewer') {
+      window.BuretteViewerDisposed = true;
+      disposeActiveMolstarViewer();
+      floatingPanelTrackingCleanup?.();
+      floatingPanelTrackingCleanup = null;
+      toolbarAutoLayoutCleanup?.();
+      toolbarAutoLayoutCleanup = null;
+      window.BuretteAgent?.detach?.();
+      window.BuretteSceneActions = null;
+      window.BuretteDataBytes = null;
+      window.BuretteDataBase64 = null;
+      return { ok: true, command: type };
     }
     if (type === 'story_observe') {
       return molstarStoryResult('story_observe');
     }
     if (type === 'story_control') {
       return controlMolstarStory(action);
+    }
+    if (type === 'observe_frames' || type === 'control_frames') {
+      return controlFramesFromAction(action);
     }
     if (type === 'get_xtb_context') {
       const target = molstarSelectedMoleculeTargetFromSelection();
@@ -715,12 +699,6 @@
     if (type === 'show_components') {
       return window.BuretteSceneActions?.showComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.showComponents is unavailable.');
     }
-    if (type === 'edit_components') {
-      return window.BuretteSceneActions?.editComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'Component editing is unavailable.');
-    }
-    if (type === 'open_components_menu') {
-      return openCompositionSceneMenu(action);
-    }
     if (type === 'remove_components') {
       return window.BuretteSceneActions?.removeComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.removeComponents is unavailable.');
     }
@@ -743,6 +721,7 @@
       return result;
     }
     if (type === 'clear_selection') {
+      setMolstarLassoEnabled(false);
       clearMolstarPersistentMoleculePreview();
       return clearMolstarSelection();
     }
@@ -855,16 +834,20 @@
     if (type === 'reset_camera') {
       return window.BuretteAgent.run({ command: 'resetCamera', args: action.args || {} });
     }
-    if (type === 'observe_scene') return { ok: true, command: type, result: describeViewportScene() };
+    if (type === 'observe_scene') {
+      return { ok: true, command: type, result: describeViewportScene() };
+    }
     if (['query_atoms', 'query_groups', 'named_selection', 'select_atoms', 'measure_geometry', 'list_scene_layers', 'patch_scene_layers'].includes(type)) {
       const command = { query_atoms: 'queryAtoms', query_groups: 'queryGroups', named_selection: 'namedSelection', select_atoms: 'selectAtoms', measure_geometry: 'measureGeometry', list_scene_layers: 'listSceneLayers', patch_scene_layers: 'patchSceneLayers' }[type];
       return window.BuretteAgent.run({ command, args: action });
     }
     if (type === 'capture_scene') return captureAgentScene(action);
-    if (type === 'describe_region') return describeAgentRegion(action);
-    if (type === 'annotation_snapshot') return annotationSnapshot(action);
-    if (type === 'replace_document') return replaceMolecularDocument(action);
-    if (['set_scene_motion', 'set_scene_wiggle', 'rotate_camera'].includes(type)) return controlViewportFromAction(action);
+    if (type === 'replace_document') {
+      return replaceMolecularDocument(action);
+    }
+    if (type === 'set_scene_motion' || type === 'set_scene_wiggle' || type === 'rotate_camera') {
+      return controlViewportFromAction(action);
+    }
     if (type === 'hide_waters') {
       return window.BuretteSceneActions?.hideWaters?.() || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.hideWaters is unavailable.');
     }
@@ -964,132 +947,6 @@
     return { ok: true, command: 'capture_scene', result: { capturedAt: new Date().toISOString(), scene, depiction, images } };
   }
 
-  // Annotate mode: report what lies under a screen rectangle (viewer client
-  // pixels) without moving the camera. In Mol*, `granularity: 'residue'` widens
-  // the atoms to whole residues and `select: true` adds them to the selection so
-  // the user sees what the note covers. The payload is bounded because the host
-  // forwards it into the agent's context.
-  async function describeAgentRegion(action) {
-    const rect = action.rect || {};
-    const left = Number(rect.left), top = Number(rect.top), width = Number(rect.width), height = Number(rect.height);
-    if (![left, top, width, height].every(Number.isFinite) || width < 0 || height < 0) {
-      return agentActionFailure('describe_region', 'INVALID_ARGS', 'describe_region requires rect {left, top, width, height}.');
-    }
-    const box = { left, top, right: left + width, bottom: top + height };
-    const hits = element => {
-      const r = element.getBoundingClientRect();
-      return r.width > 0 && r.height > 0 && r.right >= box.left && r.left <= box.right && r.bottom >= box.top && r.top <= box.bottom;
-    };
-    const result = { surface: 'document' };
-    if (isXyzrenderLassoSurfaceActive()) {
-      result.surface = 'xyzrender';
-      result.structures = [];
-      const click = width <= 24 && height <= 24;
-      const cx = left + width / 2, cy = top + height / 2;
-      for (const item of document.querySelectorAll('.buret-xyzrender-sheet-item')) {
-        if (!hits(item)) continue;
-        let atoms = xyzrenderAtomNodes(item).filter(atom => atom.x >= box.left - atom.radius && atom.x <= box.right + atom.radius
-          && atom.y >= box.top - atom.radius && atom.y <= box.bottom + atom.radius);
-        // A click names the one atom under the pointer and snaps the box to it.
-        if (click && atoms.length) {
-          const atom = atoms.reduce((best, next) => Math.hypot(next.x - cx, next.y - cy) < Math.hypot(best.x - cx, best.y - cy) ? next : best);
-          atoms = [atom];
-          const drawn = atom.element.getBoundingClientRect();
-          result.box = { left: drawn.left, top: drawn.top, width: drawn.width, height: drawn.height };
-        }
-        const indexes = atoms.map(atom => atom.index);
-        if (indexes.length) result.structures.push({ label: String(sheetEntryLabel(xyzrenderSheetItemEntry(item)) || '').split('/').pop().slice(0, 160),
-          atomCount: indexes.length, atoms: compactXyzrenderAtomSelector(indexes) });
-        if (click && indexes.length || result.structures.length >= 16) break;
-      }
-      return { ok: true, command: 'describe_region', result };
-    }
-    const viewer = activeMolstarViewer();
-    const canvas = viewer?.plugin?.canvas3d ? viewer.plugin.canvas3dContext?.canvas || document.querySelector('.msp-plugin canvas') : null;
-    const canvasRect = canvas?.getBoundingClientRect();
-    if (canvas && canvasRect.width && canvasRect.height && hits(canvas)) {
-      result.surface = 'molstar';
-      let lociList;
-      if (width < 6 && height < 6) {
-        const pick = molstarPickFromCanvasPoint(canvas, left + width / 2, top + height / 2);
-        lociList = pick?.loci?.kind === 'element-loci' ? [pick.loci] : [];
-      } else {
-        lociList = await molstarLassoProjectedLoci({ canvas, points: [
-          { x: box.left, y: box.top }, { x: box.right, y: box.top }, { x: box.right, y: box.bottom }, { x: box.left, y: box.bottom }] });
-      }
-      const StructureElement = molstarStructureRuntime().StructureElement;
-      if (action.granularity === 'residue' && typeof StructureElement?.Loci?.extendToWholeResidues === 'function') {
-        lociList = lociList.map(loci => StructureElement.Loci.extendToWholeResidues(loci));
-      }
-      if (action.select === true) {
-        const selects = viewer.plugin.managers?.interactivity?.lociSelects;
-        for (const loci of lociList) selects?.select?.({ loci }, false);
-      }
-      Object.assign(result, molstarLociIdentities(lociList));
-      return { ok: true, command: 'describe_region', result };
-    }
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    const range = document.createRange();
-    let text = '';
-    for (let node = walker.nextNode(); node && text.length < 1200; node = walker.nextNode()) {
-      if (!node.nodeValue.trim()) continue;
-      range.selectNodeContents(node);
-      if ([...range.getClientRects()].some(r => r.right >= box.left && r.left <= box.right && r.bottom >= box.top && r.top <= box.bottom)) text += `${node.nodeValue.trim()} `;
-    }
-    result.text = text.trim().slice(0, 1200);
-    return { ok: true, command: 'describe_region', result };
-  }
-
-  // Annotate mode: one frame of the Mol* view with the numbered marks drawn on
-  // it (viewer client pixels), so a batch carries a single picture however many
-  // regions it has. The frame stays within the 1 MiB image budget.
-  async function annotationSnapshot(action) {
-    const viewer = activeMolstarViewer();
-    const canvas = viewer?.plugin?.canvas3d ? viewer.plugin.canvas3dContext?.canvas || document.querySelector('.msp-plugin canvas') : null;
-    const frame = canvas?.getBoundingClientRect();
-    if (!frame?.width || !frame?.height) return agentActionFailure('annotation_snapshot', 'NOT_AVAILABLE', 'No Mol* view to capture.');
-    const scale = Math.min(window.devicePixelRatio || 1, 1280 / Math.max(frame.width, frame.height));
-    const width = Math.round(frame.width * scale), height = Math.round(frame.height * scale);
-    const shot = await window.BuretteAgent.run({ command: 'screenshot', args: { width, height, format: 'png', transparent: false, autoCrop: false, axes: false } });
-    if (shot?.ok === false) return shot;
-    const image = new Image();
-    await withTimeout(new Promise((resolve, reject) => {
-      image.onload = resolve;
-      image.onerror = () => reject(new Error('Could not decode the view capture.'));
-      image.src = shot.result.dataUri;
-    }), 5000, 'View capture timed out');
-    const output = document.createElement('canvas');
-    output.width = width; output.height = height;
-    const context = output.getContext('2d');
-    context.drawImage(image, 0, 0, width, height);
-    for (const [position, mark] of (Array.isArray(action.marks) ? action.marks : []).slice(0, 20).entries()) {
-      const x = (Number(mark.left) - frame.left) * scale, y = (Number(mark.top) - frame.top) * scale;
-      const w = Number(mark.width) * scale, h = Number(mark.height) * scale;
-      if (![x, y, w, h].every(Number.isFinite)) continue;
-      context.setLineDash([6 * scale, 4 * scale]);
-      context.lineWidth = 2 * scale;
-      context.strokeStyle = '#3b82f6';
-      context.strokeRect(x, y, Math.max(w, 2), Math.max(h, 2));
-      context.setLineDash([]);
-      const cx = Number.isFinite(Number(mark.pinX)) ? (Number(mark.pinX) - frame.left) * scale : x + w;
-      const cy = Number.isFinite(Number(mark.pinY)) ? (Number(mark.pinY) - frame.top) * scale : y;
-      context.beginPath();
-      context.arc(cx, cy, 11 * scale, 0, 2 * Math.PI);
-      context.fillStyle = '#3b82f6';
-      context.fill();
-      context.strokeStyle = '#ffffff';
-      context.stroke();
-      context.fillStyle = '#ffffff';
-      context.font = `600 ${12 * scale}px -apple-system, system-ui, sans-serif`;
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.fillText(String(Number(mark.index) || position + 1), cx, cy + 0.5 * scale);
-    }
-    const dataUri = output.toDataURL('image/jpeg', 0.85);
-    if (dataUri.length - 'data:image/jpeg;base64,'.length > 1398104) return agentActionFailure('annotation_snapshot', 'PAYLOAD_TOO_LARGE', 'The view capture exceeds the 1 MiB image budget.');
-    return { ok: true, command: 'annotation_snapshot', result: { dataUri, mimeType: 'image/jpeg', width, height } };
-  }
-
   function molstarStoryState() {
     const manager = activeViewer?.plugin?.managers?.snapshot;
     const entries = manager?.state?.entries ? Array.from(manager.state.entries) : [];
@@ -1161,12 +1018,21 @@
     return targetSnapshot;
   }
 
-  // Serialize explicit steps so rapid clicks and agent commands cannot apply
-  // competing snapshots. Hover only previews the description, never the scene.
+  // Steps overlap easily - hovering down the list, holding Next, an agent call
+  // arriving mid-transition - and overlapping them means competing snapshot
+  // applies and unbalanced render pauses, which looks like the viewer tearing
+  // itself apart. Steps run one at a time. A hover preview that a later hover
+  // overtook while it waited is dropped - only where the pointer ended up
+  // matters - but a requested step always runs: `story_control` answers the
+  // agent with the result, and dropping one would answer with nothing.
   function controlMolstarStory(action) {
+    const serial = ++molstarStoryStepRequested;
     molstarStoryStepQueue = molstarStoryStepQueue
       .catch(() => {})
-      .then(() => applyMolstarStoryControl(action));
+      .then(() => (action.preview === true
+        && (serial !== molstarStoryStepRequested || action.stillWanted?.() === false)
+        ? molstarStoryResult('story_control')
+        : applyMolstarStoryControl(action)));
     return molstarStoryStepQueue;
   }
 
@@ -1198,7 +1064,7 @@
     // Mol* animate the snapshot camera during that pause consumes the transition
     // invisibly and leaves a single jump when rendering resumes. Swap instantly,
     // then animate between the captured cameras once the finished scene can draw.
-    if (isStep) setMolstarStoryTransition(manager, restyles ? 0 : MOLSTAR_STORY_TRANSITION_MS);
+    if (isStep) setMolstarStoryTransition(manager, restyles || action.preview === true ? 0 : MOLSTAR_STORY_TRANSITION_MS);
     if (restyles) {
       molstarStoryStepInFlight = true;
       canvas3d?.pause?.(true);
@@ -1214,9 +1080,6 @@
           ? action.index
           : entries.findIndex(entry => entry?.key === action.key || entry?.snapshot?.id === action.id);
         if (index < 0 || index >= entries.length) return agentActionFailure('story_control', 'STORY_STEP_NOT_FOUND', 'The requested Story step does not exist.');
-        // Check when this queued command runs, not when the click is received.
-        // Double clicks must not rebuild the same pose or reset its camera.
-        if (entries[index].snapshot.id === manager.state.current) return molstarStoryResult('story_control');
         const snapshot = manager.setCurrent(entries[index].snapshot.id);
         if (snapshot) await activeViewer.plugin.state.setSnapshot(snapshot);
       } else {
@@ -1445,7 +1308,9 @@
       molstarStoryStateCleanup = () => {
         subscription.unsubscribe();
         if (molstarStoryReportTimer) clearTimeout(molstarStoryReportTimer);
+        if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
         molstarStoryReportTimer = 0;
+        molstarStoryPreviewTimer = 0;
         document.querySelector('.buret-molstar-story')?.__buretStoryDragCleanup?.();
         document.querySelector('.buret-molstar-story')?.remove();
         hideMolstarStoryDetails();
@@ -1535,15 +1400,6 @@
 
   window.addEventListener('message', event => {
     const body = event.data && event.data.source === 'burette-agent-host' ? event.data.body : null;
-    if (body?.type === 'compositionVisibilityRequest') {
-      for (const query of (Array.isArray(body.queries) ? body.queries.slice(0, 128) : [])) {
-        if (typeof query === 'string' && query.length > 0 && query.length <= 4096) molstarCompositionQueries.set(query, null);
-      }
-      while (molstarCompositionQueries.size > 128) molstarCompositionQueries.delete(molstarCompositionQueries.keys().next().value);
-      molstarCompositionVisibilitySignature = '';
-      reportMolstarCompositionVisibility();
-      return;
-    }
     if (!body || body.type !== 'agent-action' || !body.id) return;
     void (async () => {
       let result;
@@ -1604,13 +1460,8 @@
     if (!requestedActions.length) return;
     hostedMcpActionsApplied = true;
     try {
-      // The React-hosted viewer is a same-origin srcdoc child; the MCP Apps
-      // connection belongs to its parent shell. Re-read after readiness because
-      // initialization replaces the shell's temporary bridge object.
-      const bridgeWindow = window.BuretteHostedAppBridge ? window : window.parent;
-      if (!bridgeWindow?.BuretteHostedAppBridge) throw new Error('Hosted scene bridge is unavailable.');
-      await bridgeWindow.BuretteHostedAppBridge.ready;
-      const actions = bridgeWindow.BuretteHostedAppBridge?.sanitizeViewerActions?.(requestedActions) || [];
+      await window.BuretteHostedAppBridge?.ready;
+      const actions = window.BuretteHostedAppBridge?.sanitizeViewerActions?.(requestedActions) || [];
       if (actions.length !== requestedActions.length) {
         throw new Error('Hosted scene contained an action outside the public Burette allowlist.');
       }
@@ -1815,7 +1666,6 @@
   let leftPanelVisibilityGuardInstalled = false;
   let viewportCornerLayoutHandle = 0;
   let molstarStructureDirty = false;
-  let pendingMolstarSave = null;
 
   // A viewer in a hidden tab still has a full-size iframe, so it used to redraw
   // on every window resize alongside the visible one. A collapsed container has
@@ -1910,7 +1760,6 @@
   let pendingTrajectoryPlaybackRestore = null;
   let viewportTrajectoryAnimationEpoch = 0;
   let activeSdfPoseMode = 'single';
-  let activeSdfCollectionLayout = 'overlap';
   let activeSdfCollectionVisibilityState = null;
   let activeXyzFrameOverlayState = null;
   let xyzFrameAlignment = null;
@@ -1935,6 +1784,8 @@
   let keyboardShortcutsInstalled = false;
   let themeListenerInstalled = false;
   let floatingPanelTrackingInstalled = false;
+  let floatingPanelTrackingCleanup = null;
+  let toolbarAutoLayoutCleanup = null;
   let floatingLayoutFrame = 0;
   let molstarViewportPanelOpen = false;
   let molstarSelectionControlsOpen = false;
@@ -2041,6 +1892,7 @@
   }
 
   function molstarPresetAppearance(option, config) {
+    if (option?.defaultAppearance) return normalizeMolstarAppearance(option.defaultAppearance);
     return configuredMolstarAppearance(config);
   }
 
@@ -2144,7 +1996,7 @@
   function readStoredViewerTheme() {
     try {
       const storedTheme = window.localStorage && window.localStorage.getItem(VIEWER_THEME_STORAGE_KEY);
-      return ['auto', 'dark', 'light'].includes(storedTheme) ? storedTheme : null;
+      return storedTheme === 'dark' || storedTheme === 'light' ? storedTheme : null;
     } catch (_) {
       return null;
     }
@@ -2232,42 +2084,6 @@
     return Math.min(Math.max(opacity, 0.72), 0.98);
   }
 
-  function normalizeMolstarOutlineBrightness(value) {
-    const brightness = Number(value);
-    if (!Number.isFinite(brightness)) return 0;
-    return Math.min(Math.max(brightness, 0), 1);
-  }
-
-  function readMolstarOutlineBrightness() {
-    try {
-      return normalizeMolstarOutlineBrightness(window.localStorage?.getItem(MOLSTAR_OUTLINE_BRIGHTNESS_STORAGE_KEY));
-    } catch (_) {
-      return 0;
-    }
-  }
-
-  function molstarOutlineColor() {
-    const channel = Math.round(molstarOutlineBrightness * 255);
-    return (channel << 16) | (channel << 8) | channel;
-  }
-
-  function setMolstarOutlineBrightness(value, viewer = activeMolstarViewer()) {
-    molstarOutlineBrightness = normalizeMolstarOutlineBrightness(value);
-    try {
-      window.localStorage?.setItem(MOLSTAR_OUTLINE_BRIGHTNESS_STORAGE_KEY, molstarOutlineBrightness.toFixed(2));
-    } catch (_) {}
-    const canvas = viewer?.plugin?.canvas3d;
-    if (!canvas || canvas.props.postprocessing.outline.name !== 'on') return;
-    canvas.setProps({
-      postprocessing: {
-        outline: {
-          name: 'on',
-          params: { ...canvas.props.postprocessing.outline.params, color: molstarOutlineColor() }
-        }
-      }
-    });
-  }
-
   function resolvedCanvasBackground() {
     if (canvasBackground === 'auto') return resolveViewerTheme() === 'light' ? 'white' : 'graphite';
     return canvasBackground;
@@ -2351,9 +2167,6 @@
     } else if (viewerTheme === 'light') {
       canvasBackground = 'white';
       transparentBackground = false;
-    } else {
-      canvasBackground = 'auto';
-      transparentBackground = false;
     }
     if (persist) {
       try {
@@ -2368,7 +2181,7 @@
   }
 
   function toggleViewerTheme(viewer = activeViewer) {
-    const nextTheme = viewerTheme === 'auto' ? 'light' : viewerTheme === 'light' ? 'dark' : 'auto';
+    const nextTheme = resolveViewerTheme() === 'dark' ? 'light' : 'dark';
     setViewerTheme(nextTheme, viewer);
     return nextTheme;
   }
@@ -2403,30 +2216,30 @@
     applyViewerUIScale(viewer);
   }
 
-  function initViewerKeyboardShortcuts(viewer) {
+  function initViewerKeyboardShortcuts() {
     if (keyboardShortcutsInstalled) return;
     keyboardShortcutsInstalled = true;
 
     document.addEventListener('keydown', event => {
-      if (event.defaultPrevented || !event.metaKey || event.ctrlKey || event.altKey) return;
+      if (!activeViewer || event.defaultPrevented || !event.metaKey || event.ctrlKey || event.altKey) return;
       const tagName = event.target?.tagName?.toLowerCase();
       if (tagName === 'input' || tagName === 'textarea' || tagName === 'select') return;
 
       if (event.key === '+' || event.key === '=' || event.key === 'Add') {
         event.preventDefault();
-        setViewerUIScale(viewerUIScale + VIEWER_UI_SCALE_STEP, viewer);
+        setViewerUIScale(viewerUIScale + VIEWER_UI_SCALE_STEP, activeViewer);
         return;
       }
 
       if (event.key === '-' || event.key === '_' || event.key === 'Subtract') {
         event.preventDefault();
-        setViewerUIScale(viewerUIScale - VIEWER_UI_SCALE_STEP, viewer);
+        setViewerUIScale(viewerUIScale - VIEWER_UI_SCALE_STEP, activeViewer);
         return;
       }
 
       if (event.key === '0') {
         event.preventDefault();
-        setViewerUIScale(DEFAULT_VIEWER_UI_SCALE, viewer);
+        setViewerUIScale(DEFAULT_VIEWER_UI_SCALE, activeViewer);
       }
     }, true);
   }
@@ -2463,9 +2276,6 @@
     const control = document.querySelector('[data-buret-renderer-control]');
     const toolbar = document.getElementById('buret-toolbar');
     if (!control || !toolbar) return;
-    toolbar.querySelectorAll('[data-buret-mode-icon]').forEach(slot => {
-      if (!slot.firstChild) slot.appendChild(sceneTreeIconElement(APP_ICON_DATA[slot.dataset.buretModeIcon]));
-    });
     const format = normalizeFormat(config.molstarFormat || config.format);
     const xyzrenderViewer = config.xyzrenderViewer === true;
     const xyzrenderAvailable = config.xyzrenderAvailable !== false;
@@ -2548,7 +2358,6 @@
       const unavailable = rendererChoiceUnavailable(value, format, config, xyzrenderAvailable);
       button.classList.toggle('hidden', unavailable);
       button.classList.toggle('active', !unavailable && value === renderer);
-      button.setAttribute('aria-pressed', !unavailable && value === renderer ? 'true' : 'false');
       button.disabled = unavailable;
       button.setAttribute('aria-disabled', unavailable ? 'true' : 'false');
       if (control.dataset.rendererBound !== '1') {
@@ -2565,12 +2374,6 @@
       return;
     }
 
-    const inspector = toolbar.querySelector('[data-buret-action="xyzrender-inspector"]');
-    if (inspector && !inspector.dataset.bound) {
-      inspector.dataset.bound = '1';
-      inspector.addEventListener('click', () => postHostMessage({ type: 'openXyzrenderInspector' }));
-    }
-    toolbar.classList.toggle('buret-xyzrender-app', config.appViewer === true);
     const select = toolbar.querySelector('[data-buret-xyzrender-preset]');
     if (select) {
       populateXyzrenderPresetSelect(select, config.xyzrenderPresetOptions);
@@ -2582,14 +2385,14 @@
       }
     }
     if (tuneButton) {
-      tuneButton.classList.toggle('hidden', renderer !== 'xyzrender-external' || config.appViewer === true);
-      if (renderer !== 'xyzrender-external' || config.appViewer === true) {
+      tuneButton.classList.toggle('hidden', renderer !== 'xyzrender-external');
+      if (renderer !== 'xyzrender-external') {
         setXyzrenderPopoverVisibility(toolbar, false, { persist: false });
       }
       if (renderer === 'xyzrender-external') {
         populateXyzrenderControlsForm(toolbar, normalizeXyzrenderControls(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config));
         updateXyzrenderFormVisibility(toolbar);
-        if (popoverWasOpen && config.appViewer !== true) {
+        if (popoverWasOpen) {
           setXyzrenderPopoverVisibility(toolbar, true, { resetScroll: false });
           if (popover) popover.scrollTop = popoverScrollTop;
         }
@@ -2782,34 +2585,12 @@
     return values.every(number => Number.isFinite(number) && number > 0) ? values : null;
   }
 
-  let externalArtifactViewSnapshot = null;
-
-  function saveRendererViewState() {
-    const config = activeConfig || window.BuretteConfig || {};
-    const patch = config.renderer === 'xyzrender-external'
-      ? { xyz: externalArtifactViewSnapshot?.() }
-      : { camera: captureMolstarCameraSnapshot(activeViewer) };
-    window.BuretteRendererViewState?.save(config.documentId, patch);
-    const viewState = window.BuretteRendererViewState?.read(config.documentId);
-    postHostMessage({ type: 'rendererViewStateChanged', viewState });
-    return viewState;
-  }
-  window.addEventListener('pagehide', saveRendererViewState);
-  let rendererViewSaveTimer;
-  const scheduleRendererViewSave = () => {
-    clearTimeout(rendererViewSaveTimer);
-    rendererViewSaveTimer = setTimeout(saveRendererViewState, 250);
-  };
-  window.addEventListener('pointerup', scheduleRendererViewSave);
-  window.addEventListener('wheel', scheduleRendererViewSave, { passive: true });
-
   function requestRendererSwitch(renderer) {
-    const viewState = saveRendererViewState();
     const value = normalizeRenderer(renderer);
     if (requestBrowserDevRendererSwitch(value)) return;
     const orientationRef = value === 'xyzrender-external' ? captureCurrentXyzrenderOrientationRef() : null;
-    const activeModel = activeTrajectoryFrameIndexForRendererSwitch();
-    const payload = { type: 'setRenderer', value, viewState };
+    const activeModel = value === 'xyzrender-external' ? activeTrajectoryFrameIndexForRendererSwitch() : null;
+    const payload = { type: 'setRenderer', value };
     if (orientationRef) {
       payload.orientationRef = orientationRef.text;
       payload.orientationAtomCount = orientationRef.atomCount;
@@ -3012,9 +2793,6 @@
 
   function requestMolecularCompute(operation = 'generate3d', options = {}) {
     const config = activeConfig || window.BuretteConfig || {};
-    // MCP widgets have no native-compute transport. Do not advertise or send
-    // desktop compute actions just because the document happens to be an SDF.
-    if (config.hostedMcpWidgetBootstrap === true || config.visualizationOnly === true) return;
     const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (!['sdf', 'sd', 'mol'].includes(format)) {
       setStatus('Native molecular compute supports SDF and MOL structures in Molstar.', 'error');
@@ -3046,7 +2824,7 @@
   }
 
   function canGenerate3DConformerFromConfig(config, renderer) {
-    if (config?.hostedMcpWidgetBootstrap === true || config?.visualizationOnly === true) return false;
+    if (config?.visualizationOnly === true) return false;
     const format = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format);
     return renderer === 'molstar' && ['sdf', 'sd', 'mol'].includes(format);
   }
@@ -3063,88 +2841,8 @@
     const data = event.data || {};
     const body = data.source === 'burette-host' ? data.body : null;
     if (!body) return;
-    if (event.source === window.parent && body.type === 'openXyzrenderEditor') {
-      if (body.documentId === (activeConfig || window.BuretteConfig || {}).documentId) void openXyzrender3DEditor();
-      return;
-    }
-    if (event.source === window.parent && body.type === 'applyXyzrenderAnimationFrame') {
-      const { width, height, pixels } = body;
-      if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > 1024 || height > 1024 || !(pixels instanceof Uint8ClampedArray) || pixels.length !== width * height * 4) return;
-      const item = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item')).find(node => node.dataset.buretXyzrenderEditorId === body.itemId);
-      const content = item?.querySelector('.buret-xyzrender-sheet-item-body');
-      if (!content) return;
-      let canvas = content.querySelector('.buret-xyzrender-animation-canvas');
-      if (!canvas) {
-        canvas = document.createElement('canvas');
-        canvas.className = 'buret-xyzrender-animation-canvas';
-        canvas.setAttribute('aria-label', 'Molecular animation');
-        canvas.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:inherit;pointer-events:none';
-        content.append(canvas);
-      }
-      if (canvas.width !== width) canvas.width = width;
-      if (canvas.height !== height) canvas.height = height;
-      canvas.getContext('2d').putImageData(new ImageData(pixels, width, height), 0, 0);
-      for (const node of content.querySelectorAll('svg, .buret-xyzrender-animation-image')) node.style.visibility = 'hidden';
-      return;
-    }
-    if (event.source === window.parent && body.type === 'applyXyzrenderAnimation') {
-      const item = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item')).find(node => node.dataset.buretXyzrenderEditorId === body.itemId);
-      const content = item?.querySelector('.buret-xyzrender-sheet-item-body');
-      if (!content || typeof body.image !== 'string' || body.image.length > 24000000 || !/^data:image\/(png|gif);base64,[A-Za-z0-9+/=]+$/.test(body.image)) return;
-      content.querySelector('.buret-xyzrender-animation-canvas')?.remove();
-      if (body.commit) pushXyzrenderActionHistory(item, 'apply animation');
-      const svg = content.querySelector('svg');
-      if (svg) svg.style.visibility = 'hidden';
-      let image = content.querySelector('.buret-xyzrender-animation-image');
-      if (!image) {
-        image = document.createElement('img');
-        image.className = 'buret-xyzrender-animation-image';
-        image.alt = 'Molecular animation';
-        image.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:inherit;pointer-events:none';
-        content.append(image);
-      }
-      image.style.visibility = 'visible';
-      image.src = body.image;
-      return;
-    }
-    if (event.source === window.parent && body.type === 'applyXyzrenderOrientation') {
-      const item = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item')).find(node => node.dataset.buretXyzrenderEditorId === body.itemId);
-      if (!item || typeof body.svg !== 'string' || typeof body.orientationRef !== 'string') return;
-      pushXyzrenderActionHistory(item, 'change molecular orientation');
-      updateXyzrenderSheetItemBody(item, body.svg);
-      if (body.controls) {
-        item.dataset.buretXyzrenderControls = JSON.stringify(normalizeXyzrenderControls(body.controls));
-        const background = item.querySelector('.buret-xyzrender-sheet-item-background');
-        if (background) background.style.display = body.controls.transparentBackground ? 'none' : '';
-      }
-      item.dataset.buretXyzrenderOrientationRef = body.orientationRef;
-      if (typeof body.orientationBaseRef === 'string') item.dataset.buretXyzrenderOrientationBase = body.orientationBaseRef;
-      if (Array.isArray(body.angles) && body.angles.length === 3 && body.angles.every(Number.isFinite)) item.dataset.buretXyzrenderOrientationAngles = JSON.stringify(body.angles);
-      return;
-    }
-    if (event.source === window.parent && body.type === 'molstarContextMenuResult') {
-      handleMolstarNativeMenuResult(body);
-      return;
-    }
-    if (body.type === 'xyzrenderContextMenuResult') {
-      const pending = xyzrenderContextMenuPending;
-      if (!pending || pending.requestId !== body.requestId) return;
-      xyzrenderContextMenuPending = null;
-      if (body.unsupported) pending.fallback();
-      else if (typeof body.action === 'string') pending.run(body.action);
-      return;
-    }
-    if (body.type === 'structureExportResult') {
-      if (pendingMolstarSave?.requestId === body.requestId) {
-        const unchanged = pendingMolstarSave.revision === molstarPresetPreviewSceneRevision;
-        pendingMolstarSave = null;
-        if (body.status === 'saved' && unchanged) setMolstarStructureDirty(false);
-      }
-      return;
-    }
     if (body.type === 'viewerVisibilityChanged') {
       hostViewerVisible = body.visible !== false;
-      activeTrajectoryPlaybackControl?.visibilityChanged?.();
       if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer, 0);
       return;
     }
@@ -3185,13 +2883,6 @@
         return;
       }
       const options = { controls, preset };
-      if (typeof body.itemId === 'string') {
-        if (event.source !== window.parent || (body.documentId && body.documentId !== documentId)) return;
-        const item = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item')).find(node => node.dataset.buretXyzrenderEditorId === body.itemId);
-        if (item) void updateSelectedXyzrenderSheetItems([item], options);
-        return;
-      }
-      if (requestSelectedXyzrenderSheetItemsUpdate(options)) return;
       if (requestBrowserDevXyzrenderUpdate(options)) return;
       const sent = postHostMessage({ type: 'setXyzrenderControls', documentId, controls, preset, ...xyzrenderOrientationPayload(options) });
       if (!sent) setStatus('xyzrender controls are available only in the app or Quick Look viewer.', 'error');
@@ -3245,6 +2936,8 @@
     }
   }
 
+  // Native MCP document tabs reuse one Mol* instance. This internal adapter is
+  // fed authorized bytes by the host; it is not an agent URL/file-loading tool.
   async function replaceMolecularDocument({ config, bytes, snapshot }) {
     if (!activeViewer || !['pdb', 'mmcif'].includes(config?.format) || !(bytes instanceof Uint8Array) || bytes.byteLength > 16 * 1024 * 1024) {
       throw new Error('A ready viewer and bounded PDB/mmCIF document are required.');
@@ -3410,7 +3103,6 @@
   }
 
   function scheduleMolstarStructureFocus(viewer, options = {}) {
-    if (activeConfig?.inspectorPreview === true) return;
     if (options.force !== true && !molstarAutoFocusEnabled(activeConfig)) return;
     if (options.allowWithContextFocus !== true && hasMolstarContextFocus(activeConfig)) return;
     const serial = ++molstarStructureFocusSerial;
@@ -3451,7 +3143,7 @@
       const configuredScale = Number(options.radiusScale);
       const radiusScale = Number.isFinite(configuredScale) && configuredScale > 0
         ? configuredScale
-        : (document.body?.classList.contains('burette-mobile-host') ? 0.58 : 0.88);
+        : (document.body?.classList.contains('burette-mobile-host') ? 0.58 : window.BuretteNativeFirstFrame ? 0.7 : 0.88);
       const up = Array.isArray(options.up) && options.up.length >= 3 ? options.up : [0, 1, 0];
       const direction = Array.isArray(options.direction) && options.direction.length >= 3
         ? options.direction
@@ -3491,9 +3183,9 @@
       try {
         const stored = window.localStorage?.getItem(storageKey);
         if (stored === 'all' || stored === 'single') return stored;
-        return 'single';
+        return sceneMode === 'structureAll' ? 'all' : 'single';
       } catch (_) {
-        return 'single';
+        return sceneMode === 'structureAll' ? 'all' : 'single';
       }
     }
     const format = normalizeFormat(config?.molstarFormat || config?.format);
@@ -3526,20 +3218,6 @@
       const storageKey = poseModeStorageKey(activeConfig);
       window.localStorage?.setItem(storageKey, activeSdfPoseMode);
     } catch (_) {}
-  }
-
-  function sdfCollectionLayoutStorageKey(config) {
-    return `buret.sdfCollection.layout.${String(config?.documentId || config?.label || 'collection')}`;
-  }
-
-  function readSdfCollectionLayout(config) {
-    try { return window.localStorage?.getItem(sdfCollectionLayoutStorageKey(config)) === 'spread' ? 'spread' : 'overlap'; }
-    catch (_) { return 'overlap'; }
-  }
-
-  function setSdfCollectionLayout(layout) {
-    activeSdfCollectionLayout = layout === 'spread' ? 'spread' : 'overlap';
-    try { window.localStorage?.setItem(sdfCollectionLayoutStorageKey(activeConfig), activeSdfCollectionLayout); } catch (_) {}
   }
 
   function notifyStructureOverlayModeChanged(prepared = activeMolstarPrepared) {
@@ -3596,12 +3274,6 @@
   }
 
   function updateStructureOverlayToggleButton(button, prepared = activeMolstarPrepared) {
-    const spread = document.querySelector('[data-buret-action="sdf-collection-spread"]');
-    if (spread) {
-      const active = activeSdfPoseMode === 'all' && activeSdfCollectionLayout === 'spread';
-      spread.classList.toggle('active', active);
-      spread.setAttribute('aria-pressed', active ? 'true' : 'false');
-    }
     if (!button) return;
     const available = structureOverlayToggleAvailable(prepared);
     button.classList.toggle('hidden', !available);
@@ -3774,9 +3446,7 @@
     const normalized = normalizeRenderer(renderer);
     toolbar.dataset.activeRenderer = normalized;
     toolbar.querySelectorAll('[data-buret-renderer]').forEach(button => {
-      const active = button.getAttribute('data-buret-renderer') === normalized;
-      button.classList.toggle('active', active);
-      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      button.classList.toggle('active', button.getAttribute('data-buret-renderer') === normalized);
     });
     const presetSlot = toolbar.querySelector('[data-buret-xyzrender-preset-slot]');
     const preset = toolbar.querySelector('[data-buret-xyzrender-preset]');
@@ -3893,12 +3563,8 @@
     const label = trigger?.querySelector('[data-buret-molstar-preset-label]');
     const menu = document.querySelector('[data-buret-molstar-preset-menu]');
     populateMolstarPresetMenu(menu);
-    if (label) label.textContent = `Style: ${option.value === 'automatic' ? 'Auto' : option.label}`;
-    if (trigger) {
-      trigger.dataset.buretHint = `Mol* preset: ${option.label}`;
-      if (window.__buretteMolstarControlTooltipsInstalled) trigger.removeAttribute('title');
-      else trigger.title = trigger.dataset.buretHint;
-    }
+    if (label) label.textContent = window.BuretteNativeFirstFrame ? `Style: ${option.value === 'automatic' ? 'Auto' : option.label}` : option.label;
+    if (trigger) trigger.title = `Mol* preset: ${option.label}`;
     menu?.querySelectorAll('[data-buret-molstar-preset]').forEach(button => {
       button.setAttribute('aria-checked', button.dataset.buretMolstarPreset === option.value ? 'true' : 'false');
     });
@@ -4352,7 +4018,8 @@
       stopViewer: stopMolstarPresetPreviewViewer,
       renderPreview: (viewer, payload) => renderMolstarPresetPreview(viewer, payload),
       applyPreset: payload => applyMolstarPresetNow(payload.preset, {
-        preserveCamera: payload.preserveCamera === true
+        preserveCamera: payload.preserveCamera === true,
+        appearance: payload.appearance
       })
     }, { idleDisposeMs: 4000, stopAfterRender: true });
     return molstarPresetPreviewController;
@@ -4732,7 +4399,18 @@
   function requestMolstarStyle(style) {
     const value = normalizeMolstarStyle(style);
     const preset = molstarPresetForLegacyStyle(value);
-    void requestMolstarPreset(preset, { preserveCamera: true });
+    const appearance = value === 'illustrative' || value === 'illustrative-surface' ? 'illustrative' : 'default';
+    updateMolstarPresentationConfig(preset, appearance, value);
+    if (!activeViewer) {
+      setStatus('Mol* style can be changed after the viewer loads.', 'error');
+      return;
+    }
+    const serial = ++molstarStyleApplySerial;
+    setStatus(`[web] Applying Mol* ${molstarStyleLabel(value)} style…`);
+    void reloadMolstarStyle(activeViewer, value, serial).catch(error => {
+      if (serial !== molstarStyleApplySerial) return;
+      setStatus(`Mol* style switch failed.\n\n${error?.message || String(error)}`, 'error');
+    });
   }
 
   function molstarStyleLabel(value) {
@@ -4802,20 +4480,20 @@
     }
   }
 
-  async function requestMolstarPreset(preset, { preserveCamera = true } = {}) {
+  async function requestMolstarPreset(preset, { preserveCamera = false, appearance } = {}) {
     const value = normalizeMolstarPreset(preset);
     const controller = ensureMolstarPresetPreviewController();
     if (controller) {
-      const id = preserveCamera ? `${value}:preserve-camera` : value;
-      return controller.requestApply({ id, preset: value, preserveCamera });
+      const id = `${value}${preserveCamera ? ':preserve-camera' : ''}${appearance ? `:${appearance}` : ''}`;
+      return controller.requestApply({ id, preset: value, preserveCamera, appearance });
     }
-    return applyMolstarPresetNow(value, { preserveCamera });
+    return applyMolstarPresetNow(value, { preserveCamera, appearance });
   }
 
-  async function applyMolstarPresetNow(preset, { preserveCamera = false } = {}) {
+  async function applyMolstarPresetNow(preset, { preserveCamera = false, appearance: requestedAppearance } = {}) {
     const value = normalizeMolstarPreset(preset);
     const option = molstarPresetOption(value);
-    const appearance = molstarPresetAppearance(option, activeConfig || window.BuretteConfig || {});
+    const appearance = requestedAppearance == null ? molstarPresetAppearance(option, activeConfig || window.BuretteConfig || {}) : normalizeMolstarAppearance(requestedAppearance);
     const legacyStyle = option.legacyStyle || appearance;
     const viewer = activeViewer;
     if (!viewer) {
@@ -4837,23 +4515,14 @@
     try {
       if (wasStoryPlaying) await controlMolstarStory({ operation: 'pause' });
       sceneSnapshot = viewer.plugin?.state?.data?.getSnapshot?.();
+      // Source reloads read this configuration; rollback below restores it on failure.
+      updateMolstarPresentationConfig(value, appearance, legacyStyle);
       const storySnapshot = value === 'automatic' && viewer.__buretteAutomaticStory
         ? Array.from(viewer.plugin.managers.snapshot.state.entries).find(entry => entry.snapshot.id === viewer.plugin.managers.snapshot.state.current)?.snapshot
         : null;
-      if (storySnapshot) {
-        updateMolstarPresentationConfig(value, appearance, legacyStyle);
-        await viewer.plugin.state.setSnapshot(storySnapshot);
-      } else if (option.provider) await applyMolstarProviderPreset(viewer, option);
-      else if (molstarStoryState().available) await reloadMolstarStyle(viewer, legacyStyle, serial, appearance);
-      else {
-        // Keep parsed models, trajectories, selections and the camera alive.
-        // Ghost Surface needs a base representation before adding its envelope.
-        if (legacyStyle === 'illustrative-surface') {
-          await applyMolstarProviderPreset(viewer, molstarPresetOption('automatic'));
-        }
-        await applyMolstarStyle(viewer, legacyStyle);
-        await applyMolstarWaterLineRepresentation(viewer);
-      }
+      if (storySnapshot) await viewer.plugin.state.setSnapshot(storySnapshot);
+      else if (option.provider) await applyMolstarProviderPreset(viewer, option);
+      else await reloadMolstarStyle(viewer, legacyStyle, serial, appearance);
       if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
       await applyMolstarAppearance(viewer, appearance);
       if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
@@ -4862,11 +4531,11 @@
         await waitForMolstarPresetPreviewDraw(viewer);
         if (serial !== molstarStyleApplySerial || activeViewer !== viewer) throw new Error('Mol* preset apply was superseded.');
       }
-      updateMolstarPresentationConfig(value, appearance, legacyStyle);
       if (wasStoryPlaying) await controlMolstarStory({ operation: 'play' });
       applied = true;
       setStatus(`[web] Applied Mol* ${option.label} preset`);
       setTimeout(hideStatus, isQuickLookHost() ? 0 : 700);
+      return { applied: true, preset: value };
     } catch (error) {
       if (activeViewer !== viewer) return;
       if (serial !== molstarStyleApplySerial) {
@@ -4894,6 +4563,7 @@
       }
       setStatus(`Couldn’t apply ${option.label}. The previous view was restored.`, 'error');
       debug('Mol* preset switch failed: ' + (error?.message || String(error)));
+      return { applied: false, error: error?.message || String(error) };
     } finally {
       if (applied) fadeMolstarTransitionFrame(transitionFrame);
       else removeMolstarTransitionFrame(transitionFrame);
@@ -4991,7 +4661,7 @@
       // is set here, including turning the illustrative post-processing back off,
       // and the scene half comes from re-applying the current snapshot.
       if (normalized === 'illustrative' || normalized === 'illustrative-surface') {
-        await applyMolstarIllustrativePostprocessing(viewer, { includeTransparent: true });
+        await applyMolstarIllustrativePostprocessing(viewer, { includeTransparent: normalized === 'illustrative-surface' });
       } else {
         await applyMolstarNonIllustrativePostprocessing(viewer);
       }
@@ -5110,7 +4780,7 @@
         container.innerHTML = `
           <div class="buret-external-artifact-root">
             <div class="buret-external-artifact-stage">${externalArtifactSheetHTML(externalArtifactBaseItemHTML(payload.svg, label))}</div>
-            <a class="buret-xyz-badge" href="https://github.com/aligfellow/xyzrender" target="_blank" rel="noopener noreferrer" title="xyzrender — project and authors"><strong>xyzrender ↗</strong><span>SVG</span></a>
+            <div class="buret-xyz-badge"><strong>External xyzrender</strong><span>SVG</span></div>
           </div>`;
         const root = container.querySelector('.buret-external-artifact-root');
         if (root) installExternalArtifactInteractions(root);
@@ -5162,23 +4832,7 @@
   function updateXyzrenderSheetItemBody(item, svg) {
     const body = item?.querySelector?.('.buret-xyzrender-sheet-item-body');
     if (!body) return false;
-    // Replace appearance without replacing the positioned, rotated sheet item.
-    const selectedBefore = Array.from(xyzrenderSelectedElements)
-      .filter(element => element?.isConnected && element.closest('.buret-xyzrender-sheet-item') === item);
-    const selectedAtoms = xyzrenderAtomSetFromSelector(
-      xyzrenderAtomSelectorForElements(item, selectedBefore),
-    );
     body.innerHTML = svg;
-    cleanupXyzrenderSelectionSet();
-    if (selectedAtoms.size > 0) {
-      for (const element of xyzrenderSelectableElements(item)) {
-        const atomSelector = xyzrenderAtomSelectorForElements(item, [element]);
-        if (xyzrenderAtomSetsIntersect(selectedAtoms, xyzrenderAtomSetFromSelector(atomSelector))) {
-          markXyzrenderElementSelected(element);
-        }
-      }
-      updateXyzrenderSelectionRoots();
-    }
     return true;
   }
 
@@ -5759,7 +5413,6 @@
     initToolbarDrag(toolbar);
     restoreToolbarCollapsed(toolbar, viewer);
     installToolbarAutoLayoutTracking(toolbar);
-    installMolstarDragDropGuard();
     installMolstarFloatingPanelTracking();
     initSceneTree(viewer);
     initViewportControls(viewer);
@@ -5772,30 +5425,9 @@
     applyLayoutState(viewer);
   }
 
-  // Finder exposes its selected file as a drag payload while the pointer moves
-  // through the compact preview pane. Keep that host gesture away from Mol*,
-  // which would otherwise replace the structure with its "Drop file here"
-  // layer. Larger Quick Look windows retain Mol*'s normal file-drop behavior.
-  function installMolstarDragDropGuard() {
-    if (window.__buretteMolstarDragDropGuardInstalled) return;
-    window.__buretteMolstarDragDropGuardInstalled = true;
-    const guard = event => {
-      const config = activeConfig || window.BuretteConfig || {};
-      const isCompactFinderPreview = config.quickLookViewer === true && window.innerWidth <= FINDER_PREVIEW_MAX_WIDTH_PX;
-      const carriesFiles = Array.from(event?.dataTransfer?.types || []).includes('Files');
-      if (!isCompactFinderPreview || !carriesFiles) return;
-      event.preventDefault();
-      event.stopPropagation();
-    };
-    document.addEventListener('dragenter', guard, true);
-    document.addEventListener('dragover', guard, true);
-    document.addEventListener('drop', guard, true);
-  }
-
   function setMolstarStructureDirty(dirty) {
     molstarPresetPreviewSceneRevision += 1;
     molstarStructureDirty = dirty === true;
-    postHostMessage({ type: 'structureDirtyChanged', dirty: molstarStructureDirty });
     updateSaveModifiedStructureButton();
   }
 
@@ -5860,6 +5492,7 @@
       try {
         const saved = saveMolstarModifiedStructure();
         setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
+        setMolstarStructureDirty(false);
       } catch (error) {
         setStatus(`[web] Save modified structure failed.\n\n${error?.message || String(error)}`, 'error');
       }
@@ -5897,19 +5530,22 @@
       schedule();
     };
 
+    let observer;
     if (typeof ResizeObserver === 'function') {
-      const observer = new ResizeObserver(handleSizeChange);
+      observer = new ResizeObserver(handleSizeChange);
       observer.observe(toolbar);
       const content = toolbar.querySelector('[data-buret-toolbar-content]');
       if (content) observer.observe(content);
-      // A preserved tab can mount while hidden; its first useful bounds arrive
-      // when activated. The frame can also resize without the toolbar changing.
-      const viewportObserver = new ResizeObserver(schedule);
-      viewportObserver.observe(document.documentElement);
     }
 
-    requestAnimationFrame(handleSizeChange);
-    setTimeout(handleSizeChange, 120);
+    const initialFrame = requestAnimationFrame(handleSizeChange);
+    const initialTimer = setTimeout(handleSizeChange, 120);
+    toolbarAutoLayoutCleanup = () => {
+      observer?.disconnect();
+      cancelAnimationFrame(frame);
+      cancelAnimationFrame(initialFrame);
+      clearTimeout(initialTimer);
+    };
   }
 
   function bindMolstarStyleControls(toolbar) {
@@ -6274,10 +5910,9 @@
     if (placement) {
       let previousMode;
       const sync = () => {
-        const mode = placement.getSnapshot().mode;
-        if (previousMode === mode) return;
-        previousMode = mode;
-        setToolbarCollapsed(toolbar, mode === 'inline', viewer, false);
+        if (previousMode === placement.mode) return;
+        previousMode = placement.mode;
+        setToolbarCollapsed(toolbar, placement.mode === 'inline', viewer, false);
       };
       sync();
       const unsubscribe = placement.subscribe(sync);
@@ -6379,7 +6014,6 @@
       }
     } catch (_) {}
     if (!hasSavedPosition) applyDefaultToolbarPosition(toolbar);
-    else repositionToolbar(toolbar);
 
     let drag = null;
     let ignoreNextGripClick = false;
@@ -6512,13 +6146,13 @@
     const viewport = document.querySelector('.msp-layout-region.msp-layout-main, .msp-layout-main, .msp-viewport');
     const rect = viewport?.getBoundingClientRect?.();
     if (rect && rect.width > 0 && rect.height > 0) {
-      const left = Math.max(0, rect.left);
-      const right = Math.min(window.innerWidth, rect.right);
-      const top = Math.max(0, rect.top);
-      const bottom = Math.min(window.innerHeight, rect.bottom);
-      if (right <= left || bottom <= top) return { left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight, width: window.innerWidth, height: window.innerHeight };
       return {
-        left, right, top, bottom, width: right - left, height: bottom - top
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height
       };
     }
     return { left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight, width: window.innerWidth, height: window.innerHeight };
@@ -6528,9 +6162,8 @@
     dockToolbar(toolbar);
     fitToolbarToViewport(toolbar);
     const bounds = toolbarViewportBounds();
+    const top = Math.max(defaultToolbarTop(), bounds.top + TOOLBAR_MARGIN);
     const width = toolbar.offsetWidth || toolbar.getBoundingClientRect().width || 320;
-    // On narrow panes reserve the first row for the scene-tree control.
-    const top = Math.max(defaultToolbarTop(), bounds.top + TOOLBAR_MARGIN) + (bounds.width < width + 64 ? 44 : 0);
     const rightEdge = bounds.right;
     const left = Math.max(bounds.left + TOOLBAR_MARGIN, Math.round(rightEdge - width - TOOLBAR_MARGIN));
     delete toolbar.dataset.dockCorner;
@@ -6633,7 +6266,7 @@
 
   function fitToolbarToViewport(toolbar) {
     const availableWidth = toolbarViewportBounds().width;
-    toolbar.style.maxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2) + 'px';
+    toolbar.style.maxWidth = Math.max(180, availableWidth - TOOLBAR_MARGIN * 2) + 'px';
     const content = toolbar.querySelector('[data-buret-toolbar-content]');
     if (content) {
       content.style.maxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2 - 36) + 'px';
@@ -6789,11 +6422,20 @@
       attributeFilter: ['class', 'style', 'hidden', 'aria-hidden']
     });
     window.addEventListener('resize', scheduleFloatingLayoutRefresh);
-    document.addEventListener('click', () => setTimeout(scheduleFloatingLayoutRefresh, 0), true);
+    const click = () => setTimeout(scheduleFloatingLayoutRefresh, 0);
+    document.addEventListener('click', click, true);
+    floatingPanelTrackingCleanup = () => {
+      observer.disconnect();
+      window.removeEventListener('resize', scheduleFloatingLayoutRefresh);
+      document.removeEventListener('click', click, true);
+      cancelAnimationFrame(floatingLayoutFrame);
+      floatingLayoutFrame = 0;
+    };
     scheduleFloatingLayoutRefresh();
   }
 
   function scheduleFloatingLayoutRefresh() {
+    if (window.BuretteViewerDisposed) return;
     if (floatingLayoutFrame) return;
     floatingLayoutFrame = requestAnimationFrame(() => {
       floatingLayoutFrame = 0;
@@ -7141,50 +6783,31 @@
     Representation3D: '#4aa3df',
     Behavior: '#b07cc6'
   };
-  // BEGIN GENERATED APPS SDK ICONS
-  /*! @openai/apps-sdk-ui@0.2.2; additional geometry: @hugeicons/core-free-icons@4.2.3 (MIT)
-Copyright 2025 OpenAI
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of
-this software and associated documentation files (the “Software”), to deal in
-the Software without restriction, including without limitation the rights to
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software is furnished to do so,
-subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-*/
-// Generated by scripts/sync-app-icons.mjs. Source: config/icons/apps-sdk.json.
-  const APP_ICON_DATA = {"Annotate":[["path",{"d":"M14.5352 11.0865L18.5575 12.6605C20.8775 13.5683 22.0375 14.0222 21.9991 14.7422C21.9606 15.4622 20.75 15.7924 18.3288 16.4527C17.6079 16.6493 17.2475 16.7476 16.9976 16.9976C16.7476 17.2475 16.6493 17.6079 16.4527 18.3288C15.7924 20.75 15.4622 21.9606 14.7422 21.9991C14.0222 22.0375 13.5683 20.8775 12.6605 18.5575L11.0865 14.5352C10.136 12.1062 9.6608 10.8918 10.2763 10.2763C10.8918 9.6608 12.1062 10.136 14.5352 11.0865Z","stroke":"currentColor","strokeLinejoin":"round","strokeWidth":"1.5"}],["path",{"d":"M2 8.5V11.5M11.5 2H8.5M8.5 18H9M18 9V8.5M4.5 18C3.11929 18 2 16.8807 2 15.5M2 4.5C2 3.11929 3.11929 2 4.5 2M18 4.5C18 3.11929 16.8807 2 15.5 2","stroke":"currentColor","strokeLinecap":"round","strokeLinejoin":"round","strokeWidth":"1.5"}]],"SidebarFolder":[["path",{"d":"M8 7H16.75C18.8567 7 19.91 7 20.6667 7.50559C20.9943 7.72447 21.2755 8.00572 21.4944 8.33329C22 9.08996 22 10.1433 22 12.25C22 15.7612 22 17.5167 21.1573 18.7779C20.7926 19.3238 20.3238 19.7926 19.7779 20.1573C18.5167 21 16.7612 21 13.25 21H12C7.28595 21 4.92893 21 3.46447 19.5355C2 18.0711 2 15.714 2 11V7.94427C2 6.1278 2 5.21956 2.38032 4.53806C2.65142 4.05227 3.05227 3.65142 3.53806 3.38032C4.21956 3 5.1278 3 6.94427 3C8.10802 3 8.6899 3 9.19926 3.19101C10.3622 3.62712 10.8418 4.68358 11.3666 5.73313L12 7","stroke":"currentColor","strokeLinecap":"round","strokeWidth":"1.5"}]],"SidebarFolderOpen":[["path",{"d":"M2 19V7.54902C2 6.10516 2 5.38322 2.24332 4.81647C2.5467 4.10985 3.10985 3.5467 3.81647 3.24332C4.38322 3 5.09805 3 6.54902 3H7.04311C7.64819 3 8.22075 3.27394 8.60041 3.74509L10.4175 6M10.4175 6H16C17.4001 6 18.1002 6 18.635 6.27248C19.1054 6.51217 19.4878 6.89462 19.7275 7.36502C20 7.8998 20 8.59987 20 10V11M10.4175 6H7","stroke":"currentColor","strokeLinecap":"round","strokeLinejoin":"round","strokeWidth":"1.5"}],["path",{"d":"M3.15802 15.5144L3.45643 14.7717C4.19029 12.9449 4.55723 12.0316 5.3224 11.5158C6.08757 11 7.07557 11 9.05157 11H17.1119C19.8004 11 21.1446 11 21.7422 11.8787C22.3397 12.7575 21.8405 14.0002 20.842 16.4856L20.5436 17.2283C19.8097 19.0551 19.4428 19.9684 18.6776 20.4842C17.9124 21 16.9244 21 14.9484 21H6.88812C4.19961 21 2.85535 21 2.25782 20.1213C1.66029 19.2425 2.15953 17.9998 3.15802 15.5144Z","stroke":"currentColor","strokeLinejoin":"round","strokeWidth":"1.5"}]],"SidebarGlobe":[["circle",{"cx":"12","cy":"12","r":"10","stroke":"currentColor","strokeWidth":"1.5"}],["path",{"d":"M8 12C8 18 12 22 12 22C12 22 16 18 16 12C16 6 12 2 12 2C12 2 8 6 8 12Z","stroke":"currentColor","strokeLinejoin":"round","strokeWidth":"1.5"}],["path",{"d":"M21 15H3","stroke":"currentColor","strokeLinecap":"round","strokeLinejoin":"round","strokeWidth":"1.5"}],["path",{"d":"M21 9H3","stroke":"currentColor","strokeLinecap":"round","strokeLinejoin":"round","strokeWidth":"1.5"}]],"Agent":[["path",{"d":"M11 7.5C11 8.32843 10.3284 9 9.5 9C8.67157 9 8 8.32843 8 7.5C8 6.67157 8.67157 6 9.5 6C10.3284 6 11 6.67157 11 7.5Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M14.5 9C15.3284 9 16 8.32843 16 7.5C16 6.67157 15.3284 6 14.5 6C13.6716 6 13 6.67157 13 7.5C13 8.32843 13.6716 9 14.5 9Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M12 1C12.5523 1 13 1.44772 13 2V2.5L15.8708 2.5C16.3832 2.49998 16.8252 2.49997 17.1896 2.52892C17.574 2.55947 17.9568 2.62688 18.3269 2.80938C18.9192 3.10147 19.3985 3.58084 19.6906 4.17313C19.8731 4.54322 19.9405 4.92598 19.9711 5.31042C20 5.6748 20 6.1168 20 6.62913V6.70824C20 7.76163 20 8.61129 19.9453 9.29994C19.889 10.0088 19.77 10.6322 19.4844 11.2114C18.9976 12.1986 18.1986 12.9975 17.2114 13.4844C16.6322 13.77 16.0088 13.889 15.2999 13.9453C14.6113 14 13.7616 14 12.7082 14H11.2918C10.2384 14 9.38872 14 8.70006 13.9453C7.99117 13.889 7.36777 13.77 6.78856 13.4844C5.8014 12.9976 5.00246 12.1986 4.51564 11.2114C4.23001 10.6322 4.11104 10.0088 4.05471 9.29995C3.99999 8.61131 3.99999 7.76169 4 6.70834V6.62922C3.99998 6.11688 3.99997 5.67481 4.02893 5.31042C4.05948 4.92598 4.12688 4.54322 4.30938 4.17313C4.60147 3.58084 5.08084 3.10147 5.67313 2.80938C6.04322 2.62688 6.42598 2.55947 6.81042 2.52892C7.17482 2.49997 7.61685 2.49998 8.12922 2.5L11 2.5V2C11 1.44772 11.4477 1 12 1ZM6.96885 4.52264C6.7044 4.54365 6.60587 4.57938 6.55771 4.60313C6.36028 4.70049 6.20049 4.86028 6.10313 5.05771C6.07938 5.10587 6.04366 5.2044 6.02264 5.46885C6.00074 5.7445 6 6.10631 6 6.66667C6 7.77136 6.00074 8.54142 6.04843 9.14152C6.09522 9.73042 6.18251 10.0696 6.30939 10.3269C6.60148 10.9192 7.08084 11.3985 7.67314 11.6906C7.93042 11.8175 8.26959 11.9048 8.85849 11.9516C9.45858 11.9993 10.2286 12 11.3333 12H12.6667C13.7714 12 14.5414 11.9993 15.1415 11.9516C15.7304 11.9048 16.0696 11.8175 16.3269 11.6906C16.9192 11.3985 17.3985 10.9192 17.6906 10.3269C17.8175 10.0696 17.9048 9.73042 17.9516 9.14152C17.9993 8.54142 18 7.77136 18 6.66667C18 6.1063 17.9993 5.7445 17.9774 5.46885C17.9563 5.20439 17.9206 5.10587 17.8969 5.05771C17.7995 4.86028 17.6397 4.70049 17.4423 4.60313C17.3941 4.57938 17.2956 4.54365 17.0312 4.52264C16.7555 4.50074 16.3937 4.5 15.8333 4.5H8.16667C7.60631 4.5 7.2445 4.50074 6.96885 4.52264Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M6 21C6 20.0261 6.55099 19.05 7.63152 18.2782C8.71012 17.5078 10.2515 17 12 17C13.7486 17 15.2899 17.5078 16.3685 18.2782C17.449 19.05 18 20.0261 18 21C18 21.5523 18.4477 22 19 22C19.5523 22 20 21.5523 20 21C20 19.2125 18.984 17.6886 17.531 16.6507C16.0761 15.6115 14.1174 15 12.0001 15C9.88267 15 7.92397 15.6115 6.46905 16.6507C5.01605 17.6886 4 19.2125 4 21C4 21.5523 4.44772 22 5 22C5.55229 22 6 21.5523 6 21Z","fill":"currentColor","stroke":"none"}]],"ArrowCurvedRight":[["path",{"d":"M5 6C5.55228 6 6 6.44772 6 7V11C6 11.5523 6.44772 12 7 12H16.5858L14.2929 9.70711C13.9024 9.31658 13.9024 8.68342 14.2929 8.29289C14.6834 7.90237 15.3166 7.90237 15.7071 8.29289L19.7071 12.2929C20.0976 12.6834 20.0976 13.3166 19.7071 13.7071L15.7071 17.7071C15.3166 18.0976 14.6834 18.0976 14.2929 17.7071C13.9024 17.3166 13.9024 16.6834 14.2929 16.2929L16.5858 14H7C5.34315 14 4 12.6569 4 11V7C4 6.44772 4.44772 6 5 6Z","fill":"currentColor","stroke":"none"}]],"ArrowLeft":[["path",{"fill-rule":"evenodd","d":"M5.293 12.707a1 1 0 0 1 0-1.414l5-5a1 1 0 1 1 1.414 1.414L8.414 11H18a1 1 0 1 1 0 2H8.414l3.293 3.293a1 1 0 0 1-1.414 1.414l-5-5Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ArrowRight":[["path",{"fill-rule":"evenodd","d":"M18.707 12.707a1 1 0 0 0 0-1.414l-5-5a1 1 0 1 0-1.414 1.414L15.586 11H6a1 1 0 1 0 0 2h9.586l-3.293 3.293a1 1 0 0 0 1.414 1.414l5-5Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ArrowRotateCcw":[["path",{"d":"M4.47192 2.5C5.02421 2.5 5.47192 2.94772 5.47192 3.5V5.07196C7.17065 3.47759 9.45675 2.5 11.9719 2.5C17.2186 2.5 21.4719 6.75329 21.4719 12C21.4719 17.2467 17.2186 21.5 11.9719 21.5C7.10262 21.5 3.0902 17.8375 2.53692 13.1164C2.47264 12.5679 2.8652 12.0711 3.41373 12.0068C3.96226 11.9425 4.45904 12.3351 4.52333 12.8836C4.95991 16.6089 8.12901 19.5 11.9719 19.5C16.1141 19.5 19.4719 16.1421 19.4719 12C19.4719 7.85786 16.1141 4.5 11.9719 4.5C9.75153 4.5 7.75552 5.46469 6.38146 7H9.00003C9.55232 7 10 7.44772 10 8C10 8.55228 9.55232 9 9.00003 9H4.47192C3.93256 9 3.49293 8.57299 3.47265 8.03859C3.47175 8.01771 3.47151 7.99677 3.47192 7.9758V3.5C3.47192 2.94772 3.91964 2.5 4.47192 2.5Z","fill":"currentColor","stroke":"none"}]],"ArrowRotateCw":[["path",{"d":"M2.55823 12C2.55823 6.75329 6.81152 2.5 12.0582 2.5C14.5734 2.5 16.8595 3.47759 18.5582 5.07197V3.5C18.5582 2.94772 19.0059 2.5 19.5582 2.5C20.1105 2.5 20.5582 2.94772 20.5582 3.5V7.97591C20.5586 7.99622 20.5584 8.01651 20.5576 8.03674C20.5382 8.572 20.0982 9 19.5582 9H15.0582C14.5059 9 14.0582 8.55228 14.0582 8C14.0582 7.44772 14.5059 7 15.0582 7H17.6487C16.2746 5.46469 14.2786 4.5 12.0582 4.5C7.91609 4.5 4.55823 7.85786 4.55823 12C4.55823 16.1421 7.91609 19.5 12.0582 19.5C15.9011 19.5 19.0702 16.6089 19.5068 12.8836C19.5711 12.3351 20.0679 11.9425 20.6164 12.0068C21.165 12.0711 21.5575 12.5679 21.4932 13.1164C20.94 17.8375 16.9275 21.5 12.0582 21.5C6.81152 21.5 2.55823 17.2467 2.55823 12Z","fill":"currentColor","stroke":"none"}]],"ArrowUp":[["path",{"fill-rule":"evenodd","d":"M11.293 5.293a1 1 0 0 1 1.414 0l5 5a1 1 0 0 1-1.414 1.414L13 8.414V18a1 1 0 1 1-2 0V8.414l-3.293 3.293a1 1 0 0 1-1.414-1.414l5-5Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Atom":[["path",{"d":"M6.286 4.75c.602-.004 1.374.158 2.28.52.53.213 1.09.487 1.667.82a25.428 25.428 0 0 0-2.19 1.954 25.428 25.428 0 0 0-1.953 2.19 13.144 13.144 0 0 1-.82-1.669c-.362-.905-.524-1.677-.52-2.279.004-.596.167-.95.376-1.16.21-.21.564-.372 1.16-.376ZM12 4.825a16.157 16.157 0 0 0-2.692-1.411c-1.055-.422-2.092-.67-3.035-.664-.95.006-1.873.274-2.561.962s-.956 1.612-.962 2.56c-.006.944.242 1.981.664 3.036.346.865.821 1.773 1.41 2.692a16.234 16.234 0 0 0-1.41 2.692c-.422 1.055-.67 2.092-.664 3.035.006.95.274 1.873.962 2.561s1.612.956 2.56.962c.944.006 1.981-.242 3.036-.664A16.152 16.152 0 0 0 12 19.176c.92.589 1.827 1.065 2.692 1.41 1.055.422 2.092.67 3.035.664.95-.006 1.873-.274 2.561-.962s.956-1.612.962-2.56c.006-.944-.242-1.981-.664-3.036A16.152 16.152 0 0 0 19.176 12a16.158 16.158 0 0 0 1.41-2.692c.422-1.055.67-2.092.664-3.035-.006-.95-.274-1.873-.962-2.561s-1.612-.956-2.56-.962c-.944-.006-1.981.242-3.036.664-.865.346-1.773.821-2.692 1.41Zm0 2.43a23.013 23.013 0 0 1 2.542 2.203A23.014 23.014 0 0 1 16.745 12a23.015 23.015 0 0 1-2.203 2.542A23.015 23.015 0 0 1 12 16.745a23.014 23.014 0 0 1-2.542-2.203A23.013 23.013 0 0 1 7.255 12a23.012 23.012 0 0 1 2.203-2.542A23.012 23.012 0 0 1 12 7.255Zm5.91 2.978a25.42 25.42 0 0 0-1.954-2.19 25.432 25.432 0 0 0-2.19-1.953 13.142 13.142 0 0 1 1.669-.82c.905-.362 1.677-.524 2.279-.52.596.004.95.167 1.16.376.21.21.372.564.376 1.16.004.602-.159 1.374-.52 2.28a13.23 13.23 0 0 1-.82 1.667Zm0 3.534c.333.577.607 1.137.82 1.668.361.905.524 1.677.52 2.279-.004.596-.167.95-.376 1.16-.21.21-.564.372-1.16.376-.602.004-1.374-.159-2.28-.52a13.23 13.23 0 0 1-1.667-.82 25.424 25.424 0 0 0 2.19-1.954 25.424 25.424 0 0 0 1.953-2.19Zm-7.677 4.143c-.577.333-1.137.607-1.668.82-.905.361-1.677.524-2.279.52-.596-.004-.95-.167-1.16-.376-.21-.21-.372-.564-.376-1.16-.004-.602.158-1.374.52-2.28.213-.53.487-1.09.82-1.667.587.74 1.24 1.476 1.954 2.19a25.418 25.418 0 0 0 2.19 1.953Z","fill":"currentColor","stroke":"none"}]],"BarChart":[["path",{"d":"M11.33 5H12.66C13.2123 5 13.66 5.44771 13.66 6V19H10.33V6C10.33 5.44772 10.7777 5 11.33 5ZM15.66 19V9H18C18.5523 9 19 9.44772 19 10V18C19 18.5523 18.5523 19 18 19H15.66ZM15.66 7V6C15.66 4.34315 14.3169 3 12.66 3H11.33C9.67315 3 8.33 4.34315 8.33 6V11H6C4.34314 11 3 12.3431 3 14V18C3 19.6569 4.34315 21 6 21H18C19.6569 21 21 19.6569 21 18V10C21 8.34315 19.6569 7 18 7H15.66ZM8.33 13V19H6C5.44772 19 5 18.5523 5 18V14C5 13.4477 5.44771 13 6 13H8.33Z","fill":"currentColor","stroke":"none"}]],"Camera":[["path",{"fill-rule":"evenodd","d":"M12 4a3 3 0 0 0-2.6 1.5 1 1 0 0 1-.865.5H5a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-3.535a1 1 0 0 1-.866-.5A2.998 2.998 0 0 0 12 4ZM8 4a4.993 4.993 0 0 1 4-2 4.99 4.99 0 0 1 4 2h3a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h3Zm4 6a2 2 0 1 0 0 4 2 2 0 0 0 0-4Zm-4 2a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"CameraPhoto":[["path",{"d":"M12 4C10.8908 4 9.92091 4.60141 9.40069 5.50073C9.22194 5.80972 8.89205 6 8.53508 6H7.8C6.94342 6 6.36113 6.00078 5.91104 6.03755C5.47262 6.07337 5.24842 6.1383 5.09202 6.21799C4.7157 6.40973 4.40973 6.71569 4.21799 7.09202C4.1383 7.24842 4.07337 7.47262 4.03755 7.91104C4.00078 8.36113 4 8.94342 4 9.8V15.2C4 16.0566 4.00078 16.6389 4.03755 17.089C4.07337 17.5274 4.1383 17.7516 4.21799 17.908C4.40973 18.2843 4.7157 18.5903 5.09202 18.782C5.24842 18.8617 5.47262 18.9266 5.91104 18.9624C6.36113 18.9992 6.94342 19 7.8 19H16.2C17.0566 19 17.6389 18.9992 18.089 18.9624C18.5274 18.9266 18.7516 18.8617 18.908 18.782C19.2843 18.5903 19.5903 18.2843 19.782 17.908C19.8617 17.7516 19.9266 17.5274 19.9624 17.089C19.9992 16.6389 20 16.0566 20 15.2V9.8C20 8.94342 19.9992 8.36113 19.9624 7.91104C19.9266 7.47262 19.8617 7.24842 19.782 7.09202C19.5903 6.71569 19.2843 6.40973 18.908 6.21799C18.7516 6.1383 18.5274 6.07337 18.089 6.03755C17.6389 6.00078 17.0566 6 16.2 6H15.4648C15.1079 6 14.778 5.80972 14.5992 5.50073C14.079 4.60141 13.1091 4 12 4ZM7.99973 4C8.91084 2.78702 10.363 2 12 2C13.6369 2 15.0891 2.78702 16.0002 4L16.2413 4C17.0463 3.99999 17.7106 3.99998 18.2518 4.04419C18.8139 4.09012 19.3306 4.18868 19.816 4.43597C20.5686 4.81947 21.1805 5.43139 21.564 6.18404C21.8113 6.66937 21.9099 7.18608 21.9558 7.74817C22 8.28936 22 8.95372 22 9.75868V15.2413C22 16.0463 22 16.7106 21.9558 17.2518C21.9099 17.8139 21.8113 18.3306 21.564 18.816C21.1805 19.5686 20.5686 20.1805 19.816 20.564C19.3306 20.8113 18.8139 20.9099 18.2518 20.9558C17.7106 21 17.0463 21 16.2413 21H7.75868C6.95372 21 6.28936 21 5.74817 20.9558C5.18608 20.9099 4.66937 20.8113 4.18404 20.564C3.43139 20.1805 2.81947 19.5686 2.43597 18.816C2.18868 18.3306 2.09012 17.8139 2.04419 17.2518C1.99998 16.7106 1.99999 16.0463 2 15.2413V9.7587C1.99999 8.95373 1.99998 8.28937 2.04419 7.74817C2.09012 7.18608 2.18868 6.66937 2.43597 6.18404C2.81947 5.43139 3.43139 4.81947 4.18404 4.43597C4.66937 4.18868 5.18608 4.09012 5.74817 4.04419C6.28937 3.99998 6.95373 3.99999 7.7587 4L7.99973 4ZM12 10C10.7573 10 9.74995 11.0074 9.74995 12.25C9.74995 13.4926 10.7573 14.5 12 14.5C13.2426 14.5 14.25 13.4926 14.25 12.25C14.25 11.0074 13.2426 10 12 10ZM7.74995 12.25C7.74995 9.90279 9.65274 8 12 8C14.3472 8 16.25 9.90279 16.25 12.25C16.25 14.5972 14.3472 16.5 12 16.5C9.65274 16.5 7.74995 14.5972 7.74995 12.25Z","fill":"currentColor","stroke":"none"}]],"Chart":[["path",{"d":"M11.33 5h1.33a1 1 0 0 1 1 1v13h-3.33V6a1 1 0 0 1 1-1Zm4.33 14V9H18a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1h-2.34Zm0-12V6a3 3 0 0 0-3-3h-1.33a3 3 0 0 0-3 3v5H6a3 3 0 0 0-3 3v4a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3v-8a3 3 0 0 0-3-3h-2.34Zm-7.33 6v6H6a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1h2.33Z","fill":"currentColor","stroke":"none"}]],"Check":[["path",{"fill-rule":"evenodd","d":"M18.063 5.674a1 1 0 0 1 .263 1.39l-7.5 11a1 1 0 0 1-1.533.143l-4.5-4.5a1 1 0 1 1 1.414-1.414l3.647 3.647 6.82-10.003a1 1 0 0 1 1.39-.263Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"CheckCircle":[["path",{"d":"M12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4ZM2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12ZM16.0755 7.93219C16.5272 8.25003 16.6356 8.87383 16.3178 9.32549L11.5678 16.0755C11.3931 16.3237 11.1152 16.4792 10.8123 16.4981C10.5093 16.517 10.2142 16.3973 10.0101 16.1727L7.51006 13.4227C7.13855 13.014 7.16867 12.3816 7.57733 12.0101C7.98598 11.6386 8.61843 11.6687 8.98994 12.0773L10.6504 13.9039L14.6822 8.17451C15 7.72284 15.6238 7.61436 16.0755 7.93219Z","fill":"currentColor","stroke":"none"}]],"ChevronDown":[["path",{"fill-rule":"evenodd","d":"M4.293 8.293a1 1 0 0 1 1.414 0L12 14.586l6.293-6.293a1 1 0 1 1 1.414 1.414l-7 7a1 1 0 0 1-1.414 0l-7-7a1 1 0 0 1 0-1.414Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ChevronRight":[["path",{"fill-rule":"evenodd","d":"M8.293 4.293a1 1 0 0 1 1.414 0l7 7a1 1 0 0 1 0 1.414l-7 7a1 1 0 0 1-1.414-1.414L14.586 12 8.293 5.707a1 1 0 0 1 0-1.414Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ChevronUp":[["path",{"fill-rule":"evenodd","d":"M12 8a1 1 0 0 1 .707.293l7 7a1 1 0 0 1-1.414 1.414L12 10.414l-6.293 6.293a1 1 0 0 1-1.414-1.414l7-7A1 1 0 0 1 12 8Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ChevronUpDown":[["path",{"d":"M11.3415 4.74742C11.7185 4.41753 12.2815 4.41753 12.6585 4.74742L16.6585 8.24742C17.0741 8.61111 17.1162 9.24287 16.7526 9.6585C16.3889 10.0741 15.7571 10.1163 15.3415 9.75258L12 6.82877L8.65849 9.75258C8.24285 10.1163 7.61109 10.0741 7.24741 9.6585C6.88373 9.24287 6.92584 8.61111 7.34148 8.24742L11.3415 4.74742ZM7.24603 14.3578C7.60885 13.9414 8.24052 13.8979 8.65692 14.2608L12 17.1737L15.3431 14.2608C15.7594 13.8979 16.3911 13.9414 16.7539 14.3578C17.1167 14.7742 17.0733 15.4058 16.6569 15.7687L12.6569 19.2539C12.2804 19.582 11.7196 19.582 11.3431 19.2539L7.34305 15.7687C6.92666 15.4058 6.88322 14.7742 7.24603 14.3578Z","fill":"currentColor","stroke":"none"}]],"Circle":[["rect",{"width":"24","height":"24","rx":"12","fill":"currentColor","stroke":"none"}]],"Clip":[["path",{"fill-rule":"evenodd","d":"M9 7a5 5 0 0 1 10 0v8a7 7 0 1 1-14 0V9a1 1 0 0 1 2 0v6a5 5 0 0 0 10 0V7a3 3 0 1 0-6 0v8a1 1 0 1 0 2 0V9a1 1 0 1 1 2 0v6a3 3 0 1 1-6 0V7Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Clipboard":[["path",{"fill-rule":"evenodd","d":"M12 4a2 2 0 0 0-2 2h4a2 2 0 0 0-2-2ZM8.535 4A3.998 3.998 0 0 1 12 2c1.48 0 2.773.804 3.465 2H17a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3h1.535ZM8 6H7a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-1a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Collapse":[["path",{"d":"M12.659 9.753a1 1 0 0 1-1.318 0l-4-3.5A1 1 0 1 1 8.66 4.747L12 7.671l3.341-2.924a1 1 0 1 1 1.318 1.506l-4 3.5Zm-4.002 9.501a1 1 0 1 1-1.314-1.508l4-3.485a1 1 0 0 1 1.314 0l4 3.485a1 1 0 1 1-1.314 1.508L12 16.34l-3.343 2.913Z","fill":"currentColor","stroke":"none"}]],"ColorTheme":[["path",{"d":"M8.25 13.25C9.07843 13.25 9.75 13.9216 9.75 14.75C9.75 15.5784 9.07843 16.25 8.25 16.25C7.42157 16.25 6.75 15.5784 6.75 14.75C6.75 13.9216 7.42157 13.25 8.25 13.25Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M7.5 8.5C8.32843 8.5 9 9.17157 9 10C9 10.8284 8.32843 11.5 7.5 11.5C6.67157 11.5 6 10.8284 6 10C6 9.17157 6.67157 8.5 7.5 8.5Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M15.75 7.25C16.5784 7.25 17.25 7.92157 17.25 8.75C17.25 9.57843 16.5784 10.25 15.75 10.25C14.9216 10.25 14.25 9.57843 14.25 8.75C14.25 7.92157 14.9216 7.25 15.75 7.25Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M11.25 5.5C12.0784 5.5 12.75 6.17157 12.75 7C12.75 7.82843 12.0784 8.5 11.25 8.5C10.4216 8.5 9.75 7.82843 9.75 7C9.75 6.17157 10.4216 5.5 11.25 5.5Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M12 2C17.5228 2 22 6.47715 22 12C22 14.03 20.3542 15.6758 18.3242 15.6758H14.3672C14.0151 15.6758 13.7295 15.9614 13.7295 16.3135C13.7295 16.4527 13.7751 16.5884 13.8594 16.6992L14.7617 17.8857C15.0515 18.267 15.2089 18.733 15.209 19.2119C15.209 20.7515 13.9605 22 12.4209 22H12C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2ZM12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20H12.4209C12.8559 20 13.209 19.6469 13.209 19.2119C13.2089 19.1703 13.195 19.1299 13.1699 19.0967L12.2676 17.9092C11.9188 17.4503 11.7295 16.8898 11.7295 16.3135C11.7295 14.8568 12.9106 13.6758 14.3672 13.6758H18.3242C19.2497 13.6758 20 12.9255 20 12C20 7.58172 16.4183 4 12 4Z","fill":"currentColor","stroke":"none"}]],"Compare":[["path",{"d":"M9.29297 3.29297C9.68349 2.90244 10.3165 2.90244 10.707 3.29297L12.707 5.29297C13.0731 5.65908 13.0957 6.23809 12.7754 6.63086L12.707 6.70703L10.707 8.70703L10.6309 8.77539C10.2381 9.09574 9.65908 9.07315 9.29297 8.70703C8.92685 8.34092 8.90426 7.76191 9.22461 7.36914L9.29297 7.29297L9.58594 7H7.5C6.94772 7 6.5 7.44772 6.5 8V14.9072C7.80556 15.329 8.75 16.554 8.75 18C8.75 19.7949 7.29493 21.25 5.5 21.25C3.70507 21.25 2.25 19.7949 2.25 18C2.25 16.554 3.19444 15.329 4.5 14.9072V8C4.5 6.34315 5.84315 5 7.5 5H9.58594L9.29297 4.70703C8.90244 4.31651 8.90244 3.68349 9.29297 3.29297ZM5.5 16.75C4.80964 16.75 4.25 17.3096 4.25 18C4.25 18.6904 4.80964 19.25 5.5 19.25C6.19036 19.25 6.75 18.6904 6.75 18C6.75 17.3096 6.19036 16.75 5.5 16.75Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M18.5 2.75C20.2949 2.75 21.75 4.20507 21.75 6C21.75 7.44586 20.8054 8.66989 19.5 9.0918V16C19.5 17.6568 18.1568 19 16.5 19H14.4141L14.707 19.293C15.0976 19.6835 15.0976 20.3165 14.707 20.707C14.3165 21.0976 13.6835 21.0976 13.293 20.707L11.293 18.707C10.9269 18.3409 10.9043 17.7619 11.2246 17.3691L11.293 17.293L13.293 15.293L13.3691 15.2246C13.7619 14.9043 14.3409 14.9269 14.707 15.293C15.0731 15.6591 15.0957 16.2381 14.7754 16.6309L14.707 16.707L14.4141 17H16.5C17.0523 17 17.5 16.5523 17.5 16V9.0918C16.1946 8.66989 15.25 7.44586 15.25 6C15.25 4.20507 16.7051 2.75 18.5 2.75ZM18.5 4.75C17.8096 4.75 17.25 5.30964 17.25 6C17.25 6.69036 17.8096 7.25 18.5 7.25C19.1904 7.25 19.75 6.69036 19.75 6C19.75 5.30964 19.1904 4.75 18.5 4.75Z","fill":"currentColor","stroke":"none"}]],"CompareArrows":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M5.70243 1.16073C6.02787 0.835297 6.55551 0.835297 6.88094 1.16073L9.79761 4.0774C10.123 4.40284 10.123 4.93048 9.79761 5.25591L6.88094 8.17258C6.55551 8.49802 6.02787 8.49802 5.70243 8.17258C5.37699 7.84714 5.37699 7.3195 5.70243 6.99407L7.19651 5.49999H1.50002C1.03978 5.49999 0.666687 5.12689 0.666687 4.66666C0.666687 4.20642 1.03978 3.83332 1.50002 3.83332H7.19651L5.70243 2.33925C5.37699 2.01381 5.37699 1.48617 5.70243 1.16073Z","fill":"currentColor","stroke":"none"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M12.2976 14.8392C11.9722 15.1647 11.4445 15.1647 11.1191 14.8392L8.20243 11.9226C7.87699 11.5971 7.87699 11.0695 8.20243 10.7441L11.1191 7.8274C11.4445 7.50196 11.9722 7.50196 12.2976 7.8274C12.623 8.15284 12.623 8.68048 12.2976 9.00591L10.8035 10.5H16.5C16.9603 10.5 17.3334 10.8731 17.3334 11.3333C17.3334 11.7936 16.9603 12.1667 16.5 12.1667H10.8035L12.2976 13.6607C12.623 13.9862 12.623 14.5138 12.2976 14.8392Z","fill":"currentColor","stroke":"none"}]],"Copy":[["path",{"d":"M12.7587 2H16.2413C17.0463 1.99999 17.7106 1.99998 18.2518 2.04419C18.8139 2.09012 19.3306 2.18868 19.816 2.43597C20.5686 2.81947 21.1805 3.43139 21.564 4.18404C21.8113 4.66937 21.9099 5.18608 21.9558 5.74817C22 6.28936 22 6.95372 22 7.75868V11.2413C22 12.0463 22 12.7106 21.9558 13.2518C21.9099 13.8139 21.8113 14.3306 21.564 14.816C21.1805 15.5686 20.5686 16.1805 19.816 16.564C19.3306 16.8113 18.8139 16.9099 18.2518 16.9558C17.8906 16.9853 17.4745 16.9951 16.9984 16.9984C16.9951 17.4745 16.9853 17.8906 16.9558 18.2518C16.9099 18.8139 16.8113 19.3306 16.564 19.816C16.1805 20.5686 15.5686 21.1805 14.816 21.564C14.3306 21.8113 13.8139 21.9099 13.2518 21.9558C12.7106 22 12.0463 22 11.2413 22H7.75868C6.95372 22 6.28936 22 5.74818 21.9558C5.18608 21.9099 4.66937 21.8113 4.18404 21.564C3.43139 21.1805 2.81947 20.5686 2.43597 19.816C2.18868 19.3306 2.09012 18.8139 2.04419 18.2518C1.99998 17.7106 1.99999 17.0463 2 16.2413V12.7587C1.99999 11.9537 1.99998 11.2894 2.04419 10.7482C2.09012 10.1861 2.18868 9.66937 2.43597 9.18404C2.81947 8.43139 3.43139 7.81947 4.18404 7.43598C4.66937 7.18868 5.18608 7.09012 5.74817 7.04419C6.10939 7.01468 6.52548 7.00487 7.00162 7.00162C7.00487 6.52548 7.01468 6.10939 7.04419 5.74817C7.09012 5.18608 7.18868 4.66937 7.43598 4.18404C7.81947 3.43139 8.43139 2.81947 9.18404 2.43597C9.66937 2.18868 10.1861 2.09012 10.7482 2.04419C11.2894 1.99998 11.9537 1.99999 12.7587 2ZM9.00176 7L11.2413 7C12.0463 6.99999 12.7106 6.99998 13.2518 7.04419C13.8139 7.09012 14.3306 7.18868 14.816 7.43598C15.5686 7.81947 16.1805 8.43139 16.564 9.18404C16.8113 9.66937 16.9099 10.1861 16.9558 10.7482C17 11.2894 17 11.9537 17 12.7587V14.9982C17.4455 14.9951 17.7954 14.9864 18.089 14.9624C18.5274 14.9266 18.7516 14.8617 18.908 14.782C19.2843 14.5903 19.5903 14.2843 19.782 13.908C19.8617 13.7516 19.9266 13.5274 19.9624 13.089C19.9992 12.6389 20 12.0566 20 11.2V7.8C20 6.94342 19.9992 6.36113 19.9624 5.91104C19.9266 5.47262 19.8617 5.24842 19.782 5.09202C19.5903 4.7157 19.2843 4.40973 18.908 4.21799C18.7516 4.1383 18.5274 4.07337 18.089 4.03755C17.6389 4.00078 17.0566 4 16.2 4H12.8C11.9434 4 11.3611 4.00078 10.911 4.03755C10.4726 4.07337 10.2484 4.1383 10.092 4.21799C9.7157 4.40973 9.40973 4.7157 9.21799 5.09202C9.1383 5.24842 9.07337 5.47262 9.03755 5.91104C9.01357 6.20463 9.00489 6.55447 9.00176 7ZM5.91104 9.03755C5.47262 9.07337 5.24842 9.1383 5.09202 9.21799C4.7157 9.40973 4.40973 9.7157 4.21799 10.092C4.1383 10.2484 4.07337 10.4726 4.03755 10.911C4.00078 11.3611 4 11.9434 4 12.8V16.2C4 17.0566 4.00078 17.6389 4.03755 18.089C4.07337 18.5274 4.1383 18.7516 4.21799 18.908C4.40973 19.2843 4.7157 19.5903 5.09202 19.782C5.24842 19.8617 5.47262 19.9266 5.91104 19.9624C6.36113 19.9992 6.94342 20 7.8 20H11.2C12.0566 20 12.6389 19.9992 13.089 19.9624C13.5274 19.9266 13.7516 19.8617 13.908 19.782C14.2843 19.5903 14.5903 19.2843 14.782 18.908C14.8617 18.7516 14.9266 18.5274 14.9624 18.089C14.9992 17.6389 15 17.0566 15 16.2V12.8C15 11.9434 14.9992 11.3611 14.9624 10.911C14.9266 10.4726 14.8617 10.2484 14.782 10.092C14.5903 9.7157 14.2843 9.40973 13.908 9.21799C13.7516 9.1383 13.5274 9.07337 13.089 9.03755C12.6389 9.00078 12.0566 9 11.2 9H7.8C6.94342 9 6.36113 9.00078 5.91104 9.03755Z","fill":"currentColor","stroke":"none"}]],"Cube":[["path",{"fill-rule":"evenodd","d":"M12.5 3.444a1 1 0 0 0-1 0l-6.253 3.61 6.768 3.807 6.955-3.682-6.47-3.735Zm7.16 5.632L13 12.602v7.666l6.16-3.556a1 1 0 0 0 .5-.867V9.076ZM11 20.268v-7.683L4.34 8.839v7.006a1 1 0 0 0 .5.867L11 20.268Zm-.5-18.557a3 3 0 0 1 3 0l6.66 3.846a3 3 0 0 1 1.5 2.598v7.69a3 3 0 0 1-1.5 2.598L13.5 22.29a3 3 0 0 1-3 0l-6.66-3.846a3 3 0 0 1-1.5-2.598v-7.69a3 3 0 0 1 1.5-2.598L10.5 1.71Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Delete":[["path",{"fill-rule":"evenodd","d":"M10.556 4a1 1 0 0 0-.97.751l-.292 1.14h5.421l-.293-1.14A1 1 0 0 0 13.453 4h-2.897Zm6.224 1.892-.421-1.639A3 3 0 0 0 13.453 2h-2.897A3 3 0 0 0 7.65 4.253l-.421 1.639H4a1 1 0 1 0 0 2h.1l1.215 11.425A3 3 0 0 0 8.3 22h7.4a3 3 0 0 0 2.984-2.683l1.214-11.425H20a1 1 0 1 0 0-2h-3.22Zm1.108 2H6.112l1.192 11.214A1 1 0 0 0 8.3 20h7.4a1 1 0 0 0 .995-.894l1.192-11.214ZM10 10a1 1 0 0 1 1 1v5a1 1 0 1 1-2 0v-5a1 1 0 0 1 1-1Zm4 0a1 1 0 0 1 1 1v5a1 1 0 1 1-2 0v-5a1 1 0 0 1 1-1Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"DotsHorizontal":[["path",{"d":"M3 12a2 2 0 1 1 4 0 2 2 0 0 1-4 0Zm7 0a2 2 0 1 1 4 0 2 2 0 0 1-4 0Zm7 0a2 2 0 1 1 4 0 2 2 0 0 1-4 0Z","fill":"currentColor","stroke":"none"}]],"Download":[["path",{"d":"M12 3C12.5523 3 13 3.44772 13 4V12.5858L15.2929 10.2929C15.6834 9.90237 16.3166 9.90237 16.7071 10.2929C17.0976 10.6834 17.0976 11.3166 16.7071 11.7071L12.7071 15.7071C12.3166 16.0976 11.6834 16.0976 11.2929 15.7071L7.29289 11.7071C6.90237 11.3166 6.90237 10.6834 7.29289 10.2929C7.68342 9.90237 8.31658 9.90237 8.70711 10.2929L11 12.5858V4C11 3.44772 11.4477 3 12 3ZM4 14C4.55229 14 5 14.4477 5 15V15.2C5 16.0566 5.00078 16.6389 5.03755 17.089C5.07337 17.5274 5.1383 17.7516 5.21799 17.908C5.40973 18.2843 5.7157 18.5903 6.09202 18.782C6.24842 18.8617 6.47262 18.9266 6.91104 18.9624C7.36113 18.9992 7.94342 19 8.8 19H15.2C16.0566 19 16.6389 18.9992 17.089 18.9624C17.5274 18.9266 17.7516 18.8617 17.908 18.782C18.2843 18.5903 18.5903 18.2843 18.782 17.908C18.8617 17.7516 18.9266 17.5274 18.9624 17.089C18.9992 16.6389 19 16.0566 19 15.2V15C19 14.4477 19.4477 14 20 14C20.5523 14 21 14.4477 21 15V15.2413C21 16.0463 21 16.7106 20.9558 17.2518C20.9099 17.8139 20.8113 18.3306 20.564 18.816C20.1805 19.5686 19.5686 20.1805 18.816 20.564C18.3306 20.8113 17.8139 20.9099 17.2518 20.9558C16.7106 21 16.0463 21 15.2413 21H8.75868C7.95372 21 7.28936 21 6.74817 20.9558C6.18608 20.9099 5.66937 20.8113 5.18404 20.564C4.43139 20.1805 3.81947 19.5686 3.43597 18.816C3.18868 18.3306 3.09012 17.8139 3.04419 17.2518C2.99998 16.7106 2.99999 16.0463 3 15.2413L3 15C3 14.4477 3.44772 14 4 14Z","fill":"currentColor","stroke":"none"}]],"Email":[["path",{"d":"M6.95984 4.00006H17.0402C17.706 4.00005 18.2656 4.00003 18.7234 4.03744C19.2022 4.07656 19.6571 4.1615 20.089 4.38154C20.7475 4.7171 21.283 5.25253 21.6185 5.9111C21.8386 6.34295 21.9235 6.79791 21.9626 7.27664C22 7.7345 22 8.29402 22 8.95988V15.0402C22 15.7061 22 16.2656 21.9626 16.7235C21.9235 17.2022 21.8386 17.6572 21.6185 18.089C21.283 18.7476 20.7475 19.283 20.089 19.6186C19.6571 19.8386 19.2021 19.9236 18.7234 19.9627C18.2656 20.0001 17.706 20.0001 17.0402 20.0001H6.95982C6.29396 20.0001 5.73444 20.0001 5.27657 19.9627C4.79785 19.9236 4.34289 19.8386 3.91103 19.6186C3.25247 19.283 2.71704 18.7476 2.38148 18.089C2.16144 17.6572 2.0765 17.2022 2.03738 16.7235C1.99997 16.2656 1.99999 15.7061 2 15.0402V8.9599C1.99999 8.29403 1.99997 7.73451 2.03738 7.27664C2.0765 6.79791 2.16144 6.34295 2.38148 5.9111C2.71704 5.25253 3.25247 4.7171 3.91103 4.38154C4.34289 4.1615 4.79785 4.07656 5.27657 4.03744C5.73445 4.00003 6.29397 4.00005 6.95984 4.00006ZM5.43944 6.0308C5.0844 6.05981 4.92194 6.11111 4.81902 6.16355C4.53677 6.30736 4.3073 6.53683 4.16349 6.81908C4.12649 6.89169 4.09006 6.99394 4.06163 7.17255C4.06673 7.17601 4.07181 7.17953 4.07686 7.18309L11.4235 12.369C11.7692 12.613 12.2311 12.613 12.5769 12.369L19.9235 7.18309C19.9284 7.1796 19.9334 7.17616 19.9384 7.17277C19.91 6.99402 19.8735 6.89172 19.8365 6.81908C19.6927 6.53683 19.4632 6.30736 19.181 6.16355C19.0781 6.11111 18.9156 6.05981 18.5606 6.0308C18.1939 6.00084 17.7166 6.00006 17 6.00006H7C6.28344 6.00006 5.80615 6.00084 5.43944 6.0308ZM20 9.57717L13.7302 14.0029C12.693 14.735 11.3073 14.735 10.2701 14.0029L4 9.57692V15.0001C4 15.7166 4.00078 16.1939 4.03074 16.5606C4.05975 16.9157 4.11105 17.0781 4.16349 17.181C4.3073 17.4633 4.53677 17.6928 4.81902 17.8366C4.92194 17.889 5.0844 17.9403 5.43944 17.9693C5.80615 17.9993 6.28343 18.0001 7 18.0001H17C17.7166 18.0001 18.1939 17.9993 18.5606 17.9693C18.9156 17.9403 19.0781 17.889 19.181 17.8366C19.4632 17.6928 19.6927 17.4633 19.8365 17.181C19.889 17.0781 19.9403 16.9157 19.9693 16.5606C19.9992 16.1939 20 15.7166 20 15.0001V9.57717Z","fill":"currentColor","stroke":"none"}]],"Expand":[["path",{"fill-rule":"evenodd","d":"M12 7a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v4a1 1 0 1 1-2 0V8h-3a1 1 0 0 1-1-1Zm-5 5a1 1 0 0 1 1 1v3h3a1 1 0 1 1 0 2H7a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ExternalLink":[["path",{"fill-rule":"evenodd","d":"M15 5a1 1 0 1 1 0-2h5a1 1 0 0 1 1 1v5a1 1 0 1 1-2 0V6.414l-5.293 5.293a1 1 0 0 1-1.414-1.414L17.586 5H15ZM4 7a3 3 0 0 1 3-3h3a1 1 0 1 1 0 2H7a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3a1 1 0 1 1 2 0v3a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V7Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Eye":[["path",{"d":"M5.91456 7.59106C4.34202 9.04124 3.28878 10.7415 2.77064 11.6971C2.66597 11.8902 2.66597 12.1098 2.77064 12.3029C3.28878 13.2585 4.34202 14.9588 5.91456 16.4089C7.48207 17.8545 9.50584 19 12.0001 19C14.4944 19 16.5182 17.8545 18.0857 16.4089C19.6582 14.9588 20.7114 13.2585 21.2296 12.3029C21.3343 12.1098 21.3343 11.8902 21.2296 11.6971C20.7114 10.7415 19.6582 9.04124 18.0857 7.59105C16.5182 6.1455 14.4944 5 12.0001 5C9.50584 5 7.48207 6.1455 5.91456 7.59106ZM4.5587 6.1208C6.36071 4.45899 8.84593 3 12.0001 3C15.1543 3 17.6395 4.45899 19.4415 6.1208C21.2385 7.77798 22.4153 9.68799 22.9878 10.7438C23.4149 11.5315 23.4149 12.4685 22.9878 13.2562C22.4153 14.312 21.2385 16.222 19.4415 17.8792C17.6395 19.541 15.1543 21 12.0001 21C8.84593 21 6.36071 19.541 4.5587 17.8792C2.76171 16.222 1.5849 14.312 1.01244 13.2562C0.585372 12.4685 0.585371 11.5315 1.01244 10.7438C1.5849 9.688 2.76171 7.77798 4.5587 6.1208ZM12.0001 9.5C10.6194 9.5 9.50011 10.6193 9.50011 12C9.50011 13.3807 10.6194 14.5 12.0001 14.5C13.3808 14.5 14.5001 13.3807 14.5001 12C14.5001 10.6193 13.3808 9.5 12.0001 9.5ZM7.50011 12C7.50011 9.51472 9.51483 7.5 12.0001 7.5C14.4854 7.5 16.5001 9.51472 16.5001 12C16.5001 14.4853 14.4854 16.5 12.0001 16.5C9.51483 16.5 7.50011 14.4853 7.50011 12Z","fill":"currentColor","stroke":"none"}]],"EyeOff":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M2.29285 2.29289C2.68337 1.90237 3.31654 1.90237 3.70706 2.29289L21.7071 20.2929C22.0976 20.6834 22.0976 21.3166 21.7071 21.7071C21.3165 22.0976 20.6834 22.0976 20.2928 21.7071L17.7784 19.1927C16.2039 20.2404 14.274 21 12 21C8.84578 21 6.36056 19.541 4.55854 17.8792C2.76156 16.222 1.58474 14.312 1.01229 13.2562C0.585014 12.4681 0.585717 11.5305 1.01263 10.7432C1.59034 9.67778 2.79199 7.72646 4.63582 6.05008L2.29285 3.70711C1.90232 3.31658 1.90232 2.68342 2.29285 2.29289ZM6.05186 7.46612C4.40718 8.93862 3.30712 10.7074 2.77079 11.6965C2.66592 11.8899 2.66602 12.1102 2.77049 12.3029C3.28862 13.2585 4.34187 14.9588 5.9144 16.4089C7.48191 17.8545 9.50568 19 12 19C13.6494 19 15.0899 18.5001 16.3303 17.7445L14.396 15.8102C12.6574 16.9057 10.3323 16.6963 8.81797 15.182C7.30363 13.6676 7.09422 11.3425 8.18971 9.60397L6.05186 7.46612ZM9.67217 11.0864L12.9135 14.3278C12.0164 14.6793 10.9571 14.4927 10.2322 13.7678C9.50728 13.0429 9.32061 11.9836 9.67217 11.0864Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M10.2233 5.19987C10.7835 5.07151 11.3752 5 12 5C14.4942 5 16.518 6.1455 18.0855 7.59105C19.6581 9.04124 20.7113 10.7415 21.2294 11.6971C21.3334 11.8889 21.3338 12.1105 21.2284 12.3047C20.9449 12.8276 20.496 13.5829 19.8836 14.4005C19.5525 14.8426 19.6425 15.4693 20.0845 15.8004C20.5265 16.1315 21.1533 16.0415 21.4844 15.5995C22.1677 14.6872 22.6678 13.8459 22.9865 13.2582C23.4131 12.4717 23.4154 11.5327 22.9876 10.7438C22.4152 9.68799 21.2384 7.77798 19.4414 6.1208C17.6394 4.45899 15.1541 3 12 3C11.221 3 10.4794 3.08934 9.77657 3.25041C9.23825 3.37379 8.90186 3.9102 9.02523 4.44853C9.1486 4.98686 9.68502 5.32325 10.2233 5.19987Z","fill":"currentColor","stroke":"none"}]],"FileBlank":[["path",{"d":"M3.5 15.7002V8.29981C3.5 7.47632 3.49898 6.79843 3.54395 6.24805C3.58988 5.686 3.68827 5.16891 3.93555 4.6836L4.08985 4.40821C4.47414 3.7817 5.02513 3.2711 5.6836 2.93555L5.86719 2.84962C6.29892 2.66443 6.7562 2.58414 7.24805 2.54395C7.79843 2.49898 8.47632 2.50001 9.29981 2.50001H13.5117C14.1979 2.50001 14.7043 2.49341 15.1914 2.61036L15.4941 2.6963C15.7926 2.79335 16.0794 2.92547 16.3477 3.08985L16.5049 3.19239C16.8652 3.44372 17.1889 3.7748 17.6133 4.19923L18.8008 5.38673L19.1426 5.7295C19.4613 6.05339 19.7139 6.3322 19.9102 6.65235L20.0645 6.92676C20.207 7.20655 20.3162 7.50257 20.3897 7.8086L20.4277 7.99317C20.5048 8.42563 20.5 8.88807 20.5 9.48829V15.7002C20.5 16.5237 20.501 17.2016 20.4561 17.752C20.4159 18.2438 20.3356 18.7011 20.1504 19.1328L20.0645 19.3164C19.7289 19.9749 19.2183 20.5259 18.5918 20.9102L18.3164 21.0645C17.8311 21.3117 17.314 21.4101 16.752 21.4561C16.2016 21.501 15.5237 21.5 14.7002 21.5H9.29981C8.47632 21.5 7.79843 21.501 7.24805 21.4561C6.7562 21.4159 6.29892 21.3356 5.86719 21.1504L5.6836 21.0645C5.02513 20.7289 4.47414 20.2183 4.08985 19.5918L3.93555 19.3164C3.68827 18.8311 3.58988 18.314 3.54395 17.752C3.49898 17.2016 3.5 16.5237 3.5 15.7002ZM15.334 7.29005L15.3467 7.37696C15.4275 7.80509 15.779 8.13572 16.2188 8.18458L18.4717 8.43458L18.4443 8.2754C18.4076 8.12258 18.3534 7.9747 18.2822 7.83497L18.2051 7.69727C18.1231 7.56363 18.0144 7.43719 17.7324 7.14942L17.3867 6.80079L16.1992 5.61329C15.7849 5.19901 15.5881 5.00666 15.4404 4.89063L15.3027 4.79493C15.2288 4.74961 15.1512 4.71007 15.0723 4.67481L15.334 7.29005ZM5.5 15.7002C5.5 16.5566 5.50035 17.1388 5.53711 17.5889C5.57293 18.0273 5.63809 18.2518 5.71778 18.4082L5.79492 18.5459C5.98707 18.8592 6.26256 19.1145 6.5918 19.2822L6.72461 19.3389C6.87418 19.3924 7.08253 19.4361 7.41113 19.4629C7.86117 19.4997 8.44342 19.5 9.29981 19.5H14.7002C15.5566 19.5 16.1388 19.4997 16.5889 19.4629C17.0273 19.4271 17.2518 19.3619 17.4082 19.2822L17.5459 19.2051C17.8592 19.0129 18.1145 18.7374 18.2822 18.4082L18.3389 18.2754C18.3924 18.1258 18.436 17.9175 18.4629 17.5889C18.4997 17.1388 18.5 16.5566 18.5 15.7002V10.4502L15.998 10.1729C14.6792 10.0263 13.6246 9.03393 13.3818 7.75001L13.3438 7.48926L13.0449 4.50001H9.29981C8.44342 4.50001 7.86117 4.50036 7.41113 4.53712C7.08253 4.56396 6.87418 4.60763 6.72461 4.66114L6.5918 4.71778C6.26256 4.88555 5.98707 5.14086 5.79492 5.45411L5.71778 5.5918C5.63809 5.7482 5.57293 5.97272 5.53711 6.41114C5.50035 6.86118 5.5 7.44342 5.5 8.29981V15.7002Z","fill":"currentColor","stroke":"none"}]],"FileCode":[["path",{"d":"M14.4472 7.10558C14.9412 7.35257 15.1414 7.95324 14.8944 8.44722L10.8944 16.4472C10.6474 16.9412 10.0468 17.1414 9.55279 16.8944C9.05881 16.6474 8.85858 16.0468 9.10557 15.5528L13.1056 7.55279C13.3526 7.05881 13.9532 6.85859 14.4472 7.10558ZM6.6 7.20001C7.04183 7.53138 7.13137 8.15818 6.8 8.60001L4.25 12L6.8 15.4C7.13137 15.8418 7.04183 16.4686 6.6 16.8C6.15817 17.1314 5.53137 17.0418 5.2 16.6L2.2 12.6C1.93333 12.2444 1.93333 11.7556 2.2 11.4L5.2 7.40001C5.53137 6.95818 6.15817 6.86863 6.6 7.20001ZM17.4 7.20001C17.8418 6.86863 18.4686 6.95818 18.8 7.40001L21.8 11.4C22.0667 11.7556 22.0667 12.2444 21.8 12.6L18.8 16.6C18.4686 17.0418 17.8418 17.1314 17.4 16.8C16.9582 16.4686 16.8686 15.8418 17.2 15.4L19.75 12L17.2 8.60001C16.8686 8.15818 16.9582 7.53138 17.4 7.20001Z","fill":"currentColor","stroke":"none"}]],"FileDocument":[["path",{"d":"M3.5 15.7002V8.29981C3.5 7.47632 3.49898 6.79843 3.54395 6.24805C3.58988 5.686 3.68827 5.16891 3.93555 4.6836L4.08985 4.40821C4.47414 3.7817 5.02513 3.2711 5.6836 2.93555L5.86719 2.84962C6.29892 2.66443 6.7562 2.58414 7.24805 2.54395C7.79843 2.49898 8.47632 2.50001 9.29981 2.50001H13.5117C14.1979 2.50001 14.7043 2.49341 15.1914 2.61036L15.4941 2.6963C15.7926 2.79335 16.0794 2.92547 16.3477 3.08985L16.5049 3.19239C16.8652 3.44372 17.1889 3.7748 17.6133 4.19923L18.8008 5.38673L19.1426 5.7295C19.4613 6.05339 19.7139 6.3322 19.9102 6.65235L20.0645 6.92676C20.207 7.20655 20.3162 7.50257 20.3897 7.8086L20.4277 7.99317C20.5048 8.42563 20.5 8.88807 20.5 9.48829V15.7002C20.5 16.5237 20.501 17.2016 20.4561 17.752C20.4159 18.2438 20.3356 18.7011 20.1504 19.1328L20.0645 19.3164C19.7289 19.9749 19.2183 20.5259 18.5918 20.9102L18.3164 21.0645C17.8311 21.3117 17.314 21.4101 16.752 21.4561C16.2016 21.501 15.5237 21.5 14.7002 21.5H9.29981C8.47632 21.5 7.79843 21.501 7.24805 21.4561C6.7562 21.4159 6.29892 21.3356 5.86719 21.1504L5.6836 21.0645C5.02513 20.7289 4.47414 20.2183 4.08985 19.5918L3.93555 19.3164C3.68827 18.8311 3.58988 18.314 3.54395 17.752C3.49898 17.2016 3.5 16.5237 3.5 15.7002ZM13 13C13.5523 13 14 13.4477 14 14C14 14.5523 13.5523 15 13 15H9C8.44772 15 8 14.5523 8 14C8 13.4477 8.44772 13 9 13H13ZM15 9.00001C15.5523 9.00001 16 9.44772 16 10C16 10.5523 15.5523 11 15 11H9C8.44772 11 8 10.5523 8 10C8 9.44772 8.44772 9.00001 9 9.00001H15ZM5.5 15.7002C5.5 16.5566 5.50035 17.1388 5.53711 17.5889C5.57293 18.0273 5.63809 18.2518 5.71778 18.4082L5.79492 18.5459C5.98707 18.8592 6.26256 19.1145 6.5918 19.2822L6.72461 19.3389C6.87418 19.3924 7.08253 19.4361 7.41113 19.4629C7.86117 19.4997 8.44342 19.5 9.29981 19.5H14.7002C15.5566 19.5 16.1388 19.4997 16.5889 19.4629C17.0273 19.4271 17.2518 19.3619 17.4082 19.2822L17.5459 19.2051C17.8592 19.0129 18.1145 18.7374 18.2822 18.4082L18.3389 18.2754C18.3924 18.1258 18.436 17.9175 18.4629 17.5889C18.4997 17.1388 18.5 16.5566 18.5 15.7002V9.48829C18.5 8.9025 18.496 8.62789 18.4736 8.44141L18.4443 8.2754C18.4076 8.12258 18.3534 7.9747 18.2822 7.83497L18.2051 7.69727C18.1231 7.56363 18.0144 7.43719 17.7324 7.14942L17.3867 6.80079L16.1992 5.61329C15.7849 5.19901 15.5881 5.00666 15.4404 4.89063L15.3027 4.79493C15.1686 4.71275 15.0252 4.64619 14.876 4.59766L14.7246 4.55567C14.5212 4.50684 14.2931 4.50001 13.5117 4.50001H9.29981C8.44342 4.50001 7.86117 4.50036 7.41113 4.53712C7.08253 4.56396 6.87418 4.60763 6.72461 4.66114L6.5918 4.71778C6.26256 4.88555 5.98707 5.14086 5.79492 5.45411L5.71778 5.5918C5.63809 5.7482 5.57293 5.97272 5.53711 6.41114C5.50035 6.86118 5.5 7.44342 5.5 8.29981V15.7002Z","fill":"currentColor","stroke":"none"}]],"FileImage":[["path",{"d":"M9.83357 5C9.0972 5 8.50024 5.59695 8.50024 6.33333C8.50024 7.06971 9.0972 7.66667 9.83357 7.66667C10.57 7.66667 11.1669 7.06971 11.1669 6.33333C11.1669 5.59695 10.57 5 9.83357 5ZM6.50024 6.33333C6.50024 4.49238 7.99263 3 9.83357 3C11.6745 3 13.1669 4.49238 13.1669 6.33333C13.1669 8.17428 11.6745 9.66667 9.83357 9.66667C7.99263 9.66667 6.50024 8.17428 6.50024 6.33333ZM13.3793 11.4215C14.3771 9.89157 16.6253 9.91327 17.5933 11.4622L20.6857 16.41C21.9346 18.4081 20.4981 21 18.1417 21H5.78797C3.24001 21 1.85205 18.0244 3.4894 16.0722L6.21761 12.8193C7.13833 11.7215 8.79145 11.6206 9.83889 12.5982L11.3452 14.0041C11.4587 14.11 11.6403 14.0879 11.7252 13.9579L13.3793 11.4215ZM15.8973 12.5222C15.7037 12.2124 15.2541 12.208 15.0545 12.514L13.4004 15.0504C12.6369 16.221 11.0022 16.4197 9.98054 15.4662L8.47425 14.0603C8.26476 13.8648 7.93414 13.885 7.75 14.1045L5.02178 17.3574C4.476 18.0081 4.93866 19 5.78797 19H18.1417C18.9272 19 19.406 18.136 18.9897 17.47L15.8973 12.5222Z","fill":"currentColor","stroke":"none"}]],"FileSpreadsheet":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M6 5C5.44772 5 5 5.44772 5 6V9H9V5H6ZM6 3C4.34315 3 3 4.34315 3 6V18C3 19.6569 4.34315 21 6 21H18C19.6569 21 21 19.6569 21 18V6C21 4.34315 19.6569 3 18 3H6ZM11 5V9H19V6C19 5.44771 18.5523 5 18 5H11ZM19 11H11V19H18C18.5523 19 19 18.5523 19 18V11ZM9 19V11H5V18C5 18.5523 5.44772 19 6 19H9Z","fill":"currentColor","stroke":"none"}]],"FileUpload":[["path",{"fill-rule":"evenodd","d":"M18.032 5.024C17.75 5 17.377 5 16.8 5h-5.3c-.2 1-.401 1.911-.61 2.854-.131.596-.247 1.119-.523 1.56a2.998 2.998 0 0 1-.953.954c-.441.275-.964.39-1.56.522l-.125.028-2.512.558A1.003 1.003 0 0 1 5 11.5v5.3c0 .577 0 .949.024 1.232.022.272.06.372.085.422a1 1 0 0 0 .437.437c.05.025.15.063.422.085C6.25 19 6.623 19 7.2 19H10a1 1 0 1 1 0 2H7.161c-.527 0-.981 0-1.356-.03-.395-.033-.789-.104-1.167-.297a3 3 0 0 1-1.311-1.311c-.193-.378-.264-.772-.296-1.167A17.9 17.9 0 0 1 3 16.838V11c0-2.075 1.028-4.067 2.48-5.52C6.933 4.028 8.925 3 11 3h5.838c.528 0 .982 0 1.357.03.395.033.789.104 1.167.297a3 3 0 0 1 1.311 1.311c.193.378.264.772.296 1.167.031.375.031.83.031 1.356V10a1 1 0 1 1-2 0V7.2c0-.577 0-.949-.024-1.232-.022-.272-.06-.373-.085-.422a1 1 0 0 0-.437-.437c-.05-.025-.15-.063-.422-.085ZM5.28 9.414l2.015-.448c.794-.177.948-.225 1.059-.294a1 1 0 0 0 .318-.318c.069-.11.117-.265.294-1.059l.447-2.015c-.903.313-1.778.874-2.518 1.615-.741.74-1.302 1.615-1.615 2.518ZM17 15a1 1 0 1 1 2 0v2h2a1 1 0 1 1 0 2h-2v2a1 1 0 1 1-2 0v-2h-2a1 1 0 1 1 0-2h2v-2Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Filter":[["path",{"d":"M3 6C3 4.34315 4.34315 3 6 3H18C19.6569 3 21 4.34315 21 6V7.11526C21 7.96049 20.6434 8.76651 20.018 9.33508L15.8273 13.1448C15.6189 13.3343 15.5 13.603 15.5 13.8847V19.882C15.5 21.3687 13.9354 22.3357 12.6056 21.6708L9.60557 20.1708C8.92801 19.832 8.5 19.1395 8.5 18.382V13.8847C8.5 13.603 8.38115 13.3343 8.17267 13.1448L3.98198 9.33508C3.35656 8.76651 3 7.96049 3 7.11526V6ZM6 5C5.44772 5 5 5.44772 5 6V7.11526C5 7.397 5.11885 7.66568 5.32733 7.8552L9.51802 11.6649C10.1434 12.2335 10.5 13.0395 10.5 13.8847V18.382L13.5 19.882V13.8847C13.5 13.0395 13.8566 12.2335 14.482 11.6649L18.6727 7.8552C18.8811 7.66568 19 7.39701 19 7.11526V6C19 5.44772 18.5523 5 18 5H6Z","fill":"currentColor","stroke":"none"}]],"Flask":[["path",{"d":"M19 17.3291C19 16.7824 18.8324 16.2506 18.5225 15.8047L18.3809 15.6191L17.957 15.1113C16.6208 15.6807 15.5035 15.9364 14.4863 15.9893C13.3603 16.0477 12.418 15.8547 11.5576 15.6602C10.6846 15.4627 9.91127 15.2691 8.96289 15.2197C8.07087 15.1733 7.0006 15.2579 5.59863 15.6445C5.21177 16.1204 5 16.7151 5 17.3291C5.00002 18.8042 6.19581 20 7.6709 20H16.3291C17.8042 20 19 18.8042 19 17.3291ZM14 4H10V9.27637C9.9999 9.89032 9.8119 10.4875 9.46387 10.9883L9.30469 11.1963L7.59473 13.248C8.11969 13.204 8.6075 13.1977 9.06738 13.2217C10.222 13.2818 11.1784 13.5244 11.999 13.71C12.8321 13.8983 13.548 14.0356 14.3828 13.9922C15.0021 13.96 15.7207 13.8249 16.6123 13.4961L14.6953 11.1963C14.2462 10.6573 14.0001 9.97796 14 9.27637V4ZM16 9.27637C16.0001 9.51005 16.0819 9.73645 16.2314 9.91602L19.917 14.3389L20.0449 14.499C20.6633 15.3109 21 16.3048 21 17.3291C21 19.9088 18.9088 22 16.3291 22H7.6709C5.09124 22 3.00002 19.9088 3 17.3291C3 16.2364 3.38348 15.1783 4.08301 14.3389L7.76855 9.91602L7.82129 9.84668C7.93724 9.67985 7.9999 9.48091 8 9.27637V4C7.44772 4 7 3.55228 7 3C7 2.44772 7.44772 2 8 2H16C16.5523 2 17 2.44772 17 3C17 3.55228 16.5523 4 16 4V9.27637Z","fill":"currentColor","stroke":"none"}]],"Folder":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M1.66669 5C1.66669 3.61929 2.78598 2.5 4.16669 2.5H7.643C8.30604 2.5 8.94192 2.76339 9.41077 3.23223L10.1011 3.92259C10.2574 4.07887 10.4694 4.16667 10.6904 4.16667H15.8334C17.2141 4.16667 18.3334 5.28595 18.3334 6.66667V15C18.3334 16.3807 17.2141 17.5 15.8334 17.5H4.16669C2.78598 17.5 1.66669 16.3807 1.66669 15V5ZM4.16669 4.16667C3.70645 4.16667 3.33335 4.53976 3.33335 5V8.33333H16.6667V6.66667C16.6667 6.20643 16.2936 5.83333 15.8334 5.83333H10.6904C10.0273 5.83333 9.39145 5.56994 8.92261 5.1011L8.23225 4.41074C8.07597 4.25446 7.86401 4.16667 7.643 4.16667H4.16669ZM16.6667 10H3.33335V15C3.33335 15.4602 3.70645 15.8333 4.16669 15.8333H15.8334C16.2936 15.8333 16.6667 15.4602 16.6667 15V10Z","fill":"currentColor","stroke":"none"}]],"FolderOpen":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M8.36575 5.00294C8.31789 5.00035 8.26519 5 8.08579 5H7.3C6.44342 5 5.86113 5.00078 5.41104 5.03755C4.97262 5.07337 4.74842 5.1383 4.59202 5.21799C4.2157 5.40974 3.90973 5.7157 3.71799 6.09202C3.6383 6.24842 3.57337 6.47263 3.53755 6.91104C3.50078 7.36113 3.5 7.94342 3.5 8.8V13.3338C4.10345 12.2477 4.92627 11.2786 6.03229 10.4584C6.46262 10.1392 6.97003 10 7.45416 10H19.4995C19.4981 9.54872 19.4929 9.20759 19.4738 8.92661C19.4487 8.55915 19.4031 8.36814 19.3478 8.23464C19.1448 7.74458 18.7554 7.35523 18.2654 7.15224C18.1319 7.09695 17.9409 7.0513 17.5734 7.02623C17.197 7.00054 16.7126 7 16 7L12.8908 7.00001C12.7448 7.00002 12.6347 7.00003 12.5259 6.99413C11.6159 6.94474 10.75 6.58609 10.0717 5.97756C9.99052 5.90478 9.91272 5.82696 9.80953 5.72375L9.7929 5.70711C9.66604 5.58025 9.62853 5.54323 9.59285 5.51123C9.25366 5.20696 8.82074 5.02764 8.36575 5.00294ZM21.4996 10H21.6958C23.2725 10 24.218 11.7333 23.3868 13.0603C22.2267 14.9122 21.6207 15.9779 21.2984 17.3273C20.8483 19.2122 19.3008 21 17.0719 21H7.25868C7.23455 21 7.21056 21 7.18669 21H6.07372C5.95032 21 5.8274 20.9941 5.70538 20.9825C5.54408 20.9762 5.3918 20.9675 5.24817 20.9558C4.68608 20.9099 4.16937 20.8113 3.68404 20.564C2.93139 20.1805 2.31947 19.5686 1.93597 18.816C1.68868 18.3306 1.59012 17.8139 1.54419 17.2518C1.49998 16.7106 1.49999 16.0463 1.5 15.2413V8.7587C1.49999 7.95373 1.49998 7.28937 1.54419 6.74818C1.59012 6.18608 1.68868 5.66938 1.93597 5.18404C2.31947 4.43139 2.93139 3.81947 3.68404 3.43598C4.16937 3.18869 4.68608 3.09012 5.24817 3.0442C5.78937 2.99998 6.45373 2.99999 7.2587 3L8.10922 3C8.25524 2.99999 8.36528 2.99997 8.47414 3.00588C9.38412 3.05527 10.25 3.41391 10.9283 4.02245C11.0095 4.09525 11.0873 4.17306 11.1905 4.27632L11.2071 4.2929C11.334 4.41975 11.3715 4.45678 11.4072 4.48878C11.7463 4.79305 12.1793 4.97237 12.6343 4.99706C12.6821 4.99966 12.7348 5 12.9142 5L16.0343 5C16.7041 4.99999 17.2569 4.99999 17.7095 5.03087C18.1788 5.06289 18.6129 5.13142 19.0307 5.30449C20.0108 5.71046 20.7895 6.48916 21.1955 7.46927C21.3686 7.88708 21.4371 8.32118 21.4691 8.79047C21.4925 9.1336 21.4982 9.53436 21.4996 10ZM17.0719 19C18.1001 19 19.0467 18.1456 19.3531 16.8627C19.7604 15.1572 20.5385 13.8397 21.691 12H7.45416C7.34602 12 7.26903 12.0312 7.22363 12.0648C5.55547 13.3019 4.68121 14.9804 4.2774 17.1283C4.11717 17.9806 4.77661 18.8636 5.82444 18.9857C6.20963 18.9996 6.68386 19 7.3 19H17.0719Z","fill":"currentColor","stroke":"none"}]],"FolderPlus":[["path",{"d":"M15 11.25C15 10.8358 14.6642 10.5 14.25 10.5C13.8358 10.5 13.5 10.8358 13.5 11.25V12.75H12C11.5858 12.75 11.25 13.0858 11.25 13.5C11.25 13.9142 11.5858 14.25 12 14.25H13.5V15.75C13.5 16.1642 13.8358 16.5 14.25 16.5C14.6642 16.5 15 16.1642 15 15.75V14.25H16.5C16.9142 14.25 17.25 13.9142 17.25 13.5C17.25 13.0858 16.9142 12.75 16.5 12.75H15V11.25Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M16.4669 6.56113C16.5 6.96703 16.5 7.46529 16.5 8.06901V8.25C16.5 8.66421 16.1642 9 15.75 9L3 9V11.4C3 12.0424 3.00058 12.4792 3.02816 12.8167C3.05503 13.1455 3.10372 13.3137 3.16349 13.431C3.3073 13.7132 3.53677 13.9427 3.81902 14.0865C3.93632 14.1463 4.10447 14.195 4.43328 14.2218C4.77085 14.2494 5.20757 14.25 5.85 14.25H9C9.41421 14.25 9.75 14.5858 9.75 15C9.75 15.4142 9.41421 15.75 9 15.75H5.81901C5.21529 15.75 4.71702 15.75 4.31113 15.7169C3.88956 15.6824 3.50203 15.6085 3.13803 15.423C2.57354 15.1354 2.1146 14.6765 1.82698 14.112C1.64151 13.748 1.56759 13.3604 1.53315 12.9389C1.49998 12.533 1.49999 12.0347 1.5 11.431V6.56903C1.49999 5.96531 1.49998 5.46703 1.53315 5.06113C1.56759 4.63956 1.64151 4.25203 1.82698 3.88803C2.1146 3.32355 2.57354 2.8646 3.13803 2.57698C3.50203 2.39152 3.88956 2.31759 4.31113 2.28315C4.71703 2.24999 5.2153 2.24999 5.81903 2.25L6.45692 2.25C6.56639 2.24999 6.64898 2.24998 6.7306 2.25441C7.41309 2.29145 8.06248 2.56044 8.57126 3.01684C8.63212 3.07143 8.69047 3.12979 8.76789 3.20723L8.78033 3.21967C8.87548 3.31482 8.90361 3.34259 8.93036 3.36659C9.18475 3.59479 9.50945 3.72928 9.85069 3.7478C9.88658 3.74975 9.92611 3.75 10.0607 3.75L12.181 3.75C12.7847 3.74999 13.283 3.74999 13.6889 3.78315C14.1104 3.81759 14.498 3.89152 14.862 4.07698C15.4265 4.3646 15.8854 4.82355 16.173 5.38803C16.3585 5.75203 16.4324 6.13956 16.4669 6.56113ZM7.56964 4.13342C7.31525 3.90522 6.99056 3.77073 6.64931 3.75221C6.61342 3.75026 6.5739 3.75 6.43934 3.75H5.85C5.20757 3.75 4.77085 3.75059 4.43328 3.77817C4.10447 3.80503 3.93632 3.85373 3.81902 3.91349C3.53677 4.0573 3.3073 4.28677 3.16349 4.56902C3.10372 4.68632 3.05503 4.85447 3.02816 5.18328C3.00058 5.52085 3 5.95757 3 6.6V7.5H14.9987C14.9963 7.16586 14.9898 6.90348 14.9718 6.68328C14.945 6.35447 14.8963 6.18632 14.8365 6.06902C14.6927 5.78678 14.4632 5.5573 14.181 5.41349C14.0637 5.35373 13.8955 5.30503 13.5667 5.27817C13.2292 5.25059 12.7924 5.25 12.15 5.25L10.0431 5.25001C9.93357 5.25002 9.85104 5.25003 9.7694 5.2456C9.08691 5.20855 8.43753 4.93957 7.92874 4.48317C7.86788 4.42857 7.80953 4.37021 7.73211 4.29277L7.71967 4.28033C7.62453 4.18519 7.5964 4.15742 7.56964 4.13342Z","fill":"currentColor","stroke":"none"}]],"Grid":[["path",{"d":"M6.75 4.5a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5ZM2.5 6.75a4.25 4.25 0 1 1 8.5 0 4.25 4.25 0 0 1-8.5 0ZM17.25 4.5a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5ZM13 6.75a4.25 4.25 0 1 1 8.5 0 4.25 4.25 0 0 1-8.5 0ZM6.75 15a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5ZM2.5 17.25a4.25 4.25 0 1 1 8.5 0 4.25 4.25 0 0 1-8.5 0ZM17.25 15a2.25 2.25 0 1 0 0 4.5 2.25 2.25 0 0 0 0-4.5ZM13 17.25a4.25 4.25 0 1 1 8.5 0 4.25 4.25 0 0 1-8.5 0Z","fill":"currentColor","stroke":"none"}]],"History":[["path",{"fill-rule":"evenodd","d":"M2.954 7.807A1 1 0 0 0 3.968 9c.064.002.13-.003.196-.014l3-.5a1 1 0 0 0-.328-1.972l-.778.13a8 8 0 1 1-2.009 6.247 1 1 0 0 0-1.988.219C2.614 18.11 6.852 22 12 22c5.523 0 10-4.477 10-10S17.523 2 12 2a9.975 9.975 0 0 0-7.434 3.312l-.08-.476a1 1 0 0 0-1.972.328l.44 2.643ZM12 7a1 1 0 0 1 1 1v3.586l2.207 2.207a1 1 0 0 1-1.414 1.414l-2.5-2.5A1 1 0 0 1 11 12V8a1 1 0 0 1 1-1Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"InfoCircle":[["path",{"d":"M13 12C13 11.4477 12.5523 11 12 11C11.4477 11 11 11.4477 11 12V16C11 16.5523 11.4477 17 12 17C12.5523 17 13 16.5523 13 16V12Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2ZM4 12C4 7.58172 7.58172 4 12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M12 9.30005C12.6351 9.30005 13.15 8.78518 13.15 8.15005C13.15 7.51492 12.6351 7.00005 12 7.00005C11.3649 7.00005 10.85 7.51492 10.85 8.15005C10.85 8.78518 11.3649 9.30005 12 9.30005Z","fill":"currentColor","stroke":"none"}]],"Keyboard":[["path",{"fill-rule":"evenodd","d":"M2 7a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V7Zm3-1a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1H5Zm4 8a1 1 0 0 1 1-1h4a1 1 0 1 1 0 2h-4a1 1 0 0 1-1-1Zm-2.46-2.89a1.11 1.11 0 1 0 0-2.22 1.11 1.11 0 0 0 0 2.22Zm3.64 0a1.11 1.11 0 1 0 0-2.22 1.11 1.11 0 0 0 0 2.22ZM14.93 10a1.11 1.11 0 1 1-2.22 0 1.11 1.11 0 0 1 2.22 0Zm2.53 1.11a1.11 1.11 0 1 0 0-2.22 1.11 1.11 0 0 0 0 2.22ZM7.65 14a1.11 1.11 0 1 1-2.22 0 1.11 1.11 0 0 1 2.22 0Zm10.92 0a1.11 1.11 0 1 1-2.22 0 1.11 1.11 0 0 1 2.22 0Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Lightbulb":[["path",{"d":"M12 3c3.585 0 6.5 2.923 6.5 6.538A6.542 6.542 0 0 1 15.575 15h-7.15A6.542 6.542 0 0 1 5.5 9.538C5.5 5.923 8.415 3 12 3Zm2.865 14v1h-5.73v-1h5.73Zm-1.133 3a2 2 0 0 1-3.464 0h3.464Zm-5.606 0a4.002 4.002 0 0 0 7.748 0 1 1 0 0 0 .991-1v-2.46A8.54 8.54 0 0 0 20.5 9.539C20.5 4.828 16.7 1 12 1S3.5 4.828 3.5 9.538a8.54 8.54 0 0 0 3.635 7.003V19a1 1 0 0 0 .991 1Z","fill":"currentColor","stroke":"none"}]],"Link":[["path",{"d":"M18.2929 5.7071C16.4743 3.88849 13.5257 3.88849 11.7071 5.7071L10.7071 6.7071C10.3166 7.09763 9.68341 7.09763 9.29289 6.7071C8.90236 6.31658 8.90236 5.68341 9.29289 5.29289L10.2929 4.29289C12.8926 1.69322 17.1074 1.69322 19.7071 4.29289C22.3068 6.89255 22.3068 11.1074 19.7071 13.7071L18.7071 14.7071C18.3166 15.0976 17.6834 15.0976 17.2929 14.7071C16.9024 14.3166 16.9024 13.6834 17.2929 13.2929L18.2929 12.2929C20.1115 10.4743 20.1115 7.52572 18.2929 5.7071ZM15.7071 8.29289C16.0976 8.68341 16.0976 9.31658 15.7071 9.7071L9.7071 15.7071C9.31658 16.0976 8.68341 16.0976 8.29289 15.7071C7.90236 15.3166 7.90236 14.6834 8.29289 14.2929L14.2929 8.29289C14.6834 7.90236 15.3166 7.90236 15.7071 8.29289ZM6.7071 9.29289C7.09763 9.68341 7.09763 10.3166 6.7071 10.7071L5.7071 11.7071C3.88849 13.5257 3.88849 16.4743 5.7071 18.2929C7.52572 20.1115 10.4743 20.1115 12.2929 18.2929L13.2929 17.2929C13.6834 16.9024 14.3166 16.9024 14.7071 17.2929C15.0976 17.6834 15.0976 18.3166 14.7071 18.7071L13.7071 19.7071C11.1074 22.3068 6.89255 22.3068 4.29289 19.7071C1.69322 17.1074 1.69322 12.8926 4.29289 10.2929L5.29289 9.29289C5.68341 8.90236 6.31658 8.90236 6.7071 9.29289Z","fill":"currentColor","stroke":"none"}]],"Minus":[["path",{"d":"M6 12C6 11.4477 6.44772 11 7 11H17C17.5523 11 18 11.4477 18 12C18 12.5523 17.5523 13 17 13H7C6.44772 13 6 12.5523 6 12Z","fill":"currentColor","stroke":"none"}]],"Pin":[["path",{"d":"M12.8636 3.26026C13.9444 1.74705 16.1254 1.56655 17.4403 2.88148L21.1185 6.55971C22.4335 7.87464 22.2529 10.0556 20.7397 11.1364L16.4786 14.1801C16.1638 14.405 16 14.7305 16 15V17.5C16 18.9069 15.0409 19.9513 13.976 20.4104C12.9046 20.8724 11.4792 20.8468 10.4568 19.8243L8.02332 17.3909L3.70711 21.7071C3.31658 22.0976 2.68342 22.0976 2.29289 21.7071C1.90237 21.3166 1.90237 20.6834 2.29289 20.2929L6.60911 15.9767L4.17567 13.5432C3.1532 12.5208 3.12762 11.0954 3.58957 10.024C4.04871 8.95908 5.09306 8 6.5 8H9C9.26948 8 9.59505 7.8362 9.81994 7.52136L12.8636 3.26026ZM8.73001 15.2692C8.73015 15.2693 8.73029 15.2694 8.73043 15.2696C8.73057 15.2697 8.73071 15.2698 8.73084 15.27L11.871 18.4101C12.1769 18.716 12.6696 18.7957 13.1842 18.5739C13.7052 18.3492 14 17.9208 14 17.5V15C14 13.9717 14.5749 13.0821 15.3162 12.5526L19.5773 9.50895C20.0848 9.14643 20.1453 8.41495 19.7043 7.97392L16.0261 4.29569C15.5851 3.85467 14.8536 3.9152 14.491 4.42273L11.4474 8.68383C10.9179 9.42507 10.0283 10 9 10H6.5C6.07925 10 5.65079 10.2948 5.42615 10.8158C5.20431 11.3304 5.28397 11.8231 5.58988 12.129L8.73001 15.2692Z","fill":"currentColor","stroke":"none"}]],"Play":[["path",{"d":"M9.5 9.33165V14.6683C9.5 15.4595 10.3752 15.9373 11.0408 15.5095L15.1915 12.8412C15.8038 12.4475 15.8038 11.5524 15.1915 11.1588L11.0408 8.49047C10.3752 8.06265 9.5 8.54049 9.5 9.33165Z","fill":"currentColor","stroke":"none"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2ZM4 12C4 7.58172 7.58172 4 12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12Z","fill":"currentColor","stroke":"none"}]],"PlayCircle":[["path",{"fill-rule":"evenodd","d":"M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2ZM9.5 9.332v5.336a1 1 0 0 0 1.54.841l4.152-2.668a1 1 0 0 0 0-1.682L11.04 8.49a1 1 0 0 0-1.541.842Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Plus":[["path",{"fill-rule":"evenodd","d":"M12 5a1 1 0 0 1 1 1v5h5a1 1 0 1 1 0 2h-5v5a1 1 0 1 1-2 0v-5H6a1 1 0 1 1 0-2h5V6a1 1 0 0 1 1-1Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Reload":[["path",{"fill-rule":"evenodd","d":"M4.5 2.5a1 1 0 0 1 1 1v1.572A9.5 9.5 0 1 1 12 21.5c-4.87 0-8.882-3.663-9.435-8.384a1 1 0 0 1 1.986-.232A7.501 7.501 0 0 0 19.5 12 7.5 7.5 0 0 0 6.41 7H9a1 1 0 0 1 0 2H4.5a1 1 0 0 1-1-1.024V3.5a1 1 0 0 1 1-1Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Scissor":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M6.5 6C5.67157 6 5 6.67157 5 7.5C5 8.32843 5.67157 9 6.5 9C7.32843 9 8 8.32843 8 7.5C8 6.67157 7.32843 6 6.5 6ZM3 7.5C3 5.567 4.567 4 6.5 4C8.433 4 10 5.567 10 7.5C10 7.80866 9.96004 8.108 9.88502 8.3931L13.4 10.7897L19.4367 6.67377C19.893 6.36265 20.5151 6.48035 20.8262 6.93666C21.1374 7.39298 21.0196 8.0151 20.5633 8.32623L13.9826 12.8131C13.9701 12.8221 13.9574 12.8307 13.9445 12.8391L9.88502 15.6069C9.96004 15.892 10 16.1913 10 16.5C10 18.433 8.433 20 6.5 20C4.567 20 3 18.433 3 16.5C3 14.567 4.567 13 6.5 13C7.40012 13 8.22087 13.3398 8.841 13.8981L11.6249 12L8.841 10.1019C8.22087 10.6602 7.40012 11 6.5 11C4.567 11 3 9.433 3 7.5ZM6.5 15C5.67157 15 5 15.6716 5 16.5C5 17.3284 5.67157 18 6.5 18C7.32843 18 8 17.3284 8 16.5C8 15.6716 7.32843 15 6.5 15ZM15.8738 13.6867C16.1849 13.2304 16.807 13.1126 17.2633 13.4238L20.5633 15.6738C21.0196 15.9849 21.1374 16.607 20.8262 17.0633C20.5151 17.5196 19.893 17.6374 19.4367 17.3262L16.1367 15.0762C15.6804 14.7651 15.5626 14.143 15.8738 13.6867Z","fill":"currentColor","stroke":"none"}]],"Search":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M10.875 4.5C7.35418 4.5 4.5 7.35418 4.5 10.875C4.5 14.3958 7.35418 17.25 10.875 17.25C14.3958 17.25 17.25 14.3958 17.25 10.875C17.25 7.35418 14.3958 4.5 10.875 4.5ZM2.5 10.875C2.5 6.24962 6.24962 2.5 10.875 2.5C15.5004 2.5 19.25 6.24962 19.25 10.875C19.25 12.8273 18.582 14.6236 17.462 16.0478L21.2071 19.7929C21.5976 20.1834 21.5976 20.8166 21.2071 21.2071C20.8166 21.5976 20.1834 21.5976 19.7929 21.2071L16.0478 17.462C14.6236 18.582 12.8273 19.25 10.875 19.25C6.24962 19.25 2.5 15.5004 2.5 10.875Z","fill":"currentColor","stroke":"none"}]],"SettingsCog":[["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M11.6099 3.75C11.2549 3.75 10.9266 3.93813 10.7471 4.24434L9.99036 5.53548C9.45636 6.44657 8.48265 7.00978 7.42663 7.01839L5.94021 7.03051C5.58531 7.0334 5.25853 7.22419 5.08156 7.53183L4.6852 8.22082C4.50905 8.52702 4.50752 8.90345 4.68118 9.21107L5.42305 10.5252C5.93977 11.4405 5.93977 12.5595 5.42305 13.4748L4.68118 14.7889C4.50752 15.0966 4.50905 15.473 4.6852 15.7792L5.08156 16.4682C5.25853 16.7758 5.58531 16.9666 5.94021 16.9695L7.42665 16.9816C8.48266 16.9902 9.45637 17.5535 9.99037 18.4645L10.7471 19.7557C10.9266 20.0619 11.2549 20.25 11.6099 20.25H12.3901C12.7451 20.25 13.0734 20.0619 13.2529 19.7557L14.0096 18.4645C14.5436 17.5535 15.5173 16.9902 16.5734 16.9816L18.0599 16.9695C18.4148 16.9666 18.7416 16.7758 18.9185 16.4682L19.3149 15.7792C19.491 15.473 19.4926 15.0966 19.3189 14.7889L18.577 13.4748C18.0603 12.5595 18.0603 11.4405 18.577 10.5252L19.3189 9.21107C19.4926 8.90345 19.491 8.52702 19.3149 8.22082L18.9185 7.53183C18.7416 7.22419 18.4148 7.0334 18.0599 7.03051L16.5734 7.01839C15.5174 7.00978 14.5437 6.44657 14.0096 5.53548L13.2529 4.24434C13.0734 3.93813 12.7451 3.75 12.3901 3.75H11.6099ZM9.02167 3.23301C9.56009 2.31439 10.5451 1.75 11.6099 1.75H12.3901C13.4549 1.75 14.4399 2.31439 14.9783 3.23301L15.7351 4.52415C15.9131 4.82785 16.2377 5.01558 16.5897 5.01845L18.0762 5.03058C19.1409 5.03926 20.1212 5.61161 20.6521 6.53452L21.0485 7.22352C21.577 8.14213 21.5815 9.27141 21.0605 10.1943L20.3187 11.5084C20.1464 11.8135 20.1464 12.1865 20.3187 12.4916L21.0605 13.8057C21.5815 14.7286 21.577 15.8579 21.0485 16.7765L20.6521 17.4655C20.1212 18.3884 19.1409 18.9608 18.0762 18.9694L16.5897 18.9816C16.2377 18.9844 15.9131 19.1722 15.7351 19.4759L14.9783 20.767C14.4399 21.6856 13.4549 22.25 12.3901 22.25H11.6099C10.5451 22.25 9.56009 21.6856 9.02167 20.767L8.26491 19.4759C8.08691 19.1722 7.76234 18.9844 7.41034 18.9816L5.9239 18.9694C4.8592 18.9608 3.87888 18.3884 3.34795 17.4655L2.95159 16.7765C2.42314 15.8579 2.41856 14.7286 2.93954 13.8057L3.68141 12.4916C3.85365 12.1865 3.85365 11.8135 3.68141 11.5084L2.93954 10.1943C2.41856 9.27141 2.42314 8.14213 2.95159 7.22352L3.34795 6.53453C3.87888 5.61162 4.8592 5.03926 5.9239 5.03058L7.41032 5.01845C7.76233 5.01558 8.0869 4.82785 8.2649 4.52415L9.02167 3.23301Z","fill":"currentColor","stroke":"none"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M12 10.5C11.1716 10.5 10.5 11.1716 10.5 12C10.5 12.8284 11.1716 13.5 12 13.5C12.8285 13.5 13.5 12.8284 13.5 12C13.5 11.1716 12.8285 10.5 12 10.5ZM8.50004 12C8.50004 10.067 10.067 8.5 12 8.5C13.933 8.5 15.5 10.067 15.5 12C15.5 13.933 13.933 15.5 12 15.5C10.067 15.5 8.50004 13.933 8.50004 12Z","fill":"currentColor","stroke":"none"}]],"SettingsSlider":[["path",{"d":"M14.5 5C13.3954 5 12.5 5.89543 12.5 7C12.5 8.10457 13.3954 9 14.5 9C15.6046 9 16.5 8.10457 16.5 7C16.5 5.89543 15.6046 5 14.5 5ZM10.626 6C11.0701 4.27477 12.6362 3 14.5 3C16.3638 3 17.9299 4.27477 18.374 6H20C20.5523 6 21 6.44772 21 7C21 7.55228 20.5523 8 20 8H18.374C17.9299 9.72523 16.3638 11 14.5 11C12.6362 11 11.0701 9.72523 10.626 8H4C3.44772 8 3 7.55228 3 7C3 6.44772 3.44772 6 4 6H10.626ZM9.5 15C8.39543 15 7.5 15.8954 7.5 17C7.5 18.1046 8.39543 19 9.5 19C10.6046 19 11.5 18.1046 11.5 17C11.5 15.8954 10.6046 15 9.5 15ZM5.62602 16C6.07006 14.2748 7.63616 13 9.5 13C11.3638 13 12.9299 14.2748 13.374 16H20C20.5523 16 21 16.4477 21 17C21 17.5523 20.5523 18 20 18H13.374C12.9299 19.7252 11.3638 21 9.5 21C7.63616 21 6.07006 19.7252 5.62602 18H4C3.44772 18 3 17.5523 3 17C3 16.4477 3.44772 16 4 16H5.62602Z","fill":"currentColor","stroke":"none"}]],"SettingsWrench":[["path",{"d":"M14.5 4C11.4625 4 9.00002 6.46243 9.00002 9.5C9.00002 10.2519 9.15033 10.9661 9.4216 11.6162C9.57772 11.9903 9.4925 12.4217 9.20583 12.7084L4.45713 17.4571C3.88115 18.0331 3.88115 18.9669 4.45713 19.5429C5.0331 20.1189 5.96694 20.1189 6.54291 19.5429L11.2916 14.7942C11.5783 14.5075 12.0097 14.4223 12.3838 14.5784C13.0339 14.8497 13.7481 15 14.5 15C17.5376 15 20 12.5376 20 9.5C20 9.47156 19.9998 9.44318 19.9994 9.41486L18.7071 10.7071C17.212 12.2022 14.788 12.2022 13.2929 10.7071C11.7978 9.21201 11.7978 6.78798 13.2929 5.29289L14.5852 4.00064C14.5568 4.00022 14.5285 4 14.5 4ZM7.00002 9.5C7.00002 5.35786 10.3579 2 14.5 2C15.3632 2 16.1943 2.14622 16.9687 2.41606C17.2937 2.52931 17.5376 2.80173 17.6144 3.13722C17.6912 3.47271 17.5901 3.82412 17.3468 4.06748L14.7071 6.70711C13.9931 7.42115 13.9931 8.57885 14.7071 9.29289C15.4212 10.0069 16.5789 10.0069 17.2929 9.29289L19.9325 6.65327C20.1759 6.4099 20.5273 6.30879 20.8628 6.38559C21.1983 6.46239 21.4707 6.70632 21.584 7.03132C21.8538 7.8057 22 8.63684 22 9.5C22 13.6421 18.6422 17 14.5 17C13.7195 17 12.9654 16.8805 12.256 16.6582L7.95713 20.9571C6.6001 22.3141 4.39994 22.3141 3.04291 20.9571C1.68589 19.6001 1.68589 17.3999 3.04291 16.0429L7.34178 11.744C7.11957 11.0346 7.00002 10.2805 7.00002 9.5Z","fill":"currentColor","stroke":"none"}]],"SidebarLeft":[["path",{"fill-rule":"evenodd","d":"M6 5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h2V5H6Zm4 0v14h8a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-8ZM3 6a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"SidebarRight":[["path",{"fill-rule":"evenodd","d":"M18 5a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-2V5h2Zm-4 0v14H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h8Zm7 1a3 3 0 0 0-3-3H6a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3V6Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Stack":[["path",{"d":"M4.94845 4.68299C5.32822 4.24896 5.87687 4 6.4536 4H17.5461C18.1228 4 18.6714 4.24896 19.0512 4.68299L22.5512 8.68299C23.6827 9.97616 22.7644 12 21.0461 12H2.9536C1.23528 12 0.316926 9.97616 1.44845 8.68299L4.94845 4.68299ZM17.5461 6L6.4536 6L2.9536 10H21.0461L17.5461 6ZM1.99983 15C1.99983 14.4477 2.44755 14 2.99983 14H20.9998C21.5521 14 21.9998 14.4477 21.9998 15C21.9998 15.5523 21.5521 16 20.9998 16H2.99983C2.44755 16 1.99983 15.5523 1.99983 15ZM2.99983 19C2.99983 18.4477 3.44755 18 3.99983 18H19.9998C20.5521 18 20.9998 18.4477 20.9998 19C20.9998 19.5523 20.5521 20 19.9998 20H3.99983C3.44755 20 2.99983 19.5523 2.99983 19Z","fill":"currentColor","stroke":"none"}]],"Stop":[["path",{"d":"M6 8C6 6.89543 6.89543 6 8 6H16C17.1046 6 18 6.89543 18 8V16C18 17.1046 17.1046 18 16 18H8C6.89543 18 6 17.1046 6 16V8Z","fill":"currentColor","stroke":"none"}]],"Stopwatch":[["path",{"d":"M8.5 2.5C8.5 1.94772 8.94772 1.5 9.5 1.5H14.5C15.0523 1.5 15.5 1.94772 15.5 2.5C15.5 3.05228 15.0523 3.5 14.5 3.5H9.5C8.94772 3.5 8.5 3.05228 8.5 2.5Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M15.6402 11.5182C16.0645 11.1647 16.1218 10.5341 15.7682 10.1098C15.4147 9.68554 14.7841 9.62821 14.3598 9.98178L11.3598 12.4818C10.9355 12.8353 10.8782 13.4659 11.2318 13.8902C11.5853 14.3145 12.2159 14.3718 12.6402 14.0182L15.6402 11.5182Z","fill":"currentColor","stroke":"none"}],["path",{"fill-rule":"evenodd","clip-rule":"evenodd","d":"M3.28125 13.25C3.28125 8.43477 7.18477 4.53125 12 4.53125C16.8152 4.53125 20.7188 8.43477 20.7188 13.25C20.7188 18.0652 16.8152 21.9688 12 21.9688C7.18477 21.9688 3.28125 18.0652 3.28125 13.25ZM12 6.46875C8.25482 6.46875 5.21875 9.50482 5.21875 13.25C5.21875 16.9952 8.25482 20.0312 12 20.0312C15.7452 20.0312 18.7812 16.9952 18.7812 13.25C18.7812 9.50482 15.7452 6.46875 12 6.46875Z","fill":"currentColor","stroke":"none"}]],"Tag":[["path",{"fill-rule":"evenodd","d":"M4 5a1 1 0 0 1 1-1h6.172a1 1 0 0 1 .707.293l8 8a1 1 0 0 1 0 1.414l-6.172 6.172a1 1 0 0 1-1.414 0l-8-8A1 1 0 0 1 4 11.172V5Zm1-3a3 3 0 0 0-3 3v6.172a3 3 0 0 0 .879 2.12l8 8a3 3 0 0 0 4.242 0l6.172-6.17a3 3 0 0 0 0-4.243l-8-8A3 3 0 0 0 11.172 2H5Zm3 7a1 1 0 1 1 2 0 1 1 0 0 1-2 0Zm1-3a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"Undo":[["path",{"d":"M8.70711 2.29289C9.09763 2.68342 9.09763 3.31658 8.70711 3.70711L6.41421 6H14C17.866 6 21 9.13401 21 13C21 16.866 17.866 20 14 20H10C9.44772 20 9 19.5523 9 19C9 18.4477 9.44772 18 10 18H14C16.7614 18 19 15.7614 19 13C19 10.2386 16.7614 8 14 8H6.41421L8.70711 10.2929C9.09763 10.6834 9.09763 11.3166 8.70711 11.7071C8.31658 12.0976 7.68342 12.0976 7.29289 11.7071L3.29289 7.70711C2.90237 7.31658 2.90237 6.68342 3.29289 6.29289L7.29289 2.29289C7.68342 1.90237 8.31658 1.90237 8.70711 2.29289Z","fill":"currentColor","stroke":"none"}]],"Unpin":[["path",{"d":"M12.8636 3.26026C13.9444 1.74705 16.1254 1.56655 17.4403 2.88148L21.1185 6.55971C22.4334 7.87463 22.2529 10.0556 20.7397 11.1364L18.5812 12.6782C18.1318 12.9992 17.5073 12.8951 17.1863 12.4457C16.8653 11.9963 16.9693 11.3717 17.4188 11.0507L19.5773 9.50895C20.0848 9.14643 20.1453 8.41495 19.7043 7.97392L16.0261 4.29569C15.5851 3.85466 14.8536 3.9152 14.491 4.42273L12.8137 6.77098C12.4927 7.22039 11.8682 7.32448 11.4188 7.00347C10.9693 6.68246 10.8653 6.05791 11.1863 5.6085L12.8636 3.26026ZM3.29289 3.29289C3.68342 2.90237 4.31658 2.90237 4.70711 3.29289L20.7071 19.2929C21.0976 19.6834 21.0976 20.3166 20.7071 20.7071C20.3166 21.0976 19.6834 21.0976 19.2929 20.7071L16 17.4142V17.5C16 18.911 15.0378 19.9538 13.9717 20.4109C12.9007 20.8701 11.476 20.8435 10.4568 19.8243L8.02332 17.3909L3.70711 21.7071C3.31658 22.0976 2.68342 22.0976 2.29289 21.7071C1.90237 21.3166 1.90237 20.6834 2.29289 20.2929L6.60911 15.9767L4.17567 13.5432C3.16007 12.5276 3.13988 11.1018 3.5954 10.0346C4.04949 8.97072 5.08716 8 6.5 8H6.58579L3.29289 4.70711C2.90237 4.31658 2.90237 3.68342 3.29289 3.29289ZM8.58244 9.99665C8.55525 9.99887 8.52776 10 8.5 10H6.5C6.08527 10 5.65976 10.2928 5.43485 10.8197C5.21136 11.3433 5.29634 11.8355 5.58988 12.129L11.871 18.4101C12.1736 18.7127 12.6669 18.7943 13.1835 18.5727C13.705 18.3491 14 17.9224 14 17.5V15.5C14 15.4722 14.0011 15.4447 14.0033 15.4176L8.58244 9.99665Z","fill":"currentColor","stroke":"none"}]],"Warning":[["path",{"d":"M10.42 2.006a4 4 0 0 1 3.159 0c.674.29 1.188.822 1.667 1.456.474.627 1 1.473 1.653 2.523l3.542 5.696c.72 1.16 1.3 2.09 1.682 2.854.384.766.654 1.517.59 2.292a4 4 0 0 1-1.604 2.886c-.625.463-1.405.63-2.258.709-.85.078-1.945.078-3.311.078H8.46c-1.366 0-2.46 0-3.31-.078-.854-.078-1.634-.246-2.26-.71a4 4 0 0 1-1.603-2.885c-.064-.775.206-1.526.59-2.292.383-.764.961-1.694 1.682-2.854l3.542-5.696c.653-1.05 1.18-1.896 1.653-2.523.48-.634.993-1.166 1.667-1.456Zm2.37 1.838a2 2 0 0 0-1.58 0c-.192.083-.448.28-.86.825-.413.544-.891 1.312-1.577 2.415l-3.488 5.61c-.755 1.214-1.283 2.066-1.62 2.737-.34.678-.402 1.02-.385 1.232a2 2 0 0 0 .802 1.443c.171.127.494.255 1.25.324.748.069 1.75.07 3.18.07h6.976c1.43 0 2.432-.001 3.18-.07.756-.069 1.079-.197 1.25-.324a2 2 0 0 0 .802-1.443c.017-.212-.045-.554-.385-1.232-.337-.671-.865-1.523-1.62-2.737l-3.488-5.61c-.686-1.103-1.164-1.87-1.576-2.415-.413-.546-.67-.742-.861-.825","fill":"currentColor","stroke":"none"}],["path",{"d":"M12 7.5a1 1 0 0 1 1 1v3a1 1 0 1 1-2 0v-3a1 1 0 0 1 1-1M10.851 15a1.15 1.15 0 1 1 2.3 0 1.15 1.15 0 0 1-2.3 0","fill":"currentColor","stroke":"none"}]],"X":[["path",{"fill-rule":"evenodd","d":"M5.636 5.636a1 1 0 0 1 1.414 0l4.95 4.95 4.95-4.95a1 1 0 0 1 1.414 1.414L13.414 12l4.95 4.95a1 1 0 0 1-1.414 1.414L12 13.414l-4.95 4.95a1 1 0 0 1-1.414-1.414l4.95-4.95-4.95-4.95a1 1 0 0 1 0-1.414Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"XCircleCrossedClose":[["path",{"d":"M8.29289 8.29289C8.68342 7.90237 9.31658 7.90237 9.70711 8.29289L12 10.5858L14.2929 8.29289C14.6834 7.90237 15.3166 7.90237 15.7071 8.29289C16.0976 8.68342 16.0976 9.31658 15.7071 9.70711L13.4142 12L15.7071 14.2929C16.0976 14.6834 16.0976 15.3166 15.7071 15.7071C15.3166 16.0976 14.6834 16.0976 14.2929 15.7071L12 13.4142L9.70711 15.7071C9.31658 16.0976 8.68342 16.0976 8.29289 15.7071C7.90237 15.3166 7.90237 14.6834 8.29289 14.2929L10.5858 12L8.29289 9.70711C7.90237 9.31658 7.90237 8.68342 8.29289 8.29289Z","fill":"currentColor","stroke":"none"}],["path",{"d":"M12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4ZM2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12Z","fill":"currentColor","stroke":"none"}]],"PinFilled":[["path",{"d":"M12.8636 3.26029C13.9444 1.74708 16.1254 1.56658 17.4403 2.88151L21.1185 6.55974C22.4335 7.87467 22.2529 10.0556 20.7397 11.1364L16.4786 14.1801C16.1638 14.405 16 14.7306 16 15V17.5C16 18.907 15.0409 19.9513 13.976 20.4105C12.9046 20.8724 11.4792 20.8468 10.4568 19.8244L8.02332 17.3909L3.70711 21.7071C3.31658 22.0977 2.68342 22.0977 2.29289 21.7071C1.90237 21.3166 1.90237 20.6835 2.29289 20.2929L6.60911 15.9767L4.17567 13.5433C3.1532 12.5208 3.12762 11.0955 3.58957 10.024C4.04871 8.95911 5.09306 8.00003 6.5 8.00003H9C9.26948 8.00003 9.59505 7.83624 9.81994 7.52139L12.8636 3.26029Z","fill":"currentColor","stroke":"none"}]],"Edit":[["path",{"fill-rule":"evenodd","d":"M16.793 2.793a3.121 3.121 0 1 1 4.414 4.414l-8.5 8.5A1 1 0 0 1 12 16H9a1 1 0 0 1-1-1v-3a1 1 0 0 1 .293-.707l8.5-8.5Zm3 1.414a1.121 1.121 0 0 0-1.586 0L10 12.414V14h1.586l8.207-8.207a1.121 1.121 0 0 0 0-1.586ZM6 5a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4a1 1 0 1 1 2 0v4a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h4a1 1 0 1 1 0 2H6Z","clip-rule":"evenodd","fill":"currentColor","stroke":"none"}]],"ThemeLight":[["path",{"d":"M17 12C17 14.7614 14.7614 17 12 17C9.23858 17 7 14.7614 7 12C7 9.23858 9.23858 7 12 7C14.7614 7 17 9.23858 17 12Z","stroke":"currentColor","strokeWidth":"1.5"}],["path",{"d":"M12 2V3.5M12 20.5V22M19.0708 19.0713L18.0101 18.0106M5.98926 5.98926L4.9286 4.9286M22 12H20.5M3.5 12H2M19.0713 4.92871L18.0106 5.98937M5.98975 18.0107L4.92909 19.0714","stroke":"currentColor","strokeLinecap":"round","strokeWidth":"1.5"}]],"ThemeDark":[["path",{"d":"M21.5 14.0784C20.3003 14.7189 18.9301 15.0821 17.4751 15.0821C12.7491 15.0821 8.91792 11.2509 8.91792 6.52485C8.91792 5.06986 9.28105 3.69968 9.92163 2.5C5.66765 3.49698 2.5 7.31513 2.5 11.8731C2.5 17.1899 6.8101 21.5 12.1269 21.5C16.6849 21.5 20.503 18.3324 21.5 14.0784Z","stroke":"currentColor","strokeLinecap":"round","strokeLinejoin":"round","strokeWidth":"1.5"}]],"ThemeAuto":[["path",{"d":"M14 21H16M14 21C13.1716 21 12.5 20.3284 12.5 19.5V17L12 17M14 21H10M10 21H8M10 21C10.8284 21 11.5 20.3284 11.5 19.5V17L12 17M12 17V21","stroke":"currentColor","strokeLinecap":"round","strokeLinejoin":"round","strokeWidth":"1.5"}],["path",{"d":"M16 3H8C5.17157 3 3.75736 3 2.87868 3.87868C2 4.75736 2 6.17157 2 9V11C2 13.8284 2 15.2426 2.87868 16.1213C3.75736 17 5.17157 17 8 17H16C18.8284 17 20.2426 17 21.1213 16.1213C22 15.2426 22 13.8284 22 11V9C22 6.17157 22 4.75736 21.1213 3.87868C20.2426 3 18.8284 3 16 3Z","stroke":"currentColor","strokeLinecap":"round","strokeLinejoin":"round","strokeWidth":"1.5"}]]};
-  // END GENERATED APPS SDK ICONS
   const SCENE_TREE_ICON = {
-    chevron: APP_ICON_DATA.ChevronRight,
-    eye: APP_ICON_DATA.Eye,
-    eyeOff: APP_ICON_DATA.EyeOff,
-    plus: APP_ICON_DATA.Plus,
-    trash: APP_ICON_DATA.Delete,
+    chevron: ['m9 6 6 6-6 6'],
+    eye: ['M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
+    eyeOff: ['M9.88 9.88a3 3 0 1 0 4.24 4.24', 'M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68', 'M6.61 6.61A13.53 13.53 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61', 'm2 2 20 20'],
+    plus: ['M12 5v14', 'M5 12h14'],
+    trash: ['M3 6h18', 'M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2', 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6'],
     isolate: ['M3 7V5a2 2 0 0 1 2-2h2', 'M17 3h2a2 2 0 0 1 2 2v2', 'M21 17v2a2 2 0 0 1-2 2h-2', 'M7 21H5a2 2 0 0 1-2-2v-2', 'M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0'],
     focus: ['M18.5 12a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0', 'M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5'],
-    restore: APP_ICON_DATA.Reload,
-    settings: APP_ICON_DATA.SettingsSlider,
-    collapseAll: APP_ICON_DATA.Collapse,
-    expandAll: APP_ICON_DATA.Expand
+    restore: ['M3 12a9 9 0 1 0 3-6.7L3 8', 'M3 3v5h5'],
+    settings: ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M2 14h4', 'M10 8h4', 'M18 16h4'],
+    collapseAll: ['m7 20 5-5 5 5', 'm7 4 5 5 5-5'],
+    expandAll: ['m7 15 5 5 5-5', 'm7 9 5-5 5 5']
   };
-  // Keep quick tints and the shade palette in the same muted colour families.
-  const SCENE_TREE_UNIFORM_COLORS = window.BuretteColorPicker?.presets || [
-    { label: 'Lavender', value: 0xa58abd }, { label: 'Blue', value: 0x7da5c7 },
-    { label: 'Teal', value: 0x75aaa3 }, { label: 'Sage', value: 0x94ad7c },
-    { label: 'Sand', value: 0xc6af73 }, { label: 'Clay', value: 0xc7997d },
-    { label: 'Rose', value: 0xbf8a9a }, { label: 'Stone', value: 0xaaa9a5 }
+  // Apple system colours: the uniform tints offered next to the real colour themes.
+  const SCENE_TREE_UNIFORM_COLORS = [
+    { label: 'Purple', value: 0xaf52de },
+    { label: 'Blue', value: 0x0a84ff },
+    { label: 'Cyan', value: 0x40c8e0 },
+    { label: 'Green', value: 0x32d74b },
+    { label: 'Yellow', value: 0xffd60a },
+    { label: 'Orange', value: 0xff9f0a },
+    { label: 'Red', value: 0xff453a },
+    { label: 'Pink', value: 0xff6482 },
+    { label: 'Grey', value: 0x98989d },
+    { label: 'White', value: 0xf2f2f7 }
   ];
   const sceneTreeExpandedRefs = new Set();
   const sceneTreeKnownRefs = new Set();
@@ -7207,12 +6830,9 @@ SOFTWARE.
     svg.setAttribute('stroke-linecap', 'round');
     svg.setAttribute('stroke-linejoin', 'round');
     for (const definition of paths) {
-      // SDK nodes carry filled contours; scientific glyphs retain their paths.
-      const [tag, attributes] = Array.isArray(definition)
-        ? definition : ['path', { d: definition }];
-      const node = document.createElementNS(SCENE_TREE_SVG_NS, tag);
-      for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value);
-      svg.appendChild(node);
+      const path = document.createElementNS(SCENE_TREE_SVG_NS, 'path');
+      path.setAttribute('d', definition);
+      svg.appendChild(path);
     }
     return svg;
   }
@@ -7411,13 +7031,6 @@ SOFTWARE.
   function sceneTreeNodes(viewer) {
     const state = viewer?.plugin?.state?.data;
     if (!state?.cells) return [];
-    const cachedRoots = new Set();
-    for (const scene of [activeSdfCollectionVisibilityState, activeDockingPoseCollectionState, activeXyzFrameOverlayState]) {
-      if (scene?.viewer !== viewer) continue;
-      for (const [index, entry] of scene.poseCache || []) {
-        if (index !== scene.activeIndex) cachedRoots.add(entry.raw.ref);
-      }
-    }
     const { children, rootRef } = sceneTreeChildRefs(state);
     if (rootRef === null) return [];
     const colorTargets = sceneTreeColorTargets(viewer);
@@ -7440,7 +7053,6 @@ SOFTWARE.
       const nodes = [];
       for (const parentRef of refs) {
         for (const childRef of children.get(parentRef) || []) {
-          if (cachedRoots.has(childRef)) continue;
           const cell = state.cells.get(childRef);
           if (!cell || isSceneTreeDecorator(cell)) continue;
           // Mol* hides ghost and pending cells but keeps showing their children.
@@ -7448,7 +7060,6 @@ SOFTWARE.
             nodes.push(...build(decoratorChain(childRef)));
             continue;
           }
-          if (cell.transform.tags?.includes('measurement-group') && !(children.get(childRef)?.length)) continue;
           const chain = decoratorChain(childRef);
           // Story imports expose parser/model plumbing as several identical
           // nested rows. Keep the file and meaningful components, not those
@@ -7636,7 +7247,6 @@ SOFTWARE.
     sceneTreeRenderHandle = window.setTimeout(() => {
       sceneTreeRenderHandle = 0;
       renderSceneTree();
-      reportMolstarCompositionVisibility();
     }, 0);
   }
 
@@ -8565,21 +8175,9 @@ SOFTWARE.
     scheduleSceneTreeRender();
   }
 
-  let sceneTreeColorPickerMissingReported = false;
-
   function sceneTreeMenuSwatches(menu, label, action, currentValue) {
     const swatches = document.createElement('div');
-    swatches.className = 'buret-tree-swatches buret-tree-swatches-with-picker';
-    const rail = document.createElement('div');
-    rail.className = 'buret-tree-swatch-rail';
-    rail.addEventListener('wheel', event => {
-      if (event.ctrlKey || rail.scrollWidth <= rail.clientWidth) return;
-      event.preventDefault();
-      event.stopPropagation();
-      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY) ? event.deltaX : event.deltaY;
-      rail.scrollLeft += delta * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? rail.clientWidth : 1);
-    }, { passive: false });
-    swatches.appendChild(rail);
+    swatches.className = 'buret-tree-swatches';
     for (const entry of SCENE_TREE_UNIFORM_COLORS) {
       const swatch = document.createElement('button');
       swatch.type = 'button';
@@ -8590,65 +8188,9 @@ SOFTWARE.
       swatch.setAttribute('aria-label', `Tint ${label} ${entry.label.toLowerCase()}`);
       swatch.setAttribute('aria-pressed', currentValue === entry.value ? 'true' : 'false');
       swatch.title = entry.label;
-      rail.appendChild(swatch);
+      swatches.appendChild(swatch);
     }
-    // The picker lives in color-picker.js, loaded next to this file. When that
-    // script is missing (a packaged build once shipped without it) the preset
-    // swatches still work on their own; only the custom-colour button is dropped,
-    // rather than the whole menu dying before it renders.
-    if (typeof window.BuretteColorPicker?.create !== 'function') {
-      if (!sceneTreeColorPickerMissingReported) {
-        sceneTreeColorPickerMissingReported = true;
-        debug('[web] BuretteColorPicker is unavailable; scene tree menus offer preset colours only');
-      }
-      menu.appendChild(swatches);
-      return;
-    }
-    const custom = document.createElement('button');
-    custom.type = 'button';
-    custom.className = 'buret-tree-swatch buret-tree-swatch-custom';
-    custom.title = 'Colour palette';
-    custom.appendChild(sceneTreeIconElement(APP_ICON_DATA.ColorTheme));
-    custom.setAttribute('aria-label', `Toggle colour palette for ${label}`);
-    custom.setAttribute('aria-expanded', 'false');
-    let colourUndoSnapshot = null;
-    const picker = window.BuretteColorPicker.create(Number.isFinite(currentValue) ? currentValue : 0xffffff, value => {
-      const ref = menu.closest('[data-ref]')?.dataset.ref;
-      if (!ref) return;
-      if (!colourUndoSnapshot) colourUndoSnapshot = captureMolstarSceneUndoSnapshot(molstarSceneMenuUndoLabel(action, ref, custom));
-      void streamSceneTreeTheme(ref, action, 'tint', value);
-    }, () => {
-      if (colourUndoSnapshot) pushMolstarEditUndoSnapshot(colourUndoSnapshot);
-      colourUndoSnapshot = null;
-    });
-    const owner = menu.closest('.buret-molecule-context-submenu, #buret-scene-tree-menu') || menu;
-    const rootMenu = owner.closest('.buret-molecule-context-menu');
-    const reposition = () => {
-      if (owner._buretTrigger) moleculeMenuPositionSubmenu(owner, owner._buretTrigger);
-    };
-    picker.addEventListener('change', reposition);
-    custom.addEventListener('click', event => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (rootMenu) {
-        moleculeMenuCancelHoverIntent(rootMenu);
-        moleculeMenuCloseSubmenus(rootMenu, owner);
-      }
-      picker.hidden = !picker.hidden;
-      custom.setAttribute('aria-expanded', String(!picker.hidden));
-      reposition();
-    });
-    picker.addEventListener('keydown', event => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      picker.hidden = true;
-      custom.setAttribute('aria-expanded', 'false');
-      reposition();
-      custom.focus();
-    });
-    swatches.appendChild(custom);
-    menu.append(swatches);
-    owner.prepend(picker);
+    menu.appendChild(swatches);
   }
 
   // A representation carries 30–55 parameters; all but a handful are renderer
@@ -8736,37 +8278,26 @@ SOFTWARE.
     parent.appendChild(row);
   }
 
-  function sceneTreeAdvancedParams(viewer, target) {
-    const schema = sceneTreeReprParamSchema(viewer, target);
-    if (!schema) return null;
-    const rows = SCENE_TREE_ADVANCED_PARAMS
-      .filter(([name]) => schema[name] && ['number', 'boolean', 'select'].includes(schema[name].type))
-      .map(([name, label]) => ({ name, label, definition: schema[name] }));
-    const sizeThemes = viewer?.plugin?.representation?.structure?.themes?.sizeThemeRegistry;
-    if (!rows.length && !sizeThemes) return null;
-    // Size is a theme of its own, alongside colour rather than inside the type.
-    const sizeOptions = sizeThemes?.getApplicableTypes?.({ structure: target.component?.cell?.obj?.data }) || [];
-    return {
-      rows,
-      current: target.representation?.cell?.transform?.params?.type?.params || {},
-      sizeOptions: sizeOptions.length > 1 ? sizeOptions : []
-    };
-  }
-
   function sceneTreeAdvancedSection(menu, viewer, target) {
-    const advanced = sceneTreeAdvancedParams(viewer, target);
-    if (!advanced) return;
+    const schema = sceneTreeReprParamSchema(viewer, target);
+    if (!schema) return;
+    const current = target.representation?.cell?.transform?.params?.type?.params || {};
+    const rows = SCENE_TREE_ADVANCED_PARAMS
+      .filter(([name]) => schema[name] && ['number', 'boolean', 'select'].includes(schema[name].type));
+    const sizeThemes = viewer?.plugin?.representation?.structure?.themes?.sizeThemeRegistry;
+    if (!rows.length && !sizeThemes) return;
     sceneTreeMenuSection(menu);
     const disclosure = document.createElement('details');
     disclosure.className = 'buret-tree-menu-actions buret-tree-menu-advanced';
     const summary = document.createElement('summary');
     summary.textContent = 'Advanced';
     disclosure.appendChild(summary);
-    for (const { name, label, definition } of advanced.rows) {
-      sceneTreeAdvancedControl(disclosure, name, label, definition, advanced.current[name]);
+    for (const [name, label] of rows) {
+      sceneTreeAdvancedControl(disclosure, name, label, schema[name], current[name]);
     }
-    const sizeOptions = advanced.sizeOptions;
-    if (sizeOptions.length) {
+    // Size is a theme of its own, alongside colour rather than inside the type.
+    const sizeOptions = sizeThemes?.getApplicableTypes?.({ structure: target.component?.cell?.obj?.data }) || [];
+    if (sizeOptions.length > 1) {
       const row = document.createElement('label');
       row.className = 'buret-tree-menu-field';
       const caption = document.createElement('span');
@@ -8790,23 +8321,19 @@ SOFTWARE.
   // Both surface types can draw themselves as a mesh or as bare wireframe. That is
   // a choice about what the drawing is, not a tuning knob, so it sits beside Type
   // rather than under Advanced — and it only appears for a type that offers both.
-  function sceneTreeSurfaceFill(viewer, target) {
+  function sceneTreeSurfaceFillRow(menu, viewer, target) {
     const schema = sceneTreeReprParamSchema(viewer, target);
     const options = (schema?.visuals?.options || []).map(option => String(option[0]));
     const own = name => !name.startsWith('structure-');
     const solid = options.find(name => own(name) && name.endsWith('-mesh'));
     const wireframe = options.find(name => own(name) && name.endsWith('-wireframe'));
-    if (!solid || !wireframe) return null;
+    if (!solid || !wireframe) return;
     const current = target.representation?.cell?.transform?.params?.type?.params?.visuals;
-    return {
-      options: [{ name: solid, label: 'Solid' }, { name: wireframe, label: 'Wireframe' }],
-      active: Array.isArray(current) && current.includes(wireframe) ? wireframe : solid
-    };
-  }
-
-  function sceneTreeSurfaceFillRow(menu, viewer, target) {
-    const fill = sceneTreeSurfaceFill(viewer, target);
-    if (fill) sceneTreeMenuSelect(menu, 'Fill', 'representation-visual', fill.options, fill.active);
+    const active = Array.isArray(current) && current.includes(wireframe) ? wireframe : solid;
+    sceneTreeMenuSelect(menu, 'Fill', 'representation-visual', [
+      { name: solid, label: 'Solid' },
+      { name: wireframe, label: 'Wireframe' }
+    ], active);
   }
 
   // Painting a whole structure is a state commit, and a pointer crossing a list
@@ -8814,17 +8341,17 @@ SOFTWARE.
   // the opacity drag does, so the scene follows the cursor instead of a backlog.
   let sceneTreeThemeInFlight = false;
   let sceneTreePendingTheme = null;
-  async function streamSceneTreeTheme(ref, action, name, value = null) {
-    sceneTreePendingTheme = { ref, action, name, value };
+  async function streamSceneTreeTheme(ref, action, name) {
+    sceneTreePendingTheme = { ref, action, name };
     if (sceneTreeThemeInFlight) return;
     sceneTreeThemeInFlight = true;
     try {
       while (sceneTreePendingTheme) {
         const next = sceneTreePendingTheme;
         sceneTreePendingTheme = null;
-        await (next.action === 'representation-color' || next.action === 'rep-tint-color'
-          ? applySceneTreeReprColor(next.ref, next.name, next.value)
-          : applySceneTreeColorTheme(next.ref, next.name, next.value));
+        await (next.action === 'representation-color'
+          ? applySceneTreeReprColor(next.ref, next.name, null)
+          : applySceneTreeColorTheme(next.ref, next.name, null));
       }
     } finally {
       sceneTreeThemeInFlight = false;
@@ -8868,9 +8395,6 @@ SOFTWARE.
     }
     sceneTreeSurfaceFillRow(menu, viewer, target);
     sceneTreeMenuSlider(menu, 'Opacity', 'opacity', Math.round(alpha * 100));
-    if (alpha < 0.999) {
-      sceneTreeMenuSlider(menu, 'Outline brightness', 'outline-brightness', Math.round(molstarOutlineBrightness * 100));
-    }
 
     sceneTreeMenuSection(menu, 'Colour');
     sceneTreeMenuThemePicker(menu, 'Theme', 'representation-color',
@@ -8951,6 +8475,24 @@ SOFTWARE.
         sceneTreeMenuThemePicker(menu, 'Theme', 'color-theme', sceneTreeColorThemes(viewer, components), node.theme);
         sceneTreeMenuSwatches(menu, node.label, 'tint-color', node.value);
       }
+    }
+
+    // Mol*'s own actions are many and rarely the reason the menu was opened, so they
+    // stay folded away instead of pushing everything else off the screen.
+    const actions = isLassoSelection ? [] : sceneTreeCellActions(viewer, ref);
+    if (actions.length) {
+      sceneTreeMenuSection(menu);
+      const disclosure = document.createElement('details');
+      disclosure.className = 'buret-tree-menu-actions';
+      const summary = document.createElement('summary');
+      summary.textContent = 'Apply action';
+      disclosure.appendChild(summary);
+      actions.forEach((entry, index) => {
+        disclosure.appendChild(sceneTreeMenuItem(entry.label, 'apply-action', {
+          data: { sceneTreeActionIndex: String(index) }
+        }));
+      });
+      menu.appendChild(disclosure);
     }
 
     sceneTreeMenuSection(menu, isLassoSelection ? 'Selection' : '');
@@ -9228,7 +8770,6 @@ SOFTWARE.
   // button is re-added rather than bound once.
   function installSequenceCloseButton() {
     if (window.BuretteSequencePanel && !document.body.classList.contains('burette-mobile-host')) {
-      initSequenceResize();
       window.BuretteSequencePanel.sync();
       return;
     }
@@ -9387,17 +8928,17 @@ SOFTWARE.
     'built-in.animate-model-index'
   ]);
   const VIEWPORT_ICON = {
-    camera: APP_ICON_DATA.Camera,
+    camera: ['M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z', 'M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z'],
     layFlat: ['M3 8.5 12 4l9 4.5-9 4.5Z', 'm3 15 9 4.5L21 15'],
-    paint: APP_ICON_DATA.ColorTheme,
-    cube: APP_ICON_DATA.Cube,
-    scissors: APP_ICON_DATA.Scissor,
-    undo: APP_ICON_DATA.Undo,
-    redo: APP_ICON_DATA.ArrowCurvedRight,
-    play: APP_ICON_DATA.Play,
-    stop: APP_ICON_DATA.Stop,
-    download: APP_ICON_DATA.Download,
-    clipboard: APP_ICON_DATA.Clipboard,
+    paint: ['M4 8.5A2.5 2.5 0 0 1 6.5 6H16a3 3 0 0 1 3 3v1.5H8.5A2.5 2.5 0 0 0 6 13v1', 'M9 14h4v4a2 2 0 0 1-4 0Z'],
+    cube: ['M12 3 4.5 7v10L12 21l7.5-4V7Z', 'M4.5 7 12 11l7.5-4', 'M12 11v10'],
+    scissors: ['M6.5 8.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'M6.5 20.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z', 'm8.7 7.2 10.8 10.6', 'M19.5 6.2 8.7 16.8'],
+    undo: ['M4 9h11a5 5 0 0 1 0 10h-7', 'm8 5-4 4 4 4'],
+    redo: ['M20 9H9a5 5 0 0 0 0 10h7', 'm-8-5 4 4-4 4'],
+    play: ['m8 5 11 7-11 7Z'],
+    stop: ['M6.5 6.5h11v11h-11Z'],
+    download: ['M12 3v12', 'm7 10 5 5 5-5', 'M5 21h14'],
+    clipboard: ['M9 4h6v3H9Z', 'M9 5.5H7A1.5 1.5 0 0 0 5.5 7v12A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V7A1.5 1.5 0 0 0 17 5.5h-2'],
     wiggle: ['M3 12c2-4 4 4 6 0s4-4 6 0 4 4 6 0']
   };
   // Mol* exposes these through plugin.helpers.viewportScreenshot; the labels are
@@ -9876,24 +9417,12 @@ SOFTWARE.
     return applied;
   }
 
-  // Wiggle is judged by watching it, so every one of these keeps the menu up.
-  function runViewportWiggleAction(action, control) {
-    const fail = error => setStatus(`[web] Wiggle failed. ${error?.message || error}`, 'error');
-    const done = message => {
-      refreshViewportWiggleControls();
-      if (message) setStatus(message);
-    };
-    if (action === 'mode') {
-      setViewportWiggleOptions({ wiggleMode: control.dataset.wiggleMode })
-        .then(() => done()).catch(fail);
-      return true;
-    }
-    const kind = control.dataset.wiggle;
+  async function setViewportWiggleKind(kind) {
+    if (!viewportWiggleState()) throw new Error('Procedural animation is unavailable in this viewer.');
     if (kind === 'even') {
-      clearViewportWiggleLayers()
-        .then(() => setViewportWiggleOptions({ wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0.2 }))
-        .then(() => done('[web] Wiggling every atom evenly.'))
-        .catch(fail);
+      await clearViewportWiggleLayers();
+      await setViewportWiggleOptions({ wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0.2 });
+      return '[web] Wiggling every atom evenly.';
     } else if (kind === 'uncertainty') {
       // The per-group layers carry the amplitude themselves, so the uniform one is
       // all but zeroed or the two would stack. Not zeroed, which is what Mol*'s own
@@ -9901,24 +9430,29 @@ SOFTWARE.
       // and with a flat zero the layers are built, resolved and then never drawn -
       // measured, a scene that does not move a pixel. This baseline is a rounding
       // error next to per-group values that reach a full Ångström.
-      setViewportWiggleOptions({ wiggleAmplitude: 0.01, tumbleAmplitude: 0 })
-        .then(() => applyViewportWiggleFromUncertainty())
-        .then(async applied => {
-          // Nothing to weight by means nothing should be moving: the baseline
-          // amplitude set a moment ago would otherwise leave the whole structure
-          // shivering while the status line says there was nothing to do.
-          if (!applied) await setViewportWiggleOptions({ wiggleAmplitude: 0, tumbleAmplitude: 0 });
-          done(applied
-            ? `[web] Wiggling ${applied} representation${applied === 1 ? '' : 's'} by B-factor.`
-            : '[web] This structure has no B-factor or RMSF spread to wiggle by.');
-        })
-        .catch(fail);
+      await setViewportWiggleOptions({ wiggleAmplitude: 0.01, tumbleAmplitude: 0 });
+      const applied = await applyViewportWiggleFromUncertainty();
+      // No uncertainty spread means no motion, including the render-loop baseline.
+      if (!applied) await setViewportWiggleOptions({ wiggleAmplitude: 0, tumbleAmplitude: 0 });
+      return applied
+        ? `[web] Wiggling ${applied} representation${applied === 1 ? '' : 's'} by B-factor.`
+        : '[web] This structure has no B-factor or RMSF spread to wiggle by.';
     } else {
-      setViewportWiggleOptions({ wiggleAmplitude: 0, tumbleAmplitude: 0 })
-        .then(() => clearViewportWiggleLayers())
-        .then(() => done('[web] Stopped wiggling.'))
-        .catch(fail);
+      await setViewportWiggleOptions({ wiggleAmplitude: 0, tumbleAmplitude: 0 });
+      await clearViewportWiggleLayers();
+      return '[web] Stopped wiggling.';
     }
+  }
+
+  // UI and agent actions await the same representation update.
+  function runViewportWiggleAction(action, control) {
+    const operation = action === 'mode'
+      ? setViewportWiggleOptions({ wiggleMode: control.dataset.wiggleMode })
+      : setViewportWiggleKind(control.dataset.wiggle);
+    operation.then(message => {
+      refreshViewportWiggleControls();
+      if (message) setStatus(message);
+    }).catch(error => setStatus(`[web] Wiggle failed. ${error?.message || error}`, 'error'));
     return true;
   }
 
@@ -10106,9 +9640,6 @@ SOFTWARE.
     updateViewportAnimateState();
   }
 
-  // The registry ships seventy queries, twenty of which are single amino acids;
-  // anything longer than a screenful is folded away so the useful groups — types,
-  // secondary structure, "around the selection" — stay visible without scrolling.
   function describeViewportScene() {
     const plugin = viewportPlugin();
     const snapshot = plugin?.canvas3d?.camera?.getSnapshot();
@@ -10174,6 +9705,9 @@ SOFTWARE.
     }
   }
 
+  // The registry ships seventy queries, twenty of which are single amino acids;
+  // anything longer than a screenful is folded away so the useful groups — types,
+  // secondary structure, "around the selection" — stay visible without scrolling.
   function viewportQueryMenu(menu) {
     const queries = viewportPlugin()?.query?.structure?.registry?.list || [];
     sceneTreeMenuSection(menu, 'Mode');
@@ -10448,6 +9982,7 @@ SOFTWARE.
       updateSelectionBar();
       setStatus(`[web] Selection mode ${enabled ? 'enabled' : 'disabled'}.`);
     } else if (action === 'clear-selection') {
+      setMolstarLassoEnabled(false);
       clearMolstarPersistentMoleculePreview();
       Promise.resolve(clearMolstarSelection())
         .then(() => {
@@ -10687,41 +10222,7 @@ SOFTWARE.
     updateSelectionBar();
   }
 
-  const guardedMeasurementManagers = new WeakSet();
-
-  function guardMolstarMeasurementOrderLabels(viewer) {
-    const plugin = viewer?.plugin;
-    const manager = plugin?.managers?.structure?.measurement;
-    if (!manager?.addOrderLabels || guardedMeasurementManagers.has(manager)) return;
-    guardedMeasurementManagers.add(manager);
-    const addOrderLabels = manager.addOrderLabels.bind(manager);
-    let pending = Promise.resolve();
-    manager.addOrderLabels = locis => {
-      const next = pending.then(async () => {
-        if (locis.length) return addOrderLabels(locis);
-        // Mol*'s empty-list implementation calls getGroup(), creating a group
-        // just to clear it. Panel unmounts can enqueue many such creations before
-        // any one commits. Clear transient order labels directly and serialize
-        // requests; never create a group on the cleanup path.
-        const state = plugin.state.data;
-        const cells = [...state.cells.values()];
-        const transient = new Set(cells.filter(cell => cell.transform.tags?.includes('measurement-order-label')).map(cell => cell.transform.ref));
-        const emptyGroups = cells.filter(cell => cell.transform.tags?.includes('measurement-group')
-          && !cells.some(child => child.transform.parent === cell.transform.ref && !transient.has(child.transform.ref)));
-        if (!transient.size && !emptyGroups.length) return;
-        const update = state.build();
-        for (const ref of transient) update.delete(ref);
-        for (const cell of emptyGroups) update.delete(cell.transform.ref);
-        await update.commit();
-      });
-      pending = next.catch(() => {});
-      return next;
-    };
-    void manager.addOrderLabels([]).catch(error => debug(`measurement cleanup failed: ${error?.message || error}`));
-  }
-
   function initSceneTree(viewer) {
-    guardMolstarMeasurementOrderLabels(viewer);
     const toggle = document.getElementById('buret-scene-tree-toggle');
     const panel = document.getElementById('buret-scene-tree');
     if (!toggle || !panel) return;
@@ -10852,22 +10353,9 @@ SOFTWARE.
         if (readout) readout.textContent = `${percent}%`;
         streamSceneTreeReprAlpha(ref, percent / 100);
       });
-      document.addEventListener('input', event => {
-        const slider = event.target.closest('[data-scene-tree-slider="outline-brightness"]');
-        const ref = slider?.closest('[data-ref]')?.dataset.ref;
-        if (!slider || !ref) return;
-        const percent = Number(slider.value);
-        const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
-        if (readout) readout.textContent = `${percent}%`;
-        setMolstarOutlineBrightness(percent / 100);
-      });
       document.addEventListener('change', event => {
         const slider = event.target.closest('[data-scene-tree-slider="opacity"]');
         if (slider) commitSceneTreeControlUndo(slider);
-      });
-      document.addEventListener('change', event => {
-        const slider = event.target.closest('[data-scene-tree-slider="outline-brightness"]');
-        if (slider) scheduleSceneTreeRender();
       });
       // Numeric advanced rows follow the thumb like opacity does. Surfaces rebuild
       // their mesh on every commit, so these share the same latest-wins queue
@@ -10916,10 +10404,7 @@ SOFTWARE.
     const events = viewer?.plugin?.state?.data?.events;
     const subscriptions = [
       events?.changed?.subscribe?.(scheduleSceneTreeRender),
-      events?.cell?.stateUpdated?.subscribe?.(scheduleSceneTreeRender),
-      viewer?.plugin?.behaviors?.state?.isUpdating?.subscribe?.(updating => {
-        if (!updating) scheduleSceneTreeRender();
-      })
+      events?.cell?.stateUpdated?.subscribe?.(scheduleSceneTreeRender)
     ].filter(Boolean);
     if (subscriptions.length) {
       sceneTreeStateDisposer = () => subscriptions.forEach(subscription => subscription?.unsubscribe?.());
@@ -10931,18 +10416,13 @@ SOFTWARE.
   function updateThemeButton() {
     const button = document.querySelector('#buret-toolbar [data-buret-action="theme"]');
     if (!button) return;
-    const nextTheme = viewerTheme === 'auto' ? 'light' : viewerTheme === 'light' ? 'dark' : 'auto';
-    const label = `Theme: ${viewerTheme === 'auto' ? 'Auto (system)' : viewerTheme}. Switch to ${nextTheme}`;
-    const tooltip = button.querySelector('.buret-tooltip');
-    const icon = viewerTheme === 'light' ? APP_ICON_DATA.ThemeLight
-      : viewerTheme === 'dark' ? APP_ICON_DATA.ThemeDark : APP_ICON_DATA.ThemeAuto;
-    button.replaceChildren(sceneTreeIconElement(icon));
-    if (tooltip) button.append(tooltip);
-    button.dataset.theme = viewerTheme;
+    const isDark = resolveViewerTheme() === 'dark';
+    const label = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+    setButtonLabel(button, isDark ? 'Light' : 'Dark');
     button.setAttribute('aria-label', label);
     button.setAttribute('title', label);
     setTooltipLabel(button, label);
-    button.classList.toggle('active', viewerTheme !== 'auto');
+    button.classList.toggle('active', !isDark);
   }
 
   function setButtonLabel(button, label) {
@@ -11018,33 +10498,7 @@ SOFTWARE.
     }
   }
 
-  function assertMolstarLoadReady(viewer, prepared) {
-    const cells = viewer?.plugin?.state?.data?.cells;
-    const failedCell = cells && typeof cells.values === 'function'
-      ? Array.from(cells.values()).find(cell => cell?.status === 'error')
-      : null;
-    if (failedCell) {
-      const transform = failedCell.transform?.transformer?.definition?.display?.name || 'Mol* parser';
-      const detail = String(failedCell.errorText || '').trim().slice(0, 240);
-      throw new Error(`Mol* could not load ${prepared?.label || 'the structure'} (${transform})${detail ? `: ${detail}` : ''}; viewer readiness was withheld.`);
-    }
-    // Volume-only maps and MVS scenes can be valid without molecular structures.
-    if (prepared?.kind === 'volume' || prepared?.kind === 'mvs') return;
-    if (currentMolstarStructureCount(viewer) < 1) {
-      throw new Error(`Mol* loaded no molecular structures for ${prepared?.label || 'the input'}; viewer readiness was withheld.`);
-    }
-  }
-
-  // viewer-shell.js keeps the page transparent and its chrome hidden from the first
-  // parse, so the host surface stays on screen instead of the default black shell,
-  // a bare canvas and chrome mounting piece by piece. The finished scene (or an
-  // error) replaces it in one step.
-  function revealViewer() {
-    document.documentElement.classList.remove('buret-viewer-booting');
-  }
-
   function hideStatus(payload = null) {
-    revealViewer();
     post('ready', 'ready', payload || previewReadyPayload());
     if (window.BuretteDebug) return;
     if (status) status.classList.add('hidden');
@@ -11363,20 +10817,15 @@ SOFTWARE.
     }
   }
 
-  let decodedStructureCache = null;
   function rawStructureData(config) {
-    const source = window.BuretteDataBytes instanceof Uint8Array
-      ? window.BuretteDataBytes : window.BuretteDataBase64;
-    if (!source) throw new Error('Preview payload was not loaded.');
-    const binary = !!config.binary;
-    if (decodedStructureCache?.source === source && decodedStructureCache.binary === binary) {
-      return decodedStructureCache.value;
+    if (window.BuretteDataBytes instanceof Uint8Array) {
+      return config.binary ? window.BuretteDataBytes : new TextDecoder('utf-8', { fatal: false }).decode(window.BuretteDataBytes);
     }
-    const value = source instanceof Uint8Array
-      ? (binary ? source : new TextDecoder('utf-8', { fatal: false }).decode(source))
-      : (binary ? base64ToBytes(source) : base64ToText(source));
-    decodedStructureCache = { source, binary, value };
-    return value;
+    const base64 = window.BuretteDataBase64;
+    if (!base64 || typeof base64 !== 'string') {
+      throw new Error('Preview payload was not loaded.');
+    }
+    return config.binary ? base64ToBytes(base64) : base64ToText(base64);
   }
 
   function dockingPayloadData(source, payload) {
@@ -11872,58 +11321,30 @@ SOFTWARE.
     return best;
   }
 
-  async function alignXyzFramesToFirst(frames, signal) {
-    const owner = activeMolstarPrepared;
-    const assertCurrent = () => {
-      if (signal?.aborted || activeMolstarPrepared !== owner) throw new DOMException('Alignment cancelled', 'AbortError');
-    };
-    assertCurrent();
-    if (!xyzFramesAlignable(frames)) throw new Error('Alignment needs every structure to list the same atoms in the same order.');
+  function alignXyzFramesToFirst(frames) {
+    if (!xyzFramesAlignable(frames)) {
+      throw new Error('Alignment needs every structure to list the same atoms in the same order.');
+    }
     const referencePoints = frames[0].atoms.map(atom => [atom.x, atom.y, atom.z]);
-    const source = `${largestEigenvectorSymmetric4.toString()}; ${pdbRigidAlignment.toString()};
-      self.onmessage = ({ data }) => {
-        try {
-          const result = pdbRigidAlignment(data.moving, data.reference);
-          self.postMessage(result ? { matrix: result.matrix, rmsd: result.rmsd } : { error: 'Not enough atoms to align these structures.' });
-        } catch (error) { self.postMessage({ error: error.message }); }
-      };`;
-    const workerUrl = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
-    let worker;
     let rmsdTotal = 0;
-    const aligned = [frames[0]];
-    try {
-      worker = new Worker(workerUrl);
-      for (let index = 1; index < frames.length; index++) {
-        assertCurrent();
-        const frame = frames[index];
-        const result = await new Promise((resolve, reject) => {
-          const cleanup = () => { clearInterval(watch); signal?.removeEventListener('abort', cancel); };
-          const fail = error => { cleanup(); reject(error); };
-          const cancel = () => fail(new DOMException('Alignment cancelled', 'AbortError'));
-          const watch = setInterval(() => { if (activeMolstarPrepared !== owner) cancel(); }, 100);
-          signal?.addEventListener('abort', cancel, { once: true });
-          worker.onmessage = ({ data }) => { cleanup(); data.error ? reject(new Error(data.error)) : resolve(data); };
-          worker.onerror = event => fail(new Error(event.message || 'Alignment worker failed'));
-          worker.postMessage({ moving: frame.atoms.map(atom => [atom.x, atom.y, atom.z]), reference: referencePoints });
-        });
-        assertCurrent();
-        const matrix = result.matrix;
-        const atoms = [];
-        for (let atomIndex = 0; atomIndex < frame.atoms.length; atomIndex++) {
-          if (atomIndex % 4096 === 0) { await new Promise(resolve => setTimeout(resolve, 0)); assertCurrent(); }
-          const atom = frame.atoms[atomIndex];
-          atoms.push({ ...atom,
-            x: matrix[0] * atom.x + matrix[4] * atom.y + matrix[8] * atom.z + matrix[12],
-            y: matrix[1] * atom.x + matrix[5] * atom.y + matrix[9] * atom.z + matrix[13],
-            z: matrix[2] * atom.x + matrix[6] * atom.y + matrix[10] * atom.z + matrix[14] });
-        }
-        rmsdTotal += result.rmsd;
-        aligned.push({ ...frame, atoms });
-        setStatus(`[web] Aligning structures: ${index + 1} / ${frames.length}`);
-      }
-      assertCurrent();
-      return { frames: aligned, averageRmsd: rmsdTotal / Math.max(1, frames.length - 1), atomCount: frames[0].atoms.length };
-    } finally { worker?.terminate(); URL.revokeObjectURL(workerUrl); }
+    const aligned = frames.map((frame, index) => {
+      if (index === 0) return frame;
+      const alignment = pdbRigidAlignment(frame.atoms.map(atom => [atom.x, atom.y, atom.z]), referencePoints);
+      if (!alignment) throw new Error('Not enough atoms to align these structures.');
+      rmsdTotal += alignment.rmsd;
+      return {
+        ...frame,
+        atoms: frame.atoms.map(atom => {
+          const [x, y, z] = alignment.apply([atom.x, atom.y, atom.z]);
+          return { ...atom, x, y, z };
+        })
+      };
+    });
+    return {
+      frames: aligned,
+      averageRmsd: rmsdTotal / Math.max(1, frames.length - 1),
+      atomCount: frames[0].atoms.length
+    };
   }
 
   function structureSceneStoryStage(label, index) {
@@ -12401,8 +11822,6 @@ SOFTWARE.
         data,
         format: normalized,
         label: config.label || 'MolViewSpec scene',
-        sourceUrl: config.mvsSourceUrl,
-        resourceUrls: config.mvsResourceUrls,
         mvsKind: normalized === 'mvsj' ? molViewSpecJsonKind(data) : null
       };
     }
@@ -12600,7 +12019,7 @@ SOFTWARE.
     container.innerHTML = `
       <div class="buret-external-artifact-root">
         ${content}
-        <a class="buret-xyz-badge" href="https://github.com/aligfellow/xyzrender" target="_blank" rel="noopener noreferrer" title="xyzrender — project and authors"><strong>xyzrender ↗</strong><span>SVG${preset}${elapsed}</span></a>
+        <div class="buret-xyz-badge"><strong>External xyzrender</strong><span>SVG${preset}${elapsed}</span></div>
       </div>`;
     const root = container.querySelector('.buret-external-artifact-root');
     if (root) installExternalArtifactInteractions(root);
@@ -12864,142 +12283,108 @@ SOFTWARE.
   }
 
   function hideXyzrenderSheetContextMenu() {
-    const menu = document.querySelector('.buret-xyzrender-context-menu');
-    if (menu) { moleculeMenuCloseSubmenus(menu); moleculeMenuCancelHoverIntent(menu); menu.remove(); }
+    document.querySelector('.buret-xyzrender-context-menu')?.remove();
   }
 
-  let xyzrenderContextMenuPending = null;
-
-  function selectedXyzrenderSheetItemsForAction(item) {
-    const root = item?.closest?.('.buret-external-artifact-root');
-    if (!root) return { root: null, items: item ? [item] : [] };
-    const selected = Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item.selected'));
-    return { root, items: selected.length ? selected : (item ? [item] : []) };
-  }
-
-  function duplicateXyzrenderSheetItems(item) {
-    const { root, items } = selectedXyzrenderSheetItemsForAction(item);
-    const stage = root?.querySelector('.buret-external-artifact-stage');
-    if (!root || !stage || !items.length) return;
-    const sheet = ensureXyzrenderSheet(stage);
-    const getStageScale = () => parseFloat(root.dataset.buretXyzrenderStageScale || '1') || 1;
-    const copies = items.map(original => {
-      const position = sheetItemCenterPosition(original);
-      const body = original.querySelector('.buret-xyzrender-sheet-item-body');
-      const snapshot = body.cloneNode(true);
-      const canvas = body.querySelector('.buret-xyzrender-animation-canvas');
-      if (canvas) {
-        // Canvas pixels are not serialized by innerHTML. Freeze the visible preview
-        // in the duplicate; committed GIF images already retain their animation.
-        snapshot.querySelectorAll('.buret-xyzrender-animation-image').forEach(image => image.remove());
-        const image = document.createElement('img');
-        image.className = 'buret-xyzrender-animation-image';
-        image.style.cssText = canvas.style.cssText;
-        image.style.visibility = 'visible';
-        image.src = canvas.toDataURL('image/png');
-        snapshot.querySelector('.buret-xyzrender-animation-canvas').replaceWith(image);
-      }
-      const copy = addXyzrenderSheetItem(sheet, snapshot.innerHTML,
-        sheetItemExportLabel(original), { x: position.left + 40, y: position.top + 40 }, 1, getStageScale, xyzrenderSheetItemEntry(original));
-      for (const key of ['buretXyzrenderPreset', 'buretXyzrenderRegions', 'buretXyzrenderVdwAtoms', 'buretXyzrenderOrientationRef', 'buretXyzrenderControls', 'buretXyzrenderOrientationAngles', 'buretXyzrenderOrientationBase']) {
-        if (original.dataset[key]) copy.dataset[key] = original.dataset[key];
-      }
-      copy.style.width = `${original.offsetWidth}px`;
-      copy.style.height = `${original.offsetHeight}px`;
-      setSheetItemRotation(copy, Number(original.dataset.rotation || 0));
-      return copy;
+  function appendXyzrenderMenuButton(actions, label, action) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = label;
+    button.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      Promise.resolve()
+        .then(action)
+        .catch(error => setStatus(error instanceof Error ? error.message : String(error), 'error'));
     });
-    clearRotatableArtifactSelection(root);
-    copies.forEach(copy => copy.classList.add('selected'));
+    actions.appendChild(button);
   }
 
-  function arrangeXyzrenderSheetItems(item) {
-    const { root, items } = selectedXyzrenderSheetItemsForAction(item);
-    if (!root || !items.length) return;
-    const columns = Math.ceil(Math.sqrt(items.length));
-    const rows = Math.ceil(items.length / Math.max(columns, 1));
-    const cell = Math.min(340, (root.clientWidth - 40) / Math.max(columns, 1), (root.clientHeight - 40) / Math.max(rows, 1));
-    const originX = (root.clientWidth - columns * cell) / 2;
-    const originY = (root.clientHeight - rows * cell) / 2;
-    items.forEach((entry, index) => {
-      entry.style.width = `${cell * 0.82}px`;
-      entry.style.height = `${cell * 0.82}px`;
-      entry.style.left = `${originX + cell * (index % columns + 0.5)}px`;
-      entry.style.top = `${originY + cell * (Math.floor(index / columns) + 0.5)}px`;
-    });
+  function appendXyzrenderMenuLabel(actions, label) {
+    const element = document.createElement('div');
+    element.className = 'buret-molecule-context-menu-section-label';
+    element.textContent = label;
+    actions.appendChild(element);
   }
 
-  function showXyzrenderSheetContextMenu(event, item, forceWeb = false) {
+  function showXyzrenderSheetContextMenu(event, item) {
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation?.();
     hideMolstarContextMenu({ keepMoleculePreview: true });
     hideXyzrenderSheetContextMenu();
-    if (!item.classList.contains('selected')) selectRotatableArtifact(item);
-    const label = sheetItemExportLabel(item).replace(/^Sheet structure /u, '');
+
+    const label = sheetItemExportLabel(item);
     const baseName = safeExportBaseName(label, 'xyzrender');
-    const actions = new Map([
-      ['view:hide', () => removeXyzrenderSheetItem(item)],
-      ['view:show-all', () => { pushXyzrenderActionHistory(item, 'show hidden'); showHiddenXyzrenderElements(item); }],
-      ['select:hide', () => { pushXyzrenderActionHistory(item, 'hide selected'); hideSelectedXyzrenderElements(); }],
-      ['view:isolate', () => { pushXyzrenderActionHistory(item, 'dim others'); dimUnselectedXyzrenderElements(item); }],
-      ['canvas:select-all', () => selectAllRotatableArtifacts(item.closest('.buret-external-artifact-root') || document)],
-      ['canvas:duplicate', () => duplicateXyzrenderSheetItems(item)],
-      ['canvas:arrange', () => arrangeXyzrenderSheetItems(item)],
-      ['canvas:animate', () => openXyzrender3DEditor()],
-    ]);
-    for (const format of ['svg', 'png', 'gif']) {
-      actions.set(`save-format:${format}`, async () => {
-        const svg = await xyzrenderSheetItemSvgText(item);
-        if (!svg) throw new Error('No xyzrender SVG payload to export.');
-        const blob = format === 'svg' ? new Blob([normalizeSvgForExport(svg)], { type: 'image/svg+xml;charset=utf-8' })
-          : format === 'png' ? await svgTextToPngBlob(svg, item) : await svgTextToGifBlob(svg, item);
-        downloadBlob(blob, `${baseName}.${format}`);
-      });
-    }
-    const run = action => {
-      hideXyzrenderSheetContextMenu();
-      Promise.resolve().then(() => actions.get(action)?.())
-        .catch(error => setStatus(error instanceof Error ? error.message : String(error), 'error'));
-    };
-    const entries = [
-      ['canvas:select-all', 'Select all'],
-      ['canvas:duplicate', 'Duplicate'],
-      ['canvas:arrange', 'Arrange'],
-      ['canvas:animate', '3D & animation…'],
-      ['view:hide', 'Hide structure'],
-    ];
-    if (hasHiddenXyzrenderElements(item)) entries.push(['view:show-all', 'Show hidden graphics']);
-    if (hasXyzrenderSelection()) entries.push(moleculeMenuNestedAction('select:menu', 'Selection', [
-      ['select:hide', 'Hide selected'], ['view:isolate', 'Dim others'],
-    ]));
-    entries.push(moleculeMenuNestedAction('save-format:menu', 'Export', [
-      ['save-format:svg', 'SVG…'], ['save-format:png', 'PNG…'], ['save-format:gif', 'GIF…'],
-    ]));
-    const config = activeConfig || window.BuretteConfig || {};
-    if (!forceWeb && config.appViewer === true) {
-      const requestId = `xyzrender-menu-${++xyzrenderSheetRequestSerial}`;
-      xyzrenderContextMenuPending = { requestId, run, fallback: () => showXyzrenderSheetContextMenu(event, item, true) };
-      if (postHostMessage({ type: 'xyzrenderContextMenu', requestId, label,
-        clientX: event.clientX, clientY: event.clientY,
-        hasSelection: hasXyzrenderSelection(), hasHidden: hasHiddenXyzrenderElements(item) })) return;
-      xyzrenderContextMenuPending = null;
-    }
     const menu = document.createElement('div');
     menu.className = 'buret-molecule-context-menu buret-xyzrender-context-menu';
     menu.setAttribute('role', 'menu');
-    menu.setAttribute('aria-label', 'Structure actions');
+    menu.setAttribute('aria-label', 'xyzrender actions');
+
     const title = document.createElement('div');
     title.className = 'buret-molecule-context-menu-title';
-    title.textContent = 'Structure actions';
-    const container = document.createElement('div');
-    container.className = 'buret-molecule-context-menu-actions';
-    for (const entry of entries) container.appendChild(moleculeMenuActionItem(entry, menu, null, { onAction: run }));
-    menu.append(title, container);
+    title.textContent = 'xyzrender';
+    menu.appendChild(title);
+
+    const subtitle = document.createElement('div');
+    subtitle.className = 'buret-molecule-context-menu-subtitle';
+    subtitle.textContent = label;
+    menu.appendChild(subtitle);
+
+    const actions = document.createElement('div');
+    actions.className = 'buret-molecule-context-menu-actions';
+    menu.appendChild(actions);
+
+    appendXyzrenderMenuButton(actions, 'Hide Display', () => {
+      item.remove();
+      hideXyzrenderSheetContextMenu();
+      setStatus(`[web] Hid xyzrender display: ${baseName}`);
+      setTimeout(hideStatus, 900);
+    });
+    if (hasHiddenXyzrenderElements(item)) {
+      appendXyzrenderMenuButton(actions, 'Show Hidden', () => {
+        pushXyzrenderActionHistory(item, 'show hidden');
+        showHiddenXyzrenderElements(item);
+        hideXyzrenderSheetContextMenu();
+      });
+    }
+    if (hasXyzrenderSelection()) {
+      appendXyzrenderMenuButton(actions, 'Hide Selected', () => {
+        pushXyzrenderActionHistory(item, 'hide selected');
+        hideSelectedXyzrenderElements();
+        hideXyzrenderSheetContextMenu();
+      });
+      appendXyzrenderMenuButton(actions, 'Dim Others', () => {
+        pushXyzrenderActionHistory(item, 'dim others');
+        dimUnselectedXyzrenderElements(item);
+        hideXyzrenderSheetContextMenu();
+      });
+    }
+    appendXyzrenderMenuLabel(actions, 'Save to');
+    appendXyzrenderMenuButton(actions, 'SVG', async () => {
+      const svgText = normalizeSvgForExport(await xyzrenderSheetItemSvgText(item));
+      if (!svgText) throw new Error('No xyzrender SVG payload to export.');
+      downloadBlob(new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' }), `${baseName}.svg`);
+      hideXyzrenderSheetContextMenu();
+      setStatus(`[web] Saved xyzrender SVG: ${baseName}.svg`);
+      setTimeout(hideStatus, 900);
+    });
+    appendXyzrenderMenuButton(actions, 'PNG', async () => {
+      const pngBlob = await svgTextToPngBlob(await xyzrenderSheetItemSvgText(item), item);
+      downloadBlob(pngBlob, `${baseName}.png`);
+      hideXyzrenderSheetContextMenu();
+      setStatus(`[web] Saved xyzrender PNG: ${baseName}.png`);
+      setTimeout(hideStatus, 900);
+    });
+    appendXyzrenderMenuButton(actions, 'GIF', async () => {
+      const gifBlob = await svgTextToGifBlob(await xyzrenderSheetItemSvgText(item), item);
+      downloadBlob(gifBlob, `${baseName}.gif`);
+      hideXyzrenderSheetContextMenu();
+      setStatus(`[web] Saved xyzrender GIF: ${baseName}.gif`);
+      setTimeout(hideStatus, 900);
+    });
     document.body.appendChild(menu);
-    installMoleculeMenuKeyboard(menu, hideXyzrenderSheetContextMenu);
     positionMolstarContextMenu(menu, event.clientX, event.clientY);
-    container.querySelector('button')?.focus({ preventScroll: true });
   }
 
   function escapeHTML(value) {
@@ -13034,25 +12419,25 @@ SOFTWARE.
       .buret-xyzrender-sheet-item.rotating { cursor: grabbing; }
       .buret-xyzrender-sheet-item.resizing { cursor: nwse-resize; }
       body.buret-xyzrender-lasso-active .buret-xyzrender-sheet-item { cursor: crosshair; }
-      .buret-xyzrender-sheet-item.selected { outline: 1px solid #999; outline-offset: 3px; box-shadow: none; }
+      .buret-xyzrender-sheet-item.selected { outline: 0 solid transparent; box-shadow: none; }
       .buret-xyzrender-sheet-item.has-xyzrender-selection { box-shadow: none; }
       .buret-xyzrender-svg-selection { outline: none; }
       .buret-xyzrender-sheet-item:has(.buret-xyzrender-resize-handle:hover),
       .buret-xyzrender-sheet-item.resizing { outline: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 74%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
       .buret-xyzrender-sheet-item-background { position: absolute; inset: 0; z-index: 0; border-radius: 10px; background: #fff; pointer-events: none; }
-      .buret-xyzrender-sheet-item-large .buret-xyzrender-sheet-item-background { border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.10); border: 1px solid rgba(128,128,128,0.18); }
+      .buret-xyzrender-sheet-item-large .buret-xyzrender-sheet-item-background { border-radius: 8px; box-shadow: 0 18px 54px rgba(0,0,0,0.28); }
       .buret-xyzrender-sheet-item-body { position: relative; z-index: 1; width: 100%; height: 100%; pointer-events: none; }
       .buret-xyzrender-sheet-item-body > svg,
       .buret-external-artifact-object { display: block; width: 100%; height: 100%; overflow: visible; border: 0; border-radius: inherit; }
       .buret-xyzrender-rotate-hud { position: absolute; left: 50%; top: 50%; z-index: 7; width: calc(var(--buret-rotate-radius) * 2 + 78px); height: calc(var(--buret-rotate-radius) * 2 + 78px); transform: translate(-50%, -50%) rotate(var(--buret-sheet-rotation-negative)); transform-origin: 50% 50%; opacity: 0; pointer-events: none; transition: opacity 120ms ease; }
-      .buret-xyzrender-rotate-ring { position: absolute; inset: 29px; border: 1.25px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 18%, rgba(160,160,160,0.24)); border-radius: 999px; }
+      .buret-xyzrender-rotate-ring { position: absolute; inset: 29px; border: 1.25px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 18%, rgba(160,173,214,0.24)); border-radius: 999px; }
       .buret-xyzrender-rotate-needle { position: absolute; left: 50%; top: 50%; width: 1px; height: var(--buret-rotate-radius); transform: translateX(-50%) rotate(var(--buret-active-angle)); transform-origin: 50% 0%; border-left: 1.5px dashed color-mix(in srgb, var(--buret-accent, #b45cff) 46%, transparent); }
       .buret-xyzrender-rotate-needle::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 15px; height: 15px; transform: translateX(-50%); border-radius: 999px; background: color-mix(in srgb, var(--buret-accent, #b45cff) 58%, var(--buret-toolbar-background, #111)); box-shadow: 0 6px 14px color-mix(in srgb, var(--buret-accent, #b45cff) 18%, transparent); }
       .buret-xyzrender-rotate-current { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--buret-active-angle)) translateY(calc(-1 * (var(--buret-rotate-radius) + 18px))) rotate(calc(-1 * var(--buret-active-angle))); transform-origin: 50% 50%; color: var(--buret-toolbar-color, rgba(255,255,255,0.94)); }
       .buret-xyzrender-rotate-current span { display: block; padding: 5px 11px; border-radius: 999px; background: color-mix(in srgb, var(--buret-toolbar-background, rgba(17,19,24,0.82)) 84%, transparent); border: 1px solid color-mix(in srgb, var(--buret-accent, #b45cff) 34%, var(--buret-toolbar-border, rgba(255,255,255,0.16))); font: 400 18px/1.15 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; box-shadow: 0 8px 18px rgba(0,0,0,0.20); }
-      .buret-xyzrender-rotate-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * (var(--buret-rotate-radius) + 38px))) rotate(var(--buret-degree-counter-angle)); color: rgba(160,160,160,0.64); font: 400 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
+      .buret-xyzrender-rotate-label { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * (var(--buret-rotate-radius) + 38px))) rotate(var(--buret-degree-counter-angle)); color: rgba(160,173,214,0.64); font: 400 16px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; }
       .buret-xyzrender-rotate-label.active { color: color-mix(in srgb, var(--buret-accent, #b45cff) 70%, var(--buret-toolbar-color, #fff)); }
-      .buret-xyzrender-rotate-tick { position: absolute; left: 50%; top: 50%; width: 1.25px; height: 10px; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * var(--buret-rotate-radius))); transform-origin: 50% 100%; background: rgba(142,142,142,0.25); border-radius: 999px; }
+      .buret-xyzrender-rotate-tick { position: absolute; left: 50%; top: 50%; width: 1.25px; height: 10px; transform: translate(-50%, -50%) rotate(var(--buret-degree-angle)) translateY(calc(-1 * var(--buret-rotate-radius))); transform-origin: 50% 100%; background: rgba(125,142,183,0.25); border-radius: 999px; }
       .buret-xyzrender-sheet-rotate-handle { position: absolute; left: 50%; top: 0; z-index: 12; width: 54px; height: 54px; transform: translate(-50%, calc(-1 * var(--buret-rotate-lift) - 50%)) scale(var(--buret-rotate-handle-scale)); border: 0; border-radius: 999px; cursor: grab; opacity: 0; pointer-events: auto; touch-action: none; transition: opacity 120ms ease, transform 120ms ease; }
       .buret-xyzrender-sheet-rotate-handle::before { content: ""; position: absolute; left: 50%; top: 34px; width: 1.5px; height: max(18px, calc(var(--buret-rotate-lift) - 12px)); transform: translateX(-50%); background: color-mix(in srgb, var(--buret-accent, #b45cff) 38%, transparent); border-radius: 999px; }
       .buret-xyzrender-rotate-handle-dot { position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; transform: translate(-50%, -50%); border: 1.5px solid color-mix(in srgb, var(--buret-accent, #b45cff) 72%, var(--buret-toolbar-color, #fff)); border-radius: 999px; background: var(--buret-toolbar-background, rgba(12,13,14,0.92)); box-shadow: 0 8px 16px rgba(0,0,0,0.22); }
@@ -13095,8 +12480,7 @@ SOFTWARE.
       .buret-xyzrender-resize-sw { bottom: -16px; left: -16px; cursor: nesw-resize; }
       .buret-xyzrender-sheet-item-label { position: absolute; left: 50%; bottom: -23px; transform: translateX(-50%); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 7px; border-radius: 999px; color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.84)); font: 10px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; opacity: 0; transition: opacity 120ms ease; }
       .buret-xyzrender-sheet-item.selected .buret-xyzrender-sheet-item-label { opacity: 1; }
-      .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: auto; cursor: pointer; text-decoration: none; }
-      .buret-xyz-badge:hover, .buret-xyz-badge:focus-visible { border-color: currentColor; }
+      .buret-xyz-badge { position: absolute; left: 14px; bottom: 14px; z-index: 30; max-width: calc(100vw - 28px); box-sizing: border-box; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--buret-toolbar-border, rgba(255,255,255,0.12)); color: var(--buret-toolbar-color, rgba(255,255,255,0.92)); background: var(--buret-toolbar-background, rgba(12,13,14,0.9)); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); box-shadow: 0 8px 22px rgba(0,0,0,0.20); font: 11px/1.35 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; pointer-events: none; }
       .buret-xyz-badge strong { display: block; font-size: 11px; }
       .buret-xyz-badge span { display: block; opacity: 0.76; }
     `;
@@ -13224,7 +12608,6 @@ SOFTWARE.
         showAxes: false
       };
       const preset = normalizeXyzrenderPreset(config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
-      let failed = false;
       for (const entry of cleanEntries) {
         const label = sheetEntryLabel(entry);
         try {
@@ -13232,15 +12615,15 @@ SOFTWARE.
           sheetItemSerial += 1;
           addXyzrenderSheetItem(sheet, payload.svg, label, point, sheetItemSerial, getStageScale, entry);
         } catch (error) {
-          failed = true;
           setStatus(`Could not add ${label} to xyzrender sheet: ${error instanceof Error ? error.message : String(error)}`, 'error');
         }
       }
-      if (!failed) hideStatus();
+      setTimeout(hideStatus, 450);
     };
 
     const onDragOver = event => {
-      if (!Array.from(event.dataTransfer?.types || []).some(type => type === STRUCTURE_DRAG_MIME || type === 'Files')) return;
+      const payload = readStructureDropPayload(event.dataTransfer);
+      if (payload.paths.length === 0 && payload.records.length === 0) return;
       event.preventDefault();
       event.stopPropagation();
       root.classList.add('sheet-drop-active');
@@ -13269,10 +12652,6 @@ SOFTWARE.
         resolveHostXyzrenderSheetItem(body);
         return;
       }
-      if (data.source === 'burette-host' && body.type === 'xyzrenderSheetReadyRequest') {
-        post('xyzrenderSheetReady', '');
-        return;
-      }
       if (data.source !== 'burette-host' || body.type !== 'addXyzrenderSheetItems') return;
       const documentId = String((activeConfig || window.BuretteConfig || {}).documentId || '');
       if (body.documentId && documentId && String(body.documentId) !== documentId) return;
@@ -13287,7 +12666,6 @@ SOFTWARE.
     root.addEventListener('dragleave', onDragLeave);
     root.addEventListener('drop', onDrop);
     window.addEventListener('message', onMessage);
-    post('xyzrenderSheetReady', '');
     return () => {
       root.removeEventListener('dragover', onDragOver);
       root.removeEventListener('dragleave', onDragLeave);
@@ -13357,8 +12735,6 @@ SOFTWARE.
     return {
       path,
       inputDataBase64: inputDataBase64 || undefined,
-      animationSourcePath: config.xyzrenderAnimationSourcePath || undefined,
-      animationSourceExtension: config.sourceExtension || undefined,
       inputExtension: inputExtension || undefined
     };
   }
@@ -13460,9 +12836,7 @@ SOFTWARE.
       element.getAttribute('clip-path'),
       element.getAttribute('mask')
     ].filter(Boolean).join(' ');
-    // xyzrender names atom gradients `x<render id>g<zero-based atom>`; newer
-    // releases use a hex render id, older ones a decimal one.
-    const gradientMatch = values.match(/url\(#x[0-9a-f]+g(\d+)\)/iu);
+    const gradientMatch = values.match(/url\(#x\d+g(\d+)\)/u);
     if (gradientMatch) {
       const gradientIndex = Number(gradientMatch[1]) + 1;
       return Number.isInteger(gradientIndex) && gradientIndex > 0 ? gradientIndex : null;
@@ -13693,14 +13067,8 @@ SOFTWARE.
     const controls = normalizeXyzrenderControls(options.controls || config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS, config);
     const preset = normalizeXyzrenderPreset(options.preset || config.externalArtifact?.preset || config.xyzrenderPreset || 'default');
     setStatus(`[web] Updating ${items.length} selected xyzrender structure${items.length === 1 ? '' : 's'}…`);
-    const revisions = items.map(item => {
-      const revision = (Number(item.dataset.renderRevision) || 0) + 1;
-      item.dataset.renderRevision = String(revision);
-      return revision;
-    });
     let updated = 0;
-    for (const [index, item] of items.entries()) {
-      const revision = revisions[index];
+    for (const item of items) {
       const entry = xyzrenderSheetItemEntry(item);
       if (!entry) continue;
       try {
@@ -13709,30 +13077,16 @@ SOFTWARE.
           vdwAtoms: xyzrenderSheetItemVdwAtoms(item) || controls.vdwAtoms,
           regions: xyzrenderSheetItemRegions(item)
         }, config);
-        const itemPreset = options.preset ? preset : xyzrenderSheetItemPreset(item);
-        const payload = await renderXyzrenderSheetItemPayload(entry, itemPreset, itemControls, { ...options, orientationRef: options.orientationRef || item.dataset.buretXyzrenderOrientationRef });
-        if (!item.isConnected || Number(item.dataset.renderRevision) !== revision) continue;
-        pushXyzrenderActionHistory(item, 'change appearance');
+        const payload = await renderXyzrenderSheetItemPayload(entry, preset, itemControls, options);
         updateXyzrenderSheetItemBody(item, payload.svg);
         setXyzrenderSheetItemEntry(item, entry);
-        item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || itemPreset);
-        item.dataset.buretXyzrenderControls = JSON.stringify(itemControls);
-        const background = item.querySelector('.buret-xyzrender-sheet-item-background');
-        if (background) background.style.display = itemControls.transparentBackground ? 'none' : '';
+        item.dataset.buretXyzrenderPreset = normalizeXyzrenderPreset(payload.preset || preset);
         updated += 1;
       } catch (error) {
         setStatus(`Could not update ${sheetEntryLabel(entry)}: ${error instanceof Error ? error.message : String(error)}`, 'error');
       }
     }
     if (updated > 0) {
-      activeConfig = { ...config, xyzrenderControls: controls, xyzrenderPreset: preset,
-        externalArtifact: { ...config.externalArtifact, preset } };
-      window.BuretteConfig = { ...(window.BuretteConfig || {}), ...activeConfig };
-      postHostMessage({ type: 'rendererChanged', documentId: config.documentId,
-        renderer: 'xyzrender-external', preset, controls, presetOptions: config.xyzrenderPresetOptions || [] });
-      configureRendererControls(activeConfig);
-      const badge = document.querySelector('.buret-xyz-badge span');
-      if (badge) badge.textContent = `${updated} selected · ${preset}`;
       setStatus(`[web] Updated ${updated} selected xyzrender structure${updated === 1 ? '' : 's'}.`);
       setTimeout(hideStatus, 700);
     }
@@ -13747,7 +13101,7 @@ SOFTWARE.
     const orientationRef = captureCurrentXyzrenderOrientationRef(options);
     if (!endpoint) return requestHostXyzrenderSheetItem(entry, preset, controls, options);
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), options.animation ? 125000 : 30000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
     let response;
     try {
       response = await fetch(xyzrenderBrowserDevEndpointUrl(endpoint), {
@@ -13760,8 +13114,7 @@ SOFTWARE.
           controls,
           inputDataBase64,
           inputExtension,
-          animation: options.animation,
-          orientationRef: options.orientationRef || orientationRef?.text || undefined
+          orientationRef: orientationRef?.text || undefined
         })
       });
     } catch (error) {
@@ -13805,7 +13158,7 @@ SOFTWARE.
         controls,
         inputDataBase64: sheetEntryInputDataBase64(entry),
         inputExtension: sheetEntryInputExtension(entry),
-        orientationRef: options.orientationRef || captureCurrentXyzrenderOrientationRef(options)?.text || null
+        orientationRef: captureCurrentXyzrenderOrientationRef(options)?.text || null
       });
       if (!sent) {
         clearTimeout(timeout);
@@ -13840,52 +13193,20 @@ SOFTWARE.
 
   function addXyzrenderSheetItem(sheet, svg, path, point, serial, getStageScale, entry = path) {
     const item = document.createElement('div');
-    item.className = 'buret-xyzrender-sheet-item selected';
+    item.className = 'buret-xyzrender-sheet-item buret-xyzrender-sheet-item-large selected';
     item.setAttribute('role', 'button');
     item.setAttribute('tabindex', '0');
     item.setAttribute('aria-label', `Sheet structure ${path}`);
     setXyzrenderSheetItemEntry(item, entry);
     const rect = sheet.getBoundingClientRect();
-    const scale = Math.max(0.05, Number(getStageScale?.() || 1));
-    const fallbackX = rect.width / scale * (0.42 + ((serial - 1) % 4) * 0.06);
-    const fallbackY = rect.height / scale * (0.42 + (Math.floor((serial - 1) / 4) % 4) * 0.06);
+    const fallbackX = rect.width * (0.42 + ((serial - 1) % 4) * 0.06);
+    const fallbackY = rect.height * (0.42 + (Math.floor((serial - 1) / 4) % 4) * 0.06);
     item.style.left = `${Number.isFinite(point?.x) ? point.x : fallbackX}px`;
     item.style.top = `${Number.isFinite(point?.y) ? point.y : fallbackY}px`;
     item.innerHTML = `<div class="buret-xyzrender-sheet-item-background"></div><div class="buret-xyzrender-sheet-item-body">${svg}</div>${rotatableArtifactControlsHTML()}<div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
     sheet.appendChild(item);
-    if (!point) layoutAddedXyzrenderSheetItems(sheet, scale);
-    else item.dataset.buretSheetPositioned = 'true';
     selectRotatableArtifact(item);
     installXyzrenderSheetItemInteractions(item, getStageScale, { removable: true });
-    return item;
-  }
-
-  function layoutAddedXyzrenderSheetItems(sheet, scale = 1) {
-    const items = Array.from(sheet.querySelectorAll('.buret-xyzrender-sheet-item'));
-    // Once a user places or resizes an item, additions must preserve that layout.
-    if (items.some(item => item.dataset.buretSheetPositioned === 'true')) return;
-    const root = sheet.closest('.buret-external-artifact-root') || sheet;
-    const viewport = root.getBoundingClientRect();
-    const sheetRect = sheet.getBoundingClientRect();
-    const originX = (viewport.left - sheetRect.left) / scale;
-    const originY = (viewport.top - sheetRect.top) / scale;
-    const width = root.clientWidth / scale;
-    const height = root.clientHeight / scale;
-    if (!width || !height) return;
-    const columns = Math.min(items.length, Math.max(1, Math.ceil(Math.sqrt(items.length * width / height))));
-    const rows = Math.ceil(items.length / columns);
-    const cellWidth = (width - 32 / scale) / columns;
-    const cellHeight = (height - 96 / scale) / rows;
-    items.forEach((item, index) => {
-      // Fixed minimum tiles overlap once a selection is denser than the viewport.
-      const gapX = Math.min(24 / scale, cellWidth * 0.2);
-      const gapY = Math.min(36 / scale, cellHeight * 0.25);
-      const size = Math.max(1 / scale, Math.min(360 / scale, cellWidth - gapX, cellHeight - gapY));
-      item.style.width = `${size}px`;
-      item.style.height = `${size}px`;
-      item.style.left = `${originX + 16 / scale + cellWidth * (index % columns + 0.5)}px`;
-      item.style.top = `${originY + 72 / scale + cellHeight * (Math.floor(index / columns) + 0.5)}px`;
-    });
   }
 
   function setSheetItemRotation(item, rotation) {
@@ -13942,14 +13263,13 @@ SOFTWARE.
     item.style.setProperty('--buret-rotate-lift', `${Math.max(18, nextRadius - rect.height / 2).toFixed(1)}px`);
   }
 
-  function selectRotatableArtifact(item, additive = false) {
+  function selectRotatableArtifact(item) {
     const root = item?.closest?.('.buret-external-artifact-root') || document;
     root.querySelectorAll('.buret-xyzrender-sheet-item.selected').forEach(existing => {
-      if (!additive && existing !== item) existing.classList.remove('selected');
+      if (existing !== item) existing.classList.remove('selected');
     });
     item.classList.add('selected');
     bringXyzrenderSheetItemToFront(item, root);
-    queueMicrotask(() => { if (item.isConnected && item.classList.contains('selected')) publishXyzrenderItem(item); });
   }
 
   function bringXyzrenderSheetItemToFront(item, root = document) {
@@ -13977,7 +13297,7 @@ SOFTWARE.
     root.dataset.buretSelectionClearInstalled = 'true';
     const clearSelectionOnPointerDown = event => {
       if (event.button !== 0) return;
-      if (event.target?.closest?.('.buret-xyzrender-sheet-item, #buret-toolbar, .buret-xyzrender-popover, .buret-xyz-badge, .buret-xyzrender-context-menu')) return;
+      if (event.target?.closest?.('.buret-xyzrender-sheet-item, #buret-toolbar, .buret-xyzrender-popover, .buret-xyz-badge')) return;
       clearRotatableArtifactSelection(root);
     };
     root.addEventListener('pointerdown', clearSelectionOnPointerDown, true);
@@ -13986,19 +13306,12 @@ SOFTWARE.
     document.addEventListener('click', clearSelectionOnPointerDown, true);
   }
 
-  function removeXyzrenderSheetItem(item) {
-        postHostMessage({ type: 'xyzrenderItemRemoved', itemId: item.dataset.buretXyzrenderEditorId, documentId: (activeConfig || window.BuretteConfig || {}).documentId });
-        item.remove();
-        const next = frontmostXyzrenderSheetItem();
-        if (next) selectRotatableArtifact(next);
-  }
-
   function installRotatableArtifactKeyboard(item, options = {}) {
     const removable = options.removable !== false;
     const onKeyDown = event => {
       if ((event.key === 'Backspace' || event.key === 'Delete') && removable && item.classList.contains('selected')) {
         event.preventDefault();
-        removeXyzrenderSheetItem(item);
+        item.remove();
         return;
       }
       if (!item.classList.contains('selected')) return;
@@ -14097,8 +13410,7 @@ SOFTWARE.
       if (!handle || !item.contains(handle)) return;
       event.preventDefault();
       event.stopPropagation();
-      if (xyzrenderLassoEnabled) return;
-      selectRotatableArtifact(item, event.shiftKey || event.metaKey || event.ctrlKey);
+      selectRotatableArtifact(item);
       try { item.focus({ preventScroll: true }); } catch (_) {}
       pointerId = event.pointerId;
       handleName = String(handle.getAttribute('data-buret-resize-handle') || '');
@@ -14110,7 +13422,6 @@ SOFTWARE.
       startLeft = position.left;
       startTop = position.top;
       startRotation = ((parseFloat(item.dataset.rotation || '0') || 0) * Math.PI) / 180;
-      item.dataset.buretSheetPositioned = 'true';
       item.classList.add('resizing');
       try { handle.setPointerCapture(event.pointerId); } catch (_) {}
     };
@@ -14203,13 +13514,12 @@ SOFTWARE.
   function installXyzrenderSheetItemInteractions(item, getStageScale, options = {}) {
     if (!item || item.dataset.buretRotatableInstalled === 'true') return;
     item.dataset.buretRotatableInstalled = 'true';
-    item.tabIndex = 0;
     initializeSheetItemCenterPosition(item);
     item.addEventListener('contextmenu', event => showXyzrenderSheetContextMenu(event, item));
     item.addEventListener('click', event => {
-      if (event.button !== 0 || xyzrenderLassoEnabled) return;
+      if (event.button !== 0) return;
       event.stopPropagation();
-      selectRotatableArtifact(item, item.classList.contains('selected') || event.shiftKey || event.metaKey || event.ctrlKey);
+      selectRotatableArtifact(item);
       try { item.focus({ preventScroll: true }); } catch (_) {}
     });
     item.addEventListener('dblclick', event => {
@@ -14234,30 +13544,29 @@ SOFTWARE.
     let pointerId = null;
     let startX = 0;
     let startY = 0;
-    let positions = [];
+    let startLeft = 0;
+    let startTop = 0;
     const onPointerDown = event => {
       if (xyzrenderLassoEnabled) return;
       if (event.button !== 0) return;
       if (event.target?.closest?.('.buret-xyzrender-sheet-rotate-handle, [data-buret-resize-handle]')) return;
       event.preventDefault();
       event.stopPropagation();
-      selectRotatableArtifact(item, item.classList.contains('selected') || event.shiftKey || event.metaKey || event.ctrlKey);
+      selectRotatableArtifact(item);
       pointerId = event.pointerId;
       startX = event.clientX;
       startY = event.clientY;
-      positions = Array.from(item.closest('.buret-external-artifact-root').querySelectorAll('.buret-xyzrender-sheet-item.selected'))
-        .map(element => ({ element, ...sheetItemCenterPosition(element) }));
+      const position = sheetItemCenterPosition(item);
+      startLeft = position.left;
+      startTop = position.top;
       item.classList.add('dragging');
       try { item.setPointerCapture(event.pointerId); } catch (_) {}
     };
     const onPointerMove = event => {
       if (pointerId !== event.pointerId) return;
       const stageScale = Math.max(0.05, Number(getStageScale?.() || 1));
-      for (const position of positions) {
-        if (Math.hypot(event.clientX - startX, event.clientY - startY) > 3) position.element.dataset.buretSheetPositioned = 'true';
-        position.element.style.left = `${position.left + (event.clientX - startX) / stageScale}px`;
-        position.element.style.top = `${position.top + (event.clientY - startY) / stageScale}px`;
-      }
+      item.style.left = `${startLeft + (event.clientX - startX) / stageScale}px`;
+      item.style.top = `${startTop + (event.clientY - startY) / stageScale}px`;
     };
     const finish = event => {
       if (pointerId !== event.pointerId) return;
@@ -14269,7 +13578,7 @@ SOFTWARE.
     item.addEventListener('pointermove', onPointerMove);
     item.addEventListener('pointerup', finish);
     item.addEventListener('pointercancel', finish);
-    item.addEventListener('click', event => { event.stopPropagation(); });
+    item.addEventListener('click', event => { event.stopPropagation(); selectRotatableArtifact(item); });
   }
 
   function installXyzrenderSheetItemRotation(item) {
@@ -14330,135 +13639,14 @@ SOFTWARE.
     resetRotatableArtifactRotateRadius(item);
   }
 
-  function publishXyzrenderItem(item, type = 'xyzrenderActiveItem') {
-    const config = activeConfig || window.BuretteConfig || {};
-    if (!item || config.appViewer !== true) return;
-    const entry = xyzrenderSheetItemEntry(item);
-    // Freeze each item's initial appearance before document defaults can change.
-    for (const node of document.querySelectorAll('.buret-xyzrender-sheet-item')) {
-      node.dataset.buretXyzrenderPreset ||= config.xyzrenderPreset || 'default';
-      node.dataset.buretXyzrenderControls ||= JSON.stringify(config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS);
-    }
-    item.dataset.buretXyzrenderEditorId ||= `xyzr-${Date.now()}-${++xyzrenderSheetRequestSerial}`;
-    postHostMessage({
-          itemId: item.dataset.buretXyzrenderEditorId,
-          type, documentId: config.documentId, label: sheetEntryLabel(entry).split('/').pop(),
-          path: sheetEntryLabel(entry), inputDataBase64: sheetEntryInputDataBase64(entry),
-          animationSourcePath: entry?.animationSourcePath,
-          animationSourceExtension: entry?.animationSourceExtension,
-          inputExtension: sheetEntryInputExtension(entry),
-          previewSvg: item.querySelector('.buret-xyzrender-sheet-item-body > svg')?.outerHTML || '',
-          preset: item.dataset.buretXyzrenderPreset || config.xyzrenderPreset || 'default',
-          controls: normalizeXyzrenderControls({ ...(item.dataset.buretXyzrenderControls ? JSON.parse(item.dataset.buretXyzrenderControls) : config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS), regions: xyzrenderSheetItemRegions(item), vdwAtoms: xyzrenderSheetItemVdwAtoms(item) || config.xyzrenderControls?.vdwAtoms }, config),
-          orientationRef: item.dataset.buretXyzrenderOrientationRef || captureCurrentXyzrenderOrientationRef()?.text,
-          orientationBaseRef: item.dataset.buretXyzrenderOrientationBase,
-          angles: item.dataset.buretXyzrenderOrientationAngles ? JSON.parse(item.dataset.buretXyzrenderOrientationAngles) : undefined,
-
-    });
-  }
-
-  async function openXyzrender3DEditor() {
-    try {
-      const config = activeConfig || window.BuretteConfig || {};
-      const item = selectedXyzrenderSheetItems()[0] || frontmostXyzrenderSheetItem();
-      if (!item) throw new Error('Select a structure first.');
-      const entry = xyzrenderSheetItemEntry(item);
-      if (config.appViewer === true) {
-        publishXyzrenderItem(item, 'openXyzrenderAnimation');
-        return;
-      }
-      if (!config.xyzrenderEndpoint) throw new Error('Open this structure in Burette to edit its animation.');
-      if (!window.BuretteXyzrender3D) {
-        const engineUrl = new URL(runtimeURL('BuretteMolstarURL', './molstar.js'), document.baseURI);
-        await loadScript(new URL('xyzrender-3d-editor.js', engineUrl).href, 'xyzrender animation', 15000);
-      }
-      await window.BuretteXyzrender3D.open({
-        label: sheetEntryLabel(entry).split('/').pop(), download: downloadBlob,
-        previewSvg: item.querySelector('.buret-xyzrender-sheet-item-body > svg')?.outerHTML,
-        render: animation => renderXyzrenderSheetItemPayload(entry,
-          item.dataset.buretXyzrenderPreset || config.xyzrenderPreset || 'default',
-          normalizeXyzrenderControls({ ...(item.dataset.buretXyzrenderControls ? JSON.parse(item.dataset.buretXyzrenderControls) : config.xyzrenderControls || DEFAULT_XYZRENDER_CONTROLS), regions: xyzrenderSheetItemRegions(item), vdwAtoms: xyzrenderSheetItemVdwAtoms(item) || config.xyzrenderControls?.vdwAtoms }, config),
-          { animation, orientationRef: item.dataset.buretXyzrenderOrientationRef }),
-      });
-    } catch (error) { setStatus(error instanceof Error ? error.message : String(error), 'error'); }
-  }
-
-  function installExternalArtifactKeyboard(root, onFrame) {
-    const codes = new Set(['KeyW', 'KeyS', 'KeyA', 'KeyD', 'KeyQ', 'KeyE', 'KeyR', 'KeyF']);
-    const held = new Set();
-    let frame = 0, lastTime = 0, fast = false;
-    let velocity = { x: 0, y: 0, zoom: 0, roll: 0 };
-    const stop = () => {
-      held.clear();
-      cancelAnimationFrame(frame); frame = 0;
-      velocity = { x: 0, y: 0, zoom: 0, roll: 0 };
-    };
-    const editable = target => target?.closest?.('input, textarea, select, button, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="spinbutton"], [role="combobox"], [role="menu"]');
-    const tick = now => {
-      frame = 0;
-      if (!root.isConnected || document.hidden || !held.size) { stop(); return; }
-      const dt = Math.min(0.05, Math.max(0, (now - lastTime) / 1000));
-      lastTime = now;
-      const target = {
-        x: Number(held.has('KeyA')) - Number(held.has('KeyD')),
-        y: Number(held.has('KeyR')) - Number(held.has('KeyF')),
-        zoom: Number(held.has('KeyW')) - Number(held.has('KeyS')),
-        roll: Number(held.has('KeyE')) - Number(held.has('KeyQ')),
-      };
-      const distance = Math.hypot(target.x, target.y);
-      if (distance > 1) { target.x /= distance; target.y /= distance; }
-      const motion = {};
-      const blend = 1 - Math.exp(-dt / 0.06);
-      for (const axis of Object.keys(target)) {
-        const speed = target[axis] * (fast ? 2 : 1);
-        // Integrate the easing analytically, so 60 Hz and 144 Hz travel equally.
-        motion[axis] = dt ? speed + (velocity[axis] - speed) * 0.06 * blend / dt : 0;
-        velocity[axis] += (speed - velocity[axis]) * blend;
-      }
-      onFrame(motion, dt);
-      frame = requestAnimationFrame(tick);
-    };
-    const down = event => {
-      if (event.altKey || event.ctrlKey || event.metaKey || editable(event.target)) { stop(); return; }
-      fast = event.shiftKey;
-      if (!codes.has(event.code)) return;
-      event.preventDefault();
-      if (held.has(event.code)) return;
-      held.add(event.code);
-      if (!frame) { lastTime = performance.now() - 16; tick(performance.now()); }
-    };
-    const up = event => {
-      fast = event.shiftKey;
-      if (!held.delete(event.code)) return;
-      event.preventDefault();
-      if (!held.size) stop();
-    };
-    document.addEventListener('keydown', down);
-    document.addEventListener('keyup', up);
-    document.addEventListener('visibilitychange', stop);
-    document.addEventListener('pointerdown', stop, true);
-    document.addEventListener('focusin', stop);
-    window.addEventListener('blur', stop);
-    return () => {
-      stop();
-      document.removeEventListener('keydown', down);
-      document.removeEventListener('keyup', up);
-      document.removeEventListener('visibilitychange', stop);
-      document.removeEventListener('pointerdown', stop, true);
-      document.removeEventListener('focusin', stop);
-      window.removeEventListener('blur', stop);
-    };
-  }
-
   function installExternalArtifactInteractions(root) {
     disposeExternalArtifactInteractions();
     const stage = root.querySelector('.buret-external-artifact-stage');
     if (!stage) return;
 
-    const savedView = window.BuretteRendererViewState?.read(activeConfig?.documentId, activeConfig?.rendererViewState).xyz;
-    let scale = savedView?.scale ?? 1;
-    let translateX = savedView?.x ?? 0;
-    let translateY = savedView?.y ?? 0;
+    let scale = 1;
+    let translateX = 0;
+    let translateY = 0;
     let dragPointerId = null;
     let dragClientX = 0;
     let dragClientY = 0;
@@ -14468,8 +13656,14 @@ SOFTWARE.
 
     const clampScale = value => Math.min(8, Math.max(0.05, value));
     const clampTranslation = () => {
-      const maxX = root.clientWidth * Math.max(1, scale);
-      const maxY = root.clientHeight * Math.max(1, scale);
+      if (Math.abs(scale - 1) < 0.001) {
+        scale = 1;
+        translateX = 0;
+        translateY = 0;
+        return;
+      }
+      const maxX = root.clientWidth * Math.abs(scale - 1) * 0.5;
+      const maxY = root.clientHeight * Math.abs(scale - 1) * 0.5;
       translateX = Math.min(maxX, Math.max(-maxX, translateX));
       translateY = Math.min(maxY, Math.max(-maxY, translateY));
     };
@@ -14512,7 +13706,6 @@ SOFTWARE.
       zoomAt(scale * factor, event.clientX, event.clientY);
     };
     const onPointerDown = event => {
-      if (event.target?.closest?.('.buret-xyz-badge')) return;
       pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (pointers.size === 1) {
         dragPointerId = event.pointerId;
@@ -14562,56 +13755,14 @@ SOFTWARE.
       zoomAt(gestureBaseScale * Number(event.scale || 1), Number(event.clientX || 0), Number(event.clientY || 0));
     };
     const toStagePoint = (clientX, clientY) => {
-      const rect = stage.getBoundingClientRect();
+      const rect = root.getBoundingClientRect();
       return {
-        x: (Number(clientX) - rect.left) / scale,
-        y: (Number(clientY) - rect.top) / scale
+        x: (Number(clientX) - rect.left - translateX) / scale,
+        y: (Number(clientY) - rect.top - translateY) / scale
       };
     };
     installExternalArtifactBaseItemInteractions(root, () => scale);
     const sheetCleanup = installExternalArtifactSheet(root, stage, toStagePoint, () => scale);
-    const baseItem = root.querySelector('.buret-xyzrender-sheet-item-base');
-    if (baseItem && savedView?.item) {
-      for (const key of ['left', 'top', 'width', 'height']) baseItem.style[key] = `${savedView.item[key]}px`;
-      setSheetItemRotation(baseItem, savedView.item.rotation);
-    }
-    const viewportCleanup = window.BuretteRendererViewState?.observeSheetViewport(root, savedView?.viewport);
-    externalArtifactViewSnapshot = () => ({
-      scale, x: translateX, y: translateY,
-      viewport: { width: root.clientWidth, height: root.clientHeight },
-      item: baseItem ? {
-        left: baseItem.offsetLeft, top: baseItem.offsetTop,
-        width: baseItem.offsetWidth, height: baseItem.offsetHeight,
-        rotation: Number(baseItem.dataset.rotation || 0)
-      } : null
-    });
-
-    // Camera motion is time-based, independent of the OS key-repeat rate.
-    const keyboardCleanup = installExternalArtifactKeyboard(root, (motion, seconds) => {
-      const rect = root.getBoundingClientRect();
-      if (motion.zoom) zoomAt(scale * Math.exp(motion.zoom * seconds * 0.9), rect.left + rect.width / 2, rect.top + rect.height / 2);
-      translateX += motion.x * seconds * 220;
-      translateY += motion.y * seconds * 220;
-      if (motion.roll) {
-        const angle = motion.roll * seconds * 60;
-        const radians = angle * Math.PI / 180;
-        const centerX = root.clientWidth / 2 - translateX / scale;
-        const centerY = root.clientHeight / 2 - translateY / scale;
-        // Read the layout once, retain fractional positions across frames.
-        const items = Array.from(root.querySelectorAll('.buret-xyzrender-sheet-item')).map(item => ({
-          item,
-          left: item.style.left.endsWith('px') ? parseFloat(item.style.left) : item.offsetLeft,
-          top: item.style.top.endsWith('px') ? parseFloat(item.style.top) : item.offsetTop,
-        }));
-        for (const { item, left, top } of items) {
-          const x = left - centerX, y = top - centerY;
-          item.style.left = `${centerX + x * Math.cos(radians) - y * Math.sin(radians)}px`;
-          item.style.top = `${centerY + x * Math.sin(radians) + y * Math.cos(radians)}px`;
-          setSheetItemRotation(item, Number(item.dataset.rotation || 0) + angle);
-        }
-      }
-      apply();
-    });
 
     root.addEventListener('wheel', onWheel, { passive: false });
     root.addEventListener('pointerdown', onPointerDown);
@@ -14623,10 +13774,6 @@ SOFTWARE.
     root.addEventListener('gesturechange', onGestureChange, { passive: false });
     apply();
     externalArtifactInteractionsCleanup = () => {
-      keyboardCleanup();
-      viewportCleanup?.();
-      saveRendererViewState();
-      externalArtifactViewSnapshot = null;
       root.removeEventListener('wheel', onWheel);
       root.removeEventListener('pointerdown', onPointerDown);
       root.removeEventListener('pointermove', onPointerMove);
@@ -14703,7 +13850,6 @@ SOFTWARE.
   function prepareXyzStructure(text, config) {
     const label = config.label || 'structure';
     const frames = splitXyzFrames(text);
-    if (!frames.length) throw new Error(`Invalid XYZ in ${label}: check atom counts and finite coordinates in every frame.`);
     if (frames.length > 1) {
       const overlay = buildXyzFrameOverlay(frames, label);
       return {
@@ -14763,28 +13909,44 @@ SOFTWARE.
     }
     if (molecules.length <= 1 || totalAtoms > 999 || totalBonds > 999) return null;
 
-    const spread = spreadSdfCollectionMolecules(molecules);
-    const gridEntries = spread.map((molecule, index) => {
-      const moleculeLabel = `Molecule ${index + 1}`;
-      return {
-        label: moleculeLabel,
-        format: 'sdf',
-        data: [moleculeLabel, '  Burette', '',
-          '  0  0  0     0  0            999 V3000', 'M  V30 BEGIN CTAB',
-          `M  V30 COUNTS ${molecule.atomCount} ${molecule.bondCount} 0 0 0`, 'M  V30 BEGIN ATOM',
-          ...molecule.atoms.map((atom, i) => `M  V30 ${i + 1} ${atom.element} ${formatV3000Coord(atom.x)} ${formatV3000Coord(atom.y)} ${formatV3000Coord(atom.z)} 0`),
-          'M  V30 END ATOM', 'M  V30 BEGIN BOND',
-          ...molecule.bonds.map((bond, i) => `M  V30 ${i + 1} ${bond.order} ${bond.a} ${bond.b}`),
-          'M  V30 END BOND', 'M  V30 END CTAB',
-          'M  END', '$$$$', ''
-        ].join('\n')
-      };
+    const columns = Math.max(1, Math.ceil(Math.sqrt(molecules.length)));
+    const rows = Math.ceil(molecules.length / columns);
+    const cellWidth = Math.max(2, ...molecules.map(m => Math.max(2, m.width))) + SDF_GRID_PADDING;
+    const cellHeight = Math.max(2, ...molecules.map(m => Math.max(2, m.height))) + SDF_GRID_PADDING;
+    const gridWidth = (columns - 1) * cellWidth;
+    const gridHeight = (rows - 1) * cellHeight;
+
+    const atoms = [];
+    const bonds = [];
+    let atomOffset = 0;
+    molecules.forEach((molecule, index) => {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      const targetX = column * cellWidth - gridWidth / 2;
+      const targetY = gridHeight / 2 - row * cellHeight;
+      const dx = targetX - molecule.centerX;
+      const dy = targetY - molecule.centerY;
+      for (const atom of molecule.atoms) {
+        atoms.push(formatSdfAtomLine(atom, atom.x + dx, atom.y + dy, atom.z));
+      }
+      for (const bond of molecule.bonds) {
+        bonds.push(formatSdfBondLine(bond, atomOffset));
+      }
+      atomOffset += molecule.atomCount;
     });
 
     return {
-      kind: 'sdf-grid',
-      data: '',
-      gridEntries,
+      data: [
+        'Burette SDF Grid',
+        '  Burette',
+        `${molecules.length} of ${records.length} SDF records`,
+        formatSdfCountsLine(totalAtoms, totalBonds),
+        ...atoms,
+        ...bonds,
+        'M  END',
+        '$$$$',
+        ''
+      ].join('\n'),
       format: 'sdf',
       label: `${label} (grid: ${molecules.length}${records.length > molecules.length ? ` of ${records.length}` : ''} molecules)`,
       loadPreset: 'default'
@@ -14908,32 +14070,6 @@ SOFTWARE.
     return { data: lines.join('\n'), residues, singlePdbs, molecules };
   }
 
-  function spreadSdfCollectionMolecules(molecules) {
-    const columns = Math.ceil(Math.sqrt(molecules.length));
-    const rows = Math.ceil(molecules.length / columns);
-    // Alignment replaces coordinates; parsed bounds can describe the old pose.
-    const bounds = molecules.map(molecule => {
-      const xs = molecule.atoms.map(atom => atom.x);
-      const ys = molecule.atoms.map(atom => atom.y);
-      const minX = Math.min(...xs), maxX = Math.max(...xs);
-      const minY = Math.min(...ys), maxY = Math.max(...ys);
-      return { centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2, size: Math.max(maxX - minX, maxY - minY) };
-    });
-    const spacing = Math.max(3, ...bounds.map(bound => bound.size)) + SDF_GRID_PADDING;
-    return molecules.map((molecule, index) => {
-      const x = (index % columns - (columns - 1) / 2) * spacing;
-      const y = ((rows - 1) / 2 - Math.floor(index / columns)) * spacing;
-      return {
-        ...molecule,
-        atoms: molecule.atoms.map(atom => ({
-          ...atom,
-          x: atom.x + x - bounds[index].centerX,
-          y: atom.y + y - bounds[index].centerY
-        }))
-      };
-    });
-  }
-
   function sdfMoleculesToPdbStructure(molecules, label) {
     const totalAtoms = molecules.reduce((sum, molecule) => sum + molecule.atomCount, 0);
     if (totalAtoms <= 0 || totalAtoms > 99999) return null;
@@ -14964,6 +14100,14 @@ SOFTWARE.
     return lines.join('\n');
   }
 
+  function sdfCollectionBackgroundPdb(prepared, activeIndex) {
+    const molecules = Array.isArray(prepared?.collectionMolecules) ? prepared.collectionMolecules : [];
+    if (molecules.length <= 1) return null;
+    const background = molecules.filter((_, index) => index !== activeIndex);
+    if (background.length === 0) return null;
+    return sdfMoleculesToPdbStructure(background, `${prepared.label || 'Molecule collection'} background`);
+  }
+
   function appendPdbConectLines(lines, adjacency) {
     for (const [serial, targets] of Array.from(adjacency.entries()).sort((a, b) => a[0] - b[0])) {
       const orderedTargets = Array.from(targets).sort((a, b) => a - b);
@@ -14973,9 +14117,7 @@ SOFTWARE.
     }
   }
 
-  let xyzParsedFrameCache = null;
   function splitXyzFrames(text) {
-    if (xyzParsedFrameCache?.text === text) return xyzParsedFrameCache.frames;
     const lines = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const frames = [];
     let index = 0;
@@ -15002,7 +14144,6 @@ SOFTWARE.
       frames.push({ atoms });
       index += atomCount + 2;
     }
-    xyzParsedFrameCache = { text, frames };
     return frames;
   }
 
@@ -15107,6 +14248,8 @@ SOFTWARE.
       frames.length,
       style,
       contextStyle,
+      contextOpacity,
+      contextColor,
       backgroundIndexes.join(',')
     ].join('|');
   }
@@ -15158,8 +14301,9 @@ SOFTWARE.
       Number(prepared?.poseCount || prepared?.sdfPoseRecordCount || 0),
       style,
       allMode ? 'all' : 'single',
-      allMode ? activeSdfCollectionLayout : 'overlap',
       contextStyle,
+      contextOpacity,
+      contextColor
     ].join('|');
   }
 
@@ -15176,13 +14320,9 @@ SOFTWARE.
   }
 
   function parseV2000SdfRecord(record) {
-    // RDKit and several docking tools emit V3000 mol blocks. Keep the
-    // existing call sites (grid, pose pager and overlay) format-agnostic by
-    // dispatching those records through the matching parser here.
-    if (/\bV3000\b/u.test(String(record || ''))) return parseV3000SdfRecord(record);
     const lines = String(record || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const countsIndex = lines.findIndex(line => /\bV2000\b/u.test(line) || /^\s*\d+\s+\d+\s+/.test(line));
-    if (countsIndex < 0) return null;
+    if (countsIndex < 0 || lines[countsIndex].includes('V3000')) return null;
     const countParts = lines[countsIndex].trim().split(/\s+/u);
     const atomCount = parseInt(lines[countsIndex].slice(0, 3), 10) || parseInt(countParts[0], 10);
     const bondCount = parseInt(lines[countsIndex].slice(3, 6), 10) || parseInt(countParts[1], 10);
@@ -15204,69 +14344,6 @@ SOFTWARE.
       if (!bond) return null;
       bonds.push(bond);
     }
-
-    const xs = atoms.map(atom => atom.x);
-    const ys = atoms.map(atom => atom.y);
-    const minX = Math.min(...xs);
-    const maxX = Math.max(...xs);
-    const minY = Math.min(...ys);
-    const maxY = Math.max(...ys);
-    return {
-      atomCount,
-      bondCount,
-      atoms,
-      bonds,
-      width: maxX - minX,
-      height: maxY - minY,
-      centerX: (minX + maxX) / 2,
-      centerY: (minY + maxY) / 2
-    };
-  }
-
-  function parseV3000SdfRecord(record) {
-    const lines = String(record || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
-    const countsLine = lines.find(line => /^\s*M\s+V30\s+COUNTS\s+/u.test(line));
-    const counts = countsLine?.match(/^\s*M\s+V30\s+COUNTS\s+(\d+)\s+(\d+)/u);
-    if (!counts) return null;
-    const atomCount = Number(counts[1]);
-    const bondCount = Number(counts[2]);
-    if (!Number.isInteger(atomCount) || !Number.isInteger(bondCount) || atomCount <= 0) return null;
-
-    const atomStart = lines.findIndex(line => /^\s*M\s+V30\s+BEGIN\s+ATOM\s*$/u.test(line));
-    const bondStart = lines.findIndex(line => /^\s*M\s+V30\s+BEGIN\s+BOND\s*$/u.test(line));
-    if (atomStart < 0 || bondStart < 0) return null;
-
-    const atoms = [];
-    const atomIds = new Map();
-    for (let index = atomStart + 1; index < lines.length && atoms.length < atomCount; index += 1) {
-      const line = lines[index].trim();
-      if (!line || /^M\s+V30\s+END\s+ATOM$/u.test(line)) break;
-      const parts = line.split(/\s+/u);
-      if (parts.length < 7 || parts[0] !== 'M' || parts[1] !== 'V30') return null;
-      const id = Number(parts[2]);
-      const element = normalizeSdfElement(parts[3]);
-      const x = Number(parts[4]);
-      const y = Number(parts[5]);
-      const z = Number(parts[6]);
-      if (!Number.isInteger(id) || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return null;
-      atomIds.set(id, atoms.length + 1);
-      atoms.push({ x, y, z, element, label: parts[3] });
-    }
-    if (atoms.length !== atomCount) return null;
-
-    const bonds = [];
-    for (let index = bondStart + 1; index < lines.length && bonds.length < bondCount; index += 1) {
-      const line = lines[index].trim();
-      if (!line || /^M\s+V30\s+END\s+BOND$/u.test(line)) break;
-      const parts = line.split(/\s+/u);
-      if (parts.length < 6 || parts[0] !== 'M' || parts[1] !== 'V30') return null;
-      const order = normalizeSdfBondOrder(parts[3]);
-      const a = atomIds.get(Number(parts[4]));
-      const b = atomIds.get(Number(parts[5]));
-      if (!a || !b) return null;
-      bonds.push({ a, b, order });
-    }
-    if (bonds.length !== bondCount) return null;
 
     const xs = atoms.map(atom => atom.x);
     const ys = atoms.map(atom => atom.y);
@@ -15406,79 +14483,14 @@ SOFTWARE.
   // color actions, pose stepping, toolbar toggles) is serialized through this
   // queue; callers that already run inside a rebuild use the *Now variants.
   let molstarSceneRebuildChain = Promise.resolve();
-  const pendingSceneAppearance = new Map();
-  function queueMolstarSceneRebuild(run, appearanceKey = null) {
-    const pending = appearanceKey && pendingSceneAppearance.get(appearanceKey);
-    if (pending) { pending.run = run; return pending.job; }
-    const entry = { run, job: null };
-    const execute = () => {
-      if (appearanceKey) pendingSceneAppearance.delete(appearanceKey);
-      return entry.run();
-    };
-    entry.job = molstarSceneRebuildChain.then(execute, execute);
-    if (appearanceKey) pendingSceneAppearance.set(appearanceKey, entry);
-    molstarSceneRebuildChain = entry.job.then(() => undefined, () => undefined);
-    return entry.job;
-  }
-
-  async function switchCachedPoseLayer(viewer, state, index, entry, applyStyle) {
-    const plugin = viewer.plugin;
-    const canvas3d = plugin.canvas3d;
-    const cameraSnapshot = state.activeIndex >= 0 ? captureMolstarCameraSnapshot(viewer) : null;
-    const manualReset = canvas3d?.props?.camera?.manualReset === true;
-    // Removing the old foreground briefly empties the scene. Prevent Mol* from
-    // reframing that intermediate scene or fitting each replacement molecule.
-    if (cameraSnapshot) canvas3d.setProps({ camera: { manualReset: true } });
-    try {
-      state.poseCache ||= new Map();
-      const previous = state.poseCache.get(state.activeIndex);
-      if (previous) {
-        // Retain parsed trajectories, never inactive structures: full exports and
-        // selections enumerate the live structure hierarchy.
-        const remove = plugin.state.data.build();
-        for (const trajectory of previous.trajectories) {
-          for (const child of plugin.state.data.tree.children.get(trajectory.ref) || []) remove.delete(child);
-        }
-        await remove.commit();
-      }
-      let cached = state.poseCache.get(index);
-      if (!cached || !plugin.state.data.cells.has(cached.raw.ref)) {
-        const normalized = normalizeFormat(entry.format);
-        const payload = normalized === 'cifCore' ? { data: coreCifToPdb(entry.data), format: 'pdb' } : { data: entry.data, format: normalized };
-        const raw = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
-        cached = { raw, trajectories: await parseMolstarStructureTrajectories(plugin, raw, payload.format), sourceBytes: (payload.data?.length || 0) * 2 };
-      }
-      state.poseCache.delete(index);
-      state.poseCache.set(index, cached);
-      const before = molstarStructureCellRefs(viewer);
-      for (const trajectory of cached.trajectories) await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', { representationPreset: 'empty' });
-      const structures = Array.from(molstarCurrentStructures(viewer)).filter(structure => !before.has(structure.cell.transform.ref));
-      await applyStyle(structures);
-      state.activeRefs = molstarStructureRefsOf(structures);
-      state.activeIndex = index;
-      let bytes = Array.from(state.poseCache.values()).reduce((sum, item) => sum + item.sourceBytes, 0);
-      while (state.poseCache.size > 1 && (state.poseCache.size > 4 || bytes > 16 * 1024 * 1024)) {
-        const [oldIndex, old] = state.poseCache.entries().next().value;
-        await plugin.state.data.build().delete(old.raw.ref).commit();
-        state.poseCache.delete(oldIndex);
-        bytes -= old.sourceBytes;
-      }
-    } finally {
-      if (cameraSnapshot) {
-        try {
-          canvas3d.commit(true);
-          // Camera input remains live during the async rebuild. Do not restore
-          // the old snapshot over a drag/zoom that happened while it ran.
-        } finally {
-          canvas3d.setProps({ camera: { manualReset } });
-        }
-      }
-    }
+  function queueMolstarSceneRebuild(run) {
+    const job = molstarSceneRebuildChain.then(() => run(), () => run());
+    molstarSceneRebuildChain = job.then(() => undefined, () => undefined);
+    return job;
   }
 
   function applySdfCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
-    return queueMolstarSceneRebuild(() => applySdfCollectionVisibilityNow(viewer, prepared, activePose, options),
-      options.contextOpacity != null || options.contextColor != null ? prepared : null);
+    return queueMolstarSceneRebuild(() => applySdfCollectionVisibilityNow(viewer, prepared, activePose, options));
   }
 
   function applySdfCollectionAlignmentLayers(prepared, layers) {
@@ -15513,10 +14525,7 @@ SOFTWARE.
       throw new Error('Mol* structure builders are not available in this runtime.');
     }
     const allMode = activeSdfPoseMode === 'all';
-    const spreadCollection = allMode && activeSdfCollectionLayout === 'spread'
-      ? sdfMoleculesToPdbCollection(spreadSdfCollectionMolecules(prepared.collectionMolecules), prepared.label)
-      : null;
-    const singlePdbs = spreadCollection?.singlePdbs || (Array.isArray(prepared.collectionSinglePdbs) ? prepared.collectionSinglePdbs : []);
+    const singlePdbs = Array.isArray(prepared.collectionSinglePdbs) ? prepared.collectionSinglePdbs : [];
     const activeIndex = Math.max(0, Math.min(singlePdbs.length - 1, Math.trunc(Number(activePose) || 0)));
     const activeData = singlePdbs[activeIndex];
     if (!activeData) throw new Error('Mol* collection molecule data is unavailable.');
@@ -15532,12 +14541,10 @@ SOFTWARE.
       resetDockingSceneVisibilityState(viewer);
       if (typeof plugin.clear === 'function') await plugin.clear();
       const backgroundStructures = [];
-      const allRefsByIndex = [];
       if (allMode) {
-        for (const [index, data] of singlePdbs.entries()) {
-          const structures = await loadSdfCollectionPdbLayer(viewer, data, `Molecule ${index + 1}`);
-          backgroundStructures.push(...structures);
-          allRefsByIndex.push(molstarStructureRefsOf(structures));
+        const backgroundData = sdfCollectionBackgroundPdb(prepared, -1);
+        if (backgroundData) {
+          backgroundStructures.push(...await loadSdfCollectionPdbLayer(viewer, backgroundData, `${prepared.label || 'Molecule collection'} (background)`));
         }
         if (backgroundStructures.length) {
           await applySdfCollectionMolstarStyle(
@@ -15548,30 +14555,15 @@ SOFTWARE.
             contextColor
           );
         }
-        const selected = molstarStructuresByRefs(viewer, allRefsByIndex[activeIndex]);
-        await applySdfCollectionMolstarStyle(viewer, style, selected, 1, 'colored');
       }
       state = {
         viewer,
         key: stateKey,
         backgroundRefs: molstarStructureRefsOf(backgroundStructures),
-        allRefsByIndex,
-        activeRefs: allMode ? allRefsByIndex[activeIndex] : [],
-        activeIndex: allMode ? activeIndex : -1,
-        appearanceKey: allMode ? `${contextOpacity}|${contextColor}` : undefined
+        activeRefs: [],
+        activeIndex: -1
       };
       activeSdfCollectionVisibilityState = state;
-    }
-
-    const appearanceKey = `${contextOpacity}|${contextColor}`;
-    if (state.appearanceKey !== appearanceKey) {
-      const background = molstarStructuresByRefs(viewer, state.backgroundRefs);
-      if (background.length) await applySdfCollectionMolstarStyle(viewer, contextStyle === 'match' ? style : contextStyle, background, contextOpacity, contextColor);
-      if (allMode) {
-        const selected = molstarStructuresByRefs(viewer, state.allRefsByIndex[activeIndex]);
-        await applySdfCollectionMolstarStyle(viewer, style, selected, 1, 'colored');
-      }
-      state.appearanceKey = appearanceKey;
     }
 
     if (state.activeIndex === activeIndex && sdfCollectionVisibilityStateStillLoaded(viewer, state)) {
@@ -15580,28 +14572,13 @@ SOFTWARE.
       return;
     }
 
-    if (allMode) {
-      const canvas3d = plugin.canvas3d;
-      const manualReset = canvas3d?.props?.camera?.manualReset === true;
-      canvas3d?.setProps({ camera: { manualReset: true } });
-      try {
-        const previous = molstarStructuresByRefs(viewer, state.allRefsByIndex[state.activeIndex]);
-        if (previous.length) await applySdfCollectionMolstarStyle(viewer, contextStyle === 'match' ? style : contextStyle, previous, contextOpacity, contextColor);
-        const selected = molstarStructuresByRefs(viewer, state.allRefsByIndex[activeIndex]);
-        await applySdfCollectionMolstarStyle(viewer, style, selected, 1, 'colored');
-        state.activeRefs = state.allRefsByIndex[activeIndex];
-        state.activeIndex = activeIndex;
-      } finally {
-        canvas3d?.setProps({ camera: { manualReset } });
-      }
-      updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
-      if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
-      return;
-    }
-
-    await switchCachedPoseLayer(viewer, state, activeIndex, {
-      data: activeData, format: 'pdb', label: `${prepared.label || 'Molecule collection'} (${activeIndex + 1})`
-    }, structures => applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'colored'));
+    await removeMolstarStructures(viewer, molstarStructuresByRefs(viewer, state.activeRefs));
+    state.activeRefs = [];
+    const label = `${prepared.label || 'Molecule collection'} (${prepared.controlLabel || 'Molecule'} ${activeIndex + 1})`;
+    const structures = await loadSdfCollectionPdbLayer(viewer, activeData, label);
+    await applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'colored');
+    state.activeRefs = molstarStructureRefsOf(structures);
+    state.activeIndex = activeIndex;
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
   }
@@ -15622,6 +14599,8 @@ SOFTWARE.
       style,
       allMode ? 'all' : 'single',
       contextStyle,
+      contextOpacity,
+      contextColor
     ].join('|');
   }
 
@@ -15641,8 +14620,7 @@ SOFTWARE.
   }
 
   function applyDockingPoseCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
-    return queueMolstarSceneRebuild(() => applyDockingPoseCollectionVisibilityNow(viewer, prepared, activePose, options),
-      options.contextOpacity != null || options.contextColor != null ? prepared : null);
+    return queueMolstarSceneRebuild(() => applyDockingPoseCollectionVisibilityNow(viewer, prepared, activePose, options));
   }
 
   async function applyDockingPoseCollectionVisibilityNow(viewer, prepared, activePose = 0, options = {}) {
@@ -15694,29 +14672,27 @@ SOFTWARE.
       activeDockingPoseCollectionState = state;
     }
 
-    const appearanceKey = `${contextOpacity}|${contextColor}`;
-    if (state.appearanceKey !== appearanceKey) {
-      const background = molstarStructuresByRefs(viewer, state.backgroundRefs);
-      if (background.length) await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, background, contextOpacity, contextColor);
-      state.appearanceKey = appearanceKey;
-    }
-
     if (state.activeIndex === activeIndex && dockingPoseCollectionStateStillLoaded(viewer, state)) {
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
       return;
     }
 
-    await switchCachedPoseLayer(viewer, state, activeIndex, activeEntry,
-      structures => applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'colored'));
+    await removeMolstarStructures(viewer, molstarStructuresByRefs(viewer, state.activeRefs));
+    state.activeRefs = [];
+    const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
+    if (activeStructures.length) {
+      await applySdfCollectionMolstarStyle(viewer, style, activeStructures, 1, 'colored');
+    }
+    state.activeRefs = molstarStructureRefsOf(activeStructures);
+    state.activeIndex = activeIndex;
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     await applyMolstarWaterLineRepresentation(viewer);
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
   }
 
   function applyXyzFrameOverlayVisibility(viewer, prepared, activePose = 0, options = {}) {
-    return queueMolstarSceneRebuild(() => applyXyzFrameOverlayVisibilityNow(viewer, prepared, activePose, options),
-      options.contextOpacity != null || options.contextColor != null ? prepared : null);
+    return queueMolstarSceneRebuild(() => applyXyzFrameOverlayVisibilityNow(viewer, prepared, activePose, options));
   }
 
   async function applyXyzFrameOverlayVisibilityNow(viewer, prepared, activePose = 0, options = {}) {
@@ -15744,22 +14720,17 @@ SOFTWARE.
     const style = configuredMolstarStyle(activeConfig);
     const foregroundStyle = xyzFrameForegroundStyle(style);
     if (activeSdfPoseMode !== 'all' || !structureOverlayToggleAvailable(prepared)) {
-      const key = `single|${rawSignature}|${framesAligned}|${foregroundStyle}`;
-      let state = activeXyzFrameOverlayState;
-      if (!state || state.key !== key || !molstarRefsStillLoaded(viewer, state.activeRefs)) {
-        resetSdfCollectionVisibilityState(viewer);
-        resetDockingPoseCollectionState(viewer);
-        resetDockingSceneVisibilityState(viewer);
-        if (typeof plugin.clear === 'function') await plugin.clear();
-        state = { viewer, key, rawSignature, frames, aligned: framesAligned, activeRefs: [], activeIndex: -1 };
-        activeXyzFrameOverlayState = state;
-      }
-      if (state.activeIndex !== activeIndex) {
-        const entry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
-        if (!entry) throw new Error('XYZ frame data is unavailable.');
-        await switchCachedPoseLayer(viewer, state, activeIndex, entry,
-          structures => applyXyzFrameMolstarStyle(viewer, foregroundStyle, structures, 1, 'colored'));
-      }
+      resetXyzFrameOverlayState(viewer);
+      resetSdfCollectionVisibilityState(viewer);
+      resetDockingPoseCollectionState(viewer);
+      resetDockingSceneVisibilityState(viewer);
+      if (typeof plugin.clear === 'function') await plugin.clear();
+      const activeEntry = xyzFrameEntry(frames[activeIndex], `${label} (${prepared.controlLabel || 'Frame'} ${activeIndex + 1})`);
+      if (!activeEntry) throw new Error('XYZ frame data is unavailable.');
+      const activeStructures = await loadMolstarEntryWithStructureRefs(viewer, activeEntry, { representationPreset: 'empty' });
+      if (!activeStructures.length) throw new Error('Mol* did not expose the active XYZ frame structure.');
+      await applyXyzFrameMolstarStyle(viewer, foregroundStyle, activeStructures, 1, 'colored');
+      await applyMolstarWaterLineRepresentation(viewer);
       if (options.installControls !== false) installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'xyz-frame', durationMs: 180 });
@@ -15805,14 +14776,6 @@ SOFTWARE.
         activeIndex: -1
       };
       activeXyzFrameOverlayState = state;
-    }
-
-    const appearanceKey = `${contextOpacity}|${contextColor}`;
-    if (state.appearanceKey !== appearanceKey) {
-      const activeSet = new Set(state.activeRefs);
-      const background = molstarStructuresByRefs(viewer, state.backgroundRefs.filter(ref => !activeSet.has(ref)));
-      if (background.length) await applyXyzFrameMolstarStyle(viewer, resolvedContextStyle, background, backgroundLayerOpacity(state.sampledIndexes.indexOf(activeIndex)), contextColor, XYZ_FRAME_BACKGROUND_MIN_ALPHA);
-      state.appearanceKey = appearanceKey;
     }
 
     if (state.activeIndex === activeIndex && xyzFrameOverlayStateStillLoaded(viewer, state)) {
@@ -15871,8 +14834,7 @@ SOFTWARE.
     const normalized = xyzFrameRepresentationStyle(style);
     const targets = Array.isArray(structures) && structures.length ? structures : Array.from(molstarCurrentStructures(viewer));
     await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode, minAlpha));
-    // Frame/alignment rebuilds change geometry, not the user's appearance.
-    await applyMolstarAppearance(viewer, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
+    await applyMolstarNonIllustrativePostprocessing(viewer);
   }
 
   function dockingSceneStateKey(prepared, style) {
@@ -15962,17 +14924,16 @@ SOFTWARE.
     const contextOpacity = uniform ? 1 : readSdfCollectionContextOpacity(activeConfig);
     const contextColor = uniform ? 'colored' : readSdfCollectionContextColor(activeConfig);
     const params = { style, resolvedContextStyle, contextOpacity, contextColor, uniform };
-    const stateKey = [dockingSceneStateKey(prepared, style), 'all', resolvedContextStyle].join('|');
-    const appearanceKey = `${contextOpacity}|${contextColor}`;
+    const stateKey = [dockingSceneStateKey(prepared, style), 'all', resolvedContextStyle, contextOpacity, contextColor].join('|');
     const state = activeDockingSceneVisibilityState;
     if (state && state.key === stateKey && dockingSceneVisibilityStateStillLoaded(viewer, state)) {
-      if ((state.activeIndex !== activeIndex || state.appearanceKey !== appearanceKey) && !uniform) {
+      if (state.activeIndex !== activeIndex && !uniform) {
         const structuresByPose = dockingSceneStructuresByPose(viewer, state.poseRefs);
+        await clearMolstarMainRepresentationsForStructures(viewer, structuresByPose.flat());
         await styleDockingSceneOverlay(viewer, structuresByPose, activeIndex, params);
         await applyMolstarWaterLineRepresentation(viewer);
       }
       state.activeIndex = activeIndex;
-      state.appearanceKey = appearanceKey;
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
       if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
       return true;
@@ -15994,7 +14955,7 @@ SOFTWARE.
     }
     await styleDockingSceneOverlay(viewer, dockingSceneStructuresByPose(viewer, poseRefs), activeIndex, params);
     await applyMolstarWaterLineRepresentation(viewer);
-    activeDockingSceneVisibilityState = { viewer, key: stateKey, poseRefs, activeIndex, appearanceKey };
+    activeDockingSceneVisibilityState = { viewer, key: stateKey, poseRefs, activeIndex };
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
     return true;
@@ -16047,8 +15008,7 @@ SOFTWARE.
   }
 
   function applyDockingSceneVisibility(viewer, prepared, activePose = 0, options = {}) {
-    return queueMolstarSceneRebuild(() => applyDockingSceneVisibilityNow(viewer, prepared, activePose, options),
-      options.contextOpacity != null || options.contextColor != null ? prepared : null);
+    return queueMolstarSceneRebuild(() => applyDockingSceneVisibilityNow(viewer, prepared, activePose, options));
   }
 
   async function applyDockingSceneVisibilityNow(viewer, prepared, activePose = 0, options = {}) {
@@ -16170,7 +15130,7 @@ SOFTWARE.
       // every frame; a coarser grid keeps it interactive without visibly
       // changing a faded backdrop.
       const typeParams = withAlpha({ alpha: ghost ? 0.16 : 0.72 });
-      return themed({ type: 'molecular-surface', typeParams: { ...typeParams, resolution: ghost ? 2 : 0.5 } });
+      return themed({ type: 'molecular-surface', typeParams: ghost ? { ...typeParams, resolution: 2 } : typeParams });
     }
     return themed({ type: 'ball-and-stick', typeParams: withAlpha({ sizeFactor: ghost ? 0.095 : 0.16 }) });
   }
@@ -16192,34 +15152,14 @@ SOFTWARE.
     });
   }
 
-  const collectionRepresentations = new WeakMap();
   async function applyMolstarRepresentationsToStructures(viewer, structures, representation) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    const state = plugin.state.data;
-    const reusable = (structures || []).map(structure => collectionRepresentations.get(structure.cell));
-    if (reusable.length && reusable.every(entry => entry && state.cells.has(entry.ref)
-        && entry.type === representation.type && entry.color === representation.color)) {
-      const update = state.build();
-      for (const entry of reusable) update.to(entry.ref).update(old => ({ ...old,
-        type: { ...old.type, params: { ...entry.defaults, ...representation.typeParams } },
-        colorTheme: { ...old.colorTheme, params: { ...old.colorTheme.params, ...representation.colorParams } }
-      }));
-      await update.commit();
-      return;
-    }
     await clearMolstarMainRepresentationsForStructures(viewer, structures);
     let created = 0;
     for (const structure of structures || []) {
       const component = await tryCreateMolstarComponent(plugin, structure, 'all');
-      if (!component) continue;
-      const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation);
-      if (result?.ref && structure.cell) {
-        const params = state.cells.get(result.ref)?.transform?.params?.type?.params || {};
-        collectionRepresentations.set(structure.cell, { ref: result.ref, type: representation.type,
-          color: representation.color, defaults: { ...params, alpha: 1, transparentBackfaces: 'off' } });
-      }
-      if (result) created += 1;
+      if (await addMolstarRepresentation(plugin, component, representation)) created += 1;
     }
     if (created === 0) throw new Error('Mol* could not create a component for this style.');
   }
@@ -16352,12 +15292,11 @@ SOFTWARE.
   }
 
   // `includeTransparent` is always written out: the outline otherwise skips
-  // translucent geometry, which makes the illustrative contour disappear as soon
-  // as a chain's opacity is lowered.
+  // translucent geometry, and leaving the previous value in place would leak the
+  // surface preset's outlining into the plain illustrative style.
   async function applyMolstarIllustrativePostprocessing(viewer, options = {}) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    molstarOutlineBrightness = readMolstarOutlineBrightness();
     await plugin.managers.structure.component.setOptions({
       ...plugin.managers.structure.component.state.options,
       ignoreLight: true
@@ -16373,10 +15312,10 @@ SOFTWARE.
               ? postprocessing.outline.params
               : {
                   scale: 1,
+                  color: 0x000000,
                   threshold: 0.33
                 }),
-            color: molstarOutlineColor(),
-            includeTransparent: options.includeTransparent !== false
+            includeTransparent: options.includeTransparent === true
           }
         },
         occlusion: {
@@ -16704,308 +15643,7 @@ SOFTWARE.
     return { ok: true, command: 'clear_selection', result: { cleared: true } };
   }
 
-  const molstarCompositionQueries = new Map();
-  let molstarCompositionVisibilitySignature = '';
-  let molstarQueryComponentActions = Promise.resolve();
-
-  const compositionQueryCache = new WeakMap();
-
-  function compositionQueryLoci(structure, query) {
-    const parent = structure.cell?.obj?.data;
-    const transform = window.molstar?.lib?.plugin?.StateTransforms?.Model?.StructureComponent;
-    const { Structure } = molstarStructureRuntime();
-    if (!parent || !transform?.definition?.apply) return null;
-    let cache = compositionQueryCache.get(parent);
-    if (!cache) compositionQueryCache.set(parent, cache = new Map());
-    if (cache.has(query)) return cache.get(query);
-    // Evaluate the same Mol* component transform without adding a state node.
-    // This gives both trees exact subset visibility even before the first edit.
-    let loci = null;
-    try {
-      const component = transform.definition.apply({ a: structure.cell.obj, params: {
-        type: { name: 'script', params: { language: 'pymol', expression: query } }, nullIfEmpty: true, label: ''
-      }, cache: {} });
-      if (component?.data?.elementCount) loci = Structure.toSubStructureElementLoci(parent, component.data);
-    } catch (_) { /* Unsupported queries don't fall back to a wider component. */ }
-    cache.set(query, loci);
-    while (cache.size > 128) cache.delete(cache.keys().next().value);
-    return loci;
-  }
-
-  function reportMolstarCompositionVisibility() {
-    if (!molstarCompositionQueries.size) return;
-    const plugin = activeMolstarViewer()?.plugin;
-    if (plugin?.behaviors?.state?.isUpdating?.value) return;
-    const viewer = activeMolstarViewer();
-    const structures = molstarCurrentStructures(viewer);
-    if (!plugin?.canvas3d) return;
-    const { Structure, StructureElement } = molstarStructureRuntime();
-    const rows = [...molstarCompositionQueries.keys()].map(query => {
-      const matched = [];
-      const counts = { atoms: 0, residues: 0, chains: 0, types: 0 };
-      const residueTypes = new Set();
-      for (const structure of structures) {
-        const loci = compositionQueryLoci(structure, query);
-        if (!loci) continue;
-        let represented = null;
-        for (const component of structure.components || []) {
-          const data = component.cell?.obj?.data;
-          if (!data) continue;
-          const overlap = StructureElement.Loci.remap(loci, data);
-          if (!StructureElement.Loci.size(overlap)) continue;
-          matched.push(component);
-          const parentLoci = StructureElement.Loci.remap(overlap, loci.structure);
-          represented = represented ? StructureElement.Loci.union(represented, parentLoci) : parentLoci;
-        }
-        if (represented) {
-          // Count the union: overlapping representations must not count atoms twice.
-          const data = StructureElement.Loci.toStructure(represented);
-          counts.atoms += data.elementCount;
-          Structure.eachAtomicHierarchyElement(data, {
-            chain: () => { counts.chains++; },
-            residue: location => {
-              counts.residues++;
-              residueTypes.add(location.unit.model.atomicHierarchy.atoms.label_comp_id.value(location.element));
-            }
-          });
-        }
-      }
-      counts.types = residueTypes.size;
-      const tint = sceneTreeColorState(matched).value;
-      return {
-        query,
-        present: matched.length > 0,
-        counts,
-        hidden: !matched.some(component => !component.cell.state.isHidden
-          && component.representations?.some(repr => !repr.cell.state.isHidden)),
-        color: Number.isFinite(tint) ? sceneTreeColorHex(tint) : null
-      };
-    });
-    const signature = JSON.stringify(rows);
-    if (signature === molstarCompositionVisibilitySignature) return;
-    molstarCompositionVisibilitySignature = signature;
-    post('compositionVisibilityChanged', '', { rows });
-  }
-
-  function queueMolstarQueryComponentAction(action, operation) {
-    const next = molstarQueryComponentActions.then(async () => {
-      const snapshot = captureMolstarSceneUndoSnapshot(`${operation} ${action.componentLabel || 'component'}`);
-      const result = await changeMolstarQueryComponents(action, operation);
-      if (result?.ok && (operation !== 'prepare' || result.result.splitCount > 0)) pushMolstarEditUndoSnapshot(snapshot);
-      return result;
-    });
-    molstarQueryComponentActions = next.catch(() => {});
-    return next;
-  }
-
-  // Lives beside the component actions because splitting needs the viewer's
-  // private structure runtime and scene-tree visibility helpers. Split once,
-  // then use ordinary scene cells: both trees operate on the same objects.
-  async function changeMolstarQueryComponents(action, operation) {
-    const command = `${operation}_components`;
-    const query = typeof action.query === 'string' ? action.query.trim() : '';
-    if (!query || query.length > 4096) return sceneActionFailure(command, 'INVALID_ARGUMENT', 'An exact component query is required.');
-    const viewer = activeMolstarViewer();
-    const plugin = viewer?.plugin;
-    const manager = plugin?.managers?.structure?.component;
-    const selection = plugin?.managers?.structure?.selection;
-    const { Structure, StructureElement } = molstarStructureRuntime();
-    if (!plugin?.dataTransaction || !plugin?.builders?.structure?.tryCreateComponent
-      || !manager?.modifyByCurrentSelection || !manager?.updateRepresentations || !selection?.getSnapshot || !selection?.setSnapshot
-      || !Structure?.toSubStructureElementLoci || !StructureElement?.Loci?.remap
-      || !StructureElement?.Loci?.toStructure || !StructureElement?.Bundle?.fromSubStructure) {
-      return sceneActionFailure(command, 'NOT_IMPLEMENTED', 'Mol* subset component editing is unavailable.');
-    }
-    const edit = operation === 'edit' ? action.edit : null;
-    if (operation === 'edit' && !(edit && (
-      (edit.operation === 'representation' && ['cartoon', 'backbone', 'ball-and-stick', 'spacefill', 'line', 'molecular-surface'].includes(edit.value))
-      || (edit.operation === 'opacity' && Number.isFinite(edit.value) && edit.value >= 0 && edit.value <= 1)
-      || (edit.operation === 'color' && /^#[0-9a-f]{6}$/i.test(edit.value))
-    ))) return sceneActionFailure(command, 'INVALID_ARGUMENT', 'Unsupported component edit.');
-    const savedSelection = selection.getSnapshot();
-    const label = String(action.componentLabel || 'Selection');
-    const representation = representationForSceneComponentKind(normalizeSceneComponentKind(action.kind));
-    const affectedRefs = new Set();
-    let componentCount = 0;
-    let splitCount = 0;
-    let atoms = 0;
-    try {
-      await plugin.dataTransaction(async () => {
-        for (const structure of molstarCurrentStructures(viewer)) {
-          const parent = structure.cell?.obj?.data;
-          if (!parent) continue;
-          const components = [...(structure.components || [])];
-          const probe = await plugin.builders.structure.tryCreateComponent(structure.cell, {
-            type: { name: 'script', params: { language: 'pymol', expression: query } },
-            nullIfEmpty: true,
-            label
-          }, `burette-inspector-query-${query}`, ['burette-inspector-subset']);
-          if (!probe?.obj?.data) continue;
-          const loci = Structure.toSubStructureElementLoci(parent, probe.obj.data);
-          atoms += Number(probe.obj.data.elementCount) || 0;
-          const partials = [];
-          let matched = 0;
-          for (const component of components) {
-            const data = component.cell?.obj?.data;
-            if (!data) continue;
-            const overlap = StructureElement.Loci.remap(loci, data);
-            const count = StructureElement.Loci.size(overlap);
-            if (!count) continue;
-            matched++;
-            componentCount++;
-            if (count === data.elementCount) {
-              const ref = component.cell.transform.ref;
-              affectedRefs.add(ref);
-              if (operation === 'remove') {
-                await plugin.state.data.build().delete(ref).commit();
-              } else if (operation !== 'edit' && operation !== 'prepare') {
-                if (operation === 'show' && !component.representations?.length) {
-                  await plugin.builders.structure.representation.addRepresentation(component.cell, representation);
-                }
-                for (const target of sceneTreeSubtreeRefs(plugin.state.data, ref)) {
-                  plugin.state.data.updateCellState(target, { isHidden: operation === 'hide' });
-                }
-              }
-              continue;
-            }
-            if (!manager.canBeModified(component)) throw new Error(`Cannot split ${component.cell.obj.label}.`);
-            partials.push(component);
-            if (operation === 'remove') continue;
-            const subset = StructureElement.Loci.toStructure(overlap);
-            const split = await plugin.builders.structure.tryCreateComponent(structure.cell, {
-              type: { name: 'bundle', params: StructureElement.Bundle.fromSubStructure(parent, subset) },
-              nullIfEmpty: true,
-              label
-            }, `burette-inspector-${component.cell.transform.ref}-${query}`, ['burette-inspector-subset']);
-            if (!split) throw new Error(`Could not separate ${label}.`);
-            splitCount++;
-            affectedRefs.add(split.ref);
-            // Copy the existing representation parameters, including colours,
-            // sizes and opacity. A hide/show cycle must not reset visual style.
-            const update = plugin.state.data.build();
-            for (const repr of component.representations || []) {
-              update.to(split.ref).apply(repr.cell.transform.transformer, repr.cell.params.values);
-            }
-            await update.commit();
-            if (operation === 'show' && !component.representations?.length) {
-              await plugin.builders.structure.representation.addRepresentation(split, representation);
-            }
-            plugin.state.data.updateCellState(split.ref, { isHidden: operation === 'edit' || operation === 'prepare' ? !!component.cell.state.isHidden : operation === 'hide' });
-            const splitRepresentations = [...plugin.state.data.cells.values()].filter(cell => cell.transform.parent === split.ref);
-            for (let index = 0; index < splitRepresentations.length; index++) {
-              plugin.state.data.updateCellState(splitRepresentations[index].transform.ref, {
-                isHidden: operation === 'edit' || operation === 'prepare' ? !!component.representations?.[index]?.cell.state.isHidden : operation === 'hide'
-              });
-            }
-          }
-          if (partials.length) {
-            selection.clear();
-            selection.fromLoci('set', loci, false);
-            await manager.modifyByCurrentSelection(partials, 'subtract');
-          }
-          if (!matched && operation === 'show') {
-            const restored = await plugin.builders.structure.tryCreateComponent(structure.cell, {
-              type: { name: 'bundle', params: StructureElement.Bundle.fromSubStructure(parent, probe.obj.data) },
-              nullIfEmpty: true,
-              label
-            }, `burette-inspector-restored-${query}`, ['burette-inspector-subset']);
-            if (!restored) throw new Error(`Could not restore ${label}.`);
-            affectedRefs.add(restored.ref);
-            await plugin.builders.structure.representation.addRepresentation(restored, representation);
-            componentCount++;
-          }
-          await plugin.state.data.build().delete(probe.ref).commit();
-        }
-        if (edit) {
-          const allComponents = molstarCurrentStructures(viewer).flatMap(structure => structure.components || []);
-          const targets = allComponents.filter(component => affectedRefs.has(component.cell.transform.ref));
-          if (!targets.length) throw new Error(`Show ${label} before changing its appearance.`);
-          for (let component of targets) {
-            if (!component.representations?.length) {
-              const ref = component.cell.transform.ref;
-              const created = await plugin.builders.structure.representation.addRepresentation(component.cell, representation);
-              plugin.state.data.updateCellState(created.ref, { isHidden: true });
-              component = molstarCurrentStructures(viewer).flatMap(structure => structure.components || []).find(entry => entry.cell.transform.ref === ref);
-            }
-            for (const repr of component?.representations || []) {
-              await manager.updateRepresentations([component], repr, old => {
-                if (edit.operation === 'representation') return { ...old, type: { name: edit.value, params: {} } };
-                if (edit.operation === 'opacity') return { ...old, type: { ...old.type, params: { ...old.type.params, alpha: edit.value } } };
-                return { ...old, colorTheme: sceneTreeReprTintTheme(old.type.name, parseInt(edit.value.slice(1), 16)) };
-              });
-            }
-          }
-        }
-      }, { canUndo: `${operation} ${label}`, rethrowErrors: true });
-      molstarCompositionQueries.delete(query);
-      molstarCompositionQueries.set(query, affectedRefs);
-      while (molstarCompositionQueries.size > 128) molstarCompositionQueries.delete(molstarCompositionQueries.keys().next().value);
-    } finally {
-      selection.setSnapshot(savedSelection);
-      scheduleSceneTreeRender();
-    }
-    if (!atoms) return sceneActionFailure(command, 'SELECTION_EMPTY', `Nothing matched ${label}.`);
-    return { ok: true, command, result: { query, label, componentCount, atoms, ...(operation === 'prepare' ? { componentRefs: [...affectedRefs], splitCount } : edit ? { edit } : { hidden: operation !== 'show' }) } };
-  }
-
-  // Composition rows may cover only part of a scene component. Resolve that exact
-  // subset before opening the existing scene editor; never point a chain's menu
-  // at a representation that also contains its siblings. This lives beside the
-  // query splitter because both need the private Mol* hierarchy/runtime helpers.
-  async function openCompositionSceneMenu(action) {
-    if (!Number.isFinite(action.x) || !Number.isFinite(action.y)) {
-      return sceneActionFailure('open_components_menu', 'INVALID_ARGUMENT', 'A menu position is required.');
-    }
-    const result = await queueMolstarQueryComponentAction(action, 'prepare');
-    if (!result?.ok) return result;
-    const refs = new Set(result.result.componentRefs);
-    const viewer = activeMolstarViewer();
-    const targets = [];
-    for (const structure of molstarCurrentStructures(viewer)) {
-      for (const component of structure.components || []) {
-        if (!refs.has(component.cell.transform.ref)) continue;
-        const representations = component.representations || [];
-        if (!representations.length) {
-          targets.push({ ref: component.cell.transform.ref, label: component.cell.obj.label });
-        }
-        for (const representation of representations) {
-          targets.push({ ref: representation.cell.transform.ref,
-            label: `${component.cell.obj.label} · ${representation.cell.obj.label}` });
-        }
-      }
-    }
-    if (!targets.length) return sceneActionFailure('open_components_menu', 'SELECTION_EMPTY', 'No scene objects matched this row.');
-    const open = ref => {
-      openSceneTreeMenu(ref, action.x, action.y);
-      const menu = document.getElementById('buret-scene-tree-menu');
-      if (!menu || targets.length === 1) return;
-      // Overlapping representations remain independently editable, just as they
-      // are in Scene. Make the target explicit rather than editing the first only.
-      const row = document.createElement('label');
-      row.className = 'buret-tree-menu-field';
-      const caption = document.createElement('span');
-      caption.textContent = 'Object';
-      const select = document.createElement('select');
-      select.className = 'buret-select';
-      select.setAttribute('aria-label', 'Scene object');
-      for (const target of targets) {
-        const option = document.createElement('option');
-        option.value = target.ref;
-        option.textContent = target.label;
-        select.appendChild(option);
-      }
-      select.value = ref;
-      select.addEventListener('change', event => { event.stopPropagation(); open(select.value); });
-      row.append(caption, select);
-      menu.querySelector('.buret-tree-menu-header')?.after(row);
-      menu.style.top = `${Math.round(Math.max(6, Math.min(action.y, window.innerHeight - menu.getBoundingClientRect().height - 6)))}px`;
-    };
-    open(targets[0].ref);
-    return { ok: true, command: 'open_components_menu', result: { targetCount: targets.length } };
-  }
-
   async function hideMolstarComponents(action = {}) {
-    if (action.query !== undefined) return queueMolstarQueryComponentAction(action, 'hide');
     const kind = normalizeSceneComponentKind(action.kind);
     if (kind === 'water') return hideMolstarWaters();
     const viewer = activeMolstarViewer();
@@ -17023,10 +15661,9 @@ SOFTWARE.
 
   // Hiding drops the representations but keeps the component; removing takes the
   // component out of the scene tree entirely, the way the tree's own bin button
-  // does. Scoped rows first resolve an exact query and split intersecting
-  // components, so removing a chain cannot remove its polymer siblings.
+  // does. Only whole kinds can go: a chain or a single ligand instance is a
+  // sub-selection, not a state cell there is anything to delete.
   async function removeMolstarComponents(action = {}) {
-    if (action.query !== undefined) return queueMolstarQueryComponentAction(action, 'remove');
     const kind = normalizeSceneComponentKind(action.kind);
     const viewer = activeMolstarViewer();
     const plugin = viewer?.plugin;
@@ -17105,7 +15742,6 @@ SOFTWARE.
   }
 
   async function showMolstarComponents(action = {}) {
-    if (action.query !== undefined) return queueMolstarQueryComponentAction(action, 'show');
     const kind = normalizeSceneComponentKind(action.kind);
     if (kind === 'water') return showMolstarWaters();
     const viewer = activeMolstarViewer();
@@ -17199,10 +15835,20 @@ SOFTWARE.
     }
     const manager = plugin?.managers?.structure?.component;
     const theme = { color: action.color || 'chain-id' };
+    let palette;
+    if (action.palette != null) {
+      if (theme.color !== 'chain-id' || !Array.isArray(action.palette) || !action.palette.length || action.palette.length > 32
+        || action.palette.some(color => typeof color !== 'string' || !/^#[0-9a-f]{6}$/iu.test(color))) {
+        return sceneActionFailure('color_by_chain', 'INVALID_ARGS', 'Use 1–32 #RRGGBB palette colors with the chain-id theme.');
+      }
+      palette = action.palette.map(color => color.toLowerCase());
+      theme.colorParams = { asymId: 'auth', palette: { name: 'colors', params: { list: { kind: 'set', colors: palette.map(color => parseInt(color.slice(1), 16)) } } } };
+    }
     if (typeof manager?.updateRepresentationsTheme === 'function') {
       await manager.updateRepresentationsTheme(components, theme);
-      return { ok: true, command: 'color_by_chain', result: { componentCount: components.length, color: theme.color } };
+      return { ok: true, command: 'color_by_chain', result: { componentCount: components.length, color: theme.color, ...(palette ? { palette } : {}) } };
     }
+    if (palette) return sceneActionFailure('color_by_chain', 'NOT_IMPLEMENTED', 'This Mol* runtime cannot apply a chain palette.');
     if (typeof manager?.updateRepresentations === 'function') {
       await manager.updateRepresentations(components, theme);
       return { ok: true, command: 'color_by_chain', result: { componentCount: components.length, color: theme.color, method: 'updateRepresentations' } };
@@ -17263,7 +15909,6 @@ SOFTWARE.
     hideComponents: hideMolstarComponents,
     showComponents: showMolstarComponents,
     removeComponents: removeMolstarComponents,
-    editComponents: action => queueMolstarQueryComponentAction(action, 'edit'),
     createComponent: createMolstarComponentFromQuery,
     hideWaters: hideMolstarWaters,
     showWaters: showMolstarWaters,
@@ -17272,63 +15917,11 @@ SOFTWARE.
     colorByChain: colorMolstarByChain
   };
 
-  // Keep CIF block loading at the shared Mol* loader boundary: PyMOL can write
-  // a protein and its ligand as separate data blocks in the same coordinate frame.
-  // One trajectory per block preserves that frame and each block's own models.
-  async function parseMolstarStructureTrajectories(plugin, data, format) {
-    if (format !== 'mmcif') return [await plugin.builders.structure.parseTrajectory(data, format)];
-    const transforms = window.molstar.lib.plugin.StateTransforms;
-    const cif = await plugin.state.data.build().to(data)
-      .apply(transforms.Data.ParseCif, undefined, { state: { isGhost: true } })
-      .commit({ revertOnError: true });
-    const blocks = cif.obj.data.blocks;
-    const indices = blocks.flatMap((block, index) => (
-      ['atom_site', 'ihm_sphere_obj_site', 'ihm_gaussian_obj_site'].some(name => block.categories[name]?.rowCount > 0)
-        ? [index] : []
-    ));
-    // Retain Mol*'s single-block CCD handling when no coordinate block is present.
-    if (indices.length === 0) indices.push(0);
-    const trajectories = [];
-    for (const blockIndex of indices) {
-      const trajectory = await plugin.state.data.build().to(cif)
-        .apply(transforms.Model.TrajectoryFromMmCif, { blockHeader: '', blockIndex })
-        .commit({ revertOnError: true });
-      trajectories.push(trajectory);
-    }
-    if (trajectories.length > 1) plugin.state.data.updateCellState(cif.ref, { isGhost: false });
-    return trajectories;
-  }
-
-  async function preloadMolViewSpecResources(viewer, urls) {
-    if (!Array.isArray(urls) || !urls.length) return;
-    const manager = viewer.plugin.managers.asset;
-    manager.clearTag('burette-mvs-local');
-    // Mol* XHR rejects status 0 from WKWebView's asset protocol. Use the
-    // existing native payload loader and retain files across Story snapshots.
-    for (const [index, url] of urls.entries()) {
-      const fileName = decodeURIComponent(new URL(url).pathname).split('/').pop();
-      const bytes = await loadPayloadBytes(fileName);
-      const asset = { kind: 'url', id: `burette-mvs-local-${index}`, url };
-      manager.set(asset, new File([bytes], `mvs-resource-${index}`), {
-        isStatic: true, tag: 'burette-mvs-local'
-      });
-    }
-  }
-
   async function loadPreparedStructure(viewer, prepared) {
     cancelScheduledMolstarWaterRepresentation();
     activeMolstarPrepared = prepared;
     updateSdfPoseButton(prepared);
     notifyStructureOverlayModeChanged(prepared);
-    if (prepared.kind === 'sdf-grid') {
-      activeDockingPrepared = null;
-      for (const entry of prepared.gridEntries) {
-        await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' });
-      }
-      await applyMolstarStyle(viewer, configuredMolstarStyle(activeConfig));
-      installDockingPoseControls(viewer, null);
-      return;
-    }
     if (prepared.kind === 'docking') {
       await loadDockingPreparedStructure(viewer, prepared);
       return;
@@ -17338,7 +15931,6 @@ SOFTWARE.
       if (typeof viewer.loadMvsData !== 'function') {
         throw new Error('Mol* viewer.loadMvsData is not available in this runtime.');
       }
-      await preloadMolViewSpecResources(viewer, prepared.resourceUrls);
       if (window.molstar?.BuretteStory && !viewer.__buretteAutomaticStory) {
         viewer.__buretteAutomaticStory = window.molstar.BuretteStory.install(viewer.plugin, {
           settings: () => ({
@@ -17350,7 +15942,7 @@ SOFTWARE.
           camera: camera => window.molstar.BuretteStory.camera(viewer.plugin, camera)
         });
       }
-      await viewer.loadMvsData(prepared.data, prepared.format, { replaceExisting: true, sourceUrl: prepared.sourceUrl });
+      await viewer.loadMvsData(prepared.data, prepared.format, { replaceExisting: true });
       installDockingPoseControls(viewer, null);
       return;
     }
@@ -17386,24 +15978,24 @@ SOFTWARE.
     if (prepared.loadPreset === 'all-models') {
       const plugin = viewer.plugin;
       const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
-      for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
-        await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', { useDefaultIfSingleModel: true });
-      }
+      const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
+      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', {
+        useDefaultIfSingleModel: true
+      });
       if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
       await applyMolstarWaterLineRepresentation(viewer);
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
     const plugin = viewer.plugin;
-    if (prepared.format !== 'mmcif' && prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
+    if (prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
       await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
     const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
-    for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
-      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
-    }
+    const trajectory = await plugin.builders.structure.parseTrajectory(data, prepared.format);
+    await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default');
     if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
     await applyMolstarWaterLineRepresentation(viewer);
     installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
@@ -17416,9 +16008,8 @@ SOFTWARE.
       ? { data: coreCifToPdb(entry.data), format: 'pdb' }
       : { data: entry.data, format: normalized };
     const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
-    for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, payload.format)) {
-      await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', presetOptions);
-    }
+    const trajectory = await plugin.builders.structure.parseTrajectory(data, payload.format);
+    await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', presetOptions);
   }
 
   async function loadMolstarEntryWithStructureRefs(viewer, entry, presetOptions = undefined) {
@@ -18278,15 +16869,14 @@ SOFTWARE.
     };
   }
 
-  function dockingPoseControlsBounds(mainRect = visibleRect('.msp-plugin .msp-layout-main'), top = TOOLBAR_MARGIN) {
+  function dockingPoseControlsBounds(mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     const margin = TOOLBAR_MARGIN;
     const left = mainRect ? Math.max(margin, Math.ceil(mainRect.left + margin)) : margin;
     const right = mainRect ? Math.min(window.innerWidth - margin, Math.floor(mainRect.right - margin)) : window.innerWidth - margin;
     // Keep the trajectory toolbar glued to the left edge but clear of the scene-tree
     // corner toggle, so it sits right next to that button instead of on top of it.
     const cornerRect = visibleRect('#buret-viewport-corner');
-    const clearedLeft = cornerRect && top < cornerRect.bottom + FLOATING_LAYOUT_GAP
-      ? Math.max(left, Math.ceil(cornerRect.right + 8)) : left;
+    const clearedLeft = cornerRect ? Math.max(left, Math.ceil(cornerRect.right + 8)) : left;
     const viewportRailRect = visibleRect('#buret-viewport-rail');
     const clearedRight = viewportRailRect
       ? Math.min(right, Math.floor(viewportRailRect.left - FLOATING_LAYOUT_GAP))
@@ -18300,7 +16890,7 @@ SOFTWARE.
   }
 
   function moveDockingPoseControls(root, left, top, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
-    const bounds = dockingPoseControlsBounds(mainRect, top);
+    const bounds = dockingPoseControlsBounds(mainRect);
     // The toolbar and the scene tree no longer share a band — the toolbar ends at the
     // corner button's baseline and the tree starts below it — so clearing that button
     // is enough and the toolbar can stay at the left edge.
@@ -18363,8 +16953,7 @@ SOFTWARE.
   function applyDefaultDockingPoseControlsPosition(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
     root.dataset.defaultPosition = '1';
     const bounds = dockingPoseControlsBounds(mainRect);
-    const top = defaultDockingPoseControlsTop(root, bounds);
-    moveDockingPoseControls(root, dockingPoseControlsBounds(mainRect, top).left, top, mainRect);
+    moveDockingPoseControls(root, bounds.left, defaultDockingPoseControlsTop(root, bounds), mainRect);
   }
 
   function repositionDockingPoseControls(root, mainRect = visibleRect('.msp-plugin .msp-layout-main')) {
@@ -18573,28 +17162,6 @@ SOFTWARE.
     });
   }
 
-  function clearMolstarTrajectoryHover(plugin) {
-    const highlights = plugin?.managers?.interactivity?.lociHighlights;
-    if (!highlights) return;
-    // A hover arriving during a frame update can refer to the outgoing model.
-    // Remove the highlight bit across the current representations as well as
-    // clearing the manager's old loci. Mol* MarkerAction.RemoveHighlight = 2;
-    // unlike Clear, this leaves the explicit selection bit untouched.
-    highlights.clearHighlights();
-    const everyLoci = window.molstar?.lib?.loci?.EveryLoci;
-    if (everyLoci) plugin.canvas3d?.mark?.({ loci: everyLoci }, 2);
-  }
-
-  // Align and the XYZ style actions rebuild the scene through the single-frame
-  // overlay path: one Mol* structure per shown frame. Its model cell holds a
-  // single frame, so a native modelIndex step clamps to 0 and the frame never
-  // changes; frame steps must go through the overlay path instead.
-  function xyzSingleFrameSceneActive(viewer) {
-    const state = activeXyzFrameOverlayState;
-    return Boolean(viewer && state?.viewer === viewer && state.key?.startsWith('single|')
-      && molstarRefsStillLoaded(viewer, state.activeRefs));
-  }
-
   async function setNativeTrajectoryPoseDirect(index, poseCount) {
     const transform = nativeTrajectoryModelTransform(poseCount);
     if (!transform) return false;
@@ -18603,17 +17170,12 @@ SOFTWARE.
     // end leaves the model on its last one while we report success.
     const limit = transform.frameCount > 0 ? transform.frameCount : poseCount;
     const target = Math.max(0, Math.min(limit - 1, index));
-    // Hover loci belong to the outgoing model. Clear their markers before Mol*
-    // replaces it: afterwards those loci may no longer match the representation,
-    // and a pointer-leave event can also be skipped while the plugin is busy.
-    clearMolstarTrajectoryHover(transform.plugin);
     await transform.plugin.state.updateTransform(
       transform.plugin.state.data,
       transform.ref,
       { ...transform.params, modelIndex: target },
       'Model Index'
     );
-    clearMolstarTrajectoryHover(transform.plugin);
     await afterNativeTrajectoryPaint();
     return true;
   }
@@ -18631,10 +17193,8 @@ SOFTWARE.
     for (let step = 0; step < stepCount; step += 1) {
       const button = nativeTrajectoryStepButton(direction);
       if (!button || button.disabled || button.getAttribute('aria-disabled') === 'true') return false;
-      clearMolstarTrajectoryHover(activeViewer?.plugin);
       button.click();
       await afterNativeTrajectoryPaint();
-      clearMolstarTrajectoryHover(activeViewer?.plugin);
     }
     return true;
   }
@@ -18643,7 +17203,6 @@ SOFTWARE.
     const state = activeViewer?.plugin?.state?.data;
     if (!state?.events?.changed?.subscribe) return null;
     const sync = () => {
-      if (xyzSingleFrameSceneActive(activeViewer)) return;
       const position = readNativeTrajectoryPosition(poseCount);
       if (position) onPoseChange(position.index);
     };
@@ -18675,9 +17234,7 @@ SOFTWARE.
     if (!Number.isFinite(poseCount) || poseCount <= 0) {
       return agentActionFailure('set_sdf_molecule', 'NO_MOLECULES', 'The SDF molecule collection has no selectable molecules.');
     }
-    const index = Math.trunc(Number(action.index) || 0);
-    const outOfRange = agentFrameIndexFailure('set_sdf_molecule', index, poseCount);
-    if (outOfRange) return outOfRange;
+    const index = Math.max(0, Math.min(poseCount - 1, Math.trunc(Number(action.index) || 0)));
     try {
       if (activeSdfCollectionPoseSetter) {
         await activeSdfCollectionPoseSetter(index);
@@ -18695,22 +17252,37 @@ SOFTWARE.
     }
   }
 
-  // The pose setters clamp for UI steps; an agent asking for a frame that does
-  // not exist must learn that instead of receiving ok for the last frame.
-  function agentFrameIndexFailure(command, index, frameCount) {
-    if (!Number.isFinite(frameCount) || frameCount <= 0) return null;
-    if (index >= 0 && index < frameCount) return null;
-    return agentActionFailure(command, 'INDEX_OUT_OF_RANGE',
-      `Frame index ${index} is out of range; this structure has ${frameCount} frame${frameCount === 1 ? '' : 's'} (valid indices 0–${frameCount - 1}).`);
+  // The agent and visible timeline share one controller, including its queued
+  // frame updates. Indices are global and zero-based for both poses and frames.
+  async function controlFramesFromAction(action) {
+    const control = activeTrajectoryPlaybackControl;
+    if (!control) return agentActionFailure(action.type, 'NO_FRAME_CONTROLS', 'This document has no trajectory or pose timeline.');
+    if (action.type === 'control_frames') {
+      const operation = action.operation;
+      if (!['next', 'previous', 'goto', 'play', 'pause'].includes(operation)) {
+        return agentActionFailure(action.type, 'INVALID_ARGS', 'Use next, previous, goto, play, or pause.');
+      }
+      if (operation === 'play') control.play();
+      else if (operation === 'pause') control.stop();
+      else {
+        const current = control.snapshot();
+        const index = operation === 'goto' ? action.index : current.frameIndex + (operation === 'next' ? 1 : -1);
+        if (!Number.isInteger(index) || index < 0 || index >= current.frameCount) {
+          return agentActionFailure(action.type, 'INVALID_FRAME', 'Frame index is outside this document.');
+        }
+        control.stop();
+        await control.setFrame(index);
+        if (control !== activeTrajectoryPlaybackControl) return agentActionFailure(action.type, 'STALE_TARGET', 'The active timeline changed.');
+      }
+    }
+    return { ok: true, command: action.type, result: control.snapshot() };
   }
 
   async function setStructurePoseFromAction(action = {}) {
     if (!activeStructurePoseSetter) {
       return agentActionFailure('set_structure_pose', 'NO_POSE_CONTROLS', 'The active Mol* viewer does not expose pose controls.');
     }
-    const index = Math.trunc(Number(action.index) || 0);
-    const outOfRange = agentFrameIndexFailure('set_structure_pose', index, Number(activeTrajectoryPlaybackControl?.frameCount?.()));
-    if (outOfRange) return outOfRange;
+    const index = Math.max(0, Math.trunc(Number(action.index) || 0));
     try {
       await activeStructurePoseSetter(index);
       return {
@@ -18929,11 +17501,16 @@ SOFTWARE.
   async function setMolstarStyleFromAction(action = {}) {
     const style = normalizeMolstarStyle(action.style);
     try {
-      requestMolstarStyle(style);
+      const preset = style === 'illustrative' ? 'illustrative' : molstarPresetForLegacyStyle(style);
+      const appearance = style === 'illustrative' || style === 'illustrative-surface' ? 'illustrative' : 'default';
+      const outcome = await requestMolstarPreset(preset, { preserveCamera: true, appearance });
+      if (outcome?.applied !== true) {
+        return agentActionFailure('set_molstar_style', 'ACTION_ERROR', outcome?.error || 'Style application was superseded or the viewer is unavailable.');
+      }
       return {
         ok: true,
         command: 'set_molstar_style',
-        result: { style }
+        result: { style, preset: outcome.preset, applied: true }
       };
     } catch (error) {
       return agentActionFailure('set_molstar_style', 'ACTION_ERROR', error?.message || String(error));
@@ -19069,9 +17646,7 @@ SOFTWARE.
     if (!activeViewer || !Number.isFinite(poseCount) || poseCount <= 0) {
       return agentActionFailure('set_sdf_pose_index', 'NO_POSES', 'The active Mol* viewer has no selectable poses.');
     }
-    const index = Math.trunc(Number(action.index) || 0);
-    const outOfRange = agentFrameIndexFailure('set_sdf_pose_index', index, poseCount);
-    if (outOfRange) return outOfRange;
+    const index = Math.max(0, Math.min(poseCount - 1, Math.trunc(Number(action.index) || 0)));
     try {
       if (activeSdfPoseMode === 'all' && structureOverlayAvailable(prepared)) {
         setSdfPoseMode('single');
@@ -19079,7 +17654,7 @@ SOFTWARE.
         updateSdfPoseButton(prepared);
       }
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(index)); } catch (_) {}
-      if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all' && !xyzSingleFrameSceneActive(activeViewer)) {
+      if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all') {
         const switched = await setNativeTrajectoryPose(index, poseCount);
         if (!switched) throw new Error('Mol* trajectory controls are not available.');
       } else if (prepared.xyzFrameOverlayAvailable === true) {
@@ -19267,7 +17842,28 @@ SOFTWARE.
     positionMolstarStoryDetails(card, anchor);
   }
 
-  // Preview the description once the pointer has settled,
+  // Hovering a state moves to it, so the list doubles as a preview. Slow composite
+  // styles use the same serialized, post-rebuild camera transition as a click;
+  // stale previews are dropped by controlMolstarStory before they start.
+  function scheduleMolstarStoryPreview(anchor) {
+    if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
+    molstarStoryPreviewTimer = window.setTimeout(() => {
+      molstarStoryPreviewTimer = 0;
+      if (!anchor.isConnected || !anchor.matches(':hover')) return;
+      if (anchor.classList.contains('active')) return;
+      // Checked again when the step reaches the front of the queue: a slow step
+      // ahead of it can leave this one waiting long after the pointer has moved
+      // on, and applying it then would jump to a state nobody is pointing at.
+      void controlMolstarStory({
+        operation: 'goto',
+        id: anchor.__buretStoryEntry?.id,
+        preview: true,
+        stillWanted: () => anchor.isConnected && anchor.matches(':hover')
+      });
+    }, MOLSTAR_STORY_PREVIEW_DWELL_MS);
+  }
+
+  // The description trails the scene: it appears once the pointer has settled,
   // so it does not flash open and shut while the pointer crosses the list.
   function scheduleMolstarStoryDetails(anchor) {
     if (molstarStoryDetailsTimer) clearTimeout(molstarStoryDetailsTimer);
@@ -19346,7 +17942,7 @@ SOFTWARE.
     const previous = document.createElement('button');
     previous.type = 'button';
     previous.className = 'buret-docking-pose-previous';
-    previous.append(sceneTreeIconElement(APP_ICON_DATA.ChevronRight));
+    previous.textContent = 'Prev';
     previous.setAttribute('aria-label', 'Previous Story state');
     const current = document.createElement('button');
     current.type = 'button';
@@ -19366,7 +17962,7 @@ SOFTWARE.
     const next = document.createElement('button');
     next.type = 'button';
     next.className = 'buret-docking-pose-next';
-    next.append(sceneTreeIconElement(APP_ICON_DATA.ChevronRight));
+    next.textContent = 'Next';
     next.setAttribute('aria-label', 'Next Story state');
     const play = document.createElement('button');
     play.type = 'button';
@@ -19377,7 +17973,7 @@ SOFTWARE.
     const openRight = document.createElement('button');
     openRight.type = 'button';
     openRight.className = 'buret-molstar-story-open';
-    openRight.append(sceneTreeIconElement(APP_ICON_DATA.InfoCircle));
+    openRight.textContent = 'Story';
     openRight.title = 'Open Story in right sidebar';
     openRight.setAttribute('aria-label', 'Open Story in right sidebar');
     const list = document.createElement('div');
@@ -19407,17 +18003,21 @@ SOFTWARE.
       button.append(number, name);
       button.addEventListener('pointerenter', event => {
         if (event.pointerType === 'touch') return;
+        scheduleMolstarStoryPreview(button);
         scheduleMolstarStoryDetails(button);
       });
       button.addEventListener('pointerleave', () => {
+        if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
         if (molstarStoryDetailsTimer) clearTimeout(molstarStoryDetailsTimer);
+        molstarStoryPreviewTimer = 0;
         molstarStoryDetailsTimer = 0;
         scheduleMolstarStoryDetailsHide();
       });
       button.addEventListener('focus', () => scheduleMolstarStoryDetails(button));
       button.addEventListener('blur', scheduleMolstarStoryDetailsHide);
       button.addEventListener('click', () => {
-        setListOpen(false);
+        if (molstarStoryPreviewTimer) clearTimeout(molstarStoryPreviewTimer);
+        molstarStoryPreviewTimer = 0;
         void controlMolstarStory({ operation: 'goto', id: button.__buretStoryEntry.id });
       });
       list.append(button);
@@ -19485,35 +18085,6 @@ SOFTWARE.
     const controlLabelLower = controlLabel.toLowerCase();
     root.setAttribute('aria-label', `${controlLabel} controls`);
     const all = overlayToggleAvailable ? createStructureOverlayToggleButton(prepared) : null;
-    const spread = prepared.kind === 'sdf-collection' ? document.createElement('button') : null;
-    if (spread) {
-      spread.type = 'button';
-      spread.className = 'buret-docking-pose-align';
-      spread.dataset.buretAction = 'sdf-collection-spread';
-      spread.textContent = 'Spread';
-      spread.title = 'Arrange molecules separately without changing the SDF coordinates';
-      spread.setAttribute('aria-label', spread.title);
-      const syncSpread = () => {
-        const active = activeSdfPoseMode === 'all' && activeSdfCollectionLayout === 'spread';
-        spread.classList.toggle('active', active);
-        spread.setAttribute('aria-pressed', active ? 'true' : 'false');
-      };
-      syncSpread();
-      spread.addEventListener('click', () => {
-        if (!activeViewer || !activeMolstarPrepared) return;
-        setSdfCollectionLayout(activeSdfCollectionLayout === 'spread' && activeSdfPoseMode === 'all' ? 'overlap' : 'spread');
-        if (activeSdfPoseMode !== 'all') {
-          setSdfPoseMode('all');
-          notifyStructureOverlayModeChanged(activeMolstarPrepared);
-        }
-        syncSpread();
-        updateStructureOverlayToggleButton(all, activeMolstarPrepared);
-        spread.disabled = true;
-        void applySdfCollectionVisibility(activeViewer, activeMolstarPrepared, readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, activeMolstarPrepared.poseCount), { focus: true })
-          .catch(error => setStatus(`[web] Could not arrange molecules.\n\n${error?.message || String(error)}`, 'error'))
-          .finally(() => { spread.disabled = false; });
-      });
-    }
     if (prepared.overlayOnly === true && all) {
       root.classList.add('buret-docking-poses-overlay-only');
       root.setAttribute('aria-label', `${controlLabel} overlay controls`);
@@ -19541,8 +18112,18 @@ SOFTWARE.
     let loopTimer = null;
     let loopActive = Boolean(playbackRestore?.playing);
     let loopBusy = false;
+    // Every loop tick rebuilds the active layer through a Mol* state
+    // transaction, which starves camera drags of main-thread time; while the
+    // pointer is held down on the viewport the loop skips ticks (the elapsed-
+    // time frame math catches the playhead up afterwards).
+    let loopPointerHeld = false;
+    const onLoopPointerDown = (event) => {
+      if (event.target instanceof Element && event.target.closest('.msp-viewport')) loopPointerHeld = true;
+    };
+    const onLoopPointerUp = () => { loopPointerHeld = false; };
     let loopEpoch = 0;
     let loopStartedAt = 0;
+    let loopStartPose = activePose;
     let poseUpdateQueue = Promise.resolve();
     let poseRepeatDelayTimer = null;
     let poseRepeatTimer = null;
@@ -19558,7 +18139,6 @@ SOFTWARE.
     const animationRow = document.createElement('div');
     animationRow.className = 'buret-docking-pose-animation';
     const hasFileList = prepared.dockingSceneMode || hasTrajectorySegments;
-    root.classList.toggle('buret-docking-poses-frames', !hasFileList);
     const listEntries = prepared.dockingSceneMode ? prepared.poses : trajectorySegments;
     const label = hasFileList ? document.createElement('button') : document.createElement('span');
     const currentName = hasFileList ? document.createElement('span') : null;
@@ -19645,7 +18225,7 @@ SOFTWARE.
     const xyzCandidateFrames = xyzAlignSignature ? splitXyzFrames(rawStructureData(activeConfig)) : null;
     const xyzAlignFrames = xyzCandidateFrames
       && (xyzFrameAlignment?.signature === xyzAlignSignature
-        || xyzFramesAlignable(xyzCandidateFrames))
+        || xyzFrameAlignmentGain(xyzCandidateFrames) > XYZ_ALIGNMENT_GAIN_THRESHOLD)
       ? xyzCandidateFrames
       : null;
     // The toolbar often receives a control summary from trajectoryControlsForPrepared
@@ -19749,7 +18329,6 @@ SOFTWARE.
           : sdfCollectionAlignFrames
             ? 'Superimpose every molecule onto the first one by atom order'
             : 'Automatically superimpose every structure onto the first one';
-      align.hidden = !alignmentSupported;
       align.disabled = !alignmentSupported;
       align.setAttribute('aria-pressed', alignmentOn ? 'true' : 'false');
     }
@@ -19902,7 +18481,10 @@ SOFTWARE.
         loopTimer = null;
         loopBusy = false;
       }
-      if (active) loopStartedAt = loopNow();
+      if (active) {
+        loopStartedAt = loopNow();
+        loopStartPose = activePose;
+      }
       loop.classList.toggle('active', Boolean(active));
       loop.textContent = active ? 'Stop' : 'Loop';
       loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
@@ -19930,27 +18512,24 @@ SOFTWARE.
     const loopNow = () => (typeof performance !== 'undefined' && typeof performance.now === 'function')
       ? performance.now()
       : Date.now();
-    // The loop advances one frame per tick. In WKWebView a frame step can take
-    // longer than a frame at high fps; picking the target from wall-clock time
-    // then jumps half the loop ahead and back again, so the playhead only ever
-    // alternates between two frames instead of playing.
     const loopTargetIndex = () => {
-      const loopBounds = trajectoryControlBounds(activePose);
-      return loopBounds.start + ((activePose - loopBounds.start + 1) % loopBounds.count);
+      const delay = loopDelayMs();
+      const elapsed = Math.max(0, loopNow() - loopStartedAt);
+      const frameOffset = Math.floor(elapsed / delay);
+      const loopBounds = trajectoryControlBounds(loopStartPose);
+      return loopBounds.start + ((loopStartPose - loopBounds.start + frameOffset) % loopBounds.count);
     };
     const loopNextDelay = () => {
+      const delay = loopDelayMs();
       const elapsed = Math.max(0, loopNow() - loopStartedAt);
-      return Math.max(minimumTrajectoryLoopTimerDelay(prepared), loopDelayMs() - elapsed);
+      const untilNextFrame = delay - (elapsed % delay);
+      return Math.max(minimumTrajectoryLoopTimerDelay(prepared), Math.min(delay, untilNextFrame));
     };
     const scheduleLoopStep = (delayMs = loopNextDelay(), expectedLoopEpoch = loopEpoch) => {
-      if (!hostViewerVisible) return;
       loopTimer = window.setTimeout(() => {
         loopTimer = null;
         if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
-        if (!hostViewerVisible) {
-          return;
-        }
-        if (loopBusy) {
+        if (loopBusy || loopPointerHeld) {
           scheduleLoopStep(undefined, expectedLoopEpoch);
           return;
         }
@@ -19960,7 +18539,6 @@ SOFTWARE.
           return;
         }
         loopBusy = true;
-        loopStartedAt = loopNow();
         void setPose(nextIndex, { loopStep: true, loopEpoch: expectedLoopEpoch }).finally(() => {
           loopBusy = false;
           if (!loopActive || expectedLoopEpoch !== loopEpoch) return;
@@ -19969,13 +18547,8 @@ SOFTWARE.
       }, Math.max(minimumTrajectoryLoopTimerDelay(prepared), delayMs));
     };
     const trajectoryPlaybackControl = {
-      visibilityChanged: () => {
-        if (loopTimer !== null) { window.clearTimeout(loopTimer); loopTimer = null; }
-        if (hostViewerVisible && loopActive) {
-          loopStartedAt = loopNow();
-          scheduleLoopStep();
-        }
-      },
+      snapshot: () => ({ kind: controlLabelLower, frameIndex: activePose, frameCount: prepared.poseCount, playing: loopActive }),
+      setFrame: index => setPose(index),
       play: () => {
         if (loopActive) return;
         setLoopActive(true);
@@ -19996,6 +18569,7 @@ SOFTWARE.
       if (options.loopStep !== true && loopActive) {
         loopEpoch += 1;
         loopStartedAt = loopNow();
+        loopStartPose = requestedIndex;
         if (loopTimer) {
           clearTimeout(loopTimer);
           loopTimer = null;
@@ -20009,24 +18583,20 @@ SOFTWARE.
     const performSetPose = async (index, options = {}) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
-      const shouldFocus = options.focus === true;
-      // A normal step keeps the user's view. Cancel delayed focus retries from
-      // an earlier load/selection before replacing any scene layers.
-      if (!shouldFocus) molstarStructureFocusSerial += 1;
+      const shouldFocus = options.focus === true || options.userStep === true;
       try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
       previous.disabled = true;
       next.disabled = true;
       applyLabel(nextIndex);
-      const xyzOverlayFrames = prepared.xyzFrameOverlayAvailable === true
-        && (prepared.kind === 'xyz-frame-overlay' || xyzSingleFrameSceneActive(viewer));
       try {
-        if (prepared.nativeTrajectoryControls && !xyzOverlayFrames) {
+        if (prepared.nativeTrajectoryControls) {
           const switched = await setNativeTrajectoryPose(nextIndex, prepared.poseCount);
           if (!switched) throw new Error('Mol* trajectory controls are not available.');
           activePose = readNativeTrajectoryPosition(prepared.poseCount)?.index ?? nextIndex;
           updateControls();
           if (options.loopStep !== true && loopActive && options.loopEpoch === loopEpoch) {
             loopStartedAt = loopNow();
+            loopStartPose = activePose;
             if (loopTimer) {
               clearTimeout(loopTimer);
               loopTimer = null;
@@ -20037,7 +18607,7 @@ SOFTWARE.
           await applySdfCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { focus: false });
           activePose = nextIndex;
           updateControls();
-        } else if (xyzOverlayFrames) {
+        } else if (prepared.kind === 'xyz-frame-overlay') {
           await applyXyzFrameOverlayVisibility(viewer, activeMolstarPrepared || prepared, nextIndex, { installControls: false, focus: false });
           activePose = nextIndex;
           updateControls();
@@ -20115,24 +18685,18 @@ SOFTWARE.
         }
       });
     }
-    const alignmentOwner = activeMolstarPrepared;
-    let alignmentControlsDisposed = false;
-    let alignmentAbortController = null;
     if (align && alignmentSupported && xyzAlignFrames) {
-      const toggleXyzAlignment = async () => {
-        if (alignmentAbortController) { alignmentAbortController.abort(); return; }
-        alignmentAbortController = new AbortController();
-        align.textContent = 'Cancel';
+      const toggleXyzAlignment = () => {
+        align.disabled = true;
         const enabling = xyzFrameAlignment?.signature !== xyzAlignSignature;
         try {
           let result = null;
           if (enabling) {
-            result = await alignXyzFramesToFirst(xyzAlignFrames, alignmentAbortController.signal);
+            result = alignXyzFramesToFirst(xyzAlignFrames);
             xyzFrameAlignment = { signature: xyzAlignSignature, frames: result.frames };
           } else {
             xyzFrameAlignment = null;
           }
-          align.disabled = true;
           return applyXyzFrameOverlayVisibility(viewer, prepared, activePose, { focus: true, installControls: false }).then(() => {
             align.textContent = enabling ? 'Aligned' : 'Align';
             align.classList.toggle('active', enabling);
@@ -20146,29 +18710,25 @@ SOFTWARE.
             }
             setTimeout(hideStatus, 2200);
           }).catch(error => {
-            if ((alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) return;
             if (enabling) xyzFrameAlignment = null;
-            setStatus(error?.name === 'AbortError' ? '[web] Alignment cancelled.' : `[web] Could not align structures.\n\n${error?.message || String(error)}`, error?.name === 'AbortError' ? undefined : 'error');
-          }).finally(() => { align.disabled = false; alignmentAbortController = null; if (align.textContent === 'Cancel') align.textContent = 'Align'; });
+            setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
+          }).finally(() => { align.disabled = false; });
         } catch (error) {
-          if ((alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) { alignmentAbortController = null; return; }
           if (enabling) xyzFrameAlignment = null;
-          align.disabled = false; alignmentAbortController = null; if (align.textContent === 'Cancel') align.textContent = 'Align';
-          setStatus(error?.name === 'AbortError' ? '[web] Alignment cancelled.' : `[web] Could not align structures.\n\n${error?.message || String(error)}`, error?.name === 'AbortError' ? undefined : 'error');
+          align.disabled = false;
+          setStatus(`[web] Could not align structures.\n\n${error?.message || String(error)}`, 'error');
           return Promise.resolve();
         }
       };
       align.addEventListener('click', () => { void toggleXyzAlignment(); });
     } else if (align && alignmentSupported && sdfCollectionAlignFrames) {
-      const toggleSdfCollectionAlignment = async () => {
-        if (alignmentAbortController) { alignmentAbortController.abort(); return; }
-        alignmentAbortController = new AbortController();
-        align.textContent = 'Cancel';
+      const toggleSdfCollectionAlignment = () => {
+        align.disabled = true;
         const enabling = sdfCollectionAlignment?.signature !== sdfAlignSignature;
         try {
           let result = null;
           if (enabling) {
-            result = await alignXyzFramesToFirst(sdfCollectionAlignFrames, alignmentAbortController.signal);
+            result = alignXyzFramesToFirst(sdfCollectionAlignFrames);
             const alignedMolecules = sdfAlignTarget.collectionMolecules.map((molecule, index) => ({
               ...molecule,
               atoms: (molecule.atoms || []).map((atom, atomIndex) => {
@@ -20176,7 +18736,6 @@ SOFTWARE.
                 return { ...atom, x: moved.x, y: moved.y, z: moved.z };
               })
             }));
-            if (alignmentAbortController.signal.aborted || (alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) throw new DOMException('Alignment cancelled', 'AbortError');
             const collection = sdfMoleculesToPdbCollection(alignedMolecules, sdfAlignTarget.label);
             if (!collection) throw new Error('Could not rebuild the aligned molecule collection.');
             sdfCollectionAlignment = {
@@ -20195,7 +18754,6 @@ SOFTWARE.
             if (original) applySdfCollectionAlignmentLayers(sdfAlignTarget, original);
             sdfCollectionAlignment = null;
           }
-          align.disabled = true;
           resetSdfCollectionVisibilityState(viewer);
           return applySdfCollectionVisibility(viewer, sdfAlignTarget, activePose, { focus: true }).then(() => {
             align.textContent = enabling ? 'Aligned' : 'Align';
@@ -20210,15 +18768,13 @@ SOFTWARE.
             }
             setTimeout(hideStatus, 2200);
           }).catch(error => {
-            if ((alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) return;
             revertFailedSdfCollectionAlignment(enabling);
-            setStatus(error?.name === 'AbortError' ? '[web] Alignment cancelled.' : `[web] Could not align molecules.\n\n${error?.message || String(error)}`, error?.name === 'AbortError' ? undefined : 'error');
-          }).finally(() => { align.disabled = false; alignmentAbortController = null; if (align.textContent === 'Cancel') align.textContent = 'Align'; });
+            setStatus(`[web] Could not align molecules.\n\n${error?.message || String(error)}`, 'error');
+          }).finally(() => { align.disabled = false; });
         } catch (error) {
-          if ((alignmentControlsDisposed || activeMolstarPrepared !== alignmentOwner)) { alignmentAbortController = null; return; }
           revertFailedSdfCollectionAlignment(enabling);
-          align.disabled = false; alignmentAbortController = null; if (align.textContent === 'Cancel') align.textContent = 'Align';
-          setStatus(error?.name === 'AbortError' ? '[web] Alignment cancelled.' : `[web] Could not align molecules.\n\n${error?.message || String(error)}`, error?.name === 'AbortError' ? undefined : 'error');
+          align.disabled = false;
+          setStatus(`[web] Could not align molecules.\n\n${error?.message || String(error)}`, 'error');
           return Promise.resolve();
         }
       };
@@ -20415,22 +18971,27 @@ SOFTWARE.
       }
     };
     window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointerdown', onLoopPointerDown, true);
+    window.addEventListener('pointerup', onLoopPointerUp, true);
+    window.addEventListener('pointercancel', onLoopPointerUp, true);
     dockingPoseKeydownDisposer = () => {
       window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointerdown', onLoopPointerDown, true);
+      window.removeEventListener('pointerup', onLoopPointerUp, true);
+      window.removeEventListener('pointercancel', onLoopPointerUp, true);
     };
     mainRow.append(animation, previous, label, next);
-    const smoothAvailable = (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);
+    const smoothAvailable = !xyzAlignFrames
+      && (prepared.kind === 'trajectory' || prepared.kind === 'xyz-frame-overlay' || prepared.nativeTrajectoryControls);
     const toggleRow = prepared.dockingSceneMode ? document.createElement('div') : null;
     if (smoothAvailable && toggleRow) mainRow.append(smooth);
     if (toggleRow) {
       toggleRow.className = 'buret-docking-pose-toggles';
       if (story) toggleRow.append(story);
       if (align) toggleRow.append(align);
-      if (spread) toggleRow.append(spread);
       if (all) toggleRow.append(all);
     } else {
       if (align) mainRow.append(align);
-      if (spread) mainRow.append(spread);
       if (all) mainRow.append(all);
       animationRow.append(speed, loop, slider);
       if (smoothAvailable) animationRow.append(smooth);
@@ -20441,16 +19002,6 @@ SOFTWARE.
     if (storyPanel) root.append(storyPanel);
     if (!toggleRow) root.append(animationRow);
     document.body.appendChild(root);
-    // The counter sizes the stepper, so "Frame 7 / 20" and "Frame 17 / 20" gave the
-    // control two widths and it twitched on every step. Digits are tabular, so the
-    // last frame's label is the widest one; reserve its width once.
-    if (!currentName) {
-      const shown = label.textContent;
-      label.textContent = trajectoryPoseLabel(prepared, controlLabel, prepared.poseCount - 1);
-      label.style.boxSizing = 'border-box';
-      label.style.minWidth = `${Math.ceil(label.getBoundingClientRect().width)}px`;
-      label.textContent = shown;
-    }
     restoreDockingPoseControlsPosition(root);
     const isolationDisposer = installDockingPoseInteractionIsolation(root);
     const hoverDisposer = installDockingPoseHoverSuppression();
@@ -20476,8 +19027,6 @@ SOFTWARE.
       }
     }
     dockingPoseControlsDisposer = () => {
-      alignmentControlsDisposed = true;
-      alignmentAbortController?.abort();
       stopPoseRepeat();
       if (sliderInputTimer) {
         clearTimeout(sliderInputTimer);
@@ -21072,9 +19621,8 @@ SOFTWARE.
 
   function onXyzrenderLassoPointerDown(event) {
     if (!xyzrenderLassoEnabled || event.button !== 0) return;
-    const root = event.target?.closest?.('.buret-external-artifact-root');
-    if (!root || event.target?.closest?.('button, [role=toolbar]')) return;
-    const item = xyzrenderSheetItemFromEvent(event) || root;
+    const item = xyzrenderSheetItemFromEvent(event);
+    if (!item) return;
     hideXyzrenderSheetContextMenu();
     xyzrenderLassoStroke = {
       pointerId: event.pointerId,
@@ -21114,8 +19662,7 @@ SOFTWARE.
     if (!stroke || event.pointerId !== stroke.pointerId) return;
     if (!stroke.dragging) {
       xyzrenderLassoStroke = null;
-      try { stroke.item.releasePointerCapture?.(event.pointerId); } catch (_) {}
-      if (!stroke.additive) clearXyzrenderSelection();
+      clearXyzrenderSelection();
       return;
     }
     if (Math.hypot(event.clientX - stroke.points[0].x, event.clientY - stroke.points[0].y) >= MOLSTAR_LASSO_MIN_DISTANCE_PX) {
@@ -21183,14 +19730,9 @@ SOFTWARE.
       setStatus('[web] xyzrender lasso was too small.');
       return;
     }
-    const root = stroke.item.closest('.buret-external-artifact-root') || stroke.item;
-    if (!stroke.additive) clearXyzrenderSelection();
-    let selected = 0;
-    for (const item of root.querySelectorAll('.buret-xyzrender-sheet-item')) {
-      const result = selectXyzrenderElementsInLasso(item, stroke.points, true);
-      selected += result.count;
-    }
-    const label = 'element';
+    const result = selectXyzrenderElementsInLasso(stroke.item, stroke.points, stroke.additive);
+    const selected = result.count;
+    const label = result.kind === 'atom' ? 'atom' : 'graphic';
     setStatus(selected > 0
       ? `[web] Selected ${selected} xyzrender ${label}${selected === 1 ? '' : 's'} with lasso.`
       : '[web] xyzrender lasso did not match visible graphics.');
@@ -21366,7 +19908,7 @@ SOFTWARE.
     halo.setAttribute('data-buret-xyzrender-selection-halo', 'true');
     halo.setAttribute('aria-hidden', 'true');
     halo.setAttribute('fill', 'none');
-    halo.setAttribute('stroke', '#808080');
+    halo.setAttribute('stroke', '#b45cff');
     halo.setAttribute('stroke-opacity', '0.72');
     halo.setAttribute('stroke-width', xyzrenderSelectionHaloStrokeWidth(element));
     halo.setAttribute('stroke-linecap', 'round');
@@ -21414,7 +19956,7 @@ SOFTWARE.
       dx: '0',
       dy: '0',
       stdDeviation: '2.8',
-      'flood-color': '#808080',
+      'flood-color': '#b45cff',
       'flood-opacity': '0.22',
       result: 'selectionHalo'
     });
@@ -21423,7 +19965,7 @@ SOFTWARE.
       dx: '0',
       dy: '0',
       stdDeviation: '1.1',
-      'flood-color': '#808080',
+      'flood-color': '#b45cff',
       'flood-opacity': '0.55',
       result: 'selectionGlow'
     });
@@ -21688,11 +20230,6 @@ SOFTWARE.
       item.classList.toggle('has-xyzrender-selection', !!item.querySelector('[data-buret-xyzrender-selected="true"]'));
     });
     syncXyzrenderSelectionEffects();
-    const selections = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item.has-xyzrender-selection')).map(item => ({
-      label: sheetEntryLabel(xyzrenderSheetItemEntry(item)),
-      atoms: xyzrenderAtomSelectorForElements(item, Array.from(xyzrenderSelectedElements).filter(element => item.contains(element))),
-    }));
-    postHostMessage({ type: 'xyzrenderAtomSelection', selections: selections.slice(0, 32) });
   }
 
   function clearXyzrenderSelection() {
@@ -21861,7 +20398,7 @@ SOFTWARE.
   // fires when the selection was actually wiped, so a click that legitimately
   // makes a new one is left alone.
   function beginMolstarSelectionPreserve(event) {
-    if (molstarMeasureSession || molstarLassoEnabled || molstarLassoStroke || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
+    if (molstarLassoEnabled || molstarLassoStroke || event.button !== 0 || !isMolstarContextMenuTarget(event.target)) return;
     const lociList = molstarCurrentSelectionLociList();
     if (!lociList.length) return;
     molstarSelectionPreserveClick = {
@@ -22068,8 +20605,7 @@ SOFTWARE.
       auth_comp_id: authCompId,
       label_atom_id: molstarContextValueAt(atoms.label_atom_id, atomIndex),
       auth_atom_id: molstarContextValueAt(atoms.auth_atom_id, atomIndex),
-      entityType,
-      group_PDB: molstarContextValueAt(residues.group_PDB, residueIndex)
+      entityType
     };
   }
 
@@ -22170,7 +20706,7 @@ SOFTWARE.
     if (target?.selectionBased) return target?.loci || molstarContextMenuPick?.loci;
     const scope = target?.scope;
     const pickingLevel = target?.pickingLevel || molstarContextMenuMode;
-    if ((scope === 'ligand' || scope === 'water' || scope === 'ion' || scope === 'residue') && target?.atom) {
+    if ((scope === 'ligand' || scope === 'water' || scope === 'ion') && target?.atom) {
       const structure = molstarStructureFromRef(target.structure) || target?.loci?.structure;
       const residueLoci = molstarContextResidueAtomLociForStructure(structure, target.atom);
       if (pickingLevel === 'molecule') return residueLoci || target?.loci || molstarContextMenuPick?.loci;
@@ -22329,8 +20865,6 @@ SOFTWARE.
     const comp = String(atom?.label_comp_id || atom?.auth_comp_id || '').toUpperCase();
     const entityType = String(atom?.entityType || '').toLowerCase();
     if (MOLSTAR_CONTEXT_WATER.has(comp) || entityType === 'water') return 'water';
-    // Match the agent's UNK/HETATM policy for PyMOL coordinate-only ligands.
-    if (comp === 'UNK' && atom?.group_PDB === 'HETATM') return 'ligand';
     if (MOLSTAR_CONTEXT_STANDARD_RESIDUES.has(comp)) return entityType === 'polymer' ? 'polymer' : 'biopolymer';
     if (entityType === 'polymer') return 'polymer';
     if (MOLSTAR_CONTEXT_COMMON_IONS.has(comp)) return 'ion';
@@ -22920,11 +21454,6 @@ SOFTWARE.
   function molstarExportToMmCif() {
     const runtime = molstarRuntime();
     const lib = molstarExportLib();
-    // The vendored bundle (scripts/molstar-viewer-entry.js) exposes the exporter
-    // under the lowercase `lib.structure` namespace; the other probes cover
-    // older layouts that hoisted it to the root or a capitalised `Structure`.
-    const structureLib = molstarStructureRuntime();
-    if (typeof structureLib?.to_mmCIF === 'function') return structureLib.to_mmCIF;
     if (typeof lib.to_mmCIF === 'function') return lib.to_mmCIF;
     if (typeof runtime?.to_mmCIF === 'function') return runtime.to_mmCIF;
     if (typeof lib.Structure?.to_mmCIF === 'function') return lib.Structure.to_mmCIF;
@@ -23191,29 +21720,23 @@ SOFTWARE.
     throw new Error(`Unsupported structure export format: ${format || 'unknown'}.`);
   }
 
-  function postMolstarModifiedStructureExport(payload, fullStructure = false) {
-    const requestId = crypto.randomUUID();
-    if (fullStructure) pendingMolstarSave = { requestId, revision: molstarPresetPreviewSceneRevision };
+  function postMolstarModifiedStructureExport(payload) {
     const posted = postHostMessage({
       type: 'exportText',
-      requestId,
       name: payload.name,
       mimeType: payload.mimeType,
       text: payload.text
     });
-    if (!posted) {
-      if (pendingMolstarSave?.requestId === requestId) pendingMolstarSave = null;
-      throw new Error('Structure saving is unavailable in this host.');
-    }
+    if (!posted) throw new Error('Structure saving is unavailable in this host.');
     return payload;
   }
 
   function saveMolstarModifiedStructure() {
-    return postMolstarModifiedStructureExport(molstarModifiedStructureExportPayload(), true);
+    return postMolstarModifiedStructureExport(molstarModifiedStructureExportPayload());
   }
 
   function saveMolstarModifiedStructureAs(format, target) {
-    return postMolstarModifiedStructureExport(molstarModifiedStructureExportPayloadForFormat(format, target), normalizeFormat(format) !== 'sdf');
+    return postMolstarModifiedStructureExport(molstarModifiedStructureExportPayloadForFormat(format, target));
   }
 
   function molstarEditSnapshotFormat(payload) {
@@ -23269,13 +21792,7 @@ SOFTWARE.
     if (!snapshot) return;
     if (snapshot.kind !== 'scene' && !snapshot.payload?.text) return;
     stack.push(snapshot);
-    // Text is UTF-16 in the JS heap. Bound retained destructive snapshots as
-    // well as their count; keep the latest operation undoable even if oversized.
-    const byteBudget = 64 * 1024 * 1024;
-    let bytes = stack.reduce((sum, entry) => sum + (entry.payload?.text?.length || 0) * 2, 0);
-    while (stack.length > 1 && (stack.length > MOLSTAR_EDIT_HISTORY_LIMIT || bytes > byteBudget)) {
-      bytes -= (stack.shift().payload?.text?.length || 0) * 2;
-    }
+    while (stack.length > MOLSTAR_EDIT_HISTORY_LIMIT) stack.shift();
   }
 
   function notifyMolstarEditHistoryChanged() {
@@ -23528,9 +22045,10 @@ SOFTWARE.
   // from the pick, the neighbour search runs against the full structure's spatial
   // index, and Mol* rounds the hit atoms out to their residues so the selection
   // never cuts a side chain in half.
-  function molstarSurroundingsLoci(target, radius, fullStructure = target?.structure?.cell?.obj?.data) {
+  function molstarSurroundingsLoci(target, radius) {
     const StructureElement = window.molstar?.lib?.structure?.StructureElement;
     const pickLoci = molstarContextElementLoci(target?.loci);
+    const fullStructure = target?.structure?.cell?.obj?.data;
     const lookup = fullStructure?.lookup3d;
     if (!pickLoci || typeof lookup?.find !== 'function') return null;
     const perUnit = new Map();
@@ -23555,56 +22073,6 @@ SOFTWARE.
     if (!elements.length) return null;
     const raw = StructureElement.Loci(fullStructure, elements);
     return StructureElement.Loci.extendToWholeResidues(raw);
-  }
-
-  // Build with Mol*'s active focus behavior, then preserve its native selection
-  // and representation transforms. Pinning changes lifetime, never styling.
-  async function pinMolstarEnvironment(target) {
-    const plugin = activeMolstarViewer()?.plugin;
-    const { StructureElement } = molstarStructureRuntime();
-    const loci = molstarContextElementLoci(molstarContextSelectionLoci(target));
-    if (!loci) return 0;
-    const behavior = [...plugin.state.behaviors.cells.values()].find(cell =>
-      cell.transform.transformer.id.endsWith('create-structure-focus-representation'))?.obj?.data;
-    if (!behavior?.focus || !behavior?.ensureShape) throw new Error('Mol* focus representation is unavailable.');
-    const transforms = window.molstar.lib.plugin.StateTransforms;
-    const state = plugin.state.data;
-    const key = `burette-pinned-focus-${stableTextHash(JSON.stringify(StructureElement.Bundle.fromLoci(loci)))}`;
-    await behavior.focus(loci);
-    let count = 0;
-    for (const structure of [...molstarCurrentStructures(activeMolstarViewer())]) {
-      const data = structure.cell?.obj?.data;
-      const environment = molstarSurroundingsLoci({ ...target, loci }, behavior.params.expandRadius, data);
-      if (!environment) continue;
-      const { builder, refs } = behavior.ensureShape(structure.cell);
-      const localTarget = loci.structure.root === data.root
-        ? StructureElement.Loci.remap(loci, data) : StructureElement.Loci.none(data);
-      builder.to(refs['structure-focus-target-sel']).update(transforms.Model.StructureSelectionFromBundle,
-        old => ({ ...old, bundle: StructureElement.Bundle.fromLoci(localTarget) }));
-      builder.to(refs['structure-focus-surr-sel']).update(transforms.Model.StructureSelectionFromExpression,
-        old => ({ ...old, expression: StructureElement.Bundle.toExpression(StructureElement.Bundle.fromLoci(environment)) }));
-      await builder.commit();
-      const update = state.build();
-      const cells = [...state.cells.values()];
-      for (const cell of cells) {
-        if (cell.transform.parent === structure.cell.transform.ref && cell.transform.tags?.includes(key)) update.delete(cell.transform.ref);
-      }
-      for (const tag of ['structure-focus-target-sel', 'structure-focus-surr-sel']) {
-        const source = state.cells.get(refs[tag]);
-        if (!source?.obj?.data?.elementCount) continue;
-        const copy = update.to(structure.cell).apply(source.transform.transformer,
-          { ...source.params.values, label: source.obj.label.replace('[Focus]', '[Pinned]') },
-          { tags: [key, 'burette-pinned-environment'] });
-        for (const child of cells.filter(cell => cell.transform.parent === source.transform.ref)) {
-          copy.apply(child.transform.transformer, child.params.values);
-        }
-      }
-      await update.commit();
-      count++;
-    }
-    await behavior.clear(state.tree.root.ref);
-    scheduleSceneTreeRender();
-    return count;
   }
 
   async function addMolstarContextScopeComponent(target, representation, label) {
@@ -23643,30 +22111,7 @@ SOFTWARE.
     return created;
   }
 
-  async function addMolstarPocketSurface(target) {
-    const { StructureElement } = molstarStructureRuntime();
-    const loci = molstarContextSelectionLoci({ ...target, pickingLevel: 'molecule' });
-    if (!loci) return 0;
-    let count = 0;
-    for (const structure of molstarCurrentStructures(activeMolstarViewer())) {
-      const protein = compositionQueryLoci(structure, 'polymer.protein');
-      if (!protein) continue;
-      const surroundings = molstarSurroundingsLoci({ ...target, loci }, 5, structure.cell?.obj?.data);
-      if (!surroundings) continue;
-      const pocket = StructureElement.Loci.intersect(surroundings, protein);
-      if (molstarLociIsEmpty(pocket)) continue;
-      if (await addGreySurfaceForContext({
-        ...target, structure, loci: pocket, selectionBased: true,
-        label: `Pocket (5 Å) · ${target.label || 'ligand'}`
-      }, {
-        illustrative: configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}) === 'illustrative'
-      })) count++;
-    }
-    return count;
-  }
-
-  async function addGreySurfaceForContext(target, options = {}) {
-    const illustrative = options.illustrative === true;
+  async function addGreySurfaceForContext(target) {
     const component = await addMolstarContextScopeComponent(
       target,
       'molecular-surface',
@@ -23679,27 +22124,9 @@ SOFTWARE.
     if (component && surface && typeof manager?.updateRepresentations === 'function') {
       await manager.updateRepresentations([component], surface, old => ({
         ...old,
-        type: {
-          ...old.type,
-          params: illustrative
-            ? {
-                ...old.type.params,
-                alpha: 0.22,
-                transparentBackfaces: 'on',
-                ignoreLight: false,
-                celShaded: true,
-                material: { roughness: 0.2, metalness: 0 }
-              }
-            : { ...old.type.params, alpha: 0.35 }
-        },
-        colorTheme: {
-          name: 'uniform',
-          params: { value: illustrative ? 0xc8d0d8 : 0x98989d }
-        }
+        type: { ...old.type, params: { ...old.type.params, alpha: 0.35 } },
+        colorTheme: { name: 'uniform', params: { value: 0x98989d } }
       }));
-      if (illustrative) {
-        await applyMolstarIllustrativePostprocessing(activeMolstarViewer(), { includeTransparent: true });
-      }
     }
     return !!component;
   }
@@ -23716,44 +22143,28 @@ SOFTWARE.
   };
 
   let molstarMeasureSession = null;
-  function showMolstarMeasurePrompt(message) {
-    let panel = document.getElementById('buret-measure-prompt');
-    if (!panel) {
-      panel = document.createElement('div');
-      panel.id = 'buret-measure-prompt';
-      const label = document.createElement('span');
-      label.setAttribute('role', 'status');
-      label.setAttribute('aria-live', 'polite');
-      const cancel = document.createElement('button');
-      cancel.type = 'button';
-      cancel.textContent = 'Cancel';
-      cancel.title = 'Cancel measurement (Esc)';
-      cancel.addEventListener('click', () => cancelMolstarMeasurement());
-      panel.append(label, cancel);
-      document.body.appendChild(panel);
-    }
-    panel.firstElementChild.textContent = message;
+  function showMolstarMeasureToast(message, timeoutMs = 0) {
+    setStatus(message, 'info', { visible: true, timeoutMs });
   }
 
-  function cancelMolstarMeasurement() {
+  function cancelMolstarMeasurement(message) {
     const session = molstarMeasureSession;
     if (!session) return;
     molstarMeasureSession = null;
     try { session.subscription?.unsubscribe?.(); } catch (_) {}
     document.removeEventListener('keydown', session.onKeyDown, true);
     const plugin = activeMolstarViewer()?.plugin;
-    if (plugin) {
-      plugin.selectionMode = session.restoreMode;
-      plugin.managers.interactivity.setProps({ granularity: session.restoreGranularity });
-      plugin.managers.structure.selection.setSnapshot(session.restoreSelection);
-    }
-    document.getElementById('buret-measure-prompt')?.remove();
+    if (plugin) plugin.selectionMode = session.restoreMode;
+    if (message) showMolstarMeasureToast(message, 3200);
   }
 
   function molstarMeasurePrompt(kind, picked) {
     const spec = MOLSTAR_MEASURE_KINDS[kind];
+    const remaining = spec.points - picked;
     const title = spec.noun[0].toUpperCase() + spec.noun.slice(1);
-    return `${title} · ${picked} / ${spec.points} atoms`;
+    if (!picked) return `[web] ${title}: click ${spec.points} atoms. Esc cancels.`;
+    const suffix = remaining === 1 ? 'point' : 'points';
+    return `[web] ${title}: ${picked}/${spec.points} points selected. Click ${remaining} more ${suffix}. Esc cancels.`;
   }
 
   function beginMolstarMeasurement(kind = 'distance') {
@@ -23770,44 +22181,32 @@ SOFTWARE.
       acceptPicksAt: performance.now() + 180,
       lastPickAt: -Infinity,
       restoreMode: plugin.selectionMode === true,
-      restoreGranularity: plugin.managers.interactivity.props.granularity,
-      restoreSelection: plugin.managers.structure.selection.getSnapshot(),
       subscription: null,
       onKeyDown: null
     };
     session.onKeyDown = event => {
-      if (event.key === 'Escape') cancelMolstarMeasurement();
+      if (event.key === 'Escape') cancelMolstarMeasurement(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measurement cancelled.`);
     };
-    plugin.managers.structure.selection.clear();
-    plugin.managers.interactivity.setProps({ granularity: 'element' });
     plugin.selectionMode = true;
     document.addEventListener('keydown', session.onKeyDown, true);
     session.subscription = clicks.subscribe(event => {
       const loci = molstarContextElementLoci(event?.current?.loci);
-      const atomCount = loci ? window.molstar?.lib?.structure?.StructureElement?.Loci?.size?.(loci) : 0;
-      if (!loci || molstarLociIsEmpty(loci) || (atomCount !== undefined && atomCount !== 1)) {
-        plugin.managers.structure.selection.clear();
-        for (const point of session.points) plugin.managers.structure.selection.fromLoci('add', point, false);
-        showMolstarMeasurePrompt(`${molstarMeasurePrompt(kind, session.points.length)} · Pick an atom`);
+      if (!loci || molstarLociIsEmpty(loci)) {
+        showMolstarMeasureToast(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)}: no atom at that point. Click directly on an atom. Esc cancels.`);
         return;
       }
       // One physical click can arrive through two overlapping representations.
       // Their loci are not necessarily equal, so coalesce the event burst before
       // comparing atoms; a measurement must advance once per user click.
       const pickAt = performance.now();
-      if (pickAt < session.acceptPicksAt) {
-        plugin.managers.structure.selection.clear();
-        return;
-      }
+      if (pickAt < session.acceptPicksAt) return;
       if (pickAt - session.lastPickAt < 120) return;
       session.lastPickAt = pickAt;
       const previous = session.points[session.points.length - 1];
       if (previous && Loci?.areEqual?.(previous, loci)) return;
       session.points.push(loci);
-      plugin.managers.structure.selection.clear();
-      for (const point of session.points) plugin.managers.structure.selection.fromLoci('add', point, false);
       if (session.points.length < spec.points) {
-        showMolstarMeasurePrompt(molstarMeasurePrompt(kind, session.points.length));
+        showMolstarMeasureToast(molstarMeasurePrompt(kind, session.points.length));
         return;
       }
       const points = session.points;
@@ -23815,17 +22214,15 @@ SOFTWARE.
       // The measurement appears once the last point is picked, not when the menu
       // item was chosen, so its undo entry is taken here.
       const undoSnapshot = captureMolstarSceneUndoSnapshot(`${spec.noun} measurement`);
-      Promise.resolve(measurement[spec.method](...points, { lineParams: { linesSize: 0.02 }, labelParams: { borderWidth: 0 } }))
+      Promise.resolve(measurement[spec.method](...points))
         .then(() => {
           pushMolstarEditUndoSnapshot(undoSnapshot);
-          // Clear after Mol* has processed the last click and created the label.
-          // Escape still restores the selection that preceded measurement mode.
-          if (!molstarMeasureSession) plugin.managers.interactivity.lociSelects.deselectAll();
+          showMolstarMeasureToast(`[web] ${spec.noun[0].toUpperCase()}${spec.noun.slice(1)} measured.`, 3200);
         })
         .catch(error => setStatus(`[web] Measure ${spec.noun} failed.\n\n` + (error?.message || String(error)), 'error'));
     });
     molstarMeasureSession = session;
-    showMolstarMeasurePrompt(molstarMeasurePrompt(kind, 0));
+    showMolstarMeasureToast(molstarMeasurePrompt(kind, 0));
     return true;
   }
 
@@ -24285,57 +22682,19 @@ SOFTWARE.
     return atom ? `${residue} atom ${atom}` : `${residue} atom`;
   }
 
-  function molstarSurfaceMenuAction(target, noun) {
-    if (target?.scope === 'ligand' && !target.selectionBased) {
-      return moleculeMenuNestedAction('represent:surface-options', 'Surface of…', [
-        ['represent:surface-ligand', 'Ligand'],
-        ['represent:surface-pocket', 'Pocket (5 Å)']
-      ]);
-    }
-    if (target?.scope === 'residue' && target.atom && !target.selectionBased) {
-      return moleculeMenuNestedAction('represent:surface-options', 'Surface of…', [
-        ['represent:surface-residue', 'Residue'],
-        ['represent:surface-chain', 'Chain'],
-        ['represent:surface-protein', 'Protein']
-      ]);
-    }
-    return ['represent:surface', `Surface of ${noun}`];
-  }
-
-  function molstarSurfaceTarget(target, action) {
-    if (action === 'represent:surface-ligand') {
-      return { ...target, pickingLevel: 'molecule', label: target?.label || 'Ligand' };
-    }
-    if (action === 'represent:surface-residue') {
-      return { ...target, pickingLevel: 'residue', label: molstarContextResidueLabel(target?.atom) };
-    }
-    if (action === 'represent:surface-chain') {
-      const loci = molstarContextChainLociFromPick(target);
-      return loci
-        ? { ...target, loci, selectionBased: true, label: molstarContextChainLabel(target?.atom) }
-        : null;
-    }
-    if (action === 'represent:surface-protein') {
-      const loci = compositionQueryLoci(target?.structure, 'polymer.protein');
-      return loci
-        ? { ...target, loci, selectionBased: true, label: 'Protein' }
-        : null;
-    }
-    return target;
-  }
-
   // Visibility and representation are short, frequent blocks and stay directly on
   // the first level. The Tools heading starts at Analyze, where the longer
   // Maestro/PyMOL toolsets continue as Base UI-style submenus.
   const MOLECULE_MENU_GROUPS = [
-    { id: 'primary', title: 'Target', direct: true, hideTitle: true },
+    { id: 'primary', title: 'Target', direct: true },
     { id: 'view', title: 'Visibility', direct: true, breakBefore: true },
-    { id: 'represent', title: 'Appearance', direct: true, breakBefore: true },
+    { id: 'represent', title: 'Representation', direct: true, breakBefore: true },
     { id: 'analyze', title: 'Analyze', rootLabel: 'Tools', breakBefore: true },
     { id: 'align', title: 'Superposition' },
     { id: 'export', title: 'Export' },
     { id: 'search', title: 'Search' },
     { id: 'compute', title: 'Compute' },
+    { id: 'molstar-action', title: 'Apply action' },
     { id: 'danger', title: 'Delete', direct: true, destructive: true, hideTitle: true, breakBefore: true }
   ];
 
@@ -24346,15 +22705,15 @@ SOFTWARE.
   };
 
   const MOLECULE_MENU_GROUP_ICONS = {
-    selection: APP_ICON_DATA.Check,
-    appearance: APP_ICON_DATA.SettingsSlider,
-    analyze: APP_ICON_DATA.Chart,
-    align: APP_ICON_DATA.CompareArrows,
-    export: APP_ICON_DATA.Download,
-    search: APP_ICON_DATA.Search,
-    compute: APP_ICON_DATA.Flask,
-    'molstar-action': APP_ICON_DATA.PlayCircle,
-    danger: APP_ICON_DATA.Delete
+    selection: ['M20 6 9 17l-5-5'],
+    appearance: ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M2 14h4', 'M10 8h4', 'M18 16h4'],
+    analyze: ['M3 3v18h18', 'M7 15l3-3 3 2 4-6'],
+    align: ['M3 6h18', 'M3 12h18', 'M3 18h18', 'M8 3v18'],
+    export: ['M12 3v12', 'm7-5 5 5 5-5', 'M5 21h14'],
+    search: ['M21 21l-4.35-4.35', 'M10.5 18a7.5 7.5 0 1 1 0-15 7.5 7.5 0 0 1 0 15Z'],
+    compute: ['M9 3h6', 'M10 3v5l-5.5 9.5A2.3 2.3 0 0 0 6.5 21h11a2.3 2.3 0 0 0 2-3.5L14 8V3', 'M8 15h8'],
+    'molstar-action': ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'm10 8 6 4-6 4Z'],
+    danger: SCENE_TREE_ICON.trash
   };
 
   function moleculeContextActionGroup(action) {
@@ -24363,9 +22722,7 @@ SOFTWARE.
     if (name.startsWith('save') || name.startsWith('extract:') || name.startsWith('split:')) return 'export';
     if (name.startsWith('pubchem')) return 'search';
     if (name.startsWith('compute')) return 'compute';
-    if (name === 'view:hide') return 'primary';
     if (name.startsWith('view:')) return 'view';
-    if (name === 'analyze:pin-environment') return 'represent';
     if (name === 'represent:component') return 'primary';
     if (name.startsWith('represent:')) return 'represent';
     if (name.startsWith('colour:')) return 'colour';
@@ -24380,31 +22737,27 @@ SOFTWARE.
 
   function moleculeContextActionIcon(action) {
     const name = String(action || '');
-    // One trash can marks the delete group; the bulk row below it stays text-only.
-    if (name === 'remove-type') return null;
     if (name.startsWith('remove')) return SCENE_TREE_ICON.trash;
     if (name.startsWith('focus')) return SCENE_TREE_ICON.focus;
-    if (name === 'view:hide') return APP_ICON_DATA.EyeOff;
+    if (name === 'view:hide') return SCENE_TREE_ICON.eye;
     if (name === 'view:isolate') return SCENE_TREE_ICON.isolate;
     if (name === 'view:show-all') return SCENE_TREE_ICON.restore;
-    // Surface targets inside the submenu inherit the parent's icon.
-    if (name === 'represent:surface' || name === 'represent:surface-options') return APP_ICON_DATA.Cube;
-    if (name.startsWith('represent:surface-')) return null;
-    if (name === 'represent:menu') return APP_ICON_DATA.ColorTheme;
+    if (name === 'represent:surface') return ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
+    if (name === 'represent:menu') return ['M4 21v-7', 'M4 10V3', 'M12 21v-9', 'M12 8V3', 'M20 21v-5', 'M20 12V3', 'M2 14h4', 'M10 8h4', 'M18 16h4'];
     // A box with a plus: the selection becomes a new object in the scene.
-    if (name === 'represent:component') return APP_ICON_DATA.FolderPlus;
-    if (name === 'analyze:pin-environment') return APP_ICON_DATA.Pin;
+    if (name === 'represent:component') return ['M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z', 'M12 11v6', 'M9 14h6'];
     if (name === 'analyze:surroundings') return ['M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z', 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z'];
-    if (name === 'analyze:label') return APP_ICON_DATA.Tag;
+    if (name === 'analyze:label') return ['M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z', 'M7 7h.01'];
     if (name === 'analyze:distance') return ['M21.3 15.3 8.7 2.7a1 1 0 0 0-1.4 0L2.7 7.3a1 1 0 0 0 0 1.4l12.6 12.6a1 1 0 0 0 1.4 0l4.6-4.6a1 1 0 0 0 0-1.4Z', 'M14.5 12.5 12 15', 'M11.5 9.5 9 12', 'M8.5 6.5 6 9', 'M17.5 15.5 15 18'];
     if (name === 'analyze:interactions') return ['M6 6h.01', 'M18 18h.01', 'M18 6h.01', 'M6 18h.01', 'M7.5 7.5 16.5 16.5', 'M16.5 7.5 7.5 16.5'];
     if (name === 'analyze:angle') return ['M4 20h16', 'M4 20 14 4', 'M9 20a6 6 0 0 0 1.6-4'];
     if (name === 'analyze:dihedral') return ['M3 17h6l6-10h6', 'M9 17v4', 'M15 7V3'];
-    if (name.startsWith('align')) return APP_ICON_DATA.CompareArrows;
-    if (name.startsWith('colour:')) return APP_ICON_DATA.ColorTheme;
-    if (name.startsWith('select')) return APP_ICON_DATA.CheckCircle;
+    if (name.startsWith('align')) return ['M3 6h18', 'M3 12h18', 'M3 18h18', 'M8 3v18'];
+    if (name.startsWith('colour:')) return ['M12 3a9 9 0 1 0 0 18h1.5a2.5 2.5 0 0 0 0-5H12a2 2 0 0 1 0-4h4a5 5 0 0 0 5-5 4 4 0 0 0-4-4Z', 'M7.5 11h.01'];
+    if (name.startsWith('extract:') || name.startsWith('split:')) return ['M12 3v18', 'M5 8 3 12l2 4', 'M19 8l2 4-2 4'];
+    if (name.startsWith('select')) return ['M20 6 9 17l-5-5'];
     if (name === 'molstar') {
-      return APP_ICON_DATA.ExternalLink;
+      return ['M15 3h6v6', 'M10 14 21 3', 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6'];
     }
     return null;
   }
@@ -24436,19 +22789,37 @@ SOFTWARE.
     if (activeStructureAlignmentControl) {
       actions.push(...activeStructureAlignmentControl.contextActions(target, mode));
     }
-    if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in new tab']);
+    if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in Mol*']);
     // The desktop overlay carries the scene-tree powers into the 3D right click.
     // These stay off the mobile host, which renders its own native sheet.
     if (document.body?.classList.contains('burette-mobile-host') !== true) {
       const componentRef = molstarContextComponentRef(target);
       if (componentRef) {
         actions.push(['view:hide', `Hide ${noun}`]);
-        actions.push(molstarSurfaceMenuAction(target, noun));
+        actions.push(['view:isolate', `Isolate ${noun}`]);
+        // Clears the hidden flag on every component of this structure: the way
+        // back from the scene tree's eye toggles, and from an Isolate that hid
+        // whole components outright. It does not undo the element-level subtract
+        // that Hide and Isolate apply to a component they do intersect — that
+        // rewrites the component rather than hiding a cell, and ⌘Z is its inverse.
+        actions.push(['view:show-all', 'Show all']);
+        actions.push(['represent:surface', 'Add grey surface']);
         actions.push(['represent:menu', 'Representation & colour…']);
+        // Mol*'s own cell actions, the same list the scene tree offers. They are
+        // many and rarely the reason the menu was opened, so they stay behind a
+        // submenu rather than pushing the rest of the menu off screen.
+        sceneTreeCellActions(activeMolstarViewer(), componentRef).forEach((entry, index) => {
+          actions.push([`molstar-action:${index}`, entry.label]);
+        });
       }
+      // Deliberately outside the componentRef check: this is the item for things
+      // that have no component yet, which is exactly when it is worth offering.
+      // The Info panel's rows carry the same wording for the same act.
+      actions.push(['represent:component', 'Add to scene as component']);
       if (target?.atom && target?.loci) {
         if (target.scope === 'ligand' || target.scope === 'ion' || target.scope === 'residue') {
-          actions.push(['analyze:pin-environment', 'Show & pin surroundings (5 Å)']);
+          actions.push(['analyze:surroundings', 'Select surroundings (5 Å)']);
+          actions.push(['analyze:interactions', 'Show interactions (5 Å)']);
         }
         actions.push(['analyze:label', `Label ${noun}`]);
         actions.push(['analyze:distance', 'Measure distance']);
@@ -24505,258 +22876,6 @@ SOFTWARE.
     });
   }
 
-  // The desktop app draws the 3D right click as a real macOS menu. The viewer
-  // still owns every row: it describes them as data, the host draws them, and
-  // the host sends back the chosen row plus every slider and swatch move while
-  // the menu is open. A host without native menus answers `unsupported` and the
-  // web menu below takes over.
-  let molstarNativeMenuPending = null;
-  let molstarNativeMenuSerial = 0;
-
-  // An NSMenu is as wide as its longest row, so the native menu uses short titles.
-  // Rows inside Export, Search and Compute drop the prefix their submenu already
-  // names. Actions still receive the full title for status and undo text.
-  const MOLSTAR_NATIVE_MENU_LABELS = {
-    focus: 'Focus',
-    'focus-atom': 'Focus atom',
-    'represent:menu': 'Style',
-    'represent:surface-options': 'Surface',
-    'analyze:pin-environment': 'Surroundings (5 Å)',
-    'save-modified': 'Modified structure',
-    'save-format:mmcif': 'mmCIF',
-    'save-format:pdb': 'PDB',
-    'save-format:sdf': 'Ligand as SDF',
-    'pubchem:identity': 'Identical in PubChem',
-    'pubchem:similarity': 'Similar in PubChem (90%)',
-    'compute:optimizeGeometry': 'Optimize geometry',
-    'compute:semiempiricalRm1': 'RM1 energy & charges',
-    'compute:alignPoses': 'Align & compare poses'
-  };
-
-  function molstarNativeMenuLabel(name, label) {
-    return MOLSTAR_NATIVE_MENU_LABELS[name] || String(label).replace(/^(Extract .+) as PDB$/, '$1');
-  }
-
-  function molstarNativeMenuIcon(paths) {
-    if (!paths) return undefined;
-    const svg = sceneTreeIconElement(paths);
-    svg.setAttribute('width', '24');
-    svg.setAttribute('height', '24');
-    const markup = new XMLSerializer().serializeToString(svg).replaceAll('currentColor', '#000');
-    return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`;
-  }
-
-  // A slider or swatch sends a value per move. The first move of a control takes
-  // the undo snapshot and closing the menu records it, so a whole drag undoes as
-  // one step, the same as in the web menu.
-  function molstarNativeMenuLiveUndo(session, key, label) {
-    if (!session.undo.has(key)) session.undo.set(key, captureMolstarSceneUndoSnapshot(label));
-  }
-
-  function molstarNativeRepresentationMenu(session, target) {
-    const viewer = activeMolstarViewer();
-    const component = sceneTreeColorTargets(viewer).get(molstarContextComponentRef(target))?.[0];
-    const ref = component?.representations?.[0]?.cell?.transform?.ref;
-    const repTarget = ref ? sceneTreeRepresentationTargets(viewer).get(ref) : null;
-    if (!repTarget) return null;
-    const params = repTarget.representation?.cell?.transform?.params || {};
-    const nodeLabel = sceneTreeNodeByRef(sceneTreeNodes(viewer), ref)?.label || 'representation';
-    const options = list => list.map(option => ({ value: String(option.name), label: String(option.label) }));
-    const choose = (id, label, kind, value, list, run = choice => runSceneTreeSelectAction(kind, ref, choice)) => {
-      session.handlers.set(id, choice => {
-        const undoLabel = molstarSceneMenuSelectUndoLabel(kind, ref);
-        void (undoLabel ? runMolstarSceneEdit(undoLabel, () => run(String(choice))) : run(String(choice)));
-      });
-      return { kind: 'select', id, label, value: String(value || ''), options: options(list) };
-    };
-    const items = [{ kind: 'label', text: 'Representation' }];
-    const types = sceneTreeRepresentationTypes(viewer, [repTarget.component]);
-    if (types.length) {
-      items.push(choose('representation-type', 'Type', 'representation-type', params.type?.name, types));
-      items.push(choose('representation-add', 'Add another', 'add-representation', '', types,
-        type => duplicateSceneTreeRepresentation(ref, type)));
-    }
-    const fill = sceneTreeSurfaceFill(viewer, repTarget);
-    if (fill) items.push(choose('representation-visual', 'Fill', 'representation-visual', fill.active, fill.options));
-    const alpha = Number.isFinite(params.type?.params?.alpha) ? params.type.params.alpha : 1;
-    session.handlers.set('opacity', value => {
-      molstarNativeMenuLiveUndo(session, 'opacity', `opacity of ${nodeLabel}`);
-      void streamSceneTreeReprAlpha(ref, Number(value) / 100);
-    });
-    items.push({ kind: 'number', id: 'opacity', label: 'Opacity', value: Math.round(alpha * 100), min: 0, max: 100, step: 1, unit: '%' });
-    if (alpha < 0.999) {
-      session.handlers.set('outline-brightness', value => {
-        session.renderOnClose = true;
-        setMolstarOutlineBrightness(Number(value) / 100);
-      });
-      items.push({ kind: 'number', id: 'outline-brightness', label: 'Outline', value: Math.round(molstarOutlineBrightness * 100), min: 0, max: 100, step: 1, unit: '%' });
-    }
-
-    items.push({ kind: 'separator' }, { kind: 'label', text: 'Colour' });
-    items.push(choose('representation-color', 'Theme', 'representation-color', params.colorTheme?.name,
-      sceneTreeColorThemes(viewer, [repTarget.component])));
-    const tint = sceneTreeRepresentationTint(repTarget.representation);
-    session.handlers.set('tint', value => {
-      const colour = /^#[0-9a-f]{6}$/i.test(String(value)) ? Number.parseInt(String(value).slice(1), 16) : NaN;
-      if (!Number.isFinite(colour)) return;
-      molstarNativeMenuLiveUndo(session, 'tint', `colour of ${nodeLabel}`);
-      void streamSceneTreeTheme(ref, 'rep-tint-color', 'tint', colour);
-    });
-    items.push({
-      kind: 'swatches', id: 'tint',
-      colors: SCENE_TREE_UNIFORM_COLORS.map(entry => sceneTreeColorHex(entry.value)),
-      ...(Number.isFinite(tint) ? { active: sceneTreeColorHex(tint) } : {})
-    });
-
-    const advanced = sceneTreeAdvancedParams(viewer, repTarget);
-    const advancedItems = [];
-    for (const { name, label, definition } of advanced?.rows || []) {
-      const id = `param:${name}`;
-      const value = advanced.current[name];
-      const edit = next => runMolstarSceneEdit(`${name} of ${nodeLabel}`, () => applySceneTreeReprParam(ref, name, next));
-      if (definition.type === 'boolean') {
-        session.handlers.set(id, checked => { void edit(checked === true); });
-        advancedItems.push({ kind: 'checkbox', id, text: label, checked: value === true });
-      } else if (definition.type === 'select') {
-        const choices = (definition.options || []).map(option => ({ name: option[0], label: option[1] ?? option[0] }));
-        session.handlers.set(id, choice => {
-          const picked = choices.find(option => String(option.name) === String(choice));
-          if (picked) void edit(picked.name);
-        });
-        advancedItems.push({ kind: 'select', id, label, value: String(value ?? definition.defaultValue), options: options(choices) });
-      } else {
-        session.handlers.set(id, next => {
-          molstarNativeMenuLiveUndo(session, id, `${name} of ${nodeLabel}`);
-          void streamSceneTreeReprParam(ref, name, Number(next));
-        });
-        advancedItems.push({
-          kind: 'number', id, label,
-          value: Number.isFinite(value) ? value : definition.defaultValue,
-          min: definition.min ?? 0, max: definition.max ?? 1, step: definition.step ?? 0.01
-        });
-      }
-    }
-    if (advanced?.sizeOptions.length) {
-      advancedItems.push(choose('representation-size', 'Size by', 'representation-size', params.sizeTheme?.name,
-        advanced.sizeOptions.map(option => ({ name: option[0], label: option[1] ?? option[0] }))));
-    }
-    if (advancedItems.length) {
-      items.push({ kind: 'separator' }, { kind: 'submenu', id: 'advanced', text: 'Advanced', items: advancedItems });
-    }
-    return {
-      kind: 'submenu', id: 'represent:menu', text: molstarNativeMenuLabel('represent:menu'),
-      icon: molstarNativeMenuIcon(moleculeContextActionIcon('represent:menu')), items
-    };
-  }
-
-  function molstarNativeMenuEntries(session, target, mode) {
-    const action = entry => {
-      const [name, label] = entry;
-      const children = moleculeMenuActionChildren(entry);
-      const icon = molstarNativeMenuIcon(moleculeContextActionIcon(name));
-      const text = molstarNativeMenuLabel(name, label);
-      if (children.length) return { kind: 'submenu', id: name, text, icon, items: children.map(action) };
-      session.handlers.set(name, () => {
-        session.actionChosen = true;
-        void moleculeContextMenuAction(name, label, target);
-      });
-      return { kind: 'item', id: name, text, icon };
-    };
-    const grouped = new Map();
-    for (const entry of molstarContextMenuActions(target, mode)) {
-      const group = moleculeContextActionGroup(entry[0]);
-      if (!grouped.has(group)) grouped.set(group, []);
-      grouped.get(group).push(entry);
-    }
-    const body = [];
-    for (const section of MOLECULE_MENU_GROUPS) {
-      const entries = moleculeMenuSectionEntries(grouped, section);
-      if (!entries.length) continue;
-      if (body.length && section.breakBefore) body.push({ kind: 'separator' });
-      if (section.rootLabel) body.push({ kind: 'label', text: section.rootLabel });
-      if (!section.direct) {
-        const groupIds = section.groups || [section.id];
-        const items = [];
-        for (const groupId of groupIds) {
-          const groupEntries = grouped.get(groupId) || [];
-          if (!groupEntries.length) continue;
-          if (items.length) items.push({ kind: 'separator' });
-          if (groupIds.length > 1) items.push({ kind: 'label', text: MOLECULE_MENU_GROUP_TITLES[groupId] || section.title });
-          items.push(...groupEntries.map(action));
-        }
-        body.push({
-          kind: 'submenu', id: `section:${section.id}`, text: section.title,
-          icon: molstarNativeMenuIcon(MOLECULE_MENU_GROUP_ICONS[section.id]), items
-        });
-        continue;
-      }
-      if (!section.hideTitle) body.push({ kind: 'label', text: section.title });
-      for (const entry of entries) {
-        const item = entry[0] === 'represent:menu' ? molstarNativeRepresentationMenu(session, target) : action(entry);
-        if (item) body.push(item);
-      }
-    }
-    session.handlers.set('picking-level', level => {
-      if (VIEWPORT_GRANULARITIES.some(([value]) => value === level) && level !== mode) session.pickingLevel = level;
-    });
-    return [
-      { kind: 'label', text: mode === 'chain' ? molstarContextChainLabel(target.atom) : target.label },
-      {
-        kind: 'select', id: 'picking-level', label: 'Picking level', value: mode,
-        options: VIEWPORT_GRANULARITIES.map(([value, label]) => ({ value, label }))
-      },
-      { kind: 'separator' },
-      ...body
-    ];
-  }
-
-  function showDesktopNativeMolstarContextMenu(event, pick, target, mode) {
-    const config = activeConfig || window.BuretteConfig || {};
-    if (config.appViewer !== true || document.body?.classList.contains('burette-mobile-host')) return false;
-    const point = { clientX: event.clientX, clientY: event.clientY };
-    const session = {
-      requestId: `molstar-menu-${++molstarNativeMenuSerial}`,
-      handlers: new Map(),
-      undo: new Map(),
-      actionChosen: false,
-      pickingLevel: '',
-      renderOnClose: false,
-      fallback: () => showMolstarContextMenu(point, pick, { forceWeb: true }),
-      close() {
-        for (const snapshot of this.undo.values()) pushMolstarEditUndoSnapshot(snapshot);
-        if (this.renderOnClose) scheduleSceneTreeRender();
-        if (this.pickingLevel) {
-          // The web menu re-lists its actions in place; a native menu cannot, so
-          // it opens again at the same point with the new level.
-          setMolstarSelectionLevel(this.pickingLevel);
-          const levelLabel = VIEWPORT_GRANULARITIES.find(([value]) => value === this.pickingLevel)?.[1] || this.pickingLevel;
-          setStatus(`[web] Picking level set to ${levelLabel.toLowerCase()}.`);
-          showMolstarContextMenu(point, pick);
-        } else if (!this.actionChosen) {
-          // A chosen action hides the menu state itself once it has run.
-          hideMolstarContextMenu();
-        }
-      }
-    };
-    const items = molstarNativeMenuEntries(session, { ...target, pickingLevel: mode }, mode);
-    molstarNativeMenuPending = session;
-    if (postHostMessage({ type: 'molstarContextMenu', requestId: session.requestId, ...point, items })) return true;
-    molstarNativeMenuPending = null;
-    return false;
-  }
-
-  function handleMolstarNativeMenuResult(body) {
-    const session = molstarNativeMenuPending;
-    if (!session || session.requestId !== body.requestId) return;
-    if (body.event === 'select') {
-      session.handlers.get(String(body.id || ''))?.(body.value);
-      return;
-    }
-    molstarNativeMenuPending = null;
-    if (body.event === 'unsupported') session.fallback();
-    else if (body.event === 'closed') session.close();
-  }
-
   // Only explicit context-menu commands enter edit history. Ordinary picking and
   // camera movement stay ephemeral, while deliberate selection commands, visual
   // edits and newly-created scene objects all undo as one menu action.
@@ -24766,11 +22885,10 @@ SOFTWARE.
     // in "Undid colour <file name>"; the structure is what was coloured.
     const targetLabel = target?.atom ? target.label : 'the structure';
     if (name.startsWith('colour:')) return `colour ${targetLabel}`;
-    if (name === 'analyze:pin-environment') return `pinned surroundings of ${targetLabel}`;
     if (name === 'analyze:interactions') return `interactions around ${targetLabel}`;
     if (name === 'analyze:label') return `label ${targetLabel}`;
     if (name === 'analyze:surroundings') return `surroundings of ${targetLabel}`;
-    if (name.startsWith('represent:surface')) return `surface on ${targetLabel}`;
+    if (name === 'represent:surface') return `surface on ${targetLabel}`;
     if (name === 'represent:component') return `component for ${targetLabel}`;
     if (name === 'view:hide') return `hiding ${targetLabel}`;
     if (name === 'view:isolate') return `isolating ${targetLabel}`;
@@ -24850,15 +22968,16 @@ SOFTWARE.
           renderer: 'molstar',
           contextDocument
         });
-        setStatus(posted ? `[web] Opening ${targetLabel} in a new tab...` : '[web] Separate Mol* view is unavailable in this host.');
+        setStatus(posted ? `[web] Opening ${targetLabel} in Mol*...` : '[web] Separate Mol* view is unavailable in this host.');
       } else if (action === 'save-modified') {
         const saved = saveMolstarModifiedStructure();
         setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
+        setMolstarStructureDirty(false);
       } else if (action.startsWith('save-format:')) {
         const format = action.slice('save-format:'.length);
         const saved = saveMolstarModifiedStructureAs(format, target);
         setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);
-
+        if (normalizeFormat(format) !== 'sdf') setMolstarStructureDirty(false);
       } else if (action.startsWith('pubchem:')) {
         const searchType = action.slice('pubchem:'.length);
         await openMolstarPubChemSearch(target, searchType);
@@ -24896,21 +23015,9 @@ SOFTWARE.
         if (!componentRef) throw new Error('No Mol* component is available for this action.');
         await applySceneTreeAction(componentRef, Number(action.slice('molstar-action:'.length)));
         setStatus(`[web] Applied ${label} to ${targetLabel}.`);
-      } else if (action === 'represent:surface-pocket') {
-        const count = await addMolstarPocketSurface(target);
-        if (!count) throw new Error('No protein residues were found within 5 Å of this ligand.');
-        setStatus(`[web] Added a pocket surface within 5 Å of ${targetLabel}.`);
-      } else if ([
-        'represent:surface',
-        'represent:surface-ligand',
-        'represent:surface-residue',
-        'represent:surface-chain',
-        'represent:surface-protein'
-      ].includes(action)) {
-        const surfaceTarget = molstarSurfaceTarget(target, action);
-        if (!surfaceTarget) throw new Error('No Mol* target is available for this surface.');
-        if (!await addGreySurfaceForContext(surfaceTarget)) throw new Error('No Mol* selection or target is available for a surface.');
-        setStatus(`[web] Added a translucent surface to ${surfaceTarget.label || targetLabel}.`);
+      } else if (action === 'represent:surface') {
+        if (!await addGreySurfaceForContext(target)) throw new Error('No Mol* selection or target is available for a surface.');
+        setStatus(`[web] Added a translucent surface to ${targetLabel}.`);
       } else if (action === 'represent:component') {
         // "Whatever is selected" means the live selection when there is one, and
         // the thing under the cursor when there is not - so the item works on a
@@ -24953,10 +23060,6 @@ SOFTWARE.
         });
         scheduleSceneTreeRender();
         setStatus(`[web] Added ${targetLabel} to the scene as a component.`);
-      } else if (action === 'analyze:pin-environment') {
-        const count = await pinMolstarEnvironment(target);
-        if (!count) throw new Error('No surrounding atoms were found within 5 Å in this scene.');
-        setStatus(`[web] Pinned surroundings of ${targetLabel} across ${count} structure(s).`);
       } else if (action === 'analyze:surroundings') {
         const loci = molstarContextSelectionLoci(target);
         const surroundings = molstarSurroundingsLoci({ ...target, loci }, 5);
@@ -25147,17 +23250,22 @@ SOFTWARE.
     ).join('');
   }
 
+  const MOLECULE_PREVIEW_SIZES = {
+    s: { label: 'Small', width: 148, height: 196 },
+    m: { label: 'Medium', width: 208, height: 268 },
+    l: { label: 'Large', width: 288, height: 364 }
+  };
   const MOLECULE_PREVIEW_ICON = {
-    close: APP_ICON_DATA.X,
+    close: ['M18 6 6 18', 'm6 6 12 12'],
+    minimize: ['M6 17h12'],
     molecule: ['m12 3 7.5 4.33v8.66L12 20.33 4.5 16V7.33Z'],
-    ketcher: APP_ICON_DATA.Edit,
-    copy: APP_ICON_DATA.Copy
+    ketcher: ['M12 3v4.5', 'm12 7.5 3.9 2.25', 'm12 7.5-3.9 2.25', 'M15.9 9.75v4.5L12 16.5l-3.9-2.25v-4.5', 'M4.2 6.75 12 2.25l7.8 4.5v9L12 20.25l-7.8-4.5Z'],
+    copy: ['M9 9h9a1.5 1.5 0 0 1 1.5 1.5V19a1.5 1.5 0 0 1-1.5 1.5H9A1.5 1.5 0 0 1 7.5 19v-8.5A1.5 1.5 0 0 1 9 9Z', 'M4.5 15A1.5 1.5 0 0 1 3 13.5V5a1.5 1.5 0 0 1 1.5-1.5H13A1.5 1.5 0 0 1 14.5 5']
   };
 
   function molstarMoleculePreviewIconHTML(paths) {
-    const svg = sceneTreeIconElement(paths);
-    svg.setAttribute('stroke-width', '1.7');
-    return svg.outerHTML;
+    const body = paths.map(definition => `<path d="${definition}" />`).join('');
+    return `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
   }
 
   // Every ligand and ion in the structure, in the order they sit in the model, so
@@ -25245,21 +23353,26 @@ SOFTWARE.
       </span>`;
   }
 
-  function molstarMoleculePreviewCardHTML(label, image) {
+  function molstarMoleculePreviewCardHTML(label, subtitle, image) {
+    const sizes = Object.entries(MOLECULE_PREVIEW_SIZES).map(([key, preset]) =>
+      `<button type="button" class="buret-molecule-card-size" data-buret-molecule-preview-action="size" data-size="${key}" aria-pressed="${key === molstarMoleculePreviewSize}" aria-label="${escapeHTML(preset.label)} preview" title="${escapeHTML(preset.label)}">${key.toUpperCase()}</button>`
+    ).join('');
     return `
       <div class="buret-molecule-card-header" data-buret-molecule-preview-drag>
         <span class="buret-molecule-card-heading">
           <span class="buret-molecule-card-title" title="${escapeHTML(label)}">${escapeHTML(label)}</span>
+          <span class="buret-molecule-card-subtitle">${escapeHTML(subtitle)}</span>
         </span>
         ${molstarMoleculePreviewNavHTML()}
-        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Hide preview" title="Hide preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
-      </div>
-      <div class="buret-molecule-card-toolbar" role="toolbar" aria-label="Molecule preview actions">
-        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Edit</span></button>
-        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="copy-smiles" aria-label="Copy SMILES" title="Copy SMILES">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.copy)}<span>SMILES</span></button>
-        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="lasso" aria-label="Lasso atoms in 2D" aria-pressed="false" title="Select atoms by drawing a lasso · Esc to exit">${molstarMoleculePreviewIconHTML(['M7 17c-3-1-5-3-5-6 0-5 5-8 11-8s9 3 9 7-5 8-11 8', 'M7 15c-3 0-4 2-3 4s4 2 5 0-1-4-2-4', 'M7 21c2 2 5 2 7 0'])}<span>Lasso</span></button>
+        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="minimize" aria-label="Minimize preview" title="Minimize preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.minimize)}</button>
+        <button type="button" class="buret-molecule-card-icon" data-buret-molecule-preview-action="close" aria-label="Close preview" title="Close preview">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.close)}</button>
       </div>
       <div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>
+      <div class="buret-molecule-card-footer">
+        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Ketcher</span></button>
+        <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="copy-smiles" aria-label="Copy SMILES" title="Copy SMILES">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.copy)}<span>SMILES</span></button>
+        <span class="buret-molecule-card-sizes" role="group" aria-label="Preview size">${sizes}</span>
+      </div>
       ${molstarMoleculePreviewResizeHandlesHTML()}`;
   }
 
@@ -25304,6 +23417,16 @@ SOFTWARE.
       height: Math.round(rect.height)
     };
     popover.dataset.compact = rect.width < 190 ? 'true' : 'false';
+    // Dragging an edge lands on a size no preset describes, so S/M/L reflects the
+    // card rather than the last button pressed — none of them is lit for a custom
+    // size instead of one of them claiming it.
+    for (const button of popover.querySelectorAll('[data-buret-molecule-preview-action="size"]')) {
+      const preset = MOLECULE_PREVIEW_SIZES[button.dataset.size];
+      const matches = preset
+        && Math.abs(preset.width - rect.width) < 2
+        && Math.abs(preset.height - rect.height) < 2;
+      button.setAttribute('aria-pressed', matches ? 'true' : 'false');
+    }
   }
 
   function applyMolstarMoleculePreviewGeometry(popover) {
@@ -25318,30 +23441,13 @@ SOFTWARE.
     molstarMoleculePreviewClamp(popover);
   }
 
-  function molstarMoleculePreviewFitHeight(popover, width) {
-    const header = popover.querySelector('.buret-molecule-card-header')?.getBoundingClientRect().height || 24;
-    const toolbar = popover.querySelector('.buret-molecule-card-toolbar')?.getBoundingClientRect().height || 24;
-    return Math.ceil(width + header + toolbar);
-  }
-
-  function fitMolstarMoleculePreviewDrawing(popover) {
-    const svg = popover.querySelector('.buret-molstar-molecule-preview-image svg');
-    if (!svg) return;
-    // RDKit emits a square viewport even for a long, flat molecule. Measure its
-    // actual paths and labels, excluding the background, before scaling the SVG.
-    const nodes = [...svg.querySelectorAll('path, text, circle, ellipse, polygon, line')];
-    const boxes = nodes.map(node => node.getBBox()).filter(box => box.width || box.height);
-    if (!boxes.length) return;
-    const left = Math.min(...boxes.map(box => box.x));
-    const top = Math.min(...boxes.map(box => box.y));
-    const right = Math.max(...boxes.map(box => box.x + box.width));
-    const bottom = Math.max(...boxes.map(box => box.y + box.height));
-    const margin = 4;
-    const width = right - left + margin * 2;
-    const height = bottom - top + margin * 2;
-    svg.setAttribute('viewBox', `${left - margin} ${top - margin} ${width} ${height}`);
-    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-    popover.style.height = `${molstarMoleculePreviewFitHeight(popover, popover.getBoundingClientRect().width)}px`;
+  function setMolstarMoleculePreviewSize(size) {
+    const preset = MOLECULE_PREVIEW_SIZES[size];
+    const popover = molstarMoleculePreview;
+    if (!preset || !popover) return;
+    molstarMoleculePreviewSize = size;
+    popover.style.width = `${preset.width}px`;
+    popover.style.height = `${preset.height}px`;
     molstarMoleculePreviewClamp(popover);
     rememberMolstarMoleculePreviewGeometry(popover);
   }
@@ -25358,9 +23464,6 @@ SOFTWARE.
     if (caption) caption.textContent = label;
     button.dataset.copyState = state;
     button.title = label;
-    button.setAttribute('aria-label', label);
-    const glyph = button.querySelector('svg');
-    if (glyph) glyph.replaceWith(sceneTreeIconElement(state === 'done' ? APP_ICON_DATA.Check : MOLECULE_PREVIEW_ICON.copy));
     if (molstarMoleculePreviewCopyTimer) clearTimeout(molstarMoleculePreviewCopyTimer);
     molstarMoleculePreviewCopyTimer = setTimeout(() => {
       molstarMoleculePreviewCopyTimer = 0;
@@ -25370,9 +23473,6 @@ SOFTWARE.
       if (text) text.textContent = current.dataset.restLabel || 'SMILES';
       delete current.dataset.copyState;
       current.title = 'Copy SMILES';
-      current.setAttribute('aria-label', 'Copy SMILES');
-      const glyph = current.querySelector('svg');
-      if (glyph) glyph.replaceWith(sceneTreeIconElement(MOLECULE_PREVIEW_ICON.copy));
     }, 1800);
   }
 
@@ -25386,7 +23486,7 @@ SOFTWARE.
     }
     let molecule = null;
     try {
-      const rdkit = await molstarPreviewInitRDKit();
+      const rdkit = await withTimeout(molstarPreviewInitRDKit(), 10000, 'RDKit preview initialization timed out');
       molecule = rdkit.get_mol(molblock);
       const smiles = String(molecule?.get_smiles?.() || '').trim();
       if (!smiles) throw new Error('RDKit returned no SMILES.');
@@ -25426,16 +23526,18 @@ SOFTWARE.
     else if (action === 'minimize') minimizeMolstarMoleculePreview();
     else if (action === 'ketcher') openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
     else if (action === 'copy-smiles') void copyMolstarMoleculePreviewSmiles(molstarMoleculePreviewTarget);
-    else if (action === 'lasso') molstarMoleculePreview?.querySelector('.buret-molstar-molecule-preview-image')?.dispatchEvent(new Event('burette-toggle-lasso'));
+    else if (action === 'size') setMolstarMoleculePreviewSize(control.dataset.size);
     else if (action === 'prev') stepMolstarMoleculePreview(-1);
     else if (action === 'next') stepMolstarMoleculePreview(1);
   }
 
-  // Hidden state belongs to this viewer document, not its current selection.
-  // Only the bottom restore button or document teardown clears it.
+  // × closes the card but leaves the selection standing. A plain hide is not
+  // enough - the next pointer move re-resolves the card from whatever is still
+  // selected - so it also latches "suppressed", which every show path checks. The
+  // latch lifts on the next genuine click (see the reveal handler on pointerup).
   function dismissMolstarMoleculePreview() {
     molstarMoleculePreviewSuppressed = true;
-    minimizeMolstarMoleculePreview();
+    hideMolstarMoleculePreview({ force: true });
   }
 
   // Minimize tucks the card into a small chip in the bottom-left corner. The
@@ -25483,9 +23585,10 @@ SOFTWARE.
   function installMolstarMoleculePreviewResize(popover) {
     if (!popover || popover.dataset.buretResizeInstalled === '1') return;
     popover.dataset.buretResizeInstalled = '1';
-    const minWidth = 148;
-    const maxWidth = 340;
-    const maxHeight = 420;
+    const minWidth = 96;
+    const minHeight = 126;
+    const maxWidth = 560;
+    const maxHeight = 520;
     const margin = 8;
     const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
     const finish = (event) => {
@@ -25500,10 +23603,9 @@ SOFTWARE.
     popover.addEventListener('pointerdown', event => {
       const handle = event.target instanceof Element ? event.target.closest('[data-buret-molecule-preview-resize]') : null;
       if (event.button !== 0) return;
-      // Header controls must keep their pointer target through click. Capturing
-      // their pointer on the card turns a close/minimize click into a drag.
       if (event.target.closest?.('[data-buret-molecule-preview-action]')) return;
-      // Only the header background and the drawing move the card.
+      // Only the header and the drawing move the card; the footer buttons and the
+      // title are ordinary controls, so a press there must not start a drag.
       if (!handle && !event.target.closest?.('[data-buret-molecule-preview-drag]')) return;
       const direction = handle?.getAttribute('data-buret-molecule-preview-resize') || '';
       const rect = popover.getBoundingClientRect();
@@ -25561,10 +23663,8 @@ SOFTWARE.
           ? Math.min(maxWidth, right - margin)
           : Math.min(maxWidth, drag.viewportWidth - margin - drag.left);
         const maxAllowedHeight = Math.min(maxHeight, drag.viewportHeight - margin - drag.bottom);
-        const chromeHeight = molstarMoleculePreviewFitHeight(popover, 0);
-        if (!direction.includes('e') && !direction.includes('w')) width = height - chromeHeight;
-        width = clamp(width, minWidth, Math.max(minWidth, Math.min(maxAllowedWidth, maxAllowedHeight - chromeHeight)));
-        height = molstarMoleculePreviewFitHeight(popover, width);
+        width = clamp(width, minWidth, Math.max(minWidth, maxAllowedWidth));
+        height = clamp(height, minHeight, Math.max(minHeight, maxAllowedHeight));
         if (direction.includes('w')) {
           left = clamp(right - width, margin, drag.viewportWidth - margin - width);
         }
@@ -25593,10 +23693,8 @@ SOFTWARE.
   }
 
   async function molstarPreviewLoadScript(src) {
-    if (window.BuretteResolveRuntimeAsset) {
-      src = await withTimeout(window.BuretteResolveRuntimeAsset(src), 30000, 'RDKit asset loading timed out.');
-    }
-    return withTimeout(new Promise((resolve, reject) => {
+    if (window.BuretteResolveRuntimeAsset) src = await window.BuretteResolveRuntimeAsset(src);
+    return new Promise((resolve, reject) => {
       const existing = document.querySelector(`script[src="${src}"]`);
       if (existing && window.initRDKitModule) {
         resolve();
@@ -25613,19 +23711,20 @@ SOFTWARE.
       script.onload = () => resolve();
       script.onerror = () => reject(new Error(`Failed to load ${src}`));
       document.head.appendChild(script);
-    }), 30000, 'RDKit script loading timed out.');
+    });
   }
 
   async function molstarPreviewLoadRDKitScript() {
     const sources = [
-      runtimeURL('BuretteRDKitJSURL', '../assets/rdkit/RDKit_minimal.js'),
-      'rdkit/RDKit_minimal.js'
+      runtimeURL('BuretteRDKitJSURL', 'rdkit/RDKit_minimal.js'),
+      '../assets/rdkit/RDKit_minimal.js'
     ];
     let lastError = null;
     for (const src of sources) {
       if (!src) continue;
       try {
-        await molstarPreviewLoadScript(src);
+        await withTimeout(molstarPreviewLoadScript(src), 4000, `RDKit script timed out: ${src}`);
+        if (typeof window.initRDKitModule !== 'function') throw new Error(`RDKit module missing from ${src}`);
         return;
       } catch (error) {
         lastError = error;
@@ -25692,7 +23791,7 @@ SOFTWARE.
       } else {
         options.wasmBinary = await molstarPreviewLoadRDKitWasmBinary();
       }
-      molstarPreviewRdkit = await withTimeout(window.initRDKitModule(options), 30000, 'RDKit initialization timed out.');
+      molstarPreviewRdkit = await window.initRDKitModule(options);
       return molstarPreviewRdkit;
     })().finally(() => {
       molstarPreviewRdkitPromise = null;
@@ -25703,9 +23802,6 @@ SOFTWARE.
   function molstarPreviewCleanRDKitSVG(svg) {
     return String(svg || '')
       .replace(/<script[\s\S]*?<\/script>/giu, '')
-      .replace(/#000000/giu, 'var(--depiction-carbon)')
-      .replace(/#0000FF/giu, 'var(--depiction-nitrogen)')
-      .replace(/#FF0000/giu, 'var(--depiction-oxygen)')
       .replace(/\son[a-z]+\s*=\s*(['"]).*?\1/giu, '')
       .replace(/\sclip-path="url\([^"]+\)"/giu, '')
       .replace(/<svg([^>]*)>/iu, (_match, attrs) => {
@@ -25814,26 +23910,14 @@ SOFTWARE.
     const key = molstarPreviewKey(entry);
     if (molstarPreviewSvgCache.has(key)) return molstarPreviewSvgCache.get(key);
     try {
-      const rdkit = await molstarPreviewInitRDKit();
+      const rdkit = await withTimeout(molstarPreviewInitRDKit(), window.BuretteResolveRuntimeAsset ? 30000 : 10000, 'RDKit preview initialization timed out');
       let mol = null;
       try {
         const molblock = splitSdfRecords(String(entry.data || ''))[0] || String(entry.data || '');
         mol = rdkit.get_mol(molblock);
         if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
-        const original = JSON.parse(mol.get_json()).molecules?.[0];
-        const sourcePositions = original?.conformers?.[0]?.coords || [];
-        mol.set_new_coords(true);
-        const svg = molstarPreviewCleanRDKitSVG(mol.get_svg_with_highlights(JSON.stringify({
-          width: MOLSTAR_PREVIEW_RDKIT_SVG_SIZE, height: MOLSTAR_PREVIEW_RDKIT_SVG_SIZE,
-          bondLineWidth: 1.3, minFontSize: 11, maxFontSize: 17,
-          padding: 0.02, clearBackground: false, addStereoAnnotation: false,
-          atoms: Array.from({ length: Math.min(original?.atoms?.length || 0, 2048) }, (_, index) => index),
-          bonds: [], atomHighlightsAreCircles: true, standardColoursForHighlightedAtoms: true, highlightRadius: 0.16
-        })).replace(/<ellipse\b[^>]*class='atom-(\d+)'[^>]*>/g, (tag, index) => {
-          const position = sourcePositions[Number(index)];
-          const source = position ? [position[0], position[1], position[2] || 0].join(',') : '';
-          return tag.replace("class='", `data-source-position='${source}' class='buret-preview-atom `);
-        }));
+        try { mol.set_new_coords?.(); } catch (_) {}
+        const svg = molstarPreviewCleanRDKitSVG(mol.get_svg(MOLSTAR_PREVIEW_RDKIT_SVG_SIZE, MOLSTAR_PREVIEW_RDKIT_SVG_SIZE));
         if (!svg.includes('<svg')) throw new Error('empty drawing');
         molstarPreviewCacheSVG(key, svg);
         return svg;
@@ -25841,40 +23925,15 @@ SOFTWARE.
         try { mol?.delete?.(); } catch (_) {}
       }
     } catch (error) {
-      debug(`RDKit molecule preview failed; using SVG fallback: ${error?.message || error}`);
+      debug(`RDKit molecule preview failed: ${error?.message || error}`);
+      // A native workspace must not cache a projected 3D ball drawing as a
+      // successful chemical depiction when its lazy RDKit runtime fails.
+      if (window.BuretteResolveRuntimeAsset) throw error;
       const fallback = molstarMoleculePreviewFallbackSVG(entry);
       if (!fallback) throw error;
       molstarPreviewCacheSVG(key, fallback);
       return fallback;
     }
-  }
-
-  function selectMolstarMoleculePreviewAtoms(target, positions) {
-    const structure = molstarStructureFromRef(target.structure) || target.loci?.structure;
-    const plugin = activeMolstarViewer()?.plugin;
-    if (!structure || !plugin) return;
-    const sourceUnits = molstarContextElementLoci(target.atomLoci || target.loci)?.elements?.map(entry => entry.unit.id);
-    const elements = [];
-    for (const unit of structure.units) {
-      if (sourceUnits?.length && !sourceUnits.includes(unit.id)) continue;
-      const conformation = unit.model?.atomicConformation;
-      if (!conformation) continue;
-      const indices = [];
-      for (let index = 0; index < unit.elements.length; index++) {
-        const atom = unit.elements[index];
-        // Compare source coordinates, before assembly/alignment operators, so the
-        // same atom stays selected even when its 3D structure has been moved.
-        if (positions.some(p => Math.abs(conformation.x[atom] - p[0]) < 0.002
-          && Math.abs(conformation.y[atom] - p[1]) < 0.002
-          && Math.abs(conformation.z[atom] - p[2]) < 0.002)) indices.push(index);
-      }
-      if (indices.length) elements.push({ unit, indices });
-    }
-    // Replace the selection atomically: clearing first briefly removes the
-    // preview target and destroys the active 2D lasso controller.
-    if (elements.length) plugin.managers.structure.selection.fromLoci('set', { kind: 'element-loci', structure, elements }, false);
-    else plugin.managers.interactivity.lociSelects.deselectAll();
-    scheduleSceneTreeRender();
   }
 
   function showMolstarMoleculePreview(target) {
@@ -25889,6 +23948,7 @@ SOFTWARE.
     const key = molstarPreviewKey(entry);
     const image = molstarPreviewSvgCache.get(key) || '';
     const label = target?.label || entry?.label || (target?.scope === 'ion' ? 'Ion' : 'Ligand');
+    const subtitle = target?.scope === 'ion' ? 'Ion' : 'Small molecule';
     let popover = molstarMoleculePreview;
     molstarMoleculePreviewTarget = target || null;
     const created = !popover;
@@ -25906,9 +23966,9 @@ SOFTWARE.
     // markup each time destroys the button under the cursor between pointerdown and
     // click, so nothing in the footer can be pressed and a resize handle grabbed
     // mid-rebuild belongs to no card. Only redraw when the card would differ.
-    const signature = `${key}\n${label}`;
+    const signature = `${key}\n${label}\n${subtitle}`;
     if (popover.dataset.buretPreviewSignature !== signature) {
-      popover.innerHTML = molstarMoleculePreviewCardHTML(label, image || escapeHTML('Rendering 2D preview...'));
+      popover.innerHTML = molstarMoleculePreviewCardHTML(label, subtitle, image || escapeHTML('Rendering 2D preview...'));
       popover.dataset.buretPreviewSignature = signature;
       popover.dataset.buretPreviewKey = key;
       if (created) applyMolstarMoleculePreviewGeometry(popover);
@@ -25918,12 +23978,7 @@ SOFTWARE.
       .then(svg => {
         if (!svg || !molstarMoleculePreview || molstarMoleculePreview.dataset.buretPreviewKey !== key) return;
         const imageEl = molstarMoleculePreview.querySelector('.buret-molstar-molecule-preview-image');
-        if (imageEl && imageEl.dataset.depictionKey !== key) {
-          imageEl.innerHTML = svg;
-          imageEl.dataset.depictionKey = key;
-          fitMolstarMoleculePreviewDrawing(molstarMoleculePreview);
-          window.BuretteMoleculePreviewInteractions?.install(imageEl, positions => selectMolstarMoleculePreviewAtoms(target, positions));
-        }
+        if (imageEl) imageEl.innerHTML = svg;
       })
       .catch(() => {
         if (!image && molstarMoleculePreview?.dataset?.buretPreviewKey === key) {
@@ -25997,10 +24052,16 @@ SOFTWARE.
   }
 
   function scheduleMolstarSelectedMoleculePreview(fallbackTarget = null) {
-    if (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized) return;
     const hasCandidate = Boolean(molstarSelectedMoleculePreviewTarget() || fallbackTarget);
     if (!hasCandidate) {
       hideMolstarMoleculePreview({ force: true });
+      // Nothing left to preview means nothing left to restore, so the parked chip
+      // goes with it.
+      if (molstarMoleculePreviewMinimized) {
+        molstarMoleculePreviewMinimized = false;
+        molstarMoleculePreviewMinimizedTarget = null;
+        removeMolstarMoleculePreviewChip();
+      }
       return;
     }
     if (showMolstarSelectedMoleculePreview(fallbackTarget)) return;
@@ -26022,11 +24083,7 @@ SOFTWARE.
       molstarMoleculePreview.contains(document.activeElement);
   }
 
-  function clearMolstarPersistentMoleculePreview({ reset = false } = {}) {
-    if (!reset && (molstarMoleculePreviewSuppressed || molstarMoleculePreviewMinimized)) {
-      hideMolstarMoleculePreview({ force: true });
-      return;
-    }
+  function clearMolstarPersistentMoleculePreview() {
     molstarMoleculePreviewSuppressed = false;
     molstarMoleculePreviewMinimized = false;
     molstarMoleculePreviewMinimizedTarget = null;
@@ -26111,8 +24168,7 @@ SOFTWARE.
       const target = options.target
         ? { ...options.target, pickingLevel: options.pickingLevel || options.target.pickingLevel }
         : null;
-      if (options.onAction) options.onAction(action);
-      else void moleculeContextMenuAction(action, label, target);
+      void moleculeContextMenuAction(action, label, target);
     });
     if (options.menu) {
       const closeChildren = () => moleculeMenuCloseSubmenus(options.menu, options.parentSubmenu || null);
@@ -26239,7 +24295,7 @@ SOFTWARE.
     group.className = 'buret-molecule-context-menu-group';
     group.setAttribute('role', 'group');
     for (const child of moleculeMenuActionChildren(entry)) {
-      group.appendChild(moleculeMenuActionItem(child, menu, target, { ...options, parentSubmenu: submenu }));
+      group.appendChild(moleculeMenuActionItem(child, menu, target, { parentSubmenu: submenu }));
     }
     submenu.appendChild(group);
 
@@ -26282,7 +24338,6 @@ SOFTWARE.
       pickingLevel: target?.pickingLevel,
       menu,
       parentSubmenu: options.parentSubmenu || null,
-      onAction: options.onAction,
     });
   }
 
@@ -26535,7 +24590,7 @@ SOFTWARE.
     const triggerChevron = document.createElement('span');
     triggerChevron.className = 'buret-tree-menu-chevron';
     triggerChevron.appendChild(sceneTreeIconElement(['m9 18 6-6-6-6']));
-    trigger.append(moleculeMenuIcon(APP_ICON_DATA.SettingsSlider), triggerLabel, triggerValue, triggerChevron);
+    trigger.append(moleculeMenuIcon(moleculeContextActionIcon('represent:menu')), triggerLabel, triggerValue, triggerChevron);
     container.append(heading, trigger);
 
     const typeMenu = document.createElement('div');
@@ -26657,6 +24712,7 @@ SOFTWARE.
           || typeMenu.querySelector('.buret-representation-type-item'))?.focus();
       }
     };
+    trigger.addEventListener('pointerenter', () => openTypeMenu(false));
     trigger.addEventListener('focus', () => {
       if (!suppressFocusOpen) openTypeMenu(false);
     });
@@ -26679,7 +24735,7 @@ SOFTWARE.
     return { element: container, update };
   }
 
-  function installMoleculeMenuKeyboard(menu, closeMenu = hideMolstarContextMenu) {
+  function installMoleculeMenuKeyboard(menu) {
     menu.addEventListener('keydown', event => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
@@ -26695,7 +24751,7 @@ SOFTWARE.
           currentMenu._buretTrigger?.setAttribute('aria-expanded', 'false');
           currentMenu._buretTrigger?.focus();
         } else {
-          closeMenu();
+          hideMolstarContextMenu();
         }
         return;
       }
@@ -26712,7 +24768,7 @@ SOFTWARE.
       if (event.key === 'Tab') {
         if (currentMenu.closest('[data-buret-representation-menu]')) return;
         event.stopPropagation();
-        closeMenu();
+        hideMolstarContextMenu();
         return;
       }
       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
@@ -26815,7 +24871,7 @@ SOFTWARE.
     return trigger;
   }
 
-  function showMolstarContextMenu(event, pick, options = {}) {
+  function showMolstarContextMenu(event, pick) {
     hideMolstarContextMenu({ keepMoleculePreview: true });
     molstarContextMenuPick = pick || null;
     const menuTarget = molstarContextTarget();
@@ -26836,7 +24892,6 @@ SOFTWARE.
       molstarContextMenuMode = mode;
       return;
     }
-    if (!options.forceWeb && showDesktopNativeMolstarContextMenu(event, pick, menuTarget, mode)) return;
     const menu = document.createElement('div');
     menu.className = 'buret-molecule-context-menu';
     menu.setAttribute('role', 'menu');
@@ -26883,15 +24938,17 @@ SOFTWARE.
             heading.textContent = section.title;
             actionContainer.appendChild(heading);
           }
-          for (const entry of entries) {
-            const [action] = entry;
+          for (const [action, label] of entries) {
             if (action === 'represent:menu') {
               const item = moleculeMenuRepresentationSubmenu(menu, actionTarget);
               if (item) actionContainer.appendChild(item);
               continue;
             }
-            const item = moleculeMenuActionItem(entry, menu, actionTarget, {
+            const item = moleculeMenuActionButton(action, label, {
               destructive: section.destructive,
+              target: actionTarget,
+              pickingLevel: mode,
+              menu,
             });
             actionContainer.appendChild(item);
           }
@@ -26939,18 +24996,6 @@ SOFTWARE.
     }
     let contextPointer = null;
     let touchContextPointer = null;
-    // Secondary clicks belong to our context menu. Let Mol* receive mouseup
-    // to finish dragging, but remove its competing camera focus/reset action.
-    const cameraFocus = [...(viewer?.plugin?.state?.behaviors?.cells?.values() || [])]
-      .find(cell => cell.transform?.transformer?.id?.endsWith('camera-focus-loci'))?.obj?.data;
-    const originalFocusBindings = cameraFocus?.params?.bindings;
-    const contextFocusBindings = originalFocusBindings && Object.fromEntries(
-      Object.entries(originalFocusBindings).map(([name, binding]) => [name, {
-        ...binding,
-        triggers: binding.triggers.filter(trigger => !(Number(trigger.buttons) & 2))
-      }])
-    );
-    if (contextFocusBindings) cameraFocus.params.bindings = contextFocusBindings;
     const menuIsOpen = () => !!document.querySelector('.buret-molecule-context-menu');
     const menuIsInAtomMode = () => menuIsOpen() && ['atom', 'element'].includes(molstarContextMenuMode);
     const clearMolstarHoverHighlights = () => {
@@ -27027,29 +25072,36 @@ SOFTWARE.
         }
         restoreMolstarCameraSnapshot(viewer, snapshot);
       };
-      // Undo sub-threshold pointer jitter after Mol* finishes its controls.
-      // Secondary-click focus is disabled separately, so no focus animation
-      // competes with this restoration.
+      // Mol* maps secondary pointerdown to focus+zoom immediately and finishes
+      // its controls after pointerup. Restore after that cycle, then once more on
+      // the following frame so a short context click cannot retain camera motion.
       window.requestAnimationFrame(() => {
         restore();
         window.requestAnimationFrame(restore);
       });
     };
     const onContextMenu = (event) => {
-      // Browsers dispatch contextmenu either on press or after release. Mouse
-      // gestures are owned by pointerup so holding/dragging never opens a menu,
-      // and a late contextmenu cannot reopen it after a completed drag.
-      if (contextPointer || (event.button === 2 && isMolstarContextMenuTarget(event.target))) {
-        event.preventDefault();
-        event.stopPropagation();
-        return;
-      }
       if (menuIsOpen() && !contextPointer) {
         event.preventDefault();
         event.stopPropagation();
         return;
       }
-      openFromEvent(event);
+      if (contextPointer) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!contextPointer.moved) {
+          const pointer = contextPointer;
+          contextPointer = null;
+          restoreContextPointerCamera(pointer);
+          openFromEvent(event, pointer.pick);
+          return;
+        }
+        hideMolstarContextMenu();
+        contextPointer = null;
+        return;
+      }
+      openFromEvent(event, contextPointer?.pick || null);
+      contextPointer = null;
     };
     const onPointerDown = (event) => {
       const target = event.target;
@@ -27063,6 +25115,11 @@ SOFTWARE.
       }
       beginMolstarSelectionPreserve(event);
       clearTouchContextPointer();
+      // Remember where a left press on the viewport began, so a click (not a drag
+      // to rotate) can lift a × dismissal on release.
+      molstarPreviewRevealStart = event.button === 0 && isMolstarContextMenuTarget(event.target)
+        ? { pointerId: event.pointerId, x: event.clientX, y: event.clientY }
+        : null;
       if (event.button === 2) {
         if (!viewer || !isMolstarContextMenuTarget(event.target)) {
           contextPointer = null;
@@ -27149,6 +25206,16 @@ SOFTWARE.
     };
     const onPointerUp = (event) => {
       finishMolstarSelectionPreserve(event);
+      if (molstarPreviewRevealStart && event.pointerId === molstarPreviewRevealStart.pointerId) {
+        const moved = Math.hypot(event.clientX - molstarPreviewRevealStart.x, event.clientY - molstarPreviewRevealStart.y)
+          > MOLSTAR_CONTEXT_MENU_DRAG_THRESHOLD_PX;
+        molstarPreviewRevealStart = null;
+        // A click - not a drag - is the "next click" that a × dismissal waits for.
+        if (!moved && molstarMoleculePreviewSuppressed && !molstarMoleculePreviewMinimized) {
+          molstarMoleculePreviewSuppressed = false;
+          scheduleMolstarSelectedMoleculePreview();
+        }
+      }
       if (touchContextPointer && event.pointerId === touchContextPointer.pointerId) {
         const opened = touchContextPointer.opened;
         clearTouchContextPointer();
@@ -27180,21 +25247,32 @@ SOFTWARE.
       event.stopPropagation();
       clearMolstarHoverHighlights();
     };
-    // Reuse Mol*'s throttled asynchronous hover pick. Calling identify() again
-    // from pointermove forces a synchronous GPU readback and stalls rotation.
-    const updateMoleculePreviewFromHover = (event) => {
-      if (Number(event.buttons || 0) !== 0 || menuIsOpen() || molstarMoleculePreviewIsActive()) return;
-      const pick = event.current;
-      if (pick?.loci && !molstarLociIsEmpty(pick.loci)) {
-        const previewTarget = molstarContextTargetForPick({ ...pick, position: event.position });
-        if (previewTarget.scope === 'ligand' || previewTarget.scope === 'ion') {
-          showMolstarMoleculePreview(previewTarget);
-          return;
-        }
-      }
-      scheduleMolstarSelectedMoleculePreview();
+    const showMoleculePreviewFromEvent = (event) => {
+      const pick = molstarContextPickFromEvent(event);
+      if (!pick) return false;
+      const previewTarget = molstarContextTargetForPick(pick);
+      if (previewTarget.scope !== 'ligand' && previewTarget.scope !== 'ion') return false;
+      showMolstarMoleculePreview(previewTarget);
+      return true;
     };
-    const moleculeHoverSubscription = viewer.plugin.behaviors.interaction.hover.subscribe(updateMoleculePreviewFromHover);
+    const updateMoleculePreviewFromEvent = (event) => {
+      if (event.target instanceof Element && event.target.closest('.buret-molstar-molecule-preview')) return;
+      if (Number(event.buttons || 0) !== 0 || menuIsOpen() || !isMolstarContextMenuTarget(event.target)) {
+        if (!molstarMoleculePreviewIsActive()) scheduleMolstarSelectedMoleculePreview();
+        return;
+      }
+      if (molstarMoleculePreviewFrame) return;
+      const clientX = event.clientX;
+      const clientY = event.clientY;
+      const target = event.target;
+      molstarMoleculePreviewFrame = requestAnimationFrame(() => {
+        molstarMoleculePreviewFrame = 0;
+        const synthetic = { clientX, clientY, target };
+        if (!showMoleculePreviewFromEvent(synthetic)) {
+          if (!molstarMoleculePreviewIsActive()) scheduleMolstarSelectedMoleculePreview();
+        }
+      });
+    };
     const hideMoleculePreviewFromEvent = (event) => {
       if (event.target instanceof Element && event.target.closest('.buret-molstar-molecule-preview')) return;
       scheduleMolstarSelectedMoleculePreview();
@@ -27234,15 +25312,13 @@ SOFTWARE.
     document.addEventListener('click', suppressSecondaryMouseEvent, true);
     document.addEventListener('auxclick', suppressSecondaryMouseEvent, true);
     document.addEventListener('pointermove', suppressAtomModeHover, true);
+    document.addEventListener('pointermove', updateMoleculePreviewFromEvent, true);
     document.addEventListener('pointerleave', hideMoleculePreviewFromEvent, true);
     document.addEventListener('mousemove', suppressAtomModeHover, true);
     document.addEventListener('keydown', onKeyDown);
     window.addEventListener('resize', onResize);
     window.addEventListener('scroll', hideMolstarMoleculePreview, true);
     molstarContextMenuCleanup = () => {
-      if (cameraFocus?.params?.bindings === contextFocusBindings && originalFocusBindings) {
-        cameraFocus.params.bindings = originalFocusBindings;
-      }
       document.removeEventListener('contextmenu', onContextMenu, true);
       document.removeEventListener('pointerdown', onPointerDown, true);
       document.removeEventListener('pointermove', onPointerMove, true);
@@ -27253,7 +25329,7 @@ SOFTWARE.
       document.removeEventListener('click', suppressSecondaryMouseEvent, true);
       document.removeEventListener('auxclick', suppressSecondaryMouseEvent, true);
       document.removeEventListener('pointermove', suppressAtomModeHover, true);
-      moleculeHoverSubscription.unsubscribe();
+      document.removeEventListener('pointermove', updateMoleculePreviewFromEvent, true);
       document.removeEventListener('pointerleave', hideMoleculePreviewFromEvent, true);
       document.removeEventListener('mousemove', suppressAtomModeHover, true);
       document.removeEventListener('keydown', onKeyDown);
@@ -27261,7 +25337,7 @@ SOFTWARE.
       window.removeEventListener('scroll', hideMolstarMoleculePreview, true);
       clearTouchContextPointer();
       hideMolstarContextMenu();
-      clearMolstarPersistentMoleculePreview({ reset: true });
+      clearMolstarPersistentMoleculePreview();
     };
   }
 
@@ -27399,58 +25475,51 @@ SOFTWARE.
         : { kind: selected.scope })
       : null;
     const label = String(selected?.label || '').trim().slice(0, 256);
-    const selection = molstarCurrentSelectionContext() || (selector ? {
+    let selection = selector ? {
       selector,
       label: label || (selected.scope === 'ion' ? 'Selected ion' : 'Selected ligand'),
       value: label,
       atoms: atomCount
-    } : null);
+    } : null;
+    const lociList = molstarCurrentSelectionLociList();
+    const size = molstarStructureRuntime().StructureElement?.Loci?.size;
+    const atoms = lociList.reduce((sum, loci) => sum + (Number(size?.(loci)) || 0), 0);
+    if (atoms > 0) {
+      if (selection && atoms !== atomCount) selection = null;
+      const atomIdentities = [];
+      for (const loci of lociList) {
+        for (const element of loci.elements || []) {
+          if (atomIdentities.length >= 96) break;
+          molstarContextOrderedSetForEach(element.indices, index => {
+            const atom = molstarContextAtomFromModelIndex(element.unit?.model, element.unit?.elements?.[index]);
+            if (atom) atomIdentities.push({
+              model: String(element.unit.model.id || '').slice(0, 128),
+              unit: element.unit.id,
+              operator: String(element.unit.conformation?.operator?.name || '').slice(0, 128),
+              chain: String(atom.auth_asym_id || atom.label_asym_id || '').slice(0, 128),
+              sequence: atom.auth_seq_id ?? atom.label_seq_id ?? null,
+              compId: String(atom.auth_comp_id || atom.label_comp_id || '').slice(0, 32),
+              atomName: String(atom.auth_atom_id || atom.label_atom_id || '').slice(0, 32),
+              atomIndex: atom.atomIndex
+            });
+            return atomIdentities.length < 96;
+          });
+        }
+        if (atomIdentities.length >= 96) break;
+      }
+      selection = {
+        ...selection,
+        label: selection?.label || `${molstarSelectionLevel()} selection: ${atoms} atoms`,
+        level: molstarSelectionLevel(),
+        atoms,
+        atomIdentities,
+        truncated: atoms > atomIdentities.length
+      };
+    }
     const signature = JSON.stringify(selection);
     if (signature === molstarSelectionHostSignature) return;
     molstarSelectionHostSignature = signature;
     postHostMessage({ type: 'selectionChanged', selection });
-  }
-
-  // Molecular context is the complete current selection, not the ligand-only
-  // preview card. Protein/residue picks must also reach the chat composer.
-  function molstarCurrentSelectionContext() {
-    const manager = activeMolstarViewer()?.plugin?.managers?.structure?.selection;
-    const count = Number(manager?.stats?.elementCount) || 0;
-    if (!count) return null;
-    const { atomIdentities, residues } = molstarLociIdentities([...manager.entries?.values?.() || []].map(entry => entry.selection));
-    return { source: 'viewer', level: molstarSelectionLevel(), atoms: count,
-      residueCount: Number(manager.stats?.residueCount) || residues.length,
-      atomIdentities, residues, truncated: count > atomIdentities.length };
-  }
-
-  // Up to 96 atom identities (and their residues) from element loci, plus the
-  // full atom count. Only scalar identifiers leave the viewer.
-  function molstarLociIdentities(lociList) {
-    const atoms = [], residues = new Map();
-    let atomCount = 0;
-    for (const loci of lociList) {
-      if (!loci) continue;
-      atomCount += Number(molstarStructureRuntime().StructureElement?.Loci?.size?.(loci)) || 0;
-      if (atoms.length >= 96) continue;
-      for (const element of loci?.elements || []) {
-        molstarContextOrderedSetForEach(element.indices, index => {
-          if (atoms.length >= 96) return false;
-          const atom = molstarContextAtomFromModelIndex(element.unit?.model, element.unit?.elements?.[index]);
-          if (!atom) return true;
-          const identity = { chain: String(atom.auth_asym_id || atom.label_asym_id || ''),
-            sequence: atom.auth_seq_id ?? atom.label_seq_id ?? null,
-            compId: String(atom.auth_comp_id || atom.label_comp_id || ''),
-            atomName: String(atom.auth_atom_id || atom.label_atom_id || ''),
-            atomIndex: atom.atomIndex, unit: element.unit?.id };
-          atoms.push(identity);
-          const { atomName, atomIndex, ...residue } = identity;
-          residues.set(JSON.stringify(residue), residue);
-          return atoms.length < 96;
-        });
-        if (atoms.length >= 96) break;
-      }
-    }
-    return { atomCount, atomIdentities: atoms, residues: [...residues.values()] };
   }
 
   function installMolstarSelectionPreviewSync(viewer) {
@@ -27558,24 +25627,9 @@ SOFTWARE.
       );
     }
 
-    // Mol* applies viewportBackgroundColor after its first canvas render.
-    // Keep that default-colour frame hidden until the configured canvas draws.
-    const app = document.getElementById('app');
-    app?.classList.add('buret-molstar-initializing');
-    let viewer;
-    try {
-      viewer = typeof window.molstar.Viewer.create === 'function'
-        ? await window.molstar.Viewer.create('app', createViewerOptions())
-        : new window.molstar.Viewer('app', createViewerOptions());
-      viewer.plugin.canvas3d?.setProps({ transparentBackground, renderer: { backgroundColor: canvasBackgroundColor() } });
-      viewer.plugin.canvas3d?.requestDraw();
-      // WebKit may suspend animation callbacks while this container is hidden.
-      // Bound both paint waits so revealing the canvas cannot depend on itself.
-      await waitForAnimationFrame();
-      await waitForAnimationFrame();
-    } finally {
-      app?.classList.remove('buret-molstar-initializing');
-    }
+    const viewer = typeof window.molstar.Viewer.create === 'function'
+      ? await window.molstar.Viewer.create('app', createViewerOptions())
+      : new window.molstar.Viewer('app', createViewerOptions());
     // Set before loading data, when Mol* initializes the sequence state.
     viewer.plugin.spec.components = {
       ...viewer.plugin.spec.components,
@@ -27613,6 +25667,13 @@ SOFTWARE.
   }
 
   function disposeActiveMolstarViewer() {
+    window.BuretteHandleResize = null;
+    viewerResizeObserver?.observer.disconnect();
+    viewerResizeObserver = null;
+    orientationTrackingCleanup?.();
+    orientationTrackingCleanup = null;
+    molstarSelectionPreviewCleanup?.();
+    molstarSelectionPreviewCleanup = null;
     molstarStyleApplySerial += 1;
     molstarPresetPreviewSceneRevision += 1;
     molstarPresetPreviewCache = null;
@@ -27620,6 +25681,11 @@ SOFTWARE.
     molstarPresetPreviewStateCleanup = null;
     disposeMolstarPresetPreview();
     cancelViewportTrajectoryAnimation();
+    activeTrajectoryPlaybackControl?.stop?.();
+    activeTrajectoryPlaybackControl = null;
+    clearMolstarPersistentMoleculePreview();
+    for (const disposer of viewportControlsDisposers) disposer();
+    viewportControlsDisposers = [];
     cancelScheduledMolstarWaterRepresentation();
     notifyMolstarSelectionChanged(null);
     molstarSelectionHostSignature = '';
@@ -27658,9 +25724,9 @@ SOFTWARE.
   }
 
   async function startMolstar(config, cb) {
+    if (window.BuretteViewerDisposed) return;
     disposeActiveMolstarViewer();
     activeSdfPoseMode = readSdfPoseMode(config);
-    activeSdfCollectionLayout = readSdfCollectionLayout(config);
     ensureMolstarStylesheet();
     const container = document.getElementById('app');
     if (container) container.innerHTML = '';
@@ -27673,25 +25739,21 @@ SOFTWARE.
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       await loadScript(appendCacheBuster(runtimeURL('BuretteMolstarURL', './molstar.js'), cb), 'Mol* engine', 120000);
     }
+    if (window.BuretteViewerDisposed) return;
 
     setStatus(`[web] Mol* engine loaded. Creating WebGL viewer…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     await waitForFirstPaint();
+    if (window.BuretteViewerDisposed) return;
     const viewer = await withTimeout(
       createViewer(),
       25000,
       'Mol* timed out while creating the WebGL viewer. This usually means WebKit/WebGL failed inside Quick Look.'
     );
+    if (window.BuretteViewerDisposed) { viewer.plugin.dispose(); return; }
     setStatus(`[web] WebGL viewer created. Parsing structure…
 ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     applyViewerBackground(viewer);
-    // Match the default 3D selection to the sequence accent. Authored snapshot
-    // renderer settings loaded below can still override this initial palette.
-    const selectionAccent = getComputedStyle(document.body).getPropertyValue('--buret-molstar-accent').trim();
-    if (/^#[0-9a-f]{6}$/i.test(selectionAccent)) {
-      const selectColor = parseInt(selectionAccent.slice(1), 16);
-      viewer.plugin?.canvas3d?.setProps({ renderer: { selectColor }, marking: { selectEdgeColor: selectColor } });
-    }
     window.BuretteViewer = viewer;
     window.BuretteViewer = viewer;
     try {
@@ -27703,7 +25765,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     window.BuretteHandleResize = () => scheduleViewerResize(viewer, 60);
     molstarContainerResizeCleanup = installMolstarContainerResizeObserver(viewer);
     applyViewerUIScale(viewer);
-    initViewerKeyboardShortcuts(viewer);
+    initViewerKeyboardShortcuts();
     initBuretToolbar(viewer);
     installMolstarContextMenu(viewer);
     installMolstarBrowserAnnotationTarget(viewer);
@@ -27712,6 +25774,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     scheduleLayoutStateReapply(viewer);
 
     await waitForAnimationFrame();
+    if (window.BuretteViewerDisposed) return;
     applyLayoutState(viewer);
     try { viewer.handleResize(); } catch (_) {}
 
@@ -27726,12 +25789,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       45000,
       `Mol* timed out while parsing/rendering ${prepared.label} as ${prepared.format}.`
     );
-    assertMolstarLoadReady(viewer, prepared);
-    if (config.demoSnapshotUrl) {
-      const response = await fetch(config.demoSnapshotUrl);
-      if (!response.ok) throw new Error('Could not load the saved demo scene.');
-      await viewer.plugin.managers.snapshot.setStateSnapshot(await response.json());
-    }
+    if (window.BuretteViewerDisposed) return;
     // MVSX snapshots can carry an authored canvas color. Restore the active
     // Burette theme after the snapshot has finished loading.
     applyBackgroundMode();
@@ -27747,6 +25805,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       debug('BuretteAgent notifyStructureLoaded failed: ' + (error && error.message || String(error)));
     }
     await applyMolstarContextFocus(config);
+    if (window.BuretteViewerDisposed) return;
     notifyMolstarSelectionChanged(molstarSelectedMoleculePreviewTarget());
     void reportBuretteAgentState();
     startBuretteAgentActionPolling();
@@ -27756,6 +25815,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     molstarWindowResizeHandler = () => scheduleViewerResize(viewer, 100);
     window.addEventListener('resize', molstarWindowResizeHandler);
     await waitForAnimationFrame();
+    if (window.BuretteViewerDisposed) return;
     applyLayoutState(viewer);
     try { viewer.handleResize(); } catch (_) {}
 
@@ -27782,11 +25842,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       if (window.BuretteNativeFirstFrame) throw error;
     }
     if (window.BuretteViewerDisposed) return;
-    const savedCamera = window.BuretteRendererViewState?.read(config.documentId, config.rendererViewState).camera;
-    if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {
-      molstarStructureFocusSerial += 1;
-      restoreMolstarCameraSnapshotNow(viewer, savedCamera);
-    } else if (!hasMolstarContextFocus(config)) {
+    if (!hasMolstarContextFocus(config)) {
       scheduleMolstarStructureFocus(viewer, { reason: 'initial-load', durationMs: 120 });
     }
     {
@@ -27800,7 +25856,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
         applyLayoutState(viewer);
         viewer.handleResize();
         viewer.plugin.canvas3d.commit(true);
-        if (!savedCamera && prepared.kind !== 'mvs') scheduleMolstarStructureFocus(viewer, { reason: 'native-first-frame' });
+        scheduleMolstarStructureFocus(viewer, { reason: 'native-first-frame' });
         await window.BuretteNativeFirstFrame(viewer);
       }
       const readyPayload = molstarReadyPayload(config, prepared, {
@@ -27841,54 +25897,6 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     }
 
     await startMolstar(config, cb);
-    if (config.inspectorPreview === true) {
-      activeViewer.plugin.canvas3d?.setProps({ cameraResetDurationMs: 0, camera: { helper: { axes: { name: 'off', params: {} } } } });
-      const settlePreview = async () => {
-        const plugin = activeViewer.plugin;
-        plugin.canvas3d?.commit(true);
-        requestMolstarStructureFocus(activeViewer, { durationMs: 0 });
-        await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
-        plugin.managers.camera.orientAxes(undefined, 0);
-        await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
-      };
-      await settlePreview();
-      document.getElementById('app')?.classList.remove('buret-inspector-updating');
-      let pending = null;
-      let running = false;
-      let current = structureDataForMolstar(config).data;
-      window.addEventListener('message', async event => {
-        if (event.source !== window.parent || event.data?.source !== 'burette-inspector-host') return;
-        const data = event.data.molblock;
-        if (typeof data !== 'string' || !data || data.length > 350000) return;
-        pending = data;
-        if (running) return;
-        running = true;
-        const previousFrame = captureMolstarTransitionFrame();
-        const app = document.getElementById('app');
-        app?.classList.add('buret-inspector-updating');
-        activeViewer.plugin.animationLoop.stop({ noDraw: true });
-        try {
-          while (pending !== null) {
-            const next = pending;
-            pending = null;
-            if (next === current) continue;
-            await activeViewer.plugin.clear();
-            await loadPreparedStructure(activeViewer, { data: next, format: 'mol', label: 'Molecule' });
-            await applyConfiguredMolstarPreset(activeViewer, activeConfig);
-            current = next;
-            await settlePreview();
-          }
-        } catch (error) { console.error('Inspector preview:', error); }
-        finally {
-          app?.classList.remove('buret-inspector-updating');
-          removeMolstarTransitionFrame(previousFrame);
-          activeViewer.plugin.animationLoop.start();
-          running = false;
-        }
-      });
-      window.parent.postMessage({ source: 'burette-inspector-ready' }, '*');
-    }
-
   }
 
   function waitForFirstPaint() {
@@ -28076,9 +26084,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
   }
 
   function showError(error) {
-    const message = error instanceof Error
-      ? `${error.name}: ${error.message}${error.stack ? `\n${error.stack}` : ''}`
-      : String(error);
+    const message = error && (error.stack || error.message) ? (error.stack || error.message) : String(error);
     const diagnostics = window.__BURETTE_HOSTED_MCP_WIDGET__ === true
       ? ''
       : '\n\nCheck: ./scripts/tail-log.sh';
