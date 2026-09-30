@@ -5337,7 +5337,7 @@ assert.match(previewViewer, /requestGenerated3DCameraView\(activeViewer\)/);
 assert.match(previewViewer, /function installMolstarControlTooltips\(\)/);
 assert.match(previewViewer, /window\.__buretteMolstarControlTooltipsInstalled/);
 assert.match(previewViewer, /\.msp-plugin button\[aria-label\], \.msp-plugin button\[title\]/);
-assert.match(previewViewer, /control\.closest\('\.msp-hover-box-wrapper'\)/);
+assert.match(previewViewer, /control\.closest\('\.msp-hover-box-wrapper, \.buret-seq-header, \.buret-seq-footer'\)/);
 assert.doesNotMatch(previewViewer, /scheduleViewportPopoverRefresh/);
 assert.match(previewViewer, /function molstarTooltipLabel\(control\)/);
 assert.match(previewViewer, /control\.getAttribute\('aria-label'\) \|\| control\.getAttribute\('title'\)/);
@@ -5423,7 +5423,7 @@ assert.match(previewViewer, /function positionOpenViewportMenu\(rail = document\
 assert.match(previewViewer, /rail\.dataset\.horizontalPlacement === 'right'/);
 assert.match(previewViewer, /rail\.dataset\.verticalPlacement === 'above'/);
 assert.match(previewViewer, /root\.style\.setProperty\('--buret-viewport-panel-max-height', panelMaxHeight \+ 'px'\);\s*positionOpenViewportMenu\(\);/);
-assert.match(previewViewer, /positionOpenViewportMenu\(trigger\.closest\('#buret-viewport-rail'\)\);/);
+assert.match(previewViewer, /positionOpenViewportMenu\(trigger\.closest\('#buret-viewport-rail, \.buret-seq-footer'\)\);/);
 // The rail carries its own animation button, the way Mol*'s viewport controls did:
 // a trackball that keeps turning plus the plugin's timed animations, each listed
 // once and each able to say why it is unavailable.
