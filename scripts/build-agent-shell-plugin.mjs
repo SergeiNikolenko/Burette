@@ -35,7 +35,6 @@ const runtimeScripts = [
   'mcp-app-documents.mjs',
   'mcp-app-assets.mjs',
   'local-file-actions.mjs',
-  'native-workspace-xyzrender.mjs',
   'mvs-story.mjs',
   'mvs-story-templates.mjs',
 ];
