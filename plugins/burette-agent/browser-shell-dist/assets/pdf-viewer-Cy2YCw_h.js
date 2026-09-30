@@ -1,0 +1,1 @@
+import{a as e}from"./document-page-Dgmo1Enw.js";export{e as PdfResourceContent};
