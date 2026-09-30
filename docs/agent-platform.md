@@ -154,11 +154,13 @@ References are local to the loaded scene; refresh them after reloading a file.
 
 ## Native workspace navigation
 
-The expanded native plugin workspace shows Home, Ketcher and its open pages
-in a sidebar at widths of 760 px and above. Compact cards use the Burette menu
-in the existing file toolbar. Home selects an existing start page or creates
-one without closing documents, so viewers and sketches retain their state.
-The host owns placement and theme; switching placement preserves the workspace.
+The native plugin start page contains recent files and Ketcher. Chat prompts,
+PDB search and demo cards belong outside this page. Expanded workspaces show
+Recent files, Ketcher and open documents in a sidebar at widths of 760 px and
+above; compact cards use the Burette menu in the existing file toolbar.
+Recent files selects an existing start page or creates one without closing
+documents. Ketcher selects the existing editor when open, preserving its sketch.
+The host owns chat, placement and theme; switching placement preserves the workspace.
 
 ## Widget compute availability
 
