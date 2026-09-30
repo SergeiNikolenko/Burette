@@ -157,7 +157,7 @@ export function registerMolecularWorkspace(server) {
         readOnlyHint: false,
         destructiveHint: false,
         idempotentHint: false,
-        openWorldHint: false,
+        openWorldHint: true,
       },
       _meta: {
         ui: {

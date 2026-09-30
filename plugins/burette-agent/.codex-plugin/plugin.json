@@ -1,9 +1,9 @@
 {
   "name": "burette",
-  "version": "0.2.50+local.20260930.1",
+  "version": "0.2.51",
   "description": "A universal molecular viewer for proteins, ligands, and molecular structures, with 3D visualization and 2D editing.",
   "author": {
-    "name": "Burette contributors",
+    "name": "Sergei Nikolenko",
     "url": "https://github.com/SergeiNikolenko/Burette"
   },
   "homepage": "https://github.com/SergeiNikolenko/Burette",
@@ -30,7 +30,7 @@
     "displayName": "Burette",
     "shortDescription": "Universal molecular viewer",
     "longDescription": "Explore proteins, ligands, and molecular structures in one interactive workspace. View proteins and binding sites with Mol*, draw and edit molecules in Ketcher, and visualize molecular geometries with xyzrender. Open structure files, inspect molecular interactions, and browse molecule collections.",
-    "developerName": "Burette",
+    "developerName": "Sergei Nikolenko",
     "category": "Education & Research",
     "capabilities": [
       "Interactive",
@@ -48,6 +48,7 @@
     "brandColor": "#14A39A",
     "composerIcon": "./assets/composer-icon.png",
     "logo": "./assets/app-icon.png",
-    "screenshots": []
+    "screenshots": [],
+    "supportURL": "https://github.com/SergeiNikolenko/Burette/issues"
   }
 }

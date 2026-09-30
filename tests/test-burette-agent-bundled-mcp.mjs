@@ -88,6 +88,11 @@ try {
   assert.equal(link.structuredContent.deepLink, 'burette://pdb/1HTB');
   const workspaceTool = listed.tools.find(tool => tool.name === 'burette.open_viewer');
   const compactTool = listed.tools.find(tool => tool.name === 'burette.open_inline_viewer');
+  for (const name of ['burette.open_workspace', 'burette.open_viewer']) {
+    const tool = listed.tools.find(item => item.name === name);
+    assert.equal(tool.inputSchema.properties.pdbId.type, 'string');
+    assert.equal(tool.annotations.openWorldHint, true, `${name} downloads public RCSB entries`);
+  }
   assert.equal(workspaceTool._meta.ui.resourceUri, 'ui://burette/native-workspace-v1.html');
   assert.equal(compactTool._meta.ui.resourceUri, 'ui://burette/local-viewer.html');
   const fileViewerTool = listed.tools.find(tool => tool.name === 'burette.open_file');

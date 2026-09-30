@@ -74,7 +74,7 @@ export async function registerLocalViewer(server) {
       example: z.enum(['1htb', 'caffeine']).optional().describe('Bundled protein or 3D xyzrender example; mutually exclusive with file and structure.'),
       structure: z.object({ format: z.enum(['smi', 'mol', 'sdf', 'ket']), content: z.string().min(1).max(65536) }).strict().optional().describe('For Ketcher, pass the requested molecule directly instead of a file. Aspirin: {format:"smi",content:"CC(=O)Oc1ccccc1C(=O)O"}. Requires view ketcher. No project folder or placeholder file needed.'),
       displayMode: z.enum(['inline', 'fullscreen']).optional().describe('Ketcher defaults to inline chat; other views default to side pane. Only expand on request.'),
-      openRequestId, additionalFiles: z.array(z.string().min(1)).max(7).optional(), view: z.enum(['auto', 'ketcher', 'docking', 'xyzrender']).optional() }, annotations: { ...annotations, readOnlyHint: false, idempotentHint: false },
+      openRequestId, additionalFiles: z.array(z.string().min(1)).max(7).optional(), view: z.enum(['auto', 'ketcher', 'docking', 'xyzrender']).optional() }, annotations: { ...annotations, readOnlyHint: false, idempotentHint: false, openWorldHint: true },
     _meta: { ui: { resourceUri: workspaceUri } },
   }, async ({ pdbId, ...input }) => {
     if ([input.file, input.structure, input.example, pdbId].filter(value => value != null).length !== 1) {
