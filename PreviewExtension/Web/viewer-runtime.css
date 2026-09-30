@@ -5583,18 +5583,22 @@ body:has(#buret-toolbar[data-active-renderer="xyzrender-external"]) #buret-scene
    keeps free at its top edge, so the scene tree toggle and the toolbar share
    one row with it. The host sets the attribute and the toolbar's right inset
    (apps/desktop/src/hooks/use-workspace-header-band.ts). */
-html[data-burette-header-band] #app { top: 50px; bottom: 0; height: auto; }
+html[data-burette-header-band] #app { top: var(--burette-header-band-height, 50px); bottom: 0; height: auto; }
 /* Mol*'s expanded layout is fixed to the window rather than to #app. */
-html[data-burette-header-band] .msp-plugin-content.msp-layout-expanded { top: 50px !important; }
+html[data-burette-header-band] .msp-plugin-content.msp-layout-expanded { top: var(--burette-header-band-height, 50px) !important; }
 html[data-burette-header-band] .buret-viewport-corner { top: 8px !important; left: 10px !important; }
 html[data-burette-header-band] .buret-corner-toggle { width: 34px; height: 34px; }
 html[data-burette-header-band] #buret-toolbar {
-  top: 8px !important; left: auto !important; right: var(--burette-header-band-right, 12px) !important;
+  top: var(--burette-header-band-toolbar-top, 8px) !important; left: auto !important; right: var(--burette-header-band-right, 12px) !important;
   height: 34px; box-sizing: border-box; padding: 2px;
+  max-width: var(--burette-header-band-width, calc(100vw - 24px)) !important;
+}
+html[data-burette-header-band] #buret-toolbar .buret-toolbar-content {
+  min-width: 0; max-width: 100% !important;
 }
 html[data-burette-header-band] #buret-toolbar :is([data-buret-toggle="left"], [data-buret-toggle="right"], [data-drag-handle]) { display: none !important; }
 /* The rail normally hangs under the toolbar; here it keeps the right edge. */
-html[data-burette-header-band] #buret-viewport-rail { left: auto !important; right: 10px !important; top: calc(58px + var(--buret-viewport-top-inset, 0px)) !important; }
+html[data-burette-header-band] #buret-viewport-rail { left: auto !important; right: 10px !important; top: calc(var(--burette-header-band-height, 50px) + 8px + var(--buret-viewport-top-inset, 0px)) !important; }
 /* Dark header pills are filled a step above the strip, without borders. */
 html[data-burette-header-band] body.buret-theme-dark :is(#buret-toolbar, .buret-corner-toggle) {
   background: color-mix(in srgb, #fff 11%, #111); border-color: transparent;
