@@ -16,7 +16,7 @@ import { compactViewerActionError, validateMcpAppAction, xyzrenderOpenNotes } fr
 const root = join(tmpdir(), 'burette-mcp-app');
 const maxStateBytes = 64 * 1024;
 const apiVersion = 'burette-mcp-app/v1';
-const actions = new Set(['focus_ligand', 'select_residues', 'focus_selection', 'reset_camera', 'clear_selection', 'set_display_mode', 'set_molstar_style', 'color_by_chain', 'set_scene_motion', 'set_scene_wiggle', 'rotate_camera', 'observe_scene', 'capture_scene', 'activate_tab', 'close_tab', 'close_other_tabs', 'close_all_tabs', 'move_tab']);
+const actions = new Set(['focus_ligand', 'select_residues', 'focus_selection', 'reset_camera', 'clear_selection', 'set_display_mode', 'set_molstar_style', 'hide_components', 'show_components', 'color_by_chain', 'set_scene_motion', 'set_scene_wiggle', 'rotate_camera', 'observe_scene', 'capture_scene', 'activate_tab', 'close_tab', 'close_other_tabs', 'close_all_tabs', 'move_tab']);
 const workspaceActions = new Set(['query_atoms', 'query_groups', 'named_selection', 'select_atoms', 'measure_geometry', 'list_scene_layers', 'patch_scene_layers', 'open_ketcher', 'control_ketcher', 'open_files', 'open_docking_view', 'story_observe', 'story_control', 'manage_tabs', 'set_workspace_panel', 'set_xyzrender_view']);
 const workspaceShellActions = new Set(['activate_tab', 'close_tab', 'close_other_tabs', 'close_all_tabs', 'move_tab', 'set_display_mode', 'open_ketcher', 'open_files', 'open_docking_view', 'manage_tabs', 'set_workspace_panel']);
 
@@ -126,6 +126,8 @@ export async function runMcpAppOperation(input, { assetRoot } = {}) {
     if (!actions.has(type) && !workspaceActions.has(type)) throw new Error(`Unsupported MCP App action: ${String(type).slice(0, 64)}.`);
     const actionLimit = input.action.type === 'control_ketcher' ? 72 * 1024 : 8192;
     if (Buffer.byteLength(JSON.stringify(input.action)) > actionLimit) throw new Error('Action exceeds its payload limit.');
+    // Ketcher replays by actionId; like burette.control_ketcher, mint one when the model omits it.
+    if (input.action.type === 'control_ketcher' && input.action.actionId === undefined) input = { ...input, action: { ...input.action, actionId: randomUUID() } };
     if (session.workspace) {
       const paths = input.action.type === 'open_docking_view' ? [input.action.receptorPath, ...(input.action.ligandPaths || [])]
         : input.action.type === 'manage_tabs' && input.action.operation === 'open_file' ? [input.action.path] : [];

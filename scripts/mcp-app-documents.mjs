@@ -2,9 +2,21 @@ import { createHash, randomUUID } from 'node:crypto';
 import { open, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { gunzipSync } from 'node:zlib';
 
 const maxBytes = 16 * 1024 * 1024;
-const workspaceExtensions = new Set(['.pdb', '.ent', '.pdbqt', '.cif', '.mmcif', '.sdf', '.sd', '.mol', '.smi', '.smiles', '.csv', '.tsv', '.mvsj', '.mvsx', '.ket', '.rxn', '.xyz']);
+const workspaceExtensions = new Set(['.pdb', '.ent', '.pdbqt', '.pqr', '.cif', '.mmcif', '.gro', '.mol2', '.sdf', '.sd', '.mol', '.smi', '.smiles', '.csv', '.tsv', '.mvsj', '.mvsx', '.ket', '.rxn', '.xyz']);
+// gzip and BGZF copies of coordinate files open as their inner format. The
+// browser's DecompressionStream stops after the first gzip member, so BGZF
+// blocks are inflated here.
+const compressedStructure = /\.(pdb|ent|cif|mmcif)\.(?:gz|bgz|bgzf)$/u;
+
+function inflate(path, bytes) {
+  try { return gunzipSync(bytes, { maxOutputLength: maxBytes }); }
+  catch (error) {
+    throw new Error(error.code === 'ERR_BUFFER_TOO_LARGE' ? 'Decompressed structure exceeds 16 MiB.' : `Cannot decompress ${basename(path)}.`);
+  }
+}
 
 export async function snapshotMcpDocuments(files, workspace, existing = []) {
   if (!Array.isArray(files) || !files.length || files.length > 8 || files.some(file => typeof file !== 'string' || !file)) throw new Error('Provide between 1 and 8 file paths.');
@@ -14,11 +26,12 @@ export async function snapshotMcpDocuments(files, workspace, existing = []) {
   const snapshots = [];
   let totalBytes = existing.reduce((sum, item) => sum + item.byteCount, 0);
   for (const path of additions) {
-    const extension = extname(path).toLowerCase();
+    const compressed = compressedStructure.exec(basename(path).toLowerCase());
+    const extension = compressed ? `.${compressed[1]}` : extname(path).toLowerCase();
     if (!(workspace ? workspaceExtensions.has(extension) : ['.pdb', '.cif', '.mmcif'].includes(extension))) throw new Error('Unsupported native workspace file format.');
     const info = await stat(path);
     if (!info.isFile() || info.size > maxBytes || info.size === 0) throw new Error('Structure must be a nonempty regular file of at most 16 MiB.');
-    const bytes = await readFile(path);
+    const bytes = compressed ? inflate(path, await readFile(path)) : await readFile(path);
     totalBytes += bytes.length;
     if (!bytes.length || totalBytes > maxBytes) throw new Error('Native workspace sources exceed 16 MiB in total or are empty.');
     snapshots.push({ bytes, document: { id: randomUUID(), label: basename(path), path, format: ['.cif', '.mmcif'].includes(extension) ? 'mmcif' : extension.slice(1), byteCount: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') } });

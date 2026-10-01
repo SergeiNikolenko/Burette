@@ -66,4 +66,28 @@ assert.equal(snapshot.selectedAtoms.length, 256);
 assert.equal(snapshot.selectedAtomCount, 300);
 assert.equal(snapshot.selectionTruncated, true);
 assert.equal(snapshot.structure.smiles, "CCO");
+assert.equal(Object.hasOwn(snapshot, "persistRequest"), false, "surfaces without a save flow keep the original snapshot shape");
+const persistRequest = { actionId: "act-3", status: "awaiting_user" };
+assert.deepEqual(createKetcherSnapshot({ state: edited, persistRequest }).persistRequest, persistRequest);
+assert.equal(createKetcherSnapshot({ state: edited, persistRequest: null }).persistRequest, null);
+
+// `smi` (the burette_open_viewer name) is an alias for `smiles` in every format field.
+const base = { type: "control_ketcher", surfaceId: "desktop-ketcher:tab-1", actionId: "act-4", expectedRevision: 1 };
+assert.equal(validateKetcherAction({ ...base, command: "set_structure", format: " SMI ", content: "CCO" }).value.input.format, "smiles");
+assert.deepEqual(validateKetcherAction({ ...base, command: "get_structure", formats: ["smi", "smiles", "mol"] }).value.formats, ["smiles", "mol"]);
+assert.equal(validateKetcherAction({ ...base, command: "request_persist", format: "smi" }).value.format, "smiles");
+assert.equal(validateKetcherAction({ ...base, command: "set_structure", format: "smiles2", content: "CCO" }).error.code, "UNSUPPORTED_FORMAT");
+
+// Review case p5 read back SMILES with `format: "smi"` and without `formats`; both
+// shorthands normalize to the canonical action, and errors name the valid shape.
+const readBack = { ...base, command: "get_structure" };
+assert.deepEqual(validateKetcherAction({ ...readBack, format: "smi" }), validateKetcherAction({ ...readBack, formats: ["smiles"] }));
+assert.deepEqual(validateKetcherAction({ ...readBack, formats: "smiles" }).value.formats, ["smiles"]);
+assert.equal(Object.hasOwn(validateKetcherAction({ ...readBack, format: "mol" }).value, "format"), false);
+assert.match(validateKetcherAction({ ...readBack, format: "smiles", formats: ["mol"] }).error.message, /not both/u);
+assert.match(validateKetcherAction(readBack).error.message, /"formats": \["smiles"\]/u);
+assert.match(validateKetcherAction({ ...readBack, formats: ["png"] }).error.message, /smiles/u);
+assert.match(validateKetcherAction({ ...readBack, formats: ["smiles"], smiles: true }).error.message, /"smiles".*get_structure accepts formats, format, delivery/u);
+const { actionId: _omitted, ...withoutActionId } = { ...base, command: "set_structure", format: "smi", content: "CCO" };
+assert.match(validateKetcherAction(withoutActionId).error.message, /actionId.*"set-aspirin-1"/u);
 console.log("ketcher agent contract tests passed");

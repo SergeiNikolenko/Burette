@@ -6,10 +6,15 @@
   const CARD_MIN_STORAGE_KEY = 'buret.grid.cardMin';
   const GRID_VIEW_MODE_STORAGE_KEY = 'buret.grid.viewMode';
   const TABLE_HIDDEN_COLUMNS_STORAGE_KEY = 'buret.grid.tableHiddenColumns';
+  const TABLE_PINNED_COLUMNS_STORAGE_KEY = 'buret.grid.tablePinnedColumns';
   const TABLE_COLUMN_WIDTHS_STORAGE_KEY = 'buret.grid.tableColumnWidths';
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const HOVER_PREVIEW_SVG_LIMIT = 512_000;
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
+  // The toolbar H toggle. Values match the xyzrender display option: 'none'
+  // folds hydrogens into heteroatom labels (OH, NH2), 'all' draws every H.
+  const HYDROGEN_DISPLAY_STORAGE_KEY = 'buret.grid.hydrogenDisplay';
+  const HYDROGEN_DISPLAY_MODES = ['none', 'all'];
   const CLUSTER_CUTOFF_STORAGE_KEY = 'buret.grid.clusterCutoff';
   const GRID_SELECTION_BRIDGE_LIMIT = 100000;
   const CHEMICAL_SPACE_RECORD_LIMIT = 20000;
@@ -75,6 +80,7 @@
   const RDKIT_SVG_CACHE_LIMIT = 220;
   const XYZRENDER_CARD_CACHE_LIMIT = 1500;
   const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
+  let activeStructureDrag = false;
   const state = {
     rdkit: null,
     externalHoverIndex: null,
@@ -94,7 +100,6 @@
     visibleCount: 0,
     renderedCount: 0,
     query: '',
-    searchMode: 'text',
     searchTimer: 0,
     searchTextCache: new WeakMap(),
     dataToken: 0,
@@ -113,6 +118,8 @@
     tableColumnQuery: '',
     tableColumnVisibleLimit: TABLE_COLUMN_PICKER_LIMIT,
     tableHiddenColumns: storedStringSet(TABLE_HIDDEN_COLUMNS_STORAGE_KEY),
+    tablePinnedColumns: storedStringSet(TABLE_PINNED_COLUMNS_STORAGE_KEY),
+    tablePinnedOffsets: new Map(),
     tableColumnWidths: storedColumnWidths(TABLE_COLUMN_WIDTHS_STORAGE_KEY),
     tableColumnFilters: {},
     tableColumnCatalogCache: null,
@@ -129,6 +136,7 @@
     cardRenderer: storedCardRenderer(),
     xyzrenderPreset: null,
     rdkitUseInputCoords: storedBoolean(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, false),
+    hydrogenDisplay: storedChoice(HYDROGEN_DISPLAY_STORAGE_KEY, HYDROGEN_DISPLAY_MODES, 'none'),
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
     hiddenRows: new Set(),
     deletedPropColumns: new Set(),
@@ -278,6 +286,12 @@
 
   function initShellShortcutBridge() {
     document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && activeStructureDrag) {
+        activeStructureDrag = false;
+        event.preventDefault();
+        post('structureDragCancel', '');
+        return;
+      }
       if (event.defaultPrevented || isEditableShortcutTarget(event.target)) return;
       const key = event.key?.toLowerCase();
       const commandKey = event.metaKey || event.ctrlKey;
@@ -339,6 +353,7 @@
 
   function postGridRowHover(index, cfg) {
     const row = Number.isSafeInteger(index) && index >= 0 ? gridRowByIndex(index) : null;
+    const match = row ? state.smartsMatches.get(Number(row.index)) : null;
     state.hoveredGridRowIndex = row ? index : null;
     if (row) state.lastGridRowIndex = index;
     let previewSvg = '';
@@ -348,6 +363,15 @@
         const cachedSvg = state.xyzrenderCardCache.get(xyzrenderCardKey(row, record))?.svg || '';
         if (cachedSvg.length <= HOVER_PREVIEW_SVG_LIMIT) previewSvg = cachedSvg;
       }
+    } else if (row) {
+      // The inspector shows the card's own drawing - substructure highlight and
+      // content fit included - so the two surfaces never disagree about a row.
+      // Only drawings that already exist are sent: drawing here would omit an
+      // invalid row as a side effect of hovering it.
+      const drawn = root?.querySelector(`[data-index="${index}"] svg[data-buret-rdkit-svg="true"]`)?.outerHTML
+        || state.svgCache.get(rdkitCardKey(row))
+        || '';
+      if (drawn.length <= HOVER_PREVIEW_SVG_LIMIT) previewSvg = drawn;
     }
     post('gridRowHover', '', {
       documentId: cfg?.documentId || null,
@@ -359,10 +383,23 @@
             molblock: String(row.molblock || ''),
             cardRenderer: state.cardRenderer,
             previewSvg,
+            useInputCoords: state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock),
+            highlightAtoms: Array.isArray(match?.atoms) ? match.atoms.slice(0, 256) : [],
+            highlightBonds: Array.isArray(match?.bonds) ? match.bonds.slice(0, 256) : [],
             props: hoverRowProps(row)
           }
         : null
     });
+  }
+
+  // Re-sends the row the inspector is showing after its drawing changed,
+  // without claiming the pointer is over it.
+  function repostInspectorRow(cfg) {
+    const hovered = state.hoveredGridRowIndex;
+    const index = Number.isSafeInteger(hovered) ? hovered : state.lastGridRowIndex;
+    if (!Number.isSafeInteger(index)) return;
+    postGridRowHover(index, cfg);
+    state.hoveredGridRowIndex = hovered;
   }
 
   // Marks the row the chemical-space map is pointing at, so a point under the
@@ -381,6 +418,13 @@
     root.dataset.hoverPreviewBound = '1';
     let lastHoverIndex = null;
     root.addEventListener('pointerover', (event) => {
+      const cell = event.target?.closest?.('td');
+      const text = cell?.querySelector('.buret-cell-marquee');
+      if (text) {
+        const shift = Math.max(0, text.firstElementChild.scrollWidth - text.clientWidth);
+        text.style.setProperty('--marquee-shift', `${shift}px`);
+        text.style.setProperty('--marquee-duration', `${Math.max(0.45, shift / 34)}s`);
+      }
       const target = event.target?.closest?.(
         '.buret-card[data-index], .buret-grid-table-row[data-index], .buret-grid-rail-tick[data-buret-grid-rail-index]'
       );
@@ -448,7 +492,7 @@
     });
   }
 
-  function setStatus(message, kind = 'info') {
+  function setStatus(message, kind = 'info', notifyHost = true) {
     const cfg = window.BuretteConfig && typeof window.BuretteConfig === 'object' ? window.BuretteConfig : {};
     if (status) {
       setStatusText(String(message || ''));
@@ -456,7 +500,7 @@
       status.classList.toggle('hidden', kind !== 'error' && !window.BuretteDebug);
       if (kind === 'error' && status && !window.BuretteDebug && cfg.appViewer === true) status.classList.add('hidden');
     }
-    if (kind === 'error' || window.BuretteDebug) post(kind === 'error' ? 'error' : 'status', message || '');
+    if (notifyHost && (kind === 'error' || window.BuretteDebug)) post(kind === 'error' ? 'error' : 'status', message || '');
   }
 
   function setStatusText(text) {
@@ -513,8 +557,7 @@
       ketcherOpen: editing && cfg.appViewer === true && molecularGrid,
       molstarOpen: molecularGrid && cfg.appViewer === true,
       rendererSwitch: molecularGrid && (cfg.appViewer === true || cfg.quickLookViewer === true) && !!caps.rendererSwitch,
-      compute: cfg.visualizationOnly !== true,
-      cluster: cfg.visualizationOnly !== true && molecularGrid && cfg.appViewer === true && cfg.gridDataMode === 'bridge'
+      cluster: molecularGrid && cfg.appViewer === true && cfg.gridDataMode === 'bridge'
     };
   }
 
@@ -562,11 +605,61 @@
     notifyGridMenuState(cfg);
   }
 
+  // Annotate mode: report the rows (or, between rows, the text) under a
+  // rectangle in this document's client pixels. Bounded for the agent context.
+  function describeGridRegion(rect) {
+    const box = { left: Number(rect?.left), top: Number(rect?.top) };
+    box.right = box.left + Number(rect?.width);
+    box.bottom = box.top + Number(rect?.height);
+    if (!Object.values(box).every(Number.isFinite)) return { ok: false, command: 'describe_region', error: { code: 'INVALID_ARGS' } };
+    const overlaps = r => r.width > 0 && r.height > 0 && r.right >= box.left && r.left <= box.right && r.bottom >= box.top && r.top <= box.bottom;
+    // A row counts when the region covers a real share of it (or sits inside
+    // it), so a region that grazes a neighbouring card does not pull it in.
+    const boxArea = Math.max(1, (box.right - box.left) * (box.bottom - box.top));
+    const rows = [...document.querySelectorAll('.buret-card[data-index], .buret-grid-table-row[data-index]')].filter(row => {
+      const r = row.getBoundingClientRect();
+      if (!overlaps(r)) return false;
+      const shared = Math.max(0, Math.min(r.right, box.right) - Math.max(r.left, box.left)) * Math.max(0, Math.min(r.bottom, box.bottom) - Math.max(r.top, box.top));
+      return shared >= 0.3 * Math.min(r.width * r.height, boxArea);
+    });
+    if (rows.length) {
+      // A click snaps the host's box to the card or table row it landed on.
+      const clicked = rows.length === 1 && box.right - box.left <= 24 && box.bottom - box.top <= 24 ? rows[0].getBoundingClientRect() : null;
+      return { ok: true, command: 'describe_region', result: { surface: 'grid', rowCount: rows.length,
+        ...(clicked ? { box: { left: clicked.left, top: clicked.top, width: clicked.width, height: clicked.height } } : {}),
+        sourceIndexes: rows.slice(0, 64).map(row => Number(row.getAttribute('data-index'))).filter(Number.isSafeInteger),
+        text: rows.slice(0, 8).map(row => row.innerText.replace(/\s+/g, ' ').trim().slice(0, 160)).join('\n') } };
+    }
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const range = document.createRange();
+    let text = '';
+    for (let node = walker.nextNode(); node && text.length < 1200; node = walker.nextNode()) {
+      if (!node.nodeValue.trim()) continue;
+      range.selectNodeContents(node);
+      if ([...range.getClientRects()].some(overlaps)) text += `${node.nodeValue.trim()} `;
+    }
+    return { ok: true, command: 'describe_region', result: { surface: 'document', text: text.trim().slice(0, 1200) } };
+  }
+
   function installHostMessageListener() {
     window.addEventListener('message', event => {
       const data = event.data;
+      if (data?.source === 'burette-agent-host' && data.body?.type === 'agent-action' && data.body.action?.type === 'describe_region') {
+        event.source?.postMessage({ source: 'burette-agent-viewer',
+          body: { type: 'agent-action-result', id: data.body.id, result: describeGridRegion(data.body.action.rect) } }, '*');
+        return;
+      }
       if (!data || (data.source !== 'burette-grid-host' && data.source !== 'burette-host')) return;
       const body = data.body || {};
+      // Applied in place like the structure viewer: the config already carries
+      // the token sets for both themes, so a theme change never reopens the grid.
+      if (body.type === 'setViewerTheme') {
+        const cfg = safeConfig();
+        if (!cfg) return;
+        cfg.theme = body.value === 'light' || body.value === 'dark' ? body.value : 'auto';
+        applyTheme(cfg);
+        return;
+      }
       if (body.type === 'gridSetColumnFilter') {
         applyGridColumnFilter(config(), String(body.columnId || ''), String(body.part || ''), body.value);
         return;
@@ -621,6 +714,7 @@
         if (state.closeTransitionActive || state.saveAsPending) return;
         const cfg = safeConfig();
         executeGridMenuCommand(body, cfg);
+        if (typeof body.requestId === 'string' && body.requestId.length <= 128 && ['view.grid-table', 'view.grid-cards'].includes(body.command)) post('gridMenuCommandResult', '', { requestId: body.requestId });
         return;
       }
       if (body.type === 'chemicalSpaceSelectionChanged') {
@@ -633,7 +727,13 @@
         state.selected = new Set(indexes);
         state.chemicalSpaceFilterActive = body.filterToSelection === true && indexes.length > 0;
         state.selectionAnchorIndex = indexes.length ? indexes[indexes.length - 1] : null;
-        refresh(config());
+        const cfg = config();
+        const refreshed = refresh(cfg);
+        const token = state.dataToken;
+        const focusIndex = body.focusSourceRecordId;
+        if (Number.isSafeInteger(focusIndex) && indexes.includes(focusIndex)) {
+          void Promise.resolve(refreshed).then(() => revealChemicalSpaceRow(focusIndex, cfg, token));
+        }
         return;
       }
       if (body.type === 'chemicalSpaceRequestState') {
@@ -792,7 +892,7 @@
       if (body.type === 'gridAlignmentError') {
         state.aligningPoses = false;
         refreshGridControls(config());
-        setStatus(body.error || '[grid] Pose alignment failed.', 'error');
+        setStatus(body.error || '[grid] Pose alignment failed.', 'error', false);
         return;
       }
       if (body.type === 'gridSemiempiricalStarted') {
@@ -810,16 +910,17 @@
       if (body.type === 'gridSemiempiricalError') {
         state.evaluatingSemiempirical = false;
         refreshGridControls(config());
-        setStatus(body.error || '[grid] RM1 evaluation failed.', 'error');
+        setStatus(body.error || '[grid] RM1 evaluation failed.', 'error', false);
         return;
       }
       if (body.type === 'gridGenerate3DFinished') {
         setGridGenerate3DPending(false);
+        if (body.gridApplied === true) void refreshRemote(config());
         return;
       }
       if (body.type === 'gridGenerate3DError') {
         setGridGenerate3DPending(false);
-        setStatus(body.error || '[grid] 3D generation failed.', 'error');
+        setStatus(body.error || '[grid] 3D generation failed.', 'error', false);
         return;
       }
       if (body.type === 'gridClusterStarted') {
@@ -1012,6 +1113,7 @@
     const command = String(body?.command || '').trim();
     const caps = capabilities(cfgValue);
     const selectedStructureCount = selectedMolecularGridRowCount();
+    const selectedComputeCount = caps.cluster ? state.selected.size : selectedStructureCount;
     switch (command) {
       case 'file.save':
         if (!caps.export) return;
@@ -1104,10 +1206,16 @@
       case 'view.grid-renderer-xyzrender':
         setCardRenderer('xyzrender', cfgValue);
         return;
-      case 'structure.open-in-molstar':
+      case 'structure.open-in-molstar': {
+        const targetRow = commandTargetRow(body);
+        if (targetRow && caps.molstarOpen) {
+          void requestSingleMolstarDocument(targetRow, cfgValue, 'new-tab');
+          return;
+        }
         if ((!caps.molstarOpen && !caps.rendererSwitch) || selectedStructureCount < 1 || selectedStructureCount > NATIVE_MOLSTAR_SELECTION_LIMIT) return;
         requestRendererSwitch('molstar', cfgValue);
         return;
+      }
       case 'structure.edit-in-ketcher': {
         if (!caps.ketcherOpen) return;
         const targetRow = commandTargetRow(body);
@@ -1122,7 +1230,7 @@
         return;
       }
       case 'structure.generate-3d':
-        if (!caps.selection || selectedStructureCount < 1 || selectedStructureCount > NATIVE_GENERATE_3D_SELECTION_LIMIT) return;
+        if (!caps.selection || selectedComputeCount < 1 || selectedComputeCount > NATIVE_GENERATE_3D_SELECTION_LIMIT) return;
         requestSelected3DGeneration(cfgValue);
         return;
       case 'structure.calculate-properties':
@@ -1148,6 +1256,7 @@
     const caps = capabilities(cfg);
     if (!caps.editing) return;
     const selectedStructureCount = selectedMolecularGridRowCount();
+    const selectedComputeCount = caps.cluster ? state.selected.size : selectedStructureCount;
     const selectedSourceIndexes = state.selected.size <= GRID_SELECTION_BRIDGE_LIMIT
       ? [...state.selected].map(Number).filter(index => Number.isSafeInteger(index) && index >= 0)
       : [];
@@ -1173,7 +1282,7 @@
       selectionEnabled: caps.selection,
       canOpenSelectedInMolstar: (caps.molstarOpen || caps.rendererSwitch) && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_MOLSTAR_SELECTION_LIMIT,
       canOpenSelectedInKetcher: caps.ketcherOpen && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_KETCHER_SELECTION_LIMIT,
-      canGenerate3dForSelection: caps.selection && selectedStructureCount > 0 && selectedStructureCount <= NATIVE_GENERATE_3D_SELECTION_LIMIT,
+      canGenerate3dForSelection: caps.selection && selectedComputeCount > 0 && selectedComputeCount <= NATIVE_GENERATE_3D_SELECTION_LIMIT,
       supportsXyzrender: supportsXyzrenderCards(cfg),
       generating3d: state.generating3d
     };
@@ -1674,10 +1783,13 @@
   }
 
   function installThemeListener(cfg) {
-    if (cfg.theme === 'light' || cfg.theme === 'dark' || !window.matchMedia) return;
+    if (!window.matchMedia) return;
     try {
       const media = window.matchMedia('(prefers-color-scheme: light)');
-      const update = () => applyTheme(cfg);
+      // Always installed: the host can switch a fixed theme back to Auto later.
+      const update = () => {
+        if (cfg.theme !== 'light' && cfg.theme !== 'dark') applyTheme(cfg);
+      };
       if (typeof media.addEventListener === 'function') media.addEventListener('change', update);
       else if (typeof media.addListener === 'function') media.addListener(update);
     } catch (_) {}
@@ -1726,7 +1838,6 @@
       exportEnabled: caps.export,
       selectionEnabled: caps.selection,
       substructureSearch: caps.substructureSearch,
-      searchMode: state.searchMode,
       exportScopeLabel: exportScopeLabel(),
       exportPending: Boolean(state.searchTimer || state.remoteLoading || !collectionIndexReady()),
       supportsXyzrenderCards: supportsXyzrenderCards(cfg),
@@ -1734,10 +1845,12 @@
       cardRenderer: state.cardRenderer,
       xyzrenderPreset: currentXyzrenderPreset(cfg),
       xyzrenderPresetOptions: xyzrenderPresetOptions(cfg),
+      hydrogenDisplay: state.hydrogenDisplay,
       ketcherOpen: caps.ketcherOpen,
+      molstarOpen: caps.molstarOpen,
+      ...gridSelectionState(),
       rendererSwitch: caps.rendererSwitch,
       generating3d: state.generating3d,
-      computeEnabled: caps.compute,
       conformerVariant: state.conformerVariant,
       mmffVariant: state.mmffVariant,
       aligningPoses: state.aligningPoses,
@@ -1751,21 +1864,15 @@
       clusterRepresentativesAvailable: Boolean(latestRepresentativeAnalysisColumn()),
       similarityQuerySelected: state.selected.size === 1,
       clusterCutoff: state.clusterCutoff,
-      selectedCount: state.selected.size,
       selectedInput3d: selectedRowsHaveInput3dCoordinates(),
       ...gridEditState(),
       sortOptions: propertyOptionList(cfg),
       onSearchInput(value) {
         scheduleSearch(value || '', cfg);
       },
-      onSearchModeChange(value) {
-        state.searchMode = value;
-        setUnifiedSearchQuery(state.query, cfg, value);
-        refreshGridControls(cfg);
-        refresh(cfg);
-      },
       onSortChange(value) {
         state.sort = value || 'index';
+        state.descriptorSort = null;
         refresh(cfg);
       },
       onShowProperties() {
@@ -1773,7 +1880,7 @@
         applyGridPreferences(cfg);
       },
       onClearSmarts() {
-        setUnifiedSearchQuery('', cfg, state.searchMode);
+        setUnifiedSearchQuery('', cfg);
         const input = document.getElementById('search');
         if (input) input.value = '';
         refresh(cfg);
@@ -1796,6 +1903,7 @@
       onToggleTableFilters() { toggleTableFilters(cfg); },
       onSetCardRenderer(value) { setCardRenderer(value, cfg); },
       onXyzrenderPresetChange(value) { setXyzrenderPreset(value, cfg); },
+      onHydrogenDisplayChange(value) { setHydrogenDisplay(value, cfg); },
       onOpenKetcher() { requestSelectedKetcherDocument(cfg); },
       onAlignSelectedPoses() { requestSelectedPoseAlignment(cfg); },
       onEvaluateSemiempirical() { requestSelectedSemiempiricalEvaluation(cfg); },
@@ -1825,8 +1933,18 @@
         render(cfg);
       }
     });
-    const search = document.getElementById('search');
-    if (search) search.setAttribute('aria-label', state.searchMode === 'structure' ? 'Search structures with SMARTS' : 'Search text');
+    const sortControl = document.getElementById('sort');
+    if (sortControl) {
+      const currentSort = tableActiveSort();
+      const value = state.descriptorSort ? `descriptor:${state.descriptorSort.id}` : state.sort;
+      if (![...sortControl.options].some(option => option.value === value)) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = `${tableColumnCatalog().find(column => column.id === currentSort?.columnId)?.label || value} ${currentSort?.direction === 'desc' ? '↓' : '↑'}`;
+        sortControl.append(option);
+      }
+      sortControl.value = value;
+    }
     bindGridEditControlHandlers(cfg);
     applyGridToolbarInset();
     updateGridToolbarCondensed();
@@ -1906,6 +2024,18 @@
     };
   }
 
+  // React owns selection controls together, so re-rendering the toolbar cannot
+  // restore a stale hidden/disabled attribute after the runtime updates it.
+  function gridSelectionState() {
+    const indexes = selectableRowIndexes();
+    return {
+      selectedCount: state.selected.size,
+      selectableCount: indexes.length,
+      allVisibleSelected: indexes.length > 0 && indexes.every(index => state.selected.has(index)),
+      ketcherPending: Date.now() < state.ketcherOpenPendingUntil
+    };
+  }
+
   function syncGridEditControls() {
     const edit = gridEditState();
     const apply = (id, enabled, title) => {
@@ -1918,9 +2048,9 @@
     apply('undo-grid-edit', edit.undoEnabled, edit.undoTitle);
     apply('save-grid-as', edit.saveAsEnabled, edit.saveAsTitle);
     // File actions live in the Actions menu, which is absent from the DOM until
-    // it opens. Re-render whenever edit state changes so the menu is built from
-    // fresh props rather than stale markup.
-    const signature = `${edit.saveEnabled}|${edit.saveAsEnabled}|${edit.undoEnabled}|${exportScopeLabel()}|${Boolean(state.searchTimer || state.remoteLoading)}`;
+    // it opens. Re-render when edit or selection state changes so both the menu
+    // and the persistent selection controls receive fresh props.
+    const signature = `${edit.saveEnabled}|${edit.saveAsEnabled}|${edit.undoEnabled}|${exportScopeLabel()}|${Boolean(state.searchTimer || state.remoteLoading)}|${JSON.stringify(gridSelectionState())}`;
     if (state.gridEditSignature !== signature) {
       state.gridEditSignature = signature;
       const cfg = safeConfig();
@@ -1967,6 +2097,24 @@
     if (state.cardRenderer === 'xyzrender') render(cfg);
   }
 
+  // Both card caches are keyed by the mode, so switching back redraws from
+  // cache; only queued xyzrender jobs for the old mode are dropped.
+  function setHydrogenDisplay(value, cfg) {
+    const next = HYDROGEN_DISPLAY_MODES.includes(value) ? value : 'none';
+    if (state.hydrogenDisplay === next) return;
+    state.hydrogenDisplay = next;
+    store(HYDROGEN_DISPLAY_STORAGE_KEY, next);
+    resetXyzrenderCardObserver();
+    resetCardRenderQueues();
+    refreshGridControls(cfg);
+    render(cfg);
+    repostInspectorRow(cfg);
+  }
+
+  function xyzrenderCardControls() {
+    return { displayHydrogens: state.hydrogenDisplay };
+  }
+
   function propertyOptionList(cfg) {
     const options = [{ value: 'index', label: 'File order' }];
     if (effectiveMolecularGrid(cfg)) {
@@ -1983,7 +2131,8 @@
       });
       if (keys.size >= 24) break;
     }
-    for (const key of [...keys].sort()) options.push({ value: `prop:${key}`, label: key });
+    for (const key of [...keys].sort()) options.push({ value: `prop:${key}`,
+      label: options.some(option => option.label.toLowerCase() === key.toLowerCase()) ? `${key} (file)` : key });
     return options;
   }
 
@@ -1995,10 +2144,7 @@
     refreshGridControls(cfg);
     applyGridPreferences(cfg);
     render(cfg);
-    const previewRowIndex = Number.isSafeInteger(state.hoveredGridRowIndex)
-      ? state.hoveredGridRowIndex
-      : state.lastGridRowIndex;
-    if (Number.isSafeInteger(previewRowIndex)) postGridRowHover(previewRowIndex, cfg);
+    repostInspectorRow(cfg);
   }
 
   function setGridViewMode(value, cfg) {
@@ -2062,6 +2208,7 @@
   // of handing them back row by row, so the columns only appear once a page is
   // re-read; descriptorIds ride along with the page payload.
   function applyDescriptorGridRunFinished(body, cfg) {
+    if (body.resultKind === 'rgroup') markGridDirty('R-group analysis');
     const added = Math.max(0, Number(body.descriptorIdCount || 0));
     setStatus(added > 0
       ? `[grid] Descriptors ready: ${added.toLocaleString()} column${added === 1 ? '' : 's'}.`
@@ -2147,7 +2294,7 @@
   function remoteTableColumnFilters() {
     const filters = [];
     for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
-      if (!filter || columnId.startsWith('descriptor:') || columnId.startsWith('analysis:')) continue;
+      if (!filter || (columnId.startsWith('descriptor:') && filter.type !== 'text') || columnId.startsWith('analysis:')) continue;
       const row = { id: columnId, filterType: filter.type === 'number' ? 'number' : 'text' };
       if (row.filterType === 'number') {
         const min = Number(filter.min);
@@ -2253,6 +2400,8 @@
     toggle.disabled = !hasInputCoordinates;
     toggle.title = hasInputCoordinates ? 'Use coordinates embedded in the file' : 'No file coordinates in this grid';
     toggle.setAttribute('aria-pressed', hasInputCoordinates && state.rdkitUseInputCoords ? 'true' : 'false');
+    const label = toggle.querySelector('[data-coordinate-mode]');
+    if (label) label.textContent = hasInputCoordinates && state.rdkitUseInputCoords ? '3D' : '2D';
   }
 
   function hasInputCoordinateRows() {
@@ -2303,10 +2452,16 @@
       setStatus(`[grid] ${molstarRecordFailureReason('Selected molecules')}`, 'error');
       return;
     }
-    const title = records.length === 1
+    const entireCollection = state.remoteMode
+      ? !state.indexing && rows.length === (state.recordsTotalHint || state.recordsIndexed)
+      : rows.length === state.all.length;
+    const title = entireCollection && cfg?.label
+      ? `${String(cfg.label).replace(/\.[^.]+$/u, '')}.sdf`
+      : records.length === 1
       ? `${safeStructureFileStem(rows[0]?.name || `molecule-${Number(rows[0]?.index) + 1 || 1}`, Number(rows[0]?.index))}.sdf`
       : `selected-${records.length}-molecules.sdf`;
     post('openSdfMolstarDocument', '[grid] Open selected molecules in Molstar.', {
+      openTarget: 'new-tab',
       documentId: cfg?.documentId || null,
       title,
       extension: 'sdf',
@@ -2320,7 +2475,7 @@
     setStatus(`[grid] Opening ${records.length.toLocaleString()} selected molecule${records.length === 1 ? '' : 's'} in Molstar.`);
   }
 
-  async function requestSingleMolstarDocument(row, cfg) {
+  async function requestSingleMolstarDocument(row, cfg, openTarget = 'new-tab') {
     const records = await sdfRecordTextsForMolstar([row]);
     const record = records[0] || null;
     const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
@@ -2331,6 +2486,7 @@
     const receptorPath = String(cfg?.dockingReceptorPath || '').trim();
     const title = `${safeStructureFileStem(label, Number(row?.index))}.sdf`;
     post('openSdfMolstarDocument', `[grid] Open ${label} in Molstar.`, {
+      openTarget,
       documentId: cfg?.documentId || null,
       title,
       extension: 'sdf',
@@ -2385,44 +2541,48 @@
 
   function selectedRowsHaveInput3dCoordinates() {
     const rows = selectedMolstarRows();
-    return rows.length > 0
-      && rows.length === state.selected.size
+    return state.selected.size > 0
+      && (capabilities(safeConfig()).cluster || rows.length === state.selected.size)
       && rows.every(row => hasMolblockInput3DCoordinates(row.molblock));
   }
 
   function requestSelected3DGeneration(cfg) {
     const rows = selectedMolstarRows();
-    if (!rows.length) {
+    if (!state.selected.size) {
       setStatus('[grid] Select one or more molecules before generating 3D.', 'error');
       return;
     }
-    request3DGenerationForRows(rows, cfg);
+    if (!capabilities(cfg).cluster && rows.length !== state.selected.size) {
+      setStatus('[grid] Load every selected molecule before generating 3D.', 'error');
+      return;
+    }
+    request3DGenerationForRows(rows, cfg, [...state.selected]);
   }
 
   function requestSelectedGeometryOptimization(cfg) {
     const rows = selectedMolstarRows();
-    if (!rows.length || !rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
+    if (!state.selected.size || !rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
       setStatus('[grid] Generate 3D coordinates for every selected molecule before optimizing geometry.', 'error');
       return;
     }
-    const molecules = rows.map(row => gridConformerGenerationInput(row)).filter(Boolean);
+    const molecules = capabilities(cfg).cluster ? [] : rows.map(row => gridConformerGenerationInput(row)).filter(Boolean);
     const title = `${cfg?.label || 'Molecules'} — optimized geometry`;
     setGridGenerate3DPending(true);
     post('optimizeGeometryGridSelection', '[grid] Optimize selected input geometry.', {
       documentId: cfg?.documentId || null,
       title,
-      sourceIndexes: rows.map(row => Number(row.index)),
+      sourceIndexes: [...state.selected].map(Number).sort((a, b) => a - b),
       molecules,
       conformerVariant: state.conformerVariant,
       mmffVariant: state.mmffVariant
     });
-    setStatus(`[grid] Optimizing ${molecules.length.toLocaleString()} input geometr${molecules.length === 1 ? 'y' : 'ies'}.`);
+    setStatus(`[grid] Optimizing ${state.selected.size.toLocaleString()} input geometr${state.selected.size === 1 ? 'y' : 'ies'}.`);
   }
 
   function requestSelectedPoseAlignment(cfg) {
     if (state.aligningPoses) return;
     const rows = selectedMolstarRows();
-    if (rows.length < 2) {
+    if (state.selected.size < 2) {
       setStatus('[grid] Select at least two 3D poses. The first selected row is the reference.', 'error');
       return;
     }
@@ -2434,16 +2594,16 @@
     refreshGridControls(cfg);
     post('alignGridPoses', '[grid] Align and compare selected poses.', {
       documentId: cfg?.documentId || null,
-      sourceIndexes: rows.map(row => Number(row.index))
+      sourceIndexes: [...state.selected].map(Number).sort((a, b) => a - b)
     });
-    setStatus(`[grid] Aligning ${rows.length.toLocaleString()} poses to the first selected row on Metal.`);
+    setStatus(`[grid] Aligning ${state.selected.size.toLocaleString()} poses to the first selected row on Metal.`);
   }
 
   function requestSelectedSemiempiricalEvaluation(cfg) {
     if (state.evaluatingSemiempirical) return;
     const rows = selectedMolstarRows();
     const methodLabel = state.semiempiricalMethod === 'AM1_STAR' ? 'AM1*' : state.semiempiricalMethod;
-    if (!rows.length || !rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
+    if (!state.selected.size || !rows.every(row => hasMolblockInput3DCoordinates(row.molblock))) {
       setStatus(`[grid] Generate 3D coordinates for every selected molecule before calculating ${methodLabel}.`, 'error');
       return;
     }
@@ -2451,10 +2611,10 @@
     refreshGridControls(cfg);
     post('evaluateSemiempiricalGridSelection', `[grid] Calculate ${methodLabel} energies and charges.`, {
       documentId: cfg?.documentId || null,
-      sourceIndexes: rows.map(row => Number(row.index)),
+      sourceIndexes: [...state.selected].map(Number).sort((a, b) => a - b),
       method: state.semiempiricalMethod
     });
-    setStatus(`[grid] Calculating ${methodLabel} energies and charges for ${rows.length.toLocaleString()} selected molecule${rows.length === 1 ? '' : 's'}; execution provenance will identify Metal or CPU fallback.`);
+    setStatus(`[grid] Calculating ${methodLabel} energies and charges for ${state.selected.size.toLocaleString()} selected molecule${state.selected.size === 1 ? '' : 's'}; execution provenance will identify Metal or CPU fallback.`);
   }
 
   function requestSingle3DGeneration(row, cfg) {
@@ -2465,12 +2625,12 @@
     request3DGenerationForRows([row], cfg);
   }
 
-  function request3DGenerationForRows(rows, cfg) {
-    if (!capabilities(cfg).compute) return;
-    const molecules = rows
+  function request3DGenerationForRows(rows, cfg, sourceIndexes = rows.map(row => Number(row.index))) {
+    const nativeSource = capabilities(cfg).cluster && !!cfg.documentId;
+    const molecules = nativeSource ? [] : rows
       .map(row => gridConformerGenerationInput(row))
       .filter(Boolean);
-    if (!molecules.length) {
+    if (!nativeSource && !molecules.length) {
       setStatus('[grid] Selected molecules do not have SDF or SMILES structure data for 3D generation.', 'error');
       return;
     }
@@ -2481,12 +2641,12 @@
     post('generate3dGridSelection', '[grid] Generate 3D for selected molecules.', {
       documentId: cfg?.documentId || null,
       title,
-      sourceIndexes: rows.map(row => Number(row.index)),
+      sourceIndexes,
       molecules,
       conformerVariant: state.conformerVariant,
       mmffVariant: state.mmffVariant
     });
-    setStatus(`[grid] Generating 3D for ${molecules.length.toLocaleString()} molecule${molecules.length === 1 ? '' : 's'}.`);
+    setStatus(`[grid] Generating 3D for ${(nativeSource ? sourceIndexes.length : molecules.length).toLocaleString()} molecule${sourceIndexes.length === 1 ? '' : 's'}.`);
   }
 
   function gridConformerGenerationInput(row) {
@@ -2839,15 +2999,14 @@
           ensureRdkitMolCoordinates(mol);
           templateMol = mol;
         }
-        molecules.push(mol);
+        molecules.push({ mol, row });
       }
       if (!templateMol) return [];
       return molecules
-        .map(mol => alignedMolblockForMolstar(mol, templateMol))
-        .map(sdfRecordFromMolblock)
+        .map(({ mol, row }) => serializeSdfRows([{ ...row, molblock: alignedMolblockForMolstar(mol, templateMol) }]))
         .filter(text => typeof text === 'string' && text.trim().length > 0);
     } finally {
-      for (const mol of molecules) {
+      for (const { mol } of molecules) {
         try { mol?.delete?.(); } catch {}
       }
     }
@@ -2965,21 +3124,21 @@
   }
 
   function shouldFallbackSMARTSToTextSearch() {
-    return state.searchMode !== 'structure' && !!state.smartsError && !!state.smarts.trim() && !queryLooksLikeExplicitSMARTS(state.query);
+    return !!state.smartsError && !!state.smarts.trim() && !queryLooksLikeExplicitSMARTS(state.query);
   }
 
-  // Explicit UI modes are predictable; callers that omit mode retain the
-  // legacy automatic SMARTS/SMILES-fragment interpretation.
-  function setUnifiedSearchQuery(value, cfg, mode = 'auto') {
+  // The single search input is interpreted automatically: SMARTS and
+  // SMILES-fragment queries drive the substructure filter, anything else is
+  // matched as text.
+  function setUnifiedSearchQuery(value, cfg) {
     state.query = value || '';
-    state.smarts = capabilities(cfg).substructureSearch
-      && (mode === 'structure' || (mode === 'auto' && queryLooksLikeSMARTS(value))) ? value || '' : '';
+    state.smarts = capabilities(cfg).substructureSearch && queryLooksLikeSMARTS(value) ? value || '' : '';
   }
 
   function scheduleSearch(value, cfg) {
     const wasPending = Boolean(state.searchTimer);
     clearTimeout(state.searchTimer);
-    setUnifiedSearchQuery(value, cfg, state.searchMode);
+    setUnifiedSearchQuery(value, cfg);
     // Obsolete page/SMARTS requests must stop applying while the user types,
     // rather than remaining valid until the debounce expires.
     state.token += 1;
@@ -3011,14 +3170,11 @@
         if (allLoaded) {
           state.rows = filterByChemicalSpaceSelection(state.rows);
           state.totalRows = state.rows.length;
-          render(cfg);
-          return;
+          return render(cfg);
         }
-        void refreshRemoteChemicalSpaceSelection(cfg);
-        return;
+        return refreshRemoteChemicalSpaceSelection(cfg);
       }
-      void refreshRemote(cfg);
-      return;
+      return refreshRemote(cfg);
     }
     const query = state.smarts.trim() ? '' : normalize(state.query);
     const allRows = currentLocalCollectionRows();
@@ -3041,8 +3197,12 @@
     }
     state.rows.sort((a, b) => compareWithDescriptorSort(a, b));
     state.totalRows = state.rows.length;
-    render(cfg);
+    const rendered = render(cfg);
     postChemicalSpaceVisibility(visibilityRows);
+    // The inspector keeps the last row on screen while the user types, so a new
+    // substructure query has to reach its drawing without another hover.
+    repostInspectorRow(cfg);
+    return rendered;
   }
 
   function chemicalSpaceGridFiltersActive() {
@@ -3200,7 +3360,7 @@
     if (!pattern) return rows;
     if (!state.rdkit || typeof state.rdkit.get_qmol !== 'function') {
       state.smartsError = 'This RDKit build does not support SMARTS queries.';
-      return state.searchMode === 'structure' ? [] : rows;
+      return rows;
     }
 
     let qmol = null;
@@ -3217,7 +3377,7 @@
       return matches;
     } catch (error) {
       state.smartsError = error?.message || String(error);
-      return state.searchMode === 'structure' ? [] : rows;
+      return rows;
     } finally {
       try { qmol?.delete?.(); } catch (_) {}
     }
@@ -3228,11 +3388,7 @@
     try {
       mol = state.rdkit.get_mol(row.molblock || row.smiles || '');
       if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) return null;
-      const raw = mol.get_substruct_match(qmol);
-      const parsed = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw;
-      const atoms = Array.isArray(parsed?.atoms) ? parsed.atoms.filter(Number.isInteger) : [];
-      const bonds = Array.isArray(parsed?.bonds) ? parsed.bonds.filter(Number.isInteger) : [];
-      return atoms.length ? { atoms, bonds } : null;
+      return molSubstructureMatch(mol, qmol);
     } catch (_) {
       return null;
     } finally {
@@ -3240,13 +3396,27 @@
     }
   }
 
+  function molSubstructureMatch(mol, qmol) {
+    const raw = mol.get_substruct_match(qmol);
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw;
+    const atoms = Array.isArray(parsed?.atoms) ? parsed.atoms.filter(Number.isInteger) : [];
+    const bonds = Array.isArray(parsed?.bonds) ? parsed.bonds.filter(Number.isInteger) : [];
+    return atoms.length ? { atoms, bonds } : null;
+  }
+
   function compare(a, b, key) {
-    const get = row => key.startsWith('prop:') ? (row.props || {})[key.slice(5)] : row[key];
-    if (key === 'index') return Number(a.index) - Number(b.index);
-    return String(get(a) || '').localeCompare(String(get(b) || ''), undefined, {
-      numeric: true,
-      sensitivity: 'base'
-    }) || Number(a.index) - Number(b.index);
+    const descending = key.startsWith('desc:');
+    if (descending) key = key.slice(5);
+    const numeric = key.startsWith('numeric:') || key === 'index';
+    if (key.startsWith('numeric:')) key = key.slice(8);
+    const get = row => key.startsWith('prop:') ? (row.props || {})[key.slice(5)]
+      : key.startsWith('analysis:') ? analysisDisplayValue(row.analyses?.[key.slice(9)]) : row[key];
+    const left = get(a), right = get(b);
+    const missing = value => value == null || String(value).trim() === '' || (numeric && !Number.isFinite(Number(value)));
+    if (missing(left) !== missing(right)) return missing(left) ? 1 : -1;
+    const result = numeric ? (Number(left) - Number(right))
+      : String(left ?? '').localeCompare(String(right ?? ''), undefined, { numeric: true, sensitivity: 'base' });
+    return (descending ? -result : result) || Number(a.index) - Number(b.index);
   }
 
   function compareWithDescriptorSort(a, b) {
@@ -3284,7 +3454,6 @@
     window.addEventListener('scroll', state.scrollHandler, { passive: true });
     if (state.resizeHandler) window.removeEventListener('resize', state.resizeHandler);
     state.resizeHandler = () => {
-      updateGridToolbarCondensed();
       updateVirtualGridMetrics();
       scheduleVirtualWindowRender(cfg);
       updateGridRailActive();
@@ -3711,6 +3880,11 @@
     if (state.tableColumnScrollFrame || state.rendering || !state.rows.length) return;
     state.tableColumnScrollFrame = window.requestAnimationFrame(() => {
       state.tableColumnScrollFrame = 0;
+      const columns = tableColumnWindow(tableVisibleColumns(tableColumnCatalog()));
+      if (wrapper.dataset.columnWindow === columns.windowColumns.map(column => column.id).join('|')) {
+        startVisibleRdkitCards();
+        return;
+      }
       void renderVirtualWindow(cfg, state.token, { force: true });
     });
   }
@@ -3728,6 +3902,25 @@
     event.preventDefault();
     wrapper.scrollLeft = next;
     handleTableColumnScroll(wrapper, cfg);
+  }
+
+  // Invalid records remain source rows for tables, analysis and export. Only
+  // the molecular view omits them; raw paging offsets must never change.
+  const invalidCardSources = new WeakMap();
+
+  function omitInvalidCard(row) {
+    const source = row.molblock || row.smiles || '';
+    const changed = !invalidCardSources.has(row) || invalidCardSources.get(row) !== source;
+    invalidCardSources.set(row, source);
+    if (changed && state.viewMode !== 'table') {
+      requestAnimationFrame(() => { void renderVirtualWindow(safeConfig(), state.token, { force: true }); });
+    }
+  }
+
+  function cardViewRows(rows) {
+    if (state.viewMode === 'table') return rows;
+    return rows.filter(row => !invalidCardSources.has(row)
+      || invalidCardSources.get(row) !== (row.molblock || row.smiles || ''));
   }
 
   async function renderVirtualWindow(cfg, token, options = {}) {
@@ -3750,11 +3943,12 @@
       resetCardRenderQueues();
       const fragment = document.createDocumentFragment();
       const cards = [];
-      const rows = state.rows.slice(range.start, range.end);
+      const rows = cardViewRows(state.rows.slice(0, state.visibleCount)).slice(range.start, range.end);
       if (state.viewMode === 'table') {
         fragment.appendChild(gridTable(rows, cfg, range));
         grid.replaceChildren(fragment);
         restoreTableScrollPosition(grid);
+        requestAnimationFrame(startVisibleRdkitCards);
         updateTableHeaderStick();
         state.windowStart = range.start;
         state.windowEnd = range.end;
@@ -3858,14 +4052,14 @@
 
   function maybeLoadMoreForRenderedRange(cfg, range) {
     if (!hasMoreRows() || state.remoteLoading) return;
-    if (range.end >= Math.max(0, state.visibleCount - GRID_WINDOW_OVERSCAN_ROWS)) {
+    if (range.end >= Math.max(0, cardViewRows(state.rows.slice(0, state.visibleCount)).length - GRID_WINDOW_OVERSCAN_ROWS)) {
       window.setTimeout(() => loadMore(cfg), 0);
     }
   }
 
   function virtualWindowRange(grid) {
     updateVirtualGridMetrics();
-    const visibleRows = Math.min(state.visibleCount, state.rows.length);
+    const visibleRows = cardViewRows(state.rows.slice(0, state.visibleCount)).length;
     if (!visibleRows) return { start: 0, end: 0, topHeight: 0, bottomHeight: 0 };
     const columns = Math.max(1, state.estimatedColumnCount);
     const totalGridRows = Math.ceil(visibleRows / columns);
@@ -3899,13 +4093,16 @@
       const row = grid.querySelector('.buret-grid-table-row');
       const rect = row?.getBoundingClientRect?.();
       state.estimatedColumnCount = 1;
+      state.estimatedGridGap = 0;
       state.estimatedRowHeight = rect && Number.isFinite(rect.height) && rect.height > 0
         ? Math.max(36, rect.height)
-        : 44;
+        : effectiveMolecularGrid(safeConfig()) ? 61 : 36;
       return;
     }
     const card = grid.querySelector('.buret-card');
-    const gridWidth = grid.getBoundingClientRect().width || window.innerWidth || DEFAULT_CARD_MIN;
+    // Content width: the cards inset their trailing edge by the dock cover.
+    const gridWidth = (grid.getBoundingClientRect().width - cssPixels(styles.paddingLeft, 0) - cssPixels(styles.paddingRight, 0))
+      || window.innerWidth || DEFAULT_CARD_MIN;
     if (card) {
       const rect = card.getBoundingClientRect();
       if (Number.isFinite(rect.width) && rect.width > 0) {
@@ -3955,32 +4152,12 @@
         ? `Indexing failed: ${state.indexError}`
         : state.indexing
         ? `Indexing ${included.toLocaleString()}${state.recordsTotalHint ? ` / ${state.recordsTotalHint.toLocaleString()}` : ''} ${effectiveMolecularGrid(cfg) ? 'molecules' : 'rows'}`
-        : hasMoreRows()
-        ? 'More rows available'
         : '';
     }
     const clearSMARTS = document.getElementById('clear-smarts');
     if (clearSMARTS) clearSMARTS.hidden = !state.query.trim();
     const searchInput = document.getElementById('search');
     if (searchInput) searchInput.classList.toggle('invalid', !!state.smartsError);
-    const selectableIndexes = selectableRowIndexes();
-    const allCurrentSelected = selectableIndexes.length > 0 && selectableIndexes.every(index => state.selected.has(index));
-    const selectAllButton = document.getElementById('select-all');
-    if (selectAllButton) {
-      selectAllButton.hidden = selectableIndexes.length === 0;
-      selectAllButton.disabled = selectableIndexes.length === 0 || allCurrentSelected;
-    }
-    const clearSelectionButton = document.getElementById('clear-selection');
-    if (clearSelectionButton) {
-      clearSelectionButton.hidden = state.selected.size === 0;
-      clearSelectionButton.disabled = state.selected.size === 0;
-    }
-    const selectedOpenActions = document.getElementById('selected-open-actions');
-    if (selectedOpenActions) selectedOpenActions.hidden = state.selected.size === 0;
-    const openSelectedMolstar = document.getElementById('open-selected-molstar');
-    if (openSelectedMolstar) openSelectedMolstar.disabled = state.selected.size === 0;
-    const openSelectedKetcher = document.getElementById('open-selected-ketcher');
-    if (openSelectedKetcher) openSelectedKetcher.disabled = state.selected.size === 0 || Date.now() < state.ketcherOpenPendingUntil;
     syncGridClusterControls();
     syncRdkitCoordinatesControl();
     syncGridEditControls();
@@ -3997,20 +4174,15 @@
       footerText = `Showing first ${included.toLocaleString()} of ${total.toLocaleString()} records.`;
     } else if (hasMoreRows()) {
       footerText = `Scroll to load more. ${scrollable.toLocaleString()} of ${visible.toLocaleString()} visible ${effectiveMolecularGrid(cfg) ? 'molecules' : 'rows'} are scrollable.`;
-    } else if (state.remoteMode) {
-      footerText = 'Desktop grid runtime loads rows on demand and keeps only the active window mounted.';
     } else {
-      footerText = !effectiveMolecularGrid(cfg)
-        ? 'Tabular data preview with search, sort, columns, and filters.'
-        : state.cardRenderer === 'xyzrender'
-        ? 'External xyzrender card rendering.'
-        : '';
+      footerText = '';
     }
     const footer = document.getElementById('footer');
     footer.textContent = footerText;
     footer.hidden = !footerText;
     updateGridRail();
     notifyGridMenuState(cfg);
+    notifyGridAgentState(cfg, total, visible);
   }
 
   function moleculeCountLabel(count) {
@@ -4077,7 +4249,7 @@
     const rows = state.rows || [];
     rail.hidden = gridRailTotalRows() < 2;
     if (rail.hidden) return;
-    const railRows = gridRailRows(rows);
+    const railRows = gridRailRows(rows).filter(({ row }) => !row || cardViewRows([row]).length > 0);
     ticks.innerHTML = railRows.map(({ row, position }, markerIndex) => {
       const index = row ? Number(row.index) : null;
       const title = escapeAttr(row?.name || `Molecule ${position + 1}`);
@@ -4225,6 +4397,46 @@
     if (popover) popover.hidden = true;
   }
 
+  // Map IDs are source identities, not positions in the current sorted/filtered
+  // result. Resolve the row through that result before asking virtualization to
+  // reveal it; a newer query or map click cancels the outstanding navigation.
+  async function revealChemicalSpaceRow(index, cfg, token) {
+    if (token !== state.dataToken) return;
+    const loadToken = ++state.remoteLoadToken;
+    if (state.remoteMode) state.remoteLoading = true;
+    try {
+      while (!state.rows.some(row => Number(row.index) === index)
+        && state.remoteMode && state.rows.length < state.totalRows) {
+        const result = await hostRequest('gridFetchPage', gridFetchPayload({
+          query: state.query || '',
+          sort: state.sort || 'index',
+          offset: state.rows.length,
+          limit: Math.max(loadBatchSize(cfg), 240)
+        }));
+        if (token !== state.dataToken) return;
+        const rows = applyVirtualGridEdits(await hydrateDataWarriorRows(Array.isArray(result.rows) ? result.rows : [], cfg));
+        if (token !== state.dataToken) return;
+        applyGridPageState(result);
+        if (!rows.length) break;
+        state.rows.push(...rows);
+        invalidateTableColumnCatalog();
+      }
+      if (token !== state.dataToken) return;
+      if (state.rows.some(row => Number(row.index) === index)) {
+        scrollToGridRow(index, cfg, { behavior: 'auto' });
+      } else {
+        setStatus('The selected molecule is hidden by the current grid filters.');
+      }
+    } catch (error) {
+      if (token === state.dataToken) setStatus(error?.message || String(error), 'error');
+    } finally {
+      if (loadToken === state.remoteLoadToken) {
+        state.remoteLoading = false;
+        syncGridEditControls();
+      }
+    }
+  }
+
   function scrollToGridRow(index, cfg, options = {}) {
     const behavior = options.behavior || (state.railDragging ? 'auto' : 'smooth');
     let card = document.querySelector(`.buret-card[data-index="${index}"], .buret-grid-table-row[data-index="${index}"]`);
@@ -4237,7 +4449,7 @@
     if (rowIndex >= 0) {
       state.pendingGridScrollIndex = index;
       state.visibleCount = Math.min(state.rows.length, Math.max(state.visibleCount, rowIndex + 1));
-      scrollToEstimatedGridRow(rowIndex, behavior);
+      scrollToEstimatedGridRow(cardViewRows(state.rows.slice(0, rowIndex)).length, behavior);
       if (state.rendering) {
         state.pendingLoad = true;
         return;
@@ -4609,6 +4821,72 @@
     post('gridFilterModel', '[grid] Column filter model.', { model });
   }
 
+  // Read-only grid state for the agent observe payload. Every field is bounded
+  // so a 1M-row selection or a long query never reaches agent context in full.
+  const GRID_AGENT_MAX_SELECTED_IDS = 50;
+  const GRID_AGENT_MAX_FILTERS = 20;
+  const GRID_AGENT_MAX_TEXT = 256;
+
+  function gridAgentText(value) {
+    return String(value ?? '').slice(0, GRID_AGENT_MAX_TEXT);
+  }
+
+  function gridAgentFilters() {
+    const filters = [];
+    for (const filter of state.descriptorFilters || []) {
+      if (!filter?.id) continue;
+      const row = { id: gridAgentText(`descriptor:${filter.id}`), type: 'number' };
+      if (Number.isFinite(Number(filter.min))) row.min = Number(filter.min);
+      if (Number.isFinite(Number(filter.max))) row.max = Number(filter.max);
+      filters.push(row);
+    }
+    for (const [columnId, filter] of Object.entries(state.tableColumnFilters || {})) {
+      if (!filter || tableColumnFilterEmpty(filter)) continue;
+      const row = { id: gridAgentText(columnId), type: filter.type === 'number' ? 'number' : 'text' };
+      if (row.type === 'number') {
+        if (String(filter.min ?? '').trim() && Number.isFinite(Number(filter.min))) row.min = Number(filter.min);
+        if (String(filter.max ?? '').trim() && Number.isFinite(Number(filter.max))) row.max = Number(filter.max);
+      } else {
+        row.text = gridAgentText(String(filter.text || '').trim());
+      }
+      filters.push(row);
+    }
+    return filters;
+  }
+
+  function notifyGridAgentState(cfg, totalRows, visibleRows) {
+    if (cfg?.appViewer !== true) return;
+    const sort = tableActiveSort();
+    const selectedRowIds = [];
+    for (const index of state.selected) {
+      if (selectedRowIds.length >= GRID_AGENT_MAX_SELECTED_IDS) break;
+      const numeric = Number(index);
+      if (Number.isSafeInteger(numeric) && numeric >= 0) selectedRowIds.push(numeric);
+    }
+    const filters = gridAgentFilters();
+    const query = String(state.query || '');
+    const payload = {
+      sort: sort ? { key: gridAgentText(sort.columnId), direction: sort.direction } : { key: 'index', direction: 'asc' },
+      searchQuery: query.slice(0, GRID_AGENT_MAX_TEXT),
+      searchQueryTruncated: query.length > GRID_AGENT_MAX_TEXT,
+      smartsSearch: Boolean(state.smarts),
+      filters: filters.slice(0, GRID_AGENT_MAX_FILTERS),
+      filterCount: filters.length,
+      chemicalSpaceFilterActive: state.chemicalSpaceFilterActive === true,
+      selectedCount: state.selected.size,
+      selectedRowIds,
+      selectionTruncated: state.selected.size > selectedRowIds.length,
+      totalRows: Math.max(0, Number(totalRows) || 0),
+      visibleRows: Math.max(0, Number(visibleRows) || 0),
+      viewMode: gridAgentText(state.viewMode),
+      indexing: state.indexing === true,
+    };
+    const signature = JSON.stringify(payload);
+    if (signature === state.gridAgentStateSignature) return;
+    state.gridAgentStateSignature = signature;
+    post('gridAgentState', '', { gridState: payload });
+  }
+
   // How far the right dock floats over the grid. A spilling grid keeps its full
   // width, so this is pushed from the host rather than read from a resize.
   function setGridViewportCover(cover) {
@@ -4616,6 +4894,10 @@
     if (next === state.gridViewportCover) return;
     state.gridViewportCover = next;
     applyGridToolbarInset();
+    // Cards reflow into the exposed strip (grid.css); the iframe itself keeps
+    // its size, so re-run the resize path to re-window the virtual rows.
+    document.documentElement.style.setProperty('--buret-grid-viewport-cover', `${next}px`);
+    state.resizeHandler?.();
   }
 
   // Cap the toolbar to the strip the dock is not covering, so its buttons and
@@ -4628,7 +4910,7 @@
     const cover = state.gridViewportCover;
     host.dataset.viewportCover = String(cover);
     host.style.maxWidth = cover > 0
-      ? Math.max(0, document.documentElement.clientWidth - cover) + 'px'
+      ? Math.max(0, document.documentElement.clientWidth - cover - Math.max(0, host.getBoundingClientRect().left) - 8) + 'px'
       : '';
   }
 
@@ -4657,6 +4939,8 @@
     const columnSpan = tableRenderedColumnSpan(columnWindow);
     const wrapper = document.createElement('div');
     wrapper.className = 'buret-grid-table-wrap';
+    wrapper.classList.toggle('buret-grid-table-molecular', effectiveMolecularGrid(cfg));
+    wrapper.dataset.columnWindow = columnWindow.windowColumns.map(column => column.id).join('|');
     wrapper.tabIndex = 0;
     wrapper.setAttribute('aria-label', effectiveMolecularGrid(cfg) ? 'Molecule table' : 'Data table');
     wrapper.innerHTML = `
@@ -4676,6 +4960,12 @@
     wrapper.scrollLeft = state.tableScrollLeft;
     wrapper.addEventListener('scroll', () => handleTableColumnScroll(wrapper, cfg), { passive: true });
     wrapper.addEventListener('wheel', event => handleTableWheel(event, wrapper, cfg), { passive: false });
+    wrapper.querySelectorAll('th[data-column]').forEach(header => {
+      header.addEventListener('contextmenu', event => {
+        const column = catalog.find(column => column.id === header.dataset.column);
+        if (column) showColumnContextMenu(event, column, cfg);
+      });
+    });
     wrapper.querySelectorAll('[data-buret-table-filter-toggle]').forEach(button => {
       button.addEventListener('click', event => {
         event.preventDefault();
@@ -4694,6 +4984,7 @@
       rowEl.addEventListener('dblclick', event => handleTableRowOpen(event, row, cfg));
       rowEl.addEventListener('contextmenu', event => showMoleculeContextMenu(event, row));
       installTableMoleculeHover(rowEl, row, cfg);
+      installCardDrag(rowEl, row);
       scheduleRdkitCard(rowEl, row);
       scheduleXyzrenderCard(rowEl, row, cfg);
     });
@@ -4778,6 +5069,14 @@
     ];
     const descriptorColumns = new Map();
     const analysisColumns = new Map();
+    // Server metadata defines the result order; sparse row objects may arrive
+    // alphabetically and must not move primary energies behind charge arrays.
+    if (state.remoteMode) {
+      for (const column of state.remoteAnalysisColumns || []) {
+        const valueId = String(column?.valueId || '');
+        if (valueId) analysisColumns.set(valueId, column);
+      }
+    }
     const propColumns = new Set();
     for (const row of rows) {
       for (const [id, value] of Object.entries(row.descriptors || {})) {
@@ -4799,15 +5098,11 @@
       for (const id of state.remoteDescriptorIds || []) {
         if (!descriptorColumns.has(id)) descriptorColumns.set(id, id);
       }
-      for (const column of state.remoteAnalysisColumns || []) {
-        const valueId = String(column?.valueId || '');
-        if (valueId) analysisColumns.set(valueId, column);
-      }
     }
     for (const key of propColumns) {
       columns.push({
         id: `prop:${key}`,
-        label: key,
+        label: columns.some(column => column.label.toLowerCase() === key.toLowerCase()) ? `${key} (file)` : key,
         type: inferPropColumnType(rows, key),
         kind: 'property',
         get: row => row.props?.[key] ?? ''
@@ -4817,7 +5112,7 @@
       columns.push({
         id: `descriptor:${id}`,
         label,
-        type: 'number',
+        type: id.startsWith('RGroup_') || id === 'Scaffold' ? 'text' : 'number',
         kind: 'descriptor',
         title: descriptorHelpText(id, label),
         get: row => descriptorDisplayValue(row.descriptors?.[id])
@@ -4880,11 +5175,22 @@
   }
 
   function tableVisibleColumns(catalog) {
-    return catalog.filter(column => column.fixed || !state.tableHiddenColumns.has(column.id));
+    return catalog.filter(column => column.fixed || !state.tableHiddenColumns.has(column.id))
+      .sort((a, b) => Number(state.tablePinnedColumns.has(b.id)) - Number(state.tablePinnedColumns.has(a.id))
+        || Number(['prop:CSV row', 'prop:SMILES column'].includes(a.id))
+          - Number(['prop:CSV row', 'prop:SMILES column'].includes(b.id)));
   }
 
   function tableColumnWindow(columns) {
-    const viewportWidth = tableViewportWidth();
+    const fixedColumns = columns.filter(column => state.tablePinnedColumns.has(column.id));
+    let fixedWidth = 0;
+    state.tablePinnedOffsets = new Map();
+    for (const column of fixedColumns) {
+      state.tablePinnedOffsets.set(column.id, fixedWidth);
+      fixedWidth += tableColumnWidth(column);
+    }
+    columns = columns.filter(column => !state.tablePinnedColumns.has(column.id));
+    const viewportWidth = Math.max(TABLE_DEFAULT_COLUMN_WIDTH, tableViewportWidth() - fixedWidth);
     const scrollLeft = Math.max(0, Number(state.tableScrollLeft) || 0);
     const visibleLeft = Math.max(0, scrollLeft - TABLE_COLUMN_OVERSCAN_PX);
     const visibleRight = scrollLeft + viewportWidth + TABLE_COLUMN_OVERSCAN_PX;
@@ -4909,7 +5215,7 @@
       rightOffset += widths[start] || TABLE_DEFAULT_COLUMN_WIDTH;
     }
     return {
-      fixedColumns: [],
+      fixedColumns,
       scrollColumns: columns,
       windowColumns: columns.slice(start, end),
       leftSpacerWidth: offset,
@@ -4948,19 +5254,22 @@
   function tableColumnWidth(column) {
     const override = state.tableColumnWidths.get(column.id);
     if (Number.isFinite(override)) return override;
-    if (column.id === 'index') return 64;
+    if (column.id === 'index') return 44;
     if (column.id === 'molecule') return 74;
     if (column.id === 'name') return 160;
-    if (column.id === 'smiles') return 240;
+    if (column.id === 'smiles') return 180;
     return TABLE_DEFAULT_COLUMN_WIDTH;
   }
 
-  // Only user-resized columns get inline widths; the others keep the
-  // stylesheet's content-driven min/max clamp.
+  // Use the same widths for layout and column virtualization to avoid jumps.
   function tableColumnWidthStyle(column) {
-    const override = state.tableColumnWidths.get(column.id);
-    if (!Number.isFinite(override)) return '';
-    return ` style="width:${override}px;min-width:${override}px;max-width:${override}px"`;
+    const pinnedLeft = state.tablePinnedOffsets.get(column.id);
+    if (pinnedLeft !== undefined) {
+      const width = tableColumnWidth(column);
+      return ` data-buret-pinned-column="true" style="position:sticky;left:${pinnedLeft}px;width:${width}px;min-width:${width}px;max-width:${width}px"`;
+    }
+    const width = tableColumnWidth(column);
+    return ` style="width:${width}px;min-width:${width}px;max-width:${width}px"`;
   }
 
   function tableColumnResizable(column) {
@@ -4979,7 +5288,7 @@
     }
     const key = state.sort || 'index';
     if (key === 'index') return null;
-    return { columnId: key, direction: 'asc' };
+    return { columnId: key.replace(/^desc:/, '').replace(/^numeric:/, ''), direction: key.startsWith('desc:') ? 'desc' : 'asc' };
   }
 
   function tableSortIndicatorHTML(direction) {
@@ -5068,7 +5377,13 @@
 
   function tableCellHTML(row, column, cfg) {
     if (column.html) return column.html(row, cfg);
-    return tableHighlightedTextHTML(String(column.get(row) ?? ''));
+    const value = String(column.get(row) ?? '');
+    const id = column.id.replace(/^(?:descriptor|prop):/u, '');
+    if (value && /^(?:Scaffold|RGroup_(?:Core|R[1-9][0-9]*|Components))$/u.test(id)) {
+      const fragment = { index: 'fragment', smiles: value, fragment: true };
+      return `<div class="buret-grid-table-fragment" data-buret-fragment-smiles="${escapeAttr(value)}" data-buret-molecule-picture role="img" aria-label="${escapeAttr(value)}" title="${escapeAttr(value)}">${drawRdkitPlaceholder(fragment)}</div>`;
+    }
+    return `<span class="buret-cell-marquee"><span>${tableHighlightedTextHTML(value)}</span></span>`;
   }
 
   function tableHighlightedTextHTML(text) {
@@ -5104,7 +5419,7 @@
   }
 
   function tableSearchQuery() {
-    return state.searchMode === 'structure' ? '' : normalize(state.query).trim();
+    return normalize(state.query).trim();
   }
 
   function tableColumnPanelHTML(catalog, visibleColumns) {
@@ -5374,7 +5689,9 @@
       const value = row.analyses?.[columnId.slice('analysis:'.length)]?.value;
       return typeof value === 'number' && Number.isFinite(value) ? value : Number.NaN;
     }
-    const value = Number(tableColumnRawDisplayValue(row, columnId));
+    const text = tableColumnRawDisplayValue(row, columnId).trim();
+    if (!text) return Number.NaN;
+    const value = Number(text);
     return Number.isFinite(value) ? value : Number.NaN;
   }
 
@@ -5451,7 +5768,13 @@
         event.preventDefault();
         return;
       }
-      const records = gridDragRecordsForRow(row);
+      const records = gridDragRecordsForRow(row, window.BuretteConfig?.documentId || window.location.href);
+      const selectedCount = state.selected.has(Number(row.index)) && state.selected.size > 1 ? state.selected.size : 1;
+      if (records.length !== selectedCount || records.length > 200 || records.reduce((size, record) => size + new TextEncoder().encode(record.text).length, 0) > 24 * 1024 * 1024) {
+        event.preventDefault();
+        setStatus('[grid] Drag up to 200 loaded molecules (24 MB). Load the selected rows before dragging the whole selection.', 'error');
+        return;
+      }
       if (!records.length) {
         event.preventDefault();
         return;
@@ -5461,10 +5784,20 @@
         event.dataTransfer?.setData(STRUCTURE_DRAG_MIME, JSON.stringify(payload));
         event.dataTransfer?.setData('text/plain', records.map(item => item.text.trimEnd()).join('\n') + '\n');
         if (event.dataTransfer) event.dataTransfer.effectAllowed = 'copy';
+        const preview = document.createElement('div');
+        preview.className = 'buret-structure-drag-preview';
+        preview.textContent = records.length === 1 ? records[0].path.split('/').pop() : `${records.length} molecules`;
+        document.body.appendChild(preview);
+        event.dataTransfer?.setDragImage(preview, 12, 12);
+        requestAnimationFrame(() => preview.remove());
+        activeStructureDrag = true;
+        post('structureDragStart', '', { payload });
       } catch (_) {}
     });
     el.addEventListener('dragend', () => {
+      activeStructureDrag = false;
       cardDragSourceAllowed = true;
+      post('structureDragEnd', '');
     });
   }
 
@@ -6086,15 +6419,20 @@
     }
   }
 
-  function gridDragRecordsForRow(row) {
+  function gridDragRecordsForRow(row, sceneScope) {
+    const recordForRow = candidate => {
+      const record = gridDragRecord(candidate);
+      if (record && sceneScope) record.path = `grid-record/${encodeURIComponent(sceneScope)}/${candidate.index}/${record.path}`;
+      return record;
+    };
     const rowIndex = Number(row?.index);
     if (!Number.isFinite(rowIndex) || !state.selected.has(rowIndex) || state.selected.size < 2) {
-      return [gridDragRecord(row)].filter(Boolean);
+      return [recordForRow(row)].filter(Boolean);
     }
     const pool = state.remoteMode ? state.rows : state.all;
     return pool
       .filter(candidate => state.selected.has(Number(candidate.index)))
-      .map(candidate => gridDragRecord(candidate))
+      .map(recordForRow)
       .filter(Boolean);
   }
 
@@ -6473,7 +6811,7 @@
     }
     const returnFocus = state.contextMenuReturnFocus;
     state.contextMenuReturnFocus = null;
-    if (returnFocus?.isConnected) returnFocus.focus?.();
+    if (returnFocus?.isConnected) returnFocus.focus?.({ preventScroll: true });
   }
 
   function handleGridShellContextMenu(event) {
@@ -6856,7 +7194,6 @@
         <div class="buret-grid-molecule-detail-body">
           <div class="buret-grid-molecule-detail-title-row">
             <div>
-              <div class="buret-eyebrow">Molecule ${Number.isFinite(index) ? index + 1 : ''}</div>
               <h2 id="buret-grid-molecule-detail-title">${escapeHTML(row.name || `Molecule ${index + 1}`)}</h2>
             </div>
             <button type="button" data-buret-detail-close aria-label="Close molecule detail" title="Close">&times;</button>
@@ -6883,10 +7220,10 @@
             <pre class="buret-grid-molecule-detail-source">${escapeHTML(moleculeDetailSource(row))}</pre>
           </div>
           <div class="buret-grid-molecule-detail-actions">
-            ${capabilities(cfg).compute ? '<button type="button" data-buret-detail-action="descriptors">Calculate descriptors</button>' : ''}
-            <button type="button" data-buret-detail-action="molstar">Open in Mol*</button>
+            <button type="button" data-buret-detail-action="descriptors">Calculate descriptors</button>
+            <button type="button" data-buret-detail-action="molstar">Open in new tab</button>
             <button type="button" data-buret-detail-action="ketcher">Edit in Ketcher</button>
-            ${capabilities(cfg).compute ? '<button type="button" data-buret-detail-action="generate3d">Generate 3D</button>' : ''}
+            <button type="button" data-buret-detail-action="generate3d">Generate 3D</button>
             <button type="button" data-buret-detail-action="copy">Copy structure</button>
             <button type="button" data-buret-detail-action="export">Export molecule...</button>
           </div>
@@ -7214,22 +7551,7 @@
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation?.();
-    hideMoleculeContextMenu();
-    const returnFocus = event.target instanceof Element
-      ? event.target.closest('.buret-card, .buret-grid-table-row, [tabindex]')
-      : null;
-    state.contextMenuReturnFocus = returnFocus instanceof HTMLElement ? returnFocus : null;
     const index = Number(row.index);
-    const menu = document.createElement('div');
-    menu.className = 'buret-grid-molecule-context-menu';
-    menu.setAttribute('role', 'menu');
-    menu.setAttribute('aria-label', 'Molecule actions');
-    const title = document.createElement('div');
-    title.className = 'buret-grid-molecule-context-menu-title';
-    title.textContent = row.name || `Molecule ${index + 1}`;
-    const subtitle = document.createElement('div');
-    subtitle.className = 'buret-grid-molecule-context-menu-subtitle';
-    subtitle.textContent = row.smiles || 'SDF molecule';
     const editing = capabilities(cfg).editing;
     const actions = [
       ['open', 'Preview molecule'],
@@ -7246,30 +7568,195 @@
       actions.push(['pubchem-identity', 'Search PubChem — Identical']);
       actions.push(['pubchem-similarity', 'Search PubChem — Similar (90%)']);
     }
-    menu.append(title, subtitle);
-    actions.forEach(([action, label]) => {
+    const entries = actions.map(([id, label]) => ({ id, label, action: () => moleculeContextMenuAction(id, row) }));
+    if (rowSmiles(row)) entries.push({ id: 'copy-smiles', label: 'Copy SMILES', action: () => copyGridText(rowSmiles(row), 'SMILES') });
+    const cell = event.target.closest('td[data-column]');
+    const column = cell && tableColumnCatalog().find(column => column.id === cell.dataset.column);
+    if (column?.get) {
+      const value = String(column.get(row) ?? '');
+      entries.unshift(
+        { id: 'copy-cell', label: 'Copy Cell Value', action: () => copyGridText(value, column.label) },
+        { id: 'filter-cell', label: 'Filter by This Value', disabled: !value.trim(), action: () => {
+          state.tableColumnFilters[column.id] = column.type === 'number'
+            ? { type: 'number', min: value, max: value } : { type: 'text', text: value };
+          void refresh(cfg);
+        } }, null);
+    }
+    if (state.selected.size > 1 && state.selected.has(index)) {
+      entries.unshift(
+        { id: 'copy-selected', label: `Copy ${state.selected.size} Selected SMILES`, action: () => copySelected() },
+        { id: 'export-selected', label: `Export ${state.selected.size} Selected Rows as CSV…`, action: () => exportCSV(cfg) },
+        { id: 'export-selected-smiles', label: 'Export Selected as SMILES…', action: () => exportSmiles(cfg) }, null);
+    }
+    if (cfg.appViewer === true && window.parent !== window) {
+      entries.push(
+        { id: 'copy-name', label: 'Name', action: () => copyGridText(row.name || `Molecule ${index + 1}`, 'name') },
+        { id: 'select-row', label: 'Molecule', action: () => { state.selected = new Set([index]); void refresh(cfg); } },
+        { id: 'select-all', label: 'All', action: () => selectAllRows(cfg) },
+        { id: 'clear-selection', label: 'None', action: () => clearSelection(cfg) }
+      );
+      if (state.selected.size > 1 && state.selected.has(index)) entries.push({ id: 'selected-molstar', label: 'Together', action: () => requestSdfPoseDocument(cfg) });
+      const requestId = `grid-menu-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const receive = event => {
+        const body = event.source === window.parent && event.data?.source === 'burette-grid-host' ? event.data.body : null;
+        if (body?.type !== 'gridWorkspaceMenuResult' || body.requestId !== requestId) return;
+        window.removeEventListener('message', receive);
+        clearTimeout(timeout);
+        const entry = entries.find(entry => entry?.id === body.command && !entry.disabled);
+        if (entry) Promise.resolve().then(entry.action).catch(error => setStatus(String(error), 'error'));
+      };
+      const timeout = setTimeout(() => window.removeEventListener('message', receive), 60000);
+      window.addEventListener('message', receive);
+      post('gridWorkspaceMenu', '', { requestId, x: event.clientX, y: event.clientY,
+        entries: entries.filter(Boolean).map(({ id, label, disabled }) => ({ id, label, disabled })),
+        records: (() => { const records = gridDragRecordsForRow(row, cfg.documentId || window.location.href); return records.length <= 200 && (state.selected.size < 2 || !state.selected.has(index) || records.length === state.selected.size) && records.reduce((size, record) => size + new TextEncoder().encode(record.text).length, 0) <= 24 * 1024 * 1024 ? records : []; })()
+      });
+      return;
+    }
+    showGridContextMenu(event, row.name || `Molecule ${index + 1}`, entries, row.smiles || '');
+  }
+
+  async function copyGridText(text, label) {
+    if (await writeClipboardText(text, `[grid] Copied ${label}.`)) return;
+    if (canUseNativeBridge()) post('copyText', `[grid] Copy ${label}.`, { text });
+    else setStatus('Clipboard is unavailable in this WebView.', 'error');
+  }
+
+  function showGridContextMenu(event, title, entries, detail = '') {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+    hideMoleculeContextMenu();
+    state.contextMenuReturnFocus = event.target.closest?.('[tabindex], .buret-card, .buret-grid-table-row');
+    const menu = document.createElement('div');
+    menu.className = 'buret-grid-molecule-context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.tabIndex = -1;
+    menu.setAttribute('aria-label', title);
+    const heading = document.createElement('div');
+    heading.className = 'buret-grid-molecule-context-menu-title';
+    heading.textContent = title;
+    menu.append(heading);
+    if (detail) {
+      const subtitle = document.createElement('div');
+      subtitle.className = 'buret-grid-molecule-context-menu-subtitle';
+      subtitle.textContent = detail;
+      menu.append(subtitle);
+    }
+    entries.forEach(entry => {
+      if (!entry) { const divider = document.createElement('hr'); divider.setAttribute('role', 'separator'); menu.append(divider); return; }
       const button = document.createElement('button');
       button.type = 'button';
       button.setAttribute('role', 'menuitem');
-      button.dataset.buretMoleculeAction = action;
-      button.textContent = label;
-      button.addEventListener('click', () => moleculeContextMenuAction(action, row));
+      button.dataset.buretMoleculeAction = entry.id;
+      button.textContent = entry.label;
+      button.disabled = Boolean(entry.disabled);
+      button.addEventListener('click', () => {
+        hideMoleculeContextMenu();
+        Promise.resolve().then(entry.action).catch(error => setStatus(String(error), 'error'));
+      });
       menu.appendChild(button);
     });
     root.appendChild(menu);
     positionMoleculeContextMenu(menu, event.clientX, event.clientY);
-    menu.querySelector('button')?.focus();
+    queueMicrotask(() => {
+      if (config().appViewer !== true || window.parent === window || !menu.isConnected || menu.getAttribute('role') !== 'menu') return;
+      window.BuretteNativeViewerMenus?.show(menu, {
+        x: event.clientX, y: event.clientY,
+        post: body => { post(body.type, '', body); return true; },
+        close: () => { if (menu.isConnected) hideMoleculeContextMenu(); }
+      });
+    });
+    (menu.querySelector('button:not(:disabled)') || menu).focus({ preventScroll: true });
     state.contextMenuOutsideHandler = outsideEvent => {
-      if (outsideEvent.target instanceof Element && outsideEvent.target.closest('.buret-grid-molecule-context-menu')) return;
-      hideMoleculeContextMenu();
+      if (!menu.contains(outsideEvent.target)) hideMoleculeContextMenu();
     };
     state.contextMenuKeyHandler = keyEvent => {
-      if (keyEvent.key === 'Escape') hideMoleculeContextMenu();
+      if (keyEvent.key === 'Escape') { hideMoleculeContextMenu(); return; }
+      if (keyEvent.key === 'Tab') {
+        if (!menu.querySelector('input')) { hideMoleculeContextMenu(); return; }
+        keyEvent.preventDefault();
+        const controls = [...menu.querySelectorAll('input, button:not(:disabled)')];
+        const next = (controls.indexOf(document.activeElement) + (keyEvent.shiftKey ? -1 : 1) + controls.length) % controls.length;
+        controls[next]?.focus({ preventScroll: true });
+        return;
+      }
+      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(keyEvent.key) || keyEvent.target?.matches?.('input')) return;
+      keyEvent.preventDefault();
+      const buttons = [...menu.querySelectorAll('button:not(:disabled)')];
+      const current = buttons.indexOf(document.activeElement);
+      const index = keyEvent.key === 'Home' ? 0 : keyEvent.key === 'End' ? buttons.length - 1
+        : (current + (keyEvent.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+      buttons[index]?.focus({ preventScroll: true });
     };
     document.addEventListener('pointerdown', state.contextMenuOutsideHandler, true);
     window.addEventListener('scroll', state.contextMenuOutsideHandler, true);
     window.addEventListener('resize', state.contextMenuOutsideHandler, true);
     document.addEventListener('keydown', state.contextMenuKeyHandler);
+    return menu;
+  }
+
+  function showColumnContextMenu(event, column, cfg) {
+    const canSort = column.type !== 'none' && (!state.remoteMode || !column.id.startsWith('analysis:'));
+    const sort = direction => {
+      state.descriptorSort = column.id.startsWith('descriptor:') ? { id: column.id.slice(11), direction } : null;
+      state.sort = state.descriptorSort ? 'index'
+        : `${direction === 'desc' ? 'desc:' : ''}${column.type === 'number' && column.id !== 'index' ? 'numeric:' : ''}${column.id}`;
+      refreshGridControls(cfg);
+      void refresh(cfg);
+    };
+    showGridContextMenu(event, column.label, [
+      { id: 'sort-asc', label: 'Sort Ascending', disabled: !canSort, action: () => sort('asc') },
+      { id: 'sort-desc', label: 'Sort Descending', disabled: !canSort, action: () => sort('desc') },
+      { id: 'clear-sort', label: 'Restore File Order', action: () => { state.sort = 'index'; state.descriptorSort = null; refreshGridControls(cfg); void refresh(cfg); } }, null,
+      { id: 'filter-column', label: 'Filter Column…', disabled: column.type === 'none', action: () => showColumnFilterMenu(event, column, cfg) },
+      { id: 'clear-column-filter', label: 'Clear Column Filter', disabled: !state.tableColumnFilters[column.id], action: () => clearGridColumnFilters(cfg, column.id) },
+      { id: 'pin-column', label: state.tablePinnedColumns.has(column.id) ? 'Unpin Column' : 'Pin Column', action: () => {
+        if (state.tablePinnedColumns.has(column.id)) state.tablePinnedColumns.delete(column.id);
+        else state.tablePinnedColumns.add(column.id);
+        storeStringSet(TABLE_PINNED_COLUMNS_STORAGE_KEY, state.tablePinnedColumns);
+        void render(cfg);
+      } },
+      { id: 'hide-column', label: 'Hide Column', disabled: column.fixed, action: () => { state.tableHiddenColumns.add(column.id); storeStringSet(TABLE_HIDDEN_COLUMNS_STORAGE_KEY, state.tableHiddenColumns); void render(cfg); } },
+      { id: 'choose-columns', label: 'Show / Hide Columns…', action: () => toggleTableColumnPanel(cfg) },
+      { id: 'reset-column-width', label: 'Reset Column Width', action: () => { state.tableColumnWidths.delete(column.id); storeColumnWidths(TABLE_COLUMN_WIDTHS_STORAGE_KEY, state.tableColumnWidths); void render(cfg); } }, null,
+      { id: 'column-statistics', label: 'Column Statistics', disabled: column.type !== 'number', action: () => {
+        const rows = tableColumnDiscoveryRows();
+        const values = rows.map(row => tableColumnNumericValue(row, column.id)).filter(Number.isFinite);
+        let min = Infinity, max = -Infinity, sum = 0;
+        for (const value of values) { min = Math.min(min, value); max = Math.max(max, value); sum += value; }
+        const details = `Count: ${values.length} · Missing: ${rows.length - values.length}` + (values.length ? ` · Min: ${min} · Max: ${max} · Mean: ${(sum / values.length).toPrecision(5)}` : '');
+        const panel = showGridContextMenu(event, column.label, [], `${state.remoteMode ? 'Loaded rows only. ' : ''}${details}`);
+        panel.classList.add('buret-grid-statistics-menu');
+        panel.setAttribute('role', 'dialog');
+      } },
+    ]);
+  }
+
+  function showColumnFilterMenu(event, column, cfg) {
+    const filter = state.tableColumnFilters[column.id] || {};
+    const fields = column.type === 'number' ? ['min', 'max'] : ['text'];
+    const draft = { type: column.type === 'number' ? 'number' : 'text', ...filter };
+    const menu = showGridContextMenu(event, `Filter ${column.label}`, [{ id: 'apply-filter', label: 'Apply Filter', action: () => {
+      if (tableColumnFilterEmpty(draft)) delete state.tableColumnFilters[column.id];
+      else state.tableColumnFilters[column.id] = draft;
+      void refresh(cfg);
+    } }]);
+    menu.setAttribute('role', 'dialog');
+    fields.forEach(part => {
+      const label = document.createElement('label');
+      label.textContent = part === 'text' ? 'Contains' : part === 'min' ? 'Minimum' : 'Maximum';
+      const input = document.createElement('input');
+      input.type = column.type === 'number' ? 'number' : 'text';
+      if (input.type === 'number') input.step = 'any';
+      input.value = draft[part] ?? '';
+      input.addEventListener('input', () => { draft[part] = input.value; });
+      input.addEventListener('keydown', key => { if (key.key === 'Enter') menu.querySelector('button')?.click(); });
+      label.append(input);
+      menu.insertBefore(label, menu.querySelector('button'));
+    });
+    positionMoleculeContextMenu(menu, event.clientX, event.clientY);
+    menu.querySelector('input')?.focus({ preventScroll: true });
   }
 
   function installCardHover(card, row, cfg) {
@@ -7407,8 +7894,10 @@
 
   function cardWidthLimits(card) {
     const grid = card.closest('.buret-grid');
-    const gridWidth = grid?.getBoundingClientRect().width || window.innerWidth || DEFAULT_CARD_MIN;
-    const gap = parseFloat(getComputedStyle(grid || document.documentElement).columnGap || '0') || 0;
+    const styles = getComputedStyle(grid || document.documentElement);
+    const gridWidth = ((grid?.getBoundingClientRect().width || 0) - (parseFloat(styles.paddingLeft) || 0) - (parseFloat(styles.paddingRight) || 0))
+      || window.innerWidth || DEFAULT_CARD_MIN;
+    const gap = parseFloat(styles.columnGap || '0') || 0;
     const minByColumns = (gridWidth - gap * 29) / 30;
     const maxByColumns = (gridWidth - gap * 2) / 3;
     return {
@@ -7474,7 +7963,7 @@
   function rdkitCardKey(row) {
     const match = state.smartsMatches.get(Number(row.index));
     const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
-    return `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}`;
+    return `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|H:${state.hydrogenDisplay}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}`;
   }
 
   function drawRdkitPlaceholder(row) {
@@ -7557,7 +8046,7 @@
       if (state.svgCache.has(reactionKey)) return state.svgCache.get(reactionKey);
       return drawRdkitReaction(row, reactionText, reactionKey);
     }
-    const match = state.smartsMatches.get(Number(row.index));
+    let match = state.smartsMatches.get(Number(row.index));
     const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
     const key = rdkitCardKey(row);
     if (state.svgCache.has(key)) return state.svgCache.get(key);
@@ -7565,7 +8054,12 @@
     let html = '';
     try {
       mol = state.rdkit.get_mol(row.molblock || row.smiles || '');
-      if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
+      if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid()) || mol.get_num_atoms?.() === 0) {
+        if (row.fragment) return escapeHTML(row.smiles);
+        omitInvalidCard(row);
+        return '';
+      }
+      match = applyHydrogenDisplay(mol, match);
       try {
         if (!useInputCoords) {
           try { mol.set_new_coords?.(); } catch (_) {}
@@ -7587,6 +8081,11 @@
       if (!html.includes('<svg')) throw new Error('empty drawing');
       if (isDegenerateMoleculeSVG(html)) throw new Error('invalid molecule drawing');
     } catch (error) {
+      if (!mol) {
+        if (row.fragment) return escapeHTML(row.smiles);
+        omitInvalidCard(row);
+        return '';
+      }
       const label = row.smiles || row.name || 'Molecule';
       html = moleculeErrorHTML(label, error.message || String(error));
     } finally {
@@ -7595,6 +8094,26 @@
     state.svgCache.set(key, html);
     while (state.svgCache.size > RDKIT_SVG_CACHE_LIMIT) state.svgCache.delete(state.svgCache.keys().next().value);
     return html;
+  }
+
+  // Added H are appended after the heavy atoms, so a match found on the file's
+  // atoms still holds; removal renumbers atoms, so the highlight is re-matched.
+  function applyHydrogenDisplay(mol, match) {
+    if (state.hydrogenDisplay === 'all') {
+      try { mol.add_hs_in_place?.(); } catch (_) {}
+      return match;
+    }
+    try { mol.remove_hs_in_place?.(); } catch (_) { return match; }
+    if (!match) return match;
+    let qmol = null;
+    try {
+      qmol = state.rdkit.get_qmol(state.smarts.trim());
+      return qmol ? molSubstructureMatch(mol, qmol) : null;
+    } catch (_) {
+      return null;
+    } finally {
+      try { qmol?.delete?.(); } catch (_) {}
+    }
   }
 
   function fillMissingSmilesFromMolblocks() {
@@ -7678,19 +8197,27 @@
   }
 
   function scheduleRdkitCard(card, row) {
-    const target = card.querySelector('[data-buret-rdkit-card-key]');
-    if (!target) return;
-    const key = target.getAttribute('data-buret-rdkit-card-key');
-    if (!key) return;
-    const start = () => enqueueRdkitCard(row, key, target);
-    state.rdkitCardLazyJobs.set(target, start);
-    state.rdkitCardLazyTargets.push(target);
-    const observer = ensureRdkitCardObserver();
-    if (observer) {
-      observer.observe(target);
-      return;
+    for (const target of card.querySelectorAll('[data-buret-rdkit-card-key]')) {
+      const key = target.getAttribute('data-buret-rdkit-card-key');
+      if (!key) continue;
+      const fragment = target.closest('[data-buret-fragment-smiles]');
+      const source = fragment
+        ? { index: 'fragment', smiles: fragment.getAttribute('data-buret-fragment-smiles'), fragment: true }
+        : row;
+      const start = () => enqueueRdkitCard(source, key, target);
+      state.rdkitCardLazyJobs.set(target, start);
+      state.rdkitCardLazyTargets.push(target);
+      // Finder can create an offscreen Quick Look WebView. Its intersection
+      // observer never reports visible cards, even though the preview is live.
+      // The preview is bounded to 750 records; render its initial cards eagerly.
+      if (config().quickLookViewer === true) {
+        startLazyRdkitCard(target);
+        continue;
+      }
+      const observer = ensureRdkitCardObserver();
+      if (observer) observer.observe(target);
+      else window.setTimeout(() => startLazyRdkitCard(target), 0);
     }
-    window.setTimeout(() => startLazyRdkitCard(target), 0);
   }
 
   function ensureRdkitCardObserver() {
@@ -7739,7 +8266,8 @@
     }
     const existing = state.rdkitCardPending.get(key);
     if (existing) {
-      existing.target = target || existing.target;
+      existing.targets ??= new Set([existing.target]);
+      existing.targets.add(target);
       return;
     }
     const job = { row, key, target, seq: state.rdkitCardSeq++ };
@@ -7752,7 +8280,7 @@
     if (state.rdkitCardRendering || !state.rdkitCardQueue.length) return;
     if (!state.rdkit && !state.rdkitError) return;
     state.rdkitCardRendering = true;
-    requestAnimationFrame(() => {
+    const renderBatch = () => {
       for (const job of state.rdkitCardQueue) job.priority = cardRenderPriority(job.target);
       state.rdkitCardQueue.sort(compareCardRenderJobs);
       const startedAt = nowMs();
@@ -7760,7 +8288,8 @@
       try {
         while (state.rdkitCardQueue.length && processed < RDKIT_CARD_FRAME_BATCH) {
           const job = state.rdkitCardQueue.shift();
-          updateRdkitCard(job.key, drawRdkit(job.row), job.target);
+          const html = drawRdkit(job.row);
+          for (const target of job.targets || [job.target]) updateRdkitCard(job.key, html, target);
           state.rdkitCardPending.delete(job.key);
           processed++;
           const now = nowMs();
@@ -7774,7 +8303,11 @@
         state.rdkitCardRendering = false;
         if (state.rdkitCardQueue.length) window.setTimeout(pumpRdkitCardQueue, 0);
       }
-    });
+    };
+    // Offscreen Quick Look WebViews may also suspend animation frames. Keep
+    // ordinary app/browser batches aligned to frames for interactive scrolling.
+    if (config().quickLookViewer === true) window.setTimeout(renderBatch, 0);
+    else requestAnimationFrame(renderBatch);
   }
 
   function sortXyzrenderCardQueue() {
@@ -7805,6 +8338,9 @@
     target.innerHTML = html;
     const card = target.closest('.buret-card');
     if (card) fitCardSVGs(card);
+    if (card?.hasAttribute('data-index') && Number(card.getAttribute('data-index')) === state.lastGridRowIndex) {
+      repostInspectorRow(config());
+    }
   }
 
   function resetRdkitCardObserver() {
@@ -7830,7 +8366,7 @@
   }
 
   function xyzrenderCardKey(row, record) {
-    return `${row.index}|${record.inputExtension}|${currentXyzrenderPreset(config())}|${hash(xyzrenderCardInputText(row, record))}|${state.smarts}`;
+    return `${row.index}|${record.inputExtension}|${currentXyzrenderPreset(config())}|H:${state.hydrogenDisplay}|${hash(xyzrenderCardInputText(row, record))}|${state.smarts}`;
   }
 
   function scheduleXyzrenderCard(card, row, cfg) {
@@ -7912,7 +8448,6 @@
     state.remoteLoading = false;
     window.clearTimeout(state.searchTimer);
     state.searchTimer = 0;
-    state.searchMode = 'text';
     state.searchTextCache = new WeakMap();
     state.chemicalSpaceVisibilitySubscribers.clear();
     state.chemicalSpaceVisibilityRequest = null;
@@ -7988,6 +8523,7 @@
       const request = {
         path: record.path,
         preset: currentXyzrenderPreset(cfg),
+        controls: xyzrenderCardControls(),
         inputDataBase64: textToBase64(xyzrenderCardInputText(row, record)),
         inputExtension: record.inputExtension
       };
@@ -8001,6 +8537,7 @@
           body: JSON.stringify({
             path: request.path,
             preset: request.preset,
+            controls: request.controls,
             inputDataBase64: request.inputDataBase64,
             inputExtension: request.inputExtension
           })
@@ -8042,6 +8579,7 @@
           id: job.key,
           path: job.record.path,
           preset: currentXyzrenderPreset(job.cfg),
+          controls: xyzrenderCardControls(),
           inputDataBase64: textToBase64(xyzrenderCardInputText(job.row, job.record)),
           inputExtension: job.record.inputExtension
         }))
@@ -8490,9 +9028,8 @@
   }
 
   async function copySelected() {
-    const collectAll = shouldCollectAllRemoteRows();
-    if (collectAll && !requireCollectionIndexReady('copying the full collection')) return;
-    const sourceRows = collectAll ? await collectAllRemoteRows(config()) : selectedOrFiltered();
+    const sourceRows = await collectExportRows(config());
+    if (!sourceRows) return;
     const text = sourceRows.map(row => `${row.smiles || ''}\t${row.name || ''}`.trim()).join('\n');
     if (await writeClipboardText(text, '[grid] Copied molecules.')) return;
     if (canUseNativeBridge()) {
@@ -8527,12 +9064,7 @@
   async function exportCSV(cfg) {
     const rows = await collectExportRows(cfg);
     if (!rows) return;
-    const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
-    const data = [
-      ['index', 'name', 'smiles', ...props],
-      ...rows.map(row => [row.index, row.name || '', row.smiles || '', ...props.map(prop => (row.props || {})[prop] || '')])
-    ];
-    download(data.map(row => row.map(csv).join(',')).join('\n') + '\n', baseName(cfg.label) + '.csv', 'text/csv');
+    download(serializeDelimitedRows(rows, ','), baseName(cfg.label) + '.csv', 'text/csv');
   }
 
   async function saveGridAs(cfg) {
@@ -8629,6 +9161,16 @@
     };
   }
 
+  function withSarProperties(rows) {
+    return rows.map(row => {
+      const props = { ...row.props };
+      for (const [id, cell] of Object.entries(row.descriptors || {})) {
+        if (id.startsWith('RGroup_') || id === 'Scaffold' || id === 'ScaffoldCount') props[id] = cell.value ?? '';
+      }
+      return { ...row, props };
+    });
+  }
+
   function serializeSmilesRows(rows) {
     return rows
       .map(row => `${row.smiles || ''}\t${row.name || `mol_${Number(row.index) + 1}`}`.trim())
@@ -8637,6 +9179,7 @@
   }
 
   function serializeSdfRows(rows) {
+    rows = withSarProperties(rows);
     return rows.map(row => {
       const molblock = String(row.molblock || '').replace(/\n?\$\$\$\$\s*$/u, '').trimEnd();
       const props = {
@@ -8653,6 +9196,7 @@
   }
 
   function serializeDelimitedRows(rows, separator) {
+    rows = withSarProperties(rows);
     const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
     const data = [
       ['burette_encoding', 'index', 'name', 'smiles', 'molblock', ...props],
@@ -8662,7 +9206,7 @@
         row.name || '',
         row.smiles || '',
         row.molblock || '',
-        ...props.map(prop => (row.props || {})[prop] || '')
+        ...props.map(prop => (row.props || {})[prop] ?? '')
       ])
     ];
     return data.map(row => row.map(value => gridDelimitedCell(value, separator)).join(separator)).join('\n') + '\n';
@@ -8864,7 +9408,7 @@
         pumpRdkitCardQueue();
       }
     } catch (error) {
-      const message = error && error.stack ? error.stack : String(error);
+      const message = error?.message || String(error);
       setStatus(message, 'error');
     }
   }

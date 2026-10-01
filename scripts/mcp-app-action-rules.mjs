@@ -52,6 +52,11 @@ export function validateMcpAppAction(action) {
   if (action.type === 'set_workspace_panel' && (!['right', 'bottom'].includes(action.area) || typeof action.open !== 'boolean' || (action.documentId !== undefined && (typeof action.documentId !== 'string' || action.documentId.length > 256)))) {
     fail('Panel action requires right/bottom area, boolean open and an optional observed documentId.');
   }
+  // Built-in components only; the viewer's PyMOL `query` form stays internal.
+  if (['hide_components', 'show_components'].includes(action.type)
+    && (!['water', 'ion', 'ligand', 'polymer'].includes(action.kind) || Object.keys(action).some(key => !['type', 'kind'].includes(key)))) {
+    fail(`${action.type} takes only kind: water, ion, ligand or polymer, for example {type:"hide_components",kind:"water"}.`);
+  }
   if (action.type === 'set_display_mode' && !['inline', 'fullscreen'].includes(action.mode)) fail('Display mode must be inline or fullscreen.');
 }
 

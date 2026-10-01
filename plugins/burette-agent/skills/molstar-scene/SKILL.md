@@ -96,6 +96,13 @@ use `burette.control_viewer` or the CLI below.
   after acknowledgement. This is an ordered palette, not a named chain mapping;
   do not claim an explicit A/B assignment without verifying chain order.
 
+- `{"type":"hide_components","kind":"water"}` hides waters and keeps the
+  protein, ligands, selection and camera; `{"type":"show_components","kind":"water"}`
+  shows them again. `kind` is `water`, `ion`, `ligand` or `polymer` (protein).
+  Built-in layers such as Water are not `patch_scene_layers` targets, and
+  `set_molstar_style` rebuilds the preset, so hide again after a style change.
+  A structure without waters returns `componentCount: 0`, not a failure.
+
 - `{"type":"set_scene_motion","mode":"spin","speed":0.1}`; modes
   `off`, `spin` (0.01–1/s), `rock` (0.02–1.5/s).
 - `{"type":"set_scene_wiggle","mode":"even"}`; modes `off`, `even`,

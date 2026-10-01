@@ -1,7 +1,7 @@
 // Agent-facing behaviour the shared desktop shell does not provide inside the
 // native widget: xyzrender observation, capture and control, and measured dock
 // visibility. The transport injects this object; it never talks to the host.
-const molstarOnly = new Set(['focus_ligand', 'select_residues', 'focus_selection', 'reset_camera', 'clear_selection', 'set_molstar_style', 'color_by_chain', 'set_scene_motion', 'set_scene_wiggle', 'rotate_camera', 'query_atoms', 'query_groups', 'named_selection', 'select_atoms', 'measure_geometry', 'list_scene_layers', 'patch_scene_layers']);
+const molstarOnly = new Set(['focus_ligand', 'select_residues', 'focus_selection', 'reset_camera', 'clear_selection', 'set_molstar_style', 'hide_components', 'show_components', 'color_by_chain', 'set_scene_motion', 'set_scene_wiggle', 'rotate_camera', 'query_atoms', 'query_groups', 'named_selection', 'select_atoms', 'measure_geometry', 'list_scene_layers', 'patch_scene_layers']);
 const maxCaptureSide = 1024;
 const maxCaptureBytes = 1024 * 1024;
 const renderTimeoutMs = 30000;

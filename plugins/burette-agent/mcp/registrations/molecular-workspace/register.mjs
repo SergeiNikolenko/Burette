@@ -380,7 +380,7 @@ export function registerMolecularWorkspace(server) {
     "burette.control_ketcher",
     {
       title: "Control Burette Ketcher",
-      description: "Apply a bounded, revision-checked action to the active Burette Ketcher surface.",
+      description: "Apply a bounded, revision-checked action to the active Burette Ketcher surface. Fields are top-level in action; surfaceId and expectedRevision come from the observed chemicalEditor (structureRevision). Replace: {apiVersion:\"burette-ketcher-agent/v1\",type:\"control_ketcher\",command:\"set_structure\",surfaceId,expectedRevision,format:\"smiles\",content:\"CC(=O)Oc1ccccc1C(=O)O\"}. Read back: command \"get_structure\" with formats:[\"smiles\"] and the new structureRevision returns formats.smiles. actionId is optional.",
       inputSchema: {
         workspaceSessionId: z.string().trim().optional(),
         viewerSessionId: z.string().trim().optional(),

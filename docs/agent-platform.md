@@ -266,8 +266,11 @@ do not invent a second local session protocol.
 `ui://burette/native-workspace-v1.html` as a compact native chat workspace.
 `burette.open_file` is the OpenAI MCP Extensions file entrypoint
 (`_meta["openai/ui"].entrypoints` with `type: "file"`): Codex desktop offers
-Burette as the viewer for molecular files (PDB, mmCIF, SDF, MOL, SMILES, XYZ,
-Ketcher, reaction, and MolViewSpec extensions). The host calls it with an opaque
+Burette as the viewer for molecular files (PDB, PDBQT, PQR, mmCIF, GRO, MOL2,
+SDF, MOL, SMILES, XYZ, Ketcher, reaction, and MolViewSpec extensions, plus
+`.gz`, `.bgz` and `.bgzf` copies of PDB and mmCIF files). The server inflates
+compressed files, including multi-member BGZF, and bounds the inflated size by
+the 16 MiB workspace limit. The host calls it with an opaque
 `file.resourceUri` and adds the trusted absolute path as
 `_meta["openai/resource"].path`; the tool opens that path as a full workspace
 session in the same resource. It is app-only, so models keep using the openers
@@ -345,6 +348,13 @@ colors; it updates live Mol* representation themes without replacing the
 workspace. `observe_scene.layers[].palette` reports actual bounded palette
 parameters. This is not a named chain-to-color map. Scene requests must use
 runtime controls, not repository searches or application-source edits.
+`hide_components` and `show_components` take only `kind`: `water`, `ion`,
+`ligand` or `polymer`, for example `{"type":"hide_components","kind":"water"}`.
+Hiding removes that built-in Mol* component's representations and leaves every
+other component, selection and the camera alone; showing redraws it (water as
+lines or points). The viewer's PyMOL `query` form is not accepted here, and
+`patch_scene_layers` still edits only Burette-owned layers. `set_molstar_style`
+rebuilds the preset, so a hidden component can return after a style change.
 `capture_scene` returns the actual current Mol* viewport as an 800×600 PNG image
 block through `control_inline_viewer`. Default `scope: "auto"` additionally
 returns a 400×400 RDKit 2D PNG when one ligand is selected. `scope: "ligand"`
@@ -684,7 +694,19 @@ advance `interactionRevision`. A revision mismatch, stale tab, oversized
 structure, unsupported format, or unresolved `contentRef` is a typed failure.
 Inline content is bounded to 64 KiB, atom-index lists to 256 entries, and
 inline exports to 64 KiB. Persistence stops at `awaiting_user` until a user
-confirms the file write.
+confirms the file write. Format names accept `smi` as an alias for `smiles`;
+results always report `smiles`. Command fields sit at the top level of the
+action, and validation errors name the field and the accepted shape:
+
+- `set_structure`:
+  `{"type":"control_ketcher","command":"set_structure","surfaceId":"desktop-ketcher:tab-2","actionId":"set-aspirin-1","expectedRevision":1,"format":"smiles","content":"CC(=O)Oc1ccccc1C(=O)O"}`.
+  Every result snapshot reports the new `structure.smiles`.
+- `get_structure` takes `formats`, an array of one to seven output formats,
+  for example `"formats": ["smiles"]`; a single `format` is accepted as
+  shorthand. Inline results are under `result.formats.<format>`.
+- In the native workspace (`burette.control_inline_viewer`), as in
+  `burette.control_ketcher`, the server assigns an `actionId` when the action
+  omits one.
 
 The hosted public plugin mirrors the same action schema through
 `open_ketcher`/`control_ketcher` and the resource

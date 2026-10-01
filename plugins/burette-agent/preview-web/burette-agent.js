@@ -568,6 +568,9 @@
     const selectionId = rememberSelection(ligandSelector, counts, args.label || `ligand:${ligand.label_comp_id}`);
     const focusExtraRadius = Number(args.extraRadius ?? args.radiusA ?? DEFAULT_CONTACT_RADIUS_A);
     applyMolstarInteractivity(ligandSelector, 'select', { mode: 'replace', granularity: 'residue', warnings });
+    // The focused ligand becomes the current selection so selection-scoped
+    // follow-ups (capture scope "ligand", observe) resolve the same residue.
+    assertMolstarSelectionApplied(ligandSelector, counts.atoms);
     applyMolstarInteractivity(ligandSelector, 'focus', {
       durationMs: args.durationMs,
       extraRadius: Number.isFinite(focusExtraRadius) && focusExtraRadius > 0 ? focusExtraRadius : DEFAULT_CONTACT_RADIUS_A,
@@ -602,6 +605,18 @@
 
   function commandContacts(args = {}, warnings) {
     return computeContacts(args, warnings);
+  }
+
+  // Mol* resolves schemas independently of the JSON counts above. If it resolves
+  // nothing, select and focus are silent no-ops, so report that instead of ok.
+  function assertMolstarSelectionApplied(selector, expectedAtoms) {
+    if (typeof state.viewer?.structureInteractivity !== 'function') return;
+    const stats = state.plugin?.managers?.structure?.selection?.stats;
+    if (!stats || !Number.isFinite(stats.elementCount)) return;
+    if (stats.elementCount < expectedAtoms) {
+      throw coded('MOLSTAR_ERROR', 'Mol* did not resolve the requested atoms, so the viewer selection and camera were not changed.',
+        { selector, expectedAtoms, selectedAtoms: stats.elementCount });
+    }
   }
 
   function commandResetCamera(args = {}, warnings) {
@@ -1213,6 +1228,7 @@
       auth_comp_id: authComp,
       entityType,
       moleculeType: ah.derived?.residue?.moleculeType?.[residueIndex],
+      group_PDB: valueAt(residues.group_PDB, residueIndex),
       residueIndex,
       chainIndex
     };
@@ -1294,6 +1310,9 @@
     if (entityType === 'non-polymer') return COMMON_IONS.has(comp) ? 'ion' : 'ligand';
     if (entityType === 'polymer' && atom.moleculeType === 5) return 'protein';
     if (entityType === 'polymer' && [6, 7, 8].includes(atom.moleculeType)) return 'nucleic';
+    // Coordinate-only PyMOL ligand exports use UNK/HETATM; CCD also uses
+    // UNK for unknown amino acids, so respect the file's explicit record type.
+    if (comp === 'UNK' && atom.group_PDB === 'HETATM') return 'ligand';
     if (STANDARD_AA.has(comp)) return 'protein';
     if (NUCLEIC.has(comp)) return 'nucleic';
     if (entityType === 'polymer') return 'polymer';
@@ -1493,6 +1512,13 @@
     }
     const atoms = collectAtoms(selector, { includePositions: false, maxAtoms: 200000 });
     const schemas = schemasForSelector(selector, atoms, options.warnings);
+    // Residue addresses are local to a structure: separate CIF blocks can reuse
+    // every chain, residue and atom identifier. Mol* supports an explicit filter
+    // alongside its residue schema, so scope the visual action as well as counts.
+    const structureIds = new Set(atoms.map(atom => atom.structureId));
+    const scopedStructures = selector.structure != null || selector.structureId != null
+      ? new Set(getStructures().filter(entry => structureIds.has(String(entry.ref))).map(entry => entry.data))
+      : null;
     if (action === 'select' && options.mode !== 'add') {
       try { viewer.structureInteractivity({ action: 'select' }); } catch (_) {}
     }
@@ -1500,8 +1526,12 @@
       try { viewer.structureInteractivity({ action: 'highlight' }); } catch (_) {}
     }
     const focusOptions = {
-      durationMs: Number(options.durationMs) || 250,
-      extraRadius: Number(options.extraRadius) || undefined,
+      durationMs: Number.isFinite(Number(options.durationMs)) && Number(options.durationMs) >= 0
+        ? Number(options.durationMs) : 250,
+      // Mol* spreads options over defaults: an explicit undefined replaces its
+      // finite default radius and poisons the camera with NaN. Omit it instead.
+      ...(Number.isFinite(Number(options.extraRadius)) && Number(options.extraRadius) >= 0
+        ? { extraRadius: Number(options.extraRadius) } : {}),
       optimizeDirection: options.optimizeDirection !== false,
       zoomOut: options.zoomOut !== false
     };
@@ -1510,6 +1540,7 @@
         viewer.structureInteractivity({
           elements: schema,
           action,
+          filterStructure: scopedStructures ? structure => scopedStructures.has(structure) : undefined,
           applyGranularity: options.granularity !== 'atom',
           focusOptions: action === 'focus' ? focusOptions : undefined
         });
@@ -1549,6 +1580,15 @@
     const schema = {};
     for (const field of SCHEMA_FIELDS) {
       if (selector[field] != null) schema[field] = selector[field];
+    }
+    // Atom records report the operator name (for example ASM_1) as instance_id,
+    // while the Mol* schema compares instance_id with operator.instanceId. Pass
+    // the name through the schema field that compares names, otherwise every
+    // ligand selector (which always carries instance_id) matches nothing and
+    // select/focus silently leave the viewer unchanged.
+    if (schema.instance_id != null) {
+      schema.operator_name = schema.instance_id;
+      delete schema.instance_id;
     }
     return Object.keys(schema).length ? schema : null;
   }

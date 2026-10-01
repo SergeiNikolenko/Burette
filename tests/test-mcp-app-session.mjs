@@ -3,6 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { gzipSync } from 'node:zlib';
 import { runMcpAppOperation as run } from '../scripts/mcp-app-session.mjs';
 import { createViewerDocuments } from '../plugins/burette-agent/ui/local-viewer-documents.mjs';
 import { registerLocalViewer } from '../plugins/burette-agent/mcp/registrations/local-viewer/register.mjs';
@@ -25,6 +26,27 @@ test('layer MCP schema and native queue preserve the bounded revisioned patch', 
     assert.equal((await run({ operation: 'act', sessionId: session.sessionId, action: item })).status, 'queued');
   }
   assert.deepEqual((await pendingMcpActions(dir)).map(item => item.action), [action, { type: 'list_scene_layers', selectionVersion: 1 }]);
+});
+
+test('built-in component visibility is one typed action in both viewers', async t => {
+  let schema;
+  await registerLocalViewer({ registerResource() {}, registerTool(name, metadata) { if (name === 'burette.control_inline_viewer') schema = metadata.inputSchema.action; } });
+  const hide = { type: 'hide_components', kind: 'water' }, show = { type: 'show_components', kind: 'water' };
+  assert.deepEqual(schema.parse(hide), hide);
+  assert.equal(schema.safeParse({ ...hide, kind: 'solvent' }).success, false);
+  const file = new URL('../samples/mini.pdb', import.meta.url).pathname;
+  for (const workspace of [true, false]) {
+    const session = await run({ operation: 'open', file, ...(workspace ? { workspace } : {}) });
+    const dir = join(tmpdir(), 'burette-mcp-app', session.sessionId);
+    t.after(() => rm(dir, { recursive: true, force: true }));
+    await run({ operation: 'exchange', sessionId: session.sessionId, token: session.token, state: { ready: true } });
+    const act = action => run({ operation: 'act', sessionId: session.sessionId, action });
+    for (const action of [{ type: 'hide_components' }, { ...show, kind: 'solvent' }, { ...hide, query: 'resn HOH' }]) {
+      await assert.rejects(act(action), /takes only kind: water, ion, ligand or polymer/u);
+    }
+    for (const action of [hide, show]) assert.equal((await act(action)).status, 'queued');
+    assert.deepEqual((await pendingMcpActions(dir)).map(item => item.action), [hide, show]);
+  }
 });
 
 test('close-first rejects file admission; enqueue-first preserves the queued record', async t => {
@@ -170,6 +192,33 @@ test('MCP sources preserve MVSX archive bytes and mark only the archive as binar
   }
 });
 
+test('gzip and BGZF structures open as their inner format; GRO, MOL2 and PQR open as files', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'burette-compressed-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const pdb = await readFile(new URL('../samples/mini.pdb', import.meta.url));
+  const half = pdb.indexOf('\n', pdb.length >> 1) + 1;
+  // Two gzip members, like BGZF blocks: the browser inflates only the first.
+  const bgzf = join(dir, 'mini.pdb.bgzf');
+  await writeFile(bgzf, Buffer.concat([gzipSync(pdb.subarray(0, half)), gzipSync(pdb.subarray(half))]));
+  const cif = join(dir, 'mini.CIF.GZ');
+  await writeFile(cif, gzipSync(await readFile(new URL('../samples/mini.cif', import.meta.url))));
+  const plain = await Promise.all(['gro', 'mol2', 'pqr'].map(async extension => {
+    const path = join(dir, `mini.${extension}`);
+    await writeFile(path, pdb);
+    return path;
+  }));
+  const session = await run({ operation: 'open', file: bgzf, additionalFiles: [cif, ...plain], workspace: true });
+  t.after(() => rm(join(tmpdir(), 'burette-mcp-app', session.sessionId), { recursive: true, force: true }));
+  assert.deepEqual(session.documents.map(item => item.format), ['pdb', 'mmcif', 'gro', 'mol2', 'pqr']);
+  const source = await run({ operation: 'exchange', sessionId: session.sessionId, token: session.token, source: true, documentId: session.documents[0].id });
+  assert.deepEqual(Buffer.from(source.dataBase64, 'base64'), pdb);
+  const bomb = join(dir, 'bomb.pdb.gz');
+  await writeFile(bomb, gzipSync(Buffer.alloc(16 * 1024 * 1024 + 1, 32)));
+  await assert.rejects(run({ operation: 'open', file: bomb, workspace: true }), /Decompressed structure exceeds 16 MiB/u);
+  await writeFile(join(dir, 'broken.cif.gz'), 'not gzip');
+  await assert.rejects(run({ operation: 'open', file: join(dir, 'broken.cif.gz'), workspace: true }), /Cannot decompress broken\.cif\.gz/u);
+});
+
 test('replayed cards whose temporary sessions expired return only terminal state', async () => {
   const session = await run({ operation: 'open', file: new URL('../samples/mini.pdb', import.meta.url).pathname });
   await rm(join(tmpdir(), 'burette-mcp-app', session.sessionId), { recursive: true });
@@ -303,6 +352,9 @@ test('shared native workspace supports explicit chemistry views and rejects unau
     await exchange({ state: { ready: true, activeDocument: null, tabs: [{ id: 'tab-editor', kind: 'ketcher' }] } });
     await assert.rejects(run({ operation: 'act', ...locator, action: { type: 'open_docking_view', receptorPath: pdb, ligandPaths: [file] } }), /not authorized/u);
     const queued = await run({ operation: 'act', ...locator, action: { type: 'control_ketcher', input: { content: 'a'.repeat(9000) } } });
+    // Review case p5 omitted the Ketcher actionId; the server mints one before queuing.
+    const handed = (await exchange({})).actions.find(item => item.actionId === queued.actionId);
+    assert.match(handed.action.actionId, /^[0-9a-f-]{36}$/u);
     await exchange({ completed: { actionId: queued.actionId, result: { ok: true } } });
     const closing = run({ operation: 'act', ...locator, action: { type: 'close_all_tabs' }, waitMs: 1000 });
     await new Promise(resolve => setTimeout(resolve, 25));

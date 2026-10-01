@@ -43,8 +43,13 @@ mounted until their tab closes or the host unmounts the workspace.
 Use `view: "ketcher"` to seed from the first MOL/SDF/SMILES/KET file, or
 `view: "docking"` with `file` as receptor and `additionalFiles` as ligands.
 For native follow-up controls, send `control_inline_viewer.action` with
-`type: "control_ketcher"`, observed `surfaceId`/`expectedRevision`, and the
-Ketcher command. `set_structure` takes top-level `format` and `content`.
+`type: "control_ketcher"`, observed `surfaceId`/`expectedRevision`
+(`chemicalEditor.surfaceId`/`structureRevision`), and the Ketcher command; all
+fields are top-level and `actionId` is optional. Replace the drawing with
+`{type:"control_ketcher",command:"set_structure",surfaceId,expectedRevision,format:"smiles",content:"CC(=O)Oc1ccccc1C(=O)O"}`;
+its `result.snapshot.structure.smiles` is the new SMILES. To read it back,
+send `command: "get_structure"` with `formats: ["smiles"]` (an array) and the
+new `structureRevision`; the SMILES is `result.result.formats.smiles`.
 Native Story controls use `type: "story_control"` and `operation: "next"`,
 `previous`, `goto`, `play`, or `pause`. Once a native card is open, keep
 working in it instead of opening a Browser workspace as well.
