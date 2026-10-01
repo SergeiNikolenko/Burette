@@ -5597,6 +5597,10 @@ html[data-burette-header-band] #buret-toolbar {
 html[data-burette-header-band] #buret-toolbar .buret-toolbar-content {
   min-width: 0; max-width: 100% !important;
 }
+/* Match the shared file header, including text buttons inside the viewer frame. */
+html[data-burette-header-band] #buret-toolbar .buret-button {
+  font: 400 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
 html[data-burette-header-band] #buret-toolbar :is([data-buret-toggle="left"], [data-buret-toggle="right"], [data-drag-handle]) { display: none !important; }
 /* The rail normally hangs under the toolbar; here it keeps the right edge. */
 html[data-burette-header-band] #buret-viewport-rail { left: auto !important; right: 10px !important; top: calc(var(--burette-header-band-height, 50px) + 8px + var(--buret-viewport-top-inset, 0px)) !important; }

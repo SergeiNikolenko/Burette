@@ -5,7 +5,7 @@
   --file-pill-hover:color-mix(in srgb, var(--text-primary, #161616) 6%, var(--file-pill-bg)); --file-pill-icon:var(--text-secondary, #5d5d5d);
   display:flex; flex:none; align-items:center; gap:8px; min-width:0;
   height:50px; padding:0 10px; background:var(--bg-base, #fff); color:var(--text-primary, #161616);
-  font:400 14px/1.4 system-ui, sans-serif; z-index:20; container-type:inline-size;
+  font:400 14px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; z-index:20; container-type:inline-size;
 }
 /* Dark Codex toolbar pills are filled a step above the strip, without borders. */
 [data-theme="dark"] .workspace-file-header {
@@ -27,7 +27,7 @@
 .workspace-file-name,.workspace-file-parent {display:inline-flex; align-items:center; gap:6px; flex:none}
 .workspace-file-parent {color:var(--text-secondary, #737373)}
 .workspace-file-unsaved {color:var(--text-secondary, #737373); font-size:12px; margin-inline:6px}
-.workspace-file-name {font-weight:500; min-width:0; max-width:100%; flex:0 0 auto}
+.workspace-file-name {font-weight:400; min-width:0; max-width:100%; flex:0 0 auto}
 .workspace-file-name>span {overflow:hidden; text-overflow:ellipsis}
 .workspace-file-breadcrumb svg {color:var(--text-secondary, #737373); flex:none}
 .workspace-file-header button {position:relative; display:inline-flex; align-items:center; justify-content:center; gap:6px; height:100%; padding:0 12px; border:0; background:transparent; color:inherit; font:inherit; cursor:pointer}
@@ -41,7 +41,7 @@
 .workspace-file-header button:hover,.workspace-file-header button[data-state="open"] {background:var(--file-pill-hover)}
 .workspace-file-header button:focus-visible {outline:2px solid var(--text-secondary, #777); outline-offset:2px}
 /* The annotation pill keeps its own colors and active blue from annotation-layer.css. */
-.workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill {height:34px; padding:0 13px 0 11px; background:var(--file-pill-bg); border-color:var(--file-pill-line)}
+.workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill {height:34px; padding:0 13px 0 11px; background:var(--file-pill-bg); border-color:var(--file-pill-line); font:inherit}
 .workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill:hover {background:var(--file-pill-hover)}
 .workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill[data-active] {background:#e0efff; color:#0065bc; border-color:#a8d3ff}
 [data-theme="dark"] .workspace-file-header .annotate-toggle.annotate-toggle.workspace-file-pill[data-active] {background:#323f4b; border-color:#3c5369; color:#58a9f3}

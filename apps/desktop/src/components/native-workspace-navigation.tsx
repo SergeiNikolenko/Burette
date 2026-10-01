@@ -51,8 +51,8 @@ export function NativeWorkspaceMenu({ state, actions, sidebarVisible, onToggleSi
     {onToggleSidebar ? <button type="button" className="workspace-file-icon-button workspace-file-pill"
       aria-label={sidebarVisible ? "Hide workspace navigation" : "Show workspace navigation"}
       aria-pressed={sidebarVisible} onClick={onToggleSidebar}><SidebarLeft size={18} aria-hidden /></button> : null}
-    {!sidebarVisible ? <RadixDropdownMenu items={items} align="start" trigger={<button type="button" className="workspace-file-pill"
-      aria-label="Workspace pages" title="Burette pages and file actions"><span className="px-1 text-xs font-medium">Burette</span></button>} /> : null}
+    {!onToggleSidebar ? <RadixDropdownMenu items={items} align="start" trigger={<button type="button" className="workspace-file-icon-button workspace-file-pill"
+      aria-label="Workspace pages" title="Workspace navigation"><SidebarLeft size={18} aria-hidden /></button>} /> : null}
   </div>;
 }
 
