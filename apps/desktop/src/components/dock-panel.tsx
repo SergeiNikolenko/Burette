@@ -1,4 +1,5 @@
 import { useSidebarStructureDrag } from "./sidebar/use-sidebar-structure-drag";
+import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { activeViewerIframeForDocument, postToXyzrenderViewer } from "../lib/viewer-bridge";
 import type { AnimationSource } from "./xyzrender-animation-dialog";
 import { Switch } from "./ui/switch";
@@ -117,7 +118,8 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const foldingState = useFoldingResult(area === "bottom" ? activeStructureDocument : null);
   const foldingDockAvailable = area === "bottom" && (foldingState.loading || Boolean(foldingState.bundle));
   const foldingDockRequested = area === "bottom" && storedActiveTabKind === "folding" && rawTabs.some((tab) => tab.kind === "folding");
-  const catalog = dockTabCatalog(area);
+  const pluginSurface = isHostedMcpWidget() || (typeof window !== "undefined" && Boolean(window.BuretteMcpWorkspace));
+  const catalog = dockTabCatalog(area).filter(kind => !pluginSurface || !["jobs", "chemical-space", "folding"].includes(kind));
   const tabs = rawTabs.filter((tab) => {
     if (!catalog.includes(tab.kind)) return false;
     if (tab.kind === "spectrum") return spectrumDockAvailable;
@@ -125,6 +127,8 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     if (tab.kind === "chemical-space") return chemicalSpaceDockAvailable;
     return true;
   });
+  // A restored desktop layout can contain only panels unavailable in a plugin.
+  if (pluginSurface && tabs.length === 0) tabs.push(createDockTab(area === "right" ? "inspector" : "files"));
   const activeTabKind = tabs.some((tab) => tab.kind === storedActiveTabKind) ? storedActiveTabKind : tabs[0]?.kind ?? "files";
   const xyzrenderDockDocument = area === "right" && activeStructureDocument?.renderer === "xyzrender-external"
     ? activeStructureDocument

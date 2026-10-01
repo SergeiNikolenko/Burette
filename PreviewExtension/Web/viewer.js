@@ -26433,7 +26433,7 @@ SOFTWARE.
     const bondLines = parsed.bonds.map(bond => {
       const a = point(atoms[bond.a]);
       const b = point(atoms[bond.b]);
-      return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="#4c5258" stroke-width="${Math.max(2, bond.order + 1)}" stroke-linecap="round" />`;
+      return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="var(--depiction-carbon)" stroke-width="${Math.max(2, bond.order + 1)}" stroke-linecap="round" />`;
     }).join('');
     const atomNodes = atoms.map(atom => {
       const p = point(atom);
@@ -26441,7 +26441,7 @@ SOFTWARE.
       const label = escapeHTML(atom.element);
       return `<g><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="8.5" fill="${color}" stroke="#202326" stroke-width="1.5" /><text x="${p.x.toFixed(1)}" y="${(p.y + 3.5).toFixed(1)}" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="8" font-weight="700" fill="#111">${label}</text></g>`;
     }).join('');
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" data-buret-rdkit-svg="fallback" style="width:100%;height:100%;display:block"><rect width="${size}" height="${size}" rx="14" fill="#fff"/>${bondLines}${atomNodes}</svg>`;
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" data-buret-rdkit-svg="fallback" style="width:100%;height:100%;display:block">${bondLines}${atomNodes}</svg>`;
   }
 
   function molstarPreviewCacheSVG(key, svg) {

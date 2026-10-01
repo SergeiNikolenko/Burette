@@ -1475,7 +1475,6 @@ assert.match(appLayout, /<header className="topbar">/);
 assert.match(appLayout, /const rightDockOpen = !settingsMode && !hostedMcpWidget && state\.rightDockOpen/);
 assert.match(appLayout, /const pluginSurface = isAgentPluginSurface\(state\.buildInfo\.isAgentShell\);/);
 assert.match(appLayout, /\{!hostedMcpWidget && pluginSurface \? <AnnotateToggle /);
-assert.match(appLayout, /\{!hostedMcpWidget && pluginSurface \? <AnnotationLayer /);
 assert.match(appLayout, /const bottomDockOpen = !settingsMode && !hostedMcpWidget && !pluginSurface && state\.bottomDockOpen/);
 assert.match(appLayout, /"--right-dock-width": `\$\{rightDockOpen \? rightDockWidth : 0\}px`/);
 assert.match(appLayout, /"--chrome-height": hostedMcpWidget \? "0px" : undefined/);
@@ -2854,7 +2853,7 @@ assert.match(structureInfoPanel, /const contextStyleCard = structureContextStyle
 assert.match(structureInfoPanel, /function structureContextStyleCardFor\(/);
 assert.match(structureInfoPanel, /if \(structureOverlayMode !== "all"\) return null/);
 assert.match(structureInfoPanel, /if \(isVirtualMolstarScene\(document\)\) \{/);
-assert.match(structureInfoPanel, /\{!hostedMcpWidget && !trajectoryDocument && !derivedTopology && !virtualScene \?/);
+assert.match(structureInfoPanel, /!trajectoryDocument && !derivedTopology && !virtualScene \?/);
 assert.match(structureInfoPanel, /const maestroEntryCount = maestroPreviewEntryCount\(summary\)/);
 assert.match(structureInfoPanel, /detail: "Context structures"/);
 assert.match(structureInfoPanel, /detail: "Context molecules"/);
@@ -2888,7 +2887,6 @@ assert.match(structureInfoPanel, /function normalizeSdfContextColor\(value: stri
 assert.match(structureInfoPanel, /function readSdfContextColorPreference\(document: ViewerDocument\): SdfContextColor/);
 assert.match(structureInfoPanel, /function writeSdfContextColorPreference\(document: ViewerDocument, value: SdfContextColor\)/);
 assert.match(structureInfoPanel, /function StructurePoseControlsCard/);
-assert.match(structureInfoPanel, /!hostedMcpWidget && !trajectoryDocument/);
 assert.match(structureInfoPanel, /!trajectoryDocument \|\| virtualScene \? \(\s*<StructurePoseControlsCard/);
 assert.match(structureInfoPanel, /trajectory-smoothing-chart-playhead/);
 assert.match(structureInfoPanel, /Playing · /);

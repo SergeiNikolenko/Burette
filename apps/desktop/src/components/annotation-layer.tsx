@@ -59,6 +59,14 @@ export function AnnotationLayer({ documentTitle, picksResidues }: { documentTitl
   const annotationsRef = useRef<Annotation[]>([]);
   annotationsRef.current = [...annotations, ...(draft?.target ? [{ ...draft, id: -1, target: draft.target }] : [])];
 
+  // Each page owns its markers and in-flight captures. Switching away must not
+  // publish a late result or leave a molecular region selected on another page.
+  useEffect(() => () => {
+    generation.current++;
+    window.clearTimeout(closeTimer.current);
+    clearRegionSelection(annotationsRef.current);
+  }, []);
+
   useEffect(() => {
     if (active) return;
     generation.current++;
@@ -136,7 +144,10 @@ export function AnnotationLayer({ documentTitle, picksResidues }: { documentTitl
     setCapturing(true);
     try {
       const target = current.target !== undefined ? current.target : await describeRegion(layerRef.current, current.rect, granularity);
-      if (revision !== generation.current) return;
+      if (revision !== generation.current) {
+        clearRegionSelection([{ ...current, id: -1, target }]);
+        return;
+      }
       setPhase({ kind: "idle" });
       setSnapshot(null); setPreviewVisible(false);
       setAnnotations(items => [...items, { id: nextId.current++, rect: current.rect, pin: current.pin, comment, target }].slice(0, MAX_ANNOTATIONS));
@@ -164,32 +175,47 @@ export function AnnotationLayer({ documentTitle, picksResidues }: { documentTitl
     const rect = { left: Math.min(drag.x0, event.clientX), top: Math.min(drag.y0, event.clientY),
       width: Math.abs(event.clientX - drag.x0), height: Math.abs(event.clientY - drag.y0) };
     const key = ++draftKey.current;
+    const revision = generation.current;
     // The region is read at once so the viewer shows its selection while the
     // comment is written.
     if (rect.width >= 4 || rect.height >= 4) {
       setDraft({ key, rect, pin: { x: event.clientX, y: event.clientY }, comment: "", element: false });
-      void describeRegion(layerRef.current, rect, granularity).then((target) => setDraft((current) => current?.key === key ? { ...current, target } : current));
+      void describeRegion(layerRef.current, rect, granularity).then((target) => {
+        if (revision !== generation.current) {
+          clearRegionSelection([{ id: -1, rect, pin: { x: 0, y: 0 }, comment: "", target }]);
+          return;
+        }
+        setDraft((current) => current?.key === key ? { ...current, target } : current);
+      });
       return;
     }
     const box = clickTargetBox(layerRef.current, event.clientX, event.clientY);
     const clicked = box ?? { left: event.clientX - CLICK_BOX / 2, top: event.clientY - CLICK_BOX / 2, width: CLICK_BOX, height: CLICK_BOX };
     setDraft({ key, rect: clicked, pin: { x: clicked.left + clicked.width, y: clicked.top }, comment: "", element: Boolean(box) });
     if (box) return;
-    void describeRegion(layerRef.current, clicked, granularity).then((target) => setDraft((current) => {
+    void describeRegion(layerRef.current, clicked, granularity).then((target) => {
+      if (revision !== generation.current) {
+        clearRegionSelection([{ id: -1, rect: clicked, pin: { x: 0, y: 0 }, comment: "", target }]);
+        return;
+      }
+      setDraft((current) => {
       if (current?.key !== key) return current;
       const snapped = target?.box ?? current.rect;
       return { ...current, target, rect: snapped, element: Boolean(target?.box), pin: target?.box ? { x: snapped.left + snapped.width, y: snapped.top } : current.pin };
-    }));
+      });
+    });
   }
 
   async function send() {
+    const revision = generation.current;
     setPhase({ kind: "sending" });
     try {
       const delivery = await deliverAnnotations(documentTitle, annotations, snapshot);
+      if (revision !== generation.current) return;
       setPhase({ kind: "done", message: delivery === "sent" ? "Sent to the chat" : "Copied. Paste into your agent chat" });
       closeTimer.current = window.setTimeout(() => setActive(false), 1200);
     } catch (error) {
-      setPhase({ kind: "error", message: error instanceof Error ? error.message : String(error) });
+      if (revision === generation.current) setPhase({ kind: "error", message: error instanceof Error ? error.message : String(error) });
     }
   }
 

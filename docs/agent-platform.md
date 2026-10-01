@@ -5,6 +5,17 @@ The goal is to let agents open structures, observe workspace state, act on the
 active viewer, and render bounded side panels without treating screenshots as
 the source of truth.
 
+The separately packaged native widget is pinned by `config/native-widget.json`.
+Ordinary molecular requests use its `burette.open_viewer` tool inside the host;
+Browser/desktop workspaces are explicit alternatives. Native and hosted widgets
+omit compute tools and Jobs/Chemical Space/folding panels. Browser agent shells
+with a compute backend retain those capabilities. Unsaved sketches have no
+filesystem application actions. Annotation batches belong to one page/document
+and are cleared when it is replaced or the user returns to Recent files.
+Workspace navigation uses a sidebar toggle, or an icon menu in compact cards;
+it has no redundant product-title button. File and molecular toolbar text share
+the same typography when they occupy one header band.
+
 ## Layers
 
 | Layer | Path | Responsibility |

@@ -1,4 +1,5 @@
 import { compositionStyleMenu } from "./composition-style-menu";
+import { isLocalFilePath } from "../lib/browser-file-actions";
 import { ChevronRight as AppChevronRight, Eye as AppEye, EyeOff as AppEyeOff, Delete as AppDelete, Stopwatch } from "./ui/app-icons";
 import { Suspense, lazy, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -143,6 +144,7 @@ const TRAJECTORY_SMOOTHING_EXTENSIONS = new Set([
 
 export function StructureInfoPanel({ gridFilterModel, document, textDocument, dockDrops, conformerStatus, conformerSettings, viewerLigandSelection, structureOverlayMode, xtbStatus, xtbSettings, xtbJobs, preferences, isBrowserDev, hoveredGridRow, actions }: StructureInfoPanelProps) {
   const hostedMcpWidget = isHostedMcpWidget();
+  const pluginSurface = hostedMcpWidget || (typeof window !== "undefined" && Boolean(window.BuretteMcpWorkspace));
   const composition = useStructureComposition(document);
   const [activeActionKey, setActiveActionKey] = useState<string | null>(null);
   const [gridFilterFocus, setGridFilterFocus] = useState<{ columnId: string; requestId: number } | null>(null);
@@ -362,7 +364,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         <div className="structure-brief-title-row">
           <h3 title={document.title}>{document.title}</h3>
           <Badge variant="secondary">{brief.format}</Badge>
-          {!hostedMcpWidget && !document.virtual ? (
+          {!hostedMcpWidget && !document.virtual && isLocalFilePath(document.path) ? (
             <button
               type="button"
               className="structure-inspector-more-button"
@@ -442,9 +444,9 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         />
       ) : null}
 
-      <FoldingResultsPanel state={foldingResult} actions={actions} />
+      {!pluginSurface ? <FoldingResultsPanel state={foldingResult} actions={actions} /> : null}
 
-      {!hostedMcpWidget && !trajectoryDocument && !derivedTopology && !virtualScene ? <>
+      {!pluginSurface && !trajectoryDocument && !derivedTopology && !virtualScene ? <>
         {/* The conformer card and the standalone descriptor card are gone: both
             are tool rows inside Tools now. */}
         <InspectorEngineCard

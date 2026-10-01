@@ -74,7 +74,7 @@ span.annotation-pin {pointer-events: none}
   visibility:hidden; opacity:0; pointer-events:none; z-index:10;
 }
 .annotation-tool:hover>.shortcut-tooltip,.annotation-tool:focus-visible>.shortcut-tooltip {visibility:visible; opacity:1; transform:translateX(-50%)}
-.annotation-selection-options {position:absolute; top:12px; right:12px; display:flex; gap:2px; padding:3px; border-radius:10px; background:#242424; box-shadow:0 3px 12px #0002}
+.annotation-selection-options {position:absolute; bottom:70px; left:50%; transform:translateX(-50%); display:flex; gap:2px; padding:3px; border-radius:10px; background:#242424; box-shadow:0 3px 12px #0002}
 .annotation-selection-options button {border:0; background:transparent; color:#aaa; border-radius:7px; padding:5px 9px; font:inherit; font-size:12px; cursor:pointer}
 .annotation-selection-options button[aria-checked=true] {background:#343e49; color:#67b4ff}
 .annotation-screenshot-preview {position:absolute; bottom:72px; right:16px; margin:0; width:220px; max-width:calc(100% - 32px); padding:6px; background:#242424; border:1px solid #424242; border-radius:12px; color:#eee; box-shadow:0 6px 24px #0004}
