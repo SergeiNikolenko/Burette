@@ -1,6 +1,45 @@
 {
-  "$comment": "Curated release notes for the sidebar What's new popover and its release dialog. Newest first; each version must have a vX tag on the releases page.",
+  "$comment": "Curated release notes for the sidebar What's new popover and its release dialog. Newest first; a new entry appears as unread after users update.",
   "entries": [
+    {
+      "version": "2026.9.53",
+      "date": "2026-10-02",
+      "title": "What's new in the sidebar",
+      "summary": "After an update, the sidebar shows what changed and opens each release's notes in place.",
+      "sections": [
+        {
+          "title": "Release notes",
+          "items": [
+            "A What's new row appears above Settings while an update has unread releases.",
+            "A blue dot marks each release you have not opened yet.",
+            "Full changelog opens the releases page on GitHub."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "2026.9.52",
+      "date": "2026-10-01",
+      "title": "Compressed, GRO, MOL2 and PQR files open in the plugin",
+      "summary": "Codex now hands every molecular format Burette reads to the Burette plugin.",
+      "sections": [
+        {
+          "title": "Formats",
+          "items": [
+            "Gzip and BGZF compressed PDB and mmCIF files open as their inner format.",
+            "GRO, MOL2 and PQR snapshots open in the native workspace."
+          ]
+        },
+        {
+          "title": "Fixes",
+          "items": [
+            "Water, ions, ligands and polymers can be hidden or shown as groups.",
+            "A structure action that succeeds on retry clears its earlier failure message.",
+            "Card grid columns fit the width left beside the right panel."
+          ]
+        }
+      ]
+    },
     {
       "version": "2026.9.51",
       "date": "2026-10-01",
