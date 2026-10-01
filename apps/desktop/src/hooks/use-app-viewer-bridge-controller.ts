@@ -32,7 +32,8 @@ import type { PendingMolstarReplaceResolver } from "./use-app-generate-3d-confor
 import type { ConformerJob, DockingSceneMode, HoveredGridRow, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
 type RefValue<T> = { current: T };
-type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
+// Error statuses return a callback that withdraws their toast.
+type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => (() => void) | void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 type OpenDocuments = (
   paths: string[],

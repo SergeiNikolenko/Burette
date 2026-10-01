@@ -74,11 +74,13 @@ export function normalizeStructureInput(input) {
     return failure("INVALID_INPUT", "Structure input contains an unknown field.");
   }
   const format = normalizeFormatName(input.format);
-  if (!INPUT_FORMATS.has(format)) return failure("UNSUPPORTED_FORMAT", "Structure format is unsupported.");
+  if (!INPUT_FORMATS.has(format)) {
+    return failure("UNSUPPORTED_FORMAT", 'Structure format must be "smiles" (alias "smi"), "mol", "ket" or "rxn".');
+  }
   const hasContent = typeof input.content === "string";
   const hasReference = typeof input.contentRef === "string" && input.contentRef.trim().length > 0;
   if (hasContent === hasReference) {
-    return failure("INVALID_INPUT", "Provide exactly one inline content or contentRef.");
+    return failure("INVALID_INPUT", 'Provide exactly one of inline content or contentRef, for example "format": "smiles", "content": "CCO".');
   }
   if (hasContent && utf8ByteLength(input.content) > KETCHER_AGENT_LIMITS.inlineBytes) {
     return failure("PAYLOAD_TOO_LARGE", "Inline structure content exceeds 64 KiB.");
@@ -95,7 +97,7 @@ export function normalizeStructureInput(input) {
 export function validateKetcherAction(action) {
   if (!isRecord(action)) return failure("INVALID_INPUT", "Ketcher action must be an object.");
   if (action.type !== "control_ketcher" || !COMMANDS.has(action.command)) {
-    return failure("INVALID_INPUT", "Ketcher action type or command is invalid.");
+    return failure("INVALID_INPUT", `Ketcher action needs type "control_ketcher" and command ${[...COMMANDS].join(", ")}.`);
   }
   if (action.apiVersion !== undefined && action.apiVersion !== KETCHER_AGENT_API_VERSION) {
     return failure("INVALID_INPUT", "Ketcher action apiVersion is unsupported.");
@@ -106,22 +108,24 @@ export function validateKetcherAction(action) {
     : action.command === "highlight_atoms"
       ? ["indexes"]
       : action.command === "get_structure"
-        ? ["formats", "delivery"]
+        ? ["formats", "format", "delivery"]
         : action.command === "request_persist"
           ? ["format", "suggestedBasename"]
           : [];
   const allowed = new Set([...base, ...extras]);
-  if (Object.keys(action).some((key) => !allowed.has(key))) {
-    return failure("INVALID_INPUT", "Ketcher action contains an unknown field.");
+  const unknownKey = Object.keys(action).find((key) => !allowed.has(key));
+  if (unknownKey !== undefined) {
+    const fields = extras.length ? extras.join(", ") : "no command fields";
+    return failure("INVALID_INPUT", `Unknown Ketcher field "${boundedText(unknownKey, 40)}": ${action.command} accepts ${fields} besides ${base.join(", ")}.`);
   }
   if (typeof action.surfaceId !== "string" || !action.surfaceId.trim()) {
-    return failure("INVALID_INPUT", "surfaceId is required.");
+    return failure("INVALID_INPUT", "surfaceId is required: use chemicalEditor.surfaceId from the latest observation.");
   }
   if (typeof action.actionId !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(action.actionId)) {
-    return failure("INVALID_INPUT", "actionId must be a bounded identifier.");
+    return failure("INVALID_INPUT", 'actionId must be 1-128 letters, digits, ".", "_", ":" or "-", for example "set-aspirin-1".');
   }
   if (!Number.isSafeInteger(action.expectedRevision) || action.expectedRevision < 0) {
-    return failure("INVALID_INPUT", "expectedRevision must be a non-negative integer.");
+    return failure("INVALID_INPUT", "expectedRevision must be chemicalEditor.structureRevision from the latest observation.");
   }
   if (action.command === "set_structure") {
     const input = normalizeStructureInput({
@@ -138,19 +142,30 @@ export function validateKetcherAction(action) {
     return success({ ...action, indexes });
   }
   if (action.command === "get_structure") {
-    if (!Array.isArray(action.formats) || action.formats.length === 0 || action.formats.length > 7) {
-      return failure("INVALID_INPUT", "formats must contain one to seven output formats.");
+    // `format: "smiles"` and `formats: "smiles"` are shorthands for `formats: ["smiles"]`;
+    // the validated action carries only the canonical `formats` array.
+    const { format: singleFormat, ...rest } = action;
+    if (singleFormat !== undefined && action.formats !== undefined) {
+      return failure("INVALID_INPUT", 'get_structure takes formats (an array, for example ["smiles"]), not both format and formats.');
     }
-    const formats = [...new Set(action.formats.map(normalizeFormatName))];
-    if (!formats.every((format) => OUTPUT_FORMATS.has(format))) return failure("UNSUPPORTED_FORMAT", "An output format is unsupported.");
+    const requested = singleFormat !== undefined ? [singleFormat] : typeof action.formats === "string" ? [action.formats] : action.formats;
+    if (!Array.isArray(requested) || requested.length === 0 || requested.length > 7) {
+      return failure("INVALID_INPUT", 'get_structure needs formats, an array of 1-7 output formats, for example "formats": ["smiles"].');
+    }
+    const formats = [...new Set(requested.map(normalizeFormatName))];
+    if (!formats.every((format) => OUTPUT_FORMATS.has(format))) {
+      return failure("UNSUPPORTED_FORMAT", `Output formats are ${[...OUTPUT_FORMATS].join(", ")}; "smi" is an alias of "smiles".`);
+    }
     const delivery = action.delivery ?? "inline";
     if (!DELIVERIES.has(delivery)) return failure("INVALID_INPUT", "delivery must be inline, artifact, or download.");
-    return success({ ...action, formats, delivery });
+    return success({ ...rest, formats, delivery });
   }
   if (action.command === "request_persist") {
     const format = normalizeFormatName(action.format);
     const suggestedBasename = typeof action.suggestedBasename === "string" ? action.suggestedBasename.trim() : "ketcher-structure";
-    if (!OUTPUT_FORMATS.has(format)) return failure("UNSUPPORTED_FORMAT", "The persistence format is unsupported.");
+    if (!OUTPUT_FORMATS.has(format)) {
+      return failure("UNSUPPORTED_FORMAT", `Persistence formats are ${[...OUTPUT_FORMATS].join(", ")}; "smi" is an alias of "smiles".`);
+    }
     if (!suggestedBasename || suggestedBasename.length > KETCHER_AGENT_LIMITS.textChars || /[\\/:*?"<>|\u0000-\u001f]/u.test(suggestedBasename)) {
       return failure("INVALID_INPUT", "suggestedBasename is not a safe filename.");
     }

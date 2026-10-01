@@ -295,8 +295,12 @@ structure, unsupported format, or unresolved `contentRef` is a typed failure.
 Inline content is bounded to 64 KiB, atom-index lists to 256 entries, and
 inline exports to 64 KiB. Format names accept `smi` as an alias for `smiles`
 (the name `burette_open_viewer` uses); results always report `smiles`.
+Command fields sit at the top level of the action, next to `type` and
+`command`. Validation errors name the field and the shape the command accepts.
 
-- `set_structure` takes either inline `content` or a `contentRef`. On the
+- `set_structure` takes either inline `content` or a `contentRef`, for example
+  `{"type":"control_ketcher","command":"set_structure","surfaceId":"desktop-ketcher:tab-2","actionId":"set-aspirin-1","expectedRevision":1,"format":"smiles","content":"CC(=O)Oc1ccccc1C(=O)O"}`.
+  Every result snapshot reports the new `structure.smiles`. On the
   desktop surface `contentRef` is an absolute local path or `file://` URL to a
   `.mol`/`.sdf`/`.sd`/`.mdl` (`mol`), `.rxn` (`rxn`), or `.ket` (`ket`) file of
   at most 1 MiB, read through the workspace's authorized file reader. The
@@ -304,7 +308,10 @@ inline exports to 64 KiB. Format names accept `smi` as an alias for `smiles`
   with `INVALID_INPUT`. Referenced SMILES is not accepted. To seed Ketcher from
   a file, call `burette.open_ketcher` and then `set_structure` with
   `contentRef`.
-- `get_structure` supports `delivery: "inline"` only on the desktop surface;
+- `get_structure` takes `formats`, an array of one to seven output formats,
+  for example `"formats": ["smiles"]`; a single `format` is accepted as
+  shorthand. Inline results are under `result.formats.<format>`.
+  It supports `delivery: "inline"` only on the desktop surface;
   `artifact` and `download` fail with `TRANSPORT_UNAVAILABLE` instead of
   returning mislabeled inline data. Use `request_persist` to write a file.
 - `request_persist` returns `status: "awaiting_user"` and shows a save prompt

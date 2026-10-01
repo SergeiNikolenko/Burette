@@ -720,7 +720,7 @@ async function openBrowserDevDocument(
     headers: { Range: `bytes=0-${MAESTRO_PREVIEW_READ_LIMIT - 1}` },
   } : undefined);
   assertBrowserDevFileResponse(path, extension, response);
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  const bytes = await inflateCompressedStructure(path, new Uint8Array(await response.arrayBuffer()));
   if (bytes.length === 0) throw new Error(`${path} is empty`);
   const maxFileSize = isMesoscaleDocument(path, extension, bytes) ? MAX_MESOSCALE_FILE_SIZE : MAX_STRUCTURE_FILE_SIZE;
   if (bytes.length > maxFileSize && !useBoundedMaestroPreview) {
@@ -1047,7 +1047,7 @@ async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDoc
   }
   const response = await fetch(browserDevReadUrl(path, extension));
   assertBrowserDevFileResponse(path, extension, response);
-  const originalBytes = new Uint8Array(await response.arrayBuffer());
+  const originalBytes = await inflateCompressedStructure(path, new Uint8Array(await response.arrayBuffer()));
   if (originalBytes.length === 0) throw new Error(`${path} is empty`);
   if (originalBytes.length > MAX_STRUCTURE_FILE_SIZE) {
     throw new Error(`${path} is larger than the 75 MB preview limit`);
@@ -2141,9 +2141,15 @@ function gridRequiresPreview(extension: string) {
   );
 }
 
+// gzip and BGZF copies of coordinate files keep the inner format: 1abc.pdb.gz
+// opens as pdb.
+const COMPRESSED_STRUCTURE_NAME = /\.(pdb|ent|cif|mmcif)\.(?:gz|bgz|bgzf)$/iu;
+
 function fileExtension(path: string) {
   const name = fileTitle(path);
   if (name.toLowerCase().endsWith(".mae.gz")) return "maegz";
+  const compressed = COMPRESSED_STRUCTURE_NAME.exec(name);
+  if (compressed) return compressed[1].toLowerCase();
   const index = name.lastIndexOf(".");
   if (index >= 0) return name.slice(index + 1).toLowerCase();
   return /^in(?:_|$)/iu.test(name) ? "in" : "";
@@ -2189,6 +2195,17 @@ function browserDevReadUrl(path: string, extension: string) {
 
 function decodeUtf8(bytes: Uint8Array) {
   return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+}
+
+// The native Codex workspace serves these files already inflated (its server
+// also reads multi-member BGZF). Other surfaces get the gzip bytes; the
+// browser's DecompressionStream reads single-member gzip only.
+async function inflateCompressedStructure(path: string, bytes: Uint8Array) {
+  if (!COMPRESSED_STRUCTURE_NAME.test(fileTitle(path)) || bytes[0] !== 0x1f || bytes[1] !== 0x8b) return bytes;
+  const stream = new Blob([new Uint8Array(bytes).buffer]).stream().pipeThrough(new DecompressionStream("gzip"));
+  const inflated = new Uint8Array(await new Response(stream).arrayBuffer());
+  if (inflated.length > MAX_STRUCTURE_FILE_SIZE) throw new Error(`${path} is larger than the 75 MB preview limit once decompressed`);
+  return inflated;
 }
 
 async function decodeStructureText(bytes: Uint8Array, extension: string) {
