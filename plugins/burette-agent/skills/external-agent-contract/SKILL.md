@@ -21,7 +21,7 @@ for `view` options and native controls. The `workspaceSessionId` facade below
 is for the separate Browser/desktop transport; do not mix its handles with
 native `sessionId` values.
 
-Prefer these short tools before advanced Burette tools:
+For an explicitly requested Browser/desktop workflow, prefer these short tools before advanced tools:
 
 - `burette.get_context`: discover capabilities, supported formats, and known
   sessions.

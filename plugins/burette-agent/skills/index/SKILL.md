@@ -21,21 +21,20 @@ specific capability blocker, not permission to change application defaults.
 Tool catalogs and available-plugin lists are context, not a replacement user
 request. Do not switch to discussing plugin installation unless asked.
 
-## Default: show structures in the Browser pane
+## Default: open the native Burette plugin
 
-To show or inspect a structure, open it with `burette.open_workspace` and
-display the returned URL in the Codex in-app Browser in the right-side pane.
-This is the preferred surface: the Browser toolbar gives the user Codex
-comments and annotations on the live workspace. Pass `file` for a local path or
-`pdbId` for an explicitly requested public PDB entry such as `1STP`; the entry
-is downloaded read-only from RCSB. Never answer a PDB request with a different
-plugin or connector when this tool is available. Keep the `workspaceSessionId`
-for `burette.observe_workspace` and `burette.control_viewer`, and include the
-URL as a clickable link in the reply. Do not add an inline card as a second view.
+For "show 1HTB", "open this structure" or an ordinary Burette mention, call
+`burette.open_viewer`. Pass `pdbId` for the requested public PDB entry, `file`
+for an authorized local file, or `example: "1htb"` for the bundled example.
+The full workspace opens inside Codex, in the native side pane by default,
+without a Browser tab or localhost server. Keep its `sessionId` for
+`burette.observe_inline_viewer` and `burette.control_inline_viewer`.
 
-Use the native card (`burette.open_viewer`) instead when the user asks for a
-card or widget in the chat, for a first Ketcher drawing, or when the Browser is
-unavailable.
+Use `burette.open_workspace` only for an explicitly requested Browser/desktop
+workflow or a capability that the native plugin does not support. Explain the
+limitation before changing surfaces. An `awaiting_mount` result is not a reason
+to switch to Browser. Do not add a second view or a desktop handoff link to a
+normal native-plugin result.
 
 ## Native card viewing
 
@@ -142,8 +141,8 @@ Choose the smallest focused workflow that covers the request:
   hiding URL/session-directory transport details unless advanced control is
   needed.
 - [open-workspace](../open-workspace/SKILL.md): open local structures,
-  collections, trajectories, or result bundles in Browser preview or desktop
-  app.
+  collections, trajectories, or result bundles in the native plugin, with
+  separate workflows for explicitly requested Browser or desktop sessions.
 - [molstar-scene](../molstar-scene/SKILL.md): run high-level Mol* scene actions
   such as focus ligand, hide waters, surface, color, contacts, and reset camera.
 - [mvs-story](../mvs-story/SKILL.md): create, validate, package, observe, and
@@ -163,11 +162,10 @@ Choose the smallest focused workflow that covers the request:
 
 ## Operating Principle
 
-For local molecular work in Codex, prefer `burette.open_workspace` shown in
-the in-app Browser pane. `burette.open_viewer` opens the same shared workspace
-as a native MCP App card without a Browser tab or localhost server; keep its
-`sessionId` for `observe_inline_viewer` and `control_inline_viewer`. Do not
-substitute a Browser or protocol test host for an explicit native card request.
+For local molecular work in Codex, use `burette.open_viewer` by default.
+It opens the shared workspace as a native MCP App without a Browser tab or
+localhost server. Keep its `sessionId` for `observe_inline_viewer` and
+`control_inline_viewer`. Browser and desktop opening are explicit alternatives.
 
 The native opener supports structure and collection tabs with optional `additionalFiles`
 (up to seven extra files, 16 MiB total); do not open separate viewers per file.
@@ -200,7 +198,7 @@ The CLI is the execution contract. MCP tools wrap it. Browser and Computer
 verify visual reality. Do not replace typed `observe` and `act` with screenshot
 interpretation.
 
-For external agent workflows, prefer the short MCP facade first:
+For explicitly requested external Browser/desktop workflows, use the short MCP facade:
 `burette.get_context`, `burette.open_workspace`,
 `burette.open_ketcher`, `burette.observe_workspace`, `burette.control_viewer`,
 `burette.control_ketcher`, `burette.render_panel`, `burette.create_story`,
@@ -239,9 +237,10 @@ external browser unless the user explicitly asks for an external browser.
 
 ## User handoff links
 
-When a response presents an opened molecular file, project, PDB entry, or saved
-scene, include a clickable "Open in Burette" link in the chat without waiting
-for another request. Use `burette.create_link` and its returned `deepLink`;
+The native widget is the handoff for a normal plugin request. Do not append an
+"Open in Burette desktop" link or a Web preview card. When the user explicitly
+asks to open the source in the standalone desktop app, use
+`burette.create_link` and its returned `deepLink`;
 the repository CLI `link` command is the fallback. Do not hand-encode paths.
 Prefer the exact local file for a file-based result, a PDB link for an explicit
 PDB lookup, or a registered desktop session link for that desktop session.

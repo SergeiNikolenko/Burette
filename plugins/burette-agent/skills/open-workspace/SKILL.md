@@ -1,6 +1,6 @@
 ---
 name: open-workspace
-description: "Use when opening molecular artifacts in Burette Browser preview or desktop app sessions and establishing an observable workspace."
+description: "Use when opening molecular artifacts in the native Burette plugin, or an explicitly requested Browser or desktop session, and establishing an observable workspace."
 ---
 
 # Open Workspace
@@ -8,14 +8,16 @@ description: "Use when opening molecular artifacts in Burette Browser preview or
 Use this workflow to open local structures, SDF collections, trajectory bundles,
 or workflow result bundles in Burette.
 
-## Default: Browser pane
+## Default: native plugin workspace
 
-To show a structure in Codex, call `burette.open_workspace` with `file` (local
-path) or `pdbId` (public PDB entry) and open the returned URL in the Codex
-in-app Browser in the right-side pane. The Browser toolbar provides Codex
-comments and annotations. Give the URL as a clickable link and do not add a
-second inline card. Use the native card below when the user asks for a card or
-widget in the chat, for Ketcher drawings, or when the Browser is unavailable.
+To show a structure in Codex, call `burette.open_viewer` with `file` (local
+path), `pdbId` (the requested public PDB entry), or a bundled `example`.
+Use the native side pane and retain its `sessionId` for observation and control.
+A normal "show 1HTB" request does not need Browser setup, a localhost URL,
+or an "Open in Burette desktop" link. Ketcher drawings open inline by default.
+Use the Browser/desktop workflow below only when explicitly requested or when
+a native capability is unavailable and that limitation has been explained.
+Never switch surfaces merely because the native card is awaiting mount.
 
 ## Native Codex card and compact inline viewer
 
@@ -95,11 +97,11 @@ Typed checks and a visible nonblank scene are separate requirements. An MCP
 protocol test or Browser host harness is not proof of native Codex mounting.
 After plugin updates, new tools may require a new task or host reload.
 
-## Workflow
+## Explicit Browser or desktop workflow
 
 1. Run Burette preflight through [user-context](../user-context/SKILL.md).
 2. Choose mode:
-   - `auto` for the default agent path. It starts `browser-agent-shell` when
+   - `auto` for a requested Browser workflow. It starts `browser-agent-shell` when
      the full Browser UI is available and falls back to `browser-preview` when
      the shell cannot start.
    - `browser-agent-shell` when the user asks for the normal Browser UI, right

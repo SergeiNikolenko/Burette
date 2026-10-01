@@ -368,7 +368,6 @@ for (const asset of browserShellJavaScript) {
 }
 
 const indexSkill = await read("skills/index/SKILL.md");
-assert.match(indexSkill, /Default: show structures in the Browser pane/);
 assert.match(indexSkill, /Native card viewing/);
 assert.match(indexSkill, /Preflight for setup or other workflows/);
 assert.match(indexSkill, /external-agent-contract/);

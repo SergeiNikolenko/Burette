@@ -140,7 +140,7 @@ export function registerMolecularWorkspace(server) {
     "burette.open_workspace",
     {
       title: "Open Burette Workspace",
-      description: "Preferred way to show a structure in Codex: start the full Burette workspace for a local file or a public PDB ID and return its clickable URL and stable workspaceSessionId. Open that URL in the Codex in-app Browser in the right-side pane, where the Browser toolbar provides comments and annotations; do not also open an inline viewer. Use burette.open_viewer only when the user asks for a card or widget in the chat, or the Browser is unavailable. additionalFiles open as separate Burette tabs; use scene: structureAll only when the user asks to show structures together on one canvas.",
+      description: "Open an explicitly requested Browser or standalone desktop workspace for a local file or public PDB ID. For ordinary show/open requests in the Burette plugin, use burette.open_viewer instead: it renders inside Codex without a Browser tab. This separate CLI transport returns a clickable URL and workspaceSessionId; Browser results must be opened in the Codex in-app Browser. Do not create a duplicate view. additionalFiles open separate tabs; scene: structureAll combines structures only when requested.",
       inputSchema: {
         file: z.string().trim().min(1).optional().describe("Absolute local structure path; mutually exclusive with pdbId."),
         pdbId: pdbIdSchema.optional(),
@@ -495,7 +495,7 @@ export function registerMolecularWorkspace(server) {
     "open_burette_workspace",
     {
       title: "Open Burette Workspace",
-      description: "Open local artifacts through the repository CLI. additionalFiles open as separate Burette tabs by default; scene: structureAll shows the files together in one Mol* scene. Use the full Browser shell for the Codex right pane, not a duplicate inline viewer.",
+      description: "Advanced CLI opening for an explicitly requested Browser or standalone desktop workflow. Use burette.open_viewer for ordinary Burette plugin requests inside Codex. additionalFiles open separate tabs; scene: structureAll shows files together in one Mol* scene.",
       inputSchema: {
         file: z.string().trim(),
         additionalFiles: z.array(z.string().trim().min(1)).max(63).optional(),

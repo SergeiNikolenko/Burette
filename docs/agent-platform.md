@@ -1,5 +1,10 @@
 # Agent Platform
 
+Ordinary molecular opening in Codex uses `burette.open_viewer` in the native
+plugin. `burette.open_workspace` remains the separate Browser/desktop contract
+for explicitly requested workflows or explained native capability limits.
+A native result does not automatically append a standalone-app link.
+
 ## Native plugin upgrades and desktop links
 
 The MCP server snapshots its packaged HTML and native asset directory before
