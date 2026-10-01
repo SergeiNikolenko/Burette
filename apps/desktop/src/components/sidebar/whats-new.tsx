@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import whatsNewFeed from "../../../../../config/whats-new.json";
 import { isTauriRuntime } from "../../lib/tauri";
 import { ExternalLink, Lightbulb } from "../ui/app-icons";
@@ -9,11 +9,14 @@ import { ReleaseNotesDialog } from "./release-notes-dialog";
 
 const RELEASES_URL = "https://github.com/SergeiNikolenko/Burette/releases";
 const READ_VERSIONS_KEY = "burette.whatsNew.readVersions";
+const UNREAD_SINCE_KEY = "burette.whatsNew.unreadSince";
+const UNREAD_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const VISIBLE_ENTRIES = 3;
 
 export type WhatsNewEntry = (typeof whatsNewFeed.entries)[number];
 
 const entries: WhatsNewEntry[] = whatsNewFeed.entries.slice(0, VISIBLE_ENTRIES);
+const feedVersions = whatsNewFeed.entries.map((entry) => entry.version);
 const dayFormat = new Intl.DateTimeFormat("en-US", { day: "numeric", timeZone: "UTC" });
 const monthFormat = new Intl.DateTimeFormat("en-US", { month: "short", timeZone: "UTC" });
 
@@ -23,12 +26,43 @@ function formatEntryDate(isoDate: string) {
   return `${dayFormat.format(date)} ${monthFormat.format(date)}`;
 }
 
-function storeReadVersions(versions: string[]) {
+// Private storage modes only lose the read markers.
+function writeStorage(key: string, value: string | null) {
   try {
-    localStorage.setItem(READ_VERSIONS_KEY, JSON.stringify(versions));
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
   } catch {
-    // Private storage modes only lose the read markers.
+    // Ignore unavailable storage.
   }
+}
+
+function storeReadVersions(versions: string[]) {
+  writeStorage(READ_VERSIONS_KEY, JSON.stringify(versions));
+}
+
+const hasUnreadEntries = (readVersions: string[]) =>
+  entries.some((entry) => !readVersions.includes(entry.version));
+
+// When an update first brings unread releases, remember when. The row is a
+// nudge, so it expires a day later even if it was never opened.
+function unreadExpiresAt(): number {
+  let since = Number.NaN;
+  try {
+    since = Number(localStorage.getItem(UNREAD_SINCE_KEY) ?? Number.NaN);
+  } catch {
+    // Fall through and start the clock now.
+  }
+  if (!Number.isFinite(since)) {
+    since = Date.now();
+    writeStorage(UNREAD_SINCE_KEY, String(since));
+  }
+  return since + UNREAD_LIFETIME_MS;
+}
+
+function dismissAll() {
+  storeReadVersions(feedVersions);
+  writeStorage(UNREAD_SINCE_KEY, null);
+  return feedVersions;
 }
 
 // A fresh install has nothing to announce: the first run marks the bundled
@@ -37,12 +71,16 @@ function readReadVersions(): string[] {
   try {
     const stored = localStorage.getItem(READ_VERSIONS_KEY);
     if (stored === null) {
-      const baseline = whatsNewFeed.entries.map((entry) => entry.version);
-      storeReadVersions(baseline);
-      return baseline;
+      storeReadVersions(feedVersions);
+      return feedVersions;
     }
     const parsed: unknown = JSON.parse(stored);
-    return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
+    const read = Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
+    if (!hasUnreadEntries(read)) {
+      writeStorage(UNREAD_SINCE_KEY, null);
+      return read;
+    }
+    return Date.now() >= unreadExpiresAt() ? dismissAll() : read;
   } catch {
     return [];
   }
@@ -56,14 +94,23 @@ async function openReleasesPage() {
 // Sidebar footer row with a short release timeline, modelled on the Codex app's
 // "What's new" block. Each release stays unread, with a blue dot, until its
 // notes are opened; read releases show a ring, and a hairline joins the dots.
-// The row only appears while an update has brought unread releases.
+// The row only appears while an update has brought unread releases, and for
+// at most a day after that update.
 export function WhatsNew() {
   const [open, setOpen] = useState(false);
   const [openEntry, setOpenEntry] = useState<WhatsNewEntry | null>(null);
   const [readVersions, setReadVersions] = useState(readReadVersions);
   const portalContainer = useAppShellPortalContainer();
   const isUnread = (entry: WhatsNewEntry) => !readVersions.includes(entry.version);
-  const hasUnread = entries.some(isUnread);
+  const hasUnread = hasUnreadEntries(readVersions);
+
+  // Covers a window that stays open past the expiry; launches check on load.
+  useEffect(() => {
+    if (!hasUnread) return;
+    const timer = window.setTimeout(() => setReadVersions(dismissAll()), Math.max(0, unreadExpiresAt() - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [hasUnread]);
+
   // Stay mounted while the popover or dialog is open, even after the last read.
   if (!hasUnread && !open && openEntry === null) return null;
 
@@ -72,9 +119,9 @@ export function WhatsNew() {
     setOpenEntry(entry);
     if (!isUnread(entry)) return;
     // Keep only versions still in the feed so the stored list stays bounded.
-    const next = [...readVersions, entry.version].filter((version) =>
-      whatsNewFeed.entries.some((candidate) => candidate.version === version));
+    const next = [...readVersions, entry.version].filter((version) => feedVersions.includes(version));
     storeReadVersions(next);
+    if (!hasUnreadEntries(next)) writeStorage(UNREAD_SINCE_KEY, null);
     setReadVersions(next);
   };
 
