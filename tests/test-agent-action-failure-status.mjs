@@ -2,10 +2,11 @@
 // A failed viewer action must be reported as what it is. Only "no such atoms"
 // failures read as a structure mismatch; stale revisions, a missing viewer and
 // invalid or out-of-range arguments get a generic title with their own code.
+// A failure toast is withdrawn once a later run of the same command succeeds.
 import assert from "node:assert/strict";
 import { mock } from "bun:test";
 
-mock.module("react", () => ({ useCallback: (callback) => callback }));
+mock.module("react", () => ({ useCallback: (callback) => callback, useRef: (current) => ({ current }) }));
 const { useAppViewerHostMessages } = await import("../apps/desktop/src/hooks/use-app-viewer-host-messages.ts");
 
 const statuses = [];
@@ -39,5 +40,25 @@ for (const [command, code, message] of [
 }
 assert.deepEqual(report({ ok: false }), [{ message: "Structure action failed", kind: "error", details: ["The viewer did not report a reason"] }]);
 assert.deepEqual(report({ ok: false, error: { code: "INVALID_ARGS" } }, "text-selection-1"), []);
+
+// Review case p2: an ambiguous focus_ligand fails, the narrowed retry succeeds.
+const openToasts = new Set();
+const recovery = useAppViewerHostMessages({
+  pendingMolstarReplaceRef: { current: new Map() },
+  pushStatus: (message, kind, details) => {
+    const toast = `${details.at(-1)}`;
+    openToasts.add(toast);
+    return () => openToasts.delete(toast);
+  },
+});
+const deliver = (result) => recovery.handleViewerHostMessage("burette-agent-viewer", { type: "agent-action-result", id: "agent-2", result });
+const ambiguous = { ok: false, command: "focusLigand", error: { code: "INVALID_ARGS", message: "Ligand selector is ambiguous." } };
+deliver(ambiguous);
+deliver({ ok: false, command: "capture_scene", error: { code: "INVALID_ARGS", message: "Capture scope must be auto, scene or ligand." } });
+assert.deepEqual([...openToasts], ["focusLigand: INVALID_ARGS", "capture_scene: INVALID_ARGS"]);
+deliver({ ...ambiguous, error: { code: "SELECTION_EMPTY", message: "Ligand selector matched no ligands." } });
+assert.deepEqual([...openToasts], ["capture_scene: INVALID_ARGS", "focusLigand: SELECTION_EMPTY"], "a repeated failure replaces the older toast");
+deliver({ ok: true, command: "focusLigand" });
+assert.deepEqual([...openToasts], ["capture_scene: INVALID_ARGS"], "a successful retry withdraws only its own failure");
 
 console.log("Agent action failure status contracts passed");

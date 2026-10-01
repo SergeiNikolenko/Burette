@@ -291,7 +291,9 @@ assert.match(toolResponse, /toolText/);
 const packDryRun = runCommand("npm", ["pack", "--dry-run", "--json", "."], pluginRoot);
 assert.equal(packDryRun.status, 0, packDryRun.stderr);
 const packPayload = JSON.parse(packDryRun.stdout);
-const packedFiles = new Set(packPayload[0].files.map(file => file.path));
+// npm 11 prints an array of packages; npm 12 keys them by package name.
+const [packed] = Array.isArray(packPayload) ? packPayload : Object.values(packPayload);
+const packedFiles = new Set(packed.files.map(file => file.path));
 for (const asset of [
   "browser-shell-dist/boot-overlay.js",
   "browser-shell-dist/index.html",

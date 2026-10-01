@@ -77,4 +77,17 @@ assert.equal(validateKetcherAction({ ...base, command: "set_structure", format: 
 assert.deepEqual(validateKetcherAction({ ...base, command: "get_structure", formats: ["smi", "smiles", "mol"] }).value.formats, ["smiles", "mol"]);
 assert.equal(validateKetcherAction({ ...base, command: "request_persist", format: "smi" }).value.format, "smiles");
 assert.equal(validateKetcherAction({ ...base, command: "set_structure", format: "smiles2", content: "CCO" }).error.code, "UNSUPPORTED_FORMAT");
+
+// Review case p5 read back SMILES with `format: "smi"` and without `formats`; both
+// shorthands normalize to the canonical action, and errors name the valid shape.
+const readBack = { ...base, command: "get_structure" };
+assert.deepEqual(validateKetcherAction({ ...readBack, format: "smi" }), validateKetcherAction({ ...readBack, formats: ["smiles"] }));
+assert.deepEqual(validateKetcherAction({ ...readBack, formats: "smiles" }).value.formats, ["smiles"]);
+assert.equal(Object.hasOwn(validateKetcherAction({ ...readBack, format: "mol" }).value, "format"), false);
+assert.match(validateKetcherAction({ ...readBack, format: "smiles", formats: ["mol"] }).error.message, /not both/u);
+assert.match(validateKetcherAction(readBack).error.message, /"formats": \["smiles"\]/u);
+assert.match(validateKetcherAction({ ...readBack, formats: ["png"] }).error.message, /smiles/u);
+assert.match(validateKetcherAction({ ...readBack, formats: ["smiles"], smiles: true }).error.message, /"smiles".*get_structure accepts formats, format, delivery/u);
+const { actionId: _omitted, ...withoutActionId } = { ...base, command: "set_structure", format: "smi", content: "CCO" };
+assert.match(validateKetcherAction(withoutActionId).error.message, /actionId.*"set-aspirin-1"/u);
 console.log("ketcher agent contract tests passed");

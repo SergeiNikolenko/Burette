@@ -17092,10 +17092,14 @@ SOFTWARE.
     return 'ligand';
   }
 
+  // A kind matches a whole word of the component tags or label, such as Mol*'s
+  // `structure-component-static-ion` or "Ions", never the "ion" inside
+  // "Lasso selection" or a burette-selection-* key.
   function isMolstarComponentKind(component, kind) {
+    const word = new RegExp(`(^|[^a-z])${kind}s?([^a-z]|$)`);
     const key = String(component?.key || '').toLowerCase();
     const label = String(component?.cell?.obj?.label || component?.label || '').toLowerCase();
-    return key.includes(kind) || label.includes(kind);
+    return word.test(key) || word.test(label);
   }
 
   async function hideMolstarWaters() {

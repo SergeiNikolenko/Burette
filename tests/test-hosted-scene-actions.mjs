@@ -92,6 +92,29 @@ for (const visible of [true, false]) {
 }
 console.log('Showing an already visible polymer is idempotent');
 
+const kindStart = source.indexOf('  function molstarComponentsByKind(');
+const kindEnd = source.indexOf('  async function hideMolstarWaters(', kindStart);
+{
+  const component = (key, label) => ({ key, cell: { obj: { label } } });
+  const components = [
+    component('structure-component-static-ion', 'Ion'),
+    component('burette-selection,structure-component-burette-selection-resi-5', 'Selection'),
+    component('burette-lasso', 'Lasso selection · 12 atoms'),
+    component('structure-component-static-polymer', 'Polymer'),
+    component('structure-component-static-water', 'Water'),
+  ];
+  const context = {
+    isMolstarWaterComponent: item => item.key.endsWith('-water'),
+  };
+  runInNewContext(source.slice(kindStart, kindEnd), context);
+  const viewer = { plugin: { managers: { structure: { hierarchy: { current: { structures: [{ components }] } } } } } };
+  const labels = kind => Array.from(context.molstarComponentsByKind(viewer, kind), item => item.cell.obj.label);
+  assert.deepEqual(labels('ions'), ['Ion'], 'ion must not match selection or lasso components');
+  assert.deepEqual(labels('protein'), ['Polymer']);
+  assert.deepEqual(labels('water'), ['Water']);
+}
+console.log('Scene component kinds match whole words, not substrings');
+
 const backgroundStart = source.indexOf('  function resolvedCanvasBackground()');
 const backgroundEnd = source.indexOf('  function canvasBackgroundCSS()', backgroundStart);
 for (const hosted of [false, true]) {

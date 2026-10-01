@@ -4100,7 +4100,9 @@
       return;
     }
     const card = grid.querySelector('.buret-card');
-    const gridWidth = grid.getBoundingClientRect().width || window.innerWidth || DEFAULT_CARD_MIN;
+    // Content width: the cards inset their trailing edge by the dock cover.
+    const gridWidth = (grid.getBoundingClientRect().width - cssPixels(styles.paddingLeft, 0) - cssPixels(styles.paddingRight, 0))
+      || window.innerWidth || DEFAULT_CARD_MIN;
     if (card) {
       const rect = card.getBoundingClientRect();
       if (Number.isFinite(rect.width) && rect.width > 0) {
@@ -4892,6 +4894,10 @@
     if (next === state.gridViewportCover) return;
     state.gridViewportCover = next;
     applyGridToolbarInset();
+    // Cards reflow into the exposed strip (grid.css); the iframe itself keeps
+    // its size, so re-run the resize path to re-window the virtual rows.
+    document.documentElement.style.setProperty('--buret-grid-viewport-cover', `${next}px`);
+    state.resizeHandler?.();
   }
 
   // Cap the toolbar to the strip the dock is not covering, so its buttons and
@@ -7888,8 +7894,10 @@
 
   function cardWidthLimits(card) {
     const grid = card.closest('.buret-grid');
-    const gridWidth = grid?.getBoundingClientRect().width || window.innerWidth || DEFAULT_CARD_MIN;
-    const gap = parseFloat(getComputedStyle(grid || document.documentElement).columnGap || '0') || 0;
+    const styles = getComputedStyle(grid || document.documentElement);
+    const gridWidth = ((grid?.getBoundingClientRect().width || 0) - (parseFloat(styles.paddingLeft) || 0) - (parseFloat(styles.paddingRight) || 0))
+      || window.innerWidth || DEFAULT_CARD_MIN;
+    const gap = parseFloat(styles.columnGap || '0') || 0;
     const minByColumns = (gridWidth - gap * 29) / 30;
     const maxByColumns = (gridWidth - gap * 2) / 3;
     return {

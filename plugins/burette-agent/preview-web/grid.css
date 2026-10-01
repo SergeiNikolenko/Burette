@@ -900,6 +900,13 @@ button:disabled {
   padding-inline: var(--buret-grid-content-padding-inline);
 }
 
+/* A floored grid spills under the floating right dock. Cards have no
+   horizontal scroll, so they lay out in the strip the dock leaves exposed;
+   the table keeps spilling and scrolls its columns out from under it. */
+body:not([data-buret-grid-view-mode="table"]) .buret-grid {
+  padding-inline-end: calc(var(--buret-grid-content-padding-inline) + var(--buret-grid-viewport-cover, 0px));
+}
+
 body[data-buret-grid-view-mode="table"] .buret-grid {
   display: block;
   padding-inline: 0;

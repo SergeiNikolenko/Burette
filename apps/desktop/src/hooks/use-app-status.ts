@@ -41,6 +41,8 @@ export function useAppStatus() {
   const [statusDetails, setStatusDetails] = useState<StatusDetailsRequest | null>(null);
   const recentErrorsRef = useRef<RecentStatusError[]>([]);
 
+  // Error toasts stay until dismissed. The returned callback closes this toast,
+  // so a caller can withdraw an error once a later attempt has superseded it.
   const pushStatus = useCallback((message: string, kind: StatusKind = "info", details: string[] = []) => {
     const trimmed = message.trim();
     if (!trimmed) return;
@@ -57,7 +59,7 @@ export function useAppStatus() {
     if (kind !== "error") return;
     const compact = compactStatusMessage(trimmed);
     const fullDetails = compact === trimmed ? normalizedDetails : [trimmed, ...normalizedDetails];
-    toast.add({
+    const toastId = toast.add({
       title: compact,
       type: kind,
       timeout: 0,
@@ -71,6 +73,7 @@ export function useAppStatus() {
           }
         : {}),
     });
+    return () => toast.close(toastId);
   }, []);
 
   const pushErrorStatus = useCallback((error: unknown, prefix?: string, details: string[] = []) => {

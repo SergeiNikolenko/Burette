@@ -26,6 +26,7 @@ export type KetcherControlAction = {
   surfaceId: string;
   actionId: string;
   expectedRevision: number;
+  /** set_structure/request_persist format; get_structure accepts it as shorthand for `formats: [format]`. */
   format?: string;
   content?: string;
   contentRef?: string;
