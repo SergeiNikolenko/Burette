@@ -1,13 +1,143 @@
 {
-  "$comment": "Curated release highlights for the sidebar What's new popover. Newest first; each version must have a vX tag on the releases page.",
+  "$comment": "Curated release notes for the sidebar What's new popover and its release dialog. Newest first; each version must have a vX tag on the releases page.",
   "entries": [
-    { "version": "2026.9.51", "date": "2026-10-01", "title": "Steadier plugin navigation and toolbar text" },
-    { "version": "2026.9.49", "date": "2026-09-30", "title": "Workspace home shows recent files and Ketcher" },
-    { "version": "2026.9.48", "date": "2026-09-30", "title": "Back and forward in expanded plugin workspaces" },
-    { "version": "2026.9.43", "date": "2026-09-29", "title": "Open molecular files with Burette inside Codex" },
-    { "version": "2026.9.40", "date": "2026-09-28", "title": "Native Desmond trajectory playback" },
-    { "version": "2026.9.36", "date": "2026-09-27", "title": "xyzrender animation per card" },
-    { "version": "2026.9.28", "date": "2026-09-25", "title": "Native Mol* right-click menu on macOS" },
-    { "version": "2026.9.20", "date": "2026-09-25", "title": "Move files to Trash without a confirmation" }
+    {
+      "version": "2026.9.51",
+      "date": "2026-10-01",
+      "title": "Steadier plugin navigation and toolbar text",
+      "summary": "Molecular files opened from Codex land in the plugin workspace, and the shared header reads as one toolbar.",
+      "sections": [
+        {
+          "title": "Plugin workspace",
+          "items": [
+            "Compute tools and panels that are unavailable in the current host are hidden.",
+            "Unsaved sketches no longer offer file system actions.",
+            "Pages with the same name show which viewer they belong to."
+          ]
+        },
+        {
+          "title": "Annotations",
+          "items": [
+            "Annotation mode resets when you switch documents or return to Recent files.",
+            "The Atoms and Residues picker sits above the annotation bar."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "2026.9.49",
+      "date": "2026-09-30",
+      "title": "Workspace home shows recent files and Ketcher",
+      "summary": "The start page drops prompts, demo cards and the search field and keeps what you return to most.",
+      "sections": [
+        {
+          "title": "Start page",
+          "items": [
+            "Recent files and Ketcher are the only entries.",
+            "The expanded sidebar has one Ketcher route and highlights the active page.",
+            "Narrow layouts keep a labelled navigation menu."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "2026.9.48",
+      "date": "2026-09-30",
+      "title": "Home and open pages in expanded plugin workspaces",
+      "summary": "Expanded plugin workspaces no longer trap you inside a single viewer.",
+      "sections": [
+        {
+          "title": "Navigation",
+          "items": [
+            "Home, Ketcher and every open page are one click away.",
+            "Returning Home keeps open structures and sketches.",
+            "Compact cards keep navigation in one toolbar menu, and viewer controls stay visible at 420 px."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "2026.9.43",
+      "date": "2026-09-29",
+      "title": "Open molecular files with Burette inside Codex",
+      "summary": "Clicking a structure file in a Codex thread now offers Burette instead of the plain text viewer.",
+      "sections": [
+        {
+          "title": "Supported files",
+          "items": [
+            "PDB, PDBQT, mmCIF, SDF, MOL, SMILES, XYZ, KET, RXN and MolViewSpec files open as a full workspace.",
+            "CSV and TSV stay with the Codex table viewer."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "2026.9.40",
+      "date": "2026-09-28",
+      "title": "Desmond trajectories play without a proprietary runtime",
+      "summary": "CMS and DTR files are read natively, and playback survives scene rebuilds.",
+      "sections": [
+        {
+          "title": "Playback",
+          "items": [
+            "Stop, seek and rebuild no longer strand playback.",
+            "Smoothing moves the solute only and keeps solvent and ions in place.",
+            "Toolbar popovers inside the viewer are back."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "2026.9.36",
+      "date": "2026-09-27",
+      "title": "xyzrender animation per card",
+      "summary": "Each card on an xyzrender sheet keeps its own style and animation.",
+      "sections": [
+        {
+          "title": "Animation",
+          "items": [
+            "Editing or animating one card no longer re-renders the others.",
+            "Opening the animation dialog does not start a render by itself.",
+            "With several cards selected, Apply to N selected animates them together."
+          ]
+        },
+        {
+          "title": "Dock",
+          "items": [
+            "Tabs in a narrow right dock no longer shrink or slide when clicked."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "2026.9.28",
+      "date": "2026-09-25",
+      "title": "Native Mol* right-click menu on macOS",
+      "summary": "Right-clicking a structure opens a macOS menu instead of the web panel.",
+      "sections": [
+        {
+          "title": "Menu",
+          "items": [
+            "Representation and colour settings are a native submenu with sliders and swatches.",
+            "Every change made while the menu is open is one undo step."
+          ]
+        }
+      ]
+    },
+    {
+      "version": "2026.9.20",
+      "date": "2026-09-25",
+      "title": "Move files to Trash without a confirmation",
+      "summary": "Move to Trash acts immediately, like Finder.",
+      "sections": [
+        {
+          "title": "Files",
+          "items": [
+            "A dialog appears only when the move fails and offers a retry.",
+            "A successful move plays the Finder trash sound when interface sounds are on."
+          ]
+        }
+      ]
+    }
   ]
 }
