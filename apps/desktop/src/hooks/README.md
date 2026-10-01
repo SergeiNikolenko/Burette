@@ -14,6 +14,7 @@ must preserve the public shell contracts consumed by layout and viewer code.
 | Viewer bridge | `use-app-viewer-bridge-controller.ts`, `use-app-viewer-bridge-messages.ts`, `use-app-*-messages.ts` | `window.message` routing between host, grid, Mol*, xyzrender, and agent actions. |
 | Preview/runtime state | `use-app-viewer-runtime-refs.ts`, `use-app-host-runtime-operations.ts`, `use-app-preference-effects.ts`, `use-app-quick-look*.ts` | Runtime refs, preview refresh, Quick Look startup, cache/diagnostic actions, and host operations. |
 | Domain workflows | `use-app-chemistry-jobs.ts`, `use-app-conformer-workflows.ts`, `use-app-xtb-workflows.ts`, `use-app-ketcher-actions.ts`, `use-app-grid-*.ts`, `use-app-docking-*.ts`, `use-app-fep-workflows.ts` | Chemistry, grid, Ketcher, docking, pose review, and FEP workflow callbacks. |
+| Native file header | `use-workspace-header-band.ts` | Bounds the viewer toolbar between fixed header controls; reserves a second 50px row when less than 160px remains. |
 | Agent session | `use-agent-session.ts` | Desktop/browser agent observe/action polling and active viewer action relay. |
 
 ## Contract Rules
@@ -40,6 +41,7 @@ bun tests/test-viewer-bridge-message-contract.mjs
 bun tests/test-runtime-storage-contract.mjs
 bun tests/test-shell-store-behavior.mjs
 bun tests/test-docking-documents.mjs
+bun tests/test-workspace-header-band.tsx
 ```
 
 For user-visible shell work, also run:

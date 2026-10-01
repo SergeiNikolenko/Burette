@@ -56,7 +56,7 @@
    see use-workspace-header-band.ts. */
 .workspace-file-header[data-band] {position:absolute; inset:0 0 auto; background:transparent; pointer-events:none; padding-left:var(--band-leading, 10px)}
 .workspace-file-header[data-band] > :not(.workspace-file-band-slot) {pointer-events:auto}
-.workspace-file-band-slot {flex:none; width:var(--band-controls, 0px); margin-left:auto; margin-right:var(--band-slot-margin, 0px)}
+.workspace-file-band-slot {flex:0 1 auto; min-width:0; width:var(--band-controls, 0px); margin-left:auto; margin-right:var(--band-slot-margin, 0px)}
 .workspace-file-header[data-band-compact] .workspace-file-path {display:none}
 .app-shell:has(> .workspace-file-header[data-band]) .dock-panel[data-area="right"] {padding-top:50px; box-sizing:border-box}
 @container (max-width:520px) {
