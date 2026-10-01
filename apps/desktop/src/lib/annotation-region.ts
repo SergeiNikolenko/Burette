@@ -30,6 +30,8 @@ export type AnnotationImage = { data: string; mimeType: string };
 
 const REGION_TIMEOUT_MS = 8000;
 const MAX_TEXT = 1200;
+// Keep DOM ownership local: frame references must never enter agent payloads.
+const regionFrames = new WeakMap<RegionTarget, HTMLIFrameElement>();
 
 function topElementAt(layer: HTMLElement, x: number, y: number) {
   return document.elementsFromPoint(x, y).find((element) => !layer.contains(element)) ?? null;
@@ -96,14 +98,19 @@ async function describeFrameRegion(frame: HTMLIFrameElement, rect: RegionRect, g
     rect: { left: rect.left - frameRect.left, top: rect.top - frameRect.top, width: rect.width, height: rect.height },
   });
   const box = result?.box;
-  return result && box ? { ...result, box: { ...box, left: box.left + frameRect.left, top: box.top + frameRect.top } } : result;
+  const target = result && box ? { ...result, box: { ...box, left: box.left + frameRect.left, top: box.top + frameRect.top } } : result;
+  if (target) regionFrames.set(target, frame);
+  return target;
 }
 
 // The selection annotate mode added in Mol* goes when the batch is sent or
 // cancelled.
 export function clearRegionSelection(annotations: Annotation[]) {
-  if (!annotations.some((annotation) => annotation.target?.surface === "molstar")) return;
-  for (const frame of viewerFrames()) void frameAction(frame, { type: "clear_selection" });
+  const frames = new Set(annotations.flatMap(({ target }) => {
+    const frame = target?.surface === "molstar" ? regionFrames.get(target) : null;
+    return frame?.isConnected ? [frame] : [];
+  }));
+  for (const frame of frames) void frameAction(frame, { type: "clear_selection" });
 }
 
 // One frame of the Mol* view with every mark numbered on it.

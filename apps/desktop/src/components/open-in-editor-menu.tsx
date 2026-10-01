@@ -47,9 +47,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
   }, [filePath]);
 
   const items = useMemo<MenuItemSpec[]>(() => {
-    if (!activeFile) {
-      return [{ kind: "item", id: "no-active-file", text: "Open a file first", disabled: true }];
-    }
+    if (!activeFile || !filePath) return [];
     const visibleTargets = targets.length > 0 ? targets : browserDevPreviewTargets(activeFile.path);
     const targetItems: MenuItemSpec[] = visibleTargets.map((target) => ({
       kind: "item",
@@ -109,7 +107,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
         },
       },
     ];
-  }, [actions, activeFile, defaultApplicationIconUrl, finderIconUrl, loadedPath, loading, targets, nativeIcons, state.preferences.openInDefaultDestination]);
+  }, [actions, activeFile, filePath, defaultApplicationIconUrl, finderIconUrl, loadedPath, loading, targets, nativeIcons, state.preferences.openInDefaultDestination]);
 
   if (!activeFile) return navigation ? <header className="workspace-file-header" aria-label="Workspace">{navigation([])}</header> : null;
   if (!filePath && presentation !== "file-header") return null;

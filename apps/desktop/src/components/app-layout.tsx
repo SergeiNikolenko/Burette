@@ -737,7 +737,7 @@ export function AppLayout({
             </section>
           </ResizablePanel>
         </ResizablePanelGroup>
-        {!hostedMcpWidget && pluginSurface ? <AnnotationLayer documentTitle={state.activeDocument?.title ?? "Burette"} picksResidues={state.activeDocument?.renderer === "molstar"} /> : null}
+        {!hostedMcpWidget && pluginSurface && state.activeTab && state.activeTab.location.kind !== "launcher" ? <AnnotationLayer key={`${state.activeTabId}:${state.activeDocument?.id ?? JSON.stringify(state.activeTab.location)}`} documentTitle={state.activeDocument?.title ?? "Burette"} picksResidues={state.activeDocument?.renderer === "molstar"} /> : null}
       </section>
       <FileDropFeedback preview={dropPreview} />
     </main></WorkspaceMenus></SidebarFileOperations>

@@ -16,12 +16,14 @@ const { createElement, act } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { OpenInEditorMenu } = await import("../apps/desktop/src/components/open-in-editor-menu");
 const calls: string[] = [];
+let navigationItems: unknown[] = [];
 const listChemicalEditorTargets = async (path: string) => { calls.push(path); return []; };
 const container = document.createElement("div");
 document.body.append(container);
 const root = createRoot(container);
 const render = async (path: string) => act(async () => root.render(createElement(OpenInEditorMenu, {
   presentation: "file-header",
+  navigation: (items: unknown[]) => { navigationItems = items; return null; },
   state: { activeDocument: { path, title: "Sketch" }, preferences: { openInDefaultDestination: "auto" }, sidebarProjects: [] } as any,
   // Panel changes may recreate callbacks as well as the surrounding object.
   actions: { listChemicalEditorTargets: (value: string) => listChemicalEditorTargets(value), toggleDock() {} } as any,
@@ -30,6 +32,7 @@ try {
   await render("/authorized/pose.sdf");
   const icon = container.querySelector('.workspace-file-open-primary img')?.getAttribute('src');
   assert.ok(icon);
+  assert.ok(navigationItems.length > 0, "Saved files expose application actions in navigation");
   for (let i = 0; i < 10; i++) await render("/authorized/pose.sdf");
   assert.deepEqual(calls, ["/authorized/pose.sdf"], "Rerenders must not rediscover applications");
   assert.equal(container.querySelector('.workspace-file-open-primary img')?.getAttribute('src'), icon);
@@ -40,6 +43,7 @@ try {
   assert.equal(iconRequests.length, iconCount, "Virtual documents must not request application icons");
   assert.ok(container.textContent?.includes("Unsaved"));
   assert.ok(!container.textContent?.includes("burette-ketcher:"));
+  assert.deepEqual(navigationItems, [], "Unsaved sketches must not expose Finder/Open With through navigation");
   await render("/authorized/other.pdb");
   assert.deepEqual(calls, ["/authorized/pose.sdf", "/authorized/other.pdb"]);
 } finally {
