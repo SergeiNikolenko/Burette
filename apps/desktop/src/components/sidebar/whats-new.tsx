@@ -23,9 +23,25 @@ function formatEntryDate(isoDate: string) {
   return `${dayFormat.format(date)} ${monthFormat.format(date)}`;
 }
 
+function storeReadVersions(versions: string[]) {
+  try {
+    localStorage.setItem(READ_VERSIONS_KEY, JSON.stringify(versions));
+  } catch {
+    // Private storage modes only lose the read markers.
+  }
+}
+
+// A fresh install has nothing to announce: the first run marks the bundled
+// feed as read, so only releases that arrive with a later update show up.
 function readReadVersions(): string[] {
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(READ_VERSIONS_KEY) ?? "[]");
+    const stored = localStorage.getItem(READ_VERSIONS_KEY);
+    if (stored === null) {
+      const baseline = whatsNewFeed.entries.map((entry) => entry.version);
+      storeReadVersions(baseline);
+      return baseline;
+    }
+    const parsed: unknown = JSON.parse(stored);
     return Array.isArray(parsed) ? parsed.filter((value): value is string => typeof value === "string") : [];
   } catch {
     return [];
@@ -38,8 +54,9 @@ async function openReleasesPage() {
 }
 
 // Sidebar footer row with a short release timeline, modelled on the Codex app's
-// "What's new" block. Each release stays unread, with an accent dot, until its
+// "What's new" block. Each release stays unread, with a blue dot, until its
 // notes are opened; read releases show a ring, and a hairline joins the dots.
+// The row only appears while an update has brought unread releases.
 export function WhatsNew() {
   const [open, setOpen] = useState(false);
   const [openEntry, setOpenEntry] = useState<WhatsNewEntry | null>(null);
@@ -47,7 +64,8 @@ export function WhatsNew() {
   const portalContainer = useAppShellPortalContainer();
   const isUnread = (entry: WhatsNewEntry) => !readVersions.includes(entry.version);
   const hasUnread = entries.some(isUnread);
-  if (entries.length === 0) return null;
+  // Stay mounted while the popover or dialog is open, even after the last read.
+  if (!hasUnread && !open && openEntry === null) return null;
 
   const showEntry = (entry: WhatsNewEntry) => {
     setOpen(false);
@@ -56,11 +74,7 @@ export function WhatsNew() {
     // Keep only versions still in the feed so the stored list stays bounded.
     const next = [...readVersions, entry.version].filter((version) =>
       whatsNewFeed.entries.some((candidate) => candidate.version === version));
-    try {
-      localStorage.setItem(READ_VERSIONS_KEY, JSON.stringify(next));
-    } catch {
-      // Private storage modes only lose the read markers.
-    }
+    storeReadVersions(next);
     setReadVersions(next);
   };
 
@@ -130,8 +144,8 @@ function TimelineDot({ filled }: { filled: boolean }) {
   return (
     <span aria-hidden="true" className="flex w-[14px] shrink-0 justify-center">
       {filled
-        ? <span className="size-[7px] rounded-full bg-(--accent)" />
-        : <span className="size-[7px] rounded-full border-[1.33px] border-current text-muted-foreground" />}
+        ? <span className="size-[7px] rounded-full bg-(--whats-new-dot)" />
+        : <span className="size-[7px] rounded-full border-[1.33px] border-current text-muted-foreground opacity-70" />}
     </span>
   );
 }
