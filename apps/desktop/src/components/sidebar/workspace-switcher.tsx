@@ -3,6 +3,7 @@ import { appInstanceLabel } from "../../lib/instance";
 import { NativeDropdownMenu } from "../native-dropdown-menu";
 import { AnimatedSettingsIcon } from "../ui/animated-icons";
 import type { BuildInfo, ShellActions, ShellViewState } from "../types";
+import { WhatsNew } from "./whats-new";
 
 function buildLabel(info: BuildInfo) {
   if (info.isAgentShell) return `AGENT SHELL · v${info.version}`;
@@ -83,6 +84,7 @@ export function WorkspaceSwitcher({ state, actions }: { state: ShellViewState; a
           <span className="sidebar-build-detail">{buildDetail(buildInfo)}</span>
         </div>
       ) : null}
+      <WhatsNew />
       <SidebarTooltip label="Settings (⌘,)">
         <button
           type="button"

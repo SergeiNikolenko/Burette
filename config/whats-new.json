@@ -1,0 +1,13 @@
+{
+  "$comment": "Curated release highlights for the sidebar What's new popover. Newest first; each version must have a vX tag on the releases page.",
+  "entries": [
+    { "version": "2026.9.51", "date": "2026-10-01", "title": "Steadier plugin navigation and toolbar text" },
+    { "version": "2026.9.49", "date": "2026-09-30", "title": "Workspace home shows recent files and Ketcher" },
+    { "version": "2026.9.48", "date": "2026-09-30", "title": "Back and forward in expanded plugin workspaces" },
+    { "version": "2026.9.43", "date": "2026-09-29", "title": "Open molecular files with Burette inside Codex" },
+    { "version": "2026.9.40", "date": "2026-09-28", "title": "Native Desmond trajectory playback" },
+    { "version": "2026.9.36", "date": "2026-09-27", "title": "xyzrender animation per card" },
+    { "version": "2026.9.28", "date": "2026-09-25", "title": "Native Mol* right-click menu on macOS" },
+    { "version": "2026.9.20", "date": "2026-09-25", "title": "Move files to Trash without a confirmation" }
+  ]
+}

@@ -2641,6 +2641,7 @@ img.radix-menu-item-icon {
   color: var(--text-icon-muted);
 }
 .sidebar-settings-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-whats-new-indicator { width: 7px; height: 7px; flex: 0 0 7px; margin: 0 4px 0 auto; border-radius: 50%; background: var(--accent); }
 .settings-sidebar {
   min-height: 0;
   flex: 1;
