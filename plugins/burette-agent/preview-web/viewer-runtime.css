@@ -1329,13 +1329,14 @@ body .msp-plugin ::-webkit-scrollbar-thumb {
 }
 .buret-molstar-molecule-preview-image svg,
 .buret-molstar-molecule-preview-image img {
+  box-sizing: border-box;
   display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
 }
 .buret-molstar-molecule-preview-image svg {
-  padding: 2px;
+  padding: 6px;
 }
 .buret-theme-dark .buret-molstar-molecule-preview-image {
   --depiction-carbon: #e6e8ed;
