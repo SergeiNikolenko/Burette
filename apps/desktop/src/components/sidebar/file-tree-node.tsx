@@ -17,6 +17,8 @@ import { FileKindIcon, fileKindForPath } from "./file-kind-icon";
 import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
 
 const COLLAPSED_PROJECT_ITEM_LIMIT = 5;
+// Collapse only when at least two rows would hide behind "Show more".
+const COLLAPSE_PROJECT_ITEMS_FROM = 7;
 
 type ProjectTreeNode =
   | {
@@ -66,7 +68,7 @@ export function ProjectGroup({
   // The tail past the limit stays mounted inside a collapsible shell so "Show
   // more" can animate it open instead of popping the rows in; a search shows
   // every match inline and needs no shell at all.
-  const limitItems = !hasSidebarQuery && projectTree.length > COLLAPSED_PROJECT_ITEM_LIMIT;
+  const limitItems = !hasSidebarQuery && projectTree.length >= COLLAPSE_PROJECT_ITEMS_FROM;
   const leadingTree = limitItems ? projectTree.slice(0, COLLAPSED_PROJECT_ITEM_LIMIT) : projectTree;
   const trailingTree = limitItems ? projectTree.slice(COLLAPSED_PROJECT_ITEM_LIMIT) : [];
   const hiddenItemCount = trailingTree.length;
@@ -438,7 +440,7 @@ function ProjectTreeNodeView({
     state,
   });
   const showAllChildren = showAllFolderPaths.has(node.path);
-  const limitChildren = !forceExpanded && node.children.length > COLLAPSED_PROJECT_ITEM_LIMIT;
+  const limitChildren = !forceExpanded && node.children.length >= COLLAPSE_PROJECT_ITEMS_FROM;
   const leadingChildren = limitChildren ? node.children.slice(0, COLLAPSED_PROJECT_ITEM_LIMIT) : node.children;
   const trailingChildren = limitChildren ? node.children.slice(COLLAPSED_PROJECT_ITEM_LIMIT) : [];
   const hiddenChildCount = trailingChildren.length;
