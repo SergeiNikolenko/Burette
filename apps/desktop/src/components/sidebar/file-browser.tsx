@@ -17,6 +17,8 @@ import { isWebDemoWorkspace, webDemoProjectRoot } from "../../lib/web-demo-works
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
 import { NativeDropdownMenu } from "../native-dropdown-menu";
 import { ScrollFade } from "../scroll-fade";
+import { useShellStore } from "../../stores/shell-store";
+import { useWorkspaceHistoryStore } from "../../stores/workspace-history-store";
 import type { ShellActions, ShellViewState } from "../types";
 import { ProjectGroup, ProjectItem } from "./file-tree-node";
 import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
@@ -82,6 +84,7 @@ export function FileBrowser({
 }) {
   const [sshDialogOpen, setSshDialogOpen] = useState(false);
   const sshProjects = useSshProjects();
+  const hiddenProjectRoots = useShellStore((store) => store.hiddenProjectRoots);
   const organization = useProjectOrganization();
   const [pinnedOpen, setPinnedOpen] = useState(true);
   const [ketcherDropActive, setKetcherDropActive] = useState(false);
@@ -250,17 +253,34 @@ export function FileBrowser({
                 },
               },
               { kind: "separator" },
-              {
-                kind: "item",
-                id: "hide-all-files",
-                text: "Hide All Files",
-                disabled: state.sidebarProjects.length === 0,
-                action: () => {
-                  for (const project of state.sidebarProjects) {
-                    if (project.rootPath) actions.removeProjectRoot(project.rootPath);
+              state.sidebarProjects.length === 0 && hiddenProjectRoots.length > 0
+                ? {
+                    kind: "item",
+                    id: "show-hidden-files",
+                    text: "Show Hidden Files",
+                    action: () => {
+                      // One history entry, so Cmd+Z hides them again in one step.
+                      const history = useWorkspaceHistoryStore.getState();
+                      history.beginHistoryGroup("Show hidden files", "workspace");
+                      for (const root of hiddenProjectRoots) useShellStore.getState().addProjectRoot(root);
+                      history.commitHistoryGroup();
+                    },
                   }
-                },
-              },
+                : {
+                    kind: "item",
+                    id: "hide-all-files",
+                    text: "Hide All Files",
+                    disabled: state.sidebarProjects.length === 0,
+                    action: () => {
+                      // Group the per-project removals so one Cmd+Z restores them all.
+                      const history = useWorkspaceHistoryStore.getState();
+                      history.beginHistoryGroup("Hide all files", "workspace");
+                      for (const project of state.sidebarProjects) {
+                        if (project.rootPath) actions.removeProjectRoot(project.rootPath);
+                      }
+                      history.commitHistoryGroup();
+                    },
+                  },
               {
                 kind: "item",
                 id: "close-all-tabs",
