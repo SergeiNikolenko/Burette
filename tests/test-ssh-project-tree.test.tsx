@@ -3,7 +3,7 @@ import { Window } from "happy-dom";
 import React, { act } from "react";
 
 const browser = new Window();
-for (const key of ["window", "document", "navigator", "HTMLElement", "Element", "Node", "Event", "MouseEvent", "MutationObserver", "ResizeObserver", "getComputedStyle", "localStorage"] as const) {
+for (const key of ["window", "document", "navigator", "HTMLElement", "Element", "Node", "Event", "MouseEvent", "MutationObserver", "ResizeObserver", "getComputedStyle", "localStorage", "DOMRect", "CustomEvent", "KeyboardEvent", "PointerEvent", "FocusEvent"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : (browser as any)[key] });
 }
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -131,6 +131,36 @@ test("dragging an SSH folder onto the app downloads its structures and opens the
     await act(async () => root.unmount());
     shell.remove();
     document.elementFromPoint = originalElementFromPoint;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("right-clicking SSH folders opens the same menu as their options button", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (_url: unknown, options: RequestInit) => {
+    const { path } = JSON.parse(String(options.body));
+    return new Response(JSON.stringify({ root: "/data", path, entries: path === "." ? [{ name: "ligands", directory: true }] : [] }), { headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  const menuText = async (row: Element) => {
+    const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 20, clientY: 20 });
+    await act(async () => { row.dispatchEvent(event); });
+    for (let attempt = 0; attempt < 50 && !document.querySelector('[role="menu"]'); attempt += 1) await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
+    const text = [...document.querySelectorAll('[role="menuitem"], [role="menuitemcheckbox"]')].map(item => item.textContent?.trim());
+    await act(async () => { document.querySelector(".radix-context-menu-mount")?.remove(); });
+    return { prevented: event.defaultPrevented, text };
+  };
+  try {
+    await act(async () => { root.render(<RemoteProject project={{ id: "test", name: "Remote", host: "fixture", root: "/data" }} onOpen={() => {}} {...shellStub} />); });
+    const project = await menuText(container.querySelector('[role="treeitem"][aria-label="Remote"]')!);
+    expect(project).toEqual({ prevented: true, text: ["Refresh", "Pin", "Edit…", "Section", "Connection color", "Remove project"] });
+    await act(async () => { container.querySelector<HTMLButtonElement>('button[aria-label="Expand Remote"]')!.click(); });
+    const folder = await menuText(container.querySelector('[role="treeitem"][aria-label="ligands"]')!);
+    expect(folder).toEqual({ prevented: true, text: ["Refresh folder", "Collapse folder", "Add as project", "Copy path", "Delete folder from server…"] });
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
     globalThis.fetch = originalFetch;
   }
 });
