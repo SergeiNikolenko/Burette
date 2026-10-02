@@ -34,7 +34,9 @@ function bodyActiveModel(value: unknown) {
   return Number.isFinite(index) && index >= 0 ? Math.trunc(index) : null;
 }
 
-function formatViewerError(
+// The toast shows only the first line of the error without the runtime tag; the
+// document title and the full message stay behind Details.
+function viewerErrorStatus(
   message: string | undefined,
   documentId: string | undefined,
   documents: { id: string; title: string }[],
@@ -43,8 +45,8 @@ function formatViewerError(
   const title = documentId
     ? documents.find((document) => document.id === documentId)?.title
     : null;
-  const summary = summarizeErrorText(text);
-  return title ? `${title}: ${summary}` : summary;
+  const summary = summarizeErrorText(text).replace(/^\[web\]\s*/u, "") || "Viewer error";
+  return { summary, details: [title, text].filter((value): value is string => Boolean(value)) };
 }
 
 export function useAppViewerRuntimeMessages({
@@ -66,12 +68,8 @@ export function useAppViewerRuntimeMessages({
 
   const handleViewerRuntimeMessage = useCallback((body: ViewerRuntimeMessageBody) => {
     if (body?.type === "error") {
-      const message = bodyString(body.message);
-      pushStatus(
-        formatViewerError(message, bodyString(body.documentId), documents),
-        "error",
-        message ? [message] : [],
-      );
+      const { summary, details } = viewerErrorStatus(bodyString(body.message), bodyString(body.documentId), documents);
+      pushStatus(summary, "error", details);
       return true;
     }
 
