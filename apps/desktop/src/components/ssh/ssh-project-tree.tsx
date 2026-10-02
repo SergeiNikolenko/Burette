@@ -9,6 +9,8 @@ import { FileKindIcon, fileKindForPath } from "../sidebar/file-kind-icon";
 import { DotsHorizontal } from "../ui/app-icons";
 import { HoverCard, HoverCardTrigger, HoverCardContent } from "../ui/hover-card";
 import { NativeDropdownMenu } from "../native-dropdown-menu";
+import { showNativeContextMenu } from "../native-context-menu";
+import type { MenuItemSpec } from "../menu-types";
 import { saveSshProject, sshList, sshPreview, type SshConnection, type SshDirectory, type SshProject } from "../../lib/ssh-projects";
 import type { StructureDragPayload } from "../../lib/structure-drag";
 import { useSidebarStructureDrag } from "../sidebar/use-sidebar-structure-drag";
@@ -135,6 +137,14 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
       ? <div className="ssh-tree-error" role="alert">{dropNotice.message}</div>
       : <span className="ssh-tree-status" role="status">{dropNotice.message}</span>;
   }
+  // A secondary click opens the same menu as the row's options button, like local folders.
+  function showMenu(items: MenuItemSpec[]) {
+    return (event: ReactMouseEvent<HTMLElement>) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void showNativeContextMenu(items, { x: event.clientX, y: event.clientY });
+    };
+  }
   function toggle(path: string) {
     const opening = !expanded.has(path);
     setExpanded(previous => { const next = new Set(previous); if (opening) next.add(path); else next.delete(path); return next; });
@@ -150,20 +160,21 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
       {directory?.entries.slice(0, limits[path] ?? 100).map(entry => {
         const child = path === "." ? entry.name : `${path}/${entry.name}`;
         const kind = fileKindForPath(entry.name);
+        const folderItems: MenuItemSpec[] = [
+          { kind: "item", id: "refresh", text: "Refresh folder", disabled: !!pending, action: () => { setExpanded(previous => new Set([...previous, child])); void run({ type: "list", path: child }, true); } },
+          { kind: "item", id: "collapse", text: "Collapse folder", disabled: !expanded.has(child), action: () => setExpanded(previous => new Set([...previous].filter(path => path !== child && !path.startsWith(`${child}/`)))) },
+          { kind: "item", id: "add", text: "Add as project", action: () => { try { saveSshProject({ id: crypto.randomUUID(), name: entry.name, host: project.host, root: `${directory!.root.replace(/\/$/, "")}/${child}` }); } catch (error) { setFailure({ operation: { type: "list", path }, message: String(error) }); } } },
+          { kind: "item", id: "copy", text: "Copy path", action: () => { copyTextWithSelectionFallback(`${directory!.root.replace(/\/$/, "")}/${child}`); } },
+          { kind: "separator" },
+          { kind: "item", id: "delete", text: "Delete folder from server…", disabled: !!pending, action: () => setDeleting({ path: child, fullPath: `${directory!.root.replace(/\/$/, "")}/${child}` }) },
+        ];
         return entry.directory ? <div className="project-folder-node" key={child}>
-          <div className="project-folder-row" role="treeitem" tabIndex={0} aria-expanded={expanded.has(child)} aria-label={entry.name} onMouseDown={event => startDrag(event, child, true)} onClickCapture={drag.onClickCapture} onClick={() => toggle(child)} onKeyDown={event => { if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); toggle(child); } }}>
+          <div className="project-folder-row" role="treeitem" tabIndex={0} aria-expanded={expanded.has(child)} aria-label={entry.name} onContextMenu={showMenu(folderItems)} onMouseDown={event => startDrag(event, child, true)} onClickCapture={drag.onClickCapture} onClick={() => toggle(child)} onKeyDown={event => { if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); toggle(child); } }}>
             <SidebarFolderIcon expanded={expanded.has(child)} /><MarqueeName className="project-folder-name">{entry.name}</MarqueeName>
             {pending?.type === "preview" && pending.path === child && <span className="ssh-activity" aria-label="Downloading" />}
             <span className="project-group-actions" onClick={event => event.stopPropagation()}>
               <button type="button" className="project-group-menu-button" aria-label={`${expanded.has(child) ? "Collapse" : "Expand"} ${entry.name}`} onClick={() => { if (expanded.has(child)) setExpanded(previous => new Set([...previous].filter(path => path !== child && !path.startsWith(`${child}/`)))); else toggle(child); }}><FolderExpandCollapseIcon collapse={expanded.has(child)} /></button>
-              <NativeDropdownMenu items={[
-                { kind: "item", id: "refresh", text: "Refresh folder", disabled: !!pending, action: () => { setExpanded(previous => new Set([...previous, child])); void run({ type: "list", path: child }, true); } },
-                { kind: "item", id: "collapse", text: "Collapse folder", disabled: !expanded.has(child), action: () => setExpanded(previous => new Set([...previous].filter(path => path !== child && !path.startsWith(`${child}/`)))) },
-                { kind: "item", id: "add", text: "Add as project", action: () => { try { saveSshProject({ id: crypto.randomUUID(), name: entry.name, host: project.host, root: `${directory!.root.replace(/\/$/, "")}/${child}` }); } catch (error) { setFailure({ operation: { type: "list", path }, message: String(error) }); } } },
-                { kind: "item", id: "copy", text: "Copy path", action: () => { copyTextWithSelectionFallback(`${directory!.root.replace(/\/$/, "")}/${child}`); } },
-                { kind: "separator" },
-                { kind: "item", id: "delete", text: "Delete folder from server…", disabled: !!pending, action: () => setDeleting({ path: child, fullPath: `${directory!.root.replace(/\/$/, "")}/${child}` }) },
-              ]} trigger={<button className="project-group-menu-button" aria-label={`Options for ${entry.name}`}><DotsHorizontal size={14} /></button>} />
+              <NativeDropdownMenu items={folderItems} trigger={<button className="project-group-menu-button" aria-label={`Options for ${entry.name}`}><DotsHorizontal size={14} /></button>} />
             </span>
           </div>{dropStatus(child)}{children(child)}
         </div> : <div key={child}>
@@ -183,20 +194,21 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
       {directory?.partial && !directory.truncated && <span className="ssh-tree-status">Some folders weren't fully searched. Open one to search it.</span>}
     </div>;
   }
+  const projectItems: MenuItemSpec[] = [
+    { kind: "item", id: "refresh", text: "Refresh", disabled: !!pending, action: () => { setExpanded(new Set(["."])); void run({ type: "list", path: "." }, true); } },
+    ...projectMenu.items,
+  ];
   return <div className="project-group ssh-project-tree">
     <HoverCard openDelay={500}>
       <HoverCardTrigger asChild>
-        <div className="project-group-row ssh-project-row" role="treeitem" tabIndex={0} aria-expanded={expanded.has(".")} aria-label={project.name} onClick={() => toggle(".")} onKeyDown={event => { if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); toggle("."); } }}>
+        <div className="project-group-row ssh-project-row" role="treeitem" tabIndex={0} aria-expanded={expanded.has(".")} aria-label={project.name} onContextMenu={showMenu(projectItems)} onClick={() => toggle(".")} onKeyDown={event => { if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); toggle("."); } }}>
           <SidebarFolderIcon expanded={expanded.has(".")} badge={connection?.color ?? "cyan"} />
           <span className="project-group-copy"><span className="project-group-title">{project.name}</span></span>
           <span className="ssh-host-name">{connection?.name ?? project.host}</span>
           <span className={`ssh-connection-dot${enabled && (health ? health.available : !!lastSuccess) && !failure ? " available" : failure ? " failed" : ""}${pending ? " ssh-activity" : ""}`} aria-label={status} />
           <span className="project-group-actions" onClick={event => event.stopPropagation()}>
             <button type="button" className="project-group-menu-button" aria-label={`${expanded.has(".") ? "Collapse" : "Expand"} ${project.name}`} onClick={() => { if (expanded.has(".")) setExpanded(new Set()); else toggle("."); }}><FolderExpandCollapseIcon collapse={expanded.has(".")} /></button>
-            <NativeDropdownMenu items={[
-              { kind: "item", id: "refresh", text: "Refresh", disabled: !!pending, action: () => { setExpanded(new Set(["."])); void run({ type: "list", path: "." }, true); } },
-              ...projectMenu.items,
-            ]} trigger={<button className="project-group-menu-button" aria-label={`Options for ${project.name}`}><DotsHorizontal size={14} /></button>} />
+            <NativeDropdownMenu items={projectItems} trigger={<button className="project-group-menu-button" aria-label={`Options for ${project.name}`}><DotsHorizontal size={14} /></button>} />
           </span>
         </div>
       </HoverCardTrigger>
