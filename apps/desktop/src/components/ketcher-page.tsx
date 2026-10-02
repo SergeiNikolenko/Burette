@@ -1159,30 +1159,33 @@ export function KetcherPage({
         </div>
         <TooltipProvider>
         <div className="ketcher-page-actions" aria-label="Sketch actions">
-          <div className="flex items-center gap-1" role="group" aria-label="Open sketch in a viewer">
+          <div className="flex items-center gap-1.5" role="group" aria-label="Open sketch in a viewer">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" aria-label="Open sketch as 2D grid" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>
-                  <Grid className="size-[18px]" aria-hidden="true" />
+                <Button type="button" variant="outline" aria-label="Open sketch as cards" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>
+                  <Grid className="size-4" aria-hidden="true" />
+                  Cards
                 </Button>
               </TooltipTrigger>
-              <TooltipContent showArrow={false}>Open sketch as 2D grid</TooltipContent>
+              <TooltipContent showArrow={false}>Open sketch as cards</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" aria-label="Open sketch in Molstar" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>
-                  <Cube className="size-[18px]" aria-hidden="true" />
+                <Button type="button" variant="outline" aria-label="Open sketch in 3D" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>
+                  <Cube className="size-4" aria-hidden="true" />
+                  3D
                 </Button>
               </TooltipTrigger>
-              <TooltipContent showArrow={false}>Open sketch in Molstar</TooltipContent>
+              <TooltipContent showArrow={false}>Open sketch in 3D</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" aria-label="Open sketch in xyzrender" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>
-                  <Camera className="size-[18px]" aria-hidden="true" />
+                <Button type="button" variant="outline" aria-label="Open sketch as a rendered image" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>
+                  <Camera className="size-4" aria-hidden="true" />
+                  Render
                 </Button>
               </TooltipTrigger>
-              <TooltipContent showArrow={false}>Open sketch in xyzrender</TooltipContent>
+              <TooltipContent showArrow={false}>Open sketch as a rendered image</TooltipContent>
             </Tooltip>
           </div>
           {!window.BuretteMcpWorkspace && !(import.meta.env.PROD && import.meta.env.VITE_BURETTE_AGENT_SHELL === "1") && <Tooltip>
