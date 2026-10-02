@@ -3289,12 +3289,12 @@ assert.match(ketcherPage, /await withKetcherTimeout\(ketcher\.setMolecule\(""\),
 assert.match(ketcherPage, /const \[preserved3dSource, setPreserved3dSource\] = useState<KetcherSource3D \| null>\(null\)/);
 assert.match(ketcherPage, /\["generate3d", "generateEnsemble", "optimizeGeometry", "semiempiricalRm1"\]\.includes\(target\)[\s\S]*preserved3dSource \?\? undefined/);
 assert.match(ketcherPage, /setPreserved3dSource\(source3d\)/);
-assert.match(ketcherPage, /aria-label="Open sketch as 2D grid"[\s\S]*<TooltipContent[^>]*>Open sketch as 2D grid<\/TooltipContent>/);
-assert.match(ketcherPage, /aria-label="Open sketch in Molstar"[\s\S]*<TooltipContent[^>]*>Open sketch in Molstar<\/TooltipContent>/);
+assert.match(ketcherPage, /aria-label="Open sketch as cards"[\s\S]*Cards\s*<\/Button>[\s\S]*<TooltipContent[^>]*>Open sketch as cards<\/TooltipContent>/);
+assert.match(ketcherPage, /aria-label="Open sketch in 3D"[\s\S]*3D\s*<\/Button>[\s\S]*<TooltipContent[^>]*>Open sketch in 3D<\/TooltipContent>/);
 assert.match(ketcherPage, /aria-label="Open molecular compute menu"[\s\S]*<TooltipContent[^>]*>Native molecular compute<\/TooltipContent>/);
 assert.match(ketcherPage, /text: "Generate conformer ensemble"/);
 assert.match(ketcherPage, /text: "RM1 energy & charges"/);
-assert.match(ketcherPage, /aria-label="Open sketch in xyzrender"[\s\S]*<TooltipContent[^>]*>Open sketch in xyzrender<\/TooltipContent>/);
+assert.match(ketcherPage, /aria-label="Open sketch as a rendered image"[\s\S]*Render\s*<\/Button>[\s\S]*<TooltipContent[^>]*>Open sketch as a rendered image<\/TooltipContent>/);
 assert.match(ketcherPage, /aria-label="Add sketch to SDF collection"/);
 assert.match(ketcherPage, /gridEditSource \? \([\s\S]*aria-label="Save Ketcher edits back to collection"[\s\S]*onClick=\{\(\) => void applyGridEdit\(\)\}[\s\S]*Save to collection/);
 assert.match(ketcherPage, /\) : \([\s\S]*<RadixDropdownMenu[\s\S]*aria-label="Add sketch to SDF collection"/);
@@ -8126,7 +8126,8 @@ assert.doesNotMatch(gridCss, /\.buret-card::after|buret-card-hovering-molecule/)
 assert.match(gridCss, /\.buret-card-resize-handle-x\s*\{[^}]*width: 16px;/s);
 assert.match(gridCss, /\.buret-card-resize-handle-y\s*\{[^}]*height: 16px;/s);
 assert.match(gridCss, /\.buret-card-resize-handle-xy\s*\{[^}]*width: 24px;[^}]*height: 24px;/s);
-assert.match(gridCss, /color-mix\(in srgb, var\(--buret-accent\) 28%, transparent\)/);
+// Resize grips stay gray: no accent gradients behind the card edges.
+assert.doesNotMatch(gridCss, /\.buret-card-resize-handle[^{]*\{[^}]*(linear-gradient|--buret-accent)/);
 assert.doesNotMatch(gridCss, /body\.buret-grid-resizing \.buret-card-resize-handle/);
 assert.match(gridCss, /\.buret-card\.buret-card-resizing \.buret-card-resize-handle\s*\{[^}]*opacity: 1;/s);
 assert.doesNotMatch(gridViewer, /buret-selected-indicator/);

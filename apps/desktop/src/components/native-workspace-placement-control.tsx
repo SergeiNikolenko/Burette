@@ -6,7 +6,7 @@ export function NativeWorkspacePlacementControl() {
   const placement = window.BuretteMcpWorkspace?.placement;
   const state = useNativeWorkspacePlacement();
   const [error, setError] = useState("");
-  if (!placement || !state) return null;
+  if (!placement || !state || state.available === false) return null;
   const label = state.mode === "inline" ? "Open in side pane" : "Return to chat";
   return (
     <div data-workspace-placement-control>
