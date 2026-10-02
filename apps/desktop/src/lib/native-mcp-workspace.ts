@@ -10,7 +10,7 @@ declare global {
       closed: boolean;
       theme: "light" | "dark";
       placement?: {
-        getSnapshot: () => { mode: "inline" | "fullscreen"; target: "inline" | "fullscreen"; disabled: boolean };
+        getSnapshot: () => { mode: "inline" | "fullscreen"; target: "inline" | "fullscreen"; disabled: boolean; available?: boolean };
         subscribe: (listener: () => void) => () => void;
         set: (mode: "inline" | "fullscreen") => Promise<{ ok: boolean; mode: string }>;
       };

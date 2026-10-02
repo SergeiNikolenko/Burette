@@ -28,6 +28,7 @@ export function createWorkspacePlacement(app, status) {
   let lastHeight = 0;
   let inlineHeight = 0;
   let hostWidth;
+  let hostModes;
   let snapshot;
   let content = {};
   const listeners = new Set();
@@ -59,12 +60,16 @@ export function createWorkspacePlacement(app, status) {
   function update(context = {}) {
     mode = context.displayMode || mode;
     if (Number.isFinite(context.containerDimensions?.width) && context.containerDimensions.width > 0) hostWidth = context.containerDimensions.width;
+    if (Array.isArray(context.availableDisplayModes)) hostModes = context.availableDisplayModes;
     // Some hosts implement requestDisplayMode but omit the optional mode list.
     // Absence is unknown, not an explicit denial; the host still decides.
     const target = mode === 'inline' ? 'fullscreen' : 'inline';
     // Some hosts report an incomplete mode list while still accepting a
     // requestDisplayMode call. Let the host make the final decision on click.
-    snapshot = { mode, target, disabled: pending };
+    // A file or tab surface is fullscreen-only (Codex lists ["fullscreen"]):
+    // there is no chat card to return to, so the control is hidden there.
+    const available = !(target === 'inline' && hostModes && !hostModes.includes('inline'));
+    snapshot = { mode, target, disabled: pending, available };
     document.body.dataset.displayMode = mode;
     resize();
     for (const listener of listeners) listener();

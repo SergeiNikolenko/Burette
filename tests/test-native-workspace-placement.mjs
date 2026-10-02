@@ -23,7 +23,7 @@ function fixture(availableDisplayModes = ['inline', 'fullscreen']) {
 test('placement state moves the same workspace without inserting a second control', async () => {
   const { placement, document, sizes, requests } = fixture();
   assert.deepEqual(document.body.children, []);
-  assert.deepEqual(structuredClone(placement.getSnapshot()), { mode: 'inline', target: 'fullscreen', disabled: false });
+  assert.deepEqual(structuredClone(placement.getSnapshot()), { mode: 'inline', target: 'fullscreen', disabled: false, available: true });
   await placement.set('fullscreen');
   assert.equal(placement.mode, 'fullscreen');
   placement.update({ displayMode: 'inline' });
@@ -40,6 +40,15 @@ test('hosts without a mode list can still grant placement requests', async () =>
   await placement.set('fullscreen');
   assert.equal(placement.mode, 'fullscreen');
   assert.deepEqual(structuredClone(requests), [{ mode: 'fullscreen' }]);
+});
+
+test('fullscreen-only file surfaces offer no return to chat', () => {
+  const { placement } = fixture(['fullscreen']);
+  placement.update({ displayMode: 'fullscreen' });
+  assert.deepEqual(structuredClone(placement.getSnapshot()), { mode: 'fullscreen', target: 'inline', disabled: false, available: false });
+  // A card opened from chat keeps its way back.
+  placement.update({ availableDisplayModes: ['inline', 'fullscreen'] });
+  assert.equal(placement.getSnapshot().available, true);
 });
 
 test('returning after a structure loads preserves the original inline height', async () => {
