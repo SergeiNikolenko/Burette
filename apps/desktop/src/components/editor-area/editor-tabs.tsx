@@ -555,7 +555,9 @@ export function EditorTabs({
             if (open?.kind === "submenu") {
               const finder = open.items.find(entry => entry.kind === "item" && entry.id === "open-finder");
               if (finder?.kind === "item") reveal.push({ ...finder, text: "Reveal in Finder" });
-              open.items = open.items.filter(entry => !("id" in entry && ["open-tabs", "open-as", "open-external", "open-finder"].includes(entry.id)));
+              // A scene tab adds the whole scene through its own entry; the file one would add only its first structure.
+              const hidden = ["open-tabs", "open-as", "open-external", "open-finder", ...(sceneMenu.length ? ["add-scene"] : [])];
+              open.items = open.items.filter(entry => !("id" in entry && hidden.includes(entry.id)));
             }
             const compact = tabMenu.filter(entry => entry.kind !== "separator" && !(entry.kind === "submenu" && !entry.items.length));
             void showNativeContextMenu(menuSections([...compact.slice(0, 1), pin, ...sceneMenu, ...compact.slice(1), ...reveal], submenu("close-tabs", "Close", closing, "xmark")), { x: event.clientX, y: event.clientY });
