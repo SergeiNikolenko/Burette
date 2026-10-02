@@ -1155,7 +1155,9 @@ assert.match(appStatusHook, /recentErrorsRef\.current = recentErrorsRef\.current
 // the user; only errors surface through the shared Base UI toast manager.
 assert.match(appStatusHook, /toast\.add\(\{/);
 assert.match(appStatusHook, /setStatus\(\{ kind, message: trimmed \}\);\s*if \(kind !== "error"\) return;/);
-assert.match(appStatusHook, /timeout: 0/);
+// Errors dismiss themselves too; Details keeps the full text.
+assert.match(appStatusHook, /timeout: ERROR_TOAST_TIMEOUT_MS/);
+assert.doesNotMatch(appStatusHook, /timeout: 0/);
 assert.doesNotMatch(appStatusHook, /NOTICE_TIMEOUT_MS/);
 assert.match(app, /useAppDescriptors\(\{\s*documents,\s*pushStatus,\s*\}\)/s);
 assert.match(appDescriptorsHook, /const GRID_DESCRIPTOR_JOB_EVENT = "burette-grid-descriptor-job"/);

@@ -18372,6 +18372,48 @@ SOFTWARE.
     };
   }
 
+  // Plans every moving structure on its own so one structure without a usable
+  // chain (a ligand-only file, an unrelated protein) no longer blocks aligning
+  // the rest. Automatic requests also fall back to Mol* chain alignment and
+  // TM-align before a structure is skipped.
+  function bestEffortSuperpositionPlan(entries, request, prepared) {
+    const selected = selectedSuperpositionEntries(entries, request);
+    const method = String(request.method || 'auto');
+    const attempts = method === 'auto' ? ['auto', 'chains', 'tm-align'] : [method];
+    const plans = [];
+    const skipped = [];
+    for (const moving of selected.moving) {
+      let lastError = null;
+      for (const attempt of attempts) {
+        try {
+          const plan = nativeSuperpositionPlan(entries, { ...request, method: attempt, movingIds: [moving.id] }, prepared);
+          if (!plan.pairs.length) throw new Error(`No transform was produced for ${moving.label}.`);
+          plans.push(plan);
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+      if (lastError) skipped.push(`${moving.label}: ${lastError?.message || String(lastError)}`);
+    }
+    if (!plans.length) throw new Error(skipped.join('\n'));
+    const methods = new Set(plans.map(plan => plan.method));
+    const methodLabels = new Set(plans.map(plan => plan.methodLabel));
+    return {
+      method: methods.size === 1 ? plans[0].method : method,
+      methodLabel: methodLabels.size === 1 ? plans[0].methodLabel : 'Automatic',
+      referenceIndex: selected.reference.poseIndex,
+      referenceLabel: selected.reference.label,
+      pairs: plans.flatMap(plan => plan.pairs),
+      warnings: [
+        ...plans.flatMap(plan => plan.warnings || []),
+        ...skipped.map(reason => `Skipped ${reason}`),
+      ],
+      skippedCount: skipped.length,
+    };
+  }
+
   function selectedAtomSuperpositionLoci(viewer, orderedEntries) {
     const Structure = window.molstar?.lib?.structure?.Structure;
     const StructureElement = window.molstar?.lib?.structure?.StructureElement;
@@ -18624,14 +18666,15 @@ SOFTWARE.
       setBusy(true);
       try {
         await ensureEntries();
-        const plan = nativeSuperpositionPlan(entries, request, prepared);
+        const plan = bestEffortSuperpositionPlan(entries, request, prepared);
         const undo = captureMolstarSceneUndoSnapshot(`superposition by ${plan.methodLabel}`);
         await commitSuperpositionPlan(viewer, entries, plan);
         result = plan;
         if (undo) pushMolstarEditUndoSnapshot(undo);
         sync();
         const averageRmsd = plan.pairs.reduce((sum, pair) => sum + Number(pair.rmsdAngstrom || 0), 0) / Math.max(1, plan.pairs.length);
-        setStatus(`[web] ${plan.methodLabel}: aligned ${plan.pairs.length} structure${plan.pairs.length === 1 ? '' : 's'} to ${plan.referenceLabel} (average RMSD ${averageRmsd.toFixed(2)} Å).`);
+        const skipped = plan.skippedCount ? ` Skipped ${plan.skippedCount} that could not be aligned.` : '';
+        setStatus(`[web] ${plan.methodLabel}: aligned ${plan.pairs.length} structure${plan.pairs.length === 1 ? '' : 's'} to ${plan.referenceLabel} (average RMSD ${averageRmsd.toFixed(2)} Å).${skipped}`);
         setTimeout(hideStatus, 2600);
         return plan;
       } catch (error) {

@@ -15,6 +15,8 @@ export type StatusDetailsRequest = {
   details: string[];
 };
 
+const ERROR_TOAST_TIMEOUT_MS = 8000;
+
 export function statusErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
@@ -41,8 +43,9 @@ export function useAppStatus() {
   const [statusDetails, setStatusDetails] = useState<StatusDetailsRequest | null>(null);
   const recentErrorsRef = useRef<RecentStatusError[]>([]);
 
-  // Error toasts stay until dismissed. The returned callback closes this toast,
-  // so a caller can withdraw an error once a later attempt has superseded it.
+  // Error toasts fade out on their own (Base UI pauses the timer while hovered)
+  // and keep the full text behind Details. The returned callback closes this
+  // toast, so a caller can withdraw an error once a later attempt superseded it.
   const pushStatus = useCallback((message: string, kind: StatusKind = "info", details: string[] = []) => {
     const trimmed = message.trim();
     if (!trimmed) return;
@@ -62,7 +65,7 @@ export function useAppStatus() {
     const toastId = toast.add({
       title: compact,
       type: kind,
-      timeout: 0,
+      timeout: ERROR_TOAST_TIMEOUT_MS,
       priority: "high",
       ...(fullDetails.length > 0
         ? {

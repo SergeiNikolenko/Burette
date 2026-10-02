@@ -39,6 +39,13 @@ assert.match(fn("nativeSuperpositionPlan"), /facade\.alignWithTM\(nativeEntries\
 assert.match(fn("nativeSuperpositionPlan"), /facade\.alignChains\(nativeEntries/);
 assert.match(fn("nativeSuperpositionPlan"), /facade\.alignWithSifts/);
 assert.match(fn("nativeSuperpositionPlan"), /facade\.alignAtoms/);
+// Align plans each moving structure on its own and skips the ones it cannot
+// align, so one ligand-only file no longer fails the whole request.
+const bestEffort = fn("bestEffortSuperpositionPlan");
+assert.match(bestEffort, /method === 'auto' \? \['auto', 'chains', 'tm-align'\] : \[method\]/);
+assert.match(bestEffort, /movingIds: \[moving\.id\]/);
+assert.match(bestEffort, /if \(!plans\.length\) throw/);
+assert.match(fn("createStructureSuperpositionController"), /const plan = bestEffortSuperpositionPlan\(entries, request, prepared\)/);
 
 // Needleman-Wunsch keeps its guard rail and only anchors on identical residues; a
 // mismatched pair that the matrix walked through would drag the fit.

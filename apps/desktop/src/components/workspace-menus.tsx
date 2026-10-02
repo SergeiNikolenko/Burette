@@ -51,7 +51,7 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
     return () => { current = false; };
   }, [roots, revision]);
   const run = (action: () => unknown | Promise<unknown>) => () => {
-    void Promise.resolve().then(action).catch(error => toast.add({ title: String(error), type: "error", timeout: 0 }));
+    void Promise.resolve().then(action).catch(error => toast.add({ title: String(error), type: "error" }));
   };
   const files = async (paths: string[]) => {
     const menu = workspaceFileMenu(paths, state, actions, workflows,
