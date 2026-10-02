@@ -3,7 +3,7 @@ import { validatePoseFiles, validatePoseRecords } from "./workspace-chemical-cop
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { isTauriRuntime } from "../lib/tauri";
-import type { StructureDragRecord } from "../lib/structure-drag";
+import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
 import { toast } from "../components/ui/toast";
 import { useRef } from "react";
 import { requestGridView, requestViewerAction } from "../lib/viewer-bridge";
@@ -13,28 +13,49 @@ import type { ShellActions, ShellViewState } from "../components/types";
 import type { ViewerDocument } from "../types";
 
 export function useWorkspaceFileActions(state: ShellViewState, actions: ShellActions) {
-  const added = useRef(new Map<string, string[]>());
-  const scenePaths = (document: ViewerDocument) => Array.from(new Set([
-    ...(document.dockingRequest ? [document.dockingRequest.receptorPath, ...document.dockingRequest.ligandPaths] : [document.path]),
-    ...(added.current.get(document.id) ?? []),
-  ]));
-  const sceneTargets = (paths: string[]) => !paths.length ? [] : state.documents.filter(document =>
-    document.renderer === "molstar"
-    && state.tabs.some(tab => tab.location.kind === "file" && tab.location.documentId === document.id)
-    && paths.every(path => fileCapabilities(path).scene && !scenePaths(document).includes(path))
-    && scenePaths(document).length + paths.length <= 200).slice(0, 60);
+  // Files and records imported into each open scene, so a scene can later join another one whole.
+  const added = useRef(new Map<string, StructureDragPayload>());
+  const sceneSources = (document: ViewerDocument) => {
+    const extra = added.current.get(document.id);
+    return {
+      paths: Array.from(new Set([
+        ...(document.dockingRequest ? [document.dockingRequest.receptorPath, ...document.dockingRequest.ligandPaths] : [document.path]),
+        ...(extra?.paths ?? []),
+      ])),
+      records: extra?.records ?? [],
+    };
+  };
+  const scenePaths = (document: ViewerDocument) => {
+    const sources = sceneSources(document);
+    return Array.from(new Set([...sources.paths, ...sources.records.map(record => record.path)]));
+  };
+  // A scene accepts a selection while at least one of its files is new; files already there are skipped.
+  const sceneTargets = (paths: string[]) => !paths.length || !paths.every(path => fileCapabilities(path).scene) ? [] : state.documents.filter(document => {
+    const existing = scenePaths(document);
+    const fresh = paths.filter(path => !existing.includes(path)).length;
+    return document.renderer === "molstar"
+      && state.tabs.some(tab => tab.location.kind === "file" && tab.location.documentId === document.id)
+      && fresh > 0 && existing.length + fresh <= 200;
+  }).slice(0, 60);
   const focusViewer = (document: ViewerDocument) => focusSceneDocument(document, actions.selectDocument);
-  const addToScene = async (paths: string[], document: ViewerDocument) => {
-    if (!sceneTargets(paths).some(target => target.id === document.id)) throw new Error("These files cannot be added to this scene.");
-    await appendScenePayload(document.id, { paths, records: [] });
-    added.current.set(document.id, [...(added.current.get(document.id) ?? []), ...paths]);
+  const append = async (document: ViewerDocument, payload: StructureDragPayload) => {
+    await appendScenePayload(document.id, payload);
+    const current = added.current.get(document.id);
+    added.current.set(document.id, { paths: [...(current?.paths ?? []), ...payload.paths], records: [...(current?.records ?? []), ...payload.records] });
     toast.add({ title: "Added to scene", description: "Use Export → Scene to save the combined scene.", type: "info" });
   };
-  const addRecordsToScene = async (records: StructureDragRecord[], document: ViewerDocument) => {
-    const paths = records.map(record => record.path);
-    await appendScenePayload(document.id, { paths: [], records });
-    added.current.set(document.id, [...(added.current.get(document.id) ?? []), ...paths]);
-    toast.add({ title: "Added to scene", description: "Use Export → Scene to save the combined scene.", type: "info" });
+  const addToScene = async (paths: string[], document: ViewerDocument) => {
+    if (!sceneTargets(paths).some(target => target.id === document.id)) throw new Error("These files cannot be added to this scene.");
+    const existing = scenePaths(document);
+    await append(document, { paths: paths.filter(path => !existing.includes(path)), records: [] });
+  };
+  const addRecordsToScene = (records: StructureDragRecord[], document: ViewerDocument) => append(document, { paths: [], records });
+  const mergeTargets = (source: ViewerDocument) => sceneTargets(scenePaths(source));
+  const mergeScene = async (source: ViewerDocument, document: ViewerDocument) => {
+    if (!mergeTargets(source).some(target => target.id === document.id)) throw new Error("This scene cannot be added to that scene.");
+    const existing = scenePaths(document);
+    const { paths, records } = sceneSources(source);
+    await append(document, { paths: paths.filter(path => !existing.includes(path)), records: records.filter(record => !existing.includes(record.path)) });
   };
   const gridView = async (path: string, mode: "table" | "cards") => {
     await actions.openStructurePaths([path], { rendererMode: "grid2d" });
@@ -102,5 +123,5 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     }
   };
   const copyNames = (paths: string[]) => writeClipboardText(paths.map(path => path.split('/').pop() || path).join('\n'));
-  return { isCombinedScene: (document: ViewerDocument) => scenePaths(document).length > 1, sceneTargets, addToScene, addRecordsToScene, gridView, saveScene, copyNames, focusViewer, openRecordScene, openPoses, openAligned, exportStructure, copySequence, exportImage };
+  return { isCombinedScene: (document: ViewerDocument) => scenePaths(document).length > 1, sceneTargets, addToScene, addRecordsToScene, mergeTargets, mergeScene, gridView, saveScene, copyNames, focusViewer, openRecordScene, openPoses, openAligned, exportStructure, copySequence, exportImage };
 }
