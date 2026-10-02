@@ -9711,7 +9711,10 @@ SOFTWARE.
   // selection row asks you to tell four near-identical circles apart. Both are
   // hidden in CSS and rebuilt here as a four-button rail and one labelled bar,
   // driving the very same managers Mol*'s own controls drive.
+  // None is ours: Mol* has no such granularity, so it keeps the residue level for
+  // menu actions and switches the selection and hover marking off instead.
   const VIEWPORT_GRANULARITIES = [
+    ['none', 'None'],
     ['element', 'Atom'],
     ['residue', 'Residue'],
     ['chain', 'Chain'],
@@ -10833,7 +10836,7 @@ SOFTWARE.
     const count = document.querySelector('[data-buret-selection-count]');
     if (count) count.textContent = stats?.elementCount ? stats.label : 'Nothing selected';
     const level = document.querySelector('[data-buret-selection-level]');
-    const granularity = plugin?.managers?.interactivity?.props?.granularity;
+    const granularity = molstarSelectionLevel();
     if (level && granularity && level.value !== granularity) level.value = granularity;
     if (changed) updateFloatingLayoutOffsets();
   }
@@ -10923,7 +10926,7 @@ SOFTWARE.
         level?.appendChild(option);
       }
       level?.addEventListener('change', () => {
-        viewportPlugin()?.managers?.interactivity?.setProps({ granularity: level.value });
+        setMolstarSelectionLevel(level.value);
       });
       rail.addEventListener('click', event => {
         const control = event.target.closest('[data-buret-viewport-action]');
@@ -22754,7 +22757,7 @@ SOFTWARE.
   }
 
   function molstarContextPickingLevelLoci(target, pickingLevel) {
-    const level = pickingLevel === 'element' ? 'atom' : pickingLevel;
+    const level = pickingLevel === 'element' ? 'atom' : pickingLevel === 'none' ? 'residue' : pickingLevel;
     const pickedLoci = target?.atomLoci || target?.loci || molstarContextMenuPick?.loci;
     if (level === 'atom') return target?.atomLoci || pickedLoci;
     if (level === 'residue' && target?.atom) {
@@ -24461,13 +24464,36 @@ SOFTWARE.
     return ['chain', 'entity', 'model', 'operator', 'structure', 'chainInstances'].includes(mode);
   }
 
+  let molstarMarkingStrengths = null;
+
   function molstarSelectionLevel() {
+    if (molstarMarkingStrengths) return 'none';
     return String(activeMolstarViewer()?.plugin?.managers?.interactivity?.props?.granularity || 'residue');
   }
 
   function setMolstarSelectionLevel(level) {
-    const interactivity = activeMolstarViewer()?.plugin?.managers?.interactivity;
+    const plugin = activeMolstarViewer()?.plugin;
+    const interactivity = plugin?.managers?.interactivity;
     if (typeof interactivity?.setProps !== 'function') return false;
+    const canvas = plugin.canvas3d;
+    if (level === 'none') {
+      if (!molstarMarkingStrengths && canvas) {
+        const renderer = canvas.props?.renderer || {};
+        molstarMarkingStrengths = {
+          highlightStrength: renderer.highlightStrength,
+          selectStrength: renderer.selectStrength
+        };
+        canvas.setProps({ renderer: { highlightStrength: 0, selectStrength: 0 } });
+      }
+      plugin.managers.interactivity.lociSelects?.deselectAll?.();
+      plugin.managers.interactivity.lociHighlights?.clearHighlights?.();
+      interactivity.setProps({ granularity: 'residue' });
+      return true;
+    }
+    if (molstarMarkingStrengths) {
+      canvas?.setProps({ renderer: molstarMarkingStrengths });
+      molstarMarkingStrengths = null;
+    }
     interactivity.setProps({ granularity: level });
     return true;
   }
