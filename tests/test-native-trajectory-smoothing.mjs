@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const viewer = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
-const start = viewer.indexOf('  async function applyExternalTrajectorySmoothingFromAction(');
+const start = viewer.indexOf('  function trajectorySmoothingTopologyEntry(');
 const end = viewer.indexOf('  async function setTrajectorySmoothingViewFromAction(', start);
 const topology = { format: 'pdb', data: 'original topology', label: 'protein' };
 const originalCoordinates = { format: 'dcd', data: new Uint8Array([1]), label: 'MD' };
@@ -42,6 +42,32 @@ assert.equal(failed.ok, false);
 assert.equal(context.trajectorySmoothingState, previousState);
 assert.equal(messages.length, 1, 'no smoothing success message after load failure');
 
+// A multi-model PDB or XYZ has no separate topology: its first model becomes
+// one, and the smoothed frames arrive as DCD coordinates over it.
+const models = 'MODEL        1\nATOM      1  CA  ALA A   1       0.000   0.000   0.000\nENDMDL\n'
+  + 'MODEL        2\nATOM      1  CA  ALA A   1       1.000   0.000   0.000\nENDMDL\nEND\n';
+for (const [format, data, firstModel] of [
+  ['pdb', models, `${models.slice(0, models.indexOf('\nENDMDL'))}\nENDMDL\nEND\n`],
+  ['xyz', '2\nframe 1\nC 0 0 0\nO 1 0 0\n2\nframe 2\nC 0 0 0\nO 2 0 0\n', '2\nframe 1\nC 0 0 0\nO 1 0 0\n'],
+]) {
+  const single = { kind: 'structure', format, data, label: 'run', sourcePath: `/data/run.${format}` };
+  context.activeMolstarPrepared = single;
+  context.trajectorySmoothingState = null;
+  context.replaceTrajectorySmoothingPrepared = async prepared => { loaded = prepared; };
+  const applied = await context.apply({ sourceUrl: 'mdsmooth-1.dcd', sourceFormat: 'dcd', frameCount: 2 });
+  assert.equal(applied.ok, true);
+  assert.equal(loaded.kind, 'docking');
+  assert.deepEqual({ ...loaded.trajectoryPair.modelEntry },
+    { data: firstModel, format, label: 'run', sourcePath: `/data/run.${format}` });
+  assert.equal(loaded.trajectoryPair.coordinateEntry.data, bytes);
+  assert.deepEqual([...loaded.entries], [loaded.trajectoryPair.modelEntry, loaded.trajectoryPair.coordinateEntry]);
+  assert.equal(context.trajectorySmoothingState.originalPrepared, single);
+}
+context.activeMolstarPrepared = { kind: 'structure', format: 'gro', data: 'text', label: 'run' };
+context.trajectorySmoothingState = null;
+assert.equal((await context.apply({ sourceUrl: 'mdsmooth-1.dcd', sourceFormat: 'dcd', frameCount: 2 })).ok, false,
+  'binary coordinates need a topology the viewer can derive');
+
 // Exercise the actual Info-card async handler: a completed calculation is not
 // sufficient to light up On; the viewer must acknowledge loading the result.
 const panel = readFileSync(new URL('../apps/desktop/src/components/structure-info-panel.tsx', import.meta.url), 'utf8');
@@ -60,7 +86,14 @@ const ui = vm.createContext({
   cutoffFrequency: .1, powerRetained: .95, includeEnds: true, lagFrames: 7, kineticStates: 5,
   isTauriRuntime: () => true,
   trajectoryPathsFor: () => ({ trajectoryPath: '/cache/input.dcd', topologyPath: '/cache/input.pdb' }),
-  runMdsmooth: async value => { request = value; return { frameCount: 148, keyframes: [0, 147], outputFormat: 'dcd' }; },
+  runMdsmooth: async (value, onProgress) => {
+    request = value;
+    onProgress({ stage: 'read', fraction: .2, done: 30, total: 148 });
+    assert.deepEqual(state.progress, { stage: 'read', fraction: .2, done: 30, total: 148 });
+    return { frameCount: 148, keyframes: [0, 147], outputFormat: 'dcd' };
+  },
+  trajectorySmoothingProgress: value => value,
+  setProgress: value => { state.progress = value; },
   requestViewerAction: async (_id, action) => {
     assert.equal(action.sourceUrl, 'mdsmooth-1-unique.dcd');
     assert.equal(state.built, false);
@@ -81,6 +114,7 @@ await build;
 assert.equal(state.built, false);
 assert.equal(state.view, 'original');
 assert.equal(state.running, false);
+assert.equal(state.progress, null);
 assert.match(state.error, /Viewer rejected/);
 console.log('native smoothing handoff tests passed (binary pairing, scoped path, viewer acknowledgement)');
 

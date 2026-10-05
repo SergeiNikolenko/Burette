@@ -6,6 +6,8 @@ import { canonicalExistingPath } from "./file-discovery";
 import { readJsonBody, sendJson, sendJsonError } from "./http";
 
 const MDSMOOTH_DEPENDENCIES = ["numpy", "scipy", "MDAnalysis", "deeptime"];
+// Must match PROGRESS_PREFIX in scripts/mdsmooth_runner.py.
+const PROGRESS_PREFIX = "@burette-progress ";
 
 export function registerBrowserDevMdsmoothRoute(
   server: ViteDevServer,
@@ -44,7 +46,7 @@ export function registerBrowserDevMdsmoothRoute(
         // both possible names, including existing symlinks, before launching.
         const stem = trajectory.slice(0, trajectory.length - extname(trajectory).length);
         const outputs = request.outputPath ? [request.outputPath as string]
-          : [`${stem}.mdsmooth.pdb`, `${stem}.mdsmooth.xyz`];
+          : [`${stem}.mdsmooth.pdb`, `${stem}.mdsmooth.xyz`, `${stem}.mdsmooth.dcd`];
         for (const output of outputs) {
           if (!options.isDevFileReadAllowed(output)) {
             sendJson(res, 403, { error: "Forbidden" }, "no-cache");
@@ -59,26 +61,52 @@ export function registerBrowserDevMdsmoothRoute(
         sendJson(res, 400, { error: "Unsupported MDSmooth operation" }, "no-cache");
         return;
       }
-      sendJson(res, 200, await runMdsmooth(runnerPath, request), "no-cache");
+      if (!String(req.headers?.accept || "").includes("application/x-ndjson")) {
+        sendJson(res, 200, await runMdsmooth(runnerPath, request), "no-cache");
+        return;
+      }
+      // Streamed form: one {progress} line per runner update, then {result}
+      // or {error}. The status is already sent, so failures travel in-band.
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/x-ndjson");
+      res.setHeader("Cache-Control", "no-cache");
+      const line = (value: unknown) => res.write(`${JSON.stringify(value)}\n`);
+      try {
+        line({ result: await runMdsmooth(runnerPath, request, (progress) => line({ progress })) });
+      } catch (error) {
+        line({ error: error instanceof Error ? error.message : String(error) });
+      }
+      res.end();
     } catch (error) {
       sendJsonError(res, 500, error, "no-cache");
     }
   });
 }
 
-function runMdsmooth(runnerPath: string, request: Record<string, unknown>) {
+function runMdsmooth(runnerPath: string, request: Record<string, unknown>, onProgress?: (progress: unknown) => void) {
   return new Promise<unknown>((resolve, reject) => {
     const args = ["run"];
     for (const dependency of MDSMOOTH_DEPENDENCIES) args.push("--with", dependency);
     args.push("python", runnerPath);
     const child = spawn("uv", args, { stdio: ["pipe", "pipe", "pipe"] });
     const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
+    const stderr: string[] = [];
+    let pending = "";
     child.stdout.on("data", (chunk) => stdout.push(Buffer.from(chunk)));
-    child.stderr.on("data", (chunk) => stderr.push(Buffer.from(chunk)));
+    child.stderr.setEncoding("utf8");
+    child.stderr.on("data", (chunk: string) => {
+      const lines = (pending + chunk).split("\n");
+      pending = lines.pop() ?? "";
+      for (const text of lines) {
+        if (!text.startsWith(PROGRESS_PREFIX)) stderr.push(text);
+        else if (onProgress) {
+          try { onProgress(JSON.parse(text.slice(PROGRESS_PREFIX.length))); } catch { /* progress is advisory */ }
+        }
+      }
+    });
     child.on("error", (error) => reject(new Error(`Could not start MDSmooth: ${error.message}`)));
     child.on("close", (code) => {
-      const errorText = Buffer.concat(stderr).toString("utf8").trim();
+      const errorText = [...stderr, pending].join("\n").trim();
       if (code !== 0) {
         reject(new Error(`MDSmooth exited with ${code}: ${errorText}`));
         return;

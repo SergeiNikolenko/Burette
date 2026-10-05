@@ -21,7 +21,7 @@ from typing import List, Optional
 
 import numpy as np
 from scipy.linalg import eigh as _generalized_eigh
-from scipy.signal import butter, filtfilt, find_peaks
+from scipy.signal import butter, find_peaks, sosfiltfilt
 
 
 #: Frame count aimed for when the caller specifies no cutoff at all.  A frame
@@ -325,15 +325,17 @@ def butter_lowpass(rmsd, cutoff_frequency, sampling_rate=1.0, order=5):
     # Keep the normalized cutoff strictly inside (0, 1) for a valid design.
     wn = float(np.clip(wn, 1e-6, 1.0 - 1e-6))
 
-    b, a = butter(N=order, Wn=wn, btype="low")
+    # Second-order sections, not one transfer function: a single high-order
+    # polynomial loses all precision at low cutoffs (order 8 at 0.001 cycles per
+    # frame is off by seven orders of magnitude) and invents key frames there.
+    sos = butter(N=order, Wn=wn, btype="low", output="sos")
 
-    # filtfilt needs the signal to be longer than its default edge padding
-    # (3 * max(len(a), len(b))).  Shrink padlen for short trajectories instead
-    # of raising, so the tool still works on modest frame counts.
-    default_padlen = 3 * max(len(a), len(b))
-    padlen = min(default_padlen, rmsd.size - 1)
-    padlen = max(padlen, 0)
-    return filtfilt(b, a, rmsd, padlen=padlen)
+    # The signal must be longer than the edge padding. Keep the padding the
+    # transfer-function form used, 3 * (order + 1), and shrink it for short
+    # trajectories instead of raising, so the tool still works on modest frame
+    # counts.
+    padlen = max(min(3 * (order + 1), rmsd.size - 1), 0)
+    return sosfiltfilt(sos, rmsd, padlen=padlen)
 
 
 def find_significant_frames(filtered, include_ends=True, extra_frames=None):

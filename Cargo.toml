@@ -5,5 +5,6 @@ members = [
   "crates/burette-compute-metal",
   "crates/burette-compute-protocol",
   "crates/burette-core",
+  "crates/burette-mdsmooth",
 ]
 resolver = "2"

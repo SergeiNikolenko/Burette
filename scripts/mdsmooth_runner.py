@@ -3,7 +3,8 @@
 
 Reads one JSON request from stdin and writes one JSON response to stdout. The
 runner deliberately keeps MDAnalysis I/O outside the upstream-derived numerical
-core in ``scripts/mdsmooth_core``.
+core in ``scripts/mdsmooth_core``. Progress goes to stderr as
+``PROGRESS_PREFIX`` lines so callers can stream it while stdout stays one JSON.
 """
 
 from __future__ import annotations
@@ -25,6 +26,28 @@ import learned as core_learned  # noqa: E402
 PRESERVED_SELECTION = "resname HOH WAT SOL TIP3 TIP4 TIP5 TIP3P TIP4P TIP5P T3P T4P T5P NA CL K MG CA ZN"
 DEFAULT_SELECTION = f"not ({PRESERVED_SELECTION})"
 SIGNALS = ("rmsd", "pc1", "ic1", "dpca", "deeptica")
+PROGRESS_PREFIX = "@burette-progress "
+# Overall fraction where each stage starts; frame loops advance inside it.
+PROGRESS_STAGES = {"read": 0.0, "analyze": 0.35, "smooth": 0.6, "write": 0.7, "done": 0.97}
+_last_progress = None
+
+
+def report_progress(stage: str, done: int = 0, total: int = 0):
+    """Emit at most one line per 0.5% so long trajectories stay cheap."""
+    global _last_progress
+    names = list(PROGRESS_STAGES)
+    start = PROGRESS_STAGES[stage]
+    end = PROGRESS_STAGES[names[names.index(stage) + 1]] if stage != "done" else start
+    fraction = start + (end - start) * (done / total if total else 0)
+    key = (stage, round(fraction * 200))
+    if key == _last_progress:
+        return
+    _last_progress = key
+    payload = {"stage": stage, "fraction": round(fraction, 4)}
+    if total:
+        payload.update(done=done, total=total)
+    sys.stderr.write(PROGRESS_PREFIX + json.dumps(payload, separators=(",", ":")) + "\n")
+    sys.stderr.flush()
 
 
 def load_universe(topology: str | None, trajectory: str):
@@ -47,7 +70,9 @@ def read_frames(universe, selection: str):
     if selected.n_atoms == 0:
         raise ValueError(f"Atom selection matched no atoms: {selection!r}")
     all_frames, selected_frames = [], []
-    for _ in universe.trajectory:
+    total = len(universe.trajectory)
+    for index, _ in enumerate(universe.trajectory):
+        report_progress("read", index + 1, total)
         all_frames.append(universe.atoms.positions.astype(float, copy=True))
         selected_frames.append(selected.positions.astype(float, copy=True))
     if len(all_frames) < 2:
@@ -194,13 +219,68 @@ def has_residue_topology(universe) -> bool:
         return False
 
 
-def write_pdb(path: Path, universe, frames: np.ndarray):
+def write_pdb_reference(path: Path, universe, frames: np.ndarray):
     import MDAnalysis as mda
 
     with mda.Writer(str(path), n_atoms=universe.atoms.n_atoms, multiframe=True) as writer:
-        for frame in frames:
+        for index, frame in enumerate(frames):
+            report_progress("write", index + 1, len(frames))
             universe.atoms.positions = frame
             writer.write(universe.atoms)
+
+
+def pdb_model_template(path: Path, universe, frame: np.ndarray):
+    """Split MDAnalysis' own one-model output into header, body format, trailer.
+
+    Only the coordinate columns (31-54) differ between models, so the body keeps
+    every other column verbatim and takes the coordinates through one ``%``.
+    Returns None when the output is not the single MODEL block this relies on.
+    """
+    import MDAnalysis as mda
+
+    with mda.Writer(str(path), n_atoms=universe.atoms.n_atoms, multiframe=True) as writer:
+        universe.atoms.positions = frame
+        writer.write(universe.atoms)
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    starts = [index for index, line in enumerate(lines) if line.startswith("MODEL")]
+    ends = [index for index, line in enumerate(lines) if line.startswith("ENDMDL")]
+    if len(starts) != 1 or len(ends) != 1 or starts[0] > ends[0]:
+        return None
+    body, atoms = [], 0
+    for line in lines[starts[0] + 1:ends[0]]:
+        if line.startswith(("ATOM", "HETATM")):
+            atoms += 1
+            body.append(line[:30].replace("%", "%%") + "%8.3f%8.3f%8.3f" + line[54:].replace("%", "%%"))
+        else:
+            body.append(line.replace("%", "%%"))
+    if atoms != universe.atoms.n_atoms:
+        return None
+    return "".join(lines[:starts[0]]), "".join(body), "".join(lines[ends[0] + 1:])
+
+
+def write_pdb(path: Path, universe, frames: np.ndarray):
+    """Write a multi-model PDB with one format call per model.
+
+    MDAnalysis formats every column of every atom on every model, which is most
+    of a run's time. It still writes the first model, as the template, and all
+    models whenever a coordinate would not fit the fixed PDB columns.
+    """
+    # float32 is what MDAnalysis stores and prints, so the text stays identical.
+    frames32 = np.asarray(frames, dtype=np.float32)
+    fits = frames32.size and -999.9995 <= frames32.min() and frames32.max() < 9999.9995
+    template = pdb_model_template(path, universe, frames32[0]) if fits and len(frames32) < 10000 else None
+    if template is None:
+        write_pdb_reference(path, universe, frames)
+        return
+    header, body, trailer = template
+    with path.open("w", encoding="utf-8") as handle:
+        handle.write(header)
+        for index, frame in enumerate(frames32):
+            report_progress("write", index + 1, len(frames32))
+            handle.write(f"MODEL     {index + 1:>4d}\n")
+            handle.write(body % tuple(frame.ravel().tolist()))
+            handle.write("ENDMDL\n")
+        handle.write(trailer)
 
 
 def write_dcd(path: Path, universe, frames: np.ndarray, *, aligned=False):
@@ -210,13 +290,15 @@ def write_dcd(path: Path, universe, frames: np.ndarray, *, aligned=False):
     with mda.Writer(str(path), n_atoms=universe.atoms.n_atoms,
                     dt=float(universe.trajectory.dt)) as writer:
         for index, frame in enumerate(frames):
+            report_progress("write", index + 1, len(frames))
             # Reading a frame restores its own box, rather than repeating the
             # last box on every frame. A rotated box basis cannot be encoded by
-            # DCD lengths/angles: aligned output is explicitly non-periodic.
-            if index < len(universe.trajectory):
-                universe.trajectory[index]
+            # DCD lengths/angles: aligned output is explicitly non-periodic,
+            # so it has no box to restore and skips the re-read.
             if aligned:
                 universe.dimensions = None
+            elif index < len(universe.trajectory):
+                universe.trajectory[index]
             universe.atoms.positions = frame
             writer.write(universe.atoms)
 
@@ -228,11 +310,13 @@ def write_xyz(path: Path, universe, frames: np.ndarray):
         if not element:
             element = "".join(ch for ch in str(atom.name) if ch.isalpha())[:2].title() or "X"
         elements.append(element)
+    # One format call per frame instead of one per atom.
+    body = "".join(element.replace("%", "%%") + " %.6f %.6f %.6f\n" for element in elements)
     with path.open("w", encoding="utf-8") as handle:
         for index, frame in enumerate(frames):
+            report_progress("write", index + 1, len(frames))
             handle.write(f"{len(elements)}\nBurette MDSmooth frame {index + 1}\n")
-            for element, (x, y, z) in zip(elements, frame):
-                handle.write(f"{element} {x:.6f} {y:.6f} {z:.6f}\n")
+            handle.write(body % tuple(np.asarray(frame, dtype=float).ravel().tolist()))
 
 
 def spectrum_payload(raw: np.ndarray):
@@ -253,6 +337,7 @@ def analyze(request: dict):
     mode = str(request.get("mode") or "extrema").lower()
     selection = str(request.get("selection") or DEFAULT_SELECTION)
     lag = max(1, int(request.get("lag") or 10))
+    report_progress("read")
     universe = load_universe(topology, trajectory)
     all_frames, selected_frames, selected = read_frames(universe, selection)
     reference_index = max(0, min(len(all_frames) - 1, int(request.get("referenceFrame") or 1) - 1))
@@ -261,6 +346,7 @@ def analyze(request: dict):
     else:
         aligned_all, aligned_selected = align_frames(all_frames, selected_frames, reference_index)
 
+    report_progress("analyze")
     if mode == "kinetic":
         dimensions = max(1, int(request.get("ticaDimensions") or 3))
         components = core_filter.tica_series(aligned_selected, lag=lag, n_components=dimensions, reference_index=reference_index)
@@ -300,17 +386,21 @@ def analyze(request: dict):
             "cosineContentHigh": bool(filtered_result.cosine_content_high),
         })
 
+    report_progress("smooth")
     smoothed = smooth_solute(universe, aligned_all, np.sort(keyframes))
     keeps_topology = has_residue_topology(universe)
     paired_coordinates = bool(topology and Path(topology).resolve() != Path(trajectory).resolve())
     output_format = "dcd" if paired_coordinates else "pdb" if keeps_topology else "xyz"
     requested_output = str(request.get("outputPath") or "").strip()
+    # A caller that already holds the topology (the viewer keeps the first model
+    # of a single-file trajectory) can ask for coordinates only.
+    requested_format = str(request.get("outputFormat") or "").strip().lower()
     if requested_output:
-        output_format = Path(requested_output).suffix.lower().lstrip(".")
+        requested_format = Path(requested_output).suffix.lower().lstrip(".")
+    if requested_format:
+        output_format = requested_format
         if output_format not in {"pdb", "xyz", "dcd"}:
             raise ValueError("Smoothing output must be PDB, XYZ or DCD.")
-        if output_format == "dcd" and not paired_coordinates:
-            raise ValueError("DCD smoothing output requires a separate topology.")
     output_path = Path(requested_output) if requested_output else Path(trajectory).with_name(
         f"{Path(trajectory).stem}.mdsmooth.{output_format}"
     )
@@ -321,6 +411,7 @@ def analyze(request: dict):
         write_pdb(output_path, universe, smoothed)
     else:
         write_xyz(output_path, universe, smoothed)
+    report_progress("done")
     return {
         "ok": True,
         "trajectoryPath": str(Path(trajectory).resolve()),
@@ -330,6 +421,7 @@ def analyze(request: dict):
         "signal": signal,
         "selection": selection,
         "selectedAtomCount": int(selected.n_atoms),
+        "atomCount": int(all_frames.shape[1]),
         "frameCount": int(len(all_frames)),
         "keyframes": [int(frame) for frame in keyframes],
         "keyframeKinds": list(kinds),

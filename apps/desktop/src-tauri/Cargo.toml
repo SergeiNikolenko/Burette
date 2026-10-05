@@ -1,6 +1,6 @@
 [package]
 name = "burette"
-version = "2026.9.58"
+version = "2026.9.59"
 description = "Tauri/Rust shell for local molecular previews"
 authors = ["Burette"]
 edition = "2021"
@@ -23,6 +23,7 @@ burette-compute-metal = { path = "../../../crates/burette-compute-metal" }
 burette-compute-core = { path = "../../../crates/burette-compute-core" }
 burette-compute-protocol = { path = "../../../crates/burette-compute-protocol" }
 burette-core = { path = "../../../crates/burette-core" }
+burette-mdsmooth = { path = "../../../crates/burette-mdsmooth" }
 ed25519-dalek = "3"
 flate2 = "1"
 libc = "0.2"

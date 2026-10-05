@@ -1,18 +1,24 @@
 use serde_json::Value;
 use std::env;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use tauri::{Manager, Runtime};
+use tauri::ipc::{Channel, JavaScriptChannelId};
+use tauri::{Manager, Runtime, WebviewWindow};
 
 const RUNNER_DEPENDENCIES: [&str; 4] = ["numpy", "scipy", "MDAnalysis", "deeptime"];
+/// Must match `PROGRESS_PREFIX` in `scripts/mdsmooth_runner.py`.
+const PROGRESS_PREFIX: &str = "@burette-progress ";
 
 #[tauri::command]
 pub(crate) async fn run_mdsmooth<R: Runtime>(
-    app: tauri::AppHandle<R>,
+    window: WebviewWindow<R>,
     request: Value,
+    on_progress: Option<JavaScriptChannelId>,
 ) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || run_mdsmooth_blocking(app, request))
+    let on_progress = on_progress.map(|id| id.channel_on::<R, Value>(window.as_ref().clone()));
+    let app = window.app_handle().clone();
+    tauri::async_runtime::spawn_blocking(move || run_mdsmooth_blocking(app, request, on_progress))
         .await
         .map_err(|error| format!("MDSmooth worker failed: {error}"))?
 }
@@ -20,9 +26,20 @@ pub(crate) async fn run_mdsmooth<R: Runtime>(
 fn run_mdsmooth_blocking<R: Runtime>(
     app: tauri::AppHandle<R>,
     request: Value,
+    on_progress: Option<Channel<Value>>,
 ) -> Result<Value, String> {
-    let runner = runner_path(&app)?;
     validate_request_paths(&request)?;
+    // The default request runs in-process. Anything the native path does not
+    // cover, or fails on, goes to the Python runner, which stays the reference.
+    let mut send_progress = |progress: Value| {
+        if let Some(channel) = &on_progress {
+            let _ = channel.send(progress);
+        }
+    };
+    if let Ok(Some(response)) = burette_mdsmooth::run(&request, &mut send_progress) {
+        return Ok(response);
+    }
+    let runner = runner_path(&app)?;
     let payload = serde_json::to_vec(&request)
         .map_err(|error| format!("Could not serialize the MDSmooth request: {error}"))?;
     let uv = resolve_uv_executable()?;
@@ -49,22 +66,47 @@ fn run_mdsmooth_blocking<R: Runtime>(
         .ok_or_else(|| "Could not open MDSmooth input.".to_string())?
         .write_all(&payload)
         .map_err(|error| format!("Could not send the MDSmooth request: {error}"))?;
-    let output = child
-        .wait_with_output()
+    // stderr carries progress while the run is in flight, so drain it on its
+    // own thread; stdout is a single JSON document read to the end here.
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "Could not open MDSmooth diagnostics.".to_string())?;
+    let diagnostics = std::thread::spawn(move || {
+        let mut text = String::new();
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            match line.strip_prefix(PROGRESS_PREFIX) {
+                Some(progress) => {
+                    if let (Some(channel), Ok(value)) =
+                        (&on_progress, serde_json::from_str::<Value>(progress))
+                    {
+                        let _ = channel.send(value);
+                    }
+                }
+                None => {
+                    text.push_str(&line);
+                    text.push('\n');
+                }
+            }
+        }
+        text
+    });
+    let mut stdout = Vec::new();
+    child
+        .stdout
+        .take()
+        .ok_or_else(|| "Could not open MDSmooth output.".to_string())?
+        .read_to_end(&mut stdout)
+        .map_err(|error| format!("Could not read MDSmooth output: {error}"))?;
+    let status = child
+        .wait()
         .map_err(|error| format!("Could not wait for MDSmooth: {error}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "MDSmooth exited with {}: {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
+    let stderr = diagnostics.join().unwrap_or_default();
+    if !status.success() {
+        return Err(format!("MDSmooth exited with {status}: {}", stderr.trim()));
     }
-    let response: Value = serde_json::from_slice(&output.stdout).map_err(|error| {
-        format!(
-            "MDSmooth returned invalid JSON: {error}. {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        )
-    })?;
+    let response: Value = serde_json::from_slice(&stdout)
+        .map_err(|error| format!("MDSmooth returned invalid JSON: {error}. {}", stderr.trim()))?;
     if response.get("ok").and_then(Value::as_bool) != Some(true) {
         return Err(response
             .get("error")
