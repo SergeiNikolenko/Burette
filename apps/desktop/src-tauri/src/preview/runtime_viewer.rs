@@ -265,6 +265,11 @@ pub(crate) fn create_runtime<R: Runtime>(
     if let Some(index) = active_model {
         config["activeModel"] = json!(index);
     }
+    if let Some(cells) =
+        reload_options.and_then(|options| options.sdf_collection_spread_cells.as_ref())
+    {
+        config["sdfCollectionSpreadCells"] = json!(cells);
+    }
 
     if let Some(ketcher_config) = ketcher_edit_config(
         file_path,

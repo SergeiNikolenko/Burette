@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { MainModule as RDKitModule } from "@rdkit/rdkit";
 
+import { loadRDKitModule } from "./rdkit-module";
 import { isTauriRuntime } from "./tauri";
 
 import {
@@ -88,40 +89,24 @@ export type DerivedEngines = {
   rdkit: RDKitModule;
 };
 
-// Both engines load lazily and once: openchemlib is a plain module, while RDKit
-// receives its WASM bytes directly so packaged WKWebView never has to fetch a
-// Vite data URL through Emscripten's network loader.
+// Both engines load lazily and once: openchemlib is a plain module, and RDKit
+// comes from the shared window-wide loader.
 let enginesPromise: Promise<DerivedEngines> | null = null;
 
 export function loadDerivedEngines(): Promise<DerivedEngines> {
   if (!enginesPromise) {
     enginesPromise = (async () => {
-      const [ocl, oclResourcesRaw, rdkitModule, wasm] = await Promise.all([
+      const [ocl, oclResourcesRaw, rdkit] = await Promise.all([
         import("openchemlib"),
         // WKWebView cannot fetch Vite's emitted JSON asset through Tauri's
         // packaged frontend protocol. Bundle the predictor tables into the JS
         // chunk and register them without a runtime network request.
         import("../../../../node_modules/openchemlib/dist/resources.json?raw"),
-        import("@rdkit/rdkit"),
-        import("@rdkit/rdkit/RDKit_minimal.wasm?url"),
+        loadRDKitModule(),
       ]);
       // The Actelion predictors (druglikeness, toxicity) refuse to run until
       // their rule tables are registered.
       ocl.Resources.register(JSON.parse(oclResourcesRaw.default));
-      const wasmUrl = wasm.default;
-      const wasmBinary = wasmUrl.startsWith("data:")
-        ? Uint8Array.from(atob(wasmUrl.slice(wasmUrl.indexOf(",") + 1)), (char) => char.charCodeAt(0))
-        : new Uint8Array(await (await fetch(wasmUrl)).arrayBuffer());
-      const compiled = await WebAssembly.compile(wasmBinary);
-      const rdkitOptions = {
-        locateFile: () => wasmUrl,
-        instantiateWasm(imports: WebAssembly.Imports, receive: (instance: WebAssembly.Instance, module: WebAssembly.Module) => void) {
-          const instance = new WebAssembly.Instance(compiled, imports);
-          receive(instance, compiled);
-          return instance.exports;
-        },
-      };
-      const rdkit = await rdkitModule.default(rdkitOptions);
       return { ocl, rdkit };
     })().catch((error) => {
       enginesPromise = null;
