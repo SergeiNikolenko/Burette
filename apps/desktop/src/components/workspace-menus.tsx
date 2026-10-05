@@ -100,6 +100,9 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
   const scene: Menus["scene"] = document => workflows.isCombinedScene(document) ? [
     menuItem("rename-scene", "Rename…", () => setRenamingScene(document)),
     menuItem("save-scene", "Save Scene…", run(() => workflows.saveScene(document))),
+    // The whole scene, with everything added to it, joins the target; the target can then join another scene.
+    ...submenu("merge-scene", "Add to Scene", workflows.mergeTargets(document).map((target, index) =>
+      menuItem(`merge-scene-${index}`, target.title, run(() => workflows.mergeScene(document, target))))),
   ] : [];
   const select: Menus["select"] = (path, event) => {
     if (event.metaKey || event.ctrlKey) { setSelected(current => { const next = new Set(current); if (next.has(path)) next.delete(path); else next.add(path); return next; }); return true; }

@@ -275,6 +275,9 @@ the same scene import operation as Add to Scene. SDF ligands dropped onto a
 receptor or docking document default to the docking view instead, because only
 that view pages through SDF records as poses; Add to scene stays in the drop
 menu. Trajectory pairing retains its separate document workflow. Combined scenes can be saved through Export → Scene.
+Add to Scene skips files the target already holds, and a combined scene's tab
+menu adds the whole scene, including files and records added to it earlier, to
+another open scene, so scenes can be chained.
 SSH requests wait for the shared native worker rather than treating contention
 as a connection failure; refreshing a remote project keeps its cached tree visible.
 
