@@ -42,7 +42,7 @@ export function NativeWorkspaceHome({ actions, home }: { actions: ShellActions; 
           <Button className="native-home-ketcher" variant="ghost" size="sm" onClick={actions.openKetcher}>Ketcher</Button>
         </header>
         <section aria-label="Recent files" className="flex flex-col">
-          {loading ? <p role="status" className="px-2 py-3 text-sm text-muted-foreground">Loading recent files…</p> : null}
+          {loading ? <div className="px-2 py-3 text-muted-foreground"><Spinner aria-label="Loading recent files" /></div> : null}
           {!loading && !recent.length && !notice ? <p className="px-2 py-3 text-sm text-muted-foreground">No recent files yet.</p> : null}
           {recent.map(file => (
             <button key={file.path} type="button" disabled={pending !== null}

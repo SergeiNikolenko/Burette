@@ -1,5 +1,7 @@
 "use client";
 
+import { Spinner } from "@/components/ui/spinner";
+
 import * as React from "react";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
@@ -1578,8 +1580,8 @@ function MarkdownImageSurface({
           style={aspectRatio ? { aspectRatio } : undefined}
         >
           {state === "loading" ? (
-            <span className="text-muted-foreground absolute inset-x-4 top-1/2 -translate-y-1/2 text-center text-sm">
-              Loading image
+            <span className="text-muted-foreground absolute inset-x-4 top-1/2 flex -translate-y-1/2 justify-center">
+              <Spinner aria-label="Loading image" />
             </span>
           ) : null}
           {state === "failed" ? (

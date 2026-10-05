@@ -1,3 +1,4 @@
+import { Spinner } from "@/components/ui/spinner";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { join, resourceDir } from "@tauri-apps/api/path";
@@ -267,7 +268,7 @@ function FepNetworkPreview({ actions, location }: { actions: ShellActions; locat
   if (!data) {
     return (
       <section className="fep-network-workspace" aria-label="FEP network preview">
-        <div className="fep-network-empty">{dataError || "Loading FEP network preview..."}</div>
+        <div className="fep-network-empty">{dataError || <Spinner aria-label="Loading FEP network preview" />}</div>
       </section>
     );
   }

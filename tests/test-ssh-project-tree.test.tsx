@@ -30,7 +30,10 @@ test("SSH expansion queues every requested folder and the root control collapses
   try {
     await act(async () => { root.render(<RemoteProject project={{ id: "test", name: "Remote", host: "fixture", root: "/data" }} onOpen={() => {}} {...shellStub} />); });
     await click("Expand Remote");
+    expect(container.querySelector('[role="status"][aria-label="Loading folder"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("Loading");
     await act(async () => { requests[0].finish(); });
+    expect(container.querySelector('[role="status"][aria-label="Loading folder"]')).toBeNull();
     await click("Expand a");
     await click("Expand b");
     await click("Expand c");

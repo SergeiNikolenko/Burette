@@ -1,3 +1,4 @@
+import { Spinner } from "@/components/ui/spinner";
 import { useSidebarStructureDrag } from "./sidebar/use-sidebar-structure-drag";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { activeViewerIframeForDocument, postToXyzrenderViewer } from "../lib/viewer-bridge";
@@ -1241,7 +1242,7 @@ function KetcherInspectorPanel({ state }: { state: ShellViewState }) {
   return (
     <div className="ketcher-dock-portal" data-ketcher-dock-portal="right">
       <div className="dock-content dock-content-empty">
-        <div className="dock-empty">{state.activeTab?.location.kind === "ketcher" ? "Loading structure text…" : "Open Ketcher to import or export a structure"}</div>
+        <div className="dock-empty">{state.activeTab?.location.kind === "ketcher" ? <Spinner className="mx-auto" aria-label="Loading structure text" /> : "Open Ketcher to import or export a structure"}</div>
       </div>
     </div>
   );
@@ -1390,7 +1391,7 @@ function SingleDocumentTextPanel({
   return (
     <div className="dock-content dock-content-empty">
       <div className="dock-empty dock-empty-large">
-        {error ? `Text preview failed: ${error}` : "Loading text..."}
+        {error ? `Text preview failed: ${error}` : <Spinner className="mx-auto" aria-label="Loading text" />}
       </div>
     </div>
   );
@@ -1483,7 +1484,7 @@ function DockingDocumentTextPanel({
       ) : (
         <div className="dock-content dock-content-empty">
           <div className="dock-empty dock-empty-large">
-            {errors[activeSource.key] ? `Text preview failed for ${activeSource.title}: ${errors[activeSource.key]}` : `Loading ${activeSource.title}...`}
+            {errors[activeSource.key] ? `Text preview failed for ${activeSource.title}: ${errors[activeSource.key]}` : <Spinner className="mx-auto" aria-label={`Loading ${activeSource.title}`} />}
           </div>
         </div>
       )}

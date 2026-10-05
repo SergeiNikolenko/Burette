@@ -1,3 +1,4 @@
+import { Spinner } from "@/components/ui/spinner";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -98,7 +99,7 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
   if (!file || !summary) {
     return (
       <div className={embedded ? "spectrum-embedded" : "spectrum-stage"}>
-        <div className="spectrum-empty">Loading spectrum...</div>
+        <div className="spectrum-empty"><Spinner aria-label="Loading spectrum" /></div>
       </div>
     );
   }
@@ -176,7 +177,7 @@ export function SpectrumInfoPanel({ document }: { document: ViewerDocument }) {
   return (
     <div className="dock-content spectrum-info-dock">
       {error && <div className="spectrum-empty" role="alert">{error}</div>}
-      {!error && (!file || !summary || !spectrum) && <div className="spectrum-empty">Loading spectrum metadata...</div>}
+      {!error && (!file || !summary || !spectrum) && <div className="spectrum-empty"><Spinner aria-label="Loading spectrum metadata" /></div>}
       {!error && file && summary && spectrum && (
         <SpectrumMetadata document={document} file={file} spectrum={spectrum} summary={summary} />
       )}
@@ -230,7 +231,7 @@ export function SpectrumPeakTablePanel({ document }: { document: ViewerDocument 
   return (
     <section className="spectrum-table-panel">
       {error && <div className="spectrum-empty" role="alert">{error}</div>}
-      {!error && !selectedSpectrum && <div className="spectrum-empty">Loading spectrum peaks...</div>}
+      {!error && !selectedSpectrum && <div className="spectrum-empty"><Spinner aria-label="Loading spectrum peaks" /></div>}
       {!error && selectedSpectrum && (
         <>
           {file && file.spectra.length > 1 && (

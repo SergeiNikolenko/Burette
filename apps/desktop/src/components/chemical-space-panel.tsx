@@ -2092,7 +2092,7 @@ function ChemicalSpaceCanvas(props: ChemicalSpaceCanvasProps) {
   );
   if (props.result.dimensions === 3) {
     return (
-      <Suspense fallback={<ChemicalSpaceChecking message="Loading the 3D renderer…" />}>
+      <Suspense fallback={<div className="flex h-full min-h-40 items-center justify-center text-muted-foreground"><Spinner aria-label="Loading the 3D view" /></div>}>
         <ChemicalSpace3D
           documentKey={props.documentKey}
           positions={normalized}

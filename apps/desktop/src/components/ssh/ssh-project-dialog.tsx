@@ -1,3 +1,4 @@
+import { Spinner } from "@/components/ui/spinner";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
 import { Button } from "../ui/button";
@@ -42,7 +43,7 @@ export function SshProjectDialog({ open, onOpenChange, connectionOnly = false, i
             <Button type="submit" variant="ghost" disabled={busy}>Go</Button>
           </form>
           <div className="ssh-folder-list" aria-label="Remote folders" aria-busy={busy}>
-            {busy && <div className="ssh-folder-loading" role="status">Loading…</div>}
+            {busy && <div className="ssh-folder-loading"><Spinner aria-label="Loading folders" /></div>}
             {listing?.entries.filter(entry => entry.directory).map(entry => <button key={entry.name} disabled={busy} onClick={() => void browse(`${listing.root}/${entry.name}`)}><Folder size={16} />{entry.name}</button>)}
             {listing && !listing.entries.some(e => e.directory) && <p className="p-4 text-muted-foreground">No subfolders</p>}
             {listing?.truncated && <p className="p-4 text-muted-foreground">First 2,000 entries shown.</p>}

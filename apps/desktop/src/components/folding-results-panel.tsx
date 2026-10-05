@@ -1,3 +1,4 @@
+import { Spinner } from "@/components/ui/spinner";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
@@ -270,7 +271,7 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
   if (state.loading) {
     return (
       <div className="dock-content dock-content-empty">
-        <div className="dock-empty dock-empty-large">Loading folding results</div>
+        <div className="dock-empty dock-empty-large"><Spinner className="mx-auto" aria-label="Loading folding results" /></div>
       </div>
     );
   }
