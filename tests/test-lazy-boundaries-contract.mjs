@@ -53,7 +53,7 @@ assert.doesNotMatch(
 );
 assert.match(
   chemicalSpacePanel,
-  /<Suspense fallback=\{<ChemicalSpaceChecking message="Loading the 3D renderer…"\s*\/>\}>/u,
+  /<Suspense fallback=\{(?!null\})[\s\S]*?\}>\s*<ChemicalSpace3D\b/u,
   "the lazy 3D renderer needs an explicit loading state",
 );
 
