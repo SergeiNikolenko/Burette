@@ -70,6 +70,8 @@ export type ViewerReloadOptions = {
   xyzrenderControls?: XyzrenderControls | null;
   xyzrenderSelectionAction?: "vdw" | null;
   sdfPoseControlLabel?: string | null;
+  // One [x, y] cell per SDF record, in molecule widths, for the spread layout.
+  sdfCollectionSpreadCells?: [number, number][] | null;
   trajectoryAutoPlayOnce?: boolean | null;
   activeModel?: number | null;
   molstarStyle?: "default" | "illustrative" | "illustrative-surface" | "polymer-ligand" | "cartoon" | "ball-and-stick" | "spacefill" | "line" | "molecular-surface" | null;

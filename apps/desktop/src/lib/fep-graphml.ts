@@ -10,7 +10,12 @@ export type FepNetworkNode = {
   sourceAtomAtomicNumbers: Record<number, number>;
   x: number;
   y: number;
+  // Heavy atoms flattened onto the conformer's XY plane, for 2D drawings.
   molblock: string;
+  // The ligand's own 3D conformer, with and without hydrogens; empty when
+  // the network carries no coordinates.
+  molblock3d: string;
+  heavyMolblock3d: string;
 };
 
 export type FepNetworkEdge = {
@@ -144,6 +149,8 @@ function emptyFepNode(id: string, label: string): FepNetworkNode {
     x: 50,
     y: 50,
     molblock: "",
+    molblock3d: "",
+    heavyMolblock3d: "",
   };
 }
 
@@ -206,6 +213,8 @@ function moldictToNode(id: string, moldict: Moldict): FepNetworkNode {
     x: 50,
     y: 50,
     molblock,
+    molblock3d: coordinates ? moldictToMolblock(label, atoms, bonds, coordinates, "conformer") : "",
+    heavyMolblock3d: coordinates ? moldictToMolblock(label, atoms, bonds, coordinates, "heavy-conformer") : "",
   };
 }
 
@@ -245,15 +254,18 @@ function integerValue(value: unknown) {
   return typeof value === "number" && Number.isInteger(value) ? value : null;
 }
 
-function moldictToMolblock(label: string, atoms: unknown[], bonds: unknown[], coordinates: number[][] | null = null) {
+type MolblockShape = "depiction" | "conformer" | "heavy-conformer";
+
+function moldictToMolblock(label: string, atoms: unknown[], bonds: unknown[], coordinates: number[][] | null = null, shape: MolblockShape = "depiction") {
   const heavyIndexByAtom = new Map<number, number>();
   const atomLines: string[] = [];
   atoms.forEach((atom, atomIndex) => {
     const atomicNo = atomicNumber(atom);
-    if (atomicNo === 1) return;
+    if (atomicNo === 1 && shape !== "conformer") return;
     heavyIndexByAtom.set(atomIndex, atomLines.length + 1);
     const coord = coordinates?.[atomIndex] ?? [0, 0, 0];
-    atomLines.push(`${molCoord(coord[0] ?? 0)}${molCoord(coord[1] ?? 0)}${molCoord(0)} ${atomSymbol(atomicNo).padEnd(3, " ")} 0  0  0  0  0  0  0  0  0  0  0  0`);
+    const z = shape === "depiction" ? 0 : coord[2] ?? 0;
+    atomLines.push(`${molCoord(coord[0] ?? 0)}${molCoord(coord[1] ?? 0)}${molCoord(z)} ${atomSymbol(atomicNo).padEnd(3, " ")} 0  0  0  0  0  0  0  0  0  0  0  0`);
   });
 
   const aromaticBondTypes = kekuleAromaticBondTypes(atoms, bonds);

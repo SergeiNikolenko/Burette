@@ -15330,7 +15330,7 @@ SOFTWARE.
     return { data: lines.join('\n'), residues, singlePdbs, molecules };
   }
 
-  function spreadSdfCollectionMolecules(molecules) {
+  function spreadSdfCollectionMolecules(molecules, hostCells = null) {
     const columns = Math.ceil(Math.sqrt(molecules.length));
     const rows = Math.ceil(molecules.length / columns);
     // Alignment replaces coordinates; parsed bounds can describe the old pose.
@@ -15342,9 +15342,15 @@ SOFTWARE.
       return { centerX: (minX + maxX) / 2, centerY: (minY + maxY) / 2, size: Math.max(maxX - minX, maxY - minY) };
     });
     const spacing = Math.max(3, ...bounds.map(bound => bound.size)) + SDF_GRID_PADDING;
+    // A host that already arranges these molecules, such as a ligand network,
+    // names each one's cell so the spread scene keeps that arrangement.
+    const cells = Array.isArray(hostCells) && hostCells.length === molecules.length
+      && hostCells.every(cell => Array.isArray(cell) && Number.isFinite(cell[0]) && Number.isFinite(cell[1]))
+      ? hostCells
+      : null;
     return molecules.map((molecule, index) => {
-      const x = (index % columns - (columns - 1) / 2) * spacing;
-      const y = ((rows - 1) / 2 - Math.floor(index / columns)) * spacing;
+      const x = cells ? cells[index][0] * spacing : (index % columns - (columns - 1) / 2) * spacing;
+      const y = cells ? cells[index][1] * spacing : ((rows - 1) / 2 - Math.floor(index / columns)) * spacing;
       return {
         ...molecule,
         atoms: molecule.atoms.map(atom => ({
@@ -15936,7 +15942,7 @@ SOFTWARE.
     }
     const allMode = activeSdfPoseMode === 'all';
     const spreadCollection = allMode && activeSdfCollectionLayout === 'spread'
-      ? sdfMoleculesToPdbCollection(spreadSdfCollectionMolecules(prepared.collectionMolecules), prepared.label)
+      ? sdfMoleculesToPdbCollection(spreadSdfCollectionMolecules(prepared.collectionMolecules, activeConfig?.sdfCollectionSpreadCells), prepared.label)
       : null;
     const singlePdbs = spreadCollection?.singlePdbs || (Array.isArray(prepared.collectionSinglePdbs) ? prepared.collectionSinglePdbs : []);
     const activeIndex = Math.max(0, Math.min(singlePdbs.length - 1, Math.trunc(Number(activePose) || 0)));

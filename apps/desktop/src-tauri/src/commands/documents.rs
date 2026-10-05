@@ -3774,6 +3774,7 @@ mod tests {
                 xyzrender_preset: None,
                 xyzrender_controls: None,
                 active_model: None,
+                sdf_collection_spread_cells: None,
             }),
         )
         .expect("explicit grid Ketcher SDF should open");

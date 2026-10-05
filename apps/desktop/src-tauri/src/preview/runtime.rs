@@ -156,6 +156,9 @@ pub(crate) struct ViewerReloadOptions {
     pub(crate) xyzrender_preset: Option<String>,
     pub(crate) xyzrender_controls: Option<XyzrenderControls>,
     pub(crate) active_model: Option<usize>,
+    /// One `[x, y]` cell per SDF record, in molecule widths, for the spread layout.
+    #[serde(default)]
+    pub(crate) sdf_collection_spread_cells: Option<Vec<[f64; 2]>>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
@@ -2278,6 +2281,7 @@ Atoms # charge
                     xyzrender_preset: None,
                     xyzrender_controls: None,
                     active_model: Some(1),
+                    sdf_collection_spread_cells: None,
                 }),
             )
             .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));

@@ -1285,6 +1285,7 @@ function viewerHtml(
     ...(reloadOptions?.activeModel != null ? { activeModel: reloadOptions.activeModel } : {}),
     rdkitWasmPath: RDKIT_WASM_PATH,
     ...(reloadOptions?.sdfPoseControlLabel ? { sdfPoseControlLabel: reloadOptions.sdfPoseControlLabel } : {}),
+    ...(reloadOptions?.sdfCollectionSpreadCells ? { sdfCollectionSpreadCells: reloadOptions.sdfCollectionSpreadCells } : {}),
     ...(stagedEntries?.some((entry) => entry?.representation === "structure-scene-entry") ? { structureSceneMode: "structurePoses" } : {}),
     appViewer: true,
     pubChemSearch: true,
