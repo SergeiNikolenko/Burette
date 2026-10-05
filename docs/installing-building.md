@@ -12,7 +12,7 @@ Use this page when you want to build the app from the repository.
 | Xcode | Required for Tauri/macOS packaging, Quick Look extensions, thumbnail extension, and the source-built iPhone target. |
 | Bun | Required for workspace scripts, JavaScript checks, vendoring, package metadata, and the CLI installer. |
 | Vite+ `vp` CLI | Preferred entrypoint for frontend install, dev, check, test, and build workflows. |
-| Rust toolchain | Required for the Tauri crate and the workspace crates (`crates/burette-core`, `crates/burette-compute-core`, `crates/burette-compute-metal`, `crates/burette-compute-protocol`). |
+| Rust toolchain | Required for the Tauri crate and the workspace crates (`crates/burette-core`, `crates/burette-compute-core`, `crates/burette-compute-metal`, `crates/burette-compute-protocol`, `crates/burette-mdsmooth`). |
 | `xyzrender` | Optional external renderer for XYZ, CUBE, quantum input, MAE, CMS, and other external-renderer formats. |
 | Python + `uv` | Optional runtime installation path for descriptor, RDKit, and MSBuddy workflows. |
 | xTB | Optional semiempirical runtime; the app can install a managed Conda environment pinned by `config/xtb/pixi.toml`, or use an existing local `xtb`. |

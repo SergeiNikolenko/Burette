@@ -23,6 +23,7 @@ burette-compute-metal = { path = "../../../crates/burette-compute-metal" }
 burette-compute-core = { path = "../../../crates/burette-compute-core" }
 burette-compute-protocol = { path = "../../../crates/burette-compute-protocol" }
 burette-core = { path = "../../../crates/burette-core" }
+burette-mdsmooth = { path = "../../../crates/burette-mdsmooth" }
 ed25519-dalek = "3"
 flate2 = "1"
 libc = "0.2"

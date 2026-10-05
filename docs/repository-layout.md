@@ -13,6 +13,7 @@ shared preview runtime they use.
 | `packages/ketcher-agent-contract` | Shared `@burette/ketcher-agent-contract` types consumed by the desktop app and the hosted public plugin. |
 | `plugins/burette-agent` | Codex/Burette plugin, MCP server, skills, and bounded agent workflow contracts. It wraps the repository CLI instead of reimplementing app control. |
 | `crates/burette-core` | Shared Rust crate for native molecular and preview-support logic used by the Tauri app. |
+| `crates/burette-mdsmooth` | Native default path of trajectory smoothing (RMSD key frames, DCD output); `scripts/mdsmooth_runner.py` stays the reference and the fallback. |
 | `crates/burette-compute-core` | CPU reference implementations and fixed ABIs for the native compute layer (fingerprints, clustering, conformers, UMAP). |
 | `crates/burette-compute-metal` | Apple Metal compute runtime: kernel packaging, tiling, dispatch, and GPU timings. |
 | `crates/burette-compute-protocol` | Fixed request/job/artifact contracts and the attested helper control plane for compute. |

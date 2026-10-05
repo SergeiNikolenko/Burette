@@ -56,6 +56,30 @@ def test_paired_smoothing_keeps_topology_separate_and_writes_dcd(tmp_path):
     np.testing.assert_allclose(restored.trajectory[-1].positions, frames[-1], atol=1e-5)
 
 
+def test_single_file_input_can_write_dcd_over_its_first_model(tmp_path):
+    import MDAnalysis as mda
+
+    universe = mda.Universe.empty(4, n_residues=2,
+                                  atom_resindex=[0, 0, 1, 1], trajectory=True)
+    universe.add_TopologyAttr("names", ["N", "CA", "N", "CA"])
+    universe.add_TopologyAttr("resnames", ["ALA", "GLY"])
+    universe.add_TopologyAttr("resids", [1, 2])
+    universe.add_TopologyAttr("chainIDs", ["A"] * 4)
+    universe.add_TopologyAttr("elements", ["N", "C", "N", "C"])
+    frames = np.zeros((40, 4, 3))
+    frames[:, :, 0] = np.arange(4) * 1.5
+    frames[:, 3, 1] = np.sin(np.linspace(0, 3 * np.pi, 40))
+    source = tmp_path / "run.pdb"
+    runner.write_pdb(source, universe, frames)
+    result = runner.analyze({"trajectoryPath": str(source), "outputFormat": "dcd", "targetFrames": 8})
+    assert result["outputFormat"] == "dcd"
+    assert result["outputPath"] == str((tmp_path / "run.mdsmooth.dcd").resolve())
+    assert result["atomCount"] == 4
+    restored = mda.Universe(str(source), result["outputPath"])
+    assert len(restored.trajectory) == 40
+    restored.trajectory.close()
+
+
 def test_partial_keys_preserve_uncovered_frames():
     frames = np.arange(90, dtype=float).reshape(10, 3, 3)
     result = runner.interpolate(frames, np.array([7, 2, 2]))
@@ -142,3 +166,37 @@ def test_standard_dcd_time_agrees_with_molstar(tmp_path):
     np.testing.assert_allclose([ts.time for ts in reader], [10, 12.5, 15], atol=1e-5)
     reader.close()
     subprocess.run(['bun', str(RUNNER_PATH.parent.parent / 'tests/test-dcd-time.mjs'), str(path)], check=True)
+
+
+def test_fast_text_writers_match_the_per_atom_reference(tmp_path):
+    import MDAnalysis as mda
+
+    universe = mda.Universe.empty(6, n_residues=3, n_segments=2, atom_resindex=[0, 0, 1, 1, 2, 2],
+                                  residue_segindex=[0, 0, 1], trajectory=True)
+    universe.add_TopologyAttr("names", ["N", "CA", "N", "CA", "O", "H1"])
+    universe.add_TopologyAttr("resnames", ["ALA", "GLY", "HOH"])
+    universe.add_TopologyAttr("resids", [1, 2, 3])
+    universe.add_TopologyAttr("chainIDs", ["A"] * 4 + ["B"] * 2)
+    universe.add_TopologyAttr("elements", ["N", "C", "N", "C", "O", "H"])
+    # Values that round differently in float32 and float64, and negative ones.
+    frames = np.random.default_rng(7).uniform(-900.0, 9000.0, (5, 6, 3))
+    runner.write_pdb(tmp_path / "fast.pdb", universe, frames)
+    runner.write_pdb_reference(tmp_path / "reference.pdb", universe, frames)
+    assert (tmp_path / "fast.pdb").read_text() == (tmp_path / "reference.pdb").read_text()
+    assert len(mda.Universe(str(tmp_path / "fast.pdb")).trajectory) == 5
+
+    runner.write_xyz(tmp_path / "fast.xyz", universe, frames)
+    expected = "".join(
+        f"6\nBurette MDSmooth frame {index + 1}\n" + "".join(
+            f"{element} {x:.6f} {y:.6f} {z:.6f}\n" for element, (x, y, z) in zip("NCNCOH", frame))
+        for index, frame in enumerate(frames))
+    assert (tmp_path / "fast.xyz").read_text() == expected
+
+    # A coordinate too wide for the fixed columns still fails as it always did.
+    frames[2, 1, 0] = 123456.0
+    try:
+        runner.write_pdb(tmp_path / "wide.pdb", universe, frames)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("out-of-range PDB coordinates must be rejected")

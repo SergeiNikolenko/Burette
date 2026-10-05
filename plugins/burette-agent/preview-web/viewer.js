@@ -19379,6 +19379,29 @@ SOFTWARE.
     }
   }
 
+  // The first model of a multi-model PDB or the first frame of an XYZ file: the
+  // topology a binary smoothing result is replayed over. Atom order is the file's
+  // own, which is also the order the coordinates were written in.
+  function trajectorySmoothingTopologyEntry(prepared) {
+    const format = String(prepared.format || '').toLowerCase();
+    if (typeof prepared.data !== 'string' || (format !== 'pdb' && format !== 'xyz')) return null;
+    let data = prepared.data;
+    if (format === 'pdb') {
+      const end = data.indexOf('\nENDMDL');
+      if (end >= 0) data = `${data.slice(0, end)}\nENDMDL\nEND\n`;
+    } else {
+      const atomCount = Math.trunc(Number(data.slice(0, data.indexOf('\n')).trim()));
+      if (!(atomCount > 0)) return null;
+      let end = -1;
+      for (let line = 0; line < atomCount + 2; line += 1) {
+        end = data.indexOf('\n', end + 1);
+        if (end < 0) { end = data.length; break; }
+      }
+      data = `${data.slice(0, end)}\n`;
+    }
+    return { data, format, label: prepared.label || 'Trajectory', sourcePath: prepared.sourcePath || '' };
+  }
+
   async function applyExternalTrajectorySmoothingFromAction(action = {}) {
     const originalPrepared = trajectorySmoothingState?.view === 'smoothed'
       ? trajectorySmoothingState.originalPrepared
@@ -19388,7 +19411,10 @@ SOFTWARE.
     }
     try {
       const binaryCoordinates = action.sourceFormat === 'dcd';
-      if (binaryCoordinates && !originalPrepared.trajectoryPair) {
+      const singleFileTopology = binaryCoordinates && !originalPrepared.trajectoryPair
+        ? trajectorySmoothingTopologyEntry(originalPrepared)
+        : null;
+      if (binaryCoordinates && !originalPrepared.trajectoryPair && !singleFileTopology) {
         throw new Error('Binary smoothing needs the original paired topology.');
       }
       const bytes = await loadPayloadBytes(String(action.sourceUrl));
@@ -19416,7 +19442,16 @@ SOFTWARE.
         trajectorySegments: [],
         smoothingSourcePath: String(action.sourcePath || '')
       };
-      if (binaryCoordinates) {
+      if (singleFileTopology) {
+        const coordinateEntry = { data, format: 'dcd', label: `${singleFileTopology.label} - smoothed`,
+          sourcePath: action.sourcePath || '' };
+        Object.assign(smoothedPrepared, {
+          kind: 'docking', data: originalPrepared.data, format: originalPrepared.format,
+          entries: [singleFileTopology, coordinateEntry],
+          trajectoryPair: { modelEntry: singleFileTopology, modelKind: 'model-data', coordinateEntry,
+            coordinateEntries: [coordinateEntry], trajectorySegments: [], synthetic: false }
+        });
+      } else if (binaryCoordinates) {
         const originalPair = originalPrepared.trajectoryPair;
         const coordinateEntry = { ...originalPair.coordinateEntry, data, format: 'dcd',
           label: `${originalPair.coordinateEntry.label} - smoothed`, sourcePath: action.sourcePath || '' };

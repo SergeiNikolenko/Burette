@@ -367,6 +367,7 @@ dependencies = [
  "burette-compute-metal",
  "burette-compute-protocol",
  "burette-core",
+ "burette-mdsmooth",
  "cc",
  "cocoa",
  "core-foundation",
@@ -435,6 +436,13 @@ name = "burette-core"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "burette-mdsmooth"
+version = "0.1.0"
+dependencies = [
  "serde_json",
 ]
 

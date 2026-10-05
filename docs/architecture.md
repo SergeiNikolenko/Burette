@@ -21,7 +21,8 @@ structure files.
 - `ios/BuretteMobile/` owns the source-built iPhone preview app (a second
   Swift runtime alongside the Quick Look extension).
 - `crates/` owns the Rust workspace crates: `burette-core`,
-  `burette-compute-core`, `burette-compute-metal`, `burette-compute-protocol`.
+  `burette-compute-core`, `burette-compute-metal`, `burette-compute-protocol`,
+  `burette-mdsmooth`.
 - `compute/` owns the reviewed Metal kernel sources, kernel contracts, model
   runners, and packaged compute runtimes; `schemas/compute/` owns the compute
   JSON schemas and fixtures.

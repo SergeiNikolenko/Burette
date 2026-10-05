@@ -31,6 +31,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Switch } from "./ui/switch";
 import { NativeSelect, NativeSelectOption, NativeSelectOptGroup } from "./ui/native-select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DIRECT_CHEMISTRY_JOB_ATOM_LIMIT, structureAtomCountFromSummary } from "../lib/direct-chemistry-guard";
 import { extensionForDocking } from "../lib/docking-documents";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
@@ -39,7 +40,8 @@ import { GridDescriptorStatus } from "./grid-descriptor-status";
 import { GridHoverMoleculeCard } from "./grid-hover-molecule";
 import type { GridFilterModel } from "./types";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
-import { getMdsmoothCapabilities, installDeepTica, runMdsmooth, type MdsmoothMode, type MdsmoothResult, type MdsmoothSignal } from "../lib/mdsmooth";
+import { getMdsmoothCapabilities, installDeepTica, runMdsmooth, type MdsmoothMode, type MdsmoothProgress, type MdsmoothResult, type MdsmoothSignal } from "../lib/mdsmooth";
+import { Progress } from "@/components/ui/progress";
 import { isTauriRuntime } from "../lib/tauri";
 import { showMacAvailability } from "../lib/browser-availability";
 import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings, HoveredGridRow } from "../types";
@@ -864,6 +866,7 @@ function TrajectorySmoothingCard({
 }) {
   const frameCount = controls.actions.length;
   const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<TrajectorySmoothingProgressState | null>(null);
   const [installingDeepTica, setInstallingDeepTica] = useState(false);
   const [deepTicaInstalled, setDeepTicaInstalled] = useState<boolean | null>(null);
   const [showUpdated, setShowUpdated] = useState(false);
@@ -895,11 +898,16 @@ function TrajectorySmoothingCard({
     requestSerial.current = serial;
     setRunning(true);
     setError(null);
+    // Until the runner reports, uv may still be resolving its environment.
+    setProgress({ label: "Preparing", value: null });
     try {
       const pair = trajectoryPathsFor(document, playback);
       // WKWebView cannot fetch arbitrary asset URLs from an asset iframe. Stage
       // the result beside this preview and use its existing scoped file bridge.
-      const outputName = `mdsmooth-${serial}-${crypto.randomUUID()}.${pair.topologyPath ? "dcd" : document.extension === "xyz" ? "xyz" : "pdb"}`;
+      // The viewer replays binary coordinates over the topology it already holds:
+      // the paired one, or the first model of a multi-model PDB or XYZ file.
+      const coordinatesOnly = Boolean(pair.topologyPath) || ["pdb", "ent", "xyz"].includes(document.extension);
+      const outputName = `mdsmooth-${serial}-${crypto.randomUUID()}.${coordinatesOnly ? "dcd" : "pdb"}`;
       const outputPath = isTauriRuntime()
         ? document.runtimePath.replace(/[^/\\]+$/, outputName)
         : undefined;
@@ -907,6 +915,7 @@ function TrajectorySmoothingCard({
         trajectoryPath: pair.trajectoryPath,
         topologyPath: pair.topologyPath,
         outputPath,
+        outputFormat: coordinatesOnly ? "dcd" : undefined,
         signal,
         mode,
         targetFrames: Math.max(2, Math.min(frameCount, targetFrames)),
@@ -920,8 +929,11 @@ function TrajectorySmoothingCard({
         states: kineticStates,
         microstates: Math.min(100, frameCount),
         ticaDimensions: 3,
+      }, (update) => {
+        if (serial === requestSerial.current) setProgress(trajectorySmoothingProgress(update));
       });
       if (serial !== requestSerial.current || requestedSignature !== latestSettingsSignature.current) return;
+      setProgress({ label: "Loading frames", value: 98 });
       const currentPlayback = latestPlayback.current;
       await requestViewerAction(document.id, {
         type: "apply_external_trajectory_smoothing",
@@ -965,7 +977,10 @@ function TrajectorySmoothingCard({
       failedAutoUpdate.current = requestedSignature;
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
-      if (serial === requestSerial.current) setRunning(false);
+      if (serial === requestSerial.current) {
+        setRunning(false);
+        setProgress(null);
+      }
     }
   };
   const selectPreset = (nextPreset: "light" | "balanced" | "strong") => {
@@ -1036,6 +1051,7 @@ function TrajectorySmoothingCard({
         </ToggleGroup>
       </div>
       <AccordionContent className="h-auto grid gap-3">
+          <TooltipProvider delayDuration={180}>
           <ToggleGroup type="single" variant="outline" size="sm" spacing={0} className="w-full" aria-label="Smoothing strength" value={preset} disabled={mode === "kinetic"} onValueChange={(value) => {
             if (value === "light" || value === "balanced" || value === "strong") selectPreset(value);
           }}>
@@ -1043,13 +1059,21 @@ function TrajectorySmoothingCard({
               <ToggleGroupItem
                 key={value}
                 value={value}
-                className="flex-1"
-                data-smoothing-tooltip={value === "light" ? "Keeps more source frames and removes only the fastest jitter." : value === "strong" ? "Keeps fewer source frames for the calmest, most simplified playback." : "Balances retained molecular detail with smoother playback."}
+                className="flex-1 p-0!"
               >
-                {value[0].toUpperCase() + value.slice(1)}
+                {/* A portaled tooltip: the accordion content clips anything drawn above this row. */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="flex h-full w-full items-center justify-center px-2">{value[0].toUpperCase() + value.slice(1)}</span>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" sideOffset={6} showArrow={false}>
+                    {value === "light" ? "Keeps more source frames and removes only the fastest jitter." : value === "strong" ? "Keeps fewer source frames for the calmest, most simplified playback." : "Balances retained molecular detail with smoother playback."}
+                  </TooltipContent>
+                </Tooltip>
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
+          </TooltipProvider>
           <Accordion type="single" collapsible value={advanced ? "science" : ""} onValueChange={(value) => setAdvanced(Boolean(value))}>
             <AccordionItem value="science">
             <AccordionTrigger>Scientific settings</AccordionTrigger>
@@ -1135,19 +1159,52 @@ function TrajectorySmoothingCard({
             </AccordionContent>
             </AccordionItem>
           </Accordion>
-          {resultDirty || (running && built) ? <div className="trajectory-smoothing-update-status">Updating…</div> : showUpdated ? <div className="trajectory-smoothing-update-status" data-complete>Updated</div> : null}
+          {progress ? <TrajectorySmoothingProgress progress={progress} /> : resultDirty || (running && built) ? <div className="trajectory-smoothing-update-status">Updating…</div> : showUpdated ? <div className="trajectory-smoothing-update-status" data-complete>Updated</div> : null}
           {result ? <TrajectorySmoothingChart result={result} playback={playback} preset={result.preset ?? preset} setFrame={setFrame} /> : null}
           {result?.spectrum ? <TrajectorySpectrum spectrum={result.spectrum} cutoffFrequency={result.cutoffFrequency ?? null} /> : null}
           {error ? <div className="trajectory-smoothing-error" role="alert">{error}</div> : null}
           {/* Full width and an input-coloured face made this read as a text
               field; it is the section's one action, so it looks like the
               buttons every other section uses. */}
-          {!built || error ? <Button type="button" variant="secondary" size="sm" className="trajectory-smoothing-build" disabled={running} onClick={() => void build()}>
+          {(!built || error) && !progress ? <Button type="button" variant="secondary" size="sm" className="trajectory-smoothing-build" disabled={running} onClick={() => void build()}>
             {running ? "Enabling smoothing…" : error ? "Try again" : "Enable smoothing"}
           </Button> : null}
       </AccordionContent>
       </AccordionItem>
     </Accordion>
+  );
+}
+
+type TrajectorySmoothingProgressState = { label: string; value: number | null; detail?: string };
+
+const TRAJECTORY_SMOOTHING_STAGE_LABELS: Record<MdsmoothProgress["stage"], string> = {
+  read: "Reading frames",
+  analyze: "Analyzing motion",
+  smooth: "Building smooth path",
+  write: "Writing frames",
+  done: "Finishing",
+};
+
+function trajectorySmoothingProgress(update: MdsmoothProgress): TrajectorySmoothingProgressState {
+  // The viewer load that follows the runner takes the last few percent.
+  const value = Math.round(Math.max(0, Math.min(1, update.fraction)) * 95);
+  const counted = update.total ? `${(update.done ?? 0).toLocaleString()} / ${update.total.toLocaleString()}` : undefined;
+  return { label: TRAJECTORY_SMOOTHING_STAGE_LABELS[update.stage] ?? "Smoothing", value, detail: counted ?? (value ? `${value}%` : undefined) };
+}
+
+function TrajectorySmoothingProgress({ progress }: { progress: TrajectorySmoothingProgressState }) {
+  return (
+    <div className="grid gap-1.5">
+      <div className="flex items-baseline justify-between gap-3 text-xs text-muted-foreground">
+        <span className="truncate">{progress.label}…</span>
+        {progress.detail ? <span className="shrink-0 tabular-nums">{progress.detail}</span> : null}
+      </div>
+      <Progress
+        value={progress.value ?? undefined}
+        indeterminate={progress.value === null}
+        aria-label={progress.value === null ? "Smoothing in progress" : `Smoothing ${progress.value}% complete`}
+      />
+    </div>
   );
 }
 
