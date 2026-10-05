@@ -1394,7 +1394,7 @@ export function KetcherPage({
                 />
               </KetcherErrorBoundary>
             ) : (
-              <div className="ketcher-loading"><Spinner />Loading editor</div>
+              <div className="ketcher-loading"><Spinner aria-label="Loading editor" /></div>
             )}
           </div>
           {dropActive && (
@@ -1817,7 +1817,7 @@ function KetcherEditorLoader({
   }
 
   if (!EditorComponent) {
-    return <div className="ketcher-loading"><Spinner />Loading editor</div>;
+    return <div className="ketcher-loading"><Spinner aria-label="Loading editor" /></div>;
   }
 
   return <EditorComponent onReady={onReady} onStatus={onStatus} onOpenFile={onOpenFile} onLoadError={setLoadError} />;

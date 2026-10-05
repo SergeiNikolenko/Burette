@@ -1,3 +1,4 @@
+import { Spinner } from "@/components/ui/spinner";
 import { SshProjectCard, useSshProjectMenu } from "./ssh-project-details";
 import { useSshStatus } from "../../lib/ssh-connection-status";
 import { SshDeleteFolderDialog } from "./ssh-delete-folder-dialog";
@@ -155,7 +156,7 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
     const cached = directories.get(path);
     const directory = cached?.value;
     return <div className={path === "." ? "project-children" : "project-folder-children"} role="group">
-      {pending?.type === "list" && pending.path === path && <span className="ssh-tree-status" role="status">Loading…</span>}
+      {pending?.type === "list" && pending.path === path && <span className="ssh-tree-status inline-flex items-center"><Spinner aria-label="Loading folder" /></span>}
       {failure?.operation.path === path && <div className="ssh-tree-error" role="alert">{failure.message}<button onClick={() => void run(failure.operation, true)}>Retry</button></div>}
       {directory?.entries.slice(0, limits[path] ?? 100).map(entry => {
         const child = path === "." ? entry.name : `${path}/${entry.name}`;

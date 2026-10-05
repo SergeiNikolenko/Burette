@@ -518,7 +518,7 @@ export function KetcherEditor({
   }
 
   if (!runtime || !structServiceProvider) {
-    return <div className="ketcher-loading"><Spinner />Loading editor</div>;
+    return <div className="ketcher-loading"><Spinner aria-label="Loading editor" /></div>;
   }
 
   const { Editor } = runtime;

@@ -1,3 +1,4 @@
+import { Spinner } from "@/components/ui/spinner";
 import "katex/dist/katex.min.css";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
@@ -34,7 +35,7 @@ export function DocumentSurface({ path }: { path: string }) {
           ? <PdfDocumentViewer source={source.source} />
           : <GenericDocumentViewer source={source.source} />
       ) : (
-        <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">Loading {basename(path)}...</div>
+        <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground"><Spinner aria-label={`Loading ${basename(path)}`} /></div>
       )}
     </div>
   );

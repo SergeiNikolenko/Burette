@@ -1,3 +1,4 @@
+import { Spinner } from "@/components/ui/spinner";
 import { NativeWorkspaceMenu, NativeWorkspaceSidebar } from "./native-workspace-navigation";
 import { useNativeWorkspacePlacement } from "../hooks/use-native-workspace-placement";
 import { MobileWebDemoLayout } from "./mobile-web-demo-layout";
@@ -468,7 +469,7 @@ export function AppLayout({
         ) : state.quickLookError ? (
           <div className="web-quicklook-debug-loading" role="alert">{state.quickLookError}</div>
         ) : (
-          <div className="web-quicklook-debug-loading" role="status">Loading Quick Look preview...</div>
+          <div className="web-quicklook-debug-loading"><Spinner aria-label="Loading Quick Look preview" /></div>
         )}
       </main>
     );
