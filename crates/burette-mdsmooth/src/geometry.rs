@@ -139,7 +139,7 @@ pub fn align_frames(frames: &mut [Vec<f64>], selected: &[usize], reference_index
     for frame in frames.iter_mut() {
         let center = centroid(frame, selected);
         let rotation = optimal_rotation(frame, center, &reference, reference_center, selected);
-        for atom in frame.chunks_exact_mut(3) {
+        for atom in frame.as_chunks_mut::<3>().0 {
             let local = [
                 atom[0] - center[0],
                 atom[1] - center[1],
