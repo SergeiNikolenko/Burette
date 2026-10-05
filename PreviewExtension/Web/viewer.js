@@ -15330,7 +15330,7 @@ SOFTWARE.
     return { data: lines.join('\n'), residues, singlePdbs, molecules };
   }
 
-  function spreadSdfCollectionMolecules(molecules) {
+  function spreadSdfCollectionMolecules(molecules, hostCells = null) {
     const columns = Math.ceil(Math.sqrt(molecules.length));
     const rows = Math.ceil(molecules.length / columns);
     // Alignment replaces coordinates; parsed bounds can describe the old pose.
@@ -15344,7 +15344,6 @@ SOFTWARE.
     const spacing = Math.max(3, ...bounds.map(bound => bound.size)) + SDF_GRID_PADDING;
     // A host that already arranges these molecules, such as a ligand network,
     // names each one's cell so the spread scene keeps that arrangement.
-    const hostCells = activeConfig?.sdfCollectionSpreadCells;
     const cells = Array.isArray(hostCells) && hostCells.length === molecules.length
       && hostCells.every(cell => Array.isArray(cell) && Number.isFinite(cell[0]) && Number.isFinite(cell[1]))
       ? hostCells
@@ -15943,7 +15942,7 @@ SOFTWARE.
     }
     const allMode = activeSdfPoseMode === 'all';
     const spreadCollection = allMode && activeSdfCollectionLayout === 'spread'
-      ? sdfMoleculesToPdbCollection(spreadSdfCollectionMolecules(prepared.collectionMolecules), prepared.label)
+      ? sdfMoleculesToPdbCollection(spreadSdfCollectionMolecules(prepared.collectionMolecules, activeConfig?.sdfCollectionSpreadCells), prepared.label)
       : null;
     const singlePdbs = spreadCollection?.singlePdbs || (Array.isArray(prepared.collectionSinglePdbs) ? prepared.collectionSinglePdbs : []);
     const activeIndex = Math.max(0, Math.min(singlePdbs.length - 1, Math.trunc(Number(activePose) || 0)));
