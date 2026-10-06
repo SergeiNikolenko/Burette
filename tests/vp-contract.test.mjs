@@ -39,6 +39,7 @@ const contractScripts = {
   "test-ui-shell-contract.mjs": () => import("./test-ui-shell-contract.mjs"),
   "test-molstar-style-switch.mjs": () => import("./test-molstar-style-switch.mjs"),
   "test-molstar-label-theme.mjs": () => promisify(execFile)("bun", ["--preload", fileURLToPath(new URL("./fixtures/molstar-state-preload.mjs", import.meta.url)), fileURLToPath(new URL("./test-molstar-label-theme.mjs", import.meta.url))]),
+  "test-molstar-measurement-picks.mjs": () => promisify(execFile)("bun", ["--preload", fileURLToPath(new URL("./fixtures/molstar-state-preload.mjs", import.meta.url)), fileURLToPath(new URL("./test-molstar-measurement-picks.mjs", import.meta.url))]),
   "test-molstar-preset-preview-controller.mjs": () => import("./test-molstar-preset-preview-controller.mjs"),
   "test-collection-documents.mjs": () => import("./test-collection-documents.mjs"),
   "test-structure-drag.mjs": () => import("./test-structure-drag.mjs"),
