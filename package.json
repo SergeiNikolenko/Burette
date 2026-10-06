@@ -98,7 +98,7 @@
     "dompurify": "^3.4.16",
     "fast-uri": "4.2.1",
     "lucide-react": "^1.48.0",
-    "molstar": "5.11.0",
+    "molstar": "5.12.0",
     "openchemlib": "9.25.0",
     "plotly.js-basic-dist-min": "^4.1.1",
     "radix-ui": "^1.6.7",
