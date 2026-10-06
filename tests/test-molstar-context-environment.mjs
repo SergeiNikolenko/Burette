@@ -206,7 +206,7 @@ const measurementFns = new Function('activeMolstarViewer', 'window', 'document',
     beginMolstarSelectionPreserve({ button: 0 });
     return molstarSelectionPreserveClick;
   } };
-`)(() => ({ plugin: pickPlugin }), { molstar: { lib: { loci: { Loci: { areEqual: (a, b) => a === b } } } } },
+`)(() => ({ plugin: pickPlugin }), { molstar: { lib: { loci: { Loci: { areEqual: (a, b) => a === b, normalize: loci => loci } } } } },
   { addEventListener(_name, fn) { keydown = fn; }, removeEventListener() {}, getElementById() { return null; } }, { now: () => now }, x => x, x => !x,
   () => ({}), () => {}, () => {});
 assert.ok(measurementFns.checkPreservation(), 'normal viewport clicks preserve selection');

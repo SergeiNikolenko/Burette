@@ -24473,7 +24473,11 @@ SOFTWARE.
     plugin.selectionMode = true;
     document.addEventListener('keydown', session.onKeyDown, true);
     session.subscription = clicks.subscribe(event => {
-      const loci = molstarContextElementLoci(event?.current?.loci);
+      const picked = molstarContextElementLoci(event?.current?.loci);
+      // Picks use component-local indices; measurement bundles are resolved on
+      // the root structure. Remap before retaining a point so both refer to the
+      // same atom, including ligands and other filtered components.
+      const loci = picked ? Loci.normalize(picked, 'element') : null;
       const atomCount = loci ? window.molstar?.lib?.structure?.StructureElement?.Loci?.size?.(loci) : 0;
       if (!loci || molstarLociIsEmpty(loci) || (atomCount !== undefined && atomCount !== 1)) {
         plugin.managers.structure.selection.clear();
