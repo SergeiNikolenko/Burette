@@ -22,7 +22,7 @@
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "zod": "4.6.5",
-    "@modelcontextprotocol/server": "^2.1.0",
+    "@modelcontextprotocol/server": "^2.2.0",
     "@modelcontextprotocol/core": "^2.1.0"
   },
   "devDependencies": {

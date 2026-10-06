@@ -131,7 +131,7 @@
     "zod": "^4.6.5",
     "typescript-compiler-api": "npm:typescript@6.0.3",
     "@types/bun": "^1.4.2",
-    "@modelcontextprotocol/server": "^2.1.0"
+    "@modelcontextprotocol/server": "^2.2.0"
   },
   "type": "module"
 }
