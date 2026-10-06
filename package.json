@@ -81,7 +81,7 @@
     "@codemirror/view": "^6.43.13",
     "@hugeicons/core-free-icons": "^4.3.5",
     "@hugeicons/react": "^1.1.10",
-    "@lezer/highlight": "^1.2.4",
+    "@lezer/highlight": "^1.2.5",
     "@lezer/markdown": "^1.7.2",
     "@prosemark/core": "^0.0.9",
     "@radix-ui/react-context-menu": "^2.3.7",
