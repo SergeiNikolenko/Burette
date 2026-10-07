@@ -3960,7 +3960,7 @@ assert.match(nativeContextMenu, /@tauri-apps\/api\/menu\/menuItem/);
 assert.match(nativeContextMenu, /@tauri-apps\/api\/menu\/predefinedMenuItem/);
 assert.match(styles, /\.radix-menu-item-body/);
 assert.match(styles, /\.radix-menu-item-detail/);
-assert.match(styles, /--menu-surface: color-mix\(in srgb, var\(--bg-base\) 96%, var\(--fg-base\) 4%\);/);
+assert.match(styles, /--menu-surface: light-dark\(#ffffff, color-mix\(in srgb, var\(--bg-base\) 90%, var\(--fg-base\) 10%\)\);/);
 assert.match(styles, /--shadcn-popover: var\(--menu-surface\);/);
 assert.match(styles, /\.open-editor-menu-content \.radix-menu-item-icon \{/);
 assert.match(styles, /\.native-context-menu \{[\s\S]*border: 0;/);
@@ -4245,7 +4245,7 @@ assert.match(styles, /\.settings-select:focus-visible,[\s\S]*\.settings-text-con
 // comes from the shadcn dialog/command primitives and the shared theme tokens.
 assert.match(commandPalette, /top-\[12%\]/);
 assert.match(commandPalette, /w-\[min\(560px,90vw\)\]/);
-assert.match(uiCommand, /data-selected:bg-muted/);
+assert.match(uiCommand, /data-selected:bg-popover-foreground\/\[0\.055\]/);
 assert.match(uiCommand, /max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto/);
 assert.doesNotMatch(app, /from "\.\/hooks\/use-app-open-drop-merge-collections"/);
 assert.doesNotMatch(app, /mergeMoleculeCollections: activeDocument\?\.renderer === "grid2d"/);
@@ -8478,8 +8478,8 @@ assert.match(gridViewer, /removeGridRow\(row\)/);
 assert.match(gridViewer, /markGridDirty\('row edits'\)/);
 assert.doesNotMatch(gridViewer, /separateWindow/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu \{/);
-assert.match(gridCss, /--buret-menu-surface: #1a1a1a;/);
-assert.match(gridCss, /--buret-menu-surface: #f5f5f5;/);
+assert.match(gridCss, /--buret-menu-surface: #2a2a2a;/);
+assert.match(gridCss, /--buret-menu-surface: #ffffff;/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu \{[\s\S]*border: 0;/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu \{[\s\S]*background: var\(--buret-menu-surface\);/);
 assert.match(gridCss, /\.buret-grid-molecule-context-menu \{[^}]*backdrop-filter: none;/);
