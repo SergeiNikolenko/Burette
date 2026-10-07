@@ -222,12 +222,22 @@ colour matches the accent, while authored snapshot renderer settings take preced
 
 ### Interface Typography And Palette
 
-The shell and document controls share the shell's semantic theme palette.
-`styles/interface-tokens.css` defines 20/26 headings at weight 600, 14/20 body
-labels, and 12/18 supporting text. Buttons use weight 500. Scientific tables
-keep their compact scale. Secondary text is mixed against the configured
-background rather than made translucent, so it remains distinct from disabled
-text. Theme preferences still own background, foreground, fonts and accent.
+The shell takes its palette, type, radius and shadow scales from the Codex
+desktop theme. `lib/codex-theme.ts` derives the base variables from the theme
+preferences (accent, background, foreground, contrast) and writes them on
+`.app-shell`; `styles/codex-tokens.css` holds the token layer that derives every
+other value from those variables for the light and dark appearance. That file is
+generated: regenerate it with `node scripts/sync-codex-tokens.mjs` and do not
+edit it by hand. Interface text is 13px at weight 430. Burette's own variable
+names (`--surface-*`, `--text-*`, `--line-*`) are mapped onto the tokens in
+`lib/theme.ts`, so existing styles follow the theme without per-rule changes.
+`apps/desktop/dev/codex-theme.html` shows the tokens and shared controls in
+both appearances side by side in browser-dev.
+
+`styles/interface-tokens.css` keeps the heading and settings text scale:
+20/26 headings at weight 600, 14/20 body labels, and 12/18 supporting text.
+Buttons use weight 500. Scientific tables keep their compact scale. Theme
+preferences still own background, foreground, fonts and accent.
 
 Inspector disclosures use the installed shadcn `radix-nova` `Accordion` components.
 Calculation engines compose `ItemGroup`, outlined `Item` rows, `ItemContent`,

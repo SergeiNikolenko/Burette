@@ -87,6 +87,11 @@ Scripts such as `dev-namespace.mjs`, `preview-content-type.mjs`,
 implementation details for the public commands above. Use them directly only
 when debugging that specific script boundary.
 
+`sync-codex-tokens.mjs` regenerates `apps/desktop/src/styles/codex-tokens.css`
+from the Codex desktop stylesheet in a local InterfaceAtlas checkout
+(`--atlas <path>`, default `~/Documents/Projects/InterfaceAtlas`). Run it when
+that snapshot changes and commit the regenerated file.
+
 ## Release
 
 Release work uses:
