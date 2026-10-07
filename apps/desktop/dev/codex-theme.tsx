@@ -9,7 +9,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Slider } from "@/components/ui/slider";
+import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -101,6 +103,13 @@ function Appearance({ mode }: { mode: ThemeMode }) {
           <div className="theme-fixture-controls">
             <Tabs defaultValue="3d"><TabsList><TabsTrigger value="3d">3D</TabsTrigger><TabsTrigger value="2d">2D</TabsTrigger><TabsTrigger value="table">Table</TabsTrigger></TabsList></Tabs>
             <Slider defaultValue={[60]} max={100} style={{ width: 160 }} />
+          </div>
+          <div className="theme-fixture-controls">
+            <RadioGroup defaultValue="atoms" orientation="horizontal" aria-label="Selection">
+              <RadioGroupItem value="atoms">Atoms</RadioGroupItem>
+              <RadioGroupItem value="residues">Residues</RadioGroupItem>
+            </RadioGroup>
+            <Spinner />
           </div>
         </section>
         <section>
