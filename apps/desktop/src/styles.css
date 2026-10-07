@@ -131,8 +131,8 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   --shadcn-card-foreground: var(--text-primary);
   --shadcn-popover: var(--menu-surface);
   --shadcn-popover-foreground: var(--text-primary);
-  --shadcn-primary: light-dark(#181818, #f3f3f3);
-  --shadcn-primary-foreground: light-dark(#ffffff, #0d0d0d);
+  --shadcn-primary: var(--color-background-primary-solid);
+  --shadcn-primary-foreground: var(--color-text-primary-solid);
   --shadcn-secondary: var(--surface-subtle);
   --shadcn-secondary-foreground: var(--text-primary);
   --shadcn-muted: var(--surface-subtle);
@@ -275,7 +275,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 
 .app-shell[data-theme="light"],
 .app-shell[data-effective-theme="light"] {
-  --shadcn-destructive: #d70015;
+  --shadcn-destructive: var(--color-text-danger);
 }
 
 .app-shell[data-theme="dark"] {
@@ -288,7 +288,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 
 .app-shell[data-theme="dark"],
 .app-shell[data-effective-theme="dark"] {
-  --shadcn-destructive: #ff453a;
+  --shadcn-destructive: var(--color-text-danger);
 }
 
 @media (prefers-color-scheme: light) {

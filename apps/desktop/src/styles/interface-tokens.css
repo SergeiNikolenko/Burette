@@ -10,11 +10,11 @@
   --ui-weight-body: 400;
   --ui-weight-control: 500;
   --ui-weight-heading: 600;
-  --action-hover: light-dark(#303030, #ededed);
-  --action-pressed: light-dark(#414141, #dcdcdc);
-  --control-selected-bg: light-dark(#fff, #383838);
-  --status-success: light-dark(#008635, #40c977);
-  --status-danger: light-dark(#b91c1c, #ff8583);
+  --action-hover: var(--color-background-primary-solid-hover);
+  --action-pressed: var(--color-background-primary-solid-active);
+  --control-selected-bg: var(--color-background-control-opaque);
+  --status-success: var(--color-text-success);
+  --status-danger: var(--color-text-danger);
 }
 .app-shell [data-slot="button"] { font-weight: var(--ui-weight-control); }
 .app-shell [data-slot="button"][data-variant="default"] {
