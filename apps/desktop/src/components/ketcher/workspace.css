@@ -590,12 +590,6 @@
   height: 32px; min-height: 32px; padding: 0 12px;
   font-size: 14px; line-height: 20px; font-weight: 500;
 }
-.app-shell :is(.ketcher-ui-options, .ketcher-ui-menu) {
-  padding: 6px; border-radius: 12px; font-size: 14px; line-height: 20px;
-}
-.app-shell :is(.ketcher-ui-options, .ketcher-ui-menu) :is([role="option"], [role="menuitem"], [role="menuitemcheckbox"]) {
-  min-height: 32px; padding-block: 6px; font-size: 14px; line-height: 20px;
-}
 /* Agent save confirmation floats over the canvas, clear of the top toolbar. */
 .ketcher-editor-shell .ketcher-persist-request {
   position: absolute; top: calc(var(--ketcher-top-toolbar-height) + 12px); left: 50%; z-index: 5;
