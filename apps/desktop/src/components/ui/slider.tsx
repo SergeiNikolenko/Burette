@@ -35,25 +35,25 @@ function Slider({
       max={max}
       data-tone={tone}
       className={cn(
-        "group/slider relative flex w-full touch-none items-center select-none data-disabled:opacity-[var(--shadcn-disabled-opacity)] data-vertical:h-full data-vertical:min-h-40 data-vertical:w-auto data-vertical:flex-col",
+        "group/slider relative flex w-full touch-none items-center select-none data-disabled:opacity-40 data-vertical:h-full data-vertical:min-h-40 data-vertical:w-auto data-vertical:flex-col",
         className
       )}
       {...props}
     >
       <SliderPrimitive.Track
         data-slot="slider-track"
-        className="relative grow overflow-hidden rounded-full bg-muted data-horizontal:h-1 data-horizontal:w-full data-vertical:h-full data-vertical:w-1"
+        className="relative grow overflow-hidden rounded-full bg-(--slider-track-color) data-horizontal:h-1 data-horizontal:w-full data-vertical:h-full data-vertical:w-1"
       >
         <SliderPrimitive.Range
           data-slot="slider-range"
-          className="absolute bg-primary select-none data-horizontal:h-full data-vertical:w-full group-data-[tone=neutral]/slider:bg-foreground"
+          className="absolute bg-(--slider-range-color) select-none data-horizontal:h-full data-vertical:w-full"
         />
       </SliderPrimitive.Track>
       {Array.from({ length: _values.length }, (_, index) => (
         <SliderPrimitive.Thumb
           data-slot="slider-thumb"
           key={index}
-          className="relative block size-3 shrink-0 rounded-full border border-ring bg-white ring-ring/50 transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-[var(--shadcn-disabled-opacity)] group-data-[tone=neutral]/slider:border-foreground group-data-[tone=neutral]/slider:ring-foreground/30"
+          className="relative block size-3.5 shrink-0 rounded-full bg-(--gray-0) inset-ring-2 inset-ring-(--slider-range-color) outline-none select-none after:absolute after:-inset-2 focus-visible:ring-2 focus-visible:ring-(--color-ring) disabled:pointer-events-none"
         />
       ))}
     </SliderPrimitive.Root>

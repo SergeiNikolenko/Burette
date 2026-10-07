@@ -9090,26 +9090,8 @@ input.structure-inspector-composition-search {
 }
 .settings-reset-button:hover { background: var(--surface-subtle-strong); color: var(--text-primary); }
 .settings-reset-button[data-hidden] { visibility: hidden; pointer-events: none; }
-.settings-select {
-  min-width: 140px;
-  height: 34px;
-  border: 1px solid transparent;
-  border-radius: var(--control-radius);
-  background: var(--surface-input);
-  color: var(--text-secondary);
-  padding: 0;
-}
-.settings-select > select {
-  height: 100%;
-  border: 0;
-  border-radius: inherit;
-  background: transparent;
-  padding: 0 32px 0 12px;
-  box-shadow: none;
-}
-.settings-select:has(select:focus-visible) {
-  border-color: var(--focus-border);
-}
+/* The select look comes from the shared primitive; settings only sets the width. */
+.settings-select { min-width: 144px; }
 .settings-open-destination-trigger {
   min-width: 190px;
   height: 36px;
@@ -9226,19 +9208,6 @@ img.settings-open-destination-icon {
 }
 .settings-range-control [data-slot="slider"] {
   width: 176px;
-}
-.settings-range-control [data-slot="slider-track"] {
-  background: var(--surface-subtle);
-}
-.settings-range-control [data-slot="slider-range"] {
-  background: var(--accent);
-}
-.settings-range-control [data-slot="slider-thumb"] {
-  width: 12px;
-  height: 12px;
-  border: 0;
-  background: var(--fg-base);
-  box-shadow: 0 1px 6px color-mix(in srgb, black 22%, transparent);
 }
 /* Only the value readout beside the slider. It must stay scoped to the direct
    child without a data-slot: the shadcn slider's track/range/thumb are spans
@@ -9591,16 +9560,6 @@ img.settings-open-destination-icon {
 }
 .grid-filter-slider-grab:active {
   cursor: grabbing;
-}
-.grid-filter-slider [data-slot="slider-track"] {
-  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
-}
-.grid-filter-slider [data-slot="slider-range"] {
-  background: color-mix(in srgb, var(--text-primary) 55%, transparent);
-}
-.grid-filter-slider [data-slot="slider-thumb"] {
-  border-color: color-mix(in srgb, var(--text-primary) 45%, transparent);
-  background: var(--surface-card);
 }
 .grid-filter-inputs {
   min-width: 0;

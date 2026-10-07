@@ -48,7 +48,6 @@
   font-weight: var(--ui-weight-control);
 }
 .app-shell .agent-summary-card h2 { font-size: 16px; line-height: 24px; font-weight: var(--ui-weight-heading); }
-.app-shell .settings-range-control [data-slot="slider-range"] { background: var(--shadcn-primary); }
 .app-shell .settings-toggle:is([data-checked],[data-state="checked"]) > [data-slot="switch-thumb"] {
   background: var(--shadcn-primary-foreground);
 }
