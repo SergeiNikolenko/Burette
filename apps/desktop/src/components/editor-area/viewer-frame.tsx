@@ -15,43 +15,43 @@ import {
   replayPendingGridCloseTransitionRequests,
 } from "../../lib/window-mutation-barrier";
 
-// Every mounted viewer iframe, frozen at the pixel size it had when the shell
-// started a layout gesture. `.viewer-iframe` is sized 100% x 100%, so a panel
-// drag re-laid the iframe out on every frame and Mol* inside redrew each time;
-// pinning the frame for the duration of the gesture (measured earlier: ~30 to
-// ~50 fps on a dock drag) leaves one reflow for the release. The pin is
-// reference counted because a drag can overlap a toggle animation, and the
-// shell carries `data-resizing` while any pin is held so the CSS can drop
-// pointer events on the frames (an iframe under the pointer would otherwise
-// swallow the drag).
-let framePinDepth = 0;
-let pinnedFrames: HTMLIFrameElement[] = [];
-let pinnedRoot: HTMLElement | null = null;
+// A layout gesture: a separator drag, or a panel sliding open or closed.
+// `.viewer-iframe` is sized 100% x 100%, so the frames follow the panel on
+// every frame and the viewer's own chrome stays on its edges. What must not
+// happen per frame is Mol* reallocating its render targets (measured: ~30 fps
+// on a dock drag, ~50 with the canvas held), so each viewer is told to hold
+// its canvas and resize it once at the end. Freezing the whole iframe instead
+// slid the stale frame along with the panel edge: the toolbar and rail were
+// clipped, the scene drifted off centre, and everything snapped on release.
+// The gesture is reference counted because a drag can overlap a toggle slide,
+// and the shell carries `data-resizing` meanwhile so the CSS can drop pointer
+// events on the frames (an iframe under the pointer would otherwise swallow
+// the drag).
+let layoutGestureDepth = 0;
+let layoutGestureRoot: HTMLElement | null = null;
 
-export function pinViewerFrames(root: HTMLElement): () => void {
-  if (framePinDepth++ === 0) {
-    pinnedRoot = root;
-    pinnedFrames = Array.from(root.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe"));
-    for (const frame of pinnedFrames) {
-      const rect = frame.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) continue;
-      frame.style.width = `${rect.width}px`;
-      frame.style.height = `${rect.height}px`;
-    }
-    root.setAttribute("data-resizing", "true");
+function postLayoutGesture(root: HTMLElement, active: boolean) {
+  for (const frame of root.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe")) {
+    frame.contentWindow?.postMessage({ source: "burette-host", body: { type: "hostLayoutGesture", active } }, "*");
   }
-  let released = false;
+}
+
+export function beginViewerLayoutGesture(root: HTMLElement): () => void {
+  if (layoutGestureDepth++ === 0) {
+    layoutGestureRoot = root;
+    root.setAttribute("data-resizing", "true");
+    postLayoutGesture(root, true);
+  }
+  let ended = false;
   return () => {
-    if (released) return;
-    released = true;
-    if (--framePinDepth > 0) return;
-    for (const frame of pinnedFrames) {
-      frame.style.removeProperty("width");
-      frame.style.removeProperty("height");
-    }
-    pinnedFrames = [];
-    pinnedRoot?.removeAttribute("data-resizing");
-    pinnedRoot = null;
+    if (ended) return;
+    ended = true;
+    if (--layoutGestureDepth > 0) return;
+    // Posted to the frames mounted now: one that appeared mid-gesture never
+    // held its canvas, and releasing it is a no-op.
+    if (layoutGestureRoot) postLayoutGesture(layoutGestureRoot, false);
+    layoutGestureRoot?.removeAttribute("data-resizing");
+    layoutGestureRoot = null;
   };
 }
 

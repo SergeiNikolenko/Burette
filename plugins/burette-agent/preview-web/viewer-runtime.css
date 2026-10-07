@@ -5,6 +5,15 @@
 .msp-plugin .msp-logo { display: none !important; }
 #app.buret-molstar-initializing .msp-plugin,
 #app.buret-inspector-updating .msp-plugin canvas { visibility: hidden; }
+/* While the host drags or slides a panel the canvas keeps the pixel size it had
+   (viewer.js holds Mol*'s resize) and rides the centre of the viewport, which
+   is where the scene ends up once the canvas is resized on release. */
+html.buret-host-layout-gesture .msp-plugin .msp-viewport canvas {
+  position: relative;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+}
 /* Until the first frame the page paints nothing of its own, so the host surface
    shows through instead of the black default shell and half-mounted chrome. */
 html.buret-viewer-booting,
