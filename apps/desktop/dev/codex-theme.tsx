@@ -1,14 +1,18 @@
 // Development fixture: the Codex theme tokens and the app's shared controls in
 // both appearances on one screen. Colors come from the production theme code.
+import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { buildThemeStyle, type ThemeMode } from "@/lib/theme";
 import { defaultPreferences } from "@/stores/settings-store";
 import "../src/styles.css";
@@ -40,8 +44,10 @@ const TEXT = [
 const BORDERS = [["Subtle", "--color-border-subtle"], ["Default", "--color-border"], ["Strong", "--color-border-strong"]];
 
 function Appearance({ mode }: { mode: ThemeMode }) {
+  // Each appearance is its own token scope, so overlays portal into their own shell.
+  const [shell, setShell] = useState<HTMLDivElement | null>(null);
   return (
-    <div className="app-shell theme-fixture" data-theme={mode} data-effective-theme={mode} style={buildThemeStyle({ ...defaultPreferences, theme: mode }, mode)}>
+    <div ref={setShell} className="app-shell theme-fixture" data-theme={mode} data-effective-theme={mode} style={buildThemeStyle({ ...defaultPreferences, theme: mode }, mode)}>
       <aside>
         <h2>{mode === "light" ? "Light" : "Dark"}</h2>
         {["Home", "Structures", "Trajectories", "Settings"].map((label, index) => (
@@ -97,6 +103,35 @@ function Appearance({ mode }: { mode: ThemeMode }) {
             <Slider defaultValue={[60]} max={100} style={{ width: 160 }} />
           </div>
         </section>
+        <section>
+          <h3>Overlays</h3>
+          <div className="theme-fixture-controls" style={{ gap: 96, paddingBottom: 72 }}>
+            <TooltipProvider>
+              <Tooltip open>
+                <TooltipTrigger asChild><Button size="sm" variant="ghost">Tooltip</Button></TooltipTrigger>
+                <TooltipContent side="bottom" container={shell}>Search <Kbd>⌘K</Kbd></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            <Popover open>
+              <PopoverTrigger asChild><Button size="sm" variant="outline">Popover</Button></PopoverTrigger>
+              <PopoverContent side="bottom" align="start" container={shell} onOpenAutoFocus={(event) => event.preventDefault()}>Sort by name</PopoverContent>
+            </Popover>
+            <Dialog>
+              <DialogTrigger asChild><Button size="sm" variant="secondary">Dialog</Button></DialogTrigger>
+              <DialogContent container={shell}>
+                <DialogHeader>
+                  <DialogTitle>Rename project</DialogTitle>
+                  <DialogDescription>The folder on disk keeps its name.</DialogDescription>
+                </DialogHeader>
+                <Input defaultValue="samples" />
+                <DialogFooter>
+                  <Button variant="secondary">Cancel</Button>
+                  <Button>Save</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </section>
       </main>
     </div>
   );
@@ -109,8 +144,8 @@ createRoot(document.getElementById("root")!).render(
       #root { display: grid; grid-template-columns: 1fr 1fr; min-height: 100vh; }
       .app-shell.theme-fixture { display: flex; flex-direction: row; width: auto; height: auto; min-height: 100vh; background: var(--color-token-side-bar-background); color: var(--text-primary); backdrop-filter: none; }
       .theme-fixture aside { flex: 0 0 168px; padding: 16px 8px; }
-      .theme-fixture h2 { margin: 0 8px 12px; font-size: 13px; font-weight: 500; color: var(--text-muted); }
-      .theme-fixture h3 { margin: 0 0 10px; font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+      .theme-fixture aside h2 { margin: 0 8px 12px; font-size: 13px; font-weight: 500; color: var(--text-muted); }
+      .theme-fixture main > section > h3 { margin: 0 0 10px; font-size: 13px; font-weight: 500; color: var(--text-secondary); }
       .theme-fixture-row { padding: 5px 8px; border-radius: 10px; font-size: 13px; line-height: 20px; }
       .theme-fixture-row[data-active="true"] { background: var(--surface-selected); }
       .theme-fixture main { flex: 1; margin: 8px 8px 8px 0; padding: 20px; border-radius: 12px; background: var(--surface-primary); box-shadow: var(--app-shell-page-surface-shadow); display: flex; flex-direction: column; gap: 24px; }
