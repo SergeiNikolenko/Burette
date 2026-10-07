@@ -236,8 +236,16 @@ both appearances side by side in browser-dev.
 
 `styles/interface-tokens.css` keeps the heading and settings text scale:
 20/26 headings at weight 600, 14/20 body labels, and 12/18 supporting text.
-Buttons use weight 500. Scientific tables keep their compact scale. Theme
-preferences still own background, foreground, fonts and accent.
+Scientific tables keep their compact scale. Theme preferences still own
+background, foreground, fonts and accent.
+
+The shared controls in `components/ui` follow the Codex control specs and read
+their colors, radii and shadows from the tokens. Buttons come in a 32px action
+size (default), a 28px toolbar size (`sm`) and a 24px pill (`xs`), all at the
+interface weight. Inputs are 36px fields; select triggers are pills, 32px by
+default and 28px with `size="sm"`. `Tabs` renders the inset segmented control.
+Tooltips have no arrow unless `showArrow` is set. Style these controls through
+their variants and sizes; app styles should only place them, not repaint them.
 
 Inspector disclosures use the installed shadcn `radix-nova` `Accordion` components.
 Calculation engines compose `ItemGroup`, outlined `Item` rows, `ItemContent`,
