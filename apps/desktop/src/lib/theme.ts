@@ -109,6 +109,7 @@ export function buildThemeStyle(preferences: ViewerPreferences, systemThemeMode?
     "--bg": "color-mix(in srgb, var(--color-token-side-bar-background) calc(var(--bg-opacity) * 100%), transparent)",
     "--text": "var(--text-primary)",
     "--text-primary": "var(--color-text-primary)",
+    "--control-radius": "var(--radius-lg)",
     "--text-secondary": "var(--color-text-secondary)",
     "--text-muted": "var(--color-text-tertiary)",
     "--text-faint": "var(--color-text-tertiary)",

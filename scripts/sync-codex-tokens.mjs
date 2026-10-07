@@ -20,10 +20,6 @@ const sheet = (await readdir(assets)).find((name) => /^app-shared-.*\.css$/.test
 if (!sheet) throw new Error(`No app-shared stylesheet under ${assets}`);
 const css = await readFile(join(assets, sheet), 'utf8');
 
-// Tailwind scales that Burette's existing utilities already read. They move to
-// the Codex values together with the components that use them.
-const DEFERRED = /^--(text-(\d?xs|sm|base|lg|\d?xl)(--.+)?|radius-(\d?xs|sm|md|lg|\d?xl)|shadow-(2xs|xs|sm|md|lg|xl|2xl)|font-(sans|mono)|default-.+|color-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-\d+|color-(black|white))$/;
-
 function parseRules(text) {
   const rules = [];
   const stack = [];
@@ -79,7 +75,7 @@ function splitSelectors(selector) {
 // Whether one selector matches the <html> element of the Electron window in the
 // given theme, and with which specificity (0 inside :where, 1 otherwise).
 function matchRoot(part, theme) {
-  if (!/^(:root|:where\(|:is\(|\[data-theme)/.test(part)) return null;
+  if (!/^(:root|:where\(|:is\(|\[data-theme|\[data-codex-window-type=electron\])/.test(part)) return null;
   if (/[ >+~]/.test(part.replace(/\([^()]*(\([^()]*\)[^()]*)*\)/g, ''))) return null;
   const positive = part.replace(/:not\([^()]*(\([^()]*\))?[^()]*\)/g, '');
   if (/window-type=(extension|browser|chrome-extension)/.test(positive)) return null;
@@ -129,7 +125,7 @@ const block = (selector, entries, indent = '') => entries.length
   ? `${indent}${selector} {\n${entries.map(([name, value]) => `${indent}  ${name}: ${value};`).join('\n')}\n${indent}}\n`
   : '';
 const emit = (lightMap, darkMap, scope, indent = '') => {
-  const names = [...new Set([...lightMap.keys(), ...darkMap.keys()])].filter((name) => !DEFERRED.test(name)).sort();
+  const names = [...new Set([...lightMap.keys(), ...darkMap.keys()])].sort();
   const shared = names.filter((name) => lightMap.get(name) === darkMap.get(name));
   const only = (map, other) => names.filter((name) => map.has(name) && map.get(name) !== other.get(name)).map((name) => [name, map.get(name)]);
   return block(scope, shared.map((name) => [name, lightMap.get(name)]), indent)
@@ -146,4 +142,4 @@ for (const [wrapper, bucket] of WRAPPERS) {
   if (inner) output += `${wrapper} {\n${inner}}\n`;
 }
 await writeFile(new URL('apps/desktop/src/styles/codex-tokens.css', root), output);
-console.log(`codex-tokens.css: ${light.size} light / ${dark.size} dark tokens, ${[...light.keys()].filter((name) => DEFERRED.test(name)).length} deferred`);
+console.log(`codex-tokens.css: ${light.size} light / ${dark.size} dark tokens`);

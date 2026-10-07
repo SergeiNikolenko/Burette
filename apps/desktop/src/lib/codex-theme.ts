@@ -190,6 +190,9 @@ export function buildCodexThemeVariables(theme: CodexTheme, variant: CodexThemeV
     "--codex-base-contrast": String(theme.contrast),
     "--codex-base-ink": theme.ink,
     "--codex-base-surface": theme.surface,
+    // Codex writes these from its font-size preference; 14px is the default.
+    "--font-ui-size": "14px",
+    "--font-code-size": "12px",
     "--color-background-composer-primary": "var(--color-background-primary-solid)",
     "--color-text-composer-primary": "var(--color-text-primary-solid)",
     "--color-background-user-message": "color-mix(in oklab, var(--color-text) 5%, transparent)",

@@ -32,10 +32,6 @@
   --color-sidebar-accent-foreground: var(--shadcn-sidebar-accent-foreground);
   --color-sidebar-border: var(--shadcn-sidebar-border);
   --color-sidebar-ring: var(--shadcn-sidebar-ring);
-  --radius-sm: calc(var(--control-radius) * 0.6);
-  --radius-md: calc(var(--control-radius) * 0.8);
-  --radius-lg: var(--control-radius);
-  --radius-xl: calc(var(--control-radius) * 1.2);
 }
 
 :root {
@@ -191,7 +187,8 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   color: var(--text-secondary);
   backdrop-filter: blur(32px);
   -webkit-backdrop-filter: blur(32px);
-  font-size: 13px;
+  font-size: var(--text-sm);
+  font-weight: var(--font-ui-weight);
   line-height: 1.2;
 }
 
