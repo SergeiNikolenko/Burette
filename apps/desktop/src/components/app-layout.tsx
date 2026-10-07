@@ -12,7 +12,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockPanel } from "./dock-panel";
 import { ViewerArea } from "./editor-area";
 import { EditorTabs } from "./editor-area/editor-tabs";
-import { pinViewerFrames } from "./editor-area/viewer-frame";
+import { beginViewerLayoutGesture } from "./editor-area/viewer-frame";
 import { ActivityIndicator } from "./activity-indicator";
 import { OpenInEditorMenu } from "./open-in-editor-menu";
 import { QuickLookPreview } from "./quick-look-preview";
@@ -105,10 +105,9 @@ function useInitialSize(sizePx: number) {
 // Marks a group as animating for the duration of an open/close toggle. The CSS
 // flex transition on `[data-panels-animating] > [data-panel]` must apply only
 // then: react-resizable-panels rewrites flex-grow every frame during drags and
-// window resizes, and a standing transition would rubber-band both. The viewer
-// iframes are pinned for the same window: this layout effect runs before the
-// collapse/expand sync (hook order), so the frames are measured at their
-// pre-toggle size and reflow once when the slide has finished.
+// window resizes, and a standing transition would rubber-band both. The viewers
+// hold their canvases for the same window, so Mol* resizes once when the slide
+// has finished instead of on every frame of it.
 function usePanelToggleAnimation(open: boolean, shellRef: React.RefObject<HTMLElement | null>) {
   const [animating, setAnimating] = useState(false);
   const mounted = useRef(false);
@@ -118,7 +117,7 @@ function usePanelToggleAnimation(open: boolean, shellRef: React.RefObject<HTMLEl
       return;
     }
     setAnimating(true);
-    const release = shellRef.current ? pinViewerFrames(shellRef.current) : null;
+    const release = shellRef.current ? beginViewerLayoutGesture(shellRef.current) : null;
     const timer = window.setTimeout(() => {
       setAnimating(false);
       release?.();
@@ -132,7 +131,7 @@ function usePanelToggleAnimation(open: boolean, shellRef: React.RefObject<HTMLEl
 }
 
 // A pointer drag on a separator, from pointerdown on the handle to the pointer
-// being released anywhere. While it lasts the viewer iframes stay pinned and
+// being released anywhere. While it lasts the viewers hold their canvases and
 // the per-frame sizes reported by onLayoutChanged are parked in the panel's
 // DragCommit instead of hitting the store: setDockSize clones the workspace
 // and the persist middleware serialises every workspace to localStorage, which
@@ -145,7 +144,7 @@ function useResizeDragSession(shellRef: React.RefObject<HTMLElement | null>) {
   const begin = useCallback((controller: DragCommit<number>) => {
     endRef.current?.();
     controller.begin();
-    const release = shellRef.current ? pinViewerFrames(shellRef.current) : null;
+    const release = shellRef.current ? beginViewerLayoutGesture(shellRef.current) : null;
     const end = () => {
       window.removeEventListener("pointerup", end, true);
       window.removeEventListener("pointercancel", end, true);

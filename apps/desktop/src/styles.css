@@ -1369,10 +1369,10 @@ button:focus-visible > .shortcut-tooltip {
   transition: flex-grow 180ms cubic-bezier(0.2, 0, 0, 1);
 }
 /* While a separator drag or a toggle animation is in flight the shell carries
-   data-resizing and every viewer iframe is pinned (inline, by pinViewerFrames)
-   to the pixel size it had when the gesture began, so Mol* reflows once on
-   release instead of once per frame. The frames must not take the pointer in
-   that window: an iframe under the cursor would swallow the drag. */
+   data-resizing (set by beginViewerLayoutGesture) and every viewer holds its
+   canvas, so Mol* resizes once on release instead of once per frame. The
+   frames must not take the pointer in that window: an iframe under the cursor
+   would swallow the drag. */
 .app-shell[data-resizing] .viewer-iframe {
   pointer-events: none;
 }

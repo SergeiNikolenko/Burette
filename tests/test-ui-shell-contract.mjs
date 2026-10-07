@@ -2392,8 +2392,10 @@ assert.match(groupPixelGuard, /panel\.resize\(`\$\{want\}px`\)/);
 // written once on release: setDockSize clones the workspace and the persist
 // middleware serialised every workspace to localStorage per drag frame. Open
 // flags still commit as they change. For the same gesture (and the toggle
-// slide) the shell carries data-resizing and every viewer iframe is pinned to
-// its pixel size so Mol* reflows once instead of once per frame.
+// slide) the shell carries data-resizing and every viewer is told to hold its
+// canvas, so Mol* resizes once instead of once per frame. The iframe itself
+// must keep following the panel: freezing its size clipped the viewer chrome
+// and made the scene jump on release.
 assert.match(appLayout, /function useResizeDragSession/);
 assert.match(appLayout, /function useDragCommittedSize/);
 assert.match(appLayout, /const sidebarResize = useDragCommittedSize\(onSidebarWidthChange\);/);
@@ -2408,10 +2410,14 @@ assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 
 assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 0\) beginResizeDrag\(rightDockResize\); \}\}/);
 assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 0\) beginResizeDrag\(bottomDockResize\); \}\}/);
 assert.match(appLayout, /window\.addEventListener\("pointerup", end, true\);/);
-assert.match(appLayout, /const release = shellRef\.current \? pinViewerFrames\(shellRef\.current\) : null;/);
-assert.match(viewerFrame, /export function pinViewerFrames\(root: HTMLElement\): \(\) => void/);
+assert.match(appLayout, /const release = shellRef\.current \? beginViewerLayoutGesture\(shellRef\.current\) : null;/);
+assert.match(viewerFrame, /export function beginViewerLayoutGesture\(root: HTMLElement\): \(\) => void/);
 assert.match(viewerFrame, /root\.setAttribute\("data-resizing", "true"\);/);
-assert.match(viewerFrame, /frame\.style\.removeProperty\("width"\);/);
+assert.match(viewerFrame, /body: \{ type: "hostLayoutGesture", active \}/);
+assert.doesNotMatch(viewerFrame, /frame\.style\.width/);
+assert.match(viewer, /body\.type === 'hostLayoutGesture'/);
+assert.match(viewer, /if \(!hostLayoutGestureActive\) handleResize\(\);/);
+assert.match(previewRuntimeCss, /html\.buret-host-layout-gesture \.msp-plugin \.msp-viewport canvas \{/);
 assert.match(styles, /\.app-shell\[data-resizing\] \.viewer-iframe \{\s*pointer-events: none;\s*\}/);
 assert.doesNotMatch(appLayout, /\{rightDockOpen \? <DockPanel/);
 assert.doesNotMatch(appLayout, /\{bottomDockOpen \? <DockPanel/);

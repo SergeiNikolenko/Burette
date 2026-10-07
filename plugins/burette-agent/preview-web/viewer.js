@@ -1808,6 +1808,13 @@
     appliedViewer: null
   };
   let hostViewerVisible = true;
+  // The host is dragging a panel edge or sliding a panel open or closed. The
+  // iframe follows the panel every frame so the viewer chrome stays on its
+  // edges, but Mol* reallocating its render targets per frame is what made
+  // those gestures stutter. The canvas keeps its pixels for the duration,
+  // centred by `buret-host-layout-gesture` in viewer-runtime.css so the scene
+  // sits where it will land, and resizes once when the gesture ends.
+  let hostLayoutGestureActive = false;
 
   function viewerContainerSize(viewer) {
     const container = viewer?.plugin?.canvas3dContext?.canvas?.parentElement;
@@ -1840,6 +1847,7 @@
 
   function scheduleViewerResize(viewer, delayMs = 80) {
     if (!viewer) return;
+    if (hostLayoutGestureActive) return;
     if (!viewerCanvasIsVisible(viewer)) return;
     resizeState.viewer = viewer;
     if (resizeState.frame) return;
@@ -1849,6 +1857,9 @@
       resizeState.timer = setTimeout(() => {
         const target = resizeState.viewer;
         if (!target) return;
+        // A resize queued just before the gesture began must not record its
+        // size as applied: the resize that ends the gesture would be skipped.
+        if (hostLayoutGestureActive) return;
         if (!viewerCanvasIsVisible(target)) return;
         const size = viewerContainerSize(target);
         if (target === resizeState.appliedViewer && size && size === resizeState.appliedSize) return;
@@ -1866,6 +1877,19 @@
         }
       }, delayMs);
     });
+  }
+
+  // Mol* resizes from its own window listener and layout events as well as
+  // through scheduleViewerResize, and every one of those paths ends in
+  // plugin.handleResize, so holding that one method holds them all.
+  function holdMolstarResizeDuringHostLayoutGesture(viewer) {
+    const plugin = viewer?.plugin;
+    if (!plugin || plugin.buretteUngatedHandleResize) return;
+    const handleResize = plugin.handleResize;
+    plugin.buretteUngatedHandleResize = handleResize;
+    plugin.handleResize = () => {
+      if (!hostLayoutGestureActive) handleResize();
+    };
   }
 
   // Mol* commits a layout change a frame or two after the toggle, so a resize on a
@@ -3187,6 +3211,13 @@
       hostViewerVisible = body.visible !== false;
       activeTrajectoryPlaybackControl?.visibilityChanged?.();
       if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer, 0);
+      return;
+    }
+    if (event.source === window.parent && body.type === 'hostLayoutGesture') {
+      hostLayoutGestureActive = body.active === true;
+      document.documentElement.classList.toggle('buret-host-layout-gesture', hostLayoutGestureActive);
+      if (hostLayoutGestureActive) holdMolstarResizeDuringHostLayoutGesture(activeViewer);
+      else if (activeViewer) scheduleViewerResize(activeViewer, 0);
       return;
     }
     if (body.type === 'workspaceHistoryCommand') {
