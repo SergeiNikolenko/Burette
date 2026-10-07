@@ -2394,6 +2394,13 @@ span.radix-menu-item-icon {
   overflow: hidden;
   object-fit: cover;
 }
+/* Glyph masks take the 16px menu icon size; only letter fallbacks keep the tile. */
+span.radix-menu-item-icon[style] {
+  width: 16px;
+  height: 16px;
+  flex-basis: 16px;
+  border-radius: 0;
+}
 img.radix-menu-item-icon {
   width: 20px;
   height: 20px;
