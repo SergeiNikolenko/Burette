@@ -10,19 +10,10 @@
   --ui-weight-body: 400;
   --ui-weight-control: 500;
   --ui-weight-heading: 600;
-  --action-hover: var(--color-background-primary-solid-hover);
-  --action-pressed: var(--color-background-primary-solid-active);
   --control-selected-bg: var(--color-background-control-opaque);
   --status-success: var(--color-text-success);
   --status-danger: var(--color-text-danger);
 }
-.app-shell [data-slot="button"] { font-weight: var(--ui-weight-control); }
-.app-shell [data-slot="button"][data-variant="default"] {
-  background: var(--shadcn-primary);
-  color: var(--shadcn-primary-foreground);
-}
-.app-shell [data-slot="button"][data-variant="default"]:hover { background: var(--action-hover); }
-.app-shell [data-slot="button"][data-variant="default"]:active { background: var(--action-pressed); }
 .app-shell .new-tab-copy [data-slot="empty-title"],
 .app-shell .settings-panel h1,
 .app-shell .agent-integration-panel h1 {

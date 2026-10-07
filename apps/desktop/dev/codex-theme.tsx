@@ -77,6 +77,12 @@ function Appearance({ mode }: { mode: ThemeMode }) {
             <Button disabled>Disabled</Button>
           </div>
           <div className="theme-fixture-controls">
+            <Button size="xs">Pill</Button>
+            <Button size="xs" variant="secondary">Pill</Button>
+            <Button size="sm" variant="outline">Toolbar</Button>
+            <Button size="sm" variant="ghost">Toolbar</Button>
+          </div>
+          <div className="theme-fixture-controls">
             <Input placeholder="Search structures" style={{ width: 200 }} />
             <Switch defaultChecked />
             <Switch />
