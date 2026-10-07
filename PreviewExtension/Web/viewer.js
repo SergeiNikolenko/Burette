@@ -20216,9 +20216,8 @@ SOFTWARE.
         button.setAttribute('role', 'option');
         const fallbackLabel = hasTrajectorySegments ? `Trajectory segment ${index + 1}` : `Structure ${index + 1}`;
         const entryLabel = entry.label || fallbackLabel;
-        button.title = hasTrajectorySegments
-          ? `${entryLabel} · frames ${entry.startFrame + 1}–${entry.endFrame + 1}`
-          : entryLabel;
+        // A structure row already shows its whole label; only segments add a frame range.
+        if (hasTrajectorySegments) button.title = `${entryLabel} · frames ${entry.startFrame + 1}–${entry.endFrame + 1}`;
         const number = document.createElement('span');
         number.className = 'buret-docking-pose-file-number';
         number.textContent = String(index + 1).padStart(2, '0');
