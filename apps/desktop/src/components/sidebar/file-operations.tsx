@@ -10,6 +10,7 @@ import { useShellStore } from "../../stores/shell-store";
 import type { MenuItemSpec } from "../menu-types";
 import type { ShellActions, ShellViewState } from "../types";
 import { useAppShellPortalContainer } from "../ui/portal-container";
+import { Input } from "../ui/input";
 import { CloseIcon } from "../close-icon";
 
 type Request =
@@ -168,7 +169,7 @@ export function SidebarFileOperations({ state, actions, children }: {
               <Dialog.Description className={renaming ? "sr-only" : "radix-dialog-subline"}>{(request?.operation === "trash" || request?.operation === "trashFolder")
                 ? `“${basename(request.path)}” can be restored from Trash.`
                 : request?.path}</Dialog.Description>
-              {needsName ? <label className="calculated-column-field"><span className={renaming ? "sr-only" : undefined}>Name</span><input aria-label="File or folder name"
+              {needsName ? <label className="calculated-column-field"><span className={renaming ? "sr-only" : undefined}>Name</span><Input autoFocus variant="field" aria-label="File or folder name" aria-invalid={Boolean(invalidName)}
                 value={name} onChange={event => setName(event.target.value)} onFocus={event => event.target.select()} disabled={busy} /></label> : null}
               {invalidName ? <p role="alert">Enter a name without path separators.</p> : null}
               {error ? <p role="alert">{error}</p> : null}

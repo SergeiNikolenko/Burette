@@ -16,3 +16,10 @@ uses the production feedback handler, including success/failure and reset.
 Check both appearances, edge resize, hide, background click, Escape, and restore
 using the bottom chip. Selection changes and document teardown are covered by
 `tests/test-molecule-preview-interactions.mjs`. This is not native-app acceptance.
+
+## Form dialogs
+
+Open `/dev/forms.html` on the same development server to exercise the production
+Merge Columns and Calculated Values dialogs. Switch Light/Dark before opening a
+form. Inputs, validation, dismissal and submitted arguments use real components;
+outcomes are kept in page memory and never write files or start compute jobs.

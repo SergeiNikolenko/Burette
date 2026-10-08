@@ -39,6 +39,10 @@ for (const file of dialogFiles) {
     report(file, 'renders a bare checkbox; use Checkbox from ./ui/checkbox');
   }
 
+  if (!name.startsWith('ui/') && /<input\b(?![^>]*type="(?:file|hidden)")/.test(source)) {
+    report(file, 'renders a bare input; use Input from ./ui/input');
+  }
+
   // Inline layout for lists belongs to a CSS rule, not to the markup.
   for (const match of source.matchAll(/style=\{\{[^}]*\}\}/g)) {
     if (/maxHeight|overflow/.test(match[0])) report(file, `inline scroll layout ${match[0]}`);
@@ -70,7 +74,7 @@ for (const file of dialogFiles) {
 assert.deepEqual(problems, [], `dialog consistency problems:\n${problems.join('\n')}`);
 
 // The shared rules the dialogs rely on.
-assert.match(styles, /\.radix-dialog-footer \{[^}]*display: flex;[^}]*justify-content: flex-end;[^}]*gap: 10px;[^}]*padding: 8px var\(--dialog-inset\) var\(--dialog-inset\);/s);
+assert.match(styles, /\.radix-dialog-footer \{[^}]*display: flex;[^}]*justify-content: flex-end;[^}]*gap: 12px;[^}]*padding: 12px var\(--dialog-inset\) var\(--dialog-inset\);/s);
 assert.match(styles, /\.radix-dialog-footer\.calculate-properties-footer \{[^}]*justify-content: space-between;/s);
 assert.match(styles, /\.calculate-properties-option,\s*\.radix-dialog-check-row \{/);
 assert.match(styles, /\.radix-dialog-scroll-list \{[^}]*max-height: 240px;[^}]*overflow-y: auto;/s);

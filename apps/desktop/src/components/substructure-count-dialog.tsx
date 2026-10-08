@@ -1,3 +1,4 @@
+import { Input } from "./ui/input";
 import { useEffect, useMemo, useState } from "react";
 import { Dialog } from "radix-ui";
 
@@ -90,7 +91,7 @@ export function SubstructureCountDialog({
           <div id="substructure-count-body" className="radix-dialog-body">
             <label className="calculated-column-field">
               <span>Query (SMARTS or SMILES)</span>
-              <input
+              <Input autoFocus variant="field"
                 type="text"
                 value={smarts}
                 maxLength={400}
@@ -102,7 +103,7 @@ export function SubstructureCountDialog({
             {problem ? <div className="calculated-column-problem">{problem}</div> : null}
             <label className="calculated-column-field">
               <span>New column name</span>
-              <input
+              <Input variant="field"
                 type="text"
                 value={label}
                 maxLength={80}

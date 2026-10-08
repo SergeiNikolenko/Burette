@@ -1,3 +1,4 @@
+import { Input } from "./ui/input";
 import { useEffect, useMemo, useState } from "react";
 import { Dialog } from "radix-ui";
 
@@ -82,7 +83,7 @@ export function CalculatedColumnDialog({
           <div id="calculated-column-body" className="radix-dialog-body">
             <label className="calculated-column-field">
               <span>New column name</span>
-              <input
+              <Input autoFocus variant="field"
                 type="text"
                 value={label}
                 maxLength={80}

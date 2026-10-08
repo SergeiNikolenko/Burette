@@ -1,3 +1,4 @@
+import { Input } from "./ui/input";
 import { useEffect, useState } from "react";
 import { Dialog } from "radix-ui";
 
@@ -54,7 +55,7 @@ export function SplitValueRowsDialog({
           <div id="split-value-rows-body" className="radix-dialog-body">
             <label className="calculated-column-field">
               <span>Column</span>
-              <NativeSelect size="sm" value={columnId} onChange={(event) => setColumnId(event.target.value)}>
+              <NativeSelect autoFocus size="sm" value={columnId} onChange={(event) => setColumnId(event.target.value)}>
                 {columns.map((candidate) => (
                   <NativeSelectOption key={candidate.id} value={candidate.id}>{candidate.label}</NativeSelectOption>
                 ))}
@@ -62,7 +63,7 @@ export function SplitValueRowsDialog({
             </label>
             <label className="calculated-column-field">
               <span>Separator</span>
-              <input
+              <Input variant="field"
                 type="text"
                 value={delimiter}
                 maxLength={8}

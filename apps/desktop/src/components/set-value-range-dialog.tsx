@@ -1,3 +1,4 @@
+import { Input } from "./ui/input";
 import { useEffect, useState } from "react";
 import { Dialog } from "radix-ui";
 
@@ -68,7 +69,7 @@ export function SetValueRangeDialog({
           <div id="set-value-range-body" className="radix-dialog-body">
             <label className="calculated-column-field">
               <span>Column</span>
-              <NativeSelect size="sm" value={columnId} onChange={(event) => setColumnId(event.target.value)}>
+              <NativeSelect autoFocus size="sm" value={columnId} onChange={(event) => setColumnId(event.target.value)}>
                 {columns.map((candidate) => (
                   <NativeSelectOption key={candidate.id} value={candidate.id}>{candidate.label}</NativeSelectOption>
                 ))}
@@ -76,7 +77,7 @@ export function SetValueRangeDialog({
             </label>
             <label className="calculated-column-field">
               <span>Lower limit</span>
-              <input
+              <Input variant="field"
                 type="text"
                 value={min}
                 inputMode="decimal"
@@ -86,7 +87,7 @@ export function SetValueRangeDialog({
             </label>
             <label className="calculated-column-field">
               <span>Upper limit</span>
-              <input
+              <Input variant="field"
                 type="text"
                 value={max}
                 inputMode="decimal"

@@ -92,7 +92,7 @@ function Appearance({ mode }: { mode: ThemeMode }) {
             <Button size="sm" variant="ghost">Toolbar</Button>
           </div>
           <div className="theme-fixture-controls">
-            <Input placeholder="Search structures" style={{ width: 200 }} />
+            <Input aria-label="Search structures" placeholder="Search structures" style={{ width: 200 }} />
             <Switch aria-label="Enabled switch" defaultChecked />
             <Switch aria-label="Off switch" />
             <Switch aria-label="Small switch" size="sm" defaultChecked />
@@ -121,6 +121,16 @@ function Appearance({ mode }: { mode: ThemeMode }) {
             <LoadingIndicator size="sm" />
             <LoadingIndicator />
             <LoadingIndicator size="lg" />
+          </div>
+        </section>
+        <section>
+          <h3>Fields</h3>
+          <div className="theme-fixture-controls">
+            <Input variant="field" aria-label="Column name" placeholder="Column name" />
+            <Input variant="compact" aria-label="Compact search" placeholder="Find a column" />
+            <Input variant="code" aria-label="Expression" defaultValue="mass / count" spellCheck={false} />
+            <Input variant="field" aria-label="Invalid column" aria-invalid defaultValue="Existing column" />
+            <Input variant="field" aria-label="Locked column" disabled defaultValue="Read-only column" />
           </div>
         </section>
         <section>

@@ -1,3 +1,4 @@
+import { Input } from "./ui/input";
 import { useEffect, useMemo, useState } from "react";
 import { Dialog } from "radix-ui";
 
@@ -70,7 +71,7 @@ export function MergeColumnsDialog({
           <div id="merge-columns-body" className="radix-dialog-body">
             <label className="calculated-column-field">
               <span>First column</span>
-              <NativeSelect size="sm" value={first} onChange={(event) => setFirst(event.target.value)}>
+              <NativeSelect autoFocus size="sm" value={first} onChange={(event) => setFirst(event.target.value)}>
                 {columns.map((column) => (
                   <NativeSelectOption key={column.id} value={column.id}>{column.label}</NativeSelectOption>
                 ))}
@@ -87,20 +88,17 @@ export function MergeColumnsDialog({
             {duplicate ? <div className="calculated-column-problem">Pick two different columns.</div> : null}
             <label className="calculated-column-field">
               <span>Separator</span>
-              <input type="text" value={separator} onChange={(event) => setSeparator(event.target.value)} placeholder="space" />
+              <Input variant="field" type="text" value={separator} onChange={(event) => setSeparator(event.target.value)} placeholder="space" />
             </label>
             <label className="calculated-column-field">
               <span>New column</span>
-              <input
+              <Input variant="field"
                 type="text"
                 value={label}
                 onChange={(event) => setLabel(event.target.value)}
                 placeholder={suggestedLabel || "Merged"}
               />
             </label>
-            <p className="calculated-column-note">
-              Joins the displayed values as text.
-            </p>
           </div>
           <div className="radix-dialog-footer calculate-properties-footer">
             <div className="calculate-properties-actions">

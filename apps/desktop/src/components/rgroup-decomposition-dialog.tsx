@@ -1,3 +1,4 @@
+import { Input } from "./ui/input";
 import { useEffect, useRef, useState } from "react";
 import { Dialog } from "radix-ui";
 import { prepareRGroupPreview, type RGroupPreview } from "../hooks/rgroup-preview";
@@ -55,13 +56,13 @@ export function RGroupDecompositionDialog({ request, onDismiss, onRun }: {
         </div>
         <div className="radix-dialog-body">
           <label className="calculated-column-field">Core
-            <NativeSelect value={mode} disabled={busy !== null} onChange={(event) => { setMode(event.target.value); invalidate(); }}>
+            <NativeSelect autoFocus value={mode} disabled={busy !== null} onChange={(event) => { setMode(event.target.value); invalidate(); }}>
               <NativeSelectOption value="all">All scaffolds</NativeSelectOption>
               <NativeSelectOption value="custom">Custom core</NativeSelectOption>
             </NativeSelect>
           </label>
           {mode === "custom" && <label className="calculated-column-field">Core SMILES or SMARTS
-            <input value={core} maxLength={4000} spellCheck={false} disabled={busy !== null} placeholder="e.g. c1ccccc1" onChange={(event) => { setCore(event.target.value); invalidate(); }} />
+            <Input variant="field" value={core} maxLength={4000} spellCheck={false} disabled={busy !== null} placeholder="e.g. c1ccccc1" onChange={(event) => { setCore(event.target.value); invalidate(); }} />
           </label>}
           {busy === "preview" && <p role="status">Analysing…</p>}
           {error && <p className="calculated-column-problem" role="alert">{error}</p>}

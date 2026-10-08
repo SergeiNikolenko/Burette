@@ -640,13 +640,14 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .calculated-column-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   margin: 0 0 12px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--color-text);
 }
-.calculated-column-field input,
+.calculated-column-field:last-child { margin-bottom: 0; }
+.calculated-column-field input:not([data-slot="input"]),
 .calculated-column-field textarea,
 .calculated-column-field select:not([data-slot="native-select"]) {
   min-height: 28px;
@@ -663,10 +664,10 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   resize: vertical;
   font-family: var(--font-mono, ui-monospace, monospace);
 }
-.calculated-column-field :is(input, textarea, select):focus {
+.calculated-column-field :is(input, textarea, select):not([data-slot="input"]):focus {
   outline: none;
 }
-.calculated-column-field :is(input, textarea, select):focus-visible {
+.calculated-column-field :is(input, textarea, select):not([data-slot="input"]):focus-visible {
   border-color: var(--focus-ring);
   box-shadow: 0 0 0 1px var(--focus-ring);
 }
@@ -8632,15 +8633,12 @@ input.structure-inspector-composition-search {
 .app-shell[data-structure-drag-active="true"] .viewer-iframe {
   pointer-events: none;
 }
-/* The table and file dialogs read as macOS sheets: an opaque panel (the
-   molecule behind must not bleed through as coloured smudges), a bold title
-   with no rule under it, capsule buttons with the accent-filled default action
-   on the right, and no close glyph when a Cancel button already does that. */
+/* Table and file forms use the InterfaceAtlas form dialog and action tokens. */
 .radix-dialog-overlay {
   position: fixed;
   inset: 0;
   z-index: 120;
-  background: color-mix(in srgb, black 12%, transparent);
+  background: var(--color-dialog-overlay);
 }
 .radix-dialog {
   --dialog-inset: 20px;
@@ -8656,15 +8654,12 @@ input.structure-inspector-composition-search {
   max-height: min(560px, calc(100vh - 32px));
   overflow: auto;
   transform: translate(-50%, -50%);
-  border: 0.5px solid var(--dialog-hairline);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--bg-base) 95%, var(--fg-base) 5%);
-  color: var(--text-secondary);
-  box-shadow:
-    0 0 0 0.5px rgb(0 0 0 / 0.12),
-    0 2px 8px rgb(0 0 0 / 0.08),
-    0 18px 50px rgb(0 0 0 / 0.22);
-  font-size: 13px;
+  border: 0;
+  border-radius: var(--radius-form-dialog);
+  background: var(--color-surface-elevated-secondary);
+  color: var(--color-text);
+  box-shadow: 0 0 0 0.5px var(--color-border), 0 8px 10px -6px #0000001a, 0 20px 25px -5px #0000001a;
+  font-size: var(--text-base);
 }
 .radix-dialog[data-state="open"] {
   animation: radix-dialog-in 160ms cubic-bezier(0.2, 0.9, 0.3, 1);
@@ -8702,43 +8697,43 @@ input.structure-inspector-composition-search {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 18px var(--dialog-inset) 4px;
+  padding: var(--dialog-inset) 56px 0 var(--dialog-inset);
 }
 .radix-dialog-header h2 {
   margin: 0;
-  color: var(--text-primary);
-  font-size: 14px;
+  color: var(--color-text);
+  font-size: var(--text-heading-md);
   font-weight: 600;
-  line-height: 22px;
+  line-height: 28px;
 }
 .radix-dialog-close {
-  width: 22px;
-  height: 22px;
+  position: absolute;
+  top: 16px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
   flex: none;
   border: 0;
-  border-radius: 999px;
-  background: var(--dialog-fill);
-  color: var(--text-muted);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--color-text-tertiary);
   padding: 0;
   display: grid;
   place-items: center;
 }
-.radix-dialog-close svg { width: 11px; height: 11px; }
+.radix-dialog-close svg { width: 20px; height: 20px; }
 .radix-dialog-close:hover {
-  background: var(--dialog-fill-hover);
-  color: var(--text-primary);
-}
-.radix-dialog:has(:is(.radix-dialog-footer, .radix-dialog-actions, .database-query-actions)) .radix-dialog-close {
-  display: none;
+  background: var(--color-background-primary-ghost-hover);
+  color: var(--color-text);
 }
 .radix-dialog :is(button, a, select):focus-visible {
-  outline: 1px solid var(--focus-ring);
+  outline: 2px solid var(--color-ring);
   outline-offset: 2px;
 }
 .radix-dialog-body,
 .radix-dialog-description {
   margin: 0;
-  padding: 8px var(--dialog-inset) 12px;
+  padding: 12px var(--dialog-inset) 0;
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.45;
@@ -8750,8 +8745,8 @@ input.structure-inspector-composition-search {
 .radix-dialog-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
-  padding: 8px var(--dialog-inset) var(--dialog-inset);
+  gap: 12px;
+  padding: 12px var(--dialog-inset) var(--dialog-inset);
 }
 /* The footer of the table and file dialogs: actions sit at the right, and a
    .calculate-properties-footer pushes its status text to the left edge. */
@@ -8759,45 +8754,45 @@ input.structure-inspector-composition-search {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
-  padding: 8px var(--dialog-inset) var(--dialog-inset);
+  gap: 12px;
+  padding: 12px var(--dialog-inset) var(--dialog-inset);
 }
 .radix-dialog-footer.calculate-properties-footer {
   justify-content: space-between;
   margin-top: 0;
 }
-/* Push buttons inside a dialog: macOS capsules, the default action filled
-   with the accent colour. */
+/* Legacy form actions share the same action dimensions and neutral colors as Button. */
 .radix-dialog .dock-action {
-  height: 28px;
-  min-width: 76px;
-  padding: 0 16px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--dialog-fill);
-  color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 500;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 32px;
+  min-width: 0;
+  padding: 6px 16px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-button-action);
+  background: color-mix(in oklab, var(--color-text) 5%, transparent);
+  color: var(--color-text);
+  font-size: var(--text-base);
+  font-weight: 400;
+  line-height: 18px;
   white-space: nowrap;
 }
-.radix-dialog .dock-action:hover { background: var(--dialog-fill-hover); }
-.radix-dialog .dock-action:active { transform: none; filter: brightness(0.94); }
+.radix-dialog .dock-action:not(:disabled):hover { background: color-mix(in oklab, var(--color-text) 10%, transparent); }
+.radix-dialog .dock-action:active { transform: none; filter: none; }
 .radix-dialog .dock-action.calculate-properties-run {
-  background: var(--accent);
-  color: #fff;
-  font-weight: 600;
-  box-shadow: inset 0 0.5px 0 rgb(255 255 255 / 0.22), 0 0.5px 1px rgb(0 0 0 / 0.18);
+  border-color: var(--color-border);
+  background: var(--color-background-primary-solid);
+  color: var(--color-text-primary-solid);
+  box-shadow: none;
 }
-.radix-dialog .dock-action.calculate-properties-run:hover {
-  background: color-mix(in srgb, var(--accent) 90%, black);
+.radix-dialog .dock-action.calculate-properties-run:not(:disabled):hover {
+  background: color-mix(in oklab, var(--color-text) 80%, transparent);
 }
 .radix-dialog .dock-action:disabled {
-  opacity: 0.42;
-  filter: none;
-  background: var(--dialog-fill);
-  box-shadow: none;
-  color: var(--text-primary);
+  opacity: 0.4;
+  cursor: default;
 }
 /* A muted second line under the title: the path a dialog acts on. */
 .radix-dialog-subline {

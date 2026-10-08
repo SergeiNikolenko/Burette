@@ -1,3 +1,4 @@
+import { Input } from "./ui/input";
 import { useEffect, useState } from "react";
 import { Dialog } from "radix-ui";
 
@@ -63,7 +64,7 @@ export function BinsColumnDialog({
           <div id="bins-column-body" className="radix-dialog-body">
             <label className="calculated-column-field">
               <span>Column</span>
-              <NativeSelect size="sm" value={columnId} onChange={(event) => setColumnId(event.target.value)}>
+              <NativeSelect autoFocus size="sm" value={columnId} onChange={(event) => setColumnId(event.target.value)}>
                 {columns.map((candidate) => (
                   <NativeSelectOption key={candidate.id} value={candidate.id}>{candidate.label}</NativeSelectOption>
                 ))}
@@ -71,7 +72,7 @@ export function BinsColumnDialog({
             </label>
             <label className="calculated-column-field">
               <span>Bin width</span>
-              <input
+              <Input variant="field"
                 type="text"
                 value={width}
                 inputMode="decimal"
