@@ -31,13 +31,13 @@
   --buret-muted: rgba(255, 255, 255, 0.62);
   --buret-faint: rgba(255, 255, 255, 0.38);
   --buret-shadow: rgba(0, 0, 0, 0.16);
-  --buret-table-surface: #1f1f1f;
+  --buret-table-surface: #181818;
   --buret-table-panel-surface: #202020;
   --buret-table-panel-border: rgba(255, 255, 255, 0.10);
   --buret-table-panel-shadow: none;
   --buret-table-column-item-surface: rgba(255, 255, 255, 0.055);
   --buret-table-shadow: none;
-  --buret-table-header-surface: rgba(31, 31, 31, 0.94);
+  --buret-table-header-surface: rgba(24, 24, 24, 0.94);
   --buret-table-divider: rgba(255, 255, 255, 0.075);
   /* Row states follow the app's data tables (spectrum peaks): hover is a 7%
      accent wash, selection a 14% tint with an inset accent rail. The formulas
