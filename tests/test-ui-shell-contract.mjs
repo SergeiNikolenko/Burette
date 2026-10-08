@@ -2460,11 +2460,9 @@ assert.match(styles, /\.xyzrender-dock-vdw-grid \{\s*display: grid;\s*grid-templ
 assert.match(styles, /\.xyzrender-dock-hull-grid,[\s\S]*?\.xyzrender-dock-pore-grid \{\s*display: grid;\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
 assert.match(dockPanel, /<StructureInfoPanel\s+document=\{dockStructureDocument\}/);
 assert.match(dockPanel, /viewerLigandSelection=\{state\.viewerLigandSelection\}/);
-assert.match(dockPanel, /if \(dockTextDocument\) return <TextDocumentInfoPanel document=\{dockTextDocument\} actions=\{actions\} \/>/);
-assert.match(dockPanel, /function TextDocumentInfoPanel/);
-assert.match(dockPanel, /actions\.showTextFileMetadata\(document\)/);
-assert.match(dockPanel, /actions\.revealPath\(document\.path, "file"\)/);
-assert.match(dockPanel, /actions\.copyPath\(document\.path, "file"\)/);
+assert.match(dockPanel, /if \(effectiveDockTextDocument\) return <TextDocumentInfoPanel document=\{effectiveDockTextDocument\} actions=\{actions\} \/>/);
+assert.match(dockPanel, /import \{ TextDocumentInfoPanel \} from "\.\/text-document-info-panel"/);
+// Metadata/reveal/copy targets are exercised by test-text-document-info.test.tsx.
 assert.match(dockPanel, /onStructureSelection=\{actions\.selectTextStructure\}/);
 assert.match(dockPanel, /const dockingTextSources = dockingTextSourcesForDocument\(activeDocument\)/);
 assert.match(dockPanel, /<DockingDocumentTextPanel[\s\S]*sources=\{dockingTextSources\}/);

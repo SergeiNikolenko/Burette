@@ -26,7 +26,7 @@ import { ViewerFrame } from "./editor-area/viewer-frame";
 import { TextFileViewer } from "./text-file-viewer";
 import { MarkdownRichViewer } from "./text-file-viewer/markdown-rich-viewer";
 import { useSourceEditing } from "../lib/source-editing/context";
-import { formatBytes } from "./format";
+import { TextDocumentInfoPanel } from "./text-document-info-panel";
 import { StructureInfoPanel } from "./structure-info-panel";
 import { JobsPanel } from "./jobs-panel";
 import { Button } from "@/components/ui/button";
@@ -400,7 +400,7 @@ function DockPanelContent({
   }
   if (activeTabKind === "inspector") {
     if (area === "right" && activePageKind === "ketcher") return <KetcherInspectorPanel state={state} />;
-    if (dockTextDocument) return <TextDocumentInfoPanel document={dockTextDocument} actions={actions} />;
+    if (effectiveDockTextDocument) return <TextDocumentInfoPanel document={effectiveDockTextDocument} actions={actions} />;
     if (dockStructureDocument?.renderer === "spectrum") return <SpectrumInfoPanel document={dockStructureDocument} />;
     if (isMesoscaleViewerDocument(dockStructureDocument)) return <MesoscaleInfoPanel document={dockStructureDocument} />;
     return (
@@ -1094,54 +1094,12 @@ function KetcherDockTool({
   );
 }
 
-function TextDocumentInfoPanel({ document, actions }: { document: TextFileDocument; actions: ShellActions }) {
-  return (
-    <div className="dock-content structure-brief">
-      <section className="structure-brief-card">
-        <div className="structure-brief-card-header">
-          <div>
-            <small>TEXT FILE</small>
-            <h3>{document.title}</h3>
-          </div>
-          <span className="structure-brief-pill">{document.extension ? document.extension.toUpperCase() : "TEXT"}</span>
-        </div>
-        <div className="structure-brief-rows">
-          <StructureBriefTextRow label="Language" value={document.language} />
-          <StructureBriefTextRow label="Size" value={formatBytes(document.byteCount)} />
-          <StructureBriefTextRow label="Path" value={document.path} />
-          {document.truncated && <StructureBriefTextRow label="Preview" value="Truncated" />}
-        </div>
-        <div className="structure-brief-actions">
-          <button type="button" className="dock-action" onClick={() => void actions.showTextFileMetadata(document)}>
-            Show metadata
-          </button>
-          <button type="button" className="dock-action" onClick={() => void actions.revealPath(document.path, "file")}>
-            Reveal file
-          </button>
-          <button type="button" className="dock-action" onClick={() => void actions.copyPath(document.path, "file")}>
-            Copy path
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 function KetcherInspectorPanel({ state }: { state: ShellViewState }) {
   return (
     <div className="ketcher-dock-portal" data-ketcher-dock-portal="right">
       <div className="dock-content dock-content-empty">
         <div className="dock-empty">{state.activeTab?.location.kind === "ketcher" ? <Spinner className="mx-auto" aria-label="Loading structure text" /> : "Open Ketcher to import or export a structure"}</div>
       </div>
-    </div>
-  );
-}
-
-function StructureBriefTextRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="structure-brief-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   );
 }

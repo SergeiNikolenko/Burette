@@ -65,6 +65,20 @@ test("Files follows active text and respects an explicit text pin", () => {
   }
 });
 
+test("Info follows active text and preserves an explicit text pin instead of showing an empty structure panel", () => {
+  const text: TextFileDocument = { id: "report", title: "report.md", path: "/report.md", extension: "md", language: "markdown", byteCount: 1024, content: "# Report", truncated: false };
+  for (const pinned of [false, true]) {
+    const shell = render({ textDocuments: [text], activeDocument: pinned ? a : null,
+      rightDockTabs: [{ id: "info", kind: "inspector" }], rightDockActiveTab: "inspector",
+      rightDockDocumentId: pinned ? text.id : null,
+      activeTab: { location: pinned ? { kind: "file", path: a.path, documentId: a.id } : { kind: "text-file", path: text.path, documentId: text.id } } as ShellViewState["activeTab"],
+    });
+    expect(shell.querySelector('[aria-label="File information"] h3')?.textContent).toBe(text.title);
+    expect(Array.from(shell.querySelectorAll('[aria-label="File information"] button'), el => el.textContent)).toEqual(["Show metadata", "Reveal file", "Copy path"]);
+    expect(shell.textContent).not.toContain("No structure selected");
+  }
+});
+
 
 test("shared empty panels expose the existing open action without an explanatory caption", async () => {
   const { createRoot } = await import("react-dom/client");
