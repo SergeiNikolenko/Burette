@@ -2018,10 +2018,9 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
 }
 .buret-preview-dock-section-title {
   color: var(--buret-toolbar-color);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 500;
   letter-spacing: 0;
-  text-transform: uppercase;
 }
 .buret-preview-dock-card {
   display: grid;
@@ -3116,10 +3115,9 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-docking-pose-story-step {
   margin-bottom: 4px;
   color: var(--buret-molstar-accent);
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 .buret-docking-pose-story-title {
   margin-bottom: 5px;
@@ -3663,9 +3661,8 @@ body.burette-mobile-host .buret-docking-poses button {
 }
 .buret-superposition-header span {
   color: var(--buret-molstar-muted);
-  font-size: 10px;
-  letter-spacing: .04em;
-  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0;
 }
 .buret-superposition-panel button,
 .buret-superposition-panel select {
@@ -3708,10 +3705,9 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-superposition-section-title,
 .buret-superposition-moving legend {
   color: var(--buret-molstar-muted);
-  font-size: 10px;
-  font-weight: 650;
-  letter-spacing: .06em;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 .buret-superposition-moving {
   display: flex;
@@ -4067,10 +4063,9 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   cursor: grabbing;
 }
 .buret-scene-tree-title {
-  font-size: 10px;
-  font-weight: 590;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
   color: var(--buret-molstar-muted-text);
 }
 .buret-scene-tree-story {
@@ -4088,10 +4083,9 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   margin: 8px 0 2px;
   padding: 0 6px;
   color: var(--buret-molstar-muted-text);
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
   pointer-events: none;
 }
 .buret-tree-section:first-child {
@@ -4450,10 +4444,9 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   white-space: nowrap;
   padding: 2px 8px 4px;
   color: var(--buret-molstar-muted-text);
-  font-size: 10px;
-  font-weight: 590;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
 }
 .buret-tree-menu-item {
   display: flex;
@@ -4509,10 +4502,9 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
   border-radius: 6px;
   padding: 0 8px;
   color: var(--buret-molstar-muted-text);
-  font-size: 10px;
-  font-weight: 590;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
   cursor: default;
   list-style: none;
 }

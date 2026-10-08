@@ -771,10 +771,9 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 }
 .grid-hover-molecule-props-title {
   flex: 0 0 auto;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
   color: var(--text-muted);
 }
 .grid-hover-molecule-props-resize.resizable-handle-horizontal {
@@ -835,9 +834,8 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   gap: 1px;
 }
 .grid-hover-molecule-prop.dock-metric span {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
+  font-size: 11px;
+  letter-spacing: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3103,10 +3101,9 @@ img.radix-menu-item-icon {
 }
 .structure-inspector-header-stats span {
   color: var(--text-faint);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.2;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
 }
 .structure-inspector-header-stats strong {
   min-width: 0;
@@ -3233,10 +3230,9 @@ img.radix-menu-item-icon {
   min-width: 0;
   overflow: hidden;
   color: var(--text-muted);
-  font-size: 10px;
+  font-size: 11px;
   text-overflow: ellipsis;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 .grid-hover-molecule-prop strong {
@@ -3444,9 +3440,8 @@ img.radix-menu-item-icon {
 }
 .structure-brief-kicker {
   color: var(--text-muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
-  text-transform: uppercase;
   letter-spacing: 0;
 }
 .structure-brief-title-row {
@@ -4038,10 +4033,9 @@ img.radix-menu-item-icon {
   gap: 7px;
   margin: 2px 0 4px;
   color: var(--text-muted);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 .structure-inspector-settings-group-title::after {
   content: "";
@@ -6962,13 +6956,13 @@ img.radix-menu-item-icon {
   background: var(--bg-base);
   box-shadow: 0 12px 34px rgb(0 0 0 / 0.22);
 }
-.mesoscale-scene-overlay-header { display: grid; grid-template-columns: 18px minmax(0, 1fr) repeat(5, 28px); align-items: center; gap: 3px; padding: 3px 4px 3px 10px; border-bottom: 1px solid var(--line-subtle); font-size: 10px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+.mesoscale-scene-overlay-header { display: grid; grid-template-columns: 18px minmax(0, 1fr) repeat(5, 28px); align-items: center; gap: 3px; padding: 3px 4px 3px 10px; border-bottom: 1px solid var(--line-subtle); font-size: 13px; font-weight: 500; letter-spacing: 0; }
 .mesoscale-scene-overlay-body { min-height: 0; overflow: hidden; }
 .mesoscale-scene-overlay .mesoscale-panel { max-height: calc(100vh - 150px); }
 
 .mesoscale-panel { height: 100%; min-height: 0; overflow: auto; padding: 8px; color: var(--text-secondary); }
 .mesoscale-panel section + section { margin-top: 18px; }
-.mesoscale-section-title { margin-bottom: 8px; color: var(--text-muted); font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.mesoscale-section-title { margin-bottom: 8px; color: var(--text-muted); font-size: 13px; font-weight: 500; letter-spacing: 0; }
 .mesoscale-object-summary { display: flex; justify-content: space-between; padding: 7px 2px 5px; color: var(--text-muted); font-size: 10px; }
 .mesoscale-object-tree { min-height: 80px; overflow-x: auto; overflow-y: visible; padding: 4px; border: 0; border-radius: 0; background: transparent; }
 .mesoscale-tree-branch { position: relative; }
@@ -7685,9 +7679,8 @@ img.radix-menu-item-icon {
 }
 .fep-setup-panel header span {
   color: var(--text-secondary);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  letter-spacing: 0;
 }
 .fep-setup-panel h2 {
   margin: 0;
@@ -7702,9 +7695,8 @@ img.radix-menu-item-icon {
 .fep-setup-panel dt {
   margin-bottom: 4px;
   color: var(--text-secondary);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 12px;
+  letter-spacing: 0;
 }
 .fep-setup-panel dd {
   margin: 0;

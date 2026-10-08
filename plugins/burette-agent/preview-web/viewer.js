@@ -393,7 +393,8 @@
       control.dataset.buretHint = control.getAttribute('title');
       control.removeAttribute('title');
     }
-    if (!label) {
+    // An open menu already names what its button does and the hint would cover it.
+    if (!label || control.getAttribute('aria-expanded') === 'true') {
       hideMolstarControlTooltip();
       return;
     }
