@@ -2,7 +2,7 @@ import { useMemo, type ComponentType, type ReactNode } from "react";
 import { createPath, parsePath, Router, Route, Routes, type Navigator, type To } from "react-router";
 import { useMoleculeStore, type MoleculeTab } from "../../stores/molecule-store";
 import { normalizeSettingsSection } from "../../lib/settings-sections";
-import { deserializeLocation, pageKind, pageRouteKinds, type Location, type SerializedLocation } from "./page-kinds";
+import { deserializeLocation, registeredPageKinds, type Location, type SerializedLocation } from "./page-kinds";
 import type { PageComponentProps } from "./page-kinds/types";
 
 function routePath(location: Location) {
@@ -38,8 +38,8 @@ export function TabMemoryRouter({ tab, children }: { tab: MoleculeTab; children:
 }
 
 export function TabPageRoutes(props: PageComponentProps<Location>) {
-  const Page = pageKind(props.location).Component as ComponentType<PageComponentProps<Location>>;
-  return <Routes>{pageRouteKinds.map(kind => (
-    <Route key={kind} path={kind === "settings" ? "/settings/:section" : `/${kind}`} element={<Page {...props} />} />
-  ))}</Routes>;
+  return <Routes>{registeredPageKinds.map(kind => {
+    const Page = kind.Component as ComponentType<PageComponentProps<Location>>;
+    return <Route key={kind.kind} path={kind.kind === "settings" ? "/settings/:section" : `/${kind.kind}`} element={<Page {...props} />} />;
+  })}</Routes>;
 }
