@@ -17,6 +17,35 @@ const controls = new Function('document', `
   return { sceneTreeMenuItem, sceneTreeMenuSection, sceneTreeMenuSelect, sceneTreeMenuSlider, sceneTreeMenuThemePicker };
 `)(document);
 const events = [];
+// Growing the representation submenu near the bottom must re-anchor it, not
+// leave the colour list and subsequent controls below the viewport.
+{
+  const panel = document.createElement('div');
+  panel.className = 'buret-molecule-context-submenu';
+  panel.dataset.buretRepresentationMenu = '1';
+  controls.sceneTreeMenuThemePicker(panel, 'Theme', 'representation-color', [
+    { name: 'uniform', label: 'Uniform' },
+  ], 'uniform');
+  document.body.append(panel);
+  const anchor = document.createElement('button');
+  anchor.getBoundingClientRect = () => ({ left: 400, right: 600, top: 600 });
+  panel._buretTrigger = anchor;
+  const list = panel.querySelector('[role="listbox"]');
+  panel.getBoundingClientRect = () => ({ width: 224, height: list.hidden ? 251 : 437 });
+  const click = new Function('window', 'document', `
+    const sceneTreePickerUndoSnapshots = new Map();
+    ${['moleculeMenuPositionSubmenu', 'closeSceneTreePicker', 'onSceneTreeClick'].map(source).join('\n')}
+    return onSceneTreeClick;
+  `)(window, document);
+  const trigger = panel.querySelector('[data-scene-tree-picker]');
+  click({ target: trigger });
+  assert.deepEqual([list.hidden, trigger.getAttribute('aria-expanded'), Number.parseFloat(panel.style.top) + 437],
+    [false, 'true', window.innerHeight - 8]);
+  click({ target: trigger });
+  assert.deepEqual([list.hidden, trigger.getAttribute('aria-expanded'), Number.parseFloat(panel.style.top) + 251],
+    [true, 'false', window.innerHeight - 8]);
+  panel.remove();
+}
 document.addEventListener('input', event => events.push(['input', event.target.value]));
 document.addEventListener('change', event => events.push(['change', event.target.value]));
 const fixture = () => {

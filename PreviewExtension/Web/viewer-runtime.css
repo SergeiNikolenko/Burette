@@ -5399,10 +5399,10 @@ body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-repres
   padding: 0;
 }
 body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] {
-  width: min(200px, calc(100vw - 16px));
-  min-width: min(200px, calc(100vw - 16px));
-  max-width: min(200px, calc(100vw - 16px));
-  max-height: none;
+  width: min(224px, calc(100vw - 16px));
+  min-width: min(224px, calc(100vw - 16px));
+  max-width: min(224px, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
 }
 body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-representation-menu] .buret-representation-type-trigger {
   width: 100%;
@@ -5411,7 +5411,7 @@ body:not(.burette-mobile-host) .buret-molecule-context-submenu[data-buret-repres
 body:not(.burette-mobile-host) .buret-representation-type-value {
   margin-left: auto;
   color: var(--buret-molstar-muted-text);
-  font-size: 10px;
+  font-size: 13px;
 }
 body:not(.burette-mobile-host) .buret-representation-type-item .buret-representation-type-check {
   opacity: 0;
@@ -5656,9 +5656,48 @@ body .buret-tree-menu-actions > summary { min-height: 28px; padding-block: 0; bo
 /* Embedded form controls are not menu rows: a blanket button rule stretched
    the colour swatches into tall pills and overrode the palette button inset. */
 body:not(.burette-mobile-host) :is(.buret-tree-menu, .buret-molecule-context-submenu) .buret-tree-menu-field {
+  box-sizing: border-box;
   min-height: 28px;
-  padding: 4px 8px;
+  padding: 0 8px;
   gap: 8px;
+}
+/* Form rows use the same 13px type and 28px rhythm as Atlas menu items,
+   rather than nesting the old 11px, bordered inspector controls. */
+body:not(.burette-mobile-host) :is(.buret-tree-menu, .buret-molecule-context-submenu) .buret-tree-menu-field > span {
+  font-size: 13px;
+  line-height: 18.5px;
+}
+body:not(.burette-mobile-host) :is(.buret-tree-menu, .buret-molecule-context-submenu) :is(.buret-tree-picker-trigger, .buret-tree-menu-field > .buret-select) {
+  box-sizing: border-box;
+  height: 28px;
+  border: 0;
+  border-radius: 12.5px;
+  background-color: transparent;
+  padding-inline: 8px;
+  font-size: 13px;
+  line-height: 18.5px;
+}
+body:not(.burette-mobile-host) :is(.buret-tree-menu, .buret-molecule-context-submenu) .buret-tree-picker-trigger:is(:hover, [aria-expanded="true"]) {
+  background: var(--buret-molstar-hover-background);
+}
+body:not(.burette-mobile-host) :is(.buret-tree-menu, .buret-molecule-context-submenu) .buret-tree-picker-item {
+  min-height: 28px;
+  border-radius: 15px;
+  padding: 5px 8px;
+  font-size: 13px;
+  line-height: 18.5px;
+}
+body:not(.burette-mobile-host) :is(.buret-tree-menu, .buret-molecule-context-submenu) .buret-tree-swatches-with-picker {
+  min-height: 28px;
+  padding-block: 0;
+}
+body:not(.burette-mobile-host) :is(.buret-tree-menu, .buret-molecule-context-submenu) .buret-tree-swatch-custom {
+  border: 0;
+  border-radius: 12.5px;
+  background: transparent;
+}
+body:not(.burette-mobile-host) :is(.buret-tree-menu, .buret-molecule-context-submenu) .buret-tree-swatch-custom:hover {
+  background: var(--buret-molstar-hover-background);
 }
 body:not(.burette-mobile-host) :is(.buret-tree-menu, .buret-molecule-context-submenu) .buret-tree-menu-check {
   width: 16px;

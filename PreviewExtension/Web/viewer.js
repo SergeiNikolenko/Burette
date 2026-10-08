@@ -9448,6 +9448,7 @@ SOFTWARE.
       } else {
         closeSceneTreePicker(list, { restore: true });
       }
+      if (menu._buretTrigger) moleculeMenuPositionSubmenu(menu, menu._buretTrigger);
       return;
     }
     const picked = event.target.closest?.('[data-scene-tree-picker-value]');
