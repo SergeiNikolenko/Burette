@@ -8,6 +8,7 @@ import { DocumentControlsExamples } from "./document-controls-examples";
 import { TableTransformExamples } from "./table-transform-examples";
 import { SubstructureQueryExample } from "./substructure-query-example";
 import { CorrelationExample } from "./correlation-example";
+import { ReactionExample } from "./reaction-example";
 import { JobExamples } from "./job-examples";
 import { ConnectionExamples } from "./connection-examples";
 import { MenuExamples } from "./menu-examples";
@@ -27,7 +28,7 @@ function Forms() {
   const [theme, setTheme] = useState<ThemeMode>("light");
   const [open, setOpen] = useState<"merge" | "calculate" | null>(null);
   const [result, setResult] = useState("");
-  return <main className={`app-shell ${theme === "dark" ? "dark" : ""}`} data-theme={theme} data-effective-theme={theme}
+  return <main className={`app-shell ${theme === "dark" ? "dark" : ""}`} data-runtime="browser" data-theme={theme} data-effective-theme={theme}
     style={{ ...buildThemeStyle({ ...defaultPreferences, theme }, theme), display: "flex", flexDirection: "column", gap: 16, padding: 32, overflowY: "auto" }}>
     <h1>Series</h1>
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -41,6 +42,7 @@ function Forms() {
     <TableTransformExamples />
     <SubstructureQueryExample />
     <CorrelationExample />
+    <ReactionExample />
     <DocumentControlsExamples />
     <JobExamples />
     <ConnectionExamples />
