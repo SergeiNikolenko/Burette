@@ -77,7 +77,7 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
     const openFolder = (mode: string) => () => setBatch({ path, mode });
     const pinned = state.sidebarProjects.some(project => project.rootPath === path && project.isPinned);
     return menuSections(
-      submenu("folder-open", "Open", [
+      [...submenu("folder-open", "Open", [
         item("open-folder", "In Tabs…", openFolder("tabs")),
         ...(isTauriRuntime() ? [item("open-window", "In New Window…", openFolder("window"))] : []),
         ...(scenePaths.length > 1 && scenePaths.length <= 200 ? [item("open-together", "In One Scene",
@@ -88,11 +88,9 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
         ...submenu("add-scene", "Add to Scene", workflows.sceneTargets(paths).map((target, index) => item(`add-scene-${index}`, target.title, openFolder(`scene:${target.id}`)))),
         item("folder-finder", "Finder", () => actions.revealPath(path, "folder"))
       ], "arrow.up.forward"),
-      [root ? item("rename-project", "Rename Label…", rename) : disk.find(entry => "id" in entry && entry.id === "rename-folder")].filter((entry): entry is MenuItemSpec => Boolean(entry)),
-      [item("pin-folder", pinned ? "Unpin" : "Pin", () => actions.togglePinnedProjectRoot(path))],
-      submenu("folder-new", "New", [...disk.filter(entry => "id" in entry && entry.id === "new-folder"), item("new-molecule", "Molecule", actions.openKetcher)]),
-      submenu("folder-copy", "Copy", [item("copy-folder-name", "Name", () => workflows.copyNames([path])), item("copy-folder-path", "Path", () => actions.copyPath(path, "folder"))]),
-      [item("refresh-folder", "Refresh", refresh)],
+        ...submenu("folder-new", "New", [...disk.filter(entry => "id" in entry && entry.id === "new-folder"), item("new-molecule", "Molecule", actions.openKetcher)])],
+      [...[root ? item("rename-project", "Rename Label…", rename) : disk.find(entry => "id" in entry && entry.id === "rename-folder")].filter((entry): entry is MenuItemSpec => Boolean(entry)), ...[item("pin-folder", pinned ? "Unpin" : "Pin", () => actions.togglePinnedProjectRoot(path))]],
+      [...submenu("folder-copy", "Copy", [item("copy-folder-name", "Name", () => workflows.copyNames([path])), item("copy-folder-path", "Path", () => actions.copyPath(path, "folder"))]), ...[item("refresh-folder", "Refresh", refresh)]],
       root ? [item("remove-project", "Remove from Sidebar", () => actions.removeProjectRoot(path))]
         : disk.filter(entry => "id" in entry && entry.id === "trash-folder"),
     );

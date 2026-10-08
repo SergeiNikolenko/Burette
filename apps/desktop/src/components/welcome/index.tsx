@@ -1,3 +1,4 @@
+import { Atom } from "@/components/ui/app-icons";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
@@ -38,14 +39,20 @@ export function WelcomeScreen({ actions }: { actions: ShellActions }) {
   const home = window.BuretteMcpWorkspace?.home;
   if (home) return <NativeWorkspaceHome actions={actions} home={home} />;
   return (
-    <Empty className="new-tab-page border-0 gap-5">
-      <EmptyHeader className="new-tab-copy">
-        <EmptyTitle className="text-xl font-normal">Open a structure</EmptyTitle>
-        <EmptyDescription>Drop a file here or open one</EmptyDescription>
+    <Empty className="new-tab-page border-0 gap-3">
+      <EmptyHeader className="new-tab-copy gap-3">
+        <Atom className="size-8 text-muted-foreground" aria-hidden="true" />
+        <div className="flex flex-col items-center gap-2">
+          <EmptyTitle>Open a structure</EmptyTitle>
+          <EmptyDescription>Drop a file here or open one</EmptyDescription>
+        </div>
       </EmptyHeader>
-      <EmptyContent className="new-tab-actions flex-row justify-center gap-3">
+      <EmptyContent className="new-tab-actions flex-row justify-center gap-2">
         <Button
           type="button"
+          variant="secondary"
+          size="xs"
+          className="rounded-full px-2.5 text-[13px]"
           data-analytics-control="open_structure"
           onClick={() => void actions.chooseFiles()}
         >

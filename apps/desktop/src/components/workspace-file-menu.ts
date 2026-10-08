@@ -45,12 +45,12 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
   const pinned = paths.every(path => state.pinnedStructurePaths.includes(path));
   const take = (id: string) => (local ? diskItems : []).filter(entry => "id" in entry && entry.id === id).map(entry => entry.kind === "item" && entry.action ? { ...entry, action: run(entry.action) } : entry);
   return menuSections(
-    submenu("file-open", "Open", opening, "arrow.up.forward"),
+    [...submenu("file-open", "Open", opening, "arrow.up.forward"),
+      ...submenu("file-edit", "Edit", caps.every(cap => cap.molecule) ? [command("edit-ketcher", "Ketcher", () => actions.openKetcherWithStructures(paths))] : [])],
     [ ...take("rename-file"), command("pin-files", pinned ? "Unpin" : "Pin", () => {
       paths.forEach(path => { if (state.pinnedStructurePaths.includes(path) === pinned) actions.togglePinnedStructure(path); });
     }), ...take("duplicate-file") ],
-    submenu("file-edit", "Edit", caps.every(cap => cap.molecule) ? [command("edit-ketcher", "Ketcher", () => actions.openKetcherWithStructures(paths))] : []),
-    submenu("file-copy", "Copy", [
+    [...submenu("file-copy", "Copy", [
       command("copy-names", single ? "Name" : "Names", () => workflows.copyNames(paths)),
       command("copy-paths", single ? "Path" : "Paths", () => actions.copyPath(paths.join('\n'))),
       ...(caps.every(cap => ['mol', 'sdf', 'sd', 'smi', 'smiles'].includes(cap.extension)) ? [
@@ -58,8 +58,7 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
         command("copy-inchi", "InChI", () => copyChemicalFiles(paths, "inchi")),
       ] : []),
       ...(document?.renderer === "molstar" && caps[0].protein ? [command("copy-sequence", "Sequence", () => workflows.copySequence(document))] : []),
-    ], "plus.square.on.square"),
-    submenu("file-export", "Export", [
+    ], "plus.square.on.square"), ...submenu("file-export", "Export", [
       ...take("save-file-copy").map(entry => ({ ...entry, text: single ? "File Copy…" : "Selected Files…" })),
       ...(document?.renderer === "grid2d" ? [command("export-table", "Collection…", () => actions.saveMoleculeCollectionAs(document.id))] : []),
       ...(document?.renderer === "molstar" ? [
@@ -70,7 +69,7 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
         ]),
         command("export-image", "Image…", () => workflows.exportImage(document)),
       ] : []),
-    ], "square.and.arrow.up"),
+    ], "square.and.arrow.up")],
     take("trash-file"),
   );
 }

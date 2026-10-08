@@ -23,7 +23,6 @@
 }
 .app-shell [data-slot="button"][data-variant="default"]:hover { background: var(--action-hover); }
 .app-shell [data-slot="button"][data-variant="default"]:active { background: var(--action-pressed); }
-.app-shell .new-tab-copy [data-slot="empty-title"],
 .app-shell .settings-panel h1,
 .app-shell .agent-integration-panel h1 {
   font-size: var(--ui-heading-size);
@@ -32,15 +31,26 @@
   letter-spacing: 0;
   color: var(--text-primary);
 }
-.app-shell .new-tab-copy [data-slot="empty-description"],
 .app-shell .settings-control-label,
 .app-shell .agent-disclosure-title {
   font-size: var(--ui-body-size);
   line-height: var(--ui-body-line);
 }
-.app-shell .new-tab-copy [data-slot="empty-description"] { color: var(--text-muted); }
-.app-shell .new-tab-actions { gap: 12px; }
-.app-shell .new-tab-actions [data-slot="button"] { min-height: 34px; padding-inline: 14px; }
+/* The start page is a page empty state: 32px glyph, 16px title, 13px line and
+   a small pill action. */
+.app-shell .new-tab-copy [data-slot="empty-title"] {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text-primary);
+}
+.app-shell .new-tab-copy [data-slot="empty-description"] {
+  font-size: 13px;
+  line-height: 18.5px;
+  color: var(--text-muted);
+}
+.app-shell .new-tab-actions [data-slot="button"] { font-weight: 400; }
 .app-shell .settings-control-label, .app-shell .agent-disclosure-title { font-weight: var(--ui-weight-control); }
 .app-shell .settings-control-description,
 .app-shell .agent-disclosure-description,
