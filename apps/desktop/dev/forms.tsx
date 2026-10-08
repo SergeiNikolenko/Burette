@@ -15,6 +15,7 @@ import { PropertiesExample } from "./properties-example";
 import { FileOperationExamples } from "./file-operation-examples";
 import { DatabaseExample } from "./database-example";
 import { JobExamples } from "./job-examples";
+import { DescriptorStatusExample } from "./descriptor-status-example";
 import { ConnectionExamples } from "./connection-examples";
 import { MenuExamples } from "./menu-examples";
 import { ToastExamples } from "./toast-examples";
@@ -55,6 +56,7 @@ function Forms() {
     <DocumentControlsExamples />
     <ViewerStateExamples />
     <JobExamples />
+    <DescriptorStatusExample />
     <ConnectionExamples />
     {result ? <output>{result}</output> : null}
     <MergeColumnsDialog request={open === "merge" ? request : null} onDismiss={() => setOpen(null)}
