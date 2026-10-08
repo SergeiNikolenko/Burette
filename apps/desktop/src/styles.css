@@ -8709,21 +8709,18 @@ input.structure-inspector-composition-search {
    primitives; the page keeps only its own sizing. .new-tab-page and
    .new-tab-actions are still read by web-demo-analytics to name events. */
 .new-tab-page { width: 100%; height: 100%; padding: 40px 24px; }
-.error-boundary {
-  width: 100vw;
-  height: 100vh;
+.app-shell.error-boundary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100dvh;
   overflow: auto;
-  display: grid;
-  place-items: center;
-  background: #1e1e1e;
-  color: #ff6b6b;
-  font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--ui-font);
 }
-.error-boundary-card { width: min(680px, calc(100vw - 48px)); display: grid; gap: 14px; }
-.error-boundary-card h1 { margin: 0; font-size: 16px; font-weight: 400; }
-.error-boundary-card pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
-.error-boundary-stack { color: #888; }
-.error-boundary-card button { justify-self: start; height: 32px; border: 1px solid #555; border-radius: var(--control-radius); background: #333; color: #ccc; padding: 0 12px; }
+.app-shell.error-boundary::after { display: none; }
 .editor-scroll-container-shell {
   position: relative;
   height: 100%;
