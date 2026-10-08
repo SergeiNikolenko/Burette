@@ -8,28 +8,30 @@ The source of truth for runtime theme defaults is:
 - `apps/desktop/src/lib/theme.ts`
 - `apps/desktop/src/styles.css`
 - `apps/desktop/src/styles/interface-tokens.css`
+- `apps/desktop/src/lib/codex-theme.ts`
+- `apps/desktop/src/styles/codex-tokens.css`
 
 ## Current Reality
 
-Burette's desktop shell is a compact, translucent macOS-style workspace. It uses
-system fonts, configurable light/dark theme settings, a single default accent,
-low-contrast surfaces, and dense file-oriented controls.
+The desktop shell follows the Codex InterfaceAtlas tokens and primitives while
+retaining Tauri and the molecular workspace. It uses system fonts, configurable
+light/dark appearance, neutral controls, and dense file-oriented navigation.
 
-Current default theme values include:
+Resolved shell defaults (including untouched legacy appearance settings):
 
 | Token | Light | Dark |
 | --- | --- | --- |
-| Accent | `#AF52DE` | `#AF52DE` |
-| Background | `#FFFFFF` | `#111111` |
-| Foreground | `#0D0D0D` | `#FCFCFC` |
+| Accent | `#339CFF` | `#339CFF` |
+| Background | `#FFFFFF` | `#181818` |
+| Foreground | `#1A1C1F` | `#FFFFFF` |
 | UI font | system UI stack | system UI stack |
 | Editor font | system UI stack | system UI stack |
 | Translucency | `30` | `20` |
-| Contrast | `20` | `16` |
+| Contrast | `45` | `60` |
 
-Dark shell text mixes the configured foreground at 84% with the background
-(about `#D6D6D6` with the defaults), keeping primary labels softer than white.
-Light shell text uses the configured foreground directly.
+Primary shell text uses the resolved foreground; secondary and tertiary text
+use the shared Codex semantic tokens. Persisted legacy defaults remain readable
+and resolve through `theme.ts`; custom colours are preserved.
 
 The runtime derives border, surface, hover, selected, palette, tab, and scrollbar
 colors from these settings through CSS variables and `color-mix()`. Users can
@@ -276,3 +278,16 @@ do not show tooltips. Folder, Ketcher, and search glyphs use the primary text
 color at rest in the light theme.
 Light-theme shell and neutral button glyphs use the primary text color on hover
 and keyboard focus while preserving their resting color and geometry.
+
+### Code And Markdown Highlighting
+
+Code viewers and Markdown fenced blocks use Shiki with explicit, lazily loaded
+language grammars and the Oniguruma WASM engine. The existing bounded worker
+queues and line caches remain responsible for visible-range tokenization.
+`code-viewer-syntax-shiki.ts` maps the CSS-variable theme into semantic token
+classes, so light/dark theme changes do not require a second tokenization pass.
+Source text stays escaped by the existing DOM and Markdown projections.
+
+Tokenization is line-local, as before; multiline lexical state is not retained
+across virtualized requests. The editable CodeMirror surface retains its own
+parser and incremental editor highlighting.

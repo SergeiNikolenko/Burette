@@ -4,9 +4,9 @@ import {
   shouldTokenizeCodeLine,
 } from "./code-viewer-syntax-protocol";
 import {
-  ensureCodePrismLanguage,
+  ensureCodeLanguage,
   tokenizeCodeLine,
-} from "./code-viewer-syntax-prism";
+} from "./code-viewer-syntax-shiki";
 
 const workerSelf = self as unknown as {
   onmessage: ((event: MessageEvent<CodeSyntaxWorkerRequest>) => void) | null;
@@ -18,7 +18,7 @@ function post(message: CodeSyntaxWorkerResponse) {
 }
 
 async function tokenizeInWorker(request: CodeSyntaxWorkerRequest) {
-  await ensureCodePrismLanguage(request.languageId);
+  await ensureCodeLanguage(request.languageId);
   post({
     type: "tokens",
     requestId: request.requestId,

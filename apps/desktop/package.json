@@ -40,7 +40,6 @@
     "motion": "^13.4.4",
     "pdfjs-dist": "6.3.289",
     "pptxviewjs": "1.1.9",
-    "prismjs": "^1.30.0",
     "radix-ui": "^1.6.7",
     "raphael": "2.3.0",
     "recharts": "3.10.1",
@@ -59,8 +58,5 @@
     "unified": "^11.0.5",
     "utif": "3.1.0",
     "vfile": "^6.0.3"
-  },
-  "devDependencies": {
-    "@types/prismjs": "^1.26.6"
   }
 }
