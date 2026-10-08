@@ -31,7 +31,7 @@ export function SettingsSidebar({ state, actions }: { state: ShellViewState; act
         <AnimatedBackIcon />
         <span>Back to app</span>
       </Button>
-      <SearchInput className="settings-search" name="settingsSearch" value={query} onValueChange={setQuery}
+      <SearchInput className="settings-search h-9 border-0 bg-(--color-background-primary-ghost-hover) px-3" name="settingsSearch" value={query} onValueChange={setQuery}
         placeholder="Search settings…" aria-label="Search settings" clearLabel="Clear settings search" />
       <ScrollArea className="settings-nav-scroll">
         {visibleGroups.map((group) => (

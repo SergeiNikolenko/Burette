@@ -111,7 +111,7 @@ export const useShellStore = create<ShellState>()(
   persist<ShellState, [], [], PersistedShellState>(
     (set) => ({
       sidebarOpen: true,
-      sidebarWidth: 240,
+      sidebarWidth: 340,
       projectsOpen: true,
       projectRoots: [],
       pinnedProjectRoots: [],

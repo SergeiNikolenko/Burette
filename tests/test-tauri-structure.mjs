@@ -1641,7 +1641,7 @@ assert.match(gridViewerJS, /state\.cardRenderer = 'rdkit';\n\s+store\(CARD_RENDE
 // The renderer switch is a native select the viewer syncs by id, not a
 // segmented control with data attributes.
 assert.match(gridUiTSX, /id="card-renderer"/);
-assert.match(gridUiTSX, /<option value="xyzrender">xyzrender<\/option>/);
+assert.match(gridUiTSX, /<option value="xyzrender">3D renders<\/option>/);
 assert.match(gridUiTSX, /id="xyzrender-preset"/);
 assert.match(quickLookPreviewController, /<script src="preview-config\.js"><\/script>/);
 assert.match(quickLookPreviewController, /gridRuntimeCSP/);

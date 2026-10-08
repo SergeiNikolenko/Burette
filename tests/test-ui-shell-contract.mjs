@@ -537,7 +537,7 @@ for (const exportName of [
 assert.match(sidebarHook, /export function useSidebar\(/);
 assert.match(sidebarHook, /from "\.\.\/stores\/shell-store"/);
 assert.match(sidebarHook, /sidebarWidth/);
-assert.match(shellStore, /sidebarWidth: 240/);
+assert.match(shellStore, /sidebarWidth: 340/);
 assert.doesNotMatch(shellStore, /rightDockOpen:/);
 assert.doesNotMatch(shellStore, /bottomDockOpen:/);
 assert.match(tabWorkspaceStore, /right: defaultDockArea\("right"\)/);
@@ -2257,7 +2257,9 @@ assert.match(styles, /\.workbench \{[^}]*background: var\(--bg-base\);[^}]*overf
 assert.match(styles, /\.main-stage \{[^}]*background: var\(--bg-base\);/s);
 assert.match(styles, /\.dock-panel \{[^}]*background: var\(--bg-base\);/s);
 assert.doesNotMatch(styles, /\.workbench \{[^}]*box-shadow: -12px 0 28px/s);
-assert.match(styles, /\.workspace-sidebar-handle::before \{[^}]*box-shadow: -12px 0 28px var\(--workspace-edge-shadow\);[^}]*pointer-events: none;/s);
+// Codex draws the sidebar edge as one hairline with no cast shadow.
+assert.doesNotMatch(styles, /\.workspace-sidebar-handle::before/);
+assert.match(styles, /\.workspace-sidebar-handle:not\(:hover, :active\)::after \{ opacity: 0; \}/);
 assert.match(appLayout, /className="workspace-sidebar-handle"/);
 assert.match(styles, /\.app-shell\[data-settings-mode="true"\] \.workbench \{[^}]*border-radius: 0;[^}]*box-shadow: none;[^}]*\}/s);
 assert.match(styles, /\.app-shell\[data-hosted-mcp-widget="true"\] \.workbench \{[^}]*border-radius: 0;[^}]*box-shadow: none;[^}]*\}/s);
@@ -2334,7 +2336,7 @@ assert.match(appLayout, /function useInitialSize/);
 // dock's own tabs slide underneath the document tabs. The two numbers live in
 // different files, so they are pinned to each other here.
 assert.match(appLayout, /const CHROME_HEIGHT = 56;/);
-assert.match(styles, /--chrome-height: 56px;/);
+assert.match(styles, /--chrome-height: 46px;/);
 assert.match(appLayout, /<ResizablePanel id="main"[^>]*minSize=\{`\$\{CHROME_HEIGHT\}px`\}/);
 assert.match(appLayout, /onLayoutChanged=\{\(_layout, meta\) => \{/);
 assert.match(appLayout, /if \(!meta\.isUserInteraction\) return;/);
@@ -4052,8 +4054,8 @@ assert.match(styles, /\.sidebar-settings-button/);
 assert.match(styles, /\.settings-sidebar/);
 assert.match(styles, /\.settings-back-button/);
 assert.match(styles, /\.settings-nav-item/);
-assert.match(styles, /\.settings-panel-content \{[^}]*margin: 0 auto[^}]*padding: 96px 32px 80px/s);
-assert.match(styles, /\.agent-integration-content \{[^}]*margin: 0 auto[^}]*padding: 96px 32px 80px/s);
+assert.match(styles, /\.settings-panel-content \{[^}]*margin: 0 auto[^}]*padding: 46px 32px 80px/s);
+assert.match(styles, /\.agent-integration-content \{[^}]*margin: 0 auto[^}]*padding: 46px 32px 80px/s);
 assert.match(styles, /\.page-surface\[data-page-kind="settings"\] \{[^}]*overflow: hidden/s);
 assert.doesNotMatch(styles, /\.page-surface\[data-page-kind="agent-integration"\]/);
 assert.doesNotMatch(styles, /\.agent-setup-prompt/);
@@ -4203,7 +4205,8 @@ assert.match(app, /useKeyboardShortcuts\(\s*state,\s*actions,\s*toggleSidebar,\s
 assert.match(styles, /--focus-ring: color-mix\(in srgb, var\(--fg-base\) 55%, transparent\)/);
 assert.match(styles, /--focus-border: #0a84ff/);
 assert.match(styles, /--control-fill: rgb\(244 244 244\)/);
-assert.match(styles, /\.app-shell::after \{[\s\S]*inset-inline: 0;[\s\S]*top: calc\(var\(--chrome-height\) - 1px\)/);
+// Codex has no rule under the toolbar row.
+assert.doesNotMatch(styles, /\.app-shell::after \{/);
 assert.doesNotMatch(styles, /\.topbar::after/);
 assert.match(styles, /\.tab \{[\s\S]*border-radius: 10px;/);
 assert.match(styles, /\.tab-close \{[\s\S]*border-radius: 8px;/);
@@ -4637,7 +4640,7 @@ assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v\d+"/);
-assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v89"/);
+assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v90"/);
 assert.match(
   browserDevDocuments,
   /viewerProfile === "mesoscale"\) return !document\.runtimePath\.includes\(MESOSCALE_ASSET_VERSION\)/,

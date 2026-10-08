@@ -4,7 +4,7 @@ import React, { act } from "react";
 import result from "../apps/desktop/dev/rgroup-example-data.json";
 
 const browser = new Window();
-for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLSelectElement", "Node", "Event", "MutationObserver", "getComputedStyle"] as const) {
+for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLSelectElement", "HTMLFormElement", "DocumentFragment", "Node", "Event", "MutationObserver", "getComputedStyle"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
 }
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });

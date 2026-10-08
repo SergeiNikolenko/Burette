@@ -4828,6 +4828,9 @@ body.buret-sequence-open:not(.burette-mobile-host) .msp-plugin .msp-layout-regio
   background: var(--buret-molstar-border);
   pointer-events: none;
 }
+/* A collapsed sequence panel leaves its handle on the viewport's top edge; the
+   hairline would read as a toolbar rule, so it shows only while dragging. */
+.buret-sequence-layout .resizable-handle[aria-valuenow="0"]:not(:hover, :active)::after { opacity: 0; }
 .buret-sequence-layout .resizable-handle-grip {
   position: absolute;
   top: 50%;

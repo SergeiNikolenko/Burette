@@ -43,6 +43,6 @@ const dropdownContentClass = dropdownMenu.match(
 )?.[1];
 assert.ok(dropdownContentClass, "dropdown menu content class list not found");
 assert.doesNotMatch(dropdownContentClass, /(?:^|\s)w-\(--radix-dropdown-menu-trigger-width\)/);
-assert.match(dropdownContentClass, /min-w-46 max-w-\[min\(320px,calc\(100vw_-_16px\)\)\]/);
+assert.match(dropdownContentClass, /max-w-\[min\(var\(--radix-dropdown-menu-content-available-width,100vw\),calc\(100vw-16px\)\)\] min-w-46/);
 
 console.log("shadcn foundation contract tests passed");

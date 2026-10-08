@@ -162,7 +162,7 @@ export function FileBrowser({
             aria-label="Search commands and structures"
             aria-haspopup="dialog"
           >
-            <HugeiconsIcon icon={Search01Icon} size={16} color="currentColor" strokeWidth={2} />
+            <HugeiconsIcon icon={Search01Icon} size={16} strokeWidth={2} />
           </button>
         </SidebarTooltip>
       </div>

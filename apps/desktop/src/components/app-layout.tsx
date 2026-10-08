@@ -507,15 +507,6 @@ export function AppLayout({
         <>
           {!hostedMcpWidget ? (
             <div className="chrome-leading-controls" data-tauri-drag-region>
-              <button
-                type="button"
-                className="chrome-button sidebar-toggle-root"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={onToggleSidebar}
-                aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-              >
-                <DockToggleIcon />
-              </button>
               <div className="tab-history-controls" aria-label="Navigation history">
                 <button
                   type="button"
@@ -540,6 +531,15 @@ export function AppLayout({
                   <ArrowRight size={16} aria-hidden />
                 </button>
               </div>
+              <button
+                type="button"
+                className="chrome-button sidebar-toggle-root"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={onToggleSidebar}
+                aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+              >
+                <DockToggleIcon />
+              </button>
             </div>
           ) : null}
           <div className="chrome-trailing-controls" data-tauri-drag-region>
