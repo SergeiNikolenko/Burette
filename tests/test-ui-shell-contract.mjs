@@ -6279,7 +6279,7 @@ assert.match(previewViewer, /async function moleculeContextMenuAction\(action, l
 assert.match(previewViewer, /const target = targetOverride \|\| molstarContextTarget\(\);/);
 assert.match(previewViewer, /action === 'select'/);
 assert.match(previewViewer, /const selectionLoci = molstarContextSelectionLoci\(target\);/);
-assert.match(previewViewer, /selectMolstarContextPick\(\{ \.\.\.target, loci: selectionLoci \}, \{ applyGranularity: false \}\)/);
+assert.match(previewViewer, /selectMolstarContextPick\(\{ \.\.\.target, loci: selectionLoci \}, \{ additive: true, applyGranularity: false \}\)/);
 assert.match(previewViewer, /activeViewer\?\.plugin\?\.managers\?\.interactivity\?\.lociSelects/);
 assert.match(previewViewer, /function selectMolstarContextPick\(target, options = \{\}\)/);
 assert.match(previewViewer, /const additive = options\.additive === true;/);
@@ -6602,7 +6602,7 @@ assert.match(previewViewer, /action === 'save-modified'/);
 assert.match(previewViewer, /action === 'save-modified'[\s\S]*?saveMolstarModifiedStructure\(\);[\s\S]*?setMolstarStructureDirty\(false\);/);
 assert.match(previewViewer, /action\.startsWith\('save-format:'\)/);
 assert.match(previewViewer, /saveMolstarModifiedStructureAs\(format, target\)/);
-assert.match(previewViewer, /contextDocument = molstarContextDocumentPayload\(target\)/);
+assert.match(previewViewer, /molstarContextDocumentPayload\(target\) : null\)\s*\|\| molstarOpenInDocumentPayload\(records\)/);
 assert.match(previewViewer, /if \(!contextDocument\) throw new Error\('No molecule-level Mol\* context is available for this target\.'\)/);
 assert.match(appMolstarContextMessagesHook, /const molstarPreferences = \{[\s\S]*rendererMode: "molstar" as const,[\s\S]*molstarStyle: requestedMolstarStyle \?\? preferences\.molstarStyle,/);
 assert.match(appMolstarContextMessagesHook, /if \(!isTauriRuntime\(\)\) return openBrowserDevMolstarContextDocument\(contextDocument, molstarPreferences\);/);

@@ -371,4 +371,12 @@ const [levelOne] = molstarContextMenuItems([{ kind: 'submenu', id: 'one', text: 
 const [secondChoice, levelThree] = levelOne.items[0].items;
 assert.equal(secondChoice.kind, 'select');
 assert.deepEqual(levelThree.items.map(item => item.id), ['molstar-menu:leaf'], 'a third-level choice would nest past AppKit');
+// Open grids join the viewer's "Open in" submenu, and picking one answers with its document id.
+const openInSent = [];
+const [openIn] = molstarContextMenuItems([{ kind: 'submenu', id: 'open-in', text: 'Open in', items: [
+  { kind: 'item', id: 'open-in:tab', text: 'New Tab' }, { kind: 'item', id: 'open-in:grid', text: 'New Grid' },
+] }], id => openInSent.push(id), [{ id: 'doc-1', title: 'ligands.sdf' }]);
+assert.deepEqual(openIn.items.map(item => item.text ?? item.kind), ['New Tab', 'New Grid', 'separator', 'Add to Grid', 'ligands.sdf']);
+openIn.items.at(-1).action();
+assert.deepEqual(openInSent, ['open-in:grid:doc-1']);
 console.log('Mol* native context menu protocol passed');
