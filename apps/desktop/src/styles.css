@@ -480,25 +480,14 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 @keyframes activity-indicator-spin {
   to { transform: rotate(360deg); }
 }
-.correlation-matrix-dialog {
-  width: min(860px, calc(100vw - 48px));
-}
-.correlation-matrix-target {
-  margin: 0 0 10px;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-.correlation-matrix-message {
-  padding: 20px 0;
-  color: var(--text-secondary);
-  font-size: 12px;
-  text-align: center;
-}
 .correlation-matrix-scroll {
+  min-width: 0;
+  overscroll-behavior: contain;
   overflow: auto;
   max-height: min(56vh, 460px);
 }
 .correlation-matrix-table {
+  width: 100%;
   border-collapse: separate;
   border-spacing: 2px;
   font-size: 11px;
@@ -515,14 +504,14 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   position: sticky;
   top: 0;
   z-index: 1;
-  background: var(--bg-base);
+  background: var(--color-surface-elevated-secondary);
   text-align: center;
 }
 .correlation-matrix-table tbody th {
   position: sticky;
   left: 0;
   z-index: 1;
-  background: var(--bg-base);
+  background: var(--color-surface-elevated-secondary);
 }
 .correlation-matrix-table td {
   min-width: 46px;
