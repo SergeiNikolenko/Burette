@@ -102,13 +102,14 @@
     "openchemlib": "9.25.0",
     "plotly.js-basic-dist-min": "^4.1.1",
     "radix-ui": "^1.6.7",
+    "rdkit-compute": "npm:@rdkit/rdkit@2025.3.4-1.0.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-resizable-panels": "^4.14.0",
+    "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
     "three": "0.186.1",
-    "zustand": "^5.0.15",
-    "rdkit-compute": "npm:@rdkit/rdkit@2025.3.4-1.0.0"
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@babel/core": "^8.0.7",

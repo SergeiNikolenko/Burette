@@ -1153,7 +1153,7 @@ assert.match(appStatusHook, /const pushStatus = useCallback/);
 assert.match(appStatusHook, /const pushErrorStatus = useCallback/);
 assert.match(appStatusHook, /recentErrorsRef\.current = recentErrorsRef\.current\.slice\(-20\)/);
 // Routine info/success updates remain in app status state without interrupting
-// the user; only errors surface through the shared Base UI toast manager.
+// the user; only errors surface through the shared toast layer.
 assert.match(appStatusHook, /toast\.add\(\{/);
 assert.match(appStatusHook, /setStatus\(\{ kind, message: trimmed \}\);\s*if \(kind !== "error"\) return;/);
 // Errors dismiss themselves too; Details keeps the full text.
@@ -1446,8 +1446,8 @@ assert.match(appStatusHook, /compactStatusMessage/);
 // Toasts must portal into .app-shell: theme variables and the dark variant
 // only apply inside it, and document.body would escape both.
 assert.match(uiToast, /useAppShellPortalContainer/);
-assert.match(uiToast, /<ToastPortal container=\{portalContainer\}>/);
-assert.match(uiToast, /createToastManager\(\)/);
+assert.match(uiToast, /createPortal\(/);
+assert.match(uiToast, /from "sonner"/);
 assert.match(uiToast, /HugeiconsIcon/);
 assert.match(appLayout, /const chromeVisible = !settingsMode && !hostedMcpWidget/);
 assert.match(appLayout, /\{!hostedMcpWidget && <div className="drag-region" data-tauri-drag-region \/>\}/);
