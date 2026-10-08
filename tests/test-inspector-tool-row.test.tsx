@@ -69,6 +69,33 @@ test("tool rows expose settings without dispatching jobs and preserve separate q
   });
 });
 
+test("nested inspector disclosures retain values without changing their parent state", async () => {
+  const mount = document.createElement("div"); document.body.append(mount);
+  const root = createRoot(mount);
+  const changes: string[] = [];
+  try {
+    await act(async () => root.render(
+      <CollapsibleSection title="Smooth motion" onOpenChange={open => changes.push(`outer:${open}`)}>
+        <CollapsibleSection title="Scientific settings" onOpenChange={open => changes.push(`inner:${open}`)}>
+          <input aria-label="Filter order" defaultValue="5" />
+        </CollapsibleSection>
+      </CollapsibleSection>
+    ));
+    const [outer, inner] = mount.querySelectorAll("details");
+    const field = mount.querySelector("input")!;
+    field.value = "7";
+    await act(async () => { inner!.open = false; });
+    expect(outer!.open).toBe(true);
+    await act(async () => { outer!.open = false; });
+    await act(async () => { outer!.open = true; });
+    expect(inner!.open).toBe(false);
+    await act(async () => { inner!.open = true; });
+    expect(mount.querySelector("input")).toBe(field);
+    expect(field.value).toBe("7");
+    expect(changes).toEqual(["inner:false", "outer:false", "outer:true", "inner:true"]);
+  } finally { await act(async () => root.unmount()); mount.remove(); }
+});
+
 test("unavailable operations stay disabled in the row and dialog while their reason and settings remain accessible", async () => {
   await fixture(async (mount, calls, render) => {
     await render({ primaryDisabled: true, detail: "Selection exceeds 300 atoms", detailTitle: undefined });

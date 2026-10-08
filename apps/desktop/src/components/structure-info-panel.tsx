@@ -27,7 +27,6 @@ import { PanelEmptyState } from "./ui/panel-empty-state";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrubNumberField } from "@/components/ui/scrub-number-input";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item";
 import { InspectorToolRow } from "./inspector-tool-row";
 import { CollapsibleSection } from "./ui/collapsible-section";
@@ -1028,20 +1027,20 @@ function TrajectorySmoothingCard({
     return () => window.removeEventListener("burette:trajectory-smoothing-toggle-requested", toggle);
   });
   return (
-    <TooltipProvider delayDuration={180}><Accordion type="single" collapsible value={open ? "smoothing" : ""} onValueChange={(value) => setOpen(Boolean(value))} className="structure-brief-card structure-inspector-section trajectory-smoothing-card" data-collapsed={!open || undefined}>
-      <AccordionItem value="smoothing">
-      <div className="flex items-center gap-3">
-        <div className="min-w-0 flex-1"><AccordionTrigger>Smooth motion</AccordionTrigger></div>
-        <SegmentedControl aria-label="Smooth motion" value={built && view === "smoothed" ? "on" : "off"} onValueChange={(value) => {
-          if (value === "off" && built) changeView("original");
-          if (value === "on") { if (built) changeView("smoothed"); else void build(); }
-        }}>
-          <SegmentedControlItem value="off">Off</SegmentedControlItem>
-          <SegmentedControlItem value="on">On</SegmentedControlItem>
-        </SegmentedControl>
-      </div>
-      <AccordionContent className="h-auto grid gap-3">
-
+    <TooltipProvider delayDuration={180}>
+      <CollapsibleSection title="Smooth motion" open={open} onOpenChange={setOpen}
+        className="structure-inspector-section trajectory-smoothing-card"
+        actions={
+          <SegmentedControl aria-label="Smooth motion" value={built && view === "smoothed" ? "on" : "off"} onValueChange={(value) => {
+            if (value === "off" && built) changeView("original");
+            if (value === "on") { if (built) changeView("smoothed"); else void build(); }
+          }}>
+            <SegmentedControlItem value="off">Off</SegmentedControlItem>
+            <SegmentedControlItem value="on">On</SegmentedControlItem>
+          </SegmentedControl>
+        }
+      >
+        <div className="grid min-w-0 gap-3">
           <SegmentedControl className="w-full" aria-label="Smoothing strength" value={preset} disabled={mode === "kinetic"} onValueChange={(value) => {
             if (value === "light" || value === "balanced" || value === "strong") selectPreset(value);
           }}>
@@ -1051,7 +1050,7 @@ function TrajectorySmoothingCard({
                 value={value}
                 className="flex-1 p-0!"
               >
-                {/* A portaled tooltip: the accordion content clips anything drawn above this row. */}
+                {/* Portal above the scrolling inspector rather than clipping the hint. */}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="flex h-full w-full items-center justify-center px-2">{value[0].toUpperCase() + value.slice(1)}</span>
@@ -1064,11 +1063,8 @@ function TrajectorySmoothingCard({
             ))}
           </SegmentedControl>
 
-          <Accordion type="single" collapsible value={advanced ? "science" : ""} onValueChange={(value) => setAdvanced(Boolean(value))}>
-            <AccordionItem value="science">
-            <AccordionTrigger>Scientific settings</AccordionTrigger>
-            <AccordionContent className="h-auto trajectory-smoothing-settings">
-              <div className="trajectory-smoothing-group-label">Method</div>
+          <CollapsibleSection title="Scientific settings" open={advanced} onOpenChange={setAdvanced}>
+            <div className="trajectory-smoothing-settings">
               <TrajectorySetting hint={mode === "kinetic" ? "Use this to tour distinct long-lived shapes, not to smooth the original timeline. It needs a longer trajectory with repeated transitions between shapes." : "Smooth one measured motion over time, or build a short tour through distinct long-lived shapes."}>
                 <span>Analysis method</span>
                 <NativeSelect className="w-full" name="trajectory-method" aria-label="Trajectory key-frame model" value={mode} onChange={(event) => setMode(event.target.value as MdsmoothMode)}>
@@ -1145,9 +1141,8 @@ function TrajectorySmoothingCard({
                 </Button>}
                 </div>
               ) : null}
-            </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+            </div>
+          </CollapsibleSection>
           {progress ? <TrajectorySmoothingProgress progress={progress} /> : resultDirty || (running && built) ? <div role="status" className="trajectory-smoothing-update-status">Updating…</div> : showUpdated ? <div role="status" className="trajectory-smoothing-update-status" data-complete>Updated</div> : null}
           {result ? <TrajectorySmoothingChart result={result} playback={playback} preset={result.preset ?? preset} setFrame={setFrame} /> : null}
           {result?.spectrum ? <TrajectorySpectrum spectrum={result.spectrum} cutoffFrequency={result.cutoffFrequency ?? null} /> : null}
@@ -1158,9 +1153,9 @@ function TrajectorySmoothingCard({
           {(!built || error) && !progress ? <Button type="button" variant="secondary" size="sm" className="trajectory-smoothing-build" disabled={running} onClick={() => void build()}>
             {running ? "Enabling smoothing…" : error ? "Try again" : "Enable smoothing"}
           </Button> : null}
-      </AccordionContent>
-      </AccordionItem>
-    </Accordion></TooltipProvider>
+        </div>
+      </CollapsibleSection>
+    </TooltipProvider>
   );
 }
 

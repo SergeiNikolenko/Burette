@@ -44,7 +44,9 @@ test("browser choices use a Radix listbox and keep labels, disabled groups, empt
     expect(selected.textContent).toBe("Second");
     await act(async () => selected.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(document.querySelector('[role="listbox"]')).toBeNull();
-    expect(document.activeElement).toBe(trigger);
+    // Radix restores focus in the deferred FocusScope unmount cleanup.
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
+    expect(document.activeElement?.id).toBe(trigger.id);
     expect(calls).toEqual([["method", "2", true]]);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
