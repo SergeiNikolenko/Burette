@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertTitle, AlertDescription, AlertAction } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -149,6 +150,13 @@ function Appearance({ mode }: { mode: ThemeMode }) {
             <Input variant="field" aria-label="Locked column" disabled defaultValue="Read-only column" />
             <Input variant="field" aria-label="Maximum rows" type="number" min={1} max={500} defaultValue={100} />
           </div>
+        </section>
+        <section aria-label="Status messages" className="grid gap-3">
+          <Alert><AlertTitle>Structure saved</AlertTitle></Alert>
+          <Alert variant="destructive"><AlertTitle>Could not load structure</AlertTitle><AlertDescription>Choose another file.</AlertDescription></Alert>
+          <Alert><AlertDescription>Attach the matching topology to show elements, residues and bonds.</AlertDescription>
+            <AlertAction><Button variant="outline" size="xs" disabled>Attaching…</Button></AlertAction>
+          </Alert>
         </section>
         <section>
           <h3>Overlays</h3>

@@ -3,6 +3,14 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-ketcher-persist-prompt.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-ketcher-persist-prompt.test.tsx", import.meta.url))]),
+  "test-appearance-theme.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-appearance-theme.test.tsx", import.meta.url))]),
+  "test-tab-memory-router.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-tab-memory-router.test.tsx", import.meta.url))]),
+  "test-chemical-editor-query.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-chemical-editor-query.test.tsx", import.meta.url))]),
+  "test-settings-sidebar.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-settings-sidebar.test.tsx", import.meta.url))]),
+  "test-dock-header.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-dock-header.test.tsx", import.meta.url))]),
+  "test-welcome-screen.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-welcome-screen.test.tsx", import.meta.url))]),
+  "test-inspector-tool-row.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-inspector-tool-row.test.tsx", import.meta.url))]),
   "test-settings-controls.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-settings-controls.test.tsx", import.meta.url))]),
   "test-browser-select.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-browser-select.test.tsx", import.meta.url))]),
   "test-toast-interactions.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-toast-interactions.test.tsx", import.meta.url))]),

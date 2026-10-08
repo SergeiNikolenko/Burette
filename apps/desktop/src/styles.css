@@ -3540,15 +3540,6 @@ img.radix-menu-item-icon {
   display: grid;
   gap: 6px;
 }
-.structure-inspector-engine-notice {
-  border-color: color-mix(in srgb, var(--accent) 26%, var(--line-subtler));
-  background: color-mix(in srgb, var(--accent) 6%, var(--surface-subtle));
-}
-.structure-inspector-engine-notice [data-slot="alert-description"] {
-  color: var(--text-secondary);
-  font-size: 11px;
-  line-height: 1.35;
-}
 .structure-inspector-xtb-card[data-collapsed] {
   gap: 0;
 }

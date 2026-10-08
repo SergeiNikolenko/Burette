@@ -19,6 +19,13 @@ to the notification stack and viewport. They deliberately keep neutral surfaces
 in both themes: errors color the title, not the entire card. The colorful solid
 Atlas variants are not the product default.
 
+Inline alerts follow the same neutral-surface rule. Their padding, type scale,
+border and radius match the default Atlas Alert; a destructive title uses the
+danger text token, while explanatory text and icons remain neutral. Actions
+stay in the layout below the message rather than overlapping it in an absolute
+position. Inspector notices must not override these styles with accent-tinted
+backgrounds or a separate small text scale.
+
 ## Inspected Baseline (historical)
 
 The inventory below reflects the React source under `apps/desktop/src` before
@@ -88,26 +95,27 @@ Only components required by a migration stage are installed. React Hook Form,
 TanStack Table, and other high-level form or table frameworks are out of scope
 unless a later measured requirement justifies them.
 
-## Migration Stages
+## Atlas Migration Acceptance
 
-1. **Foundation** — *shipped.* The Radix-based shadcn source layer, Tailwind
-   v4, aliases, semantic token bridge, and `cn()` are in place (see Foundation
-   above).
-2. **Settings and forms** — *shipped.* Settings, preference controls, and
-   confirmation flows compose shadcn `Field`/`AlertDialog`/`Button`/`Card`
-   primitives (`settings-panel/setting-control.tsx`).
-3. **Dialogs, menus, notifications, and command** — *substantially shipped.*
-   Notification presentation now uses the Sonner adapter with a
-   standalone details dialog; Radix menu wrappers and the command palette keep
-   their `.app-shell` portals and native-menu fallback.
-4. **Shell and inspectors** — *in progress.* The Inspector (Info dock) is
-   rebuilt as a section list; remaining dock/toolbar chrome migrates
-   incrementally. Specialized editor-tab behavior remains feature-owned.
-5. **States and small data views** — migrate welcome, error, empty, loading,
-   progress, status, badges, and small tables.
-6. **Completion sweep** — migrate remaining ordinary controls, remove only CSS
-   proven dead by the completed replacements, and document deliberate
-   exclusions.
+The historical shadcn foundation above is not acceptance of the Atlas migration.
+The following four stages remain the delivery scope. Local commits, source
+presence and individual green tests do not mean a stage has been released.
+
+| Stage | Current implementation | Evidence required for acceptance |
+| --- | --- | --- |
+| Theme tokens | `styles/codex-tokens.css`, `styles/interface-tokens.css`, `lib/theme.ts`; classic sidebar/background retained | Light/dark source comparison, custom appearance controls, portal inheritance; `test-appearance-theme.test.tsx` covers resolved preferences, not pixel fidelity |
+| Primitives and icons | Shared `ui/**`; source CSS extraction through `scripts/sync-atlas-primitives.mjs`; reviewed `config/icons/apps-sdk.json` and generated adapters | Compare every used Button, Menu, Switch, Checkbox, RadioGroup, Tooltip, Toast, Input, Dialog, Popover and LoadingIndicator variant with its Atlas story; exercise focus, keyboard, disabled, nested-overlay and async states. Preserve the scientific-glyph exceptions in `design-system.md` |
+| Shell screens | Shared controls in sidebar, tabs, docks, settings, welcome, dialogs, command palette, inspectors and document controls | Whole-screen light/dark and narrow-window checks with real documents; no cropped primitive-only substitute. Verify file actions, tab keep-alive, Back/Forward, menus, docking and empty/error states |
+| Frontend infrastructure | Vite/Rolldown with React Compiler preset; `editor-area/tab-router.tsx`; TanStack Query in `use-chemical-editor-targets.ts`; Sonner and existing rendering dependencies | Compiled application check, navigation/session-restore contracts, query deduplication and stale-result isolation. Query coverage currently concerns editor discovery only; do not describe it as an app-wide data-layer migration |
+
+The browser fixtures are `dev/codex-theme.html` for side-by-side theme scopes
+and `dev/forms.html` for production forms with in-memory outcomes. They support
+component inspection; they do not replace real shell/document acceptance.
+
+The focused route, theme, editor-query, settings-sidebar, dock-header, welcome,
+inspector-tool and Ketcher-save interaction tests are registered with
+`tests/vp-contract.test.mjs`. Other tests existing on disk are not implicitly
+covered by that runner: register or invoke the specific checks needed by a stage.
 
 Each stage is committed independently. Non-mechanical changes should remain
 below roughly 500 changed lines and must be split before approaching 800 lines.
@@ -116,8 +124,8 @@ below roughly 500 changed lines and must be split before approaching 800 lines.
 
 Every stage must pass the smallest checks for its changed surface:
 
-- `bun run typecheck` and `bun run build` from `apps/desktop` when TypeScript or
-  build configuration changes.
+- `vp run typecheck` for TypeScript changes; `vp build` for build configuration
+  or compiled-application acceptance. Follow `vite-plus.md` for the toolchain.
 - Focused UI contract tests for changed shell or component behavior.
 - Browser-dev verification in light and dark themes.
 - Keyboard focus, disabled, hover, error, loading, and empty states relevant to
