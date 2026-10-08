@@ -5467,7 +5467,7 @@ assert.match(previewRuntimeCss, /#buret-toolbar \.buret-toolbar-content \{/);
 assert.match(previewRuntimeCss, /flex: 0 1 auto/);
 assert.match(previewRuntimeCss, /max-width: calc\(100vw - 72px\)/);
 assert.match(previewRuntimeCss, /#buret-toolbar \.buret-button \{ flex: 0 0 auto; white-space: nowrap; \}/);
-assert.match(previewRuntimeCss, /--buret-control-fill: rgb\(244, 244, 244\);/);
+assert.match(previewRuntimeCss, /--buret-control-fill: #ffffff;/);
 assert.match(previewRuntimeCss, /#buret-toolbar\.buret-toolbar-docked \.buret-toolbar-content \{/);
 assert.match(previewRuntimeCss, /overflow-x: auto/);
 assert.match(previewRuntimeCss, /#buret-toolbar\.buret-popover-open \.buret-toolbar-content \{[\s\S]*overflow: visible;[\s\S]*\}/);
@@ -6648,7 +6648,7 @@ assert.match(previewRuntimeCss, /\.buret-representation-type-item\[data-current=
 assert.doesNotMatch(previewRuntimeCss, /\.buret-representation-mode-radio/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-submenu\[data-buret-representation-menu\] \{[\s\S]*width: min\(200px, calc\(100vw - 16px\)\);[\s\S]*max-height: none;/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-menu \{[\s\S]*border: 0;/);
-assert.match(previewRuntimeCss, /--buret-menu-background: rgb\(30, 32, 36\);/);
+assert.match(previewRuntimeCss, /--buret-menu-background: #282828;/);
 assert.match(previewRuntimeCss, /--buret-menu-background: var\(--buret-control-fill\);/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-menu \{[^}]*backdrop-filter: none;/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-menu-section-label \{/);

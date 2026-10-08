@@ -4772,10 +4772,7 @@ img.radix-menu-item-icon {
   padding: 6px;
   user-select: none;
   font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-  background: rgb(14, 15, 17);
-}
-.app-shell[data-effective-theme="light"] .structure-inspector-tree {
-  background: rgb(244, 244, 244);
+  background: var(--color-surface);
 }
 /* Indentation already says where a group starts, so the hairlines that made the
    tree read as a table are gone. Without them the rows can also close up: at the

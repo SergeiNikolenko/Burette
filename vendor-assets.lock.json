@@ -48,8 +48,8 @@
     {
       "path": "PreviewExtension/Web/mesoscale.css",
       "package": "molstar",
-      "bytes": 92738,
-      "sha256": "sha256-J2GERL1DN52Te4k7oR30hUxw77oIyA44E+4og1n5YZs="
+      "bytes": 92582,
+      "sha256": "sha256-F/ipCd2jh3+7Yp6gaFpCKVULRb5J8t973IBHBf2M874="
     },
     {
       "path": "PreviewExtension/Web/rdkit/RDKit_minimal.js",

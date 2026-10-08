@@ -6,34 +6,34 @@
   --buret-meso-left-reservation: 0px;
   --buret-meso-right-reservation: 0px;
   --buret-meso-bottom-reservation: 0px;
-  --buret-meso-panel: rgb(18, 20, 22);
-  --buret-meso-surface: rgb(24, 26, 29);
-  --buret-meso-field: rgb(32, 35, 39);
-  --buret-meso-hover: rgb(48, 52, 58);
-  --buret-meso-border: rgba(255, 255, 255, 0.10);
-  --buret-meso-text: rgba(246, 247, 249, 0.94);
-  --buret-meso-muted: rgba(190, 196, 204, 0.82);
+  --buret-meso-panel: #181818;
+  --buret-meso-surface: #181818;
+  --buret-meso-field: #242424;
+  --buret-meso-hover: #2a2a2a;
+  --buret-meso-border: rgba(255, 255, 255, 0.08);
+  --buret-meso-text: #dfdfdf;
+  --buret-meso-muted: rgba(223, 223, 223, 0.65);
   --buret-meso-accent: #af52de;
 }
 
 body.buret-theme-light {
-  --buret-meso-panel: rgb(247, 247, 248);
-  --buret-meso-surface: rgb(241, 241, 243);
-  --buret-meso-field: rgb(255, 255, 255);
-  --buret-meso-hover: rgb(229, 229, 232);
-  --buret-meso-border: rgba(0, 0, 0, 0.14);
-  --buret-meso-text: rgba(32, 33, 35, 0.94);
-  --buret-meso-muted: rgba(76, 78, 83, 0.84);
+  --buret-meso-panel: #ffffff;
+  --buret-meso-surface: #ffffff;
+  --buret-meso-field: #f3f3f4;
+  --buret-meso-hover: #ededed;
+  --buret-meso-border: rgba(26, 28, 31, 0.08);
+  --buret-meso-text: #1a1c1f;
+  --buret-meso-muted: rgba(26, 28, 31, 0.65);
 }
 
 body.buret-theme-dark {
-  --buret-meso-panel: rgb(20, 22, 24);
-  --buret-meso-surface: rgb(27, 30, 33);
-  --buret-meso-field: rgb(35, 39, 43);
-  --buret-meso-hover: rgb(48, 52, 58);
-  --buret-meso-border: rgba(255, 255, 255, 0.12);
-  --buret-meso-text: rgba(246, 247, 249, 0.94);
-  --buret-meso-muted: rgba(198, 202, 208, 0.82);
+  --buret-meso-panel: #181818;
+  --buret-meso-surface: #181818;
+  --buret-meso-field: #242424;
+  --buret-meso-hover: #2a2a2a;
+  --buret-meso-border: rgba(255, 255, 255, 0.08);
+  --buret-meso-text: #dfdfdf;
+  --buret-meso-muted: rgba(223, 223, 223, 0.65);
 }
 
 html[data-burette-theme="light"],
@@ -43,7 +43,7 @@ body.buret-theme-light {
 
 html[data-burette-theme="dark"],
 body.buret-theme-dark {
-  background: #101010 !important;
+  background: #181818 !important;
 }
 
 body .msp-plugin,
