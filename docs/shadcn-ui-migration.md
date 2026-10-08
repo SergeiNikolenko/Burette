@@ -2,20 +2,22 @@
 
 ## Objective
 
-Move the ordinary React interface in `apps/desktop` onto a shared shadcn/ui
-component layer without changing Burette into a generic dashboard. The target
-keeps the current compact macOS-oriented chrome, system typography, dynamic
-light/dark themes, 10 px control radius, and existing semantic CSS variables.
-shadcn/ui is used as source-owned primitives and composition guidance, not as a
-new product skin.
+Move the ordinary React interface in `apps/desktop` onto shared, source-owned
+components styled from Codex InterfaceAtlas. Preserve Tauri, the classic
+edge-to-edge sidebar and background, dynamic light/dark themes, and the existing
+scientific workflows. Component radii and spacing come from the corresponding
+Atlas variant, not a single global radius or a generic dashboard template.
 
-The migration uses the Radix base because Burette already depends on Radix
-Dialog, Dropdown Menu, and Context Menu. Two deliberate, scoped exceptions
-exist alongside it: the status toast layer is built on Base UI
-(`@base-ui/react/toast` in `apps/desktop/src/components/ui/toast.tsx`), and
-animated components come from the `animate-ui` registry
-(`apps/desktop/src/components/animate-ui/`). Do not add further primitive
-stacks beyond these.
+The shared controls use Radix with source-owned Atlas styles; the current visual
+direction is documented in `design-system.md`. Notifications use Sonner through
+`apps/desktop/src/components/ui/toast.tsx`, not Base UI Toast. Base UI remains
+scoped to `ui/scroll-area.tsx`. Existing animated components live in
+`apps/desktop/src/components/animate-ui/`. Do not add another primitive stack.
+
+Toast cards use Atlas spacing, typography and content-sized width, constrained
+to the notification stack and viewport. They deliberately keep neutral surfaces
+in both themes: errors color the title, not the entire card. The colorful solid
+Atlas variants are not the product default.
 
 ## Inspected Baseline (historical)
 
@@ -30,7 +32,7 @@ of its "current implementation" entries no longer exist (for example
 | Dialogs and confirmations | Radix Dialog markup in `notification-popup.tsx` and `settings-panel/setting-control.tsx`; Ketcher export dialogs | Shared `Dialog` and `AlertDialog` compositions with `.app-shell` portal ownership |
 | Menus | `radix-menu.tsx`, `native-context-menu.ts`, editor and project menus | Shared `DropdownMenu` and `ContextMenu` wrappers while preserving the native-menu selection boundary |
 | Command palette | `command-palette/index.tsx` using `cmdk` and Radix Dialog directly | Shared `Command` inside `Dialog`, retaining current actions, keyboard navigation, and query contract |
-| Notifications and status | `notification-popup.tsx`, local status rows, custom error/status panels | Base UI toast layer (`ui/toast.tsx`, shipped — replaced the popup), `Alert`, `Badge`, `Progress`, and `Spinner` where their interaction model matches |
+| Notifications and status | `notification-popup.tsx`, local status rows, custom error/status panels | Shared Sonner toast adapter (`ui/toast.tsx`), `Alert`, `Badge`, `Progress`, and `Spinner` where their interaction model matches |
 | Shell chrome | `app-layout.tsx`, `sidebar/**`, `dock-panel.tsx`, `editor-area/editor-tabs.tsx` | Shared buttons, input groups, tabs, tooltips, popovers, separators, scroll areas, and collapsibles without changing layout or drag regions |
 | Inspectors and tools | `structure-info-panel.tsx`, `descriptor-panel.tsx`, `folding-results-panel.tsx`, `spectrum-viewer.tsx` | Feature components composed from shared fields, controls, cards, badges, progress, empty, and loading states |
 | Welcome and failure states | `welcome/**`, `error-boundary.tsx`, dock and folding empty/loading states | Shared `Empty`, `Alert`, `Skeleton`, `Spinner`, and `Button` compositions |
@@ -95,7 +97,7 @@ unless a later measured requirement justifies them.
    confirmation flows compose shadcn `Field`/`AlertDialog`/`Button`/`Card`
    primitives (`settings-panel/setting-control.tsx`).
 3. **Dialogs, menus, notifications, and command** — *substantially shipped.*
-   Notification presentation moved to the Base UI toast layer with a
+   Notification presentation now uses the Sonner adapter with a
    standalone details dialog; Radix menu wrappers and the command palette keep
    their `.app-shell` portals and native-menu fallback.
 4. **Shell and inspectors** — *in progress.* The Inspector (Info dock) is
