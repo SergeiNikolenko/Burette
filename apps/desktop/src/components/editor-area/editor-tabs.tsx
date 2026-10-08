@@ -560,7 +560,13 @@ export function EditorTabs({
               open.items = open.items.filter(entry => !("id" in entry && hidden.includes(entry.id)));
             }
             const compact = tabMenu.filter(entry => entry.kind !== "separator" && !(entry.kind === "submenu" && !entry.items.length));
-            void showNativeContextMenu(menuSections([...compact.slice(0, 1), pin, ...sceneMenu, ...compact.slice(1), ...reveal], submenu("close-tabs", "Close", closing, "xmark")), { x: event.clientX, y: event.clientY });
+            const opening = compact.filter(entry => "id" in entry && ["file-open", "file-edit"].includes(entry.id));
+            // One way to close reads as a plain command; a tab with nothing else to offer keeps it next to Pin.
+            const only = closing.length === 1 && closing[0].kind === "item" ? closing[0] : undefined;
+            const close: MenuItemSpec[] = only ? [{ ...only, id: "close-tabs", text: `Close ${only.text}` }] : submenu("close-tabs", "Close", closing, "xmark");
+            const bare = !compact.length && !sceneMenu.length && !reveal.length;
+            void showNativeContextMenu(menuSections(opening, [pin, ...sceneMenu, ...(bare ? close : [])],
+              [...compact.filter(entry => !opening.includes(entry)), ...reveal], bare ? [] : close), { x: event.clientX, y: event.clientY });
           };
           return (
             <div
