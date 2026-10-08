@@ -237,6 +237,26 @@ test("confirmation focuses Cancel and only the explicit action commits", async (
 const { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } = await import("../apps/desktop/src/components/ui/tooltip");
 const { NativeSelect, NativeSelectOption } = await import("../apps/desktop/src/components/ui/native-select");
 
+test("toolbar buttons retain tooltip focus, disabled actions and non-submit defaults", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  const zoom = React.createRef<HTMLButtonElement>();
+  let changes = 0; let submissions = 0;
+  try {
+    await act(async () => root.render(<form onSubmit={event => { event.preventDefault(); submissions++; }}>
+      <TooltipProvider delayDuration={0}><Tooltip><TooltipTrigger asChild>
+        <Button ref={zoom} variant="ghost" size="icon-toolbar" aria-label="Zoom in" onClick={() => changes++}><span aria-hidden>+</span></Button>
+      </TooltipTrigger><TooltipContent>Increase scale</TooltipContent></Tooltip></TooltipProvider>
+      <Button variant="ghost" size="toolbar" disabled onClick={() => changes--}>Zoom out</Button>
+    </form>));
+    await act(async () => zoom.current!.focus());
+    expect(shell.querySelector('[role="tooltip"]')?.textContent).toBe("Increase scale");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("Zoom in");
+    await act(async () => { zoom.current!.click(); shell.querySelector<HTMLButtonElement>("button[disabled]")!.click(); });
+    expect({ changes, submissions }).toEqual({ changes: 1, submissions: 0 });
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
+
 test("a select's portaled options do not reopen the parent tooltip on focus or pointer movement", async () => {
   const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
   const root = createRoot(shell);

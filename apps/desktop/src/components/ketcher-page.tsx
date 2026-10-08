@@ -35,7 +35,6 @@ import "./ketcher/workspace.css";
 import { KetcherTextPanel } from "./ketcher/text-panel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -1152,37 +1151,31 @@ export function KetcherPage({
           >
             <KetcherLogo />
           </span>
-          <div>
-            <h1>Ketcher</h1>
-            <p>{hasSketch ? "Molecular structure" : "Draw or import a structure"}</p>
-          </div>
+          <h1>Ketcher</h1>
         </div>
         <TooltipProvider>
         <div className="ketcher-page-actions" aria-label="Sketch actions">
           <div className="flex items-center gap-1.5" role="group" aria-label="Open sketch in a viewer">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" aria-label="Open sketch as cards" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>
+                <Button type="button" variant="ghost" size="icon-toolbar" aria-label="Open sketch as cards" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>
                   <Grid className="size-4" aria-hidden="true" />
-                  Cards
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Open sketch as cards</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" aria-label="Open sketch in 3D" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>
+                <Button type="button" variant="ghost" size="icon-toolbar" aria-label="Open sketch in 3D" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>
                   <Cube className="size-4" aria-hidden="true" />
-                  3D
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Open sketch in 3D</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" aria-label="Open sketch as a rendered image" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>
+                <Button type="button" variant="ghost" size="icon-toolbar" aria-label="Open sketch as a rendered image" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>
                   <Camera className="size-4" aria-hidden="true" />
-                  Render
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Open sketch as a rendered image</TooltipContent>
@@ -1225,14 +1218,14 @@ export function KetcherPage({
             ]}
             trigger={(
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" disabled={!ketcher || exportingSketch} aria-label="Open molecular compute menu">
+                <Button type="button" variant="ghost" size="toolbar" disabled={!ketcher || exportingSketch} aria-label="Open molecular compute menu">
                   Compute
                   <ChevronDown data-icon="inline-end" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
             )}
           />
-          <TooltipContent showArrow={false}>Native molecular compute</TooltipContent>
+          <TooltipContent showArrow={false}>Molecular calculations</TooltipContent>
           </Tooltip>}
           <Tooltip>
           <RadixDropdownMenu
@@ -1271,7 +1264,7 @@ export function KetcherPage({
             ]}
             trigger={(
               <TooltipTrigger asChild>
-              <Button type="button" variant="outline" disabled={!ketcher || exportingSketch} aria-label="Open database search menu">
+              <Button type="button" variant="ghost" size="toolbar" disabled={!ketcher || exportingSketch} aria-label="Open database search menu">
                 Database
                 <ChevronDown data-icon="inline-end" aria-hidden="true" />
               </Button>
@@ -1331,7 +1324,7 @@ export function KetcherPage({
               ]}
               trigger={(
                 <TooltipTrigger asChild>
-                  <Button type="button" variant="outline" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch || !hasSketch}>
+                  <Button type="button" variant="ghost" size="toolbar" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch || !hasSketch}>
                     Add to collection
                     <ChevronDown data-icon="inline-end" aria-hidden="true" />
                   </Button>
@@ -1341,30 +1334,32 @@ export function KetcherPage({
           )}
           <TooltipContent showArrow={false}>{gridEditSource ? saveToCollectionTooltip : "Add sketch to SDF collection"}</TooltipContent>
           </Tooltip>}
-          <ButtonGroup className="ketcher-scale-control" aria-label="Ketcher scale">
+        </div>
+        <div className="ketcher-page-display-actions flex shrink-0 items-center gap-1.5">
+          <div className="ketcher-scale-control flex shrink-0 items-center" role="group" aria-label="Ketcher scale">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" size="icon" aria-label="Decrease Ketcher scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>
+                <Button type="button" variant="ghost" size="icon-toolbar" aria-label="Decrease Ketcher scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>
                   <Minus aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Decrease Ketcher scale</TooltipContent>
             </Tooltip>
-            <ButtonGroupText className="min-w-12 justify-center border-border tabular-nums">{ketcherZoomPercent}%</ButtonGroupText>
+            <span className="min-w-10 text-center text-sm text-(--color-text-tertiary) tabular-nums">{ketcherZoomPercent}%</span>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" size="icon" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>
+                <Button type="button" variant="ghost" size="icon-toolbar" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>
                   <Plus aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Increase Ketcher scale</TooltipContent>
             </Tooltip>
-          </ButtonGroup>
+          </div>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon-toolbar"
                 aria-label={ketcherThemeTitle}
                 onClick={() => actions.setPreference("theme", nextKetcherTheme)}
               >

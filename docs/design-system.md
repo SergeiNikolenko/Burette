@@ -245,9 +245,14 @@ Scientific tables keep their compact scale. Theme preferences still own
 background, foreground, fonts and accent.
 
 The shared controls in `components/ui` follow the Codex control specs and read
-their colors, radii and shadows from the tokens. Buttons come in a 32px action
-size (default), a 28px toolbar size (`sm`) and a 24px pill (`xs`), all at the
-interface weight. Inputs are 36px fields. Select triggers use the original Atlas
+their colors, radii and shadows from the tokens. SDK pill buttons retain the
+32px default, 28px `sm` and 24px `xs` sizes. Pane headers use the original app
+button's `toolbar` / `icon-toolbar` sizes instead: 28px height, 13/18 type,
+8px inline padding (zero for square icon controls) and `--radius-button-toolbar`.
+Use the ghost variant for secondary toolbar actions. Ketcher's header follows
+the Atlas `panel-header-toolbar` pane geometry; its actions wrap below the title
+and display controls when the editor pane is narrow, rather than shrinking or
+removing commands. Inputs are 36px fields. Select triggers use the original Atlas
 outline style: 32px high with a 10px radius by default, or 28px high with a 7.5px
 radius for `size="sm"`. Their popup and option CSS are extracted by
 `scripts/sync-atlas-primitives.mjs`; the Radix adapter retains keyboard focus,

@@ -3242,7 +3242,6 @@ assert.match(ketcherPage, /if \(hasImportedStructure\) \{/);
 assert.match(ketcherPage, /const molfile = await withKetcherTimeout\(ketcher\.getMolfile\("v2000"\), "Imported sketch export"\);/);
 assert.match(ketcherPage, /if \(!isBlankKetcherMolfile\(molfile\)\) actions\.saveKetcherDraft\(molfile\);/);
 assert.match(ketcherPage, /setHasSketch\(false\)/);
-assert.match(ketcherPage, /<p>\{hasSketch \? "Molecular structure" : "Draw or import a structure"\}<\/p>/);
 assert.doesNotMatch(ketcherPage, /className="ketcher-empty-watermark"/);
 assert.match(ketcherPage, /await withKetcherTimeout\(ketcher\.getMolfile\("v2000"\), "Sketch export"\)/);
 assert.match(ketcherPage, /if \(isBlankKetcherMolfile\(molfile\)\)/);

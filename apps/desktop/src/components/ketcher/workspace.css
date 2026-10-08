@@ -1,14 +1,26 @@
 @import "./extended-table.css";
 
-/* OpenAI reference: 4px spacing, 8/12px radii, neutral semantic surfaces.
-   Colors remain bound to Burette's editable light/dark theme. */
-.ketcher-page .ketcher-page-header {
-  width: 100%; max-width: none; min-height: 64px; padding: 12px 16px;
-  justify-content: space-between; gap: 16px; box-sizing: border-box;
+/* Atlas panel-header-toolbar: pane height, toolbar buttons and action gaps.
+   Keep actions available when a dock narrows the molecular canvas. */
+.ketcher-page .ketcher-page-header,
+.ketcher-page[data-narrow] .ketcher-page-header {
+  display: flex; flex-wrap: wrap; align-items: center;
+  container: ketcher-header / inline-size;
+  width: 100%; max-width: none; min-height: var(--height-toolbar-pane);
+  padding: 6px 16px; gap: var(--spacing-toolbar-action); box-sizing: border-box;
 }
-.ketcher-page .ketcher-page-title h1 { font-weight: 500; }
-.ketcher-page .ketcher-page-actions { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-.ketcher-page .ketcher-page-title { flex-shrink: 0; }
+.ketcher-page .ketcher-page-title h1 { font-weight: var(--font-weight-medium); line-height: 20px; }
+.ketcher-page .ketcher-page-title { flex: 0 0 auto; width: auto; gap: 8px; }
+.ketcher-page .ketcher-page-icon { width: 20px; height: 20px; flex-basis: 20px; background: none; }
+.ketcher-page .ketcher-page-icon :is(svg, img) { width: 20px; height: 20px; }
+.ketcher-page .ketcher-page-actions {
+  flex: 0 1 auto; width: auto; min-width: 0; margin-left: auto; padding-bottom: 0;
+  flex-wrap: wrap; justify-content: flex-end; gap: var(--spacing-toolbar-action);
+}
+@container ketcher-header (max-width: 704px) {
+  .ketcher-page .ketcher-page-actions { order: 1; flex-basis: 100%; margin-left: 0; justify-content: flex-start; }
+  .ketcher-page-display-actions { margin-left: auto; }
+}
 .ketcher-page .ketcher-page-body { padding: 0 16px 8px; }
 .ketcher-page .ketcher-editor-shell { border-radius: 12px; }
 .ketcher-page .ketcher-page-footer { padding: 8px 16px 12px; }
@@ -147,12 +159,7 @@
 .app-shell .ketcher-editor-shell [data-testid="macromolecule-properties-window"] [class*="TabsWrapper"] { margin-top: -25px; top: auto; background: transparent; }
 .app-shell .ketcher-editor-shell [data-testid="macromolecule-properties-window"] [class*="StyledTabs"] { background: transparent; }
 
-/* Keep controls at their native size. Only the molecular canvas is zoomed;
-   compact windows scroll the action strip instead of shrinking every target. */
-.ketcher-page .ketcher-page-header { display: flex; flex-wrap: wrap; height: auto; align-content: center; }
-.ketcher-page .ketcher-page-title { flex: 1 0 180px; }
-.ketcher-page .ketcher-page-actions { flex: 1 1 620px; width: auto; min-width: 0; padding-bottom: 0; }
-.ketcher-page[data-narrow] .ketcher-page-actions { justify-content: flex-start; }
+/* Only the molecular canvas is zoomed; toolbar targets keep their native size. */
 .ketcher-editor-shell [class*="App-module_top"] { min-width: 0; max-width: 100%; }
 .ketcher-editor-shell [class*="App-module_top"] > div:first-child { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; }
 .ketcher-editor-shell [class*="App-module_top"] > div:last-child { flex-shrink: 0; }
@@ -555,9 +562,6 @@
 
 /* Apps SDK UI: text-sm 14/20, heading-xs 16/24, heading-sm 18/26,
    control-md 32px, and 6px/8px menu item gutters. */
-.app-shell .ketcher-page-actions button {
-  font-size: 14px; line-height: 20px;
-}
 .app-shell .ketcher-ui-dialog [data-slot="dialog-title"] {
   font-size: 18px; line-height: 26px; font-weight: 600;
 }

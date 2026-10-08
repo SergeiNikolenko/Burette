@@ -5277,21 +5277,6 @@ img.radix-menu-item-icon {
   min-height: 0;
   overflow: hidden;
 }
-.dock-viewer .ketcher-page-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 10px;
-  padding: 10px 14px;
-}
-.dock-viewer .ketcher-page-title {
-  width: 100%;
-}
-.dock-viewer .ketcher-page-actions {
-  width: 100%;
-  overflow-x: auto;
-  padding-bottom: 2px;
-}
 .dock-viewer .ketcher-page-body {
   min-width: 0;
   overflow: hidden;
@@ -5667,11 +5652,6 @@ img.radix-menu-item-icon {
   font-weight: 400;
   line-height: 1.2;
 }
-.ketcher-page-title p {
-  margin: 3px 0 0;
-  color: var(--text-muted);
-  font-size: 12px;
-}
 /* Buttons inside the actions row are shadcn Buttons/ButtonGroups now; only the
    row layout lives here so no bare `button` descendant rule can override the
    Tailwind utilities of the primitives. */
@@ -5705,21 +5685,6 @@ img.radix-menu-item-icon {
   background: var(--surface-primary);
   overflow: hidden;
   isolation: isolate;
-}
-/* ResizeObserver marks the layout narrow from the editor shell's actual width,
-   so sidebar and dock changes are handled independently of the window size. */
-.ketcher-page[data-narrow] .ketcher-page-header {
-  width: 100%;
-  max-width: none;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-  gap: 8px;
-}
-.ketcher-page[data-narrow] .ketcher-page-actions {
-  width: 100%;
-  overflow-x: auto;
-  padding-bottom: 2px;
 }
 .ketcher-editor-scale-frame {
   position: absolute;

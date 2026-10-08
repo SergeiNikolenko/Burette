@@ -26,6 +26,7 @@ const sizes = {
   default: "lg", xs: "xs", sm: "md", lg: "xl", icon: "lg",
   settings: "xl",
   "icon-2xs": "3xs", "icon-xs": "xs", "icon-sm": "md", "icon-lg": "xl",
+  toolbar: "md", "icon-toolbar": "md",
 } as const;
 
 type ButtonProps = React.ComponentProps<"button"> & {
@@ -39,7 +40,8 @@ function Button({
   children, disabled, type, onPointerEnter, ...props
 }: ButtonProps) {
   const appearance = React.useContext(ButtonStyleContext);
-  const appAction = size === "settings" || (appearance === "app" && (size === "default" || size === "xs"));
+  const toolbar = size === "toolbar" || size === "icon-toolbar";
+  const appAction = toolbar || size === "settings" || (appearance === "app" && (size === "default" || size === "xs"));
   const Comp = asChild ? Slot.Root : "button";
   const child = asChild ? React.Children.only(children) : null;
   const childContent = React.isValidElement<{ children?: React.ReactNode }>(child) ? child.props.children : children;
@@ -64,9 +66,11 @@ function Button({
         appAction
           ? "no-drag cursor-(--cursor-interaction) select-none disabled:cursor-default aria-disabled:cursor-default focus:outline-hidden disabled:opacity-40 aria-disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-(--color-ring) focus-visible:ring-offset-0 whitespace-nowrap border gap-1"
           : "atlas-button",
-        appAction && (size === "settings" ? "h-9 rounded-md px-2 py-1 text-sm leading-none"
+        appAction && (toolbar ? "h-(--spacing-token-button-composer) rounded-(--radius-button-toolbar) px-(--spacing-button-toolbar-inline) py-0 text-sm leading-[18px] [&_svg]:size-4"
+          : size === "settings" ? "h-9 rounded-md px-2 py-1 text-sm leading-none"
           : size === "xs" ? "h-6 rounded-(--radius-button-action) px-2 py-0 text-xs leading-4"
           : "rounded-(--radius-button-action) px-4 py-1.5 text-base leading-[18px]"),
+        size === "icon-toolbar" && "aspect-square shrink-0 px-0",
         appAction && appVariants[variant],
         variant === "link" && "underline-offset-4 hover:underline", className,
       )}
