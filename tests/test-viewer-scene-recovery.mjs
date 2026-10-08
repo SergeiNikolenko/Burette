@@ -150,3 +150,20 @@ for (const failure of ['throw', 'empty']) {
   await assert.rejects(apply({ plugin }, [{}, {}], {}), /builder failed|could not build/);
 }
 console.log('Scene switching, hidden presets, aligned reloads and partial builder failures passed');
+
+// Old controls remain alive briefly while the next scene is loading. Their
+// alignment must not touch either another viewer or new data in the same one.
+let alignmentCommits = 0;
+const alignmentContext = {
+  superpositionStructureEntries: () => [],
+  commitSuperpositionPlan: async () => { alignmentCommits++; },
+  document: { querySelectorAll: () => [] },
+};
+const createAlignment = runInNewContext(extract('createStructureSuperpositionController') + '\ncreateStructureSuperpositionController', alignmentContext);
+const controller = createAlignment(sceneViewer, prepared, { classList: { toggle() {} }, setAttribute() {} });
+controller.restoreMetadata({ pairs: [] });
+assert.equal(await controller.restoreAfterSceneReload({}, prepared), false);
+assert.equal(await controller.restoreAfterSceneReload(sceneViewer, { ...prepared }), false);
+assert.equal(alignmentCommits, 0);
+assert.equal(await controller.restoreAfterSceneReload(sceneViewer, prepared), true);
+assert.equal(alignmentCommits, 1);

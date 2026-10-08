@@ -3787,7 +3787,7 @@
       const poseCount = Number(activeMolstarPrepared.poseCount || 0);
       const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
       await applyDockingSceneVisibility(activeViewer, activeMolstarPrepared, activePose, { focus: false });
-      await activeStructureAlignmentControl?.restoreAfterSceneReload?.();
+      await activeStructureAlignmentControl?.restoreAfterSceneReload?.(activeViewer, activeMolstarPrepared);
       return;
     }
     if (activeMolstarPrepared?.kind === 'docking' && activeMolstarPrepared?.sdfPoseOverlayAvailable === true) {
@@ -16527,7 +16527,7 @@ SOFTWARE.
     state = { viewer, key: stateKey, poseRefs, activeIndex: -1, visible: null, poseStyles: poseRefs.map(() => '') };
     activeDockingSceneVisibilityState = state;
     try {
-      await activeStructureAlignmentControl?.restoreAfterSceneReload?.();
+      await activeStructureAlignmentControl?.restoreAfterSceneReload?.(viewer, prepared);
     } catch (error) {
       state.key = null;
       throw error;
@@ -18877,7 +18877,10 @@ SOFTWARE.
       }
     };
 
-    const restoreAfterSceneReload = async () => {
+    const restoreAfterSceneReload = async (targetViewer = viewer, targetPrepared = prepared) => {
+      // A new scene can load before its controls replace the previous ones.
+      // Never carry an old alignment into another viewer or prepared scene.
+      if (targetViewer !== viewer || targetPrepared !== prepared) return false;
       if (!result) return false;
       await refreshEntries();
       await commitSuperpositionPlan(viewer, entries, result);
