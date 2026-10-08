@@ -25,7 +25,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrubNumberField } from "@/components/ui/scrub-number-input";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Item, ItemContent, ItemDescription, ItemActions, ItemGroup } from "@/components/ui/item";
+import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item";
 import { InspectorToolRow } from "./inspector-tool-row";
 import { Field, FieldGroup, FieldTitle, FieldLabel, FieldDescription, FieldSet, FieldLegend } from "./ui/field";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
@@ -441,12 +441,12 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         <InspectorEngineCard
           className="structure-inspector-xtb-card"
           title="Tools"
-          tooltip="Calculation engines available for the current molecular scope."
+          tooltip="Calculations for the current molecular scope."
           status={runningXtbJob ? `Running ${operationTitle(runningXtbJob.operation).toLowerCase()}` : xtbStatus?.installed ? null : xtbStatusLine(xtbStatus, isBrowserDev)}
           open={xtbOpen}
           onToggle={() => setXtbOpen((open) => !open)}
-          summary={xtbSettingsModified(xtbSettings) ? "xTB settings changed from the defaults" : ""}
-          summaryTooltip="Hamiltonian, convergence, charge, spin, solvation, and parallelism for xTB calculations."
+          summary={xtbSettingsModified(xtbSettings) ? "Calculation settings changed from the defaults" : ""}
+          summaryTooltip="Hamiltonian, convergence, charge, spin, solvation, and parallelism."
           summaryModified={xtbSettingsModified(xtbSettings)}
           onReset={xtbSettingsModified(xtbSettings) ? () => actions.setXtbSettings(defaultXtbSettings) : undefined}
           // xTB takes the viewer's selection as its scope the same way CREST does,
@@ -464,7 +464,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
             <>
               <EngineToolNotice
                 tools={[{
-                  name: "xTB",
+                  name: "Molecular calculations",
                   installed: xtbStatus?.installed !== false,
                   hint: xtbStatus?.installHint ?? "",
                   install: () => void actions.installXtb(),
@@ -474,12 +474,11 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
             </>
           )}
         >
-          <ItemGroup>
+          <ItemGroup className="gap-1">
             <InspectorToolRow
-              name="xTB"
-              version={xtbVersionNumber(xtbStatus?.version)}
-              detail={runningXtbJob ? `${operationTitle(runningXtbJob.operation)} · ${runningXtbJob.inputLabel}` : xtbSettingsShort(xtbSettings)}
-              detailTitle={runningXtbJob ? undefined : xtbSettingsSummary(xtbSettings)}
+              name="Molecular calculations"
+              detail={xtbMissing ? "Not installed" : oversizedForDirectJob ? oversizedNotice[0].hint : runningXtbJob ? `${operationTitle(runningXtbJob.operation)} · ${runningXtbJob.inputLabel}` : xtbSettingsShort(xtbSettings)}
+              detailTitle={runningXtbJob || xtbBlocked ? undefined : xtbSettingsSummary(xtbSettings)}
               state={runningXtbJob ? "running" : xtbMissing ? "missing" : "ready"}
               primaryLabel="Optimize"
               primaryDisabled={xtbBlocked}
@@ -493,17 +492,18 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
               <FieldGroup className="mb-5">
                 <Field>
                 <FieldLabel htmlFor="inspector-xtb-operation">Operation</FieldLabel>
-                <NativeSelect id="inspector-xtb-operation" value={xtbOperation} onChange={(event) => setXtbOperation(event.target.value as keyof typeof XTB_ACTION_TOOLTIPS)}>
+                <TooltipProvider><Tooltip><TooltipTrigger asChild>
+                <NativeSelect name="operation" aria-description={XTB_ACTION_TOOLTIPS[xtbOperation]} id="inspector-xtb-operation" value={xtbOperation} onChange={(event) => setXtbOperation(event.target.value as keyof typeof XTB_ACTION_TOOLTIPS)}>
                   {XTB_MENU_GROUPS.map(([group, operations]) => (
                     <NativeSelectOptGroup key={group} label={group}>
                       {operations.map(([operation, label]) => <NativeSelectOption key={operation} value={operation}>{label}</NativeSelectOption>)}
                     </NativeSelectOptGroup>
                   ))}
                 </NativeSelect>
-                <FieldDescription>{XTB_ACTION_TOOLTIPS[xtbOperation]}</FieldDescription>
+                </TooltipTrigger><TooltipContent>{XTB_ACTION_TOOLTIPS[xtbOperation]}</TooltipContent></Tooltip></TooltipProvider>
                 </Field>
               </FieldGroup>
-              <XtbInlineSettings settings={xtbSettings} xtbStatus={xtbStatus} isBrowserDev={isBrowserDev} actions={actions} />
+              <XtbInlineSettings settings={xtbSettings} xtbStatus={xtbStatus} actions={actions} />
             </InspectorToolRow>
           </ItemGroup>
           <ConformerToolRows
@@ -1575,9 +1575,9 @@ function ConformerToolRows({
         tools={conformerTools(status)}
         onCheck={() => void actions.checkConformerStatus()}
       />
-      <ItemGroup>
+      <ItemGroup className="gap-1">
         <InspectorToolRow
-          name="CREST"
+          name="Conformer sampling"
           detail={crestDisabled ? crestUnavailableDetail : conformerSettingsShort(settings)}
           detailTitle={crestDisabled ? undefined : conformerSettingsSummary(settings)}
           state={status?.crest.installed === false ? "missing" : "ready"}
@@ -1591,8 +1591,8 @@ function ConformerToolRows({
           <ConformerInlineSettings panel="crest" settings={settings} status={status} actions={actions} />
         </InspectorToolRow>
         <InspectorToolRow
-          name="PRISM"
-          detail={canRunPrism ? "Ensemble pruning" : "Open an ensemble file to prune it"}
+          name="Ensemble pruning"
+          detail={status?.prism.installed === false ? "Not installed" : canRunPrism ? "Remove redundant conformers" : "Open an ensemble file to prune it"}
           state={status?.prism.installed === false ? "missing" : "ready"}
           primaryLabel="Prune"
           primaryDisabled={prismDisabled}
@@ -1613,11 +1613,11 @@ function ConformerToolRows({
 function conformerTools(status: ShellViewState["conformerStatus"]): EngineTool[] {
   if (!status) return [];
   const tools: EngineTool[] = [
-    { name: "CREST", installed: status.crest.installed, hint: status.crest.installHint },
-    { name: "PRISM Pruner", installed: status.prism.installed, hint: status.prism.installHint },
+    { name: "Conformer sampling", installed: status.crest.installed, hint: status.crest.installHint },
+    { name: "Ensemble pruning", installed: status.prism.installed, hint: status.prism.installHint },
   ];
   if (status.openbabel) {
-    tools.push({ name: "Open Babel", installed: status.openbabel.installed, hint: status.openbabel.installHint });
+    tools.push({ name: "Format conversion", installed: status.openbabel.installed, hint: status.openbabel.installHint });
   }
   return tools;
 }
@@ -1636,14 +1636,15 @@ function ConformerInlineSettings({
   const updateSettings = (patch: Partial<ConformerSettings>) => actions.setConformerSettings({ ...settings, ...patch });
   const showCrest = panel === "all" || panel === "crest";
   const showPrism = panel === "all" || panel === "prism";
+  const available = status && (!showCrest || status.crest.installed) && (!showPrism || status.prism.installed);
   return (
     <div className="structure-inspector-xtb-settings conformer-inline-settings">
-      <Item variant="muted" size="xs">
-        <ItemContent><ItemDescription>{conformerStatusSummary(status)}</ItemDescription></ItemContent>
-        <ItemActions><Button type="button" variant="ghost" size="xs" onClick={() => void actions.checkConformerStatus()}>Check</Button></ItemActions>
-      </Item>
+      {!available ? <div className="flex items-center justify-between gap-3 text-sm">
+        <span>{status ? "Not installed" : "Not checked"}</span>
+        <Button type="button" variant="secondary" size="xs" onClick={() => void actions.checkConformerStatus()}>Check</Button>
+      </div> : null}
       {showCrest ? (
-        <InlineSettingsSection title="CREST">
+        <InlineSettingsSection title="Sampling">
           <InlineXtbSetting label="Method">
             <InlineSegmentedControl
               value={settings.method}
@@ -1677,7 +1678,7 @@ function ConformerInlineSettings({
         </InlineSettingsSection>
       ) : null}
       {showPrism ? (
-        <InlineSettingsSection title="PRISM">
+        <InlineSettingsSection title="Pruning">
           <InlineXtbSetting label="Timeout">
             <RangeControl value={settings.prismTimeoutSeconds} min={5} max={86400} step={5} suffix="s" onChange={(value) => updateSettings({ prismTimeoutSeconds: value })} />
           </InlineXtbSetting>
@@ -1705,16 +1706,6 @@ function conformerSelectionAction(
 
 function conformerActionCanScopeCrest(action: StructureViewerAction) {
   return action.type === "focus_ligand" || action.type === "select_residues";
-}
-
-function conformerStatusSummary(status: ShellViewState["conformerStatus"]) {
-  if (!status) return "CREST / PRISM / Open Babel";
-  const crest = status.crest.installed ? "CREST ready" : "CREST missing";
-  const prism = status.prism.installed ? "PRISM ready" : "PRISM missing";
-  const openbabel = !status.openbabel
-    ? "Open Babel status unavailable"
-    : status.openbabel.installed ? "Open Babel ready" : "Open Babel missing";
-  return `${crest} · ${prism} · ${openbabel}`;
 }
 
 function conformerSettingsShort(settings: ConformerSettings) {
@@ -2204,22 +2195,9 @@ function inspectorSummaryLine(
 
 function xtbStatusLine(xtbStatus: ShellViewState["xtbStatus"], isBrowserDev: boolean) {
   if (!xtbStatus) return "Not checked";
-  if (xtbStatus.installed) return shortXtbVersion(xtbStatus.version) ?? "Ready";
+  if (xtbStatus.installed) return "Ready";
   if (isBrowserDev) return "Not found";
   return "Not installed";
-}
-
-// The tool row already carries the name, so its version badge is the bare
-// number - "xTB xTB 6.7.1" was the name printed twice.
-function xtbVersionNumber(version: string | null | undefined) {
-  const match = String(version ?? "").match(/xtb version\s+([^\s]+)/iu);
-  return match ? match[1] : null;
-}
-
-function shortXtbVersion(version: string | null | undefined) {
-  const match = String(version ?? "").match(/xtb version\s+([^\s]+)/iu);
-  if (match) return `xTB ${match[1]}`;
-  return version || null;
 }
 
 const defaultXtbSettings: XtbSettings = {
@@ -2286,13 +2264,13 @@ function xtbSettingsSummary(settings: XtbSettings) {
 }
 
 const XTB_ACTION_TOOLTIPS = {
-  optimize: "Relax atomic coordinates toward a local minimum on the selected xTB potential energy surface.",
+  optimize: "Relax atomic coordinates toward a local minimum on the selected potential energy surface.",
   properties: "Evaluate single-point electronic properties at the current geometry.",
   "optimized-hessian": "Optimize geometry, then compute Hessian-derived vibrational frequencies.",
   vipea: "Estimate vertical ionization potential and electron affinity.",
   vfukui: "Estimate local electrophilic and nucleophilic Fukui reactivity descriptors.",
-  md: "Sample finite-temperature molecular motion with xTB molecular dynamics.",
-  metadyn: "Bias the xTB dynamics to explore conformational space beyond local minima.",
+  md: "Sample finite-temperature molecular motion with molecular dynamics.",
+  metadyn: "Bias the dynamics to explore conformational space beyond local minima.",
 } satisfies Record<string, string>;
 
 // Seven operations in one flat run read as a wall. They divide into what the
@@ -2355,7 +2333,7 @@ const XTB_SETTINGS_CATEGORIES: Array<{ key: XtbSettingsCategory; label: string; 
 
 function XtbSettingsCategoryBar() {
   return (
-    <TabsList className="w-full" aria-label="xTB settings categories">
+    <TabsList className="w-full" aria-label="Calculation settings categories">
       {XTB_SETTINGS_CATEGORIES.map((item) => (
         <TabsTrigger key={item.key} value={item.key} title={item.tooltip}>{item.label}</TabsTrigger>
       ))}
@@ -2496,43 +2474,26 @@ type EngineTool = {
   install?: () => void;
 };
 
-// A disabled button with no explanation is a dead end. The backend already says
-// how to install each tool, so the card repeats that instead of swallowing it.
+// Keep setup actions next to availability, without exposing backend paths or commands.
 function EngineToolNotice({ tools, onCheck }: { tools: EngineTool[]; onCheck: () => void }) {
   const missing = tools.filter((tool) => !tool.installed);
   if (missing.length === 0) return null;
-  return (
-    <div className="structure-inspector-engine-notices">
-      {missing.map((tool) => (
-        <Alert key={tool.name} className="structure-inspector-engine-notice">
-          {/* Every hint the backend writes already names its own tool, so repeating
-              the name here would only read as a stutter. */}
-          <AlertDescription>{tool.hint || `${tool.name} is not installed.`}</AlertDescription>
-          {tool.install ? (
-            <AlertAction>
-              <Button type="button" variant="outline" size="xs" onClick={tool.install}>
-                Install
-              </Button>
-            </AlertAction>
-          ) : null}
-        </Alert>
-      ))}
-      <Button type="button" variant="ghost" size="xs" className="justify-self-start" onClick={onCheck}>
-        Check again
-      </Button>
-    </div>
-  );
+  return <div className="grid gap-2">
+    {missing.map(tool => <div key={tool.name} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+      <span>{tool.name}: <span className="text-(--color-text-secondary)">not installed</span></span>
+      {tool.install ? <Button type="button" variant="secondary" size="xs" onClick={tool.install}>Install</Button> : null}
+    </div>)}
+    <Button type="button" variant="ghost" size="xs" className="justify-self-start" onClick={onCheck}>Check again</Button>
+  </div>;
 }
 
 function XtbInlineSettings({
   settings,
   xtbStatus,
-  isBrowserDev,
   actions,
 }: {
   settings: XtbSettings;
   xtbStatus: ShellViewState["xtbStatus"];
-  isBrowserDev: boolean;
   actions: ShellActions;
 }) {
   const update = <K extends keyof XtbSettings>(key: K, value: XtbSettings[K]) => actions.setXtbSettings({ ...settings, [key]: value });
@@ -2542,14 +2503,13 @@ function XtbInlineSettings({
   });
   return (
     <Tabs defaultValue="core" className="gap-4">
-      <Item variant="muted" size="xs">
-        <ItemContent>
-          <ItemDescription title={xtbStatus?.executablePath ?? undefined}>
-            {xtbStatus?.installed ? `xTB ${xtbVersionNumber(xtbStatus.version) ?? ""} ready` : xtbStatus?.installHint ?? (isBrowserDev ? "Local xTB runtime" : "xTB status has not been checked.")}
-          </ItemDescription>
-        </ItemContent>
-        <ItemActions><Button type="button" variant="ghost" size="xs" onClick={() => void actions.checkXtbStatus()}>Check</Button></ItemActions>
-      </Item>
+      {!xtbStatus?.installed ? <div className="flex items-center justify-between gap-3 text-sm">
+        <span>{xtbStatus ? "Not installed" : "Not checked"}</span>
+        <div className="flex gap-2">
+          {xtbStatus ? <Button type="button" variant="secondary" size="xs" onClick={() => void actions.installXtb()}>Install</Button> : null}
+          <Button type="button" variant="ghost" size="xs" onClick={() => void actions.checkXtbStatus()}>Check</Button>
+        </div>
+      </div> : null}
       <XtbSettingsCategoryBar />
       <TabsContent value="core">
         <FieldGroup className="gap-4">
@@ -2558,7 +2518,7 @@ function XtbInlineSettings({
               value={settings.method}
               options={["gfn2", "gfn1", "gfn0", "gfnff"]}
               labels={XTB_METHOD_LABELS}
-              ariaLabel="xTB method"
+              ariaLabel="Calculation method"
               onChange={(method) => update("method", method as XtbSettings["method"])}
             />
           </InlineXtbSetting>
