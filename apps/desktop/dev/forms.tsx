@@ -6,6 +6,7 @@ import { CalculatedColumnDialog } from "@/components/calculated-column-dialog";
 import type { GridColumnChoice } from "@/components/types";
 import { DocumentControlsExamples } from "./document-controls-examples";
 import { TableTransformExamples } from "./table-transform-examples";
+import { SubstructureQueryExample } from "./substructure-query-example";
 import { JobExamples } from "./job-examples";
 import { ConnectionExamples } from "./connection-examples";
 import { MenuExamples } from "./menu-examples";
@@ -37,6 +38,7 @@ function Forms() {
       <MenuExamples />
     </div>
     <TableTransformExamples />
+    <SubstructureQueryExample />
     <DocumentControlsExamples />
     <JobExamples />
     <ConnectionExamples />
