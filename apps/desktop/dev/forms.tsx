@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { MergeColumnsDialog } from "@/components/merge-columns-dialog";
 import { CalculatedColumnDialog } from "@/components/calculated-column-dialog";
 import type { GridColumnChoice } from "@/components/types";
+import { MenuExamples } from "./menu-examples";
 import { ToastExamples } from "./toast-examples";
 import { OverlayExamples } from "./overlay-examples";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ function Forms() {
       <Button onClick={() => setOpen("calculate")}>Calculated values</Button>
       <OverlayExamples />
       <ToastExamples />
+      <MenuExamples />
     </div>
     {result ? <output>{result}</output> : null}
     <MergeColumnsDialog request={open === "merge" ? request : null} onDismiss={() => setOpen(null)}

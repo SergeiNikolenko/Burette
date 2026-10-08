@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import React, { act } from "react";
 const browser = new Window();
-for (const key of ["window", "document", "navigator", "HTMLElement", "Element", "HTMLInputElement", "Node", "NodeFilter", "CustomEvent", "Event", "KeyboardEvent", "MutationObserver", "ResizeObserver", "getComputedStyle", "requestAnimationFrame", "cancelAnimationFrame"] as const) {
+for (const key of ["window", "document", "navigator", "HTMLElement", "Element", "DOMRect", "HTMLInputElement", "Node", "NodeFilter", "CustomEvent", "Event", "KeyboardEvent", "MutationObserver", "ResizeObserver", "getComputedStyle", "requestAnimationFrame", "cancelAnimationFrame"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
 }
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -123,5 +123,52 @@ test("tooltip waits on first pointer entry and respects an explicit themed porta
     expect(document.activeElement === trigger).toBe(false);
     await act(async () => trigger.click());
     expect(portal.querySelector('[data-slot="tooltip-content"]')).toBeNull();
+  } finally { await act(async () => root.unmount()); shell.remove(); portal.remove(); }
+});
+
+const Menu = await import("../apps/desktop/src/components/ui/dropdown-menu");
+const Context = await import("../apps/desktop/src/components/ui/context-menu");
+test("dropdown and submenu inherit the shell; selection closes both and restores focus", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  let selected = 0;
+  try {
+    await act(async () => root.render(<Menu.DropdownMenu><Menu.DropdownMenuTrigger>View options</Menu.DropdownMenuTrigger>
+      <Menu.DropdownMenuContent><Menu.DropdownMenuSub><Menu.DropdownMenuSubTrigger>Representation</Menu.DropdownMenuSubTrigger>
+        <Menu.DropdownMenuPortal><Menu.DropdownMenuSubContent><Menu.DropdownMenuItem onSelect={() => selected++}>Cartoon</Menu.DropdownMenuItem></Menu.DropdownMenuSubContent></Menu.DropdownMenuPortal>
+      </Menu.DropdownMenuSub></Menu.DropdownMenuContent>
+    </Menu.DropdownMenu>));
+    const trigger = shell.querySelector<HTMLButtonElement>('[data-slot="dropdown-menu-trigger"]')!;
+    await act(async () => { trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); });
+    await act(flushFocus);
+    expect(shell.querySelector('[data-slot="dropdown-menu-content"]') !== null).toBe(true);
+    const sub = shell.querySelector<HTMLElement>('[data-slot="dropdown-menu-sub-trigger"]')!;
+    await act(async () => { sub.focus(); sub.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })); });
+    await act(flushFocus);
+    expect(shell.querySelector('[data-slot="dropdown-menu-sub-content"]') !== null).toBe(true);
+    await act(async () => shell.querySelector<HTMLElement>('[data-slot="dropdown-menu-item"]')!.click());
+    await act(flushFocus);
+    expect(selected).toBe(1);
+    expect(shell.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement === trigger).toBe(true);
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
+
+test("context menu uses its explicit container and Escape does not select", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell";
+  const portal = document.createElement("div"); document.body.append(shell, portal);
+  const root = createRoot(shell);
+  let selected = 0;
+  try {
+    await act(async () => root.render(<Context.ContextMenu><Context.ContextMenuTrigger>Structure</Context.ContextMenuTrigger>
+      <Context.ContextMenuContent container={portal}><Context.ContextMenuItem onSelect={() => selected++}>Inspect</Context.ContextMenuItem></Context.ContextMenuContent>
+    </Context.ContextMenu>));
+    await act(async () => { shell.querySelector('[data-slot="context-menu-trigger"]')!.dispatchEvent(new browser.MouseEvent("contextmenu", { bubbles: true, clientX: 20, clientY: 20 }) as unknown as Event); });
+    expect(portal.querySelector('[role="menu"]') !== null).toBe(true);
+    expect(shell.querySelector('[role="menu"]')).toBeNull();
+    await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    await act(flushFocus);
+    expect(portal.querySelector('[role="menu"]')).toBeNull();
+    expect(selected).toBe(0);
   } finally { await act(async () => root.unmount()); shell.remove(); portal.remove(); }
 });

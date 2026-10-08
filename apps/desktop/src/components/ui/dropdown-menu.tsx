@@ -2,6 +2,7 @@ import * as React from "react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { useAppShellPortalContainer } from "@/components/ui/portal-container"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Check as Tick02Icon, ChevronRight as ArrowRight01Icon } from "@/components/ui/app-icon-data";
 
@@ -12,10 +13,12 @@ function DropdownMenu({
 }
 
 function DropdownMenuPortal({
+  container,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Portal>) {
+  const appShellContainer = useAppShellPortalContainer()
   return (
-    <DropdownMenuPrimitive.Portal data-slot="dropdown-menu-portal" {...props} />
+    <DropdownMenuPrimitive.Portal data-slot="dropdown-menu-portal" container={container ?? appShellContainer} {...props} />
   )
 }
 
@@ -39,8 +42,10 @@ function DropdownMenuContent({
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content> & {
   container?: React.ComponentProps<typeof DropdownMenuPrimitive.Portal>["container"]
 }) {
+  const appShellContainer = useAppShellPortalContainer()
+
   return (
-    <DropdownMenuPrimitive.Portal container={container}>
+    <DropdownMenuPrimitive.Portal container={container ?? appShellContainer}>
       <DropdownMenuPrimitive.Content
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
@@ -48,7 +53,7 @@ function DropdownMenuContent({
         // Menus here hang off icon-sized triggers, so the upstream
         // w-(--radix-dropdown-menu-trigger-width) would squeeze them and clip labels.
         // They size to their content instead, the way the context menu already does.
-        className={cn("z-50 max-h-(--radix-dropdown-menu-content-available-height) min-w-46 max-w-[min(320px,calc(100vw_-_16px))] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-(--radius-2xl) bg-(--color-surface-elevated-secondary)/90 p-1 text-(--color-text) backdrop-blur-sm shadow-[0_8px_16px_-4px_rgb(0_0_0/0.12)] ring-[0.5px] ring-(--color-border) duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=closed]:overflow-hidden data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
+        className={cn("z-50 max-h-[min(var(--radix-dropdown-menu-content-available-height,100dvh),calc(100dvh-16px))] max-w-[min(var(--radix-dropdown-menu-content-available-width,100vw),calc(100vw-16px))] min-w-46 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-(--radius-2xl) bg-(--color-surface-elevated-secondary)/90 p-[var(--app-menu-gutter,var(--menu-gutter))] text-(--color-text) backdrop-blur-sm shadow-(--shadow-dropdown-overlay) ring-(length:--dropdown-overlay-ring-width) ring-(--color-border-overlay)", className )}
         {...props}
       />
     </DropdownMenuPrimitive.Portal>
@@ -78,7 +83,7 @@ function DropdownMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-(--radius-xl) px-2 py-[5px] text-[13px] leading-[18.5px] outline-hidden select-none focus:bg-(--color-background-primary-ghost-hover) data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
+        "group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-(--radius-xl) px-2 py-[5px] text-(length:--menu-font-size) leading-(--menu-line-height) outline-hidden select-none focus:bg-(--color-background-primary-ghost-hover) data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
         className
       )}
       {...props}
@@ -100,7 +105,7 @@ function DropdownMenuCheckboxItem({
       data-slot="dropdown-menu-checkbox-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-default items-center gap-1.5 rounded-(--radius-xl) py-[5px] pr-8 pl-2 text-[13px] leading-[18.5px] outline-hidden select-none focus:bg-(--color-background-primary-ghost-hover) data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-default items-center gap-1.5 rounded-(--radius-xl) py-[5px] pr-8 pl-2 text-(length:--menu-font-size) leading-(--menu-line-height) outline-hidden select-none focus:bg-(--color-background-primary-ghost-hover) data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       checked={checked}
@@ -143,7 +148,7 @@ function DropdownMenuRadioItem({
       data-slot="dropdown-menu-radio-item"
       data-inset={inset}
       className={cn(
-        "relative flex cursor-default items-center gap-1.5 rounded-(--radius-xl) py-[5px] pr-8 pl-2 text-[13px] leading-[18.5px] outline-hidden select-none focus:bg-(--color-background-primary-ghost-hover) data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative flex cursor-default items-center gap-1.5 rounded-(--radius-xl) py-[5px] pr-8 pl-2 text-(length:--menu-font-size) leading-(--menu-line-height) outline-hidden select-none focus:bg-(--color-background-primary-ghost-hover) data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -173,7 +178,7 @@ function DropdownMenuLabel({
       data-slot="dropdown-menu-label"
       data-inset={inset}
       className={cn(
-        "px-2 py-1 text-[13px] leading-[18.5px] text-(--color-text-tertiary) data-inset:pl-7",
+        "px-2 py-1 text-(length:--menu-font-size) leading-(--menu-line-height) text-(--color-text-tertiary) data-inset:pl-7",
         className
       )}
       {...props}
@@ -229,7 +234,7 @@ function DropdownMenuSubTrigger({
       data-slot="dropdown-menu-sub-trigger"
       data-inset={inset}
       className={cn(
-        "flex cursor-default items-center gap-1.5 rounded-(--radius-xl) px-2 py-[5px] text-[13px] leading-[18.5px] outline-hidden select-none focus:bg-(--color-background-primary-ghost-hover) data-inset:pl-7 data-open:bg-(--color-background-primary-ghost-hover) [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "flex cursor-default items-center gap-1.5 rounded-(--radius-xl) px-2 py-[5px] text-(length:--menu-font-size) leading-(--menu-line-height) outline-hidden select-none focus:bg-(--color-background-primary-ghost-hover) data-inset:pl-7 data-open:bg-(--color-background-primary-ghost-hover) data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -247,7 +252,7 @@ function DropdownMenuSubContent({
   return (
     <DropdownMenuPrimitive.SubContent
       data-slot="dropdown-menu-sub-content"
-      className={cn("z-50 min-w-[96px] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-(--radius-2xl) bg-(--color-surface-elevated-secondary)/90 p-1 text-(--color-text) backdrop-blur-sm shadow-[0_8px_16px_-4px_rgb(0_0_0/0.12)] ring-[0.5px] ring-(--color-border) duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", className )}
+      className={cn("z-50 max-h-[min(var(--radix-dropdown-menu-content-available-height,100dvh),calc(100dvh-16px))] max-w-[min(var(--radix-dropdown-menu-content-available-width,100vw),calc(100vw-16px))] min-w-[180px] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-(--radius-2xl) bg-(--color-surface-elevated-secondary)/90 p-[var(--app-menu-gutter,var(--menu-gutter))] text-(--color-text) backdrop-blur-sm shadow-(--shadow-dropdown-overlay) ring-(length:--dropdown-overlay-ring-width) ring-(--color-border-overlay)", className )}
       {...props}
     />
   )
