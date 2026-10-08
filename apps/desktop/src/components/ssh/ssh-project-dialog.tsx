@@ -34,7 +34,7 @@ export function SshProjectDialog({ open, onOpenChange, connectionOnly = false, i
   if (connectionOnly) return <SshConnectionDialog open={open} onOpenChange={onOpenChange} />;
   return <>
     <Dialog open={open && !adding} onOpenChange={value => { if (!busy) onOpenChange(value); }}>
-      <DialogContent className="ssh-dialog">
+      <DialogContent variant="form" className="ssh-dialog">
         <DialogHeader><DialogTitle>{browsing ? "Choose a folder" : "Create project"}</DialogTitle><DialogDescription className="sr-only">Choose a source folder for your project.</DialogDescription></DialogHeader>
         {browsing ? <>
           <form className="ssh-folder-location" onSubmit={e => { e.preventDefault(); void browse(); }}>

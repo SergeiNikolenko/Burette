@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -144,7 +144,7 @@ function Appearance({ mode }: { mode: ThemeMode }) {
             </TooltipProvider>
             <Popover open>
               <PopoverTrigger asChild><Button size="sm" variant="outline">Popover</Button></PopoverTrigger>
-              <PopoverContent side="bottom" align="start" container={shell} onOpenAutoFocus={(event) => event.preventDefault()}>Sort by name</PopoverContent>
+              <PopoverContent side="bottom" align="start" container={shell} onOpenAutoFocus={(event) => event.preventDefault()}><div className="px-2 py-1.5 text-sm">Sort by name</div></PopoverContent>
             </Popover>
             <Dialog>
               <DialogTrigger asChild><Button size="sm" variant="secondary">Dialog</Button></DialogTrigger>
@@ -153,10 +153,10 @@ function Appearance({ mode }: { mode: ThemeMode }) {
                   <DialogTitle>Rename project</DialogTitle>
                   <DialogDescription>The folder on disk keeps its name.</DialogDescription>
                 </DialogHeader>
-                <Input defaultValue="samples" />
+                <Input aria-label="Project name" defaultValue="samples" />
                 <DialogFooter>
-                  <Button variant="secondary">Cancel</Button>
-                  <Button>Save</Button>
+                  <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
+                  <DialogClose asChild><Button>Save</Button></DialogClose>
                 </DialogFooter>
               </DialogContent>
             </Dialog>

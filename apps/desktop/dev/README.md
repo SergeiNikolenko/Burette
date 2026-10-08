@@ -23,3 +23,5 @@ Open `/dev/forms.html` on the same development server to exercise the production
 Merge Columns and Calculated Values dialogs. Switch Light/Dark before opening a
 form. Inputs, validation, dismissal and submitted arguments use real components;
 outcomes are kept in page memory and never write files or start compute jobs.
+The same page exercises shared default/form dialogs, a nested popover, and the
+slide-from-left popover. Check Escape/focus restoration and a narrow viewport.

@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { MergeColumnsDialog } from "@/components/merge-columns-dialog";
 import { CalculatedColumnDialog } from "@/components/calculated-column-dialog";
 import type { GridColumnChoice } from "@/components/types";
+import { OverlayExamples } from "./overlay-examples";
 import { Button } from "@/components/ui/button";
 import { buildThemeStyle, type ThemeMode } from "@/lib/theme";
 import { defaultPreferences } from "@/stores/settings-store";
@@ -20,10 +21,11 @@ function Forms() {
   return <main className={`app-shell ${theme === "dark" ? "dark" : ""}`} data-theme={theme} data-effective-theme={theme}
     style={{ ...buildThemeStyle({ ...defaultPreferences, theme }, theme), display: "flex", flexDirection: "column", gap: 16, padding: 32 }}>
     <h1>Series</h1>
-    <div style={{ display: "flex", gap: 8 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
       <Button variant="secondary" onClick={() => setTheme(theme === "light" ? "dark" : "light")}>{theme === "light" ? "Dark" : "Light"}</Button>
       <Button onClick={() => setOpen("merge")}>Merge columns</Button>
       <Button onClick={() => setOpen("calculate")}>Calculated values</Button>
+      <OverlayExamples />
     </div>
     {result ? <output>{result}</output> : null}
     <MergeColumnsDialog request={open === "merge" ? request : null} onDismiss={() => setOpen(null)}

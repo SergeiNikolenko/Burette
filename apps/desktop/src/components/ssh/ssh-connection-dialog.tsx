@@ -29,7 +29,7 @@ export function SshConnectionDialog({ open, onOpenChange, onAdded }: { open: boo
     finally { setBusy(false); }
   }
   return <Dialog open={open} onOpenChange={value => { if (!busy) onOpenChange(value); }}>
-    <DialogContent className="ssh-dialog">
+    <DialogContent variant="form" className="ssh-dialog">
       <DialogHeader><DialogTitle>Add SSH connection</DialogTitle><DialogDescription className="sr-only">Connect to a machine using your SSH configuration.</DialogDescription></DialogHeader>
       {manual ? <div className="ssh-form-fields">
         <label>Display name<Input value={name} onChange={e => setName(e.target.value)} disabled={busy} autoFocus /></label>

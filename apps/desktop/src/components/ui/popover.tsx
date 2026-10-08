@@ -2,6 +2,8 @@ import * as React from "react"
 import { Popover as PopoverPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { useAppShellPortalContainer } from "./portal-container"
+import "./popover.css"
 
 function Popover({
   ...props
@@ -20,18 +22,36 @@ function PopoverContent({
   align = "center",
   sideOffset = 4,
   container,
+  variant = "default",
+  size = "default",
+  opaque = true,
+  disablePadding = false,
+  animation = "none",
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Content> & {
   container?: React.ComponentProps<typeof PopoverPrimitive.Portal>["container"]
+  variant?: "default" | "menu" | "comment"
+  size?: "default" | "large" | "workspace" | "content"
+  opaque?: boolean
+  disablePadding?: boolean
+  animation?: "none" | "slide-from-left"
 }) {
+  const appShellContainer = useAppShellPortalContainer()
   return (
-    <PopoverPrimitive.Portal container={container}>
+    <PopoverPrimitive.Portal container={container ?? appShellContainer}>
       <PopoverPrimitive.Content
         data-slot="popover-content"
+        data-animation={animation}
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 flex w-72 origin-(--radix-popover-content-transform-origin) flex-col gap-2.5 rounded-xl bg-popover p-2.5 text-sm text-popover-foreground shadow-(--shadow-popover-overlay) ring-[0.5px] ring-(--color-border) outline-hidden duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "atlas-popover z-50 flex origin-(--radix-popover-content-transform-origin) flex-col overflow-y-auto text-[16px] leading-6 text-(--color-text) outline-hidden",
+          variant === "menu" ? "rounded-2xl shadow-(--shadow-dropdown-overlay)" : variant === "comment"
+            ? "rounded-2xl ring-1 ring-(--color-border-subtle) shadow-(--shadow-lg-stronger)"
+            : "rounded-xl ring-(length:--popover-overlay-ring-width) ring-(--color-border-overlay) shadow-(--shadow-popover-overlay)",
+          !disablePadding && (variant === "menu" ? "p-[var(--app-menu-gutter,var(--spacing))]" : "p-1"),
+          opaque ? "bg-(--color-surface-elevated-secondary)" : "bg-(--color-surface-elevated-secondary)/90",
+          { default: "w-72", large: "w-96", workspace: "w-65", content: "w-max" }[size],
           className
         )}
         {...props}
@@ -58,7 +78,7 @@ function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
 
 function PopoverTitle({ className, ...props }: React.ComponentProps<"h2">) {
   return (
-    <div
+    <h2
       data-slot="popover-title"
       className={cn("font-medium", className)}
       {...props}

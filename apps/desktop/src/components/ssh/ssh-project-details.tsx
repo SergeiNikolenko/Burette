@@ -37,7 +37,7 @@ export function useSshProjectMenu(project: SshProject, connection: SshConnection
     { kind: "separator" },
     { kind: "item", id: "remove", text: "Remove project", action: () => removeSshProject(project.id) },
   ];
-  const dialog = editing && <Dialog open onOpenChange={open => { if (!open) setEditing(null); }}><DialogContent className="ssh-dialog">
+  const dialog = editing && <Dialog open onOpenChange={open => { if (!open) setEditing(null); }}><DialogContent variant="form" className="ssh-dialog">
     <DialogHeader><DialogTitle>{editing === "edit" ? "Edit project" : "New section"}</DialogTitle><DialogDescription className="sr-only">Organize your remote project.</DialogDescription></DialogHeader>
     <label className="grid gap-2 text-sm">{editing === "edit" ? "Project name" : "Section name"}<Input autoFocus value={name} onChange={e => setName(e.target.value)} maxLength={160} /></label>
     {editing === "edit" && <label className="grid gap-2 text-sm">Folder on {connection?.name ?? project.host}<Input value={root} onChange={e => setRoot(e.target.value)} /></label>}

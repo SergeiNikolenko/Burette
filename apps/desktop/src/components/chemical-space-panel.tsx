@@ -1188,14 +1188,11 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                 side="bottom"
                 sideOffset={8}
                 container={portalContainer}
-                className="w-64"
+                className="w-64 gap-2.5 p-3"
                 data-testid="chemical-space-visual-controls"
               >
                 <div className="flex flex-col gap-0.5">
                   <span className="text-sm font-medium text-foreground">Display</span>
-                  <span className="text-xs text-muted-foreground">
-                    Point size and colouring for this map.
-                  </span>
                 </div>
                 {controlsNarrow && scopeToggle ? (
                   <Field className="gap-1.5">
@@ -1390,7 +1387,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
               side="top"
               sideOffset={8}
               container={portalContainer}
-              className="max-h-[min(70vh,32rem)] w-72 overflow-y-auto"
+              className="max-h-[min(70vh,32rem)] w-72 gap-2.5 overflow-y-auto p-3"
             >
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium text-foreground">{methodLabel(draft.method)} layout</span>
@@ -1489,7 +1486,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
               side="top"
               sideOffset={8}
               container={portalContainer}
-              className="w-72"
+              className="w-72 gap-2.5 p-3"
               data-testid="chemical-space-cluster-controls"
             >
               <div className="flex flex-col gap-0.5">
@@ -1643,7 +1640,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
               side="top"
               sideOffset={8}
               container={portalContainer}
-              className="w-72"
+              className="w-72 gap-2.5 p-3"
             >
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium text-foreground">Compare parameter values</span>

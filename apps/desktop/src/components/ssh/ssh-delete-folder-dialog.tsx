@@ -18,7 +18,7 @@ export function SshDeleteFolderDialog({ project, path, fullPath, onClose, onDele
     finally { setBusy(false); }
   }
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }}>
-    <DialogContent className="ssh-dialog" onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}>
+    <DialogContent variant="form" className="ssh-dialog" onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}>
       <DialogHeader><DialogTitle>Delete folder from server?</DialogTitle><DialogDescription>This permanently deletes the folder and everything inside it on {project.host}.</DialogDescription></DialogHeader>
       <p className="break-all text-sm">{fullPath}</p>
       <label className="grid gap-2 text-sm">Type “{name}” to confirm<Input autoFocus value={confirmation} onChange={e => setConfirmation(e.target.value)} disabled={busy} /></label>
