@@ -423,7 +423,7 @@ function ConfirmActionButton({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{dialogTitle}</AlertDialogTitle>
-          <AlertDialogDescription id="settings-confirm-description">
+          <AlertDialogDescription>
             {dialogDescription}
           </AlertDialogDescription>
         </AlertDialogHeader>

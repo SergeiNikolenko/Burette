@@ -1,13 +1,23 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 
 export function OverlayExamples() {
   const [name, setName] = useState("Series");
   const [prefix, setPrefix] = useState("Ligand");
+  const [confirmed, setConfirmed] = useState(false);
   return <>
+    <AlertDialog>
+      <AlertDialogTrigger asChild><Button variant="secondary">Reset display settings</Button></AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader><AlertDialogTitle>Reset display settings?</AlertDialogTitle><AlertDialogDescription>Restore the default appearance for this workspace.</AlertDialogDescription></AlertDialogHeader>
+        <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => setConfirmed(true)}>Reset settings</AlertDialogAction></AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    {confirmed && <output role="status">Display settings reset</output>}
     <Dialog>
       <DialogTrigger asChild><Button variant="secondary">Rename series</Button></DialogTrigger>
       <DialogContent>

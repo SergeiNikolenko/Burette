@@ -50,3 +50,41 @@ test("explicit popover containers stay authoritative over the shell default", as
     expect(shell.querySelector('[data-slot="popover-content"]')).toBeNull();
   } finally { await act(async () => root.unmount()); shell.remove(); portal.remove(); }
 });
+
+const { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel } = await import("../apps/desktop/src/components/ui/alert-dialog");
+test("confirmation focuses Cancel and only the explicit action commits", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  let commits = 0;
+  try {
+    await act(async () => root.render(<AlertDialog><AlertDialogTrigger>Reset display</AlertDialogTrigger><AlertDialogContent>
+      <AlertDialogHeader><AlertDialogTitle>Reset display settings?</AlertDialogTitle><AlertDialogDescription>Restore the default appearance.</AlertDialogDescription></AlertDialogHeader>
+      <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction variant="destructive" onClick={() => commits++}>Reset settings</AlertDialogAction></AlertDialogFooter>
+    </AlertDialogContent></AlertDialog>));
+    const trigger = shell.querySelector<HTMLButtonElement>('[data-slot="alert-dialog-trigger"]')!;
+    const open = async () => { await act(async () => trigger.click()); await act(flushFocus); };
+    const click = async (slot: string) => { await act(async () => shell.querySelector<HTMLButtonElement>(`[data-slot="${slot}"]`)!.click()); await act(flushFocus); };
+    await open();
+    expect(document.activeElement?.textContent).toBe("Cancel");
+    const dialog = shell.querySelector('[role="alertdialog"]')!;
+    expect(document.getElementById(dialog.getAttribute("aria-describedby")!)?.textContent).toBe("Restore the default appearance.");
+    await act(async () => {
+      document.body.dispatchEvent(new browser.PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }) as unknown as Event);
+      document.body.click();
+    });
+    expect(shell.querySelector('[role="alertdialog"]') !== null).toBe(true);
+    expect(commits).toBe(0);
+    await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    await act(flushFocus);
+    expect(shell.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.activeElement === trigger).toBe(true);
+    expect(commits).toBe(0);
+    await open(); await click("alert-dialog-cancel");
+    expect(commits).toBe(0);
+    expect(document.activeElement === trigger).toBe(true);
+    await open(); await click("alert-dialog-action");
+    expect(commits).toBe(1);
+    expect(shell.querySelector('[role="alertdialog"]')).toBeNull();
+    expect(document.activeElement === trigger).toBe(true);
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
