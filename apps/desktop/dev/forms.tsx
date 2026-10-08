@@ -16,6 +16,7 @@ import { FileOperationExamples } from "./file-operation-examples";
 import { DatabaseExample } from "./database-example";
 import { JobExamples } from "./job-examples";
 import { DescriptorStatusExample } from "./descriptor-status-example";
+import { RenderSettingsExample } from "./render-settings-example";
 import { ConnectionExamples } from "./connection-examples";
 import { MenuExamples } from "./menu-examples";
 import { ToastExamples } from "./toast-examples";
@@ -44,6 +45,7 @@ function Forms() {
       <OverlayExamples />
       <ToastExamples />
       <MenuExamples />
+      <RenderSettingsExample />
     </div>
     <TableTransformExamples />
     <SubstructureQueryExample />
