@@ -82,13 +82,10 @@ assert.match(styles, /\.radix-dialog-subline \{[^}]*color: var\(--text-muted\);/
 assert.match(styles, /\.calculated-column-field select:not\(\[data-slot="native-select"\]\) \{/);
 assert.match(styles, /\.calculated-column-field \[data-slot="native-select-wrapper"\] \{\s*width: 100%;/);
 
-// The folder opener follows the bins dialog: NativeSelect for the mode, classed
-// checkbox rows, a scrolling list and the muted path line.
+// The folder opener uses the shared form dialog and preserves the file group.
 const folderOpen = readFileSync(`${componentsRoot}/folder-open-dialog.tsx`, 'utf8');
-assert.match(folderOpen, /<NativeSelect size="sm" value=\{mode\}/);
-assert.match(folderOpen, /<p className="radix-dialog-subline">\{path\}<\/p>/);
-assert.match(folderOpen, /<div className="radix-dialog-scroll-list folder-open-file-list"/);
-assert.match(folderOpen, /aria-describedby="folder-open-body"/);
+assert.match(folderOpen, /from "\.\/ui\/dialog"/);
+assert.match(folderOpen, /aria-label="Files to open"/);
 assert.doesNotMatch(folderOpen, /<label><input/);
 
 console.log(`dialog consistency: ${dialogFiles.length} dialogs pass`);

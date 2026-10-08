@@ -1,14 +1,14 @@
 import { Checkbox } from "./ui/checkbox";
 import type { useWorkspaceFileActions } from "../hooks/use-workspace-file-actions";
 import { useEffect, useState } from "react";
-import { Dialog } from "radix-ui";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/dialog";
+import { Button } from "./ui/button";
+import { Spinner } from "./ui/spinner";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "../lib/tauri";
 import type { ShellActions, ShellViewState } from "./types";
 import { fileCapabilities } from "./workspace-menu-items";
-import { useAppShellPortalContainer } from "./ui/portal-container";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
-import { CloseIcon } from "./close-icon";
 
 type FolderContents = { files: string[]; folders: string[]; truncated: boolean };
 export async function readFolderContents(path: string, recursive: boolean, state: ShellViewState): Promise<FolderContents> {
@@ -22,7 +22,6 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
   initialMode: string; workflows: ReturnType<typeof useWorkspaceFileActions>;
   path: string | null; state: ShellViewState; actions: ShellActions; onClose: () => void;
 }) {
-  const container = useAppShellPortalContainer();
   const [recursive, setRecursive] = useState(false);
   const [contents, setContents] = useState<FolderContents | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -33,10 +32,10 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
   useEffect(() => {
     if (!path) return;
     let current = true;
-    setContents(null); setError("");
+    setContents(null); setSelected(new Set()); setError("");
     void readFolderContents(path, recursive, state).then(result => {
       if (current) { setContents(result); setSelected(new Set(result.files.length <= 200 ? result.files : [])); }
-    }).catch(error => { if (current) setError(String(error)); });
+    }).catch(error => { if (current) { console.error("[Folder open]", error); setError("Could not read this folder. Try reopening it."); } });
     return () => { current = false; };
   }, [path, recursive]);
   const paths = Array.from(selected);
@@ -47,7 +46,7 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
   const validMode = mode.startsWith("scene:") ? targets.some(target => mode === `scene:${target.id}`)
     : mode === "aligned" ? canAlign : mode === "poses" ? poses : mode !== "together" || compatible;
   const submit = async () => {
-    if (busy || !paths.length || paths.length > 200 || !validMode) return;
+    if (busy || !contents || !paths.length || paths.length > 200 || !validMode) return;
     setBusy(true); setError("");
     try {
       if (mode.startsWith("scene:")) {
@@ -65,7 +64,7 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
       });
       else await actions.openPaths(paths);
       onClose();
-    } catch (error) { setError(String(error)); }
+    } catch (error) { console.error("[Folder open]", error); setError("Could not open the selected files. Try again."); }
     finally { setBusy(false); }
   };
   const toggleFile = (file: string, checked: boolean) => setSelected(current => {
@@ -73,55 +72,54 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
     if (checked) next.add(file); else next.delete(file);
     return next;
   });
-  return <Dialog.Root open={path !== null} onOpenChange={open => { if (!open && !busy) onClose(); }}>
-    <Dialog.Portal container={container}><Dialog.Overlay className="radix-dialog-overlay" />
-      <Dialog.Content className="radix-dialog calculated-column-dialog" aria-describedby="folder-open-body">
-        <div className="radix-dialog-header">
-          <Dialog.Title>Open Folder</Dialog.Title>
-          <Dialog.Close asChild>
-            <button type="button" className="radix-dialog-close" aria-label="Close open folder" disabled={busy}>
-              <CloseIcon size={14} />
-            </button>
-          </Dialog.Close>
-        </div>
-        <div id="folder-open-body" className="radix-dialog-body">
-          <p className="radix-dialog-subline">{path}</p>
-          <label className="radix-dialog-check-row">
-            <Checkbox checked={recursive} disabled={busy} onCheckedChange={checked => setRecursive(checked === true)} />
-            <span>Include subfolders</span>
-          </label>
-          {contents?.truncated ? <p className="calculated-column-note" role="status">Showing the first 2,000 entries. Open a smaller folder to see the rest.</p> : null}
-          <div className="radix-dialog-scroll-list folder-open-file-list" role="group" aria-label="Files to open">
-            {contents?.files.map(file => <label key={file} className="radix-dialog-check-row">
+  const selectedAll = Boolean(contents?.files.length) && selected.size === contents?.files.length;
+  return <Dialog open={path !== null} onOpenChange={open => { if (!open && !busy) onClose(); }}>
+    <DialogContent variant="form" size="compact" showCloseButton={!busy}>
+      <form className="flex min-w-0 flex-col gap-4" onSubmit={event => { event.preventDefault(); void submit(); }}>
+        <DialogHeader>
+          <DialogTitle>Open folder</DialogTitle>
+          <DialogDescription className="sr-only">Choose files and how to open them.</DialogDescription>
+        </DialogHeader>
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={recursive} disabled={busy} onCheckedChange={checked => setRecursive(checked === true)} />
+          Include subfolders
+        </label>
+        {contents?.truncated && <p className="text-xs text-(--color-text-secondary)" role="status">Showing the first 2,000 entries. Open a smaller folder to see the rest.</p>}
+        <div className="max-h-60 overflow-y-auto overscroll-contain rounded-2xl border border-(--color-border) px-5 py-4" role="group" aria-label="Files to open" title={path ?? undefined}>
+          {contents ? <>
+            {contents.files.length > 0 && contents.files.length <= 200 && <label className="mb-2 flex items-center gap-2 text-sm">
+              <Checkbox checked={selectedAll ? true : selected.size ? "indeterminate" : false} disabled={busy}
+                onCheckedChange={checked => setSelected(new Set(checked === true ? contents.files : []))} />
+              Select all
+            </label>}
+            {contents.files.map(file => <label key={file} className="flex min-w-0 items-center gap-2 py-1 text-sm [content-visibility:auto] [contain-intrinsic-size:auto_28px]">
               <Checkbox checked={selected.has(file)} disabled={busy} onCheckedChange={checked => toggleFile(file, checked === true)} />
-              <span>{file.slice((path?.length ?? 0) + 1)}</span>
+              <span className="min-w-0 break-words">{file.slice((path?.length ?? 0) + 1)}</span>
             </label>)}
-            {contents && !contents.files.length ? <p className="calculated-column-empty">No files in this folder.</p> : null}
-          </div>
-          <label className="calculated-column-field"><span>Open</span>
-            <NativeSelect size="sm" value={mode} disabled={busy} onChange={event => setMode(event.target.value)}>
-              <NativeSelectOption value="tabs">In Tabs</NativeSelectOption>
-              <NativeSelectOption value="right">In Right Panel</NativeSelectOption>
-              {isTauriRuntime() ? <NativeSelectOption value="window">In New Window</NativeSelectOption> : null}
-              <NativeSelectOption value="together" disabled={!compatible}>Together</NativeSelectOption>
-              <NativeSelectOption value="aligned" disabled={!canAlign}>Aligned</NativeSelectOption>
-              <NativeSelectOption value="poses" disabled={!poses}>As Poses</NativeSelectOption>
-              {targets.map(target => <NativeSelectOption key={target.id} value={`scene:${target.id}`}>Add to {target.title}</NativeSelectOption>)}
-            </NativeSelect>
-          </label>
-          {paths.length > 200 ? <p className="calculated-column-problem" role="alert">Select at most 200 files.</p> : null}
-          {error ? <p className="calculated-column-problem" role="alert">{error}</p> : null}
+            {!contents.files.length && <p className="py-3 text-center text-sm text-(--color-text-secondary)">No files in this folder.</p>}
+          </> : !error ? <Spinner aria-label="Reading folder" className="mx-auto" /> : null}
         </div>
-        <div className="radix-dialog-footer calculate-properties-footer">
-          <span className="calculate-properties-count">
-            {contents ? `${selected.size} of ${contents.files.length} files selected` : "Reading folder…"}
-          </span>
-          <div className="calculate-properties-actions">
-            <button type="button" className="dock-action" onClick={onClose} disabled={busy}>Cancel</button>
-            <button type="button" className="dock-action calculate-properties-run" disabled={busy || !contents || !paths.length || paths.length > 200 || !validMode} onClick={() => void submit()}>Open {paths.length || ''}</button>
-          </div>
-        </div>
-      </Dialog.Content>
-    </Dialog.Portal>
-  </Dialog.Root>;
+        <label className="flex flex-col gap-2 text-sm"><span>Open</span>
+          <NativeSelect className="w-full" value={mode} disabled={busy || !contents} onChange={event => setMode(event.target.value)}>
+            <NativeSelectOption value="tabs">In Tabs</NativeSelectOption>
+            <NativeSelectOption value="right">In Right Panel</NativeSelectOption>
+            {isTauriRuntime() ? <NativeSelectOption value="window">In New Window</NativeSelectOption> : null}
+            <NativeSelectOption value="together" disabled={!compatible}>Together</NativeSelectOption>
+            <NativeSelectOption value="aligned" disabled={!canAlign}>Aligned</NativeSelectOption>
+            <NativeSelectOption value="poses" disabled={!poses}>As Poses</NativeSelectOption>
+            {targets.map(target => <NativeSelectOption key={target.id} value={`scene:${target.id}`}>Add to {target.title}</NativeSelectOption>)}
+          </NativeSelect>
+        </label>
+        {paths.length > 200 && <p className="text-sm text-(--color-text-danger)" role="alert">Select at most 200 files.</p>}
+        {error && <p className="text-sm text-(--color-text-danger)" role="alert">{error}</p>}
+        <DialogFooter className="gap-2">
+          {contents && <span className="mr-auto text-xs text-(--color-text-secondary)" role="status">{selected.size} of {contents.files.length} selected</span>}
+          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button type="submit" disabled={busy || !contents || !paths.length || paths.length > 200 || !validMode}>
+            {busy ? <><Spinner className="size-4" aria-hidden />Opening…</> : `Open${paths.length ? ` ${paths.length}` : ""}`}
+          </Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>;
 }
