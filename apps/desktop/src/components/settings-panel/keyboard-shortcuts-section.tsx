@@ -1,16 +1,8 @@
 import { useMemo, useState } from "react";
-import { Empty, EmptyDescription } from "@/components/ui/empty";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { Card } from "@/components/ui/card";
+import { SearchInput } from "@/components/ui/search-input";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { AnimatedSearchIcon } from "../ui/animated-icons";
+import { SettingControl } from "./setting-control";
 
 type ShortcutRow = {
   command: string;
@@ -180,51 +172,17 @@ export function KeyboardShortcutsSection() {
 
   return (
     <section className="keyboard-shortcuts-section" aria-label="Keyboard shortcuts">
-      <InputGroup className="keyboard-shortcuts-search">
-        <InputGroupAddon>
-          <AnimatedSearchIcon />
-        </InputGroupAddon>
-        <InputGroupInput
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search shortcuts"
-          aria-label="Search shortcuts"
-        />
-      </InputGroup>
-      <div className="keyboard-shortcuts-card">
-        {visibleRows.length > 0 ? (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Command</TableHead>
-                <TableHead className="keyboard-shortcuts-keys-column">Keybinding</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {visibleRows.map((row) => (
-                <TableRow key={row.command}>
-                  <TableCell className="keyboard-shortcuts-copy">
-                    <div className="keyboard-shortcuts-command">{row.command}</div>
-                    <div className="keyboard-shortcuts-description">{row.description}</div>
-                  </TableCell>
-                  <TableCell className="keyboard-shortcuts-keys-column">
-                    <KbdGroup className="keyboard-shortcuts-keys" aria-label={`${row.command} keybindings`}>
-                      {row.keybindings.map((keybinding) => (
-                        <Kbd key={keybinding}>{keybinding}</Kbd>
-                      ))}
-                    </KbdGroup>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        ) : (
-          <Empty className="keyboard-shortcuts-empty">
-            <EmptyDescription>No matching shortcuts</EmptyDescription>
-          </Empty>
-        )}
-      </div>
+      <SearchInput className="keyboard-shortcuts-search" name="shortcutSearch" value={query} onValueChange={setQuery}
+        placeholder="Search shortcuts" aria-label="Search shortcuts" />
+      {visibleRows.length > 0 ? <Card className="settings-card keyboard-shortcuts-card">
+        {visibleRows.map(row => <SettingControl key={row.command} row={{
+          label: row.command,
+          description: row.description,
+          control: <KbdGroup className="keyboard-shortcuts-keys" aria-label={`${row.command} keybindings`}>
+            {row.keybindings.map(keybinding => <Kbd key={keybinding} className="keyboard-shortcuts-key">{keybinding}</Kbd>)}
+          </KbdGroup>,
+        }} />)}
+      </Card> : <p role="status" className="keyboard-shortcuts-empty">No matching shortcuts</p>}
     </section>
   );
 }
