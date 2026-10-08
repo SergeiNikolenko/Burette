@@ -12,9 +12,72 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import("react-dom/client");
 const { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } = await import("../apps/desktop/src/components/ui/dialog");
 const { Button } = await import("../apps/desktop/src/components/ui/button");
+const { ToolbarButton } = await import("../apps/desktop/src/components/ui/toolbar-button");
 const { Popover, PopoverTrigger, PopoverContent } = await import("../apps/desktop/src/components/ui/popover");
 const { Input } = await import("../apps/desktop/src/components/ui/input");
 const { Command, CommandDialog, CommandInput, CommandList, CommandGroup, CommandItem, CommandEmpty } = await import("../apps/desktop/src/components/ui/command");
+
+test("toolbar toggles preserve tooltip composition, ref, disabled state and single activation", async () => {
+  const { ShortcutTooltip } = await import("../apps/desktop/src/components/shortcut-tooltip");
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  const ref = React.createRef<HTMLButtonElement>();
+  let activations = 0;
+  function Example() {
+    const [selected, setSelected] = React.useState(false);
+    return <>
+      <ShortcutTooltip label="Toggle panel" shortcut="⌘J">
+        <ToolbarButton ref={ref} aria-label="Toggle panel" selected={selected} onClick={() => { activations++; setSelected(value => !value); }} />
+      </ShortcutTooltip>
+      <ToolbarButton disabled aria-label="Forward" onClick={() => activations++} />
+    </>;
+  }
+  try {
+    await act(async () => root.render(<Example />));
+    const toggle = shell.querySelector<HTMLButtonElement>('[aria-label="Toggle panel"]')!;
+    expect(ref.current).toBe(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    await act(async () => { toggle.focus(); toggle.click(); });
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.hasAttribute("data-selected")).toBe(true);
+    expect(document.activeElement).toBe(toggle);
+    await act(async () => shell.querySelector<HTMLButtonElement>('[aria-label="Forward"]')!.click());
+    expect(activations).toBe(1);
+    await act(async () => toggle.click());
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.hasAttribute("data-selected")).toBe(false);
+    expect(activations).toBe(2);
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
+
+test("activity indicator tracks descriptor jobs and opens the Jobs dock once", async () => {
+  const { ActivityIndicator } = await import("../apps/desktop/src/components/activity-indicator");
+  const { GRID_DESCRIPTOR_JOB_EVENT } = await import("../apps/desktop/src/hooks/use-app-descriptors");
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  const opened: string[][] = [];
+  const state = { derivedColumnJobs: [], conformerJobs: [], xtbJobs: [] } as unknown as React.ComponentProps<typeof ActivityIndicator>["state"];
+  const actions = { openDockTab: (side: string, tab: string) => opened.push([side, tab]) } as unknown as React.ComponentProps<typeof ActivityIndicator>["actions"];
+  const job = async (documentId: string, running: boolean) => act(async () => {
+    window.dispatchEvent(new CustomEvent(GRID_DESCRIPTOR_JOB_EVENT, { detail: { documentId, running } }));
+  });
+  try {
+    await act(async () => root.render(<ActivityIndicator state={state} actions={actions} />));
+    expect(shell.querySelector("button")).toBeNull();
+    await job("a", true);
+    expect(shell.querySelector("button")?.getAttribute("aria-label")).toBe("Running: Descriptors");
+    expect(shell.querySelector('[data-slot="spinner"]')?.getAttribute("aria-hidden")).toBe("true");
+    await job("a", true); // Repeated progress must not double-count a job.
+    await job("b", true);
+    expect(shell.querySelector("button")?.getAttribute("aria-label")).toBe("Running 2 jobs");
+    await act(async () => shell.querySelector<HTMLButtonElement>("button")!.click());
+    expect(opened).toEqual([["bottom", "jobs"]]);
+    await job("a", false);
+    expect(shell.querySelector(".activity-indicator-count")).toBeNull();
+    await job("b", false);
+    expect(shell.querySelector("button")).toBeNull();
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
 
 test("command dialog labels, filtering and keyboard selection survive its Atlas surface", async () => {
   const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);

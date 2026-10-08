@@ -9,6 +9,7 @@ import { isTauriRuntime } from "../lib/tauri";
 import { useFinderIconUrl } from "../hooks/use-finder-icon-url";
 import { useDefaultApplicationIconUrl } from "../hooks/use-default-application-icon-url";
 import { AppImageIcon } from "./ui/app-image-icon";
+import { ChevronDown } from "./ui/app-icons";
 import { WorkspaceFileHeader } from "./workspace-file-header";
 import { useNativeApplicationIcons } from "../hooks/use-native-application-icons";
 import { visibleEditorTargets } from "../lib/chemical-editor-targets";
@@ -141,9 +142,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
                 <AppImageIcon src={preferredIconUrl} fallback={openDestinationIconText(state.preferences.openInDefaultDestination, preferredTarget)} />
               ) : openDestinationIconText(state.preferences.openInDefaultDestination, preferredTarget)}
             </span>
-            <svg className="open-editor-chevron" width="13" height="13" viewBox="0 0 13 13" aria-hidden="true">
-              <path d="M3.5 5 6.5 8 9.5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <ChevronDown className="open-editor-chevron" size={13} aria-hidden="true" />
           </button>
         </ShortcutTooltip>
       )}

@@ -1,4 +1,5 @@
 import { Spinner } from "@/components/ui/spinner";
+import { ToolbarButton } from "@/components/ui/toolbar-button";
 import { NativeWorkspaceMenu, NativeWorkspaceSidebar } from "./native-workspace-navigation";
 import { useNativeWorkspacePlacement } from "../hooks/use-native-workspace-placement";
 import { MobileWebDemoLayout } from "./mobile-web-demo-layout";
@@ -508,7 +509,7 @@ export function AppLayout({
           {!hostedMcpWidget ? (
             <div className="chrome-leading-controls" data-tauri-drag-region>
               <div className="tab-history-controls" aria-label="Navigation history">
-                <button
+                <ToolbarButton
                   type="button"
                   className="tab-history-button"
                   onMouseDown={(event) => event.preventDefault()}
@@ -518,8 +519,8 @@ export function AppLayout({
                   aria-label="Back"
                 >
                   <ArrowLeft size={16} aria-hidden />
-                </button>
-                <button
+                </ToolbarButton>
+                <ToolbarButton
                   type="button"
                   className="tab-history-button"
                   onMouseDown={(event) => event.preventDefault()}
@@ -529,17 +530,17 @@ export function AppLayout({
                   aria-label="Forward"
                 >
                   <ArrowRight size={16} aria-hidden />
-                </button>
+                </ToolbarButton>
               </div>
-              <button
+              <ToolbarButton
                 type="button"
-                className="chrome-button sidebar-toggle-root"
+                className="sidebar-toggle-root"
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={onToggleSidebar}
                 aria-label={state.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
               >
                 <DockToggleIcon />
-              </button>
+              </ToolbarButton>
             </div>
           ) : null}
           <div className="chrome-trailing-controls" data-tauri-drag-region>
@@ -548,29 +549,29 @@ export function AppLayout({
             {!hostedMcpWidget && pluginSurface ? <AnnotateToggle className="chrome-button dock-toggle-button" /> : null}
             {!hostedMcpWidget && !pluginSurface ? (
               <ShortcutTooltip label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"} shortcut="⌘J">
-                <button
+                <ToolbarButton
                   type="button"
-                  className="chrome-button dock-toggle-button"
-                  data-active={state.bottomDockOpen || undefined}
+                  className="dock-toggle-button"
+                  selected={state.bottomDockOpen}
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={() => actions.toggleDock("bottom")}
                   aria-label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"}
                 >
                   <DockToggleIcon className="dock-toggle-icon-bottom" />
-                </button>
+                </ToolbarButton>
               </ShortcutTooltip>
             ) : null}
             <ShortcutTooltip label={state.rightDockOpen ? "Hide right dock" : "Show right dock"} shortcut="⌥⌘B">
-              <button
+              <ToolbarButton
                 type="button"
-                className="chrome-button dock-toggle-button"
-                data-active={state.rightDockOpen || undefined}
+                className="dock-toggle-button"
+                selected={state.rightDockOpen}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => actions.toggleDock("right")}
                 aria-label={state.rightDockOpen ? "Hide right dock" : "Show right dock"}
               >
                 <DockToggleIcon className="dock-toggle-icon-right" />
-              </button>
+              </ToolbarButton>
             </ShortcutTooltip>
           </div>
           <header className="topbar">

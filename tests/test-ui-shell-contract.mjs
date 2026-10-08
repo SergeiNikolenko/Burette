@@ -7557,7 +7557,7 @@ assert.match(viteConfig, /browserDevDescriptorInstallChild\?\.kill\(\);/);
 assert.match(activityIndicator, /GRID_DESCRIPTOR_JOB_EVENT/);
 assert.match(activityIndicator, /openDockTab\("bottom", "jobs"\)/);
 assert.match(appLayout, /<ActivityIndicator state=\{layoutState\} actions=\{actions\} \/>/);
-assert.match(styles, /\.activity-indicator-spinner \{/);
+assert.match(activityIndicator, /<Spinner aria-hidden="true"/);
 assert.match(gridNativeMenuStateHook, /activeDocument\?\.renderer === "grid2d"/);
 assert.match(appGridControlMessagesHook, /body\?\.type === "gridMenuStateChanged"/);
 assert.match(appGridControlMessagesHook, /updateGridMenuState\(documentId/);

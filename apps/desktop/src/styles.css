@@ -397,14 +397,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   gap: 4px;
   padding: var(--chrome-control-padding) 0;
 }
-.sidebar-toggle-root {
-  position: static;
-  z-index: auto;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  flex: 0 0 auto;
-}
 .topbar {
   position: absolute;
   top: 0;
@@ -449,14 +441,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .activity-indicator {
   width: 28px;
 }
-.activity-indicator-spinner {
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--text-icon-muted) 30%, transparent);
-  border-top-color: var(--text-secondary);
-  animation: activity-indicator-spin 0.9s linear infinite;
-}
 .activity-indicator-count {
   position: absolute;
   top: 1px;
@@ -465,15 +449,12 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   height: 12px;
   padding: 0 3px;
   border-radius: 6px;
-  background: var(--accent, #4c8dff);
-  color: #fff;
+  background: var(--color-background-primary-solid);
+  color: var(--color-text-primary-solid);
   font-size: 8px;
   font-weight: 700;
   line-height: 12px;
   text-align: center;
-}
-@keyframes activity-indicator-spin {
-  to { transform: rotate(360deg); }
 }
 .correlation-matrix-scroll {
   min-width: 0;
@@ -960,9 +941,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .grid-hover-molecule-strap-chevron {
   flex: 0 0 auto;
 }
-@media (prefers-reduced-motion: reduce) {
-  .activity-indicator-spinner { animation-duration: 2.4s; }
-}
 .open-editor-trigger {
   /* Preserve application artwork when WebKit paints pressed/inactive controls. */
   -webkit-appearance: none;
@@ -1052,23 +1030,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .tab-shell[data-dragging="true"] {
   z-index: 12;
 }
-.tab-history-button {
-  width: 28px;
-  height: 28px;
-  border: 0;
-  border-radius: var(--radius-lg);
-  background: transparent;
-  color: var(--color-text-tertiary);
-  font-size: 16px;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 140ms ease-out, color 140ms ease-out, opacity 140ms ease-out, transform 140ms ease-out;
-}
-.tab-history-button:hover:not(:disabled) { background: var(--color-background-primary-ghost-hover); color: var(--color-text); }
-.tab-history-button:active:not(:disabled) { transform: scale(0.94); }
-.tab-history-button:disabled { opacity: 0.3; }
 .tab {
   position: relative;
   max-width: 180px;
@@ -2500,7 +2461,6 @@ img.radix-menu-item-icon {
 }
 .chrome-button:focus-visible,
 .new-tab:focus-visible,
-.tab-history-button:focus-visible,
 .tab:focus-visible,
 .sidebar-product:focus-visible,
 .sidebar-settings-button:focus-visible,
