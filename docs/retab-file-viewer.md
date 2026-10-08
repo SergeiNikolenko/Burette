@@ -84,7 +84,10 @@ Document rendering and layout stay on the Retab components. Their buttons,
 menus and loading spinners use Burette's shared Atlas primitives, so document
 controls follow the same theme, focus states and menu behavior as the shell.
 Retab button sizes `iconSm` are mapped to the shared `icon-sm` size. Document
-loading skeletons remain in `retab-skeleton.tsx`.
+loading placeholders retain their document geometry and use the shared
+`skeleton.tsx` primitive with reduced-motion support. Error and empty states
+compose the shared `Empty` primitives; retry/download availability still comes
+from the typed viewer error classifier. Raw errors are not rendered.
 
 The stage inherits the shell palette, including custom colors. The shadcn border
 preflight is scoped to `.document-stage *` and `:host *` for CSV/XLSX shadow
@@ -102,7 +105,7 @@ Registry code is vendored, so these edits must be re-applied after every update:
 | File | Patch | Reason |
 | --- | --- | --- |
 | viewer controls, header, chrome, download, zoom, error and file states | use shared `button`, `dropdown-menu`, `spinner`; map `iconSm` to `icon-sm` | keep document controls consistent with the Atlas shell |
-| every vendored file importing `./skeleton` | import `retab-skeleton` | preserve document-specific placeholders |
+| document loading placeholders | shared `skeleton` and `spinner` | preserve document geometry with shell theme and reduced-motion support |
 | `csv-viewer-row-patcher.ts`, `xlsx-viewer-row-patcher.ts` | `isHidden: Boolean(element.hidden)` | `HTMLElement.hidden` is `boolean \| "until-found"` in our TypeScript DOM lib |
 | `file-viewer-sidebar.tsx` | cast the rail click event to `React.MouseEvent<HTMLButtonElement>` | the rail renders either `Slot.Root` or `button` |
 | `file-viewer-route.tsx` | image branch passes `defaultScale={1}` | open media at natural size, no fit-to-width auto zoom |

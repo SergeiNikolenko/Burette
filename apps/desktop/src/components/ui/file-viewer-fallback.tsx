@@ -10,7 +10,7 @@ import {
 } from "@/lib/pdf-viewer-diagnostics";
 import { cn } from "@/lib/utils";
 import type { ViewerResource } from "@/lib/viewer-resource";
-import { Skeleton } from "@/components/ui/retab-skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 
 import { CodeViewerFallback } from "./code-viewer-chrome";
 import { DocxViewerFallback } from "./docx-viewer-chrome";
@@ -47,12 +47,10 @@ export function UnsupportedCard({
   return (
     <FileViewerUnsupportedState
       className={cn(
-        bare ? "bg-muted/20 h-full" : "bg-muted/30 min-h-64 rounded-xl border",
+        bare ? "h-full" : "min-h-64",
         className,
       )}
-      description={
-        message ?? `No preview is available for ${resource.fileName}.`
-      }
+      description={message}
       download={resource.originalDownload}
       fileName={resource.fileName}
       showDownload={showDownload}

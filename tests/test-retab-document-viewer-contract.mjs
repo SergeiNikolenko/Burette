@@ -94,7 +94,7 @@ assert.equal(components.registries['@retab'], 'https://ui.retab.com/r/{name}.jso
 const viewerControls = source('apps/desktop/src/components/ui/viewer-controls.tsx');
 assert.match(viewerControls, /from "@\/components\/ui\/button"/);
 assert.match(viewerControls, /size="icon-sm"/);
-for (const name of ['button', 'dropdown-menu', 'retab-skeleton', 'spinner']) {
+for (const name of ['button', 'dropdown-menu', 'skeleton', 'spinner']) {
   source(`apps/desktop/src/components/ui/${name}.tsx`);
 }
 assert.doesNotMatch(styles, /\.document-stage\s*\{[^}]*--shadcn-background:/);

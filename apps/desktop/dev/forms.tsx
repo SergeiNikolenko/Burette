@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { MergeColumnsDialog } from "@/components/merge-columns-dialog";
 import { CalculatedColumnDialog } from "@/components/calculated-column-dialog";
 import type { GridColumnChoice } from "@/components/types";
+import { ViewerStateExamples } from "./viewer-state-examples";
 import { DocumentControlsExamples } from "./document-controls-examples";
 import { TableTransformExamples } from "./table-transform-examples";
 import { SubstructureQueryExample } from "./substructure-query-example";
@@ -52,6 +53,7 @@ function Forms() {
     <DatabaseExample />
     <FileOperationExamples />
     <DocumentControlsExamples />
+    <ViewerStateExamples />
     <JobExamples />
     <ConnectionExamples />
     {result ? <output>{result}</output> : null}
