@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { loadDerivedEngines, type RGroupDecomposition } from "../lib/derived-columns";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
+import { Button } from "./ui/button";
+import { DARK_STRUCTURE_PALETTE } from "../lib/structure-palette";
 
 function Structure({ smiles }: { smiles: string }) {
   const [image, setImage] = useState("");
   useEffect(() => {
+    setImage("");
     let active = true;
     let version = 0;
     const draw = async () => {
@@ -18,10 +21,10 @@ function Structure({ smiles }: { smiles: string }) {
           const dark = document.querySelector(".app-shell")?.getAttribute("data-effective-theme") === "dark";
           const ink = dark ? [0.87, 0.87, 0.87] : [0.12, 0.12, 0.12];
           const svg = mol.get_svg_with_highlights(JSON.stringify({ width: 260, height: 150,
-            backgroundColour: [0, 0, 0, 0], atomColourPalette: { 0: ink, 1: ink, 6: ink }, padding: 0.1 }));
+            backgroundColour: [0, 0, 0, 0], atomColourPalette: { 0: ink, 1: ink, 6: ink, ...(dark ? DARK_STRUCTURE_PALETTE : {}) }, padding: 0.1 }));
           if (active && version === current) setImage(svg);
         } finally { mol.delete(); }
-      } catch { if (active) setImage(""); }
+      } catch { if (active && version === current) setImage(""); }
     };
     void draw();
     const observer = new MutationObserver(() => { void draw(); });
@@ -49,15 +52,15 @@ export function RGroupPreviewResults({ result, total }: { result: RGroupDecompos
   const excluded = result.excludedRows.length;
   return <section className="rgroup-results" aria-label="Decomposition preview">
     <p className="rgroup-coverage"><strong>{result.rows.length.toLocaleString()} / {total.toLocaleString()} matched</strong>
-      <span>{Math.round(100 * result.rows.length / total)}% coverage · {result.series.length} series</span></p>
+      <span>{total > 0 ? `${Math.round(100 * result.rows.length / total)}% coverage` : ""}</span></p>
     {excluded > 0 && <p role="status">{excluded} excluded: {[
       result.unparsedRows && `${result.unparsedRows} invalid ${result.unparsedRows === 1 ? "structure" : "structures"}`,
       result.noScaffoldRows && `${result.noScaffoldRows} without rings`,
       result.unmatchedRows && `${result.unmatchedRows} without this core`,
     ].filter(Boolean).join("; ")}.</p>}
     {series && <>
-      <label className="calculated-column-field">Series
-        <NativeSelect value={series.id} onChange={(event) => { setSeriesId(event.target.value); setPosition(""); setPage(0); }}>
+      <label className="mb-3 flex flex-col gap-2 text-xs">Series
+        <NativeSelect name="series" value={series.id} onChange={(event) => { setSeriesId(event.target.value); setPosition(""); setPage(0); }}>
           {result.series.map((item) => <NativeSelectOption key={item.id} value={item.id}>{item.id} · {item.matchedRows} molecules · {item.labels.length} variable {item.labels.length === 1 ? "position" : "positions"}</NativeSelectOption>)}
         </NativeSelect>
       </label>
@@ -66,17 +69,17 @@ export function RGroupPreviewResults({ result, total }: { result: RGroupDecompos
         {!series.labels.length && <span>No variable substituents</span>}
       </div>
       {label && <>
-        <label className="calculated-column-field">Position
-          <NativeSelect value={label} onChange={(event) => { setPosition(event.target.value); setPage(0); }}>
+        <label className="mb-3 flex flex-col gap-2 text-xs">Position
+          <NativeSelect name="position" value={label} onChange={(event) => { setPosition(event.target.value); setPage(0); }}>
             {series.labels.map((item) => <NativeSelectOption key={item} value={item}>{item}</NativeSelectOption>)}
           </NativeSelect>
         </label>
         <div className="rgroup-substituents">{groups.slice(page * 6, page * 6 + 6).map(([smiles, count]) =>
           <figure key={smiles}><Structure smiles={smiles} /><figcaption>{count} {count === 1 ? "molecule" : "molecules"} · {Math.round(100 * count / series.matchedRows)}%</figcaption></figure>)}</div>
         {groups.length > 6 && <div className="rgroup-pagination">
-          <button className="dock-action" disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</button>
-          <span>{page * 6 + 1}–{Math.min(page * 6 + 6, groups.length)} of {groups.length}</span>
-          <button className="dock-action" disabled={(page + 1) * 6 >= groups.length} onClick={() => setPage(page + 1)}>Next</button>
+          <Button type="button" variant="secondary" size="sm" disabled={page === 0} onClick={() => setPage(page - 1)}>Previous</Button>
+          <span className="text-xs tabular-nums" role="status">{page * 6 + 1}–{Math.min(page * 6 + 6, groups.length)} of {groups.length}</span>
+          <Button type="button" variant="secondary" size="sm" disabled={(page + 1) * 6 >= groups.length} onClick={() => setPage(page + 1)}>Next</Button>
         </div>}
       </>}
     </>}

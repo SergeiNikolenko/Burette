@@ -92,8 +92,7 @@ console.log("Inspector high-resolution render checks passed.");
 
 // Draw explicit hydrogens with the inspector's real palettes. Their atom labels
 // and half-bonds must both remain visible on the dark paper.
-const paletteExpression = hover.match(/const DARK_STRUCTURE_PALETTE = (\{[^]*?\n\});/)[1];
-const darkPalette = new Function(`return ${paletteExpression}`)();
+const { DARK_STRUCTURE_PALETTE: darkPalette } = await import("../apps/desktop/src/lib/structure-palette.ts");
 const rdkit = await (await import('@rdkit/rdkit')).default();
 const water = rdkit.get_mol('[H]O[H]', JSON.stringify({removeHs:false}));
 try {

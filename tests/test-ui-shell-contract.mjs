@@ -7547,8 +7547,7 @@ assert.match(gridHoverMolecule, /const initial = node\.getBoundingClientRect\(\)
 // RDKit draws carbon in black, so the dark theme needs its own palette or the
 // skeleton vanishes and only the heteroatom labels survive. The theme is part
 // of the drawing cache key, or a theme switch would serve the old ink.
-assert.match(gridHoverMolecule, /const DARK_STRUCTURE_PALETTE = \{/);
-assert.match(gridHoverMolecule, /"6": \[0\.87, 0\.87, 0\.87\]/);
+assert.match(gridHoverMolecule, /import \{ DARK_STRUCTURE_PALETTE \} from "\.\.\/lib\/structure-palette"/);
 assert.match(gridHoverMolecule, /atomColourPalette: palette/);
 assert.match(gridHoverMolecule, /const sizedKey = `\$\{theme\} /);
 assert.match(gridHoverMolecule, /attributeFilter: \["data-effective-theme"\]/);

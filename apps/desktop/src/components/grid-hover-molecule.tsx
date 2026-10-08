@@ -2,6 +2,7 @@ import DOMPurify from "dompurify";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { loadDerivedEngines } from "../lib/derived-columns";
+import { DARK_STRUCTURE_PALETTE } from "../lib/structure-palette";
 import { describePropValue } from "../lib/grid-value-stats.mjs";
 import { writeClipboardText } from "../lib/clipboard";
 import { postGridCommand } from "../lib/viewer-bridge";
@@ -70,18 +71,6 @@ const SVG_SIZE_STEP = 8;
 function roundedSize(value: number, minimum: number): number {
   return Math.max(minimum, Math.round(value / SVG_SIZE_STEP) * SVG_SIZE_STEP);
 }
-
-// RDKit draws the carbon skeleton in black, which is invisible on the dark
-// theme - the heteroatom labels showed and the molecule did not. Carbon takes
-// the app's own ink colour instead, and nitrogen and oxygen are lightened just
-// enough to stay legible against a dark surface. The light theme keeps RDKit's
-// own palette, which is what it was designed for.
-const DARK_STRUCTURE_PALETTE = {
-  "1": [0.87, 0.87, 0.87],
-  "6": [0.87, 0.87, 0.87],
-  "7": [0.45, 0.62, 1],
-  "8": [1, 0.45, 0.45],
-};
 
 function effectiveTheme(): string {
   return document.querySelector(".app-shell")?.getAttribute("data-effective-theme") ?? "light";
