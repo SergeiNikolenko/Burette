@@ -11,6 +11,7 @@ import { CorrelationExample } from "./correlation-example";
 import { ReactionExample } from "./reaction-example";
 import { RGroupExample } from "./rgroup-example";
 import { PropertiesExample } from "./properties-example";
+import { FileOperationExamples } from "./file-operation-examples";
 import { DatabaseExample } from "./database-example";
 import { JobExamples } from "./job-examples";
 import { ConnectionExamples } from "./connection-examples";
@@ -49,6 +50,7 @@ function Forms() {
     <RGroupExample />
     <PropertiesExample />
     <DatabaseExample />
+    <FileOperationExamples />
     <DocumentControlsExamples />
     <JobExamples />
     <ConnectionExamples />

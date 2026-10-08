@@ -9098,16 +9098,6 @@ img.settings-open-destination-icon {
 
 .project.selected { background: var(--surface-selected); }
 
-.file-operation-dialog { width: min(360px, calc(100vw - 32px)); }
-.file-operation-dialog .radix-dialog-body { padding-bottom: 12px; overflow-wrap: anywhere; }
-.file-operation-dialog .radix-dialog-body p { margin: 0; }
-/* Here the description is the message itself, so it keeps the body type. */
-.file-operation-dialog .radix-dialog-subline { font-size: 13px; color: var(--text-secondary); }
-.file-operation-dialog .radix-dialog-body .radix-dialog-subline + * { margin-top: 10px; }
-
-.file-operation-dialog-rename { width: min(320px, calc(100vw - 32px)); }
-.file-operation-dialog-rename .radix-dialog-body { padding-top: 14px; padding-bottom: 12px; }
-.file-operation-dialog-rename .calculated-column-field { gap: 0; }
 
 .project-folder-icon {
   position: relative;

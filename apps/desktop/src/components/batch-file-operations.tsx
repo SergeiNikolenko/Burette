@@ -1,24 +1,23 @@
-import { useState } from "react";
-import { Dialog } from "radix-ui";
+import { useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { isTauriRuntime } from "../lib/tauri";
 import { useMoleculeStore } from "../stores/molecule-store";
 import { useShellStore } from "../stores/shell-store";
-import { useAppShellPortalContainer } from "./ui/portal-container";
-import { CloseIcon } from "./close-icon";
+import { TrashFilesDialog } from "./file-operation-dialogs";
 import type { ShellActions, ShellViewState } from "./types";
 import { menuItem } from "./workspace-menu-items";
 
 export function useBatchFileOperations(actions: ShellActions, state: ShellViewState) {
-  const container = useAppShellPortalContainer();
   const [paths, setPaths] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [completed, setCompleted] = useState<string[]>([]);
+  const running = useRef(false);
   // Trashing starts without confirmation; the dialog only reports a failure and offers a retry.
   const trash = async (paths: string[]) => {
-    if (busy) return;
+    if (running.current) return;
+    running.current = true;
     setBusy(true); setError(""); setCompleted([]);
     const affected = useMoleculeStore.getState().tabs.filter(tab => 'path' in tab.location && paths.includes(tab.location.path));
     const moved: string[] = [];
@@ -34,10 +33,12 @@ export function useBatchFileOperations(actions: ShellActions, state: ShellViewSt
       }
       setPaths([]);
     } catch (error) {
-      setError(String(error));
+      console.error("Move files to Trash failed", error);
+      setError("Could not move these files to Trash. Try again.");
       setCompleted(moved);
       setPaths(paths.filter(path => !moved.includes(path)));
     } finally {
+      running.current = false;
       setBusy(false);
       window.dispatchEvent(new Event("burette-folder-contents-changed"));
     }
@@ -54,23 +55,16 @@ export function useBatchFileOperations(actions: ShellActions, state: ShellViewSt
         await invoke("operate_sidebar_file", { request: { operation: "saveCopy", path, destination: destination + '/' + path.split('/').pop() } });
         copied++;
       }
-    } catch (error) { throw new Error(`${copied} of ${files.length} files copied. ${String(error)}`); }
+    } catch (error) {
+      console.error("Copy selected files failed", error);
+      throw new Error(`${copied} of ${files.length} files copied. Choose another folder or try again.`);
+    }
   };
   const items = (files: string[]) => !isTauriRuntime() || files.length < 2 || files.length > 200 ? [] : [
     { ...menuItem("save-file-copy", "Selected Files…", () => exportFiles(files)), disabled: hasDirtyFile(files) },
     menuItem("trash-file", "Move to Trash", () => trash(files)),
   ];
-  const dialog = <Dialog.Root open={paths.length > 0} onOpenChange={open => { if (!open && !busy) setPaths([]); }}>
-    <Dialog.Portal container={container}><Dialog.Overlay className="radix-dialog-overlay" /><Dialog.Content className="radix-dialog file-operation-dialog">
-      <div className="radix-dialog-header"><Dialog.Title>Move {paths.length} Files to Trash</Dialog.Title>
-        <Dialog.Close asChild><button type="button" className="radix-dialog-close" aria-label="Close move to trash" disabled={busy}><CloseIcon size={14} /></button></Dialog.Close></div>
-      <div className="radix-dialog-body"><Dialog.Description className="radix-dialog-subline">You can restore these files in Finder.</Dialog.Description>
-        <ul className="radix-dialog-scroll-list">{paths.map(path => <li key={path}>{path.split('/').pop()}</li>)}</ul>
-        {completed.length ? <p>{completed.length} files moved.</p> : null}{error ? <p role="alert">{error}</p> : null}
-      </div>
-      <div className="radix-dialog-actions"><button type="button" className="dock-action" disabled={busy} onClick={() => setPaths([])}>Cancel</button>
-        <button type="button" className="dock-action calculate-properties-run" disabled={busy} onClick={() => void trash(paths)}>{busy ? "Moving…" : "Move to Trash"}</button></div>
-    </Dialog.Content></Dialog.Portal>
-  </Dialog.Root>;
+  const dialog = <TrashFilesDialog paths={paths} completed={completed.length} error={error} busy={busy}
+    onDismiss={() => { if (!running.current) setPaths([]); }} onRetry={() => void trash(paths)} />;
   return { items, dialog };
 }
