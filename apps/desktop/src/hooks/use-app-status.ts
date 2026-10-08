@@ -43,7 +43,7 @@ export function useAppStatus() {
   const [statusDetails, setStatusDetails] = useState<StatusDetailsRequest | null>(null);
   const recentErrorsRef = useRef<RecentStatusError[]>([]);
 
-  // Error toasts fade out on their own (Base UI pauses the timer while hovered)
+  // Error toasts fade out on their own (sonner pauses the timer while hovered)
   // and keep the full text behind Details. The returned callback closes this
   // toast, so a caller can withdraw an error once a later attempt superseded it.
   const pushStatus = useCallback((message: string, kind: StatusKind = "info", details: string[] = []) => {

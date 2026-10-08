@@ -146,9 +146,9 @@ rows, option counts and nesting before opening AppKit.
 
 ### Status And Notifications
 
-- Transient status messages use the Base UI toast layer
+- Transient status messages use the sonner toast layer
   (`apps/desktop/src/components/ui/toast.tsx`): notices stack and auto-dismiss,
-  errors persist until dismissed, and long details open in a standalone dialog
+  application error notices last eight seconds, and long details open in a standalone dialog
   (`apps/desktop/src/components/status-details-dialog.tsx`).
 - Do not reintroduce blocking status popups for routine progress.
 

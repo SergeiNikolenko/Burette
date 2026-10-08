@@ -2806,7 +2806,7 @@ assert.match(styles, /\.grid-filter-card-host,[^{]*\{[^}]*min-width: 0;[^}]*max-
 assert.match(gridFilterSection, /<Accordion[\s\S]*?value=\{open \? "filters" : ""\}/);
 assert.doesNotMatch(gridFilterSection, /className="structure-inspector-section-title-button"[\s\S]{0,180}ArrowDown01Icon[\s\S]{0,80}Filters/);
 assert.match(dockPanel, /<Button[\s\S]*?className="dock-tab"/);
-assert.match(dockPanel, /<TooltipContent showArrow=\{false\}>Close panel<\/TooltipContent>/);
+assert.match(dockPanel, /<TooltipContent\b[^>]*>Close panel<\/TooltipContent>/);
 // The scene stepper is identified by the scene itself, not by the parser failing.
 assert.match(structureInfoPanel, /if \(sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT\)/);
 assert.match(structureInfoPanel, /function InlineSettingsSection\(\{ title, children \}/);

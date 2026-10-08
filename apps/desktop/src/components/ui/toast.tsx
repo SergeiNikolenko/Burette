@@ -15,11 +15,12 @@ type ToastOptions = {
   title: ReactNode
   description?: ReactNode
   type?: ToastType
-  /** Milliseconds before the toast leaves on its own. */
+  /** Milliseconds before dismissal; zero keeps the notice until closed. */
   timeout?: number
   /** High-priority toasts interrupt assistive technology. */
   priority?: "low" | "high"
   actionProps?: { children: ReactNode; onClick: () => void }
+  actionPlacement?: "inline" | "footer"
 }
 
 const DEFAULT_TIMEOUT_MS = 5000
@@ -67,45 +68,42 @@ function ToastIcon({ type }: { type: ToastType | undefined }) {
   )
 }
 
-function ToastCard({ id, title, description, type, priority, actionProps }: ToastOptions & { id: ToastId }) {
+function ToastCard({ id, title, description, type, priority, actionProps, actionPlacement = "footer" }: ToastOptions & { id: ToastId }) {
+  const action = actionProps ? <Button data-slot="toast-action" variant="secondary" size="xs"
+    className="rounded-(--radius-button-action) text-xs leading-4" onClick={actionProps.onClick}>
+    {actionProps.children}
+  </Button> : null
   return (
     <div
       data-slot="toast"
       role={priority === "high" ? "alert" : "status"}
-      className="pointer-events-auto flex w-(--width) items-start gap-2 rounded-xl border border-(--color-border) bg-(--color-surface-elevated-secondary) px-3 py-2 text-base text-(--color-text) shadow-[0_4px_12px_0_rgb(0_0_0/0.1)] select-none"
+      className="pointer-events-auto flex w-[min(var(--width),calc(100vw-32px))] flex-col gap-2 rounded-xl border border-(--color-border) bg-(--color-surface-elevated-secondary) px-3 py-2 text-base text-(--color-text) shadow-[0_4px_12px_0_rgb(0_0_0/0.1)] select-none"
     >
-      <ToastIcon type={type} />
-      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div data-slot="toast-title" className="line-clamp-2 min-h-6 text-base leading-6 font-medium [overflow-wrap:anywhere]">
-          {title}
-        </div>
-        {description ? (
-          <div data-slot="toast-description" className="text-base leading-normal text-(--color-text-secondary)">
-            {description}
+      <div className="flex min-w-0 items-start gap-1">
+        <ToastIcon type={type} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div data-slot="toast-title" className="flex min-h-6 items-center text-base leading-normal font-medium whitespace-pre-wrap [overflow-wrap:anywhere]">
+            {title}
           </div>
-        ) : null}
-      </div>
-      {actionProps ? (
+          {description ? (
+            <div data-slot="toast-description" className="text-base leading-normal text-(--color-text-secondary) [overflow-wrap:anywhere]">
+              {description}
+            </div>
+          ) : null}
+        </div>
+        {action && actionPlacement === "inline" ? <div className="ml-2 flex shrink-0 items-center">{action}</div> : null}
         <Button
-          data-slot="toast-action"
-          variant="outline"
-          size="xs"
-          className="shrink-0"
-          onClick={actionProps.onClick}
+          data-slot="toast-close"
+          aria-label="Close toast"
+          variant="ghost"
+          size="icon-xs"
+          className="relative shrink-0 rounded-full text-(--color-text) after:absolute after:-inset-2 after:content-['']"
+          onClick={() => sonner.dismiss(id)}
         >
-          {actionProps.children}
+          <HugeiconsIcon icon={Cancel01Icon} className="size-4" aria-hidden="true" />
         </Button>
-      ) : null}
-      <Button
-        data-slot="toast-close"
-        aria-label="Close toast"
-        variant="ghost"
-        size="icon-xs"
-        className="relative shrink-0 rounded-full text-(--color-text) after:absolute after:-inset-2 after:content-['']"
-        onClick={() => sonner.dismiss(id)}
-      >
-        <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />
-      </Button>
+      </div>
+      {action && actionPlacement === "footer" ? <div className="flex items-center justify-end gap-2">{action}</div> : null}
     </div>
   )
 }
@@ -115,7 +113,7 @@ function ToastCard({ id, title, description, type, priority, actionProps }: Toas
 const toast = {
   add(options: ToastOptions): ToastId {
     return sonner.custom((id) => <ToastCard id={id} {...options} />, {
-      duration: options.timeout ?? DEFAULT_TIMEOUT_MS,
+      duration: options.timeout === 0 ? Infinity : options.timeout ?? DEFAULT_TIMEOUT_MS,
     })
   },
   close(id: ToastId) {
@@ -133,7 +131,8 @@ function Toaster() {
     <Sonner
       position="bottom-right"
       offset={16}
-      gap={12}
+      mobileOffset={16}
+      gap={8}
       visibleToasts={3}
       style={{ "--width": "320px" } as CSSProperties}
     />,
