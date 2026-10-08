@@ -8,6 +8,7 @@ import { CURRENT_VERSION, defaultUpdatePreferences } from "../../update";
 import { settingsSectionLabel, type SettingsSectionId } from "../../lib/settings-sections";
 import { defaultPreferences } from "../../stores/settings-store";
 import { isTauriRuntime } from "../../lib/tauri";
+import { XTB_METHOD_LABELS, XTB_OPT_LEVEL_LABELS, XTB_SOLVATION_LABELS, XTB_SOLVENT_LABELS, XTB_SOLVENT_OPTIONS } from "../../lib/chemistry-settings";
 import { useFinderIconUrl } from "../../hooks/use-finder-icon-url";
 import { AgentIntegrationPanel } from "../agent-integration-panel";
 import { EditorScrollContainer } from "../editor-area/editor-scroll-container";
@@ -43,6 +44,7 @@ function preferenceRow<K extends Extract<keyof ViewerPreferences, string>>(
   options: ViewerPreferences[K][],
   defaultValue: ViewerPreferences[K],
   onChange: (value: ViewerPreferences[K]) => void,
+  labels?: Record<string, string>,
 ): SettingRow {
   return selectPreferenceRow(
     label,
@@ -51,6 +53,7 @@ function preferenceRow<K extends Extract<keyof ViewerPreferences, string>>(
     options.map(String),
     String(defaultValue),
     (next) => onChange(next as ViewerPreferences[K]),
+    labels,
   );
 }
 
@@ -94,6 +97,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
       ["stable", "beta"],
       defaultUpdatePreferences.channel,
       (channel) => actions.setUpdatePreferences({ ...update.preferences, channel: channel as UpdateChannel }),
+      { stable: "Stable", beta: "Beta" },
     ),
     actionRow("Version", update.statusText, update.isChecking ? "Checking..." : "Check", () => void actions.checkForUpdates(), update.isChecking),
   ];
@@ -125,8 +129,8 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                   <SettingsSection
                     title="Display"
                     rows={[
-                      preferenceRow<"theme">("Theme", "", preferences.theme, ["auto", "dark", "light"], defaultPreferences.theme, (theme) => actions.setPreference("theme", theme)),
-                      preferenceRow<"canvasBackground">("Canvas", "", preferences.canvasBackground, ["auto", "black", "graphite", "white", "transparent"], defaultPreferences.canvasBackground, (canvasBackground) => actions.setPreference("canvasBackground", canvasBackground)),
+                      preferenceRow<"theme">("Theme", "", preferences.theme, ["auto", "light", "dark"], defaultPreferences.theme, (theme) => actions.setPreference("theme", theme), { auto: "System", light: "Light", dark: "Dark" }),
+                      preferenceRow<"canvasBackground">("Canvas", "", preferences.canvasBackground, ["auto", "black", "graphite", "white", "transparent"], defaultPreferences.canvasBackground, (canvasBackground) => actions.setPreference("canvasBackground", canvasBackground), { auto: "Match theme", black: "Black", graphite: "Graphite", white: "White", transparent: "Transparent" }),
                     ]}
                   />
                   <ThemesSection preferences={preferences} actions={actions} />
@@ -137,8 +141,8 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                 <SettingsSection
                   title="Structure Rendering"
                   rows={[
-                    preferenceRow<"rendererMode">("Mode", "Preferred renderer for direct previews. Files opened normally use Auto; use Open As to choose a renderer for one file.", preferences.rendererMode, defaultRendererModeOptions, defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode)),
-                    preferenceRow<"molstarStyle">("Mol* appearance", "Default lighting and outline appearance for the Mol* renderer.", preferences.molstarStyle, ["default", "illustrative"], defaultPreferences.molstarStyle, (molstarStyle) => actions.setPreference("molstarStyle", molstarStyle)),
+                    preferenceRow<"rendererMode">("Mode", "Preferred renderer for direct previews. Files opened normally use Auto; use Open As to choose a renderer for one file.", preferences.rendererMode, defaultRendererModeOptions, defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode), { auto: "Auto", molstar: "Interactive 3D", "xyzrender-external": "3D render" }),
+                    preferenceRow<"molstarStyle">("Mol* appearance", "Default lighting and outline appearance for the Mol* renderer.", preferences.molstarStyle, ["default", "illustrative"], defaultPreferences.molstarStyle, (molstarStyle) => actions.setPreference("molstarStyle", molstarStyle), { default: "Standard", illustrative: "Illustrative" }),
                     {
                       label: "Desktop preview limit",
                       description: "Maximum source file size the desktop app opens in the structure viewer.",
@@ -296,28 +300,28 @@ function xtbSettingsRows(
     {
       label: "Method",
       description: "GFN2 is the default for small-molecule single-point and optimization jobs.",
-      control: <SelectControl value={settings.method} options={["gfn2", "gfn1", "gfn0", "gfnff"]} onChange={(method) => update("method", method as XtbSettings["method"])} />,
+      control: <SelectControl value={settings.method} options={["gfn2", "gfn1", "gfn0", "gfnff"]} labels={XTB_METHOD_LABELS} onChange={(method) => update("method", method as XtbSettings["method"])} />,
       reset: () => update("method", defaultXtbSettings.method),
       isModified: settings.method !== defaultXtbSettings.method,
     },
     {
       label: "Solvent",
       description: "Solvent name for ALPB, GBSA, COSMO, or CPCM-X.",
-      control: <SelectControl value={settings.solvent} options={["none", "water", "acetone", "acetonitrile", "benzene", "ch2cl2", "chcl3", "dmf", "dmso", "ether", "hexane", "methanol", "toluene", "thf"]} onChange={(solvent) => update("solvent", solvent)} />,
+      control: <SelectControl value={settings.solvent} options={XTB_SOLVENT_OPTIONS} labels={XTB_SOLVENT_LABELS} onChange={(solvent) => update("solvent", solvent)} />,
       reset: () => update("solvent", defaultXtbSettings.solvent),
       isModified: settings.solvent !== defaultXtbSettings.solvent,
     },
     {
       label: "Solvation model",
       description: "Continuum solvation model passed to xTB.",
-      control: <SelectControl value={settings.solvationModel} options={["none", "alpb", "gbsa", "cosmo", "cpcmx"]} onChange={(solvationModel) => update("solvationModel", solvationModel as XtbSettings["solvationModel"])} />,
+      control: <SelectControl value={settings.solvationModel} options={["none", "alpb", "gbsa", "cosmo", "cpcmx"]} labels={XTB_SOLVATION_LABELS} onChange={(solvationModel) => update("solvationModel", solvationModel as XtbSettings["solvationModel"])} />,
       reset: () => update("solvationModel", defaultXtbSettings.solvationModel),
       isModified: settings.solvationModel !== defaultXtbSettings.solvationModel,
     },
     {
       label: "Optimization level",
       description: "Geometry optimization level for --opt and --ohess.",
-      control: <SelectControl value={settings.optLevel} options={["loose", "normal", "tight", "verytight"]} onChange={(optLevel) => update("optLevel", optLevel as XtbSettings["optLevel"])} />,
+      control: <SelectControl value={settings.optLevel} options={["loose", "normal", "tight", "verytight"]} labels={XTB_OPT_LEVEL_LABELS} onChange={(optLevel) => update("optLevel", optLevel as XtbSettings["optLevel"])} />,
       reset: () => update("optLevel", defaultXtbSettings.optLevel),
       isModified: settings.optLevel !== defaultXtbSettings.optLevel,
     },

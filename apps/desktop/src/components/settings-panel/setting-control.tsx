@@ -244,11 +244,12 @@ export function selectPreferenceRow(
   options: string[],
   defaultValue: string,
   onChange: (value: string) => void,
+  labels?: Record<string, string>,
 ): SettingRow {
   return {
     label,
     description,
-    control: <SelectControl label={label} value={value} options={options} onChange={onChange} />,
+    control: <SelectControl label={label} value={value} options={options} labels={labels} onChange={onChange} />,
     reset: () => onChange(defaultValue),
     isModified: value !== defaultValue,
   };

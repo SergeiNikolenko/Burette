@@ -2796,10 +2796,9 @@ assert.doesNotMatch(gridFilterSection, /className="structure-inspector-section-t
 // The scene stepper is identified by the scene itself, not by the parser failing.
 assert.match(structureInfoPanel, /if \(sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT\)/);
 assert.match(structureInfoPanel, /function InlineSettingsSection\(\{ title, children \}/);
-assert.match(structureInfoPanel, /gfnff: "GFN-FF"/);
-assert.match(structureInfoPanel, /verytight: "Very tight"/);
-assert.match(structureInfoPanel, /ch2cl2: "Dichloromethane"/);
-assert.match(structureInfoPanel, /none: "Gas phase"/);
+// Inspector and Settings share one set of reader-facing xTB labels.
+for (const label of [/gfnff: "GFN-FF"/, /verytight: "Very tight"/, /ch2cl2: "Dichloromethane"/, /none: "Gas phase"/]) assert.match(chemistrySettings, label);
+assert.match(settingsPanel, /options=\{XTB_SOLVENT_OPTIONS\} labels=\{XTB_SOLVENT_LABELS\}/);
 assert.match(structureInfoPanel, /<Tabs defaultValue="core"/);
 assert.match(structureInfoPanel, /<TabsContent value="solvation">/);
 assert.match(settingControl, /labels\?: Record<string, string>/);
@@ -4027,7 +4026,7 @@ assert.match(themesSection, /SettingsSection/);
 assert.match(themesSection, /title=\{title\}/);
 assert.match(settingsPanel, /const defaultRendererModeOptions: Array<ViewerPreferences\["rendererMode"\]> = \["auto", "molstar", "xyzrender-external"\]/);
 assert.doesNotMatch(settingsPanel, /function visibleRendererModeOptions\(current: ViewerPreferences\["rendererMode"\]\)/);
-assert.match(settingsPanel, /preferenceRow<"molstarStyle">\("Mol\* appearance", "Default lighting and outline appearance for the Mol\* renderer\.", preferences\.molstarStyle, \["default", "illustrative"\], defaultPreferences\.molstarStyle, \(molstarStyle\) => actions\.setPreference\("molstarStyle", molstarStyle\)\)/);
+assert.match(settingsPanel, /preferenceRow<"molstarStyle">\("Mol\* appearance", "Default lighting and outline appearance for the Mol\* renderer\.", preferences\.molstarStyle, \["default", "illustrative"\], defaultPreferences\.molstarStyle, \(molstarStyle\) => actions\.setPreference\("molstarStyle", molstarStyle\), \{ default: "Standard", illustrative: "Illustrative" \}\)/);
 assert.match(settingsPanel, /Desktop preview limit/);
 assert.match(settingsPanel, /suffix="MiB"/);
 assert.match(settingsPanel, /actions\.setPreference\("desktopPreviewLimitMiB", desktopPreviewLimitMiB\)/);

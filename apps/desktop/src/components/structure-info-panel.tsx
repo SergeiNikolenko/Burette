@@ -3,6 +3,7 @@ import { Slider } from "./ui/slider";
 import { TrajectorySetting } from "./trajectory-setting";
 import { compositionStyleMenu } from "./composition-style-menu";
 import { isLocalFilePath } from "../lib/browser-file-actions";
+import { XTB_METHOD_LABELS, XTB_OPT_LEVEL_LABELS, XTB_SOLVATION_LABELS, XTB_SOLVENT_LABELS, XTB_SOLVENT_OPTIONS } from "../lib/chemistry-settings";
 import { ChevronRight as AppChevronRight, Eye as AppEye, EyeOff as AppEyeOff, Delete as AppDelete, Stopwatch, DotsHorizontal } from "./ui/app-icons";
 import { Suspense, lazy, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -2603,49 +2604,6 @@ function XtbInlineSettings({
   );
 }
 
-const XTB_SOLVENT_OPTIONS = [
-  "none",
-  "water",
-  "acetone",
-  "acetonitrile",
-  "aniline",
-  "benzaldehyde",
-  "benzene",
-  "ch2cl2",
-  "chcl3",
-  "cs2",
-  "dioxane",
-  "dmf",
-  "dmso",
-  "ether",
-  "ethylacetate",
-  "furane",
-  "hexane",
-  "methanol",
-  "nitromethane",
-  "octanol",
-  "phenol",
-  "toluene",
-  "thf",
-];
-
-// Only the tokens whose spelling is not already the chemical name.
-const XTB_SOLVENT_LABELS: Record<string, string> = {
-  none: "Gas phase",
-  ch2cl2: "Dichloromethane",
-  chcl3: "Chloroform",
-  cs2: "Carbon disulfide",
-  dmf: "DMF",
-  dmso: "DMSO",
-  ether: "Diethyl ether",
-  ethylacetate: "Ethyl acetate",
-  furane: "Furan",
-  nitromethane: "Nitromethane",
-  thf: "THF",
-  ...Object.fromEntries(["water", "acetone", "acetonitrile", "aniline", "benzaldehyde", "benzene", "dioxane", "hexane", "methanol", "octanol", "phenol", "toluene"]
-    .map((solvent) => [solvent, solvent.charAt(0).toUpperCase() + solvent.slice(1)])),
-};
-
 function XtbToggle({ label, tooltip, checked, onChange }: { label: string; tooltip: string; checked: boolean; onChange: (checked: boolean) => void }) {
   const id = useId();
   return (
@@ -3444,16 +3402,6 @@ function formatDipole(value: unknown) {
   return rows.length >= 3 ? rows.slice(0, 3).map((number) => number.toFixed(3)).join(", ") : "n/a";
 }
 
-// Engine tokens are what the executable wants; these are what a reader wants.
-const XTB_METHOD_LABELS: Record<string, string> = {
-  gfn2: "GFN2", gfn1: "GFN1", gfn0: "GFN0", gfnff: "GFN-FF",
-};
-const XTB_OPT_LEVEL_LABELS: Record<string, string> = {
-  loose: "Loose", normal: "Normal", tight: "Tight", verytight: "Very tight",
-};
-const XTB_SOLVATION_LABELS: Record<string, string> = {
-  none: "None", alpb: "ALPB", gbsa: "GBSA", cosmo: "COSMO", cpcmx: "CPCM-X",
-};
 const CONFORMER_SAMPLING_LABELS: Record<string, string> = {
   auto: "Auto", normal: "Normal", quick: "Quick", squick: "Super quick", mquick: "Micro quick",
 };
