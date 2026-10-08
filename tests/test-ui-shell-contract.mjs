@@ -2279,9 +2279,9 @@ assert.match(styles, /\.pin-hit/);
 assert.match(styles, /\.tab-scroll-region \{[^}]*width: max-content;[^}]*flex: 0 1 auto/s);
 assert.match(styles, /\.tab-strip-spacer \{[^}]*min-width: 0;[^}]*flex: 1 1 28px/s);
 assert.match(styles, /\.tab-shell \{[^}]*position: relative/s);
-assert.match(styles, /\.tab \{[^}]*height: 28px;/s);
+assert.match(styles, /\.tab \{[^}]*height: 32px;/s);
 assert.match(styles, /\.tab:hover \{[^}]*backdrop-filter: blur\(40px\)/);
-assert.match(styles, /--tab-active-bg: rgb\(29 29 29\);/);
+assert.match(styles, /--tab-active-bg: var\(--color-background-primary-ghost-hover\);/);
 assert.doesNotMatch(styles, /--tab-active-bg: color-mix\(/);
 assert.match(styles, /\.tab\.active \{[^}]*background: var\(--tab-active-bg\);[^}]*backdrop-filter: blur\(40px\)/s);
 // The close button sits inside the pill's right padding from the start and
@@ -2291,9 +2291,9 @@ assert.match(styles, /\.tab-close \{[^}]*right: 4px;[^}]*transform: translateY\(
 assert.doesNotMatch(styles, /\.tab-close \{[^}]*translate\(100%/s);
 // Every tab reserves exactly the close button's room before hover reveals it,
 // so nothing shifts on hover and inactive tabs carry no dead space.
-assert.match(styles, /\.tab \{[^}]*padding: 0 26px 0 12px;/s);
+assert.match(styles, /\.tab \{[^}]*padding: 0 26px 0 10px;/s);
 // A tab with no close button (pinned, read-only) closes up on the right.
-assert.match(styles, /\.tab-shell > \.tab:last-child \{ padding-right: 12px; \}/);
+assert.match(styles, /\.tab-shell > \.tab:last-child \{ padding-right: 10px; \}/);
 assert.match(styles, /@container \(max-width: 320px\) \{[\s\S]*\.topbar \.tab-shell \{[^}]*flex: 0 0 auto;/);
 assert.match(styles, /@container \(max-width: 320px\) \{[\s\S]*\.topbar \.tab \{[^}]*padding-inline: 10px 26px;/);
 assert.match(styles, /\.tab-shell\[data-active\] \.tab-close \{[^}]*opacity: 1;[^}]*pointer-events: auto;[^}]*background: transparent;/s);
@@ -3857,15 +3857,15 @@ assert.match(sidebarSurface, /data-expanded=\{expanded \? "true" : "false"\}/);
 assert.match(sidebarSurface, /aria-hidden=\{!expanded\}/);
 assert.match(sidebarSurface, /className="project-folder-children"/);
 assert.doesNotMatch(sidebarSurface, /project-folder-disclosure/);
-assert.match(styles, /\.project-group-row \{[^}]*position: relative;[^}]*color: var\(--text-secondary\);[^}]*padding: 5px 86px 5px 10px;[^}]*overflow: hidden;/s);
-assert.match(styles, /\.project-group-row:hover \{\s*background: var\(--surface-subtle\);\s*\}/);
+assert.match(styles, /\.project-group-row \{[^}]*position: relative;[^}]*color: var\(--color-text\);[^}]*padding: 5px 86px 5px 8px;[^}]*overflow: hidden;/s);
+assert.match(styles, /\.project-group-row:hover \{\s*background: var\(--color-background-primary-ghost-hover\);\s*\}/);
 assert.match(styles, /\.project-folder-toggle-button \{[^}]*right: 30px;/s);
 assert.match(styles, /\.project-group-row > \.project-folder-toggle-button \{\s*right: 52px;\s*\}/);
 assert.match(styles, /\.project-folder-row:hover > \.project-row-pin/);
 assert.match(styles, /\.project-folder-name \{[^}]*flex: 1;/s);
 assert.match(styles, /\.project-folder-name-input \{[^}]*flex: 1;/s);
-assert.match(styles, /\n\.project \{[^}]*color: var\(--text-secondary\);/s);
-assert.match(styles, /\.project:hover \{\s*background: var\(--surface-subtle\);\s*\}/);
+assert.match(styles, /\n\.project \{[^}]*color: var\(--color-text\);/s);
+assert.match(styles, /\.project:hover \{\s*background: var\(--color-background-primary-ghost-hover\);\s*\}/);
 assert.match(styles, /\.project-folder-children-shell \{[^}]*grid-template-rows: 0fr;[^}]*overflow: hidden;[^}]*transition: grid-template-rows 160ms ease-out, opacity 120ms ease-out;/s);
 assert.match(styles, /\.project-folder-children-shell\[data-expanded="true"\] \{[^}]*grid-template-rows: 1fr;[^}]*pointer-events: auto;/s);
 // "Show more" slides the overflow rows open through the same shell recipe
@@ -3879,7 +3879,7 @@ assert.match(styles, /\.project-tail-shell \{[^}]*grid-template-rows: 0fr;[^}]*o
 assert.match(styles, /\.project-tail-shell\[data-expanded="true"\] \{[^}]*grid-template-rows: 1fr;[^}]*pointer-events: auto;/s);
 assert.match(styles, /@media \(prefers-reduced-motion: reduce\) \{\s*\.project-group-children-shell,\s*\.project-folder-children-shell,\s*\.project-tail-shell \{ transition: none; \}/);
 assert.match(styles, /\.project-folder-children \{[^}]*min-height: 0;[^}]*overflow: hidden;/s);
-assert.match(styles, /\.project-folder-row:hover,\s*\.project-folder-row:focus-visible\s*\{\s*background: var\(--surface-subtle\);\s*outline: none;\s*\}/);
+assert.match(styles, /\.project-folder-row:hover,\s*\.project-folder-row:focus-visible\s*\{\s*background: var\(--color-background-primary-ghost-hover\);\s*outline: none;\s*\}/);
 assert.doesNotMatch(styles, /\.project-folder-row:hover,\s*\.project-folder-row:focus-visible\s*\{[^}]*box-shadow:/);
 assert.match(sidebarSurface, /project-group-row/);
 assert.match(sidebarSurface, /state\.expandedProjectIds\.includes\(project\.id\)/);

@@ -81,7 +81,7 @@
   --scrollbar-thumb: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 58%), transparent);
   --link-color: var(--accent);
   --select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='gray' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><path d='M3 4.5l3 3 3-3'/></svg>");
-  --tab-active-bg: rgb(29 29 29);
+  --tab-active-bg: var(--color-background-primary-ghost-hover);
   --chrome-control-height: 32px;
   --control-radius: 10px;
   --chrome-control-padding: 12px;
@@ -270,7 +270,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   --item-active-bg: var(--control-fill);
   --kbd-bg: var(--control-fill);
   --scrollbar-thumb: color-mix(in srgb, black calc(var(--contrast) * 58%), transparent);
-  --tab-active-bg: var(--control-fill);
+  --tab-active-bg: var(--color-surface);
   color-scheme: light;
 }
 
@@ -283,7 +283,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   --bg: rgba(17, 17, 17, 0.715);
   --text: var(--text-primary);
   --text-primary: color-mix(in srgb, var(--fg-base) 84%, var(--bg-base));
-  --tab-active-bg: rgb(29 29 29);
+  --tab-active-bg: var(--color-background-primary-ghost-hover);
   color-scheme: dark;
 }
 
@@ -326,7 +326,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
     --item-active-bg: var(--control-fill);
     --kbd-bg: var(--control-fill);
     --scrollbar-thumb: color-mix(in srgb, black calc(var(--contrast) * 58%), transparent);
-    --tab-active-bg: var(--control-fill);
+    --tab-active-bg: var(--color-surface);
   }
 }
 
@@ -335,7 +335,7 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
     --bg: rgba(17, 17, 17, 0.715);
     --text: var(--text-primary);
     --text-primary: color-mix(in srgb, var(--fg-base) 84%, var(--bg-base));
-    --tab-active-bg: rgb(29 29 29);
+    --tab-active-bg: var(--color-background-primary-ghost-hover);
   }
 }
 
@@ -440,17 +440,17 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .chrome-button,
 .new-tab {
   position: relative;
-  height: var(--chrome-control-height);
+  height: 28px;
   border: 0;
-  border-radius: var(--control-radius);
+  border-radius: calc(var(--radius-lg) * 0.75);
   background: transparent;
-  color: var(--text-muted);
+  color: var(--color-text-tertiary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
-.chrome-button { width: 32px; color: var(--text-icon-muted); }
+.chrome-button { width: 28px; }
 .activity-indicator {
   width: 28px;
 }
@@ -1129,9 +1129,9 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   flex: 0 0 auto;
   color: var(--text-muted);
 }
-.new-tab { width: 36px; margin-left: 2px; color: var(--text-icon-muted); font-size: 16px; line-height: 1; }
+.new-tab { width: 28px; margin-left: 4px; font-size: 16px; line-height: 1; }
 .chrome-button:hover,
-.new-tab:hover { background: var(--surface-subtle); color: var(--text-secondary); }
+.new-tab:hover { background: var(--color-background-primary-ghost-hover); color: var(--color-text); }
 .chrome-button[data-active] { background: var(--tab-active-bg); color: var(--text-secondary); }
 .chrome-button:active,
 .new-tab:active { transform: scale(0.94); }
@@ -1249,11 +1249,11 @@ button:focus-visible > .shortcut-tooltip {
 }
 .tab-history-button {
   width: 28px;
-  height: var(--chrome-control-height);
+  height: 28px;
   border: 0;
-  border-radius: var(--control-radius);
+  border-radius: calc(var(--radius-lg) * 0.75);
   background: transparent;
-  color: var(--text-icon-muted);
+  color: var(--color-text-tertiary);
   font-size: 16px;
   line-height: 1;
   display: inline-flex;
@@ -1261,21 +1261,21 @@ button:focus-visible > .shortcut-tooltip {
   justify-content: center;
   transition: background 140ms ease-out, color 140ms ease-out, opacity 140ms ease-out, transform 140ms ease-out;
 }
-.tab-history-button:hover:not(:disabled) { background: var(--surface-subtle); color: var(--text-secondary); }
+.tab-history-button:hover:not(:disabled) { background: var(--color-background-primary-ghost-hover); color: var(--color-text); }
 .tab-history-button:active:not(:disabled) { transform: scale(0.94); }
 .tab-history-button:disabled { opacity: 0.3; }
 .tab {
   position: relative;
   max-width: 180px;
-  height: 28px;
+  height: 32px;
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--color-text-tertiary);
   /* The right padding is exactly the close button's box plus its inset, so
      the button never slides in from outside the pill and an inactive tab
      reserves no room beyond what the hover state fills. */
-  padding: 0 26px 0 12px;
+  padding: 0 26px 0 10px;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
@@ -1287,9 +1287,9 @@ button:focus-visible > .shortcut-tooltip {
   user-select: none;
   transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
-.tab > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; }
-.tab:hover { background: var(--tab-active-bg); color: var(--text-secondary); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
-.tab.active { background: var(--tab-active-bg); color: var(--text-secondary); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
+.tab > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-sm); font-weight: 400; }
+.tab:hover { background: var(--color-background-primary-ghost-hover); color: var(--color-text); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
+.tab.active { background: var(--tab-active-bg); color: var(--color-text); box-shadow: inset 0 0 0 0.5px var(--color-border); backdrop-filter: blur(40px); -webkit-backdrop-filter: blur(40px); }
 .tab-shell[data-selected="true"] .tab {
   background: var(--surface-selected);
   color: var(--text-secondary);
@@ -1311,7 +1311,7 @@ button:focus-visible > .shortcut-tooltip {
 }
 /* A tab without a close button (pinned, or a read-only strip) has nothing to
    make room for, so it closes up to the same inset on both sides. */
-.tab-shell > .tab:last-child { padding-right: 12px; }
+.tab-shell > .tab:last-child { padding-right: 10px; }
 .tab-close {
   position: absolute;
   right: 4px;
@@ -1580,21 +1580,20 @@ html[data-hosted-mcp-widget="true"] #root {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: var(--text-base);
+  font-weight: 500;
 }
 .sidebar-search-toggle {
   width: 28px;
   height: 28px;
   flex: 0 0 28px;
   border: 0;
-  border-radius: var(--control-radius);
+  border-radius: var(--radius-md);
   padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-icon-muted);
+  color: var(--color-text-tertiary);
   background: transparent;
   transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
@@ -1678,31 +1677,30 @@ html[data-hosted-mcp-widget="true"] #root {
 }
 .sidebar-tool-row {
   width: 100%;
-  height: 32px;
-  border-radius: var(--control-radius);
+  height: 29px;
+  border-radius: var(--radius-lg);
   border: 0;
   background: transparent;
-  margin: 0 0 10px;
+  margin: 0 0 1px;
   position: relative;
   display: flex;
   align-items: center;
   gap: 0;
-  padding: 0 34px;
-  color: var(--text-muted);
-  font-size: 13px;
+  padding: 5px 8px 5px 32px;
+  color: var(--color-text);
+  font-size: var(--text-base);
   text-align: left;
   transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
 .sidebar-tool-icon {
   position: absolute;
-  left: 10px;
+  left: 8px;
   top: 50%;
   transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--fg-base);
-  opacity: 0.54;
+  color: currentColor;
 }
 .sidebar-tool-label {
   min-width: 0;
@@ -1712,7 +1710,7 @@ html[data-hosted-mcp-widget="true"] #root {
   white-space: nowrap;
 }
 .sidebar-tool-row:hover,
-.sidebar-tool-row:focus-visible { background: var(--surface-subtle); color: var(--text-secondary); outline: none; }
+.sidebar-tool-row:focus-visible { background: var(--color-background-primary-ghost-hover); outline: none; }
 .sidebar-tool-row[data-drop-active="true"] {
   background: var(--surface-subtle);
   color: var(--text-secondary);
@@ -1748,21 +1746,23 @@ kbd span { margin-left: 2px; }
 .sidebar-section { display: grid; gap: 0; margin-top: 0; }
 .sidebar-section:first-of-type { margin-top: 0; }
 .sidebar-section-title {
-  min-height: 28px;
+  min-height: 21px;
   padding: 0 8px;
   display: flex;
   align-items: center;
-  color: var(--text-faint);
-  font-size: 13px;
-  font-weight: 400;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-base);
+  font-weight: 500;
+  opacity: 0.75;
 }
 .sidebar-section-header {
   display: flex;
   align-items: center;
   gap: 2px;
   min-width: 0;
-  height: 32px;
-  padding: 0 0 2px;
+  height: 21px;
+  margin: 12px 0 4px;
+  padding: 0;
 }
 .sidebar-section-title-button {
   min-width: 0;
@@ -1801,13 +1801,13 @@ kbd span { margin-left: 2px; }
 .sidebar-section-title-button:focus-visible .sidebar-section-chevron { opacity: 1; }
 .sidebar-section-chevron.expanded { transform: rotate(90deg); }
 .sidebar-section-menu-button {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
   border: 0;
-  border-radius: var(--control-radius);
+  border-radius: 999px;
   background: transparent;
-  color: var(--text-faint);
+  color: var(--color-text-tertiary);
   padding: 0;
   display: grid;
   place-items: center;
@@ -1818,7 +1818,7 @@ kbd span { margin-left: 2px; }
 .sidebar-section-header:hover .sidebar-section-menu-button,
 .sidebar-section-menu-button:focus-visible { opacity: 1; }
 .sidebar-section-menu-button:hover,
-.sidebar-section-menu-button:focus-visible { background: var(--surface-subtle); color: var(--text-secondary); outline: none; }
+.sidebar-section-menu-button:focus-visible { background: var(--color-background-primary-ghost-hover); color: var(--color-text); outline: none; }
 .sidebar-section-menu-button:active { transform: scale(0.99); }
 .pinned-section { margin-bottom: 10px; }
 .pinned-structures { display: grid; gap: 1px; }
@@ -1827,22 +1827,22 @@ kbd span { margin-left: 2px; }
 .project-group-row {
   position: relative;
   width: 100%;
-  min-height: 32px;
+  min-height: 29px;
   border: 0;
-  border-radius: var(--control-radius);
+  border-radius: var(--radius-lg);
   background: transparent;
-  color: var(--text-secondary);
-  padding: 5px 86px 5px 10px;
+  color: var(--color-text);
+  padding: 5px 86px 5px 8px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   overflow: hidden;
   text-align: left;
   cursor: default;
   line-height: 1.15;
   transition: background 140ms ease-out, color 140ms ease-out, box-shadow 140ms ease-out, transform 140ms ease-out;
 }
-.project-group-row:hover { background: var(--surface-subtle); }
+.project-group-row:hover { background: var(--color-background-primary-ghost-hover); }
 .project-group-row:active { transform: scale(0.99); }
 .project-group-copy {
   min-width: 0;
@@ -2003,9 +2003,9 @@ kbd span { margin-left: 2px; }
 .project-folder-row {
   position: relative;
   width: 100%;
-  min-height: 28px;
-  border-radius: var(--control-radius);
-  color: var(--text-secondary);
+  min-height: 29px;
+  border-radius: var(--radius-lg);
+  color: var(--color-text);
   /* Indentation comes from the nesting of .project-folder-children now, not from
      a per-row depth multiplier, so every level also gets a guide line for free. */
   padding: 5px 62px 5px 6px;
@@ -2019,7 +2019,7 @@ kbd span { margin-left: 2px; }
 }
 .project-folder-row:hover,
 .project-folder-row:focus-visible {
-  background: var(--surface-subtle);
+  background: var(--color-background-primary-ghost-hover);
   outline: none;
 }
 .project-group-row > .project-folder-toggle-button {
@@ -2155,15 +2155,15 @@ kbd span { margin-left: 2px; }
 .project {
   position: relative;
   width: 100%;
-  min-height: 32px;
+  min-height: 29px;
   border: 0;
-  border-radius: var(--control-radius);
+  border-radius: var(--radius-lg);
   background: transparent;
-  color: var(--text-secondary);
-  padding: 5px 38px 5px 10px;
+  color: var(--color-text);
+  padding: 5px 38px 5px 8px;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   text-align: left;
   cursor: default;
   line-height: 1.15;
@@ -2178,10 +2178,10 @@ kbd span { margin-left: 2px; }
   padding-left: 6px;
   gap: 4px;
 }
-.project:hover { background: var(--surface-subtle); }
+.project:hover { background: var(--color-background-primary-ghost-hover); }
 .project.active {
-  background: var(--surface-subtle);
-  color: var(--text-secondary);
+  background: var(--color-background-primary-ghost-hover);
+  color: var(--color-text);
 }
 .project-show-more {
   width: 100%;
@@ -2251,7 +2251,7 @@ kbd span { margin-left: 2px; }
   display: grid;
   gap: 1px;
 }
-.project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 400; line-height: 1.15; }
+.project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base); font-weight: 400; line-height: 20px; }
 /* A cut name hides the tail, which is often the only thing telling two files apart.
    Hovering the row walks the name through its window; the moving part is an inner
    element driven by transform, so the row never reflows while it travels. The
@@ -2601,34 +2601,33 @@ img.radix-menu-item-icon {
   background: var(--line-subtler);
 }
 .empty-sidebar { color: var(--text-muted); font-size: 13px; padding: 8px; line-height: 1.35; }
-.sidebar-footer { position: relative; padding: 12px; display: grid; gap: 2px; }
+.sidebar-footer { position: relative; padding: 12px; display: grid; gap: 1px; }
 .sidebar-product { height: 32px; width: 100%; border: 0; border-radius: var(--control-radius); background: transparent; color: var(--text-muted); padding: 0 8px 0 10px; display: flex; align-items: center; gap: 6px; font-weight: 400; line-height: 1.15; text-align: left; transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out; }
 .sidebar-product:hover { background: var(--surface-subtle); color: var(--text-secondary); }
 .sidebar-product:active { transform: scale(0.99); }
 .sidebar-product-icon { width: 20px; height: 16px; flex: 0 0 20px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-icon-muted); }
 .sidebar-product-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar-build-badge { min-width: 0; padding: 2px 10px 0 30px; display: grid; gap: 2px; color: var(--text-muted); line-height: 1.15; }
+.sidebar-build-badge { min-width: 0; padding: 2px 8px 4px 32px; display: grid; gap: 2px; color: var(--color-text-tertiary); line-height: 1.15; }
 .sidebar-build-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: uppercase; color: var(--text-secondary); }
 .sidebar-build-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-faint); }
 .sidebar-settings-button {
-  height: 36px;
+  height: 29px;
   width: 100%;
   border: 0;
-  border-radius: var(--control-radius);
+  border-radius: var(--radius-lg);
   background: transparent;
-  color: var(--text-secondary);
-  padding: 0 8px 0 10px;
+  color: var(--color-text);
+  padding: 5px 8px;
   display: flex;
   align-items: center;
   gap: 8px;
   text-align: left;
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 400;
   transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
 .sidebar-settings-button:hover {
-  background: var(--surface-subtle);
-  color: var(--text-primary);
+  background: var(--color-background-primary-ghost-hover);
 }
 .sidebar-settings-button:active { transform: scale(0.99); }
 .sidebar-settings-icon {
