@@ -1,7 +1,7 @@
 :root {
   color-scheme: dark;
   --buret-grid-canvas-background: var(--buret-bg);
-  --buret-bg: #111111;
+  --buret-bg: #181818;
   --buret-surface: #202020;
   --buret-surface-raised: #3a3a3a;
   --buret-input: #333333;

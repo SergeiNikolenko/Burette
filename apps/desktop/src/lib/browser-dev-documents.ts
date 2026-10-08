@@ -5,6 +5,7 @@ import { runBrowserDevMetalConformer } from "./browser-dev-compute";
 import { parseDataWarrior } from "./datawarrior";
 import { nativePreviewHtml } from "./native-mcp-workspace";
 import { isHostedMcpWidget } from "./hosted-mcp-widget";
+import { readPreviewThemeTokens } from "./theme";
 import type { DockingDocumentRequest, DockingSceneMode, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 
@@ -114,7 +115,7 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v197";
+const GRID_ASSET_VERSION = "grid-ui-v198";
 const VIEWER_ASSET_VERSION = "viewer-ui-v87";
 const MESOSCALE_ASSET_VERSION = "mesoscale-ui-v1";
 // One cache-buster per page load, not per render: the viewer iframe is keyed by
@@ -235,24 +236,8 @@ function resolvePreviewVisuals(preferences: ViewerPreferences): ResolvedPreviewV
 
 function previewThemeTokens(preferences: ViewerPreferences): Record<"light" | "dark", PreviewThemeTokenSet> {
   return {
-    light: {
-      accent: preferences.themeLightAccent,
-      background: preferences.themeLightBackground,
-      foreground: preferences.themeLightForeground,
-      uiFont: preferences.themeLightUiFont,
-      editorFont: preferences.themeLightEditorFont,
-      translucent: preferences.themeLightTranslucent,
-      contrast: preferences.themeLightContrast,
-    },
-    dark: {
-      accent: preferences.themeDarkAccent,
-      background: preferences.themeDarkBackground,
-      foreground: preferences.themeDarkForeground,
-      uiFont: preferences.themeDarkUiFont,
-      editorFont: preferences.themeDarkEditorFont,
-      translucent: preferences.themeDarkTranslucent,
-      contrast: preferences.themeDarkContrast,
-    },
+    light: readPreviewThemeTokens(preferences, "light"),
+    dark: readPreviewThemeTokens(preferences, "dark"),
   };
 }
 
@@ -1352,7 +1337,7 @@ function viewerHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   ${hostedMcpBootstrap ? "" : `<base href="${WEB_ASSETS_BASE}" />`}
   <title>Burette - ${escapeHtml(label)}</title>
-  <style>html{color-scheme:${visuals.theme === "auto" ? "light dark" : visuals.theme};background:${visuals.transparentBackground ? "transparent" : visuals.theme === "light" ? "#ffffff" : hostedMcpBootstrap ? "#000000" : "#111111"}}body{background:inherit}${visuals.theme === "auto" && !visuals.transparentBackground ? "@media(prefers-color-scheme:light){html{background:#ffffff}}" : ""}</style>
+  <style>html{color-scheme:${visuals.theme === "auto" ? "light dark" : visuals.theme};background:${visuals.transparentBackground ? "transparent" : visuals.theme === "light" ? "#ffffff" : hostedMcpBootstrap ? "#000000" : "#181818"}}body{background:inherit}${visuals.theme === "auto" && !visuals.transparentBackground ? "@media(prefers-color-scheme:light){html{background:#ffffff}}" : ""}</style>
   <link rel="stylesheet" href="${viewerAsset("viewer-runtime.css")}?v=${runtimeAssetVersion}" />
 </head>
 <body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">

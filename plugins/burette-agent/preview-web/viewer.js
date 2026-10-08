@@ -2177,7 +2177,7 @@
     const tokens = themeTokensFor(resolvedTheme);
     if (!tokens || !document.body) return;
     const accent = typeof tokens.accent === 'string' ? tokens.accent : '#AF52DE';
-    const background = typeof tokens.background === 'string' ? tokens.background : (resolvedTheme === 'light' ? '#FFFFFF' : '#111111');
+    const background = typeof tokens.background === 'string' ? tokens.background : (resolvedTheme === 'light' ? '#FFFFFF' : '#181818');
     const foreground = typeof tokens.foreground === 'string' ? tokens.foreground : (resolvedTheme === 'light' ? '#0D0D0D' : '#FCFCFC');
     const uiFont = typeof tokens.uiFont === 'string' ? tokens.uiFont : '';
     const opacity = 1 - (clampThemeNumber(tokens.translucent, resolvedTheme === 'light' ? 10 : 20) / 100) * 0.95;
@@ -2280,7 +2280,7 @@
   function canvasBackgroundCSS() {
     const background = resolvedCanvasBackground();
     if (background === 'white') return '#ffffff';
-    if (background === 'graphite') return '#111111';
+    if (background === 'graphite') return '#181818';
     if (background === 'transparent') return 'transparent';
     return '#000000';
   }
@@ -2288,7 +2288,7 @@
   function canvasBackgroundColor() {
     const background = resolvedCanvasBackground();
     if (background === 'white') return 0xffffff;
-    if (background === 'graphite') return 0x111111;
+    if (background === 'graphite') return 0x181818;
     return 0x000000;
   }
 

@@ -1731,7 +1731,7 @@
     const tokens = cfg.themeTokens && cfg.themeTokens[theme];
     if (!tokens || typeof tokens !== 'object') return;
     const accent = typeof tokens.accent === 'string' ? tokens.accent : '#AF52DE';
-    const background = typeof tokens.background === 'string' ? tokens.background : (theme === 'light' ? '#FFFFFF' : '#111111');
+    const background = typeof tokens.background === 'string' ? tokens.background : (theme === 'light' ? '#FFFFFF' : '#181818');
     const foreground = typeof tokens.foreground === 'string' ? tokens.foreground : (theme === 'light' ? '#0D0D0D' : '#FCFCFC');
     const uiFont = typeof tokens.uiFont === 'string' ? tokens.uiFont : '';
     const opacity = 1 - (clampThemeNumber(tokens.translucent, theme === 'light' ? 10 : 20) / 100) * 0.95;
@@ -1777,7 +1777,7 @@
 
   function canvasBackgroundCSS(background) {
     if (background === 'white') return '#ffffff';
-    if (background === 'graphite') return '#111111';
+    if (background === 'graphite') return '#181818';
     if (background === 'transparent') return 'transparent';
     return '#000000';
   }

@@ -90,6 +90,14 @@ function codexThemeFromTokens(tokens: ThemeTokens, mode: ThemeMode): CodexTheme 
   };
 }
 
+// The viewer frames derive their chrome from these colours, so they get the
+// same Codex defaults the shell resolves for untouched appearance values.
+export function readPreviewThemeTokens(preferences: ViewerPreferences, mode: ThemeMode): ThemeTokens {
+  const tokens = readThemeTokens(preferences, mode);
+  const codex = codexThemeFromTokens(tokens, mode);
+  return { ...tokens, accent: codex.accent, background: codex.surface, foreground: codex.ink };
+}
+
 export function buildThemeStyle(preferences: ViewerPreferences, systemThemeMode?: ThemeMode): CSSProperties {
   const mode = resolveThemeMode(preferences.theme, systemThemeMode);
   const tokens = readThemeTokens(preferences, mode);

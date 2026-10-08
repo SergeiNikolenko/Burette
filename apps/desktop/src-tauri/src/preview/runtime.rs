@@ -259,24 +259,34 @@ impl ViewerPreferences {
     pub(crate) fn theme_tokens(&self) -> Value {
         json!({
             "light": {
-                "accent": self.theme_light_accent,
-                "background": self.theme_light_background,
-                "foreground": self.theme_light_foreground,
+                "accent": codex_theme_color(&self.theme_light_accent, "#AF52DE", "#339cff"),
+                "background": codex_theme_color(&self.theme_light_background, "#FFFFFF", "#ffffff"),
+                "foreground": codex_theme_color(&self.theme_light_foreground, "#0D0D0D", "#1a1c1f"),
                 "uiFont": self.theme_light_ui_font,
                 "editorFont": self.theme_light_editor_font,
                 "translucent": self.theme_light_translucent,
                 "contrast": self.theme_light_contrast,
             },
             "dark": {
-                "accent": self.theme_dark_accent,
-                "background": self.theme_dark_background,
-                "foreground": self.theme_dark_foreground,
+                "accent": codex_theme_color(&self.theme_dark_accent, "#AF52DE", "#339cff"),
+                "background": codex_theme_color(&self.theme_dark_background, "#111111", "#181818"),
+                "foreground": codex_theme_color(&self.theme_dark_foreground, "#FCFCFC", "#ffffff"),
                 "uiFont": self.theme_dark_ui_font,
                 "editorFont": self.theme_dark_editor_font,
                 "translucent": self.theme_dark_translucent,
                 "contrast": self.theme_dark_contrast,
             }
         })
+    }
+}
+
+/// Appearance colours saved before the Codex theme were never customized, so the
+/// viewer frames get the Codex default, as `codexThemeFromTokens` does for the shell.
+fn codex_theme_color(value: &str, legacy: &str, fallback: &str) -> String {
+    if value.trim().eq_ignore_ascii_case(legacy) {
+        fallback.to_string()
+    } else {
+        value.to_string()
     }
 }
 
