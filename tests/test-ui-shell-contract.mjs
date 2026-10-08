@@ -7995,7 +7995,7 @@ assert.match(gridViewer, /body\.type === 'gridPage' \|\| body\.type === 'xyzrend
 assert.match(gridUi, /buret-search-control buret-filter-control/);
 assert.doesNotMatch(gridUi, /aria-label="Search mode"/);
 assert.doesNotMatch(gridUi, /ToggleGroup/);
-assert.match(gridUi, /"Search or SMARTS"/);
+assert.match(gridUi, /"Search or SMARTS…"/);
 assert.match(gridUi, /placeholder=\{searchPlaceholder\}/);
 assert.match(gridViewer, /function queryLooksLikeExplicitSMARTS\(value\)/);
 assert.match(gridViewer, /function queryLooksLikeSMILESFragment\(value\)/);
@@ -8218,8 +8218,8 @@ assert.match(gridViewer, /inputDataBase64: textToBase64\(xyzrenderCardInputText\
 assert.doesNotMatch(gridViewer, /function drawXyzrenderPlaceholder\(row\)/);
 assert.doesNotMatch(gridViewer, /target\.classList\.remove\('buret-xyzrender-preview'\)/);
 assert.match(gridUi, /id="card-renderer"/);
-assert.match(gridUi, /<option value="rdkit">RDKit<\/option>/);
-assert.match(gridUi, /<option value="xyzrender">xyzrender<\/option>/);
+// User-facing view labels and stable renderer values are covered by the
+// rendered toolbar in test-grid-selection-toolbar.mjs.
 assert.match(gridViewer, /document\.getElementById\('card-renderer'\)/);
 assert.match(gridUi, /id="xyzrender-preset"/);
 assert.match(gridUi, /onXyzrenderPresetChange/);

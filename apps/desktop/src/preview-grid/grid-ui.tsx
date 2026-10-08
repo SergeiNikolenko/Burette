@@ -1,7 +1,8 @@
 import React from "react";
-import { Cube, Edit } from "../components/ui/app-icons";
+import { Copy, Cube, Download, Edit, Grid, Search } from "../components/ui/app-icons";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
+import { GridSelectMenu } from "./grid-select-menu";
 
 type SortOption = {
   value: string;
@@ -156,15 +157,14 @@ function Icon({ paths }: { paths: React.ReactNode }) {
 }
 
 const ICONS = {
-  generate3d: <Icon paths={<><path d="M21 8 12 3 3 8v8l9 5 9-5V8Z" /><path d="M3 8l9 5 9-5" /><path d="M12 13v8" /></>} />,
+  generate3d: <Cube className="ab-ico" aria-hidden="true" />,
   optimize: <Icon paths={<><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></>} />,
   energy: <Icon paths={<path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />} />,
-  descriptors: <Icon paths={<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M9 9v11" /><path d="M12.5 13h5M12.5 16.5h5" /></>} />,
   align: <Icon paths={<><path d="m12 2 9 5-9 5-9-5 9-5Z" /><path d="m3 12 9 5 9-5" /></>} />,
-  cluster: <Icon paths={<><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></>} />,
-  findSimilar: <Icon paths={<><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>} />,
-  exportDiverse: <Icon paths={<><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7" /><path d="M12 3v13" /><path d="m7 8 5-5 5 5" /></>} />,
-  copy: <Icon paths={<><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></>} />,
+  cluster: <Grid className="ab-ico" aria-hidden="true" />,
+  findSimilar: <Search className="ab-ico" aria-hidden="true" />,
+  exportDiverse: <Download className="ab-ico" aria-hidden="true" />,
+  copy: <Copy className="ab-ico" aria-hidden="true" />,
 };
 
 function MiniSelect<T extends string>({ value, options, ariaLabel, disabled, formatOption, onChange }: {
@@ -176,17 +176,19 @@ function MiniSelect<T extends string>({ value, options, ariaLabel, disabled, for
   onChange: (value: T) => void;
 }) {
   return (
-    <select
-      className="ab-mini"
-      aria-label={ariaLabel}
-      value={value}
-      disabled={disabled}
-      onChange={(event) => onChange(event.currentTarget.value as T)}
-    >
-      {options.map((option) => (
-        <option key={option} value={option}>{formatOption ? formatOption(option) : option}</option>
-      ))}
-    </select>
+    <GridSelectMenu>
+      <select
+        className="ab-mini"
+        aria-label={ariaLabel}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.currentTarget.value as T)}
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>{formatOption ? formatOption(option) : option}</option>
+        ))}
+      </select>
+    </GridSelectMenu>
   );
 }
 
@@ -243,18 +245,20 @@ function XyzrenderStyleControl(props: GridControlProps) {
       hidden={props.cardRenderer !== "xyzrender"}
     >
       Style
-      <select
-        id="xyzrender-preset"
-        className="ab-mini"
-        value={props.xyzrenderPreset}
-        disabled={props.cardRenderer !== "xyzrender"}
-        aria-label="xyzrender card style"
-        onChange={(event) => props.onXyzrenderPresetChange(event.currentTarget.value)}
-      >
-        {props.xyzrenderPresetOptions.map((option) => (
-          <option key={option.value} value={option.value}>{option.label}</option>
-        ))}
-      </select>
+      <GridSelectMenu>
+        <select
+          id="xyzrender-preset"
+          className="ab-mini"
+          value={props.xyzrenderPreset}
+          disabled={props.cardRenderer !== "xyzrender"}
+          aria-label="3D card style"
+          onChange={(event) => props.onXyzrenderPresetChange(event.currentTarget.value)}
+        >
+          {props.xyzrenderPresetOptions.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </GridSelectMenu>
     </label>
   );
 }
@@ -297,7 +301,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
         >
           {ICONS.generate3d}
           <span className="ab-item-title" data-buret-grid-generate-3d-label>
-            {props.generating3d ? "Generating..." : "Generate 3D"}
+            {props.generating3d ? "Generating…" : "Generate 3D"}
           </span>
         </button>
         <MiniSelect
@@ -319,7 +323,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
           onClick={() => props.onRun(props.onOptimizeGeometry)}
         >
           {ICONS.optimize}
-          <span className="ab-item-title">{props.generating3d ? "Working..." : "Optimize geometry"}</span>
+          <span className="ab-item-title">{props.generating3d ? "Working…" : "Optimize geometry"}</span>
         </button>
         <MiniSelect
           ariaLabel="MMFF optimization variant"
@@ -343,7 +347,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
           >
             {ICONS.energy}
             <span className="ab-item-title">
-              {props.evaluatingSemiempirical ? "Calculating..." : "Energy & charges"}
+              {props.evaluatingSemiempirical ? "Calculating…" : "Energy & charges"}
             </span>
           </button>
           <MiniSelect
@@ -368,7 +372,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
           onClick={() => props.onRun(props.onAlignSelectedPoses)}
         >
           {ICONS.align}
-          <span className="ab-item-title">{props.aligningPoses ? "Aligning..." : "Align & compare"}</span>
+          <span className="ab-item-title">{props.aligningPoses ? "Aligning…" : "Align & compare"}</span>
         </button>
       </div>
     </>
@@ -402,18 +406,20 @@ function CollectionSection(props: GridControlProps & { onRun: (action: () => voi
                 : "Cluster all"}
           </span>
         </button>
-        <select
-          id="cluster-cutoff"
-          className="ab-mini"
-          aria-label="Tanimoto similarity cutoff"
-          value={props.clusterCutoff.toFixed(2)}
-          disabled={clusterBusy}
-          onChange={(event) => props.onClusterCutoffChange(Number(event.currentTarget.value))}
-        >
-          {CLUSTER_CUTOFFS.map((cutoff) => (
-            <option key={cutoff} value={cutoff.toFixed(2)}>{cutoff.toFixed(2)}</option>
-          ))}
-        </select>
+        <GridSelectMenu>
+          <select
+            id="cluster-cutoff"
+            className="ab-mini"
+            aria-label="Tanimoto similarity cutoff"
+            value={props.clusterCutoff.toFixed(2)}
+            disabled={clusterBusy}
+            onChange={(event) => props.onClusterCutoffChange(Number(event.currentTarget.value))}
+          >
+            {CLUSTER_CUTOFFS.map((cutoff) => (
+              <option key={cutoff} value={cutoff.toFixed(2)}>{cutoff.toFixed(2)}</option>
+            ))}
+          </select>
+        </GridSelectMenu>
       </div>
       <div className="ab-row">
         <button
@@ -428,7 +434,7 @@ function CollectionSection(props: GridControlProps & { onRun: (action: () => voi
         >
           {ICONS.findSimilar}
           <span className="ab-item-title" data-buret-grid-similarity-label>
-            {props.findingSimilar ? "Searching..." : "Find similar"}
+            {props.findingSimilar ? "Searching…" : "Find similar"}
           </span>
         </button>
       </div>
@@ -449,7 +455,7 @@ function CollectionSection(props: GridControlProps & { onRun: (action: () => voi
         >
           {ICONS.exportDiverse}
           <span className="ab-item-title" data-buret-grid-representative-export-label>
-            {props.exportingClusterRepresentatives ? "Exporting..." : "Export diverse"}
+            {props.exportingClusterRepresentatives ? "Exporting…" : "Export diverse"}
           </span>
         </button>
       </div>
@@ -522,7 +528,7 @@ function FileSection(props: GridControlProps & { onRun: (action: () => void) => 
             title={props.saveAsTitle}
             onClick={() => props.onRun(props.onSaveGridAs)}
           >
-            <span className="ab-item-title">Save As...</span>
+            <span className="ab-item-title">Save as…</span>
           </button>
         </div>
       <div className="ab-group">Export</div>
@@ -606,7 +612,9 @@ function useMenu() {
   React.useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Element;
+      if (target.closest?.("[data-buret-grid-select-menu]")) return;
+      if (wrapRef.current && !wrapRef.current.contains(target)) setOpen(false);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setOpen(false);
@@ -719,16 +727,18 @@ function GridActionToolbar(props: GridControlProps) {
       </button>
       {showRendererSwitch ? (
         <label className="buret-renderer-control">
-          <span className="buret-visually-hidden">Renderer</span>
-          <select
-            id="card-renderer"
-            value={props.cardRenderer}
-            aria-label="Molecule renderer"
-            onChange={(event) => props.onSetCardRenderer(event.currentTarget.value as "rdkit" | "xyzrender")}
-          >
-            <option value="rdkit">RDKit</option>
-            <option value="xyzrender">xyzrender</option>
-          </select>
+          <span className="buret-visually-hidden">Molecule view</span>
+          <GridSelectMenu>
+            <select
+              id="card-renderer"
+              value={props.cardRenderer}
+              aria-label="Molecule view"
+              onChange={(event) => props.onSetCardRenderer(event.currentTarget.value as "rdkit" | "xyzrender")}
+            >
+              <option value="rdkit">2D diagrams</option>
+              <option value="xyzrender">3D renders</option>
+            </select>
+          </GridSelectMenu>
         </label>
       ) : null}
       <XyzrenderStyleControl {...props} />
@@ -803,8 +813,8 @@ function GridActionToolbar(props: GridControlProps) {
 
 function GridControls(props: GridControlProps) {
   const searchPlaceholder = props.substructureSearch
-    ? "Search or SMARTS"
-    : "Search";
+    ? "Search or SMARTS…"
+    : "Search…";
 
   return (
     <div className="buret-grid-toolbar">
@@ -813,6 +823,8 @@ function GridControls(props: GridControlProps) {
           <input
             id="search"
             type="search"
+            name="molecule-search"
+            autoComplete="off"
             aria-label={props.substructureSearch ? "Search text or structures with SMARTS" : "Search text"}
             spellCheck={false}
             autoCapitalize="off"
@@ -821,11 +833,13 @@ function GridControls(props: GridControlProps) {
           />
         </div>
         <label className="buret-sort-control">
-          <select id="sort" onChange={(event) => props.onSortChange(event.currentTarget.value || "index")}>
-            {props.sortOptions.map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
+          <GridSelectMenu>
+            <select id="sort" name="molecule-sort" aria-label="Sort molecules" onChange={(event) => props.onSortChange(event.currentTarget.value || "index")}>
+              {props.sortOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </GridSelectMenu>
         </label>
         <div id="load-status" className="buret-load-status" />
       </div>
