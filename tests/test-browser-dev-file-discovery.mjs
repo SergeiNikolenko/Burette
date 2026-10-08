@@ -110,3 +110,19 @@ try {
 }
 
 console.log("browser-dev file discovery tests passed");
+
+// Cancellation must propagate to fetch and stop the next root even when the
+// previous response had already arrived before abort.
+const controller = new AbortController();
+let fetches = 0;
+globalThis.fetch = async (_url, options) => {
+  fetches++;
+  assert.equal(options.signal, controller.signal);
+  return { ok: true, json: async () => { controller.abort(); return { files: ["/first/a.pdb"] }; } };
+};
+try {
+  await assert.rejects(scanBrowserDevFolders(["/first", "/second"], controller.signal), { name: "AbortError" });
+  assert.equal(fetches, 1);
+  await assert.rejects(scanBrowserDevFolders(["/first"], controller.signal), { name: "AbortError" });
+  assert.equal(fetches, 1, "already cancelled scans must not start requests");
+} finally { globalThis.fetch = originalFetch; }

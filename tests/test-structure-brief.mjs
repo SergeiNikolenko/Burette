@@ -484,4 +484,36 @@ assert.equal(rendererLabel("grid2d"), "Grid");
 assert.equal(rendererLabel("xyzrender-external"), "xyzrender");
 assert.equal(rendererLabel(""), "Preview");
 
-console.log("structure brief tests passed");
+// Repeated panel/tab reads reuse a parsed summary, but edits and format changes
+// must not reuse stale results. The cache budget is shared across formats.
+const xyzText = (comment) => `1\n${comment}\nC 0 0 0\n`;
+const cachedText = xyzText("cache-test");
+const cachedSummary = parseStructureComposition(cachedText, "xyz");
+assert.ok(cachedSummary);
+assert.strictEqual(parseStructureComposition(cachedText, "XYZ"), cachedSummary);
+assert.equal(parseStructureComposition(cachedText, "pdb"), null);
+assert.deepEqual(parseStructureComposition(xyzText("edited"), "xyz"), cachedSummary);
+assert.notDeepEqual(parseStructureComposition(cachedText.replace("C 0 0 0", "N 0 0 0"), "xyz"), cachedSummary);
+
+const olderText = xyzText("older");
+const olderSummary = parseStructureComposition(olderText, "extxyz");
+for (let i = 0; i < 62; i += 1) parseStructureComposition(xyzText(`entry-${i}`), i % 2 ? "xyz" : "extxyz");
+assert.strictEqual(parseStructureComposition(olderText, "extxyz"), olderSummary);
+const oldestText = xyzText("entry-0");
+const oldestSummary = parseStructureComposition(oldestText, "extxyz");
+for (let i = 0; i < 63; i += 1) {
+  parseStructureComposition(xyzText(`later-${i}`), i % 2 ? "xyz" : "extxyz");
+  // The active entry must survive churn, regardless of its original age.
+  assert.strictEqual(parseStructureComposition(olderText, "extxyz"), olderSummary);
+}
+assert.notStrictEqual(parseStructureComposition(oldestText, "extxyz"), oldestSummary);
+
+const largeText = xyzText("a".repeat(9 * 1024 * 1024));
+const largeSummary = parseStructureComposition(largeText, "xyz");
+parseStructureComposition(xyzText("b".repeat(9 * 1024 * 1024)), "extxyz");
+const reparsedLargeSummary = parseStructureComposition(largeText, "xyz");
+assert.notStrictEqual(reparsedLargeSummary, largeSummary);
+assert.deepEqual(reparsedLargeSummary, largeSummary);
+const oversizedText = xyzText("c".repeat(17 * 1024 * 1024));
+assert.notStrictEqual(parseStructureComposition(oversizedText, "xyz"), parseStructureComposition(oversizedText, "xyz"));
+console.log("structure brief tests passed (including bounded composition cache)");

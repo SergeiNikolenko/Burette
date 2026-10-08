@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   calculateGridDescriptors as runGridDescriptorCalculation,
@@ -31,7 +31,12 @@ export function useAppDescriptors({
   // Re-running the menu command against a collection that is already being
   // processed returns the running job rather than starting a second one, so a
   // second follower would only duplicate every status event.
-  const followedJobsRef = useRef(new Set<string>());
+  const followedJobsRef = useRef(new Map<string, AbortController>());
+  useEffect(() => () => {
+    // Stop observers, not the computation already running in the desktop worker.
+    for (const controller of followedJobsRef.current.values()) controller.abort();
+    followedJobsRef.current.clear();
+  }, []);
 
   const openDescriptorSource = useCallback((source: DescriptorSourcePayload) => {
     setDescriptorSource(source);
@@ -93,18 +98,27 @@ export function useAppDescriptors({
     }, "*");
   }, []);
 
-  // Follows a started run to completion. Every snapshot is republished so the
+  // Follows a started run to completion. Changed snapshots are republished so the
   // status row in the Info panel tracks the worker, and the run only reports an
   // outcome once - a failed run raises the error toast that a silent job never
   // could.
-  const followGridDescriptorJob = useCallback(async (documentId: string) => {
-    if (followedJobsRef.current.has(documentId)) return;
-    followedJobsRef.current.add(documentId);
+  const followGridDescriptorJob = useCallback(async (documentId: string, signal: AbortSignal, initialStatus: GridDescriptorJobStatus) => {
+    let previous = initialStatus;
     try {
-      for (;;) {
-        await new Promise((resolve) => window.setTimeout(resolve, GRID_DESCRIPTOR_POLL_MS));
+      while (!signal.aborted) {
+        await new Promise<void>((resolve) => {
+          const finish = () => { window.clearTimeout(timer); signal.removeEventListener("abort", finish); resolve(); };
+          const timer = window.setTimeout(finish, GRID_DESCRIPTOR_POLL_MS);
+          signal.addEventListener("abort", finish, { once: true });
+        });
+        if (signal.aborted) return;
         const status = await gridDescriptorJobStatus(documentId);
-        publishGridDescriptorJobFor(documentId, status);
+        if (signal.aborted) return;
+        if (!status.running || Object.keys(status).length !== Object.keys(previous).length
+          || (Object.keys(status) as Array<keyof GridDescriptorJobStatus>).some(key => status[key] !== previous[key])) {
+          publishGridDescriptorJobFor(documentId, status);
+        }
+        previous = status;
         if (status.running) continue;
         // A run that fails or is cancelled part way still leaves the batches it
         // already stored, so the grid is told to re-read whenever anything landed.
@@ -121,11 +135,10 @@ export function useAppDescriptors({
         return;
       }
     } catch (error) {
+      if (signal.aborted) return;
       const message = error instanceof Error ? error.message : String(error);
       publishGridDescriptorJob(failedGridDescriptorJob(documentId, message));
       pushStatus(`Descriptor calculation failed: ${message}`, "error");
-    } finally {
-      followedJobsRef.current.delete(documentId);
     }
   }, [notifyGridDescriptorRunFinished, pushStatus]);
 
@@ -135,6 +148,10 @@ export function useAppDescriptors({
       pushStatus("Grid descriptor target is not open.", "error");
       return;
     }
+    // Guard the start request too, before it has returned a running job.
+    if (followedJobsRef.current.has(documentId)) return;
+    const controller = new AbortController();
+    followedJobsRef.current.set(documentId, controller);
     const rowIndexes = Array.isArray(options.rowIndexes)
       ? Array.from(new Set(options.rowIndexes
         .map((index) => Math.trunc(Number(index)))
@@ -161,21 +178,26 @@ export function useAppDescriptors({
       ? `Calculating descriptors for ${targetCount.toLocaleString()} selected molecule${targetCount === 1 ? "" : "s"}`
       : "Calculating descriptors for all molecules");
     void runGridDescriptorCalculation(documentId, targetDocument.path, targetCount ? { rowIndexes } : {})
-      .then((status) => {
+      .then(async (status) => {
+        if (controller.signal.aborted) return;
         publishGridDescriptorJobFor(documentId, status);
         // Browser-dev computes inline and answers with the finished rows; the
         // desktop command only starts a worker and has to be followed.
         if (status.rows?.length) applyGridDescriptorResults(documentId, status.rows);
         if (status.running) {
-          void followGridDescriptorJob(documentId);
+          await followGridDescriptorJob(documentId, controller.signal, status);
           return;
         }
         pushStatus(status.message || "Descriptor calculation finished", status.status === "failed" ? "error" : "success");
       })
       .catch((error) => {
+        if (controller.signal.aborted) return;
         const message = error instanceof Error ? error.message : String(error);
         publishGridDescriptorJob(failedGridDescriptorJob(documentId, message, targetCount));
         pushStatus(`Descriptor calculation failed: ${message}`, "error");
+      })
+      .finally(() => {
+        if (followedJobsRef.current.get(documentId) === controller) followedJobsRef.current.delete(documentId);
       });
   }, [applyGridDescriptorResults, documents, followGridDescriptorJob, pushStatus]);
 

@@ -213,8 +213,17 @@ function cloneTab(tab: MoleculeTab): MoleculeTab {
   return { ...tab, back: [...tab.back], forward: [...tab.forward] };
 }
 
+// Copies what a JSON round trip would, but shares strings: history snapshots
+// are taken on every tracked action and documents can carry megabytes of text.
 function cloneJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+  if (typeof value === "number") return (Number.isFinite(value) ? value : null) as T;
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map((item) => (item === undefined ? null : cloneJson(item))) as T;
+  const copy: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (item !== undefined && typeof item !== "function") copy[key] = cloneJson(item);
+  }
+  return copy as T;
 }
 
 function sameLocation(left: Location, right: Location) {
