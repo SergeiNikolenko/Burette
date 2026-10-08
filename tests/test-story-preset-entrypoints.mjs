@@ -34,6 +34,7 @@ test('Auto toolbar uses the current Story snapshot after setting presentation, n
       molstarStoryState: () => ({ available: story, isPlaying: false }),
       updateMolstarPresentationConfig: () => calls.push('config'),
       applyMolstarProviderPreset: async () => calls.push('provider'),
+      applyMolstarWaterLineRepresentation: async () => {},
       applyMolstarAppearance: async () => calls.push('appearance'),
       fadeMolstarTransitionFrame: () => calls.push('shown'),
       removeMolstarTransitionFrame: () => calls.push('failed'),
@@ -41,7 +42,7 @@ test('Auto toolbar uses the current Story snapshot after setting presentation, n
       debug: message => assert.fail(message), hideStatus() {}, setTimeout() {}, isQuickLookHost: () => false,
     };
     const apply = extract('  async function applyMolstarPresetNow(', '  async function applyConfiguredMolstarPreset(', context);
-    await apply('automatic');
+    assert.equal(await apply('automatic'), true);
     assert.ok(calls.includes('shown'));
     assert.equal(calls.includes('story'), story);
     assert.equal(calls.includes('provider'), !story);
@@ -71,3 +72,36 @@ test('preset hover preview reaches the provider and screenshot without an undefi
   assert.deepEqual(calls, ['provider', 'capture']);
 });
 
+test('failed preset restores the scene without invalidating its backdrop metadata', async () => {
+  const calls = [];
+  const snapshot = {};
+  let fail = true;
+  const context = {
+    activeViewer: { plugin: { state: { data: {
+      getSnapshot: () => snapshot,
+      setSnapshot: value => { assert.equal(value, snapshot); calls.push('rollback'); },
+    } }, runTask: async () => {} } },
+    activeConfig: {}, window: {}, molstarStyleApplySerial: 0,
+    normalizeMolstarPreset: x => x, molstarPresetOption: () => ({ provider: 'auto', label: 'Auto' }),
+    molstarPresetAppearance: () => 'illustrative', configuredMolstarPreset: () => 'automatic',
+    configuredMolstarStyle: () => 'illustrative', configuredMolstarAppearance: () => 'illustrative',
+    captureMolstarCameraSnapshot: () => null, captureMolstarTransitionFrame: () => null,
+    molstarStoryState: () => ({ available: false, isPlaying: false }),
+    updateMolstarPresentationConfig() {}, applyMolstarWaterLineRepresentation: async () => {},
+    applyMolstarProviderPreset: async () => { if (fail) throw new Error('build failed'); },
+    applyMolstarAppearance: async () => {}, restoreMolstarCameraSnapshotNow() {},
+    fadeMolstarTransitionFrame() {}, removeMolstarTransitionFrame() {},
+    setStatus() {}, debug() {}, hideStatus() {}, setTimeout() {}, isQuickLookHost: () => false,
+    beginMolstarBusy: () => calls.push('busy'), endMolstarBusy: () => calls.push('idle'),
+    nextMolstarPaint: async () => {}, ensureMolstarPresetPreviewController: () => null,
+    resyncDockingSceneAfterRestyle: async () => calls.push('resync'),
+  };
+  context.applyMolstarPresetNow = extract('  async function applyMolstarPresetNow(', '  async function applyConfiguredMolstarPreset(', context);
+  const request = extract('  async function requestMolstarPreset(', '  async function applyMolstarPresetNow(', context);
+  assert.equal(await request('automatic'), false);
+  assert.deepEqual(calls, ['busy', 'rollback', 'idle']);
+  calls.length = 0;
+  fail = false;
+  assert.equal(await request('automatic'), true);
+  assert.deepEqual(calls, ['busy', 'resync', 'idle']);
+});

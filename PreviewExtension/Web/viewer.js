@@ -4939,7 +4939,7 @@
       const result = controller
         ? await controller.requestApply({ id, preset: value, preserveCamera })
         : await applyMolstarPresetNow(value, { preserveCamera });
-      await resyncDockingSceneAfterRestyle(activeViewer);
+      if (result === true) await resyncDockingSceneAfterRestyle(activeViewer);
       return result;
     } finally {
       endMolstarBusy();
@@ -5034,6 +5034,7 @@
       if (applied) fadeMolstarTransitionFrame(transitionFrame);
       else removeMolstarTransitionFrame(transitionFrame);
     }
+    return applied;
   }
 
   async function applyConfiguredMolstarPreset(viewer, config) {
@@ -15891,7 +15892,7 @@ SOFTWARE.
   let molstarDrawHoldEndedAt = 0;
   async function withMolstarDrawHold(viewer, run) {
     const canvas3d = viewer?.plugin?.canvas3d;
-    if (typeof canvas3d?.pause !== 'function' || typeof canvas3d?.animate !== 'function') return run();
+    if (typeof canvas3d?.pause !== 'function' || typeof canvas3d?.resume !== 'function') return run();
     const outermost = molstarDrawHoldDepth++ === 0;
     if (outermost) canvas3d.pause(true);
     beginMolstarBusy();
@@ -15908,7 +15909,9 @@ SOFTWARE.
           try {
             canvas3d.commit?.(true);
           } finally {
-            canvas3d.animate();
+            // PluginAnimationLoop already owns ticking. animate() would start
+            // a second independent rAF loop for the same canvas.
+            canvas3d.resume();
           }
         }
       }
@@ -16523,6 +16526,12 @@ SOFTWARE.
     await applyMolstarWaterLineRepresentation(viewer);
     state = { viewer, key: stateKey, poseRefs, activeIndex: -1, visible: null, poseStyles: poseRefs.map(() => '') };
     activeDockingSceneVisibilityState = state;
+    try {
+      await activeStructureAlignmentControl?.restoreAfterSceneReload?.();
+    } catch (error) {
+      state.key = null;
+      throw error;
+    }
     return { state, rebuilt: true };
   }
 
@@ -16772,13 +16781,8 @@ SOFTWARE.
 
   async function addCollectionRepresentation(plugin, structure, component, representation, role) {
     if (!component) return false;
-    let result = null;
-    try {
-      result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation);
-    } catch (error) {
-      debug('Mol* representation failed: ' + (error && error.message || String(error)));
-    }
-    if (!result) return false;
+    const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation);
+    if (!result) throw new Error('Mol* could not build this representation.');
     if (result.ref && structure.cell) {
       const params = plugin.state.data.cells.get(result.ref)?.transform?.params?.type?.params || {};
       const entries = collectionRepresentations.get(structure.cell) || [];
@@ -16804,7 +16808,10 @@ SOFTWARE.
     let created = 0;
     for (const structure of structures || []) {
       const component = await tryCreateMolstarComponent(plugin, structure, 'all');
-      if (await addCollectionRepresentation(plugin, structure, component, representation, 0)) created += 1;
+      if (!await addCollectionRepresentation(plugin, structure, component, representation, 0)) {
+        throw new Error('Mol* could not create a component for this style.');
+      }
+      created += 1;
     }
     if (created === 0) throw new Error('Mol* could not create a component for this style.');
   }
@@ -16814,16 +16821,16 @@ SOFTWARE.
     if (!plugin) return;
     if (await updateCollectionRepresentations(plugin, structures, [polymerRepresentation, ligandRepresentation])) return;
     await clearCollectionRepresentations(viewer, structures);
-    let created = 0;
     for (const structure of structures || []) {
+      let created = 0;
       const polymer = await tryCreateMolstarComponent(plugin, structure, 'polymer');
       if (await addCollectionRepresentation(plugin, structure, polymer, polymerRepresentation, 0)) created += 1;
       for (const kind of ['ligand', 'ion']) {
         const component = await tryCreateMolstarComponent(plugin, structure, kind);
         if (await addCollectionRepresentation(plugin, structure, component, ligandRepresentation, 1)) created += 1;
       }
+      if (created === 0) await applyMolstarRepresentationsToStructures(viewer, [structure], ligandRepresentation);
     }
-    if (created === 0) await applyMolstarRepresentationsToStructures(viewer, structures, ligandRepresentation);
   }
 
   async function clearMolstarMainRepresentationsForStructures(viewer, structures) {
