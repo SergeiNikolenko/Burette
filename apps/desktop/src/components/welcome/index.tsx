@@ -38,14 +38,19 @@ export function WelcomeScreen({ actions }: { actions: ShellActions }) {
   const home = window.BuretteMcpWorkspace?.home;
   if (home) return <NativeWorkspaceHome actions={actions} home={home} />;
   return (
-    <Empty className="new-tab-page border-0 gap-5">
-      <EmptyHeader className="new-tab-copy">
-        <EmptyTitle className="text-xl font-normal">Open a structure</EmptyTitle>
-        <EmptyDescription>Drop a file here or open one</EmptyDescription>
+    <Empty className="new-tab-page border-0 gap-6">
+      <EmptyHeader className="new-tab-copy gap-6">
+        <EmptyTitle className="text-(length:--text-heading-lg) leading-9 font-semibold text-(--color-text)">
+          Open a structure
+        </EmptyTitle>
+        <EmptyDescription className="text-[16px]/6 text-(--color-text-tertiary)">
+          Drop a file here or open one
+        </EmptyDescription>
       </EmptyHeader>
       <EmptyContent className="new-tab-actions flex-row justify-center gap-3">
         <Button
           type="button"
+          size="lg"
           data-analytics-control="open_structure"
           onClick={() => void actions.chooseFiles()}
         >

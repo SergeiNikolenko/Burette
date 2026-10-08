@@ -29,7 +29,7 @@ const buttonVariants = cva(
           "h-8 rounded-(--radius-button-action) px-4 text-base/[18px]",
         xs: "h-6 rounded-full px-2 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-7 rounded-(--radius-button-toolbar) px-2 [&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-9 rounded-(--radius-button-action) px-4 text-base/[18px]",
+        lg: "h-9 rounded-(--radius-button-action) px-5 text-base/[18px] font-medium",
         icon: "size-8 rounded-(--radius-button-toolbar)",
         // Dense list rows - the inspector's composition tree, and the viewer's
         // scene tree it mirrors - carry a 20px action. That size did not exist

@@ -24,7 +24,7 @@ function Command({
     <CommandPrimitive
       data-slot="command"
       className={cn(
-        "flex size-full flex-col overflow-hidden rounded-[20px]! bg-popover p-1 text-popover-foreground",
+        "flex size-full flex-col gap-1 overflow-hidden rounded-(--radius-2xl)! bg-popover p-1 text-popover-foreground",
         className
       )}
       {...props}
@@ -53,7 +53,7 @@ function CommandDialog({
       </DialogHeader>
       <DialogContent
         className={cn(
-          "top-1/3 translate-y-0 overflow-hidden rounded-[20px]! p-0",
+          "top-1/3 translate-y-0 overflow-hidden rounded-(--radius-2xl)! border-transparent p-0 shadow-[0_16px_32px_-8px_rgb(0_0_0/0.19)]",
           className
         )}
         showCloseButton={showCloseButton}
@@ -71,10 +71,10 @@ function CommandInput({
 }: React.ComponentProps<typeof CommandPrimitive.Input> & { variant?: "default" | "plain" }) {
   if (variant === "plain") {
     return (
-      <div data-slot="command-input-wrapper" className="px-4 py-3">
+      <div data-slot="command-input-wrapper" className="px-2.5 py-1.5">
         <CommandPrimitive.Input
           data-slot="command-input"
-          className={cn("h-8 w-full bg-transparent text-base outline-none placeholder:text-muted-foreground disabled:opacity-50", className)}
+          className={cn("h-[21px] w-full bg-transparent text-base/[21px] outline-none placeholder:text-muted-foreground disabled:opacity-50", className)}
           {...props}
         />
       </div>
@@ -136,7 +136,7 @@ function CommandGroup({
     <CommandPrimitive.Group
       data-slot="command-group"
       className={cn(
-        "overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1 **:[[cmdk-group-heading]]:text-[13px] **:[[cmdk-group-heading]]:leading-[18.5px] **:[[cmdk-group-heading]]:text-popover-foreground/50",
+        "overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:pt-2 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:text-[13px] **:[[cmdk-group-heading]]:leading-[18.5px] **:[[cmdk-group-heading]]:text-(--color-text-tertiary)",
         className
       )}
       {...props}
@@ -166,7 +166,7 @@ function CommandItem({
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "group/command-item relative flex cursor-default items-center gap-1.5 rounded-[15px] px-2 py-[5px] text-[13px] leading-[18.5px] outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-popover-foreground/[0.055] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "group/command-item relative flex cursor-default items-center gap-1.5 rounded-[15px] px-2 py-[5px] text-[13px] leading-[18.5px] outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-(--color-background-primary-ghost-hover) [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}

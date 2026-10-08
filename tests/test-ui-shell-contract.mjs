@@ -4245,8 +4245,8 @@ assert.match(styles, /\.settings-select:focus-visible,[\s\S]*\.settings-text-con
 // CommandDialog itself; everything else (surface, shadow, selected row) now
 // comes from the shadcn dialog/command primitives and the shared theme tokens.
 assert.match(commandPalette, /top-\[12%\]/);
-assert.match(commandPalette, /w-\[min\(560px,90vw\)\]/);
-assert.match(uiCommand, /data-selected:bg-popover-foreground\/\[0\.055\]/);
+assert.match(commandPalette, /w-\[min\(520px,90vw\)\]/);
+assert.match(uiCommand, /data-selected:bg-\(--color-background-primary-ghost-hover\)/);
 assert.match(uiCommand, /max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto/);
 assert.doesNotMatch(app, /from "\.\/hooks\/use-app-open-drop-merge-collections"/);
 assert.doesNotMatch(app, /mergeMoleculeCollections: activeDocument\?\.renderer === "grid2d"/);
