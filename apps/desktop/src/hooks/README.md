@@ -52,3 +52,13 @@ bun run test:ui
 
 Use the Browser surface for visual regressions. Use the desktop app or Quick
 Look only when the change touches packaged/native behavior.
+
+## Read-only Resource Queries
+
+`use-chemical-editor-targets.ts` shares a TanStack Query cache between the
+Open In menu and General settings. Keys contain the full file path; results
+are fresh for 30 seconds and unused entries expire after one minute. Discovery
+runs offline because its transport is local IPC/browser adaptation. It does not
+retry side effects or persist paths, and a late response cannot populate another
+file's menu. Existing shell/document stores and bridge commands remain owners
+of mutations and workspace state.

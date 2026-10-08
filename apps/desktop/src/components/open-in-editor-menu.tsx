@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useChemicalEditorTargets } from "../hooks/use-chemical-editor-targets";
+import { useMemo, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { RadixDropdownMenu } from "./radix-menu";
 import { ShortcutTooltip } from "./shortcut-tooltip";
@@ -23,29 +24,11 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
   const filePath = activeFile && isLocalFilePath(activeFile.path) ? activeFile.path : null;
   const localFinderIconUrl = useFinderIconUrl();
   const localDefaultIconUrl = useDefaultApplicationIconUrl(filePath);
-  const [targets, setTargets] = useState<ChemicalEditorTarget[]>([]);
+  const { targets: discoveredTargets, loading } = useChemicalEditorTargets(filePath, actions.listChemicalEditorTargets);
+  const targets = useMemo(() => visibleEditorTargets(discoveredTargets), [discoveredTargets]);
   const nativeIcons = useNativeApplicationIcons(filePath, targets);
   const finderIconUrl = window.BuretteMcpWorkspace ? nativeIcons.finder ?? null : localFinderIconUrl;
   const defaultApplicationIconUrl = window.BuretteMcpWorkspace ? nativeIcons.default ?? null : localDefaultIconUrl;
-  const [loading, setLoading] = useState(false);
-  const [loadedPath, setLoadedPath] = useState<string | null>(null);
-
-  const listTargets = useRef(actions.listChemicalEditorTargets);
-  listTargets.current = actions.listChemicalEditorTargets;
-  useEffect(() => {
-    let cancelled = false;
-    setTargets([]);
-    setLoadedPath(null);
-    setLoading(Boolean(filePath));
-    if (filePath) void listTargets.current(filePath).then(next => {
-      if (!cancelled) {
-        setTargets(visibleEditorTargets(next));
-        setLoadedPath(filePath);
-      }
-    }).finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [filePath]);
-
   const items = useMemo<MenuItemSpec[]>(() => {
     if (!activeFile || !filePath) return [];
     const visibleTargets = targets.length > 0 ? targets : browserDevPreviewTargets(activeFile.path);
@@ -60,7 +43,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
       },
     }));
     return [
-      ...(loading && loadedPath !== activeFile.path ? [{
+      ...(loading ? [{
         kind: "item" as const,
         id: "chemical-editor-loading",
         text: "Finding editors...",
@@ -107,7 +90,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
         },
       },
     ];
-  }, [actions, activeFile, filePath, defaultApplicationIconUrl, finderIconUrl, loadedPath, loading, targets, nativeIcons, state.preferences.openInDefaultDestination]);
+  }, [actions, activeFile, filePath, defaultApplicationIconUrl, finderIconUrl, loading, targets, nativeIcons, state.preferences.openInDefaultDestination]);
 
   if (!activeFile) return navigation ? <header className="workspace-file-header" aria-label="Workspace">{navigation([])}</header> : null;
   if (!filePath && presentation !== "file-header") return null;

@@ -1,5 +1,6 @@
+import { useChemicalEditorTargets } from "../../hooks/use-chemical-editor-targets";
 import { SshConnections } from "../ssh/ssh-projects";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ViewerPreferences, XtbSettings } from "../../types";
 import type { UpdateChannel } from "../../update";
@@ -57,19 +58,12 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
   const preferences = state.preferences;
   const update = state.update;
   const section = location.section;
-  const [openDestinationTargets, setOpenDestinationTargets] = useState<ChemicalEditorTarget[]>([]);
   const openDestinationProbePath = state.activeDocument?.path ?? state.documents[0]?.path ?? "structure.pdb";
 
-  useEffect(() => {
-    if (section !== "general") return;
-    let disposed = false;
-    void actions.listChemicalEditorTargets(openDestinationProbePath).then((targets) => {
-      if (!disposed) setOpenDestinationTargets(targets);
-    });
-    return () => {
-      disposed = true;
-    };
-  }, [actions, openDestinationProbePath, section]);
+  const { targets: openDestinationTargets } = useChemicalEditorTargets(
+    section === "general" ? openDestinationProbePath : null,
+    actions.listChemicalEditorTargets,
+  );
 
   const openDestinationRows = useMemo<SettingRow[]>(() => [
     openDestinationPreferenceRow(
