@@ -64,6 +64,8 @@ export function activeViewerIframeForDocument(documentId: string, renderer?: str
 // same file, and broadcasting would edit or animate its copies as well.
 export function postToXyzrenderViewer(documentId: string | undefined, body: Record<string, unknown>) {
   const owner = documentId ? activeViewerIframeForDocument(documentId) : null;
+  // A closed target is not permission to animate every remaining document.
+  if (documentId && !owner) return;
   const frames = owner ? [owner] : Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe"));
   for (const frame of frames) frame.contentWindow?.postMessage({ source: "burette-host", body }, "*");
 }
@@ -86,7 +88,11 @@ export async function requestViewerAction(documentId: string, action: Record<str
     };
     const timer = window.setTimeout(() => { finish(); reject(new Error("The scene did not respond. Check it before retrying.")); }, timeoutMs);
     window.addEventListener("message", receive);
-    source.postMessage({ source: "burette-agent-host", body: { type: "agent-action", id, action } }, "*");
+    try {
+      source.postMessage({ source: "burette-agent-host", body: { type: "agent-action", id, action } }, "*");
+    } catch (error) {
+      finish(); reject(error);
+    }
   });
 }
 
@@ -97,14 +103,21 @@ export function requestGridView(documentId: string, mode: "table" | "cards") {
   return new Promise<void>((resolve, reject) => {
     const cleanup = () => { window.clearInterval(interval); window.clearTimeout(timeout); window.removeEventListener('message', receive); };
     const receive = (event: MessageEvent) => {
-      const frame = activeViewerIframeForDocument(documentId, "grid2d");
       const body = event.data?.body;
-      if (event.source !== frame?.contentWindow || event.data?.source !== 'burette-grid' || body?.type !== 'gridMenuCommandResult' || body.requestId !== requestId) return;
+      if (event.data?.source !== 'burette-grid' || body?.type !== 'gridMenuCommandResult' || body.requestId !== requestId) return;
+      const frame = activeViewerIframeForDocument(documentId, "grid2d");
+      if (!frame?.contentWindow || event.source !== frame.contentWindow) return;
       cleanup(); resolve();
     };
-    const send = () => activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
-      source: 'burette-grid-host', body: { type: 'gridMenuCommand', command: `view.grid-${mode}`, requestId },
-    }, '*');
+    const send = () => {
+      try {
+        activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
+          source: 'burette-grid-host', body: { type: 'gridMenuCommand', command: `view.grid-${mode}`, requestId },
+        }, '*');
+      } catch (error) {
+        cleanup(); reject(error);
+      }
+    };
     const interval = window.setInterval(send, 250);
     const timeout = window.setTimeout(() => { cleanup(); reject(new Error('The table did not finish loading.')); }, 15000);
     window.addEventListener('message', receive); send();

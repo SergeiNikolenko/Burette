@@ -24,34 +24,44 @@ import {
 // shell carries `data-resizing` while any pin is held so the CSS can drop
 // pointer events on the frames (an iframe under the pointer would otherwise
 // swallow the drag).
-let framePinDepth = 0;
-let pinnedFrames: HTMLIFrameElement[] = [];
-let pinnedRoot: HTMLElement | null = null;
+const framePins = new WeakMap<HTMLElement, { depth: number; restore: () => void }>();
 
 export function pinViewerFrames(root: HTMLElement): () => void {
-  if (framePinDepth++ === 0) {
-    pinnedRoot = root;
-    pinnedFrames = Array.from(root.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe"));
-    for (const frame of pinnedFrames) {
-      const rect = frame.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) continue;
+  let pin = framePins.get(root);
+  if (!pin) {
+    // Read every box before writing any size: interleaved reads and writes
+    // force layout once per document when many tabs are mounted.
+    const frames = Array.from(root.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe"), frame => ({
+      frame, rect: frame.getBoundingClientRect(),
+      width: frame.style.getPropertyValue("width"), widthPriority: frame.style.getPropertyPriority("width"),
+      height: frame.style.getPropertyValue("height"), heightPriority: frame.style.getPropertyPriority("height"),
+    })).filter(({ rect }) => rect.width > 0 && rect.height > 0);
+    const resizing = root.getAttribute("data-resizing");
+    for (const { frame, rect } of frames) {
       frame.style.width = `${rect.width}px`;
       frame.style.height = `${rect.height}px`;
     }
     root.setAttribute("data-resizing", "true");
+    pin = { depth: 0, restore: () => {
+      for (const { frame, width, widthPriority, height, heightPriority } of frames) {
+        if (width) frame.style.setProperty("width", width, widthPriority);
+        else frame.style.removeProperty("width");
+        if (height) frame.style.setProperty("height", height, heightPriority);
+        else frame.style.removeProperty("height");
+      }
+      if (resizing === null) root.removeAttribute("data-resizing");
+      else root.setAttribute("data-resizing", resizing);
+    } };
+    framePins.set(root, pin);
   }
+  pin.depth++;
   let released = false;
   return () => {
     if (released) return;
     released = true;
-    if (--framePinDepth > 0) return;
-    for (const frame of pinnedFrames) {
-      frame.style.removeProperty("width");
-      frame.style.removeProperty("height");
-    }
-    pinnedFrames = [];
-    pinnedRoot?.removeAttribute("data-resizing");
-    pinnedRoot = null;
+    if (--pin.depth > 0) return;
+    pin.restore();
+    framePins.delete(root);
   };
 }
 
