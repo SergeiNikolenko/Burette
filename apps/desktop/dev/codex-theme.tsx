@@ -77,6 +77,13 @@ function Appearance({ mode }: { mode: ThemeMode }) {
         </section>
         <section>
           <h3>Controls</h3>
+          <div className="theme-fixture-controls" aria-label="Atlas buttons">
+            <Button size="xs">Solid</Button>
+            <Button size="xs" variant="secondary">Soft</Button>
+            <Button size="xs" variant="ghost">Ghost</Button>
+            <Button size="xs" variant="outline">Surface</Button>
+            <Button size="xs" variant="link" data-color="primary">Transparent</Button>
+          </div>
           <div className="theme-fixture-controls">
             <Button>Primary</Button>
             <Button variant="secondary">Secondary</Button>

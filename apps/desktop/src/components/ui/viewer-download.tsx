@@ -3,7 +3,6 @@
 import * as React from "react";
 import { Download } from "@/components/ui/app-icons";
 
-import { cn } from "@/lib/utils";
 import {
   ViewerDownloadError,
   type ViewerDownloadAction,
@@ -12,7 +11,7 @@ import {
 
 import { Spinner } from "@/components/ui/spinner";
 
-import { Button, buttonVariants } from "./button";
+import { Button } from "./button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -242,17 +241,17 @@ export function ViewerDownloadButton({
 
   if (href) {
     return (
-      <a
-        href={href}
-        download={action?.fileName}
-        className={cn(buttonVariants({ variant, size }), className)}
-        aria-label={label}
-        title={label}
-        data-slot="button"
-      >
-        <Download className={showLabel ? "mr-1.5 size-4" : undefined} />
-        {showLabel ? label : null}
-      </a>
+      <Button asChild variant={variant} size={size} className={className}>
+        <a
+          href={href}
+          download={action?.fileName}
+          aria-label={label}
+          title={label}
+        >
+          <Download aria-hidden className={showLabel ? "mr-1.5 size-4" : undefined} />
+          {showLabel ? label : null}
+        </a>
+      </Button>
     );
   }
 

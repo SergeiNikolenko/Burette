@@ -1,0 +1,11 @@
+@layer components {
+  /* Burette composition: preserve alignment utilities on disclosure buttons. */
+  .atlas-button { --scale: .96; }
+  .atlas-button-inner { justify-content: inherit; min-width: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .atlas-button, .atlas-button::before, .atlas-button::after, .atlas-button-inner {
+      transition: none;
+    }
+    .atlas-button { --scale: 1 !important; }
+  }
+}

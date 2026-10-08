@@ -1,76 +1,63 @@
-import * as React from "react"
-import { cva, type VariantProps } from "class-variance-authority"
-import { Slot } from "radix-ui"
+import * as React from "react";
+import { Slot } from "radix-ui";
+import { cn } from "@/lib/utils";
+import "./button.atlas.css";
+import "./button.css";
 
-import { cn } from "@/lib/utils"
+// Burette names map onto the original Atlas variants. Keep the existing public
+// sizes so callers don't change layout when adopting the original component.
+const variants = {
+  default: "solid", secondary: "soft", outline: "surface", ghost: "ghost",
+  destructive: "soft", link: "transparent",
+} as const;
+const sizes = {
+  default: "lg", xs: "xs", sm: "md", lg: "xl", icon: "lg",
+  "icon-2xs": "3xs", "icon-xs": "xs", "icon-sm": "md", "icon-lg": "xl",
+} as const;
 
-// Variants and sizes follow the Atlas Button: colours come from the shared
-// theme tokens, and the three heights are its pill (24), toolbar (28) and
-// action (32) buttons.
-const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center gap-1 border border-transparent bg-clip-padding text-sm leading-[18px] whitespace-nowrap transition-colors outline-none select-none focus-visible:ring-2 focus-visible:ring-(--color-ring) disabled:pointer-events-none disabled:opacity-40 aria-disabled:opacity-40 aria-invalid:border-(--color-text-danger) [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-  {
-    variants: {
-      variant: {
-        default:
-          "border-(--color-border) bg-(--color-background-primary-solid) text-(--color-text-primary-solid) hover:bg-(--color-text)/80 data-[state=open]:bg-(--color-text)/80",
-        outline:
-          "border-(--color-border) bg-(--color-background-primary-soft-alpha) text-(--color-text) hover:bg-(--color-background-primary-ghost-hover) aria-expanded:bg-(--color-background-primary-ghost-hover)",
-        secondary:
-          "bg-(--color-text)/5 text-(--color-text) hover:bg-(--color-text)/10 aria-expanded:bg-(--color-text)/10",
-        ghost:
-          "text-(--color-text-tertiary) hover:bg-(--color-background-primary-ghost-hover) aria-expanded:bg-(--color-background-primary-ghost-hover)",
-        destructive:
-          "bg-(--color-text-danger)/10 text-(--color-text-danger) hover:bg-(--color-text-danger)/15",
-        link: "text-(--color-text-info) underline-offset-4 hover:underline",
-      },
-      size: {
-        default:
-          "h-8 rounded-(--radius-button-action) px-4 text-base/[18px]",
-        xs: "h-6 rounded-full px-2 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-7 rounded-(--radius-button-toolbar) px-2 [&_svg:not([class*='size-'])]:size-3.5",
-        lg: "h-9 rounded-(--radius-button-action) px-5 text-base/[18px] font-medium",
-        icon: "size-8 rounded-(--radius-button-toolbar)",
-        // Dense list rows - the inspector's composition tree, and the viewer's
-        // scene tree it mirrors - carry a 20px action. That size did not exist
-        // here, so those rows were hand-rolled buttons that drifted from the
-        // rest of the system; it lives in the variants now instead.
-        "icon-2xs":
-          "size-5 rounded-(--radius-xs) [&_svg:not([class*='size-'])]:size-[13px]",
-        "icon-xs":
-          "size-6 rounded-(--radius-xs) [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm": "size-7 rounded-(--radius-button-toolbar)",
-        "icon-lg": "size-9 rounded-(--radius-button-toolbar)",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
-      size: "default",
-    },
-  }
-)
+type ButtonProps = React.ComponentProps<"button"> & {
+  variant?: keyof typeof variants;
+  size?: keyof typeof sizes;
+  asChild?: boolean;
+};
 
 function Button({
-  className,
-  variant = "default",
-  size = "default",
-  asChild = false,
-  ...props
-}: React.ComponentProps<"button"> &
-  VariantProps<typeof buttonVariants> & {
-    asChild?: boolean
-  }) {
-  const Comp = asChild ? Slot.Root : "button"
+  className, variant = "default", size = "default", asChild = false,
+  children, disabled, type, onPointerEnter, ...props
+}: ButtonProps) {
+  const Comp = asChild ? Slot.Root : "button";
+  const child = asChild ? React.Children.only(children) : null;
+  const content = <span className="atlas-button-inner">{
+    React.isValidElement<{ children?: React.ReactNode }>(child) ? child.props.children : children
+  }</span>;
 
   return (
     <Comp
+      type={type ?? (asChild ? undefined : "button")}
       data-slot="button"
       data-variant={variant}
       data-size={size}
-      className={cn(buttonVariants({ variant, size, className }))}
+      data-atlas-variant={variants[variant]}
+      data-atlas-size={sizes[size]}
+      data-color={variant === "destructive" ? "danger" : variant === "link" ? "info" : "primary"}
+      data-pill={size.startsWith("icon") ? undefined : ""}
+      data-uniform={size.startsWith("icon") ? "" : undefined}
+      data-disabled={disabled ? "" : undefined}
+      disabled={disabled}
+      aria-disabled={disabled || undefined}
+      className={cn("atlas-button group/button inline-flex items-center justify-center [&_svg]:pointer-events-none [&_svg]:shrink-0", variant === "link" && "underline-offset-4 hover:underline", className)}
+      onPointerEnter={(event) => {
+        // Original Atlas press scale, based on the actual rendered width.
+        const width = event.currentTarget.offsetWidth;
+        const scale = width <= 80 ? .96 : width <= 150 ? .97 : width <= 220 ? .98 : width > 600 ? .995 : .985;
+        event.currentTarget.style.setProperty("--scale", String(scale));
+        onPointerEnter?.(event);
+      }}
       {...props}
-    />
-  )
+    >
+      {React.isValidElement(child) ? React.cloneElement(child, undefined, content) : content}
+    </Comp>
+  );
 }
 
-export { Button, buttonVariants }
+export { Button };
