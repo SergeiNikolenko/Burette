@@ -6,7 +6,7 @@ import type { AnimationSource } from "./xyzrender-animation-dialog";
 import { Switch } from "./ui/switch";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
-import { ChevronDown } from "./ui/app-icons";
+import { ChevronDown, FileBlank } from "./ui/app-icons";
 import { XyzrenderProperties } from "./xyzrender-properties";
 import { StoryMarkdown } from "./story-markdown";
 import { DockHeader } from "./dock-header";
@@ -31,7 +31,7 @@ import { StructureInfoPanel } from "./structure-info-panel";
 import { JobsPanel } from "./jobs-panel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { PanelEmptyState } from "./ui/panel-empty-state";
 import { FoldingAnalysisPanel, useFoldingResult } from "./folding-results-panel";
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
@@ -134,7 +134,8 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     && (tab.kind !== "scene" || Boolean(mesoscaleDockDocument))
   ));
   const activeTab = visibleTabs.find((tab) => tab.kind === activeTabKind) ?? visibleTabs[0] ?? tabs[0];
-  const filesTabDragPayload = dockFilesDragPayload(dockDocument, dockTextDocument, dockTool);
+  const fileSelection = dockFileDocuments(state, area);
+  const filesTabDragPayload = dockFilesDragPayload(fileSelection.document, fileSelection.textDocument, dockTool);
   const filesTabDrag = useSidebarStructureDrag({ state, actions, disabled: readOnly, getPayload: () => filesTabDragPayload });
   const dockDrops = useMemo(
     () => state.dockDroppedStructures.filter((item) => item.area === area && item.tabKind === activeTab.kind),
@@ -263,10 +264,7 @@ function DockPanelContent({
   const hoveredGridRow = state.hoveredGridRows[(dockDocument ?? activeDocument)?.id ?? ""] ?? null;
   const chemicalSpaceDocument = resolveChemicalSpaceDocument(state, dockDocument);
   const activeTextDocument = activeTextDocumentFromState(state);
-  // Without an explicit pin the dock serves the active document, so the Files
-  // list must mark that document rather than nothing.
-  const effectiveDockDocument = dockDocument ?? (dockDocumentId || dockTool ? null : activeDocument);
-  const effectiveDockTextDocument = dockTextDocument ?? (dockDocumentId || dockTool ? null : activeTextDocument);
+  const { document: effectiveDockDocument, textDocument: effectiveDockTextDocument } = dockFileDocuments(state, area);
   const fileEntries = activeTabKind === "files"
     ? dockFileEntries({
         dockDrops,
@@ -280,7 +278,7 @@ function DockPanelContent({
   if (activeTabKind === "scene") {
     return isMesoscaleViewerDocument(dockStructureDocument)
       ? <MesoscaleScenePanel document={dockStructureDocument} />
-      : <DockEmptyState title="No mesoscale model open" description="Open a CellPack, PetWorld, .molx, .molj, or .mesozip model to inspect its scene." />;
+      : <DockEmptyState title="No model selected" />;
   }
   if (activeTabKind === "spectrum") {
     const spectrumDocument = dockStructureDocument?.renderer === "spectrum" ? dockStructureDocument : null;
@@ -293,13 +291,16 @@ function DockPanelContent({
     }
     return (
       <DockEmptyState
-        title="No spectrum open"
-        description="Open a spectrum file to inspect its peaks here."
+        title="No spectrum selected"
         action={{ label: "Open file", run: () => void actions.chooseFiles() }}
       />
     );
   }
   if (activeTabKind === "files") {
+    // Following the main tab must not instantiate a second renderer in a hidden
+    // dock. Explicitly selected dock files retain their existing keep-alive.
+    const open = area === "right" ? state.rightDockOpen : state.bottomDockOpen;
+    if (!open && !dockDocumentId && !dockTool) return null;
     const fileTabs = (
       <DockFileTabs
         state={state}
@@ -318,32 +319,31 @@ function DockPanelContent({
           textDocuments={state.textDocuments} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />
       </div></div>;
     }
-    if (dockDocument) {
+    if (effectiveDockDocument) {
       return (
         <div className="dock-files-view">
           {fileTabs}
           <div className="dock-viewer">
-            {dockDocument.renderer === "spectrum"
-              ? <SpectrumViewer document={dockDocument} embedded />
-              : <ViewerFrame document={dockDocument} readOnly />}
+            {effectiveDockDocument.renderer === "spectrum"
+              ? <SpectrumViewer document={effectiveDockDocument} embedded />
+              : <ViewerFrame document={effectiveDockDocument} readOnly />}
           </div>
         </div>
       );
     }
-    if (dockTextDocument) {
+    if (effectiveDockTextDocument) {
       return (
         <div className="dock-files-view">
           {fileTabs}
           <div className="dock-viewer">
-            <TextFileViewer document={dockTextDocument} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />
+            <TextFileViewer document={effectiveDockTextDocument} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />
           </div>
         </div>
       );
     }
     return (
       <DockEmptyState
-        title="No file here yet"
-        description="Drop a structure onto this panel, or open one to view it alongside the active tab."
+        title="No file selected"
         action={{ label: "Open file", run: () => void actions.chooseFiles() }}
       />
     );
@@ -383,8 +383,7 @@ function DockPanelContent({
     }
     return (
       <DockEmptyState
-        title="No xyzr preview open"
-        description="Open an .inp or .xyzr file to change its presets, van der Waals surface and field settings."
+        title="No surface selected"
         action={{ label: "Open file", run: () => void actions.chooseFiles() }}
       />
     );
@@ -394,8 +393,7 @@ function DockPanelContent({
       ? <StructureStoryPanel story={state.structureStory} document={state.activeDocument} actions={actions} />
       : (
           <DockEmptyState
-            title="No story yet"
-            description="Open a sequence of structures to lay them out as a story."
+            title="No story selected"
             action={{ label: "Open structures", run: () => void actions.chooseFiles() }}
           />
         );
@@ -490,38 +488,8 @@ function DockPanelContent({
   );
 }
 
-// Every idle tab used to be one grey sentence centred on an empty panel, with
-// nothing to act on and no hint of what the tab is for. One shape covers them
-// all: what it is, why it is empty, and the action that fills it.
-function DockEmptyState({
-  title,
-  description,
-  action,
-}: {
-  title: string;
-  description: string;
-  action?: { label: string; run: () => void };
-}) {
-  return (
-    <div className="dock-content dock-content-empty">
-      <Empty className="dock-empty-state">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
-              <path d="M3 3.5h10v9H3zM3 6.5h10" />
-            </svg>
-          </EmptyMedia>
-          <EmptyTitle>{title}</EmptyTitle>
-          <EmptyDescription>{description}</EmptyDescription>
-        </EmptyHeader>
-        {action ? (
-          <Button type="button" variant="secondary" size="sm" onClick={action.run}>
-            {action.label}
-          </Button>
-        ) : null}
-      </Empty>
-    </div>
-  );
+function DockEmptyState(props: Omit<React.ComponentProps<typeof PanelEmptyState>, "icon">) {
+  return <div className="dock-content dock-content-empty"><PanelEmptyState {...props} icon={<FileBlank />} /></div>;
 }
 
 const DEFAULT_XYZRENDER_DOCK_CONTROLS: XyzrenderControls = {
@@ -1266,9 +1234,7 @@ function SingleDocumentTextPanel({
 
   if (!activeDocument && !activeTextDocument) {
     return (
-      <div className="dock-content dock-content-empty">
-        <div className="dock-empty dock-empty-large">Open a structure or text file to inspect its text</div>
-      </div>
+      <DockEmptyState title="No file selected" />
     );
   }
 
@@ -1470,6 +1436,17 @@ function activeTextDocumentFromState(state: ShellViewState) {
     state.textDocuments.find((document) => document.path === location.path) ??
     null
   );
+}
+
+// The tab label, preview and drag payload must resolve the same selection.
+// A stale explicit pin stays empty rather than silently switching documents.
+function dockFileDocuments(state: ShellViewState, area: DockArea) {
+  const documentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
+  const tool = area === "right" ? state.rightDockTool : state.bottomDockTool;
+  return {
+    document: documentId ? state.documents.find(document => document.id === documentId) ?? null : tool ? null : state.activeDocument,
+    textDocument: documentId ? state.textDocuments.find(document => document.id === documentId) ?? null : tool ? null : activeTextDocumentFromState(state),
+  };
 }
 
 function activeDockFileEntryKey(

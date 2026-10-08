@@ -4971,47 +4971,6 @@ input.structure-inspector-composition-search {
 .structure-inspector-tool.grid-descriptor-status .grid-descriptor-progress {
   margin-top: 4px;
 }
-.dock-empty-state {
-  gap: 10px;
-  padding: 26px 18px;
-}
-.dock-empty-state [data-slot="empty-title"] {
-  color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 500;
-}
-.dock-empty-state [data-slot="empty-description"] {
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.35;
-}
-.dock-empty-state [data-slot="empty-icon"][data-variant="icon"] {
-  border: 1px solid var(--line-subtler);
-  background: var(--surface-subtle);
-  color: var(--text-muted);
-}
-.structure-inspector-empty {
-  border: 1px solid var(--line-subtler);
-  border-radius: var(--control-radius);
-  background: var(--surface-card);
-  gap: 10px;
-  padding: 22px 14px;
-}
-.structure-inspector-empty [data-slot="empty-title"] {
-  color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 500;
-}
-.structure-inspector-empty [data-slot="empty-description"] {
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.35;
-}
-.structure-inspector-empty [data-slot="empty-icon"][data-variant="icon"] {
-  border: 1px solid var(--line-subtler);
-  background: var(--surface-subtle);
-  color: var(--text-muted);
-}
 /* 16px is the scene tree's twisty, and its empty spacer is the same width so a
    leaf lines up with the rows that can open. */
 .structure-inspector-tree-toggle,

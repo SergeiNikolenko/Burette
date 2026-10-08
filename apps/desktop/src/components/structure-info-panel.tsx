@@ -20,7 +20,7 @@ import { canInspectConformerEnsemble, canShowConformerWorkflow, canUseConformerW
 import { Alert, AlertAction, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { PanelEmptyState } from "./ui/panel-empty-state";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrubNumberField } from "@/components/ui/scrub-number-input";
@@ -274,22 +274,8 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
     }
     return (
       <div className="dock-content structure-brief">
-        <Empty className="structure-inspector-empty">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <StructureEmptyIcon />
-            </EmptyMedia>
-            <EmptyTitle>No active structure</EmptyTitle>
-            <EmptyDescription>
-              Open a molecular file to see its composition, calculations and results here.
-            </EmptyDescription>
-          </EmptyHeader>
-          {!hostedMcpWidget ? (
-            <Button type="button" variant="secondary" size="sm" onClick={() => void actions.chooseFiles()}>
-              Open structure
-            </Button>
-          ) : null}
-        </Empty>
+        <PanelEmptyState title="No structure selected" icon={<StructureEmptyIcon />}
+          action={hostedMcpWidget ? undefined : { label: "Open structure", run: () => void actions.chooseFiles() }} />
         <StructureDropSummary dockDrops={dockDrops} />
       </div>
     );

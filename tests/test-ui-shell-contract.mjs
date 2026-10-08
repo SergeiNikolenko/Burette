@@ -2645,7 +2645,7 @@ assert.match(dockPanel, /type: "story_control"/);
 assert.match(dockPanel, /StoryMarkdown text=\{story\.summary\}/);
 assert.match(dockPanel, /story\.descriptionFormat === "markdown"/);
 assert.match(structureInfoPanel, /<h3 title=\{document\.title\}>\{document\.title\}<\/h3>/);
-assert.match(structureInfoPanel, /No active structure/);
+assert.match(structureInfoPanel, /No structure selected/);
 assert.match(structureInfoPanel, /actions\.showDocumentMetadata\(document\)/);
 assert.match(structureInfoPanel, /actions\.revealDocument\(document\)/);
 assert.match(structureInfoPanel, /actions\.copyDocumentPath\(document\)/);
@@ -7199,7 +7199,7 @@ assert.match(viewerFrame, /name: readOnly \? "burette-read-only" : "burette-edit
 assert.match(viewerFrame, /body: \{ type: "gridReadOnlyChanged", readOnly: true \}/);
 assert.match(viewerFrame, /isGridDocumentCloseTransitionActive\(document\.id\)/);
 assert.match(viewerFrame, /body: \{ type: "gridCloseTransitionChanged", active: true \}/);
-assert.match(dockPanel, /<ViewerFrame document=\{dockDocument\} readOnly \/>/);
+assert.match(dockPanel, /<ViewerFrame document=\{effectiveDockDocument\} readOnly \/>/);
 assert.match(appGridControlMessagesHook, /isReadOnlyViewerMessageSource\(eventSource\)/);
 assert.match(appNativeMenuHook, /case "file\.open-recent"/);
 assert.match(appNativeMenuHook, /\(\{ command, recentPath \}: NativeMenuCommand\)/);
