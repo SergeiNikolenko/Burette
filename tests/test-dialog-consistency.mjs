@@ -3,7 +3,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 // Every dialog under components shares one visual vocabulary: NativeSelect for
-// drop-downs, a classed row for every checkbox, CSS classes instead of inline
+// drop-downs, the shared Checkbox primitive, CSS classes instead of inline
 // layout, a header close button, and only classes that styles.css defines.
 const componentsRoot = 'apps/desktop/src/components';
 const styles = readFileSync('apps/desktop/src/styles.css', 'utf8');
@@ -34,18 +34,9 @@ for (const file of dialogFiles) {
     report(file, 'renders a bare <select>; use NativeSelect from ./ui/native-select');
   }
 
-  // Every checkbox needs a styling hook, either on the input or on the label
-  // wrapping it.
-  const checkboxPattern = /<input\b[^>]*type="checkbox"[^>]*>/g;
-  for (const match of source.matchAll(checkboxPattern)) {
-    const input = match[0];
-    if (/className=/.test(input)) continue;
-    const before = source.slice(0, match.index);
-    const labelStart = before.lastIndexOf('<label');
-    const labelHasClass = labelStart >= 0
-      && /^<label\b[^>]*className=/.test(before.slice(labelStart))
-      && !/<\/label>/.test(before.slice(labelStart));
-    if (!labelHasClass) report(file, 'checkbox without a className on the input or its label');
+  // Native checkboxes bypass the shared Atlas state/keyboard implementation.
+  if (!name.startsWith('ui/') && /<input\b[^>]*type="checkbox"/.test(source)) {
+    report(file, 'renders a bare checkbox; use Checkbox from ./ui/checkbox');
   }
 
   // Inline layout for lists belongs to a CSS rule, not to the markup.
@@ -82,7 +73,6 @@ assert.deepEqual(problems, [], `dialog consistency problems:\n${problems.join('\
 assert.match(styles, /\.radix-dialog-footer \{[^}]*display: flex;[^}]*justify-content: flex-end;[^}]*gap: 10px;[^}]*padding: 8px var\(--dialog-inset\) var\(--dialog-inset\);/s);
 assert.match(styles, /\.radix-dialog-footer\.calculate-properties-footer \{[^}]*justify-content: space-between;/s);
 assert.match(styles, /\.calculate-properties-option,\s*\.radix-dialog-check-row \{/);
-assert.match(styles, /\.radix-dialog-check-row input\[type="checkbox"\] \{[^}]*accent-color: var\(--accent\);/s);
 assert.match(styles, /\.radix-dialog-scroll-list \{[^}]*max-height: 240px;[^}]*overflow-y: auto;/s);
 assert.match(styles, /\.radix-dialog-subline \{[^}]*color: var\(--text-muted\);/s);
 assert.match(styles, /\.calculated-column-field select:not\(\[data-slot="native-select"\]\) \{/);

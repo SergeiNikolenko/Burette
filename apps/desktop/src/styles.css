@@ -577,14 +577,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   padding: 3px 0;
   color: var(--text-primary);
 }
-.calculate-properties-option input[type="checkbox"],
-.radix-dialog-check-row input[type="checkbox"] {
-  flex: none;
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  accent-color: var(--accent);
-}
 .radix-dialog-check-row span {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -5514,7 +5506,6 @@ input.structure-inspector-composition-search {
 .trajectory-smoothing-number > div,
 .structure-inspector-number-control > div { width: 100%; }
 .trajectory-smoothing-check { display: flex; align-items: center; gap: 7px; color: var(--text-secondary); font-size: 11px; }
-.trajectory-smoothing-check input { accent-color: var(--accent); }
 .trajectory-smoothing-update-status { color: var(--accent); font-size: 10px; font-weight: 650; }
 .trajectory-smoothing-update-status[data-complete] { color: color-mix(in srgb, #2da66f 76%, var(--text-primary)); }
 .trajectory-smoothing-error { padding: 8px 9px; border: 1px solid color-mix(in srgb, var(--danger, #c43b45) 35%, var(--line-subtler)); border-radius: var(--control-radius); background: color-mix(in srgb, var(--danger, #c43b45) 8%, transparent); color: var(--text-primary); font-size: 11px; line-height: 1.4; }

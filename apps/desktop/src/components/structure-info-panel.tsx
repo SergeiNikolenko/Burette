@@ -1,3 +1,4 @@
+import { Checkbox } from "./ui/checkbox";
 import { compositionStyleMenu } from "./composition-style-menu";
 import { isLocalFilePath } from "../lib/browser-file-actions";
 import { ChevronRight as AppChevronRight, Eye as AppEye, EyeOff as AppEyeOff, Delete as AppDelete, Stopwatch } from "./ui/app-icons";
@@ -1126,7 +1127,7 @@ function TrajectorySmoothingCard({
                   {rmsdFilter === "cutoff" ? <label data-smoothing-tooltip="Normalized low-pass cutoff. Lower values remove more rapid motion."><span>Cutoff frequency</span><TrajectoryNumberField label="Cutoff frequency" min={0.0001} max={0.5} step={0.001} value={cutoffFrequency} onChange={setCutoffFrequency} /></label> : null}
                   {rmsdFilter === "power" ? <label data-smoothing-tooltip="Fraction of signal power preserved by the low-pass filter."><span>Power retained</span><TrajectoryNumberField label="Power retained" min={0.5} max={0.999} step={0.01} value={powerRetained} onChange={setPowerRetained} /></label> : null}
                   <label data-smoothing-tooltip="How sharply the filter separates slow motion from fast jitter. Leave this at 5 unless you are tuning the spectrum manually."><span>Filter order</span><TrajectoryNumberField label="Filter order" min={1} max={12} value={filterOrder} onChange={setFilterOrder} /></label>
-                  <label className="trajectory-smoothing-check" data-smoothing-tooltip="Keeps the trajectory endpoints even when they are not signal turning points."><input type="checkbox" checked={includeEnds} onChange={(event) => setIncludeEnds(event.target.checked)} /><span>Always include first and last frames</span></label>
+                  <label className="trajectory-smoothing-check" data-smoothing-tooltip="Keeps the trajectory endpoints even when they are not signal turning points."><Checkbox checked={includeEnds} onCheckedChange={(checked) => setIncludeEnds(checked === true)} /><span>Always include first and last frames</span></label>
                 </>
               ) : null}
               <label data-smoothing-tooltip="The frame RMSD compares against. Frame 1 is the safe default; choose another only when it is a better known reference conformation.">
@@ -1134,7 +1135,7 @@ function TrajectorySmoothingCard({
                 <TrajectoryNumberField label="Reference frame" min={1} max={frameCount} value={referenceFrame} onChange={setReferenceFrame} />
               </label>
               <label className="trajectory-smoothing-check" data-smoothing-tooltip="Removes whole-structure tumbling before measuring motion, so the signal follows internal conformational change instead of camera-like movement.">
-                <input type="checkbox" checked={align} onChange={(event) => setAlign(event.target.checked)} />
+                <Checkbox checked={align} onCheckedChange={(checked) => setAlign(checked === true)} />
                 <span>Align structures before analysis</span>
               </label>
               {mode === "extrema" && signal === "deeptica" ? (

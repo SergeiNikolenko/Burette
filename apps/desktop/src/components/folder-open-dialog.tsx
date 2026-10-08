@@ -1,3 +1,4 @@
+import { Checkbox } from "./ui/checkbox";
 import type { useWorkspaceFileActions } from "../hooks/use-workspace-file-actions";
 import { useEffect, useState } from "react";
 import { Dialog } from "radix-ui";
@@ -86,13 +87,13 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
         <div id="folder-open-body" className="radix-dialog-body">
           <p className="radix-dialog-subline">{path}</p>
           <label className="radix-dialog-check-row">
-            <input type="checkbox" checked={recursive} disabled={busy} onChange={event => setRecursive(event.target.checked)} />
+            <Checkbox checked={recursive} disabled={busy} onCheckedChange={checked => setRecursive(checked === true)} />
             <span>Include subfolders</span>
           </label>
           {contents?.truncated ? <p className="calculated-column-note" role="status">Showing the first 2,000 entries. Open a smaller folder to see the rest.</p> : null}
           <div className="radix-dialog-scroll-list folder-open-file-list" role="group" aria-label="Files to open">
             {contents?.files.map(file => <label key={file} className="radix-dialog-check-row">
-              <input type="checkbox" checked={selected.has(file)} disabled={busy} onChange={event => toggleFile(file, event.target.checked)} />
+              <Checkbox checked={selected.has(file)} disabled={busy} onCheckedChange={checked => toggleFile(file, checked === true)} />
               <span>{file.slice((path?.length ?? 0) + 1)}</span>
             </label>)}
             {contents && !contents.files.length ? <p className="calculated-column-empty">No files in this folder.</p> : null}

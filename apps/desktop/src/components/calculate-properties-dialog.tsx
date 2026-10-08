@@ -1,3 +1,4 @@
+import { Checkbox } from "./ui/checkbox";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "radix-ui";
 
@@ -106,10 +107,9 @@ export function CalculatePropertiesDialog({
                 <div className="calculate-properties-grid">
                   {group.properties.map((property) => (
                     <label key={property.id} className="calculate-properties-option">
-                      <input
-                        type="checkbox"
+                      <Checkbox
                         checked={selected.has(property.id)}
-                        onChange={() => toggle(property.id)}
+                        onCheckedChange={() => toggle(property.id)}
                       />
                       <span>{property.label}</span>
                     </label>
@@ -120,10 +120,9 @@ export function CalculatePropertiesDialog({
             <fieldset className="calculate-properties-group">
               <legend>Extended (Mordred)</legend>
               <label className="calculate-properties-option">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={mordred}
-                  onChange={() => setMordred((value) => !value)}
+                  onCheckedChange={() => setMordred((value) => !value)}
                 />
                 <span>All Mordred 2D descriptors (~1,600 columns, needs the Python runtime)</span>
               </label>
@@ -132,10 +131,9 @@ export function CalculatePropertiesDialog({
             <fieldset className="calculate-properties-group">
               <legend>Options</legend>
               <label className="calculate-properties-option">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={largestFragment}
-                  onChange={() => setLargestFragment((value) => !value)}
+                  onCheckedChange={() => setLargestFragment((value) => !value)}
                 />
                 <span>Use largest fragment (strip salts and solvents)</span>
               </label>

@@ -93,10 +93,16 @@ function Appearance({ mode }: { mode: ThemeMode }) {
           </div>
           <div className="theme-fixture-controls">
             <Input placeholder="Search structures" style={{ width: 200 }} />
-            <Switch defaultChecked />
-            <Switch />
-            <Checkbox defaultChecked />
-            <Checkbox />
+            <Switch aria-label="Enabled switch" defaultChecked />
+            <Switch aria-label="Off switch" />
+            <Switch aria-label="Small switch" size="sm" defaultChecked />
+            <Switch aria-label="Neutral switch" tone="neutral" defaultChecked />
+            <Switch aria-label="Disabled switch" disabled defaultChecked />
+            <Checkbox aria-label="Checked" defaultChecked />
+            <Checkbox aria-label="Unchecked" />
+            <Checkbox aria-label="Indeterminate" checked="indeterminate" />
+            <Checkbox aria-label="Disabled" disabled />
+            <Checkbox aria-label="Disabled checked" disabled defaultChecked />
             <Badge>Ready</Badge>
             <Badge variant="secondary">Draft</Badge>
             <Kbd>⌘K</Kbd>
@@ -106,9 +112,10 @@ function Appearance({ mode }: { mode: ThemeMode }) {
             <Slider defaultValue={[60]} max={100} style={{ width: 160 }} />
           </div>
           <div className="theme-fixture-controls">
-            <RadioGroup defaultValue="atoms" orientation="horizontal" aria-label="Selection">
+            <RadioGroup defaultValue="atoms" aria-label="Selection">
               <RadioGroupItem value="atoms">Atoms</RadioGroupItem>
               <RadioGroupItem value="residues">Residues</RadioGroupItem>
+              <RadioGroupItem value="chains" disabled>Chains</RadioGroupItem>
             </RadioGroup>
             <Spinner />
             <LoadingIndicator size="sm" />

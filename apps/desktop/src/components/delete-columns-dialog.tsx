@@ -1,3 +1,4 @@
+import { Checkbox } from "./ui/checkbox";
 import { useEffect, useState } from "react";
 import { Dialog } from "radix-ui";
 
@@ -58,10 +59,9 @@ export function DeleteColumnsDialog({
             <div className="calculate-properties-groups" role="group" aria-label="Columns to delete">
               {columns.map((candidate) => (
                 <label key={candidate.id} className="calculate-properties-option">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={selected.has(candidate.id)}
-                    onChange={() => toggle(candidate.id)}
+                    onCheckedChange={() => toggle(candidate.id)}
                   />
                   <span>{candidate.label}</span>
                 </label>
