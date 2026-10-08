@@ -49,12 +49,6 @@
   font-weight: var(--ui-weight-control);
 }
 .trajectory-smoothing-card { gap: 12px; }
-.trajectory-smoothing-note,
-.trajectory-smoothing-method-note {
-  font-size: var(--ui-caption-size);
-  line-height: var(--ui-caption-line);
-  color: var(--text-muted);
-}
 .structure-brief :is(.trajectory-smoothing-group-label, .structure-inspector-settings-group-title) {
   font-size: 12px;
   line-height: 18px;

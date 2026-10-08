@@ -1,4 +1,5 @@
 import { Checkbox } from "./ui/checkbox";
+import { TrajectorySetting } from "./trajectory-setting";
 import { compositionStyleMenu } from "./composition-style-menu";
 import { isLocalFilePath } from "../lib/browser-file-actions";
 import { ChevronRight as AppChevronRight, Eye as AppEye, EyeOff as AppEyeOff, Delete as AppDelete, Stopwatch } from "./ui/app-icons";
@@ -768,6 +769,7 @@ function trajectoryPlaybackControlsFor(document: ViewerDocument, playback: Traje
 
 function TrajectoryNumberField({
   label,
+  "aria-describedby": describedBy,
   value,
   min,
   max,
@@ -775,6 +777,7 @@ function TrajectoryNumberField({
   onChange,
 }: {
   label: string;
+  "aria-describedby"?: string;
   value: number;
   min: number;
   max: number;
@@ -785,6 +788,7 @@ function TrajectoryNumberField({
     <span className="trajectory-smoothing-number">
       <ScrubNumberField
         aria-label={label}
+        aria-describedby={describedBy}
         className="w-full"
         min={min}
         max={max}
@@ -1025,7 +1029,7 @@ function TrajectorySmoothingCard({
     return () => window.removeEventListener("burette:trajectory-smoothing-toggle-requested", toggle);
   });
   return (
-    <Accordion type="single" collapsible value={open ? "smoothing" : ""} onValueChange={(value) => setOpen(Boolean(value))} className="structure-brief-card structure-inspector-section trajectory-smoothing-card" data-collapsed={!open || undefined}>
+    <TooltipProvider delayDuration={180}><Accordion type="single" collapsible value={open ? "smoothing" : ""} onValueChange={(value) => setOpen(Boolean(value))} className="structure-brief-card structure-inspector-section trajectory-smoothing-card" data-collapsed={!open || undefined}>
       <AccordionItem value="smoothing">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1"><AccordionTrigger>Smooth motion</AccordionTrigger></div>
@@ -1038,7 +1042,7 @@ function TrajectorySmoothingCard({
         </ToggleGroup>
       </div>
       <AccordionContent className="h-auto grid gap-3">
-          <TooltipProvider delayDuration={180}>
+
           <ToggleGroup type="single" variant="outline" size="sm" spacing={0} className="w-full" aria-label="Smoothing strength" value={preset} disabled={mode === "kinetic"} onValueChange={(value) => {
             if (value === "light" || value === "balanced" || value === "strong") selectPreset(value);
           }}>
@@ -1060,74 +1064,73 @@ function TrajectorySmoothingCard({
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
-          </TooltipProvider>
+
           <Accordion type="single" collapsible value={advanced ? "science" : ""} onValueChange={(value) => setAdvanced(Boolean(value))}>
             <AccordionItem value="science">
             <AccordionTrigger>Scientific settings</AccordionTrigger>
             <AccordionContent className="h-auto trajectory-smoothing-settings">
               <div className="trajectory-smoothing-group-label">Method</div>
-              <label data-smoothing-tooltip="Smooth one measured motion over time, or build a short tour through distinct long-lived shapes.">
+              <TrajectorySetting hint={mode === "kinetic" ? "Use this to tour distinct long-lived shapes, not to smooth the original timeline. It needs a longer trajectory with repeated transitions between shapes." : "Smooth one measured motion over time, or build a short tour through distinct long-lived shapes."}>
                 <span>Analysis method</span>
-                <select aria-label="Trajectory key-frame model" value={mode} onChange={(event) => setMode(event.target.value as MdsmoothMode)}>
-                  <option value="extrema">Smooth one motion · recommended</option>
-                  <option value="kinetic">Tour long-lived shapes · MSM</option>
-                </select>
-              </label>
+                <NativeSelect className="w-full" name="trajectory-method" aria-label="Trajectory key-frame model" value={mode} onChange={(event) => setMode(event.target.value as MdsmoothMode)}>
+                  <NativeSelectOption value="extrema">Smooth motion</NativeSelectOption>
+                  <NativeSelectOption value="kinetic">Long-lived shapes</NativeSelectOption>
+                </NativeSelect>
+              </TrajectorySetting>
               {mode === "extrema" ? (
                 <>
-                  <label data-smoothing-tooltip={trajectorySignalDescription(signal)}>
+                  <TrajectorySetting hint={trajectorySignalDescription(signal)}>
                     <span>Signal</span>
-                    <select aria-label="Trajectory smoothing signal" value={signal} onChange={(event) => { setSignal(event.target.value as MdsmoothSignal); setError(null); }}>
-                      <option value="rmsd">RMSD · safe default</option>
-                      <option value="pc1">PCA · largest motion</option>
-                      <option value="ic1">tICA · slowest motion</option>
-                      <option value="dpca">Backbone angles · loop motion</option>
-                      <option value="deeptica">DeepTICA · nonlinear slow motion</option>
-                    </select>
-                  </label>
-                  <div className="trajectory-smoothing-method-note">{trajectorySignalDescription(signal)}</div>
+                    <NativeSelect className="w-full" name="trajectory-signal" aria-label="Trajectory smoothing signal" value={signal} onChange={(event) => { setSignal(event.target.value as MdsmoothSignal); setError(null); }}>
+                      <NativeSelectOption value="rmsd">RMSD</NativeSelectOption>
+                      <NativeSelectOption value="pc1">PCA</NativeSelectOption>
+                      <NativeSelectOption value="ic1">tICA</NativeSelectOption>
+                      <NativeSelectOption value="dpca">Backbone angles</NativeSelectOption>
+                      <NativeSelectOption value="deeptica">DeepTICA</NativeSelectOption>
+                    </NativeSelect>
+                  </TrajectorySetting>
+
                 </>
               ) : (
                 <>
-                  <div className="trajectory-smoothing-method-note">Use this to tour distinct long-lived shapes, not to smooth the original timeline. It needs a longer trajectory with repeated transitions between shapes.</div>
+
                   <div className="trajectory-smoothing-group-label">Kinetic model</div>
-                  <label data-smoothing-tooltip="How many distinct long-lived shapes to show. Start with 5; reduce it if the trajectory does not revisit enough states."><span>States to show</span><TrajectoryNumberField label="States to show" min={2} max={12} value={kineticStates} onChange={setKineticStates} /></label>
-                  <label data-smoothing-tooltip="How far apart frames must be before a transition is counted. Start near 10 frames; a longer lag ignores brief back-and-forth jitter."><span>Lag, frames</span><TrajectoryNumberField label="Lag, frames" min={1} max={Math.max(1, Math.floor(frameCount / 3))} value={lagFrames} onChange={setLagFrames} /></label>
+                  <TrajectorySetting hint="How many distinct long-lived shapes to show. Start with 5; reduce it if the trajectory does not revisit enough states."><span>States to show</span><TrajectoryNumberField label="States to show" min={2} max={12} value={kineticStates} onChange={setKineticStates} /></TrajectorySetting>
+                  <TrajectorySetting hint="How far apart frames must be before a transition is counted. Start near 10 frames; a longer lag ignores brief back-and-forth jitter."><span>Lag, frames</span><TrajectoryNumberField label="Lag, frames" min={1} max={Math.max(1, Math.floor(frameCount / 3))} value={lagFrames} onChange={setLagFrames} /></TrajectorySetting>
                 </>
               )}
               <div className="trajectory-smoothing-group-label">Sampling</div>
-              {mode === "extrema" ? <label data-smoothing-tooltip="Start with 50. More source frames preserve detail; fewer frames make a shorter, calmer movie.">
+              {mode === "extrema" ? <TrajectorySetting hint="Start with 50. More source frames preserve detail; fewer frames make a shorter, calmer movie.">
                 <span>Target frames</span>
-                <TrajectoryNumberField label="Target frames" min={2} max={frameCount} value={targetFrames} onChange={setTargetFrames} />
-              </label> : null}
+                <TrajectoryNumberField label="Target frames" min={2} max={frameCount} value={Math.max(2, Math.min(frameCount, targetFrames))} onChange={setTargetFrames} />
+              </TrajectorySetting> : null}
               {signal === "rmsd" && mode === "extrema" ? (
                 <>
-                  <label data-smoothing-tooltip="Choose the easy frame-count control, or set the low-pass filter directly if you know the signal spectrum.">
+                  <TrajectorySetting hint="Choose the easy frame-count control, or set the low-pass filter directly if you know the signal spectrum.">
                     <span>RMSD filter</span>
-                    <select aria-label="RMSD filter control" value={rmsdFilter} onChange={(event) => setRmsdFilter(event.target.value as "frames" | "cutoff" | "power")}>
-                      <option value="frames">Number of frames · recommended</option>
-                      <option value="cutoff">Frequency cutoff · expert</option>
-                      <option value="power">Signal power · expert</option>
-                    </select>
-                  </label>
-                  {rmsdFilter === "cutoff" ? <label data-smoothing-tooltip="Normalized low-pass cutoff. Lower values remove more rapid motion."><span>Cutoff frequency</span><TrajectoryNumberField label="Cutoff frequency" min={0.0001} max={0.5} step={0.001} value={cutoffFrequency} onChange={setCutoffFrequency} /></label> : null}
-                  {rmsdFilter === "power" ? <label data-smoothing-tooltip="Fraction of signal power preserved by the low-pass filter."><span>Power retained</span><TrajectoryNumberField label="Power retained" min={0.5} max={0.999} step={0.01} value={powerRetained} onChange={setPowerRetained} /></label> : null}
-                  <label data-smoothing-tooltip="How sharply the filter separates slow motion from fast jitter. Leave this at 5 unless you are tuning the spectrum manually."><span>Filter order</span><TrajectoryNumberField label="Filter order" min={1} max={12} value={filterOrder} onChange={setFilterOrder} /></label>
-                  <label className="trajectory-smoothing-check" data-smoothing-tooltip="Keeps the trajectory endpoints even when they are not signal turning points."><Checkbox checked={includeEnds} onCheckedChange={(checked) => setIncludeEnds(checked === true)} /><span>Always include first and last frames</span></label>
+                    <NativeSelect className="w-full" name="trajectory-filter" aria-label="RMSD filter control" value={rmsdFilter} onChange={(event) => setRmsdFilter(event.target.value as "frames" | "cutoff" | "power")}>
+                      <NativeSelectOption value="frames">Frame count</NativeSelectOption>
+                      <NativeSelectOption value="cutoff">Frequency cutoff</NativeSelectOption>
+                      <NativeSelectOption value="power">Signal power</NativeSelectOption>
+                    </NativeSelect>
+                  </TrajectorySetting>
+                  {rmsdFilter === "cutoff" ? <TrajectorySetting hint="Normalized low-pass cutoff. Lower values remove more rapid motion."><span>Cutoff frequency</span><TrajectoryNumberField label="Cutoff frequency" min={0.0001} max={0.5} step={0.001} value={cutoffFrequency} onChange={setCutoffFrequency} /></TrajectorySetting> : null}
+                  {rmsdFilter === "power" ? <TrajectorySetting hint="Fraction of signal power preserved by the low-pass filter."><span>Power retained</span><TrajectoryNumberField label="Power retained" min={0.5} max={0.999} step={0.01} value={powerRetained} onChange={setPowerRetained} /></TrajectorySetting> : null}
+                  <TrajectorySetting hint="How sharply the filter separates slow motion from fast jitter. Leave this at 5 unless you are tuning the spectrum manually."><span>Filter order</span><TrajectoryNumberField label="Filter order" min={1} max={12} value={filterOrder} onChange={setFilterOrder} /></TrajectorySetting>
+                  <TrajectorySetting className="trajectory-smoothing-check" hint="Keeps the trajectory endpoints even when they are not signal turning points."><Checkbox checked={includeEnds} onCheckedChange={(checked) => setIncludeEnds(checked === true)} /><span>Always include first and last frames</span></TrajectorySetting>
                 </>
               ) : null}
-              <label data-smoothing-tooltip="The frame RMSD compares against. Frame 1 is the safe default; choose another only when it is a better known reference conformation.">
+              <TrajectorySetting hint="The frame RMSD compares against. Frame 1 is the safe default; choose another only when it is a better known reference conformation.">
                 <span>Reference frame</span>
-                <TrajectoryNumberField label="Reference frame" min={1} max={frameCount} value={referenceFrame} onChange={setReferenceFrame} />
-              </label>
-              <label className="trajectory-smoothing-check" data-smoothing-tooltip="Removes whole-structure tumbling before measuring motion, so the signal follows internal conformational change instead of camera-like movement.">
+                <TrajectoryNumberField label="Reference frame" min={1} max={frameCount} value={Math.max(1, Math.min(frameCount, referenceFrame))} onChange={setReferenceFrame} />
+              </TrajectorySetting>
+              <TrajectorySetting className="trajectory-smoothing-check" hint="Removes whole-structure tumbling before measuring motion, so the signal follows internal conformational change instead of camera-like movement.">
                 <Checkbox checked={align} onCheckedChange={(checked) => setAlign(checked === true)} />
                 <span>Align structures before analysis</span>
-              </label>
+              </TrajectorySetting>
               {mode === "extrema" && signal === "deeptica" ? (
-                <div className="trajectory-smoothing-runtime-row">
-                  <span>DeepTICA runtime</span>
-                  {deepTicaInstalled ? <strong>Ready ✓</strong> : deepTicaInstalled === null ? <small>Checking…</small> : <><small>Not installed</small><button type="button" disabled={installingDeepTica} onClick={async () => {
+                <div className="flex items-center gap-2">
+                  {deepTicaInstalled ? null : deepTicaInstalled === null ? <span role="status" className="text-sm">Checking availability…</span> : <Button type="button" variant="secondary" size="sm" disabled={installingDeepTica} onClick={async () => {
                   setInstallingDeepTica(true);
                   setError(null);
                   try {
@@ -1139,17 +1142,17 @@ function TrajectorySmoothingCard({
                   catch (reason) { setError(reason instanceof Error ? reason.message : String(reason)); }
                   finally { setInstallingDeepTica(false); }
                 }}>
-                  {installingDeepTica ? "Installing…" : "Install"}
-                </button></>}
+                  {installingDeepTica ? "Installing…" : "Install nonlinear analysis"}
+                </Button>}
                 </div>
               ) : null}
             </AccordionContent>
             </AccordionItem>
           </Accordion>
-          {progress ? <TrajectorySmoothingProgress progress={progress} /> : resultDirty || (running && built) ? <div className="trajectory-smoothing-update-status">Updating…</div> : showUpdated ? <div className="trajectory-smoothing-update-status" data-complete>Updated</div> : null}
+          {progress ? <TrajectorySmoothingProgress progress={progress} /> : resultDirty || (running && built) ? <div role="status" className="trajectory-smoothing-update-status">Updating…</div> : showUpdated ? <div role="status" className="trajectory-smoothing-update-status" data-complete>Updated</div> : null}
           {result ? <TrajectorySmoothingChart result={result} playback={playback} preset={result.preset ?? preset} setFrame={setFrame} /> : null}
           {result?.spectrum ? <TrajectorySpectrum spectrum={result.spectrum} cutoffFrequency={result.cutoffFrequency ?? null} /> : null}
-          {error ? <div className="trajectory-smoothing-error" role="alert">{error}</div> : null}
+          {error ? <Alert variant="destructive"><AlertDescription>Could not complete smoothing. Try again.</AlertDescription></Alert> : null}
           {/* Full width and an input-coloured face made this read as a text
               field; it is the section's one action, so it looks like the
               buttons every other section uses. */}
@@ -1158,7 +1161,7 @@ function TrajectorySmoothingCard({
           </Button> : null}
       </AccordionContent>
       </AccordionItem>
-    </Accordion>
+    </Accordion></TooltipProvider>
   );
 }
 
