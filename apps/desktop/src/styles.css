@@ -4536,27 +4536,6 @@ img.radix-menu-item-icon {
 .structure-inspector-composition-bar i[data-tone="ligand"] { background: #59a14f; }
 .structure-inspector-composition-bar i[data-tone="ion"] { background: #e8973a; }
 .structure-inspector-composition-bar i[data-tone="water"] { background: #9aa0a6; }
-/* shadcn's Input, shrunk to the dock's density: the stock control is 32px tall
-   at 14px, which is a form field, and this is a filter above a list. Border,
-   background and disabled handling still come from the component. */
-/* Typed as `input.` so the density wins over `h-8` and `md:text-sm` on
-   specificity instead of on stylesheet order. */
-input.structure-inspector-composition-search {
-  height: auto;
-  border-radius: 7px;
-  padding: 5px 8px;
-  font-size: 11.5px;
-}
-.structure-inspector-composition-search::placeholder {
-  color: var(--text-faint);
-}
-/* The rest of the panel marks focus with an inset hairline, so the component's
-   3px outer ring is replaced rather than kept. */
-.structure-inspector-composition-search:focus-visible {
-  outline: none;
-  border-color: var(--line-subtler);
-  box-shadow: inset 0 0 0 1px var(--focus-ring);
-}
 /* Mirrors the viewer's scene tree row: a 2px colour bar ahead of the name, and
    the same 20px actions revealed on hover. The two lists show the same objects,
    so they are built from the same parts. The numbers here are the ones in

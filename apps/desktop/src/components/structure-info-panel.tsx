@@ -583,7 +583,6 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         brief={brief}
         compositionSummary={compositionSummary}
         compositionPending={compositionPending}
-        compositionError={compositionError}
         document={document}
         hostedMcpWidget={hostedMcpWidget}
         actions={actions}
@@ -2155,17 +2154,6 @@ function compositionReadLimit(source: InspectorStructureTextSource) {
   const extension = source.extension.toLowerCase();
   if (["mae", "maegz", "cms"].includes(extension)) return 12 * 1024 * 1024;
   return undefined;
-}
-
-function compositionNotes(
-  summary: StructureCompositionSummary | null,
-  loading: boolean,
-  error: string | null,
-) {
-  if (summary) return summary.notes;
-  if (loading) return ["Reading coordinate text for composition summary."];
-  if (error) return ["Composition summary could not read the source text."];
-  return ["No parser summary is available for this format yet."];
 }
 
 function StructureSectionHeader({ title, detail }: { title: string; detail?: string }) {
@@ -3873,8 +3861,11 @@ function StructureCompositionCard({
         ) : null}
         {groups.length > 2 ? (
           <Input
-            className="structure-inspector-composition-search"
+            variant="compact"
             type="search"
+            name="component-search"
+            autoComplete="off"
+            spellCheck={false}
             value={query}
             placeholder="Find chain, ligand, residue…"
             aria-label="Find a component"
@@ -4152,7 +4143,6 @@ function StructureDetailsSection({
   brief,
   compositionSummary,
   compositionPending,
-  compositionError,
   document,
   dockDrops,
   xtbArtifact,
@@ -4162,7 +4152,6 @@ function StructureDetailsSection({
   brief: ReturnType<typeof structureBriefForDocument>;
   compositionSummary: StructureCompositionSummary | null;
   compositionPending: boolean;
-  compositionError: string | null;
   document: ViewerDocument;
   dockDrops: ShellViewState["dockDroppedStructures"];
   xtbArtifact: XtbTextArtifactInfo | null;
@@ -4170,41 +4159,34 @@ function StructureDetailsSection({
   actions: ShellActions;
 }) {
   return (
-    <InspectorSection className="structure-inspector-details" title="File" detail={brief.summary} defaultOpen={false}>
+    <InspectorSection className="structure-inspector-details" title="File" defaultOpen={false}>
       <div className="structure-inspector-details-body">
-        <StructureSectionHeader title="Composition metrics" detail="Parsed from coordinate text." />
         {compositionSummary ? (
+          <>
+          <StructureSectionHeader title="Composition metrics" />
           <div className="structure-brief-rows">
             {compositionSummary.rows.map((row) => (
               <StructureBriefRow key={row.label} label={row.label} value={row.value} />
             ))}
           </div>
-        ) : (
-          <div className="dock-empty">{compositionPending ? "Reading structure text..." : "No parser summary is available."}</div>
-        )}
+          </>
+        ) : compositionPending ? <div role="status">Reading structure…</div> : null}
 
-        <StructureSectionHeader title="File metadata" detail={brief.summary} />
+        <StructureSectionHeader title="File metadata" />
         <div className="structure-brief-rows">
-          {brief.overviewRows.map((row) => (
+          {brief.overviewRows.filter((row) => row.label !== "Renderer").map((row) => (
             <StructureBriefRow key={row.label} label={row.label} value={row.value} />
           ))}
         </div>
 
-        {!hostedMcpWidget ? <>
-          <StructureSectionHeader title="Source affordances" detail="Source text stays available in the Text dock tab." />
+        {!hostedMcpWidget && (document.dockingRequest || document.mergedCollection) ? <>
+          <StructureSectionHeader title="Inputs" />
           <div className="structure-brief-rows">
             {brief.usefulRows.map((row) => (
               <StructureBriefRow key={row.label} label={row.label} value={row.value} />
             ))}
           </div>
         </> : null}
-
-        <StructureSectionHeader title="Notes" />
-        <div className="structure-brief-notes">
-          {[...compositionNotes(compositionSummary, compositionPending, compositionError), ...brief.notes].map((note) => (
-            <span key={note}>{note}</span>
-          ))}
-        </div>
 
         {!hostedMcpWidget ? <div className="structure-brief-actions">
           <Button type="button" variant="secondary" size="sm" onClick={() => void actions.showDocumentMetadata(document)}>

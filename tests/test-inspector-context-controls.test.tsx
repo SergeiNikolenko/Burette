@@ -23,7 +23,13 @@ const molecule = { id: "context-controls-test", title: "mini.sdf", path: "/test-
 test("collection style, color and debounced opacity keep exact viewer commands and persisted values", async () => {
   writeBrowserDevVirtualTextDocument(molecule.path, file);
   const calls: unknown[] = [];
-  const actions = { runStructureViewerAction: (document: ViewerDocument, action: unknown) => calls.push([document.id, action]) } as unknown as ShellActions;
+  const fileCalls: unknown[] = [];
+  const actions = {
+    runStructureViewerAction: (document: ViewerDocument, action: unknown) => calls.push([document.id, action]),
+    showDocumentMetadata: (document: ViewerDocument) => fileCalls.push(["metadata", document.id]),
+    revealDocument: (document: ViewerDocument) => fileCalls.push(["reveal", document.id]),
+    copyDocumentPath: (document: ViewerDocument) => fileCalls.push(["copy", document.id]),
+  } as unknown as ShellActions;
   const props: React.ComponentProps<typeof StructureInfoPanel> = {
     document: molecule, gridFilterModel: null, dockDrops: [], conformerStatus: null, conformerSettings: DEFAULT_CONFORMER_SETTINGS,
     viewerLigandSelection: null, structureOverlayMode: "all", xtbStatus: null, xtbSettings: DEFAULT_XTB_SETTINGS, xtbJobs: [],
@@ -33,6 +39,18 @@ test("collection style, color and debounced opacity keep exact viewer commands a
   const button = (name: string) => Array.from(mount.querySelectorAll<HTMLButtonElement>(".structure-inspector-style-options button")).find(el => el.textContent === name)!;
   try {
     await act(async () => root.render(<StructureInfoPanel {...props} />));
+    const fileSection = mount.querySelector<HTMLElement>(".structure-inspector-details")!;
+    const disclosure = fileSection.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
+    expect(disclosure.textContent).toBe("File");
+    await act(async () => disclosure.click());
+    expect(fileSection.textContent).toContain("Molecules2");
+    expect(fileSection.textContent).toContain("FormatSDF");
+    expect(fileSection.textContent).not.toMatch(/Mol\*|Renderer|Source affordances|Notes|parser|runtime/);
+    for (const name of ["Show metadata", "Reveal file", "Copy path"]) {
+      const control = Array.from(fileSection.querySelectorAll<HTMLButtonElement>("button")).find(button => button.textContent === name)!;
+      await act(async () => control.click());
+    }
+    expect(fileCalls).toEqual([["metadata", molecule.id], ["reveal", molecule.id], ["copy", molecule.id]]);
     expect(button("Line").getAttribute("data-slot")).toBe("button");
     await act(async () => button("Line").click());
     await act(async () => button("Gray").click());
@@ -62,6 +80,9 @@ test("collection style, color and debounced opacity keep exact viewer commands a
     calls.length = 0;
     await act(async () => root.render(<StructureInfoPanel {...props} document={scene} />));
     const rows = Array.from(mount.querySelectorAll<HTMLButtonElement>(".structure-inspector-pose-row"));
+    expect(fileSection.textContent).toContain("Inputs");
+    expect(fileSection.textContent).toContain("Structures2");
+    expect(fileSection.textContent).toContain("First structuremini.sdf");
     expect(rows.map(row => row.textContent)).toEqual(["1mini.sdf", "2second.sdf"]);
     expect(rows.every(row => row.getAttribute("data-slot") === "button")).toBe(true);
     await act(async () => rows[1].click());
