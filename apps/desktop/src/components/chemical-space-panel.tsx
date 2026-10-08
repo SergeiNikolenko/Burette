@@ -1,4 +1,5 @@
 import {
+  cloneElement,
   lazy,
   Suspense,
   useCallback,
@@ -6,7 +7,8 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
+  type ReactElement,
+  type ComponentProps,
   type SetStateAction,
 } from "react";
 import { ChevronDown, SettingsSlider as SlidersHorizontal, X } from "@/components/ui/app-icons";
@@ -21,7 +23,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Field, FieldDescription, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel, FieldTitle } from "@/components/ui/field";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Progress } from "@/components/ui/progress";
@@ -1184,6 +1186,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                 <TooltipContent showArrow={false}>Display settings</TooltipContent>
               </Tooltip>
               <PopoverContent
+                aria-label="Display settings"
                 align="end"
                 side="bottom"
                 sideOffset={8}
@@ -1323,7 +1326,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                 }}
               />
             ) : (
-              <ChemicalSpaceEmpty message={error} actionLabel="Retry" onAction={() => commitOptions({ ...draft })} />
+              <ChemicalSpaceEmpty message="Couldn’t calculate the map." actionLabel="Retry" onAction={() => commitOptions({ ...draft })} />
             )
           ) : (
             <ChemicalSpaceLoading
@@ -1383,21 +1386,16 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
               </Button>
             </PopoverTrigger>
             <PopoverContent
+              aria-label="Layout settings"
               align="start"
               side="top"
               sideOffset={8}
               container={portalContainer}
-              className="max-h-[min(70vh,32rem)] w-72 gap-2.5 overflow-y-auto p-3"
+              className="w-72 gap-2.5 p-3"
             >
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium text-foreground">{methodLabel(draft.method)} layout</span>
-                <span className="text-xs text-muted-foreground">
-                  {embeddingDirty
-                    ? "Changed — rebuild the map to apply."
-                    : draft.method === "tmap"
-                      ? "Links each molecule to its nearest neighbours and draws the tree they form."
-                      : "Places molecules with similar fingerprints close together."}
-                </span>
+                {embeddingDirty ? <span role="status" className="text-xs text-muted-foreground">Rebuild required</span> : null}
               </div>
               <FieldGroup className="gap-3">
                 <ParameterField
@@ -1488,14 +1486,11 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
               container={portalContainer}
               className="w-72 gap-2.5 p-3"
               data-testid="chemical-space-cluster-controls"
+              aria-label="Groups of similar molecules"
             >
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium text-foreground">Groups of similar molecules</span>
-                <span className="text-xs text-muted-foreground">
-                  {clusterMode === "off"
-                    ? "Collects molecules that share a series into groups and colours the map by them."
-                    : `Butina clustering · similarity ≥ ${clusterCutoffShown.toFixed(2)} · ${clusterMode === "auto" ? "picked automatically" : "set by you"}`}
-                </span>
+                {clusterMode !== "off" ? <span className="text-xs text-muted-foreground">Similarity ≥ {clusterCutoffShown.toFixed(2)}</span> : null}
               </div>
               {clusterMode === "off" ? (
                 <Button
@@ -1512,7 +1507,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                 <>
                   <p className="text-xs text-muted-foreground">
                     {clusterRunning
-                      ? "Grouping on Metal…"
+                      ? "Grouping…"
                       : clusterError ?? clusterSummary ?? "No groups"}
                   </p>
                   {activityColumnId ? (
@@ -1589,9 +1584,6 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                       </div>
                     </CollapsibleContent>
                   </Collapsible>
-                  <p className="text-[11px] text-muted-foreground">
-                    Click a point on the map to select its whole group in Grid.
-                  </p>
                   <Button
                     className="w-full"
                     size="xs"
@@ -1636,6 +1628,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
               <Button className="shrink-0 text-muted-foreground" variant="ghost" size="xs">Compare values</Button>
             </PopoverTrigger>
             <PopoverContent
+              aria-label="Compare parameter values"
               align="start"
               side="top"
               sideOffset={8}
@@ -1644,9 +1637,6 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
             >
               <div className="flex flex-col gap-0.5">
                 <span className="text-sm font-medium text-foreground">Compare parameter values</span>
-                <span className="text-xs text-muted-foreground">
-                  Builds one map per value and plays them in order, so you can watch the parameter reshape the map.
-                </span>
               </div>
               <FieldGroup className="gap-3">
                 <Field>
@@ -2014,16 +2004,19 @@ function ParameterField({
   value: string | number;
   /** What moving the slider does to the map, for anyone who does not think in UMAP. */
   hint?: string;
-  children: ReactNode;
+  children: ReactElement<ComponentProps<typeof Slider>>;
 }) {
+  const slider = cloneElement(children, { "aria-label": children.props["aria-label"] ?? label });
   return (
-    <Field>
+    <Field aria-label={label}>
       <FieldLabel className="flex w-full justify-between text-xs">
         <FieldTitle>{label}</FieldTitle>
         <span className="font-mono text-muted-foreground">{value}</span>
       </FieldLabel>
-      {children}
-      {hint ? <FieldDescription className="text-[11px]">{hint}</FieldDescription> : null}
+      {hint ? <Tooltip>
+        <TooltipTrigger asChild>{slider}</TooltipTrigger>
+        <TooltipContent variant="floating">{hint}</TooltipContent>
+      </Tooltip> : slider}
     </Field>
   );
 }

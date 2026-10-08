@@ -46,6 +46,7 @@ function Slider({
         <SliderPrimitive.Thumb
           aria-label={props["aria-label"]}
           aria-labelledby={props["aria-labelledby"]}
+          aria-describedby={props["aria-describedby"]}
           data-slot="slider-thumb"
           key={index}
           className="atlas-slider-thumb shrink-0 after:absolute after:-inset-2"

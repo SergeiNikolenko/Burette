@@ -141,7 +141,7 @@ export function WhatsNew() {
             {hasUnread ? <span className="sidebar-whats-new-indicator" aria-hidden="true" /> : null}
           </button>
         </PopoverTrigger>
-        <PopoverContent side="top" align="start" sideOffset={6} container={portalContainer} className="w-80 gap-0 p-1">
+        <PopoverContent aria-label="What's new" side="top" align="start" sideOffset={6} container={portalContainer} className="w-80 gap-0 p-1">
           <div className="px-2 pt-1.5 pb-1 text-xs text-muted-foreground">What's new</div>
           <ul className="m-0 list-none p-0">
             {entries.map((entry) => (

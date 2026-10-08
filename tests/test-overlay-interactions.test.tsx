@@ -236,6 +236,36 @@ test("confirmation focuses Cancel and only the explicit action commits", async (
 
 const { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } = await import("../apps/desktop/src/components/ui/tooltip");
 const { NativeSelect, NativeSelectOption } = await import("../apps/desktop/src/components/ui/native-select");
+const { Slider } = await import("../apps/desktop/src/components/ui/slider");
+
+test("a popover slider keeps its name and tooltip description on the keyboard-focusable thumb", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  const changes: number[][] = [];
+  try {
+    await act(async () => root.render(<TooltipProvider><Popover><PopoverTrigger>Layout</PopoverTrigger>
+      <PopoverContent aria-label="Layout settings"><Tooltip><TooltipTrigger asChild>
+        <Slider aria-label="Neighbors" defaultValue={[15]} min={2} max={64} onValueChange={value => changes.push(value)} />
+      </TooltipTrigger><TooltipContent variant="floating">Fewer keeps local detail.</TooltipContent></Tooltip></PopoverContent>
+    </Popover></TooltipProvider>));
+    const trigger = shell.querySelector<HTMLButtonElement>('[data-slot="popover-trigger"]')!;
+    await act(async () => trigger.click());
+    await act(flushFocus);
+    const slider = shell.querySelector<HTMLElement>('[role="slider"]')!;
+    await act(async () => slider.focus());
+    expect(slider.getAttribute("aria-label")).toBe("Neighbors");
+    expect(document.getElementById(slider.getAttribute("aria-describedby")!)?.textContent).toBe("Fewer keeps local detail.");
+    await act(async () => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
+    expect(changes).toEqual([[16]]);
+    await act(async () => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(shell.querySelector('[role="tooltip"]') === null).toBe(true);
+    expect(shell.querySelector('[role="dialog"]') !== null).toBe(true);
+    await act(async () => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    await act(flushFocus);
+    expect(shell.querySelector('[role="dialog"]') === null).toBe(true);
+    expect(document.activeElement).toBe(trigger);
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
 
 test("toolbar buttons retain tooltip focus, disabled actions and non-submit defaults", async () => {
   const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
