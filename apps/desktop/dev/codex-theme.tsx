@@ -139,7 +139,7 @@ function Appearance({ mode }: { mode: ThemeMode }) {
             <TooltipProvider>
               <Tooltip open>
                 <TooltipTrigger asChild><Button size="sm" variant="ghost">Tooltip</Button></TooltipTrigger>
-                <TooltipContent side="bottom" container={shell}>Search <Kbd>⌘K</Kbd></TooltipContent>
+                <TooltipContent side="bottom" container={shell}><span className="inline-flex items-center gap-1.5">Search <Kbd>⌘K</Kbd></span></TooltipContent>
               </Tooltip>
             </TooltipProvider>
             <Popover open>

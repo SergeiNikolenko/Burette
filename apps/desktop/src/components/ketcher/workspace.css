@@ -179,7 +179,6 @@
 .ketcher-editor-shell [data-rna-preset-item-name] > .dots { right: 4px; top: 6px; }
 .ketcher-editor-shell [data-testid="rna-accordion"] button { text-transform: none; font-weight: 500; border-radius: 8px; }
 
-.app-shell .ketcher-ui-tooltip { background: var(--surface-primary); color: var(--text-primary); border: 1px solid var(--line-subtle); box-shadow: 0 3px 10px rgb(0 0 0 / 10%); }
 
 /* Macro tools use flex layout, unlike the molecule toolbar's absolute icons. */
 .ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="left-toolbar"] button > svg {

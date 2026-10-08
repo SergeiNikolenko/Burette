@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
 
 function TooltipProvider({
-  delayDuration = 0,
+  delayDuration = 150,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
   return (
@@ -31,12 +31,19 @@ function TooltipTrigger({
 
 function TooltipContent({
   className,
-  sideOffset = 0,
+  sideOffset = 5,
+  compact = false,
+  gutterSize = "md",
+  maxWidth = 300,
+  style,
   children,
   showArrow = false,
   container: portalContainer,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content> & {
+  compact?: boolean
+  gutterSize?: "sm" | "md" | "lg"
+  maxWidth?: number
   showArrow?: boolean
   container?: HTMLElement | null
 }) {
@@ -48,15 +55,22 @@ function TooltipContent({
       <TooltipPrimitive.Content
         data-slot="tooltip-content"
         sideOffset={sideOffset}
+        data-compact={compact}
+        data-gutter-size={gutterSize}
+        style={{ "--tooltip-max-width": `${maxWidth}px`, ...style } as React.CSSProperties}
         className={cn(
-          "z-50 inline-flex w-fit max-w-xs origin-(--radix-tooltip-content-transform-origin) items-center gap-1.5 rounded-lg bg-(--color-background-tooltip) px-2 py-1 text-sm text-(--color-text-tooltip) data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "z-50 max-w-[min(var(--tooltip-max-width,300px),var(--radix-tooltip-content-available-width,100vw),calc(100vw-16px))] rounded-(--tooltip-border-radius) shadow-(--tooltip-box-shadow) text-(length:--tooltip-font-size) leading-(--tooltip-line-height) wrap-anywhere",
+          compact
+            ? "p-(--tooltip-compact-padding) bg-(--tooltip-compact-background-color) text-(--tooltip-compact-text-color) text-(length:--tooltip-compact-font-size) font-(weight:--tooltip-compact-font-weight)"
+            : "bg-(--tooltip-background-color) text-(--tooltip-text-color) font-(weight:--tooltip-font-weight)",
+          !compact && { sm: "p-(--tooltip-padding-sm)", md: "p-(--tooltip-padding-md)", lg: "p-(--tooltip-padding-lg)" }[gutterSize],
           className
         )}
         {...props}
       >
         {children}
         {showArrow ? (
-          <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-(--color-background-tooltip) fill-(--color-background-tooltip)" />
+          <TooltipPrimitive.Arrow className={compact ? "fill-(--tooltip-compact-background-color)" : "fill-(--tooltip-background-color)"} />
         ) : null}
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>

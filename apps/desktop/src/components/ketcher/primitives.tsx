@@ -51,7 +51,7 @@ export function KetcherIconButton({ onClick, shortcut, title, className, isActiv
         {controlIcons(children)}
       </Button>
     </TooltipTrigger>
-    <TooltipContent container={container} className="ketcher-ui-tooltip" side="bottom" sideOffset={4} showArrow={false}>{label}</TooltipContent>
+    <TooltipContent compact container={container} side="bottom" sideOffset={4} showArrow={false}>{label}</TooltipContent>
   </Tooltip></TooltipProvider>;
 }
 

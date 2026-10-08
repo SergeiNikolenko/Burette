@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 
@@ -10,6 +11,10 @@ export function OverlayExamples() {
   const [prefix, setPrefix] = useState("Ligand");
   const [confirmed, setConfirmed] = useState(false);
   return <>
+    <TooltipProvider>
+      <Tooltip><TooltipTrigger asChild><Button variant="secondary">Selection help</Button></TooltipTrigger><TooltipContent side="bottom" maxWidth={240}>Select a molecule to inspect its atoms and properties.</TooltipContent></Tooltip>
+      <Tooltip><TooltipTrigger asChild><Button variant="secondary">Fit structure</Button></TooltipTrigger><TooltipContent compact side="bottom">Fit structure</TooltipContent></Tooltip>
+    </TooltipProvider>
     <AlertDialog>
       <AlertDialogTrigger asChild><Button variant="secondary">Reset display settings</Button></AlertDialogTrigger>
       <AlertDialogContent>

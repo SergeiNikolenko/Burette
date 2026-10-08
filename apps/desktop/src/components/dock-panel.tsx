@@ -277,7 +277,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
                             <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent showArrow={false}>Close {DOCK_TAB_LABELS[tab.kind]}</TooltipContent>
+                        <TooltipContent compact showArrow={false}>Close {DOCK_TAB_LABELS[tab.kind]}</TooltipContent>
                       </Tooltip>
                     )}
                   </div>
@@ -290,7 +290,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
                       <HugeiconsIcon icon={Add01Icon} aria-hidden="true" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent showArrow={false}>Add panel</TooltipContent>
+                  <TooltipContent compact showArrow={false}>Add panel</TooltipContent>
                 </Tooltip>
               ) : null}
             </div>
@@ -301,7 +301,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
                     <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent showArrow={false}>Close panel</TooltipContent>
+                <TooltipContent compact showArrow={false}>Close panel</TooltipContent>
               </Tooltip>
             ) : null}
           </div>

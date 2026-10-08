@@ -88,3 +88,40 @@ test("confirmation focuses Cancel and only the explicit action commits", async (
     expect(document.activeElement === trigger).toBe(true);
   } finally { await act(async () => root.unmount()); shell.remove(); }
 });
+
+const { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } = await import("../apps/desktop/src/components/ui/tooltip");
+test("tooltip opens on keyboard focus without moving it and Escape removes its description", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  try {
+    await act(async () => root.render(<TooltipProvider><Tooltip><TooltipTrigger>Fit</TooltipTrigger><TooltipContent compact>Fit structure</TooltipContent></Tooltip></TooltipProvider>));
+    const trigger = shell.querySelector<HTMLButtonElement>('[data-slot="tooltip-trigger"]')!;
+    await act(async () => trigger.focus());
+    const description = document.getElementById(trigger.getAttribute("aria-describedby")!);
+    expect(description?.textContent).toBe("Fit structure");
+    expect(shell.contains(description)).toBe(true);
+    expect(document.activeElement === trigger).toBe(true);
+    await act(async () => { trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    expect(shell.querySelector('[data-slot="tooltip-content"]')).toBeNull();
+    expect(trigger.getAttribute("aria-describedby")).toBeNull();
+    expect(document.activeElement === trigger).toBe(true);
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
+
+test("tooltip waits on first pointer entry and respects an explicit themed portal", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell";
+  const portal = document.createElement("div"); document.body.append(shell, portal);
+  const root = createRoot(shell);
+  try {
+    await act(async () => root.render(<TooltipProvider><Tooltip><TooltipTrigger>Inspect</TooltipTrigger><TooltipContent container={portal}>Inspect properties</TooltipContent></Tooltip></TooltipProvider>));
+    const trigger = shell.querySelector<HTMLButtonElement>('[data-slot="tooltip-trigger"]')!;
+    await act(async () => { trigger.dispatchEvent(new browser.PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" }) as unknown as Event); });
+    expect(portal.querySelector('[data-slot="tooltip-content"]')).toBeNull();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 180)); });
+    expect(portal.querySelector('[data-slot="tooltip-content"]') !== null).toBe(true);
+    expect(shell.querySelector('[data-slot="tooltip-content"]')).toBeNull();
+    expect(document.activeElement === trigger).toBe(false);
+    await act(async () => trigger.click());
+    expect(portal.querySelector('[data-slot="tooltip-content"]')).toBeNull();
+  } finally { await act(async () => root.unmount()); shell.remove(); portal.remove(); }
+});
