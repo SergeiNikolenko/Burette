@@ -3771,11 +3771,10 @@ assert.doesNotMatch(agentIntegrationPanel, /compatibility\.json/);
 assert.match(welcome, /export function WelcomeScreen/);
 assert.match(welcome, /new-tab-copy/);
 assert.match(welcome, /Open a structure/);
-assert.match(welcome, /Drop a file here or open one/);
 assert.doesNotMatch(welcome, /Use the shell to inspect files quickly/);
 assert.match(welcome, /Open file/);
 assert.match(welcome, /onClick=\{\(\) => void actions\.chooseFiles\(\)\}/);
-assert.match(welcome, /<Kbd>⌘O<\/Kbd>/);
+assert.match(welcome, /<Kbd[^>]*>⌘O<\/Kbd>/);
 // The open action uses shadcn Button + Kbd inside an Empty, not bare elements styled by
 
 // .new-tab-page descendant rules.

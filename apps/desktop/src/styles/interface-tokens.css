@@ -14,17 +14,3 @@
   --status-success: var(--color-text-success);
   --status-danger: var(--color-text-danger);
 }
-.app-shell .new-tab-copy [data-slot="empty-title"] {
-  font-size: var(--ui-heading-size);
-  line-height: var(--ui-heading-line);
-  font-weight: var(--ui-weight-heading);
-  letter-spacing: 0;
-  color: var(--text-primary);
-}
-.app-shell .new-tab-copy [data-slot="empty-description"] {
-  font-size: var(--ui-body-size);
-  line-height: var(--ui-body-line);
-}
-.app-shell .new-tab-copy [data-slot="empty-description"] { color: var(--text-muted); }
-.app-shell .new-tab-actions { gap: 12px; }
-.app-shell .new-tab-actions [data-slot="button"] { min-height: 34px; padding-inline: 14px; }
