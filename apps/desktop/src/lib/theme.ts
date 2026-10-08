@@ -96,7 +96,7 @@ export function resolveAppearanceTheme(preferences: ViewerPreferences, mode: The
 export function readPreviewThemeTokens(preferences: ViewerPreferences, mode: ThemeMode): ThemeTokens {
   const tokens = readThemeTokens(preferences, mode);
   const codex = resolveAppearanceTheme(preferences, mode);
-  return { ...tokens, accent: codex.accent, background: codex.surface, foreground: codex.ink };
+  return { ...tokens, accent: codex.accent, background: codex.surface, foreground: codex.ink, contrast: codex.contrast };
 }
 
 export function buildThemeStyle(preferences: ViewerPreferences, systemThemeMode?: ThemeMode): CSSProperties {

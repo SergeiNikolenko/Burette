@@ -122,6 +122,16 @@ The shell is a workspace, not a brand canvas.
 
 ### Viewer Menus on macOS
 
+Browser Grid select popups reuse the generated Atlas Select menu CSS and
+`SelectOptionContent`, not a separate CSS approximation. The standalone Grid
+bundle embeds those styles and the shared theme tokens; `grid-atlas-styles.ts`
+maps their scope to `data-buret-theme` and derives both palettes through
+`buildCodexThemeVariables`. The underlying select remains the runtime's value,
+options and change-event contract. App/Quick Look retain their native select
+route. `test-grid-selection-toolbar.mjs` covers browser selection, disabled
+options, Escape/focus return, nested choices and the native-route guards;
+these guards are not packaged native acceptance.
+
 Scene and Composition object menus, viewport rail menus (camera, screenshot,
 animation and selection), Style/Appearance, Compute, Grid Actions and column
 context menus use the shared AppKit popup in the desktop app. The DOM controls

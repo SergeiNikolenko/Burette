@@ -1,6 +1,7 @@
 import React from "react";
 import { DropdownMenu } from "radix-ui";
 import { Check } from "../components/ui/app-icons";
+import { SelectOptionContent } from "../components/ui/select-option-content";
 
 type Choice = { value: string; label: string; disabled: boolean };
 
@@ -58,24 +59,26 @@ export function GridSelectMenu({ children }: { children: React.ReactElement }) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
-          className="buret-grid-select-menu"
+          className="atlas-select-menu buret-grid-select-menu"
+          data-position="popper"
           data-buret-grid-select-menu=""
           align="start"
-          sideOffset={4}
-          collisionPadding={8}
+          sideOffset={5}
+          collisionPadding={6}
           onEscapeKeyDown={(event) => event.stopPropagation()}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             select()?.focus({ preventScroll: true });
           }}
         >
-          <DropdownMenu.RadioGroup value={value} onValueChange={choose}>
+          <DropdownMenu.RadioGroup className="atlas-select-options" value={value} onValueChange={choose}>
             {choices.map((choice) => (
-              <DropdownMenu.RadioItem key={choice.value} value={choice.value} disabled={choice.disabled}>
-                {choice.label}
-                <DropdownMenu.ItemIndicator className="buret-grid-select-check">
-                  <Check aria-hidden="true" />
-                </DropdownMenu.ItemIndicator>
+              <DropdownMenu.RadioItem className="atlas-select-option" key={choice.value} value={choice.value} disabled={choice.disabled}>
+                <SelectOptionContent indicator={<DropdownMenu.ItemIndicator>
+                  <Check className="atlas-select-check" aria-hidden="true" />
+                </DropdownMenu.ItemIndicator>}>
+                  {choice.label}
+                </SelectOptionContent>
               </DropdownMenu.RadioItem>
             ))}
           </DropdownMenu.RadioGroup>

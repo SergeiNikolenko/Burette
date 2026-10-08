@@ -65,6 +65,24 @@ button('sort').dispatchEvent(new window.Event('change', { bubbles: true }));
 assert.deepEqual(calls.slice(-2), [['view', 'xyzrender'], ['sort', 'name']], 'user-facing names preserve renderer and sorting contracts');
 assert.equal(button('search').getAttribute('autocomplete'), 'off');
 
+// The popup reads imperative runtime updates, not stale React select props.
+button('sort').value = 'index';
+button('sort').options[1].disabled = true;
+button('sort').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+await new Promise(resolve => setTimeout(resolve, 0));
+const sortMenu = document.querySelector('[data-buret-grid-select-menu]');
+assert.deepEqual([...sortMenu.querySelectorAll('[role="menuitemradio"]')].map(item => [item.textContent, item.getAttribute('aria-checked'), item.getAttribute('aria-disabled')]),
+  [['File order', 'true', null], ['Name', 'false', 'true']]);
+assert.ok(sortMenu.querySelector('.atlas-select-check-slot svg'), 'checked option uses the shared leading indicator');
+const beforeEscape = calls.length;
+sortMenu.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+// FocusScope restores focus in a task after the portal unmounts.
+await new Promise(resolve => setTimeout(resolve, 20));
+assert.equal(document.querySelector('[data-buret-grid-select-menu]'), null);
+assert.equal(document.activeElement?.id, 'sort', 'Escape returns focus to the original select');
+assert.equal(calls.length, beforeEscape, 'dismissal must not change sorting');
+button('sort').options[1].disabled = false;
+
 // Browser surfaces replace the operating-system popup with an in-page menu.
 // Picking from a select nested in the Actions menu must not dismiss it.
 mount({ clusterEnabled: true, conformerVariant: 'ETKDGv3', mmffVariant: 'MMFF94', clusterCutoff: 0.6,
@@ -84,6 +102,13 @@ await new Promise(resolve => setTimeout(resolve, 0));
 assert.deepEqual(calls.at(-1), ['conformer', target.textContent]);
 assert.ok(document.querySelector('.ab-menu'), 'the Actions menu stays open while a nested choice is made');
 assert.equal(document.querySelector('[data-buret-grid-select-menu]'), null);
+
+for (const nativeConfig of [{ tauriViewer: true }, { quickLookViewer: true }, { host: 'app' }]) {
+  window.BuretteConfig = nativeConfig;
+  mount({});
+  assert.equal(button('sort').closest('.buret-grid-select-anchor'), null, 'native surfaces retain their existing select route');
+}
+delete window.BuretteConfig;
 
 const source = readFileSync('PreviewExtension/Web/grid-viewer.js', 'utf8');
 const start = source.indexOf('  function gridSelectionState()');

@@ -3,6 +3,7 @@ import { Copy, Cube, Download, Edit, Grid, Search } from "../components/ui/app-i
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { GridSelectMenu } from "./grid-select-menu";
+import { gridAtlasStyles } from "./grid-atlas-styles";
 
 type SortOption = {
   value: string;
@@ -812,12 +813,16 @@ function GridActionToolbar(props: GridControlProps) {
 }
 
 function GridControls(props: GridControlProps) {
+  const atlasStyles = React.useMemo(() => gridAtlasStyles((window as Window & {
+    BuretteConfig?: { themeTokens?: Parameters<typeof gridAtlasStyles>[0] };
+  }).BuretteConfig?.themeTokens), []);
   const searchPlaceholder = props.substructureSearch
     ? "Search or SMARTS…"
     : "Search…";
 
   return (
     <div className="buret-grid-toolbar">
+      <style>{atlasStyles}</style>
       <div className="buret-toolbar-row buret-toolbar-row-main">
         <div className="buret-search-control buret-filter-control">
           <input

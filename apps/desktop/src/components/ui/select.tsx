@@ -7,6 +7,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import "./select.atlas.css"
 import "./select-menu.atlas.css"
 import "./select.css"
+import { SelectOptionContent } from "./select-option-content"
 import { ChevronUpDown as UnfoldMoreIcon, Check as Tick02Icon, ChevronUp as ArrowUp01Icon, ChevronDown as ArrowDown01Icon } from "@/components/ui/app-icon-data";
 
 function Select({
@@ -139,16 +140,11 @@ function SelectItem({
       )}
       {...props}
     >
-      <div className="atlas-select-pressable">
-        <div className="atlas-select-option-inner">
-          <span className="atlas-select-check-slot" data-option-indicator-position="start">
-            <SelectPrimitive.ItemIndicator>
-              <HugeiconsIcon icon={Tick02Icon} className="atlas-select-check" aria-hidden="true" />
-            </SelectPrimitive.ItemIndicator>
-          </span>
-          <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-        </div>
-      </div>
+      <SelectOptionContent indicator={<SelectPrimitive.ItemIndicator>
+        <HugeiconsIcon icon={Tick02Icon} className="atlas-select-check" aria-hidden="true" />
+      </SelectPrimitive.ItemIndicator>}>
+        <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      </SelectOptionContent>
     </SelectPrimitive.Item>
   )
 }
