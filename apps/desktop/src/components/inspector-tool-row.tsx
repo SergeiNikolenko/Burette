@@ -29,12 +29,9 @@ export function InspectorToolRow({
       <div className="flex min-w-0 items-center gap-2 py-1" data-state={state} role="listitem">
         <TooltipProvider><Tooltip><TooltipTrigger asChild>
           <DialogTrigger asChild>
-            <Button type="button" variant="ghost" size="sm" className="h-auto min-w-0 flex-1 justify-start whitespace-normal py-1 text-left text-(--color-text)"
+            <Button type="button" variant="ghost" size="sm" className="min-w-0 flex-1 justify-start text-left text-(--color-text)"
               aria-label={`${name} settings`} aria-description={hint}>
-              <span className="min-w-0">
-                <span className="block text-sm">{name}</span>
-                {primaryDisabled ? <span className="block text-xs text-(--color-text-secondary)">{detail}</span> : null}
-              </span>
+              <span className="min-w-0 truncate text-sm">{name}</span>
             </Button>
           </DialogTrigger>
         </TooltipTrigger><TooltipContent>{hint}</TooltipContent></Tooltip></TooltipProvider>

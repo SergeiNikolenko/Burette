@@ -30,6 +30,7 @@ import { ScrubNumberField } from "@/components/ui/scrub-number-input";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item";
 import { InspectorToolRow } from "./inspector-tool-row";
+import { CollapsibleSection } from "./ui/collapsible-section";
 import { Field, FieldGroup, FieldTitle, FieldLabel, FieldDescription, FieldSet, FieldLegend } from "./ui/field";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Switch } from "./ui/switch";
@@ -440,7 +441,6 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
         <InspectorEngineCard
           className="structure-inspector-xtb-card"
           title="Tools"
-          tooltip="Calculations for the current molecular scope."
           status={runningXtbJob ? `Running ${operationTitle(runningXtbJob.operation).toLowerCase()}` : xtbStatus?.installed ? null : xtbStatusLine(xtbStatus, isBrowserDev)}
           open={xtbOpen}
           onToggle={() => setXtbOpen((open) => !open)}
@@ -2344,7 +2344,6 @@ function InspectorEngineCard({
   scope,
   className,
   title,
-  tooltip,
   status,
   open,
   onToggle,
@@ -2358,7 +2357,6 @@ function InspectorEngineCard({
 }: {
   className: string;
   title: string;
-  tooltip: string;
   status: ReactNode;
   open: boolean;
   onToggle: () => void;
@@ -2372,22 +2370,13 @@ function InspectorEngineCard({
   children: ReactNode;
 }) {
   return (
-    <Accordion
-      type="single"
-      collapsible
-      value={open ? "tools" : ""}
-      onValueChange={onToggle}
-      className={`structure-brief-card structure-inspector-section ${className}`}
-      data-collapsed={!open || undefined}
+    <CollapsibleSection
+      title={title}
+      detail={status}
+      open={open}
+      onOpenChange={onToggle}
+      className={`structure-inspector-section ${className}`}
     >
-      <AccordionItem value="tools">
-        <AccordionTrigger title={tooltip}>
-          <span className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-2">
-            <span>{title}</span>
-            {status ? <span className="truncate text-xs text-muted-foreground">{status}</span> : null}
-          </span>
-        </AccordionTrigger>
-      <AccordionContent className="h-auto grid gap-2">
         {/* Each tool row already carries its own settings line, so the card only
             keeps this one when it has something the rows do not say. */}
         {summary ? (
@@ -2416,9 +2405,7 @@ function InspectorEngineCard({
         {/* What the run is scoped to belongs under the rows it constrains, said
             once and quietly - as a banner above them it shouted over the tools. */}
         {footer ? <div className="structure-inspector-tool-footer">{footer}</div> : null}
-      </AccordionContent>
-      </AccordionItem>
-    </Accordion>
+    </CollapsibleSection>
   );
 }
 
@@ -2439,28 +2426,15 @@ function InspectorSection({
   defaultOpen?: boolean;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
   return (
-    <Accordion
-      type="single"
-      collapsible
-      value={open ? "section" : ""}
-      onValueChange={(value) => setOpen(Boolean(value))}
-      className={`structure-brief-card structure-inspector-section ${className ?? ""}`.trim()}
-      data-collapsed={!open || undefined}
+    <CollapsibleSection
+      title={title}
+      detail={detail}
+      defaultOpen={defaultOpen}
+      className={`structure-inspector-section ${className ?? ""}`.trim()}
     >
-      <AccordionItem value="section">
-        <AccordionTrigger>
-          <span className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-2">
-            <span>{title}</span>
-            {detail ? <span className="max-w-40 truncate text-xs text-muted-foreground">{detail}</span> : null}
-          </span>
-        </AccordionTrigger>
-      <AccordionContent className="h-auto grid gap-2">
         {children}
-      </AccordionContent>
-      </AccordionItem>
-    </Accordion>
+    </CollapsibleSection>
   );
 }
 

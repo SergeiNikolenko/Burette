@@ -286,14 +286,17 @@ linear rotation and explicit size/stroke controls. Both stop animating under
 `prefers-reduced-motion`. Keep their geometry and animation behavior in the
 shared primitives rather than adding screen-specific spinners.
 
-Inspector disclosures use the installed shadcn `radix-nova` `Accordion` components.
-Calculation engines compose `ItemGroup`, outlined `Item` rows, `ItemContent`,
-`ItemTitle`, `ItemDescription`, and `ItemActions`. Smoothing and inline engine
-option sets use `ToggleGroup` with its outline variant. Keep component variants
-responsible for borders, type, selection, and focus; use local classes for layout.
-Accordion content uses natural height within the inspector's scrolling dock.
-The shared OpenAI glyphs do not make these components Apps SDK UI components;
-the shell retains its shadcn base and Burette theme.
+Composition, Tools, File and other `InspectorSection` blocks use the shared
+`CollapsibleSection`, from Atlas `display/collapsible-section` (`Ci`). Its native
+details/summary disclosure keeps child controls mounted and excludes collapsed
+content from keyboard navigation. The 37px header, 16/24 medium title, 14px
+disclosure glyph, subtle divider and 16px body gap follow that source; do not
+wrap it in another padded inspector card. Specialized trajectory and filter
+accordions remain separate and are not evidence that every disclosure migrated.
+Calculation rows use shared Button/Dialog/Tooltip primitives. Their unavailable
+reason stays in the settings trigger's tooltip and accessible description,
+rather than making disabled rows taller. The primary action remains disabled
+both in the row and in its settings dialog.
 
 The sidebar magnifier opens the same Command palette as Command-P. The palette
 uses compact single-line rows: structure names with project labels and numbered

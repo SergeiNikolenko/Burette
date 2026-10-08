@@ -9,6 +9,7 @@ for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLInputE
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import("react-dom/client");
 const { InspectorToolRow } = await import("../apps/desktop/src/components/inspector-tool-row");
+const { CollapsibleSection } = await import("../apps/desktop/src/components/ui/collapsible-section");
 type Props = React.ComponentProps<typeof InspectorToolRow>;
 async function fixture(run: (mount: HTMLDivElement, calls: string[], render: (patch?: Partial<Props>, key?: string) => Promise<void>) => Promise<void>) {
   const mount = document.createElement("div"); mount.className = "app-shell"; document.body.append(mount); const root = createRoot(mount);
@@ -20,6 +21,37 @@ async function fixture(run: (mount: HTMLDivElement, calls: string[], render: (pa
 const button = (mount: Element, name: string) => Array.from(mount.querySelectorAll("button")).find(el => el.textContent === name)!;
 const settings = (mount: Element) => mount.querySelector<HTMLButtonElement>('[aria-label="Molecular calculations settings"]')!;
 const click = (el: HTMLElement) => act(async () => el.click());
+
+test("inspector disclosure preserves edited fields across collapse and controlled updates", async () => {
+  const mount = document.createElement("div"); document.body.append(mount);
+  const root = createRoot(mount);
+  const changes: boolean[] = [];
+  function Example({ forced }: { forced?: boolean }) {
+    return <CollapsibleSection title="Tools" detail="2" open={forced} onOpenChange={open => changes.push(open)}>
+      <input aria-label="Charge" defaultValue="0" />
+    </CollapsibleSection>;
+  }
+  const toggle = async (open: boolean) => act(async () => {
+    const section = mount.querySelector("details")!;
+    section.open = open;
+  });
+  try {
+    await act(async () => root.render(<Example />));
+    const input = mount.querySelector("input")!;
+    input.value = "2";
+    await toggle(false);
+    expect(mount.querySelector("details")!.open).toBe(false);
+    await toggle(true);
+    expect(mount.querySelector("input")).toBe(input);
+    expect(input.value).toBe("2");
+    expect(changes).toEqual([false, true]);
+    await act(async () => root.render(<Example forced={false} />));
+    expect(changes).toEqual([false, true]); // A parent update is not a user toggle.
+    expect(mount.querySelector("details")!.open).toBe(false);
+    await toggle(true);
+    expect(changes).toEqual([false, true, true]);
+  } finally { await act(async () => root.unmount()); mount.remove(); }
+});
 
 test("tool rows expose settings without dispatching jobs and preserve separate quick/selected actions", async () => {
   await fixture(async (mount, calls, render) => {
@@ -40,7 +72,8 @@ test("tool rows expose settings without dispatching jobs and preserve separate q
 test("unavailable operations stay disabled in the row and dialog while their reason and settings remain accessible", async () => {
   await fixture(async (mount, calls, render) => {
     await render({ primaryDisabled: true, detail: "Selection exceeds 300 atoms", detailTitle: undefined });
-    expect(mount.textContent).toContain("Selection exceeds 300 atoms");
+    expect(mount.textContent).not.toContain("Selection exceeds 300 atoms");
+    expect(settings(mount).getAttribute("aria-description")).toBe("Selection exceeds 300 atoms");
     await click(button(mount, "Optimize")); await click(settings(mount));
     expect(button(mount.querySelector('[role="dialog"]')!, "Properties").disabled).toBe(true);
     await click(button(mount.querySelector('[role="dialog"]')!, "Properties")); expect(calls).toEqual([]);

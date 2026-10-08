@@ -1,4 +1,7 @@
 /* One inspector surface with section dividers, rather than nested cards. */
+.structure-brief > [data-slot="collapsible-section"] {
+  padding-inline: 4px;
+}
 .structure-brief > .structure-brief-card {
   border: 0;
   border-radius: 0;
