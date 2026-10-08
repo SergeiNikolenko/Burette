@@ -2607,9 +2607,6 @@ img.radix-menu-item-icon {
 .sidebar-product:active { transform: scale(0.99); }
 .sidebar-product-icon { width: 20px; height: 16px; flex: 0 0 20px; display: inline-flex; align-items: center; justify-content: center; color: var(--text-icon-muted); }
 .sidebar-product-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar-build-badge { min-width: 0; padding: 2px 8px 4px 32px; display: grid; gap: 2px; color: var(--color-text-tertiary); line-height: 1.15; }
-.sidebar-build-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; font-weight: 400; letter-spacing: 0; text-transform: uppercase; color: var(--text-secondary); }
-.sidebar-build-detail { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-faint); }
 .sidebar-settings-button {
   height: 29px;
   width: 100%;
