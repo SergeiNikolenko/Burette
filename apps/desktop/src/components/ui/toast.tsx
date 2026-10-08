@@ -1,7 +1,7 @@
 import * as React from "react"
 import { Toast as ToastPrimitive } from "@base-ui/react/toast"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Loading03Icon } from "@hugeicons/core-free-icons";
+import { Spinner } from "@/components/ui/spinner";
 import { Warning as Alert02Icon, X as Cancel01Icon, CheckCircle as CheckmarkCircle02Icon, InfoCircle as InformationCircleIcon, XCircleCrossedClose as MultiplicationSignCircleIcon } from "@/components/ui/app-icon-data";
 
 import { cn } from "@/lib/utils"
@@ -158,11 +158,7 @@ function ToastIcon({ type }: { type: string | undefined }) {
 
   if (type === "loading") {
     icon = (
-      <HugeiconsIcon
-        icon={Loading03Icon}
-        className="animate-spin"
-        aria-hidden="true"
-      />
+      <Spinner />
     )
   }
 

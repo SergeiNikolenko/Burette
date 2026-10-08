@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Inbox, Loader2, WifiOff } from "lucide-react";
+import { FileBlank, Warning } from "@/components/ui/app-icons";
+import { Spinner } from "@/components/ui/spinner";
 import { InfoCircle as AlertCircle, FileBlank as FileQuestion } from "@/components/ui/app-icons";
 
 import { cn } from "@/lib/utils";
@@ -123,7 +124,7 @@ function FileViewerStateFrame({
 export function FileViewerLoadingState({
   children,
   description = "Preparing the preview.",
-  icon = <Loader2 className="size-5 animate-spin" />,
+  icon = <Spinner className="size-5" />,
   title = "Loading file",
   ...props
 }: FileViewerStateProps) {
@@ -152,7 +153,7 @@ export function FileViewerLoadingState({
 
 export function FileViewerUnavailableState({
   description = "The file is not available right now.",
-  icon = <WifiOff className="size-5" />,
+  icon = <Warning className="size-5" />,
   title = "File unavailable",
   ...props
 }: FileViewerStateProps) {
@@ -170,7 +171,7 @@ export function FileViewerUnavailableState({
 
 export function FileViewerEmptyState({
   description = "Choose a file to preview.",
-  icon = <Inbox className="size-5" />,
+  icon = <FileBlank className="size-5" />,
   title = "No file selected",
   ...props
 }: FileViewerStateProps) {

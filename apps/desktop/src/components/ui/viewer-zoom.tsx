@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus } from "lucide-react";
+import { Plus } from "@/components/ui/app-icons";
 import { Expand as Maximize, Minus } from "@/components/ui/app-icons";
 
 import { Button } from "@/components/ui/retab-button";

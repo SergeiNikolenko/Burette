@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Plus } from "lucide-react";
+import { Plus } from "@/components/ui/app-icons";
 import { Download, Expand as Maximize, Minus, ArrowRotateCw as RotateCw } from "@/components/ui/app-icons";
 
 import { cn } from "@/lib/utils";
