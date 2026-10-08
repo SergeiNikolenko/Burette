@@ -5,8 +5,8 @@ import { SidebarLeft as PanelLeft, SidebarRight as PanelRight } from "@/componen
 
 import { cn } from "@/lib/utils";
 
-import { Button } from "./retab-button";
-import { Spinner } from "./retab-spinner";
+import { Button } from "./button";
+import { Spinner } from "./spinner";
 import { useFileViewerControlsState } from "./file-viewer-provider";
 import { useFileViewerRequiredResourceState } from "./file-viewer-resource-state";
 import {

@@ -89,12 +89,12 @@ for (const extension of ['pdf', 'docx', 'xlsx', 'pptx']) {
 // Vendored registry components are only reproducible while the registry stays declared.
 assert.equal(components.registries['@retab'], 'https://ui.retab.com/r/{name}.json');
 
-// Vendored Retab viewers retain their primitives while inheriting the shell
-// palette, so custom colors and light/dark preferences reach document controls.
+// Document controls use the same Atlas primitives as the shell. The renderer
+// and document-specific loading placeholders remain source-owned Retab code.
 const viewerControls = source('apps/desktop/src/components/ui/viewer-controls.tsx');
-assert.match(viewerControls, /from "@\/components\/ui\/retab-button"/);
-assert.match(viewerControls, /size="iconSm"/);
-for (const name of ['retab-button', 'retab-dropdown-menu', 'retab-skeleton', 'retab-spinner']) {
+assert.match(viewerControls, /from "@\/components\/ui\/button"/);
+assert.match(viewerControls, /size="icon-sm"/);
+for (const name of ['button', 'dropdown-menu', 'retab-skeleton', 'spinner']) {
   source(`apps/desktop/src/components/ui/${name}.tsx`);
 }
 assert.doesNotMatch(styles, /\.document-stage\s*\{[^}]*--shadcn-background:/);

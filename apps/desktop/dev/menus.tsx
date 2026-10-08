@@ -17,7 +17,6 @@ import {
   DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut,
   DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import * as Retab from "@/components/ui/retab-dropdown-menu";
 import {
   Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -125,16 +124,16 @@ function ShellMenus({ theme }: { theme: Theme }) {
         </Command>
       )}</Cell>
       <Cell title="Document download">{container => (
-        <Retab.DropdownMenu open modal={false}>
-          <Retab.DropdownMenuTrigger asChild><span /></Retab.DropdownMenuTrigger>
-          <Retab.DropdownMenuContent container={container} align="start">
-            <Retab.DropdownMenuLabel>Download</Retab.DropdownMenuLabel>
-            <Retab.DropdownMenuItem><Icon icon={icons.Download} />Original file</Retab.DropdownMenuItem>
-            <Retab.DropdownMenuItem><Icon icon={icons.FileDocument} />PDF<Retab.DropdownMenuShortcut>⌘P</Retab.DropdownMenuShortcut></Retab.DropdownMenuItem>
-            <Retab.DropdownMenuSeparator />
-            <Retab.DropdownMenuItem><Icon icon={icons.Copy} />Copy text</Retab.DropdownMenuItem>
-          </Retab.DropdownMenuContent>
-        </Retab.DropdownMenu>
+        <DropdownMenu open modal={false}>
+          <DropdownMenuTrigger asChild><span /></DropdownMenuTrigger>
+          <DropdownMenuContent container={container} align="start">
+            <DropdownMenuLabel>Download</DropdownMenuLabel>
+            <DropdownMenuItem><Icon icon={icons.Download} />Original file</DropdownMenuItem>
+            <DropdownMenuItem><Icon icon={icons.FileDocument} />PDF<DropdownMenuShortcut>⌘P</DropdownMenuShortcut></DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem><Icon icon={icons.Copy} />Copy text</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}</Cell>
     </>
   );

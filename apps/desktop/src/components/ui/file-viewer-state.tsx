@@ -12,7 +12,7 @@ import {
   type ViewerErrorContext,
 } from "@/lib/viewer-errors";
 
-import { Button } from "./retab-button";
+import { Button } from "./button";
 import { Skeleton } from "./retab-skeleton";
 import { ViewerDownloadButton } from "./viewer-download";
 

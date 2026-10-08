@@ -6,7 +6,7 @@ import { Download, Expand as Maximize, Minus, ArrowRotateCw as RotateCw } from "
 
 import { cn } from "@/lib/utils";
 import type { ViewerDownloadAction } from "@/lib/viewer-download-actions";
-import { Button } from "@/components/ui/retab-button";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/retab-skeleton";
 import {
@@ -332,7 +332,7 @@ export function ViewerControlButton({
   return (
     <Button
       variant="ghost"
-      size="iconSm"
+      size="icon-sm"
       className={cn("size-7", className)}
       aria-label={label}
       title={label}
@@ -375,15 +375,18 @@ function ViewerZoomControls({ zoom }: { zoom: ViewerZoomControl }) {
         <Minus />
       </ViewerControlButton>
       {zoom.onReset ? (
-        <button
+        <Button
           type="button"
-          className="text-muted-foreground hover:text-foreground w-12 text-center text-xs tabular-nums disabled:pointer-events-none disabled:opacity-64"
+          variant="ghost"
+          size="sm"
+          className="w-12 text-xs font-normal tabular-nums"
+          aria-label="Reset zoom"
           title="Reset zoom"
           onClick={zoom.onReset}
           disabled={zoom.isDisabled}
         >
           {zoom.scale == null ? "Fit" : `${Math.round(zoom.scale * 100)}%`}
-        </button>
+        </Button>
       ) : (
         <span className="text-muted-foreground w-12 text-center text-xs tabular-nums">
           {zoom.scale == null ? "Fit" : `${Math.round(zoom.scale * 100)}%`}

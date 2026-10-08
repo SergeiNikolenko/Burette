@@ -4,7 +4,7 @@ import * as React from "react";
 import { Plus } from "@/components/ui/app-icons";
 import { Expand as Maximize, Minus } from "@/components/ui/app-icons";
 
-import { Button } from "@/components/ui/retab-button";
+import { Button } from "@/components/ui/button";
 
 function IconButton({
   label,
@@ -14,7 +14,7 @@ function IconButton({
   return (
     <Button
       variant="ghost"
-      size="iconSm"
+      size="icon-sm"
       className="size-7"
       aria-label={label}
       title={label}
