@@ -261,6 +261,13 @@ Tauri keeps real native selects. `Tabs` renders the inset segmented control.
 Tooltips have no arrow unless `showArrow` is set. Style these controls through
 their variants and sizes; app styles should only place them, not repaint them.
 
+Loading uses two original Atlas variants: `Spinner` is the 18px app icon with
+a two-second stepped rotation synchronized to the document timeline, including
+indicators mounted later; `LoadingIndicator` is the gradient ring with a 0.8s
+linear rotation and explicit size/stroke controls. Both stop animating under
+`prefers-reduced-motion`. Keep their geometry and animation behavior in the
+shared primitives rather than adding screen-specific spinners.
+
 Inspector disclosures use the installed shadcn `radix-nova` `Accordion` components.
 Calculation engines compose `ItemGroup`, outlined `Item` rows, `ItemContent`,
 `ItemTitle`, `ItemDescription`, and `ItemActions`. Smoothing and inline engine

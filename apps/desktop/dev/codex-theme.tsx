@@ -52,6 +52,7 @@ function Appearance({ mode }: { mode: ThemeMode }) {
   // Each appearance is its own token scope, so overlays portal into their own shell.
   const [shell, setShell] = useState<HTMLDivElement | null>(null);
   const [method, setMethod] = useState("gfn2");
+  const [pending, setPending] = useState(false);
   return (
     <div ref={setShell} className="app-shell theme-fixture" data-theme={mode} data-effective-theme={mode} style={buildThemeStyle({ ...defaultPreferences, theme: mode }, mode)}>
       <aside>
@@ -98,8 +99,8 @@ function Appearance({ mode }: { mode: ThemeMode }) {
           <div className="theme-fixture-controls">
             <Button size="xs">Pill</Button>
             <Button size="xs" variant="secondary">Pill</Button>
-            <Button size="sm" variant="outline">Toolbar</Button>
-            <Button size="sm" variant="ghost">Toolbar</Button>
+            <Button size="toolbar" variant="outline">Toolbar</Button>
+            <Button size="toolbar" variant="ghost">Toolbar</Button>
           </div>
           <div className="theme-fixture-controls">
             <Input aria-label="Search structures" placeholder="Search structures" style={{ width: 200 }} />
@@ -108,6 +109,7 @@ function Appearance({ mode }: { mode: ThemeMode }) {
             <Switch aria-label="Small switch" size="sm" defaultChecked />
             <Switch aria-label="Neutral switch" tone="neutral" defaultChecked />
             <Switch aria-label="Disabled switch" disabled defaultChecked />
+            <Switch aria-label="Disabled off switch" disabled />
             <Checkbox aria-label="Checked" defaultChecked />
             <Checkbox aria-label="Unchecked" />
             <Checkbox aria-label="Indeterminate" checked="indeterminate" />
@@ -138,6 +140,10 @@ function Appearance({ mode }: { mode: ThemeMode }) {
             <LoadingIndicator size="sm" />
             <LoadingIndicator />
             <LoadingIndicator size="lg" />
+            <Button variant="secondary" aria-pressed={pending} onClick={() => setPending(value => !value)}>
+              {pending && <Spinner aria-hidden />}
+              Pending action
+            </Button>
           </div>
         </section>
         <section>

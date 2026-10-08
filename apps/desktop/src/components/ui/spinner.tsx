@@ -1,13 +1,18 @@
 import type { ComponentProps } from "react";
 import { cn } from "@/lib/utils";
 
-function Spinner({ className, ...props }: ComponentProps<"span">) {
+function Spinner({ className, onAnimationStart, ...props }: ComponentProps<"span">) {
   return (
     <span
       data-slot="spinner"
       role="status"
       aria-label="Loading"
-      className={cn("inline-flex size-[18px] shrink-0 animate-spin items-center justify-center leading-none [animation-duration:2s] [animation-timing-function:steps(60)] motion-reduce:animate-none", className)}
+      className={cn("inline-flex size-[18px] shrink-0 animate-spin items-center justify-center leading-none [contain:content] [animation-duration:2s] [animation-timing-function:steps(60)] motion-reduce:animate-none", className)}
+      onAnimationStart={event => {
+        // Atlas Spinner uses the document timeline so later arrivals stay in phase.
+        for (const animation of event.currentTarget.getAnimations()) animation.startTime = 0;
+        onAnimationStart?.(event);
+      }}
       {...props}
     >
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="size-full">

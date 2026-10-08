@@ -15,6 +15,24 @@ const { Switch } = await import("../apps/desktop/src/components/ui/switch");
 const { SegmentedControl, SegmentedControlItem } = await import("../apps/desktop/src/components/ui/segmented-control");
 const { Slider } = await import("../apps/desktop/src/components/ui/slider");
 const { Tabs, TabsList, TabsTrigger, TabsContent } = await import("../apps/desktop/src/components/ui/tabs");
+const { Spinner } = await import("../apps/desktop/src/components/ui/spinner");
+
+test("spinners added at different times synchronize and preserve animation callbacks", async () => {
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const starts = [250, 1250].map(startTime => ({ startTime }));
+  let callbacks = 0;
+  try {
+    await act(async () => root.render(<Spinner aria-label="Loading structure" onAnimationStart={() => callbacks++} />));
+    const first = host.querySelector<HTMLElement>('[role="status"]')!;
+    Object.defineProperty(first, "getAnimations", { value: () => [starts[0]] });
+    await act(async () => first.dispatchEvent(new Event("animationstart", { bubbles: true })));
+    await act(async () => root.render(<><Spinner aria-label="Loading structure" /><Spinner aria-label="Loading properties" onAnimationStart={() => callbacks++} /></>));
+    const second = host.querySelector<HTMLElement>('[aria-label="Loading properties"]')!;
+    Object.defineProperty(second, "getAnimations", { value: () => [starts[1]] });
+    await act(async () => second.dispatchEvent(new Event("animationstart", { bubbles: true })));
+    expect({ starts, callbacks }).toEqual({ starts: [{ startTime: 0 }, { startTime: 0 }], callbacks: 2 });
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
 
 test("slider retains stepped keyboard changes, bounds, commit callbacks and disabled behavior", async () => {
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
