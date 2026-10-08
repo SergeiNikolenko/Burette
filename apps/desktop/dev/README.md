@@ -25,3 +25,8 @@ form. Inputs, validation, dismissal and submitted arguments use real components;
 outcomes are kept in page memory and never write files or start compute jobs.
 The same page exercises shared default/form dialogs, a nested popover, and the
 slide-from-left popover. Check Escape/focus restoration and a narrow viewport.
+
+The connection list uses the production `SshConnectionsList` with in-memory
+connections. Its menu, enable switch, status, and removal confirmation are live;
+no SSH request or saved connection is changed. `build-box` checks succeed,
+`Research` checks fail, and Add folder renames the fixture row to `Structures`.

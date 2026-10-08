@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { MergeColumnsDialog } from "@/components/merge-columns-dialog";
 import { CalculatedColumnDialog } from "@/components/calculated-column-dialog";
 import type { GridColumnChoice } from "@/components/types";
+import { ConnectionExamples } from "./connection-examples";
 import { MenuExamples } from "./menu-examples";
 import { ToastExamples } from "./toast-examples";
 import { OverlayExamples } from "./overlay-examples";
@@ -31,6 +32,7 @@ function Forms() {
       <ToastExamples />
       <MenuExamples />
     </div>
+    <ConnectionExamples />
     {result ? <output>{result}</output> : null}
     <MergeColumnsDialog request={open === "merge" ? request : null} onDismiss={() => setOpen(null)}
       onRun={(_id, label, separator, selected) => setResult(`${label}: ${selected.map(c => c.label).join(separator)}`)} />

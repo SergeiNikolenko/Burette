@@ -9716,3 +9716,14 @@ img.settings-open-destination-icon {
 .ssh-project-section-title { padding: 12px 10px 4px; color: var(--text-faint); font-size: 12px; font-weight: 400; }
 
 .ssh-project-section, .ssh-project-tree .project-children > div, .ssh-project-tree .project-folder-children > div { min-width: 0; }
+
+/* RemoteConnectionsSettings: compact rows with inset separators. */
+.ssh-connections { display: flex; flex-direction: column; gap: 6px; }
+.ssh-connections-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 8px; }
+.ssh-connections-card { background: var(--color-background-panel, var(--color-background-primary-soft-alpha)); }
+.ssh-connections-header h2 { margin: 0; font-size: var(--text-base); line-height: 21px; font-weight: 500; }
+.ssh-connection-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 12px 16px; }
+.ssh-connection-row:not(:last-child)::after { content: ""; position: absolute; inset-inline: 16px; bottom: 0; height: 1px; background: var(--color-border); pointer-events: none; }
+.ssh-connection-status { display: flex; align-items: center; gap: 6px; color: var(--color-text-secondary); font-size: var(--text-xs); line-height: 16px; }
+.ssh-connection-status[data-status="available"] { color: var(--color-text-success); }
+.ssh-connection-status[data-status="unavailable"] { color: var(--color-text-danger); }
