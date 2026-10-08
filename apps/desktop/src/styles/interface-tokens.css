@@ -14,41 +14,17 @@
   --status-success: var(--color-text-success);
   --status-danger: var(--color-text-danger);
 }
-.app-shell .new-tab-copy [data-slot="empty-title"],
-.app-shell .agent-integration-panel h1 {
+.app-shell .new-tab-copy [data-slot="empty-title"] {
   font-size: var(--ui-heading-size);
   line-height: var(--ui-heading-line);
   font-weight: var(--ui-weight-heading);
   letter-spacing: 0;
   color: var(--text-primary);
 }
-.app-shell .new-tab-copy [data-slot="empty-description"],
-.app-shell .agent-disclosure-title {
+.app-shell .new-tab-copy [data-slot="empty-description"] {
   font-size: var(--ui-body-size);
   line-height: var(--ui-body-line);
 }
 .app-shell .new-tab-copy [data-slot="empty-description"] { color: var(--text-muted); }
 .app-shell .new-tab-actions { gap: 12px; }
 .app-shell .new-tab-actions [data-slot="button"] { min-height: 34px; padding-inline: 14px; }
-.app-shell .agent-disclosure-title { font-weight: var(--ui-weight-control); }
-.app-shell .agent-disclosure-description,
-.app-shell .agent-summary-card p,
-.app-shell .agent-integration-header p {
-  font-size: var(--ui-caption-size);
-  line-height: var(--ui-caption-line);
-  color: var(--text-muted);
-}
-.app-shell .agent-integration-section h2 {
-  font-size: var(--ui-caption-size);
-  line-height: var(--ui-caption-line);
-  font-weight: var(--ui-weight-control);
-}
-.app-shell .agent-summary-card h2 { font-size: 16px; line-height: 24px; font-weight: var(--ui-weight-heading); }
-.app-shell .agent-status-badge[data-state="missing"] {
-  color: var(--status-danger);
-  background: color-mix(in srgb, var(--status-danger) 10%, transparent);
-}
-.app-shell .agent-summary-card,
-.app-shell .agent-disclosure { border-radius: 10px; }
-.app-shell .agent-status-row { padding: 14px 16px; }
-.app-shell .agent-summary-card, .app-shell .agent-disclosure-trigger { padding: 16px; }
