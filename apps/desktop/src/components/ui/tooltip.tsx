@@ -26,9 +26,22 @@ function Tooltip({
 }
 
 function TooltipTrigger({
+  onFocus,
+  onPointerMove,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props}
+    onFocus={event => {
+      // React bubbles portal events through the trigger's logical children.
+      // Focusing a Select option must not reopen its parent field's tooltip.
+      if (!event.currentTarget.contains(event.target as Node)) event.preventDefault()
+      onFocus?.(event)
+    }}
+    onPointerMove={event => {
+      if (!event.currentTarget.contains(event.target as Node)) event.preventDefault()
+      onPointerMove?.(event)
+    }}
+  />
 }
 
 function TooltipContent({

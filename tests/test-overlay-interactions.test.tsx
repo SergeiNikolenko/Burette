@@ -2,6 +2,9 @@ import { expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import React, { act } from "react";
 const browser = new Window();
+for (const key of ["DocumentFragment", "HTMLFormElement", "HTMLSelectElement"] as const) {
+  Object.defineProperty(globalThis, key, { configurable: true, value: browser[key] });
+}
 for (const key of ["window", "document", "navigator", "HTMLElement", "Element", "DOMRect", "HTMLInputElement", "Node", "NodeFilter", "CustomEvent", "Event", "KeyboardEvent", "MutationObserver", "ResizeObserver", "getComputedStyle", "requestAnimationFrame", "cancelAnimationFrame"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
 }
@@ -127,6 +130,42 @@ test("confirmation focuses Cancel and only the explicit action commits", async (
 });
 
 const { TooltipProvider, Tooltip, TooltipTrigger, TooltipContent } = await import("../apps/desktop/src/components/ui/tooltip");
+const { NativeSelect, NativeSelectOption } = await import("../apps/desktop/src/components/ui/native-select");
+
+test("a select's portaled options do not reopen the parent tooltip on focus or pointer movement", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  const changes: string[] = [];
+  try {
+    await act(async () => root.render(<TooltipProvider delayDuration={0}><Tooltip><TooltipTrigger asChild><div>
+      <NativeSelect aria-label="Operation" defaultValue="optimize" onChange={event => changes.push(event.target.value)}>
+        <NativeSelectOption value="optimize">Optimize</NativeSelectOption>
+        <NativeSelectOption value="properties">Properties</NativeSelectOption>
+      </NativeSelect>
+    </div></TooltipTrigger><TooltipContent>Relax atomic coordinates</TooltipContent></Tooltip></TooltipProvider>));
+    const trigger = shell.querySelector<HTMLButtonElement>('[role="combobox"]')!;
+    await act(async () => trigger.focus());
+    expect(shell.querySelector('[role="tooltip"]')?.textContent).toBe("Relax atomic coordinates");
+    await act(async () => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    await act(flushFocus);
+    const options = [...shell.querySelectorAll<HTMLElement>('[role="option"]')];
+    expect(options.map(option => option.textContent)).toEqual(["Optimize", "Properties"]);
+    expect(document.activeElement).toBe(options[0]);
+    expect(shell.querySelector('[role="tooltip"]')).toBeNull();
+    await act(async () => options[1].dispatchEvent(new browser.PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" }) as unknown as Event));
+    await act(flushFocus);
+    expect(document.activeElement).toBe(options[1]);
+    expect(shell.querySelector('[role="tooltip"]')).toBeNull();
+    await act(async () => options[1].dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    await act(flushFocus);
+    expect(changes).toEqual(["properties"]);
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger.textContent).toBe("Properties");
+    await act(async () => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(shell.querySelector('[role="tooltip"]')).toBeNull();
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
+
 test("tooltip opens on keyboard focus without moving it and Escape removes its description", async () => {
   const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
   const root = createRoot(shell);
