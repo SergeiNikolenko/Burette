@@ -5633,7 +5633,6 @@ body .buret-tree-menu.buret-viewport-menu { width: 232px; }
 body .buret-tree-measurement-editor { width: min(268px, calc(100vw - 24px)); padding: 8px; }
 body :is(.buret-tree-menu-item, .buret-molstar-appearance-item, .buret-docking-pose-file),
 body .buret-generate-3d-menu button,
-body:not(.burette-mobile-host) .buret-molecule-context-menu button:not(.buret-molecule-context-mode-button),
 body:not(.burette-mobile-host) :is(.buret-molecule-context-menu, .buret-molecule-context-submenu, .buret-molstar-preset-menu) .buret-tree-menu-item {
   min-height: 28px;
   padding: 0 8px;
@@ -5654,6 +5653,19 @@ body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-
   text-transform: none;
 }
 body .buret-tree-menu-actions > summary { min-height: 28px; padding-block: 0; border-radius: 15px; }
+/* Embedded form controls are not menu rows: a blanket button rule stretched
+   the colour swatches into tall pills and overrode the palette button inset. */
+body:not(.burette-mobile-host) :is(.buret-tree-menu, .buret-molecule-context-submenu) .buret-tree-menu-field {
+  min-height: 28px;
+  padding: 4px 8px;
+  gap: 8px;
+}
+body:not(.burette-mobile-host) :is(.buret-tree-menu, .buret-molecule-context-submenu) .buret-tree-menu-check {
+  width: 16px;
+  height: 16px;
+  margin: 0 0 0 auto;
+  accent-color: var(--buret-molstar-text);
+}
 body :is(.buret-tree-menu-divider, .buret-molstar-preset-menu-separator) { margin: 4px 8px; }
 body .buret-molstar-preset-current { font-size: 12px; }
 body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-molecule-context-menu-title { padding: 4px 8px 0; font-size: 13px; }

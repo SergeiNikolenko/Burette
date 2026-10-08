@@ -4,6 +4,7 @@ import { Tooltip as TooltipPrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
 import "./tooltip.atlas.css"
+import "./tooltip.css"
 
 function TooltipProvider({
   delayDuration = 150,

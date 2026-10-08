@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Button, ButtonStyleContext } from "@/components/ui/button";
 import {
   Empty,
   EmptyContent,
@@ -8,7 +8,7 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
-import { Atom } from "@/components/ui/app-icons";
+import { Folder } from "@/components/ui/app-icons";
 import { Kbd } from "@/components/ui/kbd";
 import { isHostedMcpWidget } from "@/lib/hosted-mcp-widget";
 import type { ShellActions } from "../types";
@@ -40,24 +40,23 @@ export function WelcomeScreen({ actions }: { actions: ShellActions }) {
   const home = window.BuretteMcpWorkspace?.home;
   if (home) return <NativeWorkspaceHome actions={actions} home={home} />;
   return (
-    <Empty className="new-tab-page border-0 gap-6">
-      <EmptyHeader className="new-tab-copy w-full max-w-[430px] gap-6">
-        <Atom size={56} strokeWidth={1} aria-hidden className="text-(--color-text-tertiary)" />
-        <EmptyTitle role="heading" aria-level={1} className="text-[28px] leading-[33.6px] font-normal tracking-normal text-(--color-text)">
-          Open a structure
-        </EmptyTitle>
-      </EmptyHeader>
-      <EmptyContent className="new-tab-actions max-w-[330px] gap-3">
-        <Button
-          type="button"
-          className="h-7 rounded-full px-3 text-[13px] font-[430]"
-          aria-keyshortcuts="Meta+O"
-          data-analytics-control="open_structure"
-          onClick={() => void actions.chooseFiles()}
-        >
-          Open file
-        </Button>
-        <Kbd className="bg-transparent text-sm text-(--color-text-tertiary)" aria-label="Command O">⌘O</Kbd>
+    <Empty className="new-tab-page border-0">
+      <EmptyContent className="new-tab-actions">
+        <ButtonStyleContext.Provider value="app">
+          <Button
+            type="button"
+            variant="secondary"
+            className="gap-2"
+            aria-label="Open file"
+            aria-keyshortcuts="Meta+O"
+            data-analytics-control="open_structure"
+            onClick={() => void actions.chooseFiles()}
+          >
+            <Folder className="size-4" aria-hidden />
+            Open file
+            <Kbd className="ml-2 bg-transparent text-(--color-text-tertiary)" aria-hidden>⌘O</Kbd>
+          </Button>
+        </ButtonStyleContext.Provider>
       </EmptyContent>
     </Empty>
   );

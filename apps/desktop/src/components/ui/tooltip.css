@@ -1,0 +1,10 @@
+/* Compact SDK tooltips use an inverted gray scale. In the classic dark shell,
+ * use Atlas's semantic tooltip colors instead of the resulting pale surface.
+ * Keep the original geometry, shadow, and light-theme appearance unchanged.
+ */
+.app-shell[data-effective-theme="dark"] .atlas-tooltip[data-compact="true"] {
+  --tooltip-compact-background-color: var(--color-background-tooltip);
+  --tooltip-compact-text-color: var(--color-text-tooltip);
+  --tooltip-compact-interactive-background-color-hover: var(--color-surface-elevated);
+  --tooltip-compact-interactive-text-color-hover: var(--color-text-tooltip);
+}

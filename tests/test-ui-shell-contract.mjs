@@ -2281,7 +2281,7 @@ assert.match(styles, /\.pin-hit/);
 assert.match(styles, /\.tab-scroll-region \{[^}]*width: max-content;[^}]*flex: 0 1 auto/s);
 assert.match(styles, /\.tab-strip-spacer \{[^}]*min-width: 0;[^}]*flex: 1 1 28px/s);
 assert.match(styles, /\.tab-shell \{[^}]*position: relative/s);
-assert.match(styles, /\.tab \{[^}]*height: 32px;/s);
+assert.match(styles, /\.tab \{[^}]*height: 28px;/s);
 assert.match(styles, /\.tab:hover \{[^}]*backdrop-filter: blur\(40px\)/);
 assert.match(styles, /--tab-active-bg: var\(--color-background-primary-ghost-hover\);/);
 // Dock AppShellTabStrip uses the original 5% text/surface selected fill.
@@ -2336,7 +2336,7 @@ assert.match(appLayout, /function useInitialSize/);
 // dock's own tabs slide underneath the document tabs. The two numbers live in
 // different files, so they are pinned to each other here.
 assert.match(appLayout, /const CHROME_HEIGHT = 56;/);
-assert.match(styles, /--chrome-height: 46px;/);
+assert.match(styles, /--chrome-height: 40px;/);
 assert.match(appLayout, /<ResizablePanel id="main"[^>]*minSize=\{`\$\{CHROME_HEIGHT\}px`\}/);
 assert.match(appLayout, /onLayoutChanged=\{\(_layout, meta\) => \{/);
 assert.match(appLayout, /if \(!meta\.isUserInteraction\) return;/);
@@ -3765,7 +3765,7 @@ assert.doesNotMatch(agentIntegrationPanel, /If `burette-agent` is not installed 
 assert.doesNotMatch(agentIntegrationPanel, /compatibility\.json/);
 assert.match(welcome, /export function WelcomeScreen/);
 assert.match(welcome, /new-tab-copy/);
-assert.match(welcome, /Open a structure/);
+assert.doesNotMatch(welcome, /Open a structure/);
 assert.doesNotMatch(welcome, /Use the shell to inspect files quickly/);
 assert.match(welcome, /Open file/);
 assert.match(welcome, /onClick=\{\(\) => void actions\.chooseFiles\(\)\}/);
