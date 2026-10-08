@@ -2600,10 +2600,6 @@ img.radix-menu-item-icon {
   outline: 1px solid var(--focus-ring);
   outline-offset: -1px;
 }
-.settings-select:focus-visible,
-.settings-text-control:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--focus-ring);
-}
 .project-group-row:focus-visible,
 .project:focus-visible,
 .sidebar-section-title-button:focus-visible,
@@ -8307,21 +8303,8 @@ img.radix-menu-item-icon {
 .settings-select { min-width: 160px; }
 .settings-open-destination-trigger {
   min-width: 160px;
-  height: 28px;
-  border: 1px solid var(--color-border);
-  border-radius: 999px;
-  background: var(--color-surface);
-  color: var(--color-text);
-  padding: 0 8px;
-  display: inline-flex;
-  align-items: center;
   justify-content: flex-start;
   gap: 6px;
-  font: inherit;
-  outline: none;
-}
-.settings-open-destination-trigger:focus-visible {
-  border-color: var(--focus-border);
 }
 .settings-open-destination-trigger > span:not(.settings-open-destination-icon) {
   min-width: 0;
@@ -8401,18 +8384,7 @@ img.settings-open-destination-icon {
 }
 .settings-text-control {
   width: min(320px, 42vw);
-  height: 36px;
   min-width: 0;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-2xl);
-  background: transparent;
-  color: var(--color-text);
-  padding: 0 14px;
-  outline: none;
-  transition: border-color 120ms ease, background 120ms ease;
-}
-.settings-text-control:focus-visible {
-  border-color: var(--focus-border);
 }
 .settings-range-control {
   display: inline-flex;

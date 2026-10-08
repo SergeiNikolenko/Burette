@@ -14,7 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, FieldContent, FieldDescription, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ChevronDown } from "@/components/ui/app-icons";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 
@@ -103,13 +104,22 @@ export function SelectControl({
   onChange: (value: string) => void;
 }) {
   return (
-    <NativeSelect aria-label={label} className="settings-select" size="sm" value={value} onChange={(event) => onChange(event.target.value)}>
-      {options.map((option) => (
-        <NativeSelectOption key={option} value={option}>
-          {labels?.[option] ?? option}
-        </NativeSelectOption>
-      ))}
-    </NativeSelect>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button aria-label={label} className="settings-select justify-between" variant="outline" size="settings">
+          <span className="min-w-0 truncate">{labels?.[value] ?? value}</span>
+          <ChevronDown size={16} aria-hidden />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        {label && <DropdownMenuLabel>{label}</DropdownMenuLabel>}
+        <DropdownMenuRadioGroup value={value} onValueChange={onChange}>
+          {options.map(option => <DropdownMenuRadioItem key={option} value={option}>
+            {labels?.[option] ?? option}
+          </DropdownMenuRadioItem>)}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -171,6 +181,7 @@ export function TextControl({
 }) {
   return (
     <Input
+      variant="settings"
       type="text"
       aria-label={label}
       autoComplete="off"

@@ -165,6 +165,41 @@ test("tooltip waits on first pointer entry and respects an explicit themed porta
 
 const Menu = await import("../apps/desktop/src/components/ui/dropdown-menu");
 const Context = await import("../apps/desktop/src/components/ui/context-menu");
+const { SelectControl } = await import("../apps/desktop/src/components/settings-panel/setting-control");
+
+test("settings select displays labels, commits raw values once and restores trigger focus", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  const changes: string[] = [];
+  function Example() {
+    const [value, setValue] = React.useState("gfnff");
+    return <SelectControl label="Method" value={value} options={["gfnff", "gfn2"]}
+      labels={{ gfnff: "Force field", gfn2: "Quantum" }} onChange={next => { changes.push(next); setValue(next); }} />;
+  }
+  try {
+    await act(async () => root.render(<Example />));
+    const trigger = shell.querySelector<HTMLButtonElement>('[data-slot="dropdown-menu-trigger"]')!;
+    expect(trigger.textContent).toBe("Force field");
+    const open = async () => {
+      await act(async () => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+      await act(flushFocus);
+    };
+    await open();
+    const items = [...shell.querySelectorAll<HTMLElement>('[role="menuitemradio"]')];
+    expect(items.map(item => [item.textContent, item.getAttribute("aria-checked")])).toEqual([["Force field", "true"], ["Quantum", "false"]]);
+    await act(async () => items[1].click()); await act(flushFocus);
+    expect(changes).toEqual(["gfn2"]);
+    expect(trigger.textContent).toBe("Quantum");
+    expect(shell.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    await open();
+    await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    await act(flushFocus);
+    expect(changes).toEqual(["gfn2"]);
+    expect(document.activeElement).toBe(trigger);
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
+
 test("dropdown and submenu inherit the shell; selection closes both and restores focus", async () => {
   const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
   const root = createRoot(shell);

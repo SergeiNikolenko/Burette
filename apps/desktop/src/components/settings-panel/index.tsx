@@ -13,6 +13,8 @@ import { useFinderIconUrl } from "../../hooks/use-finder-icon-url";
 import { AgentIntegrationPanel } from "../agent-integration-panel";
 import { EditorScrollContainer } from "../editor-area/editor-scroll-container";
 import { RadixDropdownMenu } from "../radix-menu";
+import { Button } from "../ui/button";
+import { ChevronDown } from "../ui/app-icons";
 import type { AppSettingsSectionId, ChemicalEditorTarget, ShellActions, ShellViewState } from "../types";
 import type { MenuItemSpec } from "../menu-types";
 import {
@@ -256,7 +258,6 @@ function openDestinationPreferenceRow(
 ): SettingRow {
   return {
     label: "Default open destination",
-    description: "Where the Open In control points by default.",
     control: <OpenDestinationControl value={value} targets={targets} onChange={onChange} />,
     reset: () => onChange(defaultPreferences.openInDefaultDestination),
     isModified: value !== defaultPreferences.openInDefaultDestination,
@@ -434,17 +435,15 @@ function OpenDestinationControl({
       contentClassName="settings-open-destination-menu"
       items={items}
       trigger={(
-        <button type="button" className="settings-open-destination-trigger" aria-label="Default open destination">
+        <Button variant="outline" size="settings" className="settings-open-destination-trigger" aria-label="Default open destination">
           {selected.iconUrl ? (
-            <img className="settings-open-destination-icon" src={selected.iconUrl} alt="" aria-hidden="true" />
+            <img className="settings-open-destination-icon" src={selected.iconUrl} width={16} height={16} alt="" aria-hidden="true" />
           ) : (
             <span className="settings-open-destination-icon" aria-hidden="true">{selected.iconText}</span>
           )}
           <span>{selected.label}</span>
-          <svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true">
-            <path d="M3.5 5 6.5 8 9.5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+          <ChevronDown size={16} aria-hidden />
+        </Button>
       )}
     />
   );

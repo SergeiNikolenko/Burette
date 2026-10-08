@@ -4214,7 +4214,6 @@ assert.match(styles, /\.dock-tab \{[\s\S]*border-radius: 10px;/);
 assert.doesNotMatch(welcome, /new-tab-description/);
 assert.doesNotMatch(styles, /\[cmdk-input\]:focus-visible/);
 assert.doesNotMatch(styles, /outline: 2px solid var\(--focus-ring\)/);
-assert.match(styles, /\.settings-select:focus-visible,[\s\S]*\.settings-text-control:focus-visible \{[\s\S]*box-shadow: inset 0 0 0 1px var\(--focus-ring\)/);
 // The palette's placement and width moved out of bespoke [cmdk-*] CSS onto the
 // CommandDialog itself; everything else (surface, shadow, selected row) now
 // comes from the shadcn dialog/command primitives and the shared theme tokens.

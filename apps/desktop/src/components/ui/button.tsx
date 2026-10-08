@@ -24,6 +24,7 @@ const variants = {
 } as const;
 const sizes = {
   default: "lg", xs: "xs", sm: "md", lg: "xl", icon: "lg",
+  settings: "xl",
   "icon-2xs": "3xs", "icon-xs": "xs", "icon-sm": "md", "icon-lg": "xl",
 } as const;
 
@@ -37,7 +38,8 @@ function Button({
   className, variant = "default", size = "default", asChild = false,
   children, disabled, type, onPointerEnter, ...props
 }: ButtonProps) {
-  const appAction = React.useContext(ButtonStyleContext) === "app" && (size === "default" || size === "xs");
+  const appearance = React.useContext(ButtonStyleContext);
+  const appAction = size === "settings" || (appearance === "app" && (size === "default" || size === "xs"));
   const Comp = asChild ? Slot.Root : "button";
   const child = asChild ? React.Children.only(children) : null;
   const childContent = React.isValidElement<{ children?: React.ReactNode }>(child) ? child.props.children : children;
@@ -60,9 +62,11 @@ function Button({
       className={cn(
         "group/button inline-flex items-center justify-center [&_svg]:pointer-events-none [&_svg]:shrink-0",
         appAction
-          ? "no-drag cursor-(--cursor-interaction) select-none disabled:cursor-default aria-disabled:cursor-default focus:outline-hidden disabled:opacity-40 aria-disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-(--color-ring) focus-visible:ring-offset-0 whitespace-nowrap border gap-1 rounded-(--radius-button-action)"
+          ? "no-drag cursor-(--cursor-interaction) select-none disabled:cursor-default aria-disabled:cursor-default focus:outline-hidden disabled:opacity-40 aria-disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-(--color-ring) focus-visible:ring-offset-0 whitespace-nowrap border gap-1"
           : "atlas-button",
-        appAction && (size === "xs" ? "h-6 px-2 py-0 text-xs leading-4" : "px-4 py-1.5 text-base leading-[18px]"),
+        appAction && (size === "settings" ? "h-9 rounded-md px-2 py-1 text-sm leading-none"
+          : size === "xs" ? "h-6 rounded-(--radius-button-action) px-2 py-0 text-xs leading-4"
+          : "rounded-(--radius-button-action) px-4 py-1.5 text-base leading-[18px]"),
         appAction && appVariants[variant],
         variant === "link" && "underline-offset-4 hover:underline", className,
       )}
