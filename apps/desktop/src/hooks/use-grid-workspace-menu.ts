@@ -57,12 +57,9 @@ export function useGridWorkspaceMenu(state: ShellViewState, actions: ShellAction
         item("row-poses", "As Poses", run(() => workflows.openRecordScene(records, "single"))),
       );
       const spec = menuSections(
-        submenu("row-open", "Open", opening, "arrow.up.forward"),
-        submenu("row-edit", "Edit", [...take("duplicate", "Duplicate")]),
-        submenu("row-copy", "Copy", [...take("copy-name", "Name"), ...take("copy-cell", "Cell"), ...take("copy", "Structure"), ...take("copy-smiles", "SMILES"), ...take("copy-selected", "Selected SMILES")]),
-        submenu("row-export", "Export", [...take("export", "Molecule…"), ...take("export-selected", "Selected CSV…"), ...take("export-selected-smiles", "Selected SMILES…")]),
-        submenu("row-select", "Select", [...take("select-row", "Molecule"), ...take("select-all", "All"), ...take("clear-selection", "None")]),
-        submenu("row-search", "Search", [...take("pubchem-identity", "PubChem Identical"), ...take("pubchem-similarity", "PubChem Similar")]),
+        [...submenu("row-open", "Open", opening, "arrow.up.forward"), ...submenu("row-edit", "Edit", [...take("duplicate", "Duplicate")])],
+        [...submenu("row-copy", "Copy", [...take("copy-name", "Name"), ...take("copy-cell", "Cell"), ...take("copy", "Structure"), ...take("copy-smiles", "SMILES"), ...take("copy-selected", "Selected SMILES")]), ...submenu("row-export", "Export", [...take("export", "Molecule…"), ...take("export-selected", "Selected CSV…"), ...take("export-selected-smiles", "Selected SMILES…")])],
+        [...submenu("row-select", "Select", [...take("select-row", "Molecule"), ...take("select-all", "All"), ...take("clear-selection", "None")]), ...submenu("row-search", "Search", [...take("pubchem-identity", "PubChem Identical"), ...take("pubchem-similarity", "PubChem Similar")])],
         [...take("filter-cell", "Filter by Value"), ...take("remove", "Delete from Collection")],
       );
       const rect = frame.getBoundingClientRect();

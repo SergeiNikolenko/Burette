@@ -5,6 +5,11 @@ import type { MenuItemSpec } from "./menu-types";
 // The host only draws them. This parser checks shape and size and never trusts
 // the frame for anything beyond text, icons and control ranges.
 export type MolstarContextMenuSend = (id: string, value?: string | number | boolean) => void;
+// An open grid the "Open in" submenu can add molecules to. Only the host knows them.
+export type MolstarOpenInGridTarget = { id: string; title: string };
+
+const OPEN_IN_MENU_ID = "open-in";
+const MAX_GRID_TARGETS = 20;
 
 // The AppKit command's own bounds: 512 rows across the whole tree and three submenu
 // levels. A choice becomes a submenu with one row per option, so it counts both.
@@ -19,7 +24,7 @@ const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 const text = (value: unknown, max = MAX_TEXT) => typeof value === "string" && value.length > 0 && value.length <= max ? value : null;
 const finite = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
 
-export function molstarContextMenuItems(entries: unknown, send: MolstarContextMenuSend): MenuItemSpec[] {
+export function molstarContextMenuItems(entries: unknown, send: MolstarContextMenuSend, gridTargets: MolstarOpenInGridTarget[] = []): MenuItemSpec[] {
   let budget = MAX_ENTRIES;
   let labels = 0;
   const parse = (list: unknown, depth: number): MenuItemSpec[] => {
@@ -50,6 +55,12 @@ export function molstarContextMenuItems(entries: unknown, send: MolstarContextMe
       if (entry.kind === "submenu") {
         const caption = text(entry.text);
         const items = parse(entry.items, depth + 1);
+        if (key === OPEN_IN_MENU_ID && items.length && gridTargets.length) {
+          items.push({ kind: "separator" }, { kind: "label", id: "molstar-menu-open-in-grids", text: "Add to Grid" });
+          for (const target of gridTargets.slice(0, MAX_GRID_TARGETS)) {
+            items.push({ kind: "item", id: `molstar-menu:${OPEN_IN_MENU_ID}:grid:${target.id}`, text: target.title.slice(0, MAX_TEXT), action: () => send(`${OPEN_IN_MENU_ID}:grid:${target.id}`) });
+          }
+        }
         return caption && items.length ? [{ kind: "submenu", id, text: caption, ...icon, items }] : [];
       }
       if (entry.kind === "select") {

@@ -17,7 +17,7 @@
   --buret-ring: rgba(252, 252, 252, 0.55);
   --buret-ring-soft: rgba(252, 252, 252, 0.28);
   --buret-menu-ring: rgba(252, 252, 252, 0.1);
-  --buret-menu-surface: #1a1a1a;
+  --buret-menu-surface: #2a2a2a;
   --buret-detail-surface: #202020;
   --buret-panel: #202020;
   --buret-grid-rail-popover-surface: #303033;
@@ -77,7 +77,7 @@ html[data-buret-theme="light"] {
   --buret-ring: rgba(13, 13, 13, 0.55);
   --buret-ring-soft: rgba(13, 13, 13, 0.28);
   --buret-menu-ring: rgba(13, 13, 13, 0.1);
-  --buret-menu-surface: #f5f5f5;
+  --buret-menu-surface: #ffffff;
   --buret-detail-surface: #ffffff;
   --buret-panel: rgba(255, 255, 255, 0.94);
   --buret-grid-rail-popover-surface: #ffffff;
@@ -2820,3 +2820,70 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
 .buret-grid-table-fragment .buret-molecule-loading {
   min-height: 0;
 }
+
+/* Menu format. The Actions menu and the context menus take the surface and row
+   recipe the shell menus use. It stays last so it wins over the rules above. */
+#grid-controls .ab-menu,
+.buret-grid-molecule-context-menu {
+  padding: 4px;
+  border-radius: 20px;
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--buret-text) 8%, transparent), 0 8px 16px -4px rgb(0 0 0 / 0.12);
+}
+#grid-controls .ab-menu { min-width: 260px; }
+#grid-controls .ab-row { gap: 4px; padding-right: 0; }
+#grid-controls .ab-item,
+.buret-grid-molecule-context-menu button {
+  min-height: 28px;
+  padding: 5px 8px;
+  gap: 6px;
+  border-radius: 15px;
+  font-size: 13px;
+  line-height: 18.5px;
+}
+#grid-controls .ab-item-title { line-height: 18.5px; }
+#grid-controls .ab-item .ab-ico,
+#grid-controls .ab-item:not(:disabled):hover .ab-ico,
+#grid-controls .ab-item:disabled .ab-ico { color: currentColor; }
+#grid-controls .ab-item:not(:disabled):hover,
+#grid-controls .ab-mini:not(:disabled):hover,
+.buret-grid-molecule-context-menu button:hover,
+.buret-grid-molecule-context-menu button:focus {
+  background-color: color-mix(in srgb, var(--buret-text) 5.5%, transparent);
+}
+#grid-controls .ab-group,
+#grid-controls .ab-selhead,
+#grid-controls .ab-selhead.has-selection {
+  padding: 4px 8px;
+  color: color-mix(in srgb, var(--buret-text) 50%, transparent);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 18.5px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+#grid-controls .ab-selhead.has-selection { color: var(--buret-text); }
+#grid-controls .ab-separator,
+.buret-grid-molecule-context-menu hr {
+  width: auto;
+  height: 1px;
+  margin: 4px 8px;
+  border: 0;
+  background: color-mix(in srgb, var(--buret-text) 8%, transparent);
+}
+#grid-controls .ab-item-meta {
+  color: color-mix(in srgb, var(--buret-text) 50%, transparent);
+  font-size: 12px;
+  line-height: 16px;
+}
+/* The inline option pickers read as a trailing value of their row. */
+#grid-controls .ab-menu .ab-mini {
+  height: 28px;
+  padding: 0 22px 0 8px;
+  border: 0;
+  border-radius: 15px;
+  color: color-mix(in srgb, var(--buret-text) 50%, transparent);
+  background-color: transparent;
+  font-size: 12px;
+}
+.buret-grid-molecule-context-menu-title { padding: 4px 8px 0; font-size: 13px; line-height: 18.5px; }
+.buret-grid-molecule-context-menu-subtitle { padding: 0 8px 4px; font-size: 12px; line-height: 14px; }

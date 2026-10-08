@@ -20216,9 +20216,8 @@ SOFTWARE.
         button.setAttribute('role', 'option');
         const fallbackLabel = hasTrajectorySegments ? `Trajectory segment ${index + 1}` : `Structure ${index + 1}`;
         const entryLabel = entry.label || fallbackLabel;
-        button.title = hasTrajectorySegments
-          ? `${entryLabel} · frames ${entry.startFrame + 1}–${entry.endFrame + 1}`
-          : entryLabel;
+        // A structure row already shows its whole label; only segments add a frame range.
+        if (hasTrajectorySegments) button.title = `${entryLabel} · frames ${entry.startFrame + 1}–${entry.endFrame + 1}`;
         const number = document.createElement('span');
         number.className = 'buret-docking-pose-file-number';
         number.textContent = String(index + 1).padStart(2, '0');
@@ -23585,6 +23584,133 @@ SOFTWARE.
     return null;
   }
 
+  const MOLSTAR_OPEN_IN_ACTION = 'open-in';
+  const MOLSTAR_OPEN_IN_TAB_ACTION = 'open-in:tab';
+  const MOLSTAR_OPEN_IN_GRID_ACTION = 'open-in:grid';
+  const MOLSTAR_OPEN_IN_MAX_MOLECULES = 200;
+  const MOLSTAR_OPEN_IN_MAX_ATOMS = 20000;
+
+  // The molecules an "Open in" row carries. A right click inside the selection
+  // takes everything selected across the scene's structures; a click elsewhere
+  // takes only what was clicked. A non-polymer residue is one molecule and
+  // selected polymer residues of one chain join into one.
+  function molstarOpenInMolecules(target) {
+    const sources = [];
+    const targetSelection = target?.structure ? molstarContextSelectionLociForStructure(target.structure) : null;
+    if (target?.selectionBased || (target?.atom && molstarContextLociContainsAtom(targetSelection, target.atom))) {
+      for (const structureRef of molstarContextStructures()) {
+        const loci = molstarContextSelectionLociForStructure(structureRef);
+        if (loci) sources.push({ loci, structureRef });
+      }
+    } else if (target?.atom) {
+      sources.push({ loci: molstarContextSelectionLoci(target), structureRef: target.structure });
+    }
+    const molecules = new Map();
+    let atomCount = 0;
+    for (let sourceIndex = 0; sourceIndex < sources.length; sourceIndex++) {
+      const { loci, structureRef } = sources[sourceIndex];
+      const elementLoci = loci?.kind === 'element-loci' ? loci : molstarContextElementLoci(loci);
+      const source = molstarContextTargetLabel(structureRef ? [structureRef] : []);
+      const residueMolecules = new Map();
+      for (const { unit, indices } of Array.isArray(elementLoci?.elements) ? elementLoci.elements : []) {
+        const segments = unit?.model?.atomicHierarchy?.residueAtomSegments;
+        if (!segments || !unit.elements?.length) continue;
+        molstarContextOrderedSetForEach(indices, index => {
+          if (++atomCount > MOLSTAR_OPEN_IN_MAX_ATOMS) return false;
+          const atomIndex = unit.elements[index];
+          const residueKey = `${unit.id}:${segments.index[atomIndex]}`;
+          let molecule = residueMolecules.get(residueKey);
+          if (!molecule) {
+            const atom = molstarContextAtomFromModelIndex(unit.model, atomIndex);
+            const polymer = molstarContextScopeForAtom(atom) === 'residue';
+            const key = `${sourceIndex}:${polymer ? `chain:${unit.id}:${atom?.chainIndex}` : residueKey}`;
+            molecule = molecules.get(key);
+            if (!molecule) {
+              molecule = {
+                atom,
+                atoms: [],
+                source,
+                label: polymer ? molstarContextChainLabel(atom) : molstarContextResidueLabel(atom)
+              };
+              molecules.set(key, molecule);
+            }
+            residueMolecules.set(residueKey, molecule);
+          }
+          molecule.atoms.push({ unit, index });
+        });
+      }
+    }
+    if (atomCount > MOLSTAR_OPEN_IN_MAX_ATOMS || molecules.size > MOLSTAR_OPEN_IN_MAX_MOLECULES) return [];
+    return Array.from(molecules.values()).filter(molecule => molecule.atoms.length <= 999);
+  }
+
+  // One SDF record written from the loaded model, so it does not depend on the
+  // source format: coordinates as shown, bonds and their orders as Mol* holds them.
+  function molstarMoleculeSdfRecord(molecule) {
+    const serials = new Map(molecule.atoms.map((atom, i) => [`${atom.unit.id}:${atom.index}`, i + 1]));
+    const atomLines = [];
+    const bondLines = [];
+    const charges = [];
+    for (const { unit, index } of molecule.atoms) {
+      const element = unit.elements[index];
+      const columns = unit.model.atomicHierarchy.atoms;
+      const symbol = cleanElement(molstarContextValueAt(columns.type_symbol, element) || 'C');
+      const x = unit.conformation.x(element);
+      const y = unit.conformation.y(element);
+      const z = unit.conformation.z(element);
+      if (![x, y, z].every(Number.isFinite)) return null;
+      atomLines.push(formatSdfAtomLine({ tail: ` ${symbol.padEnd(3, ' ')} 0  0  0  0  0  0  0  0  0  0  0  0` }, x, y, z));
+      const charge = Math.trunc(Number(molstarContextValueAt(columns.pdbx_formal_charge, element)) || 0);
+      if (charge) charges.push([serials.get(`${unit.id}:${index}`), charge]);
+      const bonds = unit.bonds;
+      if (!bonds?.offset || !bonds.b) continue;
+      for (let edge = bonds.offset[index]; edge < bonds.offset[index + 1]; edge++) {
+        const other = bonds.b[edge];
+        const otherSerial = serials.get(`${unit.id}:${other}`);
+        if (other <= index || !otherSerial) continue;
+        const order = Math.min(3, Math.max(1, Math.trunc(Number(bonds.edgeProps?.order?.[edge]) || 1)));
+        bondLines.push(`${padSdfInt(serials.get(`${unit.id}:${index}`))}${padSdfInt(otherSerial)}${padSdfInt(order)}  0  0  0  0`);
+      }
+    }
+    if (!atomLines.length || bondLines.length > 999) return null;
+    const chargeLines = [];
+    for (let i = 0; i < charges.length; i += 8) {
+      const chunk = charges.slice(i, i + 8);
+      chargeLines.push(`M  CHG${padSdfInt(chunk.length)}${chunk.map(([serial, charge]) => ` ${padSdfInt(serial)} ${padSdfInt(charge)}`).join('')}`);
+    }
+    const field = (name, value) => (value == null || value === '' ? [] : [`> <${name}>`, String(value).replace(/\s+/g, ' ').trim(), '']);
+    const atom = molecule.atom;
+    const label = String(molecule.label || 'Molecule').slice(0, 80);
+    return {
+      label,
+      source: molecule.source,
+      data: [
+        label,
+        '  Burette',
+        '',
+        formatSdfCountsLine(atomLines.length, bondLines.length),
+        ...atomLines,
+        ...bondLines,
+        ...chargeLines,
+        'M  END',
+        ...field('Source', molecule.source),
+        ...field('Chain', atom?.auth_asym_id || atom?.label_asym_id),
+        ...field('Residue', atom?.auth_seq_id ?? atom?.label_seq_id),
+        '$$$$',
+        ''
+      ].join('\n')
+    };
+  }
+
+  function molstarOpenInDocumentPayload(records) {
+    if (!records.length) return null;
+    return {
+      label: records.length === 1 ? records[0].label : `${records.length} molecules`,
+      entries: records.map(record => ({ role: 'ligand', label: record.label, source: record.source, format: 'sdf', data: record.data })),
+      context: { scope: 'ligand' }
+    };
+  }
+
   function molstarRuntime() {
     if (window.molstar) return window.molstar;
     try {
@@ -25120,7 +25246,7 @@ SOFTWARE.
     if (name.startsWith('align')) return APP_ICON_DATA.CompareArrows;
     if (name.startsWith('colour:')) return APP_ICON_DATA.ColorTheme;
     if (name.startsWith('select')) return APP_ICON_DATA.CheckCircle;
-    if (name === 'molstar') {
+    if (name === 'molstar' || name === MOLSTAR_OPEN_IN_ACTION) {
       return APP_ICON_DATA.ExternalLink;
     }
     return null;
@@ -25153,7 +25279,13 @@ SOFTWARE.
     if (activeStructureAlignmentControl) {
       actions.push(...activeStructureAlignmentControl.contextActions(target, mode));
     }
-    if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in new tab']);
+    const mobileHost = document.body?.classList.contains('burette-mobile-host') === true;
+    if (!mobileHost && molstarOpenInMolecules(target).length) {
+      actions.push(moleculeMenuNestedAction(MOLSTAR_OPEN_IN_ACTION, 'Open in', [
+        [MOLSTAR_OPEN_IN_TAB_ACTION, 'New Tab'],
+        [MOLSTAR_OPEN_IN_GRID_ACTION, 'New Grid']
+      ]));
+    } else if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in new tab']);
     // The desktop overlay carries the scene-tree powers into the 3D right click.
     // These stay off the mobile host, which renders its own native sheet.
     if (document.body?.classList.contains('burette-mobile-host') !== true) {
@@ -25385,9 +25517,9 @@ SOFTWARE.
       const icon = molstarNativeMenuIcon(moleculeContextActionIcon(name));
       const text = molstarNativeMenuLabel(name, label);
       if (children.length) return { kind: 'submenu', id: name, text, icon, items: children.map(action) };
-      session.handlers.set(name, () => {
+      session.handlers.set(name, (_value, id) => {
         session.actionChosen = true;
-        void moleculeContextMenuAction(name, label, target);
+        void moleculeContextMenuAction(id || name, label, target);
       });
       return { kind: 'item', id: name, text, icon };
     };
@@ -25507,7 +25639,11 @@ SOFTWARE.
     const session = molstarNativeMenuPending;
     if (!session || session.requestId !== body.requestId) return;
     if (body.event === 'select') {
-      session.handlers.get(String(body.id || ''))?.(body.value);
+      const id = String(body.id || '');
+      // The host lists its open grids under "Open in"; their rows share one handler.
+      const handler = session.handlers.get(id)
+        || (id.startsWith(`${MOLSTAR_OPEN_IN_GRID_ACTION}:`) ? session.handlers.get(MOLSTAR_OPEN_IN_GRID_ACTION) : null);
+      handler?.(body.value, id);
       return;
     }
     molstarNativeMenuPending = null;
@@ -25563,7 +25699,9 @@ SOFTWARE.
         return;
       } else if (action === 'select') {
         const selectionLoci = molstarContextSelectionLoci(target);
-        if (!selectMolstarContextPick({ ...target, loci: selectionLoci }, { applyGranularity: false })) throw new Error('No Mol* residue or ligand is available to select.');
+        // Menu selection accumulates, so molecules picked one by one, in one structure
+        // or several, stay selected together for "Open in".
+        if (!selectMolstarContextPick({ ...target, loci: selectionLoci }, { additive: true, applyGranularity: false })) throw new Error('No Mol* residue or ligand is available to select.');
         if (target.scope === 'ligand' || target.scope === 'ion') previewAfterAction = target;
         setStatus(`[web] Selected ${targetLabel}.`);
       } else if (action === 'remove') {
@@ -25600,15 +25738,23 @@ SOFTWARE.
         pushMolstarEditUndoSnapshot(undoSnapshot);
         setMolstarStructureDirty(true);
         setStatus(`[web] Deleted ${atomLabel}.`);
-      } else if (action === 'molstar') {
-        const contextDocument = molstarContextDocumentPayload(target);
+      } else if (action === 'molstar' || action === MOLSTAR_OPEN_IN_TAB_ACTION || action.startsWith(MOLSTAR_OPEN_IN_GRID_ACTION)) {
+        const toGrid = action.startsWith(MOLSTAR_OPEN_IN_GRID_ACTION);
+        const records = molstarOpenInMolecules(target).map(molstarMoleculeSdfRecord).filter(Boolean);
+        // One molecule bound for a tab keeps the source-text entry when the file has one.
+        const contextDocument = (!toGrid && records.length < 2 ? molstarContextDocumentPayload(target) : null)
+          || molstarOpenInDocumentPayload(records);
         if (!contextDocument) throw new Error('No molecule-level Mol* context is available for this target.');
+        const gridDocumentId = action.slice(MOLSTAR_OPEN_IN_GRID_ACTION.length + 1);
         const posted = postHostMessage({
           type: 'openMolstarContextDocument',
           renderer: 'molstar',
+          destination: toGrid ? 'grid' : 'tab',
+          ...(gridDocumentId ? { gridDocumentId } : {}),
           contextDocument
         });
-        setStatus(posted ? `[web] Opening ${targetLabel} in a new tab...` : '[web] Separate Mol* view is unavailable in this host.');
+        const opened = records.length > 1 ? `${records.length} molecules` : targetLabel;
+        setStatus(posted ? `[web] Opening ${opened} in ${toGrid ? 'a grid' : 'a new tab'}...` : '[web] Separate Mol* view is unavailable in this host.');
       } else if (action === 'save-modified') {
         const saved = saveMolstarModifiedStructure();
         setStatus(`[web] Saving ${saved.name} (${saved.count} structure${saved.count === 1 ? '' : 's'}).`);

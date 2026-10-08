@@ -5608,3 +5608,72 @@ html[data-burette-header-band] #buret-viewport-rail { left: auto !important; rig
 html[data-burette-header-band] body.buret-theme-dark :is(#buret-toolbar, .buret-corner-toggle) {
   background: color-mix(in srgb, #fff 11%, #111); border-color: transparent;
 }
+
+/* Menu format. One surface and row recipe for every DOM menu in the viewer, the
+   same one the shell menus use. It stays last so it wins over the per-menu rules
+   above; the iPhone action sheet keeps its platform styling. */
+body :is(.buret-tree-menu, .buret-molstar-preset-menu, .buret-generate-3d-menu, .buret-seq-menu, .buret-docking-pose-files),
+body:not(.burette-mobile-host) .buret-molecule-context-menu,
+body:not(.burette-mobile-host) .buret-molecule-context-menu:not(.buret-xyzrender-context-menu),
+body:not(.burette-mobile-host) .buret-molecule-context-submenu {
+  padding: 4px;
+  border: 0;
+  border-radius: 20px;
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, currentColor 8%, transparent), 0 8px 16px -4px rgb(0 0 0 / 0.12);
+  font-size: 13px;
+  line-height: 18.5px;
+}
+/* The menus that predate the shared chrome surface take it too, so a context menu
+   and the tree menu it opens beside are one material. */
+body:is(.buret-theme-light, .buret-theme-dark) :is(.buret-generate-3d-menu, .buret-seq-menu),
+body:is(.buret-theme-light, .buret-theme-dark):not(.burette-mobile-host) .buret-molecule-context-menu,
+body:is(.buret-theme-light, .buret-theme-dark):not(.burette-mobile-host) .buret-molecule-context-menu:not(.buret-xyzrender-context-menu),
+body:is(.buret-theme-light, .buret-theme-dark):not(.burette-mobile-host) .buret-molecule-context-submenu {
+  color: var(--buret-toolbar-color);
+  background: var(--buret-toolbar-background);
+}
+body .buret-tree-menu { width: 208px; }
+body .buret-tree-menu.buret-viewport-menu { width: 232px; }
+body .buret-tree-measurement-editor { width: min(268px, calc(100vw - 24px)); padding: 8px; }
+body :is(.buret-tree-menu-item, .buret-molstar-appearance-item, .buret-docking-pose-file),
+body .buret-generate-3d-menu button,
+body:not(.burette-mobile-host) .buret-molecule-context-menu button:not(.buret-molecule-context-mode-button),
+body:not(.burette-mobile-host) :is(.buret-molecule-context-menu, .buret-molecule-context-submenu, .buret-molstar-preset-menu) .buret-tree-menu-item {
+  min-height: 28px;
+  padding: 0 8px;
+  gap: 6px;
+  border-radius: 15px;
+  font-size: 13px;
+}
+body .buret-seq-menu [data-slot="select-item"] { border-radius: 15px; }
+body :is(.buret-tree-menu-icon, .buret-tree-menu-icon > svg) { width: 16px; height: 16px; }
+body :is(.buret-tree-menu-title, .buret-molstar-preset-menu-section, .buret-molecule-context-menu-section-label, .buret-tree-menu-actions > summary),
+body:not(.burette-mobile-host) .buret-molecule-context-submenu .buret-tree-menu-title {
+  margin: 0;
+  padding: 4px 8px;
+  color: color-mix(in srgb, currentColor 50%, transparent);
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+body .buret-tree-menu-actions > summary { min-height: 28px; padding-block: 0; border-radius: 15px; }
+body :is(.buret-tree-menu-divider, .buret-molstar-preset-menu-separator) { margin: 4px 8px; }
+body .buret-molstar-preset-current { font-size: 12px; }
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-molecule-context-menu-title { padding: 4px 8px 0; font-size: 13px; }
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-molecule-context-menu-subtitle { padding: 0 8px 4px; font-size: 12px; }
+/* A checked row carries a trailing check and no fill of its own. */
+body .buret-molstar-preset-menu .buret-tree-menu-item[aria-checked="true"]:not(:hover, :focus-visible),
+body .buret-molstar-appearance-item[aria-checked="true"]:not(:hover, :focus-visible) { background: transparent; }
+body .buret-molstar-preset-current { color: inherit; font-size: 0; }
+body .buret-molstar-preset-current::after { content: "✓"; font-size: 13px; }
+body .buret-tree-menu-heading,
+body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-molecule-context-menu-title { font-size: 13px; font-weight: 400; }
+body .buret-tree-menu-note { color: color-mix(in srgb, currentColor 50%, transparent); font-size: 12px; line-height: 14px; }
+/* In the dark theme a menu sits one step above the chrome it opens over. */
+body:not(.buret-theme-light) :is(.buret-tree-menu, .buret-molstar-preset-menu, .buret-generate-3d-menu, .buret-seq-menu, .buret-docking-pose-files),
+body:not(.buret-theme-light):not(.burette-mobile-host) .buret-molecule-context-menu,
+body:not(.buret-theme-light):not(.burette-mobile-host) .buret-molecule-context-menu:not(.buret-xyzrender-context-menu),
+body:not(.buret-theme-light):not(.burette-mobile-host) .buret-molecule-context-submenu {
+  background: #2a2a2a;
+}
