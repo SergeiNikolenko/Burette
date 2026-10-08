@@ -2860,6 +2860,15 @@ img.radix-menu-item-icon {
 .dock-panel[data-area="bottom"] .dock-resizer:active::after {
   background: var(--dock-divider-active-color);
 }
+/* AppShellTabStrip default: stable 156px tabs, 28px controls, shared surfaces. */
+.dock-panel-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
 .dock-header {
   height: 44px;
   flex: 0 0 44px;
@@ -2868,101 +2877,49 @@ img.radix-menu-item-icon {
   gap: 4px;
   padding: 7px 8px;
   border-bottom: 1px solid var(--line-subtler);
-  /* Dock tabs sit on the panel surface, so the active fill is the ghost tint
-     rather than the raised surface the top strip uses. */
-  --tab-active-bg: var(--color-background-primary-ghost-hover);
+  --tab-active-bg: color-mix(in srgb, var(--color-text) 5%, var(--color-surface));
   box-sizing: border-box;
   user-select: none;
   -webkit-user-select: none;
 }
 .dock-tab-strip {
   min-width: 0;
-  flex: 1;
+  flex: 0 1 auto;
   height: 28px;
   display: flex;
   align-items: center;
   gap: 4px;
-  /* Tabs used to shrink past their label and slide under one another once the
-     strip ran out of room. They keep their width and the strip scrolls. */
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
 }
-.dock-tab-strip::-webkit-scrollbar {
-  display: none;
-}
-.dock-panel[data-area="right"] .dock-tab-strip {
-  flex: 0 1 auto;
-}
-.dock-panel[data-area="right"] .dock-header > .dock-icon-button:last-child {
-  margin-left: auto;
-}
+.dock-tab-strip::-webkit-scrollbar { display: none; }
 .dock-tab-shell {
   position: relative;
   min-width: 0;
+  width: 156px;
+  max-width: 100%;
   flex: 0 0 auto;
-}
-.dock-panel[data-area="right"] .dock-tab-shell {
-  flex: 0 0 auto;
+  container-type: inline-size;
 }
 .dock-tab {
-  max-width: 150px;
-  min-width: 36px;
+  width: 100%;
   height: 28px;
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: var(--color-text-tertiary);
+  color: var(--color-text-secondary);
   display: inline-flex;
+  justify-content: flex-start;
   align-items: center;
   gap: 8px;
-  padding: 0 10px;
+  padding: 4px 8px;
   font: inherit;
   font-size: var(--text-sm);
+  line-height: 18.5714px;
   cursor: default;
-  user-select: none;
-  -webkit-user-select: none;
-  transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
-.dock-tab svg {
-  transition: opacity 120ms ease-out;
-}
-.dock-panel[data-area="right"] .dock-tab {
-  width: 40px;
-  min-width: 40px;
-  max-width: 40px;
-  justify-content: center;
-  gap: 5px;
-  padding: 0 7px;
-}
-.dock-panel[data-area="right"] .dock-tab:not([data-active]) svg {
-  width: 18px;
-  height: 18px;
-}
-.dock-panel[data-area="right"] .dock-tab:not([data-active]) span {
-  display: none;
-}
-/* A right-dock tab collapses to a 40px icon. On hover the shared rule adds room
-   for the close button, but there is none in 40px, so the cross lands on the
-   icon. A pointed-at icon tab expands like the active one and shows its label. */
-.dock-panel[data-area="right"] .dock-tab-shell:hover .dock-tab,
-.dock-panel[data-area="right"] .dock-tab-shell:focus-within .dock-tab {
-  width: auto;
-  max-width: 170px;
-  justify-content: flex-start;
-}
-.dock-panel[data-area="right"] .dock-tab-shell:hover .dock-tab:not([data-active]) span,
-.dock-panel[data-area="right"] .dock-tab-shell:focus-within .dock-tab:not([data-active]) span {
-  display: block;
-}
-.dock-tab span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* The fill is opaque in both themes, so a backdrop blur adds nothing but
-   WebKit's light fringe around the rounded edge. */
+.dock-tab span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dock-tab:hover,
 .dock-tab[data-active],
 .dock-tab-shell:hover .dock-tab,
@@ -2970,114 +2927,39 @@ img.radix-menu-item-icon {
   background: var(--tab-active-bg);
   color: var(--color-text);
 }
-/* A pressed tab stays put: the shared Button nudges it down a pixel. */
 .dock-tab:active { translate: none; }
 .dock-tab-close {
   position: absolute;
-  right: 5px;
+  right: 4px;
   top: 50%;
   transform: translateY(-50%);
   width: 20px;
   height: 20px;
   border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-muted);
-  display: grid;
-  place-items: center;
-  padding: 0;
-  /* Hidden until the tab is pointed at or focused, so a strip of background
-     tabs is not a row of crosses - but reachable on every one of them. */
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 120ms ease-out, color 120ms ease-out, background 120ms ease-out, box-shadow 120ms ease-out;
-}
-.dock-tab-shell:hover .dock-tab-close,
-.dock-tab-shell:focus-within .dock-tab-close,
-.dock-tab-shell[data-active] .dock-tab-close {
-  opacity: 1;
-  pointer-events: auto;
-}
-/* The room has to appear with the button, or the label slides under it. */
-.dock-tab-shell[data-active] .dock-tab,
-.dock-tab-shell:hover .dock-tab,
-.dock-tab-shell:focus-within .dock-tab {
-  padding-right: 34px;
-}
-.dock-tab-shell[data-active] .dock-tab-close {
-  color: var(--text-secondary);
-}
-.dock-tab-close:hover {
-  background: var(--surface-hover);
-  color: var(--text-secondary);
-  box-shadow: inset 0 0 0 1px var(--line-subtle);
-}
-.dock-panel[data-area="right"] .dock-tab-close {
-  right: 5px;
-}
-/* In a narrow right dock the active tab is an icon too; only the pointed-at
-   tab opens up. If the active tab kept its label, clicking a tab to its right
-   would collapse it and slide the clicked tab out from under the pointer. */
-@container (width < 360px) {
-  .dock-panel[data-area="right"] .dock-tab-shell[data-active]:not(:hover, :focus-within) .dock-tab {
-    padding-right: 7px;
-  }
-
-  .dock-panel[data-area="right"] .dock-tab-shell[data-active]:not(:hover, :focus-within) .dock-tab span {
-    display: none;
-  }
-
-  .dock-panel[data-area="right"] .dock-tab-shell[data-active]:not(:hover, :focus-within) .dock-tab-close {
-    opacity: 0;
-    pointer-events: none;
-  }
-}
-@container (min-width: 360px) {
-  .dock-panel[data-area="right"] .dock-tab-shell {
-    flex: 0 1 auto;
-  }
-
-  .dock-panel[data-area="right"] .dock-tab {
-    width: auto;
-    min-width: 0;
-    max-width: none;
-    justify-content: flex-start;
-    padding: 0 9px;
-  }
-
-  /* The padding shorthand above also resets the room reserved for the close
-     button (which is absolutely positioned at the tab's right edge), so the
-     label would run underneath it. Restore that room wherever it shows. */
-  .dock-panel[data-area="right"] .dock-tab-shell[data-active] .dock-tab,
-  .dock-panel[data-area="right"] .dock-tab-shell:hover .dock-tab,
-  .dock-panel[data-area="right"] .dock-tab-shell:focus-within .dock-tab {
-    padding-right: 34px;
-  }
-
-  .dock-panel[data-area="right"] .dock-tab:not([data-active]) span {
-    display: block;
-  }
-}
-.dock-icon-button {
-  width: 28px;
-  height: 28px;
-  flex: 0 0 28px;
-  border: 0;
-  border-radius: calc(var(--radius-lg) * 0.75);
+  border-radius: 10px;
   background: transparent;
   color: var(--color-text-tertiary);
   display: grid;
   place-items: center;
-  padding: 0;
-  font: 18px/1 var(--ui-font);
-  cursor: default;
-  transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
+  padding: 2px;
+  opacity: 0;
+  pointer-events: none;
 }
-.dock-icon-button:hover {
-  background: var(--color-background-primary-ghost-hover);
-  color: var(--color-text);
+.dock-tab-shell:hover .dock-tab-close,
+.dock-tab-shell:focus-within .dock-tab-close,
+.dock-tab-shell[data-active] .dock-tab-close { opacity: 1; pointer-events: auto; }
+.dock-tab[data-closable] { padding-right: 28px; }
+@container (width < 64px) {
+  .dock-tab-close { visibility: hidden; }
+  .dock-tab[data-closable] { padding-right: 8px; }
 }
-.dock-icon-button:active { transform: scale(0.94); }
+.dock-tab-close:hover { background: var(--color-background-primary-ghost-hover); }
+.dock-icon-button { flex: 0 0 28px; }
+.dock-hide-button { margin-left: auto; }
+.dock-tab:focus-visible,
+.dock-tab-close:focus-visible,
+.dock-icon-button:focus-visible,
+.dock-panel-body:focus-visible { outline: 2px solid var(--color-ring); outline-offset: -2px; box-shadow: none; }
 .dock-content {
   min-height: 0;
   flex: 1;

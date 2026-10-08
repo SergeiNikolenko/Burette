@@ -2282,7 +2282,7 @@ assert.match(styles, /\.tab-shell \{[^}]*position: relative/s);
 assert.match(styles, /\.tab \{[^}]*height: 32px;/s);
 assert.match(styles, /\.tab:hover \{[^}]*backdrop-filter: blur\(40px\)/);
 assert.match(styles, /--tab-active-bg: var\(--color-background-primary-ghost-hover\);/);
-assert.doesNotMatch(styles, /--tab-active-bg: color-mix\(/);
+// Dock AppShellTabStrip uses the original 5% text/surface selected fill.
 assert.match(styles, /\.tab\.active \{[^}]*background: var\(--tab-active-bg\);[^}]*backdrop-filter: blur\(40px\)/s);
 // The close button sits inside the pill's right padding from the start and
 // only fades in; sliding it in from outside forced every tab to reserve the
@@ -2308,24 +2308,14 @@ for (const sourceText of [dockPanel, editorTabs, statusDetailsDialog, settingCon
 }
 assert.doesNotMatch(dockPanel, /aria-label=\{`Close \$\{area\} dock`\}[\s\S]*?>\s*x\s*<\/button>/);
 assert.match(styles, /\.close-glyph \{/);
-assert.match(styles, /\.dock-tab-shell:hover \.dock-tab-close,\s*\.dock-tab-shell:focus-within \.dock-tab-close,\s*\.dock-tab-shell\[data-active\] \.dock-tab-close \{/);
-// Closing must not require selecting the tab first, so the button is rendered
-// for every tab and only revealed by hover, focus or being active.
-assert.doesNotMatch(dockPanel, /!readOnly && active && !\(tab\.kind === "xyzrender"/);
-assert.doesNotMatch(styles, /\.dock-tab\[data-active\] \+ \.dock-tab-close/);
-assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab,\s*\.dock-tab-shell:hover \.dock-tab,\s*\.dock-tab-shell:focus-within \.dock-tab \{\s*padding-right: 34px;/);
+// Dock selection, background-tab closing, focus and drag behavior are exercised
+// by test-dock-header.test.tsx and test-dock-file-drag.test.tsx.
 // A shrinking tab used to slide under its neighbour once the strip filled up.
 assert.match(styles, /\.dock-tab-strip \{[\s\S]*?overflow-x: auto;/);
-assert.match(styles, /\.dock-tab-shell \{[\s\S]*?flex: 0 0 auto;/);
 assert.match(styles, /\.dock-tab \{[^}]*height: 28px;[^}]*border-radius: 10px;/s);
-assert.match(styles, /\.dock-tab-close \{[^}]*width: 20px;[^}]*height: 20px;[^}]*border-radius: 8px;[^}]*background: transparent;[^}]*opacity: 0;[^}]*pointer-events: none;/s);
-assert.match(styles, /\.dock-tab-close:hover \{[^}]*background: var\(--surface-hover\);[^}]*box-shadow: inset 0 0 0 1px var\(--line-subtle\)/s);
-assert.match(styles, /\.dock-tab-shell\[data-active\] \.dock-tab-close \{[^}]*color: var\(--text-secondary\);[^}]*\}/s);
-assert.match(styles, /\.dock-tab:hover,\s*\.dock-tab\[data-active\],\s*\.dock-tab-shell:hover \.dock-tab,\s*\.dock-tab-shell:focus-within \.dock-tab \{[^}]*background: var\(--tab-active-bg\);/s);
 // The gutter is sticky; it must stay opaque or line numbers draw over content
 // whenever the editor scrolls horizontally.
 assert.match(styles, /\.text-file-editor \.cm-gutters \{[^}]*border-right: 0;[^}]*background: var\(--shadcn-background\);[^}]*color: var\(--text-muted\);[^}]*\}/s);
-assert.doesNotMatch(styles, /\.dock-tab-shell:hover \.dock-tab svg,\s*\.dock-tab-shell:focus-within \.dock-tab svg \{\s*opacity: 0/s);
 assert.doesNotMatch(styles, /\.dock-tab\[data-active\] svg \{\s*opacity: 0/s);
 // The hand-rolled resize system is gone; the layout is driven by
 // react-resizable-panels. These pin the invariants that were expensive to find:
@@ -2805,8 +2795,6 @@ assert.match(styles, /\.grid-filter-inputs input \{[^}]*min-width: 0;[^}]*width:
 assert.match(styles, /\.grid-filter-card-host,[^{]*\{[^}]*min-width: 0;[^}]*max-width: 100%;/s);
 assert.match(gridFilterSection, /<Accordion[\s\S]*?value=\{open \? "filters" : ""\}/);
 assert.doesNotMatch(gridFilterSection, /className="structure-inspector-section-title-button"[\s\S]{0,180}ArrowDown01Icon[\s\S]{0,80}Filters/);
-assert.match(dockPanel, /<Button[\s\S]*?className="dock-tab"/);
-assert.match(dockPanel, /<TooltipContent\b[^>]*>Close panel<\/TooltipContent>/);
 // The scene stepper is identified by the scene itself, not by the parser failing.
 assert.match(structureInfoPanel, /if \(sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT\)/);
 assert.match(structureInfoPanel, /function InlineSettingsSection\(\{ title, children \}/);

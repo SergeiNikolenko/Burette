@@ -9,11 +9,10 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collap
 import { ChevronDown } from "./ui/app-icons";
 import { XyzrenderProperties } from "./xyzrender-properties";
 import { StoryMarkdown } from "./story-markdown";
+import { DockHeader } from "./dock-header";
 import { DockFileTabs } from "./dock-file-tabs";
 import { useDropHighlightReset } from "../hooks/use-drop-highlight-reset";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type ComponentProps } from "react";
-import { Plus as Add01Icon, Atom as Atom01Icon, X as Cancel01Icon, FileBlank as File02Icon, Folder as Folder01Icon, Search as Search01Icon } from "@/components/ui/app-icon-data";
-import { HugeiconsIcon } from "@hugeicons/react";
+import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { join, resourceDir } from "@tauri-apps/api/path";
 import { DOCK_TAB_LABELS, createDockTab, dockFileEntries, dockTabCatalog, type DockArea, type DockFileEntry, type DockTabKind } from "../lib/dock";
@@ -33,7 +32,6 @@ import { JobsPanel } from "./jobs-panel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FoldingAnalysisPanel, useFoldingResult } from "./folding-results-panel";
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
@@ -54,24 +52,6 @@ type DockPanelProps = {
   state: ShellViewState;
   actions: ShellActions;
   readOnly?: boolean;
-};
-
-const dockTabIcons: Record<DockTabKind, ComponentProps<typeof HugeiconsIcon>["icon"]> = {
-  scene: Atom01Icon,
-  xyzrender: Atom01Icon,
-  files: Folder01Icon,
-  spectrum: Atom01Icon,
-  text: File02Icon,
-  story: File02Icon,
-  inspector: Search01Icon,
-  folding: Atom01Icon,
-  "structure-basket": Atom01Icon,
-  compare: Atom01Icon,
-  jobs: File02Icon,
-  logs: File02Icon,
-  diagnostics: Search01Icon,
-  review: Search01Icon,
-  "chemical-space": Atom01Icon,
 };
 
 function resolveChemicalSpaceDocument(
@@ -99,6 +79,8 @@ function resolveChemicalSpaceDocument(
 }
 
 export function DockPanel({ area, state, actions, readOnly = false }: DockPanelProps) {
+  const panelId = useId();
+  const panel = useRef<HTMLElement>(null);
   const [dropActive, setDropActive] = useState(false);
   useDropHighlightReset(setDropActive);
 
@@ -107,6 +89,10 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     ? [configuredTabs.find((tab) => tab.kind === "inspector") ?? createDockTab("inspector")]
     : configuredTabs;
   const open = area === "right" ? state.rightDockOpen : state.bottomDockOpen;
+  useLayoutEffect(() => {
+    if (open || !panel.current?.contains(document.activeElement)) return;
+    panel.current.closest(".app-shell")?.querySelector<HTMLButtonElement>(`button[aria-label="Show ${area} dock"]`)?.focus();
+  }, [open, area]);
   const dockDocumentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
@@ -216,6 +202,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
 
   return (
     <aside
+      ref={panel}
       className="dock-panel"
       data-area={area}
       data-active-tab={activeTab.kind}
@@ -233,79 +220,12 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
       aria-label={`${area} dock`}
     >
       <div className="dock-panel-inner">
-        <TooltipProvider>
-          <div className="dock-header">
-            <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
-              {visibleTabs.map((tab) => {
-                const Icon = dockTabIcons[tab.kind];
-                const active = tab.kind === activeTab.kind;
-                const closeTab = () => {
-                  if (visibleTabs.length > 1) {
-                    actions.closeDockTab(area, tab.id);
-                    return;
-                  }
-                  actions.setDockOpen(area, false);
-                };
-                return (
-                  <div className="dock-tab-shell" data-active={active || undefined} key={tab.id}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="dock-tab"
-                      data-active={active || undefined}
-                      draggable={tab.kind === "files" && Boolean(filesTabDragPayload)}
-                      {...(tab.kind === "files" ? filesTabDrag : {})}
-                      onClick={() => actions.setDockActiveTab(area, tab.kind)}
-                      role="tab"
-                      aria-selected={active}
-                    >
-                      <HugeiconsIcon icon={Icon} className="size-[18px]" strokeWidth={2} aria-hidden="true" />
-                      <span>{DOCK_TAB_LABELS[tab.kind]}</span>
-                    </Button>
-                    {!readOnly && !(tab.kind === "xyzrender" && !rawTabs.some((rawTab) => rawTab.kind === "xyzrender")) && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-2xs"
-                            className="dock-tab-close"
-                            aria-label={visibleTabs.length > 1 ? `Close ${DOCK_TAB_LABELS[tab.kind]}` : `Close ${area} dock`}
-                            onClick={closeTab}
-                          >
-                            <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent compact showArrow={false}>Close {DOCK_TAB_LABELS[tab.kind]}</TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
-                );
-              })}
-              {!readOnly ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button type="button" variant="ghost" size="icon-sm" className="dock-icon-button" onClick={showAddMenu} aria-label={`Add ${area} dock tab`}>
-                      <HugeiconsIcon icon={Add01Icon} aria-hidden="true" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent compact showArrow={false}>Add panel</TooltipContent>
-                </Tooltip>
-              ) : null}
-            </div>
-            {!readOnly ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button type="button" variant="ghost" size="icon-sm" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
-                    <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent compact showArrow={false}>Close panel</TooltipContent>
-              </Tooltip>
-            ) : null}
-          </div>
-        </TooltipProvider>
+        <DockHeader area={area} tabs={visibleTabs} activeKind={activeTab.kind} panelId={panelId} readOnly={readOnly}
+          transientTabId={rawTabs.some(tab => tab.kind === "xyzrender") ? undefined : visibleTabs.find(tab => tab.kind === "xyzrender")?.id}
+          fileDragProps={{ ...filesTabDrag, draggable: Boolean(filesTabDragPayload) }}
+          onSelect={kind => actions.setDockActiveTab(area, kind)} onClose={id => actions.closeDockTab(area, id)}
+          onAdd={showAddMenu} onHide={() => actions.setDockOpen(area, false)} />
+        <div className="dock-panel-body" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${activeTab.kind}`} tabIndex={0}>
         <DockPanelContent
           area={area}
           activeTabKind={activeTab.kind}
@@ -313,6 +233,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
           actions={actions}
           dockDrops={dockDrops}
         />
+        </div>
       </div>
     </aside>
   );
