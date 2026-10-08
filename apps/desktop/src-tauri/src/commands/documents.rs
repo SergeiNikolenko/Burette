@@ -1739,12 +1739,18 @@ fn open_text_structure_for_window_label<R: Runtime>(
 }
 
 #[tauri::command]
-pub(crate) fn open_docking_document<R: Runtime>(
+pub(crate) async fn open_docking_document<R: Runtime>(
     app: tauri::AppHandle<R>,
     request: DockingDocumentRequest,
     preferences: ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
-    open_docking_document_runtime(&app, request, &preferences)
+    // File access may wait for macOS consent or remote storage. Keep the
+    // window's event loop free while preparing every structure in the scene.
+    tauri::async_runtime::spawn_blocking(move || {
+        open_docking_document_runtime(&app, request, &preferences)
+    })
+    .await
+    .map_err(|err| format!("Docking scene preparation task failed: {err}"))?
 }
 
 #[tauri::command]

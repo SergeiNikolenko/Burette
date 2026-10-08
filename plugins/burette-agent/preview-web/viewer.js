@@ -711,22 +711,27 @@
       return window.BuretteAgent.run({ command: 'showLigands', args: action.args || {} });
     }
     if (type === 'hide_components') {
-      return window.BuretteSceneActions?.hideComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.hideComponents is unavailable.');
+      return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.hideComponents?.(action))
+        || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.hideComponents is unavailable.'));
     }
     if (type === 'show_components') {
-      return window.BuretteSceneActions?.showComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.showComponents is unavailable.');
+      return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.showComponents?.(action))
+        || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.showComponents is unavailable.'));
     }
     if (type === 'edit_components') {
-      return window.BuretteSceneActions?.editComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'Component editing is unavailable.');
+      return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.editComponents?.(action))
+        || agentActionFailure(type, 'NOT_IMPLEMENTED', 'Component editing is unavailable.'));
     }
     if (type === 'open_components_menu') {
       return openCompositionSceneMenu(action);
     }
     if (type === 'remove_components') {
-      return window.BuretteSceneActions?.removeComponents?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.removeComponents is unavailable.');
+      return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.removeComponents?.(action))
+        || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.removeComponents is unavailable.'));
     }
     if (type === 'create_component') {
-      return window.BuretteSceneActions?.createComponent?.(action) || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.createComponent is unavailable.');
+      return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.createComponent?.(action))
+        || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.createComponent is unavailable.'));
     }
     if (type === 'select_residues') {
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
@@ -3782,7 +3787,7 @@
       const poseCount = Number(activeMolstarPrepared.poseCount || 0);
       const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
       await applyDockingSceneVisibility(activeViewer, activeMolstarPrepared, activePose, { focus: false });
-      await activeStructureAlignmentControl?.restoreAfterSceneReload?.();
+      await activeStructureAlignmentControl?.restoreAfterSceneReload?.(activeViewer, activeMolstarPrepared);
       return;
     }
     if (activeMolstarPrepared?.kind === 'docking' && activeMolstarPrepared?.sdfPoseOverlayAvailable === true) {
@@ -4290,7 +4295,8 @@
       const structure = entry?.cell?.obj?.data || entry?.obj?.data || entry;
       return total + Math.max(0, Number(structure?.elementCount) || 0);
     }, 0);
-    if (elementCount > 250000) return 'Preview is disabled for structures larger than 250,000 elements.';
+    // Building a preview blocks the main thread for about a second per 20,000 elements.
+    if (elementCount > 50000) return 'Preview is disabled for structures larger than 50,000 elements.';
     return '';
   }
 
@@ -4487,6 +4493,9 @@
       const sourcePlugin = activeViewer?.plugin;
       const sourceCamera = captureMolstarCameraSnapshot(activeViewer);
       if (typeof sourcePlugin?.state?.data?.getSnapshot !== 'function') throw new Error('Current Mol* scene cannot be copied.');
+      // Two frames let the loading shell paint before the build blocks.
+      await waitForAnimationFrame();
+      await waitForAnimationFrame();
       if (serial !== molstarPresetPreviewSerial) return;
       const snapshot = sourcePlugin.state.data.getSnapshot();
       await viewer.plugin.runTask(viewer.plugin.state.data.setSnapshot(snapshot));
@@ -4923,11 +4932,18 @@
   async function requestMolstarPreset(preset, { preserveCamera = true } = {}) {
     const value = normalizeMolstarPreset(preset);
     const controller = ensureMolstarPresetPreviewController();
-    if (controller) {
+    beginMolstarBusy();
+    try {
+      await nextMolstarPaint();
       const id = preserveCamera ? `${value}:preserve-camera` : value;
-      return controller.requestApply({ id, preset: value, preserveCamera });
+      const result = controller
+        ? await controller.requestApply({ id, preset: value, preserveCamera })
+        : await applyMolstarPresetNow(value, { preserveCamera });
+      if (result === true) await resyncDockingSceneAfterRestyle(activeViewer);
+      return result;
+    } finally {
+      endMolstarBusy();
     }
-    return applyMolstarPresetNow(value, { preserveCamera });
   }
 
   async function applyMolstarPresetNow(preset, { preserveCamera = false } = {}) {
@@ -5018,6 +5034,7 @@
       if (applied) fadeMolstarTransitionFrame(transitionFrame);
       else removeMolstarTransitionFrame(transitionFrame);
     }
+    return applied;
   }
 
   async function applyConfiguredMolstarPreset(viewer, config) {
@@ -15833,6 +15850,74 @@ SOFTWARE.
   // representations. Every externally triggered rebuild (context style/opacity/
   // color actions, pose stepping, toolbar toggles) is serialized through this
   // queue; callers that already run inside a rebuild use the *Now variants.
+  // A batch edit commits one Mol* state update per structure. Holding the draw
+  // loop keeps the previous frame on screen until the whole batch has landed,
+  // so a scene of many structures changes at once instead of one by one.
+  // The held frame gives no sign that work is under way, so a ring marks it.
+  // Geometry builds block the main thread for seconds on a large scene: the
+  // ring has to be painted before they start, and its delayed fade-in and
+  // rotation are compositor animations that keep running through the block.
+  let molstarBusyDepth = 0;
+  function beginMolstarBusy() {
+    if (molstarBusyDepth++ > 0) return;
+    const ring = document.createElement('span');
+    ring.className = 'buret-busy-ring';
+    ring.setAttribute('role', 'status');
+    ring.setAttribute('aria-label', 'Loading');
+    document.body.appendChild(ring);
+  }
+
+  function endMolstarBusy() {
+    if (--molstarBusyDepth > 0) return;
+    document.querySelectorAll('.buret-busy-ring').forEach(ring => ring.remove());
+  }
+
+  // Resolves after the next paint, or shortly after when nothing paints (a
+  // hidden pane never runs animation frames).
+  function nextMolstarPaint() {
+    return new Promise(resolve => {
+      const finish = () => {
+        window.clearTimeout(timer);
+        window.cancelAnimationFrame(frame);
+        resolve();
+      };
+      const timer = window.setTimeout(finish, 80);
+      let frame = window.requestAnimationFrame(() => {
+        frame = window.requestAnimationFrame(finish);
+      });
+    });
+  }
+
+  let molstarDrawHoldDepth = 0;
+  let molstarDrawHoldEndedAt = 0;
+  async function withMolstarDrawHold(viewer, run) {
+    const canvas3d = viewer?.plugin?.canvas3d;
+    if (typeof canvas3d?.pause !== 'function' || typeof canvas3d?.resume !== 'function') return run();
+    const outermost = molstarDrawHoldDepth++ === 0;
+    if (outermost) canvas3d.pause(true);
+    beginMolstarBusy();
+    try {
+      // Back-to-back holds are playback or a dragged slider; waiting for a
+      // paint before each of those would cap their rate.
+      if (outermost && performance.now() - molstarDrawHoldEndedAt > 300) await nextMolstarPaint();
+      return await run();
+    } finally {
+      endMolstarBusy();
+      if (--molstarDrawHoldDepth === 0) {
+        molstarDrawHoldEndedAt = performance.now();
+        if (viewer.plugin?.canvas3d === canvas3d) {
+          try {
+            canvas3d.commit?.(true);
+          } finally {
+            // PluginAnimationLoop already owns ticking. animate() would start
+            // a second independent rAF loop for the same canvas.
+            canvas3d.resume();
+          }
+        }
+      }
+    }
+  }
+
   let molstarSceneRebuildChain = Promise.resolve();
   const pendingSceneAppearance = new Map();
   function queueMolstarSceneRebuild(run, appearanceKey = null) {
@@ -15841,7 +15926,7 @@ SOFTWARE.
     const entry = { run, job: null };
     const execute = () => {
       if (appearanceKey) pendingSceneAppearance.delete(appearanceKey);
-      return entry.run();
+      return withMolstarDrawHold(activeViewer, () => entry.run());
     };
     entry.job = molstarSceneRebuildChain.then(execute, execute);
     if (appearanceKey) pendingSceneAppearance.set(appearanceKey, entry);
@@ -16371,48 +16456,57 @@ SOFTWARE.
     return (poseRefs || []).map(refs => refs.map(ref => byRef.get(ref)).filter(Boolean));
   }
 
-  async function styleDockingSceneOverlay(viewer, structuresByPose, activeIndex, params) {
-    if (params.uniform) {
-      const everything = structuresByPose.flat();
-      if (everything.length) await applySdfCollectionMolstarStyle(viewer, params.resolvedContextStyle, everything, 1, 'colored');
-      return;
-    }
-    const background = structuresByPose.filter((_, index) => index !== activeIndex).flat();
-    if (background.length) {
-      await applySdfCollectionMolstarStyle(viewer, params.resolvedContextStyle, background, params.contextOpacity, params.contextColor);
-    }
-    const active = structuresByPose[activeIndex] || [];
-    if (active.length) {
-      await applySdfCollectionMolstarStyle(viewer, normalizeMolstarStyle(params.style), active, 1, 'colored');
+  // These styles keep the representations Mol* built while loading, so only a
+  // reload brings them back once a backdrop replaced them.
+  function dockingSceneStyleNeedsReload(style) {
+    const normalized = normalizeMolstarStyle(style);
+    return normalized === 'default' || normalized === 'illustrative' || normalized === 'illustrative-surface';
+  }
+
+  // `wanted[index]` is '' for the scene style, a backdrop key for the faded All
+  // context, and undefined to leave the pose alone. Only poses whose look
+  // changes are rebuilt, so stepping through a backdrop restyles two poses.
+  async function styleDockingScenePoses(viewer, state, wanted, params) {
+    const structuresByPose = dockingSceneStructuresByPose(viewer, state.poseRefs);
+    const plain = [];
+    const backdrop = [];
+    const changed = [];
+    wanted.forEach((key, index) => {
+      if (key === undefined || state.poseStyles[index] === key) return;
+      (key ? backdrop : plain).push(...(structuresByPose[index] || []));
+      changed.push(index);
+    });
+    if (!plain.length && !backdrop.length) return;
+    // A failed build may already have changed some representations. Invalidate
+    // visibility now, but cache styles only once the entire update succeeds.
+    state.visible = null;
+    try {
+      if (backdrop.length) {
+        await applySdfCollectionMolstarStyle(viewer, params.resolvedContextStyle, backdrop, params.contextOpacity, params.contextColor);
+      }
+      if (plain.length) await applySdfCollectionMolstarStyle(viewer, normalizeMolstarStyle(params.style), plain, 1, 'colored');
+      await applyMolstarWaterLineRepresentation(viewer);
+      for (const index of changed) state.poseStyles[index] = wanted[index];
+    } catch (error) {
+      // Force a clean reload on retry, including partially changed poses that
+      // the next request might otherwise mistake for unchanged scene styles.
+      state.key = null;
+      throw error;
     }
   }
 
-  async function applyDockingSceneOverlayPoses(viewer, prepared, activePose, options) {
+  // Loads every pose once with its own representations. The single and All
+  // views then differ only in which structures are hidden, so switching between
+  // them parses and rebuilds nothing. A translucent All backdrop restyles those
+  // loaded structures in place and is tracked per pose by `poseStyles`.
+  async function ensureDockingSceneState(viewer, prepared, style, discardBackdrop) {
     const plugin = viewer.plugin;
     const poses = Array.isArray(prepared.poses) ? prepared.poses : [];
-    const activeIndex = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
-    if (!poses[activeIndex]) return false;
-    const style = configuredMolstarStyle(activeConfig);
-    const resolvedContextStyle = dockingSceneBackgroundStyle(readSdfCollectionContextStyle(activeConfig), style);
-    const uniform = resolvedContextStyle === 'default' || resolvedContextStyle === 'illustrative';
-    const contextOpacity = uniform ? 1 : readSdfCollectionContextOpacity(activeConfig);
-    const contextColor = uniform ? 'colored' : readSdfCollectionContextColor(activeConfig);
-    const params = { style, resolvedContextStyle, contextOpacity, contextColor, uniform };
-    const stateKey = [dockingSceneStateKey(prepared, style), 'all', resolvedContextStyle].join('|');
-    const appearanceKey = `${contextOpacity}|${contextColor}`;
-    const state = activeDockingSceneVisibilityState;
-    if (state && state.key === stateKey && dockingSceneVisibilityStateStillLoaded(viewer, state)) {
-      if ((state.activeIndex !== activeIndex || state.appearanceKey !== appearanceKey) && !uniform) {
-        const structuresByPose = dockingSceneStructuresByPose(viewer, state.poseRefs);
-        await styleDockingSceneOverlay(viewer, structuresByPose, activeIndex, params);
-        await applyMolstarWaterLineRepresentation(viewer);
-      }
-      state.activeIndex = activeIndex;
-      state.appearanceKey = appearanceKey;
-      updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
-      if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
-      return true;
-    }
+    const stateKey = dockingSceneStateKey(prepared, style);
+    let state = activeDockingSceneVisibilityState;
+    let loaded = Boolean(state) && state.key === stateKey && dockingSceneVisibilityStateStillLoaded(viewer, state);
+    if (loaded && discardBackdrop && dockingSceneStyleNeedsReload(style)) loaded = false;
+    if (loaded) return { state, rebuilt: false };
     resetXyzFrameOverlayState(viewer);
     resetSdfCollectionVisibilityState(viewer);
     resetDockingPoseCollectionState(viewer);
@@ -16421,62 +16515,93 @@ SOFTWARE.
     const poseRefs = [];
     for (const entry of poses) {
       const before = molstarStructureCellRefs(viewer);
-      await loadMolstarEntry(viewer, entry, { representationPreset: 'empty' });
+      await loadMolstarEntry(viewer, entry);
       poseRefs.push(Array.from(molstarStructureCellRefs(viewer)).filter(ref => !before.has(ref)));
     }
     if (!poseRefs.every(refs => refs.length)) {
       activeDockingSceneVisibilityState = null;
-      return false;
+      return null;
     }
-    await styleDockingSceneOverlay(viewer, dockingSceneStructuresByPose(viewer, poseRefs), activeIndex, params);
+    await applyMolstarStyle(viewer, style);
     await applyMolstarWaterLineRepresentation(viewer);
-    activeDockingSceneVisibilityState = { viewer, key: stateKey, poseRefs, activeIndex, appearanceKey };
-    updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
-    scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
-    return true;
+    state = { viewer, key: stateKey, poseRefs, activeIndex: -1, visible: null, poseStyles: poseRefs.map(() => '') };
+    activeDockingSceneVisibilityState = state;
+    try {
+      await activeStructureAlignmentControl?.restoreAfterSceneReload?.(viewer, prepared);
+    } catch (error) {
+      state.key = null;
+      throw error;
+    }
+    return { state, rebuilt: true };
   }
 
-  async function applyDockingSceneSinglePose(viewer, prepared, activePose, options) {
-    const plugin = viewer.plugin;
-    if (typeof plugin?.state?.data?.updateCellState !== 'function') return false;
+  // A preset restyles every loaded pose in place and builds the new
+  // representations visible. The scene adopts that style instead of reloading,
+  // and visibility is applied again so hidden poses stay hidden.
+  async function resyncDockingSceneAfterRestyle(viewer) {
+    const state = activeDockingSceneVisibilityState;
+    const prepared = activeMolstarPrepared;
+    if (prepared?.kind !== 'docking' || !prepared.dockingSceneMode) return;
+    if (!dockingSceneVisibilityStateStillLoaded(viewer, state)) return;
+    state.key = dockingSceneStateKey(prepared, configuredMolstarStyle(activeConfig));
+    state.poseStyles.fill('');
+    state.visible = null;
+    const activePose = readTrajectoryControlIndex(activeConfig, prepared, Number(prepared.poseCount || 0) || 1);
+    await applyDockingSceneVisibility(viewer, prepared, activePose, { focus: false });
+  }
+
+  // `activeIndex` null shows every pose.
+  function showDockingScenePoses(viewer, state, activeIndex) {
+    const target = activeIndex == null ? 'all' : activeIndex;
+    if (state.visible === target) return;
+    if (target !== 'all' && typeof state.visible === 'number') {
+      setDockingSceneRefsHidden(viewer, state.poseRefs[state.visible] || [], true);
+      setDockingSceneRefsHidden(viewer, state.poseRefs[target] || [], false);
+    } else {
+      state.poseRefs.forEach((refs, index) => setDockingSceneRefsHidden(viewer, refs, target !== 'all' && index !== target));
+    }
+    state.visible = target;
+  }
+
+  async function applyDockingSceneOverlayPoses(viewer, prepared, activePose, options) {
+    if (typeof viewer.plugin?.state?.data?.updateCellState !== 'function') return false;
     const poses = Array.isArray(prepared.poses) ? prepared.poses : [];
     const activeIndex = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
     if (!poses[activeIndex]) return false;
     const style = configuredMolstarStyle(activeConfig);
-    const stateKey = dockingSceneStateKey(prepared, style);
-    let state = activeDockingSceneVisibilityState;
-    let rebuilt = false;
-    if (!state || state.key !== stateKey || !dockingSceneVisibilityStateStillLoaded(viewer, state)) {
-      resetXyzFrameOverlayState(viewer);
-      resetSdfCollectionVisibilityState(viewer);
-      resetDockingPoseCollectionState(viewer);
-      resetDockingSceneVisibilityState(viewer);
-      if (typeof plugin.clear === 'function') await plugin.clear();
-      const poseRefs = [];
-      for (const entry of poses) {
-        const before = molstarStructureCellRefs(viewer);
-        await loadMolstarEntry(viewer, entry);
-        poseRefs.push(Array.from(molstarStructureCellRefs(viewer)).filter(ref => !before.has(ref)));
-      }
-      if (!poseRefs.every(refs => refs.length)) {
-        activeDockingSceneVisibilityState = null;
-        return false;
-      }
-      await applyMolstarStyle(viewer, style);
-      await applyMolstarWaterLineRepresentation(viewer);
-      state = { viewer, key: stateKey, poseRefs, activeIndex: -1 };
-      activeDockingSceneVisibilityState = state;
-      rebuilt = true;
-    }
-    if (state.activeIndex !== activeIndex) {
-      if (state.activeIndex < 0) {
-        state.poseRefs.forEach((refs, index) => setDockingSceneRefsHidden(viewer, refs, index !== activeIndex));
-      } else {
-        setDockingSceneRefsHidden(viewer, state.poseRefs[state.activeIndex] || [], true);
-        setDockingSceneRefsHidden(viewer, state.poseRefs[activeIndex] || [], false);
-      }
-      state.activeIndex = activeIndex;
-    }
+    const resolvedContextStyle = dockingSceneBackgroundStyle(readSdfCollectionContextStyle(activeConfig), style);
+    const uniform = resolvedContextStyle === 'default' || resolvedContextStyle === 'illustrative';
+    const ensured = await ensureDockingSceneState(viewer, prepared, style,
+      uniform && Boolean(activeDockingSceneVisibilityState?.poseStyles?.some(Boolean)));
+    if (!ensured) return false;
+    const { state, rebuilt } = ensured;
+    const contextOpacity = readSdfCollectionContextOpacity(activeConfig);
+    const contextColor = readSdfCollectionContextColor(activeConfig);
+    const backdropKey = uniform ? '' : [resolvedContextStyle, contextOpacity, contextColor].join('|');
+    await styleDockingScenePoses(viewer, state, poses.map((_, index) => index === activeIndex ? '' : backdropKey),
+      { style, resolvedContextStyle, contextOpacity, contextColor });
+    showDockingScenePoses(viewer, state, null);
+    state.activeIndex = activeIndex;
+    updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+    if (rebuilt || options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
+    return true;
+  }
+
+  async function applyDockingSceneSinglePose(viewer, prepared, activePose, options) {
+    if (typeof viewer.plugin?.state?.data?.updateCellState !== 'function') return false;
+    const poses = Array.isArray(prepared.poses) ? prepared.poses : [];
+    const activeIndex = Math.max(0, Math.min(poses.length - 1, Math.trunc(Number(activePose) || 0)));
+    if (!poses[activeIndex]) return false;
+    const style = configuredMolstarStyle(activeConfig);
+    const ensured = await ensureDockingSceneState(viewer, prepared, style,
+      Boolean(activeDockingSceneVisibilityState?.poseStyles?.[activeIndex]));
+    if (!ensured) return false;
+    const { state, rebuilt } = ensured;
+    const wanted = [];
+    wanted[activeIndex] = '';
+    await styleDockingScenePoses(viewer, state, wanted, { style });
+    showDockingScenePoses(viewer, state, activeIndex);
+    state.activeIndex = activeIndex;
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     if (rebuilt || options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-scene', durationMs: 180 });
     return true;
@@ -16628,34 +16753,65 @@ SOFTWARE.
     });
   }
 
+  // Representations this viewer built per collection structure, each tagged
+  // with the index (`role`) of the style it was built from. An opacity or
+  // colour change restyles them in a single state update instead of removing
+  // and rebuilding every structure's geometry.
   const collectionRepresentations = new WeakMap();
-  async function applyMolstarRepresentationsToStructures(viewer, structures, representation) {
-    const plugin = viewer?.plugin;
-    if (!plugin) return;
+  async function updateCollectionRepresentations(plugin, structures, representations) {
     const state = plugin.state.data;
-    const reusable = (structures || []).map(structure => collectionRepresentations.get(structure.cell));
-    if (reusable.length && reusable.every(entry => entry && state.cells.has(entry.ref)
-        && entry.type === representation.type && entry.color === representation.color)) {
-      const update = state.build();
-      for (const entry of reusable) update.to(entry.ref).update(old => ({ ...old,
+    const cached = (structures || []).map(structure => collectionRepresentations.get(structure.cell));
+    const reusable = cached.length > 0 && cached.every(entries => entries?.length && entries.every(entry => {
+      const representation = representations[entry.role];
+      return representation && state.cells.has(entry.ref)
+        && entry.type === representation.type && entry.color === representation.color;
+    }));
+    if (!reusable) return false;
+    const update = state.build();
+    for (const entry of cached.flat()) {
+      const representation = representations[entry.role];
+      update.to(entry.ref).update(old => ({ ...old,
         type: { ...old.type, params: { ...entry.defaults, ...representation.typeParams } },
         colorTheme: { ...old.colorTheme, params: { ...old.colorTheme.params, ...representation.colorParams } }
       }));
-      await update.commit();
-      return;
     }
+    await update.commit();
+    return true;
+  }
+
+  async function addCollectionRepresentation(plugin, structure, component, representation, role) {
+    if (!component) return false;
+    const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation);
+    if (!result) throw new Error('Mol* could not build this representation.');
+    if (result.ref && structure.cell) {
+      const params = plugin.state.data.cells.get(result.ref)?.transform?.params?.type?.params || {};
+      const entries = collectionRepresentations.get(structure.cell) || [];
+      entries.push({ ref: result.ref, role, type: representation.type,
+        color: representation.color, defaults: { ...params, alpha: 1, transparentBackfaces: 'off' } });
+      collectionRepresentations.set(structure.cell, entries);
+    }
+    return true;
+  }
+
+  async function clearCollectionRepresentations(viewer, structures) {
     await clearMolstarMainRepresentationsForStructures(viewer, structures);
+    for (const structure of structures || []) {
+      if (structure.cell) collectionRepresentations.delete(structure.cell);
+    }
+  }
+
+  async function applyMolstarRepresentationsToStructures(viewer, structures, representation) {
+    const plugin = viewer?.plugin;
+    if (!plugin) return;
+    if (await updateCollectionRepresentations(plugin, structures, [representation])) return;
+    await clearCollectionRepresentations(viewer, structures);
     let created = 0;
     for (const structure of structures || []) {
       const component = await tryCreateMolstarComponent(plugin, structure, 'all');
-      if (!component) continue;
-      const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation);
-      if (result?.ref && structure.cell) {
-        const params = state.cells.get(result.ref)?.transform?.params?.type?.params || {};
-        collectionRepresentations.set(structure.cell, { ref: result.ref, type: representation.type,
-          color: representation.color, defaults: { ...params, alpha: 1, transparentBackfaces: 'off' } });
+      if (!await addCollectionRepresentation(plugin, structure, component, representation, 0)) {
+        throw new Error('Mol* could not create a component for this style.');
       }
-      if (result) created += 1;
+      created += 1;
     }
     if (created === 0) throw new Error('Mol* could not create a component for this style.');
   }
@@ -16663,17 +16819,18 @@ SOFTWARE.
   async function applyMolstarPolymerLigandRepresentationToStructures(viewer, structures, polymerRepresentation, ligandRepresentation) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    await clearMolstarMainRepresentationsForStructures(viewer, structures);
-    let created = 0;
+    if (await updateCollectionRepresentations(plugin, structures, [polymerRepresentation, ligandRepresentation])) return;
+    await clearCollectionRepresentations(viewer, structures);
     for (const structure of structures || []) {
+      let created = 0;
       const polymer = await tryCreateMolstarComponent(plugin, structure, 'polymer');
-      if (await addMolstarRepresentation(plugin, polymer, polymerRepresentation)) created += 1;
+      if (await addCollectionRepresentation(plugin, structure, polymer, polymerRepresentation, 0)) created += 1;
       for (const kind of ['ligand', 'ion']) {
         const component = await tryCreateMolstarComponent(plugin, structure, kind);
-        if (await addMolstarRepresentation(plugin, component, ligandRepresentation)) created += 1;
+        if (await addCollectionRepresentation(plugin, structure, component, ligandRepresentation, 1)) created += 1;
       }
+      if (created === 0) await applyMolstarRepresentationsToStructures(viewer, [structure], ligandRepresentation);
     }
-    if (created === 0) await applyMolstarRepresentationsToStructures(viewer, structures, ligandRepresentation);
   }
 
   async function clearMolstarMainRepresentationsForStructures(viewer, structures) {
@@ -17807,7 +17964,7 @@ SOFTWARE.
       return;
     }
     if (prepared.kind === 'docking') {
-      await loadDockingPreparedStructure(viewer, prepared);
+      await withMolstarDrawHold(viewer, () => loadDockingPreparedStructure(viewer, prepared));
       return;
     }
     if (prepared.kind === 'mvs') {
@@ -18300,7 +18457,6 @@ SOFTWARE.
       : entries.filter(entry => entry !== reference).map(entry => entry.id);
     const moving = movingIds.map(id => superpositionEntry(entries, id)).filter(Boolean).filter(entry => entry !== reference);
     if (!moving.length) throw new Error('Choose at least one moving structure.');
-    if (moving.length > 8) throw new Error('Interactive superposition supports at most eight moving structures at a time.');
     return { reference, moving, ordered: [reference, ...moving] };
   }
 
@@ -18385,13 +18541,20 @@ SOFTWARE.
   // chain (a ligand-only file, an unrelated protein) no longer blocks aligning
   // the rest. Automatic requests also fall back to Mol* chain alignment and
   // TM-align before a structure is skipped.
-  function bestEffortSuperpositionPlan(entries, request, prepared) {
+  async function bestEffortSuperpositionPlan(entries, request, prepared) {
     const selected = selectedSuperpositionEntries(entries, request);
     const method = String(request.method || 'auto');
     const attempts = method === 'auto' ? ['auto', 'chains', 'tm-align'] : [method];
     const plans = [];
     const skipped = [];
+    let lastYield = performance.now();
     for (const moving of selected.moving) {
+      // Each structure is planned synchronously; hand the thread back between
+      // slow ones so input and the busy ring stay alive on a large scene.
+      if (performance.now() - lastYield > 30) {
+        await new Promise(resolve => window.setTimeout(resolve, 0));
+        lastYield = performance.now();
+      }
       let lastError = null;
       for (const attempt of attempts) {
         try {
@@ -18561,6 +18724,7 @@ SOFTWARE.
     };
 
     const setBusy = value => {
+      if (Boolean(value) !== busy) (value ? beginMolstarBusy : endMolstarBusy)();
       busy = Boolean(value);
       panel?.setBusy(busy);
       sync();
@@ -18674,8 +18838,9 @@ SOFTWARE.
     const apply = async (request = {}) => {
       setBusy(true);
       try {
+        await nextMolstarPaint();
         await ensureEntries();
-        const plan = bestEffortSuperpositionPlan(entries, request, prepared);
+        const plan = await bestEffortSuperpositionPlan(entries, request, prepared);
         const undo = captureMolstarSceneUndoSnapshot(`superposition by ${plan.methodLabel}`);
         await commitSuperpositionPlan(viewer, entries, plan);
         result = plan;
@@ -18712,7 +18877,10 @@ SOFTWARE.
       }
     };
 
-    const restoreAfterSceneReload = async () => {
+    const restoreAfterSceneReload = async (targetViewer = viewer, targetPrepared = prepared) => {
+      // A new scene can load before its controls replace the previous ones.
+      // Never carry an old alignment into another viewer or prepared scene.
+      if (targetViewer !== viewer || targetPrepared !== prepared) return false;
       if (!result) return false;
       await refreshEntries();
       await commitSuperpositionPlan(viewer, entries, result);

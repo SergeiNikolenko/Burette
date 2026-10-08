@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { buildSidebarProjects, filterSidebarProjects } from "../apps/desktop/src/lib/sidebar-projects.ts";
+import { buildSidebarProjects, filterSidebarProjects, sortSidebarProjects } from "../apps/desktop/src/lib/sidebar-projects.ts";
 
 const documents = [
   {
@@ -216,3 +216,22 @@ assert.deepEqual(
   matchaAfterExternalRemoval.items.map((item) => item.relativePath),
   ["keep.cif", "zrecent.pdb"],
 );
+
+let recencyReads = 0;
+const sortable = Object.freeze([0, 3, 1, 2].map((rank) => ({
+  id: String(rank), isPinned: rank === 1, matchText: `project-${rank}`,
+  items: Array.from({ length: 2500 }, () => ({
+    get openedAt() { recencyReads++; return rank; },
+    get matchText() { throw new Error("Project-name match must not scan every file"); },
+  })),
+})));
+const ids = (projects) => projects.map((project) => project.id);
+assert.deepEqual(ids(sortSidebarProjects(sortable, "recent")), ["3", "2", "1", "0"]);
+assert.equal(recencyReads, 10000, "one visit per file, independent of comparator count");
+assert.deepEqual(ids(sortSidebarProjects(sortable, "priority")), ["1", "0", "3", "2"]);
+assert.deepEqual(ids(sortSidebarProjects(sortable, "manual")), ["0", "3", "1", "2"]);
+assert.deepEqual(filterSidebarProjects([sortable[1]], "project-3"), [sortable[1]]);
+assert.deepEqual(ids(sortSidebarProjects([
+  { id: "empty", items: [] }, { id: "null", items: [{ openedAt: null }] },
+], "recent")), ["empty", "null"], "ties preserve manual order");
+console.log("Sidebar sorting preserves source order and visits large lists once");

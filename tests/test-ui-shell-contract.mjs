@@ -485,7 +485,8 @@ const fepSetupStoreTest = await source('tests/test-fep-setup-store.mjs');
 const buretteAgent = await source('PreviewExtension/Web/burette-agent.js');
 const rootTypes = await source('apps/desktop/src/types.ts');
 
-const sidebarSurface = [sidebar, sidebarFileBrowser, sidebarFileTreeNode, sidebarWorkspaceSwitcher, settingsSidebar].join('\n');
+const sidebarTreeCollapse = await source("apps/desktop/src/components/sidebar/tree-collapse.tsx");
+const sidebarSurface = [sidebar, sidebarFileBrowser, sidebarFileTreeNode, sidebarWorkspaceSwitcher, settingsSidebar, sidebarTreeCollapse].join('\n');
 const editorTabDragStart = editorTabs.match(/onDragStart=\{\(event\) => \{[\s\S]*?\n                \}\}/)?.[0] ?? '';
 const packageConfig = JSON.parse(packageJson);
 
@@ -1030,11 +1031,11 @@ assert.match(appSidebarProjectsHook, /from Projects because the folder no longer
 assert.match(appSidebarProjectsHook, /if \(vanished\.has\(root\)\) continue;\s*const result = resultsByRoot\.get\(root\);\s*if \(result\?\.error\) \{\s*pushErrorStatus\(new Error\(result\.error\), `Project scan failed for/);
 assert.match(appSidebarProjectsHook, /invoke<string\[\]>\("existing_paths", \{ paths: failedRoots \}\)/);
 assert.match(appSidebarProjectsHook, /import \{ scanBrowserDevFolders \} from "\.\.\/lib\/browser-dev-startup";/);
-assert.match(appSidebarProjectsHook, /const scan = await scanBrowserDevFolders\(roots\);/);
+assert.match(appSidebarProjectsHook, /const scan = await scanBrowserDevFolders\(roots, controller.signal\);/);
 assert.match(browserDevStartup, /export async function scanBrowserDevFolders/);
 assert.match(browserDevStartup, /maxFiles: String\(remainingFiles\)/);
-assert.match(appSidebarProjectsHook, /window\.setInterval\(\(\) => void refresh\(\), browserDevGeneratedProjectScanMs\)/);
-assert.match(appSidebarProjectsHook, /const sidebarRecentStructures = browserDevExplicitFolders\.length > 0 \? \[\] : recentStructures;/);
+assert.match(appSidebarProjectsHook, /window\.setTimeout\(\(\) => void refresh\(\), browserDevGeneratedProjectScanMs\)/);
+assert.match(appSidebarProjectsHook, /const sidebarRecentStructures = browserDevExplicitFolders\.length > 0 \? noRecentStructures : recentStructures;/);
 assert.match(appSidebarProjectsHook, /recentStructures: sidebarRecentStructures,/);
 assert.match(browserDevStartup, /return \[\];\s*}\s*export function browserDevFoldersFromLocation/);
 assert.match(browserDevStartup, /export function splitDevFiles\(rawFiles: string\)/);
@@ -3134,7 +3135,7 @@ assert.doesNotMatch(sidebarWorkspaceSwitcher, /return `v\$\{info\.version\}`;/);
 assert.match(sidebarWorkspaceSwitcher, /AGENT SHELL · v\$\{info\.version\}/);
 assert.match(sidebarWorkspaceSwitcher, /DEV \$\{info\.flavor \?\? "local"\} · v\$\{info\.version\}/);
 assert.match(sidebarFileBrowser, /const hideProjectPreviews = state\.buildInfo\.isAgentShell && !state\.workspacePath/);
-assert.match(sidebarFileBrowser, /const visibleProjects = hideProjectPreviews \? \[\] : filterSidebarProjects/);
+assert.match(sidebarFileBrowser, /const visibleProjects = useMemo\(\(\) => hideProjectPreviews \? \[\] : sortSidebarProjects/);
 assert.match(sidebarFileBrowser, /\{!hideProjectPreviews && \(/);
 assert.match(ketcherKind, /export const ketcherKind = definePageKind/);
 assert.match(ketcherKind, /lazy\(\(\) => \{[\s\S]*?return import\("\.\.\/\.\.\/ketcher-page"\)/);
@@ -3853,7 +3854,7 @@ assert.match(sidebarSurface, /onDoubleClick=\{\(event\) => \{/);
 assert.match(sidebarSurface, /aria-expanded=\{expanded\}/);
 assert.match(sidebarSurface, /className="project-folder-children-shell"/);
 assert.match(sidebarSurface, /data-expanded=\{expanded \? "true" : "false"\}/);
-assert.match(sidebarSurface, /aria-hidden=\{!expanded\}/);
+assert.match(sidebarTreeCollapse, /aria-hidden=\{!open\} inert=\{!open\}/);
 assert.match(sidebarSurface, /className="project-folder-children"/);
 assert.doesNotMatch(sidebarSurface, /project-folder-disclosure/);
 assert.match(styles, /\.project-group-row \{[^}]*position: relative;[^}]*color: var\(--text-secondary\);[^}]*padding: 5px 86px 5px 10px;[^}]*overflow: hidden;/s);
@@ -3867,11 +3868,9 @@ assert.match(styles, /\n\.project \{[^}]*color: var\(--text-secondary\);/s);
 assert.match(styles, /\.project:hover \{\s*background: var\(--surface-subtle\);\s*\}/);
 assert.match(styles, /\.project-folder-children-shell \{[^}]*grid-template-rows: 0fr;[^}]*overflow: hidden;[^}]*transition: grid-template-rows 160ms ease-out, opacity 120ms ease-out;/s);
 assert.match(styles, /\.project-folder-children-shell\[data-expanded="true"\] \{[^}]*grid-template-rows: 1fr;[^}]*pointer-events: auto;/s);
-// "Show more" slides the overflow rows open through the same shell recipe
-// instead of splicing them in; the collapsed tail is inert so it never
-// catches focus, and reduced motion drops the transition on every shell.
-assert.match(sidebarSurface, /className="project-tail-shell"[^>]*data-expanded=\{showAllItems \? "true" : "false"\}[^>]*aria-hidden=\{!showAllItems\}[^>]*inert=\{!showAllItems\}/s);
-assert.match(sidebarSurface, /className="project-tail-shell"[^>]*data-expanded=\{showAllChildren \? "true" : "false"\}[^>]*aria-hidden=\{!showAllChildren\}[^>]*inert=\{!showAllChildren\}/s);
+// Lazy tails retain the existing slide and reduced-motion styles.
+assert.match(sidebarSurface, /className="project-tail-shell"\s*open=\{showAllItems\}/);
+assert.match(sidebarSurface, /className="project-tail-shell"\s*open=\{showAllChildren\}/);
 assert.match(sidebarSurface, /aria-expanded=\{showAllItems\}\s*aria-label=\{showAllItems \?/);
 assert.match(sidebarSurface, /aria-expanded=\{showAllChildren\}\s*aria-label=\{showAllChildren \?/);
 assert.match(styles, /\.project-tail-shell \{[^}]*grid-template-rows: 0fr;[^}]*overflow: hidden;[^}]*transition: grid-template-rows 160ms ease-out, margin-top 160ms ease-out, opacity 120ms ease-out;/s);
@@ -8723,10 +8722,10 @@ assert.match(sidebarFileTreeNode, /kind: "file"/);
 assert.match(sidebarFileTreeNode, /title: item\.title/);
 assert.match(sidebarFileTreeNode, /detail: item\.relativePath/);
 assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(project\.items, project\.rootPath\)/);
-assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(nodeItems, folderPath\)/);
+assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(projectTreeNodeItems\(node\), folderPath\)/);
 assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(\[item\]\)/);
 assert.match(sidebarFileTreeNode, /className="project-group-row"[\s\S]*draggable=\{!renaming && project\.items\.length > 0\}/);
-assert.match(sidebarFileTreeNode, /className="project-folder-row"[\s\S]*draggable=\{nodeItems\.length > 0\}/);
+assert.match(sidebarFileTreeNode, /className="project-folder-row"[\s\S]*draggable=\{node.hasItems\}/);
 assert.match(sidebarFileTreeNode, /readStructureDragPayload\(event\.dataTransfer\)/);
 assert.match(sidebarFileTreeNode, /shellDropActionChoices\(payload, sidebarDropTarget\(item, state\), \{ kind: "sidebar" \}\)/);
 assert.match(sidebarFileTreeNode, /runShellDropActionChoices\(actions, payload, choices, \{ x: event\.clientX, y: event\.clientY \}\)/);

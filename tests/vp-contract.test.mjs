@@ -3,8 +3,12 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-shell-performance.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-shell-performance.test.tsx", import.meta.url))]),
+  "test-background-performance.test.tsx": () => promisify(execFile)("bun", ["test", "--define", "import.meta.env.DEV:true", "--define", 'import.meta.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT:"/generated"', fileURLToPath(new URL("./test-background-performance.test.tsx", import.meta.url))]),
   "test-startup-runtime-refresh.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-startup-runtime-refresh.mjs", import.meta.url))]),
   "test-pose-camera-stability.mjs": () => import("./test-pose-camera-stability.mjs"),
+  "test-viewer-scene-recovery.mjs": () => import("./test-viewer-scene-recovery.mjs"),
+  "test-story-preset-entrypoints.mjs": () => promisify(execFile)(process.execPath, [fileURLToPath(new URL("./test-story-preset-entrypoints.mjs", import.meta.url))]),
   "test-collection-analysis-menu.mjs": () => import("./test-collection-analysis-menu.mjs"),
   "test-conformer-collection.mjs": () => import("./test-conformer-collection.mjs"),
   "test-burette-deep-links.mjs": () => import("./test-burette-deep-links.mjs"),
@@ -35,6 +39,7 @@ const contractScripts = {
   "test-preview-format-matrix.mjs": () => import("./test-preview-format-matrix.mjs"),
   "test-cross-platform-preview-contract.mjs": () => import("./test-cross-platform-preview-contract.mjs"),
   "test-sidebar-projects.mjs": () => import("./test-sidebar-projects.mjs"),
+  "test-sidebar-tree-collapse.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-sidebar-tree-collapse.test.tsx", import.meta.url))]),
   "test-docking-documents.mjs": () => import("./test-docking-documents.mjs"),
   "test-ui-shell-contract.mjs": () => import("./test-ui-shell-contract.mjs"),
   "test-molstar-style-switch.mjs": () => import("./test-molstar-style-switch.mjs"),

@@ -119,12 +119,28 @@ function usePanelToggleAnimation(open: boolean, shellRef: React.RefObject<HTMLEl
     }
     setAnimating(true);
     const release = shellRef.current ? pinViewerFrames(shellRef.current) : null;
-    const timer = window.setTimeout(() => {
-      setAnimating(false);
-      release?.();
-    }, 220);
+    let cancelled = false;
+    // A busy first paint can start the CSS transition after a wall-clock timer
+    // has already expired. Wait for the actual panel transitions instead.
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        const transitions = Array.from(shellRef.current?.querySelectorAll("[data-panel]") ?? [])
+          .flatMap((panel) => panel.getAnimations())
+          .filter((animation) => "transitionProperty" in animation && animation.transitionProperty === "flex-grow");
+        void Promise.allSettled(transitions.map((animation) => animation.finished)).then(() => {
+          if (cancelled) return;
+          setAnimating(false);
+          // Nested groups correct their pixel sizes in ResizeObserver + rAF.
+          // Keep the viewer pinned until those final corrections have painted.
+          frame = requestAnimationFrame(() => {
+            frame = requestAnimationFrame(() => release?.());
+          });
+        });
+      });
+    });
     return () => {
-      window.clearTimeout(timer);
+      cancelled = true;
+      cancelAnimationFrame(frame);
       release?.();
     };
   }, [open, shellRef]);

@@ -30,13 +30,14 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     return Array.from(new Set([...sources.paths, ...sources.records.map(record => record.path)]));
   };
   // A scene accepts a selection while at least one of its files is new; files already there are skipped.
+  // The scene on screen is the likeliest target, so it leads the list.
   const sceneTargets = (paths: string[]) => !paths.length || !paths.every(path => fileCapabilities(path).scene) ? [] : state.documents.filter(document => {
     const existing = scenePaths(document);
     const fresh = paths.filter(path => !existing.includes(path)).length;
     return document.renderer === "molstar"
       && state.tabs.some(tab => tab.location.kind === "file" && tab.location.documentId === document.id)
       && fresh > 0 && existing.length + fresh <= 200;
-  }).slice(0, 60);
+  }).sort((left, right) => Number(right.id === state.activeDocumentId) - Number(left.id === state.activeDocumentId)).slice(0, 60);
   const focusViewer = (document: ViewerDocument) => focusSceneDocument(document, actions.selectDocument);
   const append = async (document: ViewerDocument, payload: StructureDragPayload) => {
     await appendScenePayload(document.id, payload);

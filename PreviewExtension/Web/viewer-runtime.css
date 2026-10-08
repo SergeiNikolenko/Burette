@@ -5609,6 +5609,37 @@ html[data-burette-header-band] body.buret-theme-dark :is(#buret-toolbar, .buret-
   background: color-mix(in srgb, #fff 11%, #111); border-color: transparent;
 }
 
+/* Shown while a batch scene edit holds the canvas on its previous frame. Mirrors
+   the desktop Spinner: 16px ring, 2px stroke, 900ms turn. */
+.buret-busy-ring {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 40;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid color-mix(in srgb, var(--buret-molstar-muted-text) 30%, transparent);
+  border-top-color: var(--buret-molstar-muted-text);
+  border-radius: 50%;
+  /* A panel-coloured disc keeps the ring legible over a dense scene. */
+  background: var(--buret-panel-background);
+  box-shadow: 0 0 0 6px var(--buret-panel-background);
+  pointer-events: none;
+  opacity: 0;
+  /* Quick edits finish before the delay, so the ring never flashes for them. */
+  animation: buret-busy-ring-spin 900ms linear infinite, buret-busy-ring-in 120ms linear 250ms forwards;
+}
+@keyframes buret-busy-ring-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes buret-busy-ring-in {
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-busy-ring { animation: buret-busy-ring-in 120ms linear 250ms forwards; }
+}
+
 /* Menu format. One surface and row recipe for every DOM menu in the viewer, the
    same one the shell menus use. It stays last so it wins over the per-menu rules
    above; the iPhone action sheet keeps its platform styling. */
