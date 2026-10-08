@@ -1,0 +1,22 @@
+@layer components {
+  /* Keep macOS's real select rather than a second, potentially stale label. */
+  .atlas-select:has(> [data-native-selectcontrol]) { padding: 0; }
+  .atlas-select > [data-native-selectcontrol] {
+    cursor: inherit;
+    padding-inline: var(--select-control-gutter);
+    padding-inline-end: calc(var(--select-control-gutter) + var(--dropdown-icon-width) + var(--select-control-gap));
+  }
+  .atlas-select > [data-native-selectcontrol] + .atlas-select-indicator {
+    position: absolute;
+    inset-inline-end: var(--select-control-gutter);
+    pointer-events: none;
+  }
+  .atlas-select:has(> [data-native-selectcontrol]:focus-visible)::after {
+    outline: 2px solid var(--button-ring-color, var(--color-ring));
+    outline-offset: var(--select-control-ring-offset, 2px);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .atlas-select, .atlas-select::before, .atlas-select::after, .atlas-select-icon { transition: none; }
+    .atlas-select { --scale: 1 !important; }
+  }
+}

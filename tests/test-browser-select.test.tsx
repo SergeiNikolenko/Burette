@@ -50,5 +50,10 @@ test("Tauri retains the native select and exact option values", async () => {
     const select = host.querySelector("select")!;
     expect([select.id, select.hidden, select.value]).toEqual(["native", false, "b"]);
     expect(host.querySelector('button[role="combobox"]')).toBeNull();
+    await act(async () => {
+      select.value = "a";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    expect(select.value).toBe("a");
   } finally { await act(async () => root.unmount()); host.remove(); Reflect.deleteProperty(window, "__TAURI_INTERNALS__"); }
 });

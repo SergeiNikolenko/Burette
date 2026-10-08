@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-browser-select.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-browser-select.test.tsx", import.meta.url))]),
   "test-toast-interactions.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-toast-interactions.test.tsx", import.meta.url))]),
   "test-input-fields.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-input-fields.test.tsx", import.meta.url))]),
   "test-overlay-interactions.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-overlay-interactions.test.tsx", import.meta.url))]),

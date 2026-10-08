@@ -1,10 +1,8 @@
 import * as React from "react"
 
 import { cn } from "@/lib/utils"
-import { HugeiconsIcon } from "@hugeicons/react"
-import { ChevronUpDown as UnfoldMoreIcon } from "@/components/ui/app-icon-data";
 import { isTauriRuntime } from "@/lib/tauri";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "./select";
+import { Select, SelectContent, SelectControlIcon, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "./select";
 
 type NativeSelectProps = Omit<React.ComponentProps<"select">, "size"> & {
   size?: "sm" | "default"
@@ -16,24 +14,15 @@ function NativeSelect({
   ...props
 }: NativeSelectProps) {
   if (!isTauriRuntime()) return <BrowserSelect className={className} size={size} {...props} />;
-  return (
-    <div
-      className={cn(
-        "group/native-select relative w-fit has-[select:disabled]:opacity-[var(--shadcn-disabled-opacity)]",
-        className
-      )}
-      data-slot="native-select-wrapper"
-      data-size={size}
-    >
-      <select
-        data-slot="native-select"
-        data-size={size}
-        className="h-8 w-full min-w-0 appearance-none py-0 pr-7 pl-2 rounded-full border border-(--color-border) bg-(--color-surface) text-xs/4 text-(--color-text) transition-colors outline-none select-none hover:bg-(--color-background-primary-ghost-hover) focus-visible:ring-2 focus-visible:ring-(--color-ring) disabled:cursor-not-allowed disabled:opacity-40 aria-invalid:border-(--color-text-danger) data-[size=sm]:h-7"
-        {...props}
-      />
-      <HugeiconsIcon icon={UnfoldMoreIcon} strokeWidth={2} className="pointer-events-none absolute top-1/2 right-2 size-3.5 -translate-y-1/2 text-(--color-text-tertiary) select-none" aria-hidden="true" data-slot="native-select-icon" />
-    </div>
-  )
+  return <div data-slot="native-select-wrapper" data-size={size}
+    className={cn("atlas-select w-fit text-(--color-text)", className)}
+    data-atlas-size={size === "sm" ? "sm" : "md"} data-variant="outline"
+    data-disabled={props.disabled ? "" : undefined}
+    data-invalid={props["aria-invalid"] === true || props["aria-invalid"] === "true" ? "" : undefined}>
+    <select {...props} data-slot="native-select" data-size={size} data-native-selectcontrol=""
+      className="atlas-select-text h-full w-full min-w-0 appearance-none border-0 bg-transparent outline-none disabled:cursor-not-allowed" />
+    <span className="atlas-select-indicator"><SelectControlIcon /></span>
+  </div>;
 }
 
 type Choice = { value: string; label: React.ReactNode; disabled?: boolean; group?: string };

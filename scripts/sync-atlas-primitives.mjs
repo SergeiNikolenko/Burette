@@ -9,6 +9,13 @@ const index = process.argv.indexOf('--atlas');
 const atlas = index < 0 ? join(homedir(), 'Documents/Projects/InterfaceAtlas') : process.argv[index + 1];
 const shared = 'app-shared-342447930c78.css';
 const modules = [
+  { name: 'select', sheet: 'DatePicker-c4bc775bfdef.css', bounds: ['._SelectControl_1qm03_1{', '._CalendarContainer_1gw5r_1{'], names: {
+    _SelectControl_1qm03_1: 'atlas-select', _Clear_1qm03_488: 'atlas-select-clear',
+    _DropdownIcon_1qm03_489: 'atlas-select-icon', _TriggerText_1qm03_525: 'atlas-select-text',
+    _IndicatorWrapper_1qm03_535: 'atlas-select-indicator', _StartIcon_1qm03_543: 'atlas-select-start-icon',
+    _DropdownIconChevron_1qm03_601: 'atlas-select-chevron', _LoadingIndicator_1qm03_607: 'atlas-select-loading',
+    '[data-size': '[data-atlas-size',
+  } },
   { name: 'button', sheet: shared, bounds: ['._Button_eg66f_2{', '._Tooltip_1cofb_2{'], names: {
     _Button_eg66f_2: 'atlas-button', _ButtonInner_eg66f_2: 'atlas-button-inner', _ButtonLoader_eg66f_2: 'atlas-button-loader',
     '[data-variant': '[data-atlas-variant', '[data-size': '[data-atlas-size',

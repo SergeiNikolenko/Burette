@@ -4,6 +4,8 @@ import { Select as SelectPrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
 import { HugeiconsIcon } from "@hugeicons/react"
+import "./select.atlas.css"
+import "./select.css"
 import { ChevronUpDown as UnfoldMoreIcon, Check as Tick02Icon, ChevronUp as ArrowUp01Icon, ChevronDown as ArrowDown01Icon } from "@/components/ui/app-icon-data";
 
 function Select({
@@ -35,6 +37,7 @@ function SelectTrigger({
   className,
   size = "default",
   children,
+  onPointerEnter,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Trigger> & {
   size?: "sm" | "default"
@@ -43,18 +46,32 @@ function SelectTrigger({
     <SelectPrimitive.Trigger
       data-slot="select-trigger"
       data-size={size}
+      data-atlas-size={size === "sm" ? "sm" : "md"}
+      data-variant="outline"
+      data-invalid={props["aria-invalid"] === true || props["aria-invalid"] === "true" ? "" : undefined}
       className={cn(
-        "flex w-fit items-center justify-between gap-1 px-2 whitespace-nowrap rounded-full border border-(--color-border) bg-(--color-surface) text-xs/4 text-(--color-text) transition-colors outline-none select-none hover:bg-(--color-background-primary-ghost-hover) focus-visible:ring-2 focus-visible:ring-(--color-ring) disabled:cursor-not-allowed disabled:opacity-40 aria-invalid:border-(--color-text-danger) data-placeholder:text-(--color-text-tertiary) data-[size=default]:h-8 data-[size=sm]:h-7 data-[state=open]:bg-(--color-background-primary-ghost-hover) *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-3.5",
+        "atlas-select w-fit text-(--color-text) data-placeholder:text-(--input-placeholder-text-color)",
         className
       )}
+      onPointerEnter={event => {
+        const width = event.currentTarget.offsetWidth;
+        const scale = width <= 80 ? .96 : width <= 150 ? .97 : width <= 220 ? .98 : width > 600 ? .995 : .985;
+        event.currentTarget.style.setProperty("--scale", String(scale));
+        onPointerEnter?.(event);
+      }}
       {...props}
     >
-      {children}
+      <span className="atlas-select-text">{children}</span>
       <SelectPrimitive.Icon asChild>
-        <HugeiconsIcon icon={UnfoldMoreIcon} strokeWidth={2} className="pointer-events-none size-3.5 text-(--color-text-tertiary)" />
+        <span className="atlas-select-indicator"><SelectControlIcon /></span>
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )
+}
+
+// Reframe the reviewed shared glyph to the original Select's 10 × 16 viewbox.
+function SelectControlIcon() {
+  return <HugeiconsIcon icon={UnfoldMoreIcon} viewBox="7 4 10 16" className="atlas-select-icon pointer-events-none shrink-0" aria-hidden="true" />
 }
 
 function SelectContent({
@@ -184,6 +201,7 @@ function SelectScrollDownButton({
 export {
   Select,
   SelectContent,
+  SelectControlIcon,
   SelectGroup,
   SelectItem,
   SelectLabel,
