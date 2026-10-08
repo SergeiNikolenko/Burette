@@ -9,6 +9,9 @@ const index = process.argv.indexOf('--atlas');
 const atlas = index < 0 ? join(homedir(), 'Documents/Projects/InterfaceAtlas') : process.argv[index + 1];
 const shared = 'app-shared-342447930c78.css';
 const modules = [
+  { name: 'dialog-overlay', sheet: shared, bounds: ['._dimmedOverlay_12rau_2{', '._imageOverlay_12rau_2:'], names: {
+    _dimmedOverlay_12rau_2: 'atlas-dialog-dimmed-overlay',
+  } },
   { name: 'slider', sheet: 'SegmentedControl-1b0cd2c8f252.css', bounds: ['._Slider_pudb7_1{', '._SliderLabel_pudb7_78{'], names: {
     _Slider_pudb7_1: 'atlas-slider', _Track_pudb7_32: 'atlas-slider-track',
     _Range_pudb7_41: 'atlas-slider-range', _Thumb_pudb7_49: 'atlas-slider-thumb',
@@ -84,6 +87,12 @@ for (const { name, sheet, bounds, names } of modules) {
  * Source module SHA-256: ${digest}
  * Only class/keyframe names and Burette's mapped attributes differ.
  */\n@layer theme, base, components, utilities;\n${css}`;
-  await writeFile(new URL(`../apps/desktop/src/components/ui/${name}.atlas.css`, import.meta.url), output);
+  const target = new URL(`../apps/desktop/src/components/ui/${name}.atlas.css`, import.meta.url);
+  // Unchanged modules must not reload every open preview during a focused sync.
+  let previous;
+  try { previous = await readFile(target, 'utf8'); } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  if (previous !== output) await writeFile(target, output);
   console.log(`Original Atlas ${name}: ${module.length} bytes, SHA-256 ${digest}`);
 }

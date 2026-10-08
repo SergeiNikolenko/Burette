@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils"
 import { Button, ButtonStyleContext } from "@/components/ui/button"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
 import { X } from "@/components/ui/app-icons"
+import "./dialog-overlay.atlas.css"
 
 function Dialog({
   ...props
@@ -41,13 +42,16 @@ function DialogClose({
 
 function DialogOverlay({
   className,
+  variant = "default",
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Overlay>) {
+}: React.ComponentProps<typeof DialogPrimitive.Overlay> & { variant?: "default" | "form" }) {
   return (
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
+      data-variant={variant}
       className={cn(
-        "fixed inset-0 isolate z-50 bg-(--color-dialog-overlay) duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 motion-reduce:animate-none!",
+        "fixed inset-0 isolate z-50 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 motion-reduce:animate-none!",
+        variant === "form" ? "atlas-dialog-dimmed-overlay" : "bg-(--color-dialog-overlay)",
         className
       )}
       {...props}
@@ -71,7 +75,7 @@ function DialogContent({
 }) {
   return (
     <DialogPortal container={container}>
-      <DialogOverlay />
+      <DialogOverlay variant={variant} />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         data-variant={variant}

@@ -4,6 +4,7 @@ import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 import { Button, ButtonStyleContext } from "@/components/ui/button"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
+import "./dialog-overlay.atlas.css"
 
 function AlertDialog({
   ...props
@@ -42,7 +43,7 @@ function AlertDialogOverlay({
     <AlertDialogPrimitive.Overlay
       data-slot="alert-dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-(--color-dialog-overlay) duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 motion-reduce:animate-none!",
+        "atlas-dialog-dimmed-overlay fixed inset-0 isolate z-50 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 motion-reduce:animate-none!",
         className
       )}
       {...props}
