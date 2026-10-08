@@ -26,7 +26,8 @@ test("toast stack preserves actions, independent dismissal, priority and timed n
     await act(async () => {
       ids.push(toast.add({ title: "Connection lost", description: "Reconnect to continue.", type: "error", priority: "high", timeout: 0,
         actionProps: { children: "Reconnect", onClick: () => actions++ } }));
-      ids.push(toast.add({ title: "Saved", type: "success", timeout: 0 }));
+      ids.push(toast.add({ title: "Saved", type: "success", timeout: 0, actionPlacement: "inline",
+        actionProps: { children: "Open", onClick: () => actions++ } }));
       await tick();
     });
     const cards = () => [...shell.querySelectorAll<HTMLElement>('[data-slot="toast"]')];
@@ -36,6 +37,9 @@ test("toast stack preserves actions, independent dismissal, priority and timed n
     expect(sonner.getToasts().find(t => t.id === ids[0])?.duration).toBe(Infinity);
     await act(async () => error.querySelector<HTMLButtonElement>('[data-slot="toast-action"]')!.click());
     expect(actions).toBe(1);
+    const saved = cards().find(e => e.querySelector('[data-slot="toast-title"]')?.textContent === "Saved")!;
+    await act(async () => saved.querySelector<HTMLButtonElement>('[data-slot="toast-action"]')!.click());
+    expect(actions).toBe(2);
     expect(cards().length).toBe(2);
     await act(async () => error.querySelector<HTMLButtonElement>('[data-slot="toast-close"]')!.click());
     await flushDismissal();

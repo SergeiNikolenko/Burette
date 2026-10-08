@@ -5,8 +5,9 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { Spinner } from "@/components/ui/spinner";
 import { Warning as Alert02Icon, X as Cancel01Icon, CheckCircle as CheckmarkCircle02Icon, InfoCircle as InformationCircleIcon, XCircleCrossedClose as MultiplicationSignCircleIcon } from "@/components/ui/app-icon-data";
 
-import { Button } from "@/components/ui/button"
+import { Button, ButtonStyleContext } from "@/components/ui/button"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
+import "./toast.atlas.css"
 
 type ToastType = "info" | "success" | "warning" | "error" | "loading"
 type ToastId = string | number
@@ -69,41 +70,44 @@ function ToastIcon({ type }: { type: ToastType | undefined }) {
 }
 
 function ToastCard({ id, title, description, type, priority, actionProps, actionPlacement = "footer" }: ToastOptions & { id: ToastId }) {
-  const action = actionProps ? <Button data-slot="toast-action" variant="secondary" size="xs"
-    className="rounded-(--radius-button-action) text-xs leading-4" onClick={actionProps.onClick}>
+  const action = actionProps ? <ButtonStyleContext value="app"><Button data-slot="toast-action" variant="secondary" size="xs"
+    onClick={actionProps.onClick}>
     {actionProps.children}
-  </Button> : null
+  </Button></ButtonStyleContext> : null
+  const inline = actionPlacement === "inline"
+  const actionsInline = inline || description == null
   return (
     <div
       data-slot="toast"
       role={priority === "high" ? "alert" : "status"}
-      className="pointer-events-auto flex w-[min(var(--width),calc(100vw-32px))] flex-col gap-2 rounded-xl border border-(--color-border) bg-(--color-surface-elevated-secondary) px-3 py-2 text-base text-(--color-text) shadow-[0_4px_12px_0_rgb(0_0_0/0.1)] select-none"
+      className="atlas-toast flex w-[min(var(--width),calc(100vw-32px))] flex-col gap-2 rounded-xl border border-(--color-border) bg-(--color-surface-elevated-secondary) px-3 py-2 text-base leading-normal text-(--color-text) select-none"
     >
-      <div className="flex min-w-0 items-start gap-1">
+      <div className={`flex min-w-0 ${inline ? "items-center gap-3" : "items-start gap-1"}`}>
         <ToastIcon type={type} />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div data-slot="toast-title" className="flex min-h-6 items-center text-base leading-normal font-medium whitespace-pre-wrap [overflow-wrap:anywhere]">
-            {title}
-          </div>
-          {description ? (
-            <div data-slot="toast-description" className="text-base leading-normal text-(--color-text-secondary) [overflow-wrap:anywhere]">
-              {description}
+        <div className={`flex min-w-0 flex-1 gap-3 ${inline ? "items-center" : "items-start"}`}>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div data-slot="toast-title" className="flex min-h-6 items-center text-base leading-normal font-medium whitespace-pre-wrap [overflow-wrap:anywhere]">
+              {title}
             </div>
-          ) : null}
+            {description ? (
+              <div data-slot="toast-description" className="text-base leading-normal text-(--color-text-secondary) [overflow-wrap:anywhere]">
+                {description}
+              </div>
+            ) : null}
+          </div>
+          {action && actionsInline ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
         </div>
-        {action && actionPlacement === "inline" ? <div className="ml-2 flex shrink-0 items-center">{action}</div> : null}
-        <Button
+        <button
+          type="button"
           data-slot="toast-close"
           aria-label="Close toast"
-          variant="ghost"
-          size="icon-xs"
-          className="relative shrink-0 rounded-full text-(--color-text) after:absolute after:-inset-2 after:content-['']"
+          className="flex size-6 shrink-0 grow-0 cursor-(--cursor-interaction) items-center justify-center rounded-full hover:bg-(--color-background-primary-ghost-hover)/5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-(--color-ring)"
           onClick={() => sonner.dismiss(id)}
         >
           <HugeiconsIcon icon={Cancel01Icon} className="size-4" aria-hidden="true" />
-        </Button>
+        </button>
       </div>
-      {action && actionPlacement === "footer" ? <div className="flex items-center justify-end gap-2">{action}</div> : null}
+      {action && !actionsInline ? <div className="flex items-center justify-end gap-2">{action}</div> : null}
     </div>
   )
 }

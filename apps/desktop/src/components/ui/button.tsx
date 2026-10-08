@@ -4,11 +4,10 @@ import { cn } from "@/lib/utils";
 import "./button.atlas.css";
 import "./button.css";
 
-// Atlas Dialog.Footer uses the app button (Bundle.bE, size="medium"),
-// not the SDK's pill button (Bundle.Mon). Explicit compact/icon sizes keep
-// their own appearance; the footer supplies the default for action buttons.
-const ButtonStyleContext = React.createContext<"sdk" | "dialog">("sdk");
-const dialogVariants = {
+// Atlas dialogs and toasts use the app button (Bundle.bE, medium/compact),
+// not the SDK's pill button (Bundle.Mon). Their action rows supply this scope.
+const ButtonStyleContext = React.createContext<"sdk" | "app">("sdk");
+const appVariants = {
   default: "border-(--color-border) bg-(--color-background-primary-solid) not-disabled:not-aria-disabled:hover:bg-(--color-text)/80 data-[state=open]:bg-(--color-text)/80 text-(--color-text-primary-solid)",
   secondary: "text-(--color-text) bg-(--color-text)/5 not-disabled:not-aria-disabled:hover:bg-(--color-text)/10 data-[state=open]:bg-(--color-text)/10 border-transparent",
   outline: "border-(--color-border) bg-(--color-background-primary-soft-alpha) not-disabled:not-aria-disabled:hover:bg-(--color-background-primary-ghost-hover) data-[state=open]:bg-(--color-background-primary-ghost-hover)",
@@ -38,11 +37,11 @@ function Button({
   className, variant = "default", size = "default", asChild = false,
   children, disabled, type, onPointerEnter, ...props
 }: ButtonProps) {
-  const dialogAction = React.useContext(ButtonStyleContext) === "dialog" && size === "default";
+  const appAction = React.useContext(ButtonStyleContext) === "app" && (size === "default" || size === "xs");
   const Comp = asChild ? Slot.Root : "button";
   const child = asChild ? React.Children.only(children) : null;
   const childContent = React.isValidElement<{ children?: React.ReactNode }>(child) ? child.props.children : children;
-  const content = dialogAction ? childContent : <span className="atlas-button-inner">{childContent}</span>;
+  const content = appAction ? childContent : <span className="atlas-button-inner">{childContent}</span>;
 
   return (
     <Comp
@@ -50,8 +49,8 @@ function Button({
       data-slot="button"
       data-variant={variant}
       data-size={size}
-      data-atlas-variant={dialogAction ? undefined : variants[variant]}
-      data-atlas-size={dialogAction ? undefined : sizes[size]}
+      data-atlas-variant={appAction ? undefined : variants[variant]}
+      data-atlas-size={appAction ? undefined : sizes[size]}
       data-color={variant === "destructive" ? "danger" : variant === "link" ? "info" : "primary"}
       data-pill={size.startsWith("icon") ? undefined : ""}
       data-uniform={size.startsWith("icon") ? "" : undefined}
@@ -60,15 +59,16 @@ function Button({
       aria-disabled={disabled || undefined}
       className={cn(
         "group/button inline-flex items-center justify-center [&_svg]:pointer-events-none [&_svg]:shrink-0",
-        dialogAction
-          ? "no-drag cursor-(--cursor-interaction) select-none disabled:cursor-default aria-disabled:cursor-default focus:outline-hidden disabled:opacity-40 aria-disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-(--color-ring) focus-visible:ring-offset-0 whitespace-nowrap border gap-1 rounded-(--radius-button-action) px-4 py-1.5 text-base leading-[18px]"
+        appAction
+          ? "no-drag cursor-(--cursor-interaction) select-none disabled:cursor-default aria-disabled:cursor-default focus:outline-hidden disabled:opacity-40 aria-disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-(--color-ring) focus-visible:ring-offset-0 whitespace-nowrap border gap-1 rounded-(--radius-button-action)"
           : "atlas-button",
-        dialogAction && dialogVariants[variant],
+        appAction && (size === "xs" ? "h-6 px-2 py-0 text-xs leading-4" : "px-4 py-1.5 text-base leading-[18px]"),
+        appAction && appVariants[variant],
         variant === "link" && "underline-offset-4 hover:underline", className,
       )}
       onPointerEnter={(event) => {
         // Original Atlas press scale, based on the actual rendered width.
-        if (!dialogAction) {
+        if (!appAction) {
           const width = event.currentTarget.offsetWidth;
           const scale = width <= 80 ? .96 : width <= 150 ? .97 : width <= 220 ? .98 : width > 600 ? .995 : .985;
           event.currentTarget.style.setProperty("--scale", String(scale));

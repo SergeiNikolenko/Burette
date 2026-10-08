@@ -1,6 +1,7 @@
 import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
+import "./input.atlas.css"
 
 // InterfaceAtlas Input variants; keep native input props/ref and form behavior.
 const inputVariants = cva(
@@ -10,7 +11,7 @@ const inputVariants = cva(
       variant: {
         default: "h-9 rounded-md border-(--color-border-primary-outline) bg-(--color-background-primary-soft) px-2.5 text-sm focus:border-(--color-ring) disabled:bg-(--color-text)/5",
         compact: "h-7 rounded-md border-(--color-border-primary-outline) bg-(--color-background-primary-soft) px-2 text-sm focus:border-(--color-ring) disabled:bg-(--color-text)/5",
-        field: "h-8 rounded-md border-(--color-border) bg-(--color-background-primary-soft) px-2 text-sm focus:border-(--color-ring) disabled:bg-(--color-text)/5",
+        field: "h-8 rounded-md border-(--color-border) bg-(--color-background-primary-soft) px-2 text-sm focus:border-(--color-ring) disabled:border-transparent disabled:bg-(--color-text)/5",
         code: "h-9 rounded-md border-(--color-border-primary-outline) bg-(--color-background-primary-soft) px-2.5 font-mono text-sm focus:border-(--color-ring) disabled:bg-(--color-text)/5",
         ghost: "h-(--spacing-token-button-composer) rounded-md border-transparent bg-transparent px-2 text-sm enabled:hover:bg-(--color-background-primary-ghost-hover) focus:bg-(--color-background-primary-ghost-hover)",
         transparent: "h-(--spacing-token-button-composer) rounded-md border-transparent bg-transparent px-2 text-sm focus:ring-1 focus:ring-(--color-ring) focus:border-(--color-ring)",
@@ -29,7 +30,9 @@ const inputVariants = cva(
 )
 
 function Input({ className, variant, type, ...props }: React.ComponentProps<"input"> & VariantProps<typeof inputVariants>) {
-  return <input type={type} data-slot="input" className={cn(inputVariants({ variant }), className)} {...props} />
+  return <input type={type} data-slot="input" className={cn(inputVariants({ variant }),
+    type === "number" && (variant === "field" || variant === "compact") && "tabular-nums",
+    type === "number" && variant === "field" && "atlas-input-number", className)} {...props} />
 }
 
 export { Input }

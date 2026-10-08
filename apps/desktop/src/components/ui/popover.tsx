@@ -19,7 +19,7 @@ function PopoverTrigger({
 
 function PopoverContent({
   className,
-  align = "center",
+  align = "start",
   sideOffset = 4,
   container,
   variant = "default",
@@ -44,14 +44,15 @@ function PopoverContent({
         data-animation={animation}
         align={align}
         sideOffset={sideOffset}
+        collisionPadding={6}
         className={cn(
           "atlas-popover z-50 flex origin-(--radix-popover-content-transform-origin) flex-col overflow-y-auto text-[16px] leading-6 text-(--color-text) outline-hidden",
           variant === "menu" ? "rounded-2xl shadow-(--shadow-dropdown-overlay)" : variant === "comment"
             ? "rounded-2xl ring-1 ring-(--color-border-subtle) shadow-(--shadow-lg-stronger)"
             : "rounded-xl ring-(length:--popover-overlay-ring-width) ring-(--color-border-overlay) shadow-(--shadow-popover-overlay)",
-          !disablePadding && (variant === "menu" ? "p-[var(--app-menu-gutter,var(--spacing))]" : "p-1"),
-          opaque ? "bg-(--color-surface-elevated-secondary)" : "bg-(--color-surface-elevated-secondary)/90",
-          { default: "w-72", large: "w-96", workspace: "w-65", content: "w-max" }[size],
+          !disablePadding && (variant === "menu" ? "p-2" : "p-1"),
+          opaque || variant === "menu" ? "bg-(--color-surface-elevated-secondary)" : "bg-(--color-surface-elevated-secondary)/90",
+          { default: "w-72", large: "w-96", workspace: "w-65", content: "w-fit" }[size],
           className
         )}
         {...props}

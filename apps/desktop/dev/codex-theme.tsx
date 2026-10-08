@@ -138,6 +138,7 @@ function Appearance({ mode }: { mode: ThemeMode }) {
             <Input variant="code" aria-label="Expression" defaultValue="mass / count" spellCheck={false} />
             <Input variant="field" aria-label="Invalid column" aria-invalid defaultValue="Existing column" />
             <Input variant="field" aria-label="Locked column" disabled defaultValue="Read-only column" />
+            <Input variant="field" aria-label="Maximum rows" type="number" min={1} max={500} defaultValue={100} />
           </div>
         </section>
         <section>

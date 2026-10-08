@@ -130,7 +130,7 @@ function DialogFooter({
       )}
       {...props}
     >
-      <ButtonStyleContext value="dialog">
+      <ButtonStyleContext value="app">
         {children}
         {showCloseButton && (
           <DialogPrimitive.Close asChild>
