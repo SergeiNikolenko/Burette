@@ -4247,7 +4247,9 @@
     const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
     if (!rail || !ticks) return;
     const rows = state.rows || [];
-    rail.hidden = gridRailTotalRows() < 2;
+    // Nothing to navigate when every molecule already fits on screen.
+    const contentHeight = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+    rail.hidden = gridRailTotalRows() < 2 || (!hasMoreRows() && contentHeight <= viewportHeight() + 1);
     if (rail.hidden) return;
     const railRows = gridRailRows(rows).filter(({ row }) => !row || cardViewRows([row]).length > 0);
     ticks.innerHTML = railRows.map(({ row, position }, markerIndex) => {
