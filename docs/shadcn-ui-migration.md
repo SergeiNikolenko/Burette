@@ -123,7 +123,7 @@ and `dev/forms.html` for production forms with in-memory outcomes. They support
 component inspection; they do not replace real shell/document acceptance.
 
 The focused route, theme, editor-query, settings-sidebar, dock-header, welcome,
-inspector-tool and Ketcher-save interaction tests are registered with
+inspector-tool, grid-filter and Ketcher-save interaction tests are registered with
 `tests/vp-contract.test.mjs`. Other tests existing on disk are not implicitly
 covered by that runner: register or invoke the specific checks needed by a stage.
 

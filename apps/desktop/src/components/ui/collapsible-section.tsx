@@ -4,9 +4,10 @@ import { ChevronDown } from "./app-icons";
 
 // Atlas CollapsibleSection (Ci): native disclosure keeps its body mounted.
 // Inspector data remains feature-owned; this component only owns disclosure.
-export function CollapsibleSection({ title, detail, open, defaultOpen = true, onOpenChange, className, children }: {
+export function CollapsibleSection({ title, detail, actions, open, defaultOpen = true, onOpenChange, className, children }: {
   title: string;
   detail?: ReactNode;
+  actions?: ReactNode;
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -35,6 +36,7 @@ export function CollapsibleSection({ title, detail, open, defaultOpen = true, on
         <ChevronDown aria-hidden className="size-3.5 shrink-0 -rotate-90 transition-transform group-open/section:rotate-0 motion-reduce:transition-none" />
         {detail ? <span className="truncate text-(--color-text-tertiary)">{detail}</span> : null}
       </span>
+      {actions ? <span className="shrink-0"><span className="flex items-center gap-2" role="presentation">{actions}</span></span> : null}
     </summary>
     <div className="flex min-w-0 flex-col gap-1 px-[var(--detail-page-inline-inset,0px)]">{children}</div>
   </details>;

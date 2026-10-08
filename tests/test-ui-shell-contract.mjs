@@ -2787,7 +2787,7 @@ assert.match(gridFilterSection, /<Collapsible ref=\{cardRef\} className="grid-fi
 assert.match(styles, /\.grid-filter-inputs \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/s);
 assert.match(styles, /\.grid-filter-inputs input \{[^}]*min-width: 0;[^}]*width: 100%;/s);
 assert.match(styles, /\.grid-filter-card-host,[^{]*\{[^}]*min-width: 0;[^}]*max-width: 100%;/s);
-assert.match(gridFilterSection, /<Accordion[\s\S]*?value=\{open \? "filters" : ""\}/);
+assert.match(gridFilterSection, /<CollapsibleSection[\s\S]*?title="Filters"[\s\S]*?open=\{open\}/);
 assert.doesNotMatch(gridFilterSection, /className="structure-inspector-section-title-button"[\s\S]{0,180}ArrowDown01Icon[\s\S]{0,80}Filters/);
 // The scene stepper is identified by the scene itself, not by the parser failing.
 assert.match(structureInfoPanel, /if \(sceneStructureCount > 1 && sceneStructureCount <= INFO_TRAJECTORY_CONTROL_LIMIT\)/);
