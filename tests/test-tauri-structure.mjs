@@ -476,6 +476,11 @@ assert.match(
   /#\[tauri::command\]\s+pub\(crate\) async fn open_documents[\s\S]*?spawn_blocking/,
   'native document loading must not block the WebKit UI thread',
 );
+assert.match(
+  documentsCommand,
+  /#\[tauri::command\]\s+pub\(crate\) async fn open_docking_document[\s\S]*?spawn_blocking\(move \|\| \{\s*open_docking_document_runtime\(&app, request, &preferences\)/,
+  'multi-structure loading and macOS file consent must not block the WebKit UI thread',
+);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_delimited_grid_document/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_structure_text/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) async fn fetch_pdb_structure/);
