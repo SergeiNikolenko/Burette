@@ -129,23 +129,23 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
       contentClassName="open-editor-menu-content"
       items={items}
       trigger={(
-        <button
-          type="button"
-          className="chrome-button open-editor-trigger"
-          onMouseDown={(event) => event.preventDefault()}
-          aria-label={label}
-          title={label}
-        >
-          <span className={preferredIconUrl ? "open-editor-trigger-icon open-editor-trigger-icon-image" : "open-editor-trigger-icon"} aria-hidden="true">
-            {preferredIconUrl ? (
-              <AppImageIcon src={preferredIconUrl} fallback={openDestinationIconText(state.preferences.openInDefaultDestination, preferredTarget)} />
-            ) : openDestinationIconText(state.preferences.openInDefaultDestination, preferredTarget)}
-          </span>
-          <svg className="open-editor-chevron" width="13" height="13" viewBox="0 0 13 13" aria-hidden="true">
-            <path d="M3.5 5 6.5 8 9.5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <ShortcutTooltip label={label} />
-        </button>
+        <ShortcutTooltip label={label}>
+          <button
+            type="button"
+            className="chrome-button open-editor-trigger"
+            onMouseDown={(event) => event.preventDefault()}
+            aria-label={label}
+          >
+            <span className={preferredIconUrl ? "open-editor-trigger-icon open-editor-trigger-icon-image" : "open-editor-trigger-icon"} aria-hidden="true">
+              {preferredIconUrl ? (
+                <AppImageIcon src={preferredIconUrl} fallback={openDestinationIconText(state.preferences.openInDefaultDestination, preferredTarget)} />
+              ) : openDestinationIconText(state.preferences.openInDefaultDestination, preferredTarget)}
+            </span>
+            <svg className="open-editor-chevron" width="13" height="13" viewBox="0 0 13 13" aria-hidden="true">
+              <path d="M3.5 5 6.5 8 9.5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </ShortcutTooltip>
       )}
     />
   );

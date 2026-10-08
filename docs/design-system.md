@@ -104,6 +104,13 @@ The shell is a workspace, not a brand canvas.
 
 ### Shell Menus
 
+- Shell button hints use the shared Tooltip's `floating` variant, matching
+  Atlas `FloatingTooltip` (`overlays/floating-tooltip-shortcut`): 13/18 text,
+  5px/12px padding, semantic tooltip surface/border/shadow and a 2px offset.
+  `ShortcutTooltip` wraps its button rather than placing an absolutely
+  positioned span inside it; themed portals prevent pane overflow clipping.
+  The SDK default and compact tooltip variants remain separate.
+
 - Dropdown and context flyouts use the Atlas default menu surface and spacing:
   4px gutter, 1px margin, 5px/8px row padding, and 6px collision inset.
   Submenus portal into the shell rather than the parent's scrolling content.

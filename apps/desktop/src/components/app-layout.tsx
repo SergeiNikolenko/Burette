@@ -547,29 +547,31 @@ export function AppLayout({
             {!hostedMcpWidget && !window.BuretteMcpWorkspace ? <OpenInEditorMenu state={layoutState} actions={actions} /> : null}
             {!hostedMcpWidget && pluginSurface ? <AnnotateToggle className="chrome-button dock-toggle-button" /> : null}
             {!hostedMcpWidget && !pluginSurface ? (
+              <ShortcutTooltip label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"} shortcut="⌘J">
+                <button
+                  type="button"
+                  className="chrome-button dock-toggle-button"
+                  data-active={state.bottomDockOpen || undefined}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => actions.toggleDock("bottom")}
+                  aria-label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"}
+                >
+                  <DockToggleIcon className="dock-toggle-icon-bottom" />
+                </button>
+              </ShortcutTooltip>
+            ) : null}
+            <ShortcutTooltip label={state.rightDockOpen ? "Hide right dock" : "Show right dock"} shortcut="⌥⌘B">
               <button
                 type="button"
                 className="chrome-button dock-toggle-button"
-                data-active={state.bottomDockOpen || undefined}
+                data-active={state.rightDockOpen || undefined}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => actions.toggleDock("bottom")}
-                aria-label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"}
+                onClick={() => actions.toggleDock("right")}
+                aria-label={state.rightDockOpen ? "Hide right dock" : "Show right dock"}
               >
-                <DockToggleIcon className="dock-toggle-icon-bottom" />
-                <ShortcutTooltip label={state.bottomDockOpen ? "Hide bottom dock" : "Show bottom dock"} shortcut="⌘J" />
+                <DockToggleIcon className="dock-toggle-icon-right" />
               </button>
-            ) : null}
-            <button
-              type="button"
-              className="chrome-button dock-toggle-button"
-              data-active={state.rightDockOpen || undefined}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => actions.toggleDock("right")}
-              aria-label={state.rightDockOpen ? "Hide right dock" : "Show right dock"}
-            >
-              <DockToggleIcon className="dock-toggle-icon-right" />
-              <ShortcutTooltip label={state.rightDockOpen ? "Hide right dock" : "Show right dock"} shortcut="⌥⌘B" />
-            </button>
+            </ShortcutTooltip>
           </div>
           <header className="topbar">
             <EditorTabs state={layoutState} actions={actions} readOnly={hostedMcpWidget} />

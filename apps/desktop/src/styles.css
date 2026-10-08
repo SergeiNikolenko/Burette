@@ -1012,78 +1012,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
 .chrome-button[data-active] { background: var(--tab-active-bg); color: var(--text-secondary); }
 .chrome-button:active,
 .new-tab:active { transform: scale(0.94); }
-.shortcut-tooltip {
-  position: absolute;
-  left: 50%;
-  top: calc(100% + 4px);
-  z-index: 1200;
-  min-height: 28px;
-  max-width: min(240px, calc(100vw - 16px));
-  padding: 7px 8px 7px 10px;
-  border-radius: var(--control-radius);
-  background: color-mix(in srgb, var(--bg-base) 82%, transparent);
-  color: var(--text-primary);
-  box-shadow: 0 8px 22px rgb(0 0 0 / 0.28);
-  backdrop-filter: blur(15px) saturate(1.35);
-  -webkit-backdrop-filter: blur(15px) saturate(1.35);
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  white-space: nowrap;
-  transform: translate(-50%, -4px) scale(0.98);
-  transform-origin: top center;
-  transition: opacity 110ms ease-out, transform 130ms ease-out, visibility 0s linear 110ms;
-}
-.shortcut-tooltip[data-side="top"] {
-  top: auto;
-  bottom: calc(100% + 4px);
-  transform: translate(-50%, 4px) scale(0.98);
-  transform-origin: bottom center;
-}
-.chrome-trailing-controls .shortcut-tooltip {
-  left: auto;
-  right: 0;
-  transform: translateY(-4px) scale(0.98);
-  transform-origin: top right;
-}
-button:hover > .shortcut-tooltip,
-button:focus-visible > .shortcut-tooltip {
-  opacity: 1;
-  visibility: visible;
-  transform: translate(-50%, 0) scale(1);
-  transition-delay: 180ms, 180ms, 0s;
-}
-.chrome-trailing-controls button:hover > .shortcut-tooltip,
-.chrome-trailing-controls button:focus-visible > .shortcut-tooltip {
-  transform: translateY(0) scale(1);
-}
-.shortcut-tooltip-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-weight: 400;
-  font-size: 11px;
-  letter-spacing: 0;
-  line-height: 1.25;
-}
-.shortcut-tooltip-key {
-  flex: 0 0 auto;
-  min-height: 18px;
-  border-radius: 999px;
-  padding: 3px 7px;
-  background: color-mix(in srgb, var(--fg-base) calc(var(--contrast) * 32%), transparent);
-  color: var(--text-secondary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 400;
-  font-size: 11px;
-  letter-spacing: 0;
-  line-height: 1;
-}
 .dock-toggle-icon-right { transform: scaleX(-1); }
 .dock-toggle-icon-bottom { transform: rotate(-90deg); }
 .tab-strip {
@@ -3894,26 +3822,6 @@ img.radix-menu-item-icon {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.structure-inspector-xtb-action .shortcut-tooltip {
-  left: 0;
-  width: min(320px, calc(100vw - 24px));
-  max-width: none;
-  align-items: flex-start;
-  white-space: normal;
-  text-align: left;
-  transform: translateY(-4px) scale(0.98);
-  transform-origin: top left;
-}
-.structure-inspector-xtb-action:hover > .shortcut-tooltip,
-.structure-inspector-xtb-action:focus-visible > .shortcut-tooltip {
-  transform: translateY(0) scale(1);
-}
-.structure-inspector-xtb-action .shortcut-tooltip-label {
-  overflow: visible;
-  text-overflow: clip;
-  white-space: normal;
-  overflow-wrap: anywhere;
 }
 .structure-inspector-xtb-settings {
   min-width: 0;

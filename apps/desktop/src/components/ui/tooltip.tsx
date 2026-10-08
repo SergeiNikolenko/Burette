@@ -46,7 +46,8 @@ function TooltipTrigger({
 
 function TooltipContent({
   className,
-  sideOffset = 5,
+  variant = "sdk",
+  sideOffset = variant === "floating" ? 2 : 5,
   compact = false,
   clickable = false,
   gutterSize = "md",
@@ -57,6 +58,7 @@ function TooltipContent({
   container: portalContainer,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content> & {
+  variant?: "sdk" | "floating"
   compact?: boolean
   clickable?: boolean
   gutterSize?: "sm" | "md" | "lg"
@@ -77,7 +79,12 @@ function TooltipContent({
         data-gutter-size={gutterSize}
         style={{ "--tooltip-max-width": `${maxWidth}px`, ...style } as React.CSSProperties}
         className={cn(
-          "atlas-tooltip z-50 max-w-[min(var(--tooltip-max-width,300px),var(--radix-tooltip-content-available-width,100vw),calc(100vw-16px))] wrap-anywhere",
+          "z-50 max-w-[min(var(--tooltip-max-width,300px),var(--radix-tooltip-content-available-width,100vw),calc(100vw-16px))] wrap-anywhere",
+          // Atlas FloatingTooltip (RT) is the app-chrome variant, distinct from
+          // the SDK's Tooltip compact surface. Keep its original utility tokens.
+          variant === "floating"
+            ? "w-fit text-sm whitespace-normal min-h-min select-none text-center rounded-2xl border border-(color:--color-border-tooltip) bg-(--color-background-tooltip) text-(color:--color-text-tooltip) leading-4.5 font-(weight:--tooltip-compact-font-weight) tracking-(--tracking-tooltip) shadow-(--shadow-tooltip) px-3 py-1.25 pointer-events-none"
+            : "atlas-tooltip",
           className
         )}
         {...props}

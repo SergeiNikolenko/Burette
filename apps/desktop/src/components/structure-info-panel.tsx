@@ -2398,10 +2398,11 @@ function InspectorEngineCard({
           >
             <span>{summary}</span>
             {onReset ? (
-              <Button type="button" variant="outline" size="xs" onClick={onReset}>
-                Reset
-                <ShortcutTooltip label="Restore the default settings." />
-              </Button>
+              <ShortcutTooltip label="Restore the default settings.">
+                <Button type="button" variant="outline" size="xs" onClick={onReset}>
+                  Reset
+                </Button>
+              </ShortcutTooltip>
             ) : null}
           </div>
         ) : null}
@@ -3468,19 +3469,20 @@ function InlineXtbSetting({
       <FieldTitle>{label}</FieldTitle>
       <div className="structure-inspector-xtb-setting-control">
         {reset ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            className="settings-reset-button"
-            aria-hidden={!modified}
-            tabIndex={modified ? 0 : -1}
-            data-hidden={!modified || undefined}
-            onClick={reset}
-          >
-            Reset
-            <ShortcutTooltip label={`Restore the default ${label} parameter.`} />
-          </Button>
+          <ShortcutTooltip label={`Restore the default ${label} parameter.`}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              className="settings-reset-button"
+              aria-hidden={!modified}
+              tabIndex={modified ? 0 : -1}
+              data-hidden={!modified || undefined}
+              onClick={reset}
+            >
+              Reset
+            </Button>
+          </ShortcutTooltip>
         ) : null}
         {children}
       </div>

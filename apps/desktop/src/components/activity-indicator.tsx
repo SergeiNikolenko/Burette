@@ -51,18 +51,19 @@ export function ActivityIndicator({ state, actions }: { state: ShellViewState; a
     ? `Running: ${runningLabels[0]}`
     : `Running ${runningLabels.length} jobs`;
   return (
-    <button
-      type="button"
-      className="chrome-button activity-indicator"
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={() => actions.openDockTab("bottom", "jobs")}
-      aria-label={label}
-    >
-      <span className="activity-indicator-spinner" aria-hidden="true" />
-      {runningLabels.length > 1 ? (
-        <span className="activity-indicator-count">{runningLabels.length}</span>
-      ) : null}
-      <ShortcutTooltip label={label} />
-    </button>
+    <ShortcutTooltip label={label}>
+      <button
+        type="button"
+        className="chrome-button activity-indicator"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => actions.openDockTab("bottom", "jobs")}
+        aria-label={label}
+      >
+        <span className="activity-indicator-spinner" aria-hidden="true" />
+        {runningLabels.length > 1 ? (
+          <span className="activity-indicator-count">{runningLabels.length}</span>
+        ) : null}
+      </button>
+    </ShortcutTooltip>
   );
 }

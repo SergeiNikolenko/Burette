@@ -29,7 +29,6 @@ import type { KetcherEditorApi } from "./ketcher-editor";
 import { registerKetcherAgentController, unregisterKetcherAgentController, type KetcherPersistWriter } from "../lib/ketcher-agent";
 import { KetcherPersistRequestPrompt } from "./ketcher/persist-request";
 import { RadixDropdownMenu } from "./radix-menu";
-import { ShortcutTooltip } from "./shortcut-tooltip";
 import { ChevronDown, Minus, Plus, ColorTheme, Grid, Cube, Camera } from "@/components/ui/app-icons";
 import "./ketcher/workspace.css";
 import { KetcherTextPanel } from "./ketcher/text-panel";

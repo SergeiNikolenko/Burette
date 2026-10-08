@@ -330,6 +330,57 @@ test("tooltip waits on first pointer entry and respects an explicit themed porta
 const Menu = await import("../apps/desktop/src/components/ui/dropdown-menu");
 const Context = await import("../apps/desktop/src/components/ui/context-menu");
 const { RadixDropdownMenu, showRadixContextMenu } = await import("../apps/desktop/src/components/radix-menu");
+const { ShortcutTooltip } = await import("../apps/desktop/src/components/shortcut-tooltip");
+
+test("shell shortcut tooltips portal outside clipping, describe the focused button and close on Escape", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  const button = React.createRef<HTMLButtonElement>();
+  let clicks = 0;
+  try {
+    await act(async () => root.render(<div style={{ overflow: "hidden" }}>
+      <ShortcutTooltip label="Show right panel" shortcut="⌥⌘B" ref={button}>
+        <button type="button" aria-label="Show panel" onClick={() => clicks++}>Panel</button>
+      </ShortcutTooltip>
+    </div>));
+    await act(async () => button.current!.focus());
+    const tooltip = shell.querySelector('[data-slot="tooltip-content"]')!;
+    expect(tooltip.textContent).toBe("Show right panel⌥⌘B");
+    expect(tooltip.querySelector("kbd")?.textContent).toBe("⌥⌘B");
+    expect(button.current!.parentElement!.contains(tooltip)).toBe(false);
+    expect(document.getElementById(button.current!.getAttribute("aria-describedby")!)?.textContent).toBe("Show right panel⌥⌘B");
+    expect(document.activeElement).toBe(button.current);
+    await act(async () => button.current!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(shell.querySelector('[role="tooltip"]')).toBeNull();
+    await act(async () => button.current!.click());
+    expect(clicks).toBe(1);
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
+
+test("shortcut tooltips compose with menu triggers without reopening over their portaled items", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  let actions = 0;
+  try {
+    await act(async () => root.render(<RadixDropdownMenu items={[{ kind: "item", id: "copy", text: "Copy path", action: () => actions++ }]}
+      trigger={<ShortcutTooltip label="Open in another application"><button type="button">Open</button></ShortcutTooltip>} />));
+    const trigger = shell.querySelector<HTMLButtonElement>("button")!;
+    await act(async () => trigger.focus());
+    expect(shell.querySelector('[role="tooltip"]')).not.toBeNull();
+    await act(async () => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    await act(flushFocus);
+    const item = shell.querySelector<HTMLElement>('[role="menuitem"]')!;
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(shell.querySelector('[role="tooltip"]')).toBeNull();
+    await act(async () => { item.focus(); item.dispatchEvent(new browser.PointerEvent("pointermove", { pointerType: "mouse", bubbles: true })); });
+    expect(shell.querySelector('[role="tooltip"]')).toBeNull();
+    await act(async () => item.click());
+    await act(flushFocus);
+    expect(actions).toBe(1);
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(trigger);
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
 const { SelectControl } = await import("../apps/desktop/src/components/settings-panel/setting-control");
 
 for (const context of [false, true]) {
