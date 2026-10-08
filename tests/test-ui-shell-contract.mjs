@@ -1506,7 +1506,7 @@ assert.match(editorArea, /kind\.keepAlive/);
 assert.match(editorArea, /if \(!isActive && \(!kind\.keepAlive \|\| !warmMountedTabIds\.has\(tab\.id\)\)\) return null/);
 assert.match(editorArea, /<MountedPageSurface\s+key=\{tab\.id\}/);
 assert.match(editorArea, /const MountedPageSurface = memo\(function MountedPageSurface/);
-assert.match(editorArea, /kind\.Component/);
+assert.match(editorArea, /TabPageRoutes/);
 assert.match(editorArea, /if \(previous\.isActive \|\| next\.isActive\) return false/);
 assert.match(editorArea, /previous\.tab\.id === next\.tab\.id && previous\.tab\.location === next\.tab\.location/);
 assert.match(editorArea, /className="page-stack"/);

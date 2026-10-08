@@ -1,3 +1,4 @@
+import { moveTabHistory } from "../lib/tab-navigation";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { invoke } from "@tauri-apps/api/core";
@@ -83,6 +84,8 @@ type MoleculeState = {
   openSettingsTab: (section?: AppSettingsSectionId) => void;
   openSettingsSection: (section: AppSettingsSectionId) => void;
   activateLastNonSettingsTab: () => void;
+  navigateTabLocation: (tabId: string, location: Location, mode: "push" | "replace") => void;
+  navigateTabHistory: (tabId: string, delta: number) => void;
   navigateBack: () => void;
   navigateForward: () => void;
   setActiveTab: (id: string) => void;
@@ -836,30 +839,34 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tabs = [...state.tabs, tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
         }),
-      navigateBack: () =>
+      navigateTabLocation: (tabId, location, mode) =>
         set((state) => {
-          const active = state.tabs.find((tab) => tab.id === state.activeTabId);
-          if (!active || active.back.length === 0) return state;
-          const previous = active.back[active.back.length - 1];
-          const tabs = state.tabs.map((tab) =>
-            tab.id === active.id
-              ? { ...tab, location: previous, back: active.back.slice(0, -1), forward: [active.location, ...active.forward] }
-              : tab,
-          );
+          if (!state.tabs.some(tab => tab.id === tabId)) return state;
+          const tabs = state.tabs.map(tab => tab.id !== tabId ? tab : {
+            ...tab,
+            location,
+            back: mode === "push" ? [...tab.back, tab.location] : tab.back,
+            forward: mode === "push" ? [] : tab.forward,
+          });
           return { tabs, activeDocumentId: activeDocumentIdFrom(tabs, state.activeTabId, state.documents) };
         }),
-      navigateForward: () =>
+      navigateTabHistory: (tabId, delta) =>
         set((state) => {
-          const active = state.tabs.find((tab) => tab.id === state.activeTabId);
-          if (!active || active.forward.length === 0) return state;
-          const next = active.forward[0];
-          const tabs = state.tabs.map((tab) =>
-            tab.id === active.id
-              ? { ...tab, location: next, back: [...active.back, active.location], forward: active.forward.slice(1) }
-              : tab,
-          );
+          const active = state.tabs.find(tab => tab.id === tabId);
+          if (!active) return state;
+          const moved = moveTabHistory(active, delta);
+          if (moved === active) return state;
+          const tabs = state.tabs.map(tab => tab.id === tabId ? moved : tab);
           return { tabs, activeDocumentId: activeDocumentIdFrom(tabs, state.activeTabId, state.documents) };
         }),
+      navigateBack: () => {
+        const { activeTabId, navigateTabHistory } = useMoleculeStore.getState();
+        if (activeTabId) navigateTabHistory(activeTabId, -1);
+      },
+      navigateForward: () => {
+        const { activeTabId, navigateTabHistory } = useMoleculeStore.getState();
+        if (activeTabId) navigateTabHistory(activeTabId, 1);
+      },
       setActiveTab: (id) =>
         set((state) => {
           const activeTabId = activeTabIdOrFirst(state.tabs, id);

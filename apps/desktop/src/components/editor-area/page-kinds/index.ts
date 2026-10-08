@@ -11,6 +11,8 @@ import type { AnyPageKind, PageKind, SerializedLocation } from "./types";
 
 const kinds = [fileKind, textFileKind, documentKind, fepNetworkKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind] as const;
 
+export const pageRouteKinds = kinds.map(kind => kind.kind);
+
 export type Location = FileLocation | TextFileLocation | DocumentLocation | FepNetworkLocation | FepSetupLocation | KetcherLocation | LauncherLocation | PoseReviewLocation | SettingsLocation;
 
 const byKind: Map<string, AnyPageKind> = new Map(

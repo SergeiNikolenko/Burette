@@ -1,7 +1,7 @@
-import { memo, useEffect, useMemo, useState, type ComponentType } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import type { ShellActions, ShellViewState } from "../types";
 import { pageKind, type Location } from "./page-kinds";
-import type { PageComponentProps } from "./page-kinds/types";
+import { TabMemoryRouter, TabPageRoutes } from "./tab-router";
 import type { MoleculeTab } from "../../stores/molecule-store";
 
 const DEFAULT_WARM_PAGE_LIMIT = 10;
@@ -68,10 +68,11 @@ const MountedPageSurface = memo(function MountedPageSurface({
   actions: ShellActions;
 }) {
   const kind = pageKind(tab.location);
-  const Page = kind.Component as ComponentType<PageComponentProps<typeof tab.location>>;
   return (
     <div className="page-surface" data-page-kind={kind.kind} data-active={isActive || undefined} aria-hidden={!isActive}>
-      <Page tabId={tab.id} location={tab.location} state={state} actions={actions} isActive={isActive} />
+      <TabMemoryRouter tab={tab}>
+        <TabPageRoutes tabId={tab.id} location={tab.location} state={state} actions={actions} isActive={isActive} />
+      </TabMemoryRouter>
     </div>
   );
 }, (previous, next) => {
