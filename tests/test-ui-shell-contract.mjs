@@ -8350,7 +8350,7 @@ assert.match(appGridConformerMessagesHook, /status: errors\.length \? "recovered
 assert.match(app, /openDockTab\("bottom", "jobs"\)/);
 assert.match(app, /setConformerJobs,/);
 assert.match(jobsPanel, /summary: job\.progress/);
-assert.match(jobsPanel, /<details className="jobs-panel-details">/);
+// Jobs disclosure and actions are covered by test-jobs-panel.test.tsx.
 assert.doesNotMatch(dockPanel, /` · job \$\{job\.durableJobId\}`/);
 assert.doesNotMatch(appGridConformerMessagesHook, /generate_3d_conformer/);
 assert.match(appGridConformerMessagesHook, /generateBrowserDev3DConformer\(request\)/);

@@ -1,3 +1,9 @@
+import { useRef } from "react";
+import { ChevronRight } from "./ui/app-icons";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
+import { AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "./ui/alert-dialog";
+import { Spinner } from "./ui/spinner";
 import type { ShellActions, ShellViewState } from "./types";
 import { Button } from "./ui/button";
 
@@ -8,13 +14,15 @@ type JobRow = {
 };
 type Props = {
   state: Pick<ShellViewState, "conformerJobs" | "xtbJobs" | "derivedColumnJobs" | "databaseJobs">;
-  actions: ShellActions;
+  actions: Pick<ShellActions, "openPaths" | "openTextPaths" | "cancelConformerJob" | "cancelXtbJob" | "selectDocument" | "clearConformerJobs" | "clearXtbJobs" | "clearDerivedColumnJobs" | "clearDatabaseJobs">;
 };
 const statusLabels: Record<string, string> = {
   queued: "Queued", running: "Running", success: "Done", recovered: "Partial", failed: "Failed", cancelled: "Cancelled",
 };
 
 export function JobsPanel({ state, actions }: Props) {
+  const panel = useRef<HTMLElement>(null);
+  const cleared = useRef(false);
   const openPath = (path?: string | null) => path ? () => { void actions.openPaths([path]); } : undefined;
   const openText = (path?: string | null) => path ? () => { void actions.openTextPaths([path]); } : undefined;
   const rows: JobRow[] = [
@@ -44,39 +52,67 @@ export function JobsPanel({ state, actions }: Props) {
   ];
   const active = (row: JobRow) => row.status === "running" || row.status === "queued";
   rows.sort((left, right) => Number(active(right)) - Number(active(left)) || right.startedAt - left.startedAt);
-  const running = rows.filter(active).length;
+  const pending = rows.filter(active).length;
   return (
-    <section className="jobs-panel" aria-label="Calculations">
-      <div className="jobs-panel-toolbar">
-        <span>{running ? `${running} running · ` : ""}{rows.length} {rows.length === 1 ? "job" : "jobs"}</span>
-        <Button variant="ghost" size="xs" disabled={rows.length === running} onClick={() => {
-          actions.clearConformerJobs(); actions.clearXtbJobs(); actions.clearDerivedColumnJobs(); actions.clearDatabaseJobs();
-        }}>Clear finished</Button>
-      </div>
-      {rows.length === 0 ? <p className="dock-empty">No calculations yet</p> : (
+    <section ref={panel} className="jobs-panel" aria-label="Calculations" tabIndex={-1}>
+      <AlertDialog>
+        {rows.length > 0 && <div className="jobs-panel-toolbar">
+          <span role="status">{pending ? `${pending} active · ` : ""}{rows.length} {rows.length === 1 ? "job" : "jobs"}</span>
+          <AlertDialogTrigger asChild><Button type="button" variant="ghost" size="xs" disabled={rows.length === pending}>Clear finished</Button></AlertDialogTrigger>
+        </div>}
+        <AlertDialogContent onCloseAutoFocus={event => {
+          if (!cleared.current) return;
+          cleared.current = false; event.preventDefault(); panel.current?.focus();
+        }}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear finished calculations?</AlertDialogTitle>
+            <AlertDialogDescription>Finished jobs will be removed from this list. Active jobs and result files are kept.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => {
+              cleared.current = true;
+              actions.clearConformerJobs(); actions.clearXtbJobs(); actions.clearDerivedColumnJobs(); actions.clearDatabaseJobs();
+            }}>Clear finished</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {rows.length === 0 ? <p className="jobs-panel-empty" role="status">No calculations yet</p> : (
         <ol className="jobs-panel-list">
           {rows.map((job) => (
-            <li key={job.id} className="jobs-panel-row" data-status={job.status}>
-              <details className="jobs-panel-details">
-                <summary>
-                  <span className="jobs-panel-heading">
-                    <strong title={job.title}>{job.title}</strong>
-                    <span className="jobs-panel-status">{active(job) ? <span className="dock-job-spinner" aria-hidden="true" /> : null}{statusLabels[job.status] ?? job.status}</span>
-                  </span>
-                </summary>
-                <p className="jobs-panel-summary">{[job.source, job.summary].filter(Boolean).join(" · ")}</p>
-                {job.details ? <pre>{job.details}</pre> : null}
-                <div className="jobs-panel-actions">
-                  {job.report && job.open ? <Button variant="ghost" size="xs" onClick={job.report}>Report</Button> : null}
-                  {job.log ? <Button variant="ghost" size="xs" onClick={job.log}>Log</Button> : null}
+            <Collapsible asChild key={job.id}>
+              <li className="jobs-panel-row" data-status={job.status}>
+                <div className="jobs-panel-row-header">
+                  <CollapsibleTrigger asChild>
+                    <Button type="button" variant="ghost" className="jobs-panel-toggle" aria-label={`Details for ${job.title}`}>
+                      <ChevronRight className="jobs-panel-chevron size-3" aria-hidden />
+                      <strong title={job.title}>{job.title}</strong>
+                      <span className="jobs-panel-status">{active(job) ? <Spinner className="size-3" aria-hidden /> : null}{statusLabels[job.status] ?? job.status}</span>
+                    </Button>
+                  </CollapsibleTrigger>
+                  <div className="jobs-panel-actions">
+                    {job.cancel ? <Button type="button" variant="ghost" size="xs" onClick={job.cancel}>Cancel</Button> : null}
+                    {job.open ? <Button type="button" variant="ghost" size="xs" onClick={job.open}>Open result</Button>
+                      : job.report ? <Button type="button" variant="ghost" size="xs" onClick={job.report}>Report</Button> : null}
+                  </div>
                 </div>
-              </details>
-              <div className="jobs-panel-actions">
-                {job.cancel ? <Button variant="ghost" size="xs" onClick={job.cancel}>Cancel</Button> : null}
-                {job.open ? <Button variant="ghost" size="xs" onClick={job.open}>Open result</Button>
-                  : job.report ? <Button variant="ghost" size="xs" onClick={job.report}>Report</Button> : null}
-              </div>
-            </li>
+                <CollapsibleContent className="jobs-panel-details">
+                  {job.source && <p>{job.source}</p>}
+                  {job.summary && <p>{job.summary}</p>}
+                  {(job.details || job.log || (job.report && job.open)) && <div className="jobs-panel-actions">
+                    {job.report && job.open ? <Button type="button" variant="ghost" size="xs" onClick={job.report}>Report</Button> : null}
+                    {job.log ? <Button type="button" variant="ghost" size="xs" onClick={job.log}>Log</Button> : null}
+                    {job.details && <Dialog>
+                      <DialogTrigger asChild><Button type="button" variant="ghost" size="xs">Details</Button></DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader><DialogTitle>{job.title}</DialogTitle></DialogHeader>
+                        <DialogDescription className="max-h-[50vh] overflow-auto whitespace-pre-wrap break-words">{job.details}</DialogDescription>
+                      </DialogContent>
+                    </Dialog>}
+                  </div>}
+                </CollapsibleContent>
+              </li>
+            </Collapsible>
           ))}
         </ol>
       )}

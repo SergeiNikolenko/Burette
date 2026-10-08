@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { MergeColumnsDialog } from "@/components/merge-columns-dialog";
 import { CalculatedColumnDialog } from "@/components/calculated-column-dialog";
 import type { GridColumnChoice } from "@/components/types";
+import { JobExamples } from "./job-examples";
 import { ConnectionExamples } from "./connection-examples";
 import { MenuExamples } from "./menu-examples";
 import { ToastExamples } from "./toast-examples";
@@ -14,6 +15,7 @@ import { defaultPreferences } from "@/stores/settings-store";
 import "../src/styles.css";
 import "../src/styles/codex-tokens.css";
 import "../src/styles/interface-tokens.css";
+import "../src/styles/dock-panels.css";
 
 const columns: GridColumnChoice[] = [{ id: "mass", label: "Mass", type: "number", kind: "property" }, { id: "logp", label: "LogP", type: "number", kind: "property" }];
 const request = { documentId: "series", documentTitle: "Series", columns };
@@ -22,7 +24,7 @@ function Forms() {
   const [open, setOpen] = useState<"merge" | "calculate" | null>(null);
   const [result, setResult] = useState("");
   return <main className={`app-shell ${theme === "dark" ? "dark" : ""}`} data-theme={theme} data-effective-theme={theme}
-    style={{ ...buildThemeStyle({ ...defaultPreferences, theme }, theme), display: "flex", flexDirection: "column", gap: 16, padding: 32 }}>
+    style={{ ...buildThemeStyle({ ...defaultPreferences, theme }, theme), display: "flex", flexDirection: "column", gap: 16, padding: 32, overflowY: "auto" }}>
     <h1>Series</h1>
     <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
       <Button variant="secondary" onClick={() => setTheme(theme === "light" ? "dark" : "light")}>{theme === "light" ? "Dark" : "Light"}</Button>
@@ -32,6 +34,7 @@ function Forms() {
       <ToastExamples />
       <MenuExamples />
     </div>
+    <JobExamples />
     <ConnectionExamples />
     {result ? <output>{result}</output> : null}
     <MergeColumnsDialog request={open === "merge" ? request : null} onDismiss={() => setOpen(null)}

@@ -31,18 +31,31 @@
 .dock-jobs-toolbar { padding-inline: 4px; }
 .dock-jobs-toolbar > span { font-size: 12px; line-height: 18px; font-weight: 500; }
 
-/* One chronological list for all calculation engines. */
+/* Atlas task-row geometry; task actions remain separate keyboard targets. */
 .jobs-panel { min-width: 0; }
-.jobs-panel-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 6px; color: var(--text-muted); font-size: 12px; }
-.jobs-panel-list { list-style: none; margin: 0; padding: 0; }
-.jobs-panel-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 10px; min-width: 0; padding: 6px 2px; border-top: 1px solid var(--line-subtler); }
-.jobs-panel-heading { display: inline-flex; width: calc(100% - 16px); vertical-align: middle; align-items: center; gap: 10px; min-width: 0; }
-.jobs-panel-heading strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; color: var(--text-primary); }
-.jobs-panel-status { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; color: var(--text-muted); font-size: 11px; }
-.jobs-panel-row[data-status="failed"] .jobs-panel-status { color: var(--status-danger); }
-.jobs-panel-row[data-status="recovered"] .jobs-panel-status { color: var(--text-secondary); }
-.jobs-panel-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.jobs-panel-summary { margin: 4px 0; overflow-wrap: anywhere; color: var(--text-muted); font-size: 12px; line-height: 18px; }
-.jobs-panel-details { min-width: 0; color: var(--text-secondary); font-size: 12px; }
-.jobs-panel-details summary { min-height: 28px; line-height: 28px; cursor: pointer; }
-.jobs-panel-details pre { margin: 6px 0; padding: 8px; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-hover); border-radius: 6px; font: inherit; }
+.jobs-panel-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 8px 8px; color: var(--color-text-secondary); font-size: var(--text-sm); }
+.jobs-panel-list { display: grid; gap: 2px; list-style: none; margin: 0; padding: 0; }
+.jobs-panel-row { min-width: 0; }
+.jobs-panel-row-header { display: flex; align-items: center; gap: 4px; min-width: 0; border-radius: 12.5px; padding-right: 4px; }
+.jobs-panel-row-header:hover,
+.jobs-panel-row-header:focus-within { background: var(--color-background-primary-ghost-hover); }
+.jobs-panel-toggle {
+  display: flex; flex: 1; min-width: 0; height: 29px; padding: 5px 8px;
+  justify-content: flex-start; gap: 8px; border: 0; border-radius: 12.5px;
+  color: var(--color-text); font-size: var(--text-sm); line-height: 18.5714px;
+}
+.jobs-panel-toggle:hover,
+.jobs-panel-toggle[aria-expanded="true"] { background: transparent; }
+.jobs-panel-toggle strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; font-weight: inherit; }
+.jobs-panel-toggle:focus-visible { outline: 2px solid var(--color-ring); outline-offset: -2px; box-shadow: none; }
+.jobs-panel-chevron { color: var(--color-text-tertiary); transition: transform 150ms ease-out; }
+.jobs-panel-toggle[aria-expanded="true"] .jobs-panel-chevron { transform: rotate(90deg); }
+.jobs-panel-status { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; color: var(--color-text-tertiary); font-size: var(--text-xs); line-height: 16px; }
+.jobs-panel-row[data-status="failed"] .jobs-panel-status { color: var(--color-text-danger); }
+.jobs-panel-row[data-status="success"] .jobs-panel-status { color: var(--color-text-success); }
+.jobs-panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; flex-shrink: 0; }
+.jobs-panel-actions:empty { display: none; }
+.jobs-panel-details { padding: 4px 8px 8px 28px; color: var(--color-text-secondary); font-size: var(--text-sm); line-height: 18.5714px; overflow-wrap: anywhere; }
+.jobs-panel-details p { margin: 0 0 4px; }
+.jobs-panel-empty { margin: 0; padding: 8px; color: var(--color-text-secondary); font-size: var(--text-sm); }
+@media (prefers-reduced-motion: reduce) { .jobs-panel-chevron { transition: none; } }
