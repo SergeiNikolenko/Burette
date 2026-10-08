@@ -49,3 +49,24 @@ test("merge dialog forwards edited fields and selected columns without rewriting
     expect(calls).toEqual([["series", "Properties", " / ", [{ id: "mass", label: "Mass" }, { id: "logp", label: "LogP" }]]]);
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
+
+test("merge form blocks duplicate columns and derives a title for a valid keyboard submission", async () => {
+  const container = document.createElement("div"); container.className = "app-shell"; document.body.append(container);
+  const root = createRoot(container);
+  const calls: unknown[] = [];
+  const columns = [{ id: "name", label: "Name", type: "text" as const, kind: "property" }, { id: "id", label: "Identifier", type: "text" as const, kind: "property" }];
+  const request = { documentId: "series", documentTitle: "Series", columns };
+  try {
+    await act(async () => root.render(<MergeColumnsDialog request={request} onDismiss={() => calls.push("close")} onRun={(...args) => calls.push(args)} />));
+    const second = container.querySelector<HTMLSelectElement>('select[name="second"]')!;
+    const form = container.querySelector("form")!;
+    await act(async () => { second.value = "name"; second.dispatchEvent(new Event("change", { bubbles: true })); });
+    await act(async () => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(calls).toEqual([]);
+    expect(second.getAttribute("aria-invalid")).toBe("true");
+    expect(document.getElementById(second.getAttribute("aria-describedby")!)?.textContent).toBe("Pick two different columns.");
+    await act(async () => { second.value = "id"; second.dispatchEvent(new Event("change", { bubbles: true })); });
+    await act(async () => form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+    expect(calls).toEqual([["series", "Name + Identifier", " ", [{ id: "name", label: "Name" }, { id: "id", label: "Identifier" }]], "close"]);
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
