@@ -1,6 +1,6 @@
 {
   "name": "burette",
-  "version": "2026.9.63",
+  "version": "2026.10.1",
   "private": true,
   "description": "macOS desktop app and Quick Look extension for molecular previews: Mol* 3D, xyzrender SVG, and RDKit grids.",
   "packageManager": "bun@1.4.2",
@@ -55,6 +55,7 @@
     "test": "bun run test:mesoscale && bun run test:agent && bun run test:update && bun run test:ui",
     "test-ui": "bun run test:ui",
     "ci:fast": "bash scripts/ci-fast.sh",
+    "test:responsiveness": "vp test -t 'test-(shell-performance|background-performance|sidebar-tree-collapse|viewer-scene-recovery|story-preset-entrypoints)'",
     "ci": "bash scripts/ci.sh",
     "ready": "vp check && vp test && vp build && vp run check && vp run test",
     "prepare": "lefthook install || echo 'warning: lefthook install skipped'",
