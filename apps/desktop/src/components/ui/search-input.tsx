@@ -6,7 +6,8 @@ import { AnimatedSearchIcon } from "./animated-icons";
 import { cn } from "@/lib/utils";
 
 // Atlas page search: a native text field with an explicit, keyboard-accessible clear action.
-export function SearchInput({ value, onValueChange, className, disabled, ...props }: Omit<ComponentProps<typeof Input>, "ref" | "value" | "onChange" | "variant" | "type"> & {
+export function SearchInput({ value, onValueChange, className, disabled, clearLabel = "Clear search", ...props }: Omit<ComponentProps<typeof Input>, "ref" | "value" | "onChange" | "variant" | "type"> & {
+  clearLabel?: string;
   value: string;
   onValueChange: (value: string) => void;
 }) {
@@ -16,6 +17,6 @@ export function SearchInput({ value, onValueChange, className, disabled, ...prop
     <Input {...props} disabled={disabled} ref={input} type="text" variant="transparent" autoComplete="off" spellCheck={false}
       value={value} onChange={event => onValueChange(event.target.value)}
       className="h-full flex-1 rounded-none border-0 bg-transparent p-0 text-base leading-[18px] focus:border-transparent focus:ring-0" />
-    {value && <Button type="button" variant="ghost" size="icon-sm" disabled={disabled} aria-label="Clear search" onClick={() => { onValueChange(""); input.current?.focus(); }}><X size={16} aria-hidden /></Button>}
+    {value && <Button type="button" variant="ghost" size="icon-sm" disabled={disabled} aria-label={clearLabel} onClick={() => { onValueChange(""); input.current?.focus(); }}><X size={16} aria-hidden /></Button>}
   </div>;
 }

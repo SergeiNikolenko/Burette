@@ -2641,9 +2641,7 @@ img.radix-menu-item-icon {
   padding: 0 12px 12px;
 }
 .settings-sidebar-spacer { height: calc(var(--chrome-height) - 4px); flex: 0 0 calc(var(--chrome-height) - 4px); }
-/* Back button and nav rows are shadcn Buttons, the field is an InputGroup and
-   the list is a ScrollArea: only the sidebar's own sizing and left alignment
-   stay here. */
+/* Atlas navigation uses shared Button, SearchInput and ScrollArea primitives. */
 .settings-back-button {
   height: 29px;
   width: 100%;
@@ -2653,7 +2651,7 @@ img.radix-menu-item-icon {
   font-size: var(--text-base);
   font-weight: 400;
 }
-.settings-search { height: 34px; margin: 8px 0 14px; }
+.settings-search { margin: 8px 0 14px; }
 .settings-nav-scroll {
   min-height: 0;
   flex: 1;
@@ -2684,7 +2682,9 @@ img.radix-menu-item-icon {
   background: var(--color-background-primary-ghost-hover);
   color: var(--color-text);
 }
-.settings-nav-item:active { transform: scale(0.99); }
+.settings-nav-item > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; line-height: 21px; }
+.settings-back-button:focus-visible,
+.settings-nav-item:focus-visible { outline: 2px solid var(--color-ring); outline-offset: -2px; box-shadow: none; }
 .settings-nav-icon {
   width: 16px;
   height: 16px;
@@ -2705,8 +2705,6 @@ img.radix-menu-item-icon {
 .tab:focus-visible,
 .sidebar-product:focus-visible,
 .sidebar-settings-button:focus-visible,
-.settings-back-button:focus-visible,
-.settings-nav-item:focus-visible,
 .dock-tab:focus-visible,
 .dock-tab-close:focus-visible,
 .dock-icon-button:focus-visible,
