@@ -279,6 +279,12 @@ Tauri keeps real native selects. `Tabs` renders the inset segmented control.
 Tooltips have no arrow unless `showArrow` is set. Style these controls through
 their variants and sizes; app styles should only place them, not repaint them.
 
+Run `vp exec node scripts/sync-atlas-primitives.mjs --check` to compare the
+extracted CSS modules with the local InterfaceAtlas snapshot without modifying
+them. Use `--atlas /path/to/InterfaceAtlas` for a different checkout. A mismatch
+or missing generated module exits nonzero. This verifies extraction fidelity,
+not React interaction behavior or whole-screen visual parity.
+
 Loading uses two original Atlas variants: `Spinner` is the 18px app icon with
 a two-second stepped rotation synchronized to the document timeline, including
 indicators mounted later; `LoadingIndicator` is the gradient ring with a 0.8s

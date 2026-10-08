@@ -1,11 +1,13 @@
 // Extract original component modules, not hand-maintained approximations.
 // node scripts/sync-atlas-primitives.mjs --atlas /path/to/InterfaceAtlas
+// Add --check to verify source fidelity without rewriting generated modules.
 import { readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 
 const index = process.argv.indexOf('--atlas');
+const check = process.argv.includes('--check');
 const atlas = index < 0 ? join(homedir(), 'Documents/Projects/InterfaceAtlas') : process.argv[index + 1];
 const shared = 'app-shared-342447930c78.css';
 const modules = [
@@ -98,6 +100,11 @@ for (const { name, sheet, bounds, names } of modules) {
   try { previous = await readFile(target, 'utf8'); } catch (error) {
     if (error.code !== 'ENOENT') throw error;
   }
-  if (previous !== output) await writeFile(target, output);
+  if (previous !== output) {
+    if (check) {
+      console.error(`Atlas ${name} differs from its source; run scripts/sync-atlas-primitives.mjs to regenerate.`);
+      process.exitCode = 1;
+    } else await writeFile(target, output);
+  }
   console.log(`Original Atlas ${name}: ${module.length} bytes, SHA-256 ${digest}`);
 }

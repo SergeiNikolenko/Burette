@@ -137,9 +137,10 @@ Every stage must pass the smallest checks for its changed surface:
 - `vp run typecheck` for TypeScript changes. `vp build` checks the root frontend
   configuration; use `vp build --config apps/desktop/vite.config.ts` to also
   validate desktop asset inlining, preload filtering and chunk boundaries.
-  Serve the resulting bundle with `vp preview` for compiled browser checks;
-  this does not prove Tauri IPC or packaged native acceptance. Follow
-  `vite-plus.md` for the toolchain.
+  `vp preview` checks shell-only rendering, not molecular runtime loading.
+  Use the compiled browser-shell recipe in `tools/testing-surfaces.md` for
+  real-document verification; neither check proves Tauri IPC or packaged
+  native acceptance. Follow `vite-plus.md` for the toolchain.
 - Focused UI contract tests for changed shell or component behavior.
 - Browser-dev verification in light and dark themes.
 - Keyboard focus, disabled, hover, error, loading, and empty states relevant to
