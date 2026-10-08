@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
 import { HugeiconsIcon } from "@hugeicons/react"
 import "./select.atlas.css"
+import "./select-menu.atlas.css"
 import "./select.css"
 import { ChevronUpDown as UnfoldMoreIcon, Check as Tick02Icon, ChevronUp as ArrowUp01Icon, ChevronDown as ArrowDown01Icon } from "@/components/ui/app-icon-data";
 
@@ -77,8 +78,9 @@ function SelectControlIcon() {
 function SelectContent({
   className,
   children,
-  position = "item-aligned",
+  position = "popper",
   align = "center",
+  sideOffset = 5,
   container,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content> & {
@@ -90,19 +92,17 @@ function SelectContent({
     <SelectPrimitive.Portal container={container ?? appShellContainer}>
       <SelectPrimitive.Content
         data-slot="select-content"
-        data-align-trigger={position === "item-aligned"}
-        className={cn("relative z-50 max-h-(--radix-select-content-available-height) min-w-36 origin-(--radix-select-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-[20px] bg-popover text-popover-foreground shadow-[0_8px_16px_-4px_rgb(0_0_0/0.12)] ring-[0.5px] ring-(--color-border) duration-100 data-[align-trigger=true]:animate-none data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95", position ==="popper"&&"data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1", className )}
+        data-position={position}
+        className={cn("atlas-select-menu relative z-50 overflow-hidden text-(--color-text)", className)}
         position={position}
         align={align}
+        sideOffset={sideOffset}
         {...props}
       >
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport
           data-position={position}
-          className={cn(
-            "p-1 data-[position=popper]:h-(--radix-select-trigger-height) data-[position=popper]:w-full data-[position=popper]:min-w-(--radix-select-trigger-width)",
-            position === "popper" && ""
-          )}
+          className="atlas-select-options"
         >
           {children}
         </SelectPrimitive.Viewport>
@@ -119,7 +119,7 @@ function SelectLabel({
   return (
     <SelectPrimitive.Label
       data-slot="select-label"
-      className={cn("px-2 py-1 text-[13px] leading-[18.5px] text-(--color-text-tertiary)", className)}
+      className={cn("atlas-select-group-heading normal-case", className)}
       {...props}
     />
   )
@@ -134,17 +134,21 @@ function SelectItem({
     <SelectPrimitive.Item
       data-slot="select-item"
       className={cn(
-        "relative flex w-full cursor-default items-center gap-1.5 rounded-(--radius-xl) py-[5px] pr-8 pl-2 text-[13px] leading-[18.5px] outline-hidden select-none focus:bg-(--color-background-primary-ghost-hover) data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 *:[span]:last:flex *:[span]:last:items-center *:[span]:last:gap-2",
+        "atlas-select-option outline-hidden",
         className
       )}
       {...props}
     >
-      <span className="pointer-events-none absolute right-2 flex size-4 items-center justify-center">
-        <SelectPrimitive.ItemIndicator>
-          <HugeiconsIcon icon={Tick02Icon} strokeWidth={2} className="pointer-events-none" />
-        </SelectPrimitive.ItemIndicator>
-      </span>
-      <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+      <div className="atlas-select-pressable">
+        <div className="atlas-select-option-inner">
+          <span className="atlas-select-check-slot" data-option-indicator-position="start">
+            <SelectPrimitive.ItemIndicator>
+              <HugeiconsIcon icon={Tick02Icon} className="atlas-select-check" aria-hidden="true" />
+            </SelectPrimitive.ItemIndicator>
+          </span>
+          <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
+        </div>
+      </div>
     </SelectPrimitive.Item>
   )
 }

@@ -247,8 +247,12 @@ background, foreground, fonts and accent.
 The shared controls in `components/ui` follow the Codex control specs and read
 their colors, radii and shadows from the tokens. Buttons come in a 32px action
 size (default), a 28px toolbar size (`sm`) and a 24px pill (`xs`), all at the
-interface weight. Inputs are 36px fields; select triggers are pills, 32px by
-default and 28px with `size="sm"`. `Tabs` renders the inset segmented control.
+interface weight. Inputs are 36px fields. Select triggers use the original Atlas
+outline style: 32px high with a 10px radius by default, or 28px high with a 7.5px
+radius for `size="sm"`. Their popup and option CSS are extracted by
+`scripts/sync-atlas-primitives.mjs`; the Radix adapter retains keyboard focus,
+disabled choices, grouping and form values. Browser-dev uses web listboxes;
+Tauri keeps real native selects. `Tabs` renders the inset segmented control.
 Tooltips have no arrow unless `showArrow` is set. Style these controls through
 their variants and sizes; app styles should only place them, not repaint them.
 

@@ -39,6 +39,13 @@ test("browser choices use a Radix listbox and keep labels, disabled groups, empt
     expect(trigger.textContent).toBe("Second");
     expect(new browser.FormData(host.querySelector("form")!).get("method")).toBe("2");
     expect(document.querySelector('[role="listbox"]')).toBeNull();
+    await act(async () => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    const selected = document.querySelector<HTMLElement>('[role="option"][data-state="checked"]')!;
+    expect(selected.textContent).toBe("Second");
+    await act(async () => selected.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(calls).toEqual([["method", "2", true]]);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 

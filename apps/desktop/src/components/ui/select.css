@@ -1,4 +1,20 @@
 @layer components {
+  .atlas-select-menu {
+    --select-list-min-width: min(300px, var(--radix-select-content-available-width, 100vw));
+    --select-list-max-width: var(--radix-select-content-available-width, 100vw);
+    max-height: min(var(--select-list-max-height, 400px), var(--radix-select-content-available-height));
+  }
+  .atlas-select-menu[data-position=item-aligned] { width: auto; }
+  .atlas-select-menu[data-position=popper][data-state=open] { animation: atlas-select-enter .3s var(--cubic-enter); }
+  .atlas-select-menu[data-position=popper][data-state=closed] { animation: atlas-select-exit .2s var(--cubic-exit); }
+  @keyframes atlas-select-enter {
+    from { opacity: 0; transform: scale(var(--select-list-scale, .95)); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes atlas-select-exit {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(var(--select-list-scale, .95)); }
+  }
   /* Keep macOS's real select rather than a second, potentially stale label. */
   .atlas-select:has(> [data-native-selectcontrol]) { padding: 0; }
   .atlas-select > [data-native-selectcontrol] {
@@ -16,6 +32,8 @@
     outline-offset: var(--select-control-ring-offset, 2px);
   }
   @media (prefers-reduced-motion: reduce) {
+    .atlas-select-menu[data-position=popper] { animation: none; }
+    .atlas-select-option::before { transition: none; }
     .atlas-select, .atlas-select::before, .atlas-select::after, .atlas-select-icon { transition: none; }
     .atlas-select { --scale: 1 !important; }
   }

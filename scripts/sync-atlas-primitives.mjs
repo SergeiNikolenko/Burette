@@ -9,6 +9,20 @@ const index = process.argv.indexOf('--atlas');
 const atlas = index < 0 ? join(homedir(), 'Documents/Projects/InterfaceAtlas') : process.argv[index + 1];
 const shared = 'app-shared-342447930c78.css';
 const modules = [
+  { name: 'select-menu', sheet: 'SegmentedControl-1b0cd2c8f252.css', bounds: ['._MenuList_1rueu_8{', '@media (hover:hover) and (pointer:fine){._SliderWrap'], names: {
+    _MenuList_1rueu_8: 'atlas-select-menu', _Menu_1rueu_4: 'atlas-select-transition',
+    _MenuInner_1rueu_57: 'atlas-select-menu-inner', _OptionsList_1rueu_74: 'atlas-select-options',
+    _Option_1rueu_74: 'atlas-select-option', _PressableInner_1rueu_132: 'atlas-select-pressable',
+    _OptionInner_1rueu_136: 'atlas-select-option-inner', _OptionCheck_1rueu_143: 'atlas-select-check',
+    _OptionIndicatorSlot_1rueu_150: 'atlas-select-check-slot', _OptionGroupHeading_1rueu_161: 'atlas-select-group-heading',
+    _OptionHardLimitHeading_1rueu_179: 'atlas-select-limit-heading', _OptionsLimit_1rueu_188: 'atlas-select-limit',
+    _Action_1rueu_196: 'atlas-select-action', _ActionInner_1rueu_261: 'atlas-select-action-inner',
+    _ActionsContainer_1rueu_269: 'atlas-select-actions', _Search_1rueu_291: 'atlas-select-search',
+    _SearchInput_1rueu_296: 'atlas-select-search-input', _SearchEmpty_1rueu_300: 'atlas-select-search-empty',
+    _NativeSelect_1rueu_313: 'atlas-select-native',
+    '[data-selected]': '[data-state=checked]', '[data-highlight]': '[data-highlighted]',
+    '--radix-popover': '--radix-select',
+  } },
   { name: 'select', sheet: 'DatePicker-c4bc775bfdef.css', bounds: ['._SelectControl_1qm03_1{', '._CalendarContainer_1gw5r_1{'], names: {
     _SelectControl_1qm03_1: 'atlas-select', _Clear_1qm03_488: 'atlas-select-clear',
     _DropdownIcon_1qm03_489: 'atlas-select-icon', _TriggerText_1qm03_525: 'atlas-select-text',
