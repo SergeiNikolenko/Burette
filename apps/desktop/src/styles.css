@@ -519,104 +519,6 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   border-radius: 4px;
   text-align: center;
 }
-.calculate-properties-dialog {
-  width: min(560px, calc(100vw - 48px));
-}
-.calculate-properties-target {
-  margin: 0 0 10px;
-  color: var(--text-secondary);
-  font-size: 12px;
-}
-.calculate-properties-group {
-  margin: 0 0 12px;
-  padding: 8px 10px 10px;
-  border: 0.5px solid var(--line-subtle);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--fg-base) 3%, transparent);
-}
-.calculate-properties-group legend {
-  padding: 0 4px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-secondary);
-}
-.calculate-properties-group-toggle {
-  border: 0;
-  background: none;
-  padding: 0;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-.calculate-properties-group-toggle:hover { color: var(--text-primary, inherit); }
-.calculate-properties-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 2px 10px;
-}
-/* One checkbox row for every dialog: the property pickers, the column
-   deleter and the folder opener all read the same way. */
-.calculate-properties-option,
-.radix-dialog-check-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  line-height: 18px;
-  padding: 3px 0;
-  color: var(--text-primary);
-}
-.radix-dialog-check-row span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.calculate-properties-runtime {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 8px;
-  margin: 6px 0 0;
-  font-size: 11px;
-  color: var(--text-secondary);
-}
-.calculate-properties-runtime[data-tone="ready"] { color: var(--text-secondary); }
-.calculate-properties-runtime-progress {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.calculate-properties-runtime-line {
-  flex-basis: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-}
-.calculate-properties-runtime-hint {
-  flex-basis: 100%;
-}
-.calculate-properties-runtime-error {
-  flex-basis: 100%;
-  color: var(--danger, #e5484d);
-}
-.calculate-properties-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: 4px;
-}
-.calculate-properties-count {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-.calculate-properties-actions {
-  margin-left: auto;
-  display: flex;
-  gap: 8px;
-}
 .calculate-properties-run {
   font-weight: 600;
 }
@@ -8576,18 +8478,13 @@ input.structure-inspector-composition-search {
   gap: 12px;
   padding: 12px var(--dialog-inset) var(--dialog-inset);
 }
-/* The footer of the table and file dialogs: actions sit at the right, and a
-   .calculate-properties-footer pushes its status text to the left edge. */
+/* Legacy table and file dialog actions. */
 .radix-dialog-footer {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
   padding: 12px var(--dialog-inset) var(--dialog-inset);
-}
-.radix-dialog-footer.calculate-properties-footer {
-  justify-content: space-between;
-  margin-top: 0;
 }
 /* Legacy form actions share the same action dimensions and neutral colors as Button. */
 .radix-dialog .dock-action {

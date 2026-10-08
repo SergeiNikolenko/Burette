@@ -1,6 +1,7 @@
 import { Checkbox } from "./ui/checkbox";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Dialog } from "radix-ui";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/dialog";
+import { Button } from "./ui/button";
 
 import { PROPERTY_GROUPS, type PropertyRunOptions } from "../lib/derived-columns";
 import {
@@ -9,9 +10,7 @@ import {
   installDescriptorRuntime,
   type DescriptorRuntimeStatus,
 } from "../lib/descriptors";
-import { useAppShellPortalContainer } from "./ui/portal-container";
 import { Spinner } from "./ui/spinner";
-import { CloseIcon } from "./close-icon";
 
 export type CalculatePropertiesRequest = {
   documentId: string;
@@ -32,7 +31,6 @@ export function CalculatePropertiesDialog({
   onDismiss: () => void;
   onRun: (documentId: string, propertyIds: string[], options: PropertyRunOptions & { mordred: boolean }) => void;
 }) {
-  const portalContainer = useAppShellPortalContainer();
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set(DEFAULT_SELECTION));
   const [largestFragment, setLargestFragment] = useState(true);
   const [mordred, setMordred] = useState(false);
@@ -79,87 +77,52 @@ export function CalculatePropertiesDialog({
   };
 
   return (
-    <Dialog.Root
-      open={request !== null}
-      onOpenChange={(open) => {
-        if (!open) onDismiss();
-      }}
-    >
-      <Dialog.Portal container={portalContainer}>
-        <Dialog.Overlay className="radix-dialog-overlay" />
-        <Dialog.Content className="radix-dialog calculate-properties-dialog" aria-describedby="calculate-properties-body">
-          <div className="radix-dialog-header">
-            <Dialog.Title>Calculate Properties</Dialog.Title>
-            <Dialog.Close asChild>
-              <button type="button" className="radix-dialog-close" aria-label="Close calculate properties">
-                <CloseIcon size={14} />
-              </button>
-            </Dialog.Close>
-          </div>
-          <div id="calculate-properties-body" className="radix-dialog-body">
-            {PROPERTY_GROUPS.map((group) => (
-              <fieldset key={group.id} className="calculate-properties-group">
-                <legend>
-                  <button type="button" className="calculate-properties-group-toggle" onClick={() => toggleGroup(group.id)}>
-                    {group.label}
-                  </button>
-                </legend>
-                <div className="calculate-properties-grid">
-                  {group.properties.map((property) => (
-                    <label key={property.id} className="calculate-properties-option">
-                      <Checkbox
-                        checked={selected.has(property.id)}
-                        onCheckedChange={() => toggle(property.id)}
-                      />
-                      <span>{property.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-            ))}
-            <fieldset className="calculate-properties-group">
-              <legend>Extended (Mordred)</legend>
-              <label className="calculate-properties-option">
-                <Checkbox
-                  checked={mordred}
-                  onCheckedChange={() => setMordred((value) => !value)}
-                />
-                <span>All Mordred 2D descriptors (~1,600 columns, needs the Python runtime)</span>
-              </label>
-              <DescriptorRuntimeInstall open={request !== null} />
+    <Dialog open={request !== null} onOpenChange={open => { if (!open) onDismiss(); }}>
+      <DialogContent variant="form" size="wide" className="overscroll-contain">
+        <DialogHeader>
+          <DialogTitle>Calculate properties</DialogTitle>
+          <DialogDescription className="sr-only">Choose properties to calculate for {request?.documentTitle}.</DialogDescription>
+        </DialogHeader>
+        <div className="flex max-h-[min(60dvh,520px)] min-w-0 flex-col gap-3 overflow-y-auto overscroll-contain">
+          {PROPERTY_GROUPS.map(group => (
+            <fieldset key={group.id} className="min-w-0">
+              <legend className="mb-1">
+                <Button type="button" variant="ghost" size="xs" className="-ml-2"
+                  aria-pressed={group.properties.every(property => selected.has(property.id))}
+                  onClick={() => toggleGroup(group.id)}>{group.label.replace(/\s+\([^)]*\)$/u, "")}</Button>
+              </legend>
+              <div className="grid grid-cols-1 gap-x-3 gap-y-0.5 min-[480px]:grid-cols-2 min-[640px]:grid-cols-3">
+                {group.properties.map(property => (
+                  <label key={property.id} className="flex min-w-0 cursor-pointer items-center gap-2 py-0.5 text-sm">
+                    <Checkbox checked={selected.has(property.id)} onCheckedChange={() => toggle(property.id)} />
+                    <span className="min-w-0 break-words">{property.label}</span>
+                  </label>
+                ))}
+              </div>
             </fieldset>
-            <fieldset className="calculate-properties-group">
-              <legend>Options</legend>
-              <label className="calculate-properties-option">
-                <Checkbox
-                  checked={largestFragment}
-                  onCheckedChange={() => setLargestFragment((value) => !value)}
-                />
-                <span>Use largest fragment (strip salts and solvents)</span>
-              </label>
-            </fieldset>
-          </div>
-          <div className="radix-dialog-footer calculate-properties-footer">
-            <span className="calculate-properties-count">
-              {selectedCount.toLocaleString()} propert{selectedCount === 1 ? "y" : "ies"} selected{mordred ? " + Mordred" : ""}
-            </span>
-            <div className="calculate-properties-actions">
-              <Dialog.Close asChild>
-                <button type="button" className="dock-action">Cancel</button>
-              </Dialog.Close>
-              <button
-                type="button"
-                className="dock-action calculate-properties-run"
-                disabled={selectedCount === 0 && !mordred}
-                onClick={run}
-              >
-                Calculate
-              </button>
-            </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+          ))}
+          <fieldset className="min-w-0">
+            <legend className="mb-2 text-xs font-medium">Extended descriptors</legend>
+            <label className="flex cursor-pointer items-center gap-2 py-1 text-sm">
+              <Checkbox checked={mordred} onCheckedChange={() => setMordred(value => !value)} />
+              <span>All 2D descriptors (~1,600 columns)</span>
+            </label>
+            <DescriptorRuntimeInstall open={request !== null} />
+          </fieldset>
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 py-1 text-sm">
+          <Checkbox checked={largestFragment} onCheckedChange={() => setLargestFragment(value => !value)} />
+          <span>Use largest fragment (strip salts and solvents)</span>
+        </label>
+        <DialogFooter className="items-center gap-2">
+          <span className="mr-auto text-xs text-(--color-text-secondary) tabular-nums" role="status">
+            {selectedCount.toLocaleString()} propert{selectedCount === 1 ? "y" : "ies"} selected{mordred ? " + extended descriptors" : ""}
+          </span>
+          <Button type="button" variant="ghost" onClick={onDismiss}>Cancel</Button>
+          <Button type="button" disabled={selectedCount === 0 && !mordred} onClick={run}>Calculate</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -188,7 +151,8 @@ function DescriptorRuntimeInstall({ open }: { open: boolean }) {
       .catch((cause: unknown) => {
         if (disposed.current) return;
         setStatus(null);
-        setInstallError(errorMessage(cause));
+        console.error("[Descriptor installation]", cause);
+        setInstallError("Could not check availability. Reopen this dialog to try again.");
       })
       .finally(() => {
         if (!disposed.current) setChecking(false);
@@ -212,10 +176,11 @@ function DescriptorRuntimeInstall({ open }: { open: boolean }) {
             // The cancel kills the running step, so its own error is the kill,
             // not a reason worth putting in front of whoever asked for it.
             setInstalling(false);
-            setInstallError("The descriptor runtime installation was cancelled.");
+            setInstallError("Installation cancelled.");
           } else if (next.installPhase === "failed") {
             setInstalling(false);
-            setInstallError(next.installError ?? "The descriptor runtime installation failed.");
+            console.error("[Descriptor installation]", next.installError);
+            setInstallError("Installation failed. Try again.");
           }
         })
         .catch(() => undefined);
@@ -226,66 +191,27 @@ function DescriptorRuntimeInstall({ open }: { open: boolean }) {
     };
   }, [installing]);
 
-  if (checking && !status) {
-    return <p className="calculate-properties-runtime">Checking the descriptor runtime...</p>;
-  }
-  if (installing) {
-    return (
-      <div className="calculate-properties-runtime">
-        <span className="calculate-properties-runtime-progress">
-          <Spinner /> Installing the descriptor runtime...
-        </span>
-        {status?.installLine ? (
-          <span className="calculate-properties-runtime-line">{status.installLine}</span>
-        ) : null}
-        <button
-          type="button"
-          className="dock-action"
-          onClick={() => {
-            void cancelDescriptorRuntimeInstall().catch((cause: unknown) => setInstallError(errorMessage(cause)));
-          }}
-        >
-          Cancel installation
-        </button>
-      </div>
-    );
-  }
-  if (status?.available) {
-    const versions = [
-      status.rdkitVersion ? `RDKit ${status.rdkitVersion}` : null,
-      status.mordredVersion ? `Mordred ${status.mordredVersion}` : null,
-    ].filter(Boolean).join(" / ");
-    return (
-      <p className="calculate-properties-runtime" data-tone="ready">
-        Runtime installed{versions ? `: ${versions}` : ""}.
-      </p>
-    );
-  }
-  return (
-    <div className="calculate-properties-runtime" data-tone="missing">
-      <span>{status?.message ?? "The descriptor runtime is not available."}</span>
-      {status?.installerAvailable ? (
-        <button
-          type="button"
-          className="dock-action"
-          onClick={() => {
-            setInstallError(null);
-            setInstalling(true);
-            void installDescriptorRuntime().catch((cause: unknown) => {
-              setInstalling(false);
-              setInstallError(errorMessage(cause));
-            });
-          }}
-        >
-          Install runtime ({status.installSizeHint})
-        </button>
-      ) : null}
-      {status?.installHint ? <span className="calculate-properties-runtime-hint">{status.installHint}</span> : null}
-      {installError ? <span className="calculate-properties-runtime-error">{installError}</span> : null}
-    </div>
-  );
-}
-
-function errorMessage(cause: unknown) {
-  return cause instanceof Error ? cause.message : String(cause);
+  return <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-(--color-text-secondary)">
+    {checking && !status ? <span className="flex items-center gap-2" role="status"><Spinner className="size-3" aria-hidden />Checking…</span>
+      : installing ? <>
+        <span className="flex items-center gap-2" role="status"><Spinner className="size-3" aria-hidden />Installing…</span>
+        <Button type="button" variant="secondary" size="xs" onClick={() => {
+          void cancelDescriptorRuntimeInstall().catch((cause: unknown) => {
+            if (disposed.current) return;
+            console.error("[Descriptor installation]", cause);
+            setInstallError("Could not cancel installation. Try again.");
+          });
+        }}>Cancel installation</Button>
+      </> : status?.available ? <span role="status">Ready</span>
+      : status?.installerAvailable ? <Button type="button" variant="secondary" size="xs" onClick={() => {
+        setInstallError(null); setInstalling(true);
+        void installDescriptorRuntime().catch((cause: unknown) => {
+          if (disposed.current) return;
+          console.error("[Descriptor installation]", cause);
+          setInstalling(false); setInstallError("Installation failed. Try again.");
+        });
+      }}>Install{status.installSizeHint ? ` (${status.installSizeHint})` : ""}</Button>
+      : !installError && <span>Extended descriptors unavailable</span>}
+    {installError && <span className="basis-full text-(--color-text-danger)" role="alert">{installError}</span>}
+  </div>;
 }

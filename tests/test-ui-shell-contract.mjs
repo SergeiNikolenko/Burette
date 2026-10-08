@@ -7562,22 +7562,11 @@ assert.match(gridViewer, /const targetRow = commandTargetRow\(body\);/);
 assert.match(styles, /\.grid-hover-molecule-prop\[data-tone\^="outlier"\] \{/);
 assert.match(calculatePropertiesDialog, /Use largest fragment/);
 assert.match(calculatePropertiesDialog, /Mordred/);
-// The Mordred group is the only one that leaves the webview, so it carries the
-// runtime affordance: present or not, an install that reports its current step,
-// and a cancel. Same status/install/cancel shape as the model runtime, so the
-// long-running install is never the body of the command the dialog awaits.
-assert.match(calculatePropertiesDialog, /<legend>Extended \(Mordred\)<\/legend>/);
-assert.match(calculatePropertiesDialog, /function DescriptorRuntimeInstall\(\{ open \}/);
-assert.match(calculatePropertiesDialog, /void descriptorRuntimeStatus\(\)/);
-assert.match(calculatePropertiesDialog, /if \(next\.installPhase === "installing"\) setInstalling\(true\);/);
-assert.match(calculatePropertiesDialog, /next\.installPhase === "cancelled"/);
-assert.match(calculatePropertiesDialog, /next\.installPhase === "failed"/);
-assert.match(calculatePropertiesDialog, /void installDescriptorRuntime\(\)\.catch/);
-assert.match(calculatePropertiesDialog, /void cancelDescriptorRuntimeInstall\(\)/);
-assert.match(calculatePropertiesDialog, /Install runtime \(\{status\.installSizeHint\}\)/);
-assert.match(calculatePropertiesDialog, /\{status\.installLine\}/);
-assert.match(calculatePropertiesDialog, /\{installError\}/);
-assert.match(styles, /\.calculate-properties-runtime \{/);
+// The property picker retains runtime installation/cancellation, using shared controls.
+// Its async states and error copy are covered by test-calculate-properties-dialog.test.tsx.
+assert.match(calculatePropertiesDialog, /<DescriptorRuntimeInstall open=/);
+assert.match(calculatePropertiesDialog, /from "\.\/ui\/dialog"/);
+assert.doesNotMatch(calculatePropertiesDialog, /\{status\.installLine\}/);
 assert.match(browserDevDescriptors, /endpoint === "cancel-install"/);
 assert.match(viteConfig, /browserDevDescriptorInstallState\.installPhase = "installing";/);
 assert.match(viteConfig, /browserDevDescriptorInstallChild\?\.kill\(\);/);

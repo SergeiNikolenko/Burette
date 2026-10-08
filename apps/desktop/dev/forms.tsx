@@ -10,6 +10,7 @@ import { SubstructureQueryExample } from "./substructure-query-example";
 import { CorrelationExample } from "./correlation-example";
 import { ReactionExample } from "./reaction-example";
 import { RGroupExample } from "./rgroup-example";
+import { PropertiesExample } from "./properties-example";
 import { JobExamples } from "./job-examples";
 import { ConnectionExamples } from "./connection-examples";
 import { MenuExamples } from "./menu-examples";
@@ -45,6 +46,7 @@ function Forms() {
     <CorrelationExample />
     <ReactionExample />
     <RGroupExample />
+    <PropertiesExample />
     <DocumentControlsExamples />
     <JobExamples />
     <ConnectionExamples />

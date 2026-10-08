@@ -75,8 +75,6 @@ assert.deepEqual(problems, [], `dialog consistency problems:\n${problems.join('\
 
 // The shared rules the dialogs rely on.
 assert.match(styles, /\.radix-dialog-footer \{[^}]*display: flex;[^}]*justify-content: flex-end;[^}]*gap: 12px;[^}]*padding: 12px var\(--dialog-inset\) var\(--dialog-inset\);/s);
-assert.match(styles, /\.radix-dialog-footer\.calculate-properties-footer \{[^}]*justify-content: space-between;/s);
-assert.match(styles, /\.calculate-properties-option,\s*\.radix-dialog-check-row \{/);
 assert.match(styles, /\.radix-dialog-scroll-list \{[^}]*max-height: 240px;[^}]*overflow-y: auto;/s);
 assert.match(styles, /\.radix-dialog-subline \{[^}]*color: var\(--text-muted\);/s);
 assert.match(styles, /\.calculated-column-field select:not\(\[data-slot="native-select"\]\) \{/);
