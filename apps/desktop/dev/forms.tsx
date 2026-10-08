@@ -17,6 +17,7 @@ import { DatabaseExample } from "./database-example";
 import { JobExamples } from "./job-examples";
 import { DescriptorStatusExample } from "./descriptor-status-example";
 import { RenderSettingsExample } from "./render-settings-example";
+import { RenderingStyleExample } from "./rendering-style-example";
 import { TextDocumentInfoExample } from "./text-document-info-example";
 import { ConnectionExamples } from "./connection-examples";
 import { MenuExamples } from "./menu-examples";
@@ -47,6 +48,7 @@ function Forms() {
       <ToastExamples />
       <MenuExamples />
       <RenderSettingsExample />
+      <RenderingStyleExample />
     </div>
     <TableTransformExamples />
     <SubstructureQueryExample />

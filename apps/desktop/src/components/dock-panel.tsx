@@ -4,6 +4,7 @@ import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { activeViewerIframeForDocument, postToXyzrenderViewer } from "../lib/viewer-bridge";
 import type { AnimationSource } from "./xyzrender-animation-dialog";
 import { Switch } from "./ui/switch";
+import { Badge } from "./ui/badge";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 import { ChevronDown, FileBlank } from "./ui/app-icons";
@@ -693,15 +694,12 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
 
   return (
     <div className="dock-content xyzrender-dock-panel">
-      <section className="structure-brief-card xyzrender-dock-card">
-        <Button type="button" variant="outline" className="xyzrender-editor-launch w-full h-10" onClick={() => { activeViewerIframeForDocument(document.id)?.contentWindow?.postMessage({ source: "burette-host", body: { type: "openXyzrenderEditor", documentId: document.id } }, "*"); }}>Orientation & animation…</Button>
+      <section className="xyzrender-dock-card grid min-w-0">
+        <Button type="button" variant="secondary" className="xyzrender-editor-launch w-full" onClick={() => { activeViewerIframeForDocument(document.id)?.contentWindow?.postMessage({ source: "burette-host", body: { type: "openXyzrenderEditor", documentId: document.id } }, "*"); }}>Orientation & animation…</Button>
         <div id="xyzrender-editor-controls" />
         <div className="structure-inspector-section-header">
-          <div>
-            <h3>Style</h3>
-            <p>{itemLabel}</p>
-          </div>
-          <span className="xyzrender-dock-badge">SVG</span>
+          <h3 className="min-w-0 wrap-anywhere">{itemLabel}</h3>
+          <Badge variant="secondary">SVG</Badge>
         </div>
         <XyzrenderPresetGallery
           preset={preset}
@@ -802,8 +800,8 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
         </CollapsibleContent>
       </Collapsible>
       <div className="xyzrender-dock-actions">
-        <button type="button" className="dock-action" onClick={() => apply()}>Apply</button>
-        <button type="button" className="dock-action" onClick={reset}>Reset</button>
+        <Button type="button" variant="secondary" size="sm" onClick={() => apply()}>Apply</Button>
+        <Button type="button" variant="secondary" size="sm" onClick={reset}>Reset</Button>
       </div>
     </div>
   );
@@ -811,18 +809,20 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
 
 function XyzrenderPresetGallery({ preset, onSelect }: { preset: string; onSelect: (preset: string) => void }) {
   return (
-    <div className="xyzrender-dock-preset-gallery" aria-label="xyzrender preset gallery">
+    <div className="xyzrender-dock-preset-gallery" role="group" aria-label="Rendering style">
       {XYZRENDER_README_PRESET_GALLERY.map((option) => (
-        <button
+        <Button
           type="button"
-          className="xyzrender-dock-preset-tile"
+          variant="ghost"
+          size="sm"
+          className="xyzrender-dock-preset-tile text-(--color-text) aria-pressed:border-(--color-border) aria-pressed:bg-(--color-background-primary-ghost-hover)"
           key={option.value}
           aria-pressed={preset === option.value}
           onClick={() => onSelect(option.value)}
         >
           <span>{option.label}</span>
           <XyzrenderGalleryTileImage src={option.image} />
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -836,7 +836,7 @@ function XyzrenderDisplayOptionsGallery({
   onSelect: (controls: XyzrenderControls) => void;
 }) {
   return (
-    <div className="xyzrender-dock-display-options" aria-label="xyzrender display options">
+    <div className="xyzrender-dock-display-options" role="group" aria-label="Display options">
       <div className="xyzrender-dock-subtitle">Display options</div>
       <div className="xyzrender-dock-display-grid">
         {XYZRENDER_README_DISPLAY_OPTIONS.map((option) => {
@@ -844,9 +844,11 @@ function XyzrenderDisplayOptionsGallery({
             ? (controls.displayHydrogens ?? "auto") === option.value
             : (controls.bondNotation ?? "aromatic") === option.value;
           return (
-            <button
+            <Button
               type="button"
-              className="xyzrender-dock-preset-tile"
+              variant="ghost"
+              size="sm"
+              className="xyzrender-dock-preset-tile text-(--color-text) aria-pressed:border-(--color-border) aria-pressed:bg-(--color-background-primary-ghost-hover)"
               key={`${option.group}-${option.value}`}
               aria-pressed={active}
               onClick={() => onSelect(option.group === "hydrogens"
@@ -855,7 +857,7 @@ function XyzrenderDisplayOptionsGallery({
             >
               <span>{option.label}</span>
               <XyzrenderGalleryTileImage src={option.image} />
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -874,20 +876,22 @@ function XyzrenderVdwGallery({
     ? controls.vdwAtoms ? "partial" : "all"
     : "off";
   return (
-    <div className="xyzrender-dock-vdw-options" aria-label="xyzrender vdW spheres">
+    <div className="xyzrender-dock-vdw-options" role="group" aria-label="Van der Waals spheres">
       <div className="xyzrender-dock-subtitle">vdW spheres</div>
       <div className="xyzrender-dock-vdw-grid">
         {XYZRENDER_README_VDW_OPTIONS.map((option) => (
-          <button
+          <Button
             type="button"
-            className="xyzrender-dock-preset-tile"
+            variant="ghost"
+            size="sm"
+            className="xyzrender-dock-preset-tile text-(--color-text) aria-pressed:border-(--color-border) aria-pressed:bg-(--color-background-primary-ghost-hover)"
             key={option.value}
             aria-pressed={active === option.value}
             onClick={() => onSelect(option.value)}
           >
             <span>{option.label}</span>
             <XyzrenderGalleryTileImage src={option.image} />
-          </button>
+          </Button>
         ))}
       </div>
     </div>
@@ -902,20 +906,22 @@ function XyzrenderHullGallery({
   onSelect: (mode: (typeof XYZRENDER_README_HULL_OPTIONS)[number]["value"]) => void;
 }) {
   return (
-    <div className="xyzrender-dock-hull-options" aria-label="xyzrender convex hull">
+    <div className="xyzrender-dock-hull-options" role="group" aria-label="Convex hull">
       <div className="xyzrender-dock-subtitle">Convex hull</div>
       <div className="xyzrender-dock-hull-grid">
         {XYZRENDER_README_HULL_OPTIONS.map((option) => (
-          <button
+          <Button
             type="button"
-            className="xyzrender-dock-preset-tile"
+            variant="ghost"
+            size="sm"
+            className="xyzrender-dock-preset-tile text-(--color-text) aria-pressed:border-(--color-border) aria-pressed:bg-(--color-background-primary-ghost-hover)"
             key={option.value}
             aria-pressed={controls.hullMode === option.value}
             onClick={() => onSelect(option.value)}
           >
             <span>{option.label}</span>
             <XyzrenderGalleryTileImage src={option.image} />
-          </button>
+          </Button>
         ))}
       </div>
     </div>
@@ -930,20 +936,22 @@ function XyzrenderPoreGallery({
   onSelect: (mode: (typeof XYZRENDER_README_PORE_OPTIONS)[number]["value"]) => void;
 }) {
   return (
-    <div className="xyzrender-dock-pore-options" aria-label="xyzrender hull faces and pore detection">
+    <div className="xyzrender-dock-pore-options" role="group" aria-label="Hull faces and pore detection">
       <div className="xyzrender-dock-subtitle">Hull faces &amp; pore detection</div>
       <div className="xyzrender-dock-pore-grid">
         {XYZRENDER_README_PORE_OPTIONS.map((option) => (
-          <button
+          <Button
             type="button"
-            className="xyzrender-dock-preset-tile"
+            variant="ghost"
+            size="sm"
+            className="xyzrender-dock-preset-tile text-(--color-text) aria-pressed:border-(--color-border) aria-pressed:bg-(--color-background-primary-ghost-hover)"
             key={option.value}
             aria-pressed={controls.hullMode === option.value}
             onClick={() => onSelect(option.value)}
           >
             <span>{option.label}</span>
             <XyzrenderGalleryTileImage src={option.image} />
-          </button>
+          </Button>
         ))}
       </div>
     </div>
@@ -964,7 +972,7 @@ function XyzrenderGalleryTileImage({ src }: { src: string }) {
     });
   }, [resolvedSrc, src]);
 
-  return <img src={resolvedSrc} alt="" loading="lazy" draggable={false} onError={handleError} />;
+  return <img src={resolvedSrc} alt="" width={96} height={58} loading="lazy" draggable={false} onError={handleError} />;
 }
 
 function XyzrenderDockCheckbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
@@ -984,38 +992,6 @@ function XyzrenderDockTriState({ label, value, onChange }: { label: string; valu
         <SelectTrigger aria-label={label} className="w-28"><SelectValue /></SelectTrigger>
         <SelectContent><SelectGroup><SelectItem value="default">Default</SelectItem><SelectItem value="on">On</SelectItem><SelectItem value="off">Off</SelectItem></SelectGroup></SelectContent>
       </Select>
-    </label>
-  );
-}
-
-function XyzrenderDockNumber({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-}: {
-  label: string;
-  value: number | null | undefined;
-  min?: number;
-  max?: number;
-  step: string;
-  onChange: (value: number | null) => void;
-}) {
-  const current = typeof value === "number" && Number.isFinite(value) ? value : "";
-  return (
-    <label className="xyzrender-dock-field">
-      <span>{label}</span>
-      <input
-        type="number"
-        value={current}
-        min={min}
-        max={max}
-        step={step}
-        placeholder="Auto"
-        onChange={(event) => onChange(xyzrenderNumberValue(event.currentTarget.value))}
-      />
     </label>
   );
 }
@@ -1058,18 +1034,6 @@ function xyzrenderTriStateValue(value: string) {
   if (value === "on") return true;
   if (value === "off") return false;
   return null;
-}
-
-function xyzrenderNumberValue(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const number = Number(trimmed);
-  return Number.isFinite(number) ? number : null;
-}
-
-function normalizeXyzrenderFieldMode(value: string): XyzrenderControls["fieldMode"] {
-  if (value === "off" || value === "density" || value === "mo" || value === "esp" || value === "nci") return value;
-  return "auto";
 }
 
 function KetcherDockTool({

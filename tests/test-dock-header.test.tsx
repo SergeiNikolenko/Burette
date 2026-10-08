@@ -62,10 +62,10 @@ test("read-only and transient tabs cannot be closed", async () => {
   const props = { area: "right" as const, tabs: [{ id: "x", kind: "xyzrender" as const }], activeKind: "xyzrender" as const, panelId: "right-panel", fileDragProps: {}, onSelect: () => {}, onClose: () => calls.push("close"), onHide: () => calls.push("hide"), onAdd: () => {} };
   try {
     await act(async () => root.render(<DockHeader {...props} readOnly />));
-    expect(Array.from(mount.querySelectorAll("button"), button => button.getAttribute("aria-label"))).toEqual(["xyzr"]);
+    expect(Array.from(mount.querySelectorAll("button"), button => button.getAttribute("aria-label"))).toEqual(["Style"]);
     await act(async () => mount.querySelector('button')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true })));
     expect(calls).toEqual([]);
     await act(async () => root.render(<DockHeader {...props} readOnly={false} transientTabId="x" />));
-    expect(Array.from(mount.querySelectorAll("button"), button => button.getAttribute("aria-label"))).toEqual(["xyzr", "Add right dock tab", "Close right dock"]);
+    expect(Array.from(mount.querySelectorAll("button"), button => button.getAttribute("aria-label"))).toEqual(["Style", "Add right dock tab", "Close right dock"]);
   } finally { await act(async () => root.unmount()); mount.remove(); }
 });

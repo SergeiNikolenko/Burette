@@ -74,15 +74,10 @@
 .grid-molecule-3d-status { display: grid; place-items: center; min-height: 260px; color: var(--text-muted); font-size: 12px; }
 .grid-molecule-3d > .grid-molecule-3d-status { position: absolute; inset: 0; }
 
-.xyzrender-dock-panel { --accent: #888; accent-color: #888; }
 .grid-molecule-3d-menu { position: absolute; top: 4px; right: 4px; z-index: 2; }
 .grid-hover-molecule .grid-hover-molecule-props { grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr)); align-content: start; }
 .grid-hover-molecule .grid-hover-molecule-prop { min-height: 54px; }
-.xyzrender-dock-panel .xyzrender-dock-preset-tile[aria-pressed="true"] {
-  border-color: var(--text-muted);
-  box-shadow: none;
-  background: var(--surface-hover);
-}
+
 
 .xyzrender-animation-preview {
   display: grid;
@@ -103,5 +98,3 @@
 .xyzrender-angle-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .xyzrender-angle-row > [data-slot="field-label"] { flex: 0 0 auto; }
 .xyzrender-angle-row { min-width: 0; gap: 6px; }
-.xyzrender-dock-panel .xyzrender-dock-card { background: transparent; border: 0; padding: 4px; }
-.xyzrender-dock-panel .xyzrender-dock-preset-tile { background: var(--surface-input); }

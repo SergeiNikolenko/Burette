@@ -3086,8 +3086,9 @@ assert.match(styles, /\.app-shell\[data-effective-theme="dark"\] \.dock-panel \{
 assert.match(styles, /\.dock-panel \{[\s\S]*transition: width 180ms cubic-bezier\(0\.2, 0, 0, 1\), height 180ms cubic-bezier\(0\.2, 0, 0, 1\), opacity 140ms ease-out;/);
 assert.match(styles, /\.dock-panel\[data-open="false"\] \{/);
 assert.match(styles, /\.xyzrender-dock-preset-gallery \{[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\);/);
-assert.match(styles, /\.xyzrender-dock-display-grid \{[\s\S]*grid-template-columns: repeat\(5, minmax\(0, 1fr\)\);/);
-assert.match(styles, /\.xyzrender-dock-preset-tile\[aria-pressed="true"\] \{/);
+assert.match(styles, /\.xyzrender-dock-display-grid \{[\s\S]*grid-template-columns: repeat\(6, minmax\(0, 1fr\)\);/);
+// Tile interactions use the shared Button; scientific behavior is exercised by
+// test-rendering-style-dock.test.tsx.
 assert.match(styles, /\.xyzrender-dock-preset-tile img \{[\s\S]*object-fit: contain;/);
 assert.match(styles, /\.dock-panel\[data-open="false"\] \.dock-panel-inner \{[\s\S]*visibility: hidden;/);
 assert.match(styles, /\.dock-panel\[data-area="right"\]\[data-open="false"\] \{[\s\S]*min-width: 0;/);
