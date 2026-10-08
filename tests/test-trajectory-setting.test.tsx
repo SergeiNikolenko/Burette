@@ -3,6 +3,7 @@ import { Window } from "happy-dom";
 import React, { act, useState } from "react";
 
 const browser = new Window();
+for (const key of ["HTMLFormElement", "DocumentFragment"] as const) Object.defineProperty(globalThis, key, { configurable: true, value: browser[key] });
 for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLInputElement", "Element", "Node", "Event", "MouseEvent", "MutationObserver", "getComputedStyle", "CustomEvent", "FocusEvent"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
 }
@@ -34,7 +35,9 @@ test("scientific hints describe controls without entering their labels or blocki
     const select = mount.querySelector("select")!;
     const descriptions = () => select.getAttribute("aria-describedby")!.split(" ").map(id => document.getElementById(id)?.textContent);
     expect(descriptions()).toEqual(["Choose a signal", "Measured displacement"]);
-    expect(select.closest("label")?.textContent).toBe("SignalRMSDtICA");
+    const trigger = mount.querySelector<HTMLButtonElement>('[role="combobox"]')!;
+    expect(trigger.textContent).toBe("RMSD");
+    expect(trigger.getAttribute("aria-describedby")).toBe(select.getAttribute("aria-describedby"));
     expect(mount.querySelector('[data-slot="tooltip-content"]')).toBeNull();
     await act(async () => { select.value = "ic1"; select.dispatchEvent(new Event("change", { bubbles: true })); });
     expect(descriptions()).toEqual(["Choose a signal", "Slow motion"]);

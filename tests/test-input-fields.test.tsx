@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import React, { act, createRef } from "react";
 const browser = new Window();
+for (const key of ["HTMLFormElement", "DocumentFragment"] as const) Object.defineProperty(globalThis, key, { configurable: true, value: browser[key] });
 for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLInputElement", "HTMLTextAreaElement", "HTMLSelectElement", "Node", "NodeFilter", "CustomEvent", "Event", "MutationObserver", "getComputedStyle"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
 }

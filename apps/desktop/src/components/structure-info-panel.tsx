@@ -491,6 +491,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
                 <Field>
                 <FieldLabel htmlFor="inspector-xtb-operation">Operation</FieldLabel>
                 <TooltipProvider><Tooltip><TooltipTrigger asChild>
+                <div>
                 <NativeSelect name="operation" aria-description={XTB_ACTION_TOOLTIPS[xtbOperation]} id="inspector-xtb-operation" value={xtbOperation} onChange={(event) => setXtbOperation(event.target.value as keyof typeof XTB_ACTION_TOOLTIPS)}>
                   {XTB_MENU_GROUPS.map(([group, operations]) => (
                     <NativeSelectOptGroup key={group} label={group}>
@@ -498,6 +499,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
                     </NativeSelectOptGroup>
                   ))}
                 </NativeSelect>
+                </div>
                 </TooltipTrigger><TooltipContent>{XTB_ACTION_TOOLTIPS[xtbOperation]}</TooltipContent></Tooltip></TooltipProvider>
                 </Field>
               </FieldGroup>

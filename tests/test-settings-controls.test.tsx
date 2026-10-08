@@ -3,6 +3,7 @@ import { Window } from "happy-dom";
 import React, { act, useState } from "react";
 
 const browser = new Window();
+Object.defineProperty(globalThis, "DocumentFragment", { configurable: true, value: browser.DocumentFragment });
 for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLInputElement", "HTMLFormElement", "Element", "Node", "NodeFilter", "Event", "MouseEvent", "MutationObserver", "ResizeObserver", "getComputedStyle", "localStorage", "DOMRect", "CustomEvent", "KeyboardEvent", "PointerEvent", "FocusEvent", "requestAnimationFrame", "cancelAnimationFrame"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
 }
