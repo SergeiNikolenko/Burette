@@ -26,7 +26,7 @@ export function KetcherModeMenu({ open, onOpen, onClose, onSwitch, disabled, isP
       {icon}
     </Button></DropdownMenuTrigger>
     <DropdownMenuContent className="ketcher-ui-menu" container={document.fullscreenElement ?? buttonRef.current?.closest<HTMLElement>(".app-shell") ?? undefined}>
-      {[false, true].map((macro) => <DropdownMenuCheckboxItem key={String(macro)} checked={macro === isPolymerEditor}
+      {[false, true].map((macro) => <DropdownMenuCheckboxItem key={String(macro)} checked={macro === isPolymerEditor} closeOnSelect
         data-testid={macro ? "macromolecules_mode" : "molecules_mode"} onSelect={() => onSwitch(macro)}>
         {macro ? "Macromolecules" : "Molecules"}
       </DropdownMenuCheckboxItem>)}

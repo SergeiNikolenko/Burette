@@ -96,9 +96,12 @@ function DropdownMenuCheckboxItem({
   children,
   checked,
   inset,
+  closeOnSelect = false,
+  onSelect,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.CheckboxItem> & {
   inset?: boolean
+  closeOnSelect?: boolean
 }) {
   return (
     <DropdownMenuPrimitive.CheckboxItem
@@ -109,6 +112,10 @@ function DropdownMenuCheckboxItem({
         className
       )}
       checked={checked}
+      onSelect={(event) => {
+        if (!closeOnSelect) event.preventDefault()
+        onSelect?.(event)
+      }}
       {...props}
     >
       <span
@@ -247,12 +254,19 @@ function DropdownMenuSubTrigger({
 
 function DropdownMenuSubContent({
   className,
+  // Atlas flyout: 4px parent gutter + 4px gap; align above its 4px inset + 1px margin.
+  sideOffset = 8,
+  alignOffset = -5,
+  collisionPadding = 6,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubContent>) {
   return (
     <DropdownMenuPrimitive.SubContent
       data-slot="dropdown-menu-sub-content"
-      className={cn("z-50 max-h-[min(var(--radix-dropdown-menu-content-available-height,100dvh),calc(100dvh-16px))] max-w-[min(var(--radix-dropdown-menu-content-available-width,100vw),calc(100vw-16px))] min-w-[180px] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-(--radius-2xl) bg-(--color-surface-elevated-secondary)/90 p-[var(--app-menu-gutter,var(--menu-gutter))] text-(--color-text) backdrop-blur-sm shadow-(--shadow-dropdown-overlay) ring-(length:--dropdown-overlay-ring-width) ring-(--color-border-overlay)", className )}
+      sideOffset={sideOffset}
+      alignOffset={alignOffset}
+      collisionPadding={collisionPadding}
+      className={cn("z-50 m-px flex flex-col select-none max-h-[min(var(--radix-dropdown-menu-content-available-height,100dvh),calc(100dvh-16px))] max-w-[min(var(--radix-dropdown-menu-content-available-width,100vw),calc(100vw-16px))] min-w-[180px] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-(--radius-2xl) bg-(--color-surface-elevated-secondary)/90 p-[var(--app-menu-gutter,var(--menu-gutter))] text-(--color-text) backdrop-blur-sm shadow-(--shadow-dropdown-overlay) ring-(length:--dropdown-overlay-ring-width) ring-(--color-border-overlay)", className )}
       {...props}
     />
   )

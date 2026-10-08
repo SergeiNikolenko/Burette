@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuCheckboxItem, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuPortal, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { Folder } from "@/components/ui/app-icons";
 import { Kbd } from "@/components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -53,6 +55,7 @@ function Appearance({ mode }: { mode: ThemeMode }) {
   const [shell, setShell] = useState<HTMLDivElement | null>(null);
   const [method, setMethod] = useState("gfn2");
   const [pending, setPending] = useState(false);
+  const [hydrogens, setHydrogens] = useState(true);
   return (
     <div ref={setShell} className="app-shell theme-fixture" data-theme={mode} data-effective-theme={mode} style={buildThemeStyle({ ...defaultPreferences, theme: mode }, mode)}>
       <aside>
@@ -62,6 +65,29 @@ function Appearance({ mode }: { mode: ThemeMode }) {
         ))}
       </aside>
       <main>
+        <section>
+          <h3>Menus</h3>
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild><Button size="toolbar" variant="ghost">View options</Button></DropdownMenuTrigger>
+            <DropdownMenuContent container={shell}>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger><Folder />Move to project</DropdownMenuSubTrigger>
+                <DropdownMenuPortal container={shell}>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem><Folder />samples</DropdownMenuItem>
+                    <DropdownMenuItem><Folder />OpenedFiles</DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem>New project…</DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuPortal>
+              </DropdownMenuSub>
+              <DropdownMenuCheckboxItem checked={hydrogens} onCheckedChange={value => setHydrogens(value === true)}>Hydrogens</DropdownMenuCheckboxItem>
+              <DropdownMenuItem disabled>Align structures</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem>Export structure…</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </section>
         <section>
           <h3>Surfaces</h3>
           <div className="theme-fixture-swatches">

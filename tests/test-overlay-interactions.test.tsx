@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import React, { act } from "react";
 const browser = new Window();
-for (const key of ["DocumentFragment", "HTMLFormElement", "HTMLSelectElement"] as const) {
+for (const key of ["DocumentFragment", "HTMLFormElement", "HTMLSelectElement", "MouseEvent"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: browser[key] });
 }
 for (const key of ["window", "document", "navigator", "HTMLElement", "Element", "DOMRect", "HTMLInputElement", "Node", "NodeFilter", "CustomEvent", "Event", "KeyboardEvent", "MutationObserver", "ResizeObserver", "getComputedStyle", "requestAnimationFrame", "cancelAnimationFrame"] as const) {
@@ -329,7 +329,78 @@ test("tooltip waits on first pointer entry and respects an explicit themed porta
 
 const Menu = await import("../apps/desktop/src/components/ui/dropdown-menu");
 const Context = await import("../apps/desktop/src/components/ui/context-menu");
+const { RadixDropdownMenu, showRadixContextMenu } = await import("../apps/desktop/src/components/radix-menu");
 const { SelectControl } = await import("../apps/desktop/src/components/settings-panel/setting-control");
+
+for (const context of [false, true]) {
+  test(`application ${context ? "context" : "dropdown"} submenu escapes the parent's overflow and selects once`, async () => {
+    const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+    const root = createRoot(shell);
+    let selected = 0;
+    const items = [{ kind: "submenu" as const, id: "open", text: "Open", items: [
+      { kind: "item" as const, id: "tabs", text: "In Tabs", action: () => selected++ },
+    ] }];
+    const prefix = context ? "context" : "dropdown";
+    try {
+      if (context) {
+        await act(async () => showRadixContextMenu(items, { x: 20, y: 20 }));
+      } else {
+        await act(async () => root.render(<RadixDropdownMenu items={items} trigger={<button>Open options</button>} />));
+        await act(async () => shell.querySelector('button')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+      }
+      await act(flushFocus);
+      const trigger = shell.querySelector<HTMLElement>(`[data-slot="${prefix}-menu-sub-trigger"]`)!;
+      await act(async () => { trigger.focus(); trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })); });
+      await act(flushFocus);
+      const content = shell.querySelector(`[data-slot="${prefix}-menu-sub-content"]`)!;
+      expect(content !== null).toBe(true);
+      expect(content.parentElement!.closest(`[data-slot="${prefix}-menu-content"]`)).toBeNull();
+      await act(async () => content.querySelector<HTMLElement>('[role="menuitem"]')!.click()); await act(flushFocus);
+      expect([selected, shell.querySelector('[role="menu"]')]).toEqual([1, null]);
+    } finally { await act(async () => root.unmount()); shell.remove(); }
+  });
+}
+
+for (const context of [false, true]) {
+  test(`${context ? "context" : "dropdown"} checkbox keeps the menu open; closeOnSelect is explicit`, async () => {
+    const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+    const root = createRoot(shell);
+    const changes: boolean[] = [];
+    const selections: boolean[] = [];
+    const Root = context ? Context.ContextMenu : Menu.DropdownMenu;
+    const Trigger = context ? Context.ContextMenuTrigger : Menu.DropdownMenuTrigger;
+    const Content = context ? Context.ContextMenuContent : Menu.DropdownMenuContent;
+    const Check = context ? Context.ContextMenuCheckboxItem : Menu.DropdownMenuCheckboxItem;
+    function Example() {
+      const [checked, setChecked] = React.useState(true);
+      return <Root modal={false}><Trigger>View</Trigger><Content>
+        <Check checked={checked} onCheckedChange={value => {
+          changes.push(value === true); setChecked(value === true);
+        }} onSelect={event => selections.push(event.defaultPrevented)}>Hydrogens</Check>
+        <Check disabled onCheckedChange={() => { throw new Error("Disabled item selected"); }}>Unavailable</Check>
+        <Check closeOnSelect onSelect={event => selections.push(event.defaultPrevented)}>Apply and close</Check>
+      </Content></Root>;
+    }
+    try {
+      await act(async () => root.render(<Example />));
+      const trigger = shell.querySelector<HTMLElement>(`[data-slot="${context ? "context" : "dropdown"}-menu-trigger"]`)!;
+      await act(async () => trigger.dispatchEvent(context
+        ? new browser.MouseEvent("contextmenu", { bubbles: true, clientX: 20, clientY: 20 }) as unknown as Event
+        : new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+      await act(flushFocus);
+      let checks = [...shell.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')];
+      await act(async () => checks[0].click()); await act(flushFocus);
+      checks = [...shell.querySelectorAll<HTMLElement>('[role="menuitemcheckbox"]')];
+      expect([changes, selections, checks[0].getAttribute("aria-checked")]).toEqual([[false], [true], "false"]);
+      await act(async () => { checks[0].focus(); checks[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); });
+      await act(flushFocus);
+      expect(document.activeElement).toBe(checks[2]);
+      await act(async () => checks[2].click()); await act(flushFocus);
+      expect(selections).toEqual([true, false]);
+      expect(shell.querySelector('[role="menu"]')).toBeNull();
+    } finally { await act(async () => root.unmount()); shell.remove(); }
+  });
+}
 
 test("settings select displays labels, commits raw values once and restores trigger focus", async () => {
   const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);

@@ -6,6 +6,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuLabel,
+  ContextMenuPortal,
   ContextMenuSeparator,
   ContextMenuShortcut,
   ContextMenuSub,
@@ -19,6 +20,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuPortal,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuSub,
@@ -48,7 +50,7 @@ export function RadixDropdownMenu({
   contentClassName,
   align = "end",
   side = "bottom",
-  sideOffset = 6,
+  sideOffset = 1,
   alignOffset,
 }: RadixDropdownProps) {
   const container = useThemePortalContainer();
@@ -63,7 +65,7 @@ export function RadixDropdownMenu({
         side={side}
         sideOffset={sideOffset}
         alignOffset={alignOffset}
-        collisionPadding={8}
+        collisionPadding={6}
       >
         {items.map((item, index) => renderDropdownItem(item, index))}
       </DropdownMenuContent>
@@ -127,7 +129,7 @@ function RadixContextMenuLauncher({
           aria-hidden="true"
         />
       </ContextMenuTrigger>
-      <ContextMenuContent container={container} collisionPadding={8}>
+      <ContextMenuContent container={container} collisionPadding={6}>
         {items.map((item, index) => renderContextItem(item, index))}
       </ContextMenuContent>
     </ContextMenu>
@@ -145,6 +147,8 @@ function renderDropdownItem(item: MenuItemSpec, index: number) {
     return (
       <DropdownMenuCheckboxItem
         key={item.id}
+        // MenuItemSpec is a one-shot snapshot; reopen to read the updated scene.
+        closeOnSelect
         checked={item.checked}
         disabled={item.disabled}
         onCheckedChange={(checked) => item.action?.(checked === true)}
@@ -161,7 +165,9 @@ function renderDropdownItem(item: MenuItemSpec, index: number) {
     return (
       <DropdownMenuSub key={item.id}>
         <DropdownMenuSubTrigger disabled={item.disabled}>{renderItemBody(item)}</DropdownMenuSubTrigger>
-        <DropdownMenuSubContent>{item.items.map(renderDropdownItem)}</DropdownMenuSubContent>
+        <DropdownMenuPortal>
+          <DropdownMenuSubContent>{item.items.map(renderDropdownItem)}</DropdownMenuSubContent>
+        </DropdownMenuPortal>
       </DropdownMenuSub>
     );
   }
@@ -189,6 +195,7 @@ function renderContextItem(item: MenuItemSpec, index: number) {
     return (
       <ContextMenuCheckboxItem
         key={item.id}
+        closeOnSelect
         checked={item.checked}
         disabled={item.disabled}
         onCheckedChange={(checked) => item.action?.(checked === true)}
@@ -205,7 +212,9 @@ function renderContextItem(item: MenuItemSpec, index: number) {
     return (
       <ContextMenuSub key={item.id}>
         <ContextMenuSubTrigger disabled={item.disabled}>{renderItemBody(item)}</ContextMenuSubTrigger>
-        <ContextMenuSubContent>{item.items.map(renderContextItem)}</ContextMenuSubContent>
+        <ContextMenuPortal>
+          <ContextMenuSubContent>{item.items.map(renderContextItem)}</ContextMenuSubContent>
+        </ContextMenuPortal>
       </ContextMenuSub>
     );
   }

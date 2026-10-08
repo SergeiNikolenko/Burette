@@ -102,6 +102,17 @@ The shell is a workspace, not a brand canvas.
   unpin, source path, elapsed time, copy confirmation). They do not create new
   commands or change scientific workflows.
 
+### Shell Menus
+
+- Dropdown and context flyouts use the Atlas default menu surface and spacing:
+  4px gutter, 1px margin, 5px/8px row padding, and 6px collision inset.
+  Submenus portal into the shell rather than the parent's scrolling content.
+- Checkbox rows stay open by default, like Atlas `Menu.CheckboxItem`.
+  Use `closeOnSelect` for one-shot commands: `MenuItemSpec` snapshots and the
+  Ketcher editor-mode switch close before their surrounding UI is refreshed.
+- Keep keyboard selection, disabled-item skipping, parent focus restoration and
+  portal placement covered in `tests/test-overlay-interactions.test.tsx`.
+
 ### Viewer Menus on macOS
 
 Scene and Composition object menus, viewport rail menus (camera, screenshot,

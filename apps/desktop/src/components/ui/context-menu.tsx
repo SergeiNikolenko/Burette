@@ -132,12 +132,19 @@ function ContextMenuSubTrigger({
 
 function ContextMenuSubContent({
   className,
+  // Same flyout placement as the Atlas dropdown with the default 4px gutter.
+  sideOffset = 8,
+  alignOffset = -5,
+  collisionPadding = 6,
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.SubContent>) {
   return (
     <ContextMenuPrimitive.SubContent
       data-slot="context-menu-sub-content"
-      className={cn("z-50 max-h-[min(var(--radix-context-menu-content-available-height,100dvh),calc(100dvh-16px))] max-w-[min(var(--radix-context-menu-content-available-width,100vw),calc(100vw-16px))] min-w-[180px] origin-(--radix-context-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-(--radius-2xl) bg-(--color-surface-elevated-secondary)/90 p-[var(--app-menu-gutter,var(--menu-gutter))] text-(--color-text) backdrop-blur-sm shadow-(--shadow-dropdown-overlay) ring-(length:--dropdown-overlay-ring-width) ring-(--color-border-overlay) outline-none", className )}
+      sideOffset={sideOffset}
+      alignOffset={alignOffset}
+      collisionPadding={collisionPadding}
+      className={cn("z-50 m-px flex flex-col select-none max-h-[min(var(--radix-context-menu-content-available-height,100dvh),calc(100dvh-16px))] max-w-[min(var(--radix-context-menu-content-available-width,100vw),calc(100vw-16px))] min-w-[180px] origin-(--radix-context-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-(--radius-2xl) bg-(--color-surface-elevated-secondary)/90 p-[var(--app-menu-gutter,var(--menu-gutter))] text-(--color-text) backdrop-blur-sm shadow-(--shadow-dropdown-overlay) ring-(length:--dropdown-overlay-ring-width) ring-(--color-border-overlay) outline-none", className )}
       {...props}
     />
   )
@@ -148,9 +155,12 @@ function ContextMenuCheckboxItem({
   children,
   checked,
   inset,
+  closeOnSelect = false,
+  onSelect,
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.CheckboxItem> & {
   inset?: boolean
+  closeOnSelect?: boolean
 }) {
   return (
     <ContextMenuPrimitive.CheckboxItem
@@ -161,6 +171,10 @@ function ContextMenuCheckboxItem({
         className
       )}
       checked={checked}
+      onSelect={(event) => {
+        if (!closeOnSelect) event.preventDefault()
+        onSelect?.(event)
+      }}
       {...props}
     >
       <span className="pointer-events-none absolute right-2">
