@@ -3,6 +3,7 @@ import { Tooltip as TooltipPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
+import "./tooltip.atlas.css"
 
 function TooltipProvider({
   delayDuration = 150,
@@ -33,6 +34,7 @@ function TooltipContent({
   className,
   sideOffset = 5,
   compact = false,
+  clickable = false,
   gutterSize = "md",
   maxWidth = 300,
   style,
@@ -42,6 +44,7 @@ function TooltipContent({
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content> & {
   compact?: boolean
+  clickable?: boolean
   gutterSize?: "sm" | "md" | "lg"
   maxWidth?: number
   showArrow?: boolean
@@ -56,14 +59,11 @@ function TooltipContent({
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         data-compact={compact}
+        data-clickable={clickable}
         data-gutter-size={gutterSize}
         style={{ "--tooltip-max-width": `${maxWidth}px`, ...style } as React.CSSProperties}
         className={cn(
-          "z-50 max-w-[min(var(--tooltip-max-width,300px),var(--radix-tooltip-content-available-width,100vw),calc(100vw-16px))] rounded-(--tooltip-border-radius) shadow-(--tooltip-box-shadow) text-(length:--tooltip-font-size) leading-(--tooltip-line-height) wrap-anywhere",
-          compact
-            ? "p-(--tooltip-compact-padding) bg-(--tooltip-compact-background-color) text-(--tooltip-compact-text-color) text-(length:--tooltip-compact-font-size) font-(weight:--tooltip-compact-font-weight)"
-            : "bg-(--tooltip-background-color) text-(--tooltip-text-color) font-(weight:--tooltip-font-weight)",
-          !compact && { sm: "p-(--tooltip-padding-sm)", md: "p-(--tooltip-padding-md)", lg: "p-(--tooltip-padding-lg)" }[gutterSize],
+          "atlas-tooltip z-50 max-w-[min(var(--tooltip-max-width,300px),var(--radix-tooltip-content-available-width,100vw),calc(100vw-16px))] wrap-anywhere",
           className
         )}
         {...props}

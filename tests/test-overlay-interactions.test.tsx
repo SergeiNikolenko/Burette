@@ -7,12 +7,49 @@ for (const key of ["window", "document", "navigator", "HTMLElement", "Element", 
 }
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import("react-dom/client");
-const { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle } = await import("../apps/desktop/src/components/ui/dialog");
+const { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter } = await import("../apps/desktop/src/components/ui/dialog");
+const { Button } = await import("../apps/desktop/src/components/ui/button");
 const { Popover, PopoverTrigger, PopoverContent } = await import("../apps/desktop/src/components/ui/popover");
 const { Input } = await import("../apps/desktop/src/components/ui/input");
 
 // Let Radix finish the scheduled focus restoration, not a CSS-animation delay.
 const flushFocus = () => new Promise(resolve => setTimeout(resolve, 0));
+test("dialog action buttons preserve submit, disabled and slotted close behavior", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  let submissions = 0;
+  const ref = React.createRef<HTMLButtonElement>();
+  function Example() {
+    const [ready, setReady] = React.useState(false);
+    return <Dialog><DialogTrigger>Rename</DialogTrigger><DialogContent aria-describedby={undefined}>
+      <DialogHeader><DialogTitle>Rename series</DialogTitle></DialogHeader>
+      <form onSubmit={event => { event.preventDefault(); submissions++; }}>
+        <Button onClick={() => setReady(true)}>Enable save</Button>
+        <DialogFooter showCloseButton><Button ref={ref} type="submit" disabled={!ready}>Save</Button></DialogFooter>
+      </form>
+    </DialogContent></Dialog>;
+  }
+  try {
+    await act(async () => root.render(<Example />));
+    const trigger = shell.querySelector<HTMLButtonElement>('[data-slot="dialog-trigger"]')!;
+    await act(async () => trigger.click());
+    expect(ref.current?.disabled).toBe(true);
+    await act(async () => ref.current!.click());
+    expect(submissions).toBe(0);
+    const enable = [...shell.querySelectorAll("button")].find(el => el.textContent === "Enable save")!;
+    await act(async () => enable.click());
+    expect(submissions).toBe(0);
+    expect(ref.current?.disabled).toBe(false);
+    await act(async () => ref.current!.click());
+    expect(submissions).toBe(1);
+    const close = [...shell.querySelectorAll("button")].find(el => el.textContent === "Close")!;
+    await act(async () => close.click()); await act(flushFocus);
+    expect(shell.querySelector('[role="dialog"]')).toBeNull();
+    expect(submissions).toBe(1);
+    expect(document.activeElement).toBe(trigger);
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
+
 test("nested popover inherits the shell and Escape unwinds one overlay at a time", async () => {
   const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
   const root = createRoot(shell);

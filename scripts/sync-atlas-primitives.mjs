@@ -26,6 +26,9 @@ const modules = [
   { name: 'loading-indicator', sheet: shared, bounds: ['._LoadingIndicator_mlrw0_1{', '._TransitionGroupChild_nbx58_1{'], names: {
     _LoadingIndicator_mlrw0_1: 'atlas-loading-indicator', _rotate_mlrw0_41: 'atlas-loading-rotate',
   } },
+  { name: 'tooltip', sheet: shared, bounds: ['._Tooltip_1cofb_2{', '._TriggerDecorator_1cofb_2{'], names: {
+    _Tooltip_1cofb_2: 'atlas-tooltip',
+  } },
 ];
 for (const { name, sheet, bounds, names } of modules) {
   const source = await readFile(join(atlas, 'snapshot/assets', sheet), 'utf8');

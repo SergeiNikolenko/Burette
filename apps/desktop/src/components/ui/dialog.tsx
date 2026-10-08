@@ -2,7 +2,7 @@ import * as React from "react"
 import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { Button, ButtonStyleContext } from "@/components/ui/button"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
 import { X } from "@/components/ui/app-icons"
 
@@ -130,12 +130,14 @@ function DialogFooter({
       )}
       {...props}
     >
-      {children}
-      {showCloseButton && (
-        <DialogPrimitive.Close asChild>
-          <Button variant="secondary">Close</Button>
-        </DialogPrimitive.Close>
-      )}
+      <ButtonStyleContext value="dialog">
+        {children}
+        {showCloseButton && (
+          <DialogPrimitive.Close asChild>
+            <Button variant="secondary">Close</Button>
+          </DialogPrimitive.Close>
+        )}
+      </ButtonStyleContext>
     </div>
   )
 }

@@ -36,7 +36,7 @@ function DropdownMenuTrigger({
 function DropdownMenuContent({
   className,
   align = "start",
-  sideOffset = 4,
+  sideOffset = 1,
   container,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.Content> & {
@@ -50,10 +50,10 @@ function DropdownMenuContent({
         data-slot="dropdown-menu-content"
         sideOffset={sideOffset}
         align={align}
-        // Menus here hang off icon-sized triggers, so the upstream
-        // w-(--radix-dropdown-menu-trigger-width) would squeeze them and clip labels.
-        // They size to their content instead, the way the context menu already does.
-        className={cn("z-50 max-h-[min(var(--radix-dropdown-menu-content-available-height,100dvh),calc(100dvh-16px))] max-w-[min(var(--radix-dropdown-menu-content-available-width,100vw),calc(100vw-16px))] min-w-46 origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-(--radius-2xl) bg-(--color-surface-elevated-secondary)/90 p-[var(--app-menu-gutter,var(--menu-gutter))] text-(--color-text) backdrop-blur-sm shadow-(--shadow-dropdown-overlay) ring-(length:--dropdown-overlay-ring-width) ring-(--color-border-overlay)", className )}
+        collisionPadding={6}
+        // Original Atlas Menu.Content: content-sized surface, 1px margin,
+        // 1px trigger offset and 6px collision padding. Callers can set a width.
+        className={cn("no-drag z-50 m-px flex flex-col select-none max-h-[min(var(--radix-dropdown-menu-content-available-height,100dvh),calc(100dvh-16px))] max-w-[min(var(--radix-dropdown-menu-content-available-width,100vw),calc(100vw-16px))] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-(--radius-2xl) bg-(--color-surface-elevated-secondary)/90 p-[var(--app-menu-gutter,var(--menu-gutter))] text-(--color-text) backdrop-blur-sm shadow-(--shadow-dropdown-overlay) ring-(length:--dropdown-overlay-ring-width) ring-(--color-border-overlay)", className )}
         {...props}
       />
     </DropdownMenuPrimitive.Portal>
