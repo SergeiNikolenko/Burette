@@ -1,11 +1,10 @@
 import { Input } from "./ui/input";
-import { useEffect, useState } from "react";
-import { Dialog } from "radix-ui";
+import { useEffect, useId, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/dialog";
+import { Button } from "./ui/button";
 
 import type { GridColumnChoice } from "./types";
-import { useAppShellPortalContainer } from "./ui/portal-container";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
-import { CloseIcon } from "./close-icon";
 
 export type SetValueRangeRequest = {
   documentId: string;
@@ -31,7 +30,7 @@ export function SetValueRangeDialog({
   onDismiss: () => void;
   onRun: (documentId: string, column: { id: string; label: string }, min: string, max: string) => void;
 }) {
-  const portalContainer = useAppShellPortalContainer();
+  const problemId = useId();
   const columns = request?.columns ?? [];
   const [columnId, setColumnId] = useState("");
   const [min, setMin] = useState("");
@@ -45,82 +44,49 @@ export function SetValueRangeDialog({
   }, [request?.documentId]);
 
   const column = columns.find((candidate) => candidate.id === columnId) ?? null;
-  const problem = boundProblem(min)
-    ?? boundProblem(max)
-    ?? (min.trim() && max.trim() && Number(min) > Number(max)
-      ? "The lower limit cannot exceed the upper one."
-      : null);
+  const minProblem = boundProblem(min);
+  const maxProblem = boundProblem(max);
+  const reversed = Boolean(min.trim() && max.trim() && Number(min) > Number(max));
+  const problem = minProblem ?? maxProblem ?? (reversed ? "The lower limit cannot exceed the upper one." : null);
   const ready = Boolean(request) && Boolean(column) && !problem;
   const clearing = !min.trim() && !max.trim();
 
   return (
-    <Dialog.Root open={request !== null} onOpenChange={(open) => { if (!open) onDismiss(); }}>
-      <Dialog.Portal container={portalContainer}>
-        <Dialog.Overlay className="radix-dialog-overlay" />
-        <Dialog.Content className="radix-dialog calculated-column-dialog" aria-describedby="set-value-range-body">
-          <div className="radix-dialog-header">
-            <Dialog.Title>Set Value Range</Dialog.Title>
-            <Dialog.Close asChild>
-              <button type="button" className="radix-dialog-close" aria-label="Close value range">
-                <CloseIcon size={14} />
-              </button>
-            </Dialog.Close>
-          </div>
-          <div id="set-value-range-body" className="radix-dialog-body">
-            <label className="calculated-column-field">
-              <span>Column</span>
-              <NativeSelect autoFocus size="sm" value={columnId} onChange={(event) => setColumnId(event.target.value)}>
-                {columns.map((candidate) => (
-                  <NativeSelectOption key={candidate.id} value={candidate.id}>{candidate.label}</NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </label>
-            <label className="calculated-column-field">
-              <span>Lower limit</span>
-              <Input variant="field"
-                type="text"
-                value={min}
-                inputMode="decimal"
-                placeholder="no limit"
-                onChange={(event) => setMin(event.target.value)}
-              />
-            </label>
-            <label className="calculated-column-field">
-              <span>Upper limit</span>
-              <Input variant="field"
-                type="text"
-                value={max}
-                inputMode="decimal"
-                placeholder="no limit"
-                onChange={(event) => setMax(event.target.value)}
-              />
-            </label>
-            {problem ? <div className="calculated-column-problem">{problem}</div> : null}
-            <p className="calculated-column-note">
-              Values outside the range use the nearest limit.
-            </p>
-          </div>
-          <div className="radix-dialog-footer calculate-properties-footer">
-            <div className="calculate-properties-actions">
-              <Dialog.Close asChild>
-                <button type="button" className="dock-action">Cancel</button>
-              </Dialog.Close>
-              <button
-                type="button"
-                className="dock-action calculate-properties-run"
-                disabled={!ready}
-                onClick={() => {
-                  if (!request || !column || !ready) return;
-                  onRun(request.documentId, { id: column.id, label: column.label }, min.trim(), max.trim());
-                  onDismiss();
-                }}
-              >
-                {clearing ? "Clear" : "Apply"}
-              </button>
-            </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Dialog open={request !== null} onOpenChange={open => { if (!open) onDismiss(); }}>
+      <DialogContent variant="form" size="compact">
+        <form className="flex min-w-0 flex-col gap-4" onSubmit={event => {
+          event.preventDefault();
+          if (!request || !column || !ready) return;
+          onRun(request.documentId, { id: column.id, label: column.label }, min.trim(), max.trim());
+          onDismiss();
+        }}>
+          <DialogHeader>
+            <DialogTitle>Set value range</DialogTitle>
+            <DialogDescription className="sr-only">Set or clear the limits for a column.</DialogDescription>
+          </DialogHeader>
+          <label className="flex min-w-0 flex-col gap-2 text-xs"><span>Column</span>
+            <NativeSelect name="column" className="w-full" value={columnId} onChange={event => setColumnId(event.target.value)}>
+              {columns.map(candidate => <NativeSelectOption key={candidate.id} value={candidate.id}>{candidate.label}</NativeSelectOption>)}
+            </NativeSelect>
+          </label>
+          <label className="flex flex-col gap-2 text-xs"><span>Lower limit</span>
+            <Input variant="field" name="min" autoComplete="off" spellCheck={false} value={min} inputMode="decimal" placeholder="No limit"
+              aria-invalid={Boolean(minProblem || reversed)} aria-describedby={minProblem || reversed ? problemId : undefined}
+              onChange={event => setMin(event.target.value)} />
+          </label>
+          <label className="flex flex-col gap-2 text-xs"><span>Upper limit</span>
+            <Input variant="field" name="max" autoComplete="off" spellCheck={false} value={max} inputMode="decimal" placeholder="No limit"
+              aria-invalid={Boolean(maxProblem || reversed)} aria-describedby={maxProblem || reversed ? problemId : undefined}
+              onChange={event => setMax(event.target.value)} />
+          </label>
+          {problem && <p id={problemId} className="break-words text-sm text-(--color-text-danger)" role="alert">{problem}</p>}
+          <p className="text-xs text-(--color-text-secondary)">Values outside the range use the nearest limit.</p>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={onDismiss}>Cancel</Button>
+            <Button type="submit" disabled={!ready}>{clearing ? "Clear" : "Apply"}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

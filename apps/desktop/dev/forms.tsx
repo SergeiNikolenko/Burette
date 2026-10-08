@@ -5,6 +5,7 @@ import { MergeColumnsDialog } from "@/components/merge-columns-dialog";
 import { CalculatedColumnDialog } from "@/components/calculated-column-dialog";
 import type { GridColumnChoice } from "@/components/types";
 import { DocumentControlsExamples } from "./document-controls-examples";
+import { TableTransformExamples } from "./table-transform-examples";
 import { JobExamples } from "./job-examples";
 import { ConnectionExamples } from "./connection-examples";
 import { MenuExamples } from "./menu-examples";
@@ -35,6 +36,7 @@ function Forms() {
       <ToastExamples />
       <MenuExamples />
     </div>
+    <TableTransformExamples />
     <DocumentControlsExamples />
     <JobExamples />
     <ConnectionExamples />
