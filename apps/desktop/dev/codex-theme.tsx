@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { SegmentedControl, SegmentedControlItem } from "@/components/ui/segmented-control";
 import { Slider } from "@/components/ui/slider";
 import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { Spinner } from "@/components/ui/spinner";
@@ -49,6 +50,7 @@ const BORDERS = [["Subtle", "--color-border-subtle"], ["Default", "--color-borde
 function Appearance({ mode }: { mode: ThemeMode }) {
   // Each appearance is its own token scope, so overlays portal into their own shell.
   const [shell, setShell] = useState<HTMLDivElement | null>(null);
+  const [method, setMethod] = useState("gfn2");
   return (
     <div ref={setShell} className="app-shell theme-fixture" data-theme={mode} data-effective-theme={mode} style={buildThemeStyle({ ...defaultPreferences, theme: mode }, mode)}>
       <aside>
@@ -117,6 +119,13 @@ function Appearance({ mode }: { mode: ThemeMode }) {
           <div className="theme-fixture-controls">
             <Tabs defaultValue="3d"><TabsList><TabsTrigger value="3d">3D</TabsTrigger><TabsTrigger value="2d">2D</TabsTrigger><TabsTrigger value="table">Table</TabsTrigger></TabsList></Tabs>
             <Slider defaultValue={[60]} max={100} style={{ width: 160 }} />
+          </div>
+          <div className="theme-fixture-controls">
+            <SegmentedControl aria-label="Calculation method" value={method} onValueChange={setMethod}>
+              <SegmentedControlItem value="gfn2">GFN2</SegmentedControlItem>
+              <SegmentedControlItem value="gfn1">GFN1</SegmentedControlItem>
+              <SegmentedControlItem value="gfn0" disabled>GFN0</SegmentedControlItem>
+            </SegmentedControl>
           </div>
           <div className="theme-fixture-controls">
             <RadioGroup defaultValue="atoms" aria-label="Selection">

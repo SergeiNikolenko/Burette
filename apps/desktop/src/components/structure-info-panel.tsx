@@ -34,7 +34,7 @@ import { Field, FieldGroup, FieldTitle, FieldLabel, FieldDescription, FieldSet, 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Switch } from "./ui/switch";
 import { NativeSelect, NativeSelectOption, NativeSelectOptGroup } from "./ui/native-select";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { SegmentedControl, SegmentedControlItem } from "@/components/ui/segmented-control";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DIRECT_CHEMISTRY_JOB_ATOM_LIMIT, structureAtomCountFromSummary } from "../lib/direct-chemistry-guard";
 import { extensionForDocking } from "../lib/docking-documents";
@@ -1032,21 +1032,21 @@ function TrajectorySmoothingCard({
       <AccordionItem value="smoothing">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1"><AccordionTrigger>Smooth motion</AccordionTrigger></div>
-        <ToggleGroup type="single" variant="outline" size="sm" spacing={0} aria-label="Smooth motion" value={built && view === "smoothed" ? "on" : "off"} onValueChange={(value) => {
+        <SegmentedControl aria-label="Smooth motion" value={built && view === "smoothed" ? "on" : "off"} onValueChange={(value) => {
           if (value === "off" && built) changeView("original");
           if (value === "on") { if (built) changeView("smoothed"); else void build(); }
         }}>
-          <ToggleGroupItem value="off">Off</ToggleGroupItem>
-          <ToggleGroupItem value="on">On</ToggleGroupItem>
-        </ToggleGroup>
+          <SegmentedControlItem value="off">Off</SegmentedControlItem>
+          <SegmentedControlItem value="on">On</SegmentedControlItem>
+        </SegmentedControl>
       </div>
       <AccordionContent className="h-auto grid gap-3">
 
-          <ToggleGroup type="single" variant="outline" size="sm" spacing={0} className="w-full" aria-label="Smoothing strength" value={preset} disabled={mode === "kinetic"} onValueChange={(value) => {
+          <SegmentedControl className="w-full" aria-label="Smoothing strength" value={preset} disabled={mode === "kinetic"} onValueChange={(value) => {
             if (value === "light" || value === "balanced" || value === "strong") selectPreset(value);
           }}>
             {(["light", "balanced", "strong"] as const).map((value) => (
-              <ToggleGroupItem
+              <SegmentedControlItem
                 key={value}
                 value={value}
                 className="flex-1 p-0!"
@@ -1060,9 +1060,9 @@ function TrajectorySmoothingCard({
                     {value === "light" ? "Keeps more source frames and removes only the fastest jitter." : value === "strong" ? "Keeps fewer source frames for the calmest, most simplified playback." : "Balances retained molecular detail with smoother playback."}
                   </TooltipContent>
                 </Tooltip>
-              </ToggleGroupItem>
+              </SegmentedControlItem>
             ))}
-          </ToggleGroup>
+          </SegmentedControl>
 
           <Accordion type="single" collapsible value={advanced ? "science" : ""} onValueChange={(value) => setAdvanced(Boolean(value))}>
             <AccordionItem value="science">
@@ -3426,23 +3426,18 @@ function InlineSegmentedControl({
   onChange: (value: string) => void;
 }) {
   return (
-    <ToggleGroup
-      type="single"
+    <SegmentedControl
       value={value}
       aria-label={ariaLabel}
-      size="sm"
-      spacing={0}
-      variant="outline"
       className="w-full"
-      // A radio group is never empty: clicking the active item must not clear it.
-      onValueChange={(next) => { if (next) onChange(next); }}
+      onValueChange={onChange}
     >
       {options.map((option) => (
-        <ToggleGroupItem key={option} value={option} className="min-w-0 flex-1 truncate">
+        <SegmentedControlItem key={option} value={option} className="min-w-0 flex-1 truncate">
           {labels[option] ?? option}
-        </ToggleGroupItem>
+        </SegmentedControlItem>
       ))}
-    </ToggleGroup>
+    </SegmentedControl>
   );
 }
 
