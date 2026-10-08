@@ -1,3 +1,5 @@
+import { resolveAppearanceTheme } from "../../lib/theme";
+import { CODEX_DEFAULT_THEME } from "../../lib/codex-theme";
 import type { ViewerPreferences } from "../../types";
 import { defaultPreferences } from "../../stores/settings-store";
 import type { ShellActions } from "../types";
@@ -56,13 +58,13 @@ function ThemeCard({
   const title = mode === "light" ? "Light Theme" : "Dark Theme";
   const prefix: ThemePrefix = mode === "light" ? "themeLight" : "themeDark";
   const rows: SettingRow[] = [
-    themeColorRow(prefix, "Accent", "Primary action and selection color.", "Accent", preferences, actions),
-    themeColorRow(prefix, "Background", "Base window and preview background.", "Background", preferences, actions),
-    themeColorRow(prefix, "Foreground", "Base text and icon color.", "Foreground", preferences, actions),
-    themeTextRow(prefix, "UI font", "Font stack used by chrome, sidebar, and controls.", "UiFont", preferences, actions),
-    themeTextRow(prefix, "Editor font", "Font stack used by text and Markdown document surfaces.", "EditorFont", preferences, actions),
-    themeRangeRow(prefix, "Translucent", "Window opacity mapping used by Writer-style glass.", "Translucent", preferences, actions),
-    themeRangeRow(prefix, "Contrast", "Surface, border, hover, and selection strength.", "Contrast", preferences, actions),
+    themeColorRow(prefix, "Accent", "Accent", preferences, actions),
+    themeColorRow(prefix, "Background", "Background", preferences, actions),
+    themeColorRow(prefix, "Foreground", "Foreground", preferences, actions),
+    themeTextRow(prefix, "UI font", "UiFont", preferences, actions),
+    themeTextRow(prefix, "Editor font", "EditorFont", preferences, actions),
+    themeRangeRow(prefix, "Translucency", "Translucent", preferences, actions),
+    themeRangeRow(prefix, "Contrast", "Contrast", preferences, actions),
   ];
   return <SettingsSection title={title} rows={rows} />;
 }
@@ -70,17 +72,19 @@ function ThemeCard({
 function themeColorRow(
   prefix: ThemePrefix,
   label: string,
-  description: string,
   suffix: "Accent" | "Background" | "Foreground",
   preferences: ViewerPreferences,
   actions: ShellActions,
 ) {
   const key = `${prefix}${suffix}` as ThemeColorKey;
+  const mode = prefix === "themeLight" ? "light" : "dark";
+  const theme = resolveAppearanceTheme(preferences, mode);
+  const field = { Accent: "accent", Background: "surface", Foreground: "ink" } as const;
   return colorPreferenceRow(
     label,
-    description,
-    String(preferences[key]),
-    String(defaultPreferences[key]),
+    "",
+    theme[field[suffix]],
+    CODEX_DEFAULT_THEME[mode][field[suffix]],
     (value) => actions.setPreference(key, value),
   );
 }
@@ -88,7 +92,6 @@ function themeColorRow(
 function themeTextRow(
   prefix: ThemePrefix,
   label: string,
-  description: string,
   suffix: "UiFont" | "EditorFont",
   preferences: ViewerPreferences,
   actions: ShellActions,
@@ -96,7 +99,7 @@ function themeTextRow(
   const key = `${prefix}${suffix}` as ThemeTextKey;
   return textPreferenceRow(
     label,
-    description,
+    "",
     String(preferences[key]),
     String(defaultPreferences[key]),
     (value) => actions.setPreference(key, value),
@@ -106,17 +109,17 @@ function themeTextRow(
 function themeRangeRow(
   prefix: ThemePrefix,
   label: string,
-  description: string,
   suffix: "Translucent" | "Contrast",
   preferences: ViewerPreferences,
   actions: ShellActions,
 ) {
   const key = `${prefix}${suffix}` as ThemeRangeKey;
+  const mode = prefix === "themeLight" ? "light" : "dark";
   return rangePreferenceRow(
     label,
-    description,
-    Number(preferences[key]),
-    Number(defaultPreferences[key]),
+    "",
+    suffix === "Contrast" ? resolveAppearanceTheme(preferences, mode).contrast : preferences[key],
+    suffix === "Contrast" ? CODEX_DEFAULT_THEME[mode].contrast : defaultPreferences[key],
     (value) => actions.setPreference(key, value),
   );
 }

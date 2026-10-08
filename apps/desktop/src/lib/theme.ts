@@ -75,7 +75,8 @@ const LEGACY_DEFAULTS: Record<ThemeMode, CodexTheme> = {
   dark: { accent: "#af52de", surface: "#111111", ink: "#fcfcfc", contrast: 16 },
 };
 
-function codexThemeFromTokens(tokens: ThemeTokens, mode: ThemeMode): CodexTheme {
+export function resolveAppearanceTheme(preferences: ViewerPreferences, mode: ThemeMode): CodexTheme {
+  const tokens = readThemeTokens(preferences, mode);
   const legacy = LEGACY_DEFAULTS[mode];
   const fallback = CODEX_DEFAULT_THEME[mode];
   const color = (value: string, key: "accent" | "surface" | "ink") => {
@@ -94,14 +95,14 @@ function codexThemeFromTokens(tokens: ThemeTokens, mode: ThemeMode): CodexTheme 
 // same Codex defaults the shell resolves for untouched appearance values.
 export function readPreviewThemeTokens(preferences: ViewerPreferences, mode: ThemeMode): ThemeTokens {
   const tokens = readThemeTokens(preferences, mode);
-  const codex = codexThemeFromTokens(tokens, mode);
+  const codex = resolveAppearanceTheme(preferences, mode);
   return { ...tokens, accent: codex.accent, background: codex.surface, foreground: codex.ink };
 }
 
 export function buildThemeStyle(preferences: ViewerPreferences, systemThemeMode?: ThemeMode): CSSProperties {
   const mode = resolveThemeMode(preferences.theme, systemThemeMode);
   const tokens = readThemeTokens(preferences, mode);
-  const codex = codexThemeFromTokens(tokens, mode);
+  const codex = resolveAppearanceTheme(preferences, mode);
   const bgOpacity = 1 - (clamp(tokens.translucent, 0, 100) / 100) * 0.95;
   const shellBgOpacity = mode === "light" ? Math.min(bgOpacity, 0.715) : bgOpacity;
   // Burette's semantic names resolve to Codex tokens (styles/codex-tokens.css).

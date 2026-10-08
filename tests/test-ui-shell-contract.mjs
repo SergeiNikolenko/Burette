@@ -4050,8 +4050,6 @@ assert.match(themesSection, /<ThemeCard mode="light" preferences=\{preferences\}
 assert.match(themesSection, /<ThemeCard mode="dark" preferences=\{preferences\} actions=\{actions\} \/>/);
 assert.match(themesSection, /SettingsSection/);
 assert.match(themesSection, /title=\{title\}/);
-assert.match(themesSection, /Primary action and selection color\./);
-assert.match(themesSection, /Window opacity mapping used by Writer-style glass\./);
 assert.match(settingsPanel, /const defaultRendererModeOptions: Array<ViewerPreferences\["rendererMode"\]> = \["auto", "molstar", "xyzrender-external"\]/);
 assert.doesNotMatch(settingsPanel, /function visibleRendererModeOptions\(current: ViewerPreferences\["rendererMode"\]\)/);
 assert.match(settingsPanel, /preferenceRow<"molstarStyle">\("Mol\* appearance", "Default lighting and outline appearance for the Mol\* renderer\.", preferences\.molstarStyle, \["default", "illustrative"\], defaultPreferences\.molstarStyle, \(molstarStyle\) => actions\.setPreference\("molstarStyle", molstarStyle\)\)/);

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -85,11 +85,13 @@ export function SettingControl({ row }: { row: SettingRow }) {
 }
 
 export function SelectControl({
+  label,
   value,
   options,
   labels,
   onChange,
 }: {
+  label?: string;
   value: string;
   options: string[];
   // Chemistry settings carry raw engine tokens - "gfnff", "verytight", "ch2cl2" -
@@ -98,7 +100,7 @@ export function SelectControl({
   onChange: (value: string) => void;
 }) {
   return (
-    <NativeSelect className="settings-select" size="sm" value={value} onChange={(event) => onChange(event.target.value)}>
+    <NativeSelect aria-label={label} className="settings-select" size="sm" value={value} onChange={(event) => onChange(event.target.value)}>
       {options.map((option) => (
         <NativeSelectOption key={option} value={option}>
           {labels?.[option] ?? option}
@@ -111,30 +113,44 @@ export function SelectControl({
 const HEX_COLOR = /^#([0-9a-f]{6}|[0-9a-f]{3})$/i;
 
 export function ColorControl({
+  label,
   value,
   onChange,
 }: {
+  label?: string;
   value: string;
   onChange: (value: string) => void;
 }) {
+  const [draft, setDraft] = useState<string | null>(null);
   const swatch = HEX_COLOR.test(value) ? value : "#000000";
+  const commit = (text: string) => {
+    if (HEX_COLOR.test(text)) {
+      const hex = text.length === 4 ? "#" + [...text.slice(1)].map(char => char + char).join("") : text;
+      onChange(hex.toUpperCase());
+    }
+    setDraft(null);
+  };
   return (
     <div className="settings-color-control">
       <span className="settings-color-swatch" style={{ backgroundColor: swatch }}>
         <Input
           type="color"
           value={swatch}
-          aria-label="Pick color"
+          aria-label={label ? `Pick ${label.toLowerCase()} color` : "Pick color"}
           onChange={(event) => onChange(event.target.value.toUpperCase())}
         />
       </span>
       <Input
         type="text"
-        value={value}
+        value={draft ?? value.toUpperCase()}
+        aria-label={label ? `${label} color value` : "Color value"}
+        autoComplete="off"
         spellCheck={false}
-        onChange={(event) => onChange(event.target.value)}
-        onBlur={(event) => {
-          if (!HEX_COLOR.test(event.target.value)) onChange(swatch.toUpperCase());
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={(event) => commit(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") commit(event.currentTarget.value);
+          if (event.key === "Escape") setDraft(null);
         }}
       />
     </div>
@@ -142,15 +158,19 @@ export function ColorControl({
 }
 
 export function TextControl({
+  label,
   value,
   onChange,
 }: {
+  label?: string;
   value: string;
   onChange: (value: string) => void;
 }) {
   return (
     <Input
       type="text"
+      aria-label={label}
+      autoComplete="off"
       className="settings-text-control"
       value={value}
       spellCheck={false}
@@ -160,6 +180,7 @@ export function TextControl({
 }
 
 export function RangeControl({
+  label,
   value,
   min,
   max,
@@ -167,6 +188,7 @@ export function RangeControl({
   suffix,
   onChange,
 }: {
+  label?: string;
   value: number;
   min: number;
   max: number;
@@ -178,6 +200,7 @@ export function RangeControl({
   return (
     <div className="settings-range-control">
       <Slider
+        aria-label={label}
         min={min}
         max={max}
         step={step}
@@ -222,7 +245,7 @@ export function selectPreferenceRow(
   return {
     label,
     description,
-    control: <SelectControl value={value} options={options} onChange={onChange} />,
+    control: <SelectControl label={label} value={value} options={options} onChange={onChange} />,
     reset: () => onChange(defaultValue),
     isModified: value !== defaultValue,
   };
@@ -238,7 +261,7 @@ export function colorPreferenceRow(
   return {
     label,
     description,
-    control: <ColorControl value={value} onChange={onChange} />,
+    control: <ColorControl label={label} value={value} onChange={onChange} />,
     reset: () => onChange(defaultValue),
     isModified: value.toUpperCase() !== defaultValue.toUpperCase(),
   };
@@ -254,7 +277,7 @@ export function textPreferenceRow(
   return {
     label,
     description,
-    control: <TextControl value={value} onChange={onChange} />,
+    control: <TextControl label={label} value={value} onChange={onChange} />,
     reset: () => onChange(defaultValue),
     isModified: value !== defaultValue,
   };
@@ -270,7 +293,7 @@ export function rangePreferenceRow(
   return {
     label,
     description,
-    control: <RangeControl value={value} min={0} max={100} step={1} onChange={onChange} />,
+    control: <RangeControl label={label} value={value} min={0} max={100} step={1} onChange={onChange} />,
     reset: () => onChange(defaultValue),
     isModified: value !== defaultValue,
   };
@@ -303,7 +326,7 @@ export function SettingSelect({
     <SettingControl
       row={{
         label,
-        control: <SelectControl value={value} options={options} onChange={onChange} />,
+        control: <SelectControl label={label} value={value} options={options} onChange={onChange} />,
       }}
     />
   );

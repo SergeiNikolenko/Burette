@@ -131,8 +131,8 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                   <SettingsSection
                     title="Display"
                     rows={[
-                      preferenceRow<"theme">("Theme", "Match the system, force dark mode, or force light mode.", preferences.theme, ["auto", "dark", "light"], defaultPreferences.theme, (theme) => actions.setPreference("theme", theme)),
-                      preferenceRow<"canvasBackground">("Canvas", "Default viewer canvas background for structure previews.", preferences.canvasBackground, ["auto", "black", "graphite", "white", "transparent"], defaultPreferences.canvasBackground, (canvasBackground) => actions.setPreference("canvasBackground", canvasBackground)),
+                      preferenceRow<"theme">("Theme", "", preferences.theme, ["auto", "dark", "light"], defaultPreferences.theme, (theme) => actions.setPreference("theme", theme)),
+                      preferenceRow<"canvasBackground">("Canvas", "", preferences.canvasBackground, ["auto", "black", "graphite", "white", "transparent"], defaultPreferences.canvasBackground, (canvasBackground) => actions.setPreference("canvasBackground", canvasBackground)),
                     ]}
                   />
                   <ThemesSection preferences={preferences} actions={actions} />
