@@ -45,7 +45,7 @@ const bestEffort = fn("bestEffortSuperpositionPlan");
 assert.match(bestEffort, /method === 'auto' \? \['auto', 'chains', 'tm-align'\] : \[method\]/);
 assert.match(bestEffort, /movingIds: \[moving\.id\]/);
 assert.match(bestEffort, /if \(!plans\.length\) throw/);
-assert.match(fn("createStructureSuperpositionController"), /const plan = bestEffortSuperpositionPlan\(entries, request, prepared\)/);
+assert.match(fn("createStructureSuperpositionController"), /const plan = await bestEffortSuperpositionPlan\(entries, request, prepared\)/);
 
 // Needleman-Wunsch keeps its guard rail and only anchors on identical residues; a
 // mismatched pair that the matrix walked through would drag the fit.
