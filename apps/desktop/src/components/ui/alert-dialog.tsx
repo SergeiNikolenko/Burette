@@ -2,7 +2,7 @@ import * as React from "react"
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { Button, ButtonStyleContext } from "@/components/ui/button"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
 
 function AlertDialog({
@@ -64,7 +64,7 @@ function AlertDialogContent({
         data-slot="alert-dialog-content"
         data-size={size}
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 flex w-full max-w-[min(92vw,420px)] max-h-[calc(100dvh-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-6 overflow-y-auto rounded-[24px] bg-(--color-surface-elevated-secondary) p-8 text-(--color-text) shadow-[0_20px_25px_-5px_#0000001a] outline-none duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 motion-reduce:animate-none!",
+          "fixed top-1/2 left-1/2 z-50 flex w-full max-w-[min(92vw,420px)] max-h-[calc(100dvh-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-6 overflow-y-auto rounded-[24px] bg-(--color-surface-elevated-secondary) p-8 text-base leading-normal tracking-normal text-(--color-text) [--font-weight-semibold:590] [--font-weight-medium:510] shadow-[0_20px_25px_-5px_#0000001a] outline-none duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 motion-reduce:animate-none!",
           size === "sm" && "max-w-[min(92vw,380px)]",
           className
         )}
@@ -92,6 +92,7 @@ function AlertDialogHeader({
 
 function AlertDialogFooter({
   className,
+  children,
   ...props
 }: React.ComponentProps<"div">) {
   return (
@@ -102,7 +103,9 @@ function AlertDialogFooter({
         className
       )}
       {...props}
-    />
+    >
+      <ButtonStyleContext value="app">{children}</ButtonStyleContext>
+    </div>
   )
 }
 
@@ -165,7 +168,7 @@ function AlertDialogAction({
     <Button variant={variant} size={size} asChild>
       <AlertDialogPrimitive.Action
         data-slot="alert-dialog-action"
-        className={cn(variant === "destructive" && "bg-(--color-chart-red)/10 text-(--color-chart-red) hover:bg-(--color-chart-red)/20", className)}
+        className={className}
         {...props}
       />
     </Button>
