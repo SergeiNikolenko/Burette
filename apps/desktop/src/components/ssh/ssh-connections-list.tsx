@@ -18,7 +18,7 @@ export function SshConnectionsList({ connections, onAdd, ...actions }: Connectio
   const addButton = useRef<HTMLButtonElement>(null);
   return <section className="ssh-connections" aria-label="SSH connections">
     <div className="ssh-connections-header"><h2>SSH connections from this Mac</h2><Button ref={addButton} size="xs" onClick={onAdd}>Add</Button></div>
-    {connections.length > 0 && <Card className="settings-card ssh-connections-card">
+    {connections.length > 0 && <Card className="settings-card">
       {connections.map(connection => <ConnectionRow key={connection.host} connection={connection} returnFocus={addButton} {...actions} />)}
     </Card>}
   </section>;

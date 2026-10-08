@@ -8948,15 +8948,16 @@ input.structure-inspector-composition-search {
    settings rows sit directly in this card rather than in a <FieldGroup>, so
    name the container here; without it the query never matches and every row
    stays stacked no matter how much width is available. */
-.settings-card { margin: 0; gap: 0; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-2xl); background: var(--color-surface); padding: 0; box-shadow: none; container: field-group / inline-size; }
+.settings-card { margin: 0; gap: 0; overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-2xl); background: var(--color-background-panel, var(--color-background-primary-soft-alpha)); padding: 0; box-shadow: none; container: field-group / inline-size; }
 .settings-control {
+  position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 24px;
   padding: 12px 16px;
 }
-.settings-control + .settings-control { border-top: 1px solid var(--color-border); }
+.settings-control + .settings-control::before { content: ""; position: absolute; top: 0; inset-inline: 16px; height: 1px; background: var(--color-border); pointer-events: none; }
 .agent-status-row {
   border-radius: 0;
   min-height: 56px;
@@ -9027,8 +9028,8 @@ input.structure-inspector-composition-search {
 .agent-diagnostic-group h3 { margin: 0; padding: 12px 14px 0; color: var(--text-muted); font-size: 12px; font-weight: 400; }
 .agent-diagnostic-group .agent-status-row + .agent-status-row { border-top: 1px solid var(--line-subtler); }
 .settings-control-copy { min-width: 0; flex: 1; }
-.settings-control-label { color: var(--color-text); font-size: var(--text-sm); line-height: 1.4286; font-weight: 500; }
-.settings-control-description { margin: 2px 0 0; color: var(--color-text-secondary); font-size: var(--text-xs); line-height: 16px; overflow-wrap: anywhere; }
+.settings-control-label { color: var(--color-text); font-size: var(--text-sm); line-height: 1.42857143; font-weight: 500; overflow-wrap: anywhere; }
+.settings-control-description { margin: 0; color: var(--color-text-secondary); font-size: var(--text-xs); line-height: 16px; overflow-wrap: anywhere; }
 .settings-control-actions { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
 .keyboard-shortcuts-section { margin: 0 0 40px; }
 /* The search field, the rows and the key pills are shadcn InputGroup, Table and
@@ -9065,20 +9066,9 @@ input.structure-inspector-composition-search {
 }
 .keyboard-shortcuts-keys { flex-wrap: wrap; }
 .keyboard-shortcuts-empty { border: 0; padding: 18px 16px; }
-.settings-reset-button {
-  height: 22px;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text-muted);
-  padding: 0 8px;
-  font-size: 11px;
-  transition: background 120ms ease, color 120ms ease;
-}
-.settings-reset-button:hover { background: var(--surface-subtle-strong); color: var(--text-primary); }
 .settings-reset-button[data-hidden] { visibility: hidden; pointer-events: none; }
 /* The select look comes from the shared primitive; settings only sets the width. */
-.settings-select { min-width: 144px; }
+.settings-select { min-width: 160px; }
 .settings-open-destination-trigger {
   min-width: 160px;
   height: 28px;
@@ -9208,54 +9198,6 @@ img.settings-open-destination-icon {
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
-.settings-toggle {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  border: 0;
-  border-radius: 999px;
-  background: var(--border-color);
-  padding: 0;
-  transition: background 160ms ease;
-}
-.settings-toggle[data-checked],
-.settings-toggle[data-state="checked"] { background: var(--shadcn-primary); }
-/* Target the thumb itself rather than any span: shadcn's Switch happens to
-   render exactly one today, but a second (an sr-only label, a ripple) would
-   silently inherit these absolute-positioned thumb styles — the same trap that
-   froze the slider's filled range. */
-.settings-toggle > [data-slot="switch-thumb"] {
-  position: absolute;
-  left: 2px;
-  top: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  background: #fff;
-  /* Tailwind uses the independent translate property; do not combine it with
-     this settings-specific transform or the thumb moves twice. */
-  translate: none;
-  transform: translateX(0);
-  transition: transform 160ms ease;
-}
-.settings-toggle:is([data-checked], [data-state="checked"]) > [data-slot="switch-thumb"] {
-  transform: translateX(16px);
-}
-.settings-action-button {
-  min-width: 96px;
-  height: 34px;
-  border: 0;
-  border-radius: var(--control-radius);
-  background: var(--surface-input);
-  color: var(--text-secondary);
-  padding: 0 12px;
-  font-size: 13px;
-  font-weight: 400;
-  white-space: nowrap;
-  transition: background 120ms ease, color 120ms ease;
-}
-.settings-action-button:hover:not(:disabled) { background: var(--surface-subtle-strong); color: var(--text-primary); }
-.settings-action-button:disabled { opacity: 0.48; }
 @container settings-panel (max-width: 520px) {
   .settings-card { margin: 0; }
   .settings-control { display: grid; gap: 10px; }
@@ -9720,7 +9662,6 @@ img.settings-open-destination-icon {
 /* RemoteConnectionsSettings: compact rows with inset separators. */
 .ssh-connections { display: flex; flex-direction: column; gap: 6px; }
 .ssh-connections-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 8px; }
-.ssh-connections-card { background: var(--color-background-panel, var(--color-background-primary-soft-alpha)); }
 .ssh-connections-header h2 { margin: 0; font-size: var(--text-base); line-height: 21px; font-weight: 500; }
 .ssh-connection-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 12px 16px; }
 .ssh-connection-row:not(:last-child)::after { content: ""; position: absolute; inset-inline: 16px; bottom: 0; height: 1px; background: var(--color-border); pointer-events: none; }

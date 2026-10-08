@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,11 +41,14 @@ export function SettingsSection({ title, rows }: { title: string; rows: SettingR
 }
 
 export function SettingControl({ row }: { row: SettingRow }) {
+  const id = useId();
+  const labelId = `${id}-label`;
+  const descriptionId = row.description ? `${id}-description` : undefined;
   return (
-    <Field orientation="responsive" className="settings-control">
+    <Field orientation="responsive" className="settings-control" aria-labelledby={labelId} aria-describedby={descriptionId}>
       <FieldContent className="settings-control-copy">
-        <FieldTitle className="settings-control-label">{row.label}</FieldTitle>
-        {row.description && <FieldDescription className="settings-control-description">{row.description}</FieldDescription>}
+        <FieldTitle id={labelId} className="settings-control-label">{row.label}</FieldTitle>
+        {row.description && <FieldDescription id={descriptionId} className="settings-control-description">{row.description}</FieldDescription>}
       </FieldContent>
       <div className="settings-control-actions">
         {row.reset && (
@@ -376,7 +379,7 @@ export function SettingsActionButton({
   }
 
   return (
-    <Button type="button" variant="secondary" size="sm" className="settings-action-button" disabled={disabled} onClick={onClick}>
+    <Button type="button" variant="secondary" size="xs" className="settings-action-button" disabled={disabled} onClick={onClick}>
       {children}
     </Button>
   );
@@ -409,7 +412,7 @@ function ConfirmActionButton({
         <Button
           type="button"
           variant={className === "settings-reset-button" ? "ghost" : "secondary"}
-          size={className === "settings-reset-button" ? "xs" : "sm"}
+          size="xs"
           className={className}
           disabled={disabled}
           aria-hidden={hidden}

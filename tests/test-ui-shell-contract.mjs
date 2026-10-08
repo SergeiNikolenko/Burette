@@ -4065,7 +4065,9 @@ assert.match(settingControl, /checked=\{checked\}/);
 assert.match(settingControl, /onCheckedChange=\{onChange\}/);
 assert.match(settingControl, /aria-label=\{label\}/);
 assert.match(settingControl, /export function SettingsActionButton/);
-assert.match(styles, /\.settings-toggle/);
+// Analytics hooks remain on controls; their visual states come from shared primitives.
+assert.match(settingControl, /className="settings-toggle"/);
+assert.doesNotMatch(styles, /\.settings-toggle(?:\s|\[|>|:)/);
 assert.match(styles, /\.settings-select/);
 assert.match(styles, /\.sidebar-settings-button/);
 assert.match(styles, /\.settings-sidebar/);
