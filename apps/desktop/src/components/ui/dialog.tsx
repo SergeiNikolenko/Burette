@@ -7,10 +7,15 @@ import { useAppShellPortalContainer } from "@/components/ui/portal-container"
 import { X } from "@/components/ui/app-icons"
 import "./dialog-overlay.atlas.css"
 
+const DialogModalContext = React.createContext(true)
+
 function Dialog({
+  modal = true,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+  return <DialogModalContext value={modal}>
+    <DialogPrimitive.Root data-slot="dialog" modal={modal} {...props} />
+  </DialogModalContext>
 }
 
 function DialogTrigger({
@@ -66,6 +71,8 @@ function DialogContent({
   variant = "default",
   size = "default",
   container,
+  onOpenAutoFocus,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
@@ -73,12 +80,29 @@ function DialogContent({
   size?: "narrow" | "compact" | "default" | "medium" | "large" | "wide" | "xwide"
   container?: React.ComponentProps<typeof DialogPrimitive.Portal>["container"]
 }) {
+  const modal = React.useContext(DialogModalContext)
+  const focusOrigin = React.useRef<HTMLElement | null>(null)
   return (
     <DialogPortal container={container}>
       <DialogOverlay variant={variant} />
       <DialogPrimitive.Content
         data-slot="dialog-content"
         data-variant={variant}
+        onOpenAutoFocus={event => {
+          const active = (event.currentTarget as HTMLElement).ownerDocument.activeElement
+          focusOrigin.current = active instanceof HTMLElement && active !== active.ownerDocument.body ? active : null
+          onOpenAutoFocus?.(event)
+        }}
+        onCloseAutoFocus={event => {
+          onCloseAutoFocus?.(event)
+          // Programmatic forms have no Radix Trigger. Restore their opener too,
+          // but leave non-modal outside interactions and explicit overrides alone.
+          const origin = focusOrigin.current
+          if (!event.defaultPrevented && modal && origin?.isConnected) {
+            origin.focus({ preventScroll: true })
+            if (origin.ownerDocument.activeElement === origin) event.preventDefault()
+          }
+        }}
         className={cn(
           "fixed top-1/2 left-1/2 z-50 grid w-full max-h-[calc(100dvh-2rem)] -translate-x-1/2 -translate-y-1/2 gap-3 overflow-y-auto p-5 text-base text-(--color-text) ring-[0.5px] ring-(--color-border) duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 motion-reduce:animate-none!",
           variant === "form"

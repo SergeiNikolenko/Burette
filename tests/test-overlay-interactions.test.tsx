@@ -55,6 +55,73 @@ test("command dialog labels, filtering and keyboard selection survive its Atlas 
 
 // Let Radix finish the scheduled focus restoration, not a CSS-animation delay.
 const flushFocus = () => new Promise(resolve => setTimeout(resolve, 0));
+
+test("programmatic modal forms restore the current opener after Escape and Cancel", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  function Example() {
+    const [open, setOpen] = React.useState(false);
+    return <>
+      <Button onClick={() => setOpen(true)}>Rename file</Button>
+      <Button onClick={() => setOpen(true)}>Rename folder</Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent variant="form" aria-describedby={undefined}>
+          <DialogTitle>Rename</DialogTitle><Input aria-label="Name" />
+          <Button onClick={() => setOpen(false)}>Cancel</Button>
+        </DialogContent>
+      </Dialog>
+    </>;
+  }
+  try {
+    await act(async () => root.render(<Example />));
+    const openers = [...shell.querySelectorAll<HTMLButtonElement>("button")];
+    for (const [index, opener] of openers.entries()) {
+      await act(async () => { opener.focus(); opener.click(); });
+      expect(document.activeElement).toBe(shell.querySelector("input"));
+      await act(async () => {
+        if (index === 0) document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        else [...shell.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Cancel")!.click();
+      });
+      await act(flushFocus);
+      expect(shell.querySelector('[role="dialog"]')).toBeNull();
+      expect(document.activeElement).toBe(opener);
+    }
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
+
+test("dialog return focus respects explicit destinations and non-modal outside focus", async () => {
+  for (const modal of [true, false]) {
+    const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+    const root = createRoot(shell);
+    const destination = React.createRef<HTMLButtonElement>();
+    function Example() {
+      const [open, setOpen] = React.useState(false);
+      return <>
+        <Button onClick={() => setOpen(true)}>Open</Button><Button ref={destination}>Next action</Button>
+        <Dialog modal={modal} open={open} onOpenChange={setOpen}>
+          <DialogContent aria-describedby={undefined} onCloseAutoFocus={modal ? event => {
+            event.preventDefault(); destination.current!.focus();
+          } : undefined}>
+            <DialogTitle>Edit</DialogTitle><Input aria-label="Value" />
+          </DialogContent>
+        </Dialog>
+      </>;
+    }
+    try {
+      await act(async () => root.render(<Example />));
+      const opener = shell.querySelector<HTMLButtonElement>("button")!;
+      await act(async () => { opener.focus(); opener.click(); });
+      await act(async () => {
+        if (modal) document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        else destination.current!.focus();
+      });
+      await act(flushFocus);
+      expect(shell.querySelector('[role="dialog"]')).toBeNull();
+      expect(document.activeElement).toBe(destination.current);
+    } finally { await act(async () => root.unmount()); shell.remove(); }
+  }
+});
+
 test("dialog action buttons preserve submit, disabled and slotted close behavior", async () => {
   const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
   const root = createRoot(shell);

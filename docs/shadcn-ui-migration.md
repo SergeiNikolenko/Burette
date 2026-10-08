@@ -31,6 +31,11 @@ and the shared Radix portal/overlay. Placement, viewport limits, rows and search
 spacing are owned by that module, not by generic form-dialog styles. Burette's
 command inventory and ranking remain in `command-palette/index.tsx`.
 
+Modal forms opened programmatically restore the element focused before opening,
+even without a Radix `DialogTrigger`. Explicit close-focus handlers take priority;
+non-modal dialogs retain Radix's outside-interaction behavior. Detached openers
+are not focused. This contract is covered by the overlay interaction tests.
+
 ## Inspected Baseline (historical)
 
 The inventory below reflects the React source under `apps/desktop/src` before
@@ -129,8 +134,12 @@ below roughly 500 changed lines and must be split before approaching 800 lines.
 
 Every stage must pass the smallest checks for its changed surface:
 
-- `vp run typecheck` for TypeScript changes; `vp build` for build configuration
-  or compiled-application acceptance. Follow `vite-plus.md` for the toolchain.
+- `vp run typecheck` for TypeScript changes. `vp build` checks the root frontend
+  configuration; use `vp build --config apps/desktop/vite.config.ts` to also
+  validate desktop asset inlining, preload filtering and chunk boundaries.
+  Serve the resulting bundle with `vp preview` for compiled browser checks;
+  this does not prove Tauri IPC or packaged native acceptance. Follow
+  `vite-plus.md` for the toolchain.
 - Focused UI contract tests for changed shell or component behavior.
 - Browser-dev verification in light and dark themes.
 - Keyboard focus, disabled, hover, error, loading, and empty states relevant to
