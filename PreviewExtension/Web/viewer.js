@@ -433,6 +433,7 @@
   }
 
   installMolstarControlTooltips();
+  window.BuretteViewerSelectMenus?.install({ checkIcon: () => sceneTreeIconElement(APP_ICON_DATA.Check) });
 
   function installDownloadExportBridge() {
     if (window.__buretteDownloadExportBridgeInstalled) return;

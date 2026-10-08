@@ -4568,6 +4568,7 @@ body.buret-viewport-corner-active .msp-plugin .msp-viewport-top-left-controls {
 .buret-tree-menu-field > .buret-select {
   flex: 1 1 auto;
   min-width: 0;
+  max-width: none;
 }
 .buret-tree-menu-text {
   flex: 1 1 auto;
@@ -5668,4 +5669,51 @@ body:not(.buret-theme-light):not(.burette-mobile-host) .buret-molecule-context-m
 body:not(.buret-theme-light):not(.burette-mobile-host) .buret-molecule-context-menu:not(.buret-xyzrender-context-menu),
 body:not(.buret-theme-light):not(.burette-mobile-host) .buret-molecule-context-submenu {
   background: #2a2a2a;
+}
+
+/* Browser select lists. Outside the native app and Quick Look a viewer select
+   opens this top-layer list; it takes the shell Select recipe: 20px surface,
+   28px rows with a trailing check. */
+.buret-select-menu {
+  position: fixed;
+  inset: auto;
+  box-sizing: border-box;
+  max-width: min(360px, calc(100vw - 16px));
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  border: 0;
+  border-radius: 20px;
+  color: var(--buret-toolbar-color);
+  background: var(--buret-toolbar-background);
+  box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--buret-toolbar-color) 8%, transparent), 0 8px 16px -4px rgb(0 0 0 / 0.12);
+  font: 400 13px/18.5px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  user-select: none;
+}
+.buret-select-menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 5px 32px 5px 8px;
+  border-radius: 15px;
+  white-space: nowrap;
+  cursor: default;
+  outline: none;
+}
+.buret-select-menu-item:focus { background-color: color-mix(in srgb, var(--buret-toolbar-color) 5.5%, transparent); }
+.buret-select-menu-item[aria-disabled="true"] { opacity: 0.5; }
+.buret-select-menu-check {
+  position: absolute;
+  right: 8px;
+  width: 16px;
+  height: 16px;
+}
+.buret-select-menu-label {
+  padding: 6px 8px 2px;
+  color: color-mix(in srgb, var(--buret-toolbar-color) 55%, transparent);
+  font-size: 12px;
+  font-weight: 500;
 }

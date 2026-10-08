@@ -185,3 +185,35 @@ cutoff.action('0.80'); gridSession.close();
 assert.ok(gridActions.some(([key, value]) => key === 'onClusterCutoffChange' && value === 0.8));
 await window.happyDOM.abort(); frame.remove();
 console.log('React Grid Actions native dispatch preserves commands and controlled selects');
+
+{
+  // Browser surfaces open viewer selects as an in-page list; native hosts keep the system picker.
+  const browser = new Window();
+  const page = browser.document;
+  browser.HTMLElement.prototype.showPopover = function () { this.dataset.open = ''; };
+  browser.HTMLElement.prototype.hidePopover = function () { delete this.dataset.open; };
+  new Function('window', 'document', 'Event', 'XMLSerializer', 'crypto', readFileSync('PreviewExtension/Web/native-viewer-menus.js', 'utf8'))(browser, page, browser.Event, browser.XMLSerializer, crypto);
+  browser.BuretteViewerSelectMenus.install({ checkIcon: () => page.createElement('i') });
+  page.body.innerHTML = '<div id="buret-scene-tree-menu"><div class="buret-tree-menu-field"><span>Type</span><select class="buret-select"><option value="point">Point</option><option value="line">Line</option></select></div></div>';
+  const menu = page.getElementById('buret-scene-tree-menu');
+  const select = page.querySelector('select');
+  const changes = [];
+  select.addEventListener('change', () => changes.push(select.value));
+  page.addEventListener('click', event => { if (!menu.contains(event.target)) changes.push('outside click'); });
+  const press = () => {
+    const event = new browser.MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 });
+    select.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  assert.equal(press(), true, 'Browser blocks the system picker');
+  const list = menu.querySelector('[role="listbox"]');
+  assert.deepEqual([list.getAttribute('aria-label'), select.getAttribute('aria-expanded'),
+    ...Array.from(list.querySelectorAll('[role="option"]'), option => [option.textContent, option.getAttribute('aria-selected')])],
+  ['Type', 'true', ['Point', 'true'], ['Line', 'false']]);
+  list.querySelector('[data-value="line"]').click();
+  assert.deepEqual([changes, page.querySelector('[role="listbox"]'), select.hasAttribute('aria-expanded')], [['line'], null, false]);
+  browser.BuretteConfig = { tauriViewer: true };
+  assert.deepEqual([press(), page.querySelector('[role="listbox"]')], [false, null], 'Native hosts keep the system picker');
+  await browser.happyDOM.abort();
+  console.log('Browser viewer selects open an in-page list; native hosts keep the system picker');
+}

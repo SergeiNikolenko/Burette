@@ -150,4 +150,148 @@
       };
     }
   };
+
+  // Browsers have no operating-system menus, so a viewer <select> opens an
+  // in-page list there; the macOS app, Quick Look and iPhone keep the native
+  // picker. The <select> stays the source of truth: choosing dispatches the
+  // events the native picker would.
+  window.BuretteViewerSelectMenus = {
+    install({ checkIcon }) {
+      if (this.installed) return;
+      this.installed = true;
+      let open = null;
+      const nativeMenus = () => {
+        const config = window.BuretteConfig || {};
+        return config.tauriViewer === true || config.quickLookViewer === true || config.host === 'app'
+          || document.body.classList.contains('burette-mobile-host');
+      };
+      const selectFrom = event => {
+        const select = event.target?.closest?.('select');
+        return select && !select.multiple && !(select.size > 1) && !select.disabled && !nativeMenus() ? select : null;
+      };
+      const close = (restoreFocus = true) => {
+        if (!open) return;
+        const { select, list } = open;
+        open = null;
+        select.removeAttribute('aria-expanded');
+        list.hidePopover();
+        list.remove();
+        if (restoreFocus) select.focus({ preventScroll: true });
+      };
+      const choose = (select, value) => {
+        close();
+        if (select.value === value) return;
+        select.value = value;
+        select.dispatchEvent(new Event('input', { bubbles: true }));
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+      };
+      const place = (select, list) => {
+        const margin = 8;
+        const rect = select.getBoundingClientRect();
+        list.style.minWidth = `${Math.max(rect.width, 144)}px`;
+        const below = window.innerHeight - rect.bottom - margin - 4;
+        const above = rect.top - margin - 4;
+        const up = list.scrollHeight > below && above > below;
+        list.style.maxHeight = `${Math.max(up ? above : below, 80)}px`;
+        const box = list.getBoundingClientRect();
+        list.style.left = `${Math.max(margin, Math.min(rect.left, window.innerWidth - margin - box.width))}px`;
+        list.style.top = `${up ? Math.max(margin, rect.top - 4 - box.height) : rect.bottom + 4}px`;
+      };
+      const show = select => {
+        close(false);
+        const list = document.createElement('div');
+        list.className = 'buret-select-menu';
+        list.setAttribute('role', 'listbox');
+        list.setAttribute('aria-label', select.getAttribute('aria-label') || select.closest('label, .buret-tree-menu-field')?.querySelector('span')?.textContent.trim() || 'Options');
+        list.setAttribute('popover', 'manual');
+        const addOption = (option, groupDisabled) => {
+          if (option.hidden) return;
+          const item = document.createElement('div');
+          item.className = 'buret-select-menu-item';
+          item.setAttribute('role', 'option');
+          item.tabIndex = -1;
+          item.dataset.value = option.value;
+          item.textContent = option.text;
+          item.setAttribute('aria-selected', String(option.selected));
+          if (groupDisabled || option.disabled) item.setAttribute('aria-disabled', 'true');
+          if (option.selected) {
+            const check = checkIcon();
+            check.classList.add('buret-select-menu-check');
+            item.append(check);
+          }
+          list.append(item);
+        };
+        for (const child of select.children) {
+          if (child.tagName === 'OPTGROUP') {
+            const label = document.createElement('div');
+            label.className = 'buret-select-menu-label';
+            label.textContent = child.label;
+            list.append(label);
+            for (const option of child.children) addOption(option, child.disabled);
+          } else if (child.tagName === 'OPTION') addOption(child, false);
+        }
+        const items = () => Array.from(list.querySelectorAll('[role="option"]:not([aria-disabled="true"])'));
+        const focusItem = item => { item?.focus({ preventScroll: true }); item?.scrollIntoView({ block: 'nearest' }); };
+        // Keep pointer events inside the list from reaching the menus that own the select.
+        for (const type of ['pointerdown', 'mousedown', 'click']) list.addEventListener(type, event => {
+          event.stopPropagation();
+          if (type !== 'click') return;
+          const item = event.target.closest('[role="option"]');
+          if (item && item.getAttribute('aria-disabled') !== 'true') choose(select, item.dataset.value);
+        });
+        list.addEventListener('pointermove', event => {
+          const item = event.target.closest('[role="option"]:not([aria-disabled="true"])');
+          if (item && document.activeElement !== item) item.focus({ preventScroll: true });
+        });
+        list.addEventListener('keydown', event => {
+          const enabled = items();
+          const index = enabled.indexOf(document.activeElement);
+          if (event.key === 'ArrowDown') focusItem(enabled[Math.min(index + 1, enabled.length - 1)]);
+          else if (event.key === 'ArrowUp') focusItem(enabled[index < 0 ? enabled.length - 1 : Math.max(index - 1, 0)]);
+          else if (event.key === 'Home') focusItem(enabled[0]);
+          else if (event.key === 'End') focusItem(enabled.at(-1));
+          else if (event.key === 'Enter' || event.key === ' ') { if (index >= 0) choose(select, enabled[index].dataset.value); }
+          else if (event.key === 'Escape' || event.key === 'Tab') close();
+          else if (event.key.length === 1 && !event.metaKey && !event.ctrlKey) {
+            const key = event.key.toLowerCase();
+            const ordered = [...enabled.slice(index + 1), ...enabled.slice(0, index + 1)];
+            focusItem(ordered.find(item => item.textContent.trim().toLowerCase().startsWith(key)));
+          } else return;
+          event.preventDefault();
+          event.stopPropagation();
+        });
+        // A list inside the owning menu passes its outside-click checks; Mol*
+        // controls are React-owned, so their lists go to the body.
+        const owner = select.closest('.msp-plugin') ? document.body : (select.closest('label') || select).parentElement;
+        owner.append(list);
+        select.setAttribute('aria-expanded', 'true');
+        open = { select, list };
+        list.showPopover();
+        place(select, list);
+        const enabled = items();
+        focusItem(enabled.find(item => item.getAttribute('aria-selected') === 'true') || enabled[0]);
+      };
+      document.addEventListener('mousedown', event => {
+        const select = event.button === 0 ? selectFrom(event) : null;
+        if (!select) return;
+        event.preventDefault();
+        if (open?.select === select) close();
+        else show(select);
+      }, true);
+      document.addEventListener('pointerdown', event => {
+        if (open && !open.list.contains(event.target) && !open.select.contains(event.target)) close(false);
+      }, true);
+      document.addEventListener('keydown', event => {
+        if (open || event.metaKey || event.ctrlKey || !['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) return;
+        const select = selectFrom(event);
+        if (!select) return;
+        event.preventDefault();
+        event.stopPropagation();
+        show(select);
+      }, true);
+      window.addEventListener('scroll', event => { if (open && !open.list.contains(event.target)) close(false); }, true);
+      window.addEventListener('resize', () => close(false));
+      window.addEventListener('blur', () => close(false));
+    }
+  };
 })();
