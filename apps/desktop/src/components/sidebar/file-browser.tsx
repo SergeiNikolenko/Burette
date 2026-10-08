@@ -1,5 +1,6 @@
 import { useProjectOrganization } from "./project-organization";
-import { Plus } from "../ui/app-icons";
+import { Plus, ChevronRight, DotsHorizontal } from "../ui/app-icons";
+import { FolderExpandCollapseIcon } from "./folder-expand-collapse-icon";
 import { SshProjectDialog } from "../ssh/ssh-project-dialog";
 import { SshProjects } from "../ssh/ssh-projects";
 import { useSshProjects } from "../../lib/ssh-projects";
@@ -202,7 +203,7 @@ export function FileBrowser({
               >
                 <span>Pinned</span>
                 <span className={pinnedExpanded ? "sidebar-section-chevron expanded" : "sidebar-section-chevron"} aria-hidden="true">
-                  <ChevronIcon />
+                  <ChevronRight size={10} aria-hidden />
                 </span>
               </button>
             </SidebarTooltip>
@@ -228,7 +229,7 @@ export function FileBrowser({
           >
             <span>Projects</span>
             <span className={projectsExpanded ? "sidebar-section-chevron expanded" : "sidebar-section-chevron"} aria-hidden="true">
-              <ChevronIcon />
+              <ChevronRight size={10} aria-hidden />
             </span>
           </button>
 
@@ -238,7 +239,7 @@ export function FileBrowser({
             aria-label={allVisibleProjectsExpanded ? "Collapse all project folders" : "Expand all project folders"}
             onClick={toggleAllProjectFolders}
           >
-            <ExpandCollapseIcon collapsed={allVisibleProjectsExpanded} />
+            <FolderExpandCollapseIcon collapse={allVisibleProjectsExpanded} />
           </button>
           <NativeDropdownMenu
             items={[
@@ -294,7 +295,7 @@ export function FileBrowser({
                 className="sidebar-section-menu-button"
                 aria-label="Project options"
               >
-                <MoreIcon />
+                <DotsHorizontal size={16} aria-hidden />
               </button>
             )}
           />
@@ -325,41 +326,5 @@ export function FileBrowser({
       )}
       {sshDialogOpen && <SshProjectDialog open onOpenChange={setSshDialogOpen} onLocal={actions.chooseWorkspace} />}
     </ScrollFade>
-  );
-}
-
-function ExpandCollapseIcon({ collapsed }: { collapsed: boolean }) {
-  return collapsed ? (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M3.5 3.5L6.9 6.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M6.9 4.7V6.9H4.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M12.5 12.5L9.1 9.1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M9.1 11.3V9.1H11.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ) : (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M6.9 6.9L3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M3.5 5.7V3.5H5.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.1 9.1L12.5 12.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M12.5 10.3V12.5H10.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ChevronIcon() {
-  return (
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-      <path d="M3.5 2L6.5 5L3.5 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function MoreIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="4" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="12" cy="8" r="1.2" fill="currentColor" />
-    </svg>
   );
 }

@@ -61,6 +61,19 @@ const expandedDemoHtml = renderProjectGroup({
 });
 assert.doesNotMatch(expandedDemoHtml, /data-expanded="false"/);
 
+// Collapsed branches stay mounted for their animation, but must not leave
+// their file actions in the keyboard tab order. Expanded branches are usable.
+assert.match(html, /class="project-group-children-shell" data-expanded="true" aria-hidden="false">/);
+assert.match(html, /class="project-folder-children-shell" data-expanded="false" aria-hidden="true" inert="">/);
+assert.doesNotMatch(expandedDemoHtml, / inert=/);
+const collapsedProjectHtml = renderProjectGroup({
+  project,
+  state: { ...state, expandedProjectIds: [] },
+  actions,
+});
+assert.match(collapsedProjectHtml, /class="project-group-children-shell" data-expanded="false" aria-hidden="true" inert="">/);
+assert.match(collapsedProjectHtml, /mini\.pdb/);
+
 const crowdedFolderProject = {
   ...project,
   id: "project:/fixtures/crowded",

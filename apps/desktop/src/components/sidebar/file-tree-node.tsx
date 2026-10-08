@@ -329,6 +329,7 @@ export function ProjectGroup({
         className="project-group-children-shell"
         data-expanded={expanded ? "true" : "false"}
         aria-hidden={!expanded}
+        inert={!expanded}
       >
         <div className="project-children" role="list">
           {leadingTree.map(renderNode)}
@@ -513,6 +514,7 @@ function ProjectTreeNodeView({
         className="project-folder-children-shell"
         data-expanded={expanded ? "true" : "false"}
         aria-hidden={!expanded}
+        inert={!expanded}
       >
         <div className="project-folder-children" role="list">
           {leadingChildren.map(renderChild)}

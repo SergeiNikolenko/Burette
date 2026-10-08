@@ -1690,12 +1690,12 @@ kbd span { margin-left: 2px; }
 .project-group-row {
   position: relative;
   width: 100%;
-  min-height: 30px;
+  min-height: var(--height-token-row);
   border: 0;
   border-radius: var(--radius-lg);
   background: transparent;
   color: var(--color-text);
-  padding: 5px 86px 5px 8px;
+  padding: 4px 86px 4px 8px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1719,8 +1719,8 @@ kbd span { margin-left: 2px; }
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--text-base);
-  font-weight: 400;
-  line-height: 1.15;
+  font-weight: inherit;
+  line-height: 1.5;
 }
 .project-group-title-input {
   width: 100%;
@@ -1752,8 +1752,8 @@ kbd span { margin-left: 2px; }
   transition: opacity 140ms ease-out;
 }
 .project-group-menu-button {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border: 0;
   border-radius: 999px;
   padding: 0;
@@ -1810,8 +1810,8 @@ kbd span { margin-left: 2px; }
   top: 50%;
   transform: translateY(-50%);
   z-index: 1;
-  width: 30px;
-  height: 30px;
+  width: 20px;
+  height: 20px;
   border: 0;
   border-radius: var(--control-radius);
   padding: 0;
@@ -1866,12 +1866,12 @@ kbd span { margin-left: 2px; }
 .project-folder-row {
   position: relative;
   width: 100%;
-  min-height: 29px;
+  min-height: var(--height-token-row);
   border-radius: var(--radius-lg);
   color: var(--color-text);
   /* Indentation comes from the nesting of .project-folder-children now, not from
      a per-row depth multiplier, so every level also gets a guide line for free. */
-  padding: 5px 62px 5px 6px;
+  padding: 4px 62px 4px 6px;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1915,8 +1915,9 @@ kbd span { margin-left: 2px; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  font-weight: 400;
+  font-size: var(--text-base);
+  font-weight: inherit;
+  line-height: 1.5;
 }
 .project-folder-name-input {
   min-width: 0;
@@ -2018,12 +2019,12 @@ kbd span { margin-left: 2px; }
 .project {
   position: relative;
   width: 100%;
-  min-height: 30px;
+  min-height: var(--height-token-row);
   border: 0;
   border-radius: var(--radius-lg);
   background: transparent;
   color: var(--color-text);
-  padding: 5px 38px 5px 6px;
+  padding: 4px 38px 4px 6px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -2114,7 +2115,7 @@ kbd span { margin-left: 2px; }
   display: grid;
   gap: 1px;
 }
-.project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base); font-weight: 400; line-height: 20px; }
+.project-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-base); font-weight: inherit; line-height: 1.5; }
 /* A cut name hides the tail, which is often the only thing telling two files apart.
    Hovering the row walks the name through its window; the moving part is an inner
    element driven by transform, so the row never reflows while it travels. The

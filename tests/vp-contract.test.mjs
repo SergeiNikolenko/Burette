@@ -51,6 +51,7 @@ const contractScripts = {
   "test-preview-format-matrix.mjs": () => import("./test-preview-format-matrix.mjs"),
   "test-cross-platform-preview-contract.mjs": () => import("./test-cross-platform-preview-contract.mjs"),
   "test-sidebar-projects.mjs": () => import("./test-sidebar-projects.mjs"),
+  "test-sidebar-tree-render.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-sidebar-tree-render.mjs", import.meta.url))]),
   "test-docking-documents.mjs": () => import("./test-docking-documents.mjs"),
   "test-ui-shell-contract.mjs": () => import("./test-ui-shell-contract.mjs"),
   "test-molstar-style-switch.mjs": () => import("./test-molstar-style-switch.mjs"),
