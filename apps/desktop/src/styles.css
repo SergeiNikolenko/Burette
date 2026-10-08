@@ -9683,15 +9683,12 @@ img.settings-open-destination-icon {
 .ssh-source-picker span { color: var(--text-primary); }
 .ssh-source-picker > svg { margin-left: 4px; }
 .ssh-chosen-folder { display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
-.ssh-host-list { max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 16px; padding: 6px; }
-.ssh-host-list > button { display: flex; align-items: center; gap: 13px; width: 100%; min-height: 44px; padding: 10px 12px; border-radius: 9px; text-align: left; font-size: 14px; }
-.ssh-host-list > button:last-child { border-bottom: 0; }
-.ssh-host-list > button:hover { color: var(--text-primary); background: var(--surface-subtle); }
-.ssh-host-check { margin-left: auto; display: grid; place-items: center; width: 16px; height: 16px; flex-shrink: 0; border: 1px solid var(--text-faint); border-radius: 5px; }
-.ssh-host-list [aria-checked="true"] .ssh-host-check { background: var(--primary); color: var(--primary-foreground); border-color: var(--primary); }
-.ssh-form-fields { display: grid; gap: 20px; }
-.ssh-form-fields label { display: grid; gap: 8px; }
-.ssh-form-fields input { min-height: 38px; border-radius: 10px; }
+.ssh-host-list { max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 16px; padding: 6px; gap: 0; }
+.ssh-host-list [data-slot="radio-group-label"] { align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--radius-md); font-size: 14px; }
+.ssh-host-list [data-slot="radio-group-label"]:not(:has(:disabled)):is(:hover, :focus-within) { background: var(--color-background-primary-ghost-hover); }
+.ssh-form-fields { display: grid; gap: 16px; }
+.ssh-form-fields label { display: grid; gap: 4px; }
+.ssh-form-fields label > span { font-size: var(--text-xs); line-height: 16px; font-weight: 500; }
 .ssh-folder-location { display: flex; gap: 6px; align-items: center; }
 .ssh-folder-list { position: relative; height: 250px; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; padding: 6px; }
 .ssh-folder-list > button { display: flex; gap: 8px; align-items: center; text-align: left; width: 100%; min-height: 28px; padding: 4px 8px; border-radius: 6px; font-size: 13px; line-height: 20px; }

@@ -68,7 +68,7 @@
     "build:tauri": "cd apps/desktop && bun run build:tauri",
     "tauri": "cd apps/desktop && bun run tauri",
     "dev": "bun run dev:desktop",
-    "test:ssh": "bun tests/test-browser-dev-ssh.mjs && python3 tests/test-ssh-reader.py && bun tests/test-ssh-projects.mjs && bun test tests/test-ssh-project-tree.test.tsx"
+    "test:ssh": "bun tests/test-browser-dev-ssh.mjs && python3 tests/test-ssh-reader.py && bun tests/test-ssh-projects.mjs && bun test tests/test-ssh-project-tree.test.tsx && bun test tests/test-ssh-connection-dialog.test.tsx"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
