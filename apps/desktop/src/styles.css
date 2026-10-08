@@ -8553,39 +8553,6 @@ input.structure-inspector-composition-search {
 .radix-dialog-body ul.radix-dialog-scroll-list {
   padding: 6px 10px 6px 26px;
 }
-.database-query-form {
-  display: grid;
-  gap: 12px;
-}
-.database-query-field {
-  display: grid;
-  gap: 6px;
-}
-.database-query-field [data-slot="native-select-wrapper"] {
-  width: 100%;
-}
-.database-query-statement {
-  min-height: 84px;
-  resize: vertical;
-  border: 1px solid var(--line-subtle);
-  border-radius: var(--control-radius);
-  background: transparent;
-  color: var(--text-primary);
-  padding: 6px 8px;
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px;
-  line-height: 1.45;
-}
-.database-query-hint {
-  color: var(--text-muted);
-  font-size: 12px;
-}
-.database-query-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  padding-top: 4px;
-}
 .dock-job-note {
   color: var(--text-muted);
   font-size: 12px;
