@@ -26,6 +26,11 @@ stay in the layout below the message rather than overlapping it in an absolute
 position. Inspector notices must not override these styles with accent-tinted
 backgrounds or a separate small text scale.
 
+The command palette uses the extracted Atlas command-menu CSS with `cmdk`
+and the shared Radix portal/overlay. Placement, viewport limits, rows and search
+spacing are owned by that module, not by generic form-dialog styles. Burette's
+command inventory and ranking remain in `command-palette/index.tsx`.
+
 ## Inspected Baseline (historical)
 
 The inventory below reflects the React source under `apps/desktop/src` before

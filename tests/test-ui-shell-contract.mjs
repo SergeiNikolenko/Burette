@@ -4211,13 +4211,9 @@ assert.match(styles, /\.dock-tab \{[\s\S]*border-radius: 10px;/);
 assert.doesNotMatch(welcome, /new-tab-description/);
 assert.doesNotMatch(styles, /\[cmdk-input\]:focus-visible/);
 assert.doesNotMatch(styles, /outline: 2px solid var\(--focus-ring\)/);
-// The palette's placement and width moved out of bespoke [cmdk-*] CSS onto the
-// CommandDialog itself; everything else (surface, shadow, selected row) now
-// comes from the shadcn dialog/command primitives and the shared theme tokens.
-assert.match(commandPalette, /top-\[12%\]/);
-assert.match(commandPalette, /w-\[min\(520px,90vw\)\]/);
-assert.match(uiCommand, /data-selected:bg-\(--color-background-primary-ghost-hover\)/);
-assert.match(uiCommand, /max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto/);
+// Palette placement and presentation are owned by the extracted Atlas module;
+// interaction coverage lives in test-overlay-interactions.test.tsx.
+assert.match(uiCommand, /import "\.\/command\.atlas\.css"/);
 assert.doesNotMatch(app, /from "\.\/hooks\/use-app-open-drop-merge-collections"/);
 assert.doesNotMatch(app, /mergeMoleculeCollections: activeDocument\?\.renderer === "grid2d"/);
 assert.doesNotMatch(app, /isMoleculeCollectionPath/);

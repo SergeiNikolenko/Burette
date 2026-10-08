@@ -14,6 +14,44 @@ const { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogF
 const { Button } = await import("../apps/desktop/src/components/ui/button");
 const { Popover, PopoverTrigger, PopoverContent } = await import("../apps/desktop/src/components/ui/popover");
 const { Input } = await import("../apps/desktop/src/components/ui/input");
+const { Command, CommandDialog, CommandInput, CommandList, CommandGroup, CommandItem, CommandEmpty } = await import("../apps/desktop/src/components/ui/command");
+
+test("command dialog labels, filtering and keyboard selection survive its Atlas surface", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  const selected: string[] = [];
+  function Example() {
+    const [open, setOpen] = React.useState(true);
+    return <CommandDialog open={open} onOpenChange={setOpen} title="Commands" description="Find a command">
+      <Command><CommandInput variant="plain" aria-label="Search commands" /><CommandList>
+        <CommandEmpty>No results</CommandEmpty>
+        <CommandGroup heading="Actions">
+          <CommandItem value="open" onSelect={value => selected.push(value)}>Open file</CommandItem>
+          <CommandItem value="unavailable" disabled>Unavailable</CommandItem>
+          <CommandItem value="settings" onSelect={value => { selected.push(value); setOpen(false); }}>Settings</CommandItem>
+        </CommandGroup>
+      </CommandList></Command>
+    </CommandDialog>;
+  }
+  try {
+    await act(async () => root.render(<Example />));
+    const dialog = shell.querySelector('[role="dialog"]')!;
+    expect(dialog.querySelector(`#${dialog.getAttribute("aria-labelledby")}`)?.textContent).toBe("Commands");
+    const input = dialog.querySelector<HTMLInputElement>('[cmdk-input]')!;
+    expect(document.activeElement).toBe(input);
+    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+    await act(async () => { setValue.call(input, "not-found"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    expect(dialog.querySelector('[cmdk-empty]')?.textContent).toBe("No results");
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(selected).toEqual([]);
+    await act(async () => { setValue.call(input, ""); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    expect(dialog.querySelector('[cmdk-item][data-selected="true"]')?.textContent).toContain("Settings");
+    await act(async () => input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(selected).toEqual(["settings"]);
+    expect(shell.querySelector('[role="dialog"]')).toBeNull();
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
 
 // Let Radix finish the scheduled focus restoration, not a CSS-animation delay.
 const flushFocus = () => new Promise(resolve => setTimeout(resolve, 0));

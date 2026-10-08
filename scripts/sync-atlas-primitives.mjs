@@ -9,6 +9,11 @@ const index = process.argv.indexOf('--atlas');
 const atlas = index < 0 ? join(homedir(), 'Documents/Projects/InterfaceAtlas') : process.argv[index + 1];
 const shared = 'app-shared-342447930c78.css';
 const modules = [
+  { name: 'command', sheet: 'app-initial-e55cd978d577.css', bounds: ['.command-menu-dialog{'], names: {
+    'global-command-menu-dialog': 'atlas-command-dialog-global',
+    'command-menu-dialog': 'atlas-command-dialog',
+    '--codex-window-zoom': '--window-zoom',
+  } },
   { name: 'dialog-overlay', sheet: shared, bounds: ['._dimmedOverlay_12rau_2{', '._imageOverlay_12rau_2:'], names: {
     _dimmedOverlay_12rau_2: 'atlas-dialog-dimmed-overlay',
   } },
@@ -68,7 +73,7 @@ const modules = [
 for (const { name, sheet, bounds, names } of modules) {
   const source = await readFile(join(atlas, 'snapshot/assets', sheet), 'utf8');
   const start = bounds ? source.indexOf(bounds[0]) : 0;
-  const end = bounds ? source.indexOf(bounds[1], start) : source.length;
+  const end = bounds?.[1] ? source.indexOf(bounds[1], start) : source.length;
   if (start < 0 || end < 0) throw new Error(`Expected Atlas ${name} module not found`);
   const module = source.slice(start, end);
   if ([...module].reduce((n, c) => n + (c === '{' ? 1 : c === '}' ? -1 : 0), 0) !== 0) {

@@ -1,10 +1,12 @@
 import * as React from "react"
 import { Command as CommandPrimitive } from "cmdk"
+import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import {
   Dialog,
-  DialogContent,
+  DialogPortal,
+  DialogOverlay,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -15,6 +17,8 @@ import {
 } from "@/components/ui/input-group"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Search as SearchIcon, Check as Tick02Icon } from "@/components/ui/app-icon-data";
+import { X } from "@/components/ui/app-icons"
+import "./command.atlas.css"
 
 function Command({
   className,
@@ -24,7 +28,7 @@ function Command({
     <CommandPrimitive
       data-slot="command"
       className={cn(
-        "flex size-full flex-col gap-1 overflow-hidden rounded-(--radius-2xl)! bg-popover p-1 text-popover-foreground",
+        "text-base leading-normal [--padding-row-y:5px]",
         className
       )}
       {...props}
@@ -47,19 +51,30 @@ function CommandDialog({
 }) {
   return (
     <Dialog {...props}>
-      <DialogHeader className="sr-only">
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{description}</DialogDescription>
-      </DialogHeader>
-      <DialogContent
-        className={cn(
-          "top-1/3 translate-y-0 overflow-hidden rounded-(--radius-2xl)! border-transparent p-0 shadow-[0_16px_32px_-8px_rgb(0_0_0/0.19)]",
-          className
-        )}
-        showCloseButton={showCloseButton}
-      >
-        {children}
-      </DialogContent>
+      <DialogPortal>
+        <DialogOverlay />
+        <DialogPrimitive.Content
+          data-slot="command-dialog"
+          className={cn(
+            "atlas-command-dialog atlas-command-dialog-global fixed left-1/2 z-50 -translate-x-1/2 outline-none",
+            className
+          )}
+        >
+          <DialogHeader className="sr-only">
+            <DialogTitle>{title}</DialogTitle>
+            <DialogDescription>{description}</DialogDescription>
+          </DialogHeader>
+          {children}
+          {showCloseButton && (
+            <DialogPrimitive.Close
+              aria-label="Close command palette"
+              className="absolute top-2 right-2 rounded p-1 hover:bg-(--color-background-primary-ghost-hover) focus-visible:ring-2 focus-visible:ring-(--color-ring)"
+            >
+              <X size={16} aria-hidden />
+            </DialogPrimitive.Close>
+          )}
+        </DialogPrimitive.Content>
+      </DialogPortal>
     </Dialog>
   )
 }
@@ -71,10 +86,10 @@ function CommandInput({
 }: React.ComponentProps<typeof CommandPrimitive.Input> & { variant?: "default" | "plain" }) {
   if (variant === "plain") {
     return (
-      <div data-slot="command-input-wrapper" className="px-2.5 py-1.5">
+      <div data-slot="command-input-wrapper">
         <CommandPrimitive.Input
           data-slot="command-input"
-          className={cn("h-[21px] w-full bg-transparent text-base/[21px] outline-none placeholder:text-muted-foreground disabled:opacity-50", className)}
+          className={cn("block w-full bg-transparent text-base/[21px] outline-none placeholder:text-(--color-codex-description) disabled:opacity-50", className)}
           {...props}
         />
       </div>
@@ -107,7 +122,7 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        "no-scrollbar max-h-72 scroll-py-1 overflow-x-hidden overflow-y-auto outline-none",
+        "outline-none",
         className
       )}
       {...props}
@@ -122,7 +137,7 @@ function CommandEmpty({
   return (
     <CommandPrimitive.Empty
       data-slot="command-empty"
-      className={cn("py-6 text-center text-sm", className)}
+      className={cn("text-base", className)}
       {...props}
     />
   )
@@ -136,7 +151,7 @@ function CommandGroup({
     <CommandPrimitive.Group
       data-slot="command-group"
       className={cn(
-        "overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:pt-2 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:text-[13px] **:[[cmdk-group-heading]]:leading-[18.5px] **:[[cmdk-group-heading]]:text-(--color-text-tertiary)",
+        "flex flex-col gap-1 **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:pt-2 **:[[cmdk-group-heading]]:text-sm **:[[cmdk-group-heading]]:text-(--color-codex-description)",
         className
       )}
       {...props}
@@ -166,7 +181,7 @@ function CommandItem({
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "group/command-item relative flex cursor-default items-center gap-1.5 rounded-(--radius-xl) px-2 py-[5px] text-[13px] leading-[18.5px] outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-(--color-background-primary-ghost-hover) [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "group/command-item relative gap-2 outline-hidden data-[disabled=true]:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -185,7 +200,7 @@ function CommandShortcut({
     <span
       data-slot="command-shortcut"
       className={cn(
-        "ml-auto pl-2 text-xs leading-4 text-(--color-text-tertiary)",
+        "ml-auto pl-2 text-xs leading-4 text-current",
         className
       )}
       {...props}

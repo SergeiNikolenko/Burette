@@ -145,7 +145,6 @@ export function CommandPalette({
       }}
       title="Command Palette"
       description="Search commands and structures."
-      className="top-[12%] w-[min(520px,90vw)] sm:max-w-[min(520px,90vw)]"
     >
       <Command
         label="Command Palette"
@@ -175,7 +174,6 @@ export function CommandPalette({
             if (command) runItem(command);
           }
         }}
-        className="p-1"
       >
         <CommandInput
           value={query}
@@ -184,12 +182,12 @@ export function CommandPalette({
           placeholder="Search structures and commands…"
           aria-label="Search commands and open structures"
         />
-        <CommandList ref={listRef} className="max-h-[min(440px,64vh)]">
+        <CommandList ref={listRef}>
           {visibleItems.length === 0 ? (
             <CommandEmpty>No results found.</CommandEmpty>
           ) : (
             visibleGroups.map((group) => (
-              <CommandGroup key={group.heading} heading={group.heading} className="p-0">
+              <CommandGroup key={group.heading} heading={group.heading}>
                 {group.items.map((item) => {
                   const Icon = item.icon ?? ArrowRight;
                   return (
@@ -198,13 +196,12 @@ export function CommandPalette({
                     value={item.id}
                     onSelect={() => runItem(item)}
                     title={item.description}
-                    className="min-h-[31px] gap-2 rounded-(--radius-lg) px-2 py-[5px] text-base/[21px]"
                   >
                     <Icon aria-hidden="true" />
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     <CommandShortcut className="flex min-w-0 items-center gap-2 tracking-normal">
                       {item.detail ? <span className="max-w-32 truncate">{item.detail}</span> : null}
-                      {item.shortcut ? <Kbd>{item.shortcut}</Kbd> : null}
+                      {item.shortcut ? <Kbd className="h-auto py-0.5 leading-none text-current opacity-80">{item.shortcut}</Kbd> : null}
                     </CommandShortcut>
                   </CommandItem>
                   );
