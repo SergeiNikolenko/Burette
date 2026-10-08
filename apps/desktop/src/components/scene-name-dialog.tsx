@@ -1,27 +1,33 @@
 import { Input } from "./ui/input";
+import { Button } from "./ui/button";
 import { useEffect, useState } from "react";
-import { Dialog } from "radix-ui";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/dialog";
 import type { ViewerDocument } from "../types";
 import { useMoleculeStore } from "../stores/molecule-store";
-import { useAppShellPortalContainer } from "./ui/portal-container";
-import { CloseIcon } from "./close-icon";
 
 export function SceneNameDialog({ document, onClose }: { document: ViewerDocument | null; onClose: () => void }) {
-  const container = useAppShellPortalContainer();
   const [name, setName] = useState("");
   useEffect(() => setName(document?.title ?? ""), [document]);
-  return <Dialog.Root open={Boolean(document)} onOpenChange={open => { if (!open) onClose(); }}><Dialog.Portal container={container}>
-    <Dialog.Overlay className="radix-dialog-overlay" /><Dialog.Content className="radix-dialog calculated-column-dialog">
-      <form onSubmit={event => {
+  return <Dialog open={Boolean(document)} onOpenChange={open => { if (!open) onClose(); }}>
+    <DialogContent variant="form" size="compact">
+      <form className="flex min-w-0 flex-col gap-4" onSubmit={event => {
         event.preventDefault();
         if (!document || !name.trim()) return;
         useMoleculeStore.setState(state => ({ documents: state.documents.map(current => current.id === document.id ? { ...current, title: name.trim() } : current) }));
         onClose();
-      }}><div className="radix-dialog-header"><Dialog.Title>Rename Scene</Dialog.Title>
-          <Dialog.Close asChild><button type="button" className="radix-dialog-close" aria-label="Close rename scene"><CloseIcon size={14} /></button></Dialog.Close></div>
-        <div className="radix-dialog-body"><Dialog.Description className="sr-only">Name of this scene in the workspace.</Dialog.Description>
-          <label className="calculated-column-field"><span>Name</span><Input autoFocus variant="field" aria-label="Scene name" value={name} maxLength={200} onChange={event => setName(event.target.value)} /></label>
-        </div><div className="radix-dialog-footer"><button type="button" className="dock-action" onClick={onClose}>Cancel</button>
-          <button className="dock-action calculate-properties-run" type="submit" disabled={!name.trim()}>Rename</button></div>
-      </form></Dialog.Content></Dialog.Portal></Dialog.Root>;
+      }}>
+        <DialogHeader>
+          <DialogTitle>Rename scene</DialogTitle>
+          <DialogDescription className="sr-only">Name of this scene in the workspace.</DialogDescription>
+        </DialogHeader>
+        <label className="flex flex-col gap-2 text-xs"><span>Name</span>
+          <Input variant="field" name="sceneName" autoComplete="off" aria-label="Scene name" value={name} maxLength={200} onChange={event => setName(event.target.value)} />
+        </label>
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="submit" disabled={!name.trim()}>Rename</Button>
+        </DialogFooter>
+      </form>
+    </DialogContent>
+  </Dialog>;
 }
