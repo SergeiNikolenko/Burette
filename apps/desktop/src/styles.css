@@ -2880,6 +2880,9 @@ img.radix-menu-item-icon {
   gap: 4px;
   padding: 7px 8px;
   border-bottom: 1px solid var(--line-subtler);
+  /* Dock tabs sit on the panel surface, so the active fill is the ghost tint
+     rather than the raised surface the top strip uses. */
+  --tab-active-bg: var(--color-background-primary-ghost-hover);
   box-sizing: border-box;
   user-select: none;
   -webkit-user-select: none;
@@ -2921,13 +2924,13 @@ img.radix-menu-item-icon {
   border: 0;
   border-radius: 10px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--color-text-tertiary);
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   padding: 0 10px;
   font: inherit;
-  font-size: 13px;
+  font-size: var(--text-sm);
   cursor: default;
   user-select: none;
   -webkit-user-select: none;
@@ -2977,7 +2980,7 @@ img.radix-menu-item-icon {
 .dock-tab-shell:hover .dock-tab,
 .dock-tab-shell:focus-within .dock-tab {
   background: var(--tab-active-bg);
-  color: var(--text-secondary);
+  color: var(--color-text);
 }
 /* A pressed tab stays put: the shared Button nudges it down a pixel. */
 .dock-tab:active { translate: none; }
@@ -3068,13 +3071,13 @@ img.radix-menu-item-icon {
   }
 }
 .dock-icon-button {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
   border: 0;
-  border-radius: var(--control-radius);
+  border-radius: calc(var(--radius-lg) * 0.75);
   background: transparent;
-  color: var(--text-icon-muted);
+  color: var(--color-text-tertiary);
   display: grid;
   place-items: center;
   padding: 0;
@@ -3083,8 +3086,8 @@ img.radix-menu-item-icon {
   transition: background 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
 .dock-icon-button:hover {
-  background: var(--surface-subtle);
-  color: var(--text-secondary);
+  background: var(--color-background-primary-ghost-hover);
+  color: var(--color-text);
 }
 .dock-icon-button:active { transform: scale(0.94); }
 .dock-content {
