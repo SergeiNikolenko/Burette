@@ -1,36 +1,28 @@
-import type { ComponentProps } from "react";
-import { cva, type VariantProps } from "class-variance-authority";
+import type { ComponentProps, CSSProperties } from "react";
 
 import { cn } from "@/lib/utils";
+import "./loading-indicator.atlas.css";
 
-// A fading ring with a round leading cap: the ring is a bordered circle masked
-// by a conic gradient, the cap is a dot at twelve o'clock, and the whole box
-// turns. The spinner next door is the stroked-arc variant for inline icons.
-const loadingIndicatorVariants = cva(
-  "relative block shrink-0 animate-spin [animation-duration:0.8s] [animation-timing-function:linear] motion-reduce:animate-none before:absolute before:inset-0 before:rounded-full before:border-2 before:border-current before:[mask-image:conic-gradient(transparent,black)] after:absolute after:top-0 after:left-1/2 after:size-0.5 after:-translate-x-1/2 after:rounded-full after:bg-current",
-  {
-    variants: {
-      size: {
-        sm: "size-4",
-        default: "size-5",
-        lg: "size-7",
-      },
-    },
-    defaultVariants: { size: "default" },
-  },
-);
+const sizes = { sm: 16, default: 20, lg: 28 };
 
 function LoadingIndicator({
   className,
-  size,
+  size = "default",
+  strokeWidth,
+  style,
   ...props
-}: ComponentProps<"span"> & VariantProps<typeof loadingIndicatorVariants>) {
+}: ComponentProps<"span"> & { size?: keyof typeof sizes | number; strokeWidth?: number }) {
   return (
     <span
       data-slot="loading-indicator"
       role="status"
       aria-label="Loading"
-      className={cn(loadingIndicatorVariants({ size }), className)}
+      className={cn("atlas-loading-indicator inline-block shrink-0 motion-reduce:animate-none motion-reduce:transition-none", className)}
+      style={{
+        "--indicator-size": `${typeof size === "number" ? size : sizes[size]}px`,
+        ...(strokeWidth !== undefined && { "--indicator-stroke": `${strokeWidth}px` }),
+        ...style,
+      } as CSSProperties}
       {...props}
     />
   );

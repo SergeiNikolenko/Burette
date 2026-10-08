@@ -47,6 +47,9 @@ The shell is a workspace, not a brand canvas.
 
 ## Surface Rules
 
+- Preserve the classic Codex shell: its background and edge-to-edge sidebar.
+  Component migration does not authorize the newer navigation rail, inset
+  panels, or a different sidebar treatment.
 - The molecular preview, collection, text artifact, or workflow panel stays the
   primary visual object.
 - Chrome should remain compact and predictable: sidebar, tab strip, command

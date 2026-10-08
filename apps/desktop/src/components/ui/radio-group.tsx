@@ -2,23 +2,27 @@ import * as React from "react"
 import { RadioGroup as RadioGroupPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import "./radio-group.atlas.css"
 import "./radio-group.css"
+
+const DisabledContext = React.createContext(false)
 
 function RadioGroup({
   className,
   orientation = "horizontal",
+  disabled = false,
   ...props
 }: React.ComponentProps<typeof RadioGroupPrimitive.Root>) {
   return (
-    <RadioGroupPrimitive.Root
-      data-slot="radio-group"
-      orientation={orientation}
-      className={cn(
-        "flex data-[orientation=horizontal]:gap-(--radio-group-row-gap) data-[orientation=vertical]:flex-col data-[orientation=vertical]:gap-(--radio-group-col-gap)",
-        className
-      )}
-      {...props}
-    />
+    <DisabledContext value={disabled}>
+      <RadioGroupPrimitive.Root
+        data-slot="radio-group"
+        orientation={orientation}
+        disabled={disabled}
+        className={cn("atlas-radio-group text-(--color-text)", className)}
+        {...props}
+      />
+    </DisabledContext>
   )
 }
 
@@ -26,21 +30,23 @@ function RadioGroupItem({
   className,
   children,
   block = false,
+  disabled = false,
   ...props
 }: React.ComponentProps<typeof RadioGroupPrimitive.Item> & { block?: boolean }) {
+  const groupDisabled = React.useContext(DisabledContext)
+  const isDisabled = groupDisabled || disabled
   return (
     <label
       data-slot="radio-group-label"
       data-block={block || undefined}
-      className="inline-flex cursor-pointer items-start gap-(--radio-group-item-gap) text-(length:--radio-group-item-font-size) leading-(--radio-group-item-line-height) text-(--color-text) has-disabled:cursor-not-allowed has-disabled:opacity-50 data-[block]:w-full"
+      data-disabled={isDisabled ? "" : undefined}
+      className="atlas-radio-label"
     >
-      <span className="flex h-[1lh] shrink-0 items-center justify-center">
+      <span className="atlas-radio-wrapper">
         <RadioGroupPrimitive.Item
           data-slot="radio-group-item"
-          className={cn(
-            "peer flex size-(--radio-group-indicator-size) shrink-0 items-center justify-center rounded-full inset-ring inset-ring-(--radio-group-indicator-border-color) cursor-pointer outline-none transition-shadow duration-(--transition-duration-basic) disabled:cursor-not-allowed enabled:hover:inset-ring-(--radio-group-indicator-border-color-hover) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-ring) motion-reduce:transition-none",
-            className
-          )}
+          disabled={isDisabled}
+          className={cn("peer atlas-radio-item", className)}
           {...props}
         >
           <RadioGroupPrimitive.Indicator

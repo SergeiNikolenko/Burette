@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const contractScripts = {
   "test-button-interactions.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-button-interactions.test.tsx", import.meta.url))]),
+  "test-selection-controls.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-selection-controls.test.tsx", import.meta.url))]),
   "test-startup-runtime-refresh.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-startup-runtime-refresh.mjs", import.meta.url))]),
   "test-pose-camera-stability.mjs": () => import("./test-pose-camera-stability.mjs"),
   "test-collection-analysis-menu.mjs": () => import("./test-collection-analysis-menu.mjs"),

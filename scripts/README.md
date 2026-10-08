@@ -92,13 +92,14 @@ from the Codex desktop stylesheet in a local InterfaceAtlas checkout
 (`--atlas <path>`, default `~/Documents/Projects/InterfaceAtlas`). Run it when
 that snapshot changes and commit the regenerated file.
 
-`node scripts/sync-atlas-button.mjs --atlas <path>` extracts the original
-Button CSS module from that same snapshot into `button.atlas.css`. The output
-records its source hash; only CSS class and variant/size attribute names are
-adapted. `components/ui/button.tsx` maps Burette's existing props and preserves
-Radix slot composition; `button.css` adds reduced-motion and alignment support.
-Compare `/dev/codex-theme.html` with Atlas's `original.html?story=button` in both
-themes after changing this adapter. This does not change the classic shell.
+`node scripts/sync-atlas-primitives.mjs --atlas <path>` extracts the original
+Button, Checkbox, RadioGroup and LoadingIndicator CSS modules from that same
+snapshot into `components/ui/*.atlas.css`. Each output records its source hash;
+only class/keyframe names and mapped attributes are adapted. React adapters
+retain Burette's props and Radix interactions; adjacent non-generated CSS adds
+reduced-motion, invalid-state and alignment support. Compare
+`/dev/codex-theme.html` with Atlas's `original.html?story=<component>` in both
+themes after changing these adapters. This does not change the classic shell.
 
 ## Release
 

@@ -1,45 +1,8 @@
-/* InterfaceAtlas Checkbox states, using the shell's adaptive gray palette. */
-.atlas-checkbox {
-  display: inline-flex;
-  position: relative;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: 1px solid var(--lightningcss-light,var(--gray-200))var(--lightningcss-dark,var(--gray-500));
-  border-radius: var(--radius-xs);
-  background: transparent;
-  cursor: pointer;
-  transition: border-color 150ms, background-color 150ms;
-}
-.atlas-checkbox:not([data-disabled], [data-state="checked"]):hover {
-  border-color: var(--lightningcss-light,var(--gray-300))var(--lightningcss-dark,var(--gray-600));
-}
-.atlas-checkbox:is([data-state="checked"], [data-state="indeterminate"]) {
-  border-color: var(--gray-900);
-  background-color: var(--gray-900);
-}
-.atlas-checkbox:focus { outline: none; }
-.atlas-checkbox:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
-.atlas-checkbox[data-disabled] {
-  border-color: var(--lightningcss-light,var(--gray-150))var(--lightningcss-dark,var(--gray-300));
-  background: var(--lightningcss-light,var(--gray-25))var(--lightningcss-dark,var(--gray-200));
-  cursor: not-allowed;
-}
-.atlas-checkbox[data-disabled][data-state="checked"] {
-  border-color: var(--lightningcss-light,var(--gray-300))var(--lightningcss-dark,var(--gray-200));
-  background-color: var(--lightningcss-light,var(--gray-300))var(--lightningcss-dark,var(--gray-200));
-}
-.atlas-checkbox[aria-invalid="true"] { border-color: var(--color-text-danger); }
-.atlas-checkbox [data-slot="checkbox-indicator"] { display: grid; place-items: center; color: var(--gray-0); }
-.atlas-checkbox[data-disabled] [data-slot="checkbox-indicator"] {
-  color: var(--lightningcss-light,var(--gray-0))var(--lightningcss-dark,var(--gray-100));
-}
-.atlas-checkbox .checkbox-mixed,
-.atlas-checkbox[data-state="indeterminate"] .checkbox-check { display: none; }
-.atlas-checkbox[data-state="indeterminate"] .checkbox-mixed { display: block; }
-@media (prefers-reduced-motion: reduce) {
-  .atlas-checkbox { transition: none; }
+@layer components {
+  .atlas-checkbox[aria-invalid="true"] { border-color: var(--color-text-danger); }
+  @media (prefers-reduced-motion: reduce) {
+    .atlas-checkbox, .atlas-checkbox-mark, .atlas-checkbox-mark::before, .atlas-checkbox-mark::after {
+      transition: none;
+    }
+  }
 }
