@@ -4,7 +4,7 @@ import React, { act, createRef } from "react";
 
 const browser = new Window();
 Object.defineProperty(globalThis, "ResizeObserver", { configurable: true, value: browser.ResizeObserver });
-for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLInputElement", "HTMLFormElement", "DocumentFragment", "Node", "NodeFilter", "CustomEvent", "Event", "MouseEvent", "MutationObserver", "getComputedStyle"] as const) {
+for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLInputElement", "HTMLFormElement", "DocumentFragment", "Node", "NodeFilter", "CustomEvent", "Event", "MouseEvent", "MutationObserver", "getComputedStyle", "requestAnimationFrame", "cancelAnimationFrame"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
 }
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -13,6 +13,45 @@ const { Checkbox } = await import("../apps/desktop/src/components/ui/checkbox");
 const { RadioGroup, RadioGroupItem } = await import("../apps/desktop/src/components/ui/radio-group");
 const { Switch } = await import("../apps/desktop/src/components/ui/switch");
 const { SegmentedControl, SegmentedControlItem } = await import("../apps/desktop/src/components/ui/segmented-control");
+const { Slider } = await import("../apps/desktop/src/components/ui/slider");
+const { Tabs, TabsList, TabsTrigger, TabsContent } = await import("../apps/desktop/src/components/ui/tabs");
+
+test("slider retains stepped keyboard changes, bounds, commit callbacks and disabled behavior", async () => {
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const commits: number[][] = [];
+  function Example({ disabled = false }: { disabled?: boolean }) {
+    const [value, setValue] = React.useState([40]);
+    return <Slider aria-label="Opacity" value={value} onValueChange={setValue} onValueCommit={next => commits.push(next)} min={0} max={100} step={5} disabled={disabled} />;
+  }
+  try {
+    await act(async () => root.render(<Example />));
+    const thumb = host.querySelector<HTMLElement>('[role="slider"]')!;
+    const key = async (key: string) => act(async () => { thumb.focus(); thumb.dispatchEvent(new browser.KeyboardEvent("keydown", { key, bubbles: true })); });
+    await key("ArrowRight");
+    expect(thumb.getAttribute("aria-valuenow")).toBe("45");
+    await key("End"); await key("ArrowRight"); await key("Home");
+    expect(commits).toEqual([[45], [100], [0]]);
+    expect(thumb.getAttribute("aria-valuenow")).toBe("0");
+    await act(async () => root.render(<Example disabled />));
+    await key("ArrowRight");
+    expect([thumb.getAttribute("aria-valuenow"), thumb.hasAttribute("tabindex")]).toEqual(["0", false]);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("settings tabs keep panel associations and skip disabled categories with the keyboard", async () => {
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(<Tabs defaultValue="core"><TabsList aria-label="Settings">
+      <TabsTrigger value="core">Core</TabsTrigger><TabsTrigger value="solvent" disabled>Solvent</TabsTrigger><TabsTrigger value="output">Output</TabsTrigger>
+    </TabsList><TabsContent value="core">Method</TabsContent><TabsContent value="output">Save results</TabsContent></Tabs>));
+    const tabs = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    await act(async () => { tabs[0].focus(); tabs[0].dispatchEvent(new browser.KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })); await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(document.activeElement).toBe(tabs[2]);
+    expect(tabs.map(tab => tab.getAttribute("aria-selected"))).toEqual(["false", "false", "true"]);
+    const panel = host.querySelector<HTMLElement>('[role="tabpanel"][data-state="active"]')!;
+    expect([panel.id, panel.getAttribute("aria-labelledby"), panel.textContent]).toEqual([tabs[2].getAttribute("aria-controls"), tabs[2].id, "Save results"]);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
 
 test("segmented selection cannot be cleared, skips disabled options, and never submits its form", async () => {
   const container = document.createElement("div"); document.body.append(container);

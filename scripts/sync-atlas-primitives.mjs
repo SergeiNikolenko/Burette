@@ -9,6 +9,10 @@ const index = process.argv.indexOf('--atlas');
 const atlas = index < 0 ? join(homedir(), 'Documents/Projects/InterfaceAtlas') : process.argv[index + 1];
 const shared = 'app-shared-342447930c78.css';
 const modules = [
+  { name: 'slider', sheet: 'SegmentedControl-1b0cd2c8f252.css', bounds: ['._Slider_pudb7_1{', '._SliderLabel_pudb7_78{'], names: {
+    _Slider_pudb7_1: 'atlas-slider', _Track_pudb7_32: 'atlas-slider-track',
+    _Range_pudb7_41: 'atlas-slider-range', _Thumb_pudb7_49: 'atlas-slider-thumb',
+  } },
   { name: 'select-menu', sheet: 'SegmentedControl-1b0cd2c8f252.css', bounds: ['._MenuList_1rueu_8{', '@media (hover:hover) and (pointer:fine){._SliderWrap'], names: {
     _MenuList_1rueu_8: 'atlas-select-menu', _Menu_1rueu_4: 'atlas-select-transition',
     _MenuInner_1rueu_57: 'atlas-select-menu-inner', _OptionsList_1rueu_74: 'atlas-select-options',
