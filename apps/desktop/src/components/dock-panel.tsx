@@ -27,6 +27,9 @@ import { TextFileViewer } from "./text-file-viewer";
 import { MarkdownRichViewer } from "./text-file-viewer/markdown-rich-viewer";
 import { useSourceEditing } from "../lib/source-editing/context";
 import { TextDocumentInfoPanel } from "./text-document-info-panel";
+import { FileInfoPanel } from "./file-info-panel";
+import { basename } from "../lib/sidebar-projects";
+import { pathExtension } from "../lib/file-routing";
 import { StructureInfoPanel } from "./structure-info-panel";
 import { JobsPanel } from "./jobs-panel";
 import { Button } from "@/components/ui/button";
@@ -401,6 +404,12 @@ function DockPanelContent({
   if (activeTabKind === "inspector") {
     if (area === "right" && activePageKind === "ketcher") return <KetcherInspectorPanel state={state} />;
     if (effectiveDockTextDocument) return <TextDocumentInfoPanel document={effectiveDockTextDocument} actions={actions} />;
+    // Document pages have a path, not a molecular/text record. Do not fabricate
+    // metadata or override an explicitly pinned inspector source.
+    if (!dockDocumentId && !dockTool && state.activeTab?.location.kind === "document") {
+      const path = state.activeTab.location.path;
+      return <FileInfoPanel file={{ path, title: basename(path), extension: pathExtension(path) }} actions={actions} />;
+    }
     if (dockStructureDocument?.renderer === "spectrum") return <SpectrumInfoPanel document={dockStructureDocument} />;
     if (isMesoscaleViewerDocument(dockStructureDocument)) return <MesoscaleInfoPanel document={dockStructureDocument} />;
     return (

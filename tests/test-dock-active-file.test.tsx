@@ -79,6 +79,26 @@ test("Info follows active text and preserves an explicit text pin instead of sho
   }
 });
 
+test("Info recognizes document pages without inventing metadata or overriding a pinned text file", () => {
+  for (const extension of ["md", "pdf", "docx", "xlsx"]) {
+    const shell = render({ activeDocument: null, rightDockTabs: [{ id: "info", kind: "inspector" }], rightDockActiveTab: "inspector",
+      activeTab: { location: { kind: "document", path: `/reports/Report.${extension}` } } as ShellViewState["activeTab"],
+    });
+    const info = shell.querySelector('[aria-label="File information"]')!;
+    expect(info.querySelector("h3")?.textContent).toBe(`Report.${extension}`);
+    expect(info.querySelector('[data-slot="badge"]')?.textContent).toBe(extension.toUpperCase());
+    expect(Array.from(info.querySelectorAll("button"), el => el.textContent)).toEqual(["Reveal file", "Copy path"]);
+    expect(info.querySelector("dl")).toBeNull();
+    expect(shell.textContent).not.toContain("No structure selected");
+  }
+  const text: TextFileDocument = { id: "notes", title: "Notes.txt", path: "/notes.txt", extension: "txt", language: "text", byteCount: 5, content: "notes", truncated: false };
+  const pinned = render({ textDocuments: [text], rightDockDocumentId: text.id, activeDocument: null,
+    rightDockTabs: [{ id: "info", kind: "inspector" }], rightDockActiveTab: "inspector",
+    activeTab: { location: { kind: "document", path: "/Report.pdf" } } as ShellViewState["activeTab"],
+  });
+  expect(pinned.querySelector('[aria-label="File information"] h3')?.textContent).toBe("Notes.txt");
+});
+
 
 test("shared empty panels expose the existing open action without an explanatory caption", async () => {
   const { createRoot } = await import("react-dom/client");
