@@ -8268,7 +8268,9 @@ img.radix-menu-item-icon {
    name it would bind to the nearest inline-size container, which is now the
    settings card (it declares `field-group` for shadcn's responsive Field), and
    the rows would switch layout ~26px before the column actually got narrow. */
-.settings-panel-content { width: min(832px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 46px 32px 80px; container: settings-panel / inline-size; }
+/* Atlas SettingsPage: max-w-3xl with a 20px panel inset. This shell's
+   scroller already contributes 12px at the top; keep 44px for window chrome. */
+.settings-panel-content { width: min(768px, calc(100% - 40px)); box-sizing: border-box; margin: 0 auto; padding: 52px 0 64px; container: settings-panel / inline-size; }
 .agent-integration-content { width: min(760px, calc(100% - 64px)); box-sizing: border-box; margin: 0 auto; padding: 46px 32px 80px; container-type: inline-size; }
 .agent-integration-panel[data-embedded] .agent-integration-content { width: 100%; margin: 0; padding: 0; }
 .settings-panel h1 { margin: 0 0 32px; color: var(--color-text); font-size: var(--text-heading-lg); line-height: 1.2; font-weight: 400; letter-spacing: 0; }
@@ -8430,16 +8432,13 @@ img.settings-open-destination-icon {
   .chrome-leading-controls { left: calc(82px / var(--window-zoom, 1)); }
   .topbar .tab-history-controls { display: none; }
   .sidebar-search-row { padding: 0 28px 0 32px; }
-  .settings-panel-content { width: 100%; padding: 80px 16px 64px; }
   .agent-integration-content { width: 100%; padding: 80px 16px 64px; }
 }
 @media (max-width: 520px) {
   .chrome-leading-controls .tab-history-controls { display: none; }
-  .settings-panel-content { width: 100%; padding: 80px 24px 64px; }
   .agent-integration-content { width: 100%; padding: 80px 24px 64px; }
 }
 @media (min-width: 760px) {
-  .settings-panel-content { padding-top: 104px; }
   .agent-integration-content { padding-top: 104px; }
 }
 @media (prefers-reduced-motion: reduce) {

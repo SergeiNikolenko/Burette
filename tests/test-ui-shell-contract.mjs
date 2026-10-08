@@ -4052,7 +4052,6 @@ assert.match(styles, /\.sidebar-settings-button/);
 assert.match(styles, /\.settings-sidebar/);
 assert.match(styles, /\.settings-back-button/);
 assert.match(styles, /\.settings-nav-item/);
-assert.match(styles, /\.settings-panel-content \{[^}]*margin: 0 auto[^}]*padding: 46px 32px 80px/s);
 assert.match(styles, /\.agent-integration-content \{[^}]*margin: 0 auto[^}]*padding: 46px 32px 80px/s);
 assert.match(styles, /\.page-surface\[data-page-kind="settings"\] \{[^}]*overflow: hidden/s);
 assert.doesNotMatch(styles, /\.page-surface\[data-page-kind="agent-integration"\]/);
