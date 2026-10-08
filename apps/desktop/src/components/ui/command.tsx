@@ -82,7 +82,7 @@ function CommandInput({
   }
   return (
     <div data-slot="command-input-wrapper" className="p-1 pb-0">
-      <InputGroup className="h-8! rounded-[15px]! border-input/30 bg-input/30 shadow-none! *:data-[slot=input-group-addon]:pl-2!">
+      <InputGroup className="h-8! rounded-(--radius-xl)! border-input/30 bg-input/30 shadow-none! *:data-[slot=input-group-addon]:pl-2!">
         <CommandPrimitive.Input
           data-slot="command-input"
           className={cn(
@@ -151,7 +151,7 @@ function CommandSeparator({
   return (
     <CommandPrimitive.Separator
       data-slot="command-separator"
-      className={cn("mx-2 my-1 h-px bg-popover-foreground/8", className)}
+      className={cn("mx-2 my-1 h-px bg-(--color-border)", className)}
       {...props}
     />
   )
@@ -166,7 +166,7 @@ function CommandItem({
     <CommandPrimitive.Item
       data-slot="command-item"
       className={cn(
-        "group/command-item relative flex cursor-default items-center gap-1.5 rounded-[15px] px-2 py-[5px] text-[13px] leading-[18.5px] outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-(--color-background-primary-ghost-hover) [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "group/command-item relative flex cursor-default items-center gap-1.5 rounded-(--radius-xl) px-2 py-[5px] text-[13px] leading-[18.5px] outline-hidden select-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-(--color-background-primary-ghost-hover) [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className
       )}
       {...props}
@@ -185,7 +185,7 @@ function CommandShortcut({
     <span
       data-slot="command-shortcut"
       className={cn(
-        "ml-auto pl-2 text-xs leading-4 text-popover-foreground/50",
+        "ml-auto pl-2 text-xs leading-4 text-(--color-text-tertiary)",
         className
       )}
       {...props}

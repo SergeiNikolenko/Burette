@@ -11,6 +11,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Slider } from "@/components/ui/slider";
+import { LoadingIndicator } from "@/components/ui/loading-indicator";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -110,6 +111,9 @@ function Appearance({ mode }: { mode: ThemeMode }) {
               <RadioGroupItem value="residues">Residues</RadioGroupItem>
             </RadioGroup>
             <Spinner />
+            <LoadingIndicator size="sm" />
+            <LoadingIndicator />
+            <LoadingIndicator size="lg" />
           </div>
         </section>
         <section>
