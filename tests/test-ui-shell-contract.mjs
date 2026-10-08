@@ -2962,7 +2962,8 @@ assert.match(structureInfoPanel, /type: "set_sdf_context_opacity"[\s\S]*?notify:
 assert.match(structureInfoPanel, /<span>Opacity<\/span>/);
 assert.match(structureInfoPanel, /aria-label=\{copy\.opacityAriaLabel\}/);
 assert.doesNotMatch(structureInfoPanel, /opacityDisabled/);
-assert.match(structureInfoPanel, /onInput=\{\(event\) => applyOpacity\(Number\(event\.currentTarget\.value\)\)\}/);
+// Shared slider behavior and debounced viewer commands are exercised in
+// test-inspector-context-controls.test.tsx.
 assert.match(structureInfoPanel, /Math\.round\(opacity \* 100\)/);
 assert.ok(
   structureInfoPanel.indexOf("<SdfContextStyleCard") < structureInfoPanel.indexOf("<StructureCompositionCard"),
@@ -2975,7 +2976,7 @@ assert.match(styles, /\.structure-brief \{[\s\S]*?grid-auto-rows: max-content/);
 // to keep the padding the old <summary> used to provide.
 assert.doesNotMatch(styles, /\.structure-inspector-details > summary/);
 assert.match(styles, /\.structure-inspector-details-body \{[^}]*border-top: 1px solid var\(--line-subtler\)/s);
-assert.match(styles, /\.structure-inspector-style-option\[data-selected="true"\]/);
+assert.doesNotMatch(styles, /\.structure-inspector-style-option\[data-selected="true"\]/);
 // The right dock starts below the toolbar and renders its own header there, so
 // the tab strip only clears the trailing controls and never yields to the dock.
 assert.match(styles, /\.topbar \{[^}]*right: 146px;/s);

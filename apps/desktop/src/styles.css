@@ -3465,27 +3465,7 @@ img.radix-menu-item-icon {
   font-size: 11px;
   line-height: 1;
 }
-.structure-inspector-more-button {
-  width: 26px;
-  height: 24px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-muted);
-  display: inline-grid;
-  place-items: center;
-  padding: 0;
-  font: inherit;
-  font-size: 13px;
-  line-height: 1;
-  cursor: default;
-  transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out;
-}
-.structure-inspector-more-button:hover {
-  border-color: var(--line-subtler);
-  background: var(--surface-subtle);
-  color: var(--text-primary);
-}
+
 .structure-brief-badges {
   min-width: 0;
   display: flex;
@@ -4768,27 +4748,8 @@ input.structure-inspector-composition-search {
   min-width: 0;
   display: grid;
   grid-template-columns: 18px minmax(0, 1fr);
-  align-items: center;
   gap: 8px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--text-primary);
-  padding: 4px 6px;
-  font: inherit;
-  font-size: 12px;
   text-align: left;
-  cursor: default;
-}
-.structure-inspector-pose-row:hover {
-  background: var(--surface-hover);
-}
-.structure-inspector-pose-row[data-selected] {
-  background: var(--surface-selected);
-}
-.structure-inspector-pose-row:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 1px var(--focus-ring);
 }
 .structure-inspector-pose-rank {
   color: var(--text-faint);
@@ -5094,76 +5055,17 @@ input.structure-inspector-composition-search {
 .trajectory-smoothing-chart-legend span:last-child::before { display: none; }
 .trajectory-smoothing-playback[data-playing] { color: var(--accent); font-weight: 600; }
 .trajectory-smoothing-playback[data-playing]::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 5px 1px 0; border-radius: 50%; background: currentColor; }
-.trajectory-smoothing-card button:focus-visible,
-.trajectory-smoothing-card input:focus-visible,
-.trajectory-smoothing-card select:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 1px; }
 .structure-inspector-pose-options {
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(32px, 1fr));
   gap: 5px;
 }
-.structure-inspector-pose-option {
-  min-width: 0;
-  height: 28px;
-  border: 1px solid var(--line-subtler);
-  border-radius: 7px;
-  background: var(--surface-card);
-  color: var(--text-secondary);
-  padding: 0 7px;
-  font: inherit;
-  font-size: 11px;
-  cursor: default;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, transform 120ms ease-out;
-}
-.structure-inspector-pose-option:hover {
-  background: var(--surface-subtle);
-  color: var(--text-primary);
-}
-.structure-inspector-pose-option[data-selected="true"] {
-  border-color: color-mix(in srgb, var(--accent) 48%, var(--line-subtler));
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface-card));
-  color: var(--text-primary);
-}
-.structure-inspector-pose-option:active {
-  transform: scale(0.99);
-}
 .structure-inspector-style-options {
   min-width: 0;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 5px;
-}
-.structure-inspector-style-option {
-  min-width: 0;
-  height: 28px;
-  border: 1px solid var(--line-subtler);
-  border-radius: 7px;
-  background: var(--surface-card);
-  color: var(--text-secondary);
-  padding: 0 7px;
-  font: inherit;
-  font-size: 11px;
-  cursor: default;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, transform 120ms ease-out;
-}
-.structure-inspector-style-option:hover {
-  background: var(--surface-subtle);
-  color: var(--text-primary);
-}
-.structure-inspector-style-option[data-selected="true"] {
-  border-color: color-mix(in srgb, var(--accent) 48%, var(--line-subtler));
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface-card));
-  color: var(--text-primary);
-}
-.structure-inspector-style-option:active {
-  transform: scale(0.99);
 }
 .structure-inspector-color-row {
   min-width: 0;
@@ -5181,11 +5083,6 @@ input.structure-inspector-composition-search {
   align-items: center;
   color: var(--text-muted);
   font-size: 11px;
-}
-.structure-inspector-opacity-control input {
-  min-width: 0;
-  width: 100%;
-  accent-color: var(--accent);
 }
 .structure-inspector-opacity-control strong {
   min-width: 0;

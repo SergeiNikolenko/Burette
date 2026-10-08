@@ -41,7 +41,7 @@
   background: var(--surface-hover);
   box-shadow: none;
 }
-.structure-brief :is(.structure-inspector-xtb-category-button[data-active], .structure-inspector-pose-option[data-selected="true"], .structure-inspector-style-option[data-selected="true"]) {
+.structure-brief .structure-inspector-xtb-category-button[data-active] {
   border-color: var(--line-subtle);
   background: var(--control-selected-bg);
   color: var(--text-primary);

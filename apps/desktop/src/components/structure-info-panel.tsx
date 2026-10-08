@@ -1,8 +1,9 @@
 import { Checkbox } from "./ui/checkbox";
+import { Slider } from "./ui/slider";
 import { TrajectorySetting } from "./trajectory-setting";
 import { compositionStyleMenu } from "./composition-style-menu";
 import { isLocalFilePath } from "../lib/browser-file-actions";
-import { ChevronRight as AppChevronRight, Eye as AppEye, EyeOff as AppEyeOff, Delete as AppDelete, Stopwatch } from "./ui/app-icons";
+import { ChevronRight as AppChevronRight, Eye as AppEye, EyeOff as AppEyeOff, Delete as AppDelete, Stopwatch, DotsHorizontal } from "./ui/app-icons";
 import { Suspense, lazy, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { showNativeContextMenu } from "./native-context-menu";
@@ -355,15 +356,11 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
           <h3 title={document.title}>{document.title}</h3>
           <Badge variant="secondary">{brief.format}</Badge>
           {!hostedMcpWidget && !document.virtual && isLocalFilePath(document.path) ? (
-            <button
-              type="button"
-              className="structure-inspector-more-button"
-              aria-label="File actions"
-              title="File actions"
-              onClick={showFileActionsMenu}
-            >
-              ...
-            </button>
+            <TooltipProvider><Tooltip><TooltipTrigger asChild>
+              <Button type="button" variant="ghost" size="icon-2xs" aria-label="File actions" aria-haspopup="menu" onClick={showFileActionsMenu}>
+                <DotsHorizontal aria-hidden />
+              </Button>
+            </TooltipTrigger><TooltipContent>File actions</TooltipContent></Tooltip></TooltipProvider>
           ) : null}
         </div>
         {document.renderer !== "grid2d" && (!compositionSummary || compositionPending || compositionError) ? (
@@ -1826,10 +1823,12 @@ function StructurePoseControlsCard({
             const selected = key !== null && key === activeActionKey;
             const name = fileName(poseNames[index]);
             return (
-              <button
+              <Button
                 key={`${action.type}:${action.index}`}
                 type="button"
-                className="structure-inspector-pose-row"
+                variant={selected ? "secondary" : "ghost"}
+                size="sm"
+                className="structure-inspector-pose-row text-(--color-text)"
                 data-selected={selected || undefined}
                 aria-pressed={selected}
                 title={name}
@@ -1837,7 +1836,7 @@ function StructurePoseControlsCard({
               >
                 <span className="structure-inspector-pose-rank">{action.index + 1}</span>
                 <span className="structure-inspector-pose-name">{name}</span>
-              </button>
+              </Button>
             );
           })}
         </div>
@@ -1851,17 +1850,20 @@ function StructurePoseControlsCard({
           const key = selectionActionKey(document, action);
           const selected = key !== null && key === activeActionKey;
           return (
-            <button
+            <Button
               key={`${action.type}:${action.index}`}
               type="button"
-              className="structure-inspector-pose-option"
+              variant={selected ? "secondary" : "ghost"}
+              size="sm"
+              className="min-w-0 overflow-hidden px-1 tabular-nums"
+              aria-label={action.label}
               data-selected={selected || undefined}
               aria-pressed={selected}
               title={action.label}
               onClick={() => runAction(action)}
             >
               {action.index + 1}
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -1943,16 +1945,18 @@ function SdfContextStyleCard({
     <InspectorSection className="structure-inspector-context-style" title={copy.title} detail={copy.detail}>
       <div className="structure-inspector-style-options" role="group" aria-label={copy.styleAriaLabel}>
         {styleOptions.map((option) => (
-          <button
+          <Button
             key={option.value}
             type="button"
-            className="structure-inspector-style-option"
+            variant={option.value === selectedStyle ? "secondary" : "ghost"}
+            size="sm"
+            className="min-w-0"
             data-selected={option.value === selectedStyle || undefined}
             aria-pressed={option.value === selectedStyle}
             onClick={() => applyStyle(option.value)}
           >
             {option.label}
-          </button>
+          </Button>
         ))}
       </div>
       <div className="structure-inspector-color-row">
@@ -1962,32 +1966,34 @@ function SdfContextStyleCard({
             { value: "gray" as const, label: "Gray" },
             { value: "colored" as const, label: "Colored" },
           ].map((option) => (
-            <button
+            <Button
               key={option.value}
               type="button"
-              className="structure-inspector-style-option"
+              variant={option.value === color ? "secondary" : "ghost"}
+              size="sm"
+              className="min-w-0"
               data-selected={option.value === color || undefined}
               aria-pressed={option.value === color}
               onClick={() => applyColor(option.value)}
             >
               {option.label}
-            </button>
+            </Button>
           ))}
         </div>
       </div>
-      <label className="structure-inspector-opacity-control">
+      <div className="structure-inspector-opacity-control">
         <span>Opacity</span>
-        <input
-          type="range"
+        <Slider
+          tone="neutral"
           min={SDF_CONTEXT_OPACITY_MIN}
           max={SDF_CONTEXT_OPACITY_MAX}
-          step="0.01"
-          value={opacity}
+          step={0.01}
+          value={[opacity]}
           aria-label={copy.opacityAriaLabel}
-          onInput={(event) => applyOpacity(Number(event.currentTarget.value))}
+          onValueChange={values => { if (values[0] !== undefined) applyOpacity(values[0]); }}
         />
         <strong>{Math.round(opacity * 100)}%</strong>
-      </label>
+      </div>
     </InspectorSection>
   );
 }
@@ -2028,15 +2034,11 @@ function TextFileInfoPanel({ document, dockDrops, actions }: { document: TextFil
         <div className="structure-brief-title-row">
           <h3 title={document.title}>{document.title}</h3>
           <span>{document.extension ? document.extension.toUpperCase() : "FILE"}</span>
-          <button
-            type="button"
-            className="structure-inspector-more-button"
-            aria-label="File actions"
-            title="File actions"
-            onClick={showFileActionsMenu}
-          >
-            ...
-          </button>
+          <TooltipProvider><Tooltip><TooltipTrigger asChild>
+            <Button type="button" variant="ghost" size="icon-2xs" aria-label="File actions" aria-haspopup="menu" onClick={showFileActionsMenu}>
+              <DotsHorizontal aria-hidden />
+            </Button>
+          </TooltipTrigger><TooltipContent>File actions</TooltipContent></Tooltip></TooltipProvider>
         </div>
         <p>{artifact?.summary ?? "Text artifact opened in the file viewer."}</p>
       </section>
