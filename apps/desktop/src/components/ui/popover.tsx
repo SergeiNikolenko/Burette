@@ -4,6 +4,7 @@ import { Popover as PopoverPrimitive } from "radix-ui"
 import { cn } from "@/lib/utils"
 import { useAppShellPortalContainer } from "./portal-container"
 import "./popover.css"
+import "./popover-surface.css"
 
 function Popover({
   ...props
@@ -42,16 +43,14 @@ function PopoverContent({
       <PopoverPrimitive.Content
         data-slot="popover-content"
         data-animation={animation}
+        data-variant={variant}
+        data-opaque={opaque}
         align={align}
         sideOffset={sideOffset}
         collisionPadding={6}
         className={cn(
-          "atlas-popover z-50 flex origin-(--radix-popover-content-transform-origin) flex-col overflow-y-auto text-[16px] leading-6 text-(--color-text) outline-hidden",
-          variant === "menu" ? "rounded-2xl shadow-(--shadow-dropdown-overlay)" : variant === "comment"
-            ? "rounded-2xl ring-1 ring-(--color-border-subtle) shadow-(--shadow-lg-stronger)"
-            : "rounded-xl ring-(length:--popover-overlay-ring-width) ring-(--color-border-overlay) shadow-(--shadow-popover-overlay)",
+          "atlas-popover atlas-popover-surface z-50 flex origin-(--radix-popover-content-transform-origin) flex-col overflow-y-auto text-[16px] leading-6 outline-hidden",
           !disablePadding && (variant === "menu" ? "p-2" : "p-1"),
-          opaque || variant === "menu" ? "bg-(--color-surface-elevated-secondary)" : "bg-(--color-surface-elevated-secondary)/90",
           { default: "w-72", large: "w-96", workspace: "w-65", content: "w-fit" }[size],
           className
         )}

@@ -1,4 +1,4 @@
-import { styleViewerMenu } from './viewer-atlas-menu';
+import { styleViewerMenu, styleViewerPopover } from './viewer-atlas-menu';
 
 (() => {
   'use strict';
@@ -7,6 +7,7 @@ import { styleViewerMenu } from './viewer-atlas-menu';
   // the same handlers as browser/Quick Look, including live edits and undo.
   window.BuretteNativeViewerMenus = {
     styleMenu: styleViewerMenu,
+    stylePopover: styleViewerPopover,
     show(menu, { post, x, y, ...callbacks }) {
       const session = this.create(menu, callbacks);
       const requestId = `viewer-controls-${crypto.randomUUID()}`;

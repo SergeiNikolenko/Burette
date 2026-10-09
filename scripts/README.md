@@ -105,7 +105,7 @@ themes after changing these adapters. This does not change the classic shell.
 
 `vp run build:viewer-controls` bundles `apps/desktop/src/preview-controls/`
 into `PreviewExtension/Web/native-viewer-menus.js` and its plugin mirror.
-Rebuild after editing the adapter, standalone Menu behavior, shared Menu CSS or
+Rebuild after editing the adapter, standalone Menu behavior, shared Menu/Popover CSS or
 theme engine/tokens. The generated bundle retains the existing runtime filename
 and message contracts; do not edit it by hand.
 

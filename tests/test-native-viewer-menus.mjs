@@ -51,9 +51,22 @@ const events = [];
   const shared = readFileSync('apps/desktop/src/components/ui/dropdown-menu.css', 'utf8').replace('@layer components {', '').replace(/}\s*$/, '');
   assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.endsWith(shared));
   assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.startsWith(
-    readFileSync('apps/desktop/src/styles/codex-tokens.css', 'utf8').replaceAll('.app-shell', '.buret-atlas-menu')));
+    readFileSync('apps/desktop/src/styles/codex-tokens.css', 'utf8').replaceAll('.app-shell', '.buret-atlas-surface')));
+  const popoverSurface = readFileSync('apps/desktop/src/components/ui/popover-surface.css', 'utf8').replace('@layer components {', '').replace(/}\s*$/, '');
+  assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.includes(popoverSurface));
   menu.dataset.buretMolstarPresetMenu = '1';
   const preview = document.createElement('div');
+  preview.className = 'ready'; preview.tabIndex = 0; document.body.append(preview);
+  preview.focus();
+  window.BuretteNativeViewerMenus.stylePopover(preview, { dark: custom }, 'dark');
+  assert.deepEqual(Object.fromEntries(Object.keys(expected).map(key => [key, preview.style.getPropertyValue(key)])), expected);
+  assert.equal(preview.classList.contains('atlas-popover-surface'), true);
+  assert.equal(preview.classList.contains('atlas-menu-content'), false);
+  window.BuretteNativeViewerMenus.stylePopover(preview, undefined, 'light');
+  assert.equal(preview.dataset.effectiveTheme, 'light');
+  assert.equal(preview.classList.contains('ready'), true);
+  assert.equal(document.activeElement, preview, 'theme updates preserve keyboard preview activation');
+  rows[1].focus();
   const placementWindow = { innerWidth: 400, innerHeight: 600,
     BuretteMolstarPresetPreviewController: { computePreviewPlacement: () => ({ placement: 'stacked', left: 12, top: 360, scale: 0.75 }) } };
   const positionMenu = new Function('window', 'document', source('positionMolstarPresetMenu') + '; return positionMolstarPresetMenu;')(placementWindow, document);
@@ -74,6 +87,7 @@ const events = [];
   positionMenu({ getBoundingClientRect: () => ({ left: 100, top: 30, bottom: 60 }) });
   assert.equal(menu.style.cssText, anchoredStyle, 'hiding a preview preserves the same reserved layout');
   menu.remove();
+  preview.remove();
 }
 // Carry the actual scene command's danger state, not a guess based on its label.
 {

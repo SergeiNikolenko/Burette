@@ -138,11 +138,10 @@
       <div class="buret-molstar-preset-preview hidden" data-buret-molstar-preset-preview role="button" tabindex="0" aria-label="Apply preset preview">
         <div class="buret-molstar-preset-preview-header">
           <span data-buret-molstar-preset-preview-label>Preset preview</span>
-          <span class="buret-molstar-preset-preview-caption" data-buret-molstar-preset-preview-caption>Rendering…</span>
         </div>
         <div class="buret-molstar-preset-preview-canvas" data-buret-molstar-preset-preview-canvas>
           <canvas class="buret-molstar-preset-preview-image" data-buret-molstar-preset-preview-image aria-hidden="true"></canvas>
-          <div class="buret-molstar-preset-preview-stage" data-buret-molstar-preset-preview-stage></div>
+          <div class="buret-molstar-preset-preview-stage" data-buret-molstar-preset-preview-stage aria-hidden="true" inert></div>
         </div>
         <div class="buret-molstar-preset-preview-state" data-buret-molstar-preset-preview-state aria-live="polite">Rendering preview…</div>
       </div>

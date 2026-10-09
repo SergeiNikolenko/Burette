@@ -2179,6 +2179,9 @@
     document.querySelectorAll('.buret-atlas-menu').forEach(menu => {
       window.BuretteNativeViewerMenus?.styleMenu?.(menu, activeConfig?.themeTokens, resolvedTheme);
     });
+    document.querySelectorAll('.buret-atlas-surface.atlas-popover-surface').forEach(popover => {
+      window.BuretteNativeViewerMenus?.stylePopover?.(popover, activeConfig?.themeTokens, resolvedTheme);
+    });
     const tokens = themeTokensFor(resolvedTheme);
     if (!tokens || !document.body) return;
     const accent = typeof tokens.accent === 'string' ? tokens.accent : '#AF52DE';
@@ -4070,7 +4073,6 @@
       image: preview?.querySelector('[data-buret-molstar-preset-preview-image]'),
       stage: preview?.querySelector('[data-buret-molstar-preset-preview-stage]'),
       label: preview?.querySelector('[data-buret-molstar-preset-preview-label]'),
-      caption: preview?.querySelector('[data-buret-molstar-preset-preview-caption]'),
       state: preview?.querySelector('[data-buret-molstar-preset-preview-state]')
     };
   }
@@ -4268,7 +4270,7 @@
   function restoreCachedMolstarPresetPreview(item, preset) {
     const cached = molstarPresetPreviewCache;
     if (!cached || cached.viewer !== activeViewer || cached.key !== molstarPresetPreviewCacheKey(preset)) return false;
-    const { preview, image, caption } = molstarPresetPreviewElements();
+    const { preview, image } = molstarPresetPreviewElements();
     if (!preview || !image) return false;
     image.width = cached.canvas.width;
     image.height = cached.canvas.height;
@@ -4282,7 +4284,6 @@
     preview.classList.remove('loading');
     preview.classList.add('ready');
     preview.removeAttribute('aria-busy');
-    if (caption) caption.textContent = 'Click to apply';
     positionMolstarPresetPreview(item);
     return true;
   }
@@ -4375,10 +4376,10 @@
   }
 
   function showMolstarPresetPreviewShell(item, option) {
-    const { preview, image, label, caption, state } = molstarPresetPreviewElements();
+    const { preview, image, label, state } = molstarPresetPreviewElements();
     if (!preview) return;
+    window.BuretteNativeViewerMenus?.stylePopover?.(preview, activeConfig?.themeTokens, resolveViewerTheme());
     if (label) label.textContent = option.label;
-    if (caption) caption.textContent = 'Rendering…';
     if (state) state.textContent = 'Rendering preview…';
     preview.classList.remove('hidden', 'ready', 'error', 'applying');
     preview.classList.add('loading');
@@ -4513,11 +4514,10 @@
       if (serial !== molstarPresetPreviewSerial) return;
       await captureMolstarPresetPreview(item, viewer, serial);
       if (serial !== molstarPresetPreviewSerial) return;
-      const { preview, caption } = molstarPresetPreviewElements();
+      const { preview } = molstarPresetPreviewElements();
       preview?.classList.remove('loading');
       preview?.classList.add('ready');
       preview?.removeAttribute('aria-busy');
-      if (caption) caption.textContent = 'Click to apply';
     } catch (error) {
       hideFailedMolstarPresetPreview(error, serial);
     }
@@ -6133,8 +6133,6 @@
         cancelMolstarPresetPreviewClose();
         preview.classList.add('applying');
         preview.setAttribute('aria-busy', 'true');
-        const caption = preview.querySelector('[data-buret-molstar-preset-preview-caption]');
-        if (caption) caption.textContent = 'Applying…';
         void requestMolstarPreset(preset, { preserveCamera: true });
         hideMolstarPresetMenu({ restoreFocus: true, pointerFocus: event.type === 'click' && event.detail > 0 });
       };

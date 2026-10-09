@@ -141,6 +141,10 @@ Style/Appearance uses the shared Menu stylesheet and theme engine through
 `preview-controls/viewer-atlas-menu.ts`, bundled in the existing viewer controls
 asset. Only positioning and DOM radio behavior are viewer-specific; there is no
 parallel surface/row theme. The shared check icon replaces the old text marker.
+The live molecular preview uses the same `ui/popover-surface.css` as React
+Popover, including its opaque surface, ring and shadow. Molecular canvas sizing
+and the compact title are viewer-owned; the invisible rendering stage is inert
+and excluded from accessibility. Preview activation remains keyboard accessible.
 `test-native-viewer-menus.mjs` covers this presentation boundary. The DOM controls
 remain their command model through `native-viewer-menus.js`; changes still use
 the existing scoped scene operations and undo handlers. Slider drags commit once

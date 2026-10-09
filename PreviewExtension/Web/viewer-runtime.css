@@ -2140,17 +2140,10 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   width: min(240px, calc(100vw - 24px));
   height: auto;
   overflow: hidden;
-  border: 1px solid var(--buret-molstar-border);
-  border-radius: var(--buret-molstar-panel-radius);
-  color: var(--buret-molstar-text);
-  background: var(--buret-molstar-panel-background);
-  box-shadow: 0 18px 44px var(--buret-molstar-shadow);
   cursor: pointer;
   pointer-events: auto;
   touch-action: manipulation;
-  transition:
-    opacity 160ms ease,
-    box-shadow 180ms ease;
+  transition: opacity 160ms ease;
   transform-origin: center;
   user-select: none;
 }
@@ -2160,11 +2153,8 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   pointer-events: none;
 }
 .buret-molstar-preset-preview.viewport-constrained { display: none; }
-.buret-molstar-preset-preview.ready:hover {
-  box-shadow: 0 22px 52px var(--buret-molstar-shadow);
-}
 .buret-molstar-preset-preview:focus-visible {
-  outline: 2px solid var(--buret-menu-focus-ring);
+  outline: 2px solid var(--color-ring);
   outline-offset: 2px;
 }
 .buret-molstar-preset-preview.buret-pointer-focus:focus-visible {
@@ -2183,19 +2173,8 @@ body.buret-preview-dock-right-open .buret-preview-dock-bottom {
   justify-content: space-between;
   gap: 8px;
   padding: 0 9px;
-  border-bottom: 1px solid var(--buret-molstar-border);
-  background: var(--buret-molstar-panel-background);
-  font: 600 11px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-}
-.buret-molstar-preset-preview-caption {
-  flex: 0 0 auto;
-  color: var(--buret-molstar-muted-text);
-  font-size: 9px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-body.buret-theme-light .buret-molstar-preset-preview-caption {
-  color: #5C5E63;
+  border-bottom: 1px solid var(--color-border);
+  font: var(--font-weight-medium) var(--text-sm)/var(--text-sm--line-height) var(--font-sans);
 }
 .buret-molstar-preset-preview-canvas {
   position: absolute;
@@ -2235,9 +2214,9 @@ body.buret-theme-light .buret-molstar-preset-preview-caption {
   display: grid;
   place-items: center;
   padding: 12px;
-  color: var(--buret-molstar-muted-text);
-  background: color-mix(in srgb, var(--buret-molstar-panel-background) 86%, transparent);
-  font: 500 10px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-elevated-secondary);
+  font: var(--font-weight-normal) var(--text-sm)/var(--text-sm--line-height) var(--font-sans);
   text-align: center;
 }
 .buret-molstar-preset-preview.ready .buret-molstar-preset-preview-state { display: none; }
