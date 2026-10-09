@@ -25,6 +25,19 @@ export function styleViewerPopover(popover: HTMLElement, themeTokens: ThemeToken
   styleViewerSurface(popover, themeTokens, mode);
 }
 
+export function moveViewerMenuFocus(menu: HTMLElement, event: KeyboardEvent) {
+  const items = Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'));
+  if (!items.length) return;
+  const current = items.indexOf(menu.ownerDocument.activeElement as HTMLButtonElement);
+  const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
+    : event.key === "ArrowDown" ? (current + 1) % items.length
+    : event.key === "ArrowUp" ? (current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length) : -1;
+  if (next < 0) return;
+  event.preventDefault();
+  items.forEach((item, index) => { item.tabIndex = index === next ? 0 : -1; });
+  items[next].focus();
+}
+
 function styleViewerSurface(menu: HTMLElement, themeTokens: ThemeTokens | undefined, mode: "light" | "dark") {
   const document = menu.ownerDocument;
   if (!document.getElementById("buret-atlas-menu-styles")) {

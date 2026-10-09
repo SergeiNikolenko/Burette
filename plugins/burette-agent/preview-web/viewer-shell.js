@@ -211,11 +211,11 @@
         <span class="buret-tooltip" role="tooltip">Native molecular compute</span>
       </button>
       <div id="buret-compute-menu" class="buret-generate-3d-menu hidden" data-buret-generate-3d-menu role="menu" aria-labelledby="buret-compute-menu-trigger" aria-orientation="vertical">
-        <button type="button" role="menuitem" data-buret-compute-operation="generate3d">Generate 3D</button>
-        <button type="button" role="menuitem" data-buret-compute-operation="generateEnsemble">Generate conformer ensemble</button>
-        <button type="button" role="menuitem" data-buret-compute-operation="optimizeGeometry">Optimize geometry</button>
-        <button type="button" role="menuitem" data-buret-compute-operation="semiempiricalRm1">RM1 energy &amp; charges</button>
-        <button type="button" role="menuitem" data-buret-compute-operation="alignPoses">Align &amp; compare poses</button>
+        <button class="atlas-menu-item" type="button" role="menuitem" data-buret-compute-operation="generate3d">Generate 3D</button>
+        <button class="atlas-menu-item" type="button" role="menuitem" data-buret-compute-operation="generateEnsemble">Generate conformer ensemble</button>
+        <button class="atlas-menu-item" type="button" role="menuitem" data-buret-compute-operation="optimizeGeometry">Optimize geometry</button>
+        <button class="atlas-menu-item" type="button" role="menuitem" data-buret-compute-operation="semiempiricalRm1">RM1 energy &amp; charges</button>
+        <button class="atlas-menu-item" type="button" role="menuitem" data-buret-compute-operation="alignPoses">Align &amp; compare poses</button>
       </div>
       <aside class="buret-preview-dock buret-preview-dock-right" data-buret-preview-dock="right" aria-label="Right dock" aria-hidden="true"></aside>
       <section class="buret-preview-dock buret-preview-dock-bottom" data-buret-preview-dock="bottom" aria-label="Bottom dock" aria-hidden="true"></section>

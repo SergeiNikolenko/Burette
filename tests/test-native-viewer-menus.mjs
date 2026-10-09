@@ -18,6 +18,42 @@ const controls = new Function('document', `
   return { sceneTreeMenuItem, sceneTreeMenuSection, sceneTreeMenuSelect, sceneTreeMenuSlider, sceneTreeMenuThemePicker };
 `)(document);
 const events = [];
+// Camera keeps real command descriptors/icons; the shared DOM menu adapter
+// supplies keyboard traversal without changing click dispatch.
+{
+  const menu = document.createElement('div');
+  menu.id = 'buret-viewport-menu'; menu.className = 'buret-tree-menu buret-viewport-menu';
+  document.body.append(menu);
+  const bindings = { window, document, activeConfig: {}, resolveViewerTheme: () => 'dark',
+    sceneTreeIconElement: () => document.createElementNS('http://www.w3.org/2000/svg', 'svg'),
+    SCENE_TREE_ICON: { focus: [], restore: [] }, VIEWPORT_ICON: { layFlat: [] } };
+  new Function(...Object.keys(bindings), source('viewportMenuItem') + source('viewportCameraMenu') + '; viewportCameraMenu(document.getElementById("buret-viewport-menu"));')(...Object.values(bindings));
+  const rows = [...menu.querySelectorAll('button')];
+  assert.equal(menu.classList.contains('buret-tree-menu'), false);
+  assert.equal(menu.classList.contains('atlas-menu-content'), true);
+  assert.deepEqual(rows.map(row => [row.textContent, row.dataset.buretViewportMenu, row.className]), [
+    ['Reset zoom', 'camera-reset', 'atlas-menu-item'], ['Lay flat', 'camera-orient', 'atlas-menu-item'], ['Reset axes', 'camera-axes', 'atlas-menu-item'],
+  ]);
+  rows[1].disabled = true;
+  rows[0].focus();
+  for (const [key, expected] of [['ArrowDown', rows[2]], ['ArrowDown', rows[0]], ['ArrowUp', rows[2]], ['Home', rows[0]], ['End', rows[2]]]) {
+    const event = new window.KeyboardEvent('keydown', { key, cancelable: true });
+    window.BuretteNativeViewerMenus.moveMenuFocus(menu, event);
+    assert.equal(document.activeElement, expected);
+    assert.equal(event.defaultPrevented, true);
+  }
+  let action;
+  menu.addEventListener('click', event => { action = event.target.dataset.buretViewportMenu; });
+  rows[2].click(); assert.equal(action, 'camera-axes');
+  const rail = document.createElement('div'); rail.id = 'buret-viewport-rail';
+  const trigger = document.createElement('button'); trigger.setAttribute('aria-expanded', 'true');
+  rail.append(trigger); document.body.append(rail);
+  new Function('document', source('closeViewportMenu') + '; closeViewportMenu({ restoreFocus: true });')(document);
+  assert.equal(menu.isConnected, false);
+  assert.equal(trigger.getAttribute('aria-expanded'), 'false');
+  assert.equal(document.activeElement, trigger);
+  rail.remove();
+}
 // Style keeps the viewer's real radio model while consuming the shared menu
 // surface, checked icon and theme engine. Styling must not reset focus/selection.
 {

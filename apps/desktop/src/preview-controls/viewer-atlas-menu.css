@@ -14,6 +14,8 @@
   width: 100%;
 }
 .buret-atlas-menu .atlas-menu-item:hover { background: var(--color-background-primary-ghost-hover); }
+.buret-atlas-menu .atlas-menu-item:disabled { opacity: .5; pointer-events: none; }
+.buret-atlas-menu .atlas-menu-icon { display: flex; color: var(--color-text-secondary); }
 .buret-atlas-menu .atlas-menu-check { margin-left: auto; visibility: hidden; }
 .buret-atlas-menu [aria-checked="true"] .atlas-menu-check { visibility: visible; }
 @media (forced-colors: active) {

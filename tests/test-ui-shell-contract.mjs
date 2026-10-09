@@ -6612,7 +6612,6 @@ assert.match(previewRuntimeCss, /body\.burette-mobile-host \.buret-molecule-cont
 assert.match(previewRuntimeCss, /\.buret-molecule-context-menu button:hover,/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-popover \{[\s\S]*border: 0;/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-popover \{[^}]*backdrop-filter: none;/);
-assert.match(previewRuntimeCss, /\.buret-generate-3d-menu \{[^}]*backdrop-filter: none;/);
 assert.match(previewRuntimeCss, /body \.msp-plugin \.msp-selection-viewport-controls-actions \{[^}]*background: var\(--buret-menu-background\) !important;[^}]*backdrop-filter: none !important;/);
 assert.match(previewViewer, /root\.style\.setProperty\('--buret-menu-background', background\);/);
 assert.match(previewViewer, /function readNativeTrajectoryPosition\(expectedCount\)/);

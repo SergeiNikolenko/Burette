@@ -65,7 +65,7 @@ body #buret-toolbar .buret-molstar-preset-trigger { min-width:76px; padding-inli
 body :is(.buret-button,.buret-rail-button) { border-radius:10px; }
 body :is(.buret-button,.buret-rail-button) svg { width:16px; height:16px; }
 body:is(.buret-theme-light,.buret-theme-dark) :is(
-  .buret-tree-menu,.buret-viewport-menu,
+  .buret-tree-menu,.buret-viewport-menu:not(.atlas-menu-content),
   .buret-xyzrender-popover,.buret-docking-pose-files,.buret-story-hover-card
 ) {
   border:1px solid var(--buret-toolbar-border);
@@ -1809,7 +1809,7 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
 }
 .buret-generate-3d-control {
   position: absolute;
-  top: var(--buret-viewport-controls-top);
+  top: var(--buret-compute-control-top, var(--buret-viewport-controls-top));
   right: var(--buret-generate-3d-control-right);
   margin-right: -10px;
   z-index: 35;
@@ -1868,53 +1868,16 @@ body.buret-molstar-lasso-active .msp-plugin canvas {
 }
 .buret-generate-3d-menu {
   position: fixed;
-  z-index: 45;
-  box-sizing: border-box;
+  z-index: 2147483646;
   width: min(248px, calc(100vw - 24px));
-  max-width: calc(100vw - 24px);
-  max-height: calc(100vh - 24px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 6px;
-  border: 1px solid var(--buret-toolbar-border);
-  border-radius: 10px;
-  color: var(--buret-toolbar-color);
-  background: var(--buret-menu-background);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: var(--buret-menu-shadow);
-  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   transform-origin: top right;
 }
-.buret-generate-3d-menu[data-placement="top"] {
-  transform-origin: bottom right;
-}
-.buret-generate-3d-menu.hidden {
-  display: none;
-}
-.buret-generate-3d-menu button {
-  width: 100%;
-  min-height: 30px;
-  border: 0;
-  border-radius: 7px;
-  padding: 0 10px;
-  color: inherit;
-  background: transparent;
-  font: inherit;
-  text-align: left;
-  white-space: nowrap;
-}
-.buret-generate-3d-menu button:hover {
-  background: var(--buret-toolbar-hover);
-}
-.buret-generate-3d-menu button:focus-visible {
-  background: var(--buret-toolbar-hover);
-  box-shadow: inset 0 0 0 1px var(--buret-toolbar-border);
-  outline: none;
-}
-.buret-generate-3d-menu button:disabled {
-  color: color-mix(in srgb, var(--buret-toolbar-color) 42%, transparent);
-  cursor: not-allowed;
+.buret-generate-3d-menu[data-placement="top"] { transform-origin: bottom right; }
+.buret-generate-3d-menu.hidden { display: none; }
+.buret-viewport-menu.atlas-menu-content {
+  position: fixed;
+  z-index: 2147483646;
+  width: min(232px, calc(100vw - 24px));
 }
 body.buret-molstar-viewport-panel-open .buret-generate-3d-control,
 body:has(.msp-viewport-controls-buttons .msp-hover-box-wrapper:hover) .buret-generate-3d-control {
@@ -5474,7 +5437,7 @@ html[data-burette-header-band] body.buret-theme-dark :is(#buret-toolbar, .buret-
 /* Menu format. One surface and row recipe for every DOM menu in the viewer, the
    same one the shell menus use. It stays last so it wins over the per-menu rules
    above; the iPhone action sheet keeps its platform styling. */
-body :is(.buret-tree-menu, .buret-generate-3d-menu, .buret-seq-menu, .buret-docking-pose-files),
+body :is(.buret-tree-menu, .buret-seq-menu, .buret-docking-pose-files),
 body:not(.burette-mobile-host) .buret-molecule-context-menu,
 body:not(.burette-mobile-host) .buret-molecule-context-menu:not(.buret-xyzrender-context-menu),
 body:not(.burette-mobile-host) .buret-molecule-context-submenu {
@@ -5487,7 +5450,7 @@ body:not(.burette-mobile-host) .buret-molecule-context-submenu {
 }
 /* The menus that predate the shared chrome surface take it too, so a context menu
    and the tree menu it opens beside are one material. */
-body:is(.buret-theme-light, .buret-theme-dark) :is(.buret-generate-3d-menu, .buret-seq-menu),
+body:is(.buret-theme-light, .buret-theme-dark) .buret-seq-menu,
 body:is(.buret-theme-light, .buret-theme-dark):not(.burette-mobile-host) .buret-molecule-context-menu,
 body:is(.buret-theme-light, .buret-theme-dark):not(.burette-mobile-host) .buret-molecule-context-menu:not(.buret-xyzrender-context-menu),
 body:is(.buret-theme-light, .buret-theme-dark):not(.burette-mobile-host) .buret-molecule-context-submenu {
@@ -5498,7 +5461,6 @@ body .buret-tree-menu { width: 208px; }
 body .buret-tree-menu.buret-viewport-menu { width: 232px; }
 body .buret-tree-measurement-editor { width: min(268px, calc(100vw - 24px)); padding: 8px; }
 body :is(.buret-tree-menu-item, .buret-docking-pose-file),
-body .buret-generate-3d-menu button,
 body:not(.burette-mobile-host) :is(.buret-molecule-context-menu, .buret-molecule-context-submenu) .buret-tree-menu-item {
   min-height: 28px;
   padding: 0 8px;
@@ -5578,7 +5540,7 @@ body .buret-tree-menu-heading,
 body:not(.burette-mobile-host) .buret-molecule-context-menu .buret-molecule-context-menu-title { font-size: 13px; font-weight: 400; }
 body .buret-tree-menu-note { color: color-mix(in srgb, currentColor 50%, transparent); font-size: 12px; line-height: 14px; }
 /* In the dark theme a menu sits one step above the chrome it opens over. */
-body:not(.buret-theme-light) :is(.buret-tree-menu, .buret-generate-3d-menu, .buret-seq-menu, .buret-docking-pose-files),
+body:not(.buret-theme-light) :is(.buret-tree-menu, .buret-seq-menu, .buret-docking-pose-files),
 body:not(.buret-theme-light):not(.burette-mobile-host) .buret-molecule-context-menu,
 body:not(.buret-theme-light):not(.burette-mobile-host) .buret-molecule-context-menu:not(.buret-xyzrender-context-menu),
 body:not(.buret-theme-light):not(.burette-mobile-host) .buret-molecule-context-submenu {

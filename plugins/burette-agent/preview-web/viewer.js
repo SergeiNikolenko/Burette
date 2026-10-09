@@ -2563,7 +2563,7 @@
           if (operationButton.disabled) return;
           const selectedOperation = String(operationButton.dataset.buretComputeOperation || 'generate3d');
           const mode = selectedOperation === 'generateEnsemble' ? 'ensemble' : 'single';
-          hideGenerate3DMenu();
+          hideGenerate3DMenu({ restoreFocus: true });
           requestMolecularCompute(selectedOperation, { mode });
         });
       }
@@ -2946,6 +2946,7 @@
     if (!menu || !anchor || anchor.classList.contains('hidden') || anchor.disabled) return;
     hideMolstarPresetMenu();
     closeViewportMenu();
+    window.BuretteNativeViewerMenus?.styleMenu?.(menu, activeConfig?.themeTokens, resolveViewerTheme());
     menu.classList.remove('hidden');
     positionGenerate3DMenu(anchor);
     anchor.setAttribute('aria-expanded', 'true');
@@ -3023,22 +3024,12 @@
   document.addEventListener('keydown', event => {
     const menu = document.querySelector('[data-buret-generate-3d-menu]');
     if (!menu || menu.classList.contains('hidden')) return;
-    if (event.key === 'Escape') {
+    if (event.key === 'Escape' || event.key === 'Tab') {
       event.preventDefault();
       hideGenerate3DMenu({ restoreFocus: true });
       return;
     }
-    const items = Array.from(menu.querySelectorAll('[role="menuitem"]')).filter(item => !item.disabled);
-    const currentIndex = items.indexOf(document.activeElement);
-    let nextIndex = -1;
-    if (event.key === 'ArrowDown') nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length;
-    if (event.key === 'ArrowUp') nextIndex = currentIndex < 0 ? items.length - 1 : (currentIndex - 1 + items.length) % items.length;
-    if (event.key === 'Home') nextIndex = 0;
-    if (event.key === 'End') nextIndex = items.length - 1;
-    if (nextIndex >= 0 && items[nextIndex]) {
-      event.preventDefault();
-      items[nextIndex].focus();
-    }
+    window.BuretteNativeViewerMenus?.moveMenuFocus?.(menu, event);
   });
 
   function requestMolecularCompute(operation = 'generate3d', options = {}) {
@@ -6869,6 +6860,19 @@
     root.style.setProperty('--buret-viewport-rail-top', viewportRailTop + 'px');
     repositionDockingPoseControlsForLayout(mainRect);
 
+    const computeRect = visibleRect('[data-buret-action="generate-3d-conformer"]');
+    const posesRect = visibleRect('.buret-docking-poses');
+    let computeTop = viewportControlsTop;
+    if (computeRect && posesRect && rectsOverlapX(computeRect, posesRect, FLOATING_LAYOUT_GAP)
+      && computeTop < posesRect.bottom + FLOATING_LAYOUT_GAP
+      && computeTop + computeRect.height > posesRect.top - FLOATING_LAYOUT_GAP) {
+      const below = posesRect.bottom + FLOATING_LAYOUT_GAP;
+      computeTop = below + computeRect.height <= window.innerHeight - TOOLBAR_MARGIN
+        ? below : Math.max(TOOLBAR_MARGIN, posesRect.top - FLOATING_LAYOUT_GAP - computeRect.height);
+    }
+    root.style.setProperty('--buret-compute-control-top', `${Math.ceil(computeTop)}px`);
+    positionGenerate3DMenu();
+
     const bottomLimit = visibleRectTop('.msp-plugin .msp-layout-bottom') || window.innerHeight;
     const panelMaxHeight = Math.max(160, Math.floor(bottomLimit - viewportControlsViewportTop - FLOATING_LAYOUT_GAP));
     root.style.setProperty('--buret-viewport-panel-max-height', panelMaxHeight + 'px');
@@ -9801,9 +9805,10 @@ SOFTWARE.
     return activeMolstarViewer()?.plugin || null;
   }
 
-  function closeViewportMenu() {
+  function closeViewportMenu({ restoreFocus = false } = {}) {
     document.getElementById('buret-viewport-menu')?.remove();
     for (const trigger of document.querySelectorAll('#buret-viewport-rail [aria-expanded], #buret-selection-bar [aria-expanded], .buret-seq-footer [aria-expanded]')) {
+      if (restoreFocus && trigger.getAttribute('aria-expanded') === 'true') trigger.focus();
       trigger.setAttribute('aria-expanded', 'false');
     }
   }
@@ -9841,19 +9846,22 @@ SOFTWARE.
     document.body.appendChild(menu);
     trigger.setAttribute('aria-expanded', 'true');
     positionOpenViewportMenu(trigger.closest('#buret-viewport-rail, .buret-seq-footer'));
+    if (menu.classList.contains('atlas-menu-content')) menu.querySelector('[role="menuitem"]:not(:disabled)')?.focus();
   }
 
   function viewportMenuItem(menu, label, action, options = {}) {
     const button = document.createElement('button');
     button.type = 'button';
     button.setAttribute('role', 'menuitem');
-    button.className = `buret-tree-menu-item${options.destructive ? ' buret-tree-menu-item-destructive' : ''}`;
+    button.className = menu.classList.contains('atlas-menu-content')
+      ? 'atlas-menu-item' : `buret-tree-menu-item${options.destructive ? ' buret-tree-menu-item-destructive' : ''}`;
     button.dataset.buretViewportMenu = action;
     Object.assign(button.dataset, options.data || {});
     if (options.disabled) button.disabled = true;
     if (options.title) button.title = options.title;
     const icon = document.createElement('span');
-    icon.className = 'buret-tree-menu-icon';
+    icon.className = menu.classList.contains('atlas-menu-content') ? 'atlas-menu-icon' : 'buret-tree-menu-icon';
+    icon.setAttribute('aria-hidden', 'true');
     if (options.icon) icon.appendChild(sceneTreeIconElement(options.icon));
     const text = document.createElement('span');
     text.className = 'buret-tree-menu-label';
@@ -9904,6 +9912,8 @@ SOFTWARE.
   }
 
   function viewportCameraMenu(menu) {
+    menu.classList.remove('buret-tree-menu');
+    window.BuretteNativeViewerMenus?.styleMenu?.(menu, activeConfig?.themeTokens, resolveViewerTheme());
     viewportMenuItem(menu, 'Reset zoom', 'camera-reset', { icon: SCENE_TREE_ICON.focus });
     viewportMenuItem(menu, 'Lay flat', 'camera-orient', { icon: VIEWPORT_ICON.layFlat });
     viewportMenuItem(menu, 'Reset axes', 'camera-axes', { icon: SCENE_TREE_ICON.restore });
@@ -10951,7 +10961,7 @@ SOFTWARE.
         if (control && menu.contains(control)) {
           // Swatches and the mode switch are meant to be tried in place, so they
           // leave the menu standing; every other item is a one-shot.
-          if (!runViewportMenuAction(control.dataset.buretViewportMenu, control)) closeViewportMenu();
+          if (!runViewportMenuAction(control.dataset.buretViewportMenu, control)) closeViewportMenu({ restoreFocus: event.detail === 0 });
           return;
         }
         if (!menu.contains(event.target) && !event.target.closest?.('[aria-haspopup="menu"]')) closeViewportMenu();
@@ -10963,7 +10973,14 @@ SOFTWARE.
         closeViewportMenu();
       });
       document.addEventListener('keydown', event => {
-        if (event.key === 'Escape' && document.getElementById('buret-viewport-menu')) closeViewportMenu();
+        const menu = document.getElementById('buret-viewport-menu');
+        if (!menu) return;
+        if (event.key === 'Escape' || (event.key === 'Tab' && menu.classList.contains('atlas-menu-content'))) {
+          event.preventDefault();
+          closeViewportMenu({ restoreFocus: true });
+        } else if (menu.classList.contains('atlas-menu-content')) {
+          window.BuretteNativeViewerMenus?.moveMenuFocus?.(menu, event);
+        }
       });
       // While filtering, the headings and the fold-away groups get in the way, so
       // the menu flattens to just what matched and restores itself when cleared.
