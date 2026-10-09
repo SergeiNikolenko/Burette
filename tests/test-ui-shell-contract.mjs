@@ -5296,12 +5296,7 @@ assert.match(previewRuntimeCss, /\.buret-viewport-rail\.hidden,\s*\.buret-rail-b
 assert.match(previewRuntimeCss, /\.buret-rail-button\.buret-clear-selection \{[\s\S]*color: #ff6b5e;[\s\S]*border-color: rgba\(255, 107, 94, 0\.72\);/);
 assert.match(previewRuntimeCss, /\.buret-rail-button\.buret-clear-selection:hover \{[\s\S]*color: #fff;[\s\S]*background: rgba\(255, 107, 94, 0\.88\);/);
 assert.match(previewViewer, /function viewportAnimateMenu\(menu\) \{/);
-const animateMenuSource = previewViewer.slice(
-  previewViewer.indexOf('function viewportAnimateMenu(menu)'),
-  previewViewer.indexOf('function viewportWiggleComponents()'),
-);
-assert.ok(animateMenuSource.indexOf('viewportMotionControls(menu)') < animateMenuSource.indexOf('viewportWiggleControls(menu)'));
-assert.ok(animateMenuSource.indexOf('viewportWiggleControls(menu)') < animateMenuSource.indexOf("sceneTreeMenuSection(menu, 'Animations')"));
+// Animate controls and their scene callbacks are exercised in test-viewer-animation-controls.test.tsx.
 // Molecule preview hide/restore lifecycle is exercised in test-molecule-preview-interactions.mjs.
 assert.match(structureInfoPanel, /setActiveActionKey\(\(current\) => current && current\.includes\("focus_ligand"\) \? null : current\)/);
 assert.match(previewViewer, /const VIEWPORT_CONTEXT_ANIMATIONS = new Set\(\[\s*'built-in\.animate-model-index'\s*\]\)/);
@@ -5327,7 +5322,6 @@ assert.match(previewViewer, /axes: \{ name: axes, params: viewportMappedDefaults
 assert.doesNotMatch(previewViewer, /axes: \{ name: checked \? 'on' : 'off', params: \{\} \}/);
 // Mol*'s procedural animation, on the rail. Its own preset zeroes the global
 // amplitude, which stops the render loop and freezes the per-group layers.
-assert.match(previewViewer, /function viewportWiggleControls\(menu\) \{/);
 assert.match(previewViewer, /wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0\.2/);
 // Wiggle is shaped like the Motion switch above it: a kind, then its parameters.
 assert.match(previewViewer, /const VIEWPORT_WIGGLES = \[\s*\['off', 'Off'\],\s*\['even', 'Even'\],\s*\['uncertainty', 'B-factor'\]/);
@@ -5336,7 +5330,6 @@ for (const spec of ['wiggleAmplitude', 'wiggleSpeed', 'wiggleFrequency', 'tumble
 }
 // Tumble's shaping rows are meaningless without an amplitude to shape.
 assert.match(previewViewer, /needs: 'tumbleAmplitude'/);
-assert.match(previewViewer, /row\.hidden = state\?\.name === 'off' \|\| \(spec\.needs && !\(Number\(state\?\.animation\?\.\[spec\.needs\]\) > 0\)\)/);
 // The kind is read back from the scene, and only the per-group layers distinguish
 // a B-factor wiggle from an even one.
 assert.match(previewViewer, /if \(viewportWiggleLayerRefs\(\)\.length\) return \{ name: 'uncertainty', animation \}/);
@@ -5374,13 +5367,11 @@ assert.match(previewViewer, /plugin\?\.behaviors\?\.state\?\.isAnimating\?\.subs
 // Mol*'s Procedural Animation panel is carried into the same Animate menu with
 // all three upstream actions: a uniform dynamics wiggle, uncertainty-weighted
 // B-factor/RMSF wiggle, and a clear state.
-assert.match(previewViewer, /sceneTreeMenuSection\(menu, 'Wiggle'\)/);
 assert.match(previewViewer, /wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0\.2/);
 assert.match(previewViewer, /wiggleAmplitude: 0, tumbleAmplitude: 0/);
 assert.match(previewViewer, /WiggleStructureRepresentation3DFromBundle/);
 assert.match(previewViewer, /B_iso_or_equiv\.value\(element\)/);
 assert.match(previewViewer, /coarseConformation\.spheres\.rmsf\[element\]/);
-assert.match(previewViewer, /action === 'wiggle-kind' \|\| action === 'wiggle-mode'[\s\S]*runViewportWiggleAction\(action\.slice\('wiggle-'\.length\), control\)/);
 assert.match(previewViewer, /data-motion', state/);
 assert.match(previewRuntimeCss, /\.buret-rail-button\[data-motion="wiggle"\]/);
 // Motion lives on the animate button now, so the camera menu must not offer it too.

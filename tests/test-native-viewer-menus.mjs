@@ -134,7 +134,7 @@ const events = [];
   const rail = document.createElement('div'); rail.id = 'buret-viewport-rail';
   const trigger = document.createElement('button'); trigger.setAttribute('aria-expanded', 'true');
   rail.append(trigger); document.body.append(rail);
-  new Function('document', source('closeViewportMenu') + '; closeViewportMenu({ restoreFocus: true });')(document);
+  new Function('document', 'let viewportAnimationControls = null;' + source('closeViewportMenu') + '; closeViewportMenu({ restoreFocus: true });')(document);
   assert.equal(menu.isConnected, false);
   assert.equal(trigger.getAttribute('aria-expanded'), 'false');
   assert.equal(document.activeElement, trigger);
@@ -354,7 +354,7 @@ console.log('Native scene/rail adapter: scoped actions, disabled rows, types, th
     <div data-buret-molstar-preset-menu class="hidden"><button aria-checked="true">Auto</button></div>
     <div id="buret-viewport-rail"><button aria-expanded="false">Camera</button></div>`;
   const noOp = () => {};
-  const bindings = { document: dom.document, window: dom, activeConfig: {},
+  const bindings = { document: dom.document, window: dom, activeConfig: {}, viewportAnimationControls: null,
     positionGenerate3DMenu: noOp, positionMolstarPresetMenu: noOp, positionOpenViewportMenu: noOp,
     populateMolstarPresetMenu: noOp, updateMolstarPresetControl: noOp, hideMolstarPresetPreview: noOp,
     configuredMolstarPreset: () => 'automatic', focusMolstarPresetControl: noOp,

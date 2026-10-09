@@ -4,6 +4,8 @@ import popoverStyles from "../components/ui/popover-surface.css" with { type: "t
 import buttonStyles from "../components/ui/button.atlas.css" with { type: "text" };
 import buttonBehavior from "../components/ui/button.css" with { type: "text" };
 import loadingStyles from "../components/ui/loading-indicator.atlas.css" with { type: "text" };
+import sliderStyles from "../components/ui/slider.atlas.css" with { type: "text" };
+import segmentedStyles from "../components/ui/segmented-control.css" with { type: "text" };
 import { buttonPressScale } from "../components/ui/button-press-scale";
 import behavior from "./viewer-atlas-menu.css" with { type: "text" };
 import { buildCodexThemeVariables, CODEX_DEFAULT_THEME } from "../lib/codex-theme";
@@ -18,7 +20,8 @@ type ThemeTokens = Partial<Record<"light" | "dark", {
 const source = String(tokens).replaceAll(".app-shell", ".buret-atlas-surface")
   + behavior + String(popoverStyles).replace("@layer components {", "").replace(/}\s*$/, "")
   + String(menuStyles).replace("@layer components {", "").replace(/}\s*$/, "")
-  + [buttonStyles, buttonBehavior, loadingStyles].map(css => String(css)
+  + segmentedStyles
+  + [buttonStyles, buttonBehavior, loadingStyles, sliderStyles].map(css => String(css)
     .replace("@layer theme, base, components, utilities;", "")
     .replace("@layer components {", "").replace(/}\s*$/, "")).join("");
 

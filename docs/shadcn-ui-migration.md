@@ -40,10 +40,18 @@ Viewer and scene-tree menu requests use the same bounded model for browser
 Atlas menus and native Tauri menus. The browser popup resolves only when closed,
 so live numeric edits commit through the viewer's existing undo transaction.
 Browser selects apply while the popup remains open; native choices still wait
-until NSMenu releases tracking. Standalone viewer fallback menus are unchanged.
+until NSMenu releases tracking.
 Embedded controls in a submenu retain the flyout when the pointer moves directly
 from its trigger into the portalled content. These transitions are covered for
 both context and dropdown menus, including a nested Select and focus restoration.
+
+The viewer's Animate popover mounts the shared React `SegmentedControl` and
+`Slider` through `preview-controls/viewer-animation-controls.tsx`. Its callbacks
+retain the viewer's motion parameters and coalesced wiggle writes; closing the
+popover unmounts the root. The controls bundle embeds their source-owned styles
+with the theme tokens so the standalone WKWebView needs no shell stylesheet.
+`test-viewer-animation-controls.test.tsx` exercises the actual viewer builder,
+keyboard updates, dependent controls, scene readback and teardown.
 
 ## Inspected Baseline (historical)
 

@@ -32,6 +32,28 @@
 .buret-atlas-menu .buret-screenshot-group-value { margin-left: auto; color: var(--color-text-secondary); }
 .buret-atlas-menu .buret-screenshot-chevron { color: var(--color-text-secondary); }
 .buret-atlas-menu details[open] .buret-screenshot-chevron { transform: rotate(180deg); }
+.buret-animation-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px;
+}
+.buret-animation-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.buret-animation-section > .atlas-segmented-control { align-self: flex-start; }
+.buret-animation-panel .atlas-slider-thumb:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
+.buret-animation-section legend { padding: 0 0 8px; font-weight: 500; }
+.buret-animation-slider-label { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.buret-animation-slider-label output { color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
+.buret-animation-panel .atlas-slider-thumb { flex-shrink: 0; }
+.buret-animation-panel .atlas-slider-thumb::after { content: ""; position: absolute; inset: -8px; }
 @media (forced-colors: active) {
   .buret-atlas-menu .atlas-menu-item:focus-visible { outline: 2px solid Highlight; outline-offset: -2px; }
 }

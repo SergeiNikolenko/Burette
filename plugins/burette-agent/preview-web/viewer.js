@@ -8266,7 +8266,7 @@ SOFTWARE.
 
   function sceneTreeMenuSection(menu, title) {
     const divider = document.createElement('div');
-    const atlas = menu.classList.contains('atlas-menu-content');
+    const atlas = menu.classList.contains('atlas-menu-content') || menu.classList.contains('buret-animate-menu');
     divider.className = atlas ? 'atlas-menu-separator' : 'buret-tree-menu-divider';
     divider.setAttribute('role', 'separator');
     menu.appendChild(divider);
@@ -9806,12 +9806,15 @@ SOFTWARE.
   ];
   let selectionQueryModifier = 'set';
   let viewportControlsDisposers = [];
+  let viewportAnimationControls = null;
 
   function viewportPlugin() {
     return activeMolstarViewer()?.plugin || null;
   }
 
   function closeViewportMenu({ restoreFocus = false } = {}) {
+    viewportAnimationControls?.dispose();
+    viewportAnimationControls = null;
     document.getElementById('buret-viewport-menu')?.remove();
     for (const trigger of document.querySelectorAll('#buret-viewport-rail [aria-expanded], #buret-selection-bar [aria-expanded], .buret-seq-footer [aria-expanded]')) {
       if (restoreFocus && trigger.getAttribute('aria-expanded') === 'true') trigger.focus();
@@ -9850,16 +9853,18 @@ SOFTWARE.
     menu.setAttribute('aria-label', label);
     build(menu);
     document.body.appendChild(menu);
+    trigger.setAttribute('aria-haspopup', menu.getAttribute('role'));
     trigger.setAttribute('aria-expanded', 'true');
     positionOpenViewportMenu(trigger.closest('#buret-viewport-rail, .buret-seq-footer'));
-    if (menu.classList.contains('atlas-menu-content')) menu.querySelector('[role="menuitem"]:not(:disabled)')?.focus();
+    if (menu.getAttribute('role') === 'dialog') menu.querySelector('button[aria-checked="true"]')?.focus();
+    else if (menu.classList.contains('atlas-menu-content')) menu.querySelector('[role="menuitem"]:not(:disabled)')?.focus();
   }
 
   function viewportMenuItem(menu, label, action, options = {}) {
-    const atlas = !!menu.closest('.atlas-menu-content');
+    const atlas = !!menu.closest('.atlas-menu-content, .buret-animate-menu');
     const button = document.createElement('button');
     button.type = 'button';
-    button.setAttribute('role', 'menuitem');
+    if (!menu.classList.contains('buret-animate-menu')) button.setAttribute('role', 'menuitem');
     button.className = atlas
       ? 'atlas-menu-item' : `buret-tree-menu-item${options.destructive ? ' buret-tree-menu-item-destructive' : ''}`;
     button.dataset.buretViewportMenu = action;
@@ -10008,7 +10013,21 @@ SOFTWARE.
   // Motion and wiggle are always explicit. A task animation appears only when the
   // active document supplies its context, currently a trajectory with frames.
   function viewportAnimateMenu(menu) {
-    viewportMotionControls(menu);
+    menu.classList.remove('buret-tree-menu');
+    menu.classList.add('buret-animate-menu');
+    menu.setAttribute('role', 'dialog');
+    window.BuretteNativeViewerMenus.stylePopover(menu, activeConfig?.themeTokens, resolveViewerTheme());
+    const panel = document.createElement('div');
+    panel.className = 'buret-animation-panel';
+    menu.appendChild(panel);
+    viewportAnimationControls = window.BuretteNativeViewerMenus.mountAnimationControls(panel, {
+      read: () => ({ motion: viewportMotionState(), wiggle: viewportWiggleState() }),
+      motions: VIEWPORT_MOTIONS, speeds: VIEWPORT_MOTION_SPEEDS,
+      wiggles: VIEWPORT_WIGGLES, modes: VIEWPORT_WIGGLE_MODES, sliders: VIEWPORT_WIGGLE_SLIDERS,
+      motion: setViewportMotion, wiggle: runViewportWiggleAction,
+      slider: (name, value) => { void streamViewportWiggleOption(name, value); },
+      resize: positionOpenViewportMenu
+    });
     const plugin = viewportPlugin();
     const manager = plugin?.managers?.animation;
     const playing = manager?.state?.animationState === 'playing'
@@ -10029,7 +10048,6 @@ SOFTWARE.
       sceneTreeMenuSection(menu, 'Running');
       viewportMenuItem(menu, 'Stop', 'animation-stop', { icon: VIEWPORT_ICON.stop });
     }
-    viewportWiggleControls(menu);
     if (!animations.length) return;
     sceneTreeMenuSection(menu, 'Animations');
     for (const entry of animations) {
@@ -10098,95 +10116,9 @@ SOFTWARE.
     return { name: moving ? 'even' : 'off', animation };
   }
 
-  function viewportWiggleSliderRow(menu, spec, state) {
-    const row = document.createElement('label');
-    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
-    row.dataset.buretViewportWiggleSlider = spec.name;
-    const caption = document.createElement('span');
-    caption.textContent = spec.label;
-    const control = document.createElement('input');
-    control.type = 'range';
-    control.className = 'buret-tree-menu-range';
-    control.dataset.buretViewportSlider = `wiggle-${spec.name}`;
-    control.min = String(spec.min);
-    control.max = String(spec.max);
-    control.step = String(spec.step);
-    const readout = document.createElement('span');
-    readout.className = 'buret-tree-menu-slider-value';
-    row.append(caption, control, readout);
-    menu.appendChild(row);
-    updateViewportWiggleSlider(row, spec, state);
-    return row;
-  }
-
-  function updateViewportWiggleSlider(row, spec, state) {
-    const value = Number(state?.animation?.[spec.name]) || 0;
-    row.hidden = state?.name === 'off' || (spec.needs && !(Number(state?.animation?.[spec.needs]) > 0));
-    row.querySelector('input').value = String(value);
-    row.querySelector('.buret-tree-menu-slider-value').textContent = value.toFixed(spec.digits) + (spec.unit || '');
-  }
-
-  function viewportWiggleControls(menu) {
-    const state = viewportWiggleState();
-    if (!state) return;
-    sceneTreeMenuSection(menu, 'Wiggle');
-    const segment = document.createElement('div');
-    segment.className = 'buret-viewport-segment';
-    segment.setAttribute('role', 'group');
-    segment.setAttribute('aria-label', 'Structure wiggle');
-    for (const [name, label] of VIEWPORT_WIGGLES) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'buret-viewport-segment-button';
-      button.dataset.buretViewportMenu = 'wiggle-kind';
-      button.dataset.wiggle = name;
-      button.setAttribute('aria-pressed', name === state.name ? 'true' : 'false');
-      button.textContent = label;
-      segment.appendChild(button);
-    }
-    menu.appendChild(segment);
-    for (const spec of VIEWPORT_WIGGLE_SLIDERS) viewportWiggleSliderRow(menu, spec, state);
-
-    const modes = document.createElement('div');
-    modes.className = 'buret-viewport-segment';
-    modes.dataset.buretViewportWiggleModes = '1';
-    modes.setAttribute('role', 'group');
-    modes.setAttribute('aria-label', 'Wiggle noise');
-    modes.hidden = state.name === 'off';
-    for (const [name, label, description] of VIEWPORT_WIGGLE_MODES) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'buret-viewport-segment-button';
-      button.dataset.buretViewportMenu = 'wiggle-mode';
-      button.dataset.wiggleMode = name;
-      button.title = description;
-      button.setAttribute('aria-pressed', name === state.animation.wiggleMode ? 'true' : 'false');
-      button.textContent = label;
-      modes.appendChild(button);
-    }
-    menu.appendChild(modes);
-  }
-
-  // The rows read the scene rather than their own last write, so a preset that
-  // moves three values at once lands on every slider in the open menu.
+  // Refresh from the scene after a preset or an external action changes it.
   function refreshViewportWiggleControls() {
-    const menu = document.getElementById('buret-viewport-menu');
-    const state = viewportWiggleState();
-    if (!menu || !state) return;
-    for (const button of menu.querySelectorAll('[data-buret-viewport-menu="wiggle-kind"]')) {
-      button.setAttribute('aria-pressed', button.dataset.wiggle === state.name ? 'true' : 'false');
-    }
-    for (const spec of VIEWPORT_WIGGLE_SLIDERS) {
-      const row = menu.querySelector(`[data-buret-viewport-wiggle-slider="${spec.name}"]`);
-      if (row) updateViewportWiggleSlider(row, spec, state);
-    }
-    const modes = menu.querySelector('[data-buret-viewport-wiggle-modes]');
-    if (modes) {
-      modes.hidden = state.name === 'off';
-      for (const button of modes.children) {
-        button.setAttribute('aria-pressed', button.dataset.wiggleMode === state.animation.wiggleMode ? 'true' : 'false');
-      }
-    }
+    viewportAnimationControls?.refresh();
     positionOpenViewportMenu();
   }
 
@@ -10294,18 +10226,18 @@ SOFTWARE.
   }
 
   // Wiggle is judged by watching it, so every one of these keeps the menu up.
-  function runViewportWiggleAction(action, control) {
+  function runViewportWiggleAction(action, value) {
     const fail = error => setStatus(`[web] Wiggle failed. ${error?.message || error}`, 'error');
     const done = message => {
       refreshViewportWiggleControls();
       if (message) setStatus(message);
     };
     if (action === 'mode') {
-      setViewportWiggleOptions({ wiggleMode: control.dataset.wiggleMode })
+      setViewportWiggleOptions({ wiggleMode: value })
         .then(() => done()).catch(fail);
       return true;
     }
-    const kind = control.dataset.wiggle;
+    const kind = value;
     if (kind === 'even') {
       clearViewportWiggleLayers()
         .then(() => setViewportWiggleOptions({ wiggleSpeed: 7, wiggleAmplitude: 1, wiggleFrequency: 0.2 }))
@@ -10421,60 +10353,6 @@ SOFTWARE.
     const animate = viewportPlugin()?.canvas3d?.props?.trackball?.animate;
     const name = VIEWPORT_MOTION_SPEEDS[animate?.name] ? animate.name : 'off';
     return { name, speed: Number(animate?.params?.speed) };
-  }
-
-  function viewportMotionControls(menu) {
-    const state = viewportMotionState();
-    sceneTreeMenuSection(menu, 'Motion');
-    const segment = document.createElement('div');
-    segment.className = 'buret-viewport-segment';
-    segment.setAttribute('role', 'group');
-    segment.setAttribute('aria-label', 'Scene motion');
-    for (const [name, label] of VIEWPORT_MOTIONS) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'buret-viewport-segment-button';
-      button.dataset.buretViewportMenu = 'camera-motion';
-      button.dataset.motion = name;
-      button.setAttribute('aria-pressed', name === state.name ? 'true' : 'false');
-      button.textContent = label;
-      segment.appendChild(button);
-    }
-    menu.appendChild(segment);
-
-    const row = document.createElement('label');
-    row.className = 'buret-tree-menu-field buret-tree-menu-slider';
-    row.dataset.buretViewportMotionSpeed = '1';
-    const caption = document.createElement('span');
-    caption.textContent = 'Speed';
-    const control = document.createElement('input');
-    control.type = 'range';
-    control.className = 'buret-tree-menu-range';
-    control.dataset.buretViewportSlider = 'motion-speed';
-    const readout = document.createElement('span');
-    readout.className = 'buret-tree-menu-slider-value';
-    row.append(caption, control, readout);
-    menu.appendChild(row);
-    // The menu is still detached at this point, so the row has to be handed over
-    // rather than looked up in the document.
-    updateViewportMotionSpeed(state, row);
-  }
-
-  // Spin and rock do not share a speed range, so the slider is re-scaled to the
-  // running animation and hidden altogether once motion is off.
-  function updateViewportMotionSpeed(state, target) {
-    const row = target || document.querySelector('[data-buret-viewport-motion-speed]');
-    const limits = VIEWPORT_MOTION_SPEEDS[state.name];
-    if (!row) return;
-    row.hidden = !limits;
-    if (!limits) return;
-    const speed = Number.isFinite(state.speed) ? state.speed : limits.value;
-    const control = row.querySelector('input');
-    control.min = String(limits.min);
-    control.max = String(limits.max);
-    control.step = String(limits.step);
-    control.value = String(speed);
-    row.querySelector('.buret-tree-menu-slider-value').textContent = `${speed.toFixed(2)}/s`;
   }
 
   function setViewportMotion(name, speed) {
@@ -10766,18 +10644,8 @@ SOFTWARE.
     if (action === 'camera-reset') plugin.canvas3d?.requestCameraReset?.({ durationMs: 250 });
     else if (action === 'camera-orient') plugin.managers.camera.orientAxes(undefined, 250);
     else if (action === 'camera-axes') plugin.managers.camera.resetAxes(250);
-    else if (action === 'camera-motion') {
-      setViewportMotion(control.dataset.motion);
-      for (const button of control.parentElement?.children || []) {
-        button.setAttribute('aria-pressed', button === control ? 'true' : 'false');
-      }
-      updateViewportMotionSpeed(viewportMotionState());
-      // Motion is judged by watching it, so the menu stays up to be adjusted.
-      return true;
-    } else if (action.startsWith('screenshot-')) {
+    else if (action.startsWith('screenshot-')) {
       return runViewportScreenshotAction(action.slice('screenshot-'.length), control);
-    } else if (action === 'wiggle-kind' || action === 'wiggle-mode') {
-      return runViewportWiggleAction(action.slice('wiggle-'.length), control);
     } else if (action === 'animation-play') {
       playViewportAnimation(Number(control.dataset.animationIndex));
     } else if (action === 'animation-stop') {
@@ -11001,7 +10869,7 @@ SOFTWARE.
           if (!runViewportMenuAction(control.dataset.buretViewportMenu, control)) closeViewportMenu({ restoreFocus: event.detail === 0 });
           return;
         }
-        if (!menu.contains(event.target) && !event.target.closest?.('[aria-haspopup="menu"]')) closeViewportMenu();
+        if (!menu.contains(event.target) && !event.target.closest?.('[aria-haspopup]')) closeViewportMenu();
       });
       document.addEventListener('change', event => {
         const select = event.target.closest('[data-buret-viewport-select="component-representation"]');
@@ -11022,26 +10890,6 @@ SOFTWARE.
       // While filtering, the headings and the fold-away groups get in the way, so
       // the menu flattens to just what matched and restores itself when cleared.
       document.addEventListener('input', event => {
-        const slider = event.target.closest('[data-buret-viewport-slider="motion-speed"]');
-        if (slider) {
-          const speed = Number(slider.value);
-          setViewportMotion(viewportMotionState().name, speed);
-          const readout = slider.parentElement?.querySelector('.buret-tree-menu-slider-value');
-          if (readout) readout.textContent = `${speed.toFixed(2)}/s`;
-          return;
-        }
-        const wiggle = event.target.closest('[data-buret-viewport-slider^="wiggle-"]');
-        if (wiggle) {
-          const name = wiggle.dataset.buretViewportSlider.slice('wiggle-'.length);
-          const spec = VIEWPORT_WIGGLE_SLIDERS.find(entry => entry.name === name);
-          const value = Number(wiggle.value);
-          void streamViewportWiggleOption(name, value);
-          const readout = wiggle.parentElement?.querySelector('.buret-tree-menu-slider-value');
-          if (readout && spec) readout.textContent = value.toFixed(spec.digits) + (spec.unit || '');
-          // Tumble's shaping rows appear the moment it has an amplitude to shape.
-          if (name === 'tumbleAmplitude') refreshViewportWiggleControls();
-          return;
-        }
         const search = event.target.closest('[data-buret-viewport-search]');
         const menu = search?.closest('#buret-viewport-menu');
         if (!menu) return;
