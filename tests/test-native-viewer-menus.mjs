@@ -52,6 +52,17 @@ const events = [];
   assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.endsWith(shared));
   assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.startsWith(
     readFileSync('apps/desktop/src/styles/codex-tokens.css', 'utf8').replaceAll('.app-shell', '.buret-atlas-menu')));
+  menu.dataset.buretMolstarPresetMenu = '1';
+  const preview = document.createElement('div');
+  const placementWindow = { innerWidth: 400, innerHeight: 600,
+    BuretteMolstarPresetPreviewController: { computePreviewPlacement: () => ({ placement: 'stacked', left: 10, top: 10, menuTop: 220, menuMaxHeight: 360 }) } };
+  const position = new Function('window', 'document', 'molstarPresetPreviewElements', source('positionMolstarPresetPreview') + '; return positionMolstarPresetPreview;')(
+    placementWindow, document, () => ({ preview }));
+  const scrolls = [];
+  rows[1].scrollIntoView = options => scrolls.push([menu.style.top, menu.style.maxHeight, options]);
+  position(rows[1]);
+  rows[1].blur(); position(rows[1]);
+  assert.deepEqual(scrolls, [['220px', '360px', { block: 'nearest', inline: 'nearest' }]], 'resize reveals keyboard focus without scrolling a pointer preview');
   menu.remove();
 }
 // Carry the actual scene command's danger state, not a guess based on its label.

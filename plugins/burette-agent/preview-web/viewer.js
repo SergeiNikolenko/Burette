@@ -4119,6 +4119,9 @@
       menu.style.top = `${Math.round(placement.menuTop)}px`;
       menu.style.maxHeight = `${Math.floor(placement.menuMaxHeight)}px`;
       menu.dataset.placement = 'stacked';
+      // A keyboard-focused row may have scrolled into the taller menu before
+      // its asynchronous preview reserved space. Keep it visible after resizing.
+      if (document.activeElement === item) item.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
   }
 
