@@ -5343,7 +5343,7 @@ assert.match(previewViewer, /const VIEWPORT_WIGGLE_TRANSFORM = 'wiggle-structure
 assert.match(previewViewer, /function viewportUncertaintyWiggleLayers\(root, StructureElement\) \{/);
 assert.match(previewViewer, /bundle: StructureElement\.Bundle\.fromLoci\(loci\), value: bucket \/ 255/);
 // A menu action that touches the scene must not close the menu it was pressed in.
-assert.match(previewViewer, /if \(!active && changed\) closeViewportMenu\(\);/);
+// Leaving selection mode and popup teardown are covered by the toolbar integration test.
 // Rock reads an angle and an axis besides its speed; a partial payload leaves the
 // maths on undefined and the scene simply never moves.
 assert.match(previewViewer, /rock: \{ value: 0\.3, min: 0\.02, max: 1\.5, step: 0\.02, params: \{ angle: 10, axis: \[0, -1, 0\] \} \}/);

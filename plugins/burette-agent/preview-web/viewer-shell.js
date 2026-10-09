@@ -177,21 +177,7 @@
           <span class="buret-tooltip" role="tooltip">Clear selection</span>
         </button>
       </div>
-      <div id="buret-selection-bar" class="buret-selection-bar hidden" role="toolbar" aria-label="Selection controls">
-        <select class="buret-select buret-selection-level" data-buret-selection-level aria-label="Picking level" title="What one click picks"></select>
-        <button class="buret-selection-button" type="button" data-buret-selection-action="query" aria-haspopup="menu" aria-expanded="false" title="Select part of the structure">
-          <span>Select</span>
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-        </button>
-        <span class="buret-selection-count" data-buret-selection-count aria-live="polite">Nothing selected</span>
-        <button class="buret-selection-button" type="button" data-buret-selection-action="apply" aria-haspopup="menu" aria-expanded="false" title="Act on the selection">
-          <span>Apply</span>
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-        </button>
-        <button class="buret-selection-icon" type="button" data-buret-selection-action="exit" aria-label="Leave selection mode" title="Leave selection mode">
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-        </button>
-      </div>
+      <div id="buret-selection-bar" class="buret-selection-bar hidden" role="toolbar" aria-label="Selection controls"></div>
       <div id="buret-sequence-resize" class="buret-sequence-resize" data-buret-sequence-resize role="separator" aria-orientation="horizontal" aria-label="Resize sequence"></div>
       <aside id="buret-scene-tree" class="buret-scene-tree hidden" data-buret-scene-tree role="dialog" aria-label="Scene tree" aria-hidden="true">
         <div class="buret-scene-tree-header" data-buret-panel-handle>

@@ -2185,6 +2185,8 @@
     document.querySelectorAll('.buret-atlas-surface.atlas-popover-surface').forEach(popover => {
       window.BuretteNativeViewerMenus?.stylePopover?.(popover, activeConfig?.themeTokens, resolvedTheme);
     });
+    const selectionBar = document.getElementById('buret-selection-bar');
+    if (selectionBar) window.BuretteNativeViewerMenus?.styleControls?.(selectionBar, activeConfig?.themeTokens, resolvedTheme);
     const tokens = themeTokensFor(resolvedTheme);
     if (!tokens || !document.body) return;
     const accent = typeof tokens.accent === 'string' ? tokens.accent : '#AF52DE';
@@ -9807,6 +9809,7 @@ SOFTWARE.
   let selectionQueryModifier = 'set';
   let viewportControlsDisposers = [];
   let viewportMenuControls = null;
+  let viewportSelectionControls = null;
 
   function viewportPlugin() {
     return activeMolstarViewer()?.plugin || null;
@@ -10654,16 +10657,15 @@ SOFTWARE.
     // every structure-state tick though, so it fires on the transition rather than
     // the state - otherwise any menu action that touches the scene closes the menu
     // it was pressed in.
-    if (!active && changed) closeViewportMenu();
+    if (!active && changed) {
+      closeViewportMenu();
+      window.BuretteViewerSelectMenus?.closeWithin?.(bar);
+    }
     const stats = plugin?.managers?.structure?.selection?.stats;
     const hasSelection = Number(stats?.elementCount) > 0;
     rail.querySelector('[data-buret-viewport-action="clear-selection"]')
       ?.classList.toggle('hidden', !hasSelection);
-    const count = document.querySelector('[data-buret-selection-count]');
-    if (count) count.textContent = stats?.elementCount ? stats.label : 'Nothing selected';
-    const level = document.querySelector('[data-buret-selection-level]');
-    const granularity = molstarSelectionLevel();
-    if (level && granularity && level.value !== granularity) level.value = granularity;
+    viewportSelectionControls?.refresh();
     viewportMenuControls?.refresh?.();
     if (changed) updateFloatingLayoutOffsets();
   }
@@ -10745,23 +10747,20 @@ SOFTWARE.
     if (rail.dataset.viewportControlsBound !== '1') {
       rail.dataset.viewportControlsBound = '1';
       initViewportRailDrag(rail, document.getElementById('buret-toolbar'));
-      const level = bar.querySelector('[data-buret-selection-level]');
-      for (const [name, label] of VIEWPORT_GRANULARITIES) {
-        const option = document.createElement('option');
-        option.value = name;
-        option.textContent = label;
-        level?.appendChild(option);
-      }
-      level?.addEventListener('change', () => {
-        setMolstarSelectionLevel(level.value);
+      viewportSelectionControls?.dispose();
+      window.BuretteNativeViewerMenus.styleControls(bar, activeConfig?.themeTokens, resolveViewerTheme());
+      viewportSelectionControls = window.BuretteNativeViewerMenus.mountSelectionToolbar(bar, {
+        read: () => {
+          const stats = viewportPlugin()?.managers?.structure?.selection?.stats;
+          return { level: molstarSelectionLevel(), label: stats?.elementCount ? stats.label : 'Nothing selected' };
+        },
+        levels: VIEWPORT_GRANULARITIES,
+        onLevel: level => { setMolstarSelectionLevel(level); updateSelectionBar(); },
+        onAction: runSelectionBarAction
       });
       rail.addEventListener('click', event => {
         const control = event.target.closest('[data-buret-viewport-action]');
         if (control) runViewportRailAction(control.dataset.buretViewportAction, control);
-      });
-      bar.addEventListener('click', event => {
-        const control = event.target.closest('[data-buret-selection-action]');
-        if (control) runSelectionBarAction(control.dataset.buretSelectionAction, control);
       });
       // The menu is portalled to <body> so the bar cannot clip it, which puts both
       // its clicks and its dismissal on the document.

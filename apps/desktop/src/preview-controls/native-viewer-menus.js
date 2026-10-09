@@ -1,6 +1,7 @@
-import { styleViewerMenu, styleViewerPopover, styleViewerButton, moveViewerMenuFocus } from './viewer-atlas-menu';
+import { styleViewerMenu, styleViewerPopover, styleViewerButton, styleViewerSurface, moveViewerMenuFocus } from './viewer-atlas-menu';
 import { mountViewerAnimationControls } from './viewer-animation-controls';
 import { mountViewerQueryControls, mountViewerSelectionActions } from './viewer-selection-controls';
+import { mountViewerSelectionToolbar } from './viewer-selection-toolbar';
 
 (() => {
   'use strict';
@@ -15,6 +16,8 @@ import { mountViewerQueryControls, mountViewerSelectionActions } from './viewer-
     mountAnimationControls: mountViewerAnimationControls,
     mountQueryControls: mountViewerQueryControls,
     mountSelectionActions: mountViewerSelectionActions,
+    mountSelectionToolbar: mountViewerSelectionToolbar,
+    styleControls: styleViewerSurface,
     show(menu, { post, x, y, ...callbacks }) {
       const session = this.create(menu, callbacks);
       const requestId = `viewer-controls-${crypto.randomUUID()}`;
@@ -195,6 +198,9 @@ import { mountViewerQueryControls, mountViewerSelectionActions } from './viewer-
         list.remove();
         if (restoreFocus) select.focus({ preventScroll: true });
       };
+      this.closeWithin = owner => {
+        if (open && owner.contains(open.select)) close(false);
+      };
       const choose = (select, value) => {
         close();
         if (select.value === value) return;
@@ -217,14 +223,18 @@ import { mountViewerQueryControls, mountViewerSelectionActions } from './viewer-
       const show = select => {
         close(false);
         const list = document.createElement('div');
-        list.className = 'buret-select-menu';
+        const atlas = select.hasAttribute('data-native-selectcontrol');
+        if (atlas) {
+          list.className = 'buret-atlas-picker';
+          styleViewerMenu(list, window.BuretteConfig?.themeTokens, select.closest('[data-effective-theme]')?.dataset.effectiveTheme || 'light');
+        } else list.className = 'buret-select-menu';
         list.setAttribute('role', 'listbox');
         list.setAttribute('aria-label', select.getAttribute('aria-label') || select.closest('label, .buret-tree-menu-field')?.querySelector('span')?.textContent.trim() || 'Options');
         list.setAttribute('popover', 'manual');
         const addOption = (option, groupDisabled) => {
           if (option.hidden) return;
           const item = document.createElement('div');
-          item.className = 'buret-select-menu-item';
+          item.className = atlas ? 'atlas-menu-item' : 'buret-select-menu-item';
           item.setAttribute('role', 'option');
           item.tabIndex = -1;
           item.dataset.value = option.value;
@@ -241,7 +251,7 @@ import { mountViewerQueryControls, mountViewerSelectionActions } from './viewer-
         for (const child of select.children) {
           if (child.tagName === 'OPTGROUP') {
             const label = document.createElement('div');
-            label.className = 'buret-select-menu-label';
+            label.className = atlas ? 'atlas-menu-label' : 'buret-select-menu-label';
             label.textContent = child.label;
             list.append(label);
             for (const option of child.children) addOption(option, child.disabled);

@@ -154,6 +154,11 @@ React roots are owned and disposed by the viewport menu lifecycle; the query
 registry's original indices and exact-selection semantics remain intact.
 `test-viewer-selection-controls.test.tsx` covers the real builders, filtering,
 modifiers, selection actions, nested keyboard dismissal and selection-bar anchor.
+The selection toolbar uses shared Button and NativeSelectControl components;
+its count and picking level follow the scene subscriptions. Browser pickers use
+the shared Menu presentation in the top layer, while native hosts keep the
+system picker. Hiding the toolbar dismisses its picker. The toolbar integration
+test covers scene reloads without duplicate listeners or stale selection state.
 The live molecular preview uses the same `ui/popover-surface.css` as React
 Popover, including its opaque surface, ring and shadow. Molecular canvas sizing
 and the compact title are viewer-owned; the invisible rendering stage is inert

@@ -12,6 +12,7 @@ import selectMenuStyles from "../components/ui/select-menu.atlas.css" with { typ
 import selectBehavior from "../components/ui/select.css" with { type: "text" };
 import paletteStyles from "../components/ui/color-palette.css" with { type: "text" };
 import selectionBehavior from "./viewer-selection-controls.css" with { type: "text" };
+import selectionToolbar from "./viewer-selection-toolbar.css" with { type: "text" };
 import { buttonPressScale } from "../components/ui/button-press-scale";
 import behavior from "./viewer-atlas-menu.css" with { type: "text" };
 import { buildCodexThemeVariables, CODEX_DEFAULT_THEME } from "../lib/codex-theme";
@@ -29,7 +30,7 @@ const source = String(tokens).replaceAll(".app-shell", ".buret-atlas-surface")
   + segmentedStyles + paletteStyles
   + [buttonStyles, buttonBehavior, loadingStyles, sliderStyles, commandStyles, selectStyles, selectMenuStyles, selectBehavior].map(css => String(css)
     .replace("@layer theme, base, components, utilities;", "")
-    .replace("@layer components {", "").replace(/}\s*$/, "")).join("") + selectionBehavior;
+    .replace("@layer components {", "").replace(/}\s*$/, "")).join("") + selectionBehavior + selectionToolbar;
 
 export function styleViewerButton(button: HTMLButtonElement, themeTokens: ThemeTokens | undefined, mode: "light" | "dark") {
   if (!button.classList.contains("atlas-button")) {
@@ -85,7 +86,7 @@ export function moveViewerMenuFocus(menu: HTMLElement, event: KeyboardEvent) {
   items[next].focus();
 }
 
-function styleViewerSurface(menu: HTMLElement, themeTokens: ThemeTokens | undefined, mode: "light" | "dark") {
+export function styleViewerSurface(menu: HTMLElement, themeTokens: ThemeTokens | undefined, mode: "light" | "dark") {
   const document = menu.ownerDocument;
   if (!document.getElementById("buret-atlas-menu-styles")) {
     const style = document.createElement("style");
