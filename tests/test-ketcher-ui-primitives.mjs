@@ -113,16 +113,26 @@ await act(async () => {
   dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 });
 assert.deepEqual(accepted, { charge: 2 }, "Enter on the focused dialog confirms as upstream does");
-await act(async () => root.render(React.createElement(KetcherSettingsAccordion, {
-  tabs: [{ key: "general", label: "General", content: React.createElement("input", { defaultValue: "draft" }) },
-    { key: "other", label: "Other", content: React.createElement("input", { defaultValue: "hidden value" }) }],
-  changedGroups: new Set(),
+const settingsTabs = [{ key: "general", label: "General", content: React.createElement("input", { defaultValue: "draft" }) },
+  { key: "other", label: "Other", content: React.createElement("input", { defaultValue: "hidden value" }) }];
+const renderSettings = (changedGroups = new Set()) => act(async () => root.render(React.createElement(KetcherSettingsAccordion, {
+  tabs: settingsTabs, changedGroups,
 })));
+await renderSettings();
 assert.equal(host.querySelectorAll("input").length, 2, "collapsed settings remain mounted for upstream form registration");
+const sections = [...host.querySelectorAll("details")];
+assert.deepEqual(sections.map(section => section.open), [true, false]);
 const draft = host.querySelector("input");
 draft.value = "unsaved edit";
 await act(async () => host.querySelector('[data-testid="General-accordion"]').click());
+assert.deepEqual(sections.map(section => section.open), [false, false]);
+await act(async () => host.querySelector('[data-testid="Other-accordion"]').click());
+await renderSettings(new Set(["General"]));
+assert.deepEqual(sections.map(section => section.open), [false, true], "modified indicators do not reset disclosure state");
+assert.ok(sections[0].querySelector("summary").textContent.includes("Modified"));
 await act(async () => host.querySelector('[data-testid="General-accordion"]').click());
+assert.deepEqual(sections.map(section => section.open), [true, true], "groups expand independently");
+assert.equal(host.querySelector("input"), draft, "disclosure changes retain the registered input");
 assert.equal(host.querySelector("input").value, "unsaved edit", "collapsing settings must preserve edited field state");
 const fullscreen = document.createElement("div");
 document.body.append(fullscreen);

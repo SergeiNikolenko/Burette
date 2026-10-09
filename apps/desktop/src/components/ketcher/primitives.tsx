@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, isValidElement, type ComponentProps, type ReactNode, type Ref } from "react";
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -81,7 +81,7 @@ export function KetcherDialog({ children, title, headerContent, footerContent, c
   const cancel = () => params?.onCancel?.(result());
   const confirm = () => { if (valid()) params?.onOk?.(result()); };
   return <Dialog open onOpenChange={(open) => { if (!open) cancel(); }}>
-    <DialogContent {...rest} container={container} onOpenAutoFocus={(event) => {
+    <DialogContent variant="form" {...rest} container={container} onOpenAutoFocus={(event) => {
       event.preventDefault();
       if (focusable) (event.currentTarget as HTMLElement).focus();
     }} data-testid="info-modal-window" className="ketcher-ui-dialog" aria-describedby={undefined}
@@ -102,12 +102,12 @@ export function KetcherDialog({ children, title, headerContent, footerContent, c
         {buttons.map((button, index) => {
           if (typeof button !== "string") {
             if (isValidElement<ComponentProps<typeof Button>>(button) && button.type === "button") {
-              return <Button key={index} {...button.props} variant="outline" size="sm" className="" />;
+              return <Button key={index} {...button.props} variant="outline" size="default" className="" />;
             }
             return <span key={index}>{button}</span>;
           }
           const isConfirm = button === "OK" || button === "Save";
-          return <Button key={button} size="sm" data-testid={button}
+          return <Button key={button} data-testid={button}
             variant={(primaryButtons?.length ? primaryButtons.includes(button) : isConfirm) ? "default" : "outline"}
             disabled={isConfirm && !valid()} onClick={isConfirm ? confirm : cancel}>
             {buttonsNameMap?.[button] ?? button}
@@ -142,13 +142,13 @@ export function KetcherSelect({ options, value, onChange, disabled, placeholder,
 export function KetcherSettingsAccordion({ tabs, changedGroups, className }: {
   tabs: Array<{ key: string; label: string; content: ReactNode }>; changedGroups: Set<string>; className?: string;
 }) {
-  const [expanded, setExpanded] = useState(["General"]);
-  return <Accordion type="multiple" value={expanded} onValueChange={setExpanded} className={cn("ketcher-settings-groups", className)}>
-    {tabs.map(({ key, label, content }) => <AccordionItem key={key} value={label}>
-      <AccordionTrigger data-testid={`${label}-accordion`}>{label}{changedGroups.has(label) && <span className="text-xs text-muted-foreground">Modified</span>}</AccordionTrigger>
-      <AccordionContent forceMount style={{ display: expanded.includes(label) ? undefined : "none" }}>{content}</AccordionContent>
-    </AccordionItem>)}
-  </Accordion>;
+  return <div className={cn("ketcher-settings-groups flex flex-col gap-4", className)}>
+    {tabs.map(({ key, label, content }) => <CollapsibleSection key={key}
+      title={<span data-testid={`${label}-accordion`}>{label}</span>}
+      detail={changedGroups.has(label) ? "Modified" : undefined}
+      defaultOpen={label === "General"}
+    >{content}</CollapsibleSection>)}
+  </div>;
 }
 
 export function KetcherAccordion({ summary, details, expanded, className, onSummaryClick, dataTestIdDetails }: {
@@ -193,6 +193,6 @@ export function KetcherCheckbox({ value, onChange, ...props }: CheckedProps) {
 }
 export function KetcherSwitch({ value, onChange, ...props }: CheckedProps) {
   const { name, disabled, id, "data-testid": testId, "aria-label": label } = props;
-  return <Switch name={name} disabled={disabled} id={id} data-testid={testId} aria-label={label || name || testId}
+  return <Switch tone="neutral" name={name} disabled={disabled} id={id} data-testid={testId} aria-label={label || name || testId}
     onClick={(event) => event.stopPropagation()} checked={Boolean(value)} onCheckedChange={(checked) => onChange(checkedEvent(checked))} />;
 }

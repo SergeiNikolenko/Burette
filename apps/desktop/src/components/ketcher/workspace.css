@@ -38,52 +38,27 @@
 .ketcher-editor-shell [data-slot="button"]:focus-visible { outline: 2px solid var(--text-secondary) !important; outline-offset: 2px; }
 .app-shell .ketcher-ui-dialog[data-slot="dialog-content"] {
   width: min(640px, calc(100vw - 48px)); max-width: calc(100vw - 48px);
-  max-height: calc(100dvh - 64px); border-radius: 12px; gap: 20px;
-  background: var(--surface-primary); color: var(--text-primary);
-  border: 1px solid var(--line-subtle); z-index: 1200;
-  padding: 20px; font-family: var(--font-sans); font-size: 14px; line-height: 20px;
+  max-height: calc(100dvh - 64px); z-index: 1200;
 }
 .app-shell .ketcher-ui-dialog-body {
   min-height: 0; overflow: auto; max-height: calc(100dvh - 240px);
   position: static !important; width: auto !important; height: auto !important;
   margin: 0 !important; padding: 0 !important; color: var(--text-primary);
 }
-.app-shell .ketcher-ui-dialog-body :is(input, textarea, select) { color: var(--text-primary); background: var(--surface-primary); }
-.app-shell .ketcher-ui-dialog-body [data-slot="input"], .app-shell .ketcher-ui-dialog-body [data-slot="textarea"],
-.app-shell .ketcher-ui-dialog-body [data-slot="select-trigger"] {
-  border: 1px solid var(--line-subtle); border-radius: 8px; min-height: 32px;
-  font: inherit; box-shadow: none;
-}
-.app-shell .ketcher-ui-dialog-body [data-slot="checkbox"][data-state="checked"] { background: var(--text-primary); color: var(--bg-base); }
-.app-shell .ketcher-ui-dialog-body [data-slot="switch"][data-state="checked"] { background: var(--text-primary); }
-.app-shell .ketcher-ui-dialog-body [data-slot="switch"][data-state="unchecked"] { background: var(--surface-selected); }
-.app-shell .ketcher-ui-dialog-body [data-slot="switch-thumb"][data-state="checked"] { transform: translateX(13px); background: var(--bg-base); }
-.app-shell .ketcher-ui-dialog-body [data-slot="switch-thumb"][data-state="unchecked"] { transform: translateX(0); background: var(--text-primary); }
 .ketcher-ui-select { width: 100%; }
 .ketcher-ui-options { z-index: 1300; }
 .app-shell .ketcher-ui-dialog, .ketcher-page, .ketcher-ui-options {
   --shadcn-primary: var(--text-primary);
   --shadcn-primary-foreground: var(--bg-base);
 }
-.ketcher-settings-groups [data-slot="accordion-item"] { border-color: var(--line-subtle); }
 .ketcher-settings-groups fieldset { border: 0; padding: 4px 0 16px; margin: 0; }
 .ketcher-settings-groups fieldset > label {
   display: grid !important; grid-template-columns: minmax(180px, 1fr) minmax(120px, 1fr);
   align-items: center; gap: 16px; min-height: 40px; margin: 0 !important; padding: 4px 0;
 }
 .ketcher-settings-groups fieldset > label > span { width: auto !important; color: var(--text-primary); }
-.app-shell .ketcher-ui-dialog-body [data-slot="select-trigger"] { display: flex !important; padding: 4px 10px !important; }
-.app-shell .ketcher-ui-dialog-body [data-slot="select-trigger"] svg { display: block; width: 16px; height: 16px; }
-.app-shell .ketcher-ui-dialog [data-slot="dialog-footer"] { margin: 0; border: 0; padding: 8px 0 0; background: transparent; gap: 8px; }
-.app-shell .ketcher-ui-dialog [data-slot="dialog-footer"] > span > button { background: var(--surface-secondary); color: var(--text-primary); border: 1px solid var(--line-subtle); border-radius: 8px; padding: 4px 10px; }
-.app-shell .ketcher-ui-dialog [data-variant="default"] { background: var(--text-primary) !important; color: var(--bg-base) !important; }
+.app-shell .ketcher-ui-dialog [data-slot="dialog-footer"] > span > button:not([data-slot]) { background: var(--surface-secondary); color: var(--text-primary); border: 1px solid var(--line-subtle); border-radius: 8px; padding: 4px 10px; }
 .app-shell .ketcher-ui-dialog-body label, .app-shell .ketcher-ui-dialog-body label span { color: var(--text-primary); }
-.app-shell .ketcher-ui-dialog-body [data-slot="switch"] { justify-content: flex-start; padding: 0; width: 32px; height: 19px; }
-
-.app-shell .ketcher-ui-dialog-body [data-slot="switch"] { position: relative; border: 0; width: 32px; min-width: 32px; max-width: 32px; height: 19px; }
-.app-shell .ketcher-ui-dialog-body [data-slot="switch"] > [data-slot="switch-thumb"] { position: absolute; translate: none; top: 3px; left: 3px; margin: 0; width: 13px; height: 13px; }
-.app-shell .ketcher-ui-dialog-body [data-slot="switch"] > [data-slot="switch-thumb"][data-state="checked"] { transform: translateX(13px); }
-.ketcher-settings-groups [data-slot="accordion-trigger"] { display: flex; align-items: center; gap: 12px; }
 .app-shell .ketcher-ui-dialog-body [class*="measure-input"] label, .app-shell .ketcher-ui-dialog-body [class*="MeasureInput"] label { color: var(--text-primary) !important; }
 
 .app-shell .ketcher-ui-dialog-body [class*="measure-input-module_measureInput"] > span { color: var(--text-primary); }
@@ -98,7 +73,7 @@
 .app-shell .ketcher-ui-dialog [data-slot="dialog-header"], .app-shell .ketcher-ui-dialog [data-slot="dialog-title"] { background: transparent !important; }
 .app-shell .ketcher-ui-dialog-body [class*="TemplateTable-module_structTitle"] { min-height: 24px; line-height: 20px; }
 .app-shell .ketcher-ui-dialog-body [data-slot="collapsible-trigger"] { color: var(--text-primary) !important; }
-.app-shell .ketcher-ui-dialog-body :is(input:not([type="checkbox"]):not([type="radio"]), textarea) { background: var(--surface-secondary) !important; color: var(--text-primary) !important; border: 1px solid var(--line-subtle) !important; border-radius: 8px; min-height: 32px; }
+.app-shell .ketcher-ui-dialog-body :is(input:not([type="checkbox"]):not([type="radio"]), textarea):not([data-slot]) { background: var(--surface-secondary) !important; color: var(--text-primary) !important; border: 1px solid var(--line-subtle) !important; border-radius: 8px; min-height: 32px; }
 .app-shell .ketcher-ui-dialog-body [class*="Analyse-module"] { width: 100%; }
 .app-shell .ketcher-ui-dialog-body[class*="Analyse-module"] > ul { width: 100%; }
 .app-shell .ketcher-ui-dialog-body [class*="Check-module_settings"] { min-width: 220px; }
@@ -106,7 +81,7 @@
 .app-shell .ketcher-ui-dialog-body [class*="Check-module_sectionTitle"] { color: var(--text-primary); }
 .app-shell .ketcher-ui-dialog [class*="Check-module_buttons"] { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
 .app-shell .ketcher-ui-dialog [class*="Check-module_buttonsRight"] { width: auto; }
-.app-shell .ketcher-ui-dialog [data-slot="dialog-footer"] button { min-height: 28px; padding: 4px 10px; border: 1px solid var(--line-subtle); border-radius: 8px; background: var(--surface-secondary); color: var(--text-primary); }
+.app-shell .ketcher-ui-dialog [data-slot="dialog-footer"] button:not([data-slot]) { min-height: 28px; padding: 4px 10px; border: 1px solid var(--line-subtle); border-radius: 8px; background: var(--surface-secondary); color: var(--text-primary); }
 .app-shell .ketcher-ui-dialog-body { background: transparent !important; }
 .app-shell .ketcher-ui-dialog-body [class*="Check-module_"] { background: var(--surface-primary) !important; color: var(--text-primary) !important; }
 .app-shell .ketcher-ui-dialog-body [class*="Check-module_settings"] { width: 220px !important; flex-shrink: 0; }
@@ -568,13 +543,6 @@
 .app-shell .ketcher-ui-dialog-body :is(label, input, select, textarea, [data-slot="select-trigger"], [class*="measure-input-module_measureInput"] > span) {
   font-family: inherit; font-size: 14px !important; line-height: 20px !important; font-weight: 400;
 }
-.app-shell .ketcher-ui-dialog .ketcher-settings-groups [data-slot="accordion-trigger"] {
-  min-height: 40px; padding: 8px 0;
-  font-size: 16px; line-height: 24px; font-weight: 600;
-}
-.app-shell .ketcher-ui-dialog .ketcher-settings-groups :is([data-slot="input"], [data-slot="select-trigger"]) {
-  height: 32px; min-height: 32px; padding: 0 12px !important;
-}
 .app-shell .ketcher-ui-dialog [data-slot="select-trigger"],
 .app-shell .ketcher-ui-dialog [data-slot="select-trigger"] :is([data-slot="select-value"], svg, path) {
   color: var(--text-primary) !important;
@@ -589,7 +557,7 @@
 .app-shell .ketcher-ui-dialog .ketcher-settings-groups [class*="measure-input-module_measureInput"] {
   min-height: 40px; margin: 0; align-items: center;
 }
-.app-shell .ketcher-ui-dialog [data-slot="dialog-footer"] button {
+.app-shell .ketcher-ui-dialog [data-slot="dialog-footer"] button:not([data-slot]) {
   height: 32px; min-height: 32px; padding: 0 12px;
   font-size: 14px; line-height: 20px; font-weight: 500;
 }

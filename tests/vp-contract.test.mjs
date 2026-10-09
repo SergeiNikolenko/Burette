@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-ketcher-ui-primitives.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-ketcher-ui-primitives.mjs", import.meta.url))]),
   "test-folding-panel.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-folding-panel.test.tsx", import.meta.url))]),
   "test-grid-selection-toolbar.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-grid-selection-toolbar.mjs", import.meta.url))]),
   "test-grid-filter-section.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-grid-filter-section.test.tsx", import.meta.url))]),

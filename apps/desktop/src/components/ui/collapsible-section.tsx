@@ -5,7 +5,7 @@ import { ChevronDown } from "./app-icons";
 // Atlas CollapsibleSection (Ci): native disclosure keeps its body mounted.
 // Inspector data remains feature-owned; this component only owns disclosure.
 export function CollapsibleSection({ title, detail, actions, open, defaultOpen = true, onOpenChange, className, children }: {
-  title: string;
+  title: ReactNode;
   detail?: ReactNode;
   actions?: ReactNode;
   open?: boolean;
