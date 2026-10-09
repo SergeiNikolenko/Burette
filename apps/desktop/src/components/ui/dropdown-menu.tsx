@@ -2,6 +2,7 @@ import * as React from "react"
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { preserveSubmenuPointerEntry } from "./menu-pointer-transition"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Check as Tick02Icon, ChevronRight as ArrowRight01Icon } from "@/components/ui/app-icon-data";
@@ -232,6 +233,7 @@ function DropdownMenuSubTrigger({
   className,
   inset,
   children,
+  onPointerLeave,
   ...props
 }: React.ComponentProps<typeof DropdownMenuPrimitive.SubTrigger> & {
   inset?: boolean
@@ -239,6 +241,10 @@ function DropdownMenuSubTrigger({
   return (
     <DropdownMenuPrimitive.SubTrigger
       data-slot="dropdown-menu-sub-trigger"
+      onPointerLeave={event => {
+        onPointerLeave?.(event)
+        if (!event.defaultPrevented) preserveSubmenuPointerEntry(event)
+      }}
       data-inset={inset}
       className={cn(
         "flex cursor-default items-center gap-1.5 rounded-(--radius-xl) px-2 py-[5px] text-(length:--menu-font-size) leading-(--menu-line-height) outline-hidden select-none focus:bg-(--color-background-primary-ghost-hover) data-inset:pl-7 data-open:bg-(--color-background-primary-ghost-hover) data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",

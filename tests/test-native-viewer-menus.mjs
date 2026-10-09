@@ -85,6 +85,18 @@ session.close();
 assert.deepEqual(events.slice(-2), [['change', '70'], ['commit', '70']]);
 assert.equal(menu.isConnected, false);
 
+window.BuretteConfig = { appViewer: true, tauriViewer: false };
+({ menu, session, items } = fixture());
+items[2].action('ball-and-stick');
+assert.equal(menu.querySelector('select').value, 'ball-and-stick', 'browser choices apply before the menu closes');
+assert.deepEqual(events.at(-1), ['change', 'ball-and-stick']);
+assert.equal(menu.isConnected, true);
+items[3].action(40);
+const liveEventCount = events.length;
+session.close();
+assert.deepEqual(events.slice(liveEventCount), [['change', '40'], ['commit', '40']], 'closing only commits the live numeric edit');
+delete window.BuretteConfig;
+
 ({ menu, session, items } = fixture());
 items[2].action('ball-and-stick');
 assert.equal(menu.querySelector('select').value, 'point', 'Commands wait for AppKit tracking to finish');

@@ -28,6 +28,11 @@
       let afterClose;
       const id = () => `control-${++serial}`;
       const choose = (key, action) => handlers.set(key, value => { afterClose = () => action(value); });
+      // NSMenu must release tracking before a choice rebuilds the scene. The
+      // browser's Atlas Select stays open in the parent menu and applies live.
+      const config = window.BuretteConfig || {};
+      const liveChoices = config.appViewer === true && config.tauriViewer === false;
+      const chooseControl = (key, action) => liveChoices ? handlers.set(key, action) : choose(key, action);
       const emit = (control, type) => control.dispatchEvent(new Event(type, { bubbles: true }));
       const editText = (control, label) => {
         const dialog = document.createElement('dialog');
@@ -88,7 +93,7 @@
         if (picker) {
           const list = menu.querySelector(`[data-scene-tree-picker-list="${picker.dataset.sceneTreePicker}"]`);
           const options = Array.from(list?.children || []);
-          choose(key, value => {
+          chooseControl(key, value => {
             picker.click();
             options.find(option => option.dataset.sceneTreePickerValue === value)?.click();
           });
@@ -100,7 +105,7 @@
         if (control) {
           const label = element.querySelector(':scope > span')?.textContent.trim() || control.getAttribute('aria-label') || 'Value';
           if (control.tagName === 'SELECT') {
-            choose(key, value => { control.value = String(value); emit(control, 'change'); });
+            chooseControl(key, value => { control.value = String(value); emit(control, 'change'); });
             return [{ kind: 'select', id: key, label, value: control.value, disabled: control.disabled,
               options: Array.from(control.options).filter(option => option.value && !option.disabled)
                 .map(option => ({ value: option.value, label: option.textContent })) }];

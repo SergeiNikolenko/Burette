@@ -2213,8 +2213,8 @@ img.radix-menu-item-icon {
 /* Colour belongs to the component the menu was opened on, so it is picked in
    place rather than behind another dialog. */
 .radix-menu-swatches {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(8, 15px);
   gap: 5px;
   padding: 3px 8px 6px;
 }

@@ -481,13 +481,15 @@ for (const context of [false, true]) {
     const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
     const root = createRoot(shell);
     let selected = 0;
+    const values: string[] = [];
     const items = [{ kind: "submenu" as const, id: "open", text: "Open", items: [
+      { kind: "select" as const, id: "quality", label: "Quality", value: "auto", options: ["auto", "high"], action: (value: string) => values.push(value) },
       { kind: "item" as const, id: "tabs", text: "In Tabs", action: () => selected++ },
     ] }];
     const prefix = context ? "context" : "dropdown";
     try {
       if (context) {
-        await act(async () => showRadixContextMenu(items, { x: 20, y: 20 }));
+        await act(async () => { void showRadixContextMenu(items, { x: 20, y: 20 }); });
       } else {
         await act(async () => root.render(<RadixDropdownMenu items={items} trigger={<button>Open options</button>} />));
         await act(async () => shell.querySelector('button')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
@@ -499,6 +501,20 @@ for (const context of [false, true]) {
       const content = shell.querySelector(`[data-slot="${prefix}-menu-sub-content"]`)!;
       expect(content !== null).toBe(true);
       expect(content.parentElement!.closest(`[data-slot="${prefix}-menu-content"]`)).toBeNull();
+      const select = content.querySelector<HTMLElement>('[role="combobox"]')!;
+      await act(async () => trigger.dispatchEvent(new browser.PointerEvent("pointerout", {
+        pointerType: "mouse", bubbles: true, relatedTarget: select,
+      })));
+      expect(shell.querySelector(`[data-slot="${prefix}-menu-sub-content"]`)).toBe(content);
+      await act(async () => { select.focus(); select.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+      await act(flushFocus);
+      expect(shell.querySelector('[role="listbox"]')).not.toBeNull();
+      const option = [...shell.querySelectorAll<HTMLElement>('[role="option"]')].find(option => option.textContent === "high")!;
+      await act(async () => { option.focus(); option.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+      await act(flushFocus);
+      expect(values).toEqual(["high"]);
+      expect(shell.querySelector(`[data-slot="${prefix}-menu-sub-content"]`)).toBe(content);
+      expect(document.activeElement).toBe(select);
       await act(async () => content.querySelector<HTMLElement>('[role="menuitem"]')!.click()); await act(flushFocus);
       expect([selected, shell.querySelector('[role="menu"]')]).toEqual([1, null]);
     } finally { await act(async () => root.unmount()); shell.remove(); }
@@ -622,4 +638,49 @@ test("context menu uses its explicit container and Escape does not select", asyn
     expect(portal.querySelector('[role="menu"]')).toBeNull();
     expect(selected).toBe(0);
   } finally { await act(async () => root.unmount()); shell.remove(); portal.remove(); }
+});
+
+const { useAppXyzrenderSheetMessages } = await import("../apps/desktop/src/hooks/use-app-xyzrender-sheet-messages");
+test("browser viewer menu keeps the bridge open for live edits, commits on dismiss, and replaces previous menus", async () => {
+  const shell = document.createElement("div"); shell.className = "app-shell"; document.body.append(shell);
+  const root = createRoot(shell);
+  const replies: unknown[] = [];
+  let handle!: ReturnType<typeof useAppXyzrenderSheetMessages>["handleXyzrenderSheetMessage"];
+  function Harness() {
+    ({ handleXyzrenderSheetMessage: handle } = useAppXyzrenderSheetMessages({ postMessageToViewerSource: (_source, payload) => replies.push(payload) }));
+    return null;
+  }
+  const request = (requestId: string) => ({ type: "molstarContextMenu", requestId, clientX: 20, clientY: 20, items: [
+    { kind: "number", id: "opacity", label: "Opacity", value: 100, min: 0, max: 100, step: 1 },
+    { kind: "item", id: "focus", text: "Focus" },
+  ] });
+  const reply = (requestId: string, body: Record<string, unknown>) => ({ source: "burette-host", body: { type: "molstarContextMenuResult", requestId, ...body } });
+  try {
+    await act(async () => root.render(<Harness />));
+    await act(async () => { expect(handle("burette-viewer", request("first"), null)).toBe(true); });
+    await act(flushFocus);
+    expect(replies).toEqual([]);
+    const number = shell.querySelector<HTMLElement>('[role="spinbutton"]')!;
+    expect(number).not.toBeNull();
+    await act(async () => number.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+    expect(replies).toEqual([reply("first", { event: "select", id: "opacity", value: 99 })]);
+    await act(async () => { handle("burette-viewer", request("second"), null); });
+    await act(flushFocus);
+    expect(shell.querySelectorAll('[role="menu"]').length).toBe(1);
+    expect(replies.at(-1)).toEqual(reply("first", { event: "closed" }));
+    // Clicking back into an iframe blurs the parent window; no pointer event bubbles out.
+    await act(async () => window.dispatchEvent(new Event("blur")));
+    await act(flushFocus);
+    expect(replies.at(-1)).toEqual(reply("second", { event: "closed" }));
+    expect(shell.querySelector('[role="menu"]')).toBeNull();
+    await act(async () => { handle("burette-viewer", request("third"), null); });
+    await act(flushFocus);
+    await act(async () => shell.querySelector<HTMLElement>('[role="menuitem"]')!.click());
+    await act(flushFocus);
+    expect(replies.slice(-2)).toEqual([reply("third", { event: "select", id: "focus" }), reply("third", { event: "closed" })]);
+    expect(shell.querySelector('.radix-context-menu-mount')).toBeNull();
+  } finally {
+    await act(async () => window.dispatchEvent(new Event("pagehide"))); await act(flushFocus);
+    await act(async () => root.unmount()); shell.remove();
+  }
 });

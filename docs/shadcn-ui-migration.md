@@ -36,6 +36,15 @@ even without a Radix `DialogTrigger`. Explicit close-focus handlers take priorit
 non-modal dialogs retain Radix's outside-interaction behavior. Detached openers
 are not focused. This contract is covered by the overlay interaction tests.
 
+Viewer and scene-tree menu requests use the same bounded model for browser
+Atlas menus and native Tauri menus. The browser popup resolves only when closed,
+so live numeric edits commit through the viewer's existing undo transaction.
+Browser selects apply while the popup remains open; native choices still wait
+until NSMenu releases tracking. Standalone viewer fallback menus are unchanged.
+Embedded controls in a submenu retain the flyout when the pointer moves directly
+from its trigger into the portalled content. These transitions are covered for
+both context and dropdown menus, including a nested Select and focus restoration.
+
 ## Inspected Baseline (historical)
 
 The inventory below reflects the React source under `apps/desktop/src` before

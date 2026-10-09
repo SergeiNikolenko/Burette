@@ -10,7 +10,7 @@ export async function showNativeContextMenu(
 ): Promise<boolean> {
   if (!options.forceWeb) spec = withMenuIcons(spec);
   if (options.forceWeb || !isTauriRuntime()) {
-    showRadixContextMenu(spec, at);
+    await showRadixContextMenu(spec, at);
     return true;
   }
 
@@ -21,7 +21,7 @@ export async function showNativeContextMenu(
     entry.kind === "swatches" || entry.kind === "number" || entry.kind === "select"
     || (entry.kind === "submenu" && hasControls(entry.items)));
   if (hasControls(spec)) {
-    showRadixContextMenu(spec, at);
+    await showRadixContextMenu(spec, at);
     return true;
   }
 

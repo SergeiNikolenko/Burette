@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
-import { createRoot, type Root as ReactRoot } from "react-dom/client";
+import { createRoot } from "react-dom/client";
 import {
   ContextMenu,
   ContextMenuCheckboxItem,
@@ -75,22 +75,38 @@ export function RadixDropdownMenu({
   );
 }
 
-export function showRadixContextMenu(spec: MenuItemSpec[], at?: { x: number; y: number }) {
+let closeActiveContextMenu: (() => void) | undefined;
+
+// Resolve after tracking ends, like NSMenu: viewer edits and undo transactions
+// remain alive while controls are being changed inside the popup.
+export function showRadixContextMenu(spec: MenuItemSpec[], at?: { x: number; y: number }): Promise<void> {
+  closeActiveContextMenu?.();
   const host = document.querySelector<HTMLElement>(".app-shell") ?? document.body;
   const mount = document.createElement("div");
   mount.className = "radix-context-menu-mount";
   host.append(mount);
 
-  let root: ReactRoot | null = createRoot(mount);
-  const cleanup = () => {
-    window.setTimeout(() => {
-      root?.unmount();
-      root = null;
-      mount.remove();
-    }, 0);
-  };
-
-  root.render(<RadixContextMenuLauncher items={spec} at={at} container={host} onClose={cleanup} />);
+  const root = createRoot(mount);
+  return new Promise<void>((resolve) => {
+    let closing = false;
+    const cleanup = () => {
+      if (closing) return;
+      closing = true;
+      if (closeActiveContextMenu === cleanup) closeActiveContextMenu = undefined;
+      window.removeEventListener("blur", cleanup);
+      window.removeEventListener("pagehide", cleanup);
+      window.setTimeout(() => {
+        root.unmount();
+        mount.remove();
+        resolve();
+      }, 0);
+    };
+    closeActiveContextMenu = cleanup;
+    // A click back into the molecular iframe does not bubble to this document.
+    window.addEventListener("blur", cleanup);
+    window.addEventListener("pagehide", cleanup);
+    root.render(<RadixContextMenuLauncher items={spec} at={at} container={host} onClose={cleanup} />);
+  });
 }
 
 function RadixContextMenuLauncher({
