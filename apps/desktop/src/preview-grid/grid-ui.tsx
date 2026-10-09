@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { GridSelectMenu } from "./grid-select-menu";
 import { gridAtlasStyles } from "./grid-atlas-styles";
 import { SegmentedControl as AtlasSegmentedControl, SegmentedControlItem } from "../components/ui/segmented-control";
+import { Button } from "../components/ui/button";
 
 type SortOption = {
   value: string;
@@ -259,7 +260,7 @@ function HydrogenToggle(props: GridControlProps) {
   if (!props.substructureSearch) return null;
   const shown = props.hydrogenDisplay === "all";
   return (
-    <button
+    <Button variant="ghost" size="sm"
       id="grid-hydrogens"
       className="ab-btn"
       type="button"
@@ -269,7 +270,7 @@ function HydrogenToggle(props: GridControlProps) {
     >
       H
       <ControlTooltip label={shown ? "Hide hydrogens" : "Show all hydrogens"} />
-    </button>
+    </Button>
   );
 }
 
@@ -647,7 +648,7 @@ function ActionsMenu(props: GridControlProps) {
 
   return (
     <div className="ab-menu-wrap ab-actions-menu" ref={wrapRef}>
-      <button
+      <Button variant="ghost" size="sm"
         className="ab-btn"
         type="button"
         aria-haspopup="menu"
@@ -655,7 +656,7 @@ function ActionsMenu(props: GridControlProps) {
         onClick={() => setOpen((value) => !value)}
       >
         Actions
-      </button>
+      </Button>
       {open ? (
         <div className="ab-menu" role="menu" ref={menuRef} style={menuStyle}>
           <div className={selectedCount > 0 ? "ab-selhead has-selection" : "ab-selhead"}>
@@ -695,7 +696,7 @@ function GridActionToolbar(props: GridControlProps) {
       {/* grid-viewer owns the `hidden` attribute on both: Columns in table view,
           Properties in cards view. Never pass `hidden` here or React would
           fight that sync. */}
-      <button
+      <Button variant="ghost" size="sm"
         id="table-columns"
         className="ab-btn"
         type="button"
@@ -704,8 +705,8 @@ function GridActionToolbar(props: GridControlProps) {
       >
         Columns
         <ControlTooltip label="Choose visible table columns" />
-      </button>
-      <button
+      </Button>
+      <Button variant="ghost" size="sm"
         id="show-properties"
         className="ab-btn"
         type="button"
@@ -714,7 +715,7 @@ function GridActionToolbar(props: GridControlProps) {
       >
         Properties
         <ControlTooltip label="Show molecule properties in cards" />
-      </button>
+      </Button>
       {showRendererSwitch ? (
         <label className="buret-renderer-control">
           <span className="buret-visually-hidden">Molecule view</span>
@@ -736,7 +737,7 @@ function GridActionToolbar(props: GridControlProps) {
       {/* A pressed-state button rather than a checkbox: grid-viewer owns both the
           `hidden` on the wrapper and the pressed state on the button by id. */}
       <span id="rdkit-use-input-coords-control" className="buret-rdkit-coords-control" hidden>
-        <button
+        <Button variant="ghost" size="sm"
           id="rdkit-use-input-coords"
           className="ab-btn"
           type="button"
@@ -748,31 +749,31 @@ function GridActionToolbar(props: GridControlProps) {
         >
           <span data-coordinate-mode>2D</span>
           <ControlTooltip label="2D diagram / 3D file coordinates" />
-        </button>
+        </Button>
       </span>
-      <button id="clear-smarts" className="ab-btn buret-clear-smarts" type="button" hidden onClick={props.onClearSmarts}>
+      <Button variant="ghost" size="sm" id="clear-smarts" className="ab-btn buret-clear-smarts" type="button" hidden onClick={props.onClearSmarts}>
         Clear search
         <ControlTooltip label="Clear the SMARTS search" />
-      </button>
+      </Button>
       <span className="ab-spacer" aria-hidden="true" />
       {props.selectionEnabled ? (
         <div className="buret-selection-actions" role="group" aria-label="Selection">
-          <button id="select-all" className="ab-btn" type="button"
+          <Button variant="ghost" size="sm" id="select-all" className="ab-btn" type="button"
             disabled={props.selectableCount === 0 || props.allVisibleSelected}
             onClick={props.onSelectAll}>
             Select all
             <ControlTooltip label="Select all visible molecules" />
-          </button>
+          </Button>
           {props.selectedCount > 0 ? <>
             <span className="buret-selection-count" role="status">{props.selectedCount.toLocaleString()} selected</span>
-            <button id="clear-selection" className="ab-btn" type="button"
-              aria-label="Clear selection" onClick={props.onClearSelection}>Clear</button>
+            <Button variant="ghost" size="sm" id="clear-selection" className="ab-btn" type="button"
+              aria-label="Clear selection" onClick={props.onClearSelection}>Clear</Button>
           </> : null}
         </div>
       ) : null}
       {props.selectionEnabled && (props.ketcherOpen || props.molstarOpen) ? (
         <div id="selected-open-actions" className="buret-selected-open-actions" role="group" aria-label="Open selection">
-          {props.ketcherOpen ? <button
+          {props.ketcherOpen ? <Button variant="ghost" size="icon-sm"
             id="open-selected-ketcher"
             className="ab-btn ab-btn-icon"
             type="button"
@@ -782,8 +783,8 @@ function GridActionToolbar(props: GridControlProps) {
           >
             <Edit className="ab-ico" aria-hidden="true" />
             <ControlTooltip label={props.selectedCount ? "Edit selected molecules in Ketcher" : "Select molecules to edit in Ketcher"} />
-          </button> : null}
-          {props.molstarOpen ? <button
+          </Button> : null}
+          {props.molstarOpen ? <Button variant="ghost" size="icon-sm"
             id="open-selected-molstar"
             className="ab-btn ab-btn-icon"
             type="button"
@@ -793,7 +794,7 @@ function GridActionToolbar(props: GridControlProps) {
           >
             <Cube className="ab-ico" aria-hidden="true" />
             <ControlTooltip label={props.selectedCount ? "Open selected molecules in a new Burette tab" : "Select molecules to open in a new tab"} />
-          </button> : null}
+          </Button> : null}
         </div>
       ) : null}
       <ActionsMenu {...props} />

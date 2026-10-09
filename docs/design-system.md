@@ -293,6 +293,11 @@ the same source alongside its Atlas tokens. Keep keyboard selection in the
 shared Radix primitive, not in a second grid-only toggle implementation.
 At narrow widths the ordinary Grid toolbar wraps its controls rather than
 hiding sorting, representation, columns or selection actions.
+Grid toolbar actions use shared `Button` ghost/md and uniform icon/md variants;
+the original button CSS is loaded by `styles.css` in the shell and embedded by
+`grid-atlas-styles.ts` in standalone previews. The viewer's imperative
+`aria-pressed` contract maps to the original selected appearance. Legacy grid
+button rules must not override these shared controls.
 Tooltips have no arrow unless `showArrow` is set. Style these controls through
 their variants and sizes; app styles should only place them, not repaint them.
 
@@ -314,8 +319,9 @@ Composition, Tools, File and other `InspectorSection` blocks use the shared
 details/summary disclosure keeps child controls mounted and excludes collapsed
 content from keyboard navigation. The 37px header, 16/24 medium title, 14px
 disclosure glyph, subtle divider and 16px body gap follow that source; do not
-wrap it in another padded inspector card. Specialized trajectory and filter
-accordions remain separate and are not evidence that every disclosure migrated.
+wrap it in another padded inspector card. Filters, Smooth motion and its nested
+Scientific settings also use this primitive; Folding Results remains a separate
+accordion and is not evidence that every disclosure migrated.
 Calculation rows use shared Button/Dialog/Tooltip primitives. Their unavailable
 reason stays in the settings trigger's tooltip and accessible description,
 rather than making disabled rows taller. The primary action remains disabled

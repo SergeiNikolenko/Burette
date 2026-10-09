@@ -128,13 +128,13 @@ body.burette-transparent-background {
   background: transparent;
 }
 
-button,
+button:where(:not(.atlas-button)),
 input,
 select {
   font: inherit;
 }
 
-button,
+button:where(:not(.atlas-button)),
 .buret-grid-toolbar input[type="search"],
 .buret-grid-toolbar select {
   box-sizing: border-box;
@@ -148,17 +148,17 @@ button,
   transition: background 140ms ease-out, box-shadow 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
 
-button {
+button:where(:not(.atlas-button)) {
   padding: 0 12px;
 }
 
 /* shadcn presses buttons down one pixel; menu triggers stay put like the
    host's `active:not-aria-[haspopup]` variant. */
-button:not(:disabled):not([aria-haspopup]):active {
+button:where(:not(.atlas-button)):not(:disabled):not([aria-haspopup]):active {
   transform: translateY(1px);
 }
 
-button:not(:disabled):hover,
+button:where(:not(.atlas-button)):not(:disabled):hover,
 .buret-grid-toolbar input[type="search"]:hover,
 .buret-grid-toolbar select:hover {
   background-color: var(--buret-control-hover);
@@ -167,7 +167,7 @@ button:not(:disabled):hover,
 /* The host's focus treatment: a 1px ring-coloured border with a 3px halo at
    half strength (focus-visible:border-ring + ring-3 ring-ring/50). The halo is
    an outline so it never stacks against control shadows. */
-button:focus-visible,
+button:where(:not(.atlas-button)):focus-visible,
 .buret-grid-toolbar input[type="search"]:focus,
 .buret-grid-toolbar select:focus {
   box-shadow: 0 0 0 1px var(--buret-ring);
@@ -175,7 +175,7 @@ button:focus-visible,
   outline-offset: 1px;
 }
 
-button:disabled {
+button:where(:not(.atlas-button)):disabled {
   color: var(--buret-faint);
   background: var(--buret-control-surface);
   opacity: 1;
@@ -334,16 +334,17 @@ button:disabled {
 .buret-actionbar .atlas-segmented-control-item:active { transform: none; }
 .buret-actionbar .atlas-segmented-control-item:focus-visible { box-shadow: none; outline-offset: -2px; }
 
-/* Mirrors the host Button secondary/sm: 28px tall, 10px inline padding, the
-   smaller 8px radius, and medium weight. */
-#grid-controls .ab-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-height: 28px;
-  padding-inline: 10px;
-  white-space: nowrap;
+/* Standalone Grid has no Tailwind preflight. Supply only the button reset;
+   original Atlas CSS owns sizes, colours, radii and interaction states. */
+@layer base {
+  .atlas-button {
+    box-sizing: border-box;
+    border: 0;
+    background: transparent;
+    font-family: inherit;
+    text-align: center;
+    vertical-align: middle;
+  }
 }
 
 .buret-visually-hidden {
@@ -369,18 +370,14 @@ button:disabled {
   min-height: 28px;
 }
 
-#grid-controls .ab-btn[aria-pressed="true"],
-#grid-controls .ab-btn[data-state="on"] {
-  background: var(--buret-control-active);
+/* grid-viewer updates aria-pressed imperatively. Map that existing contract
+   onto the original ghost Button's data-selected appearance. */
+#grid-controls .atlas-button[aria-pressed="true"] {
+  color: var(--button-text-color-hover);
 }
-
-/* Square, label-free buttons for the actions whose names were eating the
-   toolbar; the name survives as a tooltip and as the accessible label. */
-#grid-controls .ab-btn-icon {
-  justify-content: center;
-  width: var(--buret-button-height);
-  min-width: var(--buret-button-height);
-  padding: 0;
+#grid-controls .atlas-button[aria-pressed="true"]::before {
+  opacity: 1;
+  transform: scale(1);
 }
 
 /* The standalone grid does not load Tailwind utilities used by shared icons. */
@@ -388,13 +385,6 @@ button:disabled {
 
 #grid-controls .ab-btn-icon .ab-ico {
   color: currentColor;
-}
-
-/* A pressed icon toggle has no text to change weight, so the accent carries
-   the state on its own. */
-#grid-controls .ab-btn-icon[aria-pressed="true"] {
-  color: var(--buret-accent);
-  background: color-mix(in srgb, var(--buret-accent) 20%, transparent);
 }
 
 #grid-controls .ab-btn[hidden] {
@@ -2237,8 +2227,8 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
   transition: opacity 110ms ease-out, transform 130ms ease-out, visibility 0s linear 110ms;
 }
 
-.buret-toolbar-row-view button:hover > .buret-control-tooltip,
-.buret-toolbar-row-view button:focus-visible > .buret-control-tooltip {
+.buret-toolbar-row-view button:hover .buret-control-tooltip,
+.buret-toolbar-row-view button:focus-visible .buret-control-tooltip {
   opacity: 1;
   visibility: visible;
   transform: translate(-50%, 0) scale(1);
