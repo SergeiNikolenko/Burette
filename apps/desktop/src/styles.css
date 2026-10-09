@@ -1323,8 +1323,8 @@ html[data-hosted-mcp-widget="true"] #root {
 .sidebar-scroll::-webkit-scrollbar { display: none; }
 .sidebar-browser-header {
   width: 100%;
-  height: var(--chrome-control-height);
-  margin: 0;
+  height: 36px;
+  margin: 0 0 8px;
   padding: 0 4px 0 8px;
   display: flex;
   align-items: center;
@@ -1337,8 +1337,8 @@ html[data-hosted-mcp-widget="true"] #root {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 18px;
-  line-height: 24px;
+  font-size: 22px;
+  line-height: 28px;
   font-weight: 600;
 }
 .sidebar-search-toggle {
