@@ -4625,7 +4625,7 @@ assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v\d+"/);
-assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v92"/);
+assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v93"/);
 assert.match(
   browserDevDocuments,
   /viewerProfile === "mesoscale"\) return !document\.runtimePath\.includes\(MESOSCALE_ASSET_VERSION\)/,
@@ -5398,7 +5398,7 @@ assert.match(previewRuntimeCss, /\.buret-xyzrender-preset-slot\.visible \{ displ
 assert.doesNotMatch(previewRuntimeCss, /\.buret-molstar-style-slot/);
 assert.match(previewRuntimeCss, /\.buret-molstar-preset-slot \{ display: none; align-items: center; \}/);
 assert.match(previewRuntimeCss, /\.buret-molstar-preset-slot\.visible \{ display: flex; \}/);
-assert.match(previewRuntimeCss, /\.buret-molstar-preset-menu \{[\s\S]*position: fixed;[\s\S]*overflow-y: auto;/);
+assert.match(previewRuntimeCss, /\.buret-molstar-preset-menu\.atlas-menu-content \{[^}]*position: fixed;/);
 assert.match(previewRuntimeCss, /\.buret-molstar-preset-preview \{[^}]*position: fixed;[^}]*pointer-events: auto;[^}]*\}/);
 assert.doesNotMatch(previewRuntimeCss, /\.buret-molstar-preset-preview \{[^}]*pointer-events: none;/);
 assert.match(previewRuntimeCss, /\.buret-molstar-preset-preview-stage \{[^}]*opacity: 0;[^}]*pointer-events: none;[^}]*\}/);
@@ -5529,17 +5529,8 @@ assert.match(previewViewer, /appearance\.dataset\.buretMolstarAppearance = appea
 assert.match(previewViewer, /appearanceItem\.dataset\.buretMolstarAppearance/);
 assert.doesNotMatch(previewViewer, /data-buret-molstar-illustrative/);
 assert.match(previewRuntimeCss, /\.buret-molstar-appearance-group \{/);
-assert.match(previewRuntimeCss, /\.buret-molstar-appearance-item\[aria-checked="true"\] \.buret-molstar-appearance-indicator/);
-assert.match(previewRuntimeCss, /\.buret-molstar-preset-menu \.buret-tree-menu-item\[aria-checked="true"\] \{\s*background: var\(--buret-molstar-hover-background\);\s*\}/);
-assert.match(previewRuntimeCss, /\.buret-molstar-appearance-item\[aria-checked="true"\] \{\s*background: var\(--buret-molstar-hover-background\);\s*\}/);
-assert.match(previewRuntimeCss, /body\.buret-theme-light \.buret-molstar-preset-menu-separator \{/);
 assert.match(previewRuntimeCss, /--buret-menu-focus-ring: #D891FF;/);
 assert.match(previewRuntimeCss, /body\.buret-theme-light \{[^}]*--buret-menu-focus-ring: #6D2AA5;/);
-assert.match(previewRuntimeCss, /\.buret-molstar-preset-menu \.buret-tree-menu-item:focus-visible \{[^}]*outline: 2px solid var\(--buret-menu-focus-ring\);[^}]*outline-offset: -2px;/);
-assert.match(previewRuntimeCss, /\.buret-molstar-appearance-item:focus-visible \{[^}]*outline: 2px solid var\(--buret-menu-focus-ring\);[^}]*outline-offset: -2px;/);
-assert.match(previewRuntimeCss, /\.buret-molstar-preset-menu \.buret-tree-menu-item\[aria-checked="true"\]:focus-visible,\s*\.buret-molstar-appearance-item\[aria-checked="true"\]:focus-visible \{[^}]*outline-width: 3px;/);
-assert.match(previewRuntimeCss, /\.buret-molstar-preset-menu \.buret-tree-menu-item\.buret-pointer-focus:focus-visible,\s*\.buret-molstar-appearance-item\.buret-pointer-focus:focus-visible,\s*\.buret-molstar-preset-preview\.buret-pointer-focus:focus-visible \{[^}]*outline: none;/);
-assert.match(previewRuntimeCss, /@media \(forced-colors: active\) \{\s*\.buret-molstar-preset-menu \.buret-tree-menu-item:focus-visible,\s*\.buret-molstar-appearance-item:focus-visible \{[^}]*outline-color: Highlight;/);
 assert.match(previewViewer, /function showMolstarPresetMenu\(anchor, \{ pointerFocus = false \} = \{\}\)/);
 assert.match(previewViewer, /function focusMolstarPresetControl\(target, pointerFocus = false\)/);
 assert.match(previewViewer, /if \(pointerFocus\) \{\s*document\.activeElement\?\.blur\?\.\(\);\s*return;\s*\}/);

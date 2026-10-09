@@ -2176,6 +2176,9 @@
   }
 
   function applyViewerThemeTokens(resolvedTheme = resolveViewerTheme()) {
+    document.querySelectorAll('.buret-atlas-menu').forEach(menu => {
+      window.BuretteNativeViewerMenus?.styleMenu?.(menu, activeConfig?.themeTokens, resolvedTheme);
+    });
     const tokens = themeTokensFor(resolvedTheme);
     if (!tokens || !document.body) return;
     const accent = typeof tokens.accent === 'string' ? tokens.accent : '#AF52DE';
@@ -3927,14 +3930,14 @@
 
   function appendMolstarPresetMenuSeparator(menu) {
     const separator = document.createElement('div');
-    separator.className = 'buret-molstar-preset-menu-separator';
+    separator.className = 'atlas-menu-separator';
     separator.setAttribute('role', 'separator');
     menu.appendChild(separator);
   }
 
   function appendMolstarAppearanceMenu(menu) {
     const appearanceLabel = document.createElement('div');
-    appearanceLabel.className = 'buret-molstar-preset-menu-section';
+    appearanceLabel.className = 'atlas-menu-label';
     appearanceLabel.textContent = 'Appearance';
     menu.appendChild(appearanceLabel);
     const appearanceGroup = document.createElement('div');
@@ -3945,7 +3948,7 @@
     for (const appearanceOption of MOLSTAR_APPEARANCE_OPTIONS) {
       const appearance = document.createElement('button');
       appearance.type = 'button';
-      appearance.className = 'buret-molstar-appearance-item';
+      appearance.className = 'atlas-menu-item';
       appearance.dataset.buretMolstarAppearance = appearanceOption.value;
       appearance.setAttribute('role', 'menuitemradio');
       appearance.setAttribute('aria-checked', 'false');
@@ -3953,10 +3956,8 @@
       const itemLabel = document.createElement('span');
       itemLabel.className = 'buret-tree-menu-label';
       itemLabel.textContent = appearanceOption.label;
-      const indicator = document.createElement('span');
-      indicator.className = 'buret-molstar-appearance-indicator';
-      indicator.setAttribute('aria-hidden', 'true');
-      indicator.textContent = '✓';
+      const indicator = sceneTreeIconElement(APP_ICON_DATA.Check);
+      indicator.classList.add('atlas-menu-check');
       appearance.append(itemLabel, indicator);
       appearanceGroup.appendChild(appearance);
     }
@@ -3972,14 +3973,14 @@
       if (option.group && option.group !== currentGroup) {
         appendMolstarPresetMenuSeparator(menu);
         const heading = document.createElement('div');
-        heading.className = 'buret-molstar-preset-menu-section';
+        heading.className = 'atlas-menu-label';
         heading.textContent = option.group;
         menu.appendChild(heading);
         currentGroup = option.group;
       }
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'buret-tree-menu-item';
+      button.className = 'atlas-menu-item';
       button.dataset.buretMolstarPreset = option.value;
       button.setAttribute('role', 'menuitemradio');
       button.setAttribute('aria-checked', 'false');
@@ -3987,9 +3988,8 @@
       const label = document.createElement('span');
       label.className = 'buret-tree-menu-label';
       label.textContent = option.label;
-      const current = document.createElement('span');
-      current.className = 'buret-molstar-preset-current';
-      current.textContent = 'Current';
+      const current = sceneTreeIconElement(APP_ICON_DATA.Check);
+      current.classList.add('atlas-menu-check');
       button.append(label, current);
       menu.appendChild(button);
     }
@@ -4611,6 +4611,7 @@
     closeViewportMenu();
     populateMolstarPresetMenu(menu);
     updateMolstarPresetControl(document.getElementById('buret-toolbar'), configuredMolstarPreset(activeConfig || window.BuretteConfig || {}));
+    window.BuretteNativeViewerMenus?.styleMenu?.(menu, activeConfig?.themeTokens, resolveViewerTheme());
     menu.classList.remove('hidden');
     anchor.setAttribute('aria-expanded', 'true');
     positionMolstarPresetMenu(anchor);

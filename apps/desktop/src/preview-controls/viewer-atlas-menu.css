@@ -1,0 +1,21 @@
+/* Only DOM behavior differs from Radix; surface and row geometry are shared. */
+.buret-atlas-menu {
+  font-family: var(--font-sans);
+  font-size: var(--menu-font-size);
+  line-height: var(--menu-line-height);
+}
+.buret-atlas-menu button {
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  width: 100%;
+}
+.buret-atlas-menu .atlas-menu-item:hover { background: var(--color-background-primary-ghost-hover); }
+.buret-atlas-menu .atlas-menu-check { margin-left: auto; visibility: hidden; }
+.buret-atlas-menu [aria-checked="true"] .atlas-menu-check { visibility: visible; }
+@media (forced-colors: active) {
+  .buret-atlas-menu .atlas-menu-item:focus-visible { outline: 2px solid Highlight; outline-offset: -2px; }
+}

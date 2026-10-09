@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
 import { molstarContextMenuItems } from '../apps/desktop/src/components/molstar-context-menu.ts';
+import { buildCodexThemeVariables } from '../apps/desktop/src/lib/codex-theme.ts';
 
 const window = new Window();
 const document = window.document;
@@ -17,6 +18,42 @@ const controls = new Function('document', `
   return { sceneTreeMenuItem, sceneTreeMenuSection, sceneTreeMenuSelect, sceneTreeMenuSlider, sceneTreeMenuThemePicker };
 `)(document);
 const events = [];
+// Style keeps the viewer's real radio model while consuming the shared menu
+// surface, checked icon and theme engine. Styling must not reset focus/selection.
+{
+  const bindings = { document,
+    APP_ICON_DATA: { Check: [] }, sceneTreeIconElement: () => document.createElementNS('http://www.w3.org/2000/svg', 'svg'),
+    MOLSTAR_APPEARANCE_OPTIONS: [{ value: 'standard', label: 'Standard' }, { value: 'illustrative', label: 'Illustrative' }],
+    MOLSTAR_PRESET_OPTIONS: [{ value: 'automatic', label: 'Auto' }, { value: 'spacefill', label: 'Spacefill', group: 'Atoms' }],
+    normalizeMolstarAppearance: value => value,
+  };
+  const names = ['appendMolstarPresetMenuSeparator', 'appendMolstarAppearanceMenu', 'populateMolstarPresetMenu', 'updateMolstarAppearanceControl', 'setMolstarPresetMenuRovingItem'];
+  const api = new Function(...Object.keys(bindings), names.map(source).join('\n') + `;return {${names.join(',')}}`)(...Object.values(bindings));
+  const menu = document.createElement('div'); document.body.append(menu);
+  api.populateMolstarPresetMenu(menu);
+  api.populateMolstarPresetMenu(menu);
+  const rows = [...menu.querySelectorAll('[role="menuitemradio"]')];
+  assert.deepEqual(rows.map(row => [row.textContent, row.className, row.querySelector('svg')?.classList.contains('atlas-menu-check')]), [
+    ['Standard', 'atlas-menu-item', true], ['Illustrative', 'atlas-menu-item', true],
+    ['Auto', 'atlas-menu-item', true], ['Spacefill', 'atlas-menu-item', true],
+  ]);
+  api.updateMolstarAppearanceControl(menu, 'illustrative');
+  api.setMolstarPresetMenuRovingItem(menu, rows[1]).focus();
+  const custom = { accent: '#339cff', background: '#203040', foreground: '#fafafa', contrast: 72 };
+  window.BuretteNativeViewerMenus.styleMenu(menu, { dark: custom }, 'dark');
+  const expected = buildCodexThemeVariables({ accent: custom.accent, surface: custom.background, ink: custom.foreground, contrast: custom.contrast }, 'dark');
+  assert.deepEqual(Object.fromEntries(Object.keys(expected).map(key => [key, menu.style.getPropertyValue(key)])), expected);
+  window.BuretteNativeViewerMenus.styleMenu(menu, undefined, 'light');
+  assert.equal(menu.dataset.effectiveTheme, 'light');
+  assert.equal(document.querySelectorAll('#buret-atlas-menu-styles').length, 1);
+  assert.equal(document.activeElement, rows[1]);
+  assert.deepEqual(rows.map(row => [row.tabIndex, row.getAttribute('aria-checked')]), [[-1, 'false'], [0, 'true'], [-1, 'false'], [-1, 'false']]);
+  const shared = readFileSync('apps/desktop/src/components/ui/dropdown-menu.css', 'utf8').replace('@layer components {', '').replace(/}\s*$/, '');
+  assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.endsWith(shared));
+  assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.startsWith(
+    readFileSync('apps/desktop/src/styles/codex-tokens.css', 'utf8').replaceAll('.app-shell', '.buret-atlas-menu')));
+  menu.remove();
+}
 // Carry the actual scene command's danger state, not a guess based on its label.
 {
   const menu = document.createElement('div');

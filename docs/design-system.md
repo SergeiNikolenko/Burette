@@ -137,6 +137,10 @@ the shared AppKit popup in the desktop app and shared Atlas menus in the browser
 Viewport rail panels (camera, screenshot, animation and selection),
 Style/Appearance and Generate 3D remain in the viewer on both hosts: their
 interactive controls and representation previews are not native command lists.
+Style/Appearance uses the shared Menu stylesheet and theme engine through
+`preview-controls/viewer-atlas-menu.ts`, bundled in the existing viewer controls
+asset. Only positioning and DOM radio behavior are viewer-specific; there is no
+parallel surface/row theme. The shared check icon replaces the old text marker.
 `test-native-viewer-menus.mjs` covers this presentation boundary. The DOM controls
 remain their command model through `native-viewer-menus.js`; changes still use
 the existing scoped scene operations and undo handlers. Slider drags commit once

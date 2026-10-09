@@ -101,6 +101,14 @@ reduced-motion, invalid-state and alignment support. Compare
 `/dev/codex-theme.html` with Atlas's `original.html?story=<component>` in both
 themes after changing these adapters. This does not change the classic shell.
 
+### Viewer controls
+
+`vp run build:viewer-controls` bundles `apps/desktop/src/preview-controls/`
+into `PreviewExtension/Web/native-viewer-menus.js` and its plugin mirror.
+Rebuild after editing the adapter, standalone Menu behavior, shared Menu CSS or
+theme engine/tokens. The generated bundle retains the existing runtime filename
+and message contracts; do not edit it by hand.
+
 ## Release
 
 Release work uses:
