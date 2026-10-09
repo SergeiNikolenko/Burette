@@ -53,7 +53,7 @@ function DropdownMenuContent({
         collisionPadding={6}
         // Original Atlas Menu.Content: content-sized surface, 1px margin,
         // 1px trigger offset and 6px collision padding. Callers can set a width.
-        className={cn("no-drag z-50 m-px flex flex-col select-none max-h-[min(var(--radix-dropdown-menu-content-available-height,100dvh),calc(100dvh-16px))] max-w-[min(var(--radix-dropdown-menu-content-available-width,100vw),calc(100vw-16px))] origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-(--radius-2xl) bg-(--color-surface-elevated-secondary)/90 p-[var(--app-menu-gutter,var(--menu-gutter))] text-(--color-text) backdrop-blur-sm shadow-(--shadow-dropdown-overlay) ring-(length:--dropdown-overlay-ring-width) ring-(--color-border-overlay)", className )}
+        className={cn("atlas-menu-content", className)}
         {...props}
       />
     </DropdownMenuPrimitive.Portal>
@@ -83,7 +83,7 @@ function DropdownMenuItem({
       data-inset={inset}
       data-variant={variant}
       className={cn(
-        "group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-(--radius-xl) px-2 py-[5px] text-(length:--menu-font-size) leading-(--menu-line-height) outline-hidden select-none focus:bg-(--color-background-primary-ghost-hover) data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
+        "group/dropdown-menu-item atlas-menu-item",
         className
       )}
       {...props}
@@ -185,7 +185,7 @@ function DropdownMenuLabel({
       data-slot="dropdown-menu-label"
       data-inset={inset}
       className={cn(
-        "px-2 py-1 text-(length:--menu-font-size) leading-(--menu-line-height) text-(--color-text-tertiary) data-inset:pl-7",
+        "atlas-menu-label",
         className
       )}
       {...props}
@@ -200,7 +200,7 @@ function DropdownMenuSeparator({
   return (
     <DropdownMenuPrimitive.Separator
       data-slot="dropdown-menu-separator"
-      className={cn("mx-2 my-1 h-px bg-(--color-border)", className)}
+      className={cn("atlas-menu-separator", className)}
       {...props}
     />
   )

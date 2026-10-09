@@ -6,12 +6,13 @@ import button from "../components/ui/button.atlas.css" with { type: "text" };
 import buttonBehavior from "../components/ui/button.css" with { type: "text" };
 import tooltip from "../components/ui/tooltip.atlas.css" with { type: "text" };
 import tooltipBehavior from "../components/ui/tooltip.css" with { type: "text" };
+import menu from "../components/ui/dropdown-menu.css" with { type: "text" };
 import { buildCodexThemeVariables, CODEX_DEFAULT_THEME } from "../lib/codex-theme";
 
 // Grid runs in a standalone iframe without the shell stylesheet. Embed the same
 // generated Atlas source, adapting only its theme scope to the viewer contract.
 // No extra asset URL is needed in Quick Look, srcdoc or packaged plugin previews.
-const source = (String(tokens) + selectMenu + selectBehavior + segmentedControl + button + buttonBehavior + tooltip + tooltipBehavior)
+const source = (String(tokens) + selectMenu + selectBehavior + segmentedControl + button + buttonBehavior + tooltip + tooltipBehavior + menu)
   .replaceAll(".app-shell", ":root")
   .replaceAll("data-effective-theme", "data-buret-theme");
 

@@ -157,3 +157,9 @@ have a documented feature-specific reason not to; semantic tokens own their
 visual states; duplicate live CSS is removed; protected runtime contracts still
 pass; and the browser surface is verified in both themes and representative
 interaction states.
+
+The requested Atlas delivery additionally requires a flavored macOS development
+build with the migrated screens verified in that build. A successful browser
+preview or frontend compilation alone is not that deliverable. Do not create a
+pull request for this migration; retain the approved classic sidebar/background
+and Tauri host while adopting Atlas modules and controls.

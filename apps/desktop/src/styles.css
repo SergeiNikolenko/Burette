@@ -6,6 +6,7 @@
 @import "./components/ui/button.css";
 @import "./components/ui/tooltip.atlas.css";
 @import "./components/ui/tooltip.css";
+@import "./components/ui/dropdown-menu.css";
 
 @custom-variant dark (&:is(.app-shell[data-effective-theme="dark"] *));
 

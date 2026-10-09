@@ -124,7 +124,8 @@ button('sort').options[1].disabled = false;
 // Picking from a select nested in the Actions menu must not dismiss it.
 mount({ clusterEnabled: true, conformerVariant: 'ETKDGv3', mmffVariant: 'MMFF94', clusterCutoff: 0.6,
   onConformerVariantChange: value => calls.push(['conformer', value]) });
-document.querySelector('.ab-actions-menu .ab-btn').click();
+const actionsTrigger = document.querySelector('.ab-actions-menu .ab-btn');
+actionsTrigger.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
 await new Promise(resolve => setTimeout(resolve, 0));
 const conformer = document.querySelector('select[aria-label="Conformer generation method"]');
 conformer.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
@@ -139,12 +140,52 @@ await new Promise(resolve => setTimeout(resolve, 0));
 assert.deepEqual(calls.at(-1), ['conformer', target.textContent]);
 assert.ok(document.querySelector('.ab-menu'), 'the Actions menu stays open while a nested choice is made');
 assert.equal(document.querySelector('[data-buret-grid-select-menu]'), null);
+document.querySelector('.ab-menu').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+await new Promise(resolve => setTimeout(resolve, 20));
+assert.equal(document.querySelector('.ab-menu'), null);
+assert.equal(document.activeElement, actionsTrigger, 'Escape restores the Actions trigger');
+
+mount({ selectedCount: 2, exportEnabled: true, saveAsEnabled: true,
+  onCopySelected: () => {
+    assert.equal(document.querySelector('.ab-menu'), null, 'close the menu before dispatching a command');
+    calls.push('copy');
+  } });
+actionsTrigger.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+await new Promise(resolve => setTimeout(resolve, 20));
+assert.equal(document.activeElement?.id, 'save-grid-as', 'keyboard opening skips disabled Save and Undo');
+assert.equal(host.contains(document.querySelector('.ab-menu')), false, 'Actions must escape toolbar clipping');
+document.activeElement.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true }));
+await new Promise(resolve => setTimeout(resolve, 20));
+assert.equal(document.activeElement?.textContent.trim(), 'Copy selected');
+document.activeElement.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+await new Promise(resolve => setTimeout(resolve, 20));
+assert.equal(calls.at(-1), 'copy');
+assert.equal(document.activeElement, actionsTrigger);
 
 for (const nativeConfig of [{ tauriViewer: true }, { quickLookViewer: true }, { host: 'app' }]) {
   window.BuretteConfig = nativeConfig;
   mount({});
   assert.equal(button('sort').closest('.buret-grid-select-anchor'), null, 'native surfaces retain their existing select route');
 }
+delete window.BuretteConfig;
+
+// The shared Radix items still expose the same native command model, including
+// disabled flags and method pickers. No native popup is opened by this test.
+window.BuretteConfig = { tauriViewer: true };
+mount({ selectedCount: 2, clusterEnabled: true, selectedInput3d: true,
+  conformerVariant: 'ETKDGv3', mmffVariant: 'MMFF94', clusterCutoff: 0.6,
+  onCopySelected: () => calls.push('native-copy') });
+actionsTrigger.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+await new Promise(resolve => setTimeout(resolve, 20));
+new Function('window', 'document', 'Event', 'XMLSerializer', 'crypto', readFileSync('PreviewExtension/Web/native-viewer-menus.js', 'utf8'))(window, document, window.Event, window.XMLSerializer, crypto);
+const nativeMenu = window.BuretteNativeViewerMenus.create(document.querySelector('.ab-menu'), { close() {} });
+assert.deepEqual(nativeMenu.items.filter(item => item.kind === 'select').map(({ label, value }) => [label, value]),
+  [['Conformer generation method', 'ETKDGv3'], ['MMFF optimization variant', 'MMFF94'], ['Tanimoto similarity cutoff', '0.60']]);
+const nativeCopy = nativeMenu.items.find(item => item.text === 'Copy selected');
+assert.equal(nativeCopy.disabled, false);
+nativeMenu.handlers.get(nativeCopy.id)();
+nativeMenu.close();
+assert.equal(calls.at(-1), 'native-copy');
 delete window.BuretteConfig;
 
 const source = readFileSync('PreviewExtension/Web/grid-viewer.js', 'utf8');

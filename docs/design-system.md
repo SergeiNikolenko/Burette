@@ -303,6 +303,12 @@ outside the toolbar with its exposed width as the collision boundary. They
 open below the top toolbar after 200ms, remain available on disabled actions,
 and dismiss with Escape without activating their button. Standalone previews
 embed the same tooltip CSS as the shell; do not add a grid-only tooltip skin.
+Grid Actions uses shared `DropdownMenu` content/items/labels/separators and
+the same `dropdown-menu.css` as the shell. Radix owns placement, focus and
+keyboard navigation, with the overlaid dock excluded from the available
+width. Menu items remain real buttons with their original IDs for viewer
+updates and the native menu adapter; inline method choices retain their
+native selects. Commands close the menu before dispatching their action.
 Tooltips have no arrow unless `showArrow` is set. Style these controls through
 their variants and sizes; app styles should only place them, not repaint them.
 

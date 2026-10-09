@@ -7,6 +7,7 @@ import { gridAtlasStyles } from "./grid-atlas-styles";
 import { SegmentedControl as AtlasSegmentedControl, SegmentedControlItem } from "../components/ui/segmented-control";
 import { Button } from "../components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../components/ui/dropdown-menu";
 
 type SortOption = {
   value: string;
@@ -280,14 +281,20 @@ function HydrogenToggle(props: GridControlProps) {
   );
 }
 
+// Keep actual buttons: the native adapter and grid-viewer dispatch and update
+// them by id. Radix adds the shared item geometry and roving keyboard focus.
+function ActionItem(props: React.ComponentProps<"button">) {
+  return <DropdownMenuItem asChild disabled={props.disabled}><button {...props} /></DropdownMenuItem>;
+}
+
 function ComputeSection(props: GridControlProps & { onRun: (action: () => void) => void }) {
   const noSelection = props.selectedCount === 0;
   const needs3d = !noSelection && !props.selectedInput3d;
   return (
     <>
-      <div className="ab-group">Compute</div>
+      <DropdownMenuLabel className="ab-group">Compute</DropdownMenuLabel>
       <div className="ab-row">
-        <button
+        <ActionItem
           id="generate-3d-selected"
           className="ab-item"
           type="button"
@@ -300,7 +307,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
           <span className="ab-item-title" data-buret-grid-generate-3d-label>
             {props.generating3d ? "Generating…" : "Generate 3D"}
           </span>
-        </button>
+        </ActionItem>
         <MiniSelect
           ariaLabel="Conformer generation method"
           value={props.conformerVariant}
@@ -310,7 +317,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
         />
       </div>
       <div className="ab-row">
-        <button
+        <ActionItem
           id="optimize-geometry-selected"
           className="ab-item"
           type="button"
@@ -321,7 +328,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
         >
           {ICONS.optimize}
           <span className="ab-item-title">{props.generating3d ? "Working…" : "Optimize geometry"}</span>
-        </button>
+        </ActionItem>
         <MiniSelect
           ariaLabel="MMFF optimization variant"
           value={props.mmffVariant}
@@ -332,7 +339,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
       </div>
       {props.semiempiricalEnabled ? (
         <div className="ab-row">
-          <button
+          <ActionItem
             id="calculate-semiempirical-selected"
             className="ab-item"
             type="button"
@@ -346,7 +353,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
             <span className="ab-item-title">
               {props.evaluatingSemiempirical ? "Calculating…" : "Energy & charges"}
             </span>
-          </button>
+          </ActionItem>
           <MiniSelect
             ariaLabel="Semi-empirical method"
             value={props.semiempiricalMethod}
@@ -358,7 +365,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
         </div>
       ) : null}
       <div className="ab-row">
-        <button
+        <ActionItem
           id="align-selected-poses"
           className="ab-item"
           type="button"
@@ -370,7 +377,7 @@ function ComputeSection(props: GridControlProps & { onRun: (action: () => void) 
         >
           {ICONS.align}
           <span className="ab-item-title">{props.aligningPoses ? "Aligning…" : "Align & compare"}</span>
-        </button>
+        </ActionItem>
       </div>
     </>
   );
@@ -381,10 +388,10 @@ function CollectionSection(props: GridControlProps & { onRun: (action: () => voi
   const clusterBusy = props.clustering || props.findingSimilar;
   return (
     <>
-      <div className="ab-separator" />
-      <div className="ab-group">Collection</div>
+      <DropdownMenuSeparator className="ab-separator" />
+      <DropdownMenuLabel className="ab-group">Collection</DropdownMenuLabel>
       <div className="ab-row">
-        <button
+        <ActionItem
           id="cluster-molecules"
           className="ab-item"
           type="button"
@@ -402,7 +409,7 @@ function CollectionSection(props: GridControlProps & { onRun: (action: () => voi
                 ? `Cluster selected (${props.selectedCount.toLocaleString()})`
                 : "Cluster all"}
           </span>
-        </button>
+        </ActionItem>
         <GridSelectMenu>
           <select
             id="cluster-cutoff"
@@ -419,7 +426,7 @@ function CollectionSection(props: GridControlProps & { onRun: (action: () => voi
         </GridSelectMenu>
       </div>
       <div className="ab-row">
-        <button
+        <ActionItem
           id="find-similar-molecules"
           className="ab-item"
           type="button"
@@ -433,10 +440,10 @@ function CollectionSection(props: GridControlProps & { onRun: (action: () => voi
           <span className="ab-item-title" data-buret-grid-similarity-label>
             {props.findingSimilar ? "Searching…" : "Find similar"}
           </span>
-        </button>
+        </ActionItem>
       </div>
       <div className="ab-row">
-        <button
+        <ActionItem
           id="export-cluster-representatives"
           className="ab-item"
           type="button"
@@ -454,7 +461,7 @@ function CollectionSection(props: GridControlProps & { onRun: (action: () => voi
           <span className="ab-item-title" data-buret-grid-representative-export-label>
             {props.exportingClusterRepresentatives ? "Exporting…" : "Export diverse"}
           </span>
-        </button>
+        </ActionItem>
       </div>
     </>
   );
@@ -464,10 +471,10 @@ function SelectionSection(props: GridControlProps & { onRun: (action: () => void
   const noSelection = props.selectedCount === 0;
   return (
     <>
-      <div className="ab-separator" />
-      <div className="ab-group">Selection</div>
+      <DropdownMenuSeparator className="ab-separator" />
+      <DropdownMenuLabel className="ab-group">Selection</DropdownMenuLabel>
       <div className="ab-row">
-        <button
+        <ActionItem
           className="ab-item"
           type="button"
           role="menuitem"
@@ -477,7 +484,7 @@ function SelectionSection(props: GridControlProps & { onRun: (action: () => void
         >
           {ICONS.copy}
           <span className="ab-item-title">Copy selected</span>
-        </button>
+        </ActionItem>
       </div>
     </>
   );
@@ -487,10 +494,9 @@ function FileSection(props: GridControlProps & { onRun: (action: () => void) => 
   if (!props.exportEnabled) return null;
   return (
     <>
-      <div className="ab-separator" />
-      <div className="ab-group">File</div>
+      <DropdownMenuLabel className="ab-group">File</DropdownMenuLabel>
         <div className="ab-row">
-          <button
+          <ActionItem
             id="save-grid"
             className="ab-item"
             type="button"
@@ -500,10 +506,10 @@ function FileSection(props: GridControlProps & { onRun: (action: () => void) => 
             onClick={() => props.onRun(props.onSaveGrid)}
           >
             <span className="ab-item-title">Save</span>
-          </button>
+          </ActionItem>
         </div>
         <div className="ab-row">
-          <button
+          <ActionItem
             id="undo-grid-edit"
             className="ab-item"
             type="button"
@@ -513,10 +519,10 @@ function FileSection(props: GridControlProps & { onRun: (action: () => void) => 
             onClick={() => props.onRun(props.onUndoGridEdit)}
           >
             <span className="ab-item-title">Undo</span>
-          </button>
+          </ActionItem>
         </div>
         <div className="ab-row">
-          <button
+          <ActionItem
             id="save-grid-as"
             className="ab-item"
             type="button"
@@ -526,11 +532,11 @@ function FileSection(props: GridControlProps & { onRun: (action: () => void) => 
             onClick={() => props.onRun(props.onSaveGridAs)}
           >
             <span className="ab-item-title">Save as…</span>
-          </button>
+          </ActionItem>
         </div>
-      <div className="ab-group">Export</div>
+      <DropdownMenuLabel className="ab-group">Export</DropdownMenuLabel>
       <div className="ab-row">
-        <button
+        <ActionItem
           id="export-smi"
           className="ab-item"
           type="button"
@@ -541,10 +547,10 @@ function FileSection(props: GridControlProps & { onRun: (action: () => void) => 
         >
           <span className="ab-item-title">Export {props.exportScopeLabel}</span>
           <span className="ab-item-meta">.smi</span>
-        </button>
+        </ActionItem>
       </div>
       <div className="ab-row">
-        <button
+        <ActionItem
           id="export-csv"
           className="ab-item"
           type="button"
@@ -555,127 +561,63 @@ function FileSection(props: GridControlProps & { onRun: (action: () => void) => 
         >
           <span className="ab-item-title">Export {props.exportScopeLabel}</span>
           <span className="ab-item-meta">.csv</span>
-        </button>
+        </ActionItem>
       </div>
     </>
   );
 }
 
-// Shared open/close behaviour for the toolbar's dropdowns. The menu is switched
-// to fixed positioning and clamped to the viewport so it stays on screen when
-// the grid panel is squeezed narrow, instead of overflowing off the left edge.
-function useMenu() {
-  const [open, setOpen] = React.useState(false);
-  const wrapRef = React.useRef<HTMLDivElement>(null);
-  const menuRef = React.useRef<HTMLDivElement>(null);
-  const [menuStyle, setMenuStyle] = React.useState<React.CSSProperties>();
-
-  const reposition = React.useCallback(() => {
-    const trigger = wrapRef.current?.querySelector<HTMLElement>('[aria-haspopup="menu"]');
-    const menu = menuRef.current;
-    if (!trigger || !menu) return;
-    const t = trigger.getBoundingClientRect();
-    const m = menu.getBoundingClientRect();
-    const margin = 8;
-    // The visible strip stops where the dock begins floating over the grid; the
-    // runtime writes that width onto the toolbar host as the dock moves.
-    const host = document.getElementById("grid-controls");
-    const cover = Number(host?.dataset.viewportCover) || 0;
-    const vw = Math.max(0, document.documentElement.clientWidth - cover);
-    const vh = document.documentElement.clientHeight;
-    // When the strip is narrower than the menu, cap it (its rows wrap) so it fits
-    // rather than spilling back under the dock.
-    const maxWidth = Math.max(160, vw - margin * 2);
-    const width = Math.min(m.width, maxWidth);
-    // Right-align to the trigger, then pull back inside the visible strip.
-    const left = Math.max(margin, Math.min(t.right - width, vw - width - margin));
-    // Prefer opening below; flip above only when there is no room down there.
-    const top = t.bottom + margin + m.height <= vh - margin
-      ? t.bottom + margin
-      : Math.max(margin, t.top - margin - m.height);
-    setMenuStyle(cover > 0
-      ? { position: "fixed", top, left, right: "auto", maxWidth: `${maxWidth}px`, minWidth: 0 }
-      : { position: "fixed", top, left, right: "auto" });
-  }, []);
-
-  React.useLayoutEffect(() => {
-    if (!open) {
-      setMenuStyle(undefined);
-      return;
-    }
-    reposition();
-  }, [open, reposition]);
-
-  React.useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Element;
-      if (target.closest?.("[data-buret-grid-select-menu]")) return;
-      if (wrapRef.current && !wrapRef.current.contains(target)) setOpen(false);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    const onReflow = () => reposition();
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("resize", onReflow);
-    window.addEventListener("scroll", onReflow, true);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("resize", onReflow);
-      window.removeEventListener("scroll", onReflow, true);
-    };
-  }, [open, reposition]);
-
-  const onRun = React.useCallback((action: () => void) => {
-    action();
-    setOpen(false);
-  }, []);
-
-  return { open, setOpen, wrapRef, menuRef, menuStyle, onRun };
-}
-
 function ActionsMenu(props: GridControlProps) {
-  const { open, setOpen, wrapRef, menuRef, menuStyle, onRun } = useMenu();
-  const selectedCount = props.selectedCount;
+  const [open, setOpen] = React.useState(false);
+  const [menu, setMenu] = React.useState<HTMLDivElement | null>(null);
+  const [cover, setCover] = React.useState(0);
+  const trigger = React.useRef<HTMLButtonElement>(null);
+  React.useLayoutEffect(() => {
+    if (!open) return;
+    const host = document.getElementById("grid-controls");
+    if (!host) return;
+    const update = () => setCover(Number(host.dataset.viewportCover) || 0);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [open]);
   React.useEffect(() => {
-    const menu = menuRef.current;
     const config = (window as Window & { BuretteConfig?: { appViewer?: boolean } }).BuretteConfig;
     if (!open || !menu || config?.appViewer !== true || window.parent === window) return;
-    const rect = wrapRef.current?.getBoundingClientRect();
+    const rect = trigger.current?.getBoundingClientRect();
     window.BuretteNativeViewerMenus?.show(menu, {
       x: rect?.left ?? 0, y: rect?.bottom ?? 0,
       post: body => { window.parent.postMessage({ source: 'burette-grid', body }, '*'); return true; },
       close: () => setOpen(false),
     });
-  }, [open, menuRef, wrapRef, setOpen]);
-
+  }, [open, menu]);
+  const onRun = (action: () => void) => {
+    // Close before handing off to a dialog, editor or changing the document.
+    flushSync(() => setOpen(false));
+    action();
+  };
   return (
-    <div className="ab-menu-wrap ab-actions-menu" ref={wrapRef}>
-      <Button variant="ghost" size="sm"
-        className="ab-btn"
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        Actions
-      </Button>
-      {open ? (
-        <div className="ab-menu" role="menu" ref={menuRef} style={menuStyle}>
-          <div className={selectedCount > 0 ? "ab-selhead has-selection" : "ab-selhead"}>
-            {selectedCount > 0
-              ? `${selectedCount.toLocaleString()} selected`
-              : "No molecules selected"}
-          </div>
+    <div className="ab-menu-wrap ab-actions-menu">
+      <DropdownMenu open={open} onOpenChange={setOpen} modal={false}>
+        <DropdownMenuTrigger asChild>
+          <Button ref={trigger} variant="ghost" size="sm" className="ab-btn" type="button">Actions</Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent ref={setMenu} className="ab-menu" align="end"
+          collisionPadding={{ top: 6, bottom: 6, left: 6, right: cover + 6 }}
+          onInteractOutside={event => {
+            // The inline select owns a separate portal and focus scope.
+            if ((event.target as Element).closest?.("[data-buret-grid-select-menu]")) event.preventDefault();
+          }}>
+          {props.selectedCount > 0 ? <DropdownMenuLabel className="ab-selhead">
+            {props.selectedCount.toLocaleString()} selected
+          </DropdownMenuLabel> : null}
           <FileSection {...props} onRun={onRun} />
           {props.clusterEnabled ? <ComputeSection {...props} onRun={onRun} /> : null}
           <CollectionSection {...props} onRun={onRun} />
           <SelectionSection {...props} onRun={onRun} />
-        </div>
-      ) : null}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

@@ -202,7 +202,8 @@ for (const [, key] of readFileSync('apps/desktop/src/preview-grid/grid-ui.tsx', 
 }
 gridWindow.BuretteGridUI.mountGridControls(gridRoot, props);
 const trigger = [...gridRoot.querySelectorAll('button')].find(button => button.textContent === 'Actions');
-trigger.click(); await window.happyDOM.whenAsyncComplete();
+trigger.dispatchEvent(new gridWindow.PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, pointerType: 'mouse' }));
+await window.happyDOM.whenAsyncComplete();
 assert.ok(gridSession, 'Grid Actions requested native presentation');
 const gridItems = molstarContextMenuItems(gridSession.items, (id, value) => gridSession.handlers.get(id)?.(value));
 assert.ok(gridItems.some(item => item.kind === 'item' && item.text.endsWith('.smi')));

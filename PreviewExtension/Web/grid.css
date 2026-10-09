@@ -128,13 +128,13 @@ body.burette-transparent-background {
   background: transparent;
 }
 
-button:where(:not(.atlas-button)),
+button:where(:not(.atlas-button, .atlas-menu-item)),
 input,
 select {
   font: inherit;
 }
 
-button:where(:not(.atlas-button)),
+button:where(:not(.atlas-button, .atlas-menu-item)),
 .buret-grid-toolbar input[type="search"],
 .buret-grid-toolbar select {
   box-sizing: border-box;
@@ -148,17 +148,17 @@ button:where(:not(.atlas-button)),
   transition: background 140ms ease-out, box-shadow 140ms ease-out, color 140ms ease-out, transform 140ms ease-out;
 }
 
-button:where(:not(.atlas-button)) {
+button:where(:not(.atlas-button, .atlas-menu-item)) {
   padding: 0 12px;
 }
 
 /* shadcn presses buttons down one pixel; menu triggers stay put like the
    host's `active:not-aria-[haspopup]` variant. */
-button:where(:not(.atlas-button)):not(:disabled):not([aria-haspopup]):active {
+button:where(:not(.atlas-button, .atlas-menu-item)):not(:disabled):not([aria-haspopup]):active {
   transform: translateY(1px);
 }
 
-button:where(:not(.atlas-button)):not(:disabled):hover,
+button:where(:not(.atlas-button, .atlas-menu-item)):not(:disabled):hover,
 .buret-grid-toolbar input[type="search"]:hover,
 .buret-grid-toolbar select:hover {
   background-color: var(--buret-control-hover);
@@ -167,7 +167,7 @@ button:where(:not(.atlas-button)):not(:disabled):hover,
 /* The host's focus treatment: a 1px ring-coloured border with a 3px halo at
    half strength (focus-visible:border-ring + ring-3 ring-ring/50). The halo is
    an outline so it never stacks against control shadows. */
-button:where(:not(.atlas-button)):focus-visible,
+button:where(:not(.atlas-button, .atlas-menu-item)):focus-visible,
 .buret-grid-toolbar input[type="search"]:focus,
 .buret-grid-toolbar select:focus {
   box-shadow: 0 0 0 1px var(--buret-ring);
@@ -175,7 +175,7 @@ button:where(:not(.atlas-button)):focus-visible,
   outline-offset: 1px;
 }
 
-button:where(:not(.atlas-button)):disabled {
+button:where(:not(.atlas-button, .atlas-menu-item)):disabled {
   color: var(--buret-faint);
   background: var(--buret-control-surface);
   opacity: 1;
@@ -414,126 +414,15 @@ button:where(:not(.atlas-button)):disabled {
   font-variant-numeric: tabular-nums;
 }
 
-/* Mirrors the host DropdownMenuContent: opaque popover surface, 10px radius,
-   4px inner padding, and a 1px foreground ring instead of a border. */
-#grid-controls .ab-menu {
-  position: absolute;
-  z-index: 60;
-  top: calc(100% + 8px);
-  right: 0;
-  box-sizing: border-box;
-  min-width: 304px;
-  max-height: min(52vh, 360px);
-  overflow: auto;
-  padding: 4px;
-  border: 0;
-  border-radius: 10px;
-  background: var(--buret-menu-surface);
-  box-shadow: 0 0 0 1px var(--buret-menu-ring), 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-}
-
-/* Matches the host's .radix-menu-group-label. */
-#grid-controls .ab-group {
-  padding: 6px 8px 3px;
-  color: var(--buret-faint);
-  font-size: 10px;
-  font-weight: 400;
-  letter-spacing: 0;
-}
-
-#grid-controls .ab-group-accent {
-  color: var(--buret-accent);
-}
-
-#grid-controls .ab-separator {
-  height: 1px;
-  margin: 4px -4px;
-  background: var(--buret-border);
-}
-
-#grid-controls .ab-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-right: 4px;
-  /* When a dock overlay caps the menu width, the trailing mini-select drops
-     below its button instead of forcing the menu back under the dock. */
-  flex-wrap: wrap;
-}
-
-/* Mirrors the host DropdownMenuItem: 8px radius, focus/hover carried by the
-   accent surface, disabled rows at half opacity. */
-#grid-controls .ab-item {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  min-height: 28px;
-  padding: 4px 6px;
-  border-radius: 8px;
-  color: var(--buret-text);
-  background: transparent;
-  text-align: left;
-}
-
-#grid-controls .ab-item:not(:disabled):hover {
-  background: var(--buret-control-active);
-}
-
-#grid-controls .ab-item:disabled {
-  color: var(--buret-text);
-  background: transparent;
-  opacity: 0.5;
-}
-
-#grid-controls .ab-ico {
+#grid-controls .ab-ico, .ab-menu .ab-ico {
   flex: 0 0 16px;
   width: 16px;
   height: 16px;
   color: var(--buret-muted);
 }
 
-#grid-controls .ab-item:not(:disabled):hover .ab-ico {
-  color: var(--buret-text);
-}
-
-#grid-controls .ab-item:disabled .ab-ico {
-  color: var(--buret-muted);
-}
-
-#grid-controls .ab-item-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 13px;
-  font-weight: 400;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Trailing hint on a menu item — the file extension an export writes. */
-#grid-controls .ab-item-meta {
-  flex: 0 0 auto;
-  color: var(--buret-muted);
-  font-size: 11px;
-}
-
-/* What the selection-dependent entries below it act on. */
-#grid-controls .ab-selhead {
-  padding: 8px 8px 6px;
-  color: var(--buret-muted);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-#grid-controls .ab-selhead.has-selection {
-  color: var(--buret-accent);
-  font-weight: 600;
-}
-
 /* Scoped past `.buret-grid-toolbar select`, which forces width: 100% and its own padding. */
-#grid-controls .ab-mini {
+#grid-controls .ab-mini, .ab-menu .ab-mini {
   flex: 0 0 auto;
   box-sizing: border-box;
   width: auto;
@@ -553,7 +442,7 @@ button:where(:not(.atlas-button)):disabled {
   appearance: none;
 }
 
-#grid-controls .ab-mini:hover {
+#grid-controls .ab-mini:hover, .ab-menu .ab-mini:hover {
   background-color: var(--buret-input-hover);
   border-color: var(--buret-input-border);
 }
@@ -2696,17 +2585,14 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
   min-height: 0;
 }
 
-/* Menu format. The Actions menu and the context menus take the surface and row
-   recipe the shell menus use. It stays last so it wins over the rules above. */
-#grid-controls .ab-menu,
+/* Molecular context menus; Actions uses the shared Menu component. */
+
 .buret-grid-molecule-context-menu {
   padding: 4px;
   border-radius: 20px;
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--buret-text) 8%, transparent), 0 8px 16px -4px rgb(0 0 0 / 0.12);
 }
-#grid-controls .ab-menu { min-width: 260px; }
-#grid-controls .ab-row { gap: 4px; padding-right: 0; }
-#grid-controls .ab-item,
+
 .buret-grid-molecule-context-menu button {
   min-height: 28px;
   padding: 5px 8px;
@@ -2715,29 +2601,12 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
   font-size: 13px;
   line-height: 18.5px;
 }
-#grid-controls .ab-item-title { line-height: 18.5px; }
-#grid-controls .ab-item .ab-ico,
-#grid-controls .ab-item:not(:disabled):hover .ab-ico,
-#grid-controls .ab-item:disabled .ab-ico { color: currentColor; }
-#grid-controls .ab-item:not(:disabled):hover,
-#grid-controls .ab-mini:not(:disabled):hover,
+
 .buret-grid-molecule-context-menu button:hover,
 .buret-grid-molecule-context-menu button:focus {
   background-color: color-mix(in srgb, var(--buret-text) 5.5%, transparent);
 }
-#grid-controls .ab-group,
-#grid-controls .ab-selhead,
-#grid-controls .ab-selhead.has-selection {
-  padding: 4px 8px;
-  color: color-mix(in srgb, var(--buret-text) 50%, transparent);
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 18.5px;
-  letter-spacing: 0;
-  text-transform: none;
-}
-#grid-controls .ab-selhead.has-selection { color: var(--buret-text); }
-#grid-controls .ab-separator,
+
 .buret-grid-molecule-context-menu hr {
   width: auto;
   height: 1px;
@@ -2745,21 +2614,7 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
   border: 0;
   background: color-mix(in srgb, var(--buret-text) 8%, transparent);
 }
-#grid-controls .ab-item-meta {
-  color: color-mix(in srgb, var(--buret-text) 50%, transparent);
-  font-size: 12px;
-  line-height: 16px;
-}
-/* The inline option pickers read as a trailing value of their row. */
-#grid-controls .ab-menu .ab-mini {
-  height: 28px;
-  padding: 0 22px 0 8px;
-  border: 0;
-  border-radius: 15px;
-  color: color-mix(in srgb, var(--buret-text) 50%, transparent);
-  background-color: transparent;
-  font-size: 12px;
-}
+
 .buret-grid-molecule-context-menu-title { padding: 4px 8px 0; font-size: 13px; line-height: 18.5px; }
 .buret-grid-molecule-context-menu-subtitle { padding: 0 8px 4px; font-size: 12px; line-height: 14px; }
 
@@ -2787,4 +2642,15 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
 }
 .buret-grid-select-menu .atlas-select-option {
   outline: none;
+}
+/* Placement and composition only; shared Menu CSS owns visual states. */
+.ab-menu { width: 260px; font-weight: 430; }
+.ab-menu .ab-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.ab-menu .ab-item { flex: 1; min-width: 0; }
+.ab-menu .ab-item-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ab-menu .ab-item-meta { margin-left: auto; color: var(--color-text-tertiary); font-size: var(--text-xs); line-height: 16px; }
+.ab-menu .ab-ico { color: currentColor; }
+.ab-menu .ab-mini { height: 28px; border: 0; border-radius: var(--radius-xl); color: var(--color-text-tertiary); background-color: transparent; }
+@layer base {
+  button.atlas-menu-item { border: 0; background: transparent; color: inherit; font-family: inherit; font-weight: inherit; text-align: left; }
 }
