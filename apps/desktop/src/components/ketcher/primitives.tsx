@@ -91,7 +91,7 @@ export function KetcherDialog({ children, title, headerContent, footerContent, c
         if (target instanceof HTMLElement && target.isConnected) target.focus();
       }}
       onKeyDown={(event) => {
-        if (event.key === "Enter" && !event.nativeEvent.isComposing && event.target instanceof HTMLElement && event.target.tagName !== "TEXTAREA" && !event.defaultPrevented && !event.target.closest('[role="combobox"], [role="listbox"]')) {
+        if (event.key === "Enter" && !event.nativeEvent.isComposing && event.target instanceof HTMLElement && !event.defaultPrevented && !event.target.closest('textarea, button, summary, a, [role="combobox"], [role="listbox"], [role="button"], [role="switch"], [role="checkbox"]')) {
           event.preventDefault(); event.stopPropagation(); confirm();
         }
       }}>

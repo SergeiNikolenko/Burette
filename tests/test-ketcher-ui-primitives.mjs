@@ -113,6 +113,18 @@ await act(async () => {
   dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 });
 assert.deepEqual(accepted, { charge: 2 }, "Enter on the focused dialog confirms as upstream does");
+accepted = null;
+await act(async () => root.render(React.createElement(KetcherDialog, {
+  title: "Settings", buttons: ["Cancel", "OK"], valid: () => true,
+  params: { onOk() { accepted = true; }, onCancel() {} },
+}, React.createElement(KetcherSettingsAccordion, {
+  tabs: [{ key: "general", label: "General", content: React.createElement("input", { defaultValue: "draft" }) }],
+  changedGroups: new Set(),
+}))));
+for (const control of document.querySelectorAll('[role="dialog"] summary, [role="dialog"] button')) {
+  await act(async () => control.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+  assert.equal(accepted, null, "Enter on interactive controls must not confirm the dialog via its keyboard shortcut");
+}
 const settingsTabs = [{ key: "general", label: "General", content: React.createElement("input", { defaultValue: "draft" }) },
   { key: "other", label: "Other", content: React.createElement("input", { defaultValue: "hidden value" }) }];
 const renderSettings = (changedGroups = new Set()) => act(async () => root.render(React.createElement(KetcherSettingsAccordion, {
