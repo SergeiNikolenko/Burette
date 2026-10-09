@@ -4625,7 +4625,7 @@ assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v\d+"/);
-assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v95"/);
+assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v96"/);
 assert.match(
   browserDevDocuments,
   /viewerProfile === "mesoscale"\) return !document\.runtimePath\.includes\(MESOSCALE_ASSET_VERSION\)/,
@@ -5271,29 +5271,21 @@ assert.match(previewViewer, /initViewportRailDrag\(rail, document\.getElementByI
 assert.match(previewViewer, /rail\.dataset\.horizontalPlacement === 'right'/);
 assert.match(previewViewer, /rail\.dataset\.verticalPlacement === 'above'/);
 assert.match(previewViewer, /root\.style\.setProperty\('--buret-viewport-panel-max-height', panelMaxHeight \+ 'px'\);\s*positionOpenViewportMenu\(\);/);
+// Shared rail controls and live states are covered by test-viewer-viewport-toolbar.test.tsx.
 // The rail carries its own animation button, the way Mol*'s viewport controls did:
 // a trackball that keeps turning plus the plugin's timed animations, each listed
 // once and each able to say why it is unavailable.
-assert.match(viewerShell, /data-buret-viewport-action="animate"/);
-assert.match(viewerShell, /buret-rail-button" type="button" data-buret-viewport-action="select-mode" aria-pressed="false" aria-label="Selection mode"/);
-assert.match(viewerShell, /data-buret-viewport-action="clear-selection" aria-label="Clear selection"/);
-assert.match(viewerShell, /buret-rail-button buret-clear-selection hidden/);
 assert.match(previewViewer, /openViewportMenu\(control, 'Animate', viewportAnimateMenu\)/);
 assert.match(previewViewer, /action === 'camera'[\s\S]*requestCameraReset\?\.\(\{ durationMs: 250 \}\)[\s\S]*openViewportMenu\(control, 'Camera', viewportCameraMenu\)/);
 assert.match(previewViewer, /action === 'select-mode'[\s\S]*const enabled = plugin\.selectionMode !== true;[\s\S]*plugin\.selectionMode = enabled[\s\S]*updateSelectionBar\(\)/);
 assert.doesNotMatch(previewViewer, /function viewportPickingLevelMenu\(menu\)/);
 assert.doesNotMatch(previewViewer, /action === 'picking-level'/);
 assert.match(previewViewer, /action === 'clear-selection'[\s\S]*clearMolstarPersistentMoleculePreview\(\)[\s\S]*Promise\.resolve\(clearMolstarSelection\(\)\)/);
-assert.match(previewViewer, /action === 'clear-selection'[\s\S]*control\.classList\.add\('hidden'\)/);
 assert.match(previewViewer, /action === 'clear-selection'[\s\S]*updateSelectionBar\(\)/);
 assert.match(previewViewer, /async function clearMolstarSelection\(\) \{[\s\S]*lociHighlights\?\.clearHighlights\?\.\(\)[\s\S]*canvas3d\?\.requestDraw\?\.\(\)/);
 assert.match(previewViewer, /const active = plugin\?\.selectionMode === true && !rail\.classList\.contains\('hidden'\);[\s\S]*const wasHidden = bar\.classList\.contains\('hidden'\);[\s\S]*bar\.classList\.toggle\('hidden', !active\);[\s\S]*const changed = wasHidden !== bar\.classList\.contains\('hidden'\);/);
 assert.doesNotMatch(previewViewer, /bar\.classList\.add\('hidden'\)/);
-assert.match(previewViewer, /data-buret-viewport-action="clear-selection"[\s\S]*classList\.toggle\('hidden', !hasSelection\)/);
-assert.match(previewRuntimeCss, /\.buret-rail-button \{[\s\S]*border: 1px solid transparent/);
-assert.match(previewRuntimeCss, /\.buret-viewport-rail\.hidden,\s*\.buret-rail-button\.hidden,\s*\.buret-selection-bar\.hidden \{\s*display: none;/);
-assert.match(previewRuntimeCss, /\.buret-rail-button\.buret-clear-selection \{[\s\S]*color: #ff6b5e;[\s\S]*border-color: rgba\(255, 107, 94, 0\.72\);/);
-assert.match(previewRuntimeCss, /\.buret-rail-button\.buret-clear-selection:hover \{[\s\S]*color: #fff;[\s\S]*background: rgba\(255, 107, 94, 0\.88\);/);
+assert.match(previewRuntimeCss, /\.buret-viewport-rail\.hidden,\s*\.buret-selection-bar\.hidden \{\s*display: none;/);
 assert.match(previewViewer, /function viewportAnimateMenu\(menu\) \{/);
 // Animate controls and their scene callbacks are exercised in test-viewer-animation-controls.test.tsx.
 // Molecule preview hide/restore lifecycle is exercised in test-molecule-preview-interactions.mjs.
@@ -5306,7 +5298,6 @@ assert.match(previewViewer, /\.filter\(entry => VIEWPORT_CONTEXT_ANIMATIONS\.has
 assert.match(previewViewer, /\.filter\(entry => entry\.applicability\.canApply\);/);
 assert.doesNotMatch(previewViewer, /\.filter\(entry => entry\.applicability\.canApply \|\| entry\.applicability\.reason\)/);
 // The rail's screenshot button carries Mol*'s own capture settings.
-assert.match(viewerShell, /data-buret-viewport-action="screenshot" aria-haspopup="menu" aria-expanded="false"/);
 assert.match(previewViewer, /action === 'screenshot'\) \{\s*openViewportMenu\(control, 'Screenshot', viewportScreenshotMenu\)/);
 assert.match(previewViewer, /function viewportScreenshotMenu\(menu\) \{/);
 for (const entry of ['screenshot-save', 'screenshot-copy', 'screenshot-resolution', 'screenshot-format',
@@ -5370,8 +5361,6 @@ assert.match(previewViewer, /wiggleAmplitude: 0, tumbleAmplitude: 0/);
 assert.match(previewViewer, /WiggleStructureRepresentation3DFromBundle/);
 assert.match(previewViewer, /B_iso_or_equiv\.value\(element\)/);
 assert.match(previewViewer, /coarseConformation\.spheres\.rmsf\[element\]/);
-assert.match(previewViewer, /data-motion', state/);
-assert.match(previewRuntimeCss, /\.buret-rail-button\[data-motion="wiggle"\]/);
 // Motion lives on the animate button now, so the camera menu must not offer it too.
 assert.doesNotMatch(
   previewViewer.slice(previewViewer.indexOf("function viewportCameraMenu"), previewViewer.indexOf("function viewportAnimateMenu")),

@@ -45,6 +45,11 @@ test('shared toolbar and rail show explanatory hints on pointer and keyboard foc
   assert.ok(hint.classList.contains('visible'));
   camera.dispatchEvent(new window.Event('focusout', { bubbles: true }));
   assert.equal(hint.classList.contains('visible'), false);
+  // React controls own a Radix tooltip: the legacy event bridge must not show
+  // a second bubble over their portalled description.
+  camera.dataset.slot = 'tooltip-trigger';
+  camera.dispatchEvent(new window.Event('focusin', { bubbles: true }));
+  assert.equal(hint.classList.contains('visible'), false);
   const tree = document.querySelector('.buret-corner-toggle');
   tree.dispatchEvent(new window.Event('pointerover', { bubbles: true }));
   assert.equal(tree.hasAttribute('title'), false, 'native tooltip must not overlap the shared hint');

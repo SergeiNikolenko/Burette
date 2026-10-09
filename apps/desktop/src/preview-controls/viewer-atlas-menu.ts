@@ -13,6 +13,8 @@ import selectBehavior from "../components/ui/select.css" with { type: "text" };
 import paletteStyles from "../components/ui/color-palette.css" with { type: "text" };
 import selectionBehavior from "./viewer-selection-controls.css" with { type: "text" };
 import selectionToolbar from "./viewer-selection-toolbar.css" with { type: "text" };
+import viewportToolbar from "./viewer-viewport-toolbar.css" with { type: "text" };
+import tooltipStyles from "../components/ui/tooltip.css" with { type: "text" };
 import { buttonPressScale } from "../components/ui/button-press-scale";
 import behavior from "./viewer-atlas-menu.css" with { type: "text" };
 import { buildCodexThemeVariables, CODEX_DEFAULT_THEME } from "../lib/codex-theme";
@@ -28,9 +30,9 @@ const source = String(tokens).replaceAll(".app-shell", ".buret-atlas-surface")
   + behavior + String(popoverStyles).replace("@layer components {", "").replace(/}\s*$/, "")
   + String(menuStyles).replace("@layer components {", "").replace(/}\s*$/, "")
   + segmentedStyles + paletteStyles
-  + [buttonStyles, buttonBehavior, loadingStyles, sliderStyles, commandStyles, selectStyles, selectMenuStyles, selectBehavior].map(css => String(css)
+  + [buttonStyles, buttonBehavior, loadingStyles, sliderStyles, commandStyles, selectStyles, selectMenuStyles, selectBehavior, tooltipStyles].map(css => String(css)
     .replace("@layer theme, base, components, utilities;", "")
-    .replace("@layer components {", "").replace(/}\s*$/, "")).join("") + selectionBehavior + selectionToolbar;
+    .replace("@layer components {", "").replace(/}\s*$/, "")).join("") + selectionBehavior + selectionToolbar + viewportToolbar;
 
 export function styleViewerButton(button: HTMLButtonElement, themeTokens: ThemeTokens | undefined, mode: "light" | "dark") {
   if (!button.classList.contains("atlas-button")) {

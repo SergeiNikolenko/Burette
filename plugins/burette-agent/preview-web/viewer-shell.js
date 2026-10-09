@@ -151,32 +151,7 @@
           <span class="buret-tooltip" role="tooltip">Scene tree (⌘T)</span>
         </button>
       </div>
-      <div id="buret-viewport-rail" class="buret-viewport-rail hidden" role="toolbar" aria-label="Viewport controls">
-        <button class="buret-rail-button" type="button" data-buret-viewport-action="camera" aria-haspopup="menu" aria-expanded="false" aria-label="Camera" title="Camera">
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18.5 12a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0"/><path d="M12 2.5V5M12 19v2.5M2.5 12H5M19 12h2.5"/></svg>
-          <span class="buret-tooltip" role="tooltip">Camera</span>
-        </button>
-        <button class="buret-rail-button" type="button" data-buret-viewport-action="screenshot" aria-haspopup="menu" aria-expanded="false" aria-label="Save a screenshot" title="Save a screenshot">
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 8.5h2.2l1.4-2.2h7.8l1.4 2.2h2.2A1.5 1.5 0 0 1 21 10v8a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18v-8a1.5 1.5 0 0 1 1.5-1.5Z"/><path d="M12 17a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/></svg>
-          <span class="buret-tooltip" role="tooltip">Save a screenshot</span>
-        </button>
-        <button class="buret-rail-button" type="button" data-buret-viewport-action="illumination" aria-pressed="false" aria-label="Realistic lighting" title="Realistic lighting">
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z"/><path d="M12 1.8V4M12 20v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M1.8 12H4M20 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></svg>
-          <span class="buret-tooltip" role="tooltip">Realistic lighting</span>
-        </button>
-        <button class="buret-rail-button" type="button" data-buret-viewport-action="animate" aria-haspopup="menu" aria-expanded="false" data-motion="off" aria-label="Animate the scene" title="Animate the scene">
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.8 3.9v4.3h-4.3"/><path d="m10.4 9.2 4.8 2.8-4.8 2.8Z"/></svg>
-          <span class="buret-tooltip" role="tooltip">Animate the scene</span>
-        </button>
-        <button class="buret-rail-button" type="button" data-buret-viewport-action="select-mode" aria-pressed="false" aria-label="Selection mode" title="Selection mode">
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 7.2-6 1.6-1.6 6L5 3Z"/></svg>
-          <span class="buret-tooltip" role="tooltip">Selection mode</span>
-        </button>
-        <button class="buret-rail-button buret-clear-selection hidden" type="button" data-buret-viewport-action="clear-selection" aria-label="Clear selection" title="Clear selection">
-          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
-          <span class="buret-tooltip" role="tooltip">Clear selection</span>
-        </button>
-      </div>
+      <div id="buret-viewport-rail" class="buret-viewport-rail hidden" role="toolbar" aria-label="Viewport controls"></div>
       <div id="buret-selection-bar" class="buret-selection-bar hidden" role="toolbar" aria-label="Selection controls"></div>
       <div id="buret-sequence-resize" class="buret-sequence-resize" data-buret-sequence-resize role="separator" aria-orientation="horizontal" aria-label="Resize sequence"></div>
       <aside id="buret-scene-tree" class="buret-scene-tree hidden" data-buret-scene-tree role="dialog" aria-label="Scene tree" aria-hidden="true">

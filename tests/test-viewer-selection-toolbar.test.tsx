@@ -9,6 +9,7 @@ for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLSelect
 }
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { mountViewerSelectionToolbar } = await import("../apps/desktop/src/preview-controls/viewer-selection-toolbar");
+const { mountViewerViewportToolbar } = await import("../apps/desktop/src/preview-controls/viewer-viewport-toolbar");
 const viewer = readFileSync("PreviewExtension/Web/viewer.js", "utf8");
 const source = (name: string) => {
   const start = viewer.indexOf(`  function ${name}(`);
@@ -27,19 +28,20 @@ test("selection toolbar follows live scene state and retains one action binding 
     stats: { elementCount: 0, label: "" }, events: { changed },
   } } } };
   const bindings = {
-    document, window: { BuretteNativeViewerMenus: { mountSelectionToolbar: mountViewerSelectionToolbar, styleControls: () => {} } },
+    document, window: { BuretteNativeViewerMenus: { mountSelectionToolbar: mountViewerSelectionToolbar, mountViewportToolbar: mountViewerViewportToolbar, styleControls: () => {} } },
     viewportPlugin: () => plugin, activeConfig: {}, resolveViewerTheme: () => "dark",
     molstarSelectionLevel: () => level, setMolstarSelectionLevel: (value: string) => { level = value; calls.push(["level", value]); },
     VIEWPORT_GRANULARITIES: [["none", "None"], ["atom", "Atom"], ["residue", "Residue"], ["chain", "Chain"]],
     initViewportRailDrag: () => {}, updateViewportAnimateState: () => {}, updateFloatingLayoutOffsets: () => {},
+    viewportRailState: () => ({ selectionMode: plugin.selectionMode, hasSelection: plugin.managers.structure.selection.stats.elementCount > 0, illumination: false, motion: "off" }),
     runViewportRailAction: () => {}, runViewportMenuAction: () => false,
     viewportQueryMenu: () => {}, viewportApplyMenu: () => {},
     openViewportMenu: (button: HTMLButtonElement, name: string) => { button.setAttribute("aria-expanded", "true"); calls.push(["open", name]); },
   };
   const methods = ["initViewportControls", "updateSelectionBar", "runSelectionBarAction", "closeViewportMenu"].map(source).join("\n");
-  const api = new Function(...Object.keys(bindings), `let viewportControlsDisposers = []; let viewportSelectionControls = null; let viewportMenuControls = null;
+  const api = new Function(...Object.keys(bindings), `let viewportControlsDisposers = []; let viewportSelectionControls = null; let viewportMenuControls = null; let viewportRailControls = null;
     ${methods}; return { init: initViewportControls, update: updateSelectionBar, dispose: () => {
-      viewportSelectionControls?.dispose(); viewportControlsDisposers.forEach(dispose => dispose());
+      viewportSelectionControls?.dispose(); viewportRailControls?.dispose(); viewportControlsDisposers.forEach(dispose => dispose());
     } };`)(...Object.values(bindings));
   const action = (name: string) => bar.querySelector<HTMLButtonElement>(`[data-buret-selection-action="${name}"]`)!;
   try {

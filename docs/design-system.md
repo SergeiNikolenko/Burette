@@ -159,6 +159,12 @@ its count and picking level follow the scene subscriptions. Browser pickers use
 the shared Menu presentation in the top layer, while native hosts keep the
 system picker. Hiding the toolbar dismisses its picker. The toolbar integration
 test covers scene reloads without duplicate listeners or stale selection state.
+The vertical viewport rail composes the same ToolbarButton and FloatingTooltip
+as the shell, with shared action icons. Its selected states follow lighting,
+selection and motion; Clear selection is neutral, not a destructive action.
+Tooltips portal outside the draggable rail and carry the current viewer theme.
+`test-viewer-viewport-toolbar.test.tsx` covers commands, live state, scene reloads
+and tooltip ownership; the existing toolbar group still owns dragging/placement.
 The live molecular preview uses the same `ui/popover-surface.css` as React
 Popover, including its opaque surface, ring and shadow. Molecular canvas sizing
 and the compact title are viewer-owned; the invisible rendering stage is inert

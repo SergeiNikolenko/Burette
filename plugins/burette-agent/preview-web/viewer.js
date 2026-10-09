@@ -364,7 +364,7 @@
       '.msp-plugin select[aria-label], .msp-plugin select[title], ' +
       '.msp-plugin input[aria-label], .msp-plugin input[title]'
     );
-    if (!control || control.closest('.buret-preview-dock, .buret-generate-3d-control')) return null;
+    if (!control || control.closest('.buret-preview-dock, .buret-generate-3d-control') || control.matches('[data-slot="tooltip-trigger"]')) return null;
     if (control.closest('.msp-hover-box-wrapper, .buret-seq-header, .buret-seq-footer')) return null;
     return control;
   }
@@ -2187,6 +2187,9 @@
     });
     const selectionBar = document.getElementById('buret-selection-bar');
     if (selectionBar) window.BuretteNativeViewerMenus?.styleControls?.(selectionBar, activeConfig?.themeTokens, resolvedTheme);
+    document.querySelectorAll('#buret-viewport-rail, .buret-viewport-tooltip').forEach(surface => {
+      window.BuretteNativeViewerMenus?.styleControls?.(surface, activeConfig?.themeTokens, resolvedTheme);
+    });
     const tokens = themeTokensFor(resolvedTheme);
     if (!tokens || !document.body) return;
     const accent = typeof tokens.accent === 'string' ? tokens.accent : '#AF52DE';
@@ -9810,6 +9813,7 @@ SOFTWARE.
   let viewportControlsDisposers = [];
   let viewportMenuControls = null;
   let viewportSelectionControls = null;
+  let viewportRailControls = null;
 
   function viewportPlugin() {
     return activeMolstarViewer()?.plugin || null;
@@ -10303,14 +10307,21 @@ SOFTWARE.
 
   // The button carries whatever is moving - a running animation or the trackball -
   // because a still frame cannot tell you the scene is in motion.
-  function updateViewportAnimateState() {
+  function viewportRailState() {
     const plugin = viewportPlugin();
     const playing = plugin?.managers?.animation?.state?.animationState === 'playing'
       || activeTrajectoryPlaybackControl?.isPlaying() === true;
     const motion = viewportMotionState().name;
-    const state = playing ? 'playing' : (motion !== 'off' ? motion : (viewportWiggleState()?.name === 'off' ? 'off' : 'wiggle'));
-    document.querySelector('[data-buret-viewport-action="animate"]')
-      ?.setAttribute('data-motion', state);
+    return {
+      motion: playing ? 'playing' : (motion !== 'off' ? motion : (viewportWiggleState()?.name === 'off' ? 'off' : 'wiggle')),
+      illumination: plugin?.canvas3d?.props?.illumination?.enabled === true,
+      selectionMode: plugin?.selectionMode === true,
+      hasSelection: Number(plugin?.managers?.structure?.selection?.stats?.elementCount) > 0
+    };
+  }
+
+  function updateViewportAnimateState() {
+    viewportRailControls?.refresh();
   }
 
   function viewportMotionState() {
@@ -10609,11 +10620,10 @@ SOFTWARE.
     } else if (action === 'illumination') {
       const enabled = plugin.canvas3d?.props?.illumination?.enabled !== true;
       plugin.canvas3d?.setProps({ illumination: { enabled } });
-      control.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+      viewportRailControls?.refresh();
     } else if (action === 'select-mode') {
       const enabled = plugin.selectionMode !== true;
       plugin.selectionMode = enabled;
-      control.setAttribute('aria-pressed', enabled ? 'true' : 'false');
       closeViewportMenu();
       updateSelectionBar();
       setStatus(`[web] Selection mode ${enabled ? 'enabled' : 'disabled'}.`);
@@ -10621,7 +10631,6 @@ SOFTWARE.
       clearMolstarPersistentMoleculePreview();
       Promise.resolve(clearMolstarSelection())
         .then(() => {
-          control.classList.add('hidden');
           hideMolstarContextMenu();
           closeViewportMenu();
           updateSelectionBar();
@@ -10651,8 +10660,6 @@ SOFTWARE.
     const wasHidden = bar.classList.contains('hidden');
     bar.classList.toggle('hidden', !active);
     const changed = wasHidden !== bar.classList.contains('hidden');
-    rail.querySelector('[data-buret-viewport-action="select-mode"]')
-      ?.setAttribute('aria-pressed', active ? 'true' : 'false');
     // Leaving selection mode takes the selection bar's menus with it. This runs on
     // every structure-state tick though, so it fires on the transition rather than
     // the state - otherwise any menu action that touches the scene closes the menu
@@ -10661,10 +10668,7 @@ SOFTWARE.
       closeViewportMenu();
       window.BuretteViewerSelectMenus?.closeWithin?.(bar);
     }
-    const stats = plugin?.managers?.structure?.selection?.stats;
-    const hasSelection = Number(stats?.elementCount) > 0;
-    rail.querySelector('[data-buret-viewport-action="clear-selection"]')
-      ?.classList.toggle('hidden', !hasSelection);
+    viewportRailControls?.refresh();
     viewportSelectionControls?.refresh();
     viewportMenuControls?.refresh?.();
     if (changed) updateFloatingLayoutOffsets();
@@ -10747,6 +10751,12 @@ SOFTWARE.
     if (rail.dataset.viewportControlsBound !== '1') {
       rail.dataset.viewportControlsBound = '1';
       initViewportRailDrag(rail, document.getElementById('buret-toolbar'));
+      viewportRailControls?.dispose();
+      viewportRailControls = window.BuretteNativeViewerMenus.mountViewportToolbar(rail, {
+        read: viewportRailState,
+        onAction: runViewportRailAction,
+        styleSurface: element => window.BuretteNativeViewerMenus.styleControls(element, activeConfig?.themeTokens, resolveViewerTheme())
+      });
       viewportSelectionControls?.dispose();
       window.BuretteNativeViewerMenus.styleControls(bar, activeConfig?.themeTokens, resolveViewerTheme());
       viewportSelectionControls = window.BuretteNativeViewerMenus.mountSelectionToolbar(bar, {
@@ -10757,10 +10767,6 @@ SOFTWARE.
         levels: VIEWPORT_GRANULARITIES,
         onLevel: level => { setMolstarSelectionLevel(level); updateSelectionBar(); },
         onAction: runSelectionBarAction
-      });
-      rail.addEventListener('click', event => {
-        const control = event.target.closest('[data-buret-viewport-action]');
-        if (control) runViewportRailAction(control.dataset.buretViewportAction, control);
       });
       // The menu is portalled to <body> so the bar cannot clip it, which puts both
       // its clicks and its dismissal on the document.
@@ -10807,8 +10813,6 @@ SOFTWARE.
     if (subscriptions.length) {
       viewportControlsDisposers.push(() => subscriptions.forEach(item => item?.unsubscribe?.()));
     }
-    rail.querySelector('[data-buret-viewport-action="illumination"]')
-      ?.setAttribute('aria-pressed', plugin?.canvas3d?.props?.illumination?.enabled === true ? 'true' : 'false');
     updateViewportAnimateState();
     updateSelectionBar();
   }

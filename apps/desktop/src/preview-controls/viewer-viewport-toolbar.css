@@ -1,0 +1,14 @@
+/* The standalone viewer has no Tailwind utilities. These are ToolbarButton's
+ * shared utility values; Button owns its geometry, hover, pressed and focus. */
+.buret-viewport-rail .buret-rail-button {
+  flex: 0 0 auto;
+  --button-ring-offset: 0px;
+  --button-text-color: var(--color-text-tertiary);
+  --button-text-color-hover: var(--color-text-tertiary);
+}
+.buret-viewport-rail .buret-rail-button[data-selected] {
+  --button-text-color: var(--color-text-primary-ghost);
+  --button-text-color-hover: var(--color-text-primary-ghost);
+}
+.buret-rail-button svg { pointer-events: none; flex-shrink: 0; }
+.buret-viewport-tooltip { font-family: var(--font-sans); }

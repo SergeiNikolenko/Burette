@@ -2,6 +2,7 @@ import { styleViewerMenu, styleViewerPopover, styleViewerButton, styleViewerSurf
 import { mountViewerAnimationControls } from './viewer-animation-controls';
 import { mountViewerQueryControls, mountViewerSelectionActions } from './viewer-selection-controls';
 import { mountViewerSelectionToolbar } from './viewer-selection-toolbar';
+import { mountViewerViewportToolbar } from './viewer-viewport-toolbar';
 
 (() => {
   'use strict';
@@ -17,6 +18,7 @@ import { mountViewerSelectionToolbar } from './viewer-selection-toolbar';
     mountQueryControls: mountViewerQueryControls,
     mountSelectionActions: mountViewerSelectionActions,
     mountSelectionToolbar: mountViewerSelectionToolbar,
+    mountViewportToolbar: mountViewerViewportToolbar,
     styleControls: styleViewerSurface,
     show(menu, { post, x, y, ...callbacks }) {
       const session = this.create(menu, callbacks);

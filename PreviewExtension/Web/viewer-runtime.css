@@ -626,86 +626,12 @@ body.burette-mobile-host #buret-scene-tree {
   cursor: grabbing;
 }
 .buret-viewport-rail.hidden,
-.buret-rail-button.hidden,
 .buret-selection-bar.hidden {
   display: none;
 }
 body.buret-toolbar-collapsed #buret-viewport-rail,
 body.buret-toolbar-collapsed #buret-selection-bar {
   display: none !important;
-}
-.buret-rail-button {
-  position: relative;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 0;
-  color: var(--buret-toolbar-color);
-  background: transparent;
-  cursor: pointer;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
-}
-.buret-rail-button > svg {
-  width: 16px;
-  height: 16px;
-}
-.buret-rail-button:hover {
-  background: var(--buret-toolbar-hover);
-}
-.buret-rail-button:focus-visible {
-  outline: 2px solid var(--buret-molstar-accent);
-  outline-offset: 1px;
-}
-.buret-rail-button[aria-pressed="true"],
-.buret-rail-button[aria-expanded="true"] {
-  color: var(--buret-molstar-accent);
-  background: var(--buret-toolbar-hover);
-}
-/* A moving scene is easy to miss on a still frame, so the animate button carries
-   the state while its menu is closed. */
-.buret-rail-button[data-motion="spin"],
-.buret-rail-button[data-motion="rock"],
-.buret-rail-button[data-motion="playing"],
-.buret-rail-button[data-motion="wiggle"] {
-  color: var(--buret-molstar-accent);
-}
-/* The rail is a single column parked against the right edge, so a tooltip that
-   drops below the button centred on it runs off screen and covers the next
-   button down. It hangs off the rail's left side instead, level with the icon. */
-.buret-rail-button > .buret-tooltip {
-  top: 50%;
-  left: auto;
-  right: calc(100% + 10px);
-  transform: translate(4px, -50%) scale(0.98);
-  transform-origin: center right;
-}
-.buret-rail-button:hover > .buret-tooltip,
-.buret-rail-button:focus-visible > .buret-tooltip {
-  opacity: 1;
-  visibility: visible;
-  transform: translate(0, -50%) scale(1);
-  transition-delay: 180ms, 180ms, 0s;
-}
-/* An open menu already names what the button does, and the tooltip would sit on
-   top of it. */
-.buret-rail-button[aria-expanded="true"] > .buret-tooltip {
-  opacity: 0;
-  visibility: hidden;
-  transition-delay: 0s;
-}
-.buret-rail-button.buret-clear-selection {
-  color: #ff6b5e;
-  border-color: rgba(255, 107, 94, 0.72);
-  background: rgba(255, 107, 94, 0.08);
-}
-.buret-rail-button.buret-clear-selection:hover {
-  color: #fff;
-  border-color: #ff6b5e;
-  background: rgba(255, 107, 94, 0.88);
 }
 .buret-selection-bar {
   position: fixed;
