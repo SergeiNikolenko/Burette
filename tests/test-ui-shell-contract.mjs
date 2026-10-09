@@ -4625,7 +4625,7 @@ assert.match(buildInfoLib, /isAgentShell: isBrowserDev && isAgentShell/);
 assert.match(browserDevDocuments, /function browserRendererPlan/);
 assert.match(browserDevDocuments, /export function browserDevRuntimeNeedsRefresh/);
 assert.match(browserDevDocuments, /const GRID_ASSET_VERSION = "grid-ui-v\d+"/);
-assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v93"/);
+assert.match(browserDevDocuments, /const VIEWER_ASSET_VERSION = "viewer-ui-v94"/);
 assert.match(
   browserDevDocuments,
   /viewerProfile === "mesoscale"\) return !document\.runtimePath\.includes\(MESOSCALE_ASSET_VERSION\)/,
@@ -5589,7 +5589,6 @@ assert.match(previewViewer, /preview\.dataset\.buretMolstarPreset = option\.valu
 assert.match(previewRuntimeCss, /@media \(prefers-reduced-motion: reduce\) \{\s*\.buret-molstar-preset-preview,\s*\.buret-molstar-transition-frame \{\s*transition: none;/);
 assert.match(previewRuntimeCss, /\.buret-molstar-preset-preview\.viewport-constrained \{ display: none; \}/);
 assert.match(previewViewer, /computePreviewPlacement\?\.\(\{/);
-assert.match(previewViewer, /placement\.placement === 'stacked'/);
 assert.match(previewViewer, /previewShell\?\.classList\.contains\('viewport-constrained'\)/);
 assert.match(previewViewer, /positionMolstarPresetMenu\(\);[\s\S]*?positionMolstarPresetPreview\(presetItem\)/);
 assert.match(previewViewer, /molstarPresetPreviewBudgetMessage\(\)/);

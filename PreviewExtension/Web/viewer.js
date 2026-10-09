@@ -4045,7 +4045,15 @@
     const spaceBelow = window.innerHeight - margin - belowTop;
     const spaceAbove = anchorRect.top - gap - margin;
     const openAbove = spaceBelow < Math.min(menu.scrollHeight, 260) && spaceAbove > spaceBelow;
-    const availableHeight = Math.max(120, openAbove ? spaceAbove : spaceBelow);
+    let availableHeight = Math.max(120, openAbove ? spaceAbove : spaceBelow);
+    // Reserve preview space before exposing the menu. Hovering or rendering a
+    // different molecular aspect ratio must never move the user's click target.
+    const previewWidth = Math.min(240, window.innerWidth - margin * 2);
+    const hasSideRoom = left - 8 - previewWidth >= margin
+      || left + menuWidth + 8 + previewWidth <= window.innerWidth - margin;
+    if (!hasSideRoom && availableHeight >= 248) {
+      availableHeight -= Math.min(240, Math.floor(availableHeight * 0.45)) + 8;
+    }
     menu.style.left = `${Math.round(left)}px`;
     menu.style.top = `${Math.round(openAbove
       ? Math.max(margin, anchorRect.top - gap - Math.min(menu.scrollHeight, availableHeight))
@@ -4104,8 +4112,7 @@
       previewWidth,
       previewHeight,
       margin,
-      gap,
-      minimumMenuHeight: 120
+      gap
     });
     if (!placement || placement.placement === 'hidden') {
       preview.classList.add('viewport-constrained');
@@ -4114,15 +4121,9 @@
     }
     preview.style.left = `${Math.round(placement.left)}px`;
     preview.style.top = `${Math.round(placement.top)}px`;
+    preview.style.transformOrigin = 'top left';
+    preview.style.transform = `scale(${placement.scale || 1})`;
     preview.dataset.placement = placement.placement;
-    if (placement.placement === 'stacked') {
-      menu.style.top = `${Math.round(placement.menuTop)}px`;
-      menu.style.maxHeight = `${Math.floor(placement.menuMaxHeight)}px`;
-      menu.dataset.placement = 'stacked';
-      // A keyboard-focused row may have scrolled into the taller menu before
-      // its asynchronous preview reserved space. Keep it visible after resizing.
-      if (document.activeElement === item) item.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-    }
   }
 
   function sizeMolstarPresetPreview(preview) {

@@ -55,14 +55,24 @@ const events = [];
   menu.dataset.buretMolstarPresetMenu = '1';
   const preview = document.createElement('div');
   const placementWindow = { innerWidth: 400, innerHeight: 600,
-    BuretteMolstarPresetPreviewController: { computePreviewPlacement: () => ({ placement: 'stacked', left: 10, top: 10, menuTop: 220, menuMaxHeight: 360 }) } };
+    BuretteMolstarPresetPreviewController: { computePreviewPlacement: () => ({ placement: 'stacked', left: 12, top: 360, scale: 0.75 }) } };
+  const positionMenu = new Function('window', 'document', source('positionMolstarPresetMenu') + '; return positionMolstarPresetMenu;')(placementWindow, document);
+  Object.defineProperties(menu, { offsetWidth: { value: 264 }, scrollHeight: { value: 700 } });
+  positionMenu({ getBoundingClientRect: () => ({ left: 100, top: 30, bottom: 60 }) });
+  const anchoredStyle = menu.style.cssText;
+  assert.equal(menu.style.top, '66px');
+  assert.ok(parseFloat(menu.style.maxHeight) < 400, 'space reserved before pointer enters menu');
   const position = new Function('window', 'document', 'molstarPresetPreviewElements', source('positionMolstarPresetPreview') + '; return positionMolstarPresetPreview;')(
     placementWindow, document, () => ({ preview }));
   const scrolls = [];
   rows[1].scrollIntoView = options => scrolls.push([menu.style.top, menu.style.maxHeight, options]);
   position(rows[1]);
   rows[1].blur(); position(rows[1]);
-  assert.deepEqual(scrolls, [['220px', '360px', { block: 'nearest', inline: 'nearest' }]], 'resize reveals keyboard focus without scrolling a pointer preview');
+  assert.equal(menu.style.cssText, anchoredStyle, 'preview never moves or resizes keyboard/pointer targets');
+  assert.deepEqual(scrolls, [], 'preview never scrolls a row away from the pointer');
+  assert.equal(preview.style.transform, 'scale(0.75)');
+  positionMenu({ getBoundingClientRect: () => ({ left: 100, top: 30, bottom: 60 }) });
+  assert.equal(menu.style.cssText, anchoredStyle, 'hiding a preview preserves the same reserved layout');
   menu.remove();
 }
 // Carry the actual scene command's danger state, not a guess based on its label.

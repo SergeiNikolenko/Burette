@@ -150,24 +150,29 @@ assert.ok(viewportReplica.cardHeight > 280);
 assert.ok(viewportReplica.cardHeight < 320);
 
 for (const viewportWidth of [320, 400, 512]) {
-  const menuRight = viewportWidth - 12;
-  const menuLeft = menuRight - 264;
-  const placement = factory.computePreviewPlacement({
-    viewportWidth,
-    viewportHeight: 568,
-    menuRect: { left: menuLeft, right: menuRight },
-    itemRect: { top: 150 },
-    previewWidth: 240,
-    previewHeight: 202,
-    margin: 12,
-    gap: 8,
-    minimumMenuHeight: 120,
-  });
-  assert.equal(placement.placement, "stacked");
-  assert.ok(placement.left >= 12);
-  assert.ok(placement.left + 240 <= viewportWidth - 12);
-  assert.ok(placement.top + 202 + 8 <= placement.menuTop);
-  assert.ok(placement.menuTop + placement.menuMaxHeight <= 568 - 12);
+  for (const [top, bottom] of [[60, 320], [260, 540]]) {
+    for (const previewHeight of [100, 202, 348]) {
+      const menuRight = viewportWidth - 12;
+      const menuLeft = menuRight - 264;
+      const placement = factory.computePreviewPlacement({
+        viewportWidth,
+        viewportHeight: 568,
+        menuRect: { left: menuLeft, right: menuRight, top, bottom },
+        itemRect: { top: 150 },
+        previewWidth: 240,
+        previewHeight,
+        margin: 12,
+        gap: 8,
+      });
+      assert.equal(placement.placement, "stacked");
+      assert.ok(placement.left >= 12);
+      assert.ok(placement.left + 240 * placement.scale <= viewportWidth - 12);
+      assert.ok(placement.top >= 12);
+      assert.ok(placement.top + previewHeight * placement.scale <= 568 - 12);
+      assert.ok(placement.top >= bottom + 8 || placement.top + previewHeight * placement.scale <= top - 8 + 1e-8,
+        'preview cannot overlap or relocate the menu for any molecular aspect ratio');
+    }
+  }
 }
 
 function deferred() {
