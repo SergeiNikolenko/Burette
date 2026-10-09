@@ -4,6 +4,8 @@
 @import "./components/ui/segmented-control.css" layer(components);
 @import "./components/ui/button.atlas.css";
 @import "./components/ui/button.css";
+@import "./components/ui/tooltip.atlas.css";
+@import "./components/ui/tooltip.css";
 
 @custom-variant dark (&:is(.app-shell[data-effective-theme="dark"] *));
 

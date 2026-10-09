@@ -31,6 +31,18 @@ assert.deepEqual(['select-all', 'open-selected-ketcher', 'open-selected-molstar'
 button('open-selected-ketcher').click();
 button('open-selected-molstar').click();
 assert.deepEqual(calls, [], 'disabled shared buttons must not dispatch open actions');
+assert.equal(button('open-selected-ketcher').getAttribute('aria-description'), 'Select molecules to edit in Ketcher');
+// Hints are portaled outside the clipped toolbar and never activate an action.
+button('select-all').focus();
+await new Promise(resolve => setTimeout(resolve, 30));
+const hint = document.querySelector('[role="tooltip"]');
+assert.equal(hint?.textContent, 'Select all visible molecules');
+assert.equal(host.contains(hint), false, 'the tooltip must escape toolbar clipping');
+button('select-all').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+await new Promise(resolve => setTimeout(resolve, 20));
+assert.equal(document.querySelector('[role="tooltip"]'), null);
+assert.equal(document.activeElement?.id, 'select-all', 'Escape preserves focus');
+assert.deepEqual(calls, [], 'focus and dismissal must not select molecules');
 button('select-all').click();
 mount({ selectedCount: 3, allVisibleSelected: true });
 assert.equal(document.querySelector('[role="status"]').textContent, '3 selected');

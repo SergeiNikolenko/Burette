@@ -3,8 +3,7 @@ import { Tooltip as TooltipPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
-import "./tooltip.atlas.css"
-import "./tooltip.css"
+// Styles are shared by the shell stylesheet and standalone Grid's embed.
 
 function TooltipProvider({
   delayDuration = 150,
@@ -79,11 +78,11 @@ function TooltipContent({
         data-gutter-size={gutterSize}
         style={{ "--tooltip-max-width": `${maxWidth}px`, ...style } as React.CSSProperties}
         className={cn(
-          "z-50 max-w-[min(var(--tooltip-max-width,300px),var(--radix-tooltip-content-available-width,100vw),calc(100vw-16px))] wrap-anywhere",
+          "atlas-tooltip-positioned",
           // Atlas FloatingTooltip (RT) is the app-chrome variant, distinct from
           // the SDK's Tooltip compact surface. Keep its original utility tokens.
           variant === "floating"
-            ? "w-fit text-sm whitespace-normal min-h-min select-none text-center rounded-2xl border border-(color:--color-border-tooltip) bg-(--color-background-tooltip) text-(color:--color-text-tooltip) leading-4.5 font-(weight:--tooltip-compact-font-weight) tracking-(--tracking-tooltip) shadow-(--shadow-tooltip) px-3 py-1.25 pointer-events-none"
+            ? "atlas-floating-tooltip"
             : "atlas-tooltip",
           className
         )}

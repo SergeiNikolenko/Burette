@@ -2194,47 +2194,6 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
     0 0 0 1px rgba(255, 190, 94, 0.18);
 }
 
-.buret-toolbar-row-view button {
-  position: relative;
-}
-
-.buret-control-tooltip {
-  position: absolute;
-  left: 50%;
-  top: calc(100% + 6px);
-  z-index: 50;
-  width: max-content;
-  max-width: min(260px, calc(100vw - 24px));
-  box-sizing: border-box;
-  padding: 7px 10px;
-  border: 0;
-  border-radius: 10px;
-  color: var(--buret-text);
-  background: color-mix(in srgb, var(--buret-bg) 82%, transparent);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.28);
-  backdrop-filter: blur(15px) saturate(1.35);
-  -webkit-backdrop-filter: blur(15px) saturate(1.35);
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 1.25;
-  letter-spacing: 0;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  white-space: nowrap;
-  transform: translate(-50%, -4px) scale(0.98);
-  transform-origin: top center;
-  transition: opacity 110ms ease-out, transform 130ms ease-out, visibility 0s linear 110ms;
-}
-
-.buret-toolbar-row-view button:hover .buret-control-tooltip,
-.buret-toolbar-row-view button:focus-visible .buret-control-tooltip {
-  opacity: 1;
-  visibility: visible;
-  transform: translate(-50%, 0) scale(1);
-  transition-delay: 180ms, 180ms, 0s;
-}
-
 .buret-molecule-picture {
   display: grid;
   place-items: center;
