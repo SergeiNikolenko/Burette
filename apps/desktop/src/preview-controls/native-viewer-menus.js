@@ -1,5 +1,6 @@
 import { styleViewerMenu, styleViewerPopover, styleViewerButton, moveViewerMenuFocus } from './viewer-atlas-menu';
 import { mountViewerAnimationControls } from './viewer-animation-controls';
+import { mountViewerQueryControls, mountViewerSelectionActions } from './viewer-selection-controls';
 
 (() => {
   'use strict';
@@ -12,6 +13,8 @@ import { mountViewerAnimationControls } from './viewer-animation-controls';
     styleButton: styleViewerButton,
     moveMenuFocus: moveViewerMenuFocus,
     mountAnimationControls: mountViewerAnimationControls,
+    mountQueryControls: mountViewerQueryControls,
+    mountSelectionActions: mountViewerSelectionActions,
     show(menu, { post, x, y, ...callbacks }) {
       const session = this.create(menu, callbacks);
       const requestId = `viewer-controls-${crypto.randomUUID()}`;

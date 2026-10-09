@@ -1,5 +1,6 @@
 /* Only DOM behavior differs from Radix; surface and row geometry are shared. */
-.buret-atlas-surface.atlas-button {
+.buret-atlas-surface.atlas-button,
+.buret-atlas-surface .atlas-button {
   box-sizing: border-box;
   border: 0;
   background: transparent;

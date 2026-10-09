@@ -34,7 +34,7 @@ test("real Animate builder uses shared controls, live scene state, keyboard slid
   };
   const constants = ["VIEWPORT_MOTIONS", "VIEWPORT_MOTION_SPEEDS", "VIEWPORT_CONTEXT_ANIMATIONS", "VIEWPORT_WIGGLES", "VIEWPORT_WIGGLE_MODES", "VIEWPORT_WIGGLE_SLIDERS"].map(constant).join("\n");
   const methods = ["viewportAnimateMenu", "viewportMotionState", "viewportWiggleState", "refreshViewportWiggleControls", "setViewportMotion", "setViewportWiggleOptions", "runViewportWiggleAction", "streamViewportWiggleOption", "closeViewportMenu"].map(source).join("\n");
-  const api = new Function(...Object.keys(bindings), `let viewportAnimationControls = null; let viewportWigglePendingWrite = null; let viewportWiggleWriteInFlight = false; ${constants}\n${methods}; return {build: viewportAnimateMenu, close: closeViewportMenu, refresh: refreshViewportWiggleControls};`)(...Object.values(bindings));
+  const api = new Function(...Object.keys(bindings), `let viewportMenuControls = null; let viewportWigglePendingWrite = null; let viewportWiggleWriteInFlight = false; ${constants}\n${methods}; return {build: viewportAnimateMenu, close: closeViewportMenu, refresh: refreshViewportWiggleControls};`)(...Object.values(bindings));
   const menu = document.createElement("div"); menu.id = "buret-viewport-menu"; document.body.append(menu);
   const radios = (group: string) => menu.querySelector(`[aria-label="${group}"]`)?.querySelectorAll<HTMLButtonElement>("button");
   const select = async (group: string, text: string) => {

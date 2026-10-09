@@ -6,6 +6,12 @@ import buttonBehavior from "../components/ui/button.css" with { type: "text" };
 import loadingStyles from "../components/ui/loading-indicator.atlas.css" with { type: "text" };
 import sliderStyles from "../components/ui/slider.atlas.css" with { type: "text" };
 import segmentedStyles from "../components/ui/segmented-control.css" with { type: "text" };
+import commandStyles from "../components/ui/command.atlas.css" with { type: "text" };
+import selectStyles from "../components/ui/select.atlas.css" with { type: "text" };
+import selectMenuStyles from "../components/ui/select-menu.atlas.css" with { type: "text" };
+import selectBehavior from "../components/ui/select.css" with { type: "text" };
+import paletteStyles from "../components/ui/color-palette.css" with { type: "text" };
+import selectionBehavior from "./viewer-selection-controls.css" with { type: "text" };
 import { buttonPressScale } from "../components/ui/button-press-scale";
 import behavior from "./viewer-atlas-menu.css" with { type: "text" };
 import { buildCodexThemeVariables, CODEX_DEFAULT_THEME } from "../lib/codex-theme";
@@ -20,10 +26,10 @@ type ThemeTokens = Partial<Record<"light" | "dark", {
 const source = String(tokens).replaceAll(".app-shell", ".buret-atlas-surface")
   + behavior + String(popoverStyles).replace("@layer components {", "").replace(/}\s*$/, "")
   + String(menuStyles).replace("@layer components {", "").replace(/}\s*$/, "")
-  + segmentedStyles
-  + [buttonStyles, buttonBehavior, loadingStyles, sliderStyles].map(css => String(css)
+  + segmentedStyles + paletteStyles
+  + [buttonStyles, buttonBehavior, loadingStyles, sliderStyles, commandStyles, selectStyles, selectMenuStyles, selectBehavior].map(css => String(css)
     .replace("@layer theme, base, components, utilities;", "")
-    .replace("@layer components {", "").replace(/}\s*$/, "")).join("");
+    .replace("@layer components {", "").replace(/}\s*$/, "")).join("") + selectionBehavior;
 
 export function styleViewerButton(button: HTMLButtonElement, themeTokens: ThemeTokens | undefined, mode: "light" | "dark") {
   if (!button.classList.contains("atlas-button")) {

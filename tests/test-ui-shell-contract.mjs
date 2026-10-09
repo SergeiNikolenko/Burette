@@ -5267,11 +5267,10 @@ assert.match(
 assert.match(previewViewer, /moveToolbar\(\s*toolbar,\s*drag\.toolbarLeft \+ event\.clientX - drag\.startX,\s*drag\.toolbarTop \+ event\.clientY - drag\.startY\s*\);/s);
 assert.match(previewViewer, /saveToolbarPosition\(toolbar\);/);
 assert.match(previewViewer, /initViewportRailDrag\(rail, document\.getElementById\('buret-toolbar'\)\);/);
-assert.match(previewViewer, /function positionOpenViewportMenu\(rail = document\.getElementById\('buret-viewport-rail'\)\) \{/);
+// Selection/rail anchoring and focus are exercised by test-viewer-selection-controls.test.tsx.
 assert.match(previewViewer, /rail\.dataset\.horizontalPlacement === 'right'/);
 assert.match(previewViewer, /rail\.dataset\.verticalPlacement === 'above'/);
 assert.match(previewViewer, /root\.style\.setProperty\('--buret-viewport-panel-max-height', panelMaxHeight \+ 'px'\);\s*positionOpenViewportMenu\(\);/);
-assert.match(previewViewer, /positionOpenViewportMenu\(trigger\.closest\('#buret-viewport-rail, \.buret-seq-footer'\)\);/);
 // The rail carries its own animation button, the way Mol*'s viewport controls did:
 // a trackball that keeps turning plus the plugin's timed animations, each listed
 // once and each able to say why it is unavailable.
@@ -5337,7 +5336,6 @@ assert.match(previewViewer, /if \(viewportWiggleLayerRefs\(\)\.length\) return \
 assert.match(previewViewer, /async function streamViewportWiggleOption\(name, value\) \{[\s\S]*if \(viewportWiggleWriteInFlight\) return;/);
 assert.match(previewViewer, /while \(viewportWigglePendingWrite\) \{[\s\S]*await setViewportWiggleOptions\(next\)/);
 // The hidden attribute loses to the segment's own display rule.
-assert.match(previewRuntimeCss, /\.buret-viewport-segment\[hidden\] \{\s*display: none;\s*\}/);
 assert.match(previewViewer, /setViewportWiggleOptions\(\{ wiggleAmplitude: 0\.01, tumbleAmplitude: 0 \}\)[\s\S]*applyViewportWiggleFromUncertainty\(\)/);
 assert.match(previewViewer, /const VIEWPORT_WIGGLE_TRANSFORM = 'wiggle-structure-representation-3d-from-bundle';/);
 // The uncertainty layers are built here because the vendored viewer bundle keeps

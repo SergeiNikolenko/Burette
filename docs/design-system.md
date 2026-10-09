@@ -147,6 +147,13 @@ summaries. Its neutral radio/check rows use the shared check icon; keyboard
 navigation skips collapsed choices and supports opening/closing groups.
 The Compute trigger embeds the shared Atlas Button and LoadingIndicator styles;
 its pending/disabled state and theme updates keep the existing compute contract.
+Select composes the shared SegmentedControl and Command search inside that
+Popover surface. Apply composes Button, Select and the Atlas ColorPalette
+geometry, retaining the scientific colour presets and scene actions. These
+React roots are owned and disposed by the viewport menu lifecycle; the query
+registry's original indices and exact-selection semantics remain intact.
+`test-viewer-selection-controls.test.tsx` covers the real builders, filtering,
+modifiers, selection actions, nested keyboard dismissal and selection-bar anchor.
 The live molecular preview uses the same `ui/popover-surface.css` as React
 Popover, including its opaque surface, ring and shadow. Molecular canvas sizing
 and the compact title are viewer-owned; the invisible rendering stage is inert

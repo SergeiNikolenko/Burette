@@ -9806,15 +9806,15 @@ SOFTWARE.
   ];
   let selectionQueryModifier = 'set';
   let viewportControlsDisposers = [];
-  let viewportAnimationControls = null;
+  let viewportMenuControls = null;
 
   function viewportPlugin() {
     return activeMolstarViewer()?.plugin || null;
   }
 
   function closeViewportMenu({ restoreFocus = false } = {}) {
-    viewportAnimationControls?.dispose();
-    viewportAnimationControls = null;
+    viewportMenuControls?.dispose();
+    viewportMenuControls = null;
     document.getElementById('buret-viewport-menu')?.remove();
     for (const trigger of document.querySelectorAll('#buret-viewport-rail [aria-expanded], #buret-selection-bar [aria-expanded], .buret-seq-footer [aria-expanded]')) {
       if (restoreFocus && trigger.getAttribute('aria-expanded') === 'true') trigger.focus();
@@ -9822,9 +9822,10 @@ SOFTWARE.
     }
   }
 
-  function positionOpenViewportMenu(rail = document.getElementById('buret-viewport-rail')) {
+  function positionOpenViewportMenu() {
     const menu = document.getElementById('buret-viewport-menu');
-    const trigger = rail?.querySelector('[aria-expanded="true"]');
+    const trigger = document.querySelector('#buret-viewport-rail [aria-expanded="true"], #buret-selection-bar [aria-expanded="true"], .buret-seq-footer [aria-expanded="true"]');
+    const rail = trigger?.closest('#buret-viewport-rail, #buret-selection-bar, .buret-seq-footer');
     if (!menu || !trigger) return;
     const anchor = trigger.getBoundingClientRect();
     const rect = menu.getBoundingClientRect();
@@ -9855,8 +9856,8 @@ SOFTWARE.
     document.body.appendChild(menu);
     trigger.setAttribute('aria-haspopup', menu.getAttribute('role'));
     trigger.setAttribute('aria-expanded', 'true');
-    positionOpenViewportMenu(trigger.closest('#buret-viewport-rail, .buret-seq-footer'));
-    if (menu.getAttribute('role') === 'dialog') menu.querySelector('button[aria-checked="true"]')?.focus();
+    positionOpenViewportMenu();
+    if (menu.getAttribute('role') === 'dialog') (menu.querySelector('input') || menu.querySelector('button[aria-checked="true"], button:not(:disabled)'))?.focus();
     else if (menu.classList.contains('atlas-menu-content')) menu.querySelector('[role="menuitem"]:not(:disabled)')?.focus();
   }
 
@@ -9887,46 +9888,6 @@ SOFTWARE.
     }
     (options.parent || menu).appendChild(button);
     return button;
-  }
-
-  function viewportMenuSelect(menu, label, name, options, placeholder) {
-    const row = document.createElement('label');
-    row.className = 'buret-tree-menu-field';
-    const caption = document.createElement('span');
-    caption.textContent = label;
-    const control = document.createElement('select');
-    control.className = 'buret-select';
-    control.dataset.buretViewportSelect = name;
-    const prompt = document.createElement('option');
-    prompt.value = '';
-    prompt.textContent = placeholder;
-    control.appendChild(prompt);
-    for (const option of options) {
-      const item = document.createElement('option');
-      item.value = option.name;
-      item.textContent = option.label;
-      control.appendChild(item);
-    }
-    control.value = '';
-    row.append(caption, control);
-    menu.appendChild(row);
-  }
-
-  function viewportMenuSwatches(menu, action) {
-    const swatches = document.createElement('div');
-    swatches.className = 'buret-tree-swatches';
-    for (const entry of SCENE_TREE_UNIFORM_COLORS) {
-      const swatch = document.createElement('button');
-      swatch.type = 'button';
-      swatch.className = 'buret-tree-swatch';
-      swatch.dataset.buretViewportMenu = action;
-      swatch.dataset.viewportColor = String(entry.value);
-      swatch.style.background = sceneTreeColorHex(entry.value);
-      swatch.setAttribute('aria-label', `Paint the selection ${entry.label.toLowerCase()}`);
-      swatch.title = entry.label;
-      swatches.appendChild(swatch);
-    }
-    menu.appendChild(swatches);
   }
 
   function viewportCameraMenu(menu) {
@@ -10020,7 +9981,7 @@ SOFTWARE.
     const panel = document.createElement('div');
     panel.className = 'buret-animation-panel';
     menu.appendChild(panel);
-    viewportAnimationControls = window.BuretteNativeViewerMenus.mountAnimationControls(panel, {
+    viewportMenuControls = window.BuretteNativeViewerMenus.mountAnimationControls(panel, {
       read: () => ({ motion: viewportMotionState(), wiggle: viewportWiggleState() }),
       motions: VIEWPORT_MOTIONS, speeds: VIEWPORT_MOTION_SPEEDS,
       wiggles: VIEWPORT_WIGGLES, modes: VIEWPORT_WIGGLE_MODES, sliders: VIEWPORT_WIGGLE_SLIDERS,
@@ -10118,7 +10079,7 @@ SOFTWARE.
 
   // Refresh from the scene after a preset or an external action changes it.
   function refreshViewportWiggleControls() {
-    viewportAnimationControls?.refresh();
+    viewportMenuControls?.refresh?.();
     positionOpenViewportMenu();
   }
 
@@ -10436,98 +10397,56 @@ SOFTWARE.
   }
 
   function viewportQueryMenu(menu) {
+    menu.classList.remove('buret-tree-menu');
+    menu.classList.add('buret-selection-query');
+    menu.setAttribute('role', 'dialog');
+    window.BuretteNativeViewerMenus.stylePopover(menu, activeConfig?.themeTokens, resolveViewerTheme());
     const queries = viewportPlugin()?.query?.structure?.registry?.list || [];
-    sceneTreeMenuSection(menu, 'Mode');
-    const segment = document.createElement('div');
-    segment.className = 'buret-viewport-segment';
-    segment.setAttribute('role', 'group');
-    segment.setAttribute('aria-label', 'Selection mode');
-    for (const [name, label] of SELECTION_MODIFIERS) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'buret-viewport-segment-button';
-      button.dataset.buretViewportMenu = 'modifier';
-      button.dataset.modifier = name;
-      button.setAttribute('aria-pressed', name === selectionQueryModifier ? 'true' : 'false');
-      button.textContent = label;
-      segment.appendChild(button);
-    }
-    menu.appendChild(segment);
-
-    // Seventy queries do not fit a menu, and category headings only help if you
-    // already know which category a thing lives in. Typing narrows the whole list
-    // at once, so "lig", "helix" or "surround" get there without the hunt.
-    const search = document.createElement('input');
-    search.type = 'search';
-    search.className = 'buret-input buret-viewport-search';
-    search.placeholder = 'Filter…';
-    search.setAttribute('aria-label', 'Filter selections');
-    search.dataset.buretViewportSearch = 'query';
-    menu.appendChild(search);
-
-    const groups = new Map();
-    queries.forEach((query, index) => {
-      if (query?.isHidden || !query?.label) return;
-      const category = String(query.category || 'Common');
-      if (!groups.has(category)) groups.set(category, []);
-      groups.get(category).push({ label: query.label, index });
+    viewportMenuControls = window.BuretteNativeViewerMenus.mountQueryControls(menu, {
+      mode: selectionQueryModifier, modes: SELECTION_MODIFIERS,
+      queries: queries.flatMap((query, index) => query?.isHidden || !query?.label ? []
+        : [{ index, label: query.label, category: String(query.category || 'Common') }]),
+      onMode: mode => { selectionQueryModifier = mode; },
+      onQuery: index => {
+        // Preserve Mol*'s exact query: picking granularity must not widen a ligand
+        // query into its whole chain.
+        const query = queries[index];
+        if (query) viewportPlugin()?.managers.structure.selection.fromSelectionQuery(selectionQueryModifier, query, false);
+        closeViewportMenu({ restoreFocus: true });
+      },
+      resize: positionOpenViewportMenu
     });
-    for (const [category, entries] of groups) {
-      // Twenty amino acids and seven bases fold away; the groups people actually
-      // reach for — Type, secondary structure, "around the selection" — stay open.
-      if (entries.length > 12) {
-        sceneTreeMenuSection(menu);
-        const disclosure = document.createElement('details');
-        disclosure.className = 'buret-tree-menu-actions';
-        const summary = document.createElement('summary');
-        summary.textContent = category;
-        disclosure.appendChild(summary);
-        for (const entry of entries) {
-          viewportMenuItem(menu, entry.label, 'query', {
-            data: { queryIndex: String(entry.index) }, parent: disclosure
-          });
-        }
-        menu.appendChild(disclosure);
-        continue;
-      }
-      sceneTreeMenuSection(menu, category);
-      for (const entry of entries) {
-        viewportMenuItem(menu, entry.label, 'query', { data: { queryIndex: String(entry.index) } });
-      }
-    }
   }
 
   function viewportApplyMenu(menu) {
+    menu.classList.remove('buret-tree-menu');
+    menu.classList.add('buret-selection-apply');
+    menu.setAttribute('role', 'dialog');
+    window.BuretteNativeViewerMenus.stylePopover(menu, activeConfig?.themeTokens, resolveViewerTheme());
     const plugin = viewportPlugin();
-    const empty = !(plugin?.managers?.structure?.selection?.stats?.elementCount > 0);
-    sceneTreeMenuSection(menu, 'Colour');
-    viewportMenuSwatches(menu, 'selection-color');
-    viewportMenuItem(menu, 'Reset colour', 'selection-color-reset', {
-      icon: VIEWPORT_ICON.paint, disabled: empty
-    });
-
-    sceneTreeMenuSection(menu, 'Component');
     const types = typeof plugin?.managers?.structure?.component?.constructor?.getRepresentationTypes === 'function'
       ? plugin.managers.structure.component.constructor
         .getRepresentationTypes(plugin, plugin.managers.structure.hierarchy.current.structures[0])
         .map(entry => ({ name: String(entry?.[0] || ''), label: String(entry?.[1] || entry?.[0] || '') }))
         .filter(entry => entry.name)
       : [];
-    if (types.length) viewportMenuSelect(menu, 'Add as', 'component-representation', types, 'Representation…');
-    viewportMenuItem(menu, 'Cut out of components', 'selection-subtract', {
-      icon: VIEWPORT_ICON.scissors, disabled: empty
-    });
-
-    sceneTreeMenuSection(menu);
-    viewportMenuItem(menu, 'Undo', 'undo', {
-      icon: VIEWPORT_ICON.undo,
-      disabled: !molstarEditUndoStack.length && plugin?.state?.data?.canUndo !== true
-    });
-    viewportMenuItem(menu, 'Redo', 'redo', {
-      icon: VIEWPORT_ICON.redo, disabled: !molstarEditRedoStack.length
-    });
-    viewportMenuItem(menu, 'Clear selection', 'selection-clear', {
-      icon: SCENE_TREE_ICON.trash, destructive: true, disabled: empty
+    viewportMenuControls = window.BuretteNativeViewerMenus.mountSelectionActions(menu, {
+      read: () => ({
+        empty: !(viewportPlugin()?.managers?.structure?.selection?.stats?.elementCount > 0),
+        canUndo: !!molstarEditUndoStack.length || viewportPlugin()?.state?.data?.canUndo === true,
+        canRedo: !!molstarEditRedoStack.length
+      }),
+      representations: types,
+      colors: SCENE_TREE_UNIFORM_COLORS.map(entry => ({ label: entry.label, value: sceneTreeColorHex(entry.value) })),
+      onColor: color => paintViewportSelection(Number.parseInt(color.slice(1), 16)),
+      onRepresentation: representation => {
+        addViewportSelectionComponent(representation);
+        closeViewportMenu({ restoreFocus: true });
+      },
+      onAction: action => {
+        if (!runViewportMenuAction(action)) closeViewportMenu({ restoreFocus: true });
+      },
+      resize: positionOpenViewportMenu
     });
   }
 
@@ -10652,20 +10571,6 @@ SOFTWARE.
       plugin.managers.animation.stop();
       activeTrajectoryPlaybackControl?.stop();
       updateViewportAnimateState();
-    } else if (action === 'modifier') {
-      selectionQueryModifier = control.dataset.modifier || 'set';
-      for (const button of control.parentElement?.children || []) {
-        button.setAttribute('aria-pressed', button === control ? 'true' : 'false');
-      }
-      return true;
-    } else if (action === 'query') {
-      const query = plugin.query.structure.registry.list[Number(control.dataset.queryIndex)];
-      // Mol* applies its own query buttons without the picking level, so a "Ligand"
-      // pick stays a ligand instead of being widened to whole chains.
-      if (query) plugin.managers.structure.selection.fromSelectionQuery(selectionQueryModifier, query, false);
-    } else if (action === 'selection-color') {
-      paintViewportSelection(Number(control.dataset.viewportColor));
-      return true;
     } else if (action === 'selection-color-reset') paintViewportSelection(null);
     else if (action === 'selection-subtract') subtractViewportSelection();
     else if (action === 'undo') {
@@ -10759,6 +10664,7 @@ SOFTWARE.
     const level = document.querySelector('[data-buret-selection-level]');
     const granularity = molstarSelectionLevel();
     if (level && granularity && level.value !== granularity) level.value = granularity;
+    viewportMenuControls?.refresh?.();
     if (changed) updateFloatingLayoutOffsets();
   }
 
@@ -10864,53 +10770,25 @@ SOFTWARE.
         if (!menu) return;
         const control = event.target.closest?.('[data-buret-viewport-menu]');
         if (control && menu.contains(control)) {
-          // Swatches and the mode switch are meant to be tried in place, so they
-          // leave the menu standing; every other item is a one-shot.
+          // Actions that return true keep their panel open for further changes.
           if (!runViewportMenuAction(control.dataset.buretViewportMenu, control)) closeViewportMenu({ restoreFocus: event.detail === 0 });
           return;
         }
-        if (!menu.contains(event.target) && !event.target.closest?.('[aria-haspopup]')) closeViewportMenu();
       });
-      document.addEventListener('change', event => {
-        const select = event.target.closest('[data-buret-viewport-select="component-representation"]');
-        if (!select?.value) return;
-        addViewportSelectionComponent(select.value);
-        closeViewportMenu();
+      // Radix Select moves focus and hit targets on pointerdown. Its trailing
+      // click can land on body; dismiss from the original pointer target instead.
+      document.addEventListener('pointerdown', event => {
+        const menu = document.getElementById('buret-viewport-menu');
+        if (menu && !menu.contains(event.target) && !event.target.closest?.('[aria-haspopup]')) closeViewportMenu();
       });
       document.addEventListener('keydown', event => {
         const menu = document.getElementById('buret-viewport-menu');
-        if (!menu) return;
+        if (!menu || event.defaultPrevented) return;
         if (event.key === 'Escape' || (event.key === 'Tab' && menu.classList.contains('atlas-menu-content'))) {
           event.preventDefault();
           closeViewportMenu({ restoreFocus: true });
         } else if (menu.classList.contains('atlas-menu-content')) {
           window.BuretteNativeViewerMenus?.moveMenuFocus?.(menu, event);
-        }
-      });
-      // While filtering, the headings and the fold-away groups get in the way, so
-      // the menu flattens to just what matched and restores itself when cleared.
-      document.addEventListener('input', event => {
-        const search = event.target.closest('[data-buret-viewport-search]');
-        const menu = search?.closest('#buret-viewport-menu');
-        if (!menu) return;
-        const query = search.value.trim().toLowerCase();
-        menu.dataset.filtering = query ? 'true' : 'false';
-        for (const item of menu.querySelectorAll('[data-buret-viewport-menu="query"]')) {
-          const matches = !query || item.textContent.toLowerCase().includes(query);
-          item.classList.toggle('buret-tree-menu-item-filtered', !matches);
-          const group = matches && query ? item.closest('details') : null;
-          if (group && !group.open) {
-            group.open = true;
-            group.dataset.filterOpened = 'true';
-          }
-        }
-        // A group the filter pulled open belongs closed again once the field is
-        // cleared, or clearing leaves the menu longer than it was to begin with.
-        if (!query) {
-          for (const group of menu.querySelectorAll('details[data-filter-opened]')) {
-            group.open = false;
-            delete group.dataset.filterOpened;
-          }
         }
       });
     }

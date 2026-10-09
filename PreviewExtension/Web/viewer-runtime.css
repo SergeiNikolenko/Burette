@@ -811,73 +811,6 @@ body.buret-selection-toolbar-open .buret-selection-bar {
   opacity: 0.4;
   pointer-events: none;
 }
-.buret-viewport-search {
-  box-sizing: border-box;
-  width: calc(100% - 8px);
-  height: 24px;
-  margin: 0 4px 3px;
-  border: 1px solid var(--buret-molstar-border);
-  border-radius: 6px;
-  padding: 0 7px;
-  color: var(--buret-molstar-text);
-  background: var(--buret-molstar-field-background);
-  font: inherit;
-  font-size: 11px;
-}
-.buret-viewport-search:focus-visible {
-  outline: 2px solid var(--buret-molstar-accent);
-  outline-offset: -1px;
-}
-/* Scoped past `.buret-tree-menu-item`, which is declared later in this file and
-   would otherwise win the tie and keep filtered-out rows holding their height. */
-.buret-tree-menu .buret-tree-menu-item.buret-tree-menu-item-filtered {
-  display: none;
-}
-/* A filtered list is one flat set of hits, so the headings, the dividers and the
-   fold-away group summaries step out of the way until the field is cleared. */
-.buret-viewport-menu[data-filtering="true"] .buret-tree-menu-title,
-.buret-viewport-menu[data-filtering="true"] .buret-tree-menu-divider,
-.buret-viewport-menu[data-filtering="true"] .buret-tree-menu-actions > summary {
-  display: none;
-}
-/* display wins over the hidden attribute's default, and the wiggle noise switch is
-   hidden whenever there is no wiggle to shape. */
-.buret-viewport-segment[hidden] {
-  display: none;
-}
-.buret-viewport-segment {
-  display: flex;
-  gap: 1px;
-  margin: 0 4px 2px;
-  border-radius: 7px;
-  padding: 2px;
-  background: var(--buret-molstar-field-background);
-}
-.buret-viewport-segment-button {
-  flex: 1 1 0;
-  min-width: 0;
-  height: 20px;
-  border: 0;
-  border-radius: 5px;
-  padding: 0;
-  color: var(--buret-molstar-muted-text);
-  background: transparent;
-  font: inherit;
-  font-size: 10.5px;
-  cursor: pointer;
-  transition: background 140ms ease, color 140ms ease;
-}
-.buret-viewport-segment-button:hover {
-  color: var(--buret-molstar-text);
-}
-.buret-viewport-segment-button[aria-pressed="true"] {
-  color: var(--buret-molstar-text);
-  background: var(--buret-molstar-hover-background);
-}
-.buret-viewport-segment-button:focus-visible {
-  outline: 2px solid var(--buret-molstar-accent);
-  outline-offset: 1px;
-}
 body .msp-plugin .msp-viewport-controls-buttons {
   box-sizing: border-box;
   display: flex;
@@ -5551,3 +5484,14 @@ body:not(.buret-theme-light):not(.burette-mobile-host) .buret-molecule-context-s
 }
 .buret-animate-menu > .atlas-menu-item { width: 100%; border: 0; background: transparent; font: inherit; color: inherit; }
 .buret-animate-menu > .atlas-menu-item:hover { background: var(--color-background-primary-ghost-hover); }
+
+.buret-viewport-menu:is(.buret-selection-query, .buret-selection-apply) {
+  position: fixed;
+  z-index: 2147483646;
+  box-sizing: border-box;
+  width: min(324px, calc(100vw - 16px));
+  max-height: calc(100dvh - 12px);
+  overflow-y: auto;
+  padding: 4px;
+  font: var(--text-sm)/var(--menu-line-height) var(--font-sans);
+}
