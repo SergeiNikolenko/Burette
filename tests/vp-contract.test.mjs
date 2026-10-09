@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-grid-search-export.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-grid-search-export.mjs", import.meta.url))]),
   "test-ketcher-ui-primitives.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-ketcher-ui-primitives.mjs", import.meta.url))]),
   "test-folding-panel.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-folding-panel.test.tsx", import.meta.url))]),
   "test-grid-selection-toolbar.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-grid-selection-toolbar.mjs", import.meta.url))]),
@@ -56,6 +57,7 @@ const contractScripts = {
   "test-preview-format-matrix.mjs": () => import("./test-preview-format-matrix.mjs"),
   "test-cross-platform-preview-contract.mjs": () => import("./test-cross-platform-preview-contract.mjs"),
   "test-sidebar-projects.mjs": () => import("./test-sidebar-projects.mjs"),
+  "test-sidebar-pinned-sections.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-sidebar-pinned-sections.test.tsx", import.meta.url))]),
   "test-sidebar-tree-render.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-sidebar-tree-render.mjs", import.meta.url))]),
   "test-docking-documents.mjs": () => import("./test-docking-documents.mjs"),
   "test-ui-shell-contract.mjs": () => import("./test-ui-shell-contract.mjs"),

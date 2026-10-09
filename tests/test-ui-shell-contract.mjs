@@ -3107,7 +3107,7 @@ assert.match(launcherKind, /export const launcherKind = definePageKind/);
 assert.match(launcherKind, /<WelcomeScreen actions=\{actions\} \/>/);
 assert.doesNotMatch(sidebarWorkspaceSwitcher, /return `v\$\{info\.version\}`;/);
 assert.match(sidebarFileBrowser, /const hideProjectPreviews = state\.buildInfo\.isAgentShell && !state\.workspacePath/);
-assert.match(sidebarFileBrowser, /const visibleProjects = hideProjectPreviews \? \[\] : filterSidebarProjects/);
+assert.match(sidebarFileBrowser, /const visibleProjects = hideProjectPreviews \? \[\] : \[\.\.\.filterSidebarProjects/);
 assert.match(sidebarFileBrowser, /\{!hideProjectPreviews && \(/);
 assert.match(ketcherKind, /export const ketcherKind = definePageKind/);
 assert.match(ketcherKind, /lazy\(\(\) => \{[\s\S]*?return import\("\.\.\/\.\.\/ketcher-page"\)/);
@@ -8112,8 +8112,8 @@ assert.match(gridCss, /--buret-control-height: 32px;/);
 assert.match(gridCss, /--buret-control-surface: rgba\(252, 252, 252, 0\.059\);/);
 assert.match(gridCss, /--buret-control-hover: rgba\(252, 252, 252, 0\.1\);/);
 assert.match(gridCss, /--buret-control-active: rgba\(252, 252, 252, 0\.085\);/);
-assert.match(gridCss, /button,[\s\S]*\.buret-grid-toolbar input\[type="search"\],[\s\S]*\.buret-grid-toolbar select \{[\s\S]*background: var\(--buret-control-surface\);/);
-assert.match(gridCss, /button,[\s\S]*\.buret-grid-toolbar input\[type="search"\],[\s\S]*\.buret-grid-toolbar select \{[\s\S]*font: 400 13px\/1\.2 -apple-system/);
+// Search and select use the shared Atlas controls; their event and native-menu
+// contracts are exercised by test-grid-selection-toolbar.mjs.
 // Legacy resets must not override the shared button and menu disabled states.
 assert.match(gridCss, /button:where\(:not\(\.atlas-button, \.atlas-menu-item\)\):disabled \{/);
 assert.match(gridCss, /--buret-segment-height: 28px;/);

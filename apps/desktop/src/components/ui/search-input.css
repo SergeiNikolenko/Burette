@@ -1,0 +1,23 @@
+@layer components {
+  /* Atlas SearchInput default (search-input-variants): shared by the shell and
+     standalone Grid, which does not load the shell's Tailwind utilities. */
+  .atlas-search-input {
+    -webkit-app-region: no-drag;
+    display: flex; align-items: center; min-width: 0;
+    height: var(--height-page-search); box-sizing: border-box;
+    gap: 8px; padding: 0 10px; border-radius: var(--radius-full);
+    border: 1px solid var(--color-border-primary-outline);
+    background: var(--color-background-page-search);
+  }
+  .atlas-search-input:focus-within { outline: 2px solid var(--color-ring); }
+  .atlas-search-input[data-disabled] { opacity: .5; }
+  .atlas-search-input > svg { flex-shrink: 0; width: 16px; height: 16px; color: var(--color-text-secondary); }
+  .atlas-search-input > input {
+    flex: 1; min-width: 0; width: 100%; height: 100%; box-sizing: border-box;
+    padding: 0; border: 0; border-radius: 0; background: transparent; outline: none;
+    font-family: inherit; font-size: var(--text-base); line-height: 18px;
+    color: var(--color-text); user-select: text;
+  }
+  .atlas-search-input > input::placeholder { color: var(--color-text-tertiary); user-select: none; }
+  .atlas-search-input:has(> input[aria-invalid="true"]) { border-color: var(--color-text-danger); }
+}

@@ -165,6 +165,7 @@ export function ProjectGroup({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
     if (event.key === "F2") {
       event.preventDefault();
       event.stopPropagation();
@@ -419,6 +420,7 @@ function ProjectTreeNodeView({
     event.stopPropagation();
   };
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
     if (event.key === "F2") {
       event.preventDefault();
       event.stopPropagation();
@@ -587,6 +589,7 @@ export function ProjectItem({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       openItem();

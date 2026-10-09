@@ -6,7 +6,7 @@ import { SshProjectDialog } from "./ssh-project-dialog";
 import { removeSshConnection, saveSshConnection, sshList, useSshProjects, useSshConnections } from "../../lib/ssh-projects";
 import type { ShellActions, ShellViewState } from "../types";
 
-export function SshProjects({ actions, state, query = "", organization = "project", sort = "manual" }: { actions: ShellActions; state: ShellViewState; query?: string; organization?: ProjectOrganization; sort?: ProjectSort }) {
+export function SshProjects({ actions, state, query = "", organization = "project", sort = "manual", section }: { actions: ShellActions; state: ShellViewState; query?: string; organization?: ProjectOrganization; sort?: ProjectSort; section?: "pinned" | "recent" }) {
   const projects = useSshProjects();
   const connections = useSshConnections();
   const checked = useRef(new Set<string>());
@@ -14,7 +14,7 @@ export function SshProjects({ actions, state, query = "", organization = "projec
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      for (const host of new Set(projects.map(p => p.host))) {
+      for (const host of new Set(projects.filter(p => !section || !!p.pinned === (section === "pinned")).map(p => p.host))) {
         if (cancelled) return;
         if (checked.current.has(host) || connections.find(c => c.host === host)?.enabled === false) continue;
         checked.current.add(host);
@@ -22,11 +22,11 @@ export function SshProjects({ actions, state, query = "", organization = "projec
       }
     })();
     return () => { cancelled = true; };
-  }, [projects, connections]);
-  const visible = projects.filter(p => `${p.name} ${p.host} ${p.root}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === "recent" ? (b.openedAt ?? 0) - (a.openedAt ?? 0) : sort === "priority" ? Number(!!b.pinned) - Number(!!a.pinned) : 0);
+  }, [projects, connections, section]);
+  const visible = projects.filter(p => (!section || !!p.pinned === (section === "pinned")) && `${p.name} ${p.host} ${p.root}`.toLowerCase().includes(query.toLowerCase())).sort((a, b) => sort === "recent" ? (b.openedAt ?? 0) - (a.openedAt ?? 0) : sort === "priority" ? Number(!!b.pinned) - Number(!!a.pinned) : 0);
   const groups = new Map<string, typeof projects>();
   for (const project of visible) {
-    const group = organization === "connection" ? connections.find(c => c.host === project.host)?.name ?? project.host : organization === "flat" ? "" : project.pinned ? "Pinned projects" : project.section ?? "";
+    const group = organization === "connection" ? connections.find(c => c.host === project.host)?.name ?? project.host : organization === "flat" ? "" : project.pinned && !section ? "Pinned projects" : project.section ?? "";
     groups.set(group, [...(groups.get(group) ?? []), project]);
   }
   return <>{[...groups].sort(([a], [b]) => Number(b === "Pinned projects") - Number(a === "Pinned projects")).map(([name, items]) => <div key={name} className="ssh-project-section" role="group" aria-label={name || "Remote projects"}>

@@ -59,7 +59,6 @@
   --buret-control-height: 32px;
   --buret-button-height: 28px;
   --buret-segment-height: 28px;
-  --buret-select-chevron: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='gray' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m7 9.5 5-5 5 5'/><path d='m7 14.5 5 5 5-5'/></svg>");
 }
 
 html[data-buret-theme="light"] {
@@ -129,14 +128,12 @@ body.burette-transparent-background {
 }
 
 button:where(:not(.atlas-button, .atlas-menu-item)),
-input,
-select {
+input:where(:not(.atlas-search-input > input)),
+select:where(:not([data-native-selectcontrol])) {
   font: inherit;
 }
 
-button:where(:not(.atlas-button, .atlas-menu-item)),
-.buret-grid-toolbar input[type="search"],
-.buret-grid-toolbar select {
+button:where(:not(.atlas-button, .atlas-menu-item)) {
   box-sizing: border-box;
   min-height: var(--buret-control-height);
   border: 0;
@@ -158,18 +155,14 @@ button:where(:not(.atlas-button, .atlas-menu-item)):not(:disabled):not([aria-has
   transform: translateY(1px);
 }
 
-button:where(:not(.atlas-button, .atlas-menu-item)):not(:disabled):hover,
-.buret-grid-toolbar input[type="search"]:hover,
-.buret-grid-toolbar select:hover {
+button:where(:not(.atlas-button, .atlas-menu-item)):not(:disabled):hover {
   background-color: var(--buret-control-hover);
 }
 
 /* The host's focus treatment: a 1px ring-coloured border with a 3px halo at
    half strength (focus-visible:border-ring + ring-3 ring-ring/50). The halo is
    an outline so it never stacks against control shadows. */
-button:where(:not(.atlas-button, .atlas-menu-item)):focus-visible,
-.buret-grid-toolbar input[type="search"]:focus,
-.buret-grid-toolbar select:focus {
+button:where(:not(.atlas-button, .atlas-menu-item)):focus-visible {
   box-shadow: 0 0 0 1px var(--buret-ring);
   outline: 3px solid var(--buret-ring-soft);
   outline-offset: 1px;
@@ -364,12 +357,6 @@ button:where(:not(.atlas-button, .atlas-menu-item)):disabled {
   width: auto;
 }
 
-.buret-grid-toolbar .buret-renderer-control select {
-  width: auto;
-  min-width: 104px;
-  min-height: 28px;
-}
-
 /* grid-viewer updates aria-pressed imperatively. Map that existing contract
    onto the original ghost Button's data-selected appearance. */
 #grid-controls .atlas-button[aria-pressed="true"] {
@@ -419,32 +406,6 @@ button:where(:not(.atlas-button, .atlas-menu-item)):disabled {
   width: 16px;
   height: 16px;
   color: var(--buret-muted);
-}
-
-/* Scoped past `.buret-grid-toolbar select`, which forces width: 100% and its own padding. */
-#grid-controls .ab-mini, .ab-menu .ab-mini {
-  flex: 0 0 auto;
-  box-sizing: border-box;
-  width: auto;
-  height: 28px;
-  min-height: 28px;
-  padding: 0 24px 0 8px;
-  border: 1px solid var(--buret-input-border);
-  border-radius: 8px;
-  color: var(--buret-text);
-  background-color: var(--buret-input-surface);
-  background-image: var(--buret-select-chevron);
-  background-position: right 5px center;
-  background-size: 14px 14px;
-  background-repeat: no-repeat;
-  font: 400 12px/1 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-  -webkit-appearance: none;
-  appearance: none;
-}
-
-#grid-controls .ab-mini:hover, .ab-menu .ab-mini:hover {
-  background-color: var(--buret-input-hover);
-  border-color: var(--buret-input-border);
 }
 
 .buret-grid-control-group,
@@ -613,43 +574,6 @@ button:where(:not(.atlas-button, .atlas-menu-item)):disabled {
 
 .buret-sort-control {
   width: min(148px, 100%);
-}
-
-/* Search and sort mirror the host Input / NativeSelect: bordered, nearly
-   transparent fill, and the shared unfold chevron. */
-.buret-grid-toolbar input[type="search"],
-.buret-grid-toolbar select {
-  width: 100%;
-  min-height: 28px;
-  padding: 0 8px;
-  border: 1px solid var(--buret-input-border);
-  background-color: var(--buret-input-surface);
-  text-transform: none;
-}
-
-.buret-grid-toolbar input[type="search"]:hover,
-.buret-grid-toolbar select:hover {
-  background-color: var(--buret-input-hover);
-}
-
-.buret-sort-control select {
-  min-height: 28px;
-  padding: 0 30px 0 10px;
-}
-
-.buret-grid-toolbar select {
-  padding-right: 30px;
-  appearance: none;
-  background-image: var(--buret-select-chevron);
-  background-position: right 8px center;
-  background-size: 16px 16px;
-  background-repeat: no-repeat;
-}
-
-.buret-grid-toolbar input.invalid {
-  border-color: #ff453a;
-  outline: 3px solid rgba(255, 69, 58, 0.25);
-  outline-offset: 1px;
 }
 
 .buret-load-status {
@@ -2622,6 +2546,7 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
    Only iframe placement and Radix DropdownMenu variable names differ. */
 .buret-grid-select-anchor { display: inline-flex; min-width: 0; max-width: 100%; }
 .buret-sort-control > .buret-grid-select-anchor { width: 100%; }
+.buret-sort-control .atlas-select { width: 100%; }
 .buret-grid-select-menu {
   --radix-select-trigger-width: var(--radix-dropdown-menu-trigger-width);
   --radix-select-content-transform-origin: var(--radix-dropdown-menu-content-transform-origin);
@@ -2650,7 +2575,6 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
 .ab-menu .ab-item-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ab-menu .ab-item-meta { margin-left: auto; color: var(--color-text-tertiary); font-size: var(--text-xs); line-height: 16px; }
 .ab-menu .ab-ico { color: currentColor; }
-.ab-menu .ab-mini { height: 28px; border: 0; border-radius: var(--radius-xl); color: var(--color-text-tertiary); background-color: transparent; }
 @layer base {
   button.atlas-menu-item { border: 0; background: transparent; color: inherit; font-family: inherit; font-weight: inherit; text-align: left; }
 }

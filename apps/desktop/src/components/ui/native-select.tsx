@@ -2,7 +2,8 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 import { isTauriRuntime } from "@/lib/tauri";
-import { Select, SelectContent, SelectControlIcon, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "./select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "./select";
+import { NativeSelectControl } from "./native-select-control";
 
 type NativeSelectProps = Omit<React.ComponentProps<"select">, "size"> & {
   size?: "sm" | "default"
@@ -14,15 +15,7 @@ function NativeSelect({
   ...props
 }: NativeSelectProps) {
   if (!isTauriRuntime()) return <BrowserSelect className={className} size={size} {...props} />;
-  return <div data-slot="native-select-wrapper" data-size={size}
-    className={cn("atlas-select w-fit text-(--color-text)", className)}
-    data-atlas-size={size === "sm" ? "sm" : "md"} data-variant="outline"
-    data-disabled={props.disabled ? "" : undefined}
-    data-invalid={props["aria-invalid"] === true || props["aria-invalid"] === "true" ? "" : undefined}>
-    <select {...props} data-slot="native-select" data-size={size} data-native-selectcontrol=""
-      className="atlas-select-text h-full w-full min-w-0 appearance-none border-0 bg-transparent outline-none disabled:cursor-not-allowed" />
-    <span className="atlas-select-indicator"><SelectControlIcon /></span>
-  </div>;
+  return <NativeSelectControl className={className} size={size} {...props} />;
 }
 
 type Choice = { value: string; label: React.ReactNode; disabled?: boolean; group?: string };

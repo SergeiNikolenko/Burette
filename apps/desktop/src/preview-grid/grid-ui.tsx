@@ -3,6 +3,8 @@ import { Copy, Cube, Download, Edit, Grid, Search } from "../components/ui/app-i
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { GridSelectMenu } from "./grid-select-menu";
+import { NativeSelectControl } from "../components/ui/native-select-control";
+import { SearchInput } from "../components/ui/search-input";
 import { gridAtlasStyles } from "./grid-atlas-styles";
 import { SegmentedControl as AtlasSegmentedControl, SegmentedControlItem } from "../components/ui/segmented-control";
 import { Button } from "../components/ui/button";
@@ -82,10 +84,10 @@ type GridControlProps = {
   saveAsTitle: string;
   undoTitle: string;
   sortOptions: SortOption[];
+  searchQuery: string;
   onSearchInput: (value: string) => void;
   onSortChange: (value: string) => void;
   onShowProperties: () => void;
-  onClearSmarts: () => void;
   onSelectAll: () => void;
   onClearSelection: () => void;
   onCluster: () => void;
@@ -186,7 +188,7 @@ function MiniSelect<T extends string>({ value, options, ariaLabel, disabled, for
 }) {
   return (
     <GridSelectMenu>
-      <select
+      <NativeSelectControl size="sm"
         className="ab-mini"
         aria-label={ariaLabel}
         value={value}
@@ -196,7 +198,7 @@ function MiniSelect<T extends string>({ value, options, ariaLabel, disabled, for
         {options.map((option) => (
           <option key={option} value={option}>{formatOption ? formatOption(option) : option}</option>
         ))}
-      </select>
+      </NativeSelectControl>
     </GridSelectMenu>
   );
 }
@@ -243,7 +245,7 @@ function XyzrenderStyleControl(props: GridControlProps) {
     >
       Style
       <GridSelectMenu>
-        <select
+        <NativeSelectControl size="sm"
           id="xyzrender-preset"
           className="ab-mini"
           value={props.xyzrenderPreset}
@@ -254,7 +256,7 @@ function XyzrenderStyleControl(props: GridControlProps) {
           {props.xyzrenderPresetOptions.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
-        </select>
+        </NativeSelectControl>
       </GridSelectMenu>
     </label>
   );
@@ -411,7 +413,7 @@ function CollectionSection(props: GridControlProps & { onRun: (action: () => voi
           </span>
         </ActionItem>
         <GridSelectMenu>
-          <select
+          <NativeSelectControl size="sm"
             id="cluster-cutoff"
             className="ab-mini"
             aria-label="Tanimoto similarity cutoff"
@@ -422,7 +424,7 @@ function CollectionSection(props: GridControlProps & { onRun: (action: () => voi
             {CLUSTER_CUTOFFS.map((cutoff) => (
               <option key={cutoff} value={cutoff.toFixed(2)}>{cutoff.toFixed(2)}</option>
             ))}
-          </select>
+          </NativeSelectControl>
         </GridSelectMenu>
       </div>
       <div className="ab-row">
@@ -666,7 +668,7 @@ function GridActionToolbar(props: GridControlProps) {
         <label className="buret-renderer-control">
           <span className="buret-visually-hidden">Molecule view</span>
           <GridSelectMenu>
-            <select
+            <NativeSelectControl size="sm"
               id="card-renderer"
               value={props.cardRenderer}
               aria-label="Molecule view"
@@ -674,7 +676,7 @@ function GridActionToolbar(props: GridControlProps) {
             >
               <option value="rdkit">2D diagrams</option>
               <option value="xyzrender">3D renders</option>
-            </select>
+            </NativeSelectControl>
           </GridSelectMenu>
         </label>
       ) : null}
@@ -696,9 +698,6 @@ function GridActionToolbar(props: GridControlProps) {
           <span data-coordinate-mode>2D</span>
         </Button></ControlTooltip>
       </span>
-      <ControlTooltip label="Clear the SMARTS search"><Button variant="ghost" size="sm" id="clear-smarts" className="ab-btn buret-clear-smarts" type="button" hidden onClick={props.onClearSmarts}>
-        Clear search
-      </Button></ControlTooltip>
       <span className="ab-spacer" aria-hidden="true" />
       {props.selectionEnabled ? (
         <div className="buret-selection-actions" role="group" aria-label="Selection">
@@ -756,25 +755,25 @@ function GridControls(props: GridControlProps) {
       <style>{atlasStyles}</style>
       <div className="buret-toolbar-row buret-toolbar-row-main">
         <div className="buret-search-control buret-filter-control">
-          <input
+          <SearchInput
             id="search"
-            type="search"
+            value={props.searchQuery ?? ""}
+            onValueChange={props.onSearchInput}
             name="molecule-search"
             autoComplete="off"
             aria-label={props.substructureSearch ? "Search text or structures with SMARTS" : "Search text"}
             spellCheck={false}
             autoCapitalize="off"
             placeholder={searchPlaceholder}
-            onInput={(event) => props.onSearchInput(event.currentTarget.value || "")}
           />
         </div>
         <label className="buret-sort-control">
           <GridSelectMenu>
-            <select id="sort" name="molecule-sort" aria-label="Sort molecules" onChange={(event) => props.onSortChange(event.currentTarget.value || "index")}>
+            <NativeSelectControl size="sm" id="sort" name="molecule-sort" aria-label="Sort molecules" onChange={(event) => props.onSortChange(event.currentTarget.value || "index")}>
               {props.sortOptions.map((option) => (
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
-            </select>
+            </NativeSelectControl>
           </GridSelectMenu>
         </label>
         <div id="load-status" className="buret-load-status" />

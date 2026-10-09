@@ -20,12 +20,17 @@
     to { opacity: 0; transform: scale(var(--select-list-scale, .95)); }
   }
   /* Keep macOS's real select rather than a second, potentially stale label. */
-  .atlas-select:has(> [data-native-selectcontrol]) { padding: 0; }
+  .atlas-select:has(> [data-native-selectcontrol]) { padding: 0; width: fit-content; min-width: 0; max-width: 100%; color: var(--color-text); }
   .atlas-select > [data-native-selectcontrol] {
+    box-sizing: border-box;
+    height: 100%; width: 100%; min-width: 0;
+    appearance: none; border: 0; background: transparent; outline: none;
+    font: inherit;
     cursor: inherit;
     padding-inline: var(--select-control-gutter);
     padding-inline-end: calc(var(--select-control-gutter) + var(--dropdown-icon-width) + var(--select-control-gap));
   }
+  .atlas-select > [data-native-selectcontrol]:disabled { cursor: not-allowed; }
   .atlas-select > [data-native-selectcontrol] + .atlas-select-indicator {
     position: absolute;
     inset-inline-end: var(--select-control-gutter);

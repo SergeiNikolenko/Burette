@@ -80,6 +80,25 @@ button('sort').value = 'name';
 button('sort').dispatchEvent(new window.Event('change', { bubbles: true }));
 assert.deepEqual(calls.slice(-2), [['view', 'xyzrender'], ['sort', 'name']], 'user-facing names preserve renderer and sorting contracts');
 assert.equal(button('search').getAttribute('autocomplete'), 'off');
+const updateSearch = value => {
+  calls.push(['search', value]);
+  mount({ searchQuery: value, onSearchInput: updateSearch });
+};
+mount({ searchQuery: '', onSearchInput: updateSearch });
+const searchField = button('search');
+searchField.focus();
+for (const query of ['C', 'CC', 'CCC']) {
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set.call(searchField, query);
+  searchField.dispatchEvent(new window.Event('input', { bubbles: true }));
+}
+assert.deepEqual(calls.slice(-3), [['search', 'C'], ['search', 'CC'], ['search', 'CCC']], 'rapid input forwards every query without restoring stale props');
+assert.equal(button('search'), searchField, 'toolbar updates retain the focused input');
+const clearSearch = host.querySelector('button[aria-label="Clear search"]');
+assert.ok(clearSearch, 'the shared search exposes its clear action once there is a query');
+clearSearch.click();
+assert.deepEqual(calls.at(-1), ['search', '']);
+assert.equal(searchField.value, '');
+assert.equal(document.activeElement, searchField, 'clearing preserves search focus');
 
 // The standalone grid uses the same single-selection/keyboard primitive as
 // the inspector while preserving the attributes consumed by grid-viewer.
@@ -125,6 +144,17 @@ button('sort').options[1].disabled = false;
 mount({ clusterEnabled: true, conformerVariant: 'ETKDGv3', mmffVariant: 'MMFF94', clusterCutoff: 0.6,
   onConformerVariantChange: value => calls.push(['conformer', value]) });
 const actionsTrigger = document.querySelector('.ab-actions-menu .ab-btn');
+for (const enabled of [false, true]) {
+  mount({ exportEnabled: true, saveEnabled: enabled, undoEnabled: enabled, saveAsEnabled: true, exportScopeLabel: '2 selected rows' });
+  actionsTrigger.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.deepEqual(['save-grid', 'undo-grid-edit', 'save-grid-as'].map(id => button(id).disabled), [!enabled, !enabled, false]);
+  assert.equal(button('export-csv').title, 'Export 2 selected rows as CSV');
+  document.querySelector('.ab-menu').dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  await new Promise(resolve => setTimeout(resolve, 20));
+}
+mount({ clusterEnabled: true, conformerVariant: 'ETKDGv3', mmffVariant: 'MMFF94', clusterCutoff: 0.6,
+  onConformerVariantChange: value => calls.push(['conformer', value]) });
 actionsTrigger.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
 await new Promise(resolve => setTimeout(resolve, 0));
 const conformer = document.querySelector('select[aria-label="Conformer generation method"]');

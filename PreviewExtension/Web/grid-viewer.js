@@ -1867,6 +1867,7 @@
       selectedInput3d: selectedRowsHaveInput3dCoordinates(),
       ...gridEditState(),
       sortOptions: propertyOptionList(cfg),
+      searchQuery: state.query,
       onSearchInput(value) {
         scheduleSearch(value || '', cfg);
       },
@@ -1878,13 +1879,6 @@
       onShowProperties() {
         state.showProperties = !state.showProperties;
         applyGridPreferences(cfg);
-      },
-      onClearSmarts() {
-        setUnifiedSearchQuery('', cfg);
-        const input = document.getElementById('search');
-        if (input) input.value = '';
-        refresh(cfg);
-        input?.focus();
       },
       onSelectAll() { selectAllRows(cfg); },
       onClearSelection() { clearSelection(cfg); },
@@ -3136,7 +3130,6 @@
   }
 
   function scheduleSearch(value, cfg) {
-    const wasPending = Boolean(state.searchTimer);
     clearTimeout(state.searchTimer);
     setUnifiedSearchQuery(value, cfg);
     // Obsolete page/SMARTS requests must stop applying while the user types,
@@ -3144,7 +3137,7 @@
     state.token += 1;
     state.dataToken += 1;
     state.searchTimer = setTimeout(() => refresh(cfg), 120);
-    if (!wasPending) refreshGridControls(cfg);
+    refreshGridControls(cfg);
   }
 
   function normalizedSearchText(row) {
@@ -4154,10 +4147,8 @@
         ? `Indexing ${included.toLocaleString()}${state.recordsTotalHint ? ` / ${state.recordsTotalHint.toLocaleString()}` : ''} ${effectiveMolecularGrid(cfg) ? 'molecules' : 'rows'}`
         : '';
     }
-    const clearSMARTS = document.getElementById('clear-smarts');
-    if (clearSMARTS) clearSMARTS.hidden = !state.query.trim();
     const searchInput = document.getElementById('search');
-    if (searchInput) searchInput.classList.toggle('invalid', !!state.smartsError);
+    if (searchInput) searchInput.setAttribute('aria-invalid', String(!!state.smartsError));
     syncGridClusterControls();
     syncRdkitCoordinatesControl();
     syncGridEditControls();

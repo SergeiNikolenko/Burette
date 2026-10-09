@@ -298,6 +298,12 @@ the original button CSS is loaded by `styles.css` in the shell and embedded by
 `grid-atlas-styles.ts` in standalone previews. The viewer's imperative
 `aria-pressed` contract maps to the original selected appearance. Legacy grid
 button rules must not override these shared controls.
+Grid search uses the shared Atlas `SearchInput` (32px page-search variant),
+including its clear action and focus return. Search text updates immediately;
+the collection filter retains its 120ms debounce and stale-request invalidation.
+Grid selects reuse `NativeSelectControl` and the extracted Select CSS, not a
+second arrow image or field skin. The real select remains the viewer's value,
+options and disabled-state contract; only browser popups use `GridSelectMenu`.
 Grid button hints also use the shared `Tooltip` floating variant, portaled
 outside the toolbar with its exposed width as the collision boundary. They
 open below the top toolbar after 200ms, remain available on disabled actions,

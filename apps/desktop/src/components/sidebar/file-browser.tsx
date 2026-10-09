@@ -93,8 +93,12 @@ export function FileBrowser({
   const hideProjectPreviews = state.buildInfo.isAgentShell && !state.workspacePath;
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
-  const visibleProjects = hideProjectPreviews ? [] : filterSidebarProjects(state.sidebarProjects, state.sidebarQuery).sort((a, b) => organization.sort === "priority" ? Number(b.isPinned) - Number(a.isPinned) : organization.sort === "recent" ? Math.max(0, ...b.items.map(i => i.openedAt ?? 0)) - Math.max(0, ...a.items.map(i => i.openedAt ?? 0)) : 0);
+  const visibleProjects = hideProjectPreviews ? [] : [...filterSidebarProjects(state.sidebarProjects, state.sidebarQuery)].sort((a, b) => organization.sort === "priority" ? Number(b.isPinned) - Number(a.isPinned) : organization.sort === "recent" ? Math.max(0, ...b.items.map(i => i.openedAt ?? 0)) - Math.max(0, ...a.items.map(i => i.openedAt ?? 0)) : 0);
+  const pinnedProjects = visibleProjects.filter((project) => project.isPinned);
+  const recentProjects = visibleProjects.filter((project) => !project.isPinned);
   const pinnedItems = visibleProjects.flatMap((project) => project.items.filter((item) => item.isPinned));
+  const hasPinned = pinnedProjects.length > 0 || pinnedItems.length > 0
+    || (!hideProjectPreviews && sshProjects.some((project) => project.pinned && `${project.name} ${project.host} ${project.root}`.toLowerCase().includes(sidebarQuery.toLowerCase())));
   const pinnedExpanded = pinnedOpen || hasSidebarQuery;
   const projectsExpanded = state.projectsOpen || hasSidebarQuery;
   const visibleProjectIds = visibleProjects.map((project) => project.id);
@@ -190,10 +194,10 @@ export function FileBrowser({
           <span className="sidebar-tool-label">Ketcher</span>
         </button>
       </SidebarTooltip>
-      {pinnedItems.length > 0 && (
-        <section className="sidebar-section pinned-section" aria-label="Pinned structures">
+      {hasPinned && (
+        <section className="sidebar-section pinned-section" aria-label="Pinned">
           <div className="sidebar-section-header">
-            <SidebarTooltip label={pinnedExpanded ? "Collapse pinned structures" : "Expand pinned structures"}>
+            <SidebarTooltip label={pinnedExpanded ? "Collapse pinned" : "Expand pinned"}>
               <button
                 type="button"
                 className="sidebar-section-title-button"
@@ -209,16 +213,21 @@ export function FileBrowser({
             </SidebarTooltip>
           </div>
           {pinnedExpanded && (
-            <div className="pinned-structures" role="list" id="sidebar-pinned-tree">
+            <div className="project-tree pinned-structures" role="tree" id="sidebar-pinned-tree" onKeyDown={handleSidebarTreeKeyDown}>
+              {pinnedProjects.map((project) => (
+                <ProjectGroup key={project.id} project={project} state={state} actions={actions}
+                  expandFoldersByDefault={isWebDemoWorkspace() && project.rootPath === webDemoProjectRoot()} />
+              ))}
               {pinnedItems.map((item) => (
                 <ProjectItem key={`pinned:${item.key}`} item={item} state={state} actions={actions} nested={false} />
               ))}
+              <SshProjects actions={actions} state={state} query={sidebarQuery} organization={organization.organization} sort={organization.sort} section="pinned" />
             </div>
           )}
         </section>
       )}
       {!hideProjectPreviews && (
-      <section className="sidebar-section" aria-label="Projects">
+      <section className="sidebar-section" aria-label="Recents">
         <div className="sidebar-section-header">
           <button
             type="button"
@@ -227,7 +236,7 @@ export function FileBrowser({
             aria-expanded={projectsExpanded}
             aria-controls="sidebar-projects-tree"
           >
-            <span>Projects</span>
+            <span>Recents</span>
             <span className={projectsExpanded ? "sidebar-section-chevron expanded" : "sidebar-section-chevron"} aria-hidden="true">
               <ChevronRight size={10} aria-hidden />
             </span>
@@ -308,8 +317,8 @@ export function FileBrowser({
             </div>
           ) : (
             <div className="project-tree" role="tree" id="sidebar-projects-tree" onKeyDown={handleSidebarTreeKeyDown}>
-              {organization.organization === "connection" && visibleProjects.length > 0 && <div className="ssh-project-section-title">This computer</div>}
-              {visibleProjects.map((project) => (
+              {organization.organization === "connection" && recentProjects.length > 0 && <div className="ssh-project-section-title">This computer</div>}
+              {recentProjects.map((project) => (
                 <ProjectGroup
                   key={project.id}
                   project={project}
@@ -318,7 +327,7 @@ export function FileBrowser({
                   expandFoldersByDefault={isWebDemoWorkspace() && project.rootPath === webDemoProjectRoot()}
                 />
               ))}
-              <SshProjects actions={actions} state={state} query={sidebarQuery} organization={organization.organization} sort={organization.sort} />
+              <SshProjects actions={actions} state={state} query={sidebarQuery} organization={organization.organization} sort={organization.sort} section="recent" />
             </div>
           )
         )}
