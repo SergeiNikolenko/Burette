@@ -4212,7 +4212,7 @@ function contextMenuItems({
   );
   if (removeAction) items.push(
     { kind: "separator" },
-    { kind: "item", id: "remove-component", text: "Remove", tooltip: `Take ${row.label} out of the scene`, action: () => runAction(removeAction) },
+    { kind: "item", id: "remove-component", text: "Remove", variant: "destructive", tooltip: `Take ${row.label} out of the scene`, action: () => runAction(removeAction) },
   );
   return items;
 }

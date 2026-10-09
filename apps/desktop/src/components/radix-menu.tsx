@@ -193,6 +193,7 @@ function renderDropdownItem(item: MenuItemSpec, index: number) {
   return (
     <DropdownMenuItem
       key={item.id}
+      variant={item.variant}
       disabled={item.disabled}
       onSelect={() => item.action?.()}
     >
@@ -240,6 +241,7 @@ function renderContextItem(item: MenuItemSpec, index: number) {
   return (
     <ContextMenuItem
       key={item.id}
+      variant={item.variant}
       disabled={item.disabled}
       onSelect={() => item.action?.()}
     >

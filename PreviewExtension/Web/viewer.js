@@ -25381,17 +25381,17 @@ SOFTWARE.
   }
 
   function molstarNativeMenuEntries(session, target, mode) {
-    const action = entry => {
+    const action = (entry, destructive = false) => {
       const [name, label] = entry;
       const children = moleculeMenuActionChildren(entry);
       const icon = molstarNativeMenuIcon(moleculeContextActionIcon(name));
       const text = molstarNativeMenuLabel(name, label);
-      if (children.length) return { kind: 'submenu', id: name, text, icon, items: children.map(action) };
+      if (children.length) return { kind: 'submenu', id: name, text, icon, items: children.map(child => action(child, destructive)) };
       session.handlers.set(name, () => {
         session.actionChosen = true;
         void moleculeContextMenuAction(name, label, target);
       });
-      return { kind: 'item', id: name, text, icon };
+      return { kind: 'item', id: name, text, icon, ...(destructive ? { variant: 'destructive' } : {}) };
     };
     const grouped = new Map();
     for (const entry of molstarContextMenuActions(target, mode)) {
@@ -25413,7 +25413,7 @@ SOFTWARE.
           if (!groupEntries.length) continue;
           if (items.length) items.push({ kind: 'separator' });
           if (groupIds.length > 1) items.push({ kind: 'label', text: MOLECULE_MENU_GROUP_TITLES[groupId] || section.title });
-          items.push(...groupEntries.map(action));
+          items.push(...groupEntries.map(entry => action(entry, section.destructive === true)));
         }
         body.push({
           kind: 'submenu', id: `section:${section.id}`, text: section.title,
@@ -25423,7 +25423,7 @@ SOFTWARE.
       }
       if (!section.hideTitle) body.push({ kind: 'label', text: section.title });
       for (const entry of entries) {
-        const item = entry[0] === 'represent:menu' ? molstarNativeRepresentationMenu(session, target) : action(entry);
+        const item = entry[0] === 'represent:menu' ? molstarNativeRepresentationMenu(session, target) : action(entry, section.destructive === true);
         if (item) body.push(item);
       }
     }

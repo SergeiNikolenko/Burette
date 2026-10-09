@@ -2175,15 +2175,14 @@ img.radix-menu-item-icon {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  padding-block: 1px;
 }
 .radix-menu-item-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  line-height: 1.25;
+  font-size: inherit;
+  line-height: inherit;
 }
 .radix-menu-item-detail {
   min-width: 0;

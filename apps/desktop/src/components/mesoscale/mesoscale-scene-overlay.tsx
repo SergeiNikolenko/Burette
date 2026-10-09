@@ -29,7 +29,7 @@ export function MesoscaleSceneOverlay({ document, onClose }: { document: ViewerD
       { kind: "label", id: "mesoscale-scene-session", text: "Scene" },
       { kind: "item", id: "mesoscale-create-snapshot", text: "Create snapshot", icon: "CameraPhoto", action: () => run({ type: "createSnapshot", name: `Snapshot ${snapshots.length + 1}` }) },
       { kind: "select", id: "mesoscale-apply-snapshot", label: "Snapshot", value: current?.id ?? "", options: snapshots.map((snapshot) => snapshot.id), optionLabels: Object.fromEntries(snapshots.map((snapshot) => [snapshot.id, snapshot.name])), disabled: snapshots.length === 0, action: (id) => run({ type: "applySnapshot", id }) },
-      { kind: "item", id: "mesoscale-delete-snapshot", text: "Delete current snapshot", icon: "Delete", disabled: !current, action: current ? () => run({ type: "deleteSnapshot", id: current.id }) : undefined },
+      { kind: "item", id: "mesoscale-delete-snapshot", text: "Delete current snapshot", variant: "destructive", icon: "Delete", disabled: !current, action: current ? () => run({ type: "deleteSnapshot", id: current.id }) : undefined },
       { kind: "separator" },
       { kind: "item", id: "mesoscale-export-molx", text: "Export Mol* state (.molx)", icon: "Download", action: () => run({ type: "exportState", format: "molx" }) },
       { kind: "item", id: "mesoscale-export-molj", text: "Export Mol* JSON (.molj)", icon: "Download", action: () => run({ type: "exportState", format: "molj" }) },

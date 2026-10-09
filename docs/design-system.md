@@ -132,16 +132,22 @@ route. `test-grid-selection-toolbar.mjs` covers browser selection, disabled
 options, Escape/focus return, nested choices and the native-route guards;
 these guards are not packaged native acceptance.
 
-Scene and Composition object menus, viewport rail menus (camera, screenshot,
-animation and selection), Style/Appearance, Compute, Grid Actions and column
-context menus use the shared AppKit popup in the desktop app. The DOM controls
+Scene and Composition object menus, Grid Actions and column context menus use
+the shared AppKit popup in the desktop app and shared Atlas menus in the browser.
+Viewport rail panels (camera, screenshot, animation and selection),
+Style/Appearance and Generate 3D remain in the viewer on both hosts: their
+interactive controls and representation previews are not native command lists.
+`test-native-viewer-menus.mjs` covers this presentation boundary. The DOM controls
 remain their command model through `native-viewer-menus.js`; changes still use
 the existing scoped scene operations and undo handlers. Slider drags commit once
 when the menu closes. Commands run after native menu tracking finishes.
 
 Mol* canvas picking, xyzrender, collection molecule rows, and shell menus retain
-their existing native routes. Browser, Finder Quick Look and mobile keep their
-own supported presentation. Free-form measurement labels and column filters are
+their existing native routes. Finder Quick Look and mobile keep their
+own supported presentation. Viewer command descriptors preserve an explicit
+`variant: "destructive"` through the bounded host parser into the Atlas item;
+labels or IDs never determine danger styling. Native menu serialization keeps
+the existing AppKit behavior. Free-form measurement labels and column filters are
 editors, not command menus. The viewer bridge validates menu shape, disabled
 rows, option counts and nesting before opening AppKit.
 

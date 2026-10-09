@@ -12,7 +12,7 @@ type MenuIconName = keyof typeof AppIconData;
 export type MenuItemSpec =
   // `detail` prints a second line and widens the menu; `tooltip` keeps the same
   // sentence one hover away without turning a command list into prose.
-  | { kind: "item"; id: string; text: string; detail?: string; tooltip?: string; icon?: MenuIconName; nativeIcon?: NativeIcon; nativeSymbol?: string; iconText?: string; iconUrl?: string; action?: () => void; accelerator?: string; disabled?: boolean }
+  | { kind: "item"; id: string; text: string; variant?: "destructive"; detail?: string; tooltip?: string; icon?: MenuIconName; nativeIcon?: NativeIcon; nativeSymbol?: string; iconText?: string; iconUrl?: string; action?: () => void; accelerator?: string; disabled?: boolean }
   | { kind: "separator" }
   | { kind: "label"; id: string; text: string }
   // A submenu keeps a long command list readable: the parent row names the

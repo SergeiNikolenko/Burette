@@ -17,6 +17,24 @@ const controls = new Function('document', `
   return { sceneTreeMenuItem, sceneTreeMenuSection, sceneTreeMenuSelect, sceneTreeMenuSlider, sceneTreeMenuThemePicker };
 `)(document);
 const events = [];
+// Carry the actual scene command's danger state, not a guess based on its label.
+{
+  const menu = document.createElement('div');
+  const remove = controls.sceneTreeMenuItem('Remove', 'remove', { destructive: true });
+  const neutral = controls.sceneTreeMenuItem('Remove selection object', 'remove');
+  menu.append(remove, neutral);
+  let removed = 0;
+  remove.onclick = () => removed++;
+  const session = window.BuretteNativeViewerMenus.create(menu, { close: () => {} });
+  const items = molstarContextMenuItems(session.items, (id, value) => session.handlers.get(id)?.(value));
+  assert.deepEqual(items.map(({ text, variant }) => ({ text, variant })), [
+    { text: 'Remove', variant: 'destructive' }, { text: 'Remove selection object', variant: undefined },
+  ]);
+  items[0].action();
+  assert.equal(removed, 0, 'native tracking still completes before commands run');
+  session.close();
+  assert.equal(removed, 1);
+}
 // Growing the representation submenu near the bottom must re-anchor it, not
 // leave the colour list and subsequent controls below the viewport.
 {

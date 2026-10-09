@@ -412,6 +412,7 @@ function FepNetworkPreview({ actions, location, preferences }: { actions: ShellA
         kind: "item",
         id: "delete-node",
         text: "Delete from network",
+        variant: "destructive",
         action: () => setHiddenNodes((current) => new Set([...current, node.id])),
       },
     ], { x: event.clientX, y: event.clientY });

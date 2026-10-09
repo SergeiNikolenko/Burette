@@ -119,7 +119,7 @@ export function SidebarFileOperations({ state, actions, children }: {
     if (kind !== "file") return [
       ...(kind === "folder" ? [{ kind: "item" as const, id: "rename-folder", text: "Rename…", action: () => choose({ operation: "renameFolder", path, name: basename(path) }) }] : []),
       { kind: "item", id: "new-folder", text: "Folder…", action: () => choose({ operation: "createFolder", path, name: "Untitled Folder" }) },
-      ...(kind === "folder" ? [{ kind: "item" as const, id: "trash-folder", text: "Move to Trash", action: () => { void run({ operation: "trashFolder", path }); } }] : []),
+      ...(kind === "folder" ? [{ kind: "item" as const, id: "trash-folder", text: "Move to Trash", variant: "destructive" as const, action: () => { void run({ operation: "trashFolder", path }); } }] : []),
     ];
     const document = state.documents.find(document => document.path === path);
     const dirty = Boolean(document && state.dirtyGridDocuments.has(document.id));
@@ -139,7 +139,7 @@ export function SidebarFileOperations({ state, actions, children }: {
       } },
       { kind: "separator" },
       // Like Finder, Move to Trash needs no confirmation: the item stays recoverable in Trash.
-      { kind: "item", id: "trash-file", text: "Move to Trash", action: () => { void run({ operation: "trash", path }); } },
+      { kind: "item", id: "trash-file", text: "Move to Trash", variant: "destructive", action: () => { void run({ operation: "trash", path }); } },
     ];
   };
   const dismiss = () => { if (!running.current) setRequest(null); };

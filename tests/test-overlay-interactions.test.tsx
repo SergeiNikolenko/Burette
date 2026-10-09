@@ -484,7 +484,7 @@ for (const context of [false, true]) {
     const values: string[] = [];
     const items = [{ kind: "submenu" as const, id: "open", text: "Open", items: [
       { kind: "select" as const, id: "quality", label: "Quality", value: "auto", options: ["auto", "high"], action: (value: string) => values.push(value) },
-      { kind: "item" as const, id: "tabs", text: "In Tabs", action: () => selected++ },
+      { kind: "item" as const, id: "remove", text: "Remove", variant: "destructive" as const, action: () => selected++ },
     ] }];
     const prefix = context ? "context" : "dropdown";
     try {
@@ -515,6 +515,7 @@ for (const context of [false, true]) {
       expect(values).toEqual(["high"]);
       expect(shell.querySelector(`[data-slot="${prefix}-menu-sub-content"]`)).toBe(content);
       expect(document.activeElement).toBe(select);
+      expect(content.querySelector('[role="menuitem"]')?.getAttribute("data-variant")).toBe("destructive");
       await act(async () => content.querySelector<HTMLElement>('[role="menuitem"]')!.click()); await act(flushFocus);
       expect([selected, shell.querySelector('[role="menu"]')]).toEqual([1, null]);
     } finally { await act(async () => root.unmount()); shell.remove(); }

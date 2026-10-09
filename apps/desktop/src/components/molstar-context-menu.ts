@@ -41,7 +41,9 @@ export function molstarContextMenuItems(entries: unknown, send: MolstarContextMe
         ? { iconUrl: entry.icon } : {};
       if (entry.kind === "item") {
         const caption = text(entry.text);
-        return caption ? [{ kind: "item", id, text: caption, ...(entry.disabled === true ? { disabled: true } : {}), ...icon, action: () => send(key) }] : [];
+        return caption ? [{ kind: "item", id, text: caption,
+          ...(entry.variant === "destructive" ? { variant: "destructive" } : {}),
+          ...(entry.disabled === true ? { disabled: true } : {}), ...icon, action: () => send(key) }] : [];
       }
       if (entry.kind === "checkbox") {
         const caption = text(entry.text);

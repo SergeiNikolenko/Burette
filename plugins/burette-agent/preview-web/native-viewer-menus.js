@@ -133,6 +133,7 @@
           choose(key, () => element.click());
           const checked = element.getAttribute('aria-checked') ?? element.getAttribute('aria-pressed');
           return [{ kind: checked === null ? 'item' : 'checkbox', id: key, text: caption(element),
+            ...(checked === null && element.classList.contains('buret-tree-menu-item-destructive') ? { variant: 'destructive' } : {}),
             disabled: element.disabled, ...(checked === null ? { icon: icon(element) } : { checked: checked === 'true' }) }];
         }
         return visit(element);
