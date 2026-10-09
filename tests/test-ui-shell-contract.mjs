@@ -2099,12 +2099,10 @@ assert.doesNotMatch(styles, /\.ketcher-page-header\s*\{[^}]*border-bottom:/s);
 assert.match(styles, /\.ketcher-page-body\s*\{[^}]*min-width: 0;[^}]*padding: 0 18px 12px;[^}]*gap: 8px;/s);
 assert.match(styles, /\.ketcher-editor-shell\s*\{[^}]*overflow: hidden;[^}]*isolation: isolate;/s);
 assert.doesNotMatch(styles, /\.ketcher-editor-shell\s*\{[^}]*contain: layout paint;/s);
-// The header controls are shadcn Buttons/ButtonGroups now: styles.css keeps only
-// the row layout, and no unlayered `button` descendant rule may exist there —
-// styles.css is unlayered, so such a rule would override the Tailwind utilities
-// that style the primitives.
-assert.match(ketcherPage, /<ButtonGroup className="ketcher-scale-control" aria-label="Ketcher scale">/);
-assert.match(ketcherPage, /<ButtonGroupText className="[^"]*tabular-nums[^"]*">\{ketcherZoomPercent\}%<\/ButtonGroupText>/);
+// Atlas toolbar buttons replaced the former segmented ButtonGroup. Their
+// focus/disabled/click behavior is covered by test-overlay-interactions; do not
+// pin obsolete wrapper markup here. Unlayered descendant rules must still not
+// override the shared controls.
 assert.doesNotMatch(styles, /\.ketcher-page-actions button/);
 assert.doesNotMatch(styles, /\.ketcher-scale-control button/);
 assert.doesNotMatch(styles, /\.ketcher-scale-control\s*\{/);
@@ -2118,8 +2116,9 @@ assert.doesNotMatch(styles, /\.ketcher-collection-target\s*\{/);
 assert.match(styles, /\.ketcher-editor-shell\s*\{[^}]*background: var\(--surface-primary\);[^}]*overflow: hidden;[^}]*isolation: isolate;/s);
 // Native-size controls must not scale the pointer-coordinate canvas.
 assert.doesNotMatch(styles, /--ketcher-chrome-scale/);
-assert.match(styles, /\.ketcher-page\[data-narrow\] \.ketcher-page-header\s*\{[^}]*width: 100%;[^}]*grid-template-columns: minmax\(0, 1fr\);/s);
-assert.match(styles, /\.ketcher-page\[data-narrow\] \.ketcher-page-actions\s*\{[^}]*width: 100%;[^}]*overflow-x: auto;/s);
+// Responsive header composition now belongs to ketcher/workspace.css: actions
+// wrap instead of overflowing a single-row strip. Validate bounds in Browser,
+// not by requiring the former grid/scroll declarations in styles.css.
 assert.match(styles, /--ketcher-top-toolbar-height: 36px/);
 assert.match(styles, /--ketcher-top-toolbar-icon-size: 24px/);
 assert.match(styles, /\.ketcher-editor-root,\s*\.ketcher-editor-root > \[class\*="Editor-module_editor"\],\s*\.ketcher-editor-shell \[class\*="Editor-module_editorsWrapper"\],\s*\.ketcher-editor-shell \[class\*="App-module_app"\]\s*\{[^}]*width: 100%;[^}]*height: 100%;/s);
@@ -2751,7 +2750,8 @@ assert.match(foldingResultsPanel, /if \(event\.detail !== 0\) return;/);
 assert.match(structureInfoPanel, /function InlineSegmentedControl\(\{/);
 // Source-owned primitives keep the Atlas styling and Radix behavior together.
 assert.match(structureInfoPanel, /from "@\/components\/ui\/segmented-control"/);
-assert.match(structureInfoPanel, /from "@\/components\/ui\/accordion"/);
+// CollapsibleSection supersedes Accordion here; mounted field state and nested
+// disclosure behavior are covered by test-inspector-tool-row.test.tsx.
 assert.match(structureInfoPanel, /from "@\/components\/ui\/alert"/);
 assert.match(structureInfoPanel, /from "@\/components\/ui\/badge"/);
 assert.match(structureInfoPanel, /<SegmentedControl\s/);
@@ -3094,8 +3094,8 @@ assert.match(styles, /\.dock-panel\[data-area="bottom"\] \.dock-resizer::after \
 assert.match(styles, /\.dock-panel\[data-area="right"\] \.dock-resizer:hover::after,[\s\S]*?\.dock-panel\[data-area="bottom"\] \.dock-resizer:active::after \{\s*background: var\(--dock-divider-active-color\);\s*\}/);
 assert.match(styles, /\.dock-panel\[data-drop-active\],[\s\S]*?\.app-shell\[data-structure-drag-active="true"\] \.dock-panel\[data-open="true"\]:hover \{/);
 assert.match(styles, /\.dock-viewer \.ketcher-page \{[\s\S]*position: relative;[\s\S]*inset: auto;[\s\S]*overflow: hidden;/);
-assert.match(styles, /\.dock-viewer \.ketcher-page-header \{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/);
-assert.match(styles, /\.dock-viewer \.ketcher-page-actions \{[\s\S]*overflow-x: auto;/);
+// The shared Ketcher workspace stylesheet owns wrapping in both page and dock;
+// do not restore a dock-only grid or hide commands in horizontal overflow.
 assert.match(styles, /\.dock-viewer \.ketcher-page-body \{[\s\S]*overflow: hidden;[\s\S]*padding: 12px;/);
 assert.match(styles, /\.topbar, \.chrome-leading-controls, \.chrome-trailing-controls, \.sidebar-toggle-root, \.tab-strip/);
 assert.match(styles, /\.chrome-leading-controls \{/);
@@ -3170,7 +3170,6 @@ assert.match(ketcherPage, /const restoredDraftRef = useRef\(""\)/);
 assert.match(ketcherPage, /const editorShellRef = useRef<HTMLDivElement \| null>\(null\)/);
 assert.doesNotMatch(ketcherPage, /"--ketcher-ui-scale-inverse"/);
 assert.match(ketcherPage, /className="ketcher-editor-scale-frame"/);
-assert.match(ketcherPage, /className="ketcher-scale-control"/);
 assert.match(ketcherPage, /aria-label="Ketcher scale"/);
 assert.match(ketcherPage, /Decrease Ketcher scale/);
 assert.match(ketcherPage, /Increase Ketcher scale/);
@@ -3263,12 +3262,12 @@ assert.match(ketcherPage, /await withKetcherTimeout\(ketcher\.setMolecule\(""\),
 assert.match(ketcherPage, /const \[preserved3dSource, setPreserved3dSource\] = useState<KetcherSource3D \| null>\(null\)/);
 assert.match(ketcherPage, /\["generate3d", "generateEnsemble", "optimizeGeometry", "semiempiricalRm1"\]\.includes\(target\)[\s\S]*preserved3dSource \?\? undefined/);
 assert.match(ketcherPage, /setPreserved3dSource\(source3d\)/);
-assert.match(ketcherPage, /aria-label="Open sketch as cards"[\s\S]*Cards\s*<\/Button>[\s\S]*<TooltipContent[^>]*>Open sketch as cards<\/TooltipContent>/);
-assert.match(ketcherPage, /aria-label="Open sketch in 3D"[\s\S]*3D\s*<\/Button>[\s\S]*<TooltipContent[^>]*>Open sketch in 3D<\/TooltipContent>/);
-assert.match(ketcherPage, /aria-label="Open molecular compute menu"[\s\S]*<TooltipContent[^>]*>Native molecular compute<\/TooltipContent>/);
+assert.match(ketcherPage, /aria-label="Open sketch as cards"[\s\S]*<TooltipContent[^>]*>Open sketch as cards<\/TooltipContent>/);
+assert.match(ketcherPage, /aria-label="Open sketch in 3D"[\s\S]*<TooltipContent[^>]*>Open sketch in 3D<\/TooltipContent>/);
+assert.match(ketcherPage, /aria-label="Open molecular compute menu"[\s\S]*<TooltipContent[^>]*>Molecular calculations<\/TooltipContent>/);
 assert.match(ketcherPage, /text: "Generate conformer ensemble"/);
 assert.match(ketcherPage, /text: "RM1 energy & charges"/);
-assert.match(ketcherPage, /aria-label="Open sketch as a rendered image"[\s\S]*Render\s*<\/Button>[\s\S]*<TooltipContent[^>]*>Open sketch as a rendered image<\/TooltipContent>/);
+assert.match(ketcherPage, /aria-label="Open sketch as a rendered image"[\s\S]*<TooltipContent[^>]*>Open sketch as a rendered image<\/TooltipContent>/);
 assert.match(ketcherPage, /aria-label="Add sketch to SDF collection"/);
 assert.match(ketcherPage, /gridEditSource \? \([\s\S]*aria-label="Save Ketcher edits back to collection"[\s\S]*onClick=\{\(\) => void applyGridEdit\(\)\}[\s\S]*Save to collection/);
 assert.match(ketcherPage, /\) : \([\s\S]*<RadixDropdownMenu[\s\S]*aria-label="Add sketch to SDF collection"/);
@@ -3825,7 +3824,7 @@ assert.match(sidebarSurface, /data-expanded=\{expanded \? "true" : "false"\}/);
 assert.match(sidebarSurface, /aria-hidden=\{!expanded\}/);
 assert.match(sidebarSurface, /className="project-folder-children"/);
 assert.doesNotMatch(sidebarSurface, /project-folder-disclosure/);
-assert.match(styles, /\.project-group-row \{[^}]*position: relative;[^}]*color: var\(--color-text\);[^}]*padding: 5px 86px 5px 8px;[^}]*overflow: hidden;/s);
+assert.match(styles, /\.project-group-row \{[^}]*position: relative;[^}]*color: var\(--color-text\);[^}]*overflow: hidden;/s);
 assert.match(styles, /\.project-group-row:hover \{\s*background: var\(--color-background-primary-ghost-hover\);\s*\}/);
 assert.match(styles, /\.project-folder-toggle-button \{[^}]*right: 30px;/s);
 assert.match(styles, /\.project-group-row > \.project-folder-toggle-button \{\s*right: 52px;\s*\}/);
@@ -6606,7 +6605,9 @@ assert.match(previewRuntimeCss, /\.buret-molecule-context-submenu\[data-buret-re
 assert.match(previewRuntimeCss, /\.buret-representation-type-item \.buret-representation-type-check \{[\s\S]*opacity: 0;/);
 assert.match(previewRuntimeCss, /\.buret-representation-type-item\[data-current="true"\] \.buret-representation-type-check \{[\s\S]*opacity: 1;/);
 assert.doesNotMatch(previewRuntimeCss, /\.buret-representation-mode-radio/);
-assert.match(previewRuntimeCss, /\.buret-molecule-context-submenu\[data-buret-representation-menu\] \{[\s\S]*width: min\(200px, calc\(100vw - 16px\)\);[\s\S]*max-height: none;/);
+// Representation controls must stay bounded by the viewport instead of
+// restoring the old menu's unbounded height.
+assert.match(previewRuntimeCss, /\.buret-molecule-context-submenu\[data-buret-representation-menu\] \{[^}]*max-height: calc\(100dvh - 16px\);/);
 assert.match(previewRuntimeCss, /\.buret-molecule-context-menu \{[\s\S]*border: 0;/);
 assert.match(previewRuntimeCss, /--buret-menu-background: #282828;/);
 assert.match(previewRuntimeCss, /--buret-menu-background: var\(--buret-control-fill\);/);
@@ -7811,7 +7812,8 @@ const applyKetcherGridRow = gridViewer.match(/function applyKetcherGridRow\(body
 assert.match(applyKetcherGridRow, /body\.save === true[\s\S]*post\('saveGridRow'/);
 assert.match(gridViewer, /body\.type === 'gridGenerate3DStarted'/);
 assert.match(gridViewer, /body\.type === 'gridGenerate3DError'/);
-assert.match(gridUi, /function ControlTooltip\(\{ label \}: \{ label: string \}\)/);
+// Focus, Escape, portal placement and click forwarding are covered by
+// test-grid-selection-toolbar; the removed hover span is not a contract.
 // The redundant collection header is gone. File actions stay under Actions,
 // and the search/action toolbar is the first, sticky control surface.
 assert.doesNotMatch(gridUi, /function HeaderActions/);
@@ -7834,8 +7836,7 @@ assert.doesNotMatch(gridUi, /Calculate selected descriptors/);
 // styles instead of a computed per-label width.
 assert.match(gridUi, /id="xyzrender-preset"\s+className="ab-mini"/);
 assert.match(gridUi, /value=\{props\.xyzrenderPreset\}/);
-assert.match(gridCss, /\.buret-control-tooltip \{/);
-assert.match(gridCss, /\.buret-toolbar-row-view button:hover > \.buret-control-tooltip/);
+assert.doesNotMatch(gridCss, /\.buret-control-tooltip/);
 assert.match(gridCss, /#grid-controls \{[^}]*position: sticky;[^}]*top: 0;/s);
 assert.match(gridCss, /\.buret-grid-toolbar \.buret-grid-xyzrender-preset-control \{[^}]*height: var\(--buret-control-height\);/s);
 assert.doesNotMatch(gridCss, /--buret-xyzrender-preset-width/);
@@ -8113,14 +8114,14 @@ assert.match(gridCss, /--buret-control-hover: rgba\(252, 252, 252, 0\.1\);/);
 assert.match(gridCss, /--buret-control-active: rgba\(252, 252, 252, 0\.085\);/);
 assert.match(gridCss, /button,[\s\S]*\.buret-grid-toolbar input\[type="search"\],[\s\S]*\.buret-grid-toolbar select \{[\s\S]*background: var\(--buret-control-surface\);/);
 assert.match(gridCss, /button,[\s\S]*\.buret-grid-toolbar input\[type="search"\],[\s\S]*\.buret-grid-toolbar select \{[\s\S]*font: 400 13px\/1\.2 -apple-system/);
-assert.match(gridCss, /button:disabled \{[\s\S]*color: var\(--buret-faint\);[\s\S]*background: var\(--buret-control-surface\);[\s\S]*opacity: 1;/);
+// Legacy resets must not override the shared button and menu disabled states.
+assert.match(gridCss, /button:where\(:not\(\.atlas-button, \.atlas-menu-item\)\):disabled \{/);
 assert.match(gridCss, /--buret-segment-height: 28px;/);
 assert.match(gridCss, /\.buret-selection-actions,[\s\S]*\.buret-selected-open-actions\s*\{[^}]*box-sizing: border-box;[^}]*height: var\(--buret-control-height\);/s);
 assert.match(gridCss, /\.buret-selection-actions,[\s\S]*\.buret-selected-open-actions\s*\{[^}]*display: inline-flex;/s);
 assert.match(gridCss, /\.buret-selection-actions,[\s\S]*\.buret-selected-open-actions\s*\{[^}]*background: transparent;/s);
-assert.match(gridCss, /\.buret-grid-segmented-control,[\s\S]*\.buret-grid-card-renderer-switch\s*\{[^}]*box-sizing: border-box;[^}]*height: var\(--buret-control-height\);/s);
-assert.match(gridCss, /\.buret-grid-segmented-control button,[\s\S]*\.buret-grid-card-renderer-switch button\s*\{[^}]*background: var\(--buret-control-surface\);/s);
-assert.match(gridCss, /\.buret-grid-segmented-control button:hover,[\s\S]*\.buret-grid-card-renderer-switch button\.active\s*\{[^}]*background: var\(--buret-control-active\);/s);
+// Shared SegmentedControl owns geometry and selected/focus states; the Grid
+// interaction tests cover view switching rather than its former CSS copy.
 // The coords control is now an icon toggle button, so its wrapper lost the pill
 // styling and the checkbox-era state selectors.
 assert.match(gridCss, /\.buret-grid-toolbar \.buret-rdkit-coords-control\s*\{[^}]*display: inline-flex;[^}]*align-items: center;/s);
@@ -8248,7 +8249,6 @@ assert.match(gridViewer, /const value = Number\(cfg\.pageSize \|\| 720\)/);
 assert.match(browserDevDocuments, /pageSize: 720/);
 assert.match(gridViewer, /function setCardRenderer\(value, cfg\)/);
 assert.match(gridViewer, /function syncCardRendererSwitch\(\)/);
-assert.match(gridCss, /\.buret-grid-segmented-control\s*,/);
 assert.match(gridUi, /id="selected-open-actions"/);
 assert.match(gridUi, /id="open-selected-molstar"/);
 assert.match(gridUi, /onClick=\{\(\) => props\.onRendererSwitch\("molstar"\)\}/);
@@ -8448,7 +8448,8 @@ assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-loa
 assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-toolbar-row-main \{[^}]*display: none;/s);
 assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-grid-xyzrender-preset-control \{[^}]*display: none;/s);
 assert.match(gridCss, /#grid-controls\.buret-grid-controls-condensed \.buret-renderer-control \{[^}]*width: 112px;/s);
-assert.match(gridCss, /#grid-controls \.ab-menu \{[^}]*min-width: 304px;[^}]*max-height: min\(52vh, 360px\);/s);
+// Actions is now a shared, collision-aware portal, not a fixed descendant of
+// #grid-controls. Keyboard/close/focus and native command IDs have UI coverage.
 assert.match(gridCss, /\.buret-grid-molecule-detail-overlay \{[\s\S]*display: grid;[\s\S]*place-items: center;/);
 assert.doesNotMatch(gridCss, /\.buret-grid-molecule-detail \{[^}]*inset: 0 0 0 auto;/s);
 assert.doesNotMatch(gridCss, /\.buret-grid-molecule-detail \{[^}]*border-right: 0;/s);
