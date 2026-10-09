@@ -5078,7 +5078,7 @@ assert.match(previewShell, /data-buret-compute-operation="semiempiricalRm1"/);
 assert.match(previewShell, /data-buret-compute-operation="alignPoses"/);
 assert.match(previewShell, /data-buret-generate-3d-label>Compute<\/span>/);
 assert.match(previewShell, /Generate 3D/);
-assert.match(previewShell, /class="buret-tooltip" role="tooltip">Native molecular compute<\/span>/);
+assert.match(previewShell, /class="buret-tooltip" role="tooltip">Molecular calculations<\/span>/);
 assert.match(previewShell, /Toggle Mol\* left object tree/);
 assert.doesNotMatch(previewShell, /Choose lighting and outline appearance/);
 assert.match(previewShell, /Use external xyzrender SVG/);
@@ -5195,8 +5195,6 @@ assert.match(previewViewer, /function positionMolstarControlTooltip\(control\)/)
 assert.match(previewViewer, /installMolstarControlTooltips\(\);/);
 assert.match(previewRuntimeCss, /\.buret-generate-3d-control \{/);
 assert.match(previewRuntimeCss, /\.buret-generate-3d-control\.generating \{/);
-assert.match(previewRuntimeCss, /\.buret-generate-3d-control\.generating::after \{/);
-assert.match(previewRuntimeCss, /@keyframes buret-generate-3d-progress-down/);
 assert.match(previewRuntimeCss, /\.buret-generate-3d-menu \{/);
 assert.match(previewRuntimeCss, /width: min\(248px, calc\(100vw - 24px\)\);/);
 assert.match(previewRuntimeCss, /overscroll-behavior: contain;/);
@@ -5392,7 +5390,6 @@ assert.doesNotMatch(
 );
 assert.match(previewViewer, /window\.innerWidth - railRect\.left \+ FLOATING_LAYOUT_GAP \* 2/);
 assert.match(previewViewer, /root\.style\.setProperty\('--buret-generate-3d-control-right', generate3DControlRight \+ 'px'\);/);
-assert.match(previewRuntimeCss, /background: color-mix\(in srgb, var\(--buret-toolbar-background\) 92%/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-preset-slot \{ display: none; align-items: center; \}/);
 assert.match(previewRuntimeCss, /\.buret-xyzrender-preset-slot\.visible \{ display: flex; \}/);
 assert.doesNotMatch(previewRuntimeCss, /\.buret-molstar-style-slot/);

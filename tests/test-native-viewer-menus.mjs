@@ -18,6 +18,30 @@ const controls = new Function('document', `
   return { sceneTreeMenuItem, sceneTreeMenuSection, sceneTreeMenuSelect, sceneTreeMenuSlider, sceneTreeMenuThemePicker };
 `)(document);
 const events = [];
+// The live compute trigger keeps its label and busy state while consuming the
+// same Button/LoadingIndicator source as the shell, including theme changes.
+{
+  const shell = readFileSync('PreviewExtension/Web/viewer-shell.js', 'utf8');
+  const button = document.createElement('div');
+  button.innerHTML = shell.match(/<button id="buret-compute-menu-trigger"[\s\S]*?<\/button>/)[0];
+  const trigger = button.firstElementChild;
+  document.body.append(trigger);
+  const bindings = { window, activeConfig: { renderer: 'molstar' }, normalizeRenderer: value => value,
+    canGenerate3DConformerFromConfig: () => true, resolveViewerTheme: () => 'dark' };
+  const apply = new Function(...Object.keys(bindings), 'generate3dPending', 'generate3dPendingMode', 'button',
+    source('applyGenerate3DPendingState') + '; applyGenerate3DPendingState(button);');
+  for (const [pending, mode, text] of [[true, 'ensemble', 'Generating set...'], [true, 'single', 'Generating 3D...'], [false, 'single', 'Compute']]) {
+    apply(...Object.values(bindings), pending, mode, trigger);
+    assert.deepEqual([trigger.disabled, trigger.hasAttribute('data-disabled'), trigger.getAttribute('aria-busy'), trigger.querySelector('[data-buret-generate-3d-label]').textContent],
+      [pending, pending, String(pending), text]);
+    assert.ok(trigger.classList.contains('atlas-button'));
+    assert.equal(trigger.querySelector('.atlas-loading-indicator').getAttribute('aria-hidden'), 'true');
+  }
+  window.BuretteNativeViewerMenus.styleButton(trigger, undefined, 'light');
+  assert.equal(trigger.dataset.effectiveTheme, 'light');
+  assert.equal(trigger.querySelector('[data-buret-generate-3d-label]').textContent, 'Compute');
+  trigger.remove();
+}
 // Camera keeps real command descriptors/icons; the shared DOM menu adapter
 // supplies keyboard traversal without changing click dispatch.
 {
@@ -85,7 +109,13 @@ const events = [];
   assert.equal(document.activeElement, rows[1]);
   assert.deepEqual(rows.map(row => [row.tabIndex, row.getAttribute('aria-checked')]), [[-1, 'false'], [0, 'true'], [-1, 'false'], [-1, 'false']]);
   const shared = readFileSync('apps/desktop/src/components/ui/dropdown-menu.css', 'utf8').replace('@layer components {', '').replace(/}\s*$/, '');
-  assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.endsWith(shared));
+  assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.includes(shared));
+  for (const name of ['button.atlas.css', 'loading-indicator.atlas.css']) {
+    const css = readFileSync(`apps/desktop/src/components/ui/${name}`, 'utf8')
+      .replace('@layer theme, base, components, utilities;', '')
+      .replace('@layer components {', '').replace(/}\s*$/, '');
+    assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.includes(css));
+  }
   assert.ok(document.getElementById('buret-atlas-menu-styles').textContent.startsWith(
     readFileSync('apps/desktop/src/styles/codex-tokens.css', 'utf8').replaceAll('.app-shell', '.buret-atlas-surface')));
   const popoverSurface = readFileSync('apps/desktop/src/components/ui/popover-surface.css', 'utf8').replace('@layer components {', '').replace(/}\s*$/, '');

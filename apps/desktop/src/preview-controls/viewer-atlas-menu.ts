@@ -1,6 +1,10 @@
 import tokens from "../styles/codex-tokens.css" with { type: "text" };
 import menuStyles from "../components/ui/dropdown-menu.css" with { type: "text" };
 import popoverStyles from "../components/ui/popover-surface.css" with { type: "text" };
+import buttonStyles from "../components/ui/button.atlas.css" with { type: "text" };
+import buttonBehavior from "../components/ui/button.css" with { type: "text" };
+import loadingStyles from "../components/ui/loading-indicator.atlas.css" with { type: "text" };
+import { buttonPressScale } from "../components/ui/button-press-scale";
 import behavior from "./viewer-atlas-menu.css" with { type: "text" };
 import { buildCodexThemeVariables, CODEX_DEFAULT_THEME } from "../lib/codex-theme";
 
@@ -13,7 +17,21 @@ type ThemeTokens = Partial<Record<"light" | "dark", {
 // Keeping it in the existing controls bundle avoids new runtime asset URLs.
 const source = String(tokens).replaceAll(".app-shell", ".buret-atlas-surface")
   + behavior + String(popoverStyles).replace("@layer components {", "").replace(/}\s*$/, "")
-  + String(menuStyles).replace("@layer components {", "").replace(/}\s*$/, "");
+  + String(menuStyles).replace("@layer components {", "").replace(/}\s*$/, "")
+  + [buttonStyles, buttonBehavior, loadingStyles].map(css => String(css)
+    .replace("@layer theme, base, components, utilities;", "")
+    .replace("@layer components {", "").replace(/}\s*$/, "")).join("");
+
+export function styleViewerButton(button: HTMLButtonElement, themeTokens: ThemeTokens | undefined, mode: "light" | "dark") {
+  if (!button.classList.contains("atlas-button")) {
+    button.classList.add("atlas-button");
+    button.addEventListener("pointerenter", () => {
+      button.style.setProperty("--scale", String(buttonPressScale(button.offsetWidth)));
+    });
+  }
+  styleViewerSurface(button, themeTokens, mode);
+  button.toggleAttribute("data-disabled", button.disabled);
+}
 
 export function styleViewerMenu(menu: HTMLElement, themeTokens: ThemeTokens | undefined, mode: "light" | "dark") {
   menu.classList.add("buret-atlas-menu", "atlas-menu-content");

@@ -1,4 +1,13 @@
 /* Only DOM behavior differs from Radix; surface and row geometry are shared. */
+.buret-atlas-surface.atlas-button {
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  font-family: var(--font-sans);
+}
+@media (prefers-reduced-motion: reduce) {
+  .buret-atlas-surface .atlas-loading-indicator { animation: none; transition: none; }
+}
 .buret-atlas-menu {
   font-family: var(--font-sans);
   font-size: var(--menu-font-size);

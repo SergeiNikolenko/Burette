@@ -142,6 +142,8 @@ stylesheet and theme engine through
 `preview-controls/viewer-atlas-menu.ts`, bundled in the existing viewer controls
 asset. Only positioning and DOM radio behavior are viewer-specific; there is no
 parallel surface/row theme. The shared check icon replaces the old text marker.
+The Compute trigger embeds the shared Atlas Button and LoadingIndicator styles;
+its pending/disabled state and theme updates keep the existing compute contract.
 The live molecular preview uses the same `ui/popover-surface.css` as React
 Popover, including its opaque surface, ring and shadow. Molecular canvas sizing
 and the compact title are viewer-owned; the invisible rendering stage is inert

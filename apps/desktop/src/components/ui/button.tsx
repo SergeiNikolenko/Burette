@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Slot } from "radix-ui";
 import { cn } from "@/lib/utils";
+import { buttonPressScale } from "./button-press-scale";
 // Styles enter through the shell stylesheet or Grid's embedded Atlas source.
 
 // Atlas dialogs and toasts use the app button (Bundle.bE, medium/compact),
@@ -77,7 +78,7 @@ function Button({
         // Original Atlas press scale, based on the actual rendered width.
         if (!appAction) {
           const width = event.currentTarget.offsetWidth;
-          const scale = width <= 80 ? .96 : width <= 150 ? .97 : width <= 220 ? .98 : width > 600 ? .995 : .985;
+          const scale = buttonPressScale(width);
           event.currentTarget.style.setProperty("--scale", String(scale));
         }
         onPointerEnter?.(event);

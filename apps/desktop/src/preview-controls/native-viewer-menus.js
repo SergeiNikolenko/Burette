@@ -1,4 +1,4 @@
-import { styleViewerMenu, styleViewerPopover, moveViewerMenuFocus } from './viewer-atlas-menu';
+import { styleViewerMenu, styleViewerPopover, styleViewerButton, moveViewerMenuFocus } from './viewer-atlas-menu';
 
 (() => {
   'use strict';
@@ -8,6 +8,7 @@ import { styleViewerMenu, styleViewerPopover, moveViewerMenuFocus } from './view
   window.BuretteNativeViewerMenus = {
     styleMenu: styleViewerMenu,
     stylePopover: styleViewerPopover,
+    styleButton: styleViewerButton,
     moveMenuFocus: moveViewerMenuFocus,
     show(menu, { post, x, y, ...callbacks }) {
       const session = this.create(menu, callbacks);

@@ -206,9 +206,12 @@
         </div>
         <div class="buret-scene-tree-body" data-buret-scene-tree-body></div>
       </aside>
-      <button id="buret-compute-menu-trigger" class="buret-generate-3d-control hidden" type="button" data-buret-action="generate-3d-conformer" aria-label="Open molecular compute menu" aria-haspopup="menu" aria-controls="buret-compute-menu" aria-expanded="false">
-        <span data-buret-generate-3d-label>Compute</span>
-        <span class="buret-tooltip" role="tooltip">Native molecular compute</span>
+      <button id="buret-compute-menu-trigger" class="buret-generate-3d-control hidden" type="button" data-atlas-variant="surface" data-atlas-size="lg" data-color="primary" data-pill data-buret-action="generate-3d-conformer" aria-label="Open molecular compute menu" aria-haspopup="menu" aria-controls="buret-compute-menu" aria-expanded="false">
+        <span class="atlas-button-inner">
+          <span class="atlas-loading-indicator" aria-hidden="true"></span>
+          <span data-buret-generate-3d-label>Compute</span>
+        </span>
+        <span class="buret-tooltip" role="tooltip">Molecular calculations</span>
       </button>
       <div id="buret-compute-menu" class="buret-generate-3d-menu hidden" data-buret-generate-3d-menu role="menu" aria-labelledby="buret-compute-menu-trigger" aria-orientation="vertical">
         <button class="atlas-menu-item" type="button" role="menuitem" data-buret-compute-operation="generate3d">Generate 3D</button>

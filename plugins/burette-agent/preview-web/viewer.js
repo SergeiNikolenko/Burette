@@ -2176,6 +2176,9 @@
   }
 
   function applyViewerThemeTokens(resolvedTheme = resolveViewerTheme()) {
+    document.querySelectorAll('.buret-atlas-surface.atlas-button').forEach(button => {
+      window.BuretteNativeViewerMenus?.styleButton?.(button, activeConfig?.themeTokens, resolvedTheme);
+    });
     document.querySelectorAll('.buret-atlas-menu').forEach(menu => {
       window.BuretteNativeViewerMenus?.styleMenu?.(menu, activeConfig?.themeTokens, resolvedTheme);
     });
@@ -3008,6 +3011,7 @@
     button.classList.toggle('generating', generate3dPending);
     button.setAttribute('aria-busy', generate3dPending ? 'true' : 'false');
     button.disabled = !canGenerate3d || generate3dPending;
+    window.BuretteNativeViewerMenus?.styleButton?.(button, config.themeTokens, resolveViewerTheme());
     if (label) {
       label.textContent = generate3dPending
         ? (generate3dPendingMode === 'ensemble' ? 'Generating set...' : 'Generating 3D...')
