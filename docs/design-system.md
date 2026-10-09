@@ -298,6 +298,12 @@ the original button CSS is loaded by `styles.css` in the shell and embedded by
 `grid-atlas-styles.ts` in standalone previews. The viewer's imperative
 `aria-pressed` contract maps to the original selected appearance. Legacy grid
 button rules must not override these shared controls.
+Editable host menu rows compose compact `Input`, `NativeSelect` and
+`ScrubNumberField`; the menu CSS only positions them. Scrubbing keeps its drag,
+keyboard and animation behaviour, with the shared compact Input appearance in
+both display and edit modes. Browser selects open the in-page Atlas picker
+without closing the parent parameter menu; native menu presentation is unchanged.
+
 Grid search uses the shared Atlas `SearchInput` (32px page-search variant),
 including its clear action and focus return. Search text updates immediately;
 the collection filter retains its 120ms debounce and stale-request invalidation.

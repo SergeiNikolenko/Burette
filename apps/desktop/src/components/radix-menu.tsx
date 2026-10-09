@@ -29,6 +29,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrubNumberField } from "@/components/ui/scrub-number-input";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import type { MenuItemSpec } from "./menu-types";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as appIconData from "./ui/app-icon-data";
@@ -260,7 +262,9 @@ function renderControl(item: Extract<MenuItemSpec, { kind: "swatches" | "select"
     return (
       <label key={item.id} className="radix-menu-field" onKeyDown={stop}>
         <span>{item.label}</span>
-        <select
+        <NativeSelect
+          size="sm"
+          aria-label={item.label}
           defaultValue={item.value}
           disabled={item.disabled}
           onClick={stop}
@@ -269,7 +273,7 @@ function renderControl(item: Extract<MenuItemSpec, { kind: "swatches" | "select"
           {item.options.map((option) => (
             <option key={option} value={option}>{item.optionLabels?.[option] ?? option}</option>
           ))}
-        </select>
+        </NativeSelect>
       </label>
     );
   }
@@ -277,7 +281,9 @@ function renderControl(item: Extract<MenuItemSpec, { kind: "swatches" | "select"
     return (
       <label key={item.id} className="radix-menu-field" onKeyDown={stop}>
         <span>{item.label}</span>
-        <input
+        <Input
+          variant="compact"
+          aria-label={item.label}
           type="text"
           defaultValue={item.value}
           placeholder={item.placeholder}

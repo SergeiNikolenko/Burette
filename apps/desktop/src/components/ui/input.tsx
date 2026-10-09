@@ -35,4 +35,4 @@ function Input({ className, variant, type, ...props }: React.ComponentProps<"inp
     type === "number" && variant === "field" && "atlas-input-number", className)} {...props} />
 }
 
-export { Input }
+export { Input, inputVariants }

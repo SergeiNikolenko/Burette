@@ -2239,9 +2239,10 @@ img.radix-menu-item-icon {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--text-muted);
+  color: var(--color-text-secondary);
   padding: 4px 8px;
-  font-size: 11.5px;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
 }
 .radix-menu-field > span:first-child {
   min-width: 0;
@@ -2250,38 +2251,17 @@ img.radix-menu-item-icon {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.radix-menu-field select,
-.radix-menu-field input[type="text"],
-.radix-menu-number-scrub :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]) {
-  width: 62px;
-  border: 1px solid var(--line-subtler);
-  border-radius: 6px;
-  background: var(--surface-input);
-  color: var(--text-primary);
-  padding: 2px 5px;
-  font: inherit;
-  font-size: 11px;
-}
-.radix-menu-field select {
-  width: auto;
-  max-width: 116px;
-}
-.radix-menu-field input[type="text"] { width: 116px; }
-.radix-menu-field select:focus-visible,
-.radix-menu-field input[type="text"]:focus-visible,
-.radix-menu-number-scrub :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]):focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 1px var(--focus-ring);
-}
-.radix-menu-number-scrub { width: 62px; }
+/* Fields own their shape, colors and focus; the menu only places them. */
+.radix-menu-field > [data-slot="native-select-wrapper"],
+.radix-menu-field > [data-slot="input"] { width: 144px; min-width: 0; }
+.radix-menu-number-scrub { width: 80px; }
 .radix-menu-field-number {
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
 .radix-menu-field-number em {
-  color: var(--text-faint);
-  font-size: 10px;
+  color: var(--color-text-secondary);
   font-style: normal;
 }
 /* The surface itself is the shared shadcn menu; this class only scopes the

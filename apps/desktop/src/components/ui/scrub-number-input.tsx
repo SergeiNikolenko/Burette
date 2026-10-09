@@ -5,7 +5,8 @@
 // 7dce6f31d69f42963c9eaa44efc0bdad3d39be67119ed81f1eab13543a3de2e1).
 // Burette adapts the optional logo icons, keeps a stable labelable control in
 // display mode, propagates valid typed drafts, and commits the latest scrubbed
-// value synchronously on release.
+// value synchronously on release. Display and edit modes share the Atlas compact
+// Input variant; the upstream scrubbing and number animation remain intact.
 
 import {
   useCallback,
@@ -28,7 +29,7 @@ import { HugeiconsIcon } from "@hugeicons/react"
 import { useReducedMotion, motion } from "motion/react"
 
 import { InputGroup, InputGroupAddon } from "@/components/ui/input-group"
-import { Input } from "@/components/ui/input"
+import { Input, inputVariants } from "@/components/ui/input"
 import { useControllableState } from "@/hooks/use-controllable-state"
 import { useDisplayOverflowTruncated } from "@/lib/scrub-number-overflow"
 import {
@@ -65,7 +66,6 @@ import {
   type FineModifier,
 } from "@/lib/scrub-number-math"
 import { cn } from "@/lib/utils"
-import { cva } from "class-variance-authority"
 
 import "./scrub-number-input.css"
 
@@ -119,10 +119,6 @@ const SCRUB_NUMBER_FIELD_CLASS = "tabular-nums"
 
 const SCRUB_NUMBER_SPINNER_HIDE_CLASS =
   "[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-
-const scrubFieldVariants = cva(
-  "w-full min-w-0 rounded-[12px] border border-input bg-[var(--input-fill)] py-1 text-start text-base text-foreground transition-colors outline-none file:inline-flex file:h-6 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 h-7 px-2 text-[0.8rem]",
-)
 
 export type InputSettings = {
   selectOnEdit: boolean
@@ -1939,7 +1935,8 @@ function CalligraphNumber({
 
 function getFieldClasses(inputClassName?: string, extra?: string) {
   return cn(
-    scrubFieldVariants(),
+    inputVariants({ variant: "compact" }),
+    "text-start",
     SCRUB_NUMBER_FIELD_CLASS,
     SCRUB_NUMBER_SPINNER_HIDE_CLASS,
     extra,
