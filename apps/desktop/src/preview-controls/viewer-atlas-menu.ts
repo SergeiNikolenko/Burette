@@ -44,9 +44,29 @@ export function styleViewerPopover(popover: HTMLElement, themeTokens: ThemeToken
 }
 
 export function moveViewerMenuFocus(menu: HTMLElement, event: KeyboardEvent) {
-  const items = Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'));
+  const active = menu.ownerDocument.activeElement as HTMLElement;
+  const group = active?.closest<HTMLDetailsElement>('details');
+  if (group && menu.contains(group)) {
+    if (event.key === 'ArrowRight' && active.tagName === 'SUMMARY') {
+      event.preventDefault();
+      group.open = true;
+      active.setAttribute('aria-expanded', 'true');
+      group.querySelector<HTMLElement>('[role="menuitemradio"]')?.focus();
+      return;
+    }
+    if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      group.open = false;
+      const summary = group.querySelector('summary');
+      summary?.setAttribute('aria-expanded', 'false');
+      summary?.focus();
+      return;
+    }
+  }
+  const items = Array.from(menu.querySelectorAll<HTMLElement>('[role^="menuitem"]:not(:disabled)'))
+    .filter(item => !item.closest('details:not([open])') || item.tagName === 'SUMMARY');
   if (!items.length) return;
-  const current = items.indexOf(menu.ownerDocument.activeElement as HTMLButtonElement);
+  const current = items.indexOf(active);
   const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1
     : event.key === "ArrowDown" ? (current + 1) % items.length
     : event.key === "ArrowUp" ? (current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length) : -1;

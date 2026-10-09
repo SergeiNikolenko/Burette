@@ -137,11 +137,14 @@ the shared AppKit popup in the desktop app and shared Atlas menus in the browser
 Viewport rail panels (camera, screenshot, animation and selection),
 Style/Appearance and Generate 3D remain in the viewer on both hosts: their
 interactive controls and representation previews are not native command lists.
-Style/Appearance, Camera and the compute action menu use the shared Menu
+Style/Appearance, Camera, Screenshot and the compute action menu use the shared Menu
 stylesheet and theme engine through
 `preview-controls/viewer-atlas-menu.ts`, bundled in the existing viewer controls
 asset. Only positioning and DOM radio behavior are viewer-specific; there is no
 parallel surface/row theme. The shared check icon replaces the old text marker.
+Screenshot keeps resolution and format in collapsible groups with live value
+summaries. Its neutral radio/check rows use the shared check icon; keyboard
+navigation skips collapsed choices and supports opening/closing groups.
 The Compute trigger embeds the shared Atlas Button and LoadingIndicator styles;
 its pending/disabled state and theme updates keep the existing compute contract.
 The live molecular preview uses the same `ui/popover-surface.css` as React

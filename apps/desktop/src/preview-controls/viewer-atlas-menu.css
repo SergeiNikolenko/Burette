@@ -27,6 +27,11 @@
 .buret-atlas-menu .atlas-menu-icon { display: flex; color: var(--color-text-secondary); }
 .buret-atlas-menu .atlas-menu-check { margin-left: auto; visibility: hidden; }
 .buret-atlas-menu [aria-checked="true"] .atlas-menu-check { visibility: visible; }
+.buret-atlas-menu summary { list-style: none; }
+.buret-atlas-menu summary::-webkit-details-marker { display: none; }
+.buret-atlas-menu .buret-screenshot-group-value { margin-left: auto; color: var(--color-text-secondary); }
+.buret-atlas-menu .buret-screenshot-chevron { color: var(--color-text-secondary); }
+.buret-atlas-menu details[open] .buret-screenshot-chevron { transform: rotate(180deg); }
 @media (forced-colors: active) {
   .buret-atlas-menu .atlas-menu-item:focus-visible { outline: 2px solid Highlight; outline-offset: -2px; }
 }

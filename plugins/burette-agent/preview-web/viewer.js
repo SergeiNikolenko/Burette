@@ -8266,11 +8266,13 @@ SOFTWARE.
 
   function sceneTreeMenuSection(menu, title) {
     const divider = document.createElement('div');
-    divider.className = 'buret-tree-menu-divider';
+    const atlas = menu.classList.contains('atlas-menu-content');
+    divider.className = atlas ? 'atlas-menu-separator' : 'buret-tree-menu-divider';
+    divider.setAttribute('role', 'separator');
     menu.appendChild(divider);
     if (!title) return;
     const heading = document.createElement('div');
-    heading.className = 'buret-tree-menu-title';
+    heading.className = atlas ? 'atlas-menu-label' : 'buret-tree-menu-title';
     heading.textContent = title;
     menu.appendChild(heading);
   }
@@ -9854,23 +9856,30 @@ SOFTWARE.
   }
 
   function viewportMenuItem(menu, label, action, options = {}) {
+    const atlas = !!menu.closest('.atlas-menu-content');
     const button = document.createElement('button');
     button.type = 'button';
     button.setAttribute('role', 'menuitem');
-    button.className = menu.classList.contains('atlas-menu-content')
+    button.className = atlas
       ? 'atlas-menu-item' : `buret-tree-menu-item${options.destructive ? ' buret-tree-menu-item-destructive' : ''}`;
     button.dataset.buretViewportMenu = action;
     Object.assign(button.dataset, options.data || {});
     if (options.disabled) button.disabled = true;
     if (options.title) button.title = options.title;
     const icon = document.createElement('span');
-    icon.className = menu.classList.contains('atlas-menu-content') ? 'atlas-menu-icon' : 'buret-tree-menu-icon';
+    icon.className = atlas ? 'atlas-menu-icon' : 'buret-tree-menu-icon';
     icon.setAttribute('aria-hidden', 'true');
     if (options.icon) icon.appendChild(sceneTreeIconElement(options.icon));
     const text = document.createElement('span');
     text.className = 'buret-tree-menu-label';
     text.textContent = label;
-    button.append(icon, text);
+    if (options.icon || !atlas) button.append(icon);
+    button.append(text);
+    if (atlas && options.checked !== undefined) {
+      const check = sceneTreeIconElement(APP_ICON_DATA.Check);
+      check.classList.add('atlas-menu-check');
+      button.append(check);
+    }
     (options.parent || menu).appendChild(button);
     return button;
   }
@@ -9930,7 +9939,7 @@ SOFTWARE.
   // A radio row inside one of the screenshot menu's folded groups. The group keeps
   // the chosen entry in its summary, so the settings read at a glance while folded.
   function viewportScreenshotChoice(group, action, value, label, current) {
-    const item = viewportMenuItem(group, label, action, { parent: group, data: { viewportValue: value } });
+    const item = viewportMenuItem(group, label, action, { checked: value === current, data: { viewportValue: value } });
     item.setAttribute('role', 'menuitemradio');
     item.setAttribute('aria-checked', value === current ? 'true' : 'false');
     return item;
@@ -9938,23 +9947,32 @@ SOFTWARE.
 
   function viewportScreenshotGroup(menu, title, action, entries, current) {
     const disclosure = document.createElement('details');
-    disclosure.className = 'buret-tree-menu-actions buret-screenshot-group';
+    disclosure.className = 'buret-screenshot-group';
     disclosure.dataset.buretScreenshotGroup = action;
     const summary = document.createElement('summary');
+    summary.className = 'atlas-menu-item';
+    summary.setAttribute('role', 'menuitem');
+    summary.setAttribute('aria-expanded', 'false');
+    disclosure.addEventListener('toggle', () => {
+      summary.setAttribute('aria-expanded', String(disclosure.open));
+      positionOpenViewportMenu();
+    });
     const name = document.createElement('span');
     name.className = 'buret-tree-menu-label';
     name.textContent = title;
     const value = document.createElement('span');
     value.className = 'buret-screenshot-group-value';
     value.textContent = entries.find(([entry]) => entry === current)?.[1] || '';
-    summary.append(name, value);
+    const chevron = sceneTreeIconElement(APP_ICON_DATA.ChevronDown);
+    chevron.classList.add('buret-screenshot-chevron');
+    summary.append(name, value, chevron);
     disclosure.appendChild(summary);
-    for (const [entry, label] of entries) viewportScreenshotChoice(disclosure, action, entry, label, current);
     menu.appendChild(disclosure);
+    for (const [entry, label] of entries) viewportScreenshotChoice(disclosure, action, entry, label, current);
   }
 
   function viewportScreenshotToggle(menu, label, action, checked) {
-    const item = viewportMenuItem(menu, label, action, { icon: checked ? SCENE_TREE_ICON.eye : null });
+    const item = viewportMenuItem(menu, label, action, { checked });
     item.setAttribute('role', 'menuitemcheckbox');
     item.setAttribute('aria-checked', checked ? 'true' : 'false');
     return item;
@@ -9966,6 +9984,9 @@ SOFTWARE.
   function viewportScreenshotMenu(menu) {
     const helper = viewportScreenshotHelper();
     if (!helper) return;
+    menu.classList.remove('buret-tree-menu');
+    menu.classList.add('buret-screenshot-menu');
+    window.BuretteNativeViewerMenus?.styleMenu?.(menu, activeConfig?.themeTokens, resolveViewerTheme());
     const values = helper.values || {};
     viewportMenuItem(menu, 'Save image', 'screenshot-save', { icon: VIEWPORT_ICON.download });
     // Clipboard writes need a secure context; the item is dropped rather than
@@ -9973,12 +9994,12 @@ SOFTWARE.
     if (window.isSecureContext && navigator.clipboard) {
       viewportMenuItem(menu, 'Copy to clipboard', 'screenshot-copy', { icon: VIEWPORT_ICON.clipboard });
     }
-    sceneTreeMenuSection(menu, 'Image');
+    sceneTreeMenuSection(menu);
     viewportScreenshotGroup(menu, 'Resolution', 'screenshot-resolution',
       VIEWPORT_SCREENSHOT_RESOLUTIONS, values.resolution?.name || 'viewport');
     viewportScreenshotGroup(menu, 'Format', 'screenshot-format',
       VIEWPORT_SCREENSHOT_FORMATS, values.format?.name || 'png');
-    sceneTreeMenuSection(menu, 'Options');
+    sceneTreeMenuSection(menu);
     viewportScreenshotToggle(menu, 'Transparent background', 'screenshot-transparent', values.transparent === true);
     viewportScreenshotToggle(menu, 'Show axes', 'screenshot-axes', values.axes?.name === 'on');
     viewportScreenshotToggle(menu, 'Crop to content', 'screenshot-crop', helper.cropParams?.auto === true);
@@ -10685,8 +10706,20 @@ SOFTWARE.
     const helper = viewportScreenshotHelper();
     if (!helper) return false;
     if (action === 'save') {
-      Promise.resolve(helper.download())
-        .then(() => setStatus('[web] Screenshot saved.'))
+      // Mol* dispatches its download on a detached anchor, so the document's
+      // export interceptor cannot see it. Reuse the existing host export path.
+      const capture = canUseDownloadExportBridge()
+        ? helper.getImageDataUri().then(dataUri => {
+          // WKWebView does not fetch data: URLs under the asset protocol's CSP.
+          const [header, base64] = String(dataUri).split(',');
+          const mimeType = /^data:(image\/(?:png|jpeg|webp));base64$/.exec(header)?.[1];
+          if (!mimeType || !base64) throw new Error('No image was returned.');
+          if (!postHostMessage({ type: 'exportData', name: safeDownloadFileName(helper.getFilename(helper.extension)), mimeType, base64 })) {
+            throw new Error('The export host bridge is unavailable.');
+          }
+        })
+        : helper.download();
+      Promise.resolve(capture)
         .catch(error => setStatus(`[web] Screenshot failed. ${error?.message || error}`, 'error'));
       return false;
     }

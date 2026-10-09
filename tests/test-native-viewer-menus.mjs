@@ -18,6 +18,68 @@ const controls = new Function('document', `
   return { sceneTreeMenuItem, sceneTreeMenuSection, sceneTreeMenuSelect, sceneTreeMenuSlider, sceneTreeMenuThemePicker };
 `)(document);
 const events = [];
+// Screenshot settings remain live Mol* parameters, not an independent form.
+// Exercise the real builders and action handlers together with the shared menu.
+{
+  const helper = {
+    values: { resolution: { name: 'viewport' }, format: { name: 'png' }, transparent: false, axes: { name: 'off' } },
+    cropParams: { auto: true },
+    params: { format: { map: () => ({ defaultValue: { quality: .9 } }) }, axes: { map: () => ({ defaultValue: { scale: 1 } }) } },
+    resetCrop() { this.cropReset = true; }, download() { this.saved = true; }, copyToClipboard() { this.copied = true; },
+  };
+  helper.behaviors = { values: { next: value => { helper.values = value; } }, cropParams: { next: value => { helper.cropParams = value; } } };
+  const menu = document.createElement('div'); menu.className = 'buret-tree-menu'; document.body.append(menu);
+  const bindings = { window: { BuretteNativeViewerMenus: window.BuretteNativeViewerMenus, isSecureContext: true },
+    document, navigator: { clipboard: {} }, activeConfig: {}, resolveViewerTheme: () => 'dark',
+    viewportScreenshotHelper: () => helper, setStatus: () => {}, positionOpenViewportMenu: () => {},
+    canUseDownloadExportBridge: () => false,
+    sceneTreeIconElement: () => document.createElementNS('http://www.w3.org/2000/svg', 'svg'),
+    APP_ICON_DATA: { Check: [], ChevronDown: [] }, VIEWPORT_ICON: { download: [], clipboard: [] },
+    VIEWPORT_SCREENSHOT_RESOLUTIONS: [['viewport', 'Viewport'], ['hd', 'HD']],
+    VIEWPORT_SCREENSHOT_FORMATS: [['png', 'PNG'], ['jpeg', 'JPEG']],
+  };
+  const code = ['viewportMenuItem', 'sceneTreeMenuSection', 'viewportScreenshotChoice', 'viewportScreenshotGroup',
+    'viewportScreenshotToggle', 'viewportScreenshotMenu', 'viewportMappedDefaults', 'runViewportScreenshotAction'].map(source).join('\n');
+  const actions = new Function(...Object.keys(bindings), code + '; return { build: viewportScreenshotMenu, run: runViewportScreenshotAction };')(...Object.values(bindings));
+  actions.build(menu);
+  assert.equal(menu.classList.contains('buret-tree-menu'), false);
+  assert.equal(menu.querySelectorAll('.atlas-menu-check').length, 7);
+  const summaries = [...menu.querySelectorAll('summary')];
+  const press = key => window.BuretteNativeViewerMenus.moveMenuFocus(menu, new window.KeyboardEvent('keydown', { key, cancelable: true }));
+  summaries[0].focus(); press('ArrowDown');
+  assert.equal(document.activeElement, summaries[1], 'closed choices are skipped');
+  press('ArrowRight');
+  const format = summaries[1].parentElement;
+  assert.equal(format.open, true);
+  assert.equal(document.activeElement.textContent, 'PNG');
+  press('ArrowDown');
+  const jpeg = document.activeElement;
+  assert.equal(jpeg.textContent, 'JPEG');
+  assert.equal(actions.run('format', jpeg), true);
+  assert.deepEqual([helper.values.format, [...format.querySelectorAll('[role="menuitemradio"]')].map(item => item.getAttribute('aria-checked')),
+    format.querySelector('.buret-screenshot-group-value').textContent], [{ name: 'jpeg', params: { quality: .9 } }, ['false', 'true'], 'JPEG']);
+  press('ArrowLeft');
+  assert.equal(document.activeElement, summaries[1]);
+  assert.equal(format.open, false);
+  for (const action of ['transparent', 'axes', 'crop']) {
+    assert.equal(actions.run(action, menu.querySelector(`[data-buret-viewport-menu="screenshot-${action}"]`)), true);
+  }
+  assert.deepEqual([helper.values.transparent, helper.values.axes, helper.cropParams, helper.cropReset],
+    [true, { name: 'on', params: { scale: 1 } }, { auto: false }, true]);
+  press('End'); assert.equal(document.activeElement.textContent, 'Crop to content');
+  assert.equal(actions.run('save'), false); assert.equal(helper.saved, true);
+  assert.equal(actions.run('copy'), false); assert.equal(helper.copied, true);
+  const exports = [];
+  helper.getImageDataUri = async () => 'data:image/png;base64,aW1hZ2U=';
+  helper.extension = 'png'; helper.getFilename = extension => `structure.${extension}`;
+  const hosted = { ...bindings, canUseDownloadExportBridge: () => true,
+    safeDownloadFileName: name => name, postHostMessage: payload => exports.push(payload) };
+  const saveHosted = new Function(...Object.keys(hosted), source('runViewportScreenshotAction') + '; return runViewportScreenshotAction;')(...Object.values(hosted));
+  assert.equal(saveHosted('save'), false);
+  await Promise.resolve();
+  assert.deepEqual(exports, [{ type: 'exportData', name: 'structure.png', mimeType: 'image/png', base64: 'aW1hZ2U=' }]);
+  menu.remove();
+}
 // The live compute trigger keeps its label and busy state while consuming the
 // same Button/LoadingIndicator source as the shell, including theme changes.
 {
