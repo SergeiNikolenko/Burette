@@ -286,6 +286,13 @@ radius for `size="sm"`. Their popup and option CSS are extracted by
 `scripts/sync-atlas-primitives.mjs`; the Radix adapter retains keyboard focus,
 disabled choices, grouping and form values. Browser-dev uses web listboxes;
 Tauri keeps real native selects. `Tabs` renders the inset segmented control.
+Grid's Table/Cards switch reuses the shell `SegmentedControl` and its shared
+`segmented-control.css` (Atlas ACc inset: 24px items inside a 28px track).
+The shell imports this CSS into the components layer; standalone Grid embeds
+the same source alongside its Atlas tokens. Keep keyboard selection in the
+shared Radix primitive, not in a second grid-only toggle implementation.
+At narrow widths the ordinary Grid toolbar wraps its controls rather than
+hiding sorting, representation, columns or selection actions.
 Tooltips have no arrow unless `showArrow` is set. Style these controls through
 their variants and sizes; app styles should only place them, not repaint them.
 

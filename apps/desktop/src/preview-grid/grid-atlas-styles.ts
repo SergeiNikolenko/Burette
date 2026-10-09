@@ -1,6 +1,7 @@
 import tokens from "../styles/codex-tokens.css" with { type: "text" };
 import selectMenu from "../components/ui/select-menu.atlas.css" with { type: "text" };
 import selectBehavior from "../components/ui/select.css" with { type: "text" };
+import segmentedControl from "../components/ui/segmented-control.css" with { type: "text" };
 import { buildCodexThemeVariables, CODEX_DEFAULT_THEME } from "../lib/codex-theme";
 
 // Grid runs in a standalone iframe without the shell stylesheet. Embed the same
@@ -9,7 +10,7 @@ import { buildCodexThemeVariables, CODEX_DEFAULT_THEME } from "../lib/codex-them
 const source = String(tokens)
   .replaceAll(".app-shell", ":root")
   .replaceAll("data-effective-theme", "data-buret-theme")
-  + selectMenu + selectBehavior;
+  + selectMenu + selectBehavior + segmentedControl;
 
 type ThemeTokens = Partial<Record<"light" | "dark", {
   accent?: string; background?: string; foreground?: string; contrast?: number;

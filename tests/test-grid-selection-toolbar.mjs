@@ -65,6 +65,27 @@ button('sort').dispatchEvent(new window.Event('change', { bubbles: true }));
 assert.deepEqual(calls.slice(-2), [['view', 'xyzrender'], ['sort', 'name']], 'user-facing names preserve renderer and sorting contracts');
 assert.equal(button('search').getAttribute('autocomplete'), 'off');
 
+// The standalone grid uses the same single-selection/keyboard primitive as
+// the inspector while preserving the attributes consumed by grid-viewer.
+mount({ onViewModeChange: mode => {
+  calls.push(['mode', mode]);
+  mount({ viewMode: mode });
+} });
+const tableMode = host.querySelector('[data-buret-grid-view-mode="table"]');
+const cardsMode = host.querySelector('[data-buret-grid-view-mode="cards"]');
+assert.equal(cardsMode.getAttribute('aria-checked'), 'true');
+cardsMode.focus();
+cardsMode.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+await new Promise(resolve => setTimeout(resolve, 0));
+assert.equal(document.activeElement?.textContent, 'Table', 'arrow key reaches the adjacent mode');
+tableMode.click();
+assert.deepEqual(calls.at(-1), ['mode', 'table']);
+assert.equal(tableMode.getAttribute('aria-checked'), 'true');
+assert.equal(cardsMode.getAttribute('aria-checked'), 'false');
+
+mount({ sortOptions: [{ value: 'index', label: 'File order' }, { value: 'name', label: 'Name' }],
+  onSortChange: value => calls.push(['sort', value]) });
+
 // The popup reads imperative runtime updates, not stale React select props.
 button('sort').value = 'index';
 button('sort').options[1].disabled = true;

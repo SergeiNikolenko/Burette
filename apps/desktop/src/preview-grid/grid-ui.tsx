@@ -4,6 +4,7 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { GridSelectMenu } from "./grid-select-menu";
 import { gridAtlasStyles } from "./grid-atlas-styles";
+import { SegmentedControl as AtlasSegmentedControl, SegmentedControlItem } from "../components/ui/segmented-control";
 
 type SortOption = {
   value: string;
@@ -206,34 +207,22 @@ function SegmentedControl<T extends string>({
   dataAttribute: string;
   onChange: (value: T) => void;
 }) {
-  const trackRef = React.useRef<HTMLDivElement>(null);
-  const [thumb, setThumb] = React.useState<{ left: number; width: number } | null>(null);
-
-  React.useLayoutEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    const active = track.querySelector<HTMLButtonElement>('button[aria-pressed="true"]');
-    if (active && active.offsetWidth > 0) setThumb({ left: active.offsetLeft, width: active.offsetWidth });
-  }, [value, options.length]);
-
   return (
-    <div className="ab-seg buret-grid-segmented-control" role="group" aria-label={ariaLabel} ref={trackRef}>
-      {thumb ? <span className="ab-thumb" style={{ left: thumb.left, width: thumb.width }} aria-hidden="true" /> : null}
+    <AtlasSegmentedControl aria-label={ariaLabel} value={value} onValueChange={next => onChange(next as T)}>
       {options.map((option) => (
-        <button
+        <SegmentedControlItem
           key={option.value}
-          type="button"
+          value={option.value}
           data-buret-grid-segment={dataAttribute}
           data-buret-grid-segment-value={option.value}
           {...{ [`data-${dataAttribute}`]: option.value }}
           aria-pressed={value === option.value ? "true" : "false"}
           disabled={option.disabled}
-          onClick={() => onChange(option.value)}
         >
           {option.label}
-        </button>
+        </SegmentedControlItem>
       ))}
-    </div>
+    </AtlasSegmentedControl>
   );
 }
 

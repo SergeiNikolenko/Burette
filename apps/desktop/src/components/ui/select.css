@@ -6,7 +6,11 @@
   }
   .atlas-select-menu[data-position=item-aligned] { width: auto; }
   .atlas-select-menu[data-position=popper][data-state=open] { animation: atlas-select-enter .3s var(--cubic-enter); }
-  .atlas-select-menu[data-position=popper][data-state=closed] { animation: atlas-select-exit .2s var(--cubic-exit); }
+  .atlas-select-menu[data-position=popper][data-state=closed] {
+    animation: atlas-select-exit .2s var(--cubic-exit);
+    /* The exit animation must not intercept the next toolbar click. */
+    pointer-events: none;
+  }
   @keyframes atlas-select-enter {
     from { opacity: 0; transform: scale(var(--select-list-scale, .95)); }
     to { opacity: 1; transform: scale(1); }

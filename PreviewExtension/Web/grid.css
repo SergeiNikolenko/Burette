@@ -329,50 +329,10 @@ button:disabled {
   min-width: 12px;
 }
 
-/* The view/renderer switches mirror the host ToggleGroup: bare text items on a
-   transparent track, the pressed one carried by a bg-muted pill (the sliding
-   thumb keeps the app's animated hand-off between options). */
-.buret-actionbar .ab-seg {
-  position: relative;
-  height: auto;
-  min-height: 0;
-  gap: 2px;
-  padding: 0;
-  border-radius: 8px;
-  background: transparent;
-}
-
-.buret-actionbar .ab-seg button {
-  position: relative;
-  z-index: 1;
-  min-height: 28px;
-  padding: 0 10px;
-  border-radius: 7px;
-  color: var(--buret-muted);
-  background: transparent;
-  font-weight: 500;
-  transition: color 160ms ease-out, background 140ms ease-out;
-}
-
-.buret-actionbar .ab-seg button:not(:disabled):hover {
-  color: var(--buret-text);
-  background: var(--buret-control-surface);
-}
-
-.buret-actionbar .ab-seg button[aria-pressed="true"] {
-  color: var(--buret-text);
-  background: transparent;
-}
-
-.buret-actionbar .ab-seg .ab-thumb {
-  position: absolute;
-  z-index: 0;
-  top: 0;
-  bottom: 0;
-  border-radius: 8px;
-  background: var(--buret-control-active);
-  transition: left 220ms cubic-bezier(0.34, 1.4, 0.5, 1), width 220ms cubic-bezier(0.34, 1.4, 0.5, 1);
-}
+/* The shared Atlas segmented control owns its states, not the legacy button
+   press/halo rules used elsewhere in the scientific viewer. */
+.buret-actionbar .atlas-segmented-control-item:active { transform: none; }
+.buret-actionbar .atlas-segmented-control-item:focus-visible { box-shadow: none; outline-offset: -2px; }
 
 /* Mirrors the host Button secondary/sm: 28px tall, 10px inline padding, the
    smaller 8px radius, and medium weight. */
@@ -655,7 +615,6 @@ button:disabled {
   white-space: nowrap;
 }
 
-.buret-grid-segmented-control,
 .buret-grid-view-mode-switch,
 .buret-grid-card-renderer-switch {
   box-sizing: border-box;
@@ -678,7 +637,6 @@ button:disabled {
   font-weight: 400;
 }
 
-.buret-grid-segmented-control button,
 .buret-grid-view-mode-switch button,
 .buret-grid-card-renderer-switch button {
   min-height: var(--buret-control-height);
@@ -690,21 +648,12 @@ button:disabled {
   font: 400 13px/1.2 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 }
 
-.buret-grid-segmented-control button:hover,
-.buret-grid-segmented-control button.active,
-.buret-grid-segmented-control button[aria-pressed="true"],
 .buret-grid-view-mode-switch button:hover,
 .buret-grid-view-mode-switch button.active,
 .buret-grid-card-renderer-switch button:hover,
 .buret-grid-card-renderer-switch button.active {
   color: var(--buret-text);
   background: var(--buret-control-active);
-}
-
-.buret-grid-segmented-control button:disabled {
-  color: var(--buret-faint);
-  background: var(--buret-control-surface);
-  cursor: default;
 }
 
 .buret-grid-toolbar .buret-grid-xyzrender-preset-control {
@@ -2747,7 +2696,7 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
 @container grid-controls (max-width: 400px) {
   .buret-toolbar-row-main { grid-template-columns: minmax(0, 1fr); gap: 6px; }
   .buret-actionbar .ab-spacer, .buret-actionbar .ab-divider { display: none; }
-  .buret-selection-actions { flex-basis: 100%; justify-content: flex-start; }
+  .buret-selection-actions { flex-basis: 100%; justify-content: flex-start; flex-wrap: wrap; }
   .buret-toolbar-row-view { gap: 6px; }
 }
 .buret-actionbar .ab-actions-menu { margin-left: auto; }
@@ -2758,11 +2707,6 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
   #grid-controls .buret-toolbar-row-main {
     grid-template-columns: minmax(0, 1fr);
   }
-  #grid-controls .buret-sort-control,
-  #grid-controls .buret-load-status,
-  #grid-controls .buret-toolbar-row-view > :not(.ab-seg):not(.ab-menu-wrap):not(.buret-selection-actions) {
-    display: none;
-  }
   #grid-controls .buret-toolbar-row-view {
     gap: 4px;
   }
@@ -2772,28 +2716,13 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
   #grid-controls .buret-selection-actions {
     order: 1;
     flex-basis: 100%;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
   }
   #grid-controls .buret-selection-count {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-}
-
-@container grid-controls (max-width: 260px) {
-  #grid-controls .buret-selection-actions {
-    display: none;
-  }
-  #grid-controls .ab-seg button {
-    padding-inline: 6px;
-  }
-}
-
-@container grid-controls (max-width: 190px) {
-  #grid-controls .buret-toolbar-row-view > .ab-seg {
-    display: none;
   }
 }
 

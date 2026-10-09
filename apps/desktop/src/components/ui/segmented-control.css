@@ -1,0 +1,52 @@
+/* Atlas ACc: shared by the shell and standalone Grid, without Tailwind runtime. */
+.atlas-segmented-control {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-radius: 10px;
+  background: var(--segmented-control-background);
+  padding: 2px;
+  scrollbar-width: none;
+}
+.atlas-segmented-control::-webkit-scrollbar { display: none; }
+.atlas-segmented-control-item {
+  -webkit-app-region: no-drag;
+  box-sizing: border-box;
+  display: inline-flex;
+  height: 24px;
+  min-height: 24px;
+  flex-shrink: 0;
+  cursor: var(--cursor-interaction);
+  user-select: none;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  white-space: nowrap;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0 8px;
+  font-family: inherit;
+  font-size: var(--text-xs);
+  font-weight: 430;
+  line-height: 16px;
+  color: var(--color-text-tertiary);
+  background: transparent;
+  box-shadow: none;
+  transition: none;
+  transform: none;
+}
+.atlas-segmented-control-item:disabled { cursor: default; opacity: .4; }
+.atlas-segmented-control-item:focus { outline: none; }
+.atlas-segmented-control-item:focus-visible { outline: 2px solid var(--color-ring); outline-offset: -2px; }
+.atlas-segmented-control-item:not(:disabled):hover { background: var(--color-background-primary-ghost-hover); }
+.atlas-segmented-control-item[data-state="on"],
+.atlas-segmented-control-item[data-state="on"]:hover {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
