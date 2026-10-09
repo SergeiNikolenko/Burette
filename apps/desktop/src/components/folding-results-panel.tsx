@@ -1,7 +1,7 @@
 import { Spinner } from "@/components/ui/spinner";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "@/components/ui/button";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
+import { CollapsibleSection } from "./ui/collapsible-section";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { hasFoldingResultContent, readFoldingResultBundle } from "../lib/folding-results";
 import { readStructureText } from "../lib/structure-text";
@@ -152,42 +152,37 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
   };
 
   return (
-    <Accordion type="single" collapsible value={collapsed ? "" : "results"} onValueChange={(value) => setCollapsed(!value)} className="structure-brief-card structure-inspector-section folding-results-card" data-collapsed={collapsed || undefined}>
-      <AccordionItem value="results">
-        <AccordionTrigger>
-          <span className="flex min-w-0 flex-1 items-center justify-between gap-2 pr-2">
-            <span>Folding Results</span>
-            <span className="truncate text-xs text-muted-foreground">{bundle.source} · {modelCountLabel(bundle.models.length)}</span>
-          </span>
-        </AccordionTrigger>
-      <AccordionContent className="h-auto">
+    <CollapsibleSection
+      title="Folding results"
+      detail={modelCountLabel(bundle.models.length)}
+      open={!collapsed}
+      onOpenChange={open => setCollapsed(!open)}
+      className="folding-results-card"
+    >
         <div className="folding-results-body">
           <FoldingModelSelector models={bundle.models} activeModel={activeModel} onSelect={selectModel} />
 
-          <div className="folding-model-summary">
-            <div>
-              <strong>{activeModel.title}</strong>
-              <span title={activeModel.structureTitle}>{activeModel.structureTitle}</span>
-            </div>
-            <Button type="button" variant="outline" size="xs" onClick={() => actions.openStructurePaths([activeModel.structurePath])}>
+          <div className="folding-model-summary flex min-w-0 items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-sm" title={activeModel.structureTitle}>{activeModel.structureTitle}</span>
+            <Button type="button" variant="ghost" size="sm" onClick={() => actions.openStructurePaths([activeModel.structurePath])}>
               Open
             </Button>
           </div>
           {activeModel.matrixPreview ? (
-            <Button type="button" variant="secondary" size="sm" className="folding-full-pae-button w-full" onClick={() => actions.openDockTab("bottom", "folding")}>
+            <Button type="button" variant="secondary" size="sm" className="w-full" onClick={() => actions.openDockTab("bottom", "folding")}>
               Full PAE
             </Button>
           ) : null}
 
           {activeModel.metrics.length ? (
-            <div className="structure-inspector-xtb-metrics folding-metric-grid">
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
               {activeModel.metrics.slice(0, 8).map((metric) => (
-                <div key={metric.key} className="structure-inspector-xtb-metric">
-                  <span>{metric.label}</span>
-                  <strong>{metric.formatted || formatMetric(metric.value)}</strong>
+                <div key={metric.key} className="min-w-0">
+                  <dt className="text-sm text-(--color-text-secondary)">{metric.label}</dt>
+                  <dd className="text-base font-medium tabular-nums">{metric.formatted || formatMetric(metric.value)}</dd>
                 </div>
               ))}
-            </div>
+            </dl>
           ) : null}
 
           {activeModel.plddtProfile ? <FoldingPlddtPlot profile={activeModel.plddtProfile} /> : null}
@@ -199,16 +194,18 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
                 <strong>Artifacts</strong>
                 <div>
                   {activeModel.artifacts.slice(0, 12).map((artifact) => (
-                    <button
+                    <Button
                       key={artifact.path}
                       type="button"
-                      className="dock-action structure-inspector-xtb-file-button"
+                      variant="ghost"
+                      size="sm"
+                      className="min-w-0 max-w-full justify-start"
                       title={`${artifact.title} · ${formatBytes(artifact.byteCount)}`}
                       onClick={() => openFoldingArtifact(artifact, actions)}
                     >
                       <span>{artifactKindLabel(artifact.kind)}</span>
-                      <span>{artifact.title}</span>
-                    </button>
+                      <span className="truncate">{artifact.title}</span>
+                    </Button>
                   ))}
                 </div>
               </div>
@@ -223,9 +220,7 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
             </div>
           ) : null}
         </div>
-      </AccordionContent>
-      </AccordionItem>
-    </Accordion>
+    </CollapsibleSection>
   );
 }
 
@@ -359,11 +354,11 @@ function FoldingModelSelector({
   onSelect: (model: FoldingModel) => void;
 }) {
   return (
-    <div className="folding-model-selector">
-      <label>
-        <span>Model / seed</span>
+    <div className="folding-model-selector min-w-0">
+      <label className="grid min-w-0 gap-2">
+        <span className="text-sm">Model / seed</span>
         <NativeSelect
-          className="settings-select w-full"
+          className="w-full"
           size="sm"
           value={activeModel.id}
           disabled={models.length <= 1}
@@ -380,7 +375,6 @@ function FoldingModelSelector({
           ))}
         </NativeSelect>
       </label>
-      <span className="folding-model-selector-count">{modelAvailabilityLabel(models.length)}</span>
     </div>
   );
 }
@@ -1069,10 +1063,6 @@ function modelOptionLabel(model: FoldingModel) {
 
 function modelCountLabel(count: number) {
   return `${count} ${count === 1 ? "model" : "models"}`;
-}
-
-function modelAvailabilityLabel(count: number) {
-  return `${count} available`;
 }
 
 function artifactKindLabel(kind: string) {
