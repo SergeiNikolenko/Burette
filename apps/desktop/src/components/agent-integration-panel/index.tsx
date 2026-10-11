@@ -9,6 +9,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { SettingControl, SettingsSection, type SettingRow } from "../settings-panel/setting-control";
 import { isTauriRuntime } from "../../lib/tauri";
 import { EditorScrollContainer } from "../editor-area/editor-scroll-container";
+import { AgentSetup } from "./setup";
 
 type AgentIntegrationCheck = {
   id: string;
@@ -125,6 +126,7 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
         label: "Burette plugin",
         control: <span role="status" aria-live="polite"><StatusValue state={statusState} /></span>,
       }]} />
+      {!refreshing && <AgentSetup bundlePath={!error && status?.bundledPlugin.state === "ready" ? status.bundledPlugin.path : null} />}
       {!refreshing && !error && status?.agentInstalls.length ? <SettingsSection title="Connection" rows={status.agentInstalls.map(agent => ({
         label: agent.label,
         control: <>{agent.version && <span className="text-xs text-(--color-text-secondary)">v{agent.version}</span>}<StatusValue state={agent.state} /></>,

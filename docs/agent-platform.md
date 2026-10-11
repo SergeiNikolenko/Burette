@@ -386,6 +386,14 @@ sets `truncated: true`, even when no further retained text can be paged through.
 
 ## Plugin Contract
 
+Settings → Agents provides a copyable installer command for the detected,
+ready local bundle, a local stdio MCP configuration, and the hosted ChatGPT
+MCP URL. The installer registers the bundled Codex plugin; copying a generic
+MCP configuration only connects tools and does not install that plugin.
+The setup dialogs never execute the installer or change client settings.
+Local setup requires a ready detected bundle; hosted setup remains available
+on static browser surfaces without local integration status.
+
 - Run `node plugins/burette-agent/scripts/burette_agent_preflight.mjs` before
   plugin workflows that open files, render panels, or act on Mol*.
 - Skills route workflows. MCP registrations expose tools. The CLI does app
