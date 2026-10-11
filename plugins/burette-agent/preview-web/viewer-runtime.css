@@ -1537,7 +1537,7 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   visibility: hidden;
   transition: opacity 110ms ease-out, visibility 0s linear 110ms;
 }
-.buret-molstar-tooltip.visible {
+.buret-molstar-tooltip#buret-shared-control-tooltip.visible {
   opacity: 1;
   visibility: visible;
   transition-delay: 150ms, 0s;

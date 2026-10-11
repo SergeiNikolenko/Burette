@@ -657,8 +657,14 @@
       // Applied in place like the structure viewer: the config already carries
       // the token sets for both themes, so a theme change never reopens the grid.
       if (body.type === 'setViewerTheme') {
+        if (event.source !== window.parent) return;
         const cfg = safeConfig();
         if (!cfg) return;
+        if (body.themeTokens && typeof body.themeTokens === 'object') cfg.themeTokens = body.themeTokens;
+        if (body.canvasBackground !== undefined) {
+          cfg.canvasBackground = normalizeCanvasBackground(body.canvasBackground);
+          cfg.transparentBackground = cfg.canvasBackground === 'transparent';
+        }
         cfg.theme = body.value === 'light' || body.value === 'dark' ? body.value : 'auto';
         applyTheme(cfg);
         return;
@@ -1799,7 +1805,11 @@
     document.body.classList.toggle('burette-transparent-background', transparent);
     document.body.classList.toggle('burette-opaque-background', !transparent);
     applyThemeTokens(cfg, theme);
-    document.documentElement.style.setProperty('--buret-grid-canvas-background', canvasBackgroundCSS(canvasBackground));
+    const themed = window.BuretteGridUI.themeColors(cfg.themeTokens?.[theme], theme).background;
+    const background = normalizeCanvasBackground(cfg.canvasBackground) === 'auto' ? themed : canvasBackgroundCSS(canvasBackground);
+    document.documentElement.style.backgroundColor = background;
+    document.documentElement.style.setProperty('--buret-grid-canvas-background', background);
+    window.dispatchEvent(new Event('burette-grid-theme-changed'));
   }
 
   function applyThemeTokens(cfg, theme) {

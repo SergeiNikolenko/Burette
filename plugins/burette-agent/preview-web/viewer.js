@@ -2016,6 +2016,7 @@
     document.body.classList.toggle('burette-transparent-background', transparentBackground);
     document.body.classList.toggle('burette-opaque-background', !transparentBackground);
     applyViewerThemeTokens(resolvedTheme);
+    document.documentElement.style.backgroundColor = canvasBackgroundCSS();
     document.documentElement.style.setProperty('--buret-canvas-background', canvasBackgroundCSS());
     document.documentElement.style.setProperty('--buret-overlay-opacity', overlayOpacity.toFixed(2));
     document.documentElement.style.setProperty('--buret-overlay-strong-opacity', Math.min(overlayOpacity + 0.06, 0.99).toFixed(2));
@@ -2332,15 +2333,16 @@
   // "Match theme" paints the canvas with the app's own background, so the
   // structure sits on the same surface as the window around it.
   function themeCanvasHex() {
-    if (canvasBackground !== 'auto') return null;
-    const value = themeTokensFor(resolveViewerTheme())?.background;
-    return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : null;
+    const theme = resolveViewerTheme();
+    const tokens = themeTokensFor(theme);
+    const value = window.BuretteNativeViewerMenus?.themeColors?.(tokens, theme)?.background ?? tokens?.background;
+    return typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value : theme === 'light' ? '#ffffff' : '#181818';
   }
 
   function canvasBackgroundCSS() {
     const background = resolvedCanvasBackground();
     if (background === 'transparent') return 'transparent';
-    if (background !== 'black') { const themed = themeCanvasHex(); if (themed) return themed; }
+    if (canvasBackground === 'auto') return themeCanvasHex();
     if (background === 'white') return '#ffffff';
     if (background === 'graphite') return '#111111';
     return '#000000';
@@ -2390,7 +2392,14 @@
   }
 
   function viewerHasLightBackground() {
-    return transparentBackground ? resolveViewerTheme() === 'light' : resolvedCanvasBackground() === 'white';
+    // A customized theme can have a light canvas in dark mode, or vice versa.
+    // Transparent scenes inherit that same theme surface from their host.
+    const hex = transparentBackground ? themeCanvasHex() : canvasBackgroundCSS();
+    const [r, g, b] = [1, 3, 5].map(offset => {
+      const channel = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return r * 0.2126 + g * 0.7152 + b * 0.0722 > 0.179;
   }
 
   // Mol*'s orientation gizmo in the Codex palette: coloured, labelled arms on a
@@ -3268,7 +3277,21 @@
     // Applied in place so a theme change never costs a viewer rebuild: the runtime
     // already carries the token sets for both themes.
     if (body.type === 'setViewerTheme') {
+      if (event.source !== window.parent) return;
       const nextTheme = normalizeViewerTheme(body.value);
+      if (body.themeTokens && typeof body.themeTokens === 'object') {
+        if (activeConfig) activeConfig.themeTokens = body.themeTokens;
+        if (window.BuretteConfig) window.BuretteConfig.themeTokens = body.themeTokens;
+      }
+      if (body.canvasBackground !== undefined) {
+        canvasBackground = normalizeCanvasBackground(body.canvasBackground);
+        for (const config of [activeConfig, window.BuretteConfig]) {
+          if (config) {
+            config.canvasBackground = canvasBackground;
+            config.transparentBackground = canvasBackground === 'transparent';
+          }
+        }
+      }
       if (activeConfig) activeConfig.theme = nextTheme;
       if (window.BuretteConfig) window.BuretteConfig.theme = nextTheme;
       setViewerTheme(nextTheme, activeViewer);
@@ -4610,6 +4633,7 @@
     cancelMolstarPresetPreviewClose();
     if (preset === molstarPresetPreviewPreset) return;
     molstarPresetPreviewPreset = preset;
+    const serial = ++molstarPresetPreviewSerial;
     showMolstarPresetPreviewShell(item, molstarPresetOption(preset));
     const { preview: previewShell } = molstarPresetPreviewElements();
     if (previewShell?.classList.contains('viewport-constrained')) return;
@@ -4619,7 +4643,6 @@
       return;
     }
     if (restoreCachedMolstarPresetPreview(item, preset)) return;
-    const serial = ++molstarPresetPreviewSerial;
     const controller = ensureMolstarPresetPreviewController();
     if (!controller) {
       hideFailedMolstarPresetPreview(new Error('Preset preview controller is unavailable.'), serial);
