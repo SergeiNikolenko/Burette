@@ -1,18 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { ArrowRotateCcw as RotateCcw } from "@/components/ui/app-icons";
 
 import { cn } from "@/lib/utils";
 import type { ViewerDownloadAction } from "@/lib/viewer-download-actions";
 import {
-  toViewerErrorInfo,
   type ViewerErrorContext,
   type ViewerFormat,
 } from "@/lib/viewer-errors";
 
-import { Button } from "./retab-button";
-import { ViewerDownloadButton } from "./viewer-download";
+import { FileViewerErrorState } from "./file-viewer-state";
 
 export interface ViewerErrorStateProps extends ViewerErrorContext {
   error: unknown;
@@ -35,48 +32,9 @@ export function ViewerErrorState({
   variant = "card",
   onRetry,
 }: ViewerErrorStateProps) {
-  const info = toViewerErrorInfo(error, {
-    format,
-    sourceKind,
-    canDownload: canDownload ?? Boolean(download && !download.isDisabled),
-    retry,
-  });
-  const showRetry = info.isRetryable && onRetry;
-  const showDownload =
-    info.isDownloadUseful && download != null && !download.isDisabled;
-
-  return (
-    <div
-      className={cn(errorStateClassName({ bare, variant }), className)}
-      data-error-domain={info.domain}
-      data-error-format={info.format}
-      data-error-kind={info.kind}
-      data-error-message={info.message}
-      data-slot="viewer-error"
-      role="alert"
-    >
-      <p>{info.userMessage}</p>
-      {showRetry || showDownload ? (
-        <div className="flex items-center gap-2">
-          {showRetry ? (
-            <Button variant="outline" size="sm" onClick={onRetry}>
-              <RotateCcw className="mr-1.5 size-4" />
-              Retry
-            </Button>
-          ) : null}
-          {showDownload ? (
-            <ViewerDownloadButton
-              action={download}
-              variant={showRetry ? "ghost" : "outline"}
-              size="sm"
-              className=""
-              showLabel
-            />
-          ) : null}
-        </div>
-      ) : null}
-    </div>
-  );
+  return <FileViewerErrorState error={error} format={format} sourceKind={sourceKind}
+    canDownload={canDownload} retry={retry} download={download} onRetry={onRetry}
+    className={cn(errorStateClassName({ bare, variant }), className)} data-slot="viewer-error" />;
 }
 
 export interface ViewerErrorBoundaryProps extends ViewerErrorContext {
@@ -161,11 +119,10 @@ function errorStateClassName({
   variant: "card" | "document" | "inline";
 }) {
   if (variant === "inline") {
-    return "flex h-24 flex-col items-center justify-center gap-3 px-3 text-center text-xs text-muted-foreground";
+    return "min-h-24 px-3 py-3 [&_[data-slot=file-viewer-state-icon]]:hidden [&_[data-slot=file-viewer-state-title]]:text-sm";
   }
   return cn(
-    "flex min-h-64 flex-col items-center justify-center gap-3 p-6 text-center text-sm text-muted-foreground",
-    bare ? "bg-muted/20" : "rounded-xl border bg-muted/30",
+    bare ? "min-h-0" : "min-h-64",
     variant === "document" && "min-h-full",
   );
 }

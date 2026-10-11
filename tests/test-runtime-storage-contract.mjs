@@ -95,8 +95,8 @@ assert.match(viewer, /return `burette\.trajectoryControl\.\$\{documentId\}`/);
 assert.match(viewer, /return `burette\.trajectoryControl\.fallback-\$\{stableTextHash\(fallback\)\}`/);
 assert.match(viewer, /return `\$\{trajectoryControlStorageKey\(config, prepared\)\}\.fps\.v1`/);
 
-// Exercise the real theme setters: returning to Auto must release the forced
-// canvas colour and persist Auto, so a later OS appearance change takes effect.
+// Exercise the real theme setters: a theme switch keeps the canvas setting (so
+// "Match theme" follows it) and Auto persists, so a later OS appearance change takes effect.
 const themeFunctions = ["normalizeViewerTheme", "readStoredViewerTheme", "resolveViewerTheme", "setViewerTheme", "toggleViewerTheme"]
   .map((name) => {
     const match = viewer.match(new RegExp(`\n  function ${name}\\([\\s\\S]*?\n  \\}`, "u"));
@@ -123,12 +123,10 @@ const themeRuntime = new Function("window", `
   matchMedia: () => systemTheme,
   localStorage: { getItem: (key) => storedThemes.get(key), setItem: (key, value) => storedThemes.set(key, value) },
 });
-for (const [theme, resolved, canvasBackground] of [
-  ["light", "light", "white"], ["dark", "dark", "black"], ["auto", "dark", "auto"],
-]) {
+for (const [theme, resolved] of [["light", "light"], ["dark", "dark"], ["auto", "dark"]]) {
   assert.equal(themeRuntime.toggle(), theme);
   assert.equal(themeRuntime.stored(), theme);
-  assert.deepEqual(themeRuntime.state(), { theme, resolved, canvasBackground, transparentBackground: false });
+  assert.deepEqual(themeRuntime.state(), { theme, resolved, canvasBackground: "auto", transparentBackground: false });
 }
 systemTheme.matches = true;
 assert.deepEqual(themeRuntime.state(), { theme: "auto", resolved: "light", canvasBackground: "auto", transparentBackground: false });

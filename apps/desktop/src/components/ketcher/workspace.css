@@ -1,14 +1,28 @@
 @import "./extended-table.css";
+@import "./workspace-macro.css";
+@import "./macro-properties.css";
 
-/* OpenAI reference: 4px spacing, 8/12px radii, neutral semantic surfaces.
-   Colors remain bound to Burette's editable light/dark theme. */
-.ketcher-page .ketcher-page-header {
-  width: 100%; max-width: none; min-height: 64px; padding: 12px 16px;
-  justify-content: space-between; gap: 16px; box-sizing: border-box;
+/* Atlas panel-header-toolbar: pane height, toolbar buttons and action gaps.
+   Keep actions available when a dock narrows the molecular canvas. */
+.ketcher-page .ketcher-page-header,
+.ketcher-page[data-narrow] .ketcher-page-header {
+  display: flex; flex-wrap: wrap; align-items: center;
+  container: ketcher-header / inline-size;
+  width: 100%; max-width: none; min-height: var(--height-toolbar-pane);
+  padding: 6px 16px; gap: var(--spacing-toolbar-action); box-sizing: border-box;
 }
-.ketcher-page .ketcher-page-title h1 { font-weight: 500; }
-.ketcher-page .ketcher-page-actions { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
-.ketcher-page .ketcher-page-title { flex-shrink: 0; }
+.ketcher-page .ketcher-page-title h1 { font-weight: var(--font-weight-medium); line-height: 20px; }
+.ketcher-page .ketcher-page-title { flex: 0 0 auto; width: auto; gap: 8px; }
+.ketcher-page .ketcher-page-icon { width: 20px; height: 20px; flex-basis: 20px; background: none; }
+.ketcher-page .ketcher-page-icon :is(svg, img) { width: 20px; height: 20px; }
+.ketcher-page .ketcher-page-actions {
+  flex: 0 1 auto; width: auto; min-width: 0; margin-left: auto; padding-bottom: 0;
+  flex-wrap: wrap; justify-content: flex-end; gap: var(--spacing-toolbar-action);
+}
+@container ketcher-header (max-width: 704px) {
+  .ketcher-page .ketcher-page-actions { order: 1; flex-basis: 100%; margin-left: 0; justify-content: flex-start; }
+  .ketcher-page-display-actions { margin-left: auto; }
+}
 .ketcher-page .ketcher-page-body { padding: 0 16px 8px; }
 .ketcher-page .ketcher-editor-shell { border-radius: 12px; }
 .ketcher-page .ketcher-page-footer { padding: 8px 16px 12px; }
@@ -21,581 +35,216 @@
 .ketcher-dock-workflow .ketcher-dock-toolbar { gap: 12px; }
 .ketcher-dock-workflow .ketcher-dock-title { flex: 1; min-width: 0; }
 .ketcher-dock-workflow textarea[data-slot="textarea"] { border-radius: 8px; padding: 12px; font-family: var(--font-mono); }
-.ketcher-editor-shell [data-slot="button"] { border-radius: 8px !important; }
-.ketcher-editor-shell .ketcher-tool-button[aria-pressed="true"] { background: var(--surface-selected) !important; box-shadow: inset 0 0 0 1px var(--line-strong); }
-.ketcher-editor-shell [data-slot="button"]:focus-visible { outline: 2px solid var(--text-secondary) !important; outline-offset: 2px; }
-.app-shell .ketcher-ui-dialog[data-slot="dialog-content"] {
-  width: min(640px, calc(100vw - 48px)); max-width: calc(100vw - 48px);
-  max-height: calc(100dvh - 64px); border-radius: 12px; gap: 20px;
-  background: var(--surface-primary); color: var(--text-primary);
-  border: 1px solid var(--line-subtle); z-index: 1200;
-  padding: 20px; font-family: var(--font-sans); font-size: 14px; line-height: 20px;
+.ketcher-page:fullscreen {width:100%;height:100%;display:flex;flex-direction:column;background:var(--background);}
+.ketcher-page:fullscreen .ketcher-page-body {flex:1;min-height:0;}
+.ketcher-editor-shell .Ketcher-root [class*="App-module_app"] {
+  --ketcher-rail-width:56px;--ketcher-chrome-inset:8px;--ketcher-chrome-strip:40px;
+  grid-template-columns:56px minmax(0,1fr) 48px;
+  grid-template-rows:56px minmax(0,1fr);gap:0;padding:0;box-sizing:border-box;
 }
-.app-shell .ketcher-ui-dialog-body {
-  min-height: 0; overflow: auto; max-height: calc(100dvh - 240px);
-  position: static !important; width: auto !important; height: auto !important;
-  margin: 0 !important; padding: 0 !important; color: var(--text-primary);
+.ketcher-editor-shell .Ketcher-root [class*="App-module_canvas"] {grid-area:2/1/3/4;min-width:0;min-height:0;}
+.ketcher-editor-shell .Ketcher-root :is([class*="App-module_top"],[class*="App-module_bottom"],[data-testid="left-toolbar"],[data-testid="right-toolbar"]) {
+  position:relative;z-index:1;box-sizing:border-box;min-height:0;border:1px solid transparent;border-radius:var(--radius-md);background:transparent;box-shadow:none;
 }
-.app-shell .ketcher-ui-dialog-body :is(input, textarea, select) { color: var(--text-primary); background: var(--surface-primary); }
-.app-shell .ketcher-ui-dialog-body [data-slot="input"], .app-shell .ketcher-ui-dialog-body [data-slot="textarea"],
-.app-shell .ketcher-ui-dialog-body [data-slot="select-trigger"] {
-  border: 1px solid var(--line-subtle); border-radius: 8px; min-height: 32px;
-  font: inherit; box-shadow: none;
-}
-.app-shell .ketcher-ui-dialog-body [data-slot="checkbox"][data-state="checked"] { background: var(--text-primary); color: var(--bg-base); }
-.app-shell .ketcher-ui-dialog-body [data-slot="switch"][data-state="checked"] { background: var(--text-primary); }
-.app-shell .ketcher-ui-dialog-body [data-slot="switch"][data-state="unchecked"] { background: var(--surface-selected); }
-.app-shell .ketcher-ui-dialog-body [data-slot="switch-thumb"][data-state="checked"] { transform: translateX(13px); background: var(--bg-base); }
-.app-shell .ketcher-ui-dialog-body [data-slot="switch-thumb"][data-state="unchecked"] { transform: translateX(0); background: var(--text-primary); }
-.ketcher-ui-select { width: 100%; }
-.ketcher-ui-options { z-index: 1300; }
-.app-shell .ketcher-ui-dialog, .ketcher-page, .ketcher-ui-options {
-  --shadcn-primary: var(--text-primary);
-  --shadcn-primary-foreground: var(--bg-base);
-}
-.ketcher-settings-groups [data-slot="accordion-item"] { border-color: var(--line-subtle); }
-.ketcher-settings-groups fieldset { border: 0; padding: 4px 0 16px; margin: 0; }
-.ketcher-settings-groups fieldset > label {
-  display: grid !important; grid-template-columns: minmax(180px, 1fr) minmax(120px, 1fr);
-  align-items: center; gap: 16px; min-height: 40px; margin: 0 !important; padding: 4px 0;
-}
-.ketcher-settings-groups fieldset > label > span { width: auto !important; color: var(--text-primary); }
-.app-shell .ketcher-ui-dialog-body [data-slot="select-trigger"] { display: flex !important; padding: 4px 10px !important; }
-.app-shell .ketcher-ui-dialog-body [data-slot="select-trigger"] svg { display: block; width: 16px; height: 16px; }
-.app-shell .ketcher-ui-dialog [data-slot="dialog-footer"] { margin: 0; border: 0; padding: 8px 0 0; background: transparent; gap: 8px; }
-.app-shell .ketcher-ui-dialog [data-slot="dialog-footer"] > span > button { background: var(--surface-secondary); color: var(--text-primary); border: 1px solid var(--line-subtle); border-radius: 8px; padding: 4px 10px; }
-.app-shell .ketcher-ui-dialog [data-variant="default"] { background: var(--text-primary) !important; color: var(--bg-base) !important; }
-.app-shell .ketcher-ui-dialog-body label, .app-shell .ketcher-ui-dialog-body label span { color: var(--text-primary); }
-.app-shell .ketcher-ui-dialog-body [data-slot="switch"] { justify-content: flex-start; padding: 0; width: 32px; height: 19px; }
+.ketcher-editor-shell .Ketcher-root :is([class*="App-module_top"],[class*="App-module_bottom"]) {height:40px!important;min-height:40px!important;padding:0 4px;align-items:center;}
+.ketcher-editor-shell .Ketcher-root [class*="App-module_top"] {grid-area:1/1/2/4;margin:8px 8px 0!important;min-width:0;max-width:calc(100% - 16px);}
+.ketcher-editor-shell .Ketcher-root [class*="App-module_top"] > div:first-child {flex:1;min-width:0;overflow-x:auto;overflow-y:hidden;}
+.ketcher-editor-shell .Ketcher-root [class*="App-module_top"] > div:last-child {flex-shrink:0;}
+.ketcher-editor-shell .Ketcher-root [class*="App-module_bottom"] {grid-area:2/1/3/4;align-self:end;justify-self:start;max-width:calc(100% - 16px);margin:0 8px 8px!important;overflow-x:auto;overflow-y:hidden;}
+.ketcher-editor-shell .Ketcher-root :is([data-testid="left-toolbar"],[data-testid="right-toolbar"]) {align-self:start;width:56px!important;min-width:0;height:auto;max-height:calc(100% - 56px);padding:3px!important;align-items:center!important;--ketcher-toolbar-margin:0px;--ketcher-toolbar-group-gap:4px;}
+.ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar"] {grid-area:2/1/3/2;margin:0 0 0 8px!important;}
+.ketcher-editor-shell .Ketcher-root [data-testid="right-toolbar"] {grid-area:2/3/3/4;width:40px!important;margin:0 8px 0 0!important;}
+.ketcher-editor-shell .Ketcher-root [class*="ArrowScroll-module_scroll"] {display:none;}
+.ketcher-editor-shell .Ketcher-root :is([data-testid="left-toolbar"],[data-testid="right-toolbar"]) > div:first-child {overflow-y:auto;overflow-x:hidden;min-height:0;max-height:100%;scrollbar-width:thin;scrollbar-color:transparent transparent;}
+.ketcher-editor-shell .Ketcher-root :is([data-testid="left-toolbar"],[data-testid="right-toolbar"]):is(:hover,:focus-within) > div:first-child {scrollbar-color:var(--muted-foreground) transparent;}
+.ketcher-editor-shell .Ketcher-root :is([data-testid="left-toolbar"],[data-testid="right-toolbar"]) > div:first-child::-webkit-scrollbar {width:6px;background:transparent;}
+.ketcher-editor-shell .Ketcher-root :is([data-testid="left-toolbar"],[data-testid="right-toolbar"]) > div:first-child::-webkit-scrollbar-track {background:transparent;}
+.ketcher-editor-shell .Ketcher-root :is([data-testid="left-toolbar"],[data-testid="right-toolbar"]) > div:first-child::-webkit-scrollbar-thumb {background:transparent;border-radius:6px;}
+.ketcher-editor-shell .Ketcher-root :is([data-testid="left-toolbar"],[data-testid="right-toolbar"]):is(:hover,:focus-within) > div:first-child::-webkit-scrollbar-thumb {background:var(--muted-foreground);}
+.ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar-buttons"] {width:100%;padding:0;margin:0;box-sizing:border-box;}
+.ketcher-editor-shell .Ketcher-root :is([class*="LeftToolbar-module_groupItem"],[class*="RightToolbar-module_buttons"],[class*="BottomToolbar-module_group"]) {background:transparent;box-shadow:none;border-radius:0;}
+.ketcher-editor-shell .Ketcher-root [class*="LeftToolbar-module_group"] {align-items:flex-start!important;}
+/* Ketcher's five native groups retain their existing tools and order. */
+.ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar-buttons"] [class*="LeftToolbar-module_groupItem"] {width:100%;padding:2px 0;}
+.ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar-buttons"] > [class*="LeftToolbar-module_groupItem"],
+.ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar-buttons"] > :not(:first-child) > [class*="LeftToolbar-module_groupItem"] {border-top:1px solid var(--input);margin-top:4px;padding-top:6px;}
+.ketcher-editor-shell .Ketcher-root [class*="ToolbarMultiToolItem-module_root"] {display:flex;align-items:center;justify-content:flex-start;}
+.ketcher-editor-shell .Ketcher-root [class*="ToolbarMultiToolItem-module_root"] > button {flex-shrink:0;margin:0!important;}
+.ketcher-editor-shell .Ketcher-root :is(.ketcher-tool-button,.ketcher-tool-expand):not(:disabled) {color:#000;}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .Ketcher-root :is(.ketcher-tool-button,.ketcher-tool-expand):not(:disabled) {color:#fff;}
+/* Ketcher 3.15 ElementColor values for the native atom rail. H/C inherit the
+   neutral toolbar ink; the dark variants match our existing canvas palette. */
+.ketcher-editor-shell .ketcher-atom-label[data-element="N"] {color:#304ff7;}
+.ketcher-editor-shell .ketcher-atom-label[data-element="O"] {color:#ff0d0d;}
+.ketcher-editor-shell .ketcher-atom-label[data-element="P"] {color:#ff8000;}
+.ketcher-editor-shell .ketcher-atom-label[data-element="S"] {color:#c99a19;}
+.ketcher-editor-shell .ketcher-atom-label[data-element="F"] {color:#78bc42;}
+.ketcher-editor-shell .ketcher-atom-label[data-element="Cl"] {color:#1fd01f;}
+.ketcher-editor-shell .ketcher-atom-label[data-element="Br"] {color:#a62929;}
+.ketcher-editor-shell .ketcher-atom-label[data-element="I"] {color:#940094;}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .ketcher-atom-label[data-element="N"] {color:#9bb7ff!important;}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .ketcher-atom-label[data-element="O"] {color:#ff8585!important;}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .ketcher-atom-label[data-element="P"] {color:#ffbb79!important;}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .ketcher-atom-label[data-element="S"] {color:#efd16c!important;}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .ketcher-atom-label[data-element="Br"] {color:#d9a08c!important;}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .ketcher-atom-label[data-element="I"] {color:#dca6ef!important;}
 
-.app-shell .ketcher-ui-dialog-body [data-slot="switch"] { position: relative; border: 0; width: 32px; min-width: 32px; max-width: 32px; height: 19px; }
-.app-shell .ketcher-ui-dialog-body [data-slot="switch"] > [data-slot="switch-thumb"] { position: absolute; translate: none; top: 3px; left: 3px; margin: 0; width: 13px; height: 13px; }
-.app-shell .ketcher-ui-dialog-body [data-slot="switch"] > [data-slot="switch-thumb"][data-state="checked"] { transform: translateX(13px); }
-.ketcher-settings-groups [data-slot="accordion-trigger"] { display: flex; align-items: center; gap: 12px; }
-.app-shell .ketcher-ui-dialog-body [class*="measure-input"] label, .app-shell .ketcher-ui-dialog-body [class*="MeasureInput"] label { color: var(--text-primary) !important; }
-
-.app-shell .ketcher-ui-dialog-body [class*="measure-input-module_measureInput"] > span { color: var(--text-primary); }
-.app-shell .ketcher-ui-dialog-body [class*="PeriodTable-module_periodTable"] { position: relative !important; inset: auto !important; width: 100% !important; }
-.app-shell .ketcher-ui-dialog [data-slot="dialog-title"] > div { display: flex; align-items: center; gap: 8px; }
-.app-shell .ketcher-ui-dialog [data-slot="dialog-title"] svg { width: 18px; height: 18px; }
-.app-shell .ketcher-ui-dialog [data-slot="dialog-footer"] > fieldset { margin-right: auto; gap: 12px; border: 0; }
-.app-shell .ketcher-ui-dialog [data-slot="dialog-footer"] input[type="radio"] { width: 14px; height: 14px; margin: 0 4px 0 0; }
-.app-shell .ketcher-ui-dialog-body [class*="PeriodTable-module_periodTable"] { background: var(--surface-primary) !important; color: var(--text-primary); }
-.app-shell .ketcher-ui-dialog-body legend { color: var(--text-primary) !important; font-weight: 500; }
-.app-shell .ketcher-ui-dialog-body [class*="ButtonGenSet-module_button"] { background: var(--surface-secondary); color: var(--text-primary); border: 1px solid var(--line-subtle); border-radius: 6px; min-height: 28px; }
-.app-shell .ketcher-ui-dialog [data-slot="dialog-header"], .app-shell .ketcher-ui-dialog [data-slot="dialog-title"] { background: transparent !important; }
-.app-shell .ketcher-ui-dialog-body [class*="TemplateTable-module_structTitle"] { min-height: 24px; line-height: 20px; }
-.app-shell .ketcher-ui-dialog-body [data-slot="collapsible-trigger"] { color: var(--text-primary) !important; }
-.app-shell .ketcher-ui-dialog-body :is(input:not([type="checkbox"]):not([type="radio"]), textarea) { background: var(--surface-secondary) !important; color: var(--text-primary) !important; border: 1px solid var(--line-subtle) !important; border-radius: 8px; min-height: 32px; }
-.app-shell .ketcher-ui-dialog-body [class*="Analyse-module"] { width: 100%; }
-.app-shell .ketcher-ui-dialog-body[class*="Analyse-module"] > ul { width: 100%; }
-.app-shell .ketcher-ui-dialog-body [class*="Check-module_settings"] { min-width: 220px; }
-.app-shell .ketcher-ui-dialog-body [class*="Check-module_settings"] li { list-style: none; padding: 3px 0; }
-.app-shell .ketcher-ui-dialog-body [class*="Check-module_sectionTitle"] { color: var(--text-primary); }
-.app-shell .ketcher-ui-dialog [class*="Check-module_buttons"] { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
-.app-shell .ketcher-ui-dialog [class*="Check-module_buttonsRight"] { width: auto; }
-.app-shell .ketcher-ui-dialog [data-slot="dialog-footer"] button { min-height: 28px; padding: 4px 10px; border: 1px solid var(--line-subtle); border-radius: 8px; background: var(--surface-secondary); color: var(--text-primary); }
-.app-shell .ketcher-ui-dialog-body { background: transparent !important; }
-.app-shell .ketcher-ui-dialog-body [class*="Check-module_"] { background: var(--surface-primary) !important; color: var(--text-primary) !important; }
-.app-shell .ketcher-ui-dialog-body [class*="Check-module_settings"] { width: 220px !important; flex-shrink: 0; }
-.app-shell .ketcher-ui-dialog-body [class*="About-module_"] { color: var(--text-primary) !important; }
-.app-shell .ketcher-ui-dialog-body [class*="About-module_headerContent"] { display: none; }
-.app-shell .ketcher-ui-dialog-body [class*="About-module_body"] { margin: 0; padding: 0; }
-.app-shell .ketcher-ui-dialog:has([class*="Analyse-module"]), .app-shell .ketcher-ui-dialog:has([class*="About-module"]) { width: min(480px, calc(100vw - 48px)); }
-.app-shell .ketcher-ui-dialog-body [class*="FormulaInput-module_chem_input"] { background: var(--surface-secondary) !important; color: var(--text-primary); border: 1px solid var(--line-subtle); border-radius: 8px; min-height: 32px; }
-.app-shell .ketcher-ui-dialog-body [class*="Save-module_formContainer"] { width: 100%; }
-.app-shell .ketcher-ui-dialog-body [class*="Save-module_previewBackground"] { background: var(--surface-secondary) !important; width: 100%; border-radius: 8px; }
-.app-shell .ketcher-ui-dialog:has([class*="Miew-module"]) { width: min(760px, calc(100vw - 48px)); }
-.app-shell .ketcher-ui-dialog-body [class*="Save-module_previewArea"] { width: 100%; height: 200px !important; min-height: 200px !important; max-height: none !important; padding: 12px; font-family: var(--font-mono); }
-.ketcher-dock-workflow .ketcher-dock-toolbar { grid-template-columns: minmax(0, 1fr) auto auto; }
-.app-shell .ketcher-ui-dialog-body [class*="measure-input-module_measureInput"] > span { font-size: 14px; }
-.app-shell .ketcher-ui-dialog:has([class*="Atom-module_atomProps"]), .app-shell .ketcher-ui-dialog:has([class*="Bond-module"]) { width: min(520px, calc(100vw - 48px)); }
-.app-shell .ketcher-ui-dialog-body [class*="Atom-module_accordion"] { width: 100% !important; max-width: none; }
-.app-shell .ketcher-ui-dialog-body [class*="Atom-module_accordionSummaryWrapper"] { background: transparent !important; color: var(--text-primary); border-bottom: 1px solid var(--line-subtle); min-height: 40px; }
-.app-shell .ketcher-ui-dialog-body [class*="Atom-module_accordionSummary"] { color: var(--text-primary); }
-.app-shell .ketcher-ui-dialog-body [class*="Atom-module_expandIcon"] path { fill: currentColor; }
-.app-shell .ketcher-ui-dialog-body [class*="Atom-module_accordionDetails"] label { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(120px, 1fr); gap: 12px; align-items: center; padding: 4px 0; }
-.app-shell .ketcher-ui-dialog-body [class*="Atom-module_accordionDetails"] label > span { width: auto !important; }
-.app-shell .ketcher-ui-dialog-body[class*="Atom-module"] form { width: 100%; }
-.app-shell .ketcher-ui-dialog-body [data-slot="checkbox"] { width: 16px !important; height: 16px !important; min-width: 16px; padding: 0; }
-.ketcher-editor-shell [data-testid="rna-editor-expanded"], .ketcher-editor-shell [data-testid^="rna-builder-slot--"] { background: var(--surface-primary) !important; color: var(--text-primary); border-radius: 8px; }
-.ketcher-editor-shell [data-testid="rna-editor-expanded"] [data-slot="input"], .ketcher-editor-shell [data-testid="rna-editor-expanded"] [data-slot="button"] { background: var(--surface-secondary) !important; color: var(--text-primary) !important; border: 1px solid var(--line-subtle); }
-.ketcher-editor-shell [data-testid="rna-editor-expanded"] [class*="ButtonsContainer"] { display: flex; flex-wrap: wrap; gap: 8px; }
-.ketcher-editor-shell [data-testid="rna-editor-expanded"] [class*="NameLine"] { background: var(--line-subtle); }
-.ketcher-editor-shell [data-monomer-item-id] { background-color: var(--surface-secondary) !important; color: var(--text-primary); border-radius: 8px; }
-.ketcher-editor-shell [data-monomer-item-id] [class*="CardTitle"] { color: var(--text-primary); }
-.ketcher-editor-shell [data-monomer-item-id]:hover { background-color: var(--surface-selected) !important; }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StructEditor-module_intermediateCanvas"] [stroke="#000000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell #polymer-editor-canvas [stroke="#000000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell #polymer-editor-canvas [stroke="black"] { stroke: var(--text-primary) !important; }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [class*="StructEditor-module_intermediateCanvas"] text[fill="#000000"] { fill: var(--text-primary) !important; }
-.ketcher-editor-shell [data-testid="macromolecule-properties-window"] [class*="TabsWrapper"],
-.ketcher-editor-shell [data-testid="macromolecule-properties-window"] [class*="StyledTabs"] { background: var(--surface-primary); color: var(--text-primary); }
-.ketcher-editor-shell [data-testid="macromolecule-properties-window"] [role="tab"] { color: var(--text-secondary); }
-.ketcher-editor-shell [data-testid="macromolecule-properties-window"] [role="tab"][aria-selected="true"] { background: var(--surface-selected); color: var(--text-primary); }
-
-.app-shell .ketcher-editor-shell [data-testid="macromolecule-properties-window"] { background: var(--surface-primary) !important; color: var(--text-primary) !important; border: 1px solid var(--line-subtle); border-radius: 10px; }
-.app-shell .ketcher-editor-shell [data-testid="macromolecule-properties-window"] [role="tab"] { background: transparent !important; color: var(--text-secondary) !important; border-color: var(--line-subtle); }
-.app-shell .ketcher-editor-shell [data-testid="macromolecule-properties-window"] [role="tab"][aria-selected="true"] { background: var(--surface-selected) !important; color: var(--text-primary) !important; }
-.app-shell .ketcher-editor-shell [data-testid="macromolecule-properties-window"] [class*="Header"], .app-shell .ketcher-editor-shell [data-testid="macromolecule-properties-window"] [class*="GrossFormula"], .app-shell .ketcher-editor-shell [data-testid="macromolecule-properties-window"] [class*="MolecularMass"] { color: var(--text-primary); }
-.app-shell .ketcher-editor-shell [data-testid="macromolecule-properties-window"] svg { color: var(--text-secondary); }
-.app-shell .ketcher-editor-shell [data-testid="macromolecule-properties-window"] [class*="WindowDragControl"] path { stroke: currentColor; }
-.ketcher-editor-shell [data-monomer-item-id] { border: 1px solid var(--line-subtle); border-top-width: 2px !important; }
-.ketcher-editor-shell [data-monomer-item-id]::after { height: 2px !important; border-radius: 0; }
-.app-shell .ketcher-editor-shell [data-testid="macromolecule-properties-window"] [class*="Header"] { position: relative; z-index: 1; padding: 0 12px; width: calc(100% - 200px); }
-.app-shell .ketcher-editor-shell [data-testid="macromolecule-properties-window"] [data-testid="Molecular Mass Unit"] { background: var(--surface-secondary); color: var(--text-primary); border-color: var(--line-subtle); }
-.app-shell .ketcher-editor-shell [data-testid="macromolecule-properties-window"] [class*="TabsWrapper"] { margin-top: -25px; top: auto; background: transparent; }
-.app-shell .ketcher-editor-shell [data-testid="macromolecule-properties-window"] [class*="StyledTabs"] { background: transparent; }
-
-/* Keep controls at their native size. Only the molecular canvas is zoomed;
-   compact windows scroll the action strip instead of shrinking every target. */
-.ketcher-page .ketcher-page-header { display: flex; flex-wrap: wrap; height: auto; align-content: center; }
-.ketcher-page .ketcher-page-title { flex: 1 0 180px; }
-.ketcher-page .ketcher-page-actions { flex: 1 1 620px; width: auto; min-width: 0; padding-bottom: 0; }
-.ketcher-page[data-narrow] .ketcher-page-actions { justify-content: flex-start; }
-.ketcher-editor-shell [class*="App-module_top"] { min-width: 0; max-width: 100%; }
-.ketcher-editor-shell [class*="App-module_top"] > div:first-child { flex: 1; min-width: 0; overflow-x: auto; overflow-y: hidden; }
-.ketcher-editor-shell [class*="App-module_top"] > div:last-child { flex-shrink: 0; }
-
-/* RNA preset construction: compact fields, consistent spacing and controls. */
-.ketcher-editor-shell [class*="RnaEditorContainer"] { flex: 0 0 auto; border: 1px solid var(--line-subtle); border-radius: 10px; overflow: hidden; background: var(--surface-primary); }
-.ketcher-editor-shell [class*="RnaEditorContainer"] > button { min-height: 32px; padding: 6px 10px; background: transparent; color: var(--text-primary); font-size: 13px; }
-.ketcher-editor-shell [data-testid="rna-editor-expanded"] { padding: 10px; display: flex; flex-direction: column; gap: 12px; border-radius: 0; }
-.ketcher-editor-shell [data-testid="rna-editor-expanded"] input { width: 100%; height: 32px; min-height: 32px; margin: 0; padding: 6px 10px; box-sizing: border-box; border: 1px solid var(--line-subtle); border-radius: 8px; box-shadow: none; background: var(--surface-secondary); color: var(--text-primary); font: inherit; }
-.ketcher-editor-shell [data-testid="rna-editor-expanded"] [class*="GroupsContainer"] { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
-.ketcher-editor-shell [data-testid^="rna-builder-slot--"] { position: relative; width: auto; min-width: 0; height: 52px; padding: 6px; box-sizing: border-box; border: 1px solid var(--line-subtle); box-shadow: none; }
-.ketcher-editor-shell [data-testid^="rna-builder-slot--"] p { margin: 4px 0 0; color: var(--text-primary); font-size: 12px; }
-.ketcher-editor-shell [data-testid^="rna-builder-slot--"] [class*="GroupConnection"] { display: none; }
-.ketcher-editor-shell [data-testid^="rna-builder-slot--"] svg { color: var(--text-secondary); }
-.ketcher-editor-shell [data-testid="rna-editor-expanded"] [class*="ButtonsContainer"] { display: grid; grid-template-columns: 1fr; gap: 6px; margin: 0; }
-.ketcher-editor-shell [data-testid="rna-editor-expanded"] [class*="ButtonsContainer"] button { width: 100%; min-width: 0; min-height: 30px; height: auto; padding: 6px 10px; margin: 0; outline: none; box-shadow: none; text-transform: none; font-size: 12px; font-weight: 500; border-radius: 8px; }
-.ketcher-editor-shell [data-rna-preset-item-name] { background: var(--surface-secondary); color: var(--text-primary); border: 1px solid var(--line-subtle); border-radius: 8px; box-shadow: none; }
-.ketcher-editor-shell [data-rna-preset-item-name]::after { height: 2px; border-radius: 0; }
-
-.ketcher-page { overflow: clip; }
-.workbench-main-panels:has(.ketcher-page) { overflow: clip !important; }
-.ketcher-editor-shell [data-monomer-item-id] > .star { left: auto; right: 6px; top: 6px; bottom: auto; }
-.ketcher-editor-shell [data-rna-preset-item-name] > .star { left: auto; right: 24px; top: 6px; bottom: auto; }
-.ketcher-editor-shell [data-rna-preset-item-name] > .dots { right: 4px; top: 6px; }
-.ketcher-editor-shell [data-testid="rna-accordion"] button { text-transform: none; font-weight: 500; border-radius: 8px; }
-
-.app-shell .ketcher-ui-tooltip { background: var(--surface-primary); color: var(--text-primary); border: 1px solid var(--line-subtle); box-shadow: 0 3px 10px rgb(0 0 0 / 10%); }
-
-/* Macro tools use flex layout, unlike the molecule toolbar's absolute icons. */
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="left-toolbar"] button > svg {
-  position: static !important; left: auto !important; top: auto !important;
-  transform: none !important; flex: 0 0 auto;
+/* Preserve chemical colors. Only editor selection plates/transform handles
+   are neutralized; molecular atoms and bonds retain their original encoding. */
+.ketcher-editor-shell {
+  --ketcher-selection:color-mix(in srgb,var(--foreground) 13%,var(--color-background-canvas,var(--background)));
+  --ketcher-hover:color-mix(in srgb,var(--foreground) 8%,var(--color-background-canvas,var(--background)));
+  --ketcher-guide:color-mix(in srgb,var(--foreground) 24%,var(--color-background-canvas,var(--background)));
 }
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="left-toolbar"] [data-slot="dropdown-menu-trigger"] {
-  width: 12px !important; min-width: 12px !important; height: 12px !important; margin: 0 !important;
-}
+.ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] [fill="#57ff8f" i] {fill:var(--ketcher-selection)!important;}
+.ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] [stroke="#57ff8f" i] {stroke:var(--ketcher-selection)!important;}
+.ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] [fill="#ccffdd" i] {fill:var(--ketcher-hover)!important;}
+.ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] [stroke="#ccffdd" i] {stroke:var(--ketcher-hover)!important;}
+.ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] [stroke="#0097a8" i] {stroke:var(--muted-foreground)!important;}
+/* Rotation: a thin solid frame and stem, a neutral knob and a quiet protractor. */
+.ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] :is(rect,path)[stroke="#b4b9d6" i] {stroke:var(--ketcher-guide)!important;stroke-dasharray:none;}
+.ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] :is(rect,path,circle)[stroke="#365cff" i] {stroke:var(--foreground)!important;stroke-dasharray:none;}
+.ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] [stroke="#e1e5ea" i] {stroke:var(--ketcher-guide)!important;}
+.ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] text[fill="#b4b9d6" i] {fill:var(--muted-foreground)!important;}
+.ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] text[fill="#365cff" i] {fill:var(--foreground)!important;}
+.ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] circle[data-testid="rotation-handle"] {fill:var(--popover)!important;stroke:var(--ketcher-guide)!important;stroke-width:1px;}
+.ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] circle[data-testid="rotation-handle"][fill="#365cff" i] {fill:var(--ketcher-hover)!important;stroke:var(--muted-foreground)!important;}
+.ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] :is(path[d^="M12.7034,14.8189"],path[d^="M15.4493,13.0588"]):not([fill="none"]) {fill:var(--muted-foreground)!important;}
+.ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] circle[data-testid="rotation-handle"][fill="#365cff" i] ~ :is(path[d^="M12.7034,14.8189"],path[d^="M15.4493,13.0588"]):not([fill="none"]) {fill:var(--foreground)!important;}
 
-/* Library hover previews must stay inside the embedded editor. Upstream's
-   viewport-based top can be negative when Burette's header wraps. */
-.ketcher-editor-shell .Ketcher-polymer-editor-root > div[style*="transform: translate(-"]:has(> [data-testid="polymer-library-preview"]) {
-  top: 48px !important; left: auto !important; right: 268px !important; transform: none !important;
-  width: min(345px, calc(100% - 280px)); max-height: calc(100% - 60px);
-  overflow: auto; border: 1px solid var(--line-subtle); border-radius: 10px;
-  background: var(--surface-primary); box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
+.ketcher-ui-dialog[data-slot="dialog-content"] {display:flex;flex-direction:column;width:min(480px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);}
+.ketcher-ui-dialog-body {min-height:0;overflow:auto;overscroll-behavior:contain;max-height:calc(100dvh - 144px);position:static!important;width:auto!important;height:auto!important;margin:0!important;padding:0!important;background:transparent!important;color:inherit;font:inherit;}
+.ketcher-ui-dialog [data-slot="dialog-header"] {flex:none;min-height:24px;padding-right:24px;}
+.ketcher-ui-dialog [data-slot="dialog-title"] > div {display:flex;align-items:center;gap:8px;}
+.ketcher-ui-dialog [data-slot="dialog-title"] svg {width:18px;height:18px;}
+.ketcher-ui-dialog [data-slot="dialog-footer"] {display:flex;flex-direction:row;flex-wrap:wrap;justify-content:flex-end;align-items:center;flex:none;}
+.ketcher-ui-dialog [data-slot="dialog-footer"] > :is(span:first-child,fieldset) {margin-right:auto;}
+.ketcher-ui-dialog [data-slot="dialog-footer"] > fieldset {display:flex;gap:12px;border:0;}
+.ketcher-ui-dialog:has(.ketcher-settings-layout) {width:min(600px,calc(100vw - 24px));}
+.ketcher-ui-dialog:has([class*="Atom-module_atomProps"]),.ketcher-ui-dialog:has([class*="Bond-module"]) {width:min(520px,calc(100vw - 24px));}
+.ketcher-ui-dialog-body :is(label,legend) {font:inherit;color:inherit;}
+.ketcher-ui-dialog-body [class*="Analyse-module"] {width:100%;}
+.ketcher-ui-dialog-body[class*="Analyse-module"] > ul {width:100%;}
+.ketcher-ui-dialog-body [class*="Check-module_settings"] {width:220px;min-width:220px;flex-shrink:0;}
+.ketcher-ui-dialog-body [class*="Check-module_settings"] li {list-style:none;padding:3px 0;}
+.ketcher-ui-dialog [class*="Check-module_buttons"] {display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;}
+.ketcher-ui-dialog [class*="Check-module_buttonsRight"] {width:auto;}
+.ketcher-ui-dialog-body [class*="Save-module_formContainer"] {width:100%;gap:8px;}
+.ketcher-ui-dialog-body [class*="Save-module_formContainer"] form {gap:12px;margin:0 0 4px!important;}
+.ketcher-ui-dialog-body [class*="Save-module_formContainer"] form > label {gap:6px;flex:1;width:auto!important;min-width:0;color:var(--muted-foreground);}
+.ketcher-ui-dialog-body [class*="Save-module_formContainer"] form > label > span {margin:0!important;}
+.ketcher-ui-dialog-body [class*="Save-module_formContainer"] form > label :is(input,[data-slot="select-trigger"]) {width:100%!important;color:var(--foreground);}
+.ketcher-ui-dialog-body [class*="Save-module_formContainer"] form > label input:is(*,:hover) {border:1px solid var(--input)!important;}
+.ketcher-ui-dialog-body [class*="Save-module_formContainer"] form > label input:focus-visible {border-color:var(--ring)!important;}
+.ketcher-ui-dialog-body [class*="Save-module_tabs"] {padding-left:0!important;}
+.ketcher-ui-dialog-body [class*="Save-module_warnings"] {background:var(--muted)!important;border-radius:var(--radius-md);}
+.ketcher-ui-dialog-body [class*="Save-module_warningsArr"] {color:var(--foreground)!important;}
+.ketcher-ui-dialog-body [class*="Save-module_imageContainer"] {border-color:var(--border)!important;}
+.ketcher-ui-dialog-body [class*="Save-module_previewBackground"] {background:var(--muted)!important;width:100%;border-radius:var(--radius-md);}
+.ketcher-ui-dialog-body [class*="Save-module_previewArea"] {width:100%;min-width:0!important;height:200px!important;min-height:200px!important;max-height:none!important;padding:12px;font-family:var(--font-mono);background:transparent!important;color:var(--foreground)!important;border:1px solid transparent!important;border-radius:var(--radius-md)!important;overflow:auto;resize:none;}
+.ketcher-ui-dialog-body [class*="Save-module_previewArea"]:focus-visible {border-color:var(--ring)!important;outline:none!important;}
+/* Atom properties: full-width sections with a label column and full-width fields.
+   The adapter turns each section header into an icon button, so restore it as a row. */
+.ketcher-ui-dialog-body[class*="Atom-module_atomProps"] {width:100%;height:auto;max-height:min(560px,calc(100dvh - 160px));}
+.ketcher-ui-dialog-body[class*="Atom-module_atomProps"] > * {width:100%;min-width:0;background:transparent!important;}
+.ketcher-ui-dialog [class*="Atom-module_accordionWrapper"] {width:100%;}
+.ketcher-ui-dialog button:has(> [class*="Atom-module_accordionSummary"]) {display:flex;width:100%!important;height:36px!important;padding:0 6px!important;border-radius:var(--radius-md);color:var(--foreground);}
+.ketcher-ui-dialog button:has(> [class*="Atom-module_accordionSummary"]):not(:hover) {background:transparent;}
+.ketcher-ui-dialog [class*="Atom-module_accordionSummary"] {width:100%!important;height:auto;font-size:13px;font-weight:400;color:inherit;}
+.ketcher-ui-dialog [class*="Atom-module_expandIcon"] {width:16px!important;height:16px!important;color:var(--muted-foreground);}
+.ketcher-ui-dialog [class*="Atom-module_expandIcon"] path {fill:currentColor;}
+.ketcher-ui-dialog :is([class*="Atom-module_accordionDetailsWrapper"],[class*="Atom-module_customQueryWrapper"]) {width:100%!important;padding:0 6px;}
+.ketcher-ui-dialog [class*="Atom-module_accordionDetailsWrapper"] {border-bottom:1px solid var(--border);}
+.ketcher-ui-dialog [class*="Atom-module_accordionDetailsWrapper"]:not([class*="hiddenAccordion"]) {padding-bottom:8px;}
+.ketcher-ui-dialog :is([class*="Atom-module_accordionDetails"],[class*="Atom-module_customQueryWrapper"]) label {display:grid!important;grid-template-columns:152px minmax(0,1fr);align-items:center;gap:12px;height:auto!important;min-height:32px;margin:0 0 6px!important;color:var(--foreground);}
+.ketcher-ui-dialog [class*="Atom-module_accordionDetails"] label > :last-child:not([class*="inputWithEditButtonWrapper"]) > :not([role="checkbox"],[aria-hidden="true"]) {width:100%!important;min-width:0;}
+.ketcher-ui-dialog [class*="Atom-module_accordionDetails"] label [role="checkbox"] {width:16px!important;}
+.ketcher-ui-dialog [class*="Atom-module_accordionDetails"] label [data-slot="select-trigger"] {height:32px!important;}
+.ketcher-ui-dialog [class*="Atom-module_customQueryWrapper"] {display:grid;gap:8px;}
+.ketcher-ui-dialog [class*="Atom-module_customQueryWrapper"] > label {display:flex!important;align-items:center;gap:8px;min-height:24px;margin:0!important;}
+.ketcher-ui-dialog [class*="Atom-module_customQueryWrapper"] textarea {width:100%!important;}
+.ketcher-ui-dialog label [class*="form-module_inputWithEditButtonWrapper"] {display:flex;align-items:center;gap:4px;width:100%;min-width:0;}
+.ketcher-ui-dialog label [class*="form-module_inputWithEditButtonWrapper"] > input {flex:1;width:auto!important;min-width:0;}
+.ketcher-ui-dialog label [class*="form-module_inputWithEditButtonWrapper"] > button {flex:none;width:32px!important;height:32px!important;position:static!important;color:var(--muted-foreground);}
+.ketcher-ui-dialog label [class*="form-module_inputWithEditButtonWrapper"] > button svg {width:16px;height:16px;}
+/* Native Ketcher surfaces and buttons that still render inside adapted dialogs
+   take the shared Button and muted surface tokens instead of Ketcher's teal on light gray. */
+.ketcher-ui-dialog :is([class*="Check-module_warnings"],[class*="Check-module_centeredContainer"],[class*="Recognize-module_imagesContainer"],[class*="Recognize-module_messageContainer"]) {background:var(--muted)!important;color:var(--foreground);border-radius:var(--radius-md);}
+.ketcher-ui-dialog :is([class*="Analyse-module_inputWrapper"] > div,[class*="Analyse-module_inputWrapper"] :is(input,textarea),[class*="Recognize-module_picture"]) {background:var(--muted)!important;color:var(--foreground)!important;border-color:var(--border)!important;}
+.ketcher-ui-dialog [class*="Check-module_dialog_body"] > * {background:transparent!important;}
+.ketcher-ui-dialog [class*="Check-module_dialog_body"] :is(label,legend,[class*="Check-module_settings"] *) {color:var(--foreground)!important;}
+.ketcher-ui-dialog [class*="Input-module_input"][type="checkbox"] + [class*="Input-module_checkbox"] {position:relative;width:16px;height:16px;flex:none;background:transparent!important;border:1px solid var(--input);border-radius:4px;}
+.ketcher-ui-dialog [class*="Input-module_input"][type="checkbox"]:checked + [class*="Input-module_checkbox"] {background:var(--foreground)!important;border-color:var(--foreground);}
+.ketcher-ui-dialog [class*="Input-module_input"][type="checkbox"]:checked + [class*="Input-module_checkbox"]::after {content:"";position:absolute;inset:0;background:var(--background);mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M4 8.2 6.8 11 12 5.4' fill='none' stroke='%23000' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/14px no-repeat;}
+.ketcher-ui-dialog [class*="Input-module_input"][type="checkbox"]:focus-visible + [class*="Input-module_checkbox"] {outline:2px solid var(--ring);outline-offset:2px;}
+.ketcher-ui-dialog [class*="Input-module_input"][type="radio"] + [class*="Input-module_radioButton"] {position:relative;width:16px;height:16px;flex:none;background:transparent!important;border:1px solid var(--input);border-radius:50%;}
+.ketcher-ui-dialog [class*="Input-module_input"][type="radio"]:checked + [class*="Input-module_radioButton"] {border:5px solid var(--foreground);background:var(--background)!important;}
+.ketcher-ui-dialog [class*="Input-module_input"][type="radio"]:disabled + [class*="Input-module_radioButton"] {opacity:.5;}
+.ketcher-ui-dialog [class*="Input-module_input"][type="radio"]:focus-visible + [class*="Input-module_radioButton"] {outline:2px solid var(--ring);outline-offset:2px;}
+.ketcher-ui-dialog fieldset > li:has([class*="Input-module_fieldSetLabel"]) {list-style:none;}
+.ketcher-ui-dialog :is([class*="Save-module_ok"],[class*="Check-module_buttonPrimary"],[class*="Recognize-module_primaryButton"],[class*="Miew-module_applyButton"],[class*="InfoModal-module_ok"],[class*="Dialog-module_ok"],[class*="Check-module_buttonSecondary"],[class*="Recognize-module_secondaryButton"],[class*="Recognize-module_openButton"],[class*="Dialog-module_cancel"]) {
+  display:inline-flex;align-items:center;justify-content:center;gap:4px;height:28px!important;min-width:0!important;padding:0 10px!important;border:1px solid transparent!important;border-radius:min(var(--radius-md),12px)!important;font:inherit;font-size:0.8rem!important;line-height:1!important;white-space:nowrap;cursor:pointer;transition:background-color .15s,color .15s;
 }
-.ketcher-editor-shell [data-testid="polymer-library-preview"] {
-  width: 100%; max-width: 100%; background: var(--surface-primary); color: var(--text-primary);
-}
-.ketcher-editor-shell [data-testid="preview-tooltip-title"] {
-  margin: 0; padding: 10px 12px; background: var(--surface-secondary); color: var(--text-primary);
-  font: inherit; font-weight: 500; overflow-wrap: anywhere;
-}
-.ketcher-editor-shell [data-testid="monomer-preview-micro"] { background: white; }
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="top-toolbar"] button {
-  height: 28px !important; min-height: 28px !important; margin: 0 !important;
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="top-toolbar"] button:has(svg) {
-  width: 28px !important; min-width: 28px !important; padding: 2px;
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="top-toolbar"] [data-testid="dropdown-expand"] {
-  width: 12px !important; min-width: 12px !important; height: 12px !important; min-height: 12px !important;
+.ketcher-ui-dialog :is([class*="Save-module_ok"],[class*="Check-module_buttonPrimary"],[class*="Recognize-module_primaryButton"],[class*="Miew-module_applyButton"],[class*="InfoModal-module_ok"],[class*="Dialog-module_ok"]) {background:var(--foreground)!important;color:var(--background)!important;}
+.ketcher-ui-dialog :is([class*="Save-module_ok"],[class*="Check-module_buttonPrimary"],[class*="Recognize-module_primaryButton"],[class*="Miew-module_applyButton"],[class*="InfoModal-module_ok"],[class*="Dialog-module_ok"]):hover:not(:disabled) {background:color-mix(in srgb,var(--foreground) 80%,transparent)!important;}
+.ketcher-ui-dialog :is([class*="Check-module_buttonSecondary"],[class*="Recognize-module_secondaryButton"],[class*="Recognize-module_openButton"],[class*="Dialog-module_cancel"]) {background:var(--background)!important;color:var(--foreground)!important;border-color:var(--border)!important;}
+.app-shell[data-effective-theme="dark"] .ketcher-ui-dialog :is([class*="Check-module_buttonSecondary"],[class*="Recognize-module_secondaryButton"],[class*="Recognize-module_openButton"],[class*="Dialog-module_cancel"]) {background:color-mix(in oklab,var(--input) 30%,transparent)!important;border-color:var(--input)!important;}
+.ketcher-ui-dialog :is([class*="Check-module_buttonSecondary"],[class*="Recognize-module_secondaryButton"],[class*="Recognize-module_openButton"],[class*="Dialog-module_cancel"]):hover:not(:disabled) {background:var(--muted)!important;}
+.ketcher-ui-dialog :is([class*="-module_ok"],[class*="-module_buttonPrimary"],[class*="-module_primaryButton"],[class*="-module_applyButton"],[class*="-module_buttonSecondary"],[class*="-module_secondaryButton"],[class*="-module_cancel"]):disabled {opacity:.5;cursor:default;}
+.ketcher-ui-dialog :is([class*="-module_ok"],[class*="-module_buttonPrimary"],[class*="-module_primaryButton"],[class*="-module_applyButton"],[class*="-module_buttonSecondary"],[class*="-module_secondaryButton"],[class*="-module_cancel"]):focus-visible {outline:2px solid var(--ring);outline-offset:2px;}
+.ketcher-ui-select {width:100%;}
+.ketcher-numeric-slot,.ketcher-numeric-field {min-width:0;width:100%;}
+.ketcher-settings-layout {display:grid;grid-template-columns:132px minmax(0,1fr);gap:20px;min-width:0;}
+.ketcher-settings-nav {display:flex;flex-direction:column;gap:2px;align-self:start;}
+.ketcher-settings-nav button {justify-content:flex-start;min-height:28px;text-align:left;}
+.ketcher-settings-panels {min-width:0;}
+.ketcher-settings-panels [role="tabpanel"][hidden] {display:none!important;}
+.ketcher-settings-groups fieldset {border:0;padding:0;margin:0;}
+.ketcher-settings-groups fieldset > label {display:grid!important;grid-template-columns:minmax(0,1fr) minmax(104px,144px);gap:12px;height:auto!important;min-height:36px;margin:0!important;padding:4px 0;align-items:center;}
+.ketcher-settings-groups fieldset > label > :first-child {margin-right:0!important;min-width:0;overflow-wrap:anywhere;}
+.ketcher-settings-groups fieldset > label > span {width:auto!important;height:auto!important;white-space:normal;}
+.ketcher-settings-groups fieldset > label + label {border-top:1px solid var(--border);}
+.ketcher-settings-groups [class*="measure-input-module_measureInput"] {gap:6px;min-width:0;min-height:36px;margin:0;width:100%!important;align-items:center;}
+.ketcher-settings-groups [class*="measure-input-module_measureInput"] > input,.ketcher-settings-groups [class*="measure-input-module_measureInput"] .ketcher-numeric-slot {width:64px;flex-shrink:0;}
+.ketcher-settings-groups [class*="measure-input-module_measureInput"] > [data-slot="select-trigger"] {min-width:58px;width:58px;}
+@media (max-width:560px) {
+  .ketcher-settings-layout {grid-template-columns:minmax(0,1fr);gap:12px;}
+  .ketcher-settings-nav {flex-direction:row;overflow-x:auto;max-width:100%;padding-bottom:4px;}
+  .ketcher-settings-nav button {white-space:nowrap;flex:none;}
+  .ketcher-settings-groups fieldset > label {grid-template-columns:minmax(0,1fr) 116px;gap:8px;}
+  .ketcher-settings-groups [class*="measure-input-module_measureInput"] .ketcher-numeric-slot {width:52px;}
+  .ketcher-ui-dialog-body {max-height:calc(100dvh - 132px);}
 }
 
-.ketcher-editor-shell .e1fsx6x2 { background: var(--surface-secondary); color: var(--text-primary); border-radius: 8px; }
-.ketcher-editor-shell .e1fsx6x2 span { color: inherit; }
-.ketcher-editor-shell [data-testid="polymer-library-preview"] { border: 0; box-shadow: none; }
-.ketcher-editor-shell [data-testid="polymer-library-preview"] :is(p, span) { color: var(--text-primary); }
-
-/* The action bar spans the workspace; the library shares the second row with
-   the canvas. Emotion target classes are stable in both Ketcher build modes. */
-.ketcher-editor-shell .Ketcher-polymer-editor-root { --burette-library-width: 280px; }
-.ketcher-editor-shell .Ketcher-polymer-editor-root > .e1pv9pa11 {
-  display: grid; grid-template-columns: minmax(0, 1fr) var(--burette-library-width);
-  grid-template-rows: auto minmax(0, 1fr) auto; gap: 0 8px;
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa11 > .e1pv9pa12:first-child { display: contents; }
-.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa12:first-child > div:has(> [data-testid="top-toolbar"]) {
-  grid-column: 1 / -1; grid-row: 1; min-width: 0;
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa12:first-child > .e1pv9pa10 {
-  grid-column: 1; grid-row: 2; min-height: 0; min-width: 0;
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa12:first-child > .e1pv9pa3 {
-  grid-column: 1; grid-row: 3;
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa11 > .e1pv9pa12:nth-child(2) {
-  grid-column: 2; grid-row: 2 / 4; width: var(--burette-library-width); min-width: 0; min-height: 0;
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="top-toolbar"],
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="top-toolbar"] > .e1pv9pa6 { width: 100% !important; }
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="top-toolbar"] button:not([data-testid="dropdown-expand"]) {
-  height: 32px !important; min-height: 32px !important;
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="top-toolbar"] button:has(svg) {
-  width: 32px !important; min-width: 32px !important;
-}
-/* This native glyph is drawn on a 15x16 viewBox, not the usual 24x24. */
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="calculate-macromolecule-properties-button"] > svg {
-  width: 15px !important; height: 16px !important;
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-monomer-item-id], [data-rna-preset-item-name]) {
-  min-height: 56px; padding: 10px 8px; border-radius: 8px; box-shadow: none;
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-monomer-item-id], [data-rna-preset-item-name]) > span {
-  font-size: 12px; line-height: 16px;
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root > div[style*="transform: translate(-"]:has(> [data-testid="polymer-library-preview"]) {
-  right: calc(var(--burette-library-width) + 20px) !important;
-  width: min(345px, calc(100% - var(--burette-library-width) - 36px));
-}
-
-.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa7 { width: 100%; }
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="top-toolbar"] { overflow-y: hidden; }
-
-.ketcher-editor-shell [data-testid="monomer-library"] { width: 100%; }
-.ketcher-editor-shell .Ketcher-polymer-editor-root:has([data-testid="show-monomer-library"]) > .e1pv9pa11 {
-  grid-template-columns: minmax(0, 1fr); column-gap: 0;
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root:has([data-testid="show-monomer-library"]) .e1pv9pa11 > .e1pv9pa12:nth-child(2) { display: none; }
-/* Native horizontal scrolling also works with keyboard focus and trackpads;
-   avoid a second arrow strip that clips the end of the action bar. */
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="top-toolbar"] { overflow-x: auto; }
-.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa4 { display: none; }
-.ketcher-editor-shell [data-testid="show-monomer-library"] {
-  top: 56px; height: 32px; box-sizing: border-box; border-radius: 8px;
-  background: var(--surface-primary); color: var(--text-primary); border: 1px solid var(--line-subtle);
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-editor-expanded"] { gap: 8px; }
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-editor-expanded"] [class*="ButtonsContainer"] {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="monomer-library"] input {
-  font-size: 13px; min-height: 32px;
-}
-.ketcher-editor-shell [data-testid="monomer-preview-micro"] { background: var(--surface-primary); }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-preview-micro"] [stroke="#000000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-preview-micro"] [stroke="#000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-preview-micro"] [stroke="black"] { stroke: var(--text-primary); }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-preview-micro"] text[fill="#000000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-preview-micro"] text[fill="#000"],
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-preview-micro"] text[fill="black"] { fill: var(--text-primary); }
-
-.ketcher-editor-shell .Ketcher-polymer-editor-root > div:has(> [data-testid="polymer-library-preview"]) {
-  border: 1px solid var(--line-subtle); border-radius: 10px; overflow: hidden;
-  background: var(--surface-primary); box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="top-toolbar"], [data-testid="left-toolbar"]) button[aria-pressed="true"] {
-  background: var(--surface-selected) !important; color: var(--text-primary) !important;
-  box-shadow: inset 0 0 0 1px var(--line-subtle);
-}
-.ketcher-editor-shell .Ketcher-polymer-editor-root > div[style*="transform: translate(-"]:has(> [data-testid="polymer-library-preview"]):not(:has([data-testid="monomer-preview-micro"])) {
-  width: min(240px, calc(100% - var(--burette-library-width) - 36px));
-}
-.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .eifx56c3 {
-  background: var(--surface-primary); color: var(--text-primary);
-}
-.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .eifx56c2 {
-  background: var(--surface-secondary); color: var(--text-primary); border-radius: 6px;
-}
-.ketcher-editor-shell [data-testid="macromolecule-properties-window"] [data-testid$="-selector"] {
-  background: var(--surface-secondary); color: var(--text-primary); border-radius: 6px;
-}
-.ketcher-editor-shell [data-testid="macromolecule-properties-window"] [data-testid$="-selector"] svg { fill: currentColor; }
-
-/* Molecular tool rails use ordinary wheel/trackpad and keyboard scrolling. */
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="ArrowScroll-module_scroll"] { display: none; }
-.app-shell .ketcher-editor-shell .Ketcher-root :is([data-testid="left-toolbar"], [data-testid="right-toolbar"]) > div:first-child {
-  overflow-y: auto; overflow-x: hidden; min-height: 0; max-height: 100%;
-  scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root :is([class*="LeftToolbar-module_groupItem"], [class*="RightToolbar-module_buttons"]) {
-  background: transparent; box-shadow: none; border-radius: 0;
-}
-
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="App-module_top"] button {
-  color: var(--text-secondary); background: transparent; box-shadow: none;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="App-module_top"] button:not(:disabled):hover {
-  color: var(--text-primary); background: var(--surface-hover);
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="App-module_top"] button > svg { fill: currentColor; }
-.app-shell .ketcher-editor-shell .ketcher-control-icon {
-  position: static !important; transform: none !important; width: 20px !important; height: 20px !important;
-  flex: none; color: inherit;
-}
-.app-shell .ketcher-editor-shell .ketcher-tool-expand,
-.app-shell .ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="top-toolbar"], [data-testid="left-toolbar"]) button.ketcher-tool-expand {
-  position: static !important; width: 20px !important; min-width: 20px !important;
-  height: 32px !important; min-height: 32px !important; padding: 0 !important;
-}
-.app-shell .ketcher-editor-shell .ketcher-tool-expand > svg {
-  position: static !important; transform: none !important; width: 14px !important; height: 14px !important;
-}
-
-/* Split tool: primary action and an independent, full-height menu button. */
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="ToolbarMultiToolItem-module_root"] {
-  display: flex; align-items: center; justify-content: flex-start;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="ToolbarMultiToolItem-module_root"] > button {
-  flex-shrink: 0; margin: 0 !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="LeftToolbar-module_group"] {
-  align-items: flex-start !important;
-}
-/* Equal optical size and tone for general and chemistry toolbar glyphs.
-   Element labels keep their chemical colors; disabled controls keep opacity. */
-.app-shell .ketcher-editor-shell :is(.Ketcher-root, .Ketcher-polymer-editor-root) :is(
-  [class*="App-module_top"], [class*="App-module_bottom"], [data-testid="left-toolbar"],
-  [data-testid="top-toolbar"]) button {
-  color: var(--text-secondary) !important;
-}
-.app-shell .ketcher-editor-shell :is(.Ketcher-root, .Ketcher-polymer-editor-root) :is(
-  [class*="App-module_top"], [class*="App-module_bottom"], [data-testid="left-toolbar"],
-  [data-testid="top-toolbar"]) button > svg {
-  width: 18px !important; height: 18px !important; fill: currentColor !important;
-  color: inherit !important; opacity: 1;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root :is([class*="App-module_bottom"], [data-testid="left-toolbar"]) button:not(.ketcher-tool-expand) > svg {
-  position: absolute !important; left: 50% !important; top: 50% !important;
-  transform: translate(-50%, -50%) !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar"] .ketcher-tool-expand > svg,
-.app-shell .ketcher-editor-shell .Ketcher-polymer-editor-root button.ketcher-tool-expand > svg {
-  position: static !important; transform: none !important; margin: 0 !important;
-  inset: auto !important; width: 14px !important; height: 14px !important;
-}
-
-.ketcher-page:fullscreen {
-  width: 100vw; height: 100dvh; max-width: none; max-height: none;
-  background: var(--surface-primary); color: var(--text-primary);
-}
-.ketcher-page:fullscreen .ketcher-page-body { flex: 1; min-height: 0; }
-/* These colors identify Ketcher's selection plates and transform handles,
-   scoped to the molecular canvas so chemical colors stay intact. */
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] [fill="#57ff8f"] {
-  fill: color-mix(in srgb, var(--text-secondary) 22%, transparent) !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] :is([stroke="#57ff8f"], [stroke="#365cff"], [stroke="#b4b9d6"]) {
-  stroke: var(--text-secondary) !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] :is([fill="#b4b9d6"], [fill="#ff0000"][stroke="#365cff"]) {
-  fill: var(--surface-primary) !important; stroke: var(--text-secondary) !important;
-}
-
-.app-shell[data-effective-theme] .ketcher-page .ketcher-editor-shell :is(.Ketcher-root, .Ketcher-polymer-editor-root) :is(
-  [class*="App-module_top"], [class*="App-module_bottom"], [data-testid="left-toolbar"], [data-testid="top-toolbar"]) button > svg {
-  color: inherit !important; fill: currentColor !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] [stroke="#57ff8f"] {
-  stroke-opacity: .3; stroke-width: 1px;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] [fill="#57ff8f"] {
-  fill: color-mix(in srgb, var(--text-secondary) 10%, transparent) !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="App-module_top"] > div:last-child > hr:last-child { display: none; }
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="StructEditor-module_canvas"] [fill="#57ff8f"][stroke="#57ff8f"] {
-  stroke: none !important;
-}
-/* The two pinned rotation-handle glyphs otherwise stay white in light mode. */
-.app-shell .ketcher-editor-shell .Ketcher-root [data-testid="canvas"] :is(path[d^="M12.7034,14.8189"], path[d^="M15.4493,13.0588"]) {
-  fill: var(--text-secondary) !important;
-}
-
-.app-shell .ketcher-editor-shell [data-testid="top-toolbar"] button > svg > rect[fill="#fff"] { fill: none !important; }
-.app-shell .ketcher-editor-shell [data-testid="top-toolbar"] button > svg [fill="#333"] { fill: currentColor !important; }
-.app-shell .ketcher-editor-shell [data-testid="top-toolbar"] button > svg [stroke="#333"] { stroke: currentColor !important; }
-
-.ketcher-editor-shell { --ketcher-toolbar-foreground: var(--text-primary); }
-.app-shell[data-effective-theme="dark"] .ketcher-editor-shell { --ketcher-toolbar-foreground: #fff; }
-.app-shell[data-effective-theme] .ketcher-page .ketcher-editor-shell :is(.Ketcher-root, .Ketcher-polymer-editor-root) :is(
-  [class*="App-module_top"], [class*="App-module_bottom"], [data-testid="left-toolbar"], [data-testid="top-toolbar"]) :is(button, button > svg) {
-  color: var(--ketcher-toolbar-foreground) !important;
-  --ketcher-dark-muted: var(--ketcher-toolbar-foreground);
-}
-
-/* Tool palettes and docked rails share the shell's quiet, visible borders. */
-.app-shell [data-testid="multi-tool-dropdown"] {
-  background: var(--surface-primary) !important; color: var(--text-primary);
-  border: 1px solid var(--line-strong) !important; border-radius: 8px;
-  box-shadow: none !important; padding: 4px;
-}
-
-/* Independent panel frames prevent T-shaped border joins. The left track
-   reserves another 16px for menu arrows outside its 40px frame.
-   The canvas takes the whole area under the action strip; the tool rails and
-   the template bar float over it as content-sized cards, the way the Mol*
-   chrome floats over its viewport. Framing full-height columns and a
-   full-width bottom row left the space below the tools, beside the atom list
-   and above the templates empty. */
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="App-module_app"] {
-  --ketcher-rail-width: 56px;
-  --ketcher-chrome-inset: 8px;
-  --ketcher-chrome-strip: 40px;
-  grid-template-columns: var(--ketcher-rail-width) minmax(0, 1fr) 40px;
-  grid-template-rows: calc(var(--ketcher-chrome-strip) + var(--ketcher-chrome-inset) * 2) minmax(0, 1fr);
-  gap: 0; padding: 0; box-sizing: border-box;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="App-module_canvas"] {
-  grid-area: 2 / 1 / 3 / 4; min-width: 0; min-height: 0;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root :is([class*="App-module_top"], [class*="App-module_bottom"], [data-testid="left-toolbar"], [data-testid="right-toolbar"]) {
-  position: relative; z-index: 1;
-  box-sizing: border-box; min-height: 0;
-  border: 1px solid var(--line-subtle); border-radius: 8px;
-  background: var(--surface-primary);
-  box-shadow: none !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root :is([class*="App-module_top"], [class*="App-module_bottom"]) {
-  height: var(--ketcher-chrome-strip) !important; min-height: var(--ketcher-chrome-strip) !important; max-height: var(--ketcher-chrome-strip) !important;
-  padding: 0 4px; align-items: center;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="App-module_top"] {
-  grid-area: 1 / 1 / 2 / 4;
-  margin: var(--ketcher-chrome-inset) var(--ketcher-chrome-inset) 0 !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="App-module_bottom"] {
-  grid-area: 2 / 1 / 3 / 4; align-self: end; justify-self: start;
-  max-width: calc(100% - var(--ketcher-chrome-inset) * 2);
-  margin: 0 var(--ketcher-chrome-inset) var(--ketcher-chrome-inset) !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root :is([data-testid="left-toolbar"], [data-testid="right-toolbar"]) {
-  align-self: start;
-  width: var(--ketcher-rail-width) !important; min-width: 0;
-  height: auto; max-height: calc(100% - var(--ketcher-chrome-strip) - var(--ketcher-chrome-inset) * 2);
-  padding: 3px !important; align-items: center !important;
-  --ketcher-toolbar-margin: 0px;
-  --ketcher-toolbar-group-gap: 4px;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar"] {
-  grid-area: 2 / 1 / 3 / 2;
-  margin: 0 0 0 var(--ketcher-chrome-inset) !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [data-testid="right-toolbar"] {
-  grid-area: 2 / 3 / 3 / 4;
-  margin: 0 var(--ketcher-chrome-inset) 0 0 !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar-buttons"] {
-  width: 100%; padding: 0; margin: 0; box-sizing: border-box;
-}
-/* Keep the scrollable hit area wide enough for split controls, but frame only
-   the primary buttons. Menu arrows protrude beyond that frame. */
-.app-shell .ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar"] {
-  position: relative; border: 0; padding: 4px !important; background: transparent !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar"]::before {
-  content: ""; position: absolute; inset: 0 16px 0 0; z-index: -1;
-  border: 1px solid var(--line-subtle); border-radius: inherit; pointer-events: none;
-  background: var(--surface-primary);
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar"] .ketcher-tool-expand {
-  width: 16px !important; min-width: 16px !important;
-  height: 24px !important; min-height: 24px !important;
-  margin-block: 4px !important;
-  background: var(--surface-primary);
-  border: 1px solid var(--line-subtle); border-left: 0;
-  border-radius: 0 6px 6px 0 !important;
-  opacity: 0; pointer-events: none;
-  transition: opacity 120ms ease;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar"] [class*="ToolbarMultiToolItem-module_root"]:is(:hover, :focus-within) .ketcher-tool-expand,
-.app-shell .ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar"] .ketcher-tool-expand[aria-expanded="true"] {
-  opacity: 1; pointer-events: auto;
-}
-@media (hover: none) {
-  .app-shell .ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar"] .ketcher-tool-expand {
-    opacity: 1; pointer-events: auto;
+/* Narrow frames: the atom rail lies along the bottom, above the templates, so
+   the structure keeps the width a side rail would take. */
+@media (max-width:480px) {
+  .app-shell .ketcher-editor-shell .Ketcher-root [data-testid="right-toolbar"] {
+    grid-area:2/2/3/4!important;align-self:end!important;justify-self:stretch!important;
+    width:auto!important;height:40px!important;max-height:none!important;margin:0 8px 56px 16px!important;padding:3px!important;
+  }
+  .app-shell .ketcher-editor-shell .Ketcher-root [data-testid="right-toolbar"] > div:first-child {
+    max-width:100%;max-height:none;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+  }
+  .app-shell .ketcher-editor-shell .Ketcher-root [data-testid="right-toolbar"] > div:first-child div {
+    display:flex!important;flex-direction:row!important;align-items:center;width:auto!important;height:auto!important;flex-shrink:0;
+  }
+  .app-shell .ketcher-editor-shell .Ketcher-root [data-testid="right-toolbar"] hr {
+    flex-shrink:0;width:1px!important;height:20px!important;margin:0 4px!important;border:0;background:var(--border);
+  }
+  /* The floating Codex tool rail stays between the top toolbar and the atom rail. */
+  .app-shell .ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar"] {
+    grid-row:2/3!important;align-self:start!important;max-height:calc(100% - 104px)!important;overflow-x:hidden;overflow-y:auto;scrollbar-width:none;
   }
 }
-@media (prefers-reduced-motion: reduce) {
-  .app-shell .ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar"] .ketcher-tool-expand { transition: none; }
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar"] .ketcher-tool-expand:is(:hover, [aria-expanded="true"]):not(:disabled) {
-  background: var(--surface-hover); border-color: var(--line-strong);
-}
-.app-shell .ketcher-editor-shell .Ketcher-root :is([data-testid="left-toolbar"], [data-testid="right-toolbar"]) button:not(.ketcher-tool-expand) {
-  border-radius: 6px !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar"] [class*="ToolbarMultiToolItem-module_root"] {
-  margin-left: 0;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [data-testid="right-toolbar"] hr {
-  width: 24px; margin: 4px auto; border-color: var(--line-subtle);
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [data-testid="right-toolbar"] {
-  width: 40px !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="App-module_bottom"] {
-  flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
-}
-.app-shell .ketcher-editor-shell .Ketcher-root [class*="BottomToolbar-module_group"] {
-  box-shadow: none !important; background: transparent !important;
-}
-.app-shell .ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="top-toolbar"], [data-testid="left-toolbar"], [data-testid="monomer-library"]) {
-  box-sizing: border-box; box-shadow: none !important;
-  border: 1px solid var(--line-strong); border-radius: 8px;
-}
-.app-shell .ketcher-editor-shell .Ketcher-polymer-editor-root > .e1pv9pa11 { row-gap: 8px; }
-.app-shell .ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="left-toolbar"] {
-  height: 100%; align-self: stretch;
-}
 
-/* Apps SDK UI: text-sm 14/20, heading-xs 16/24, heading-sm 18/26,
-   control-md 32px, and 6px/8px menu item gutters. */
-.app-shell .ketcher-page-actions button {
-  font-size: 14px; line-height: 20px;
-}
-.app-shell .ketcher-ui-dialog [data-slot="dialog-title"] {
-  font-size: 18px; line-height: 26px; font-weight: 600;
-}
-.app-shell .ketcher-ui-dialog-body :is(label, input, select, textarea, [data-slot="select-trigger"], [class*="measure-input-module_measureInput"] > span) {
-  font-family: inherit; font-size: 14px !important; line-height: 20px !important; font-weight: 400;
-}
-.app-shell .ketcher-ui-dialog .ketcher-settings-groups [data-slot="accordion-trigger"] {
-  min-height: 40px; padding: 8px 0;
-  font-size: 16px; line-height: 24px; font-weight: 600;
-}
-.app-shell .ketcher-ui-dialog .ketcher-settings-groups :is([data-slot="input"], [data-slot="select-trigger"]) {
-  height: 32px; min-height: 32px; padding: 0 12px !important;
-}
-.app-shell .ketcher-ui-dialog [data-slot="select-trigger"],
-.app-shell .ketcher-ui-dialog [data-slot="select-trigger"] :is([data-slot="select-value"], svg, path) {
-  color: var(--text-primary) !important;
-}
-.app-shell[data-effective-theme] .ketcher-ui-dialog [data-testid="info-modal-body"] .ketcher-settings-groups :is([data-slot="select-trigger"], [data-slot="accordion-trigger"]) svg path {
-  fill: currentColor !important;
-  stroke: none !important;
-}
-.app-shell .ketcher-ui-dialog [data-slot="select-trigger"][class*="measure-input-module_select"] {
-  min-width: 72px;
-}
-.app-shell .ketcher-ui-dialog .ketcher-settings-groups [class*="measure-input-module_measureInput"] {
-  min-height: 40px; margin: 0; align-items: center;
-}
-.app-shell .ketcher-ui-dialog [data-slot="dialog-footer"] button {
-  height: 32px; min-height: 32px; padding: 0 12px;
-  font-size: 14px; line-height: 20px; font-weight: 500;
-}
-/* Agent save confirmation floats over the canvas, clear of the top toolbar. */
-.ketcher-editor-shell .ketcher-persist-request {
-  position: absolute; top: calc(var(--ketcher-top-toolbar-height) + 12px); left: 50%; z-index: 5;
-  width: min(440px, calc(100% - 32px)); transform: translateX(-50%);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.16);
-}
-.ketcher-persist-request .ketcher-persist-request-actions {
-  grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px;
-}
+/* Ketcher uses its light-background element palette in the SVG. Keep the
+   chemical hues while lifting atom-label contrast only on the dark canvas. */
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is([fill="#304ff7" i],[style*="fill: rgb(48, 79, 247)"]) {fill:#9bb7ff!important;}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is([fill="#ff0d0d" i],[style*="fill: rgb(255, 13, 13)"]) {fill:#ff8585!important;}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is([fill="#ff8000" i],[style*="fill: rgb(255, 128, 0)"]) {fill:#ffbb79!important;}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is([fill="#c99a19" i],[style*="fill: rgb(201, 154, 25)"]) {fill:#efd16c!important;}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is([fill="#a62929" i],[style*="fill: rgb(166, 41, 41)"]) {fill:#d9a08c!important;}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is([fill="#940094" i],[style*="fill: rgb(148, 0, 148)"]) {fill:#dca6ef!important;}
+
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="canvas"] :is(circle,ellipse):is([stroke="#000" i],[stroke="#000000" i]) {stroke:var(--foreground)!important;}

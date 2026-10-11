@@ -3096,6 +3096,10 @@ impl ComputeCoordinator {
         self.store()?.purge_job(owner, job_id)
     }
 
+    pub(crate) fn prune_finished_jobs(&self, finished_before_ms: u64) -> ComputeResult<usize> {
+        self.store()?.prune_finished_jobs(finished_before_ms)
+    }
+
     fn store(&self) -> ComputeResult<ComputeStore> {
         match self.state.as_ref() {
             CoordinatorState::Ready(ready) => Ok(ready.store.clone()),

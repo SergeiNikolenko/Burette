@@ -3,6 +3,10 @@
 // production class names and stylesheets around representative markup.
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import { RadixDropdownMenu } from "../src/components/radix-menu";
+import { Button } from "../src/components/ui/button";
+import { buildThemeStyle } from "../src/lib/theme";
+import { defaultPreferences } from "../src/stores/settings-store";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as icons from "@/components/ui/app-icon-data";
 import {
@@ -17,7 +21,6 @@ import {
   DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuShortcut,
   DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import * as Retab from "@/components/ui/retab-dropdown-menu";
 import {
   Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectSeparator, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -25,6 +28,7 @@ import viewerSource from "../../../PreviewExtension/Web/viewer.js?raw";
 import viewerCssUrl from "../../../PreviewExtension/Web/viewer-runtime.css?url";
 import gridCssUrl from "../../../PreviewExtension/Web/grid.css?url";
 import "../src/styles.css";
+import "../src/styles/codex-tokens.css";
 import "../src/styles/interface-tokens.css";
 import "../src/components/workspace-file-header.css";
 
@@ -125,16 +129,16 @@ function ShellMenus({ theme }: { theme: Theme }) {
         </Command>
       )}</Cell>
       <Cell title="Document download">{container => (
-        <Retab.DropdownMenu open modal={false}>
-          <Retab.DropdownMenuTrigger asChild><span /></Retab.DropdownMenuTrigger>
-          <Retab.DropdownMenuContent container={container} align="start">
-            <Retab.DropdownMenuLabel>Download</Retab.DropdownMenuLabel>
-            <Retab.DropdownMenuItem><Icon icon={icons.Download} />Original file</Retab.DropdownMenuItem>
-            <Retab.DropdownMenuItem><Icon icon={icons.FileDocument} />PDF<Retab.DropdownMenuShortcut>⌘P</Retab.DropdownMenuShortcut></Retab.DropdownMenuItem>
-            <Retab.DropdownMenuSeparator />
-            <Retab.DropdownMenuItem><Icon icon={icons.Copy} />Copy text</Retab.DropdownMenuItem>
-          </Retab.DropdownMenuContent>
-        </Retab.DropdownMenu>
+        <DropdownMenu open modal={false}>
+          <DropdownMenuTrigger asChild><span /></DropdownMenuTrigger>
+          <DropdownMenuContent container={container} align="start">
+            <DropdownMenuLabel>Download</DropdownMenuLabel>
+            <DropdownMenuItem><Icon icon={icons.Download} />Original file</DropdownMenuItem>
+            <DropdownMenuItem><Icon icon={icons.FileDocument} />PDF<DropdownMenuShortcut>⌘P</DropdownMenuShortcut></DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem><Icon icon={icons.Copy} />Copy text</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}</Cell>
     </>
   );
@@ -335,9 +339,28 @@ function Gallery() {
 }
 
 const query = new URLSearchParams(window.location.search);
+function MenuFields() {
+  const [theme, setTheme] = useState<Theme>("dark");
+  const [name, setName] = useState("Ligand");
+  const [type, setType] = useState("ball-and-stick");
+  const [opacity, setOpacity] = useState(100);
+  return <main className="app-shell" data-theme={theme} data-effective-theme={theme}
+    style={{ ...buildThemeStyle({ ...defaultPreferences, theme }, theme), display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, background: "var(--surface-primary)", color: "var(--color-text)" }}>
+    <Button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>Switch theme</Button>
+    <RadixDropdownMenu trigger={<Button>Representation controls</Button>} items={[
+      { kind: "label", text: "Representation" },
+      { kind: "text", id: "name", label: "Name", value: name, action: setName },
+      { kind: "select", id: "type", label: "Type", value: type, options: ["ball-and-stick", "cartoon", "surface"],
+        optionLabels: { "ball-and-stick": "Ball & Stick", cartoon: "Cartoon", surface: "Surface" }, action: setType },
+      { kind: "number", id: "opacity", label: "Opacity", value: opacity, min: 0, max: 100, step: 1, unit: "%", action: setOpacity },
+      { kind: "text", id: "readonly", label: "Source", value: "mini.pdb", disabled: true },
+    ]} />
+    <output aria-label="Applied parameters">{name} · {type} · {opacity}%</output>
+  </main>;
+}
 const frameTheme: Theme = query.get("theme") === "dark" ? "dark" : "light";
 // A frame whose colour scheme differs from its host paints an opaque canvas.
 if (query.get("only") === "select") document.documentElement.style.colorScheme = frameTheme;
 createRoot(document.getElementById("root")!).render(
-  query.get("only") === "select" ? <OpenSelect theme={frameTheme} /> : <Gallery />,
+  query.get("only") === "fields" ? <MenuFields /> : query.get("only") === "select" ? <OpenSelect theme={frameTheme} /> : <Gallery />,
 );

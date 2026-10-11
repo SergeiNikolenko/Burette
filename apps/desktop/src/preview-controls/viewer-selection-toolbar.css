@@ -1,0 +1,23 @@
+/* The existing toolbar island owns placement; primitives own control geometry. */
+.buret-selection-bar .atlas-select {
+  flex: 0 1 auto;
+  min-width: 84px;
+  max-width: 120px;
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+.buret-selection-bar .atlas-button { flex-shrink: 0; }
+.buret-selection-bar .atlas-button svg { flex-shrink: 0; pointer-events: none; }
+.buret-selection-bar .buret-selection-count {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 2px;
+  color: var(--color-text-secondary);
+  font: var(--text-xs)/var(--text-xs--line-height) var(--font-sans);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.buret-atlas-picker { position: fixed; inset: auto; margin: 0; border: 0; min-width: 144px; }
+.buret-atlas-picker [aria-disabled="true"] { opacity: .5; }

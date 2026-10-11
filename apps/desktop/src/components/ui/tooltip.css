@@ -1,0 +1,40 @@
+/* Compact SDK tooltips use an inverted gray scale. In the classic dark shell,
+ * use Atlas's semantic tooltip colors instead of the resulting pale surface.
+ * Keep the original geometry, shadow, and light-theme appearance unchanged.
+ */
+.app-shell[data-effective-theme="dark"] .atlas-tooltip[data-compact="true"] {
+  --tooltip-compact-background-color: var(--color-background-tooltip);
+  --tooltip-compact-text-color: var(--color-text-tooltip);
+  --tooltip-compact-interactive-background-color-hover: var(--color-surface-elevated);
+  --tooltip-compact-interactive-text-color-hover: var(--color-text-tooltip);
+}
+@layer components {
+  .atlas-tooltip-positioned {
+    z-index: 50;
+    max-width: min(var(--tooltip-max-width, 300px), var(--radix-tooltip-content-available-width, 100vw), calc(100vw - 16px));
+    overflow-wrap: anywhere;
+  }
+  /* Original RT FloatingTooltip geometry, shared with iframe controls. */
+  .atlas-floating-tooltip {
+    /* FloatingTooltip's text theme supplies the app's 430 weight. The
+     * standalone viewer has no inherited shell text theme. */
+    --tooltip-compact-font-weight: 430;
+    box-sizing: border-box;
+    width: fit-content;
+    min-height: min-content;
+    font-size: var(--text-sm);
+    line-height: 18px;
+    font-weight: var(--tooltip-compact-font-weight);
+    letter-spacing: var(--tracking-tooltip);
+    white-space: normal;
+    user-select: none;
+    text-align: center;
+    border-radius: var(--radius-2xl);
+    border: 1px solid var(--color-border-tooltip);
+    background: var(--color-background-tooltip);
+    color: var(--color-text-tooltip);
+    box-shadow: var(--shadow-tooltip);
+    padding: 5px 12px;
+    pointer-events: none;
+  }
+}

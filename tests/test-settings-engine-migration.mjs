@@ -11,6 +11,10 @@ globalThis.localStorage = {
 globalThis.window = { localStorage: globalThis.localStorage };
 const { useSettingsStore, getSettingsStoreSnapshot, defaultPreferences } = await import('../apps/desktop/src/stores/settings-store.ts');
 assert.deepEqual(useSettingsStore.getState().preferences, { ...defaultPreferences, theme: 'dark', desktopPreviewLimitMiB: 512 });
+assert.equal(useSettingsStore.getState().preferences.jobHistoryRetentionDays, 0, 'upgrading legacy settings must keep existing job history');
+useSettingsStore.getState().setPreference('jobHistoryRetentionDays', 30);
+await useSettingsStore.persist.rehydrate();
+assert.equal(useSettingsStore.getState().preferences.jobHistoryRetentionDays, 30, 'an explicit retention choice must survive rehydration');
 useSettingsStore.getState().setPreference('theme', 'light');
 assert.equal('conformerEngine' in JSON.parse(storage.get('burette.shell')).state.preferences, false);
 const snapshot = { preferences: { ...defaultPreferences, conformerEngine: 'rdkit', theme: 'dark' } };

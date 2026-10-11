@@ -1,9 +1,11 @@
+import { adjacentMainTabId } from "../stores/molecule-store";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getAllWindows, getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
 import type { ShellActions, ShellViewState, StructureViewerAction } from "../components/types";
+import { reopenClosedTab, toggleSidePanel } from "../components/workspace-panes/pane-actions";
 import { canInspectConformerEnsemble } from "../lib/conformer-ensemble";
 import { isMolstarViewerExtension } from "../lib/docking-documents";
 import { isKetcherImportExtension } from "../lib/drop-actions";
@@ -22,6 +24,8 @@ import {
   nativeOpenDocumentPaths,
 } from "../lib/native-menu-paths";
 import type { DerivedColumnKind } from "../lib/derived-columns";
+import { nativeMenuAccelerators } from "../lib/keyboard-shortcuts";
+import { useSettingsStore } from "../stores/settings-store";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import { postGridCommand } from "../lib/viewer-bridge";
 import { decideWindowClose } from "../lib/window-close";
@@ -331,6 +335,15 @@ export function useAppNativeMenu({
     }
   }, []);
 
+  // Settings > Keyboard shortcuts: apply overrides on launch and after each edit.
+  const shortcutOverrides = useSettingsStore((store) => store.preferences.shortcutOverrides);
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    void invoke("set_menu_accelerators", { accelerators: nativeMenuAccelerators(shortcutOverrides) }).catch((error) => {
+      console.warn("Native menu shortcut sync failed", error);
+    });
+  }, [shortcutOverrides]);
+
   useEffect(() => {
     if (!isTauriRuntime()) return;
     void invoke("sync_native_menu", { state: nativeState }).catch((error) => {
@@ -419,11 +432,8 @@ export function useAppNativeMenu({
       if (activeDocument?.renderer === "grid2d") postGridMenuCommand(activeDocument.id, command);
     };
     const selectAdjacentTab = (offset: -1 | 1) => {
-      if (state.tabs.length === 0) return;
-      const activeIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
-      const currentIndex = activeIndex >= 0 ? activeIndex : 0;
-      const nextIndex = (currentIndex + offset + state.tabs.length) % state.tabs.length;
-      actions.selectTab(state.tabs[nextIndex].id);
+      const nextId = adjacentMainTabId(state.tabs, state.activeTabId, offset);
+      if (nextId) actions.selectTab(nextId);
     };
 
     if (command.startsWith("analyze.") && canOpenCollectionAnalysis && activeDocument) {
@@ -629,6 +639,9 @@ export function useAppNativeMenu({
       case "file.close-all-tabs":
         await actions.clearAllDocuments();
         return;
+      case "file.reopen-closed-tab":
+        await reopenClosedTab(actions);
+        return;
       case "file.close-window":
         await closeCurrentWindow();
         return;
@@ -641,9 +654,12 @@ export function useAppNativeMenu({
       case "database.search-google-patents": actions.openDatabaseQuery("patents"); return;
       case "database.retrieve-url": actions.openDatabaseQuery("url"); return;
       case "database.retrieve-sql": actions.openDatabaseQuery("sql"); return;
+      case "view.navigate-back": actions.navigateBack(); return;
+      case "view.navigate-forward": actions.navigateForward(); return;
       case "view.toggle-sidebar": actions.toggleSidebar(); return;
       case "view.toggle-inspector": actions.toggleDock("right"); return;
       case "view.toggle-bottom-panel": actions.toggleDock("bottom"); return;
+      case "view.toggle-side-panel": toggleSidePanel(); return;
       case "view.command-palette": actions.openCommandPalette(); return;
       case "structure.open-in-molstar":
         if (!activeDocument || !canOpenInMolstar) return;

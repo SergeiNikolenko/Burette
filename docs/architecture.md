@@ -50,6 +50,19 @@ where needed so agents do not need to remember nested Tauri commands.
 
 ## Desktop Shell
 
+Page rendering uses React Router with a memory navigator per mounted tab
+(`components/editor-area/tab-router.tsx`). The registered page kinds supply
+routes; settings use `/settings/:section`. Scientific document identities live
+in route state, not in the browser URL. No browser history or server rewrite is
+required in Tauri, browser-dev, or an embedded workspace.
+
+The existing molecule store owns each tab's serializable back/current/forward
+history. The router navigator and native Back/Forward actions share that cursor
+rather than maintaining two independent histories. Session restoration and
+workspace undo therefore keep the same payload shape. Tab keep-alive limits,
+dirty-view retention, and file-opening guards remain in their existing owners.
+
+
 The desktop shell is a compact molecule workspace:
 
 - sidebar for project folders and nested structures

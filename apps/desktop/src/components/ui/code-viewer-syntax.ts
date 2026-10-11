@@ -7,11 +7,11 @@ import {
   shouldTokenizeCodeLine,
 } from "./code-viewer-syntax-protocol";
 import {
-  ensureCodePrismLanguage,
-  isCodePrismLanguageLoaded,
-  isCodePrismLanguageSupported,
+  ensureCodeLanguage,
+  isCodeLanguageLoaded,
+  isCodeLanguageSupported,
   tokenizeCodeLine,
-} from "./code-viewer-syntax-prism";
+} from "./code-viewer-syntax-shiki";
 import { createCodeSyntaxWorker } from "./code-viewer-syntax-worker";
 
 export type { CodeTokenLeaf } from "./code-viewer-syntax-protocol";
@@ -104,8 +104,7 @@ const globalWorkerPoolsByFactory = new WeakMap<
 const globalWorkerPools = new Set<CodeSyntaxWorkerPool>();
 const CODE_GLOBAL_WORKER_POOL_SIZE = 2;
 
-// File extension -> Prism language id. Prism does not map extensions to
-// languages, so the viewer keeps the small explicit map.
+// File extension -> syntax language id. Keep the supported set explicit.
 const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   json: "json",
   json5: "json",
@@ -136,7 +135,7 @@ const LANGUAGE_BY_EXTENSION: Record<string, string> = {
   svg: "markup",
 };
 
-// MIME -> Prism language id, used only for inline sources with no extension.
+// MIME -> syntax language id, used only for inline sources with no extension.
 const LANGUAGE_BY_MIME: Record<string, string> = {
   "application/json": "json",
   "text/javascript": "javascript",
@@ -210,7 +209,7 @@ export function createCodeSyntax(
   options: CodeSyntaxOptions = {},
 ): CodeSyntax {
   const detectedLanguageId = codeLanguageId(resource);
-  if (!detectedLanguageId || !isCodePrismLanguageSupported(detectedLanguageId)) {
+  if (!detectedLanguageId || !isCodeLanguageSupported(detectedLanguageId)) {
     return {
       identity: "plain",
       getLineVersion: () => 0,
@@ -228,7 +227,7 @@ export function createCodeSyntax(
   let flushHandle: CodeSyntaxTaskHandle | null = null;
   let notifyHandle: CodeSyntaxNotifyHandle | null = null;
   let grammarPromise: Promise<void> | null = null;
-  let isGrammarReady = isCodePrismLanguageLoaded(languageId);
+  let isGrammarReady = isCodeLanguageLoaded(languageId);
   let isGrammarFailed = false;
   let isWorkerFailed = false;
   let isDestroyed = false;
@@ -358,7 +357,7 @@ export function createCodeSyntax(
   async function preloadMainThreadGrammar() {
     if (shouldTokenizeInWorker() || isGrammarReady || isGrammarFailed) return;
     if (!grammarPromise) {
-      grammarPromise = ensureCodePrismLanguage(languageId)
+      grammarPromise = ensureCodeLanguage(languageId)
         .then(() => {
           if (isDestroyed) return;
           isGrammarReady = true;

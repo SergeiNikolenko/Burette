@@ -4,14 +4,17 @@ import React, { act } from "react";
 import type { ShellActions, ShellViewState } from "../apps/desktop/src/components/types";
 
 const browser = new Window();
-for (const key of ["window", "document", "navigator", "HTMLElement", "Element", "Node", "Event", "MutationObserver", "getComputedStyle", "localStorage"] as const) {
+for (const key of ["window", "document", "navigator", "HTMLElement", "Element", "Node", "Event", "CustomEvent", "MutationObserver", "getComputedStyle", "localStorage"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : (browser as any)[key] });
 }
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 const { createRoot } = await import("react-dom/client");
 const { DockFileTabs } = await import("../apps/desktop/src/components/dock-file-tabs");
 
-test("dock filename mouse drag reaches its destination without selecting the source", async () => {
+const { DockHeader } = await import("../apps/desktop/src/components/dock-header");
+const { useSidebarStructureDrag } = await import("../apps/desktop/src/components/sidebar/use-sidebar-structure-drag");
+
+test.each(["file", "panel"])("dock %s tab mouse drag reaches its destination without selecting the source", async (surface) => {
   const container = document.createElement("div"); container.className = "app-shell"; document.body.append(container);
   const destination = document.createElement("div");
   Object.assign(destination.dataset, { dropDocumentId: "destination", dropDocumentPath: "/target.xyz", dropDocumentRenderer: "xyzrender-external" });
@@ -27,9 +30,16 @@ test("dock filename mouse drag reaches its destination without selecting the sou
     addXyzrenderSheetItems: (id: string, payload: unknown) => calls.push({ id, payload }),
   } as unknown as ShellActions;
   const state = { documents: [{ id: "destination", path: "/target.xyz", renderer: "xyzrender-external" }] } as unknown as ShellViewState;
+  function Fixture() {
+    const drag = useSidebarStructureDrag({ state, actions, getPayload: () => ({ paths: ["/ligand.sdf"], records: [], items: [{ kind: "file", path: "/ligand.sdf", title: "ligand.sdf" }] }) });
+    return surface === "panel"
+      ? <DockHeader area="bottom" tabs={[{ id: "files", kind: "files" }, { id: "jobs", kind: "jobs" }]} activeKind="jobs" panelId="panel" readOnly={false}
+          fileDragProps={{ ...drag, draggable: true }} onSelect={() => calls.push("select-source")} onClose={() => {}} onAdd={() => {}} onHide={() => {}} />
+      : <DockFileTabs area="right" entries={[{ key: "ligand", kind: "document", documentId: "ligand", title: "ligand.sdf", detail: "SDF", path: "/ligand.sdf" }]}
+          activeKey="ligand" textViews={{}} onTextView={() => {}} actions={actions} state={state} />;
+  }
   try {
-    await act(async () => root.render(<DockFileTabs area="right" entries={[{ key: "ligand", kind: "document", documentId: "ligand", title: "ligand.sdf", detail: "SDF", path: "/ligand.sdf" }]}
-      activeKey="ligand" textViews={{}} onTextView={() => {}} actions={actions} state={state} />));
+    await act(async () => root.render(<Fixture />));
     const source = mount.querySelector<HTMLButtonElement>('[role="tab"]')!;
     expect(source.getAttribute("draggable")).toBe("true");
     await act(async () => {

@@ -1,0 +1,1 @@
+@layer theme,base;@layer components{.atlas-input-number{appearance:textfield}.atlas-input-number::-webkit-outer-spin-button{appearance:none;margin:0}.atlas-input-number::-webkit-inner-spin-button{appearance:none;margin:0}}@layer utilities;

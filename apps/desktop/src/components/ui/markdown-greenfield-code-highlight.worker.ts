@@ -1,8 +1,8 @@
 import { shouldTokenizeCodeLine } from "./code-viewer-syntax-protocol";
 import {
-  ensureCodePrismLanguage,
+  ensureCodeLanguage,
   tokenizeCodeLine,
-} from "./code-viewer-syntax-prism";
+} from "./code-viewer-syntax-shiki";
 import { markdownCodeTokensToHtml } from "./markdown-greenfield-code-highlight-html";
 import type {
   MarkdownCodeHighlightWorkerRequest,
@@ -21,7 +21,7 @@ function post(message: MarkdownCodeHighlightWorkerResponse) {
 }
 
 async function highlightInWorker(request: MarkdownCodeHighlightWorkerRequest) {
-  await ensureCodePrismLanguage(request.languageId);
+  await ensureCodeLanguage(request.languageId);
   post({
     generation: request.generation,
     languageId: request.languageId,

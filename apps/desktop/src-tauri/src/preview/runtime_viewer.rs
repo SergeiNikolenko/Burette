@@ -246,6 +246,7 @@ pub(crate) fn create_runtime<R: Runtime>(
         "showPanelControls": true,
         "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
+    config["viewerDefaults"] = preferences.viewer_defaults.runtime_config();
     config["xyzrenderAnimationSourcePath"] = json!(source_path);
     config["autoFocusStructure"] = json!(true);
     config["rendererViewState"] = json!(reload_options
@@ -455,6 +456,7 @@ pub(crate) fn create_combined_sdf_pose_runtime<R: Runtime>(
         "showPanelControls": true,
         "defaultLayoutState": { "left": "hidden", "right": "hidden", "top": "hidden", "bottom": "hidden" }
     });
+    config["viewerDefaults"] = preferences.viewer_defaults.runtime_config();
     config["autoFocusStructure"] = json!(true);
     let config_text = serde_json::to_string(&config).map_err(|err| err.to_string())?;
     fs::write(
@@ -620,6 +622,7 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
             "ligands": ligands.iter().map(source_config).collect::<Vec<_>>()
         }
     });
+    config["viewerDefaults"] = preferences.viewer_defaults.runtime_config();
     config["autoFocusStructure"] = json!(true);
     let payloads = json!({
         "receptor": {
@@ -823,6 +826,7 @@ mod tests {
             theme_dark_editor_font: "monospace".to_string(),
             theme_dark_translucent: 0.8,
             theme_dark_contrast: 1.0,
+            viewer_defaults: Default::default(),
         }
     }
 

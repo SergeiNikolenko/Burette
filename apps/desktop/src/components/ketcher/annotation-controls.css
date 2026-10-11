@@ -1,0 +1,3 @@
+.ketcher-symbols-menu {display:grid;grid-template-columns:repeat(6,minmax(24px,1fr));min-width:196px;max-height:min(320px,var(--radix-dropdown-menu-content-available-height));}
+.ketcher-symbols-menu [data-slot="dropdown-menu-item"] {padding:5px;min-width:0;}
+.ketcher-color-picker .react-colorful {width:100%;height:160px;}

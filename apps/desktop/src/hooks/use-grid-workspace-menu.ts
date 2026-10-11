@@ -42,19 +42,19 @@ export function useGridWorkspaceMenu(state: ShellViewState, actions: ShellAction
       const run = (action: () => unknown) => () => { void Promise.resolve().then(action).catch(error => toast.add({ title: String(error), type: "error" })); };
       const opening = [
         ...take("open", "Preview"),
-        ...take("molstar", "Mol*"),
+        ...take("molstar", "Interactive 3D"),
         ...take("ketcher", "Ketcher"),
       ];
-      if (valid) opening.push(item("row-new-tab", records.length === 1 ? "New Tab" : "In Tabs", run(() => actions.openStructureRecords(records))));
+      if (valid) opening.push(item("row-new-tab", records.length === 1 ? "New tab" : "In tabs", run(() => actions.openStructureRecords(records))));
       if (valid) {
-        opening.push(item("row-right-panel", "Right Panel", run(() => actions.openDockPayload({ area: "right", tabKind: "files", payload: { paths: [], records } }))));
-        if (records.every(record => fileCapabilities('row.' + record.inputExtension).scene)) opening.push(...submenu("row-add-scene", "Add to Scene",
+        opening.push(item("row-right-panel", "Right panel", run(() => actions.openDockPayload({ area: "right", tabKind: "files", payload: { paths: [], records } }))));
+        if (records.every(record => fileCapabilities('row.' + record.inputExtension).scene)) opening.push(...submenu("row-add-scene", "Add to scene",
           workflows.sceneTargets(records.map(record => record.path)).map((target, index) => item(`row-scene-${index}`, target.title, run(() => workflows.addRecordsToScene(records, target))))));
       }
       const multiple = records.length > 1;
       if (valid && multiple && records.every(record => ['sdf', 'mol'].includes(record.inputExtension))) opening.push(
         item("row-together", "Together", run(() => workflows.openRecordScene(records, "all"))),
-        item("row-poses", "As Poses", run(() => workflows.openRecordScene(records, "single"))),
+        item("row-poses", "As poses", run(() => workflows.openRecordScene(records, "single"))),
       );
       const spec = menuSections(
         [...submenu("row-open", "Open", opening, "arrow.up.forward"), ...submenu("row-edit", "Edit", [...take("duplicate", "Duplicate")])],

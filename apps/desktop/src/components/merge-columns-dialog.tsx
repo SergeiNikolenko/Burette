@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import { Dialog } from "radix-ui";
+import { Input } from "./ui/input";
+import { useEffect, useId, useMemo, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/dialog";
+import { Button } from "./ui/button";
 
-import { useAppShellPortalContainer } from "./ui/portal-container";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
-import { CloseIcon } from "./close-icon";
 import type { GridColumnChoice } from "./types";
 
 export type MergeColumnsRequest = {
@@ -31,7 +31,7 @@ export function MergeColumnsDialog({
     columns: Array<{ id: string; label: string }>,
   ) => void;
 }) {
-  const portalContainer = useAppShellPortalContainer();
+  const problemId = useId();
   const columns = useMemo(() => request?.columns ?? [], [request]);
   const [first, setFirst] = useState("");
   const [second, setSecond] = useState("");
@@ -55,79 +55,45 @@ export function MergeColumnsDialog({
   const canRun = chosen.length === 2 && !duplicate && effectiveLabel.length > 0;
 
   return (
-    <Dialog.Root open={Boolean(request)} onOpenChange={(open) => { if (!open) onDismiss(); }}>
-      <Dialog.Portal container={portalContainer}>
-        <Dialog.Overlay className="radix-dialog-overlay" />
-        <Dialog.Content className="radix-dialog calculated-column-dialog" aria-describedby="merge-columns-body">
-          <div className="radix-dialog-header">
-            <Dialog.Title>Merge Columns</Dialog.Title>
-            <Dialog.Close asChild>
-              <button type="button" className="radix-dialog-close" aria-label="Close merge columns">
-                <CloseIcon size={14} />
-              </button>
-            </Dialog.Close>
-          </div>
-          <div id="merge-columns-body" className="radix-dialog-body">
-            <label className="calculated-column-field">
-              <span>First column</span>
-              <NativeSelect size="sm" value={first} onChange={(event) => setFirst(event.target.value)}>
-                {columns.map((column) => (
-                  <NativeSelectOption key={column.id} value={column.id}>{column.label}</NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </label>
-            <label className="calculated-column-field">
-              <span>Second column</span>
-              <NativeSelect size="sm" value={second} onChange={(event) => setSecond(event.target.value)}>
-                {columns.map((column) => (
-                  <NativeSelectOption key={column.id} value={column.id}>{column.label}</NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </label>
-            {duplicate ? <div className="calculated-column-problem">Pick two different columns.</div> : null}
-            <label className="calculated-column-field">
-              <span>Separator</span>
-              <input type="text" value={separator} onChange={(event) => setSeparator(event.target.value)} placeholder="space" />
-            </label>
-            <label className="calculated-column-field">
-              <span>New column</span>
-              <input
-                type="text"
-                value={label}
-                onChange={(event) => setLabel(event.target.value)}
-                placeholder={suggestedLabel || "Merged"}
-              />
-            </label>
-            <p className="calculated-column-note">
-              Joins the displayed values as text.
-            </p>
-          </div>
-          <div className="radix-dialog-footer calculate-properties-footer">
-            <div className="calculate-properties-actions">
-              <Dialog.Close asChild>
-                <button type="button" className="dock-action">Cancel</button>
-              </Dialog.Close>
-              <button
-                type="button"
-                className="dock-action calculate-properties-run"
-                disabled={!canRun}
-                onClick={() => {
-                  if (!request || !canRun) return;
-                  onRun(
-                    request.documentId,
-                    effectiveLabel,
-                    separator,
-                    chosen.map((column) => ({ id: column.id, label: column.label })),
-                  );
-                  onDismiss();
-                }}
-              >
-                Merge
-              </button>
-            </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Dialog open={Boolean(request)} onOpenChange={open => { if (!open) onDismiss(); }}>
+      <DialogContent variant="form" size="compact">
+        <form className="flex min-w-0 flex-col gap-4" onSubmit={event => {
+          event.preventDefault();
+          if (!request || !canRun) return;
+          onRun(request.documentId, effectiveLabel, separator, chosen.map(column => ({ id: column.id, label: column.label })));
+          onDismiss();
+        }}>
+          <DialogHeader>
+            <DialogTitle>Merge columns</DialogTitle>
+            <DialogDescription className="sr-only">Join the displayed values from two columns.</DialogDescription>
+          </DialogHeader>
+          <label className="flex min-w-0 flex-col gap-2 text-xs"><span>First column</span>
+            <NativeSelect name="first" className="w-full" value={first} onChange={event => setFirst(event.target.value)}
+              aria-invalid={duplicate} aria-describedby={duplicate ? problemId : undefined}>
+              {columns.map(column => <NativeSelectOption key={column.id} value={column.id}>{column.label}</NativeSelectOption>)}
+            </NativeSelect>
+          </label>
+          <label className="flex min-w-0 flex-col gap-2 text-xs"><span>Second column</span>
+            <NativeSelect name="second" className="w-full" value={second} onChange={event => setSecond(event.target.value)}
+              aria-invalid={duplicate} aria-describedby={duplicate ? problemId : undefined}>
+              {columns.map(column => <NativeSelectOption key={column.id} value={column.id}>{column.label}</NativeSelectOption>)}
+            </NativeSelect>
+          </label>
+          {duplicate && <p id={problemId} className="text-sm text-(--color-text-danger)" role="alert">Pick two different columns.</p>}
+          <label className="flex flex-col gap-2 text-xs"><span>Separator</span>
+            <Input variant="field" name="separator" autoComplete="off" spellCheck={false} value={separator}
+              onChange={event => setSeparator(event.target.value)} />
+          </label>
+          <label className="flex flex-col gap-2 text-xs"><span>New column</span>
+            <Input variant="field" name="label" autoComplete="off" value={label} onChange={event => setLabel(event.target.value)}
+              placeholder={suggestedLabel || "Merged"} />
+          </label>
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={onDismiss}>Cancel</Button>
+            <Button type="submit" disabled={!canRun}>Merge</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

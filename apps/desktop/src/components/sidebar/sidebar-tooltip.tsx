@@ -9,7 +9,7 @@ export const SidebarTooltip = forwardRef<
   return (
     <Tooltip delayDuration={350}>
       <TooltipTrigger {...props} asChild ref={ref}>{children}</TooltipTrigger>
-      <TooltipContent side="top" sideOffset={8} showArrow={false}>
+      <TooltipContent compact side="top" sideOffset={8} showArrow={false}>
         {label}
       </TooltipContent>
     </Tooltip>

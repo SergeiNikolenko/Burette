@@ -136,7 +136,7 @@ export function useSourceEditingController({
     }
     const extension = document.extension.toLowerCase().replace(/^\./u, "");
     if (document.virtual || document.dockingRequest || document.mergedCollection || !EDITABLE_EXTENSIONS.has(extension)) {
-      pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit Source");
+      pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source");
       return;
     }
 
@@ -211,7 +211,7 @@ export function useSourceEditingController({
       const message = parsed?.code === "source_not_editable" && parsed.details?.reason === "unsupported_shape"
         ? sourceNotEditableMessage("unsupported_shape")
         : parsed?.message;
-      pushErrorStatus(message ? new Error(message) : error, "Edit Source");
+      pushErrorStatus(message ? new Error(message) : error, "Edit source");
     }
   }, [clearStagingWindows, commitSessions, pushErrorStatus, setDockActiveTab, setDockOpen, updateSession]);
 

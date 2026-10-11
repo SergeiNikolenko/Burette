@@ -1,8 +1,10 @@
-import { memo, useEffect, useMemo, useState, type ComponentType } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import type { ShellActions, ShellViewState } from "../types";
 import { pageKind, type Location } from "./page-kinds";
-import type { PageComponentProps } from "./page-kinds/types";
-import type { MoleculeTab } from "../../stores/molecule-store";
+import { TabMemoryRouter, TabPageRoutes } from "./tab-router";
+import type { MoleculeTab, TabPane } from "../../stores/molecule-store";
+import { FloatingPaneHeader } from "../workspace-panes/floating-pane";
+import { usePaneVisibility, type PaneShown } from "../workspace-panes/use-pane-tabs";
 
 const DEFAULT_WARM_PAGE_LIMIT = 10;
 const LOW_DEVICE_MEMORY_WARM_PAGE_LIMIT = 6;
@@ -24,6 +26,7 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
     () => warmMountedTabs(tabs, activeTabIndex, recentlyUsedTabIds, warmPageLimit, dirtyTabIds),
     [activeTabIndex, recentlyUsedTabIds, tabs, warmPageLimit, dirtyTabIds],
   );
+  const paneVisibility = usePaneVisibility(tabs, state.page === "settings");
 
   useEffect(() => {
     setRecentlyUsedTabIds((current) => {
@@ -36,17 +39,26 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
     });
   }, [activeTabId, tabs]);
 
+  // Every screen stays a child of this one stack wherever it is shown: the
+  // side panel and the floating window only reposition its surface. Moving an
+  // iframe to another parent reloads it, which would rebuild the Mol* scene.
   return (
     <div className="page-stack">
       {tabs.map((tab, index) => {
-        const isActive = index === activeTabIndex;
+        const isActive = index === activeTabIndex && !tab.pane;
         const kind = pageKind(tab.location);
-        if (!isActive && (!kind.keepAlive || !warmMountedTabIds.has(tab.id))) return null;
+        const shown = paneVisibility(tab);
+        // A screen in a pane is held like the active tab while on screen, and a
+        // keep-alive one also while its pane shows another screen.
+        const held = shown !== "hidden" || (Boolean(tab.pane) && kind.keepAlive);
+        if (!isActive && !held && (!kind.keepAlive || !warmMountedTabIds.has(tab.id))) return null;
         return (
           <MountedPageSurface
             key={tab.id}
             tab={tab}
             isActive={isActive}
+            pane={tab.pane ?? null}
+            shown={shown}
             state={state}
             actions={actions}
           />
@@ -59,24 +71,43 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
 const MountedPageSurface = memo(function MountedPageSurface({
   tab,
   isActive,
+  pane,
+  shown,
   state,
   actions,
 }: {
   tab: MoleculeTab;
   isActive: boolean;
+  pane: TabPane | null;
+  shown: PaneShown;
   state: ShellViewState;
   actions: ShellActions;
 }) {
   const kind = pageKind(tab.location);
-  const Page = kind.Component as ComponentType<PageComponentProps<typeof tab.location>>;
+  // A minimized floating window still shows its header, but the page behind
+  // it is out of sight and may pause like any background tab.
+  const contentVisible = isActive || shown === "visible";
   return (
-    <div className="page-surface" data-page-kind={kind.kind} data-active={isActive || undefined} aria-hidden={!isActive}>
-      <Page tabId={tab.id} location={tab.location} state={state} actions={actions} isActive={isActive} />
+    <div
+      className="page-surface"
+      data-page-kind={kind.kind}
+      data-active={isActive || undefined}
+      data-pane={pane ?? undefined}
+      data-pane-shown={shown === "hidden" ? undefined : shown}
+      aria-hidden={!contentVisible && shown !== "minimized"}
+    >
+      {/* The header slot is always present so that inserting the header never
+          shifts the page's own nodes: React keeps the iframe where it is. */}
+      {pane === "floating" ? <FloatingPaneHeader tab={tab} state={state} actions={actions} minimized={shown === "minimized"} /> : null}
+      <TabMemoryRouter tab={tab}>
+        <TabPageRoutes tabId={tab.id} location={tab.location} state={state} actions={actions} isActive={contentVisible} />
+      </TabMemoryRouter>
     </div>
   );
 }, (previous, next) => {
   if (previous.isActive || next.isActive) return false;
-  return previous.tab.id === next.tab.id && previous.tab.location === next.tab.location;
+  if (previous.shown !== "hidden" || next.shown !== "hidden") return false;
+  return previous.tab.id === next.tab.id && previous.tab.location === next.tab.location && previous.pane === next.pane;
 });
 
 function activeLocation(state: ShellViewState): Location {

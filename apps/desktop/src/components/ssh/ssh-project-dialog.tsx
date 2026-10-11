@@ -1,6 +1,6 @@
 import { Spinner } from "@/components/ui/spinner";
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Folder, FolderPlus, ChevronDown, ArrowLeft } from "../ui/app-icons";
@@ -34,7 +34,7 @@ export function SshProjectDialog({ open, onOpenChange, connectionOnly = false, i
   if (connectionOnly) return <SshConnectionDialog open={open} onOpenChange={onOpenChange} />;
   return <>
     <Dialog open={open && !adding} onOpenChange={value => { if (!busy) onOpenChange(value); }}>
-      <DialogContent className="ssh-dialog">
+      <DialogContent variant="form" className="ssh-dialog">
         <DialogHeader><DialogTitle>{browsing ? "Choose a folder" : "Create project"}</DialogTitle><DialogDescription className="sr-only">Choose a source folder for your project.</DialogDescription></DialogHeader>
         {browsing ? <>
           <form className="ssh-folder-location" onSubmit={e => { e.preventDefault(); void browse(); }}>
@@ -48,7 +48,7 @@ export function SshProjectDialog({ open, onOpenChange, connectionOnly = false, i
             {listing && !listing.entries.some(e => e.directory) && <p className="p-4 text-muted-foreground">No subfolders</p>}
             {listing?.truncated && <p className="p-4 text-muted-foreground">First 2,000 entries shown.</p>}
           </div>
-          <div className="ssh-dialog-footer"><Button variant="ghost" disabled={busy} onClick={() => setBrowsing(false)}>Back</Button><Button className="ssh-primary" disabled={busy || !listing || path !== listing.root} onClick={() => { setFolder(listing!.root); setBrowsing(false); }}>Choose folder</Button></div>
+          <DialogFooter className="ssh-dialog-footer"><Button variant="ghost" disabled={busy} onClick={() => setBrowsing(false)}>Back</Button><Button disabled={busy || !listing || path !== listing.root} onClick={() => { setFolder(listing!.root); setBrowsing(false); }}>Choose folder</Button></DialogFooter>
         </> : <>
           <label className="ssh-project-name"><Folder size={19} /><Input autoFocus aria-label="Project name" placeholder="Project name" value={name} onChange={e => setName(e.target.value)} /></label>
           <div className="ssh-source-label">Source folders</div>
@@ -60,7 +60,7 @@ export function SshProjectDialog({ open, onOpenChange, connectionOnly = false, i
             ]} trigger={<button className="ssh-source-picker">{folder ? "Folder on" : "Add a folder on"} <span>{connection?.name || host || "a remote computer"}</span><ChevronDown size={15} /></button>} />
             {folder ? <button className="ssh-chosen-folder" onClick={() => { setPath(folder); setBrowsing(true); void browse(folder); }}><SidebarFolderIcon expanded={false} badge={connection?.color} /><span>{folder.split("/").pop() || folder}</span></button> : <Button variant="secondary" className="rounded-full" onClick={() => { if (!host) { setAdding(true); return; } setBrowsing(true); void browse(); }}><FolderPlus size={17} /> Add</Button>}
           </div>
-          <div className="ssh-dialog-footer justify-end"><Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button><Button className="ssh-primary" disabled={!folder || !host} onClick={create}>Create project</Button></div>
+          <DialogFooter className="ssh-dialog-footer justify-end"><Button variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button><Button disabled={!folder || !host} onClick={create}>Create project</Button></DialogFooter>
         </>}
         {error && <p role="alert" className="ssh-dialog-error">{error}</p>}
       </DialogContent>

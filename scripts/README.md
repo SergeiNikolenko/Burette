@@ -87,6 +87,29 @@ Scripts such as `dev-namespace.mjs`, `preview-content-type.mjs`,
 implementation details for the public commands above. Use them directly only
 when debugging that specific script boundary.
 
+`sync-codex-tokens.mjs` regenerates `apps/desktop/src/styles/codex-tokens.css`
+from the Codex desktop stylesheet in a local InterfaceAtlas checkout
+(`--atlas <path>`, default `~/Documents/Projects/InterfaceAtlas`). Both sync
+scripts read that checkout's `snapshot-26.1007/assets`. Run it when
+that snapshot changes and commit the regenerated file.
+
+`node scripts/sync-atlas-primitives.mjs --atlas <path>` extracts the original
+Button, Checkbox, RadioGroup and LoadingIndicator CSS modules from that same
+snapshot into `components/ui/*.atlas.css`. Each output records its source hash;
+only class/keyframe names and mapped attributes are adapted. React adapters
+retain Burette's props and Radix interactions; adjacent non-generated CSS adds
+reduced-motion, invalid-state and alignment support. Compare
+`/dev/codex-theme.html` with Atlas's `original.html?story=<component>` in both
+themes after changing these adapters. This does not change the classic shell.
+
+### Viewer controls
+
+`vp run build:viewer-controls` bundles `apps/desktop/src/preview-controls/`
+into `PreviewExtension/Web/native-viewer-menus.js` and its plugin mirror.
+Rebuild after editing the adapter, standalone Menu behavior, shared Menu/Popover CSS or
+theme engine/tokens. The generated bundle retains the existing runtime filename
+and message contracts; do not edit it by hand.
+
 ## Release
 
 Release work uses:

@@ -1,0 +1,21 @@
+/* Atlas Popover surface, shared with the standalone molecular preview. */
+@layer components {
+  .atlas-popover-surface {
+    border-radius: var(--radius-xl);
+    color: var(--color-text);
+    background: var(--color-surface-elevated-secondary);
+    box-shadow: 0 0 0 var(--popover-overlay-ring-width) var(--color-border-overlay), var(--shadow-popover-overlay);
+  }
+  .atlas-popover-surface[data-opaque="false"] {
+    background: color-mix(in srgb, var(--color-surface-elevated-secondary) 90%, transparent);
+  }
+  .atlas-popover-surface[data-variant="menu"] {
+    border-radius: var(--radius-2xl);
+    background: var(--color-surface-elevated-secondary);
+    box-shadow: var(--shadow-dropdown-overlay);
+  }
+  .atlas-popover-surface[data-variant="comment"] {
+    border-radius: var(--radius-2xl);
+    box-shadow: 0 0 0 1px var(--color-border-subtle), var(--shadow-lg-stronger);
+  }
+}

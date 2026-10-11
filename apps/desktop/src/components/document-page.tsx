@@ -1,4 +1,4 @@
-import { Spinner } from "@/components/ui/spinner";
+import { FileViewerErrorState, FileViewerLoadingState } from "./ui/file-viewer-state";
 import "katex/dist/katex.min.css";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
@@ -29,13 +29,13 @@ export function DocumentSurface({ path }: { path: string }) {
   return (
     <div className="document-stage">
       {source.status === "error" ? (
-        <div className="flex h-full items-center justify-center p-6 text-sm text-destructive" role="alert">{source.message}</div>
+        <FileViewerErrorState className="h-full" error={source.error} title="Could not open file" retry="always" onRetry={source.retry} />
       ) : source.source ? (
         detectCategory(basename(path)) === "pdf"
           ? <PdfDocumentViewer source={source.source} />
           : <GenericDocumentViewer source={source.source} />
       ) : (
-        <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground"><Spinner aria-label={`Loading ${basename(path)}`} /></div>
+        <FileViewerLoadingState className="h-full" />
       )}
     </div>
   );
@@ -92,11 +92,11 @@ function GenericDocumentViewer({ source }: { source: ViewerSource }) {
 type DocumentSourceState =
   | { status: "loading"; source: null }
   | { status: "ready"; source: ViewerSource }
-  | { status: "error"; source: null; message: string };
+  | { status: "error"; source: null; error: unknown };
 
 // The web view cannot read arbitrary paths through the asset protocol, so the desktop
 // app pulls the bytes over IPC. Browser dev keeps using its own read-file bridge.
-function useDocumentSource(path: string): DocumentSourceState {
+function useDocumentSource(path: string): DocumentSourceState & { retry: () => void } {
   const devSource = useMemo<ViewerSource | null>(() => {
     if (isTauriRuntime()) return null;
     // Web-demo paths exist only in the in-memory virtual store; the dev-server
@@ -112,21 +112,17 @@ function useDocumentSource(path: string): DocumentSourceState {
       identityKey: path,
     };
   }, [path]);
-  const [state, setState] = useState<DocumentSourceState>(() => (
-    devSource ? { status: "ready", source: devSource } : { status: "loading", source: null }
-  ));
+  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState<{ path: string; attempt: number; value: DocumentSourceState } | null>(null);
 
   useEffect(() => {
-    if (devSource) {
-      setState({ status: "ready", source: devSource });
-      return;
-    }
+    if (devSource) return;
     let cancelled = false;
-    setState({ status: "loading", source: null });
+    setState({ path, attempt, value: { status: "loading", source: null } });
     invoke<ArrayBuffer>("read_document_file", { path })
       .then((bytes) => {
         if (cancelled) return;
-        setState({
+        setState({ path, attempt, value: {
           status: "ready",
           source: {
             kind: "blob",
@@ -134,18 +130,23 @@ function useDocumentSource(path: string): DocumentSourceState {
             identityKey: path,
             fileName: basename(path),
           },
-        });
+        } });
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        setState({ status: "error", source: null, message: error instanceof Error ? error.message : String(error) });
+        setState({ path, attempt, value: { status: "error", source: null, error } });
       });
     return () => {
       cancelled = true;
     };
-  }, [devSource, path]);
+  }, [devSource, path, attempt]);
 
-  return state;
+  // Never render the previous file (or a failed attempt) under a new filename,
+  // even on the render before the effect's cleanup has run.
+  const value: DocumentSourceState = devSource ? { status: "ready", source: devSource }
+    : state?.path === path && state.attempt === attempt ? state.value
+    : { status: "loading", source: null };
+  return { ...value, retry: () => setAttempt(value => value + 1) };
 }
 
 const DOCUMENT_MIME_TYPES: Record<string, string> = {

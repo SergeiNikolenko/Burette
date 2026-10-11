@@ -82,11 +82,11 @@ export function showMesoscaleObjectMenu(
   };
   const selectionItems: MenuItemSpec[] = bulk
     ? [
-        { kind: "item", id: "mesoscale-isolate-selection", text: "Isolate Selection", action: () => run({ type: "isolateSelection" }) },
-        { kind: "item", id: "mesoscale-hide-selection", text: "Hide Selection", action: () => run({ type: "setSelectionVisibility", visible: false }) },
-        { kind: "item", id: "mesoscale-show-selection", text: "Show Selection", action: () => run({ type: "setSelectionVisibility", visible: true }) },
+        { kind: "item", id: "mesoscale-isolate-selection", text: "Isolate selection", action: () => run({ type: "isolateSelection" }) },
+        { kind: "item", id: "mesoscale-hide-selection", text: "Hide selection", action: () => run({ type: "setSelectionVisibility", visible: false }) },
+        { kind: "item", id: "mesoscale-show-selection", text: "Show selection", action: () => run({ type: "setSelectionVisibility", visible: true }) },
         { kind: "separator" },
-        { kind: "item", id: "mesoscale-clear-selection", text: "Clear Selection", action: () => run({ type: "setSelection", mode: "clear" }) },
+        { kind: "item", id: "mesoscale-clear-selection", text: "Clear selection", action: () => run({ type: "setSelection", mode: "clear" }) },
       ]
     : [
         { kind: "item", id: "mesoscale-select", text: item.kind === "group" ? "Select all in group" : "Select", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "replace" }) },
@@ -94,7 +94,7 @@ export function showMesoscaleObjectMenu(
         { kind: "item", id: "mesoscale-toggle-selection", text: item.selected ? "Remove from Selection" : "Toggle Selection", disabled: item.kind === "mesh", action: () => run({ type: "setSelection", ref: item.ref, mode: "toggle" }) },
         ...(item.selected ? [
           { kind: "separator" as const },
-          { kind: "item" as const, id: "mesoscale-clear-selection", text: "Clear Selection", action: () => run({ type: "setSelection", mode: "clear" }) },
+          { kind: "item" as const, id: "mesoscale-clear-selection", text: "Clear selection", action: () => run({ type: "setSelection", mode: "clear" }) },
         ] : []),
       ];
   const items: MenuItemSpec[] = [

@@ -10,6 +10,8 @@ import type {
 import { isTauriRuntime } from "../../lib/tauri";
 import { isHostedMcpWidget } from "../../lib/hosted-mcp-widget";
 import { isWebDemoHeroEmbed } from "../../lib/web-demo-workspace";
+import { useViewerPreferences } from "../../hooks/use-settings";
+import { viewerAppearanceMessage } from "../../lib/theme";
 import {
   isGridDocumentCloseTransitionActive,
   replayPendingGridCloseTransitionRequests,
@@ -93,6 +95,7 @@ export function ViewerFrame({
 }) {
   const tauriRuntime = isTauriRuntime();
   const heroEmbed = isWebDemoHeroEmbed();
+  const preferences = useViewerPreferences();
   const sandbox = viewerFrameSandbox();
   const closeTransitionActive = document.renderer === "grid2d"
     && isGridDocumentCloseTransitionActive(document.id);
@@ -125,6 +128,13 @@ export function ViewerFrame({
     active: boolean,
     identity?: SourcePreviewIdentity,
   ) => {
+    // The runtime bakes the theme of the moment it was built, and live theme
+    // changes only reach frames mounted at that time. A frame mounted later (the
+    // dock remounts after Settings) has to be told the current theme.
+    event.currentTarget.contentWindow?.postMessage({
+      source: "burette-host",
+      body: viewerAppearanceMessage(preferences),
+    }, "*");
     onViewerLoad?.(event.currentTarget, active);
     if (document.renderer === "grid2d") {
       if (readOnly) {
@@ -165,9 +175,7 @@ export function ViewerFrame({
       "data-source-preview-role": active ? "active" : "staging",
       "data-source-preview-request-id": identity?.requestId,
       "data-source-preview-revision": identity?.revision,
-      onLoad: document.renderer === "grid2d" || onViewerLoad || (!active && identity)
-        ? (event: SyntheticEvent<HTMLIFrameElement>) => handleFrameLoad(event, active, identity)
-        : undefined,
+      onLoad: (event: SyntheticEvent<HTMLIFrameElement>) => handleFrameLoad(event, active, identity),
       style: active ? undefined : {
         position: "absolute" as const,
         inset: 0,
@@ -200,9 +208,7 @@ export function ViewerFrame({
       "data-renderer": document.renderer,
       "data-read-only": readOnly ? "true" : undefined,
       name: readOnly ? "burette-read-only" : "burette-editable",
-      onLoad: document.renderer === "grid2d" || onViewerLoad
-        ? (event: SyntheticEvent<HTMLIFrameElement>) => handleFrameLoad(event, true)
-        : undefined,
+      onLoad: (event: SyntheticEvent<HTMLIFrameElement>) => handleFrameLoad(event, true),
     };
     const runtimePath = runtimePathForFrame(document.runtimePath);
     return tauriRuntime ? (

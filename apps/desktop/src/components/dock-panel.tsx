@@ -4,16 +4,16 @@ import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { activeViewerIframeForDocument, postToXyzrenderViewer } from "../lib/viewer-bridge";
 import type { AnimationSource } from "./xyzrender-animation-dialog";
 import { Switch } from "./ui/switch";
+import { Badge } from "./ui/badge";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
-import { ChevronDown } from "./ui/app-icons";
+import { ChevronDown, FileBlank, Warning } from "./ui/app-icons";
 import { XyzrenderProperties } from "./xyzrender-properties";
 import { StoryMarkdown } from "./story-markdown";
+import { DockHeader } from "./dock-header";
 import { DockFileTabs } from "./dock-file-tabs";
 import { useDropHighlightReset } from "../hooks/use-drop-highlight-reset";
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type ComponentProps } from "react";
-import { Plus as Add01Icon, Atom as Atom01Icon, X as Cancel01Icon, FileBlank as File02Icon, Folder as Folder01Icon, Search as Search01Icon } from "@/components/ui/app-icon-data";
-import { HugeiconsIcon } from "@hugeicons/react";
+import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { join, resourceDir } from "@tauri-apps/api/path";
 import { DOCK_TAB_LABELS, createDockTab, dockFileEntries, dockTabCatalog, type DockArea, type DockFileEntry, type DockTabKind } from "../lib/dock";
@@ -27,13 +27,15 @@ import { ViewerFrame } from "./editor-area/viewer-frame";
 import { TextFileViewer } from "./text-file-viewer";
 import { MarkdownRichViewer } from "./text-file-viewer/markdown-rich-viewer";
 import { useSourceEditing } from "../lib/source-editing/context";
-import { formatBytes } from "./format";
+import { TextDocumentInfoPanel } from "./text-document-info-panel";
+import { FileInfoPanel } from "./file-info-panel";
+import { basename } from "../lib/sidebar-projects";
+import { pathExtension } from "../lib/file-routing";
 import { StructureInfoPanel } from "./structure-info-panel";
 import { JobsPanel } from "./jobs-panel";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { PanelEmptyState } from "./ui/panel-empty-state";
 import { FoldingAnalysisPanel, useFoldingResult } from "./folding-results-panel";
 import { SpectrumInfoPanel, SpectrumPeakTablePanel, SpectrumViewer } from "./spectrum-viewer";
 import { readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
@@ -54,24 +56,6 @@ type DockPanelProps = {
   state: ShellViewState;
   actions: ShellActions;
   readOnly?: boolean;
-};
-
-const dockTabIcons: Record<DockTabKind, ComponentProps<typeof HugeiconsIcon>["icon"]> = {
-  scene: Atom01Icon,
-  xyzrender: Atom01Icon,
-  files: Folder01Icon,
-  spectrum: Atom01Icon,
-  text: File02Icon,
-  story: File02Icon,
-  inspector: Search01Icon,
-  folding: Atom01Icon,
-  "structure-basket": Atom01Icon,
-  compare: Atom01Icon,
-  jobs: File02Icon,
-  logs: File02Icon,
-  diagnostics: Search01Icon,
-  review: Search01Icon,
-  "chemical-space": Atom01Icon,
 };
 
 function resolveChemicalSpaceDocument(
@@ -99,6 +83,8 @@ function resolveChemicalSpaceDocument(
 }
 
 export function DockPanel({ area, state, actions, readOnly = false }: DockPanelProps) {
+  const panelId = useId();
+  const panel = useRef<HTMLElement>(null);
   const [dropActive, setDropActive] = useState(false);
   useDropHighlightReset(setDropActive);
 
@@ -107,6 +93,10 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     ? [configuredTabs.find((tab) => tab.kind === "inspector") ?? createDockTab("inspector")]
     : configuredTabs;
   const open = area === "right" ? state.rightDockOpen : state.bottomDockOpen;
+  useLayoutEffect(() => {
+    if (open || !panel.current?.contains(document.activeElement)) return;
+    panel.current.closest(".app-shell")?.querySelector<HTMLButtonElement>(`button[aria-label="Show ${area} dock"]`)?.focus();
+  }, [open, area]);
   const dockDocumentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
@@ -148,7 +138,8 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     && (tab.kind !== "scene" || Boolean(mesoscaleDockDocument))
   ));
   const activeTab = visibleTabs.find((tab) => tab.kind === activeTabKind) ?? visibleTabs[0] ?? tabs[0];
-  const filesTabDragPayload = dockFilesDragPayload(dockDocument, dockTextDocument, dockTool);
+  const fileSelection = dockFileDocuments(state, area);
+  const filesTabDragPayload = dockFilesDragPayload(fileSelection.document, fileSelection.textDocument, dockTool);
   const filesTabDrag = useSidebarStructureDrag({ state, actions, disabled: readOnly, getPayload: () => filesTabDragPayload });
   const dockDrops = useMemo(
     () => state.dockDroppedStructures.filter((item) => item.area === area && item.tabKind === activeTab.kind),
@@ -216,6 +207,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
 
   return (
     <aside
+      ref={panel}
       className="dock-panel"
       data-area={area}
       data-active-tab={activeTab.kind}
@@ -233,79 +225,12 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
       aria-label={`${area} dock`}
     >
       <div className="dock-panel-inner">
-        <TooltipProvider>
-          <div className="dock-header">
-            <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
-              {visibleTabs.map((tab) => {
-                const Icon = dockTabIcons[tab.kind];
-                const active = tab.kind === activeTab.kind;
-                const closeTab = () => {
-                  if (visibleTabs.length > 1) {
-                    actions.closeDockTab(area, tab.id);
-                    return;
-                  }
-                  actions.setDockOpen(area, false);
-                };
-                return (
-                  <div className="dock-tab-shell" data-active={active || undefined} key={tab.id}>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="dock-tab"
-                      data-active={active || undefined}
-                      draggable={tab.kind === "files" && Boolean(filesTabDragPayload)}
-                      {...(tab.kind === "files" ? filesTabDrag : {})}
-                      onClick={() => actions.setDockActiveTab(area, tab.kind)}
-                      role="tab"
-                      aria-selected={active}
-                    >
-                      <HugeiconsIcon icon={Icon} className="size-[18px]" strokeWidth={2} aria-hidden="true" />
-                      <span>{DOCK_TAB_LABELS[tab.kind]}</span>
-                    </Button>
-                    {!readOnly && !(tab.kind === "xyzrender" && !rawTabs.some((rawTab) => rawTab.kind === "xyzrender")) && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-2xs"
-                            className="dock-tab-close"
-                            aria-label={visibleTabs.length > 1 ? `Close ${DOCK_TAB_LABELS[tab.kind]}` : `Close ${area} dock`}
-                            onClick={closeTab}
-                          >
-                            <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent showArrow={false}>Close {DOCK_TAB_LABELS[tab.kind]}</TooltipContent>
-                      </Tooltip>
-                    )}
-                  </div>
-                );
-              })}
-              {!readOnly ? (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button type="button" variant="ghost" size="icon-sm" className="dock-icon-button" onClick={showAddMenu} aria-label={`Add ${area} dock tab`}>
-                      <HugeiconsIcon icon={Add01Icon} aria-hidden="true" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent showArrow={false}>Add panel</TooltipContent>
-                </Tooltip>
-              ) : null}
-            </div>
-            {!readOnly ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button type="button" variant="ghost" size="icon-sm" className="dock-icon-button" onClick={() => actions.setDockOpen(area, false)} aria-label={`Close ${area} dock`}>
-                    <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent showArrow={false}>Close panel</TooltipContent>
-              </Tooltip>
-            ) : null}
-          </div>
-        </TooltipProvider>
+        <DockHeader area={area} tabs={visibleTabs} activeKind={activeTab.kind} panelId={panelId} readOnly={readOnly}
+          transientTabId={rawTabs.some(tab => tab.kind === "xyzrender") ? undefined : visibleTabs.find(tab => tab.kind === "xyzrender")?.id}
+          fileDragProps={{ ...filesTabDrag, draggable: Boolean(filesTabDragPayload) }}
+          onSelect={kind => actions.setDockActiveTab(area, kind)} onClose={id => actions.closeDockTab(area, id)}
+          onAdd={showAddMenu} onHide={() => actions.setDockOpen(area, false)} />
+        <div className="dock-panel-body" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${activeTab.kind}`} tabIndex={0}>
         <DockPanelContent
           area={area}
           activeTabKind={activeTab.kind}
@@ -313,6 +238,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
           actions={actions}
           dockDrops={dockDrops}
         />
+        </div>
       </div>
     </aside>
   );
@@ -342,10 +268,7 @@ function DockPanelContent({
   const hoveredGridRow = state.hoveredGridRows[(dockDocument ?? activeDocument)?.id ?? ""] ?? null;
   const chemicalSpaceDocument = resolveChemicalSpaceDocument(state, dockDocument);
   const activeTextDocument = activeTextDocumentFromState(state);
-  // Without an explicit pin the dock serves the active document, so the Files
-  // list must mark that document rather than nothing.
-  const effectiveDockDocument = dockDocument ?? (dockDocumentId || dockTool ? null : activeDocument);
-  const effectiveDockTextDocument = dockTextDocument ?? (dockDocumentId || dockTool ? null : activeTextDocument);
+  const { document: effectiveDockDocument, textDocument: effectiveDockTextDocument } = dockFileDocuments(state, area);
   const fileEntries = activeTabKind === "files"
     ? dockFileEntries({
         dockDrops,
@@ -359,7 +282,7 @@ function DockPanelContent({
   if (activeTabKind === "scene") {
     return isMesoscaleViewerDocument(dockStructureDocument)
       ? <MesoscaleScenePanel document={dockStructureDocument} />
-      : <DockEmptyState title="No mesoscale model open" description="Open a CellPack, PetWorld, .molx, .molj, or .mesozip model to inspect its scene." />;
+      : <DockEmptyState title="No model selected" />;
   }
   if (activeTabKind === "spectrum") {
     const spectrumDocument = dockStructureDocument?.renderer === "spectrum" ? dockStructureDocument : null;
@@ -372,13 +295,16 @@ function DockPanelContent({
     }
     return (
       <DockEmptyState
-        title="No spectrum open"
-        description="Open a spectrum file to inspect its peaks here."
+        title="No spectrum selected"
         action={{ label: "Open file", run: () => void actions.chooseFiles() }}
       />
     );
   }
   if (activeTabKind === "files") {
+    // Following the main tab must not instantiate a second renderer in a hidden
+    // dock. Explicitly selected dock files retain their existing keep-alive.
+    const open = area === "right" ? state.rightDockOpen : state.bottomDockOpen;
+    if (!open && !dockDocumentId && !dockTool) return null;
     const fileTabs = (
       <DockFileTabs
         state={state}
@@ -397,32 +323,31 @@ function DockPanelContent({
           textDocuments={state.textDocuments} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />
       </div></div>;
     }
-    if (dockDocument) {
+    if (effectiveDockDocument) {
       return (
         <div className="dock-files-view">
           {fileTabs}
           <div className="dock-viewer">
-            {dockDocument.renderer === "spectrum"
-              ? <SpectrumViewer document={dockDocument} embedded />
-              : <ViewerFrame document={dockDocument} readOnly />}
+            {effectiveDockDocument.renderer === "spectrum"
+              ? <SpectrumViewer document={effectiveDockDocument} embedded />
+              : <ViewerFrame document={effectiveDockDocument} readOnly />}
           </div>
         </div>
       );
     }
-    if (dockTextDocument) {
+    if (effectiveDockTextDocument) {
       return (
         <div className="dock-files-view">
           {fileTabs}
           <div className="dock-viewer">
-            <TextFileViewer document={dockTextDocument} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />
+            <TextFileViewer document={effectiveDockTextDocument} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />
           </div>
         </div>
       );
     }
     return (
       <DockEmptyState
-        title="No file here yet"
-        description="Drop a structure onto this panel, or open one to view it alongside the active tab."
+        title="No file selected"
         action={{ label: "Open file", run: () => void actions.chooseFiles() }}
       />
     );
@@ -462,8 +387,7 @@ function DockPanelContent({
     }
     return (
       <DockEmptyState
-        title="No xyzr preview open"
-        description="Open an .inp or .xyzr file to change its presets, van der Waals surface and field settings."
+        title="No surface selected"
         action={{ label: "Open file", run: () => void actions.chooseFiles() }}
       />
     );
@@ -473,15 +397,20 @@ function DockPanelContent({
       ? <StructureStoryPanel story={state.structureStory} document={state.activeDocument} actions={actions} />
       : (
           <DockEmptyState
-            title="No story yet"
-            description="Open a sequence of structures to lay them out as a story."
+            title="No story selected"
             action={{ label: "Open structures", run: () => void actions.chooseFiles() }}
           />
         );
   }
   if (activeTabKind === "inspector") {
     if (area === "right" && activePageKind === "ketcher") return <KetcherInspectorPanel state={state} />;
-    if (dockTextDocument) return <TextDocumentInfoPanel document={dockTextDocument} actions={actions} />;
+    if (effectiveDockTextDocument) return <TextDocumentInfoPanel document={effectiveDockTextDocument} actions={actions} />;
+    // Document pages have a path, not a molecular/text record. Do not fabricate
+    // metadata or override an explicitly pinned inspector source.
+    if (!dockDocumentId && !dockTool && state.activeTab?.location.kind === "document") {
+      const path = state.activeTab.location.path;
+      return <FileInfoPanel file={{ path, title: basename(path), extension: pathExtension(path) }} actions={actions} />;
+    }
     if (dockStructureDocument?.renderer === "spectrum") return <SpectrumInfoPanel document={dockStructureDocument} />;
     if (isMesoscaleViewerDocument(dockStructureDocument)) return <MesoscaleInfoPanel document={dockStructureDocument} />;
     return (
@@ -569,38 +498,8 @@ function DockPanelContent({
   );
 }
 
-// Every idle tab used to be one grey sentence centred on an empty panel, with
-// nothing to act on and no hint of what the tab is for. One shape covers them
-// all: what it is, why it is empty, and the action that fills it.
-function DockEmptyState({
-  title,
-  description,
-  action,
-}: {
-  title: string;
-  description: string;
-  action?: { label: string; run: () => void };
-}) {
-  return (
-    <div className="dock-content dock-content-empty">
-      <Empty className="dock-empty-state">
-        <EmptyHeader>
-          <EmptyMedia variant="icon">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
-              <path d="M3 3.5h10v9H3zM3 6.5h10" />
-            </svg>
-          </EmptyMedia>
-          <EmptyTitle>{title}</EmptyTitle>
-          <EmptyDescription>{description}</EmptyDescription>
-        </EmptyHeader>
-        {action ? (
-          <Button type="button" variant="secondary" size="sm" onClick={action.run}>
-            {action.label}
-          </Button>
-        ) : null}
-      </Empty>
-    </div>
-  );
+function DockEmptyState(props: Omit<React.ComponentProps<typeof PanelEmptyState>, "icon">) {
+  return <div className="dock-content dock-content-empty"><PanelEmptyState {...props} icon={<FileBlank />} /></div>;
 }
 
 const DEFAULT_XYZRENDER_DOCK_CONTROLS: XyzrenderControls = {
@@ -795,15 +694,12 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
 
   return (
     <div className="dock-content xyzrender-dock-panel">
-      <section className="structure-brief-card xyzrender-dock-card">
-        <Button type="button" variant="outline" className="xyzrender-editor-launch w-full h-10" onClick={() => { activeViewerIframeForDocument(document.id)?.contentWindow?.postMessage({ source: "burette-host", body: { type: "openXyzrenderEditor", documentId: document.id } }, "*"); }}>Orientation & animation…</Button>
+      <section className="xyzrender-dock-card grid min-w-0">
+        <Button type="button" variant="secondary" className="xyzrender-editor-launch w-full" onClick={() => { activeViewerIframeForDocument(document.id)?.contentWindow?.postMessage({ source: "burette-host", body: { type: "openXyzrenderEditor", documentId: document.id } }, "*"); }}>Orientation & animation…</Button>
         <div id="xyzrender-editor-controls" />
         <div className="structure-inspector-section-header">
-          <div>
-            <h3>Style</h3>
-            <p>{itemLabel}</p>
-          </div>
-          <span className="xyzrender-dock-badge">SVG</span>
+          <h3 className="min-w-0 wrap-anywhere">{itemLabel}</h3>
+          <Badge variant="secondary">SVG</Badge>
         </div>
         <XyzrenderPresetGallery
           preset={preset}
@@ -904,8 +800,8 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
         </CollapsibleContent>
       </Collapsible>
       <div className="xyzrender-dock-actions">
-        <button type="button" className="dock-action" onClick={() => apply()}>Apply</button>
-        <button type="button" className="dock-action" onClick={reset}>Reset</button>
+        <Button type="button" variant="secondary" size="sm" onClick={() => apply()}>Apply</Button>
+        <Button type="button" variant="secondary" size="sm" onClick={reset}>Reset</Button>
       </div>
     </div>
   );
@@ -913,18 +809,15 @@ function XyzrenderDockPanel({ document, actions }: { document: ViewerDocument; a
 
 function XyzrenderPresetGallery({ preset, onSelect }: { preset: string; onSelect: (preset: string) => void }) {
   return (
-    <div className="xyzrender-dock-preset-gallery" aria-label="xyzrender preset gallery">
+    <div className="xyzrender-dock-preset-gallery" role="group" aria-label="Rendering style">
       {XYZRENDER_README_PRESET_GALLERY.map((option) => (
-        <button
-          type="button"
-          className="xyzrender-dock-preset-tile"
+        <XyzrenderGalleryTile
           key={option.value}
-          aria-pressed={preset === option.value}
-          onClick={() => onSelect(option.value)}
-        >
-          <span>{option.label}</span>
-          <XyzrenderGalleryTileImage src={option.image} />
-        </button>
+          label={option.label}
+          image={option.image}
+          pressed={preset === option.value}
+          onSelect={() => onSelect(option.value)}
+        />
       ))}
     </div>
   );
@@ -938,7 +831,7 @@ function XyzrenderDisplayOptionsGallery({
   onSelect: (controls: XyzrenderControls) => void;
 }) {
   return (
-    <div className="xyzrender-dock-display-options" aria-label="xyzrender display options">
+    <div className="xyzrender-dock-display-options" role="group" aria-label="Display options">
       <div className="xyzrender-dock-subtitle">Display options</div>
       <div className="xyzrender-dock-display-grid">
         {XYZRENDER_README_DISPLAY_OPTIONS.map((option) => {
@@ -946,18 +839,15 @@ function XyzrenderDisplayOptionsGallery({
             ? (controls.displayHydrogens ?? "auto") === option.value
             : (controls.bondNotation ?? "aromatic") === option.value;
           return (
-            <button
-              type="button"
-              className="xyzrender-dock-preset-tile"
+            <XyzrenderGalleryTile
               key={`${option.group}-${option.value}`}
-              aria-pressed={active}
-              onClick={() => onSelect(option.group === "hydrogens"
+              label={option.label}
+              image={option.image}
+              pressed={active}
+              onSelect={() => onSelect(option.group === "hydrogens"
                 ? { ...controls, displayHydrogens: option.value as XyzrenderControls["displayHydrogens"] }
                 : { ...controls, bondNotation: option.value as XyzrenderControls["bondNotation"] })}
-            >
-              <span>{option.label}</span>
-              <XyzrenderGalleryTileImage src={option.image} />
-            </button>
+            />
           );
         })}
       </div>
@@ -976,20 +866,17 @@ function XyzrenderVdwGallery({
     ? controls.vdwAtoms ? "partial" : "all"
     : "off";
   return (
-    <div className="xyzrender-dock-vdw-options" aria-label="xyzrender vdW spheres">
+    <div className="xyzrender-dock-vdw-options" role="group" aria-label="Van der Waals spheres">
       <div className="xyzrender-dock-subtitle">vdW spheres</div>
       <div className="xyzrender-dock-vdw-grid">
         {XYZRENDER_README_VDW_OPTIONS.map((option) => (
-          <button
-            type="button"
-            className="xyzrender-dock-preset-tile"
+          <XyzrenderGalleryTile
             key={option.value}
-            aria-pressed={active === option.value}
-            onClick={() => onSelect(option.value)}
-          >
-            <span>{option.label}</span>
-            <XyzrenderGalleryTileImage src={option.image} />
-          </button>
+            label={option.label}
+            image={option.image}
+            pressed={active === option.value}
+            onSelect={() => onSelect(option.value)}
+          />
         ))}
       </div>
     </div>
@@ -1004,20 +891,17 @@ function XyzrenderHullGallery({
   onSelect: (mode: (typeof XYZRENDER_README_HULL_OPTIONS)[number]["value"]) => void;
 }) {
   return (
-    <div className="xyzrender-dock-hull-options" aria-label="xyzrender convex hull">
+    <div className="xyzrender-dock-hull-options" role="group" aria-label="Convex hull">
       <div className="xyzrender-dock-subtitle">Convex hull</div>
       <div className="xyzrender-dock-hull-grid">
         {XYZRENDER_README_HULL_OPTIONS.map((option) => (
-          <button
-            type="button"
-            className="xyzrender-dock-preset-tile"
+          <XyzrenderGalleryTile
             key={option.value}
-            aria-pressed={controls.hullMode === option.value}
-            onClick={() => onSelect(option.value)}
-          >
-            <span>{option.label}</span>
-            <XyzrenderGalleryTileImage src={option.image} />
-          </button>
+            label={option.label}
+            image={option.image}
+            pressed={controls.hullMode === option.value}
+            onSelect={() => onSelect(option.value)}
+          />
         ))}
       </div>
     </div>
@@ -1032,23 +916,29 @@ function XyzrenderPoreGallery({
   onSelect: (mode: (typeof XYZRENDER_README_PORE_OPTIONS)[number]["value"]) => void;
 }) {
   return (
-    <div className="xyzrender-dock-pore-options" aria-label="xyzrender hull faces and pore detection">
+    <div className="xyzrender-dock-pore-options" role="group" aria-label="Hull faces and pore detection">
       <div className="xyzrender-dock-subtitle">Hull faces &amp; pore detection</div>
       <div className="xyzrender-dock-pore-grid">
         {XYZRENDER_README_PORE_OPTIONS.map((option) => (
-          <button
-            type="button"
-            className="xyzrender-dock-preset-tile"
+          <XyzrenderGalleryTile
             key={option.value}
-            aria-pressed={controls.hullMode === option.value}
-            onClick={() => onSelect(option.value)}
-          >
-            <span>{option.label}</span>
-            <XyzrenderGalleryTileImage src={option.image} />
-          </button>
+            label={option.label}
+            image={option.image}
+            pressed={controls.hullMode === option.value}
+            onSelect={() => onSelect(option.value)}
+          />
         ))}
       </div>
     </div>
+  );
+}
+
+function XyzrenderGalleryTile({ label, image, pressed, onSelect }: { label: string; image: string; pressed: boolean; onSelect: () => void }) {
+  return (
+    <Button type="button" variant="ghost" size="sm" className="xyzrender-dock-preset-tile" aria-pressed={pressed} onClick={onSelect}>
+      <XyzrenderGalleryTileImage src={image} />
+      <span className="xyzrender-dock-preset-label">{label}</span>
+    </Button>
   );
 }
 
@@ -1066,7 +956,7 @@ function XyzrenderGalleryTileImage({ src }: { src: string }) {
     });
   }, [resolvedSrc, src]);
 
-  return <img src={resolvedSrc} alt="" loading="lazy" draggable={false} onError={handleError} />;
+  return <img src={resolvedSrc} alt="" width={96} height={58} loading="lazy" draggable={false} onError={handleError} />;
 }
 
 function XyzrenderDockCheckbox({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
@@ -1086,38 +976,6 @@ function XyzrenderDockTriState({ label, value, onChange }: { label: string; valu
         <SelectTrigger aria-label={label} className="w-28"><SelectValue /></SelectTrigger>
         <SelectContent><SelectGroup><SelectItem value="default">Default</SelectItem><SelectItem value="on">On</SelectItem><SelectItem value="off">Off</SelectItem></SelectGroup></SelectContent>
       </Select>
-    </label>
-  );
-}
-
-function XyzrenderDockNumber({
-  label,
-  value,
-  min,
-  max,
-  step,
-  onChange,
-}: {
-  label: string;
-  value: number | null | undefined;
-  min?: number;
-  max?: number;
-  step: string;
-  onChange: (value: number | null) => void;
-}) {
-  const current = typeof value === "number" && Number.isFinite(value) ? value : "";
-  return (
-    <label className="xyzrender-dock-field">
-      <span>{label}</span>
-      <input
-        type="number"
-        value={current}
-        min={min}
-        max={max}
-        step={step}
-        placeholder="Auto"
-        onChange={(event) => onChange(xyzrenderNumberValue(event.currentTarget.value))}
-      />
     </label>
   );
 }
@@ -1162,18 +1020,6 @@ function xyzrenderTriStateValue(value: string) {
   return null;
 }
 
-function xyzrenderNumberValue(value: string) {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const number = Number(trimmed);
-  return Number.isFinite(number) ? number : null;
-}
-
-function normalizeXyzrenderFieldMode(value: string): XyzrenderControls["fieldMode"] {
-  if (value === "off" || value === "density" || value === "mo" || value === "esp" || value === "nci") return value;
-  return "auto";
-}
-
 function KetcherDockTool({
   actions,
   area,
@@ -1205,54 +1051,12 @@ function KetcherDockTool({
   );
 }
 
-function TextDocumentInfoPanel({ document, actions }: { document: TextFileDocument; actions: ShellActions }) {
-  return (
-    <div className="dock-content structure-brief">
-      <section className="structure-brief-card">
-        <div className="structure-brief-card-header">
-          <div>
-            <small>TEXT FILE</small>
-            <h3>{document.title}</h3>
-          </div>
-          <span className="structure-brief-pill">{document.extension ? document.extension.toUpperCase() : "TEXT"}</span>
-        </div>
-        <div className="structure-brief-rows">
-          <StructureBriefTextRow label="Language" value={document.language} />
-          <StructureBriefTextRow label="Size" value={formatBytes(document.byteCount)} />
-          <StructureBriefTextRow label="Path" value={document.path} />
-          {document.truncated && <StructureBriefTextRow label="Preview" value="Truncated" />}
-        </div>
-        <div className="structure-brief-actions">
-          <button type="button" className="dock-action" onClick={() => void actions.showTextFileMetadata(document)}>
-            Show metadata
-          </button>
-          <button type="button" className="dock-action" onClick={() => void actions.revealPath(document.path, "file")}>
-            Reveal file
-          </button>
-          <button type="button" className="dock-action" onClick={() => void actions.copyPath(document.path, "file")}>
-            Copy path
-          </button>
-        </div>
-      </section>
-    </div>
-  );
-}
-
 function KetcherInspectorPanel({ state }: { state: ShellViewState }) {
   return (
     <div className="ketcher-dock-portal" data-ketcher-dock-portal="right">
       <div className="dock-content dock-content-empty">
         <div className="dock-empty">{state.activeTab?.location.kind === "ketcher" ? <Spinner className="mx-auto" aria-label="Loading structure text" /> : "Open Ketcher to import or export a structure"}</div>
       </div>
-    </div>
-  );
-}
-
-function StructureBriefTextRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="structure-brief-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   );
 }
@@ -1345,9 +1149,7 @@ function SingleDocumentTextPanel({
 
   if (!activeDocument && !activeTextDocument) {
     return (
-      <div className="dock-content dock-content-empty">
-        <div className="dock-empty dock-empty-large">Open a structure or text file to inspect its text</div>
-      </div>
+      <DockEmptyState title="No file selected" />
     );
   }
 
@@ -1390,9 +1192,9 @@ function SingleDocumentTextPanel({
 
   return (
     <div className="dock-content dock-content-empty">
-      <div className="dock-empty dock-empty-large">
-        {error ? `Text preview failed: ${error}` : <Spinner className="mx-auto" aria-label="Loading text" />}
-      </div>
+      {error ? <PanelEmptyState title="Couldn’t load this preview" description={error} icon={<Warning />} /> : (
+        <div className="dock-empty dock-empty-large"><Spinner className="mx-auto" aria-label="Loading text" /></div>
+      )}
     </div>
   );
 }
@@ -1456,7 +1258,7 @@ function DockingDocumentTextPanel({
   if (!activeSource) {
     return (
       <div className="dock-content dock-content-empty">
-        <div className="dock-empty dock-empty-large">No source files are attached to this view.</div>
+        <PanelEmptyState title="No source files attached" icon={<FileBlank />} />
       </div>
     );
   }
@@ -1483,9 +1285,11 @@ function DockingDocumentTextPanel({
         </div>
       ) : (
         <div className="dock-content dock-content-empty">
-          <div className="dock-empty dock-empty-large">
-            {errors[activeSource.key] ? `Text preview failed for ${activeSource.title}: ${errors[activeSource.key]}` : <Spinner className="mx-auto" aria-label={`Loading ${activeSource.title}`} />}
-          </div>
+          {errors[activeSource.key] ? (
+            <PanelEmptyState title={`Couldn’t load ${activeSource.title}`} description={errors[activeSource.key]} icon={<Warning />} />
+          ) : (
+            <div className="dock-empty dock-empty-large"><Spinner className="mx-auto" aria-label={`Loading ${activeSource.title}`} /></div>
+          )}
         </div>
       )}
     </div>
@@ -1549,6 +1353,17 @@ function activeTextDocumentFromState(state: ShellViewState) {
     state.textDocuments.find((document) => document.path === location.path) ??
     null
   );
+}
+
+// The tab label, preview and drag payload must resolve the same selection.
+// A stale explicit pin stays empty rather than silently switching documents.
+function dockFileDocuments(state: ShellViewState, area: DockArea) {
+  const documentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
+  const tool = area === "right" ? state.rightDockTool : state.bottomDockTool;
+  return {
+    document: documentId ? state.documents.find(document => document.id === documentId) ?? null : tool ? null : state.activeDocument,
+    textDocument: documentId ? state.textDocuments.find(document => document.id === documentId) ?? null : tool ? null : activeTextDocumentFromState(state),
+  };
 }
 
 function activeDockFileEntryKey(

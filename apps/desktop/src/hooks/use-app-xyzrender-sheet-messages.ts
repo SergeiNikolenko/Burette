@@ -60,12 +60,13 @@ export function useAppXyzrenderSheetMessages({
       const resultType = body.type === "sceneTreeContextMenu" ? "sceneTreeContextMenuResult" : "molstarContextMenuResult";
       const reply = (result: { event: "select" | "closed" | "unsupported"; id?: string; value?: string | number | boolean }) =>
         postMessageToViewerSource(source, { source: "burette-host", body: { type: resultType, requestId, ...result } });
-      // Browser-dev keeps the viewer's own menu; only the desktop app has NSMenu.
+      // The same bounded menu model feeds Atlas in the browser and NSMenu in
+      // Tauri. Closing either presentation commits the viewer's live edits.
       // SDF grids accept the SDF records "Open in" sends; other grid formats do not.
       const gridTargets = documents
         .filter(document => document.renderer === "grid2d" && ["sdf", "sd"].includes(document.extension.toLowerCase()))
         .map(document => ({ id: document.id, title: document.title }));
-      const items = isTauriRuntime() ? molstarContextMenuItems(body.items, (id, value) => reply({ event: "select", id, value }), gridTargets) : [];
+      const items = molstarContextMenuItems(body.items, (id, value) => reply({ event: "select", id, value }), gridTargets);
       if (!items.length) {
         reply({ event: "unsupported" });
         return true;

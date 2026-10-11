@@ -29,13 +29,11 @@ import type { KetcherEditorApi } from "./ketcher-editor";
 import { registerKetcherAgentController, unregisterKetcherAgentController, type KetcherPersistWriter } from "../lib/ketcher-agent";
 import { KetcherPersistRequestPrompt } from "./ketcher/persist-request";
 import { RadixDropdownMenu } from "./radix-menu";
-import { ShortcutTooltip } from "./shortcut-tooltip";
 import { ChevronDown, Minus, Plus, ColorTheme, Grid, Cube, Camera } from "@/components/ui/app-icons";
 import "./ketcher/workspace.css";
 import { KetcherTextPanel } from "./ketcher/text-panel";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -317,7 +315,7 @@ function applyKetcherTooltips(root: HTMLElement) {
   root.querySelectorAll<HTMLElement>(KETCHER_TOOLTIP_SELECTOR).forEach((target) => {
     const label = ketcherTooltipLabel(target);
     if (!label) return;
-    if (target.getAttribute("data-slot") === "tooltip-trigger") {
+    if (target.hasAttribute("data-tooltip-trigger")) {
       target.removeAttribute("title");
     } else if (!target.getAttribute("title")) {
       target.setAttribute("title", label);
@@ -365,7 +363,7 @@ export function KetcherPage({
   const [editorHasActivated, setEditorHasActivated] = useState(false);
   const [exportingSketch, setExportingSketch] = useState(false);
   const [hasSketch, setHasSketch] = useState(Boolean(
-    location.draftKet?.trim() || location.draftMolfile?.trim() || state.ketcherDraftMolfile.trim(),
+    location.draftKet?.trim() || location.draftMolfile?.trim(),
   ));
   const [ketcherZoom, setKetcherZoom] = useState(DEFAULT_KETCHER_ZOOM);
   const [ketcherNarrow, setKetcherNarrow] = useState(false);
@@ -376,7 +374,7 @@ export function KetcherPage({
   const [preserved3dSource, setPreserved3dSource] = useState<KetcherSource3D | null>(null);
   const handledImportRequestIdRef = useRef<number | null>(null);
   const liveImportSerialRef = useRef(0);
-  const locallySavedDraftRef = useRef("");
+  const draftExportSerialRef = useRef(0);
   const inFlightImportRequestIdRef = useRef<number | null>(null);
   const nextImportRetryAtRef = useRef(0);
   const sketchDragRecordRef = useRef<StructureDragRecord | null>(null);
@@ -450,9 +448,8 @@ export function KetcherPage({
     if (location.importRequest) return Promise.resolve(false);
     if (panelMode?.purpose === "import" && liveImportDirty) return Promise.resolve(false);
     const draftKet = location.draftKet ?? "";
-    const draftMolfile = location.draftMolfile ?? state.ketcherDraftMolfile;
+    const draftMolfile = location.draftMolfile ?? "";
     if (!draftKet.trim() && !draftMolfile.trim()) return Promise.resolve(false);
-    if (!draftKet.trim() && draftMolfile.trimEnd() === locallySavedDraftRef.current) return Promise.resolve(false);
     const draftKey = JSON.stringify({ draftKet: draftKet.trim(), draftMolfile: draftMolfile.trimEnd() });
     if (restoredDraftRef.current === draftKey) return Promise.resolve(false);
     restoredDraftRef.current = draftKey;
@@ -470,7 +467,33 @@ export function KetcherPage({
         setStatus("Ketcher restore failed: " + (error instanceof Error ? error.message : String(error)));
         return false;
       });
-  }, [liveImportDirty, location.draftKet, location.draftMolfile, location.importRequest, panelMode, state.ketcherDraftMolfile]);
+  }, [liveImportDirty, location.draftKet, location.draftMolfile, location.importRequest, panelMode]);
+
+  const saveKetcherDraft = actions.saveKetcherDraft;
+  const persistDraft = useCallback(async (molfile?: string, ket?: string) => {
+    if (!ketcher) return;
+    const serial = ++draftExportSerialRef.current;
+    // KET retains macromolecules, reactions and annotations that MOL cannot.
+    // Read both formats from the same editor; a failed MOL export must not
+    // prevent saving a valid macromolecule KET.
+    const [molResult, ketResult] = await Promise.allSettled([
+      molfile === undefined ? withKetcherTimeout(ketcher.getMolfile("v2000"), "Sketch draft export") : Promise.resolve(molfile),
+      ket === undefined ? withKetcherTimeout(ketcher.getKet(), "Sketch KET draft export") : Promise.resolve(ket),
+    ]);
+    if (serial !== draftExportSerialRef.current) return;
+    if (molResult.status === "rejected" && ketResult.status === "rejected") throw ketResult.reason;
+    const draftMolfile = molResult.status === "fulfilled" ? molResult.value : "";
+    const draftKet = ketResult.status === "fulfilled" ? ketResult.value : undefined;
+    const hasCurrentSketch = !isBlankKetcherMolfile(draftMolfile) || Boolean(draftKet && !isBlankKetcherKet(draftKet));
+    const savedMolfile = hasCurrentSketch ? draftMolfile : "";
+    const savedKet = hasCurrentSketch ? draftKet : "";
+    // Mark this snapshot before publishing it, so the restore effect does not
+    // re-import our own autosave and discard the editor's undo/selection state.
+    restoredDraftRef.current = JSON.stringify({ draftKet: savedKet?.trim() ?? "", draftMolfile: savedMolfile.trimEnd() });
+    saveKetcherDraft({ tabId, molfile: savedMolfile, ket: savedKet });
+    setHasSketch(hasCurrentSketch);
+    if (!hasCurrentSketch) setPreserved3dSource(null);
+  }, [ketcher, saveKetcherDraft, tabId]);
 
   const applyHostedSeed = useCallback(async (instance: KetcherEditorApi, seed: HostedKetcherSeed | null) => {
     if (!seed) return;
@@ -536,23 +559,11 @@ export function KetcherPage({
 
   useEffect(() => {
     if (!ketcher) return;
-    return ketcher.subscribeChange(() => {
-      void ketcher.getMolfile("v2000")
-        .then((molfile) => {
-          const hasCurrentSketch = !isBlankKetcherMolfile(molfile);
-          setHasSketch(hasCurrentSketch);
-          if (!hasCurrentSketch) setPreserved3dSource(null);
-          if (hasCurrentSketch) {
-            locallySavedDraftRef.current = molfile.trimEnd();
-            actions.saveKetcherDraft(molfile);
-          } else {
-            locallySavedDraftRef.current = "";
-            actions.saveKetcherDraft("");
-          }
-        })
-        .catch(() => {});
+    const unsubscribe = ketcher.subscribeChange(() => {
+      void persistDraft().catch(() => {});
     });
-  }, [actions, ketcher]);
+    return () => { ++draftExportSerialRef.current; unsubscribe(); };
+  }, [ketcher, persistDraft]);
 
   useEffect(() => {
     if (!isActive || !ketcher) return;
@@ -561,10 +572,10 @@ export function KetcherPage({
 
   const retryEditorLoad = useCallback(() => {
     setKetcher(null);
-    setHasSketch(Boolean(location.draftKet?.trim() || location.draftMolfile?.trim() || state.ketcherDraftMolfile.trim()));
+    setHasSketch(Boolean(location.draftKet?.trim() || location.draftMolfile?.trim()));
     setStatus("Loading editor");
     setEditorReloadKey((key) => key + 1);
-  }, [location.draftKet, location.draftMolfile, state.ketcherDraftMolfile]);
+  }, [location.draftKet, location.draftMolfile]);
 
   const collectionTargets = useMemo(() => (
     state.documents
@@ -681,14 +692,14 @@ export function KetcherPage({
         setStatus("Ketcher loaded an empty sketch");
         return;
       }
-      actions.saveKetcherDraft(molfile);
+      await persistDraft(molfile);
       setPreserved3dSource(null);
       setHasSketch(true);
       setStatus("Ready");
     } catch (error) {
       setStatus("Ketcher import failed: " + (error instanceof Error ? error.message : String(error)));
     }
-  }, [actions, ketcher, output, panelMode]);
+  }, [ketcher, output, panelMode, persistDraft]);
 
   useEffect(() => {
     if (!ketcher || panelMode?.purpose !== "import" || !liveImportDirty) return;
@@ -709,7 +720,7 @@ export function KetcherPage({
           await waitForKetcherCanvasUpdate();
           if (liveImportSerialRef.current !== serial) return;
           if (!importText) {
-            actions.saveKetcherDraft("");
+            await persistDraft("", "");
             setPreserved3dSource(null);
             setHasSketch(false);
             setStatus("Ready");
@@ -722,8 +733,7 @@ export function KetcherPage({
             setStatus(`${label} did not produce a sketch`);
             return;
           }
-          locallySavedDraftRef.current = molfile.trimEnd();
-          actions.saveKetcherDraft(molfile);
+          await persistDraft(molfile);
           setPreserved3dSource(null);
           setHasSketch(true);
           setStatus("Ready");
@@ -734,7 +744,7 @@ export function KetcherPage({
       })();
     }, 220);
     return () => window.clearTimeout(timer);
-  }, [actions, detectedImportFormat, ketcher, liveImportDirty, output, panelMode]);
+  }, [detectedImportFormat, ketcher, liveImportDirty, output, panelMode, persistDraft]);
 
   const openSketch = useCallback(async (target: KetcherSketchTarget, collectionTargetPath?: string | null) => {
     if (!ketcher || exportingSketch) return;
@@ -753,7 +763,7 @@ export function KetcherPage({
       const collectionRecord = target === "collection"
         ? await ketcherCollectionRecord(ketcher, molfile, collectionFamily)
         : null;
-      actions.saveKetcherDraft(molfile);
+      await persistDraft(molfile, draftKet);
       await actions.openKetcherSketch({
         title: collectionRecord?.title ?? "ketcher-sketch.sdf",
         extension: collectionRecord?.extension ?? "sdf",
@@ -785,7 +795,7 @@ export function KetcherPage({
     } finally {
       setExportingSketch(false);
     }
-  }, [actions, exportingSketch, ketcher, preserved3dSource]);
+  }, [actions, exportingSketch, ketcher, preserved3dSource, persistDraft]);
 
   // The Database dialog asks for a SMILES query, and the sketch on the canvas is
   // the fragment the user means. Ketcher exports it itself, so the fragment
@@ -933,7 +943,7 @@ export function KetcherPage({
         }
         if (hasImportedStructure) {
           const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "Imported sketch export");
-          if (!isBlankKetcherMolfile(molfile)) actions.saveKetcherDraft(molfile);
+          if (!isBlankKetcherMolfile(molfile)) await persistDraft(molfile);
           setHasSketch(true);
           setPreserved3dSource(source3d);
         }
@@ -959,7 +969,7 @@ export function KetcherPage({
       }
     }
     return "failure";
-  }, [actions, ketcher]);
+  }, [ketcher, persistDraft]);
 
   const applyGridEdit = useCallback(() => {
     if (!ketcher || !gridEditSource || exportingSketch) return Promise.resolve();
@@ -1152,37 +1162,31 @@ export function KetcherPage({
           >
             <KetcherLogo />
           </span>
-          <div>
-            <h1>Ketcher</h1>
-            <p>{hasSketch ? "Molecular structure" : "Draw or import a structure"}</p>
-          </div>
+          <h1>Ketcher</h1>
         </div>
         <TooltipProvider>
         <div className="ketcher-page-actions" aria-label="Sketch actions">
           <div className="flex items-center gap-1.5" role="group" aria-label="Open sketch in a viewer">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" aria-label="Open sketch as cards" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>
+                <Button type="button" variant="secondary" size="icon-toolbar" aria-label="Open sketch as cards" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("grid")}>
                   <Grid className="size-4" aria-hidden="true" />
-                  Cards
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Open sketch as cards</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" aria-label="Open sketch in 3D" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>
+                <Button type="button" variant="secondary" size="icon-toolbar" aria-label="Open sketch in 3D" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("molstar")}>
                   <Cube className="size-4" aria-hidden="true" />
-                  3D
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Open sketch in 3D</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" aria-label="Open sketch as a rendered image" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>
+                <Button type="button" variant="secondary" size="icon-toolbar" aria-label="Open sketch as a rendered image" disabled={!ketcher || exportingSketch} onClick={() => void openSketch("xyzrender")}>
                   <Camera className="size-4" aria-hidden="true" />
-                  Render
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Open sketch as a rendered image</TooltipContent>
@@ -1225,14 +1229,14 @@ export function KetcherPage({
             ]}
             trigger={(
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" disabled={!ketcher || exportingSketch} aria-label="Open molecular compute menu">
+                <Button type="button" variant="secondary" size="toolbar" disabled={!ketcher || exportingSketch} aria-label="Open molecular compute menu">
                   Compute
                   <ChevronDown data-icon="inline-end" aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
             )}
           />
-          <TooltipContent showArrow={false}>Native molecular compute</TooltipContent>
+          <TooltipContent showArrow={false}>Molecular calculations</TooltipContent>
           </Tooltip>}
           <Tooltip>
           <RadixDropdownMenu
@@ -1271,7 +1275,7 @@ export function KetcherPage({
             ]}
             trigger={(
               <TooltipTrigger asChild>
-              <Button type="button" variant="outline" disabled={!ketcher || exportingSketch} aria-label="Open database search menu">
+              <Button type="button" variant="secondary" size="toolbar" disabled={!ketcher || exportingSketch} aria-label="Open database search menu">
                 Database
                 <ChevronDown data-icon="inline-end" aria-hidden="true" />
               </Button>
@@ -1331,7 +1335,7 @@ export function KetcherPage({
               ]}
               trigger={(
                 <TooltipTrigger asChild>
-                  <Button type="button" variant="outline" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch || !hasSketch}>
+                  <Button type="button" variant="secondary" size="toolbar" aria-label="Add sketch to SDF collection" disabled={!ketcher || exportingSketch || !hasSketch}>
                     Add to collection
                     <ChevronDown data-icon="inline-end" aria-hidden="true" />
                   </Button>
@@ -1341,30 +1345,32 @@ export function KetcherPage({
           )}
           <TooltipContent showArrow={false}>{gridEditSource ? saveToCollectionTooltip : "Add sketch to SDF collection"}</TooltipContent>
           </Tooltip>}
-          <ButtonGroup className="ketcher-scale-control" aria-label="Ketcher scale">
+        </div>
+        <div className="ketcher-page-display-actions flex shrink-0 items-center gap-1.5">
+          <div className="ketcher-scale-control flex shrink-0 items-center" role="group" aria-label="Ketcher scale">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" size="icon" aria-label="Decrease Ketcher scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>
+                <Button type="button" variant="ghost" size="icon-toolbar" aria-label="Decrease Ketcher scale" disabled={!ketcher || ketcherZoomIndex === 0} onClick={decreaseKetcherScale}>
                   <Minus aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Decrease Ketcher scale</TooltipContent>
             </Tooltip>
-            <ButtonGroupText className="min-w-12 justify-center border-border tabular-nums">{ketcherZoomPercent}%</ButtonGroupText>
+            <span className="min-w-10 text-center text-sm text-(--color-text-tertiary) tabular-nums">{ketcherZoomPercent}%</span>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="outline" size="icon" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>
+                <Button type="button" variant="ghost" size="icon-toolbar" aria-label="Increase Ketcher scale" disabled={!ketcher || ketcherZoomIndex === KETCHER_ZOOM_LEVELS.length - 1} onClick={increaseKetcherScale}>
                   <Plus aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Increase Ketcher scale</TooltipContent>
             </Tooltip>
-          </ButtonGroup>
+          </div>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
-                size="icon"
+                size="icon-toolbar"
                 aria-label={ketcherThemeTitle}
                 onClick={() => actions.setPreference("theme", nextKetcherTheme)}
               >
@@ -1533,6 +1539,16 @@ function isBlankKetcherMolfile(molfile: string) {
   if (!countsLine) return false;
   const counts = countsLine.trim().split(/\s+/u);
   return counts[0] === "0" && counts[1] === "0";
+}
+
+function isBlankKetcherKet(ket: string) {
+  if (!ket.trim()) return true;
+  try {
+    const value: unknown = JSON.parse(ket);
+    if (typeof value !== "object" || value === null || !("root" in value)) return false;
+    const root = value.root;
+    return typeof root === "object" && root !== null && "nodes" in root && Array.isArray(root.nodes) && root.nodes.length === 0;
+  } catch { return false; }
 }
 
 async function restoreKetcherDraft(instance: KetcherEditorApi, draft: { ket?: string; molfile?: string }) {

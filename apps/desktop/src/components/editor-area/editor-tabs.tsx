@@ -14,10 +14,23 @@ import { MarqueeName } from "../marquee-name";
 import { Badge } from "../ui/badge";
 import type { DropTargetContext } from "../../lib/drop-actions";
 import { describeDropTargetElement } from "../../lib/drop-target";
+import { TabHoverPreview, type TabPreviewInfo } from "./tab-hover-preview";
+import { captureTabThumbnail, pruneTabThumbnails } from "./tab-thumbnails";
+import { ShortcutTooltip } from "../shortcut-tooltip";
+import { ToolbarButton } from "../ui/toolbar-button";
+import { Plus } from "../ui/app-icons";
+import { isMainTab } from "../../stores/molecule-store";
+import { SCREEN_ENTRIES, openScreen, paneMoveItems } from "../workspace-panes/pane-actions";
+import { TabKindIcon } from "./tab-kind-icon";
+import { TabNameDialog } from "../scene-name-dialog";
 
 const TAB_REORDER_ANIMATION_MS = 170;
 const TAB_DRAG_ACTIVATE_DELAY_MS = 520;
 const TAB_MOUSE_REORDER_THRESHOLD_PX = 8;
+// Lets a freshly shown page paint before its hover-preview image is taken. A
+// tab visited for the first time is still loading its viewer at the first
+// mark, so it is captured again once the viewer has drawn.
+const TAB_THUMBNAIL_SETTLE_MS = [1000, 4000];
 
 export function EditorTabs({
   state,
@@ -29,7 +42,8 @@ export function EditorTabs({
   readOnly?: boolean;
 }) {
   const workspaceMenus = useWorkspaceMenus();
-  const visibleTabs = state.tabs.filter((tab) => tab.location.kind !== "settings");
+  // Screens moved to the side panel or the floating window leave the strip.
+  const visibleTabs = state.tabs.filter(isMainTab);
   const activeTabIndex = visibleTabs.findIndex((tab) => tab.id === state.activeTabId);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(() => new Set());
@@ -43,6 +57,20 @@ export function EditorTabs({
   const previousTabRectsRef = useRef<Map<string, DOMRect> | null>(null);
   const latestTabsRef = useRef(visibleTabs);
   latestTabsRef.current = visibleTabs;
+  const stripRef = useRef<HTMLDivElement>(null);
+  const activeTabId = state.activeTabId;
+  const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
+  const renamingTab = state.tabs.find(tab => tab.id === renamingTabId) ?? null;
+
+  useEffect(() => {
+    if (!activeTabId) return;
+    const timers = TAB_THUMBNAIL_SETTLE_MS.map((delay) => window.setTimeout(() => void captureTabThumbnail(activeTabId), delay));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [activeTabId]);
+
+  useEffect(() => {
+    pruneTabThumbnails(new Set(state.tabs.map((tab) => tab.id)));
+  }, [state.tabs]);
 
   const updateSelectedTabIds = useCallback((next: Set<string>, anchorId: string | null = selectionAnchorTabId) => {
     selectedTabIdsRef.current = next;
@@ -99,7 +127,7 @@ export function EditorTabs({
     const kind = pageKind(tab.location);
     return {
       kind: tab.location.kind === "ketcher" ? "ketcher" as const : tab.location.kind === "text-file" ? "writer" as const : "tab" as const,
-      title: kind.title(tab.location, state),
+      title: tab.title ?? kind.title(tab.location, state),
       detail: kind.description,
       path,
     };
@@ -451,8 +479,23 @@ export function EditorTabs({
     runShellDropActionChoices(actions, payload, choices, { x: event.clientX, y: event.clientY });
   }, [actions, stopTabDrag]);
 
+  const describeTabPreview = (tabId: string): TabPreviewInfo | null => {
+    const tab = visibleTabs.find((candidate) => candidate.id === tabId);
+    if (!tab) return null;
+    const path = tabPathForLocation(tab);
+    return {
+      title: tab.title ?? pageKind(tab.location).title(tab.location, state),
+      subtitle: path ? path.slice(0, path.lastIndexOf("/")).replace(/^\/Users\/[^/]+(?=\/|$)/, "~") : null,
+      active: tab.id === activeTabId,
+      newTab: tab.location.kind === "launcher",
+    };
+  };
+
   return (
-    <div className="tab-strip">
+    // Entering the strip usually precedes a switch, so the page is still visible here.
+    <div ref={stripRef} className="tab-strip" onPointerEnter={() => { if (activeTabId) void captureTabThumbnail(activeTabId); }}>
+      <TabHoverPreview stripRef={stripRef} describe={describeTabPreview} />
+      <TabNameDialog tab={renamingTab} defaultName={renamingTab ? pageKind(renamingTab.location).title(renamingTab.location, state) : ""} onClose={() => setRenamingTabId(null)} />
       <ScrollFade
         axis="horizontal"
         className="tab-scroll-region"
@@ -464,7 +507,7 @@ export function EditorTabs({
       >
         {visibleTabs.map((tab, index) => {
           const kind = pageKind(tab.location);
-          const title = kind.title(tab.location, state);
+          const title = tab.title ?? kind.title(tab.location, state);
           const active = index === activeTabIndex;
           const fileLocation = tab.location.kind === "file" ? tab.location : null;
           const textFileLocation = tab.location.kind === "text-file" ? tab.location : null;
@@ -514,27 +557,27 @@ export function EditorTabs({
                 actions.setSidebarQuery(tabPath.split("/").pop() ?? tabPath);
               } },
             );
-            if (canSaveAs) items.push({ kind: "item", id: "save-as", text: "Save As...",
+            if (canSaveAs) items.push({ kind: "item", id: "save-as", text: "Save as…",
               action: () => { void actions.saveMoleculeCollectionAs(tabDocument.id); } });
             if (tabDocument && !tabDocument.virtual) items.push(
               { kind: "separator" },
               { kind: "item", id: "open-tab-document-as-text", text: "Open as Text", action: () => { void actions.openTextPaths([tabDocument.path]); } },
               { kind: "item", id: "reveal-tab-document", text: "Show in Finder", action: () => { void actions.revealDocument(tabDocument); } },
-              { kind: "item", id: "copy-tab-document-path", text: "Copy Path", action: () => { void actions.copyDocumentPath(tabDocument); } },
+              { kind: "item", id: "copy-tab-document-path", text: "Copy path", action: () => { void actions.copyDocumentPath(tabDocument); } },
             );
             if (textDocument) items.push(
               { kind: "separator" },
               { kind: "item", id: "reveal-tab-text-file", text: "Show in Finder", action: () => { void actions.revealPath(textDocument.path, "file"); } },
-              { kind: "item", id: "copy-tab-text-file-path", text: "Copy Path", action: () => { void actions.copyPath(textDocument.path, "file"); } },
+              { kind: "item", id: "copy-tab-text-file-path", text: "Copy path", action: () => { void actions.copyPath(textDocument.path, "file"); } },
             );
             items.push({ kind: "separator" },
-              { kind: "item", id: "close-tab", text: "Close Tab", action: () => actions.closeTab(tab.id) });
+              { kind: "item", id: "close-tab", text: "Close tab", action: () => actions.closeTab(tab.id) });
             if (visibleTabs.some(other => other.id !== tab.id && !other.pinned)) items.push(
-              { kind: "item", id: "close-other-tabs", text: "Close Other Tabs", action: () => actions.closeOtherTabs(tab.id) });
+              { kind: "item", id: "close-other-tabs", text: "Close other tabs", action: () => actions.closeOtherTabs(tab.id) });
             if (tabsToRight.length) items.push(
-              { kind: "item", id: "close-tabs-right", text: "Close Tabs to the Right", action: () => { void actions.closeTabs(tabsToRight.map(tab => tab.id)); } });
+              { kind: "item", id: "close-tabs-right", text: "Close tabs to the right", action: () => { void actions.closeTabs(tabsToRight.map(tab => tab.id)); } });
             if (visibleTabs.length > 1) items.push(
-              { kind: "item", id: "close-all-tabs", text: "Close All Tabs", action: actions.clearAllDocuments });
+              { kind: "item", id: "close-all-tabs", text: "Close all tabs", action: actions.clearAllDocuments });
             const chosenTabs = selectedTabIds.has(tab.id) && selectedTabIds.size > 1
               ? visibleTabs.filter(candidate => selectedTabIds.has(candidate.id)) : [tab];
             const chosenPaths = chosenTabs.flatMap(candidate => { const path = tabPathForLocation(candidate); return path ? [path] : []; });
@@ -544,7 +587,9 @@ export function EditorTabs({
             const pin = { kind: "item" as const, id: "pin-tabs", text: chosenTabs.every(tab => tab.pinned) ? "Unpin" : "Pin", action: () => {
               const pinned = chosenTabs.every(tab => tab.pinned); chosenTabs.forEach(tab => { if (Boolean(tab.pinned) === pinned) actions.togglePinnedTab(tab.id); });
             } };
-            const sceneMenu = chosenTabs.length === 1 && tabDocument ? workspaceMenus.scene(tabDocument) : [];
+            const sceneMenu = chosenTabs.length === 1 && tabDocument ? workspaceMenus.scene(tabDocument).filter(entry => !("id" in entry && entry.id === "rename-scene")) : [];
+            const rename: MenuItemSpec[] = chosenTabs.length === 1
+              ? [{ kind: "item", id: "rename-tab", text: "Rename tab…", action: () => setRenamingTabId(tab.id) }] : [];
             const tabMenu = shared.filter(entry => !("id" in entry && ["pin-files", "trash-file", "rename-file", "duplicate-file"].includes(entry.id)));
             if (sceneMenu.length) {
               const exports = tabMenu.find(entry => entry.kind === "submenu" && entry.id === "file-export");
@@ -565,8 +610,8 @@ export function EditorTabs({
             const only = closing.length === 1 && closing[0].kind === "item" ? closing[0] : undefined;
             const close: MenuItemSpec[] = only ? [{ ...only, id: "close-tabs", text: `Close ${only.text}` }] : submenu("close-tabs", "Close", closing, "xmark");
             const bare = !compact.length && !sceneMenu.length && !reveal.length;
-            void showNativeContextMenu(menuSections(opening, [pin, ...sceneMenu, ...(bare ? close : [])],
-              [...compact.filter(entry => !opening.includes(entry)), ...reveal], bare ? [] : close), { x: event.clientX, y: event.clientY });
+            void showNativeContextMenu(menuSections(opening, [pin, ...rename, ...sceneMenu, ...(bare ? close : [])],
+              [...compact.filter(entry => !opening.includes(entry)), ...reveal], window.BuretteMcpWorkspace ? [] : paneMoveItems(tab), bare ? [] : close), { x: event.clientX, y: event.clientY });
           };
           return (
             <div
@@ -684,8 +729,8 @@ export function EditorTabs({
                     if (next) selectAndFocusTab(next.id);
                   }
                 }}
-                title={readOnly ? title : tabPath ?? title}
               >
+                <span className="tab-kind-icon" aria-hidden><TabKindIcon location={tab.location} state={state} /></span>
                 <MarqueeName className="tab-title">{`${tab.pinned ? "⌖ " : ""}${title}`}</MarqueeName>
                 {dirty ? <Badge className="ml-1.5 size-2 p-0" aria-hidden="true" /> : null}
               </button>
@@ -704,9 +749,11 @@ export function EditorTabs({
           );
         })}
       </ScrollFade>
-      {!readOnly ? <button type="button" className="new-tab" onClick={actions.openNewTab} title="New tab" aria-label="New tab">
-        +
-      </button> : null}
+      {!readOnly ? <ShortcutTooltip label="New tab" shortcut="⌘T">
+        <ToolbarButton type="button" className="new-tab" onMouseDown={(event) => event.preventDefault()} onClick={actions.openNewTab} onContextMenu={(event) => showNewTabMenu(event, actions)} aria-label="New tab">
+          <Plus size={16} aria-hidden />
+        </ToolbarButton>
+      </ShortcutTooltip> : null}
       <div
         className="tab-strip-spacer"
         data-file-drop-zone="tab-strip"
@@ -716,4 +763,19 @@ export function EditorTabs({
       />
     </div>
   );
+}
+
+// Right-clicking "+" offers every kind of screen a tab can hold, the way the
+// atlas new-tab menu lists tab kinds. A plain click stays "New Tab".
+function showNewTabMenu(event: React.MouseEvent<HTMLButtonElement>, actions: ShellActions) {
+  event.preventDefault();
+  const rect = event.currentTarget.getBoundingClientRect();
+  const items: MenuItemSpec[] = SCREEN_ENTRIES.map((entry) => ({
+    kind: "item",
+    id: `new-tab-${entry.id}`,
+    text: entry.text,
+    accelerator: entry.location.kind === "launcher" ? "CmdOrCtrl+T" : undefined,
+    action: entry.location.kind === "launcher" ? actions.openNewTab : () => openScreen(entry.location),
+  }));
+  void showNativeContextMenu(items, { x: rect.left, y: rect.bottom + 4 }, { presentation: "dropdown" });
 }

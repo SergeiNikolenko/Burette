@@ -134,7 +134,7 @@ bun scripts/check-js-syntax.mjs \
   PreviewExtension/Web/grid-ui.js \
   PreviewExtension/Web/grid-viewer.js >/dev/null
 
-if [[ ! -d node_modules || ! -d node_modules/@hugeicons/core-free-icons || ! -d node_modules/@tauri-apps/cli ]]; then
+if [[ ! -d node_modules || ! -d node_modules/@hugeicons/react || ! -d node_modules/@tauri-apps/cli ]]; then
   bun install --frozen-lockfile --ignore-scripts
 fi
 

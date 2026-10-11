@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { Inbox, Loader2, WifiOff } from "lucide-react";
+import { FileBlank, Warning } from "@/components/ui/app-icons";
+import { Spinner } from "@/components/ui/spinner";
 import { InfoCircle as AlertCircle, FileBlank as FileQuestion } from "@/components/ui/app-icons";
 
 import { cn } from "@/lib/utils";
@@ -11,8 +12,8 @@ import {
   type ViewerErrorContext,
 } from "@/lib/viewer-errors";
 
-import { Button } from "./retab-button";
-import { Skeleton } from "./retab-skeleton";
+import { Button } from "./button";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "./empty";
 import { ViewerDownloadButton } from "./viewer-download";
 
 type FileViewerStateKind =
@@ -50,12 +51,6 @@ function stateSlot(kind: FileViewerStateKind) {
   return `file-viewer-${kind}-state`;
 }
 
-function renderErrorDescription(error: unknown): React.ReactNode {
-  if (error instanceof Error && error.message) return error.message;
-  if (typeof error === "string" && error) return error;
-  return undefined;
-}
-
 function FileViewerStateFrame({
   action,
   children,
@@ -71,88 +66,45 @@ function FileViewerStateFrame({
   role?: React.AriaRole;
 }) {
   return (
-    <div
-      data-slot={stateSlot(kind)}
-      role={role}
-      className={cn(
-        "text-muted-foreground flex min-h-48 min-w-0 flex-col items-center justify-center gap-3 p-6 text-center text-sm",
-        className,
-      )}
-      {...props}
-    >
-      {icon ? (
-        <div
-          aria-hidden
-          data-slot="file-viewer-state-icon"
-          className="text-muted-foreground flex size-9 items-center justify-center"
-        >
-          {icon}
-        </div>
-      ) : null}
-      <div className="flex max-w-md min-w-0 flex-col items-center gap-1">
-        {title ? (
-          <p
-            data-slot="file-viewer-state-title"
-            className="text-foreground text-sm font-medium"
-          >
-            {title}
-          </p>
-        ) : null}
-        {description ? (
-          <p
-            data-slot="file-viewer-state-description"
-            className="text-muted-foreground text-sm"
-          >
-            {description}
-          </p>
-        ) : null}
-      </div>
+    <Empty data-slot={stateSlot(kind)} role={role}
+      className={cn("min-h-48 gap-3 rounded-none text-sm", className)} {...props}>
+      {icon ? <EmptyMedia aria-hidden data-slot="file-viewer-state-icon"
+        className={cn("mb-0 text-(--color-text-secondary)", kind !== "loading" && "[&_svg]:size-8")}>{icon}</EmptyMedia> : null}
+      {title || description ? <EmptyHeader className="w-full max-w-72 gap-2 break-words">
+        {title ? <EmptyTitle data-slot="file-viewer-state-title" className="text-lg leading-6 font-medium tracking-normal text-(--color-text)">{title}</EmptyTitle> : null}
+        {description ? <EmptyDescription data-slot="file-viewer-state-description" className="text-sm text-(--color-text-secondary)">{description}</EmptyDescription> : null}
+      </EmptyHeader> : null}
       {children}
-      {action ? (
-        <div
-          data-slot="file-viewer-state-action"
-          className="flex items-center justify-center gap-2"
-        >
-          {action}
-        </div>
-      ) : null}
-    </div>
+      {action ? <div data-slot="file-viewer-state-action" className="flex flex-wrap items-center justify-center gap-2">{action}</div> : null}
+    </Empty>
   );
 }
 
 export function FileViewerLoadingState({
   children,
-  description = "Preparing the preview.",
-  icon = <Loader2 className="size-5 animate-spin" />,
-  title = "Loading file",
+  description,
+  icon = <Spinner aria-hidden />,
+  title = "Loading…",
   ...props
 }: FileViewerStateProps) {
   return (
     <FileViewerStateFrame
       aria-busy="true"
+      role="status"
       description={description}
       icon={icon}
       kind="loading"
       title={title}
       {...props}
     >
-      {children ?? (
-        <div
-          aria-hidden
-          data-slot="file-viewer-state-skeleton"
-          className="flex w-full max-w-xs flex-col gap-2"
-        >
-          <Skeleton className="h-2 w-full" />
-          <Skeleton className="h-2 w-3/4 self-center" />
-        </div>
-      )}
+      {children}
     </FileViewerStateFrame>
   );
 }
 
 export function FileViewerUnavailableState({
-  description = "The file is not available right now.",
-  icon = <WifiOff className="size-5" />,
+  description,
+  icon = <Warning className="size-5" />,
   title = "File unavailable",
   ...props
 }: FileViewerStateProps) {
@@ -169,8 +121,8 @@ export function FileViewerUnavailableState({
 }
 
 export function FileViewerEmptyState({
-  description = "Choose a file to preview.",
-  icon = <Inbox className="size-5" />,
+  description,
+  icon = <FileBlank className="size-5" />,
   title = "No file selected",
   ...props
 }: FileViewerStateProps) {
@@ -218,15 +170,15 @@ export function FileViewerErrorState({
     (showRetry || showDownload ? (
       <>
         {showRetry ? (
-          <Button variant="outline" size="sm" onClick={onRetry}>
+          <Button type="button" size="xs" onClick={onRetry}>
             Retry
           </Button>
         ) : null}
         {showDownload && download ? (
           <ViewerDownloadButton
             action={download}
-            variant={showRetry ? "ghost" : "outline"}
-            size="sm"
+            variant={showRetry ? "secondary" : "default"}
+            size="xs"
             className=""
             showLabel
           />
@@ -240,14 +192,11 @@ export function FileViewerErrorState({
       data-error-domain={info?.domain}
       data-error-format={info?.format}
       data-error-kind={info?.kind}
-      data-error-message={info?.message}
-      description={
-        description ?? info?.userMessage ?? renderErrorDescription(error)
-      }
+      description={description}
       icon={icon}
       kind="error"
       role="alert"
-      title={title ?? "Could not preview file"}
+      title={title ?? info?.userMessage ?? "Could not preview file"}
       {...props}
     />
   );
@@ -259,14 +208,10 @@ export function FileViewerUnsupportedState({
   fileName,
   icon = <FileQuestion className="size-5" />,
   showDownload = true,
-  title = "Preview unsupported",
+  title = "Preview unavailable",
   ...props
 }: FileViewerUnsupportedStateProps) {
-  const resolvedDescription =
-    description ??
-    (fileName
-      ? `No preview is available for ${fileName}.`
-      : "No preview is available for this file.");
+  const resolvedDescription = description ?? fileName;
 
   return (
     <FileViewerStateFrame
@@ -274,8 +219,8 @@ export function FileViewerUnsupportedState({
         showDownload && download && !download.isDisabled ? (
           <ViewerDownloadButton
             action={download}
-            variant="outline"
-            size="sm"
+            variant="default"
+            size="xs"
             className=""
             showLabel
           />

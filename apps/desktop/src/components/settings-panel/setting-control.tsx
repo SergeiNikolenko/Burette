@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,9 +14,11 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Field, FieldContent, FieldDescription, FieldTitle } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ChevronDown } from "@/components/ui/app-icons";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { ShortcutTooltip } from "@/components/shortcut-tooltip";
 
 export type SettingRow = {
   label: string;
@@ -27,10 +29,11 @@ export type SettingRow = {
   confirm?: boolean;
 };
 
-export function SettingsSection({ title, rows }: { title: string; rows: SettingRow[] }) {
+// Codex keeps some cards untitled on screen; their heading stays for screen readers.
+export function SettingsSection({ title, rows, hideTitle }: { title: string; rows: SettingRow[]; hideTitle?: boolean }) {
   return (
     <section className="settings-section">
-      <h2>{title}</h2>
+      <h2 className={hideTitle ? "sr-only" : undefined}>{title}</h2>
       <Card className="settings-card">
         {rows.map((row) => (
           <SettingControl key={row.label} row={row} />
@@ -41,11 +44,14 @@ export function SettingsSection({ title, rows }: { title: string; rows: SettingR
 }
 
 export function SettingControl({ row }: { row: SettingRow }) {
+  const id = useId();
+  const labelId = `${id}-label`;
+  const descriptionId = row.description ? `${id}-description` : undefined;
   return (
-    <Field orientation="responsive" className="settings-control">
+    <Field orientation="responsive" className="settings-control" aria-labelledby={labelId} aria-describedby={descriptionId}>
       <FieldContent className="settings-control-copy">
-        <FieldTitle className="settings-control-label">{row.label}</FieldTitle>
-        {row.description && <FieldDescription className="settings-control-description">{row.description}</FieldDescription>}
+        <FieldTitle id={labelId} className="settings-control-label">{row.label}</FieldTitle>
+        {row.description && <FieldDescription id={descriptionId} className="settings-control-description">{row.description}</FieldDescription>}
       </FieldContent>
       <div className="settings-control-actions">
         {row.reset && (
@@ -62,20 +68,21 @@ export function SettingControl({ row }: { row: SettingRow }) {
               onConfirm={row.reset}
             />
           ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              className="settings-reset-button"
-              onClick={row.reset}
-              disabled={!row.isModified}
-              aria-hidden={!row.isModified}
-              tabIndex={row.isModified ? 0 : -1}
-              title="Reset to default"
-              data-hidden={!row.isModified || undefined}
-            >
-              Reset
-            </Button>
+            <ShortcutTooltip label="Reset to default">
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                className="settings-reset-button"
+                onClick={row.reset}
+                disabled={!row.isModified}
+                aria-hidden={!row.isModified}
+                tabIndex={row.isModified ? 0 : -1}
+                data-hidden={!row.isModified || undefined}
+              >
+                Reset
+              </Button>
+            </ShortcutTooltip>
           )
         )}
         {row.control}
@@ -85,56 +92,83 @@ export function SettingControl({ row }: { row: SettingRow }) {
 }
 
 export function SelectControl({
+  label,
   value,
   options,
   labels,
+  disabledOptions,
   onChange,
 }: {
+  label?: string;
   value: string;
   options: string[];
   // Chemistry settings carry raw engine tokens - "gfnff", "verytight", "ch2cl2" -
   // which are what the executable wants but not what a reader wants.
   labels?: Record<string, string>;
+  disabledOptions?: readonly string[];
   onChange: (value: string) => void;
 }) {
   return (
-    <NativeSelect className="settings-select" size="sm" value={value} onChange={(event) => onChange(event.target.value)}>
-      {options.map((option) => (
-        <NativeSelectOption key={option} value={option}>
-          {labels?.[option] ?? option}
-        </NativeSelectOption>
-      ))}
-    </NativeSelect>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button aria-label={label} className="settings-select justify-between" variant="outline" size="settings">
+          <span className="min-w-0 truncate">{labels?.[value] ?? value}</span>
+          <ChevronDown size={14} aria-hidden />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        {label && <DropdownMenuLabel>{label}</DropdownMenuLabel>}
+        <DropdownMenuRadioGroup value={value} onValueChange={onChange}>
+          {options.map(option => <DropdownMenuRadioItem key={option} value={option} disabled={disabledOptions?.includes(option)}>
+            {labels?.[option] ?? option}
+          </DropdownMenuRadioItem>)}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
 const HEX_COLOR = /^#([0-9a-f]{6}|[0-9a-f]{3})$/i;
 
 export function ColorControl({
+  label,
   value,
   onChange,
 }: {
+  label?: string;
   value: string;
   onChange: (value: string) => void;
 }) {
+  const [draft, setDraft] = useState<string | null>(null);
   const swatch = HEX_COLOR.test(value) ? value : "#000000";
+  const commit = (text: string) => {
+    if (HEX_COLOR.test(text)) {
+      const hex = text.length === 4 ? "#" + [...text.slice(1)].map(char => char + char).join("") : text;
+      onChange(hex.toUpperCase());
+    }
+    setDraft(null);
+  };
   return (
     <div className="settings-color-control">
       <span className="settings-color-swatch" style={{ backgroundColor: swatch }}>
         <Input
           type="color"
           value={swatch}
-          aria-label="Pick color"
+          aria-label={label ? `Pick ${label.toLowerCase()} color` : "Pick color"}
           onChange={(event) => onChange(event.target.value.toUpperCase())}
         />
       </span>
       <Input
         type="text"
-        value={value}
+        value={draft ?? value.toUpperCase()}
+        aria-label={label ? `${label} color value` : "Color value"}
+        autoComplete="off"
         spellCheck={false}
-        onChange={(event) => onChange(event.target.value)}
-        onBlur={(event) => {
-          if (!HEX_COLOR.test(event.target.value)) onChange(swatch.toUpperCase());
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={(event) => commit(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") commit(event.currentTarget.value);
+          if (event.key === "Escape") setDraft(null);
         }}
       />
     </div>
@@ -142,15 +176,22 @@ export function ColorControl({
 }
 
 export function TextControl({
+  label,
   value,
+  placeholder,
   onChange,
 }: {
+  label?: string;
   value: string;
+  placeholder?: string;
   onChange: (value: string) => void;
 }) {
   return (
     <Input
       type="text"
+      aria-label={label}
+      placeholder={placeholder}
+      autoComplete="off"
       className="settings-text-control"
       value={value}
       spellCheck={false}
@@ -160,6 +201,7 @@ export function TextControl({
 }
 
 export function RangeControl({
+  label,
   value,
   min,
   max,
@@ -167,6 +209,7 @@ export function RangeControl({
   suffix,
   onChange,
 }: {
+  label?: string;
   value: number;
   min: number;
   max: number;
@@ -178,6 +221,7 @@ export function RangeControl({
   return (
     <div className="settings-range-control">
       <Slider
+        aria-label={label}
         min={min}
         max={max}
         step={step}
@@ -218,11 +262,12 @@ export function selectPreferenceRow(
   options: string[],
   defaultValue: string,
   onChange: (value: string) => void,
+  labels?: Record<string, string>,
 ): SettingRow {
   return {
     label,
     description,
-    control: <SelectControl value={value} options={options} onChange={onChange} />,
+    control: <SelectControl label={label} value={value} options={options} labels={labels} onChange={onChange} />,
     reset: () => onChange(defaultValue),
     isModified: value !== defaultValue,
   };
@@ -238,7 +283,7 @@ export function colorPreferenceRow(
   return {
     label,
     description,
-    control: <ColorControl value={value} onChange={onChange} />,
+    control: <ColorControl label={label} value={value} onChange={onChange} />,
     reset: () => onChange(defaultValue),
     isModified: value.toUpperCase() !== defaultValue.toUpperCase(),
   };
@@ -254,7 +299,7 @@ export function textPreferenceRow(
   return {
     label,
     description,
-    control: <TextControl value={value} onChange={onChange} />,
+    control: <TextControl label={label} value={value} onChange={onChange} />,
     reset: () => onChange(defaultValue),
     isModified: value !== defaultValue,
   };
@@ -270,7 +315,7 @@ export function rangePreferenceRow(
   return {
     label,
     description,
-    control: <RangeControl value={value} min={0} max={100} step={1} onChange={onChange} />,
+    control: <RangeControl label={label} value={value} min={0} max={100} step={1} onChange={onChange} />,
     reset: () => onChange(defaultValue),
     isModified: value !== defaultValue,
   };
@@ -303,7 +348,7 @@ export function SettingSelect({
     <SettingControl
       row={{
         label,
-        control: <SelectControl value={value} options={options} onChange={onChange} />,
+        control: <SelectControl label={label} value={value} options={options} onChange={onChange} />,
       }}
     />
   );
@@ -353,7 +398,8 @@ export function SettingsActionButton({
   }
 
   return (
-    <Button type="button" variant="secondary" size="sm" className="settings-action-button" disabled={disabled} onClick={onClick}>
+    // Codex settings row actions ("View") are the secondary toolbar button.
+    <Button type="button" variant="secondary" size="toolbar" className="settings-action-button" disabled={disabled} onClick={onClick}>
       {children}
     </Button>
   );
@@ -380,27 +426,29 @@ function ConfirmActionButton({
   confirmLabel: ReactNode;
   onConfirm: () => void;
 }) {
+  const trigger = (
+    <AlertDialogTrigger asChild>
+      <Button
+        type="button"
+        variant={className === "settings-reset-button" ? "ghost" : "secondary"}
+        size={className === "settings-reset-button" ? "xs" : "toolbar"}
+        className={className}
+        disabled={disabled}
+        aria-hidden={hidden}
+        tabIndex={hidden ? -1 : 0}
+        data-hidden={hidden || undefined}
+      >
+        {label}
+      </Button>
+    </AlertDialogTrigger>
+  );
   return (
     <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button
-          type="button"
-          variant={className === "settings-reset-button" ? "ghost" : "secondary"}
-          size={className === "settings-reset-button" ? "xs" : "sm"}
-          className={className}
-          disabled={disabled}
-          aria-hidden={hidden}
-          tabIndex={hidden ? -1 : 0}
-          title={title}
-          data-hidden={hidden || undefined}
-        >
-          {label}
-        </Button>
-      </AlertDialogTrigger>
+      {title ? <ShortcutTooltip label={title}>{trigger}</ShortcutTooltip> : trigger}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{dialogTitle}</AlertDialogTitle>
-          <AlertDialogDescription id="settings-confirm-description">
+          <AlertDialogDescription>
             {dialogDescription}
           </AlertDialogDescription>
         </AlertDialogHeader>

@@ -132,6 +132,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
         "gridDataMode": "bridge",
         "theme": preferences.theme_for_runtime(),
         "themeTokens": preferences.theme_tokens(),
+        "viewerDefaults": preferences.viewer_defaults.runtime_config(),
         "canvasBackground": preferences.canvas_background_for_runtime(),
         "overlayOpacity": 0.90,
         "transparentBackground": preferences.resolved_transparent_background(),
@@ -259,7 +260,7 @@ fn grid_html(
 }
 
 fn versioned_asset_url(path: &Path) -> String {
-    format!("{}?v=grid-ui-v52", asset_url(path))
+    format!("{}?v=grid-ui-v62", asset_url(path))
 }
 
 fn grid_can_preview(extension: &str) -> bool {

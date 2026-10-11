@@ -1,0 +1,6 @@
+@layer components {
+  @media (prefers-reduced-motion: reduce) {
+    .atlas-radio-item { transition: none; }
+    .atlas-radio-indicator::before, .atlas-radio-indicator::after { animation: none; }
+  }
+}

@@ -12,6 +12,7 @@ import {
   type CsvRowPatchState,
 } from "./csv-viewer-row-patcher";
 import { csvCellClassName } from "./csv-viewer-cell-classes";
+import { ShortcutTooltip } from "../shortcut-tooltip";
 import type { CsvRowStore } from "./csv-row-store";
 import {
   CSV_SCROLLBAR_CSS,
@@ -518,28 +519,29 @@ function HeaderCell({
       data-slot="csv-header-cell"
       className="border-r border-b bg-[color-mix(in_oklab,var(--card)_92%,var(--foreground))]"
     >
-      <button
-        type="button"
-        onClick={onToggle}
-        className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:bg-muted flex w-full items-center gap-1 px-3 text-left font-medium transition-colors focus-visible:outline-none"
-        style={{ height }}
-        title={`Sort by ${name}`}
-      >
-        <span className="truncate">{name}</span>
-        {sorted ? (
-          sorted === "asc" ? (
-            <ChevronUp
-              className="text-muted-foreground size-3.5 shrink-0"
-              aria-hidden
-            />
-          ) : (
-            <ChevronDown
-              className="text-muted-foreground size-3.5 shrink-0"
-              aria-hidden
-            />
-          )
-        ) : null}
-      </button>
+      <ShortcutTooltip label={`Sort by ${name}`}>
+        <button
+          type="button"
+          onClick={onToggle}
+          className="text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:bg-muted flex w-full items-center gap-1 px-3 text-left font-medium transition-colors focus-visible:outline-none"
+          style={{ height }}
+        >
+          <span className="truncate">{name}</span>
+          {sorted ? (
+            sorted === "asc" ? (
+              <ChevronUp
+                className="text-muted-foreground size-3.5 shrink-0"
+                aria-hidden
+              />
+            ) : (
+              <ChevronDown
+                className="text-muted-foreground size-3.5 shrink-0"
+                aria-hidden
+              />
+            )
+          ) : null}
+        </button>
+      </ShortcutTooltip>
     </div>
   );
 }

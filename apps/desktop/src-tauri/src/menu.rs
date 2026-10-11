@@ -3,6 +3,7 @@ mod build;
 pub(crate) mod dock;
 mod events;
 mod quit;
+mod shortcuts;
 mod state;
 
 use tauri::Manager;
@@ -89,6 +90,15 @@ pub(crate) fn respond_to_exit_preflight<R: tauri::Runtime>(
         dirty,
         revision,
     )
+}
+
+/// Applies keyboard-shortcut overrides from Settings to the native menu.
+#[tauri::command]
+pub(crate) fn set_menu_accelerators<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
+    accelerators: std::collections::HashMap<String, String>,
+) -> Result<(), String> {
+    shortcuts::set_menu_accelerators(&app, &accelerators)
 }
 
 #[tauri::command]

@@ -529,7 +529,6 @@ export function TextViewerContent({
       ) : null}
       <ScrollArea
         className="bg-background min-h-0 flex-1"
-        orientation="vertical"
         viewportClassName="bg-background [overflow-anchor:none]"
         viewportProps={{ onClickCapture: scrollMarkdownFragment }}
         viewportRef={viewportRef}

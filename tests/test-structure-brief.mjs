@@ -479,9 +479,9 @@ assert.ok(shiftedCountsSdf);
 assert.equal(rowValue(shiftedCountsSdf.rows, "Atoms"), "2");
 assert.equal(rowValue(shiftedCountsSdf.rows, "Bonds"), "1");
 
-assert.equal(rendererLabel("molstar"), "Mol*");
+assert.equal(rendererLabel("molstar"), "Interactive 3D");
 assert.equal(rendererLabel("grid2d"), "Grid");
-assert.equal(rendererLabel("xyzrender-external"), "xyzrender");
+assert.equal(rendererLabel("xyzrender-external"), "3D render");
 assert.equal(rendererLabel(""), "Preview");
 
 // Repeated panel/tab reads reuse a parsed summary, but edits and format changes

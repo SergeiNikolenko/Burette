@@ -1,138 +1,43 @@
-import * as React from "react"
-import { Toast as ToastPrimitive } from "@base-ui/react/toast"
+import type { CSSProperties, ReactNode } from "react"
+import { createPortal } from "react-dom"
+import { Toaster as Sonner, toast as sonner } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
-import { Loading03Icon } from "@hugeicons/core-free-icons";
-import { Warning as Alert02Icon, X as Cancel01Icon, CheckCircle as CheckmarkCircle02Icon, InfoCircle as InformationCircleIcon, XCircleCrossedClose as MultiplicationSignCircleIcon } from "@/components/ui/app-icon-data";
+import { Spinner } from "@/components/ui/spinner";
+import { ExclamationCircle, X as Cancel01Icon, CheckCircle as CheckmarkCircle02Icon, InfoCircle as InformationCircleIcon } from "@/components/ui/app-icon-data";
 
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { Button, ButtonStyleContext } from "@/components/ui/button"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
+import "./toast.atlas.css"
 
-const toast = ToastPrimitive.createToastManager()
+type ToastType = "info" | "success" | "warning" | "error" | "loading"
+type ToastId = string | number
 
-function ToastProvider({ ...props }: ToastPrimitive.Provider.Props) {
-  return <ToastPrimitive.Provider {...props} />
+type ToastOptions = {
+  title: ReactNode
+  description?: ReactNode
+  type?: ToastType
+  /** Milliseconds before dismissal; zero keeps the notice until closed. */
+  timeout?: number
+  /** High-priority toasts interrupt assistive technology. */
+  priority?: "low" | "high"
+  actionProps?: { children: ReactNode; onClick: () => void }
+  actionPlacement?: "inline" | "footer"
 }
 
-function ToastPortal({ ...props }: ToastPrimitive.Portal.Props) {
-  return <ToastPrimitive.Portal data-slot="toast-portal" {...props} />
+const DEFAULT_TIMEOUT_MS = 5000
+
+// Codex toasts render its Alert with rich colors: status levels tint the
+// surface, outline and text, while info and progress stay neutral.
+const LEVEL_CLASSES: Record<ToastType, string> = {
+  info: "border-(--color-border) bg-(--color-surface-elevated-secondary) text-(--color-text)",
+  loading: "border-(--color-border) bg-(--color-surface-elevated-secondary) text-(--color-text)",
+  success: "border-(--color-text-success)/20 bg-(--color-background-success-surface) text-(--color-text-success)",
+  warning: "border-(--color-border-warning-outline) bg-(--color-background-warning-surface) text-(--color-text-warning)",
+  error: "border-(--color-border-danger-outline) bg-(--color-background-danger-surface) text-(--color-text-danger)",
 }
 
-function ToastViewport({ className, ...props }: ToastPrimitive.Viewport.Props) {
-  return (
-    <ToastPrimitive.Viewport
-      data-slot="toast-viewport"
-      className={cn(
-        "pointer-events-none fixed inset-x-4 bottom-4 z-50 mx-auto w-auto max-w-xs outline-none sm:right-4 sm:left-auto sm:mx-0 sm:w-full",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-function Toast({ className, ...props }: ToastPrimitive.Root.Props) {
-  return (
-    <ToastPrimitive.Root
-      data-slot="toast"
-      className={cn(
-        "group/toast pointer-events-auto absolute right-0 bottom-0 z-[calc(1000-var(--toast-index))] w-full origin-bottom rounded-xl border border-black/10 bg-popover text-popover-foreground shadow-lg will-change-transform outline-none select-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:border-white/10",
-        "[--gap:0.75rem] [--height:var(--toast-frontmost-height,var(--toast-height))] [--offset-y:calc(var(--toast-offset-y)*-1+calc(var(--toast-index)*var(--gap)*-1)+var(--toast-swipe-movement-y))] [--peek:0.75rem] [--scale:calc(max(0,1-(var(--toast-index)*0.1)))] [--shrink:calc(1-var(--scale))]",
-        "h-(--height) [transform:translateX(var(--toast-swipe-movement-x))_translateY(calc(var(--toast-swipe-movement-y)-(var(--toast-index)*var(--peek))-(var(--shrink)*var(--height))))_scale(var(--scale))] [transition:transform_500ms_cubic-bezier(0.22,1,0.36,1),opacity_500ms,height_150ms]",
-        "after:absolute after:top-full after:left-0 after:h-[calc(var(--gap)+1px)] after:w-full after:content-['']",
-        "data-expanded:h-(--toast-height) data-expanded:[transform:translateX(var(--toast-swipe-movement-x))_translateY(var(--offset-y))]",
-        "data-limited:opacity-0 data-starting-style:[transform:translateY(150%)]",
-        "[&[data-ending-style]:not([data-limited]):not([data-swipe-direction])]:[transform:translateY(150%)]",
-        "data-ending-style:data-[swipe-direction=down]:[transform:translateY(calc(var(--toast-swipe-movement-y)+150%))]",
-        "data-ending-style:data-[swipe-direction=left]:[transform:translateX(calc(var(--toast-swipe-movement-x)-150%))_translateY(var(--offset-y))]",
-        "data-ending-style:data-[swipe-direction=right]:[transform:translateX(calc(var(--toast-swipe-movement-x)+150%))_translateY(var(--offset-y))]",
-        "data-ending-style:data-[swipe-direction=up]:[transform:translateY(calc(var(--toast-swipe-movement-y)-150%))]",
-        "data-expanded:data-ending-style:data-[swipe-direction=down]:[transform:translateY(calc(var(--toast-swipe-movement-y)+150%))]",
-        "data-expanded:data-ending-style:data-[swipe-direction=left]:[transform:translateX(calc(var(--toast-swipe-movement-x)-150%))_translateY(var(--offset-y))]",
-        "data-expanded:data-ending-style:data-[swipe-direction=right]:[transform:translateX(calc(var(--toast-swipe-movement-x)+150%))_translateY(var(--offset-y))]",
-        "data-expanded:data-ending-style:data-[swipe-direction=up]:[transform:translateY(calc(var(--toast-swipe-movement-y)-150%))]",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-function ToastContent({ className, ...props }: ToastPrimitive.Content.Props) {
-  return (
-    <ToastPrimitive.Content
-      data-slot="toast-content"
-      className={cn(
-        "flex h-full items-center gap-2 overflow-hidden py-2 pr-1.5 pl-3 transition-opacity duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] data-behind:opacity-0 data-expanded:opacity-100",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-function ToastTitle({ className, ...props }: ToastPrimitive.Title.Props) {
-  return (
-    <ToastPrimitive.Title
-      data-slot="toast-title"
-      className={cn("line-clamp-2 text-[13px] leading-snug font-medium", className)}
-      {...props}
-    />
-  )
-}
-
-function ToastDescription({
-  className,
-  ...props
-}: ToastPrimitive.Description.Props) {
-  return (
-    <ToastPrimitive.Description
-      data-slot="toast-description"
-      className={cn("text-sm text-muted-foreground", className)}
-      {...props}
-    />
-  )
-}
-
-function ToastAction({
-  className,
-  render = <Button variant="outline" size="xs" />,
-  ...props
-}: ToastPrimitive.Action.Props) {
-  return (
-    <ToastPrimitive.Action
-      data-slot="toast-action"
-      render={render}
-      className={cn("shrink-0", className)}
-      {...props}
-    />
-  )
-}
-
-function ToastClose({
-  className,
-  children,
-  render = <Button variant="ghost" size="icon-xs" />,
-  ...props
-}: ToastPrimitive.Close.Props) {
-  return (
-    <ToastPrimitive.Close
-      data-slot="toast-close"
-      aria-label="Close toast"
-      render={render}
-      className={cn(
-        "relative shrink-0 text-muted-foreground after:absolute after:-inset-2 after:content-[''] hover:text-foreground",
-        className
-      )}
-      {...props}
-    >
-      {children ?? <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />}
-    </ToastPrimitive.Close>
-  )
-}
-
-function ToastIcon({ type }: { type: string | undefined }) {
-  let icon: React.ReactNode = null
+function ToastIcon({ type }: { type: ToastType | undefined }) {
+  let icon: ReactNode = null
 
   if (type === "success") {
     icon = <HugeiconsIcon icon={CheckmarkCircle02Icon} aria-hidden="true" />
@@ -142,28 +47,13 @@ function ToastIcon({ type }: { type: string | undefined }) {
     icon = <HugeiconsIcon icon={InformationCircleIcon} aria-hidden="true" />
   }
 
-  if (type === "warning") {
-    icon = <HugeiconsIcon icon={Alert02Icon} aria-hidden="true" />
-  }
-
-  if (type === "error") {
-    icon = (
-      <HugeiconsIcon
-        icon={MultiplicationSignCircleIcon}
-        className="text-destructive"
-        aria-hidden="true"
-      />
-    )
+  // Codex marks both warning and danger toasts with the exclamation circle.
+  if (type === "warning" || type === "error") {
+    icon = <HugeiconsIcon icon={ExclamationCircle} aria-hidden="true" />
   }
 
   if (type === "loading") {
-    icon = (
-      <HugeiconsIcon
-        icon={Loading03Icon}
-        className="animate-spin"
-        aria-hidden="true"
-      />
-    )
+    icon = <Spinner />
   }
 
   if (!icon) {
@@ -173,65 +63,88 @@ function ToastIcon({ type }: { type: string | undefined }) {
   return (
     <span
       data-slot="toast-icon"
-      className="shrink-0 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4"
+      className="flex size-6 shrink-0 items-center justify-center [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4"
     >
       {icon}
     </span>
   )
 }
 
-function ToastList() {
-  const { toasts } = ToastPrimitive.useToastManager()
-
-  return toasts.map((toastItem) => (
-    <Toast key={toastItem.id} toast={toastItem}>
-      <ToastContent>
-        <ToastIcon type={toastItem.type} />
-        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <ToastTitle />
-          <ToastDescription />
-        </div>
-        <ToastAction />
-        <ToastClose />
-      </ToastContent>
-    </Toast>
-  ))
-}
-
-function Toaster({
-  children,
-  toastManager = toast,
-  ...props
-}: ToastPrimitive.Provider.Props) {
-  const portalContainer = useAppShellPortalContainer()
-
+function ToastCard({ id, title, description, type, priority, actionProps, actionPlacement = "footer" }: ToastOptions & { id: ToastId }) {
+  const action = actionProps ? <ButtonStyleContext value="app"><Button data-slot="toast-action" variant="secondary" size="xs"
+    onClick={actionProps.onClick}>
+    {actionProps.children}
+  </Button></ButtonStyleContext> : null
+  const inline = actionPlacement === "inline"
+  const actionsInline = inline || description == null
   return (
-    <ToastProvider toastManager={toastManager} {...props}>
-      {children}
-      <ToastPortal container={portalContainer}>
-        <ToastViewport>
-          <ToastList />
-        </ToastViewport>
-      </ToastPortal>
-    </ToastProvider>
+    <div
+      data-slot="toast"
+      data-type={type}
+      role={priority === "high" ? "alert" : "status"}
+      className={`atlas-toast ms-auto flex w-max max-w-[min(var(--width),calc(100vw-32px))] flex-col gap-2 rounded-xl border px-3 py-2 text-base leading-normal select-none ${LEVEL_CLASSES[type ?? "info"]}`}
+    >
+      <div className={`flex min-w-0 ${inline ? "items-center gap-3" : "items-start gap-1"}`}>
+        <ToastIcon type={type} />
+        <div className={`flex min-w-0 flex-1 gap-3 ${inline ? "items-center" : "items-start"}`}>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div data-slot="toast-title" className="flex min-h-6 items-center text-base leading-normal font-medium whitespace-pre-wrap [overflow-wrap:anywhere]">
+              {title}
+            </div>
+            {description ? (
+              <div data-slot="toast-description" className="text-base leading-normal text-(--color-text-secondary) [overflow-wrap:anywhere]">
+                {description}
+              </div>
+            ) : null}
+          </div>
+          {action && actionsInline ? <div className="flex shrink-0 items-center gap-2">{action}</div> : null}
+        </div>
+        <button
+          type="button"
+          data-slot="toast-close"
+          aria-label="Close toast"
+          className="flex size-6 shrink-0 grow-0 cursor-(--cursor-interaction) items-center justify-center rounded-full hover:bg-(--color-background-primary-ghost-hover)/5 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-(--color-ring)"
+          onClick={() => sonner.dismiss(id)}
+        >
+          <HugeiconsIcon icon={Cancel01Icon} className="size-4" aria-hidden="true" />
+        </button>
+      </div>
+      {action && !actionsInline ? <div className="flex items-center justify-end gap-2">{action}</div> : null}
+    </div>
   )
 }
 
-const createToastManager = ToastPrimitive.createToastManager
-const useToastManager = ToastPrimitive.useToastManager
-
-export {
-  Toaster,
-  Toast,
-  ToastAction,
-  ToastClose,
-  ToastContent,
-  ToastDescription,
-  ToastPortal,
-  ToastProvider,
-  ToastTitle,
-  ToastViewport,
-  createToastManager,
-  toast,
-  useToastManager,
+// The app raises notices through this object rather than through sonner, so
+// every toast is the same card and no call site picks its own markup.
+const toast = {
+  add(options: ToastOptions): ToastId {
+    return sonner.custom((id) => <ToastCard id={id} {...options} />, {
+      duration: options.timeout === 0 ? Infinity : options.timeout ?? DEFAULT_TIMEOUT_MS,
+    })
+  },
+  close(id: ToastId) {
+    sonner.dismiss(id)
+  },
 }
+
+// Toasts must render inside .app-shell: theme variables and the dark variant
+// only apply there, and sonner would otherwise mount where it is declared.
+function Toaster() {
+  const portalContainer = useAppShellPortalContainer()
+  if (!portalContainer) return null
+
+  return createPortal(
+    <Sonner
+      position="bottom-right"
+      offset={16}
+      mobileOffset={16}
+      gap={8}
+      visibleToasts={3}
+      style={{ "--width": "320px" } as CSSProperties}
+    />,
+    portalContainer,
+  )
+}
+
+export { Toaster, toast }
+export type { ToastOptions }

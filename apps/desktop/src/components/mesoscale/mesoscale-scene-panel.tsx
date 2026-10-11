@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
-import { Focus } from "lucide-react";
+import { Focus } from "@/components/ui/app-icons";
 import { ChevronDown, ChevronRight, Eye, EyeOff } from "@/components/ui/app-icons";
 import type { ViewerDocument } from "../../types";
 import { loadMesoscaleHierarchy, previewMesoscaleObject, requestMesoscale, setMesoscaleVisibilityOptimistic, useMesoscaleStore } from "../../stores/mesoscale-store";
 import type { MesoscaleHierarchyDetail, MesoscaleHierarchyObject, MesoscaleHierarchySelector } from "../../lib/mesoscale-contract";
 import { showMesoscaleAppearanceMenu, showMesoscaleObjectMenu } from "./mesoscale-object-menu";
+import { ShortcutTooltip } from "../shortcut-tooltip";
 import { inclusiveMesoscaleTreeRange, mesoscaleTreeSelectionError } from "./mesoscale-tree-selection";
 
 type SceneTreeNode = {
@@ -428,11 +429,17 @@ function SceneObjectBranch({ documentId, node, depth, collapsedRefs, rangeRefs, 
           <strong>{item.label}</strong>
           <small title={detail}>{detail}</small>
         </button>
-        <button className="mesoscale-tree-color" type="button" aria-label={`Color ${item.label}`} title={`Color ${item.label}`} style={actualColor ? { backgroundColor: actualColor } : undefined} onClick={openAppearanceMenu} />
-        <button className="mesoscale-tree-action" type="button" disabled={item.kind === "mesh"} aria-label={`Focus ${item.label}`} title="Focus" onClick={() => run({ type: "focusObject", ref: item.ref })}><Focus size={14} /></button>
-        <button className="mesoscale-tree-action" type="button" aria-label={`${item.hidden ? "Show" : "Hide"} ${item.label}`} title={item.hidden ? "Show" : "Hide"} onClick={() => setVisible(item.hidden)}>
-          {item.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
-        </button>
+        <ShortcutTooltip label={`Color ${item.label}`}>
+          <button className="mesoscale-tree-color" type="button" aria-label={`Color ${item.label}`} style={actualColor ? { backgroundColor: actualColor } : undefined} onClick={openAppearanceMenu} />
+        </ShortcutTooltip>
+        <ShortcutTooltip label="Focus">
+          <button className="mesoscale-tree-action" type="button" disabled={item.kind === "mesh"} aria-label={`Focus ${item.label}`} onClick={() => run({ type: "focusObject", ref: item.ref })}><Focus size={14} /></button>
+        </ShortcutTooltip>
+        <ShortcutTooltip label={item.hidden ? "Show" : "Hide"}>
+          <button className="mesoscale-tree-action" type="button" aria-label={`${item.hidden ? "Show" : "Hide"} ${item.label}`} onClick={() => setVisible(item.hidden)}>
+            {item.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+          </button>
+        </ShortcutTooltip>
       </div>
       {hasChildren && !collapsed ? (
         <div className="mesoscale-tree-group" role="group">

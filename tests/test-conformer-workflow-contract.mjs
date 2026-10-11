@@ -17,7 +17,7 @@ const conformerExecutor = source("apps/desktop/src-tauri/src/compute/conformer_e
 const artifactPublisher = source("apps/desktop/src-tauri/src/compute/artifact_publisher.rs");
 
 assert.match(structureInfoPanel, /document\.renderer !== "grid2d" && canUseConformerWorkflow/);
-assert.match(conformerWorkflow, /Open a specific molecule from the collection in Mol\* before running CREST/);
+assert.match(conformerWorkflow, /Open one molecule from the collection before running CREST/);
 
 for (const text of [chemistrySettings, chemistryTypes, structureInfoPanel, conformerWorkflow, conformerCommand, viteConfig]) {
   assert.doesNotMatch(text, /prismRotamerPruning|prism_rotamer_pruning/u);
@@ -38,7 +38,8 @@ assert.match(gridViewer, /optimizeGeometryGridSelection/);
 assert.match(nativeConformerWorkflow, /workflowTemplate: "conformer\.v1"/);
 assert.match(nativeConformerWorkflow, /initialization: options\.initialization/);
 assert.match(nativeConformerWorkflow, /mmffVariant: options\.mmffVariant/);
-assert.match(nativeConformerWorkflow, /backendPolicy: options\.backendPolicy \?\? "gpuRequired"/);
+assert.match(nativeConformerWorkflow, /computeBackend === "cpu" \? "referenceCpu"[\s\S]*: options\.backendPolicy \?\? "gpuRequired"/);
+assert.match(nativeConformerWorkflow, /executionPolicy: \{\s*backendPolicy,/);
 assert.match(nativeConformerWorkflow, /compute_get_job/);
 assert.match(nativeConformerWorkflow, /latest\.revision/);
 assert.match(gridConformerMessages, /statusErrorMessage\(error\)/);

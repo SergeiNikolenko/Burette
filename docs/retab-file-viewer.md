@@ -78,25 +78,20 @@ in `apps/desktop/src/styles.css` aliases the plain names to ours; custom propert
 inherit from there into the viewer's shadow root. `--accent` is deliberately not
 aliased — the app already owns that name.
 
-## Pixel parity with upstream
+## Shared shell controls
 
-The viewer surface must look exactly like ui.retab.com, while the rest of the app
-keeps the Burette theme. Two mechanisms provide that:
+Document rendering and layout stay on the Retab components. Their buttons,
+menus and loading spinners use Burette's shared Atlas primitives, so document
+controls follow the same theme, focus states and menu behavior as the shell.
+Retab button sizes `iconSm` are mapped to the shared `icon-sm` size. Document
+loading placeholders retain their document geometry and use the shared
+`skeleton.tsx` primitive with reduced-motion support. Error and empty states
+compose the shared `Empty` primitives; retry/download availability still comes
+from the typed viewer error classifier. Raw errors are not rendered.
 
-- Retab's own `button`, `dropdown-menu`, `skeleton` and `spinner` (the registry
-  ships them inside its items) are vendored as `retab-button.tsx`,
-  `retab-dropdown-menu.tsx`, `retab-skeleton.tsx`, `retab-spinner.tsx`, and every
-  vendored Retab file imports those instead of the Burette primitives of the same
-  name. Burette's `button.tsx` etc. stay untouched for the rest of the app.
-- `.document-stage` in `styles.css` pins the palette harvested from
-  ui.retab.com's computed styles (light and dark) — alpha-blended hairline
-  borders, 4% muted tones. The registry publishes no theme of its own; it
-  inherits host tokens, so this scope is what makes the surface match upstream.
-- The shadcn v4 border-color preflight (`* { border-color: var(--border) }`)
-  that Retab's host app ships globally is restored scoped to the viewer:
-  `.document-stage *` for the light DOM plus `:host *` for the csv/xlsx shadow
-  scopes. Without it, bare `border-r`/`border-b` utilities paint with
-  near-black `currentColor` — the "dark grid" failure mode.
+The stage inherits the shell palette, including custom colors. The shadcn border
+preflight is scoped to `.document-stage *` and `:host *` for CSV/XLSX shadow
+scopes so bare border utilities do not fall back to `currentColor`.
 
 Plain delimited files are routed by `isMolecularDelimitedFile`
 (`apps/desktop/src/lib/delimited-molecules.ts`): a structure-named column or
@@ -109,7 +104,8 @@ Registry code is vendored, so these edits must be re-applied after every update:
 
 | File | Patch | Reason |
 | --- | --- | --- |
-| every vendored file importing `./button`, `./dropdown-menu`, `./skeleton`, `./spinner` | import path prefixed with `retab-` | keep Retab's primitives for the viewer surface without restyling the app |
+| viewer controls, header, chrome, download, zoom, error and file states | use shared `button`, `dropdown-menu`, `spinner`; map `iconSm` to `icon-sm` | keep document controls consistent with the Atlas shell |
+| document loading placeholders | shared `skeleton` and `spinner` | preserve document geometry with shell theme and reduced-motion support |
 | `csv-viewer-row-patcher.ts`, `xlsx-viewer-row-patcher.ts` | `isHidden: Boolean(element.hidden)` | `HTMLElement.hidden` is `boolean \| "until-found"` in our TypeScript DOM lib |
 | `file-viewer-sidebar.tsx` | cast the rail click event to `React.MouseEvent<HTMLButtonElement>` | the rail renders either `Slot.Root` or `button` |
 | `file-viewer-route.tsx` | image branch passes `defaultScale={1}` | open media at natural size, no fit-to-width auto zoom |
@@ -118,15 +114,10 @@ Registry code is vendored, so these edits must be re-applied after every update:
 | `csv-viewer-grid.tsx`, `csv-viewer-cell-classes.ts`, `xlsx-grid.tsx`, `xlsx-grid-row.tsx` | header/row borders and header background painted on the tracks (cells, row numbers, pads), not on the stretched container | the canvas is min-width 100%, so container-level paint extended the table's grid lines and header band past the last column into empty space |
 | `markdown-greenfield-diagram.tsx` | single "Copy diagram source" button | two identical clipboard icons (source + SVG) read as a duplicate control |
 
-The plain shadcn token names are re-declared inside `.document-stage` (not only
-aliased on `.app-shell`): `var()` inside a custom property substitutes where the
-property is defined, so an alias on `.app-shell` captures the Burette value and
-ignores the viewer scope's overrides — raw `var(--card)` reads in vendored code
-would otherwise pick up translucent Burette surfaces.
-
 The PDF page kind composes `PdfViewerPages` with `defaultScale={1}` and the page
 thumbnail sidebar (`PdfViewerThumbnails`), mirroring upstream's pdf-viewer-demo.
 
 The CLI also rewrites shared dependency ranges in `apps/desktop/package.json`
-(`lucide-react`, `@base-ui/react`, `radix-ui` are downgraded, `tailwind-merge` is added).
-Restore our ranges after every update and verify with `bun run typecheck`.
+(`radix-ui` is downgraded, and `lucide-react`, `@base-ui/react` and `tailwind-merge` are added).
+Restore our ranges, drop the added packages after every update, and verify with
+`bun run typecheck`.

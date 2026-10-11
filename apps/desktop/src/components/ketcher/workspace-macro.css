@@ -1,0 +1,325 @@
+/* Macromolecules editor layout. Colors come from the Atlas token theme passed
+   at mount (vite/ketcher-macro-theme.ts); these rules frame the panels like the
+   molecules editor and replace the few colors Ketcher hard-codes. Emotion
+   target classes are stable in Ketcher 3.18 (hash-verified by the vite plugin). */
+.ketcher-editor-shell {container:macro-editor / inline-size;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root {
+  --atlas-macro-library:280px;
+  --color-background-canvas:var(--background);--color-background-primary:var(--background);--color-background-secondary:var(--muted);
+  --color-border-primary:var(--border);--color-border-secondary:var(--input);--color-divider:var(--border);
+  --color-text-primary:var(--foreground);--color-text-secondary:var(--muted-foreground);--color-text-light:var(--muted-foreground);--color-text-dark:var(--foreground);
+  --color-tab-regular:var(--background);--color-tab-active:var(--background);--color-tab-content:var(--background);--color-tab-hover:var(--foreground);
+  --color-input-background-default:var(--background);--color-input-background-primary:var(--background);--color-input-border-regular:var(--input);
+  --color-icon-grey:var(--muted-foreground);--color-icon-active:var(--foreground);--color-icon-hover:var(--foreground);
+  --font-family-inter:var(--font-sans);--font-family-roboto:var(--font-sans);--font-family-montserrat:var(--font-sans);
+  --shadow-mainLayoutBlocks:none;--shadow-regular:none;
+  font-family:var(--font-sans);
+}
+
+/* Grid: the action bar spans the workspace; the library shares the second row
+   with the tool rail and canvas. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root > .e1pv9pa11 {
+  display:grid;grid-template-columns:minmax(0,1fr) var(--atlas-macro-library);grid-template-rows:40px minmax(0,1fr) auto;
+  gap:8px;padding:8px;background:var(--background);
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa11 > .e1pv9pa12:first-child {display:contents;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa12:first-child > div:has(> [data-testid="top-toolbar"]) {grid-column:1/-1;grid-row:1;min-width:0;height:40px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa12:first-child > .e1pv9pa10 {grid-column:1;grid-row:2;min-width:0;min-height:0;column-gap:8px;background:transparent;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa12:first-child > .e1pv9pa3 {grid-column:1;grid-row:3;container:macro-properties / inline-size;min-width:0;min-height:0;margin:0;padding:0;overflow:auto;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa12:first-child > .e1pv9pa3:empty {display:none;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa11 > .e1pv9pa12:nth-child(2) {grid-column:2;grid-row:2/4;width:auto;min-width:0;min-height:0;padding:0;overflow:visible;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa11 > .e1pv9pa1 {position:absolute;right:16px;top:56px;z-index:2;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root:has([data-testid="show-monomer-library"]) > .e1pv9pa11 {grid-template-columns:minmax(0,1fr);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root:has([data-testid="show-monomer-library"]) .e1pv9pa11 > .e1pv9pa12:nth-child(2) {display:none;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa0 {display:none;}
+
+/* Framed panels, as in the molecules editor. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="top-toolbar"],[data-testid="left-toolbar"],[data-testid="monomer-library"]) {
+  box-sizing:border-box;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--background);box-shadow:none;
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="top-toolbar"] {width:100%!important;height:40px;margin:0;padding:0 4px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="top-toolbar"] > .e1pv9pa6 {width:100%;min-width:max-content;align-items:center;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa4 {display:none;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="top-toolbar"],[data-testid="left-toolbar"]) :is(.e1fh0ozy3,.e1fh0ozy0) {background:transparent;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is(.e1fh0ozy1,.e1fh0ozy2) {border:0;background:var(--border);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="calculate-macromolecule-properties-button"] > svg {width:15px!important;height:16px!important;}
+
+/* Tool rail: wide enough for split buttons and their 16px chevrons; scrolls
+   instead of clipping on short frames. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa8 {flex:none;width:56px;height:100%;min-height:0;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="left-toolbar"] {
+  width:56px;max-height:100%;padding:4px 3px;align-items:flex-start;overflow-x:hidden;overflow-y:auto;
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="left-toolbar"] .e1fh0ozy0 {width:100%;align-items:flex-start;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="left-toolbar"] .e1fh0ozy2 {width:32px;height:1px;margin:4px 6px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="left-toolbar"] button > svg {position:static!important;transform:none!important;flex:0 0 auto;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="left-toolbar"] [data-testid$="-drop-down-button"] {left:0;margin:0;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="left-toolbar"] [data-slot="button"] {width:30px;height:32px;min-width:30px;flex:none;padding:0;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .ketcher-tool-expand {width:18px;height:32px;min-width:18px;flex:none;padding:0;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="left-toolbar"] button svg {width:20px;height:20px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="left-toolbar"] .ketcher-tool-expand svg {width:12px;height:12px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa2 {border-radius:var(--radius-md);}
+
+/* Monomer library. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa7 {width:100%;height:100%;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="monomer-library"] {width:100%;height:100%;overflow:hidden;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1vkl5kv4 {padding:8px;gap:4px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1vkl5kv3 {height:auto;padding:0;background:transparent;outline:none!important;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1vkl5kv3 > svg {display:none;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e1vkl5kv3 input {height:32px;font-size:13px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="hide-monomer-library"] {
+  flex:none;width:32px;height:32px;justify-content:center;padding:0;border-radius:var(--radius-md);background:transparent;color:var(--muted-foreground);
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="hide-monomer-library"]:hover {background:var(--muted);color:var(--foreground);}
+.ketcher-editor-shell [data-testid="show-monomer-library"] {
+  height:32px;box-sizing:border-box;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--background);color:var(--foreground);box-shadow:none;
+}
+.ketcher-editor-shell [data-testid="show-monomer-library"]:hover {background:var(--muted);}
+.ketcher-editor-shell [data-testid="show-monomer-library"] svg path {fill:currentColor;}
+
+/* Library tabs follow the Atlas toolbar tabs. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="monomer-library"] > .MuiTabs-root {min-height:0;padding:0 8px 8px;border-bottom:1px solid var(--border);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="monomer-library"] > .MuiTabs-root .MuiTabs-flexContainer {gap:2px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="monomer-library"] > .MuiTabs-root .MuiTab-root {
+  min-width:0;min-height:0;height:28px;flex:1 1 auto;padding:4px 8px;margin:0;border:0;border-radius:10px;background:transparent;
+  color:color-mix(in srgb,var(--foreground) 65%,transparent);font:500 13px/18px var(--font-sans);text-transform:none;letter-spacing:0;
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="monomer-library"] > .MuiTabs-root .MuiTab-root:is(:hover,.Mui-selected) {background:var(--secondary);color:var(--foreground);}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="monomer-library"] > .MuiTabs-root .MuiTab-root:is(:hover,.Mui-selected) {background:color-mix(in srgb,var(--foreground) 8%,transparent);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="monomer-library"] > .MuiTabs-root .MuiTab-root:focus-visible {outline:2px solid color-mix(in srgb,var(--ring) 60%,transparent);outline-offset:-2px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="monomer-library"] > .MuiTabs-root .MuiTab-root:is([data-testid="FAVORITES-TAB"]) {flex:none;width:36px;color:var(--muted-foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="monomer-library"] > .MuiTabs-root .MuiTab-root[data-testid="FAVORITES-TAB"].Mui-selected {color:var(--foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="monomer-library"] .MuiTabs-indicator,
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="monomer-library"] .MuiTouchRipple-root {display:none;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="monomer-library"] [class*="TabPanel-module_tabPanelDiv"] {min-height:0;background:var(--background);}
+
+/* Monomer and preset cards: neutral surfaces; the thin top bar keeps the native
+   monomer color code. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-monomer-item-id],[data-rna-preset-item-name]) {
+  min-height:52px;height:auto;padding:10px 8px 8px;border:1px solid var(--border);border-radius:8px;background:var(--background);color:var(--foreground);box-shadow:none;
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-monomer-item-id],[data-rna-preset-item-name]):hover {outline:0;background:var(--muted);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-monomer-item-id],[data-rna-preset-item-name])::after {height:3px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-rna-preset-item-name]::after {background:var(--input);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-monomer-item-id],[data-rna-preset-item-name])[class*="selected"],
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-monomer-item-id],[data-rna-preset-item-name])[style*="border-width: 2px"] {border-color:var(--foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-monomer-item-id],[data-rna-preset-item-name]) > span {font-size:12px;line-height:16px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-monomer-item-id] > .star {left:auto;right:6px;top:6px;bottom:auto;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-rna-preset-item-name] > .star {left:auto;right:22px;top:6px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-rna-preset-item-name] > .dots {right:4px;top:6px;}
+
+/* Library hover preview: a popover beside the library instead of over it. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root > div[style*="transform: translate(-"]:has(> [data-testid="polymer-library-preview"]) {
+  top:56px!important;left:auto!important;right:calc(var(--atlas-macro-library) + 16px)!important;transform:none!important;
+  width:min(345px,calc(100% - var(--atlas-macro-library) - 32px));max-height:calc(100% - 64px);overflow:auto;
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root > div[style*="transform: translate(-"]:has(> [data-testid="polymer-library-preview"]):not(:has([data-testid="monomer-preview-micro"])) {
+  width:min(240px,calc(100% - var(--atlas-macro-library) - 32px));
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root > div:has(> [data-testid="polymer-library-preview"]) {
+  border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;background:var(--popover);color:var(--popover-foreground);box-shadow:0 8px 24px rgb(0 0 0 / 14%);
+}
+.ketcher-editor-shell [data-testid="polymer-library-preview"] {width:100%;max-width:100%;border:0;box-shadow:none;background:var(--popover);color:var(--popover-foreground);}
+.ketcher-editor-shell [data-testid="polymer-library-preview"] :is(p,span) {color:inherit;}
+/* The monomer name heads the preview in Atlas type instead of a teal band. */
+.ketcher-editor-shell [data-testid="preview-tooltip-title"] {
+  box-sizing:border-box;width:100%;padding:8px 12px;border-bottom:1px solid var(--border);background:transparent;color:var(--popover-foreground);font:500 13px/18px var(--font-sans);
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e719szw3 {border-color:var(--border);}
+.ketcher-editor-shell [data-testid="monomer-preview-micro"] {background:var(--popover);}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-preview-micro"] :is(path,line,polyline,polygon,circle,rect):is([stroke="#000" i],[stroke="#000000" i],[stroke="black" i]) {stroke:var(--foreground)!important;}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-preview-micro"] path:is([stroke="#000" i],[stroke="#000000" i],[stroke="black" i]):not([fill]),
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell [data-testid="monomer-preview-micro"] :is(path,polygon,text,tspan):is([fill="#000" i],[fill="#000000" i],[fill="black" i]) {fill:var(--foreground)!important;}
+
+/* Properties panel. */
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] {border:1px solid var(--border);border-radius:var(--radius-md);background:var(--background)!important;color:var(--foreground)!important;box-shadow:none;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] :is(.eifx56c3,[class*="TabsWrapper"],[class*="StyledTabs"]) {background:transparent;color:var(--foreground);}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] :is(.eifx56c2,[data-testid$="-selector"]) {background:var(--muted);color:var(--foreground);border-radius:6px;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] [data-testid$="-selector"] svg {fill:currentColor;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] [role="tab"] {border-color:var(--border);background:transparent!important;color:var(--muted-foreground)!important;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] [role="tab"]:is([aria-selected="true"],.Mui-selected) {background:var(--muted)!important;color:var(--foreground)!important;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] svg {color:var(--muted-foreground);}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] :is(.eifx56c25,.eifx56c24) {color:var(--foreground);}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] [data-testid="Molecular Mass Unit"] {background:var(--background);color:var(--foreground);}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] [data-testid="Molecular Mass Unit"] fieldset {border-color:var(--input);}
+
+/* Thin neutral scrollbars that appear while the pointer or focus is inside, as
+   on the molecules toolbars; the canvas draws its own bars in a blue-gray. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root,
+.ketcher-editor-shell .Ketcher-polymer-editor-root *,
+.MuiMenu-paper:has(.e944g1i0) {scrollbar-width:thin;scrollbar-color:transparent transparent;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is(:hover,:focus-within),
+.MuiMenu-paper:has(.e944g1i0):hover {scrollbar-color:var(--muted-foreground) transparent;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root rect:is([data-testid="vertical-bar"],[data-testid="horizontal-bar"]) {fill:var(--muted-foreground);stroke:none;opacity:.5;}
+
+/* Atlas buttons that Ketcher restyles through emotion (RNA builder actions,
+   the antisense sync toggle): drop the emotion paint so the Atlas variant and
+   its states apply; emotion keeps only layout such as width and margins. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-slot="button"][class*="css-"]:not([data-testid="calculate-macromolecule-properties-button"]) {
+  height:revert-layer;min-height:revert-layer;padding:revert-layer;border:revert-layer;border-radius:revert-layer;outline:revert-layer;box-shadow:revert-layer;
+  background-color:revert-layer;color:revert-layer;font-size:revert-layer;font-weight:revert-layer;line-height:revert-layer;
+}
+
+/* Ketcher's global styles upper-case every button; MUI controls default to Roboto. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is(button,[role="button"]) {text-transform:none;letter-spacing:0;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is(.MuiButtonBase-root,.MuiInputBase-root,.MuiTab-root) {font-family:var(--font-sans);}
+
+/* Sequence type: an outline segmented control like the Atlas toggle group. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root .MuiButtonGroup-root:has([data-testid="RNABtn"]) {box-shadow:none;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="RNABtn"],[data-testid="DNABtn"],[data-testid="PEPTIDEBtn"]) {
+  height:28px;min-width:40px;padding:0 10px;border:1px solid var(--border)!important;background:transparent;color:var(--muted-foreground);
+  font:500 13px/18px var(--font-sans);box-shadow:none;
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="RNABtn"],[data-testid="DNABtn"],[data-testid="PEPTIDEBtn"]):not(:first-child) {margin-left:-1px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="RNABtn"],[data-testid="DNABtn"],[data-testid="PEPTIDEBtn"]):hover {background:var(--muted);color:var(--foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="RNABtn"],[data-testid="DNABtn"],[data-testid="PEPTIDEBtn"]).MuiButton-contained {background:var(--secondary);color:var(--foreground);}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="RNABtn"],[data-testid="DNABtn"],[data-testid="PEPTIDEBtn"]).MuiButton-contained {background:color-mix(in srgb,var(--foreground) 12%,transparent);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="RNABtn"],[data-testid="DNABtn"],[data-testid="PEPTIDEBtn"]):focus-visible {outline:2px solid color-mix(in srgb,var(--ring) 60%,transparent);outline-offset:1px;z-index:1;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="RNABtn"],[data-testid="DNABtn"],[data-testid="PEPTIDEBtn"]) .MuiTouchRipple-root {display:none;}
+
+/* Hard-coded teal glyphs and pale plates in the RNA builder and file dialogs. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root svg [fill="#167782" i] {fill:currentColor;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root svg [stroke="#167782" i] {stroke:currentColor;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root svg [fill="#EFF2F5" i] {fill:var(--muted);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [class*="RnaEditorExpanded-module_phosphatePositionIconWrapper__"] {border-color:var(--border);background:var(--background)!important;color:var(--foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [class*="RnaEditorExpanded-module_phosphatePositionIconWrapper__"]:is(:hover,[class*="module_active__"]) {border-color:var(--foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [class*="RnaEditorExpanded-module_phosphatePositionSelector__"] {border-color:var(--border);background:var(--popover);color:var(--popover-foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [class*="RnaEditorExpanded-module_phosphatePositionOption__"]:hover {background:var(--muted);}
+
+/* Compact RNA tabs (presets, sugars, bases, phosphates, nucleotides). */
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk60 {background:transparent;opacity:1;color:var(--muted-foreground);font:500 11px/14px var(--font-sans);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk60 > svg {color:currentColor;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk60:hover {background:var(--muted);color:var(--foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk60:focus-visible {outline:2px solid color-mix(in srgb,var(--ring) 60%,transparent);outline-offset:-2px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk61.rna-tab--selected button {background:var(--muted);color:var(--foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk61.rna-tab--selected::after,
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk617 {background:var(--muted);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk60 .MuiTouchRipple-root {display:none;}
+
+/* Preset phosphate filter: a popover with Atlas checkboxes. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk612 {color:var(--muted-foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk612:hover {background:var(--muted);color:var(--foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk612::after {border-color:var(--background)!important;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk611 {
+  border:1px solid var(--border);border-radius:var(--radius-md);background:var(--popover);color:var(--popover-foreground);box-shadow:0 8px 24px rgb(0 0 0 / 14%);font-size:13px;
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk68 {color:var(--muted-foreground);font-weight:400;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk69 + span {
+  position:relative;box-sizing:border-box;width:16px;height:16px;border:1px solid var(--input);border-radius:4px;background:var(--background)!important;
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk69:checked + span {border-color:var(--primary);background:var(--primary)!important;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk69:checked + span::after {
+  content:"";position:absolute;left:4.5px;top:1.5px;width:4px;height:8px;border:solid var(--primary-foreground);border-width:0 2px 2px 0;transform:rotate(45deg);
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk69:focus-visible + span {outline:2px solid color-mix(in srgb,var(--ring) 60%,transparent);outline-offset:1px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk64.MuiButtonBase-root {color:var(--foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .e117eqk64.MuiButtonBase-root:hover {background:var(--muted);}
+
+/* File dialogs: sentence-case options, neutral header rule and close glyph. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root .eff4ds61 {text-transform:none;font-size:12px;color:var(--foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .MuiDialog-root .e45wfhi4 {border-bottom-color:var(--border);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .MuiDialog-root [data-testid="close-window-button"] {color:var(--muted-foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .MuiDialog-root [data-testid="close-window-button"]:hover {background:var(--muted);color:var(--foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .MuiDialog-root [data-testid="close-window-button"] svg {color:inherit;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root .MuiDialog-root label {color:var(--foreground);}
+
+/* MUI select menus portal to the body (save format list). */
+.MuiMenu-paper:has(.e944g1i0) {
+  border:1px solid var(--border);border-radius:var(--radius-md)!important;background:var(--popover)!important;color:var(--popover-foreground)!important;
+  box-shadow:0 8px 24px rgb(0 0 0 / 14%)!important;
+}
+.MuiMenu-paper .e944g1i0 {margin:0 4px;border-radius:6px;color:inherit;font:400 13px/18px var(--font-sans);}
+.MuiMenu-paper .e944g1i0:is(:hover,.Mui-focusVisible) {background:var(--muted);}
+.MuiMenu-paper .e944g1i0.Mui-selected,
+.MuiMenu-paper .e944g1i0.Mui-selected:is(:hover,.Mui-focusVisible) {background:var(--secondary);font-weight:400;}
+.app-shell[data-effective-theme="dark"] .MuiMenu-paper .e944g1i0.Mui-selected {background:color-mix(in srgb,var(--foreground) 10%,transparent);}
+.MuiMenu-paper .e944g1i0 .MuiTouchRipple-root {display:none;}
+
+/* RNA tab: the expanded group fills the space left by the builder and scrolls
+   its own content, so later group headers never cover the presets grid. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-accordion"] {min-height:0;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-accordion"] > .e117eqk620 {flex:1 1 0;min-height:96px;overflow:hidden;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-accordion"] > .e117eqk620 > .e117eqk621 {flex:1 1 auto;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-accordion"] [data-testid^="rna-accordion-details-"] {display:flex;flex-direction:column;flex:1 1 auto;min-height:0;overflow:hidden;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-accordion"] [data-testid^="rna-accordion-details-"] > * {flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-accordion"] > .e117eqk621 {flex:none;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-accordion"] .e117eqk621 > button {
+  display:flex;width:100%;height:36px;justify-content:flex-start;padding:0;border-radius:0;border-bottom:1px solid var(--border);background:transparent;color:var(--foreground);
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-accordion"] .e117eqk621 > button:hover {background:var(--muted);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-accordion"] [data-testid^="summary-"] {flex:1;min-width:0;min-height:0;padding:0 12px;border:0;color:var(--foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-accordion"] [data-testid^="summary-"] > span {font-size:13px;font-weight:400;text-align:left;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-accordion"] [data-testid^="summary-"] svg,
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-accordion"] .e117eqk621 > button > svg {color:var(--muted-foreground);opacity:1;}
+
+/* RNA builder. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-editor"] {padding:8px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-builder-expand-button"] {height:32px;padding:0 8px;border-radius:var(--radius-md);font-size:13px;font-weight:400;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-builder-expand-button"]:hover {background:var(--muted);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-builder-expand-button"] svg {color:var(--muted-foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-builder-expand-button"] svg path[fill] {fill:currentColor;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-editor-expanded"] {gap:8px;margin-top:4px;padding:4px 0;border:0;border-radius:0;background:transparent;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-editor-expanded"] .e18wzlbg3 {height:auto;padding:3px 0 0;outline:0;background:transparent;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-editor-expanded"] .e18wzlbg2 {display:none;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-editor-expanded"] .e18wzlbg3 input {height:32px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid^="rna-builder-slot--"] {
+  border:1px solid var(--border);border-radius:var(--radius-md);background:var(--background);color:var(--foreground);box-shadow:none;
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid^="rna-builder-slot--"] * {color:inherit;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid^="rna-builder-slot--"] .e1ie5fzr6,
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid^="rna-builder-slot--"] .e1ie5fzr5 {color:var(--muted-foreground);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid^="rna-builder-slot--"][data-selected] {border-color:var(--foreground);background:var(--background);box-shadow:none;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid^="rna-builder-slot--"]:not([data-selected]):hover {outline:0;border-color:var(--ring);}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-editor-expanded"] .e18wzlbg5 {display:grid;grid-template-columns:repeat(auto-fit,minmax(0,1fr));gap:8px;margin-top:4px;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="rna-editor-expanded"] .e18wzlbg5 > button {width:100%;min-width:0;}
+
+/* Dark canvas: neutral structure ink in both modes; filled wedges stay solid. */
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell #polymer-editor-canvas :is(path,line,polyline,polygon,circle,rect)[stroke="#000" i],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell #polymer-editor-canvas :is(path,line,polyline,polygon,circle,rect)[stroke="#000000" i],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell #polymer-editor-canvas :is(path,line,polyline,polygon,circle,rect)[stroke="black" i],
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell #polymer-editor-canvas :is(path,line,polyline,polygon,circle,rect)[stroke="#333333" i] {stroke:var(--foreground)!important;}
+/* Wedge bonds are black-stroked paths with the default (black) fill. */
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell #polymer-editor-canvas path:is([stroke="#000" i],[stroke="#000000" i],[stroke="black" i]):not([fill]),
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell #polymer-editor-canvas :is(path,polygon):is([fill="#000" i],[fill="#000000" i],[fill="black" i]) {fill:var(--foreground)!important;}
+/* Structure labels lighten; monomer labels keep their native ink on the
+   monomer color fills (the shared dark canvas rule would lighten them). */
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell #polymer-editor-canvas :is(text,tspan):is([fill="#000" i],[fill="#000000" i],[fill="black" i]):not([data-testid="monomer"] *) {fill:var(--foreground);}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell #polymer-editor-canvas [data-testid="monomer"] text:is([fill="#333" i],[fill="#333333" i]) {fill:#333!important;}
+.app-shell[data-effective-theme="dark"] .ketcher-editor-shell #polymer-editor-canvas [data-testid="monomer"] text:is([fill="#000" i],[fill="#000000" i],[fill="black" i]) {fill:#000!important;}
+
+/* Native toolbar glyphs drawn on white plates with #333 ink. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="top-toolbar"],[data-testid="left-toolbar"]) svg rect[fill="#fff" i] {fill:transparent;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="top-toolbar"],[data-testid="left-toolbar"]) svg [fill="#333" i] {fill:currentColor;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root :is([data-testid="top-toolbar"],[data-testid="left-toolbar"]) svg [stroke="#333" i] {stroke:currentColor;}
+
+/* The properties toggle is the one top-bar button Ketcher paints white. */
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="calculate-macromolecule-properties-button"] {
+  width:32px;height:32px;margin:0;border:0;border-radius:var(--radius-md);background:transparent!important;color:var(--foreground);
+}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="calculate-macromolecule-properties-button"]:hover,
+.ketcher-editor-shell .Ketcher-polymer-editor-root:has([data-testid="macromolecule-properties-window"]) [data-testid="calculate-macromolecule-properties-button"] {background:var(--muted)!important;}
+.ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="calculate-macromolecule-properties-button"] svg {fill:currentColor!important;}
+
+/* Narrow frames leave no room beside the library: it docks below the canvas at
+   full width and scrolls as one panel. The hover preview overlays the canvas
+   without taking the pointer from the hovered card. */
+@container macro-editor (max-width:620px) {
+  .ketcher-editor-shell .Ketcher-polymer-editor-root > .e1pv9pa11 {grid-template-columns:minmax(0,1fr);grid-template-rows:40px minmax(120px,1fr) fit-content(24%) minmax(0,30%);overflow:auto;}
+  .ketcher-editor-shell .Ketcher-polymer-editor-root:has([data-testid="show-monomer-library"]) > .e1pv9pa11 {grid-template-rows:40px minmax(120px,1fr) fit-content(24%);}
+  .ketcher-editor-shell .Ketcher-polymer-editor-root .e1pv9pa11 > .e1pv9pa12:nth-child(2) {grid-column:1;grid-row:4;}
+  .ketcher-editor-shell .Ketcher-polymer-editor-root [data-testid="monomer-library"] {overflow-y:auto;}
+  .ketcher-editor-shell .Ketcher-polymer-editor-root > div[style*="transform: translate(-"]:has(> [data-testid="polymer-library-preview"]) {
+    top:56px!important;left:8px!important;right:8px!important;width:auto!important;max-height:calc(52% - 72px);pointer-events:none;
+  }
+}
+
+/* Macromolecule dialog buttons (Ketcher's primary and secondary buttons)
+   follow the Atlas button tokens in both themes. */
+button.ejign8b1 {border:1px solid var(--primary);background:var(--primary);color:var(--primary-foreground);}
+button.ejign8b1:hover:not(:disabled) {background:color-mix(in oklab,var(--primary) 88%,var(--background));}
+button.ejign8b0 {border:1px solid var(--border);background:var(--background);color:var(--foreground);}
+button.ejign8b0:hover:not(:disabled) {background:var(--muted);}
+button:is(.ejign8b0,.ejign8b1):disabled {opacity:.5;}
+/* Macromolecule save preview: inset like the dialog fields. */
+.el6v3ot0 {padding:0 12px;}
+.el6v3ot0 > textarea.e1q335jk0 {flex:1 1 auto;min-width:0;border:1px solid var(--border);border-radius:var(--radius-md);}

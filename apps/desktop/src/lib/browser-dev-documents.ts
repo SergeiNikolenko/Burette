@@ -5,6 +5,7 @@ import { runBrowserDevMetalConformer } from "./browser-dev-compute";
 import { parseDataWarrior } from "./datawarrior";
 import { nativePreviewHtml } from "./native-mcp-workspace";
 import { isHostedMcpWidget } from "./hosted-mcp-widget";
+import { previewBackgroundStyle, readPreviewThemeTokens } from "./theme";
 import type { DockingDocumentRequest, DockingSceneMode, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
 
@@ -114,8 +115,8 @@ const KETCHER_EDIT_MAX_BYTES = 1024 * 1024;
 const KETCHER_EDIT_MAX_ATOMS = 300;
 const BOHR_TO_ANGSTROM = 0.529177210903;
 const BROWSER_DEV_OPEN_CONCURRENCY = 4;
-const GRID_ASSET_VERSION = "grid-ui-v197";
-const VIEWER_ASSET_VERSION = "viewer-ui-v87";
+const GRID_ASSET_VERSION = "grid-ui-v227";
+const VIEWER_ASSET_VERSION = "viewer-ui-v111";
 const MESOSCALE_ASSET_VERSION = "mesoscale-ui-v1";
 // One cache-buster per page load, not per render: the viewer iframe is keyed by
 // its srcdoc, so a fresh timestamp on every rebuild would remount the frame and
@@ -235,24 +236,22 @@ function resolvePreviewVisuals(preferences: ViewerPreferences): ResolvedPreviewV
 
 function previewThemeTokens(preferences: ViewerPreferences): Record<"light" | "dark", PreviewThemeTokenSet> {
   return {
-    light: {
-      accent: preferences.themeLightAccent,
-      background: preferences.themeLightBackground,
-      foreground: preferences.themeLightForeground,
-      uiFont: preferences.themeLightUiFont,
-      editorFont: preferences.themeLightEditorFont,
-      translucent: preferences.themeLightTranslucent,
-      contrast: preferences.themeLightContrast,
-    },
-    dark: {
-      accent: preferences.themeDarkAccent,
-      background: preferences.themeDarkBackground,
-      foreground: preferences.themeDarkForeground,
-      uiFont: preferences.themeDarkUiFont,
-      editorFont: preferences.themeDarkEditorFont,
-      translucent: preferences.themeDarkTranslucent,
-      contrast: preferences.themeDarkContrast,
-    },
+    light: readPreviewThemeTokens(preferences, "light"),
+    dark: readPreviewThemeTokens(preferences, "dark"),
+  };
+}
+
+// App Settings defaults the runtimes start from; the same shape as
+// ViewerDefaults::runtime_config in src-tauri/src/preview/runtime.rs.
+function previewViewerDefaults(preferences: ViewerPreferences) {
+  return {
+    screenshotResolution: preferences.screenshotResolution,
+    screenshotFormat: preferences.screenshotFormat,
+    screenshotTransparent: preferences.screenshotTransparent,
+    gridViewMode: preferences.gridViewMode,
+    gridCardRenderer: preferences.gridCardRenderer,
+    gridCardSize: preferences.gridCardSize,
+    hydrogenDisplay: preferences.hydrogenDisplay,
   };
 }
 
@@ -353,6 +352,7 @@ export async function openBrowserDevDockingDocument(
     debug: false,
     theme: visuals.theme,
     themeTokens: previewThemeTokens(preferences),
+    viewerDefaults: previewViewerDefaults(preferences),
     canvasBackground: visuals.canvasBackground,
     documentId: id,
     uiScale: 0.9,
@@ -513,6 +513,7 @@ export async function openBrowserDevMolstarContextDocument(
     debug: false,
     theme: visuals.theme,
     themeTokens: previewThemeTokens(preferences),
+    viewerDefaults: previewViewerDefaults(preferences),
     canvasBackground: visuals.canvasBackground,
     documentId: id,
     uiScale: 0.9,
@@ -767,6 +768,7 @@ function openBrowserDevTrajectoryPairDocument(
     debug: false,
     theme: visuals.theme,
     themeTokens: previewThemeTokens(preferences),
+    viewerDefaults: previewViewerDefaults(preferences),
     canvasBackground: visuals.canvasBackground,
     documentId: id,
     uiScale: 0.9,
@@ -1178,6 +1180,7 @@ function browserDevContextConfig(
     debug: false,
     theme: visuals.theme,
     themeTokens: previewThemeTokens(preferences),
+    viewerDefaults: previewViewerDefaults(preferences),
     canvasBackground: visuals.canvasBackground,
     documentId: id,
     uiScale: 0.9,
@@ -1272,6 +1275,7 @@ function viewerHtml(
     debug: false,
     theme: visuals.theme,
     themeTokens: previewThemeTokens(preferences),
+    viewerDefaults: previewViewerDefaults(preferences),
     canvasBackground: visuals.canvasBackground,
     documentId: documentId ?? stableId(path),
     uiScale: 0.9,
@@ -1352,7 +1356,7 @@ function viewerHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   ${hostedMcpBootstrap ? "" : `<base href="${WEB_ASSETS_BASE}" />`}
   <title>Burette - ${escapeHtml(label)}</title>
-  <style>html{color-scheme:${visuals.theme === "auto" ? "light dark" : visuals.theme};background:${visuals.transparentBackground ? "transparent" : visuals.theme === "light" ? "#ffffff" : hostedMcpBootstrap ? "#000000" : "#111111"}}body{background:inherit}${visuals.theme === "auto" && !visuals.transparentBackground ? "@media(prefers-color-scheme:light){html{background:#ffffff}}" : ""}</style>
+  <style>${previewBackgroundStyle(preferences)}</style>
   <link rel="stylesheet" href="${viewerAsset("viewer-runtime.css")}?v=${runtimeAssetVersion}" />
 </head>
 <body class="${visuals.transparentBackground ? "burette-transparent-background" : "burette-opaque-background"}">
@@ -1546,6 +1550,7 @@ async function gridHtml(
     tauriViewer: false,
     theme: visuals.theme,
     themeTokens: previewThemeTokens(preferences),
+    viewerDefaults: previewViewerDefaults(preferences),
     canvasBackground: visuals.canvasBackground,
     overlayOpacity: 0.9,
     transparentBackground: visuals.transparentBackground,

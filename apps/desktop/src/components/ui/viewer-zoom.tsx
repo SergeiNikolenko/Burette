@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Plus } from "lucide-react";
+import { Plus } from "@/components/ui/app-icons";
 import { Expand as Maximize, Minus } from "@/components/ui/app-icons";
 
-import { Button } from "@/components/ui/retab-button";
+import { Button } from "@/components/ui/button";
+import { ShortcutTooltip } from "@/components/shortcut-tooltip";
 
 function IconButton({
   label,
@@ -12,16 +13,17 @@ function IconButton({
   ...props
 }: React.ComponentProps<typeof Button> & { label: string }) {
   return (
-    <Button
-      variant="ghost"
-      size="iconSm"
-      className="size-7"
-      aria-label={label}
-      title={label}
-      {...props}
-    >
-      {children}
-    </Button>
+    <ShortcutTooltip label={label}>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="size-7"
+        aria-label={label}
+        {...props}
+      >
+        {children}
+      </Button>
+    </ShortcutTooltip>
   );
 }
 

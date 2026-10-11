@@ -7,7 +7,8 @@ import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import { gunzipSync } from "node:zlib";
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import react, { reactCompilerPreset } from "@vitejs/plugin-react";
+import babel from "@rolldown/plugin-babel";
 import { ketcherUiPlugin } from "./vite/ketcher-ui";
 import { nativeWorkspaceCspPlugin } from "./vite/native-workspace-csp";
 import tailwindcss from "@tailwindcss/vite";
@@ -3863,10 +3864,16 @@ function normalizeOrientationRef(value: string | null) {
   return normalized.endsWith("\n") ? normalized : `${normalized}\n`;
 }
 
+// React Compiler only sees the app's own TypeScript. The preset's default filter
+// matches on code alone, which also sent the viewer runtime (raw and worker
+// imports) through Babel and left the structure viewer blank.
+const reactCompiler = reactCompilerPreset();
+reactCompiler.rolldown.filter.id = { include: [/\/apps\/desktop\/src\/.*\.tsx?$/] };
+
 export default defineConfig({
   root: desktopRoot,
   base: "./",
-  plugins: [tailwindcss(), react(), ketcherUiPlugin(), ketcherRaphaelImportShimPlugin(), deferKetcherCssPlugin(), browserDevXyzrenderPlugin(), ...(nativeMcpBuild ? [nativeWorkspaceCspPlugin()] : [])],
+  plugins: [tailwindcss(), react(), babel({ presets: [reactCompiler] }), ketcherUiPlugin(), ketcherRaphaelImportShimPlugin(), deferKetcherCssPlugin(), browserDevXyzrenderPlugin(), ...(nativeMcpBuild ? [nativeWorkspaceCspPlugin()] : [])],
   worker: { plugins: () => nativeMcpBuild ? [nativeWorkspaceCspPlugin()] : [] },
   resolve: {
     alias: {

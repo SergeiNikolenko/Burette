@@ -168,6 +168,7 @@ fn runner_path<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String>
 
 fn resolve_uv_executable() -> Result<PathBuf, String> {
     let mut candidates = Vec::new();
+    candidates.extend(super::app_preferences::uv_override());
     if let Some(path) = env::var_os("BURETTE_UV") {
         candidates.push(PathBuf::from(path));
     }

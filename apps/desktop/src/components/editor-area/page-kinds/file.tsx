@@ -143,7 +143,7 @@ function StructureViewerSurface({
       {
         kind: "item",
         id: "save-collection-as",
-        text: "Save Collection As...",
+        text: "Save collection as…",
         action: () => {
           void actions.saveMoleculeCollectionAs(document.id);
         },

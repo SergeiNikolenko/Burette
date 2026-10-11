@@ -1,0 +1,49 @@
+@layer components {
+  .atlas-select-menu {
+    --select-list-min-width: min(300px, var(--radix-select-content-available-width, 100vw));
+    --select-list-max-width: var(--radix-select-content-available-width, 100vw);
+    max-height: min(var(--select-list-max-height, 400px), var(--radix-select-content-available-height));
+  }
+  .atlas-select-menu[data-position=item-aligned] { width: auto; }
+  .atlas-select-menu[data-position=popper][data-state=open] { animation: atlas-select-enter .3s var(--cubic-enter); }
+  .atlas-select-menu[data-position=popper][data-state=closed] {
+    animation: atlas-select-exit .2s var(--cubic-exit);
+    /* The exit animation must not intercept the next toolbar click. */
+    pointer-events: none;
+  }
+  @keyframes atlas-select-enter {
+    from { opacity: 0; transform: scale(var(--select-list-scale, .95)); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes atlas-select-exit {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(var(--select-list-scale, .95)); }
+  }
+  /* Keep macOS's real select rather than a second, potentially stale label. */
+  .atlas-select:has(> [data-native-selectcontrol]) { padding: 0; width: fit-content; min-width: 0; max-width: 100%; color: var(--color-text); }
+  .atlas-select > [data-native-selectcontrol] {
+    box-sizing: border-box;
+    height: 100%; width: 100%; min-width: 0;
+    appearance: none; border: 0; background: transparent; outline: none;
+    font: inherit;
+    cursor: inherit;
+    padding-inline: var(--select-control-gutter);
+    padding-inline-end: calc(var(--select-control-gutter) + var(--dropdown-icon-width) + var(--select-control-gap));
+  }
+  .atlas-select > [data-native-selectcontrol]:disabled { cursor: not-allowed; }
+  .atlas-select > [data-native-selectcontrol] + .atlas-select-indicator {
+    position: absolute;
+    inset-inline-end: var(--select-control-gutter);
+    pointer-events: none;
+  }
+  .atlas-select:has(> [data-native-selectcontrol]:focus-visible)::after {
+    outline: 2px solid var(--button-ring-color, var(--color-ring));
+    outline-offset: var(--select-control-ring-offset, 2px);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .atlas-select-menu[data-position=popper] { animation: none; }
+    .atlas-select-option::before { transition: none; }
+    .atlas-select, .atlas-select::before, .atlas-select::after, .atlas-select-icon { transition: none; }
+    .atlas-select { --scale: 1 !important; }
+  }
+}

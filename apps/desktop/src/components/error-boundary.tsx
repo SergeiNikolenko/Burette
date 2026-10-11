@@ -1,5 +1,9 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { trackWebDemoHandledError } from "../lib/web-demo-analytics";
+import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../lib/theme";
+import { useSettingsStore } from "../stores/settings-store";
+import { Warning } from "./ui/app-icons";
+import { PanelEmptyState } from "./ui/panel-empty-state";
 
 interface Props {
   children: ReactNode;
@@ -27,18 +31,21 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.error) {
-      return (
-        <div className="error-boundary" role="alert">
-          <div className="error-boundary-card">
-            <h1>Something went wrong</h1>
-            <pre>{this.state.error.message}</pre>
-            {this.state.error.stack && <pre className="error-boundary-stack">{this.state.error.stack}</pre>}
-            <button onClick={this.handleRetry}>Try again</button>
-          </div>
-        </div>
-      );
+      return <RecoveryScreen onRetry={this.handleRetry} />;
     }
 
     return this.props.children;
   }
+}
+
+// The root boundary lives outside App, so it cannot inherit the failed shell's
+// theme. Read the same preferences and host/system theme, without mounting App.
+function RecoveryScreen({ onRetry }: { onRetry: () => void }) {
+  const preferences = useSettingsStore(state => state.preferences);
+  const systemTheme = useSystemThemeMode();
+  const mode = resolveThemeMode(preferences.theme, systemTheme);
+  return <div className={`app-shell error-boundary ${mode === "dark" ? "dark" : ""}`}
+    data-theme={preferences.theme} data-effective-theme={mode} style={buildThemeStyle(preferences, systemTheme)} role="alert">
+    <PanelEmptyState title="Something went wrong" icon={<Warning />} action={{ label: "Try again", run: onRetry }} />
+  </div>;
 }

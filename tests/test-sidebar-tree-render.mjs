@@ -62,6 +62,19 @@ for (const file of ["minimal.xtc", "multi.sdf", "trajectory.xyz"]) {
   assert.ok(expandedDemoHtml.includes(file), `expanded folder must include ${file}`);
 }
 
+// Collapsed shells preserve animation geometry without mounting file actions.
+// Expanded branches remain keyboard accessible.
+assert.match(html, /class="project-group-children-shell" data-expanded="true" aria-hidden="false">/);
+assert.match(html, /class="project-folder-children-shell" data-expanded="false" aria-hidden="true" inert="">/);
+assert.doesNotMatch(expandedDemoHtml, / inert=/);
+const collapsedProjectHtml = renderProjectGroup({
+  project,
+  state: { ...state, expandedProjectIds: [] },
+  actions,
+});
+assert.match(collapsedProjectHtml, /class="project-group-children-shell" data-expanded="false" aria-hidden="true" inert="">/);
+assert.doesNotMatch(collapsedProjectHtml, /mini\.pdb/);
+
 const crowdedFolderProject = {
   ...project,
   id: "project:/fixtures/crowded",

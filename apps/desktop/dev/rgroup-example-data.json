@@ -1,0 +1,100 @@
+{
+  "rdkitVersion": "2026.03.5",
+  "labels": [
+    "Series",
+    "Status",
+    "Core",
+    "R1"
+  ],
+  "rows": [
+    {
+      "rowId": 7,
+      "values": {
+        "Core": "c1ccc([*:1])cc1",
+        "R1": "Br[*:1]",
+        "Series": "S1",
+        "Status": "Matched"
+      }
+    },
+    {
+      "rowId": 3,
+      "values": {
+        "Core": "c1ccc([*:1])cc1",
+        "R1": "CCC[*:1]",
+        "Series": "S1",
+        "Status": "Matched"
+      }
+    },
+    {
+      "rowId": 2,
+      "values": {
+        "Core": "c1ccc([*:1])cc1",
+        "R1": "CC[*:1]",
+        "Series": "S1",
+        "Status": "Matched"
+      }
+    },
+    {
+      "rowId": 1,
+      "values": {
+        "Core": "c1ccc([*:1])cc1",
+        "R1": "C[*:1]",
+        "Series": "S1",
+        "Status": "Matched"
+      }
+    },
+    {
+      "rowId": 6,
+      "values": {
+        "Core": "c1ccc([*:1])cc1",
+        "R1": "Cl[*:1]",
+        "Series": "S1",
+        "Status": "Matched"
+      }
+    },
+    {
+      "rowId": 8,
+      "values": {
+        "Core": "c1ccc([*:1])cc1",
+        "R1": "F[*:1]",
+        "Series": "S1",
+        "Status": "Matched"
+      }
+    },
+    {
+      "rowId": 5,
+      "values": {
+        "Core": "c1ccc([*:1])cc1",
+        "R1": "N[*:1]",
+        "Series": "S1",
+        "Status": "Matched"
+      }
+    },
+    {
+      "rowId": 4,
+      "values": {
+        "Core": "c1ccc([*:1])cc1",
+        "R1": "O[*:1]",
+        "Series": "S1",
+        "Status": "Matched"
+      }
+    }
+  ],
+  "series": [
+    {
+      "id": "S1",
+      "core": "c1ccc([*:1])cc1",
+      "query": "c1ccccc1",
+      "matchedRows": 8,
+      "labels": [
+        "R1"
+      ],
+      "constantPositions": 0,
+      "coreVariantCount": 1
+    }
+  ],
+  "excludedRows": [],
+  "unmatchedRows": 0,
+  "unparsedRows": 0,
+  "noScaffoldRows": 0
+}

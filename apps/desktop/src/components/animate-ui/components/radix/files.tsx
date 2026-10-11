@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { FolderIcon, FolderOpenIcon, FileIcon } from 'lucide-react';
+import { FileBlank as FileIcon, Folder as FolderIcon, FolderOpen as FolderOpenIcon } from '@/components/ui/app-icons';
 
 import {
   Files as FilesPrimitive,

@@ -1,0 +1,1 @@
+@layer theme,base;@layer components{.atlas-toast-item{pointer-events:auto;width:max-content;max-width:100%}.atlas-toast-contents{display:contents}.atlas-toast{pointer-events:all;min-width:0;max-width:100%;box-shadow:0 4px 12px #0000001a}.atlas-toast-success a{color:inherit!important;text-decoration:underline!important}}@layer utilities;

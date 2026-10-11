@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { ViteDevServer } from "vite";
+import { registerBrowserSidebarFileOperations } from "./sidebar-file-operations";
 
 import type { BrowserDevFileScan, BrowserDevFileScanLimits } from "./file-discovery";
 import { readJsonBody, sendJson, sendJsonError } from "./http";
@@ -72,6 +73,7 @@ export function registerBrowserDevFileDiscoveryRoute(server: ViteDevServer, opti
 }
 
 export function registerBrowserDevFileContentRoutes(server: ViteDevServer, options: BrowserDevFileRoutesOptions) {
+  registerBrowserSidebarFileOperations(server, options.isDevFileReadAllowed);
   server.middlewares.use("/__burette/trajectory-pair", async (req, res) => {
     if ((req.method || "GET").toUpperCase() !== "GET") {
       sendJson(res, 405, { error: "Method not allowed" });

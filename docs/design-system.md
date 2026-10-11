@@ -8,28 +8,30 @@ The source of truth for runtime theme defaults is:
 - `apps/desktop/src/lib/theme.ts`
 - `apps/desktop/src/styles.css`
 - `apps/desktop/src/styles/interface-tokens.css`
+- `apps/desktop/src/lib/codex-theme.ts`
+- `apps/desktop/src/styles/codex-tokens.css`
 
 ## Current Reality
 
-Burette's desktop shell is a compact, translucent macOS-style workspace. It uses
-system fonts, configurable light/dark theme settings, a single default accent,
-low-contrast surfaces, and dense file-oriented controls.
+The desktop shell follows the Codex InterfaceAtlas tokens and primitives while
+retaining Tauri and the molecular workspace. It uses system fonts, configurable
+light/dark appearance, neutral controls, and dense file-oriented navigation.
 
-Current default theme values include:
+Resolved shell defaults (including untouched legacy appearance settings):
 
 | Token | Light | Dark |
 | --- | --- | --- |
-| Accent | `#AF52DE` | `#AF52DE` |
-| Background | `#FFFFFF` | `#111111` |
-| Foreground | `#0D0D0D` | `#FCFCFC` |
+| Accent | `#339CFF` | `#339CFF` |
+| Background | `#FFFFFF` | `#181818` |
+| Foreground | `#1A1C1F` | `#FFFFFF` |
 | UI font | system UI stack | system UI stack |
 | Editor font | system UI stack | system UI stack |
 | Translucency | `30` | `20` |
-| Contrast | `20` | `16` |
+| Contrast | `45` | `60` |
 
-Dark shell text mixes the configured foreground at 84% with the background
-(about `#D6D6D6` with the defaults), keeping primary labels softer than white.
-Light shell text uses the configured foreground directly.
+Primary shell text uses the resolved foreground; secondary and tertiary text
+use the shared Codex semantic tokens. Persisted legacy defaults remain readable
+and resolve through `theme.ts`; custom colours are preserved.
 
 The runtime derives border, surface, hover, selected, palette, tab, and scrollbar
 colors from these settings through CSS variables and `color-mix()`. Users can
@@ -45,6 +47,9 @@ The shell is a workspace, not a brand canvas.
 
 ## Surface Rules
 
+- Preserve the classic Codex shell: its background and edge-to-edge sidebar.
+  Component migration does not authorize the newer navigation rail, inset
+  panels, or a different sidebar treatment.
 - The molecular preview, collection, text artifact, or workflow panel stays the
   primary visual object.
 - Chrome should remain compact and predictable: sidebar, tab strip, command
@@ -73,10 +78,17 @@ The shell is a workspace, not a brand canvas.
 
 ### Shared Icon Geometry
 
-- Common commands use the reviewed Apps SDK UI 0.2.2 geometry stored in
-  `config/icons/apps-sdk.json`, under the adjacent MIT license. React components
-  import `components/ui/app-icons`; controls using the existing Hugeicons SVG
-  renderer import `components/ui/app-icon-data`.
+- Common commands use the Codex app glyph registry captured by InterfaceAtlas
+  (the `*-light-16` glyphs, for example `info-circle-light-16`), stored in
+  `config/icons/apps-sdk.json` and listed under its Codex `additionalSources`
+  entry. The 16-unit paths carry `transform: scale(1.5)` to fill the shared
+  24-unit canvas. Icons without a Codex counterpart keep the reviewed Apps SDK
+  UI 0.2.2 or lucide geometry. React components import
+  `components/ui/app-icons`; controls using the existing Hugeicons SVG renderer
+  import `components/ui/app-icon-data`.
+- Write node attributes in SVG (kebab-case) form, such as `fill-rule`. The
+  viewer sets them with `setAttribute`, which ignores camelCase names; the sync
+  script converts them for React.
 - `node scripts/sync-app-icons.mjs` regenerates the React data/exports and the
   inline preview data, and mirrors `viewer.js` into the packaged plugin. Update
   the reviewed snapshot before regenerating; do not edit generated glyph data.
@@ -97,30 +109,104 @@ The shell is a workspace, not a brand canvas.
   unpin, source path, elapsed time, copy confirmation). They do not create new
   commands or change scientific workflows.
 
+### Shell Menus
+
+- Shell button hints use the shared Tooltip's `floating` variant, matching
+  Atlas `FloatingTooltip` (`overlays/floating-tooltip-shortcut`): 13/18 text,
+  5px/12px padding, semantic tooltip surface/border/shadow and a 2px offset.
+  `ShortcutTooltip` wraps its button rather than placing an absolutely
+  positioned span inside it; themed portals prevent pane overflow clipping.
+  The SDK default and compact tooltip variants remain separate.
+
+- Dropdown and context flyouts use the Atlas default menu surface and spacing:
+  4px gutter, 1px margin, 5px/8px row padding, and 6px collision inset.
+  Submenus portal into the shell rather than the parent's scrolling content.
+- Checkbox rows stay open by default, like Atlas `Menu.CheckboxItem`.
+  Use `closeOnSelect` for one-shot commands: `MenuItemSpec` snapshots and the
+  Ketcher editor-mode switch close before their surrounding UI is refreshed.
+- Keep keyboard selection, disabled-item skipping, parent focus restoration and
+  portal placement covered in `tests/test-overlay-interactions.test.tsx`.
+
 ### Viewer Menus on macOS
 
-Scene and Composition object menus, viewport rail menus (camera, screenshot,
-animation and selection), Style/Appearance, Compute, Grid Actions and column
-context menus use the shared AppKit popup in the desktop app. The DOM controls
+Browser Grid select popups reuse the generated Atlas Select menu CSS and
+`SelectOptionContent`, not a separate CSS approximation. The standalone Grid
+bundle embeds those styles and the shared theme tokens; `grid-atlas-styles.ts`
+maps their scope to `data-buret-theme` and derives both palettes through
+`buildCodexThemeVariables`. The underlying select remains the runtime's value,
+options and change-event contract. App/Quick Look retain their native select
+route. `test-grid-selection-toolbar.mjs` covers browser selection, disabled
+options, Escape/focus return, nested choices and the native-route guards;
+these guards are not packaged native acceptance.
+
+Scene and Composition object menus, Grid Actions and column context menus use
+the shared AppKit popup in the desktop app and shared Atlas menus in the browser.
+Viewport rail panels (camera, screenshot, animation and selection),
+Style/Appearance and Generate 3D remain in the viewer on both hosts: their
+interactive controls and representation previews are not native command lists.
+Style/Appearance, Camera, Screenshot and the compute action menu use the shared Menu
+stylesheet and theme engine through
+`preview-controls/viewer-atlas-menu.ts`, bundled in the existing viewer controls
+asset. Only positioning and DOM radio behavior are viewer-specific; there is no
+parallel surface/row theme. The shared check icon replaces the old text marker.
+Screenshot keeps resolution and format in collapsible groups with live value
+summaries. Its neutral radio/check rows use the shared check icon; keyboard
+navigation skips collapsed choices and supports opening/closing groups.
+The Compute trigger embeds the shared Atlas Button and LoadingIndicator styles;
+its pending/disabled state and theme updates keep the existing compute contract.
+Select composes the shared SegmentedControl and Command search inside that
+Popover surface. Apply composes Button, Select and the Atlas ColorPalette
+geometry, retaining the scientific colour presets and scene actions. These
+React roots are owned and disposed by the viewport menu lifecycle; the query
+registry's original indices and exact-selection semantics remain intact.
+`test-viewer-selection-controls.test.tsx` covers the real builders, filtering,
+modifiers, selection actions, nested keyboard dismissal and selection-bar anchor.
+The selection toolbar uses shared Button and NativeSelectControl components;
+its count and picking level follow the scene subscriptions. Browser pickers use
+the shared Menu presentation in the top layer, while native hosts keep the
+system picker. Hiding the toolbar dismisses its picker. The toolbar integration
+test covers scene reloads without duplicate listeners or stale selection state.
+The vertical viewport rail composes the same ToolbarButton and FloatingTooltip
+as the shell, with shared action icons. Its selected states follow lighting,
+selection and motion; Clear selection is neutral, not a destructive action.
+Tooltips portal outside the draggable rail and carry the current viewer theme.
+`test-viewer-viewport-toolbar.test.tsx` covers commands, live state, scene reloads
+and tooltip ownership; the existing toolbar group still owns dragging/placement.
+The main preview toolbar retains its scientific DOM command bindings and uses
+the shared ToolbarButton recipe, original Button stylesheet and inner wrapper
+through `preview-controls/viewer-main-toolbar.ts`. Visibility, selected and
+disabled states still come from the owning controllers. Theme and preset updates
+preserve that wrapper and the command nodes. Its left/right panel icons come from
+the shared icon registry. Legacy scientific hints use FloatingTooltip styling
+in their existing top-layer adapter, including accessible description cleanup.
+The live molecular preview uses the same `ui/popover-surface.css` as React
+Popover, including its opaque surface, ring and shadow. Molecular canvas sizing
+and the compact title are viewer-owned; the invisible rendering stage is inert
+and excluded from accessibility. Preview activation remains keyboard accessible.
+`test-native-viewer-menus.mjs` covers this presentation boundary. The DOM controls
 remain their command model through `native-viewer-menus.js`; changes still use
 the existing scoped scene operations and undo handlers. Slider drags commit once
 when the menu closes. Commands run after native menu tracking finishes.
 
 Mol* canvas picking, xyzrender, collection molecule rows, and shell menus retain
-their existing native routes. Browser, Finder Quick Look and mobile keep their
-own supported presentation. Free-form measurement labels and column filters are
+their existing native routes. Finder Quick Look and mobile keep their
+own supported presentation. Viewer command descriptors preserve an explicit
+`variant: "destructive"` through the bounded host parser into the Atlas item;
+labels or IDs never determine danger styling. Native menu serialization keeps
+the existing AppKit behavior. Free-form measurement labels and column filters are
 editors, not command menus. The viewer bridge validates menu shape, disabled
 rows, option counts and nesting before opening AppKit.
 
 ### Sidebar And Search
 
-- Folder markers use the matching 24-unit Hugeicons `Folder01Icon` and
-  `Folder02Icon` outlines, recorded as `SidebarFolder`/`SidebarFolderOpen` in
+- Folder markers use the Codex `folder` and `folder_open` glyphs from the
+  InterfaceAtlas snapshot, recorded as `SidebarFolder`/`SidebarFolderOpen` in
   the shared icon snapshot. Both render at 16 px with the primary text color.
-  `SidebarGlobe` comes from `Globe02Icon`; the folder component supports cyan,
-  blue and purple network badges. Local folders have no badge; source identity
-  must be supplied before assigning one. These glyphs use the existing
-  `@hugeicons/core-free-icons` dependency's geometry and license.
+  `SidebarGlobe` comes from the Codex `globe` glyph; the folder component
+  supports cyan, blue and purple network badges. Local folders have no badge;
+  source identity must be supplied before assigning one. Glyphs missing from
+  the Apps SDK set are copied from the same snapshot and listed under
+  `additionalSources` in `config/icons/apps-sdk.json`.
 - The sidebar is a file/project navigation tool, not a marketing navigation
   rail.
 - Project folders, recent files, nested structures, and search should stay dense
@@ -144,9 +230,9 @@ rows, option counts and nesting before opening AppKit.
 
 ### Status And Notifications
 
-- Transient status messages use the Base UI toast layer
+- Transient status messages use the sonner toast layer
   (`apps/desktop/src/components/ui/toast.tsx`): notices stack and auto-dismiss,
-  errors persist until dismissed, and long details open in a standalone dialog
+  application error notices last eight seconds, and long details open in a standalone dialog
   (`apps/desktop/src/components/status-details-dialog.tsx`).
 - Do not reintroduce blocking status popups for routine progress.
 
@@ -222,21 +308,100 @@ colour matches the accent, while authored snapshot renderer settings take preced
 
 ### Interface Typography And Palette
 
-The shell and document controls share the shell's semantic theme palette.
-`styles/interface-tokens.css` defines 20/26 headings at weight 600, 14/20 body
-labels, and 12/18 supporting text. Buttons use weight 500. Scientific tables
-keep their compact scale. Secondary text is mixed against the configured
-background rather than made translucent, so it remains distinct from disabled
-text. Theme preferences still own background, foreground, fonts and accent.
+The shell takes its palette, type, radius and shadow scales from the Codex
+desktop theme. `lib/codex-theme.ts` derives the base variables from the theme
+preferences (accent, background, foreground, contrast) and writes them on
+`.app-shell`; `styles/codex-tokens.css` holds the token layer that derives every
+other value from those variables for the light and dark appearance. That file is
+generated: regenerate it with `node scripts/sync-codex-tokens.mjs` and do not
+edit it by hand. Interface text is 13px at weight 430. Burette's own variable
+names (`--surface-*`, `--text-*`, `--line-*`) are mapped onto the tokens in
+`lib/theme.ts`, so existing styles follow the theme without per-rule changes.
+`apps/desktop/dev/codex-theme.html` shows the tokens and shared controls in
+both appearances side by side in browser-dev.
 
-Inspector disclosures use the installed shadcn `radix-nova` `Accordion` components.
-Calculation engines compose `ItemGroup`, outlined `Item` rows, `ItemContent`,
-`ItemTitle`, `ItemDescription`, and `ItemActions`. Smoothing and inline engine
-option sets use `ToggleGroup` with its outline variant. Keep component variants
-responsible for borders, type, selection, and focus; use local classes for layout.
-Accordion content uses natural height within the inspector's scrolling dock.
-The shared OpenAI glyphs do not make these components Apps SDK UI components;
-the shell retains its shadcn base and Burette theme.
+`styles/interface-tokens.css` keeps the heading and settings text scale:
+20/26 headings at weight 600, 14/20 body labels, and 12/18 supporting text.
+Scientific tables keep their compact scale. Theme preferences still own
+background, foreground, fonts and accent.
+
+The shared controls in `components/ui` follow the Codex control specs and read
+their colors, radii and shadows from the tokens. SDK pill buttons retain the
+32px default, 28px `sm` and 24px `xs` sizes. Pane headers use the original app
+button's `toolbar` / `icon-toolbar` sizes instead: 28px height, 13/18 type,
+8px inline padding (zero for square icon controls) and `--radius-button-toolbar`.
+Use the ghost variant for secondary toolbar actions. Ketcher's header follows
+the Atlas `panel-header-toolbar` pane geometry; its actions wrap below the title
+and display controls when the editor pane is narrow, rather than shrinking or
+removing commands. Inputs are 36px fields. Select triggers use the original Atlas
+outline style: 32px high with a 10px radius by default, or 28px high with a 7.5px
+radius for `size="sm"`. Their popup and option CSS are extracted by
+`scripts/sync-atlas-primitives.mjs`; the Radix adapter retains keyboard focus,
+disabled choices, grouping and form values. Browser-dev uses web listboxes;
+Tauri keeps real native selects. `Tabs` renders the inset segmented control.
+Grid's Table/Cards switch reuses the shell `SegmentedControl` and its shared
+`segmented-control.css` (Atlas ACc inset: 24px items inside a 28px track).
+The shell imports this CSS into the components layer; standalone Grid embeds
+the same source alongside its Atlas tokens. Keep keyboard selection in the
+shared Radix primitive, not in a second grid-only toggle implementation.
+At narrow widths the ordinary Grid toolbar wraps its controls rather than
+hiding sorting, representation, columns or selection actions.
+Grid toolbar actions use shared `Button` ghost/md and uniform icon/md variants;
+the original button CSS is loaded by `styles.css` in the shell and embedded by
+`grid-atlas-styles.ts` in standalone previews. The viewer's imperative
+`aria-pressed` contract maps to the original selected appearance. Legacy grid
+button rules must not override these shared controls.
+Editable host menu rows compose compact `Input`, `NativeSelect` and
+`ScrubNumberField`; the menu CSS only positions them. Scrubbing keeps its drag,
+keyboard and animation behaviour, with the shared compact Input appearance in
+both display and edit modes. Browser selects open the in-page Atlas picker
+without closing the parent parameter menu; native menu presentation is unchanged.
+
+Grid search uses the shared Atlas `SearchInput` (32px page-search variant),
+including its clear action and focus return. Search text updates immediately;
+the collection filter retains its 120ms debounce and stale-request invalidation.
+Grid selects reuse `NativeSelectControl` and the extracted Select CSS, not a
+second arrow image or field skin. The real select remains the viewer's value,
+options and disabled-state contract; only browser popups use `GridSelectMenu`.
+Grid button hints also use the shared `Tooltip` floating variant, portaled
+outside the toolbar with its exposed width as the collision boundary. They
+open below the top toolbar after 200ms, remain available on disabled actions,
+and dismiss with Escape without activating their button. Standalone previews
+embed the same tooltip CSS as the shell; do not add a grid-only tooltip skin.
+Grid Actions uses shared `DropdownMenu` content/items/labels/separators and
+the same `dropdown-menu.css` as the shell. Radix owns placement, focus and
+keyboard navigation, with the overlaid dock excluded from the available
+width. Menu items remain real buttons with their original IDs for viewer
+updates and the native menu adapter; inline method choices retain their
+native selects. Commands close the menu before dispatching their action.
+Tooltips have no arrow unless `showArrow` is set. Style these controls through
+their variants and sizes; app styles should only place them, not repaint them.
+
+Run `vp exec node scripts/sync-atlas-primitives.mjs --check` to compare the
+extracted CSS modules with the local InterfaceAtlas snapshot without modifying
+them. Use `--atlas /path/to/InterfaceAtlas` for a different checkout. A mismatch
+or missing generated module exits nonzero. This verifies extraction fidelity,
+not React interaction behavior or whole-screen visual parity.
+
+Loading uses two original Atlas variants: `Spinner` is the 18px app icon with
+a two-second stepped rotation synchronized to the document timeline, including
+indicators mounted later; `LoadingIndicator` is the gradient ring with a 0.8s
+linear rotation and explicit size/stroke controls. Both stop animating under
+`prefers-reduced-motion`. Keep their geometry and animation behavior in the
+shared primitives rather than adding screen-specific spinners.
+
+Composition, Tools, File and other `InspectorSection` blocks use the shared
+`CollapsibleSection`, from Atlas `display/collapsible-section` (`Ci`). Its native
+details/summary disclosure keeps child controls mounted and excludes collapsed
+content from keyboard navigation. The 37px header, 16/24 medium title, 14px
+disclosure glyph, subtle divider and 16px body gap follow that source; do not
+wrap it in another padded inspector card. Filters, Smooth motion and its nested
+Scientific settings also use this primitive; Folding Results remains a separate
+accordion and is not evidence that every disclosure migrated.
+Calculation rows use shared Button/Dialog/Tooltip primitives. Their unavailable
+reason stays in the settings trigger's tooltip and accessible description,
+rather than making disabled rows taller. The primary action remains disabled
+both in the row and in its settings dialog.
 
 The sidebar magnifier opens the same Command palette as Command-P. The palette
 uses compact single-line rows: structure names with project labels and numbered
@@ -258,3 +423,16 @@ do not show tooltips. Folder, Ketcher, and search glyphs use the primary text
 color at rest in the light theme.
 Light-theme shell and neutral button glyphs use the primary text color on hover
 and keyboard focus while preserving their resting color and geometry.
+
+### Code And Markdown Highlighting
+
+Code viewers and Markdown fenced blocks use Shiki with explicit, lazily loaded
+language grammars and the Oniguruma WASM engine. The existing bounded worker
+queues and line caches remain responsible for visible-range tokenization.
+`code-viewer-syntax-shiki.ts` maps the CSS-variable theme into semantic token
+classes, so light/dark theme changes do not require a second tokenization pass.
+Source text stays escaped by the existing DOM and Markdown projections.
+
+Tokenization is line-local, as before; multiline lexical state is not retained
+across virtualized requests. The editable CodeMirror surface retains its own
+parser and incremental editor highlighting.

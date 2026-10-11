@@ -60,9 +60,9 @@ export function documentKind(document: ViewerDocument) {
 }
 
 export function rendererLabel(renderer: string) {
-  if (renderer === "molstar") return "Mol*";
+  if (renderer === "molstar") return "Interactive 3D";
   if (renderer === "grid2d") return "Grid";
-  if (renderer === "xyzrender-external") return "xyzrender";
+  if (renderer === "xyzrender-external") return "3D render";
   return renderer || "Preview";
 }
 
@@ -131,7 +131,7 @@ export function usefulElements(document: ViewerDocument): StructureBriefRow[] {
   if (isMaestroExtension(extension)) {
     return [
       { label: "Maestro source", value: "CT blocks with atom-table coordinates" },
-      { label: "Preview model", value: "Coordinates extracted for Mol* rendering" },
+      { label: "Preview model", value: "Coordinates extracted for the 3D view" },
       { label: "System parts", value: "Solute, solvent, ions, and full-system CTs when present" },
       {
         label: "Text",

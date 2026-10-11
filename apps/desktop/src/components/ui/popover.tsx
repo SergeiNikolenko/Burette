@@ -2,6 +2,9 @@ import * as React from "react"
 import { Popover as PopoverPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { useAppShellPortalContainer } from "./portal-container"
+import "./popover.css"
+import "./popover-surface.css"
 
 function Popover({
   ...props
@@ -17,21 +20,38 @@ function PopoverTrigger({
 
 function PopoverContent({
   className,
-  align = "center",
+  align = "start",
   sideOffset = 4,
   container,
+  variant = "default",
+  size = "default",
+  opaque = true,
+  disablePadding = false,
+  animation = "none",
   ...props
 }: React.ComponentProps<typeof PopoverPrimitive.Content> & {
   container?: React.ComponentProps<typeof PopoverPrimitive.Portal>["container"]
+  variant?: "default" | "menu" | "comment"
+  size?: "default" | "large" | "workspace" | "content"
+  opaque?: boolean
+  disablePadding?: boolean
+  animation?: "none" | "slide-from-left"
 }) {
+  const appShellContainer = useAppShellPortalContainer()
   return (
-    <PopoverPrimitive.Portal container={container}>
+    <PopoverPrimitive.Portal container={container ?? appShellContainer}>
       <PopoverPrimitive.Content
         data-slot="popover-content"
+        data-animation={animation}
+        data-variant={variant}
+        data-opaque={opaque}
         align={align}
         sideOffset={sideOffset}
+        collisionPadding={6}
         className={cn(
-          "z-50 flex w-72 origin-(--radix-popover-content-transform-origin) flex-col gap-2.5 rounded-lg bg-popover p-2.5 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 outline-hidden duration-100 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "atlas-popover atlas-popover-surface z-50 flex origin-(--radix-popover-content-transform-origin) flex-col overflow-y-auto text-[16px] leading-6 outline-hidden",
+          !disablePadding && (variant === "menu" ? "p-2" : "p-1"),
+          { default: "w-72", large: "w-96", workspace: "w-65", content: "w-fit" }[size],
           className
         )}
         {...props}
@@ -58,7 +78,7 @@ function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
 
 function PopoverTitle({ className, ...props }: React.ComponentProps<"h2">) {
   return (
-    <div
+    <h2
       data-slot="popover-title"
       className={cn("font-medium", className)}
       {...props}

@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { ChevronDown as ArrowDown01Icon, X as Cancel01Icon, BarChart as ChartHistogramIcon, Search as Search01Icon } from "@/components/ui/app-icon-data";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { Filter } from "./ui/app-icons";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
+import { ChevronDown, X, BarChart as HistogramIcon, Search, Filter } from "./ui/app-icons";
+import { CollapsibleSection } from "./ui/collapsible-section";
 import { Bar, BarChart, XAxis } from "recharts";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -289,9 +287,9 @@ function FilterCard({
     <Collapsible ref={cardRef} className="grid-filter-card" data-active={active || undefined} open={open} onOpenChange={onOpenChange}>
       <div className="grid-filter-card-header">
         <CollapsibleTrigger asChild>
-          <Button className="grid-filter-card-trigger" variant="ghost" size="sm">
-            <HugeiconsIcon icon={ArrowDown01Icon} data-icon="inline-start" aria-hidden="true" />
-            <span title={column.label}>{column.label}</span>
+          <Button className="grid-filter-card-trigger group/filter" variant="ghost" size="sm" data-pill={undefined} data-squircle="">
+            <ChevronDown className="-rotate-90 transition-transform group-data-[state=open]/filter:rotate-0 motion-reduce:transition-none" aria-hidden="true" />
+            <span className="min-w-0 flex-1 truncate" title={column.label}>{column.label}</span>
             {active ? <Badge variant="secondary">Active</Badge> : null}
           </Button>
         </CollapsibleTrigger>
@@ -306,7 +304,7 @@ function FilterCard({
                   onClick={() => actions.clearGridColumnFilters(column.id)}
                   aria-label={`Clear the ${column.label} filter`}
                 >
-                  <HugeiconsIcon icon={Cancel01Icon} aria-hidden="true" />
+                  <X aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>Clear filter</TooltipContent>
@@ -326,7 +324,7 @@ function FilterCard({
                     onOpenChange(true);
                   }}
                 >
-                  <HugeiconsIcon icon={ChartHistogramIcon} aria-hidden="true" />
+                  <HistogramIcon aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent showArrow={false}>{open && showChart ? "Hide" : "Show"} distribution</TooltipContent>
@@ -342,7 +340,9 @@ function FilterCard({
           ) : (
             <Input
               type="search"
-              placeholder="contains"
+              placeholder="Contains…"
+              name={`filter-${column.id}`}
+              autoComplete="off"
               value={column.filter?.text ?? ""}
               aria-label={`Filter ${column.label}`}
               onChange={(event) => actions.setGridColumnFilter(column.id, "text", event.currentTarget.value)}
@@ -395,65 +395,55 @@ export function GridFilterSection({
 
   return (
     <TooltipProvider>
-      <Accordion
-        className="structure-brief-card structure-inspector-section grid-filter-card-host"
-        data-collapsed={!open || undefined}
-        type="single"
-        collapsible
-        value={open ? "filters" : ""}
-        onValueChange={(value) => setOpen(Boolean(value))}
+      <CollapsibleSection
+        className="structure-inspector-section grid-filter-card-host"
+        title="Filters"
+        detail={model.columns.length.toLocaleString()}
+        open={open}
+        onOpenChange={setOpen}
+        actions={activeCount ? (
+          <Button type="button" variant="ghost" size="xs" onClick={() => actions.clearGridColumnFilters()}>
+            <Filter size={14} aria-hidden="true" />
+            Clear all
+            <Badge variant="secondary">{activeCount.toLocaleString()}</Badge>
+          </Button>
+        ) : undefined}
       >
-        <AccordionItem value="filters">
-        <div className="flex items-center gap-3">
-          <div className="min-w-0 flex-1"><AccordionTrigger>Filters</AccordionTrigger></div>
-          <div className="grid-filter-host-actions">
-            {activeCount ? (
-              <Button type="button" variant="ghost" size="xs" onClick={() => actions.clearGridColumnFilters()}>
-                <Filter size={14} aria-hidden="true" />
-                Clear all
-                <Badge variant="secondary">{activeCount.toLocaleString()}</Badge>
-              </Button>
-            ) : (
-              <Badge variant="secondary">{model.columns.length.toLocaleString()} columns</Badge>
-            )}
+        <Field>
+          <FieldLabel className="sr-only">Find a column to filter</FieldLabel>
+          <div className="grid-filter-search-wrap">
+            <Search aria-hidden="true" />
+            <Input
+              type="search"
+              className="grid-filter-search"
+              value={query}
+              placeholder="Find a column…"
+              name="filter-column-search"
+              autoComplete="off"
+              aria-label="Find a column to filter"
+              onChange={(event) => setQuery(event.currentTarget.value)}
+            />
           </div>
-        </div>
-        <AccordionContent className="h-auto">
-          <Field className="grid-filter-search-field">
-            <FieldLabel className="sr-only">Find a column to filter</FieldLabel>
-            <div className="grid-filter-search-wrap">
-              <HugeiconsIcon icon={Search01Icon} aria-hidden="true" />
-              <Input
-                type="search"
-                className="grid-filter-search"
-                value={query}
-                placeholder="Find a column"
-                aria-label="Find a column to filter"
-                onChange={(event) => setQuery(event.currentTarget.value)}
-              />
+        </Field>
+        <div className="grid-filter-list">
+          {shown.map((column) => (
+            <FilterCard
+              key={column.id}
+              column={column}
+              actions={actions}
+              open={isColumnOpen(column)}
+              onOpenChange={(nextOpen) => setColumnOpen((current) => ({ ...current, [column.id]: nextOpen }))}
+              focusRequestId={focusRequest?.columnId === column.id ? focusRequest.requestId : undefined}
+            />
+          ))}
+          {columns.length > shown.length ? (
+            <div className="grid-filter-more">
+              {(columns.length - shown.length).toLocaleString()} more columns — narrow the search
             </div>
-          </Field>
-          <div className="grid-filter-list">
-            {shown.map((column) => (
-              <FilterCard
-                key={column.id}
-                column={column}
-                actions={actions}
-                open={isColumnOpen(column)}
-                onOpenChange={(nextOpen) => setColumnOpen((current) => ({ ...current, [column.id]: nextOpen }))}
-                focusRequestId={focusRequest?.columnId === column.id ? focusRequest.requestId : undefined}
-              />
-            ))}
-            {columns.length > shown.length ? (
-              <div className="grid-filter-more">
-                {(columns.length - shown.length).toLocaleString()} more columns — narrow the search
-              </div>
-            ) : null}
-            {columns.length ? null : <div className="dock-empty">No filterable columns</div>}
-          </div>
-        </AccordionContent>
-        </AccordionItem>
-      </Accordion>
+          ) : null}
+          {columns.length ? null : <div className="dock-empty">No filterable columns</div>}
+        </div>
+      </CollapsibleSection>
     </TooltipProvider>
   );
 }

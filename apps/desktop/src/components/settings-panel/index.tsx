@@ -1,5 +1,6 @@
+import { useChemicalEditorTargets } from "../../hooks/use-chemical-editor-targets";
 import { SshConnections } from "../ssh/ssh-projects";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ViewerPreferences, XtbSettings } from "../../types";
 import type { UpdateChannel } from "../../update";
@@ -7,10 +8,14 @@ import { CURRENT_VERSION, defaultUpdatePreferences } from "../../update";
 import { settingsSectionLabel, type SettingsSectionId } from "../../lib/settings-sections";
 import { defaultPreferences } from "../../stores/settings-store";
 import { isTauriRuntime } from "../../lib/tauri";
+import { XTB_METHOD_LABELS, XTB_OPT_LEVEL_LABELS, XTB_SOLVATION_LABELS, XTB_SOLVENT_LABELS, XTB_SOLVENT_OPTIONS } from "../../lib/chemistry-settings";
 import { useFinderIconUrl } from "../../hooks/use-finder-icon-url";
 import { AgentIntegrationPanel } from "../agent-integration-panel";
+import { ScreenGuide } from "../onboarding";
 import { EditorScrollContainer } from "../editor-area/editor-scroll-container";
 import { RadixDropdownMenu } from "../radix-menu";
+import { Button } from "../ui/button";
+import { ChevronDown } from "../ui/app-icons";
 import type { AppSettingsSectionId, ChemicalEditorTarget, ShellActions, ShellViewState } from "../types";
 import type { MenuItemSpec } from "../menu-types";
 import {
@@ -23,9 +28,23 @@ import {
   type SettingRow,
 } from "./setting-control";
 import { KeyboardShortcutsSection } from "./keyboard-shortcuts-section";
-import { ThemesSection } from "./themes-section";
+import { AppearanceSettings } from "./themes-section";
+import { ViewerDefaultsSection } from "./viewer-defaults-section";
+import { JobsSettingsSections, restoreSessionRow, useMaintenanceCacheRows } from "./app-settings-sections";
 
 const defaultRendererModeOptions: Array<ViewerPreferences["rendererMode"]> = ["auto", "molstar", "xyzrender-external"];
+const structureStyleLabels: Record<ViewerPreferences["molstarStyle"], string> = {
+  default: "Standard",
+  illustrative: "Illustrative",
+  "illustrative-surface": "Illustrative surface",
+  "polymer-ligand": "Polymer and ligand",
+  cartoon: "Cartoon",
+  "ball-and-stick": "Ball and stick",
+  spacefill: "Spacefill",
+  line: "Lines",
+  "molecular-surface": "Molecular surface",
+};
+const structureStyleOptions = Object.keys(structureStyleLabels) as Array<ViewerPreferences["molstarStyle"]>;
 type SettingsPanelLocation = { kind: "settings"; section: AppSettingsSectionId };
 type OpenInDefaultDestination = ViewerPreferences["openInDefaultDestination"];
 type OpenDestinationOption = {
@@ -42,6 +61,7 @@ function preferenceRow<K extends Extract<keyof ViewerPreferences, string>>(
   options: ViewerPreferences[K][],
   defaultValue: ViewerPreferences[K],
   onChange: (value: ViewerPreferences[K]) => void,
+  labels?: Record<string, string>,
 ): SettingRow {
   return selectPreferenceRow(
     label,
@@ -50,6 +70,7 @@ function preferenceRow<K extends Extract<keyof ViewerPreferences, string>>(
     options.map(String),
     String(defaultValue),
     (next) => onChange(next as ViewerPreferences[K]),
+    labels,
   );
 }
 
@@ -57,19 +78,12 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
   const preferences = state.preferences;
   const update = state.update;
   const section = location.section;
-  const [openDestinationTargets, setOpenDestinationTargets] = useState<ChemicalEditorTarget[]>([]);
   const openDestinationProbePath = state.activeDocument?.path ?? state.documents[0]?.path ?? "structure.pdb";
 
-  useEffect(() => {
-    if (section !== "general") return;
-    let disposed = false;
-    void actions.listChemicalEditorTargets(openDestinationProbePath).then((targets) => {
-      if (!disposed) setOpenDestinationTargets(targets);
-    });
-    return () => {
-      disposed = true;
-    };
-  }, [actions, openDestinationProbePath, section]);
+  const { targets: openDestinationTargets } = useChemicalEditorTargets(
+    section === "general" ? openDestinationProbePath : null,
+    actions.listChemicalEditorTargets,
+  );
 
   const openDestinationRows = useMemo<SettingRow[]>(() => [
     openDestinationPreferenceRow(
@@ -78,6 +92,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
       (openInDefaultDestination) => actions.setPreference("openInDefaultDestination", openInDefaultDestination),
     ),
   ], [actions, openDestinationTargets, preferences.openInDefaultDestination]);
+  const maintenanceCacheRows = useMaintenanceCacheRows(actions.clearCache);
 
   const updateRows: SettingRow[] = [
     {
@@ -100,6 +115,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
       ["stable", "beta"],
       defaultUpdatePreferences.channel,
       (channel) => actions.setUpdatePreferences({ ...update.preferences, channel: channel as UpdateChannel }),
+      { stable: "Stable", beta: "Beta" },
     ),
     actionRow("Version", update.statusText, update.isChecking ? "Checking..." : "Check", () => void actions.checkForUpdates(), update.isChecking),
   ];
@@ -108,7 +124,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
     updateRows.push(actionRow(
       "Available release",
       update.availableRelease.installAsset ? update.availableRelease.installAsset.name : "Current " + CURRENT_VERSION + ", latest " + update.availableRelease.tagName,
-      update.availableRelease.installAsset ? (update.isInstalling ? "Installing..." : "Install and Restart") : "Open Release Page",
+      update.availableRelease.installAsset ? (update.isInstalling ? "Installing..." : "Install and restart") : "Open release page",
       update.availableRelease.installAsset ? () => void actions.installUpdate() : () => void actions.openUpdateRelease(),
       update.isInstalling,
     ));
@@ -118,33 +134,25 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
     <div className="settings-panel" data-settings-panel data-settings-section={section}>
       <EditorScrollContainer>
         <div className="settings-panel-content">
+          <div className="float-right"><ScreenGuide state={state} actions={actions} /></div>
           {section === "agent" ? (
             <AgentIntegrationPanel embedded />
           ) : (
             <>
               <h1>{settingsSectionLabel(section)}</h1>
               {section === "general" ? (
-                <SettingsSection title="Work mode" rows={openDestinationRows} />
+                <SettingsSection title="Work mode" rows={[...openDestinationRows, restoreSessionRow(preferences, actions.setPreference)]} />
               ) : null}
               {section === "appearance" ? (
-                <>
-                  <SettingsSection
-                    title="Display"
-                    rows={[
-                      preferenceRow<"theme">("Theme", "Match the system, force dark mode, or force light mode.", preferences.theme, ["auto", "dark", "light"], defaultPreferences.theme, (theme) => actions.setPreference("theme", theme)),
-                      preferenceRow<"canvasBackground">("Canvas", "Default viewer canvas background for structure previews.", preferences.canvasBackground, ["auto", "black", "graphite", "white", "transparent"], defaultPreferences.canvasBackground, (canvasBackground) => actions.setPreference("canvasBackground", canvasBackground)),
-                    ]}
-                  />
-                  <ThemesSection preferences={preferences} actions={actions} />
-                </>
+                <AppearanceSettings preferences={preferences} actions={actions} />
               ) : null}
               {section === "keyboard" ? <KeyboardShortcutsSection /> : null}
               {section === "structure" ? (
                 <SettingsSection
-                  title="Structure Rendering"
+                  title="Structure rendering"
                   rows={[
-                    preferenceRow<"rendererMode">("Mode", "Preferred renderer for direct previews. Files opened normally use Auto; use Open As to choose a renderer for one file.", preferences.rendererMode, defaultRendererModeOptions, defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode)),
-                    preferenceRow<"molstarStyle">("Mol* appearance", "Default lighting and outline appearance for the Mol* renderer.", preferences.molstarStyle, ["default", "illustrative"], defaultPreferences.molstarStyle, (molstarStyle) => actions.setPreference("molstarStyle", molstarStyle)),
+                    preferenceRow<"rendererMode">("Mode", "Preferred renderer for direct previews. Files opened normally use Auto; use Open As to choose a renderer for one file.", preferences.rendererMode, defaultRendererModeOptions, defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode), { auto: "Auto", molstar: "Interactive 3D", "xyzrender-external": "3D render" }),
+                    preferenceRow<"molstarStyle">("Default style", "Representation and lighting used when a structure opens.", preferences.molstarStyle, structureStyleOptions, defaultPreferences.molstarStyle, (molstarStyle) => actions.setPreference("molstarStyle", molstarStyle), structureStyleLabels),
                     {
                       label: "Desktop preview limit",
                       description: "Maximum source file size the desktop app opens in the structure viewer.",
@@ -169,41 +177,42 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                   ]}
                 />
               ) : null}
+              {section === "structure" ? <ViewerDefaultsSection preferences={preferences} actions={actions} /> : null}
+              {section === "jobs" ? <JobsSettingsSections preferences={preferences} actions={actions} /> : null}
               {section === "xtb" ? (
                 <>
                   <SettingsSection
-                    title="xTB Runtime"
+                    title="xTB runtime"
                     rows={[
                       actionRow(
                         "Status",
-                        state.xtbStatus?.installed ? `Ready${state.xtbStatus.version ? ` · ${state.xtbStatus.version}` : ""}` : state.xtbStatus?.installHint ?? "xTB status has not been checked.",
+                        // xtb --version is a banner with the build host; show the number only.
+                        state.xtbStatus?.installed ? ["Ready", state.xtbStatus.version?.match(/\d+(?:\.\d+)+/u)?.[0]].filter(Boolean).join(" · ") : state.xtbStatus?.installHint ?? "xTB status has not been checked.",
                         "Check",
                         () => void actions.checkXtbStatus(),
                       ),
                       actionRow(
                         "Executable",
-                        state.xtbStatus?.executablePath
-                          ? `${state.xtbStatus.executablePath}${state.xtbStatus.source ? ` · ${state.xtbStatus.source}` : ""}`
-                          : "No xTB executable found.",
-                        "Use Existing…",
+                        state.xtbStatus?.executablePath ?? "No xTB executable found.",
+                        "Use existing…",
                         () => void actions.chooseXtbExecutable(),
                       ),
                       actionRow(
                         "Selection",
                         state.xtbStatus?.selectedExecutablePath ? "An explicit executable is selected." : "Burette is discovering xTB automatically.",
-                        "Use Automatically",
+                        "Use automatically",
                         () => void actions.clearXtbExecutableSelection(),
                         !state.xtbStatus?.selectedExecutablePath,
                       ),
                       actionRow(
-                        "Managed Runtime",
+                        "Managed runtime",
                         "Install xTB in an isolated Burette environment.",
-                        "Install Managed",
+                        "Install managed",
                         () => void actions.installXtb(),
                       ),
                       actionRow(
                         "Runs",
-                        state.xtbStatus?.installer ? `Runtime source: ${state.xtbStatus.source ?? state.xtbStatus.installer}` : "Open recent and active xTB jobs.",
+                        "Open recent and active xTB jobs.",
                         "Jobs",
                         () => {
                           actions.openDockTab("bottom", "jobs");
@@ -214,7 +223,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                     ]}
                   />
                   <SettingsSection
-                    title="Calculation Defaults"
+                    title="Calculation defaults"
                     rows={xtbSettingsRows(state.xtbSettings, actions.setXtbSettings)}
                   />
                 </>
@@ -223,7 +232,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
               {section === "connections" ? <SshConnections /> : null}
               {section === "workspace" ? (
                 <SettingsSection
-                  title="Files and Projects"
+                  title="Files and projects"
                   rows={[
                     actionRow("Project folder", state.workspacePath ?? "No active project folder.", "Open", () => void actions.openWorkspaceFolder(), !state.workspacePath),
                     actionRow("Add project folder", "Choose a folder to show in the sidebar project list.", "Choose", () => void actions.chooseWorkspace()),
@@ -239,7 +248,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                     actionRow("Logs", "Open the Quick Look extension log folder.", "Open", () => void actions.openLogs()),
                     actionRow("Diagnostics", "Export logs, environment, size report, performance marks, and recent errors.", "Export", () => void actions.exportDiagnostics()),
                     actionRow("Runtime doctor", "Check external runtime availability for molecular workflows.", "Run", () => void actions.runExternalRuntimeDoctor()),
-                    actionRow("Preview cache", "Delete generated viewer runtimes except shared assets.", "Clear", () => void actions.clearCache(), false, true),
+                    ...maintenanceCacheRows,
                   ]}
                 />
               ) : null}
@@ -258,7 +267,6 @@ function openDestinationPreferenceRow(
 ): SettingRow {
   return {
     label: "Default open destination",
-    description: "Where the Open In control points by default.",
     control: <OpenDestinationControl value={value} targets={targets} onChange={onChange} />,
     reset: () => onChange(defaultPreferences.openInDefaultDestination),
     isModified: value !== defaultPreferences.openInDefaultDestination,
@@ -302,28 +310,28 @@ function xtbSettingsRows(
     {
       label: "Method",
       description: "GFN2 is the default for small-molecule single-point and optimization jobs.",
-      control: <SelectControl value={settings.method} options={["gfn2", "gfn1", "gfn0", "gfnff"]} onChange={(method) => update("method", method as XtbSettings["method"])} />,
+      control: <SelectControl value={settings.method} options={["gfn2", "gfn1", "gfn0", "gfnff"]} labels={XTB_METHOD_LABELS} onChange={(method) => update("method", method as XtbSettings["method"])} />,
       reset: () => update("method", defaultXtbSettings.method),
       isModified: settings.method !== defaultXtbSettings.method,
     },
     {
       label: "Solvent",
       description: "Solvent name for ALPB, GBSA, COSMO, or CPCM-X.",
-      control: <SelectControl value={settings.solvent} options={["none", "water", "acetone", "acetonitrile", "benzene", "ch2cl2", "chcl3", "dmf", "dmso", "ether", "hexane", "methanol", "toluene", "thf"]} onChange={(solvent) => update("solvent", solvent)} />,
+      control: <SelectControl value={settings.solvent} options={XTB_SOLVENT_OPTIONS} labels={XTB_SOLVENT_LABELS} onChange={(solvent) => update("solvent", solvent)} />,
       reset: () => update("solvent", defaultXtbSettings.solvent),
       isModified: settings.solvent !== defaultXtbSettings.solvent,
     },
     {
       label: "Solvation model",
       description: "Continuum solvation model passed to xTB.",
-      control: <SelectControl value={settings.solvationModel} options={["none", "alpb", "gbsa", "cosmo", "cpcmx"]} onChange={(solvationModel) => update("solvationModel", solvationModel as XtbSettings["solvationModel"])} />,
+      control: <SelectControl value={settings.solvationModel} options={["none", "alpb", "gbsa", "cosmo", "cpcmx"]} labels={XTB_SOLVATION_LABELS} onChange={(solvationModel) => update("solvationModel", solvationModel as XtbSettings["solvationModel"])} />,
       reset: () => update("solvationModel", defaultXtbSettings.solvationModel),
       isModified: settings.solvationModel !== defaultXtbSettings.solvationModel,
     },
     {
       label: "Optimization level",
       description: "Geometry optimization level for --opt and --ohess.",
-      control: <SelectControl value={settings.optLevel} options={["loose", "normal", "tight", "verytight"]} onChange={(optLevel) => update("optLevel", optLevel as XtbSettings["optLevel"])} />,
+      control: <SelectControl value={settings.optLevel} options={["loose", "normal", "tight", "verytight"]} labels={XTB_OPT_LEVEL_LABELS} onChange={(optLevel) => update("optLevel", optLevel as XtbSettings["optLevel"])} />,
       reset: () => update("optLevel", defaultXtbSettings.optLevel),
       isModified: settings.optLevel !== defaultXtbSettings.optLevel,
     },
@@ -436,17 +444,17 @@ function OpenDestinationControl({
       contentClassName="settings-open-destination-menu"
       items={items}
       trigger={(
-        <button type="button" className="settings-open-destination-trigger" aria-label="Default open destination">
-          {selected.iconUrl ? (
-            <img className="settings-open-destination-icon" src={selected.iconUrl} alt="" aria-hidden="true" />
-          ) : (
-            <span className="settings-open-destination-icon" aria-hidden="true">{selected.iconText}</span>
-          )}
-          <span>{selected.label}</span>
-          <svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true">
-            <path d="M3.5 5 6.5 8 9.5 5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </button>
+        <Button variant="outline" size="settings" className="settings-open-destination-trigger" aria-label="Default open destination">
+          <span className="settings-open-destination-value">
+            {selected.iconUrl ? (
+              <img className="settings-open-destination-icon" src={selected.iconUrl} width={18} height={18} alt="" aria-hidden="true" />
+            ) : (
+              <span className="settings-open-destination-icon" aria-hidden="true">{selected.iconText}</span>
+            )}
+            <span className="truncate">{selected.label}</span>
+          </span>
+          <ChevronDown size={14} aria-hidden />
+        </Button>
       )}
     />
   );
