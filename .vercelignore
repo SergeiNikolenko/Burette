@@ -1,6 +1,7 @@
 **/node_modules/
 .codegraph/
 target/
+build/
 outputs/
 apps/desktop/dist/
 apps/burette-public-plugin/.next/

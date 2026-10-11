@@ -25,7 +25,7 @@ function initialProgress(state: ShellViewState): Progress {
 }
 
 export function ScreenGuide({ state, actions }: { state: ShellViewState; actions: Pick<ShellActions, "openSettingsSection"> }) {
-  if (window.BuretteMcpWorkspace || window.__BURETTE_HOSTED_MCP_WIDGET__) return null;
+  if (typeof window === "undefined" || window.BuretteMcpWorkspace || window.__BURETTE_HOSTED_MCP_WIDGET__) return null;
   return <LocalScreenGuide state={state} actions={actions} />;
 }
 
