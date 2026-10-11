@@ -14,7 +14,8 @@ export async function operateBrowserSidebarFile(request: Request, allowed: (path
   if (typeof path !== "string" || !isAbsolute(path)) throw new Error("Choose a local file or folder.");
   const source = await realpath(path);
   const info = await lstat(path);
-  if (info.isSymbolicLink() || !allowed(source) || !allowed(await realpath(dirname(source)))) throw new Error("This path cannot be changed here.");
+  const destinationDirectory = operation === "createFolder" ? source : await realpath(dirname(source));
+  if (info.isSymbolicLink() || !allowed(source) || !allowed(destinationDirectory)) throw new Error("This path cannot be changed here.");
   const folder = operation === "renameFolder" || operation === "trashFolder" || operation === "createFolder";
   if (folder ? !info.isDirectory() : !info.isFile()) throw new Error("The file type has changed. Refresh the folder.");
   if (operation === "trash" || operation === "trashFolder") {

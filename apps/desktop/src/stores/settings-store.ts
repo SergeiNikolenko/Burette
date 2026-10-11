@@ -43,7 +43,8 @@ export const defaultPreferences: ViewerPreferences = {
   notifyOnJobCompletion: true,
   preventSleepDuringJobs: true,
   computeBackend: "auto",
-  jobHistoryRetentionDays: 30,
+  // Existing history stays intact until the user chooses a retention period.
+  jobHistoryRetentionDays: 0,
   pythonPath: "",
   uvPath: "",
   screenshotResolution: "viewport",

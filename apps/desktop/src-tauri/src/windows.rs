@@ -233,6 +233,7 @@ pub(crate) fn attach_window_cleanup<R: Runtime>(
             reposition_traffic_lights(&event_window);
         }
         if matches!(event, tauri::WindowEvent::Destroyed) {
+            crate::commands::job_host::window_destroyed(&label);
             let _ = app
                 .state::<GridRuntimeRegistry>()
                 .unregister_prefix(&runtime_document_prefix(&label));

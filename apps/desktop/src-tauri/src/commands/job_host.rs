@@ -25,29 +25,42 @@ pub(crate) fn set_sleep_prevention<R: Runtime>(
     window: WebviewWindow<R>,
     active: bool,
 ) -> Result<(), String> {
-    let mut state = SLEEP_PREVENTION
+    SLEEP_PREVENTION
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if active {
-        state.active_windows.insert(window.label().to_string());
-    } else {
-        state.active_windows.remove(window.label());
-    }
-    if state.active_windows.is_empty() {
-        if let Some(mut child) = state.caffeinate.take() {
-            let _ = child.kill();
-            let _ = child.wait();
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .set_window_active(window.label(), active)
+}
+
+pub(crate) fn window_destroyed(label: &str) {
+    let _ = SLEEP_PREVENTION
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .set_window_active(label, false);
+}
+
+impl SleepPrevention {
+    fn set_window_active(&mut self, label: &str, active: bool) -> Result<(), String> {
+        if active {
+            self.active_windows.insert(label.to_string());
+        } else {
+            self.active_windows.remove(label);
         }
-        return Ok(());
+        if self.active_windows.is_empty() {
+            if let Some(mut child) = self.caffeinate.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            return Ok(());
+        }
+        let running = self
+            .caffeinate
+            .as_mut()
+            .is_some_and(|child| matches!(child.try_wait(), Ok(None)));
+        if !running {
+            self.caffeinate = Some(spawn_caffeinate()?);
+        }
+        Ok(())
     }
-    let running = state
-        .caffeinate
-        .as_mut()
-        .is_some_and(|child| matches!(child.try_wait(), Ok(None)));
-    if !running {
-        state.caffeinate = Some(spawn_caffeinate()?);
-    }
-    Ok(())
 }
 
 fn spawn_caffeinate() -> Result<Child, String> {
@@ -169,5 +182,36 @@ mod macos {
             let _: () = msg_send![object, release];
         }
         posted
+    }
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn closing_windows_releases_sleep_assertion_after_last_requester() {
+        let mut state = SleepPrevention {
+            active_windows: BTreeSet::new(),
+            caffeinate: None,
+        };
+        state.set_window_active("first", true).unwrap();
+        state.set_window_active("second", true).unwrap();
+        let pid = state.caffeinate.as_ref().unwrap().id();
+        state.set_window_active("first", false).unwrap();
+        assert_eq!(state.active_windows, BTreeSet::from(["second".to_string()]));
+        assert_eq!(state.caffeinate.as_ref().unwrap().id(), pid);
+        assert!(state
+            .caffeinate
+            .as_mut()
+            .unwrap()
+            .try_wait()
+            .unwrap()
+            .is_none());
+        state.set_window_active("second", false).unwrap();
+        assert!(state.active_windows.is_empty());
+        assert!(state.caffeinate.is_none());
+        state.set_window_active("second", false).unwrap();
+        assert!(state.caffeinate.is_none());
     }
 }

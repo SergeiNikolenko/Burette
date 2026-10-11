@@ -109,7 +109,8 @@ async function composeFrameThumbnail(page: HTMLElement, pageRect: DOMRect) {
   await Promise.all(pictures.map(async (source) => {
     const box = place(source);
     if (!box || box.width < 24 || box.height < 24) return;
-    const image = source instanceof HTMLImageElement ? source : await svgImage(source as SVGSVGElement, box);
+    // Frame elements belong to another realm, so the shell's instanceof fails.
+    const image = source.tagName.toLowerCase() === "img" ? source as HTMLImageElement : await svgImage(source as SVGSVGElement, box);
     if (!image) return;
     try {
       context.drawImage(image, box.x, box.y, box.width, box.height);

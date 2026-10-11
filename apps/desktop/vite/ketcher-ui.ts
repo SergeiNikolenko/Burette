@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript-compiler-api";
 import type { HtmlTagDescriptor, Plugin } from "vite";
 import { recolorKetcherCss } from "./ketcher-palette.ts";
+import { scopeKetcherKeyboard } from "./ketcher-keyboard.ts";
 import { ketcherMacroTheme } from "./ketcher-macro-theme.ts";
 
 // Ketcher 3.18 publishes one UI bundle and has no component-slot API. Replace only
@@ -342,6 +343,7 @@ export function ketcherUiPlugin(): Plugin {
   const transform = (code: string, id: string) => {
       const normalizedId = id.replaceAll("\\", "/");
       if (/\/ketcher-react\/dist\/index\.css(?:$|\?)/u.test(normalizedId)) return { code: recolorKetcherCss(code), map: null };
+      if (/\/ketcher-core\/dist\/application\/editor\/Editor(?:\.modern)?\.js$/u.test(normalizedId)) return { code: scopeKetcherKeyboard(code), map: null };
       const macro = /\/ketcher-react\/dist\/index\.modern-[a-f0-9]+\.js$/u.test(normalizedId);
       if (!macro && !normalizedId.endsWith("/ketcher-react/dist/index.js")) return null;
       if (macro) code = markSelectedRnaBuilderSlots(adaptMacroTitles(code, tooltipModulePath));
@@ -519,7 +521,7 @@ export function ketcherUiPlugin(): Plugin {
       // Both SettingsService and Ketcher use named EventEmitter imports in 3.18.
       // The explicit browser package must win over the Node built-in in both builds.
       resolve: { alias: { events: createRequire(import.meta.url).resolve("events/") } },
-      optimizeDeps: { rolldownOptions: { plugins: [{ name: `burette-ketcher-ui-${createHash("sha256").update(JSON.stringify([primitives, macroPrimitives, annotationContracts, chemicalSurfaceContracts, macroTitleContracts, "library-preview-3.18.0", "rna-builder-selected", "macro-tooltip"])).digest("hex").slice(0, 12)}`, transform, resolveId: (id: string) => [modulePath, menuModulePath, contextModulePath, analogueModulePath, periodicModulePath, moleculeModulePath, libraryModulePath, annotationModulePath, importModulePath, importOptionsModulePath, chemicalInfoModulePath, tooltipModulePath].includes(id) ? { id: `/@fs/${id}`, external: true } : null }] } },
+      optimizeDeps: { rolldownOptions: { plugins: [{ name: `burette-ketcher-ui-${createHash("sha256").update(JSON.stringify([primitives, macroPrimitives, annotationContracts, chemicalSurfaceContracts, macroTitleContracts, "library-preview-3.18.0", "rna-builder-selected", "macro-tooltip", "scoped-keyboard-with-canvas-focus"])).digest("hex").slice(0, 12)}`, transform, resolveId: (id: string) => [modulePath, menuModulePath, contextModulePath, analogueModulePath, periodicModulePath, moleculeModulePath, libraryModulePath, annotationModulePath, importModulePath, importOptionsModulePath, chemicalInfoModulePath, tooltipModulePath].includes(id) ? { id: `/@fs/${id}`, external: true } : null }] } },
     }),
   };
 }

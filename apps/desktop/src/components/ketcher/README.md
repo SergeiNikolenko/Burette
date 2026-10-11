@@ -62,3 +62,10 @@ preserve explicit bond sizes; only the complete legacy thin-line signature migra
 Canvas replacement retains scoped dark ink and selection styling. The Miew lifecycle
 removes only its own settings listeners on disposal. Validate these through
 `tests/test-ketcher-molecule-3d.mjs` and the browser editor in both themes.
+
+Macro keyboard dispatch is scoped to the active editor root by
+`vite/ketcher-keyboard.ts`. Clicking the SVG canvas focuses that root without
+scrolling, so sequence typing remains available while keys in other panes or
+hidden molecule-mode editors do not change the macro sequence. Run
+`bun tests/test-ketcher-keyboard.mjs` and verify sequence typing plus external
+text fields after changing this boundary.
