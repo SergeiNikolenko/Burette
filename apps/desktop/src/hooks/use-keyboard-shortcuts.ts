@@ -7,8 +7,11 @@ import {
 import { isTauriRuntime } from "../lib/tauri";
 import { requestTextFind } from "../lib/text-find";
 import { activateCommandHintTarget, watchCommandKeyHints } from "../lib/command-key-hints";
+import { matchesAccelerator, resolveShortcutBindings, type ShortcutId } from "../lib/keyboard-shortcuts";
 import { useAnnotationStore } from "../stores/annotation-store";
+import { useSettingsStore } from "../stores/settings-store";
 import { isAgentPluginSurface } from "../lib/native-mcp-workspace";
+import { reopenClosedTab, toggleSidePanel } from "../components/workspace-panes/pane-actions";
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -18,24 +21,54 @@ function isEditableTarget(target: EventTarget | null) {
 }
 
 export function useKeyboardShortcuts(state: ShellViewState, actions: ShellActions, toggleSidebar: () => void, enabled = true) {
+  const shortcutOverrides = useSettingsStore((store) => store.preferences.shortcutOverrides);
   useEffect(() => (enabled ? watchCommandKeyHints() : undefined), [enabled]);
   useEffect(() => {
     if (!enabled) return undefined;
+    // Customizable bindings come from the shared registry plus Settings overrides.
+    const bindings = resolveShortcutBindings(shortcutOverrides);
+    const matches = (id: ShortcutId, event: KeyboardEvent) => matchesAccelerator(event, bindings[id]);
+    const selectAdjacentTab = (offset: -1 | 1) => {
+      if (state.tabs.length === 0) return;
+      const activeIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
+      const currentIndex = activeIndex >= 0 ? activeIndex : 0;
+      const nextIndex = (currentIndex + offset + state.tabs.length) % state.tabs.length;
+      actions.selectTab(state.tabs[nextIndex].id);
+    };
+    // Browser runtime only: the desktop app receives these through native menu
+    // accelerators, which Settings updates at runtime.
+    const browserCommands: [ShortcutId, () => unknown][] = [
+      ["window.next-tab", () => selectAdjacentTab(1)],
+      ["window.previous-tab", () => selectAdjacentTab(-1)],
+      ["file.open", () => actions.chooseFiles()],
+      ["file.new-window", () => actions.openNewWindow()],
+      ["file.new-tab", () => actions.openNewTab()],
+      ["file.reveal-active", () => actions.revealActiveDocument()],
+      ["file.copy-active-path", () => actions.copyActiveDocumentPath()],
+      ["file.show-active-metadata", () => actions.showActiveDocumentMetadata()],
+      ["file.export-preview-png", () => actions.exportActivePreviewAsPng()],
+      ["file.export-preview-svg", () => actions.exportActivePreviewAsSvg()],
+      ["view.navigate-back", () => actions.navigateBack()],
+      ["view.navigate-forward", () => actions.navigateForward()],
+      ["view.toggle-bottom-panel", () => actions.toggleDock("bottom")],
+      ["view.toggle-sidebar", toggleSidebar],
+      ["view.toggle-inspector", () => actions.toggleDock("right")],
+      ["view.toggle-side-panel", toggleSidePanel],
+      ["view.toggle-sidebar-browser", toggleSidebar],
+      ["settings.open", () => actions.openSettings()],
+      ["help.keyboard-shortcuts", () => actions.openSettingsSection("keyboard")],
+      ["file.close-tab", () => actions.closeActiveDocument()],
+      ["file.close-other-tabs", () => state.activeTabId && actions.closeOtherTabs(state.activeTabId)],
+      ["file.reopen-closed-tab", () => reopenClosedTab(actions)],
+    ];
     const onKeyDown = (event: KeyboardEvent) => {
       const commandKey = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
-      if (commandKey && !event.altKey && !event.shiftKey && key === "f" && !event.defaultPrevented && requestTextFind()) {
+      if (matches("edit.find", event) && !event.defaultPrevented && requestTextFind()) {
         event.preventDefault();
         return;
       }
-      const selectAdjacentTab = (offset: -1 | 1) => {
-        if (state.tabs.length === 0) return;
-        const activeIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
-        const currentIndex = activeIndex >= 0 ? activeIndex : 0;
-        const nextIndex = (currentIndex + offset + state.tabs.length) % state.tabs.length;
-        actions.selectTab(state.tabs[nextIndex].id);
-      };
-      if (!commandKey && !event.altKey && key === "/" && !isEditableTarget(event.target)) {
+      if (matches("app.command-palette-quick", event) && !isEditableTarget(event.target)) {
         event.preventDefault();
         actions.openCommandPalette();
         return;
@@ -43,13 +76,23 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
       // Kept above the Tauri gate so the webview default (macOS print) is
       // suppressed even when the native menu accelerator owns the shortcut;
       // otherwise the print sheet steals focus and dismisses the palette.
-      if (commandKey && !event.altKey && key === "p") {
+      if (matches("view.command-palette", event)) {
         event.preventDefault();
         actions.openCommandPalette();
         return;
       }
+      if (commandKey && !event.altKey && key === "p") {
+        event.preventDefault();
+        return;
+      }
       if (commandKey && !event.altKey && !event.shiftKey && /^[1-9]$/.test(event.key)) {
         if (activateCommandHintTarget(Number(event.key))) event.preventDefault();
+        return;
+      }
+      // No native menu item owns this one, so the webview handles it everywhere.
+      if (matches("file.open-most-recent", event)) {
+        event.preventDefault();
+        void actions.openMostRecentStructure();
         return;
       }
       if (isTauriRuntime()) return;
@@ -63,90 +106,19 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
         void dispatchWorkspaceHistoryCommand(event.shiftKey ? "redo" : "undo", actions);
         return;
       }
-      if (event.ctrlKey && !event.metaKey && !event.altKey && key === "tab") {
-        event.preventDefault();
-        selectAdjacentTab(event.shiftKey ? -1 : 1);
-        return;
-      }
-      if (commandKey && !event.altKey && key === "o") {
-        event.preventDefault();
-        if (event.shiftKey) {
-          void actions.openMostRecentStructure();
-        } else {
-          void actions.chooseFiles();
-        }
-        return;
-      }
-      if (commandKey && !event.altKey && !event.shiftKey && key === "n") {
-        event.preventDefault();
-        void actions.openNewWindow();
-        return;
-      }
-      if (commandKey && !event.altKey && !event.shiftKey && key === "t") {
-        event.preventDefault();
-        actions.openNewTab();
-        return;
-      }
-      if (commandKey && !event.altKey && event.shiftKey && key === "r") {
-        event.preventDefault();
-        void actions.revealActiveDocument();
-        return;
-      }
-      if (commandKey && !event.altKey && event.shiftKey && key === "c") {
-        event.preventDefault();
-        void actions.copyActiveDocumentPath();
-        return;
-      }
-      if (commandKey && !event.altKey && !event.shiftKey && key === "i") {
-        event.preventDefault();
-        void actions.showActiveDocumentMetadata();
-        return;
-      }
-      if (commandKey && key === "e" && event.altKey !== event.shiftKey) {
-        event.preventDefault();
-        if (event.altKey) {
-          void actions.exportActivePreviewAsSvg();
-        } else {
-          void actions.exportActivePreviewAsPng();
-        }
-        return;
-      }
       if (commandKey && !event.altKey && !event.shiftKey && event.key === "." && isAgentPluginSurface(state.buildInfo.isAgentShell)) {
         event.preventDefault();
         useAnnotationStore.getState().toggle();
         return;
       }
-      if (commandKey && !event.altKey && !event.shiftKey && key === "j") {
+      for (const [id, run] of browserCommands) {
+        if (!matches(id, event)) continue;
         event.preventDefault();
-        actions.toggleDock("bottom");
+        void run();
         return;
-      }
-      if (commandKey && !event.altKey && !event.shiftKey && key === "b") {
-        event.preventDefault();
-        toggleSidebar();
-        return;
-      }
-      if (commandKey && event.altKey && !event.shiftKey && key === "b") {
-        event.preventDefault();
-        actions.toggleDock("right");
-        return;
-      }
-      if (commandKey && !event.altKey && !event.shiftKey && event.key === "\\") {
-        event.preventDefault();
-        toggleSidebar();
-        return;
-      }
-      if (commandKey && !event.altKey && !event.shiftKey && key === ",") {
-        event.preventDefault();
-        actions.openSettings();
-        return;
-      }
-      if (commandKey && !event.altKey && !event.shiftKey && key === "w") {
-        event.preventDefault();
-        actions.closeActiveDocument();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [actions, enabled, state.activeTabId, state.tabs, toggleSidebar]);
+  }, [actions, enabled, shortcutOverrides, state.activeTab?.location.kind, state.activeTabId, state.buildInfo.isAgentShell, state.tabs, toggleSidebar]);
 }

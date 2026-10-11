@@ -36,7 +36,7 @@ const contractScripts = {
   "test-standalone-conformer-jobs.mjs": () => import("./test-standalone-conformer-jobs.mjs"),
   "test-grid-conformer-metal.mjs": () => import("./test-grid-conformer-metal.mjs"),
   // The settings migration deliberately boots Zustand with legacy localStorage.
-  "test-settings-engine-migration.mjs": () => promisify(execFile)(process.execPath, [fileURLToPath(new URL("./test-settings-engine-migration.mjs", import.meta.url))]),
+  "test-settings-engine-migration.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-settings-engine-migration.mjs", import.meta.url))]),
   "test-browser-file-actions.mjs": () => import("./test-browser-file-actions.mjs"),
   "test-workspace-export-guards.mjs": () => import("./test-workspace-export-guards.mjs"),
   "test-workspace-file-menu.mjs": () => import("./test-workspace-file-menu.mjs"),

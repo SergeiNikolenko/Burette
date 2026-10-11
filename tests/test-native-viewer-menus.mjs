@@ -32,7 +32,7 @@ const events = [];
   const bindings = { window: { BuretteNativeViewerMenus: window.BuretteNativeViewerMenus, isSecureContext: true },
     document, navigator: { clipboard: {} }, activeConfig: {}, resolveViewerTheme: () => 'dark',
     viewportScreenshotHelper: () => helper, setStatus: () => {}, positionOpenViewportMenu: () => {},
-    canUseDownloadExportBridge: () => false,
+    canUseDownloadExportBridge: () => false, cameraAxesParams: () => ({ showPlanes: false }),
     sceneTreeIconElement: () => document.createElementNS('http://www.w3.org/2000/svg', 'svg'),
     APP_ICON_DATA: { Check: [], ChevronDown: [] }, VIEWPORT_ICON: { download: [], clipboard: [] },
     VIEWPORT_SCREENSHOT_RESOLUTIONS: [['viewport', 'Viewport'], ['hd', 'HD']],
@@ -65,7 +65,7 @@ const events = [];
     assert.equal(actions.run(action, menu.querySelector(`[data-buret-viewport-menu="screenshot-${action}"]`)), true);
   }
   assert.deepEqual([helper.values.transparent, helper.values.axes, helper.cropParams, helper.cropReset],
-    [true, { name: 'on', params: { scale: 1 } }, { auto: false }, true]);
+    [true, { name: 'on', params: { scale: 1, showPlanes: false } }, { auto: false }, true]);
   press('End'); assert.equal(document.activeElement.textContent, 'Crop to content');
   assert.equal(actions.run('save'), false); assert.equal(helper.saved, true);
   assert.equal(actions.run('copy'), false); assert.equal(helper.copied, true);

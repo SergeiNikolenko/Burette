@@ -52,7 +52,7 @@ export function SshConnectionDialog({ open, onOpenChange, onAdded }: { open: boo
         {error && <p role="alert" className="ssh-dialog-error">{error}</p>}
         <DialogFooter className="justify-between">
           <Button type="button" variant="ghost" disabled={busy} onClick={() => { setManual(!manual); setHost(""); setError(""); }}><Plus size={16} aria-hidden />{manual ? "Choose from SSH config" : "Add manually"}</Button>
-          <Button type="submit" className="ssh-primary" disabled={!host.trim() || busy}>{busy ? "Connecting…" : manual ? "Save" : "Add"}</Button>
+          <Button type="submit" disabled={!host.trim() || busy}>{busy ? "Connecting…" : manual ? "Save" : "Add"}</Button>
         </DialogFooter>
       </form>
     </DialogContent>

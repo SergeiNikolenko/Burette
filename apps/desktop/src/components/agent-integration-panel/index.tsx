@@ -2,10 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronRight } from "@/components/ui/app-icons";
 import { Spinner } from "@/components/ui/spinner";
-import { SettingsSection, type SettingRow } from "../settings-panel/setting-control";
+import { SettingControl, SettingsSection, type SettingRow } from "../settings-panel/setting-control";
 import { isTauriRuntime } from "../../lib/tauri";
 import { EditorScrollContainer } from "../editor-area/editor-scroll-container";
 
@@ -110,11 +111,12 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
       <header className="agent-integration-header">
         <h1>Agents</h1>
         <div className="agent-integration-actions">
-          <Button type="button" variant="secondary" size="xs" onClick={() => void refresh()} disabled={refreshing}>
+          {/* Codex page-header actions are toolbar buttons. */}
+          <Button type="button" variant="secondary" size="toolbar" onClick={() => void refresh()} disabled={refreshing}>
             {refreshing ? <><Spinner className="size-3" aria-hidden />Checking…</> : "Refresh"}
           </Button>
           {isTauriRuntime() && status?.bundledPlugin.path && (
-            <Button type="button" variant="secondary" size="xs" onClick={() => void openBundle()}>Reveal Bundle</Button>
+            <Button type="button" variant="secondary" size="toolbar" onClick={() => void openBundle()}>Reveal bundle</Button>
           )}
         </div>
       </header>
@@ -125,21 +127,26 @@ export function AgentIntegrationPanel({ embedded = false }: { embedded?: boolean
       }]} />
       {!refreshing && !error && status?.agentInstalls.length ? <SettingsSection title="Connection" rows={status.agentInstalls.map(agent => ({
         label: agent.label,
-        control: <><span className="text-xs text-(--color-text-secondary)">{agent.version ? `v${agent.version}` : null}</span><StatusValue state={agent.state} /></>,
+        control: <>{agent.version && <span className="text-xs text-(--color-text-secondary)">v{agent.version}</span>}<StatusValue state={agent.state} /></>,
       }))} /> : null}
       {!refreshing && !error && status && status.state !== "unavailable" && <SettingsSection title="Components" rows={[
         { id: "mcp", label: "Molecular tools" }, { id: "browser-shell", label: "Browser workspace" }, { id: "skills", label: "Workflows" },
       ].map(({ id, label }) => ({ label, control: <StatusValue state={status.checks.find(check => check.id === id)?.state ?? "unknown"} /> }))} />}
-      <Collapsible>
-        <CollapsibleTrigger asChild>
-          <Button type="button" variant="ghost" size="sm" className="group mb-3" disabled={refreshing}>
-            <ChevronRight className="size-4 transition-transform duration-150 group-data-[state=open]:rotate-90 motion-reduce:transition-none" aria-hidden />
-            Diagnostics
-          </Button>
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <SettingsSection title="Details" rows={diagnosticRows} />
-        </CollapsibleContent>
+      {/* Same collapsed heading as Appearance > Advanced. */}
+      <Collapsible asChild>
+        <section className="settings-section">
+          <h2>
+            <CollapsibleTrigger className="settings-section-toggle group" disabled={refreshing}>
+              Diagnostics
+              <ChevronRight size={14} className="transition-transform duration-150 group-data-[state=open]:rotate-90 motion-reduce:transition-none" aria-hidden />
+            </CollapsibleTrigger>
+          </h2>
+          <CollapsibleContent>
+            <Card className="settings-card">
+              {diagnosticRows.map(row => <SettingControl key={row.label} row={row} />)}
+            </Card>
+          </CollapsibleContent>
+        </section>
       </Collapsible>
     </div>
   );

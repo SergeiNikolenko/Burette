@@ -82,7 +82,7 @@ export function SetValueRangeDialog({
           {problem && <p id={problemId} className="break-words text-sm text-(--color-text-danger)" role="alert">{problem}</p>}
           <p className="text-xs text-(--color-text-secondary)">Values outside the range use the nearest limit.</p>
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onDismiss}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={onDismiss}>Cancel</Button>
             <Button type="submit" disabled={!ready}>{clearing ? "Clear" : "Apply"}</Button>
           </DialogFooter>
         </form>

@@ -22,6 +22,8 @@ import { useShellStore } from "../../stores/shell-store";
 import { useWorkspaceHistoryStore } from "../../stores/workspace-history-store";
 import type { ShellActions, ShellViewState } from "../types";
 import { ProjectGroup, ProjectItem } from "./file-tree-node";
+import { SCREEN_ENTRIES, openScreen } from "../workspace-panes/pane-actions";
+import { TabKindIcon } from "../editor-area/tab-kind-icon";
 import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
 
 const SIDEBAR_TREE_ROW_SELECTOR = ".project-group-row, .project-folder-row, [data-sidebar-structure-path]";
@@ -171,10 +173,20 @@ export function FileBrowser({
           </button>
         </SidebarTooltip>
       </div>
+      {/* Keep secondary screens in the new-tab menu and pane switchers. */}
+      {SCREEN_ENTRIES.filter(entry => entry.location.kind === "launcher").map(entry => {
+        const current = !state.activeTab?.pane && state.activeTab?.location.kind === entry.location.kind;
+        return <button key={entry.id} type="button" className="sidebar-tool-row" aria-current={current ? "page" : undefined}
+          onClick={() => openScreen(entry.location)}>
+          <span className="sidebar-tool-icon" aria-hidden="true"><TabKindIcon location={entry.location} state={state} /></span>
+          <span className="sidebar-tool-label">{entry.text}</span>
+        </button>;
+      })}
       <SidebarTooltip label="Open Ketcher">
         <button
           type="button"
           className="sidebar-tool-row"
+          aria-current={!state.activeTab?.pane && state.activeTab?.location.kind === "ketcher" ? "page" : undefined}
           data-file-drop-zone="ketcher"
           draggable
           onMouseDown={ketcherDrag.onMouseDown}
@@ -207,7 +219,7 @@ export function FileBrowser({
               >
                 <span>Pinned</span>
                 <span className={pinnedExpanded ? "sidebar-section-chevron expanded" : "sidebar-section-chevron"} aria-hidden="true">
-                  <ChevronRight size={10} aria-hidden />
+                  <ChevronRight size={14} aria-hidden />
                 </span>
               </button>
             </SidebarTooltip>
@@ -227,7 +239,7 @@ export function FileBrowser({
         </section>
       )}
       {!hideProjectPreviews && (
-      <section className="sidebar-section" aria-label="Recents">
+      <section className="sidebar-section" aria-label="Projects">
         <div className="sidebar-section-header">
           <button
             type="button"
@@ -236,9 +248,9 @@ export function FileBrowser({
             aria-expanded={projectsExpanded}
             aria-controls="sidebar-projects-tree"
           >
-            <span>Recents</span>
+            <span>Projects</span>
             <span className={projectsExpanded ? "sidebar-section-chevron expanded" : "sidebar-section-chevron"} aria-hidden="true">
-              <ChevronRight size={10} aria-hidden />
+              <ChevronRight size={14} aria-hidden />
             </span>
           </button>
 
@@ -257,7 +269,7 @@ export function FileBrowser({
               {
                 kind: "item",
                 id: "add-project-folder",
-                text: "Add Project Folder...",
+                text: "Add project folder…",
                 action: () => {
                   void actions.chooseWorkspace();
                 },
@@ -267,7 +279,7 @@ export function FileBrowser({
                 ? {
                     kind: "item",
                     id: "show-hidden-files",
-                    text: "Show Hidden Files",
+                    text: "Show hidden files",
                     action: () => {
                       // One history entry, so Cmd+Z hides them again in one step.
                       const history = useWorkspaceHistoryStore.getState();
@@ -279,7 +291,7 @@ export function FileBrowser({
                 : {
                     kind: "item",
                     id: "hide-all-files",
-                    text: "Hide All Files",
+                    text: "Hide all files",
                     disabled: state.sidebarProjects.length === 0,
                     action: () => {
                       // Group the per-project removals so one Cmd+Z restores them all.
@@ -294,7 +306,7 @@ export function FileBrowser({
               {
                 kind: "item",
                 id: "close-all-tabs",
-                text: "Close All Tabs",
+                text: "Close all tabs",
                 action: actions.clearAllDocuments,
               },
             ]}

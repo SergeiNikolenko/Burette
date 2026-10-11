@@ -142,7 +142,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
                 <AppImageIcon src={preferredIconUrl} fallback={openDestinationIconText(state.preferences.openInDefaultDestination, preferredTarget)} />
               ) : openDestinationIconText(state.preferences.openInDefaultDestination, preferredTarget)}
             </span>
-            <ChevronDown className="open-editor-chevron" size={13} aria-hidden="true" />
+            <ChevronDown className="open-editor-chevron" size={14} aria-hidden="true" />
           </button>
         </ShortcutTooltip>
       )}

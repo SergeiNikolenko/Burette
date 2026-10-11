@@ -389,7 +389,7 @@ test("tooltip opens on keyboard focus without moving it and Escape removes its d
   const root = createRoot(shell);
   try {
     await act(async () => root.render(<TooltipProvider><Tooltip><TooltipTrigger>Fit</TooltipTrigger><TooltipContent compact>Fit structure</TooltipContent></Tooltip></TooltipProvider>));
-    const trigger = shell.querySelector<HTMLButtonElement>('[data-slot="tooltip-trigger"]')!;
+    const trigger = shell.querySelector<HTMLButtonElement>('[data-tooltip-trigger]')!;
     await act(async () => trigger.focus());
     const description = document.getElementById(trigger.getAttribute("aria-describedby")!);
     expect(description?.textContent).toBe("Fit structure");
@@ -408,7 +408,7 @@ test("tooltip waits on first pointer entry and respects an explicit themed porta
   const root = createRoot(shell);
   try {
     await act(async () => root.render(<TooltipProvider><Tooltip><TooltipTrigger>Inspect</TooltipTrigger><TooltipContent container={portal}>Inspect properties</TooltipContent></Tooltip></TooltipProvider>));
-    const trigger = shell.querySelector<HTMLButtonElement>('[data-slot="tooltip-trigger"]')!;
+    const trigger = shell.querySelector<HTMLButtonElement>('[data-tooltip-trigger]')!;
     await act(async () => { trigger.dispatchEvent(new browser.PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" }) as unknown as Event); });
     expect(portal.querySelector('[data-slot="tooltip-content"]')).toBeNull();
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 180)); });

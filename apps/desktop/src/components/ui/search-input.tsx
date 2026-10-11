@@ -1,4 +1,4 @@
-import { useRef, type ComponentProps } from "react";
+import { useRef, type ComponentProps, type ReactNode } from "react";
 import { Button } from "./button";
 import { X } from "./app-icons";
 import { AnimatedSearchIcon } from "./animated-icons";
@@ -6,8 +6,11 @@ import { cn } from "@/lib/utils";
 import "./search-input.css";
 
 // Atlas page search: a native text field with an explicit, keyboard-accessible clear action.
-export function SearchInput({ value, onValueChange, className, disabled, clearLabel = "Clear search", ...props }: Omit<ComponentProps<"input">, "ref" | "value" | "onChange" | "type"> & {
+export function SearchInput({ value, onValueChange, className, disabled, clearLabel = "Clear search", clearable = true, trailing, ...props }: Omit<ComponentProps<"input">, "ref" | "value" | "onChange" | "type"> & {
   clearLabel?: string;
+  clearable?: boolean;
+  /** Extra field action after the clear button, such as Codex's "Search by keystrokes". */
+  trailing?: ReactNode;
   value: string;
   onValueChange: (value: string) => void;
 }) {
@@ -17,6 +20,7 @@ export function SearchInput({ value, onValueChange, className, disabled, clearLa
     <input {...props} disabled={disabled} ref={input} type="text" autoComplete="off" spellCheck={false}
       value={value} onChange={event => onValueChange(event.target.value)}
     />
-    {value && <Button type="button" variant="ghost" size="icon-sm" disabled={disabled} aria-label={clearLabel} onClick={() => { onValueChange(""); input.current?.focus(); }}><X size={16} aria-hidden /></Button>}
+    {value && clearable && <Button type="button" variant="ghost" size="icon-sm" disabled={disabled} aria-label={clearLabel} onClick={() => { onValueChange(""); input.current?.focus(); }}><X size={16} aria-hidden /></Button>}
+    {trailing}
   </div>;
 }

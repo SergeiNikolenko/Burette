@@ -84,6 +84,12 @@ export type KetcherSource3D = {
   text: string;
 };
 
+export type KetcherDraftRequest = {
+  tabId: string;
+  molfile: string;
+  ket?: string;
+};
+
 export type KetcherImportRequest = {
   id: number;
   paths: string[];
@@ -218,7 +224,7 @@ export type ShellActions = {
   runXtbGridScoring: (document?: ViewerDocument | null) => void | Promise<void>;
   clearXtbJobs: () => void;
   setXtbSettings: (settings: XtbSettings) => void;
-  saveKetcherDraft: (molfile: string) => void;
+  saveKetcherDraft: (request: KetcherDraftRequest) => void;
   clearKetcherImportRequest: (id: number) => void;
   moveTab: (id: string, toIndex: number) => void;
   chooseWorkspace: () => void | Promise<void>;

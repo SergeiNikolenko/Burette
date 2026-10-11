@@ -14,6 +14,7 @@ import { rendererLabel } from "../format";
 import { showNativeContextMenu } from "../native-context-menu";
 import type { ShellActions, ShellViewState } from "../types";
 import { FileKindIcon, fileKindForPath } from "./file-kind-icon";
+import { folderHoverCard, structureHoverCard, useSidebarHoverCard } from "./sidebar-hover-card";
 import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
 
 const COLLAPSED_PROJECT_ITEM_LIMIT = 5;
@@ -50,7 +51,7 @@ export function ProjectGroup({
   const emptyFolders = project.rootPath ? menus.folders[project.rootPath] : undefined;
   const projectTree = useMemo(() => buildProjectTree(project.items, emptyFolders), [project.items, emptyFolders]);
   const defaultExpandedFolderPaths = useMemo(
-    () => expandFoldersByDefault ? collectProjectFolderPaths(projectTree) : [],
+    () => expandFoldersByDefault ? collectProjectFolderPaths(projectTree) : singleFolderChain(projectTree),
     [expandFoldersByDefault, projectTree],
   );
   const [showAllItems, setShowAllItems] = useState(false);
@@ -78,13 +79,19 @@ export function ProjectGroup({
     getPayload: () => sidebarProjectItemsDragPayload(project.items, project.rootPath),
     state,
   });
+  const hoverCard = useSidebarHoverCard(folderHoverCard({
+    title: project.title,
+    path: project.rootPath,
+    items: project.items,
+    pinned: project.isPinned,
+  }));
 
   useEffect(() => {
     if (!renaming) setRenameDraft(project.title);
   }, [project.title, renaming]);
 
   useEffect(() => {
-    if (!expandFoldersByDefault || folderExpansionChangedRef.current) return;
+    if (folderExpansionChangedRef.current) return;
     setExpandedFolderPaths(new Set(defaultExpandedFolderPaths));
   }, [defaultExpandedFolderPaths, expandFoldersByDefault]);
 
@@ -107,6 +114,7 @@ export function ProjectGroup({
 
   const handleToggle = () => {
     if (renaming) return;
+    if (!expanded) setExpandedFolderPaths(current => new Set([...current, ...singleFolderChain(projectTree)]));
     actions.toggleProjectExpanded(project.id);
   };
 
@@ -193,6 +201,7 @@ export function ProjectGroup({
       } else {
         next.add(path);
         for (const descendantPath of descendantPaths) next.delete(descendantPath);
+        for (const child of singleFolderChain(childrenForFolder(projectTree, path))) next.add(child);
       }
       return next;
     });
@@ -244,6 +253,7 @@ export function ProjectGroup({
         role="treeitem"
         tabIndex={0}
         className="project-group-row"
+        {...hoverCard}
         data-drop-directory={project.rootPath ?? undefined}
         draggable={!renaming && project.items.length > 0}
         onMouseDown={(event) => {
@@ -442,6 +452,7 @@ function ProjectTreeNodeView({
     getPayload: () => sidebarProjectItemsDragPayload(nodeItems, folderPath),
     state,
   });
+  const hoverCard = useSidebarHoverCard(folderHoverCard({ title: displayName, path: folderPath, items: nodeItems }));
   const showAllChildren = showAllFolderPaths.has(node.path);
   const limitChildren = !forceExpanded && node.children.length >= COLLAPSE_PROJECT_ITEMS_FROM;
   const leadingChildren = limitChildren ? node.children.slice(0, COLLAPSED_PROJECT_ITEM_LIMIT) : node.children;
@@ -470,6 +481,7 @@ function ProjectTreeNodeView({
         role="treeitem"
         tabIndex={0}
         className="project-folder-row"
+        {...hoverCard}
         data-drop-directory={project.rootPath ? `${project.rootPath}/${node.path}` : undefined}
         style={projectDepthStyle(depth)}
         draggable={nodeItems.length > 0}
@@ -569,6 +581,7 @@ export function ProjectItem({
     getPayload: () => sidebarProjectItemsDragPayload([item]),
     state,
   });
+  const hoverCard = useSidebarHoverCard(structureHoverCard(item));
   const openItem = () => {
     // A CSV/TSV row can be bound to the hidden text copy that the grid and dock
     // keep for source editing; reopen it instead so it lands in the molecule
@@ -635,6 +648,7 @@ export function ProjectItem({
       tabIndex={0}
       draggable
       className={className}
+      {...hoverCard}
       style={projectDepthStyle(depth ?? (nested ? 1 : 0))}
       data-sidebar-structure-path={item.path}
       data-sidebar-structure-renderer={item.renderer}
@@ -714,6 +728,25 @@ function buildProjectTree(items: SidebarProjectItem[], emptyFolders: string[] = 
   }
 
   return roots;
+}
+
+function singleFolderChain(nodes: ProjectTreeNode[]): string[] {
+  const paths: string[] = [];
+  while (nodes.length === 1 && nodes[0].kind === "folder") {
+    paths.push(nodes[0].path);
+    nodes = nodes[0].children;
+  }
+  return paths;
+}
+
+function childrenForFolder(nodes: ProjectTreeNode[], path: string): ProjectTreeNode[] {
+  for (const node of nodes) {
+    if (node.kind !== "folder") continue;
+    if (node.path === path) return node.children;
+    const found = childrenForFolder(node.children, path);
+    if (found.length) return found;
+  }
+  return [];
 }
 
 function collectProjectFolderPaths(nodes: ProjectTreeNode[]) {

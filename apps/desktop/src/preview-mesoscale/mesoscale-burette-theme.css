@@ -11,9 +11,9 @@
   --buret-meso-field: #242424;
   --buret-meso-hover: #2a2a2a;
   --buret-meso-border: rgba(255, 255, 255, 0.08);
-  --buret-meso-text: #dfdfdf;
-  --buret-meso-muted: rgba(223, 223, 223, 0.65);
-  --buret-meso-accent: #af52de;
+  --buret-meso-text: #ffffff;
+  --buret-meso-muted: rgba(255, 255, 255, 0.65);
+  --buret-meso-accent: #3a83f7;
 }
 
 body.buret-theme-light {
@@ -32,8 +32,8 @@ body.buret-theme-dark {
   --buret-meso-field: #242424;
   --buret-meso-hover: #2a2a2a;
   --buret-meso-border: rgba(255, 255, 255, 0.08);
-  --buret-meso-text: #dfdfdf;
-  --buret-meso-muted: rgba(223, 223, 223, 0.65);
+  --buret-meso-text: #ffffff;
+  --buret-meso-muted: rgba(255, 255, 255, 0.65);
 }
 
 html[data-burette-theme="light"],
@@ -483,4 +483,156 @@ body .msp-plugin ::-webkit-scrollbar-thumb { background-color: var(--buret-meso-
 /* Snapshot navigation is owned by Burette scene controls. */
 .msp-state-snapshot-viewport-controls {
   display: none !important;
+}
+
+/* Codex inspector layout for the Mol* side panels: left-aligned section titles,
+   label/field rows with rounded fields, neutral hover, and no instructional
+   copy. Mol* lays rows out absolutely, so fields are inset rather than spaced. */
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) {
+  font: 13px/18px -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-section-header {
+  height: 36px;
+  margin: 8px 0 0;
+  padding: 0 12px;
+  line-height: 36px;
+  text-align: left;
+  font-weight: 500;
+  background: transparent !important;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-section-header .msp-icon {
+  display: none;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-control-row {
+  margin-top: 0;
+  background: transparent !important;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-control-row > :is(span.msp-control-row-label, button.msp-control-button-label) {
+  padding: 0 8px 0 12px;
+  text-align: left;
+  color: var(--buret-meso-muted) !important;
+  background: transparent !important;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-control-row > div:is(.msp-control-row-ctrl, .msp-control-row-text) {
+  top: 2px;
+  right: 12px;
+  bottom: 2px;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) :is(.msp-form-control, .msp-btn, textarea, .msp-control-row select, .msp-control-row button, .msp-control-row input[type="text"]) {
+  border-radius: 8px;
+  font: inherit;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-control-row-ctrl > :is(.msp-form-control, .msp-btn, select, button, input[type="text"]) {
+  height: 28px;
+  line-height: 28px;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) :is(.msp-flex-row, .msp-transform-apply-wrap, .msp-transform-header) {
+  padding-inline: 12px;
+  background: transparent !important;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-flex-row {
+  gap: 4px;
+  margin-block: 2px;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-flex-row > :is(.msp-btn, .msp-form-control, input):not(textarea) {
+  height: 28px;
+  line-height: 28px;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) :is(.msp-btn-commit, .msp-btn-action) {
+  justify-content: center;
+  text-align: center !important;
+  font-weight: 500;
+}
+
+/* File loaders are divs, so they need flex to centre their label like a button does. */
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-loader-msp-btn-file {
+  display: flex !important;
+  align-items: center;
+  gap: 4px;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-transform-apply-wrap {
+  position: relative;
+  margin: 4px 0;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-transform-apply-wrap .msp-btn {
+  height: 28px;
+  line-height: 28px;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-transform-header > button {
+  height: 32px;
+  padding: 0 8px;
+  border: 0 !important;
+  border-radius: 8px;
+  font-weight: 500;
+  text-align: left;
+  color: var(--buret-meso-text) !important;
+  background: transparent !important;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-transform-header > button .msp-icon {
+  color: var(--buret-meso-muted);
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-flex-row > button.msp-btn-block.msp-no-overflow {
+  justify-content: flex-start;
+  text-align: left;
+}
+
+/* Hover stays neutral, as everywhere in the Codex shell. */
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) :is(.msp-form-control, .msp-btn, .msp-btn-icon, .msp-btn-icon-small, .msp-control-row select, .msp-control-row button, .msp-control-row input[type="text"], .msp-transform-header > button):hover {
+  color: var(--buret-meso-text) !important;
+  background-color: var(--buret-meso-hover) !important;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-help-text {
+  display: none !important;
+}
+
+/* The row wrappers carry the field colour in the base theme; only the fields do here. */
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-control-row > div,
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) .msp-control-row-label .msp-help {
+  background: transparent !important;
+}
+
+/* Mol* separates sections with empty 2em spacers; the wrapper and header margins already do. */
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) div:not([class]):empty[style*="height"] {
+  height: 12px !important;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) div:not([class]):empty:has(+ .msp-section-header) {
+  display: none;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) #tree {
+  border-bottom: 0 !important;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) ::-webkit-scrollbar-track {
+  background-color: transparent !important;
+}
+
+body .msp-plugin :is(.msp-layout-left, .msp-layout-right) ::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--buret-meso-text) 22%, transparent) !important;
 }

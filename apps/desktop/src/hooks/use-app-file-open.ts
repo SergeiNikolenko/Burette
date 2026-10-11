@@ -247,7 +247,8 @@ export function useAppFileOpen({
             .catch((menuError) => pushErrorStatus(menuError, "Structure column menu failed"));
           return null;
         }
-        if (!options.deferErrorStatus) pushErrorStatus(error);
+        // The raw error (with its path) stays in Details; the toast names the file.
+        if (!options.deferErrorStatus) pushErrorStatus(error, cleanPaths.length === 1 ? `Couldn’t open ${basename(cleanPaths[0])}` : "Couldn’t open files");
         return null;
       }
     },
@@ -537,7 +538,7 @@ export function useAppFileOpen({
       addDocuments([document]);
       rememberRecentStructures([document]);
       setActiveDocument(document.id);
-      pushStatus(`Fetched ${remote.title} in Mol*`, "success");
+      pushStatus(`Opened ${remote.title}`, "success");
     } catch (error) {
       pushErrorStatus(error, "Fetch structure failed");
     }

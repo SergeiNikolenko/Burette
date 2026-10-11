@@ -1,0 +1,17 @@
+.app-shell .ketcher-ui-dialog[data-slot="dialog-content"]:has(.ketcher-import-options) {width:min(360px,calc(100vw - 24px));}
+.ketcher-ui-dialog-body[class*="Open-module_open"] {background:transparent!important;box-shadow:none!important;}
+.app-shell .ketcher-ui-dialog[data-slot="dialog-content"]:has(.ketcher-import-chooser) {width:min(720px,calc(100vw - 24px));}
+.ketcher-import-chooser {display:flex;flex-direction:column;gap:12px;min-width:0;}
+.ketcher-import-layout {display:grid;grid-template-columns:160px minmax(0,1fr);gap:12px;min-height:220px;}
+.ketcher-import-list {align-content:start;max-height:min(380px,45dvh);overflow:auto;overscroll-behavior:contain;gap:4px;padding:2px;}
+.ketcher-ui-dialog-body .ketcher-import-chooser .ketcher-import-option {display:flex;align-items:center;gap:8px;width:auto;margin:0;border-radius:var(--radius-md);padding:8px;font-size:14px;cursor:pointer;}
+.ketcher-import-actions {display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;width:100%;}
+.ketcher-import-primary-actions {display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;}
+.ketcher-import-option:focus-within {outline:2px solid var(--ring);outline-offset:0;}
+.ketcher-import-preview {display:flex;align-items:center;justify-content:center;min-width:0;min-height:220px;overflow:hidden;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--background);color:var(--foreground);}
+.ketcher-import-native-preview {width:100%;min-height:220px;}
+.ketcher-chemical-info {color:var(--popover-foreground);background:var(--popover);}
+.ketcher-chemical-info svg {overflow:visible;}
+.app-shell[data-effective-theme="dark"] :is(.ketcher-import-preview,.ketcher-chemical-info) svg :is([stroke="#000"],[stroke="#000000"],[stroke="#333"],[stroke="#333333"]) {stroke:var(--foreground);}
+.app-shell[data-effective-theme="dark"] :is(.ketcher-import-preview,.ketcher-chemical-info) svg :is([fill="#000"],[fill="#000000"],[fill="#333"],[fill="#333333"]) {fill:var(--foreground);}
+@media(max-width:560px) {.ketcher-import-layout {grid-template-columns:minmax(0,1fr);}.ketcher-import-list {max-height:132px;}.ketcher-import-preview,.ketcher-import-native-preview {min-height:180px;}}

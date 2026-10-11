@@ -1,0 +1,13 @@
+.app-shell .ketcher-library-preview {
+  background: var(--background) !important;
+  border-color: var(--border) !important;
+  color: var(--foreground);
+  overflow: hidden;
+}
+.ketcher-library-preview-content { width: 100%; height: 100%; }
+.app-shell .ketcher-ui-dialog-body [class*="template-lib-module_inputContainer"] input[type="search"] {
+  background: var(--background) !important;
+  color: var(--foreground) !important;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}

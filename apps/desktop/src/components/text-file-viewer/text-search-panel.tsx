@@ -6,6 +6,7 @@ import type { EditorView, Panel } from "@codemirror/view";
 import { Button } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput, InputGroupText } from "../ui/input-group";
 import { ChevronUp, ChevronDown, Search, X } from "../ui/app-icons";
+import { ShortcutTooltip } from "../shortcut-tooltip";
 
 export function toggleTextSearch(view: EditorView) {
   return searchPanelOpen(view.state) ? closeSearchPanel(view) : openSearchPanel(view);
@@ -52,9 +53,15 @@ function TextSearchPanel({ view, state }: { view: EditorView; state: EditorState
         />
         {query.search ? <InputGroupAddon align="inline-end"><InputGroupText role="status" aria-live="polite">{current} / {count}</InputGroupText></InputGroupAddon> : null}
       </InputGroup>
-      <Button variant="ghost" size="icon-xs" aria-label="Previous match" title="Previous match (Shift+Enter)" disabled={!matches.length} onClick={() => findPrevious(view)}><ChevronUp /></Button>
-      <Button variant="ghost" size="icon-xs" aria-label="Next match" title="Next match (Enter)" disabled={!matches.length} onClick={() => findNext(view)}><ChevronDown /></Button>
-      <Button variant="ghost" size="icon-xs" aria-label="Close text search" title="Close (⌘F or Esc)" onClick={() => closeSearchPanel(view)}><X /></Button>
+      <ShortcutTooltip label="Previous match" shortcut="⇧↩">
+        <Button variant="ghost" size="icon-xs" aria-label="Previous match" disabled={!matches.length} onClick={() => findPrevious(view)}><ChevronUp /></Button>
+      </ShortcutTooltip>
+      <ShortcutTooltip label="Next match" shortcut="↩">
+        <Button variant="ghost" size="icon-xs" aria-label="Next match" disabled={!matches.length} onClick={() => findNext(view)}><ChevronDown /></Button>
+      </ShortcutTooltip>
+      <ShortcutTooltip label="Close" shortcut="Esc">
+        <Button variant="ghost" size="icon-xs" aria-label="Close text search" onClick={() => closeSearchPanel(view)}><X /></Button>
+      </ShortcutTooltip>
     </div>
   );
 }

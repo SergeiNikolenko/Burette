@@ -162,6 +162,12 @@ export async function runConformerWorkflow(
   if (!documentId.trim() || normalizedIndexes.length === 0) {
     throw new Error("Native conformer generation requires a Grid document and selected molecules.");
   }
+  // The native side applies the same Settings override; mirroring it here keeps
+  // the Metal-only result check below from rejecting a requested CPU run.
+  const computeBackend = useSettingsStore.getState().preferences.computeBackend;
+  const backendPolicy = computeBackend === "cpu" ? "referenceCpu"
+    : computeBackend === "metal" ? "gpuRequired"
+      : options.backendPolicy ?? "gpuRequired";
   const request = {
     schemaVersion: "burette.compute-job.v1",
     workflowTemplate: "conformer.v1",
@@ -177,8 +183,8 @@ export async function runConformerWorkflow(
       maxAttemptsPerConformer: 32,
     },
     executionPolicy: {
-      backendPolicy: options.backendPolicy ?? "gpuRequired",
-      schedulingPolicy: options.backendPolicy === "referenceCpu" ? "interactive" : "throughput",
+      backendPolicy,
+      schedulingPolicy: backendPolicy === "referenceCpu" ? "interactive" : "throughput",
     },
     limits: {
       maxMemoryBytes: 4 * 1_024 * 1_024 * 1_024,
@@ -207,7 +213,7 @@ export async function runConformerWorkflow(
     const backend = numericStages.some((stage) => stage.effectiveBackend === "nativeMetal")
       ? "nativeMetal"
       : "referenceCpu";
-    if (options.backendPolicy !== "referenceCpu" && backend !== "nativeMetal") {
+    if (backendPolicy !== "referenceCpu" && backend !== "nativeMetal") {
       throw new Error("Metal-only conformer workflow rejected a non-Metal result.");
     }
     return {
@@ -304,5 +310,6 @@ class ConformerExtractionWorkerClient {
   }
 }
 import { invoke } from "@tauri-apps/api/core";
+import { useSettingsStore } from "../stores/settings-store";
 
 const EXTRACTION_TIMEOUT_MS = 120_000;

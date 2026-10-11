@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { captureAnnotatedView, clearRegionSelection, clickTargetBox, controlAt, deliverAnnotations, describeRegion, type Annotation, type AnnotationImage, type RegionGranularity, type RegionRect, type RegionTarget } from "../lib/annotation-region";
 import { useAnnotationStore } from "../stores/annotation-store";
 import { ShortcutTooltip } from "./shortcut-tooltip";
-import { Annotate, Check, Delete, Eye, EyeOff, X } from "./ui/app-icons";
+import { Annotate, Camera, Check, Delete, Eye, EyeOff, FileImage, X } from "./ui/app-icons";
 import "./annotation-layer.css";
 
 // Annotate mode, modelled on the Codex file viewer: drag a region (or click an
@@ -267,11 +267,13 @@ export function AnnotationLayer({ documentTitle, picksResidues }: { documentTitl
       {markersVisible && annotations.map((annotation, index) => draft?.id === annotation.id ? null : (
         <div key={annotation.id}>
           <div className="annotation-region" style={local(annotation.rect)} />
-          <button type="button" className="annotation-pin" style={{ left: annotation.pin.x - bounds.left, top: annotation.pin.y - bounds.top }}
-            aria-label={`Edit annotation ${index + 1}: ${annotation.comment}`} title={annotation.comment} disabled={busy}
-            onClick={() => setDraft({ key: ++draftKey.current, rect: annotation.rect, pin: annotation.pin, comment: annotation.comment, element: false, id: annotation.id })}>
-            {index + 1}
-          </button>
+          <ShortcutTooltip label={annotation.comment}>
+            <button type="button" className="annotation-pin" style={{ left: annotation.pin.x - bounds.left, top: annotation.pin.y - bounds.top }}
+              aria-label={`Edit annotation ${index + 1}: ${annotation.comment}`} disabled={busy}
+              onClick={() => setDraft({ key: ++draftKey.current, rect: annotation.rect, pin: annotation.pin, comment: annotation.comment, element: false, id: annotation.id })}>
+              {index + 1}
+            </button>
+          </ShortcutTooltip>
         </div>
       ))}
       {dragRect ? <div className="annotation-region" style={dragRect} /> : null}
@@ -304,7 +306,7 @@ export function AnnotationLayer({ documentTitle, picksResidues }: { documentTitl
           </span>
           <ShortcutTooltip label="Take a screenshot" side="top">
             <button type="button" className="annotation-tool" aria-label="Take a screenshot" disabled={busy} onClick={() => void takeScreenshot()}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden><path d="M8 3H6a3 3 0 0 0-3 3v2m13-5h2a3 3 0 0 1 3 3v2M3 16v2a3 3 0 0 0 3 3h2m8 0h2a3 3 0 0 0 3-3v-2"/><circle cx="12" cy="12" r="3.5"/></svg>
+              <Camera size={20} aria-hidden />
             </button>
           </ShortcutTooltip>
           <ShortcutTooltip label={markersVisible ? "Hide markers" : "Show markers"} side="top">
@@ -314,7 +316,7 @@ export function AnnotationLayer({ documentTitle, picksResidues }: { documentTitl
           </ShortcutTooltip>
           <ShortcutTooltip label="Toggle screenshot preview" side="top">
             <button type="button" className="annotation-tool" aria-label="Toggle screenshot preview" aria-pressed={previewVisible} disabled={!snapshot || busy} onClick={() => setPreviewVisible(!previewVisible)}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden><path d="M9 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4m6-16h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M12 2v20"/></svg>
+              <FileImage size={20} aria-hidden />
             </button>
           </ShortcutTooltip>
           <ShortcutTooltip label="Discard annotations" side="top">

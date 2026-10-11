@@ -1,0 +1,90 @@
+/* Codex rich hover card surface: tab thumbnails and sidebar row cards. */
+.tab-hover-preview,
+.sidebar-hover-card {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  margin: 1px;
+  max-width: calc(100vw - 16px);
+  overflow: hidden;
+  border-radius: var(--radius-xl);
+  background: var(--color-surface-elevated-secondary);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  box-shadow:
+    0 0 0 0.5px var(--color-border),
+    0 0 0 0.5px var(--color-border),
+    var(--shadow-xl);
+  pointer-events: none;
+  user-select: none;
+}
+
+.tab-hover-preview[data-moved],
+.sidebar-hover-card[data-moved] {
+  transition: transform 150ms var(--ease-enter-snappy);
+}
+
+.tab-hover-preview-frame {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(20rem, calc(100vw - 16px));
+  height: 15rem;
+  padding: 12px 8px;
+}
+
+.tab-hover-preview-header {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.tab-hover-preview-title {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 20px;
+  overflow-wrap: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.tab-hover-preview-subtitle {
+  overflow: hidden;
+  color: var(--color-codex-description);
+  font-size: var(--text-xs);
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab-hover-preview-body {
+  position: relative;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.tab-hover-preview-image {
+  display: block;
+  width: 100%;
+  height: 10rem;
+  object-fit: cover;
+  object-position: top;
+}
+
+.tab-hover-preview-fill {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: var(--color-surface-secondary);
+  color: var(--color-codex-description);
+}

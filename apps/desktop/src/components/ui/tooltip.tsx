@@ -7,12 +7,17 @@ import { useAppShellPortalContainer } from "@/components/ui/portal-container"
 
 function TooltipProvider({
   delayDuration = 150,
+  // Hints are never interactive. A hoverable hint waits for the pointer to
+  // leave its grace area, and a pointer that moves on into a viewer iframe
+  // sends no further events here, so the hint would stay up.
+  disableHoverableContent = true,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
   return (
     <TooltipPrimitive.Provider
       data-slot="tooltip-provider"
       delayDuration={delayDuration}
+      disableHoverableContent={disableHoverableContent}
       {...props}
     />
   )
@@ -29,7 +34,9 @@ function TooltipTrigger({
   onPointerMove,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props}
+  // With asChild the child keeps its own data-slot ("button", "toolbar-button"),
+  // which its styles key on; data-tooltip-trigger marks every trigger either way.
+  return <TooltipPrimitive.Trigger data-tooltip-trigger="" {...(props.asChild ? {} : { "data-slot": "tooltip-trigger" })} {...props}
     onFocus={event => {
       // React bubbles portal events through the trigger's logical children.
       // Focusing a Select option must not reopen its parent field's tooltip.

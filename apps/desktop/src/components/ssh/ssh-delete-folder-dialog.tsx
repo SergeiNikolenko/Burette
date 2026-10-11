@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { sshDeleteFolder, type SshProject } from "../../lib/ssh-projects";
@@ -23,7 +23,7 @@ export function SshDeleteFolderDialog({ project, path, fullPath, onClose, onDele
       <p className="break-all text-sm">{fullPath}</p>
       <label className="grid gap-2 text-sm">Type “{name}” to confirm<Input autoFocus value={confirmation} onChange={e => setConfirmation(e.target.value)} disabled={busy} /></label>
       {error && <p role="alert" className="ssh-dialog-error">{error}</p>}
-      <div className="ssh-dialog-footer justify-end"><Button variant="ghost" disabled={busy} onClick={onClose}>Cancel</Button><Button variant="destructive" disabled={busy || !!error || confirmation !== name} onClick={() => void remove()}>{busy ? "Deleting…" : "Delete folder"}</Button></div>
+      <DialogFooter className="ssh-dialog-footer justify-end"><Button variant="ghost" disabled={busy} onClick={onClose}>Cancel</Button><Button variant="destructive" disabled={busy || !!error || confirmation !== name} onClick={() => void remove()}>{busy ? "Deleting…" : "Delete folder"}</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
 }

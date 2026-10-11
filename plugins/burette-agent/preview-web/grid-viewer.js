@@ -64,6 +64,9 @@
   const GRID_WINDOW_OVERSCAN_ROWS = 4;
   const GRID_MAX_WINDOW_ROWS = 18;
   const GRID_MIN_ESTIMATED_ROW_HEIGHT = 190;
+  // An auto-width trailing cell takes the width the fixed columns leave, so the
+  // table spans the pane like its totals bar without stretching any column.
+  const TABLE_FILL_CELL = '<td class="buret-grid-table-fill" aria-hidden="true"></td>';
   const GRID_EDIT_HISTORY_LIMIT = 50;
   const GRID_RAIL_ITEM_SIZE = 10;
   const GRID_RAIL_PILL_WIDTH = 12;
@@ -658,6 +661,10 @@
         if (!cfg) return;
         cfg.theme = body.value === 'light' || body.value === 'dark' ? body.value : 'auto';
         applyTheme(cfg);
+        return;
+      }
+      if (Object.hasOwn(GRID_APP_DEFAULT_MESSAGES, body.type)) {
+        setGridAppDefault(GRID_APP_DEFAULT_MESSAGES[body.type], body.value);
         return;
       }
       if (body.type === 'gridSetColumnFilter') {
@@ -1713,6 +1720,74 @@
     try { window.localStorage?.removeItem(key); } catch (_) {}
   }
 
+  // App Settings own the starting view, card drawing, card size and hydrogens
+  // (cfg.viewerDefaults). A toolbar change still persists, but only against the
+  // app default it was made under: once Settings change that default, the old
+  // override is dropped so every grid follows the new setting.
+  const GRID_APP_DEFAULTS = {
+    gridViewMode: { key: GRID_VIEW_MODE_STORAGE_KEY, normalize: value => (value === 'table' ? 'table' : 'cards') },
+    gridCardRenderer: { key: CARD_RENDERER_STORAGE_KEY, normalize: value => (value === 'xyzrender' ? 'xyzrender' : 'rdkit') },
+    gridCardSize: {
+      key: CARD_MIN_STORAGE_KEY,
+      normalize: value => (Number(value) > 0 ? clampInteger(value, MIN_CARD_MIN, MAX_CARD_MIN, DEFAULT_CARD_MIN) : null)
+    },
+    hydrogenDisplay: { key: HYDROGEN_DISPLAY_STORAGE_KEY, normalize: value => (HYDROGEN_DISPLAY_MODES.includes(value) ? value : 'none') }
+  };
+  const GRID_APP_DEFAULT_MESSAGES = {
+    setGridViewModeDefault: 'gridViewMode',
+    setGridCardRendererDefault: 'gridCardRenderer',
+    setGridCardSizeDefault: 'gridCardSize',
+    setGridHydrogenDisplayDefault: 'hydrogenDisplay'
+  };
+
+  // Returns true when no toolbar override survives, so the app default applies.
+  function adoptGridAppDefault(key, value) {
+    const stampKey = `${key}.appDefault`;
+    const stamp = value == null ? 'auto' : String(value);
+    try {
+      const previous = window.localStorage?.getItem(stampKey);
+      // The first stamp keeps an override made before Settings owned the default.
+      if (previous != null && previous !== stamp) window.localStorage?.removeItem(key);
+      if (previous !== stamp) window.localStorage?.setItem(stampKey, stamp);
+      return window.localStorage?.getItem(key) == null;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  function applyGridAppDefaults(cfg) {
+    const defaults = cfg?.viewerDefaults;
+    if (!defaults || typeof defaults !== 'object') return;
+    const fields = { gridViewMode: 'viewMode', gridCardRenderer: 'cardRenderer', gridCardSize: 'cardMin', hydrogenDisplay: 'hydrogenDisplay' };
+    for (const [name, { key, normalize }] of Object.entries(GRID_APP_DEFAULTS)) {
+      const value = normalize(defaults[name]);
+      if (adoptGridAppDefault(key, value)) state[fields[name]] = value;
+    }
+  }
+
+  // Settings changed while this grid is open: adopt the new default in place.
+  function setGridAppDefault(name, rawValue) {
+    const cfg = safeConfig();
+    const entry = GRID_APP_DEFAULTS[name];
+    if (!cfg || !entry) return;
+    const value = entry.normalize(rawValue);
+    cfg.viewerDefaults = { ...(cfg.viewerDefaults || {}), [name]: rawValue };
+    adoptGridAppDefault(entry.key, value);
+    if (name === 'gridViewMode') {
+      setGridViewMode(value, cfg);
+      normalizeGridViewMode(cfg);
+    } else if (name === 'gridCardRenderer') {
+      setCardRenderer(value, cfg);
+    } else if (name === 'hydrogenDisplay') {
+      setHydrogenDisplay(value, cfg);
+    } else if (state.cardMin !== value) {
+      state.cardMin = value;
+      applyGridPreferences(cfg);
+    }
+    // The setters persist their value; drop it again so it stays the default.
+    removeStored(entry.key);
+  }
+
   function applyTheme(cfg) {
     const theme = resolveTheme(cfg.theme);
     const canvasBackground = resolveCanvasBackground(theme, cfg.canvasBackground);
@@ -1730,9 +1805,8 @@
   function applyThemeTokens(cfg, theme) {
     const tokens = cfg.themeTokens && cfg.themeTokens[theme];
     if (!tokens || typeof tokens !== 'object') return;
-    const accent = typeof tokens.accent === 'string' ? tokens.accent : '#AF52DE';
-    const background = typeof tokens.background === 'string' ? tokens.background : (theme === 'light' ? '#FFFFFF' : '#181818');
-    const foreground = typeof tokens.foreground === 'string' ? tokens.foreground : (theme === 'light' ? '#0D0D0D' : '#FCFCFC');
+    // Resolve legacy and missing colors the way the Codex surfaces do.
+    const { accent, background, foreground } = window.BuretteGridUI.themeColors(tokens, theme);
     const uiFont = typeof tokens.uiFont === 'string' ? tokens.uiFont : '';
     const opacity = 1 - (clampThemeNumber(tokens.translucent, theme === 'light' ? 10 : 20) / 100) * 0.95;
     const contrast = 0.2 + (clampThemeNumber(tokens.contrast, theme === 'light' ? 20 : 16) / 100) * 0.8;
@@ -1777,7 +1851,7 @@
 
   function canvasBackgroundCSS(background) {
     if (background === 'white') return '#ffffff';
-    if (background === 'graphite') return '#181818';
+    if (background === 'graphite') return '#111111';
     if (background === 'transparent') return 'transparent';
     return '#000000';
   }
@@ -4940,13 +5014,13 @@
       ${state.tableColumnPanelOpen ? tableColumnPanelHTML(catalog, allColumns) : ''}
       <table class="buret-grid-table">
         <thead>
-          <tr>${tableHeaderCellsHTML(columnWindow, searchColumns)}</tr>
+          <tr>${tableHeaderCellsHTML(columnWindow, searchColumns)}${TABLE_FILL_CELL.replaceAll('td', 'th')}</tr>
           ${''/* Filters live in the rail beside the table, not in this header. */}
         </thead>
         <tbody>
-          ${range.topHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan}" style="height:${Math.max(0, Math.round(range.topHeight))}px"></td></tr>` : ''}
+          ${range.topHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan + 1}" style="height:${Math.max(0, Math.round(range.topHeight))}px"></td></tr>` : ''}
           ${rows.map(row => tableRowHTML(row, columns, cfg)).join('')}
-          ${range.bottomHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan}" style="height:${Math.max(0, Math.round(range.bottomHeight))}px"></td></tr>` : ''}
+          ${range.bottomHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan + 1}" style="height:${Math.max(0, Math.round(range.bottomHeight))}px"></td></tr>` : ''}
         </tbody>
       </table>
       ${tableTotalsHTML(state.rows, columnWindow)}`;
@@ -5364,7 +5438,7 @@
           const searchMatch = tableColumnMatchesSearch(row, column) || (column.id === 'molecule' && rowSearchMatch);
           const searchClass = searchMatch ? ' class="buret-grid-table-search-match"' : '';
           return `<td data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${searchClass}${tableColumnWidthStyle(column)}>${tableCellHTML(row, column, cfg)}</td>`;
-        }).join('')}
+        }).join('')}${TABLE_FILL_CELL}
       </tr>`;
   }
 
@@ -7548,7 +7622,7 @@
     const editing = capabilities(cfg).editing;
     const actions = [
       ['open', 'Preview molecule'],
-      ['molstar', 'Open in Mol*'],
+      ['molstar', 'Open in 3D'],
       ...(editing ? [
         ['ketcher', 'Edit in Ketcher'],
         ['duplicate', 'Duplicate'],
@@ -8642,6 +8716,15 @@
   function prepareXyzrenderCardSVG(svg) {
     let html = sanitizeSVG(String(svg || ''));
     html = stripSVGClipping(html);
+    // The card surface supplies the theme. Remove only the renderer's full-
+    // canvas white rectangle, not white atoms, gradients or molecular geometry.
+    const doc = new DOMParser().parseFromString(html, 'image/svg+xml');
+    if (!doc.querySelector('parsererror')) {
+      for (const rect of doc.documentElement.querySelectorAll(':scope > rect[width="100%"][height="100%"]')) {
+        if (/^(#fff(?:fff)?|white)$/i.test(rect.getAttribute('fill') || '')) rect.remove();
+      }
+      html = new XMLSerializer().serializeToString(doc.documentElement);
+    }
     html = markSVGForFitting(html, 'data-buret-xyzrender-svg');
     return html;
   }
@@ -9376,6 +9459,7 @@
       applyTheme(cfg);
       installThemeListener(cfg);
       installHostMessageListener();
+      applyGridAppDefaults(cfg);
       normalizeCardRenderer(cfg);
       normalizeGridViewMode(cfg);
       buildUI(cfg);

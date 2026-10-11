@@ -113,7 +113,7 @@ export function CalculatedColumnDialog({
           </fieldset>
           <p className="text-xs text-(--color-text-secondary)">Missing inputs leave the result empty.</p>
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onDismiss}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={onDismiss}>Cancel</Button>
             <Button type="submit" disabled={!ready}>Add column</Button>
           </DialogFooter>
         </form>

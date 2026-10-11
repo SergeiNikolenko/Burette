@@ -222,7 +222,7 @@ export function useAppConformerWorkflows({
       return;
     }
     if (operation === "crest-generate" && document.renderer === "grid2d" && !selection) {
-      pushStatus("Open a specific molecule from the collection in Mol* before running CREST.", "error");
+      pushStatus("Open one molecule from the collection before running CREST.", "error");
       return;
     }
     let selectedInput: SelectedConformerInput | null = null;

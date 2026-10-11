@@ -97,7 +97,7 @@ export function CommandPalette({
       ? [{
           id: `fetch-structure-url:${queryUrl}`,
           group: "Suggested",
-          label: "Fetch URL in Mol*",
+          label: "Open structure from URL",
           description: queryUrl,
           run: () => actions.openStructureUrlInMolstar(queryUrl),
         }, ...items]
@@ -179,7 +179,7 @@ export function CommandPalette({
           value={query}
           variant="plain"
           onValueChange={onQueryChange}
-          placeholder="Search structures and commands…"
+          placeholder="Search structures or run a command"
           aria-label="Search commands and open structures"
         />
         <CommandList ref={listRef}>

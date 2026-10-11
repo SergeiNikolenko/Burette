@@ -1,0 +1,47 @@
+/* Ketcher menus in the Atlas style. Popups portal to <body>, so they are scoped by
+   their own classes: .ketcher-ui-menu (toolbar and context menus) and .ketcher-ui-options (Select lists). */
+
+/* One opaque popover surface for every menu and list: no translucency, shadcn border and radius. */
+:is(.ketcher-ui-menu,.ketcher-ui-options).atlas-overlay {--overlay-surface:var(--popover);--overlay-text:var(--popover-foreground);--overlay-line:var(--border);--overlay-hover:var(--accent);background:var(--popover);color:var(--popover-foreground);border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:0 8px 16px -4px rgb(0 0 0 / 12%);backdrop-filter:none;}
+:is(.ketcher-ui-menu,.ketcher-ui-options) .atlas-menu-row {gap:8px;border-radius:var(--radius-sm);}
+:is(.ketcher-ui-menu,.ketcher-ui-options) .atlas-menu-separator {background:var(--border);}
+.ketcher-ui-options.atlas-overlay {max-height:min(var(--available-height),360px);overflow-y:auto;overscroll-behavior:contain;}
+
+/* Toolbar dropdowns size to one-line labels with the shortcuts in a right-aligned column. */
+.ketcher-ui-menu.ketcher-tool-options[data-slot] {width:max-content;min-width:200px;max-width:calc(100vw - 16px);overscroll-behavior:contain;}
+.ketcher-ui-menu .ketcher-tool-option {white-space:nowrap;overflow-wrap:normal;}
+.ketcher-ui-menu [data-slot="dropdown-menu-shortcut"] {white-space:nowrap;font-variant-numeric:tabular-nums;}
+
+/* Icons: 16px, gray, darkening on the highlighted row. Rows without one keep the same text edge. */
+.ketcher-ui-menu .ketcher-tool-option-icon {flex:0 0 16px;width:16px;height:16px;}
+.ketcher-ui-menu :is(.ketcher-tool-option-icon > *,[role^="menuitem"] > svg,[role^="menuitem"] > .ketcher-control-icon) {width:16px!important;height:16px!important;flex:none;color:var(--muted-foreground);}
+.ketcher-ui-menu [role^="menuitem"][data-highlighted] :is(.ketcher-tool-option-icon > *,svg,.ketcher-control-icon) {color:var(--accent-foreground);}
+/* Bond and atom glyphs carry chemistry; keep them at full strength instead of the dimmed Atlas row icons. */
+.ketcher-ui-menu .atlas-menu-row svg {opacity:1;}
+.ketcher-ui-menu [data-slot="dropdown-menu-sub-trigger"] > .ml-auto {color:var(--muted-foreground);}
+.ketcher-ui-menu [class*="ContextMenu-module_icon"] path:not([fill="none"]) {fill:currentColor;}
+.ketcher-context-menu:has(> [role="menuitem"] > :is(svg,.ketcher-control-icon):first-child) > [role="menuitem"]:not(:has(> :is(svg,.ketcher-control-icon):first-child)) {padding-left:32px;}
+/* The atlas "circle" asset is a filled dot; the ellipse tool takes an outline like its siblings. */
+[data-editor-icon="shape-ellipse"][data-icon-source="atlas"] {mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3C/svg%3E")!important;}
+
+/* Submenus open beside the parent surface, first row level with their trigger row. */
+.ketcher-ui-menu[data-slot="dropdown-menu-sub-content"][data-side="right"] {margin:-5px 0 0 8px;}
+.ketcher-ui-menu[data-slot="dropdown-menu-sub-content"][data-side="left"] {margin:-5px 8px 0 0;}
+/* Ketcher's bond-type lists start with an unlabeled row. */
+.ketcher-context-menu > [data-slot="dropdown-menu-item"]:has(> span:only-child:empty:not(.ketcher-control-icon)),
+.ketcher-ui-options [data-slot="select-item"][data-testid="-option"] {display:none;}
+
+/* Highlight: a compact 4x2 swatch grid, a quiet separator and an inline "No highlight" row. */
+.ketcher-context-menu[data-slot]:has(> [data-testid="No highlight-option"]) {width:auto;min-width:0;}
+.ketcher-context-menu > div:not([role]):not(:empty) {display:grid;grid-template-columns:repeat(4,28px);gap:4px;padding:0;margin:0;justify-content:start;}
+.ketcher-context-menu > div:not([role]):not(:empty) > [role="menuitem"] {width:28px;height:28px;min-height:0;padding:0;justify-content:center;}
+.ketcher-context-menu > div:not([role]):not(:empty) > [role="menuitem"] > span {width:16px;height:16px;flex:none;border-radius:4px;}
+.ketcher-context-menu > div:not([role]):empty {height:1px;margin:4px 8px;background:var(--border);}
+.ketcher-context-menu [data-testid="No highlight-option"] > div {display:flex;align-items:center;gap:8px;margin:0!important;}
+.ketcher-context-menu [data-testid="No highlight-option"] > div > svg {width:10px!important;height:10px!important;margin:3px;flex:none;color:var(--muted-foreground);}
+.ketcher-context-menu [data-testid="No highlight-option"] > div > svg path {fill:currentColor;}
+.ketcher-context-menu [data-testid="No highlight-option"] > div > span {margin:0!important;}
+
+/* Top toolbar separators match the left rail; the trailing one has nothing to separate. */
+.ketcher-editor-shell .Ketcher-root [class*="App-module_top"] hr {border-color:var(--input);}
+.ketcher-editor-shell .Ketcher-root [class*="App-module_top"] hr:last-child {display:none;}

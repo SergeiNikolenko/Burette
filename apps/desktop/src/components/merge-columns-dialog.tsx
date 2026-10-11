@@ -89,7 +89,7 @@ export function MergeColumnsDialog({
               placeholder={suggestedLabel || "Merged"} />
           </label>
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onDismiss}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={onDismiss}>Cancel</Button>
             <Button type="submit" disabled={!canRun}>Merge</Button>
           </DialogFooter>
         </form>

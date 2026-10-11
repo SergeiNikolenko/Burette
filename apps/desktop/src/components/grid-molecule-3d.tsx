@@ -12,12 +12,12 @@ export default function GridMolecule3D({ molblock, theme, height, onOpen }: { mo
   const html = useMemo(() => {
     if (!initial.current || initial.current.length > 350_000) return "<!doctype html><html></html>";
     const config = { format: "mol", molstarFormat: "mol", renderer: "molstar", label: "Molecule", appViewer: true,
-      inspectorPreview: true, autoFocusStructure: true, theme, canvasBackground: theme === "dark" ? "#181818" : "#ffffff",
+      inspectorPreview: true, autoFocusStructure: true, theme, canvasBackground: theme === "dark" ? "#111111" : "#ffffff",
       molstarPreset: "automatic", molstarStyle: "illustrative", xyzrenderAvailable: false, sdfGrid: false,
       defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" } };
     const data = btoa(Array.from(new TextEncoder().encode(initial.current), byte => String.fromCharCode(byte)).join(""));
     const scripts = ["molstar.js", "viewer-shell.js", "renderer-view-state.js", "molstar-preset-preview-controller.js", "color-picker.js", "sequence-panel.js", "native-viewer-menus.js", "scene-file-actions.js", "viewer.js"];
-    return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:${theme === "dark" ? "dark" : "light"};background:${theme === "dark" ? "#181818" : "#ffffff"}}</style>
+    return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:${theme === "dark" ? "dark" : "light"};background:${theme === "dark" ? "#111111" : "#ffffff"}}</style>
       <link rel="stylesheet" href="${asset("molstar.css")}"><link rel="stylesheet" href="${asset("viewer-runtime.css")}">
       <style>html,body,#app{margin:0;width:100%;height:100%;overflow:hidden}#status,.msp-toast-container,.msp-highlight-toast-wrapper{display:none!important}
       #buret-toolbar{left:auto!important;right:4px!important;top:4px!important;bottom:auto!important;width:auto!important}

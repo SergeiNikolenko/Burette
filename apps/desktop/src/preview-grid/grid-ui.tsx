@@ -6,6 +6,7 @@ import { GridSelectMenu } from "./grid-select-menu";
 import { NativeSelectControl } from "../components/ui/native-select-control";
 import { SearchInput } from "../components/ui/search-input";
 import { gridAtlasStyles } from "./grid-atlas-styles";
+import { codexThemeColors } from "../lib/codex-theme";
 import { SegmentedControl as AtlasSegmentedControl, SegmentedControlItem } from "../components/ui/segmented-control";
 import { Button } from "../components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../components/ui/tooltip";
@@ -123,6 +124,7 @@ type HydrogenDisplay = "all" | "none";
 
 type GridUIApi = {
   mountGridControls: (container: Element, props: GridControlProps) => void;
+  themeColors: typeof codexThemeColors;
 };
 
 type SegmentedOption<T extends string> = {
@@ -743,9 +745,14 @@ function GridActionToolbar(props: GridControlProps) {
 }
 
 function GridControls(props: GridControlProps) {
+  const [themeRevision, refreshTheme] = React.useReducer((revision: number) => revision + 1, 0);
+  React.useEffect(() => {
+    window.addEventListener("burette-grid-theme-changed", refreshTheme);
+    return () => window.removeEventListener("burette-grid-theme-changed", refreshTheme);
+  }, []);
   const atlasStyles = React.useMemo(() => gridAtlasStyles((window as Window & {
     BuretteConfig?: { themeTokens?: Parameters<typeof gridAtlasStyles>[0] };
-  }).BuretteConfig?.themeTokens), []);
+  }).BuretteConfig?.themeTokens), [themeRevision]);
   const searchPlaceholder = props.substructureSearch
     ? "Search or SMARTS…"
     : "Search…";
@@ -794,4 +801,4 @@ function mountGridControls(container: Element, props: GridControlProps) {
   });
 }
 
-window.BuretteGridUI = { mountGridControls };
+window.BuretteGridUI = { mountGridControls, themeColors: codexThemeColors };

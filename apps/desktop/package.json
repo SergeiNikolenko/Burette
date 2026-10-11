@@ -11,7 +11,6 @@
     "tauri": "bunx --bun tauri"
   },
   "dependencies": {
-    "@base-ui/react": "^1.8.0",
     "@burette/ketcher-agent-contract": "workspace:*",
     "@chenglou/pretext": "^0.0.9",
     "@e965/xlsx": "0.20.3",
@@ -35,9 +34,9 @@
     "ketcher-core": "3.18.0",
     "ketcher-react": "3.18.0",
     "ketcher-standalone": "3.18.0",
-    "lucide-react": "^1.48.0",
     "marked": "18.0.14",
     "mermaid": "^12.0.0",
+    "miew": "0.11.1",
     "motion": "^13.4.4",
     "pdfjs-dist": "6.3.289",
     "pptxviewjs": "1.1.9",

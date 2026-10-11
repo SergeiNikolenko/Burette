@@ -46,7 +46,9 @@ export function SidebarFileOperations({ state, actions, children }: {
           return false;
         }
       }
-      const output = await invoke<string | null>("operate_sidebar_file", { request: next });
+      const output = isTauriRuntime()
+        ? await invoke<string | null>("operate_sidebar_file", { request: next })
+        : await browserFileOperation(next);
       committed = true;
       if (changesSource) {
         const store = useMoleculeStore.getState();
@@ -115,11 +117,11 @@ export function SidebarFileOperations({ state, actions, children }: {
     setRequest(next);
   };
   const menus: FileMenus = (path, kind = "file") => {
-    if (!isTauriRuntime()) return [];
+    if ((!isTauriRuntime() && !state.buildInfo.isBrowserDev) || !path.startsWith("/")) return [];
     if (kind !== "file") return [
-      ...(kind === "folder" ? [{ kind: "item" as const, id: "rename-folder", text: "Rename…", action: () => choose({ operation: "renameFolder", path, name: basename(path) }) }] : []),
+      { kind: "item", id: "rename-folder", text: "Rename folder…", action: () => choose({ operation: "renameFolder", path, name: basename(path) }) },
       { kind: "item", id: "new-folder", text: "Folder…", action: () => choose({ operation: "createFolder", path, name: "Untitled Folder" }) },
-      ...(kind === "folder" ? [{ kind: "item" as const, id: "trash-folder", text: "Move to Trash", variant: "destructive" as const, action: () => { void run({ operation: "trashFolder", path }); } }] : []),
+      { kind: "item", id: "trash-folder", text: "Move to Trash", variant: "destructive", action: () => { void run({ operation: "trashFolder", path }); } },
     ];
     const document = state.documents.find(document => document.path === path);
     const dirty = Boolean(document && state.dirtyGridDocuments.has(document.id));
@@ -127,7 +129,7 @@ export function SidebarFileOperations({ state, actions, children }: {
       { kind: "item", id: "rename-file", text: "Rename…", action: () => choose({ operation: "rename", path, name: basename(path) }) },
       { kind: "item", id: "duplicate-file", text: "Duplicate", disabled: dirty,
         action: () => { void run({ operation: "duplicate", path }); } },
-      { kind: "item", id: "save-file-copy", text: "Save File Copy As…", disabled: dirty, action: async () => {
+      ...(isTauriRuntime() ? [{ kind: "item" as const, id: "save-file-copy", text: "Save file copy as…", disabled: dirty, action: async () => {
         try {
           const destination = await save({ title: "Save File Copy", defaultPath: path });
           if (destination) await run({ operation: "saveCopy", path, destination });
@@ -136,10 +138,10 @@ export function SidebarFileOperations({ state, actions, children }: {
           console.error("Save file dialog failed", cause);
           setError("Could not choose a destination. Try again.");
         }
-      } },
+      } }] : []),
       { kind: "separator" },
       // Like Finder, Move to Trash needs no confirmation: the item stays recoverable in Trash.
-      { kind: "item", id: "trash-file", text: "Move to Trash", variant: "destructive", action: () => { void run({ operation: "trash", path }); } },
+      { kind: "item", id: "trash-file", text: "Move to trash", variant: "destructive", action: () => { void run({ operation: "trash", path }); } },
     ];
   };
   const dismiss = () => { if (!running.current) setRequest(null); };
@@ -153,4 +155,13 @@ export function SidebarFileOperations({ state, actions, children }: {
         } else void run(next);
       }} />
   </FileOperationsContext.Provider>;
+}
+
+async function browserFileOperation(request: Request): Promise<string | null> {
+  const response = await fetch("/__burette/sidebar-file-operation", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error ?? "File operation failed.");
+  return result.path;
 }

@@ -1,0 +1,29 @@
+/* Dialog + direct scientific body selectors outrank the generic menu-dialog
+   widths without !important, regardless of stylesheet loading order.
+   Atom information occupies the existing empty upper d-block area.
+   These scientific tables retain their native data, row/group structure and
+   callbacks. Only their dialog layout and shared controls are adapted. */
+.ketcher-ui-dialog[data-slot="dialog-content"]:has(> .ketcher-ui-dialog-body[class*="PeriodTable-module_elementsTable"]) { width:min(720px,calc(100vw - 24px)); }
+.ketcher-ui-dialog[data-slot="dialog-content"]:has(> .ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"]) { width:min(600px,calc(100vw - 24px)); }
+.ketcher-ui-dialog-body[class*="PeriodTable-module_elementsTable"],
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] { flex:1 1 auto; min-height:0; overflow:auto; }
+.ketcher-ui-dialog-body [class*="PeriodTable-module_periodTable"] { position:relative!important; overflow:visible!important; padding:0!important; }
+.ketcher-ui-dialog-body [class*="ElementsTable-module_table"] { width:max-content; border-spacing:3px; }
+.ketcher-ui-dialog-body [class*="ElementsTable-module_table"] :is(th,[class*="main_row"]) { color:var(--foreground); opacity:1; font-size:11px; }
+.ketcher-ui-dialog-body [class*="ElementsTable-module_table"] th { padding:4px; }
+.ketcher-ui-dialog-body [class*="AtomInfo-module_ket_atom_info"] { position:absolute; left:110px; top:28px; width:120px; min-height:0; padding:0; pointer-events:none; box-shadow:none; font-size:12px; line-height:16px; transition:none; }
+.ketcher-ui-dialog-body [class*="AtomInfo-module_none"] { visibility:hidden; }
+.ketcher-periodic-element[data-slot="button"] { position:relative; width:32px; height:36px; padding:8px 0 0; border-radius:var(--radius-sm); font-size:12px; line-height:16px; }
+.ketcher-periodic-element .ketcher-periodic-number { position:absolute; top:1px; right:3px; font-size:8px; line-height:10px; }
+.ketcher-element-choice[data-slot="radio-group"] { display:flex; flex-wrap:wrap; gap:16px; width:auto; margin-right:auto; }
+.ketcher-element-choice > label { display:flex; align-items:center; gap:8px; white-space:nowrap; font-size:12px; }
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenericGroups-module_genericGroups"] { padding:0; overflow:visible; }
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenGroup-module_legend"] { color:var(--foreground)!important; }
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="BoxWithLines-module"] { border-color:var(--border); }
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenSet-module"] [data-slot="button"] { width:100%; height:28px; padding:0; }
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [data-slot="button"][aria-pressed="true"] { background:var(--secondary); color:var(--secondary-foreground); }
+@media(max-width:560px) {
+  .ketcher-ui-dialog:has([class*="PeriodTable-module_elementsTable"]) [data-slot="dialog-footer"] { gap:12px; }
+  .ketcher-ui-dialog:has([class*="PeriodTable-module_elementsTable"]) .ketcher-element-choice { flex-basis:100%; }
+  .ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenericGroups-module_genericGroups"] { min-width:360px; }
+}

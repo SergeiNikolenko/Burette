@@ -18,10 +18,14 @@ const initial: JobsState = {
 export function JobExamples() {
   const [state, setState] = useState(initial);
   const [selection, setSelection] = useState("");
+  const [variant, setVariant] = useState<"dock" | "page">("dock");
   return <section className="w-full max-w-[600px] shrink-0" aria-label="Calculation examples">
     <div className="mb-4 flex items-center justify-between"><h2 className="text-[24px] leading-8">Calculations</h2>
-      <Button variant="ghost" size="xs" onClick={() => { setState(initial); setSelection(""); }}>Reset calculations</Button></div>
-    <div className="dock-content bg-(--color-surface)"><JobsPanel state={state} actions={{
+      <div className="flex gap-1">
+        <Button variant="ghost" size="xs" onClick={() => setVariant(variant === "dock" ? "page" : "dock")}>{variant === "dock" ? "Show page" : "Show panel"}</Button>
+        <Button variant="ghost" size="xs" onClick={() => { setState(initial); setSelection(""); }}>Reset calculations</Button>
+      </div></div>
+    <div className="dock-content bg-(--color-surface)"><JobsPanel variant={variant} state={state} actions={{
       openPaths: async () => setSelection("Result selected"), openTextPaths: async () => setSelection("Report selected"), selectDocument: () => setSelection("Search result selected"),
       cancelConformerJob: async id => setState(s => ({ ...s, conformerJobs: s.conformerJobs.map(job => job.id === id ? { ...job, status: "cancelled", progress: null } : job) })),
       cancelXtbJob: async id => setState(s => ({ ...s, xtbJobs: s.xtbJobs.map(job => job.id === id ? { ...job, status: "cancelled" } : job) })),

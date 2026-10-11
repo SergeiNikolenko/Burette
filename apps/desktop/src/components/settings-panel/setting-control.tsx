@@ -18,6 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadio
 import { ChevronDown } from "@/components/ui/app-icons";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { ShortcutTooltip } from "@/components/shortcut-tooltip";
 
 export type SettingRow = {
   label: string;
@@ -28,10 +29,11 @@ export type SettingRow = {
   confirm?: boolean;
 };
 
-export function SettingsSection({ title, rows }: { title: string; rows: SettingRow[] }) {
+// Codex keeps some cards untitled on screen; their heading stays for screen readers.
+export function SettingsSection({ title, rows, hideTitle }: { title: string; rows: SettingRow[]; hideTitle?: boolean }) {
   return (
     <section className="settings-section">
-      <h2>{title}</h2>
+      <h2 className={hideTitle ? "sr-only" : undefined}>{title}</h2>
       <Card className="settings-card">
         {rows.map((row) => (
           <SettingControl key={row.label} row={row} />
@@ -66,20 +68,21 @@ export function SettingControl({ row }: { row: SettingRow }) {
               onConfirm={row.reset}
             />
           ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              className="settings-reset-button"
-              onClick={row.reset}
-              disabled={!row.isModified}
-              aria-hidden={!row.isModified}
-              tabIndex={row.isModified ? 0 : -1}
-              title="Reset to default"
-              data-hidden={!row.isModified || undefined}
-            >
-              Reset
-            </Button>
+            <ShortcutTooltip label="Reset to default">
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                className="settings-reset-button"
+                onClick={row.reset}
+                disabled={!row.isModified}
+                aria-hidden={!row.isModified}
+                tabIndex={row.isModified ? 0 : -1}
+                data-hidden={!row.isModified || undefined}
+              >
+                Reset
+              </Button>
+            </ShortcutTooltip>
           )
         )}
         {row.control}
@@ -93,6 +96,7 @@ export function SelectControl({
   value,
   options,
   labels,
+  disabledOptions,
   onChange,
 }: {
   label?: string;
@@ -101,6 +105,7 @@ export function SelectControl({
   // Chemistry settings carry raw engine tokens - "gfnff", "verytight", "ch2cl2" -
   // which are what the executable wants but not what a reader wants.
   labels?: Record<string, string>;
+  disabledOptions?: readonly string[];
   onChange: (value: string) => void;
 }) {
   return (
@@ -108,13 +113,13 @@ export function SelectControl({
       <DropdownMenuTrigger asChild>
         <Button aria-label={label} className="settings-select justify-between" variant="outline" size="settings">
           <span className="min-w-0 truncate">{labels?.[value] ?? value}</span>
-          <ChevronDown size={16} aria-hidden />
+          <ChevronDown size={14} aria-hidden />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent>
         {label && <DropdownMenuLabel>{label}</DropdownMenuLabel>}
         <DropdownMenuRadioGroup value={value} onValueChange={onChange}>
-          {options.map(option => <DropdownMenuRadioItem key={option} value={option}>
+          {options.map(option => <DropdownMenuRadioItem key={option} value={option} disabled={disabledOptions?.includes(option)}>
             {labels?.[option] ?? option}
           </DropdownMenuRadioItem>)}
         </DropdownMenuRadioGroup>
@@ -173,17 +178,19 @@ export function ColorControl({
 export function TextControl({
   label,
   value,
+  placeholder,
   onChange,
 }: {
   label?: string;
   value: string;
+  placeholder?: string;
   onChange: (value: string) => void;
 }) {
   return (
     <Input
-      variant="settings"
       type="text"
       aria-label={label}
+      placeholder={placeholder}
       autoComplete="off"
       className="settings-text-control"
       value={value}
@@ -391,7 +398,8 @@ export function SettingsActionButton({
   }
 
   return (
-    <Button type="button" variant="secondary" size="xs" className="settings-action-button" disabled={disabled} onClick={onClick}>
+    // Codex settings row actions ("View") are the secondary toolbar button.
+    <Button type="button" variant="secondary" size="toolbar" className="settings-action-button" disabled={disabled} onClick={onClick}>
       {children}
     </Button>
   );
@@ -418,23 +426,25 @@ function ConfirmActionButton({
   confirmLabel: ReactNode;
   onConfirm: () => void;
 }) {
+  const trigger = (
+    <AlertDialogTrigger asChild>
+      <Button
+        type="button"
+        variant={className === "settings-reset-button" ? "ghost" : "secondary"}
+        size={className === "settings-reset-button" ? "xs" : "toolbar"}
+        className={className}
+        disabled={disabled}
+        aria-hidden={hidden}
+        tabIndex={hidden ? -1 : 0}
+        data-hidden={hidden || undefined}
+      >
+        {label}
+      </Button>
+    </AlertDialogTrigger>
+  );
   return (
     <AlertDialog>
-      <AlertDialogTrigger asChild>
-        <Button
-          type="button"
-          variant={className === "settings-reset-button" ? "ghost" : "secondary"}
-          size="xs"
-          className={className}
-          disabled={disabled}
-          aria-hidden={hidden}
-          tabIndex={hidden ? -1 : 0}
-          title={title}
-          data-hidden={hidden || undefined}
-        >
-          {label}
-        </Button>
-      </AlertDialogTrigger>
+      {title ? <ShortcutTooltip label={title}>{trigger}</ShortcutTooltip> : trigger}
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>{dialogTitle}</AlertDialogTitle>

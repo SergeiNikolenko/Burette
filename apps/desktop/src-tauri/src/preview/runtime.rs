@@ -146,6 +146,94 @@ pub(crate) struct ViewerPreferences {
     pub(crate) theme_dark_translucent: f64,
     #[serde(default = "default_dark_contrast")]
     pub(crate) theme_dark_contrast: f64,
+    #[serde(flatten)]
+    pub(crate) viewer_defaults: ViewerDefaults,
+}
+
+/// Screenshot, molecule grid and Quick Look defaults chosen in app Settings.
+/// The viewer runtimes start from `runtime_config`; the toolbar can still
+/// override them per session.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub(crate) struct ViewerDefaults {
+    pub(crate) screenshot_resolution: String,
+    pub(crate) screenshot_format: String,
+    pub(crate) screenshot_transparent: bool,
+    pub(crate) grid_view_mode: String,
+    pub(crate) grid_card_renderer: String,
+    /// 0 keeps the grid's fluid card width.
+    pub(crate) grid_card_size: f64,
+    pub(crate) hydrogen_display: String,
+    pub(crate) quick_look_grid_sdf: bool,
+    pub(crate) quick_look_grid_smiles: bool,
+    pub(crate) quick_look_grid_csv: bool,
+    pub(crate) quick_look_grid_tsv: bool,
+}
+
+impl Default for ViewerDefaults {
+    fn default() -> Self {
+        Self {
+            screenshot_resolution: "viewport".to_string(),
+            screenshot_format: "png".to_string(),
+            screenshot_transparent: false,
+            grid_view_mode: "cards".to_string(),
+            grid_card_renderer: "rdkit".to_string(),
+            grid_card_size: 0.0,
+            hydrogen_display: "none".to_string(),
+            quick_look_grid_sdf: true,
+            quick_look_grid_smiles: true,
+            quick_look_grid_csv: true,
+            quick_look_grid_tsv: true,
+        }
+    }
+}
+
+// Mirrors MIN_CARD_MIN/MAX_CARD_MIN in PreviewExtension/Web/grid-viewer.js.
+const MIN_GRID_CARD_SIZE: f64 = 86.0;
+const MAX_GRID_CARD_SIZE: f64 = 360.0;
+
+impl ViewerDefaults {
+    /// The `viewerDefaults` object of the runtime config, with unknown values
+    /// replaced by the runtime defaults.
+    pub(crate) fn runtime_config(&self) -> Value {
+        fn choice<'a>(value: &'a str, choices: &[&'a str]) -> &'a str {
+            choices
+                .iter()
+                .copied()
+                .find(|choice| *choice == value)
+                .unwrap_or(choices[0])
+        }
+        let card_size = if self.grid_card_size.is_finite() && self.grid_card_size > 0.0 {
+            self.grid_card_size
+                .clamp(MIN_GRID_CARD_SIZE, MAX_GRID_CARD_SIZE)
+                .round()
+        } else {
+            0.0
+        };
+        json!({
+            "screenshotResolution": choice(
+                &self.screenshot_resolution,
+                &["viewport", "hd", "full-hd", "ultra-hd", "8k-ultra-hd"],
+            ),
+            "screenshotFormat": choice(&self.screenshot_format, &["png", "jpeg", "webp"]),
+            "screenshotTransparent": self.screenshot_transparent,
+            "gridViewMode": choice(&self.grid_view_mode, &["cards", "table"]),
+            "gridCardRenderer": choice(&self.grid_card_renderer, &["rdkit", "xyzrender"]),
+            "gridCardSize": card_size,
+            "hydrogenDisplay": choice(&self.hydrogen_display, &["none", "all"]),
+        })
+    }
+
+    /// The `UserDefaults` keys `MoleculeGridFileSupport` in the Quick Look
+    /// extension reads from the containing app's preferences domain.
+    pub(crate) fn quick_look_grid_support(&self) -> [(&'static str, bool); 4] {
+        [
+            ("gridPreviewSupportsSDF", self.quick_look_grid_sdf),
+            ("gridPreviewSupportsSMILES", self.quick_look_grid_smiles),
+            ("gridPreviewSupportsCSV", self.quick_look_grid_csv),
+            ("gridPreviewSupportsTSV", self.quick_look_grid_tsv),
+        ]
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -269,7 +357,7 @@ impl ViewerPreferences {
             },
             "dark": {
                 "accent": codex_theme_color(&self.theme_dark_accent, "#AF52DE", "#339cff"),
-                "background": codex_theme_color(&self.theme_dark_background, "#111111", "#181818"),
+                "background": self.theme_dark_background,
                 "foreground": codex_theme_color(&self.theme_dark_foreground, "#FCFCFC", "#ffffff"),
                 "uiFont": self.theme_dark_ui_font,
                 "editorFont": self.theme_dark_editor_font,
@@ -368,6 +456,7 @@ mod viewer_preferences_tests {
             theme_dark_editor_font: default_system_font(),
             theme_dark_translucent: default_dark_translucent(),
             theme_dark_contrast: default_dark_contrast(),
+            viewer_defaults: Default::default(),
         }
     }
 
@@ -414,6 +503,35 @@ mod viewer_preferences_tests {
 
         preferences.molstar_style = "unsupported".to_string();
         assert_eq!(preferences.resolved_molstar_style(), "illustrative");
+    }
+
+    #[test]
+    fn viewer_defaults_deserialize_flat_and_normalize_for_runtime() {
+        let preferences: ViewerPreferences = serde_json::from_value(serde_json::json!({
+            "theme": "auto", "canvasBackground": "auto", "rendererMode": "auto",
+            "molstarStyle": "illustrative", "screenshotResolution": "full-hd",
+            "screenshotFormat": "tiff", "screenshotTransparent": true,
+            "gridViewMode": "table", "gridCardSize": 9000, "hydrogenDisplay": "all",
+            "quickLookGridCsv": false
+        }))
+        .unwrap();
+        assert_eq!(
+            preferences.viewer_defaults.runtime_config(),
+            serde_json::json!({
+                "screenshotResolution": "full-hd", "screenshotFormat": "png",
+                "screenshotTransparent": true, "gridViewMode": "table",
+                "gridCardRenderer": "rdkit", "gridCardSize": 360.0, "hydrogenDisplay": "all"
+            })
+        );
+        assert_eq!(
+            preferences.viewer_defaults.quick_look_grid_support(),
+            [
+                ("gridPreviewSupportsSDF", true),
+                ("gridPreviewSupportsSMILES", true),
+                ("gridPreviewSupportsCSV", false),
+                ("gridPreviewSupportsTSV", true),
+            ]
+        );
     }
 
     #[test]
@@ -1532,6 +1650,7 @@ mod document_open_tests {
             theme_dark_editor_font: default_system_font(),
             theme_dark_translucent: default_dark_translucent(),
             theme_dark_contrast: default_dark_contrast(),
+            viewer_defaults: Default::default(),
         }
     }
 

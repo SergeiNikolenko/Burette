@@ -13,13 +13,13 @@
     app.insertAdjacentHTML('afterend', `
       <div id="buret-toolbar" role="toolbar" aria-label="Burette preview controls">
         <div class="buret-toolbar-content" data-buret-toolbar-content>
-          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle Mol* left object tree">L<span class="buret-tooltip" role="tooltip">Toggle Mol* left object tree</span></button>
-          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle Mol* right properties panel">R<span class="buret-tooltip" role="tooltip">Toggle Mol* right properties panel</span></button>
+          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle object tree"><span data-buret-mode-icon="SidebarLeft" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Toggle object tree</span></button>
+          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle properties panel"><span data-buret-mode-icon="SidebarRight" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Toggle properties panel</span></button>
           <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq<span class="buret-tooltip" role="tooltip">Toggle sequence panel</span></button>
           <div class="buret-molstar-preset-slot" data-buret-molstar-preset-slot>
-            <button id="buret-molstar-preset-trigger" class="buret-button buret-molstar-preset-trigger" type="button" data-buret-molstar-preset-trigger aria-label="Mol* representation preset" aria-haspopup="menu" aria-controls="buret-molstar-preset-menu" aria-expanded="false" title="Mol* representation preset">
+            <button id="buret-molstar-preset-trigger" class="buret-button buret-molstar-preset-trigger" type="button" data-buret-molstar-preset-trigger aria-label="Representation preset" aria-haspopup="menu" aria-controls="buret-molstar-preset-menu" aria-expanded="false" title="Representation preset">
               <span data-buret-molstar-preset-label>Style: Auto</span>
-              <span class="buret-molstar-preset-chevron" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span class="buret-molstar-preset-chevron" data-buret-mode-icon="ChevronDown" aria-hidden="true"></span>
               <span class="buret-tooltip" role="tooltip">Choose component and representation preset</span>
             </button>
           </div>
@@ -29,22 +29,22 @@
             <span class="buret-tooltip" role="tooltip">Select all atoms inside the lasso</span>
           </button>
           <button class="buret-button" type="button" data-buret-action="theme" aria-label="Theme: Auto (system)" title="Theme: Auto (system)"><span class="buret-tooltip" role="tooltip">Theme: Auto (system)</span></button>
-          <button class="buret-button buret-save-modified hidden" type="button" data-buret-action="save-modified-structure" aria-label="Save modified structure" title="Save modified structure">Save<span class="buret-tooltip" role="tooltip">Save modified Mol* structure</span></button>
+          <button class="buret-button buret-save-modified hidden" type="button" data-buret-action="save-modified-structure" aria-label="Save modified structure" title="Save modified structure">Save<span class="buret-tooltip" role="tooltip">Save modified structure</span></button>
           <button class="buret-button buret-mode-button hidden" type="button" data-buret-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher"><span data-buret-mode-icon="Edit" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Open this structure in Ketcher</span></button>
-          <button class="buret-button buret-xyzrender-inspector" type="button" data-buret-action="xyzrender-inspector" aria-label="Open xyzrender inspector">Appearance</button>
+          <button class="buret-button buret-xyzrender-inspector" type="button" data-buret-action="xyzrender-inspector" aria-label="Appearance">Appearance<span class="buret-tooltip" role="tooltip">Rendering appearance settings</span></button>
           <div class="buret-xyzrender-preset-slot" data-buret-xyzrender-preset-slot>
-            <select class="buret-select" data-buret-xyzrender-preset aria-label="External xyzrender preset" title="External xyzrender preset"></select>
-            <span class="buret-tooltip" role="tooltip">Choose xyzrender preset</span>
+            <select class="buret-select" data-buret-xyzrender-preset aria-label="Rendering preset" title="Rendering preset"></select>
+            <span class="buret-tooltip" role="tooltip">Choose rendering preset</span>
           </div>
-          <button class="buret-button buret-xyzrender-tune hidden" type="button" data-buret-action="xyzrender-tune" aria-label="Tune xyzrender" title="Tune xyzrender">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H4v2h6V5Zm10 0h-6v2h6V5ZM14 11H4v2h10v-2Zm6 0h-2v2h2v-2ZM8 17H4v2h4v-2Zm12 0h-8v2h8v-2Z" fill="currentColor"/></svg>
-            <span class="buret-tooltip" role="tooltip">Open xyzrender controls</span>
+          <button class="buret-button buret-xyzrender-tune hidden" type="button" data-buret-action="xyzrender-tune" aria-label="Rendering controls" title="Rendering controls">
+            <span data-buret-mode-icon="SettingsSlider" aria-hidden="true"></span>
+            <span class="buret-tooltip" role="tooltip">Rendering controls</span>
           </button>
           <button class="buret-button buret-mode-button hidden" type="button" data-buret-action="sdf-grid" aria-label="Show SDF grid" title="Show SDF grid"><span data-buret-mode-icon="Grid" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Return to the SDF grid</span></button>
           <button class="buret-button buret-pose-toggle hidden" type="button" data-buret-action="sdf-poses" aria-label="Show all SDF poses together" aria-pressed="false" title="Show all SDF poses together">All<span class="buret-tooltip" role="tooltip">Show all SDF poses together</span></button>
           <div class="buret-renderer-control" data-buret-renderer-control>
-            <button class="buret-button buret-mode-button buret-renderer-choice" type="button" data-buret-renderer="molstar" aria-label="Use Mol* Interactive" title="Use Mol* Interactive"><span data-buret-mode-icon="Cube" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Use interactive Mol* viewer</span></button>
-            <button class="buret-button buret-mode-button buret-renderer-choice" type="button" data-buret-renderer="xyzrender-external" aria-label="Use external xyzrender" title="Use external xyzrender"><span data-buret-mode-icon="Camera" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Use external xyzrender SVG</span></button>
+            <button class="buret-button buret-mode-button buret-renderer-choice" type="button" data-buret-renderer="molstar" aria-label="Interactive view" title="Interactive view"><span data-buret-mode-icon="Cube" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Interactive view</span></button>
+            <button class="buret-button buret-mode-button buret-renderer-choice" type="button" data-buret-renderer="xyzrender-external" aria-label="Rendered view" title="Rendered view"><span data-buret-mode-icon="Camera" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Rendered view</span></button>
           </div>
         </div>
         <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Collapse controls" aria-expanded="true" title="Collapse controls">

@@ -11,7 +11,8 @@ import {
   type ComponentProps,
   type SetStateAction,
 } from "react";
-import { ChevronDown, SettingsSlider as SlidersHorizontal, X } from "@/components/ui/app-icons";
+import { Chart, ChevronDown, SettingsSlider as SlidersHorizontal, X } from "@/components/ui/app-icons";
+import { PanelEmptyState } from "@/components/ui/panel-empty-state";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -78,6 +79,7 @@ import { activeViewerIframeForDocument, isKnownViewerMessageSource } from "../li
 import type { ViewerDocument } from "../types";
 import { ChemicalSpaceGroupLegend } from "./chemical-space-group-legend";
 import { ChemicalSpaceViewControls } from "./chemical-space-view-controls";
+import { ShortcutTooltip } from "./shortcut-tooltip";
 import { useChemicalSpaceSetting } from "../hooks/use-chemical-space-setting";
 import { useThemePortalContainer } from "./radix-menu";
 
@@ -849,7 +851,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
   };
 
   if (!documentId) {
-    return <ChemicalSpaceEmpty message="Open a molecular Grid to build its chemical-space map." />;
+    return <ChemicalSpaceEmpty title="No collection open" />;
   }
   const runningLabel = progressLabel(progress);
   const displayedResult = completedStudy
@@ -1018,33 +1020,35 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
     return () => observer.disconnect();
   }, []);
   const dimensionsToggle = (
-    <Button
-      className="shrink-0 min-w-9"
-      variant="outline"
-      size="sm"
-      aria-label={`Switch to ${draft.dimensions === 2 ? "3D" : "2D"} embedding`}
-      title={`Switch to ${draft.dimensions === 2 ? "3D" : "2D"}`}
-      onClick={() => {
-        const next = { ...draft, dimensions: (draft.dimensions === 2 ? 3 : 2) as 2 | 3 };
-        setDraft(next);
-        commitOptions(next);
-      }}
-    >
-      {draft.dimensions}D
-    </Button>
+    <ShortcutTooltip label={`Switch to ${draft.dimensions === 2 ? "3D" : "2D"}`}>
+      <Button
+        className="shrink-0 min-w-9"
+        variant="outline"
+        size="sm"
+        aria-label={`Switch to ${draft.dimensions === 2 ? "3D" : "2D"} embedding`}
+        onClick={() => {
+          const next = { ...draft, dimensions: (draft.dimensions === 2 ? 3 : 2) as 2 | 3 };
+          setDraft(next);
+          commitOptions(next);
+        }}
+      >
+        {draft.dimensions}D
+      </Button>
+    </ShortcutTooltip>
   );
   const toolToggle = (
-    <Button
-      className="shrink-0"
-      variant={tool === "lasso" ? "secondary" : "ghost"}
-      size="sm"
-      aria-label="Lasso selection"
-      aria-pressed={tool === "lasso"}
-      title={tool === "lasso" ? "Turn off lasso to pan, orbit and inspect" : "Draw a selection linked to Grid"}
-      onClick={() => setTool((current) => current === "lasso" ? "navigate" : "lasso")}
-    >
-      Lasso
-    </Button>
+    <ShortcutTooltip label={tool === "lasso" ? "Turn off lasso" : "Draw a selection"}>
+      <Button
+        className="shrink-0"
+        variant={tool === "lasso" ? "secondary" : "ghost"}
+        size="sm"
+        aria-label="Lasso selection"
+        aria-pressed={tool === "lasso"}
+        onClick={() => setTool((current) => current === "lasso" ? "navigate" : "lasso")}
+      >
+        Lasso
+      </Button>
+    </ShortcutTooltip>
   );
   const scopeToggle = visibleSourceIds || scope === "filtered" ? (
     <ToggleGroup
@@ -1290,24 +1294,21 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
           ) : awaitingIndexState ? (
             <ChemicalSpaceChecking message="Checking the collection…" />
           ) : indexProbeError ? (
-            <ChemicalSpaceEmpty message={indexProbeError} actionLabel="Retry index check" onAction={retryIndexCheck} />
+            <ChemicalSpaceEmpty title="Couldn’t check the collection" message={indexProbeError} actionLabel="Retry index check" onAction={retryIndexCheck} />
           ) : indexState?.indexError ? (
-            <ChemicalSpaceEmpty
-              message={`Collection indexing failed: ${indexState.indexError}. Close and reopen the collection after fixing the source file.`}
-            />
+            <ChemicalSpaceEmpty title="Collection indexing failed" message={indexState.indexError} />
           ) : indexing ? (
-            <ChemicalSpaceEmpty
-              message={`Indexing this collection — ${indexingProgressLabel(indexState)}. Chemical space starts once indexing finishes.`}
-            />
+            <ChemicalSpaceEmpty title="Indexing collection" message={indexingProgressLabel(indexState)} />
           ) : !indexReady ? (
             <ChemicalSpaceEmpty
-              message="Waiting for the collection index before starting chemical space."
+              title="Waiting for the index"
               actionLabel="Retry index check"
               onAction={retryIndexCheck}
             />
           ) : needsConfirmation ? (
             <ChemicalSpaceEmpty
-              message={`${scopedSourceIds ? "The filtered subset has" : "This collection has"} ${effectiveRecordCount.toLocaleString()} molecules. Embedding it takes ${estimatedEmbeddingDuration(effectiveRecordCount)} and runs the whole time.`}
+              title={`${effectiveRecordCount.toLocaleString()} ${scopedSourceIds ? "filtered " : ""}molecules`}
+              message={`Takes ${estimatedEmbeddingDuration(effectiveRecordCount)}`}
               actionLabel="Calculate chemical space"
               onAction={() => setConfirmedLargeRunDocumentKey(largeRunConfirmationKey)}
             />
@@ -1326,7 +1327,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                 }}
               />
             ) : (
-              <ChemicalSpaceEmpty message="Couldn’t calculate the map." actionLabel="Retry" onAction={() => commitOptions({ ...draft })} />
+              <ChemicalSpaceEmpty title="Couldn’t calculate the map" actionLabel="Retry" onAction={() => commitOptions({ ...draft })} />
             )
           ) : (
             <ChemicalSpaceLoading
@@ -1747,35 +1748,37 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                 {STUDY_PARAMETER_NAMES[completedStudy.parameter]}{" "}
                 {formatStudyValue(completedStudy.parameter, completedStudy.values[Math.round(studyPosition)] ?? 0)}
               </span>
-              <Button
-                className="shrink-0"
-                size="xs"
-                variant="outline"
-                title="Rebuild the map with this value"
-                onClick={() => {
-                  const value = completedStudy.values[Math.round(studyPosition)];
-                  if (value === undefined) return;
-                  const next = { ...completedStudy.base, [completedStudy.parameter]: value };
-                  setDraft(next);
-                  commitOptions(next);
-                }}
-              >
-                Use
-              </Button>
-              <Button
-                className="shrink-0"
-                size="icon-xs"
-                variant="ghost"
-                aria-label="Close comparison"
-                title="Back to the current map"
-                onClick={() => {
-                  setCompletedStudy(null);
-                  setStudyPlaying(false);
-                  setStudyPosition(0);
-                }}
-              >
-                <X />
-              </Button>
+              <ShortcutTooltip label="Rebuild the map with this value">
+                <Button
+                  className="shrink-0"
+                  size="xs"
+                  variant="outline"
+                  onClick={() => {
+                    const value = completedStudy.values[Math.round(studyPosition)];
+                    if (value === undefined) return;
+                    const next = { ...completedStudy.base, [completedStudy.parameter]: value };
+                    setDraft(next);
+                    commitOptions(next);
+                  }}
+                >
+                  Use
+                </Button>
+              </ShortcutTooltip>
+              <ShortcutTooltip label="Back to the current map">
+                <Button
+                  className="shrink-0"
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label="Close comparison"
+                  onClick={() => {
+                    setCompletedStudy(null);
+                    setStudyPlaying(false);
+                    setStudyPosition(0);
+                  }}
+                >
+                  <X />
+                </Button>
+              </ShortcutTooltip>
             </div>
           ) : null}
           {needsConfirmation ? (
@@ -1831,14 +1834,15 @@ function CliffTable({
     [cliffs, sortBy],
   );
   const header = (key: "sali" | "delta" | "similarity", label: string, description: string) => (
-    <button
-      type="button"
-      className={`text-right tabular-nums ${sortBy === key ? "text-foreground" : "text-muted-foreground"}`}
-      title={`${description} Click to sort.`}
-      onClick={() => setSortBy(key)}
-    >
-      {label}{sortBy === key ? " ↓" : ""}
-    </button>
+    <ShortcutTooltip label={description}>
+      <button
+        type="button"
+        className={`text-right tabular-nums ${sortBy === key ? "text-foreground" : "text-muted-foreground"}`}
+        onClick={() => setSortBy(key)}
+      >
+        {label}{sortBy === key ? " ↓" : ""}
+      </button>
+    </ShortcutTooltip>
   );
   return (
     <div className="pointer-events-auto absolute right-3 top-3 flex max-h-[min(65%,22rem)] w-60 flex-col overflow-hidden rounded-md border border-border bg-background/90 text-[11px] shadow-sm backdrop-blur">
@@ -1922,9 +1926,9 @@ function CliffTable({
       ) : null}
       <div className="grid grid-cols-[1fr_2.2rem_2.6rem_2.8rem] gap-1 border-b border-border px-2 py-1">
         <span className="truncate text-muted-foreground">Pair (Grid rows)</span>
-        {header("similarity", "Sim", "Tanimoto similarity of the two structures.")}
-        {header("delta", "Δ", `Difference in ${activityLabel}.`)}
-        {header("sali", "SALI", "Structure–activity landscape index: Δ ÷ (1 − similarity). Higher is a sharper cliff.")}
+        {header("similarity", "Sim", "Sort by similarity")}
+        {header("delta", "Δ", `Sort by ${activityLabel} difference`)}
+        {header("sali", "SALI", "Sort by cliff sharpness")}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {sorted.length === 0 ? (
@@ -2895,19 +2899,13 @@ function ChemicalSpaceModelRuntimeInstall({ onInstalled }: { onInstalled: () => 
   );
 }
 
-function ChemicalSpaceEmpty({ message, actionLabel, onAction }: { message: string; actionLabel?: string; onAction?: () => void }) {
+// The shared Atlas EmptyState, as in Jobs: glyph, short title, one action.
+function ChemicalSpaceEmpty({ title, message, actionLabel, onAction }: { title: string; message?: string; actionLabel?: string; onAction?: () => void }) {
   return (
-    <Empty className="h-full min-h-40">
-      <EmptyHeader>
-        <EmptyTitle>Chemical space</EmptyTitle>
-        <EmptyDescription>{message}</EmptyDescription>
-      </EmptyHeader>
-      {actionLabel && onAction ? (
-        <EmptyContent>
-          <Button size="sm" variant="outline" onClick={onAction}>{actionLabel}</Button>
-        </EmptyContent>
-      ) : null}
-    </Empty>
+    <div className="grid h-full min-h-40 place-items-center">
+      <PanelEmptyState title={title} icon={<Chart />} description={message}
+        action={actionLabel && onAction ? { label: actionLabel, run: onAction } : undefined} />
+    </div>
   );
 }
 

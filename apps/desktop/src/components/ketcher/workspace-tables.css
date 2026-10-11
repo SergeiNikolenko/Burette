@@ -1,0 +1,77 @@
+/* Ketcher tables in the Atlas style: periodic and extended tables, the structure
+   library, R-groups, the text editor and the 3D viewer. Doubled classes outrank
+   periodic-table.css regardless of load order. */
+
+/* Periodic table: all 18 groups fit; cells scale with the dialog width. */
+.ketcher-ui-dialog.ketcher-ui-dialog[data-slot="dialog-content"]:has(> .ketcher-ui-dialog-body[class*="PeriodTable-module_elementsTable"]) {width:min(800px,calc(100vw - 24px));}
+.ketcher-ui-dialog-body[class*="PeriodTable-module_elementsTable"] [class*="ElementsTable-module_table"] {width:100%;min-width:500px;table-layout:fixed;border-spacing:3px;}
+.ketcher-ui-dialog-body[class*="PeriodTable-module_elementsTable"] [class*="ElementsTable-module_table"] tr:first-child > th:first-child {width:14px;}
+.ketcher-ui-dialog-body[class*="PeriodTable-module_elementsTable"] [class*="ElementsTable-module_table"] th {padding:0 0 2px;color:var(--muted-foreground);font-size:11px;font-weight:400;}
+.ketcher-ui-dialog-body[class*="PeriodTable-module_elementsTable"] [class*="ElementsTable-module_table"] td {padding:0;}
+.ketcher-ui-dialog-body[class*="PeriodTable-module_elementsTable"] [class*="ElementsTable-module_main_row"] {color:var(--muted-foreground);}
+.ketcher-ui-dialog-body .ketcher-periodic-element.ketcher-periodic-element {position:relative;width:100%;min-width:0;height:34px;padding:4px 0 0;font-size:12px;line-height:16px;}
+.ketcher-ui-dialog-body .ketcher-periodic-element .ketcher-periodic-number {position:absolute;top:2px;right:3px;font-size:8px;line-height:10px;color:var(--muted-foreground);}
+.ketcher-ui-dialog-body .ketcher-periodic-element[aria-pressed="true"] .ketcher-periodic-number {color:inherit;}
+@media (max-width:720px) { .ketcher-ui-dialog-body .ketcher-periodic-element .ketcher-periodic-number {display:none;} .ketcher-ui-dialog-body .ketcher-periodic-element.ketcher-periodic-element {padding:0;font-size:11px;} }
+
+/* Extended table: two equal columns of 48px buttons, captions below their pair,
+   no tree connector lines. */
+.ketcher-ui-dialog.ketcher-ui-dialog[data-slot="dialog-content"]:has(> .ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"]) {width:min(480px,calc(100vw - 24px));}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="BoxWithLines-module"] {display:none;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] :is([class*="GenericGroups-module_topGroupsContainer"],[class*="GenericGroups-module_groupGenerics"]) {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px;min-width:448px;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenericGroups-module_subgroupContainer"] {display:block;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenGroup-module_fieldFlexWrapper"] {margin-top:16px;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenericGroups-module_topGroupsContainer"] > [class*="GenGroup-module_fieldFlexWrapper"] {margin-top:0;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenGroup-module_fieldset"] {margin:0;padding:0;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenGroup-module_legend"] {margin:0 0 8px;padding:0;color:var(--foreground)!important;font-size:13px;line-height:16px;font-weight:400!important;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenGroup-module_legendMain"] {font-weight:400!important;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] :is([class*="GenGroup-module_buttonContainer"],[class*="GenGroup-module_genButtonContainer"]) {display:grid;grid-template-columns:repeat(2,100px);gap:8px 12px;align-items:start;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenGroup-module_subGroup"] {display:flex;flex-direction:column;gap:2px;min-width:0;margin:0;padding:0;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenGroup-module_subGroup"]:has([class*="GenSet-module_SpecialNodes"]) {grid-column:1/-1;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenSet-module"]:not([class*="LegendBox"],[class*="legendBox"]) {display:grid;grid-template-columns:repeat(2,48px);grid-auto-rows:28px;grid-template-rows:none;gap:4px;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenSet-module_SpecialNodes"][class*="GenSet-module_SpecialNodes"] {grid-template-columns:repeat(3,48px);}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenericGroups-module_groupGenerics"] [class*="GenGroup-module_subGroup"] {min-height:44px;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] [class*="GenSet-module"] [data-slot] {width:100%;min-width:0;height:28px;padding:0;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] :is([class*="GenSet-module_genGroupLegendBox"],[class*="GenSet-module_legendBox"]) {position:static;order:1;width:100%;}
+.ketcher-ui-dialog-body[class*="ExtendedTable-module_extendedTable"] :is([class*="GenSet-module_genGroupLegendBox"],[class*="GenSet-module_legendBox"]) > legend {float:none;margin:0 auto;padding:0;color:var(--muted-foreground);font-size:11px!important;line-height:14px;white-space:nowrap;}
+
+/* Structure library: transparent tiles that fill four columns, two-line
+   captions, an outline search field and an outline Save to SDF button. */
+.ketcher-ui-dialog-body[class*="template-lib-module_dialog_body"] {width:100%!important;}
+.ketcher-ui-dialog-body [class*="template-lib-module_inputContainer"] {overflow:visible;padding:3px 3px 0;}
+.ketcher-ui-dialog .ketcher-ui-dialog-body [class*="template-lib-module_inputContainer"] [class*="template-lib-module_searchIcon"] {top:7px;left:11px;color:var(--muted-foreground);}
+.ketcher-ui-dialog .ketcher-ui-dialog-body [class*="template-lib-module_inputContainer"] input[type="search"][data-slot] {width:100%;margin:0 0 12px;background:transparent!important;border-color:var(--input)!important;box-shadow:none;}
+.app-shell[data-effective-theme="dark"] .ketcher-ui-dialog .ketcher-ui-dialog-body [class*="template-lib-module_inputContainer"] input[type="search"][data-slot] {background:color-mix(in oklab,var(--input) 30%,transparent)!important;}
+.ketcher-ui-dialog .ketcher-ui-dialog-body [class*="template-lib-module_inputContainer"] input[type="search"][data-slot]:focus-visible {border-color:var(--ring)!important;box-shadow:0 0 0 3px color-mix(in oklab,var(--ring) 50%,transparent);}
+.ketcher-ui-dialog-body [class*="TemplateTable-module_tableContent"] {grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-rows:auto;gap:12px 8px;}
+.ketcher-ui-dialog-body [class*="TemplateTable-module_td"] {display:flex;flex-direction:column;align-items:stretch;min-width:0;}
+.ketcher-ui-dialog .ketcher-ui-dialog-body :is([class*="TemplateTable-module_struct_"],.ketcher-library-preview) {width:100%;height:auto;aspect-ratio:1;background:transparent!important;border:1px solid var(--border)!important;border-radius:var(--radius-md);box-shadow:none;}
+.app-shell[data-effective-theme="dark"] .ketcher-ui-dialog .ketcher-ui-dialog-body :is([class*="TemplateTable-module_struct_"],.ketcher-library-preview) {background:color-mix(in oklab,var(--input) 30%,transparent)!important;border-color:var(--input)!important;}
+.ketcher-ui-dialog .ketcher-ui-dialog-body [class*="TemplateTable-module_td"]:hover :is([class*="TemplateTable-module_struct_"],.ketcher-library-preview) {background:var(--muted)!important;}
+.ketcher-ui-dialog .ketcher-ui-dialog-body [class*="TemplateTable-module_selected"] :is([class*="TemplateTable-module_struct_"],.ketcher-library-preview) {border-color:var(--foreground)!important;}
+.ketcher-ui-dialog-body :is([class*="TemplateTable-module_struct_"],.ketcher-library-preview) svg {left:0;top:0;width:100%;height:100%;}
+.ketcher-ui-dialog-body [class*="TemplateTable-module_structTitle"] {display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;max-width:none;max-height:none!important;margin:6px 0 0;padding:0 2px;border:0;font-size:12px;line-height:16px;white-space:normal;overflow-wrap:anywhere;color:var(--foreground);}
+.ketcher-ui-dialog [data-slot="dialog-footer"] > div:has(> [class*="template-lib-module_saveButton"]) {display:flex;justify-content:flex-end;width:100%;}
+.ketcher-ui-dialog [class*="template-lib-module_saveButton"] {display:inline-flex;align-items:center;height:28px;padding:0 10px;border:1px solid var(--border);border-radius:min(var(--radius-md),12px);background:var(--background);color:var(--foreground);font-size:.8rem;line-height:1;cursor:pointer;transition:background-color .15s;}
+.app-shell[data-effective-theme="dark"] .ketcher-ui-dialog [class*="template-lib-module_saveButton"] {background:color-mix(in oklab,var(--input) 30%,transparent);border-color:var(--input);}
+.ketcher-ui-dialog [class*="template-lib-module_saveButton"]:hover:not(:disabled) {background:var(--muted);}
+.ketcher-ui-dialog [class*="template-lib-module_saveButton"]:disabled {opacity:.5;cursor:default;}
+.ketcher-ui-dialog [class*="template-lib-module_saveButton"]:focus-visible {outline:2px solid var(--ring);outline-offset:2px;}
+
+/* R-group: an even 8 x 4 grid across the dialog. */
+.ketcher-ui-dialog-body[class*="rgroup-module_rgroup"] {width:100%;}
+.ketcher-ui-dialog-body[class*="rgroup-module_rgroup"] ul {display:grid;grid-template-columns:repeat(8,minmax(0,1fr));grid-template-rows:none;grid-auto-rows:32px;gap:6px;margin:0;padding:0;list-style:none;}
+.ketcher-ui-dialog-body[class*="rgroup-module_rgroup"] li {min-width:0;list-style:none;}
+.ketcher-ui-dialog-body[class*="rgroup-module_rgroup"] form button {width:100%;height:32px;margin:0;padding:0;border:1px solid transparent;border-radius:var(--radius-md);background:transparent;color:var(--foreground);font-size:13px;font-weight:400;transition:background-color .15s;}
+.ketcher-ui-dialog-body[class*="rgroup-module_rgroup"] form button::first-letter {font-weight:inherit;}
+.ketcher-ui-dialog-body[class*="rgroup-module_rgroup"] form button:hover {background:var(--muted);color:var(--foreground);}
+.ketcher-ui-dialog-body[class*="rgroup-module_rgroup"] form button:is([class*="rgroup-module_selected"],:active) {background:var(--foreground);color:var(--background);}
+.ketcher-ui-dialog-body[class*="rgroup-module_rgroup"] form button:focus-visible {outline:2px solid var(--ring);outline-offset:2px;}
+
+/* Text editor: the special symbols glyph matches the other format icons. */
+.ketcher-ui-dialog [class*="Text-module_controlPanel"] [data-testid="special-symbols-button"] {color:var(--foreground);}
+.ketcher-ui-dialog [class*="Text-module_controlPanel"] [data-testid="special-symbols-button"] svg {width:22px;height:22px;fill:currentColor;}
+.ketcher-ui-dialog [class*="Text-module_controlPanel"] [data-testid="special-symbols-button"] svg path {fill:currentColor;}
+
+/* 3D viewer: one even frame around the canvas. */
+.ketcher-ui-dialog .molecule-3d-canvas {background:transparent;border:1px solid var(--border);}

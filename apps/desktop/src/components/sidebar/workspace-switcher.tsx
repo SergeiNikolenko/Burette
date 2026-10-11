@@ -16,7 +16,8 @@ export function WorkspaceSwitcher({ actions }: { actions: ShellActions }) {
         {
           kind: "item",
           id: "add-project-folder",
-          text: "Add Project Folder...",
+          text: "Add project folder…",
+          icon: "FolderPlus",
           action: () => {
             void actions.chooseWorkspace();
           },
@@ -24,7 +25,8 @@ export function WorkspaceSwitcher({ actions }: { actions: ShellActions }) {
         {
           kind: "item",
           id: "open-active-project-folder",
-          text: "Open Active Project Folder",
+          text: "Open active project folder",
+          icon: "FolderOpen",
           action: () => {
             void actions.openWorkspaceFolder();
           },

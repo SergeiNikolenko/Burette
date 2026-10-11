@@ -2,6 +2,8 @@ import { useEffect, useRef, type MutableRefObject } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "../lib/tauri";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
+import { useAppLevelPreferences } from "./use-app-level-preferences";
+import { viewerAppearanceMessage } from "../lib/theme";
 import type { MoleculeTab } from "../stores/molecule-store";
 import type { OpenDocumentsResult, ViewerDocument, ViewerPreferences } from "../types";
 
@@ -15,8 +17,45 @@ type OpenDocuments = (paths: string[], reloadOptions?: undefined, preferencesOve
 // because the runtime can re-render into any style in place.
 const LIVE_APPLIED_PREFERENCE_MESSAGES = {
   theme: "setViewerTheme",
+  canvasBackground: "setViewerTheme",
+  themeLightAccent: "setViewerTheme",
+  themeLightBackground: "setViewerTheme",
+  themeLightForeground: "setViewerTheme",
+  themeLightUiFont: "setViewerTheme",
+  themeLightEditorFont: "setViewerTheme",
+  themeLightTranslucent: "setViewerTheme",
+  themeLightContrast: "setViewerTheme",
+  themeDarkAccent: "setViewerTheme",
+  themeDarkBackground: "setViewerTheme",
+  themeDarkForeground: "setViewerTheme",
+  themeDarkUiFont: "setViewerTheme",
+  themeDarkEditorFont: "setViewerTheme",
+  themeDarkTranslucent: "setViewerTheme",
+  themeDarkContrast: "setViewerTheme",
   molstarStyle: "setViewerStyle",
-} as const satisfies Partial<Record<keyof ViewerPreferences, string>>;
+  // Viewer and grid defaults: open frames adopt them in place.
+  screenshotResolution: "setScreenshotResolutionDefault",
+  screenshotFormat: "setScreenshotFormatDefault",
+  screenshotTransparent: "setScreenshotTransparentDefault",
+  gridViewMode: "setGridViewModeDefault",
+  gridCardRenderer: "setGridCardRendererDefault",
+  gridCardSize: "setGridCardSizeDefault",
+  hydrogenDisplay: "setGridHydrogenDisplayDefault",
+  // Read only by the Quick Look extension (synced through sync_viewer_preferences).
+  quickLookGridSdf: null,
+  quickLookGridSmiles: null,
+  quickLookGridCsv: null,
+  quickLookGridTsv: null,
+  // App-level settings applied outside the viewers (useAppLevelPreferences).
+  interfaceScale: null,
+  restoreSessionOnLaunch: null,
+  notifyOnJobCompletion: null,
+  preventSleepDuringJobs: null,
+  computeBackend: null,
+  jobHistoryRetentionDays: null,
+  pythonPath: null,
+  uvPath: null,
+} as const satisfies Partial<Record<keyof ViewerPreferences, string | null>>;
 
 type LiveAppliedPreferenceKey = keyof typeof LIVE_APPLIED_PREFERENCE_MESSAGES;
 
@@ -32,10 +71,14 @@ function changedLiveAppliedKeys(previous: ViewerPreferences, next: ViewerPrefere
 
 function broadcastLiveAppliedPreferences(keys: LiveAppliedPreferenceKey[], preferences: ViewerPreferences) {
   for (const frame of document.querySelectorAll<HTMLIFrameElement>("iframe[data-document-id]")) {
+    const sent = new Set<string>();
     for (const key of keys) {
+      const type = LIVE_APPLIED_PREFERENCE_MESSAGES[key];
+      if (!type || sent.has(type)) continue;
+      sent.add(type);
       frame.contentWindow?.postMessage({
         source: "burette-host",
-        body: { type: LIVE_APPLIED_PREFERENCE_MESSAGES[key], value: preferences[key] },
+        body: type === "setViewerTheme" ? viewerAppearanceMessage(preferences) : { type, value: preferences[key] },
       }, "*");
     }
   }
@@ -66,6 +109,7 @@ export function useAppPreferenceEffects({
   const pendingPathsRef = useRef(new Set<string>());
   const currentInputsRef = useRef({ documents, preferences, isDocumentDirty });
   currentInputsRef.current = { documents, preferences, isDocumentDirty };
+  useAppLevelPreferences(preferences, pushErrorStatus);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -90,7 +134,14 @@ export function useAppPreferenceEffects({
       // Live changes preserve scenes; HTML-backed changes wait for activation.
       const liveKeys = changedLiveAppliedKeys(previousPreferences, preferences);
       if (liveKeys) broadcastLiveAppliedPreferences(liveKeys, preferences);
-      else for (const path of openPaths) pendingPaths.add(path);
+      else {
+        // A settings import may mix appearance and document-only changes. Dirty
+        // scenes still receive the appearance without losing their edits.
+        if (JSON.stringify(viewerAppearanceMessage(previousPreferences)) !== JSON.stringify(viewerAppearanceMessage(preferences))) {
+          broadcastLiveAppliedPreferences(["theme"], preferences);
+        }
+        for (const path of openPaths) pendingPaths.add(path);
+      }
     }
     const path = activeTab?.location.kind === "file" && !isTemporaryDocumentPath(activeTab.location.path)
       ? activeTab.location.path

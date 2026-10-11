@@ -7,8 +7,8 @@ type HostedKetcherView = "ketcher" | "molstar" | "xyzrender";
 
 const VIEWS: ReadonlyArray<{ value: HostedKetcherView; label: string }> = [
   { value: "ketcher", label: "Ketcher" },
-  { value: "molstar", label: "Mol*" },
-  { value: "xyzrender", label: "xyzrender" },
+  { value: "molstar", label: "Interactive 3D" },
+  { value: "xyzrender", label: "3D render" },
 ];
 
 // The ChatGPT Ketcher widget has no tabs, so this switch moves the sketch between

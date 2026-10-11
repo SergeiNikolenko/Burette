@@ -3,6 +3,8 @@ import { Window } from "happy-dom";
 import React, { act } from "react";
 
 const browser = new Window();
+// Key caps use macOS glyphs only on a Mac platform; happy-dom reports "X11; Darwin".
+Object.defineProperty(browser.navigator, "platform", { configurable: true, value: "MacIntel" });
 for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLInputElement", "HTMLFormElement", "Element", "Node", "NodeFilter", "Event", "MouseEvent", "MutationObserver", "ResizeObserver", "getComputedStyle", "localStorage", "DOMRect", "CustomEvent", "KeyboardEvent", "PointerEvent", "FocusEvent", "requestAnimationFrame", "cancelAnimationFrame"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
 }
@@ -35,6 +37,30 @@ test("shortcut search matches commands, descriptions and key combinations; clear
     expect(rows()).toEqual(initial);
     expect(shell.querySelector('[role="status"]')).toBeNull();
     expect(shell.querySelector('button[aria-label="Clear search"]')).toBeNull();
+  } finally { await act(async () => root.unmount()); shell.remove(); }
+});
+
+test("search by keystrokes records a combo and matches it exactly", async () => {
+  const shell = document.createElement("div"); document.body.append(shell);
+  const root = createRoot(shell);
+  try {
+    await act(async () => root.render(<KeyboardShortcutsSection />));
+    const input = shell.querySelector<HTMLInputElement>('input[aria-label="Search shortcuts"]')!;
+    const toggle = shell.querySelector<HTMLButtonElement>('button[aria-label="Search by keystrokes"]')!;
+    const rows = () => Array.from(shell.querySelectorAll('.settings-control-label')).map(row => row.textContent);
+    const press = async (init: KeyboardEventInit) => { await act(async () => {
+      input.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+    }); };
+    await act(async () => toggle.click());
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(input.readOnly).toBe(true);
+    expect(input.placeholder).toBe("Press shortcut to search");
+    await press({ key: "b", code: "KeyB", metaKey: true, altKey: true });
+    expect(input.value).toBe("⌥⌘B");
+    expect(rows()).toEqual(["Toggle right dock"]);
+    await press({ key: "Escape", code: "Escape" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(input.readOnly).toBe(false);
   } finally { await act(async () => root.unmount()); shell.remove(); }
 });
 

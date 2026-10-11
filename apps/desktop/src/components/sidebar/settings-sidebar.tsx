@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { settingsNavGroups, type SettingsSectionId } from "../../lib/settings-sections";
-import { SidebarGlobe, Atom, Agent as Bot, FolderOpen, Keyboard, ColorTheme as Palette, Reload as RefreshCw, SettingsSlider as SlidersHorizontal, SettingsWrench as Wrench, type AppIconType as LucideIcon } from "@/components/ui/app-icons";
+import { SidebarGlobe, Atom, Flask, Stopwatch, Agent as Bot, FolderOpen, Keyboard, Sun, Reload as RefreshCw, SettingsCog, SettingsWrench as Wrench, type AppIconType as LucideIcon } from "@/components/ui/app-icons";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -32,7 +32,7 @@ export function SettingsSidebar({ state, actions }: { state: ShellViewState; act
         <span>Back to app</span>
       </Button>
       <SearchInput className="settings-search h-9 border-0 bg-(--color-background-primary-ghost-hover) px-3" name="settingsSearch" value={query} onValueChange={setQuery}
-        placeholder="Search settings…" aria-label="Search settings" clearLabel="Clear settings search" />
+        placeholder="Search" aria-label="Search settings" clearLabel="Clear settings search" />
       <ScrollArea className="settings-nav-scroll">
         {visibleGroups.map((group) => (
           <section className="settings-nav-group" key={group.title} aria-label={group.title}>
@@ -85,18 +85,20 @@ function SettingsNavButton({
 }
 
 const SETTINGS_SECTION_ICONS: Record<SettingsSectionId, LucideIcon> = {
-  general: SlidersHorizontal,
-  appearance: Palette,
+  general: SettingsCog,
+  appearance: Sun,
   keyboard: Keyboard,
   structure: Atom,
   updates: RefreshCw,
   workspace: FolderOpen,
+  jobs: Stopwatch,
+  xtb: Flask,
   agent: Bot,
   connections: SidebarGlobe,
   maintenance: Wrench,
 };
 
 function SettingsItemIcon({ id }: { id: SettingsSectionId }) {
-  const Icon = SETTINGS_SECTION_ICONS[id] ?? SlidersHorizontal;
-  return <Icon size={17} strokeWidth={1.6} aria-hidden />;
+  const Icon = SETTINGS_SECTION_ICONS[id] ?? SettingsCog;
+  return <Icon size={16} aria-hidden />;
 }

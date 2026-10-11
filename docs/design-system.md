@@ -78,10 +78,17 @@ The shell is a workspace, not a brand canvas.
 
 ### Shared Icon Geometry
 
-- Common commands use the reviewed Apps SDK UI 0.2.2 geometry stored in
-  `config/icons/apps-sdk.json`, under the adjacent MIT license. React components
-  import `components/ui/app-icons`; controls using the existing Hugeicons SVG
-  renderer import `components/ui/app-icon-data`.
+- Common commands use the Codex app glyph registry captured by InterfaceAtlas
+  (the `*-light-16` glyphs, for example `info-circle-light-16`), stored in
+  `config/icons/apps-sdk.json` and listed under its Codex `additionalSources`
+  entry. The 16-unit paths carry `transform: scale(1.5)` to fill the shared
+  24-unit canvas. Icons without a Codex counterpart keep the reviewed Apps SDK
+  UI 0.2.2 or lucide geometry. React components import
+  `components/ui/app-icons`; controls using the existing Hugeicons SVG renderer
+  import `components/ui/app-icon-data`.
+- Write node attributes in SVG (kebab-case) form, such as `fill-rule`. The
+  viewer sets them with `setAttribute`, which ignores camelCase names; the sync
+  script converts them for React.
 - `node scripts/sync-app-icons.mjs` regenerates the React data/exports and the
   inline preview data, and mirrors `viewer.js` into the packaged plugin. Update
   the reviewed snapshot before regenerating; do not edit generated glyph data.
@@ -165,6 +172,13 @@ selection and motion; Clear selection is neutral, not a destructive action.
 Tooltips portal outside the draggable rail and carry the current viewer theme.
 `test-viewer-viewport-toolbar.test.tsx` covers commands, live state, scene reloads
 and tooltip ownership; the existing toolbar group still owns dragging/placement.
+The main preview toolbar retains its scientific DOM command bindings and uses
+the shared ToolbarButton recipe, original Button stylesheet and inner wrapper
+through `preview-controls/viewer-main-toolbar.ts`. Visibility, selected and
+disabled states still come from the owning controllers. Theme and preset updates
+preserve that wrapper and the command nodes. Its left/right panel icons come from
+the shared icon registry. Legacy scientific hints use FloatingTooltip styling
+in their existing top-layer adapter, including accessible description cleanup.
 The live molecular preview uses the same `ui/popover-surface.css` as React
 Popover, including its opaque surface, ring and shadow. Molecular canvas sizing
 and the compact title are viewer-owned; the invisible rendering stage is inert
@@ -185,13 +199,14 @@ rows, option counts and nesting before opening AppKit.
 
 ### Sidebar And Search
 
-- Folder markers use the matching 24-unit Hugeicons `Folder01Icon` and
-  `Folder02Icon` outlines, recorded as `SidebarFolder`/`SidebarFolderOpen` in
+- Folder markers use the Codex `folder` and `folder_open` glyphs from the
+  InterfaceAtlas snapshot, recorded as `SidebarFolder`/`SidebarFolderOpen` in
   the shared icon snapshot. Both render at 16 px with the primary text color.
-  `SidebarGlobe` comes from `Globe02Icon`; the folder component supports cyan,
-  blue and purple network badges. Local folders have no badge; source identity
-  must be supplied before assigning one. These glyphs use the existing
-  `@hugeicons/core-free-icons` dependency's geometry and license.
+  `SidebarGlobe` comes from the Codex `globe` glyph; the folder component
+  supports cyan, blue and purple network badges. Local folders have no badge;
+  source identity must be supplied before assigning one. Glyphs missing from
+  the Apps SDK set are copied from the same snapshot and listed under
+  `additionalSources` in `config/icons/apps-sdk.json`.
 - The sidebar is a file/project navigation tool, not a marketing navigation
   rail.
 - Project folders, recent files, nested structures, and search should stay dense

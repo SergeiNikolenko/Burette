@@ -23,8 +23,7 @@ import {
   type RefObject,
 } from "react"
 import { Calligraph } from "calligraph"
-import { GripHorizontalIcon, GripVerticalIcon, MoveIcon, PercentIcon } from "@hugeicons/core-free-icons";
-import { ArrowLeft as MoveLeftIcon, ArrowUp as MoveTopIcon } from "@/components/ui/app-icon-data";
+import { GripHorizontal, GripVertical, Move, MoveHorizontal, MoveVertical, Percent } from "@/components/ui/app-icon-data";
 import { HugeiconsIcon } from "@hugeicons/react"
 import { useReducedMotion, motion } from "motion/react"
 
@@ -224,12 +223,12 @@ export const DEFAULT_LOGO_SETTINGS: LogoSettings = {
 }
 
 const LOGO_ICONS = {
-  GripVertical: GripVerticalIcon,
-  GripHorizontal: GripHorizontalIcon,
-  Move: MoveIcon,
-  MoveHorizontal: MoveLeftIcon,
-  MoveVertical: MoveTopIcon,
-  Percent: PercentIcon,
+  GripVertical,
+  GripHorizontal,
+  Move,
+  MoveHorizontal,
+  MoveVertical,
+  Percent,
 }
 
 export function ScrubLogoIcon({

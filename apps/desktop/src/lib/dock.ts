@@ -91,7 +91,7 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   diagnostics: "Diagnostics",
   review: "Review",
   compare: "Compare",
-  "chemical-space": "Chemical Space",
+  "chemical-space": "Chemical space",
 };
 
 // Structure Basket, Compare and Review render and accept drops, but no catalog

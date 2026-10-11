@@ -4,6 +4,7 @@ import whatsNewFeed from "../../../../../config/whats-new.json";
 import { isTauriRuntime } from "../../lib/tauri";
 import { ExternalLink, Lightbulb } from "../ui/app-icons";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { ShortcutTooltip } from "../shortcut-tooltip";
 import { useAppShellPortalContainer } from "../ui/portal-container";
 import { ReleaseNotesDialog } from "./release-notes-dialog";
 
@@ -146,19 +147,20 @@ export function WhatsNew() {
           <ul className="m-0 list-none p-0">
             {entries.map((entry) => (
               <li key={entry.version} className="relative">
-                <button
-                  type="button"
-                  className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm outline-hidden hover:bg-accent focus-visible:bg-accent"
-                  title={entry.title}
-                  aria-label={isUnread(entry) ? `${entry.title}, unread` : entry.title}
-                  onClick={() => showEntry(entry)}
-                >
-                  <TimelineDot filled={isUnread(entry)} />
-                  <span className="min-w-0 flex-1 truncate">{entry.title}</span>
-                  <time dateTime={entry.date} className="shrink-0 text-xs text-muted-foreground tabular-nums">
-                    {formatEntryDate(entry.date)}
-                  </time>
-                </button>
+                <ShortcutTooltip label={entry.title}>
+                  <button
+                    type="button"
+                    className="flex h-8 w-full items-center gap-2 rounded-md px-2 text-left text-sm outline-hidden hover:bg-accent focus-visible:bg-accent"
+                    aria-label={isUnread(entry) ? `${entry.title}, unread` : entry.title}
+                    onClick={() => showEntry(entry)}
+                  >
+                    <TimelineDot filled={isUnread(entry)} />
+                    <span className="min-w-0 flex-1 truncate">{entry.title}</span>
+                    <time dateTime={entry.date} className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                      {formatEntryDate(entry.date)}
+                    </time>
+                  </button>
+                </ShortcutTooltip>
                 <span
                   aria-hidden="true"
                   className="pointer-events-none absolute top-1/2 -bottom-1/2 left-[15px] my-2 -translate-x-1/2 border-l border-border"

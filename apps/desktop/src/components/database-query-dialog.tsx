@@ -292,7 +292,7 @@ export function DatabaseQueryDialog({
               {error && <p className="text-sm text-(--color-text-danger)" role="alert">{error}</p>}
               <DialogFooter className="gap-2">
                 {busy && <span className="mr-auto flex items-center gap-2 text-xs text-(--color-text-secondary)" role="status"><Spinner className="size-3" aria-hidden />Starting…</span>}
-                <Button type="button" variant="ghost" disabled={busy} onClick={onDismiss}>Cancel</Button>
+                <Button type="button" variant="secondary" disabled={busy} onClick={onDismiss}>Cancel</Button>
                 <Button type="submit" disabled={submitDisabled || busy}>Search</Button>
               </DialogFooter>
             </form>

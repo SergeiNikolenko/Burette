@@ -118,5 +118,6 @@ The PDF page kind composes `PdfViewerPages` with `defaultScale={1}` and the page
 thumbnail sidebar (`PdfViewerThumbnails`), mirroring upstream's pdf-viewer-demo.
 
 The CLI also rewrites shared dependency ranges in `apps/desktop/package.json`
-(`lucide-react`, `@base-ui/react`, `radix-ui` are downgraded, `tailwind-merge` is added).
-Restore our ranges after every update and verify with `bun run typecheck`.
+(`radix-ui` is downgraded, and `lucide-react`, `@base-ui/react` and `tailwind-merge` are added).
+Restore our ranges, drop the added packages after every update, and verify with
+`bun run typecheck`.

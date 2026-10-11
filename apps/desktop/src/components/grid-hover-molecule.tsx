@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { scaffoldStatusLine, useSelectionScaffold } from "./grid-selection-scaffold";
 import { showNativeContextMenu } from "./native-context-menu";
+import { ShortcutTooltip } from "./shortcut-tooltip";
 import type { GridFilterColumn, GridFilterModel } from "./types";
 import type { HoveredGridRow } from "../types";
 
@@ -399,7 +400,7 @@ export function GridHoverMoleculeCard({
         style={{ height: previewHeight }}
         role="button"
         tabIndex={0}
-        title={`Edit ${label} in Ketcher`}
+        aria-label={`Edit ${label}`}
         onClick={editInKetcher}
         onContextMenu={showDrawingMenu}
         onKeyDown={(event) => {
@@ -428,7 +429,6 @@ export function GridHoverMoleculeCard({
         aria-valuenow={previewHeight}
         aria-valuemax={PREVIEW_MAX_HEIGHT}
         aria-valuetext={`${Math.round(previewHeight)} pixels`}
-        title="Drag to resize preview · Double-click to reset"
         onPointerDown={onPreviewResizeStart}
         onPointerMove={onPreviewResizeMove}
         onPointerUp={onPreviewResizeEnd}
@@ -456,17 +456,19 @@ export function GridHoverMoleculeCard({
                 Show all
               </button>
             ) : null}
-            <button
-              type="button"
-              className="grid-hover-molecule-props-toggle"
-              aria-expanded={propsOpen}
-              onClick={() => setPropsSectionOpen(!propsOpen)}
-              title={propsOpen ? "Hide data" : "Show data"}
-            >
-              <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true" style={{ transform: propsOpen ? "rotate(180deg)" : undefined }}>
-                <path d="M1.5 6.5 5 3l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+            <ShortcutTooltip label={propsOpen ? "Hide data" : "Show data"}>
+              <button
+                type="button"
+                className="grid-hover-molecule-props-toggle"
+                aria-expanded={propsOpen}
+                aria-label={propsOpen ? "Hide data" : "Show data"}
+                onClick={() => setPropsSectionOpen(!propsOpen)}
+              >
+                <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true" style={{ transform: propsOpen ? "rotate(180deg)" : undefined }}>
+                  <path d="M1.5 6.5 5 3l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </ShortcutTooltip>
           </div>
           {propsOpen ? (
             <>
@@ -474,33 +476,33 @@ export function GridHoverMoleculeCard({
                 {visibleProps.map(({ entry, column }) => {
                   const described = describePropValue(entry.value, column);
                   return (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      key={entry.label}
-                      className="dock-metric grid-hover-molecule-prop"
-                      data-tone={described.tone === "plain" ? undefined : described.tone}
-                      title={described.detail ? `${entry.label}: ${entry.value}\n${described.detail}` : `${entry.label}: ${entry.value}`}
-                      aria-label={`Open ${entry.label} filter`}
-                      onClick={() => onInspectProperty?.(column.id)}
-                    >
-                      <span>{entry.label}</span>
-                      <strong>
-                        {formatPropValue(entry.value)}
-                        {described.tone === "outlier-high" || described.tone === "outlier-low" ? (
-                          <span className="grid-hover-molecule-prop-mark" aria-hidden="true">
-                            {described.tone === "outlier-high" ? "\u25B2" : "\u25BC"}
-                          </span>
-                        ) : null}
-                      </strong>
+                    <ShortcutTooltip key={entry.label} label={`${entry.label}: ${entry.value}`}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="dock-metric grid-hover-molecule-prop"
+                        data-tone={described.tone === "plain" ? undefined : described.tone}
+                        aria-label={`Open ${entry.label} filter`}
+                        onClick={() => onInspectProperty?.(column.id)}
+                      >
+                        <span>{entry.label}</span>
+                        <strong>
+                          {formatPropValue(entry.value)}
+                          {described.tone === "outlier-high" || described.tone === "outlier-low" ? (
+                            <span className="grid-hover-molecule-prop-mark" aria-hidden="true">
+                              {described.tone === "outlier-high" ? "\u25B2" : "\u25BC"}
+                            </span>
+                          ) : null}
+                        </strong>
 
-                      {described.position === null ? null : (
-                        <span className="grid-hover-molecule-prop-track" aria-hidden="true">
-                          <span style={{ left: `${(described.position * 100).toFixed(1)}%` }} />
-                        </span>
-                      )}
-                    </Button>
+                        {described.position === null ? null : (
+                          <span className="grid-hover-molecule-prop-track" aria-hidden="true">
+                            <span style={{ left: `${(described.position * 100).toFixed(1)}%` }} />
+                          </span>
+                        )}
+                      </Button>
+                    </ShortcutTooltip>
                   );
                 })}
               </div>
@@ -514,7 +516,6 @@ export function GridHoverMoleculeCard({
                 aria-valuenow={propsHeight}
                 aria-valuemax={Math.max(propsHeight, propsNodeRef.current?.scrollHeight ?? propsHeight)}
                 aria-valuetext={`${Math.round(propsHeight)} pixels`}
-                title="Drag to resize data · Double-click to reset"
                 onPointerDown={onPropsResizeStart}
                 onPointerMove={onPropsResizeMove}
                 onPointerUp={onPropsResizeEnd}

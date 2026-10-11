@@ -66,6 +66,6 @@ test("read-only and transient tabs cannot be closed", async () => {
     await act(async () => mount.querySelector('button')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Delete", bubbles: true })));
     expect(calls).toEqual([]);
     await act(async () => root.render(<DockHeader {...props} readOnly={false} transientTabId="x" />));
-    expect(Array.from(mount.querySelectorAll("button"), button => button.getAttribute("aria-label"))).toEqual(["Style", "Add right dock tab", "Close right dock"]);
+    expect(Array.from(mount.querySelectorAll("button"), button => button.getAttribute("aria-label"))).toEqual(["Style", "Add right dock tab"]);
   } finally { await act(async () => root.unmount()); mount.remove(); }
 });

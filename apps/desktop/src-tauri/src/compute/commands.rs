@@ -28,6 +28,7 @@ use crate::compute::{
     store::validate_owner_window_label,
 };
 use crate::{
+    commands::app_preferences::compute_backend,
     preview::grid_store::{build_grid_store_with_options, GridParseOptions, GridRuntimeRegistry},
     windows::runtime_document_id,
 };
@@ -235,9 +236,11 @@ pub(crate) async fn compute_submit_job<R: Runtime>(
     window: WebviewWindow<R>,
     coordinator: State<'_, ComputeCoordinator>,
     registry: State<'_, GridRuntimeRegistry>,
-    request: ClusterV1SubmitRequest,
+    mut request: ClusterV1SubmitRequest,
 ) -> Result<JobSnapshot, ComputeCommandError> {
     let owner = trusted_owner(&window)?;
+    request.execution_policy.backend_policy =
+        compute_backend().apply(request.execution_policy.backend_policy);
     let request = request
         .normalized()
         .map_err(ComputeCoordinatorError::from)
@@ -259,9 +262,11 @@ pub(crate) async fn compute_begin_conformer_submission<R: Runtime>(
     window: WebviewWindow<R>,
     coordinator: State<'_, ComputeCoordinator>,
     registry: State<'_, GridRuntimeRegistry>,
-    request: ConformerV1SubmitRequest,
+    mut request: ConformerV1SubmitRequest,
 ) -> Result<ConformerSubmissionStep, ComputeCommandError> {
     let owner = trusted_owner(&window)?;
+    request.execution_policy.backend_policy =
+        compute_backend().apply(request.execution_policy.backend_policy);
     let request = request
         .normalized()
         .map_err(ComputeCoordinatorError::from)

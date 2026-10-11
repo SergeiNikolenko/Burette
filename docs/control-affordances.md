@@ -49,7 +49,12 @@ Use plain, action-oriented copy. Prefer "Open selected molecules in Molstar" or
 ## Implementation Surfaces
 
 - React shell buttons should use `ShortcutTooltip` from
-  `apps/desktop/src/components/shortcut-tooltip.tsx`.
+  `apps/desktop/src/components/shortcut-tooltip.tsx`, not a native `title`
+  attribute. A disabled button gets no pointer events, so wrap it in an
+  `inline-flex` span when its hint explains the disabled state.
+- Every tooltip trigger carries `data-tooltip-trigger`. With `asChild` the
+  wrapped control keeps its own `data-slot` (`button`, `toolbar-button`), so
+  select tooltip-owning controls by `data-tooltip-trigger`, not by slot.
 - Radix menu items use `MenuItemSpec` affordances from
   `apps/desktop/src/components/menu-types.ts`: `detail` renders a second
   explanatory line (and widens the menu), `tooltip` shows on hover without

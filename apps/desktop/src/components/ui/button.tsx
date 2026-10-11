@@ -55,7 +55,9 @@ function Button({
       data-size={size}
       data-atlas-variant={appAction ? undefined : variants[variant]}
       data-atlas-size={appAction ? undefined : sizes[size]}
-      data-color={variant === "destructive" ? "danger" : variant === "link" ? "info" : "primary"}
+      // Atlas secondary actions are the grey secondary soft pill; primary soft is
+      // white in the light theme and disappears on the app background.
+      data-color={variant === "destructive" ? "danger" : variant === "link" ? "info" : variant === "secondary" ? "secondary" : "primary"}
       data-pill={size.startsWith("icon") ? undefined : ""}
       data-uniform={size.startsWith("icon") ? "" : undefined}
       data-disabled={disabled ? "" : undefined}
@@ -67,7 +69,9 @@ function Button({
           ? "no-drag cursor-(--cursor-interaction) select-none disabled:cursor-default aria-disabled:cursor-default focus:outline-hidden disabled:opacity-40 aria-disabled:opacity-40 focus-visible:ring-2 focus-visible:ring-(--color-ring) focus-visible:ring-offset-0 whitespace-nowrap border gap-1"
           : "atlas-button",
         appAction && (toolbar ? "h-(--spacing-token-button-composer) rounded-(--radius-button-toolbar) px-(--spacing-button-toolbar-inline) py-0 text-sm leading-[18px] [&_svg]:size-4"
-          : size === "settings" ? "h-9 rounded-md px-2 py-1 text-sm leading-none"
+          // Codex settings Select trigger: the toolbar button with 12px insets and a
+          // 14px tertiary chevron.
+          : size === "settings" ? "h-(--spacing-token-button-composer) max-w-full justify-between rounded-(--radius-button-toolbar) px-3 py-0 text-sm leading-[18px] [&>svg:last-child]:size-3.5 [&>svg:last-child]:text-(--color-text-tertiary)"
           : size === "xs" ? "h-6 rounded-(--radius-button-action) px-2 py-0 text-xs leading-4"
           : "rounded-(--radius-button-action) px-4 py-1.5 text-base leading-[18px]"),
         size === "icon-toolbar" && "aspect-square shrink-0 px-0",

@@ -33,7 +33,7 @@ test("integration settings preserve installed versions and reveal diagnostics on
       "Burette pluginUpdate available", "Agent Av1.0Update available", "Agent BNot installed", "Molecular toolsReady", "Browser workspaceMissing", "WorkflowsReady",
     ]);
     expect(mount.textContent).not.toContain("Technical bundle detail.");
-    expect(button(mount, "Reveal Bundle")).toBeUndefined(); // No native-only action in the browser.
+    expect(button(mount, "Reveal bundle")).toBeUndefined(); // No native-only action in the browser.
     const trigger = button(mount, "Diagnostics");
     await act(async () => trigger.click());
     expect(trigger.getAttribute("aria-expanded")).toBe("true");

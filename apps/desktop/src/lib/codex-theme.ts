@@ -22,10 +22,111 @@ export const CODEX_DEFAULT_THEME: Record<CodexThemeVariant, CodexTheme> = {
   dark: { accent: "#339cff", surface: "#181818", ink: "#ffffff", contrast: 60 },
 };
 
+// Appearance values saved before the Codex theme. A field still holding one of
+// these was never customized, so it follows the Codex default instead. Quick
+// Look still sends them raw when the app has never saved appearance settings.
+const LEGACY_DEFAULTS: Record<CodexThemeVariant, CodexTheme> = {
+  light: { accent: "#af52de", surface: "#ffffff", ink: "#0d0d0d", contrast: 20 },
+  dark: { accent: "#af52de", surface: "#111111", ink: "#fcfcfc", contrast: 16 },
+};
+
+export type CodexThemeTokens = { accent?: string; background?: string; foreground?: string; contrast?: number };
+
+// Resolves saved appearance tokens (shell preferences or viewer theme tokens).
+export function codexThemeFromTokens(tokens: CodexThemeTokens | undefined, variant: CodexThemeVariant): CodexTheme {
+  const legacy = LEGACY_DEFAULTS[variant];
+  const fallback = CODEX_DEFAULT_THEME[variant];
+  const color = (value: string | undefined, key: "accent" | "surface" | "ink") => {
+    const normalized = value?.trim().toLowerCase() ?? "";
+    return /^#[0-9a-f]{6}$/.test(normalized) && normalized !== legacy[key] ? normalized : fallback[key];
+  };
+  const contrast = typeof tokens?.contrast === "number" ? tokens.contrast : Number.NaN;
+  return {
+    accent: color(tokens?.accent, "accent"),
+    surface: color(tokens?.background, "surface"),
+    ink: color(tokens?.foreground, "ink"),
+    contrast: !Number.isFinite(contrast) || contrast === legacy.contrast ? fallback.contrast : Math.min(100, Math.max(0, contrast)),
+  };
+}
+
+// Base colors for the standalone viewer frames, which derive their own chrome
+// variables from them next to the Codex surfaces.
+export function codexThemeColors(tokens: CodexThemeTokens | undefined, variant: CodexThemeVariant) {
+  const theme = codexThemeFromTokens(tokens, variant);
+  return { accent: codexAccent(theme, variant), background: theme.surface, foreground: theme.ink };
+}
+
 const SEMANTIC = {
   light: { diffAdded: "#00a240", diffRemoved: "#ba2623", skill: "#924ff7" },
   dark: { diffAdded: "#40c977", diffRemoved: "#fa423e", skill: "#ad7bf9" },
 };
+// Codex desktop accents follow ChatGPT's accent menu unless the user picks a
+// custom color. Each named accent expands from its ChatGPT palette.
+const CHATGPT_PALETTES = {
+  blue: { 25: "#f6fafe", 50: "#e8f3fe", 200: "#63a8f8", 300: "#539af8", 400: "#3a83f7", 500: "#2c67c5", 700: "#173e76", 800: "#133463", 900: "#0c274a" },
+  green: { 25: "#effaf3", 50: "#def3e5", 200: "#83d197", 300: "#6bc67f", 400: "#53b559", 500: "#48a04c", 700: "#2c6732", 800: "#1f4e25", 900: "#14361a" },
+  yellow: { 25: "#fefbee", 50: "#fdf6dc", 200: "#f9dc78", 300: "#f8d45d", 400: "#f6c543", 500: "#d9a337", 600: "#b8802b", 700: "#95611f", 800: "#734615", 900: "#51300c" },
+  pink: { 25: "#fef8fb", 50: "#fdedf4", 200: "#f8a6c8", 300: "#f68ebc", 400: "#f077af", 500: "#cf6194", 700: "#873e60", 800: "#663049", 900: "#462132" },
+  orange: { 25: "#fdf5f1", 50: "#fbe8db", 200: "#f1a275", 300: "#ef8b57", 400: "#ee7c37", 500: "#d25e28", 700: "#87401d", 800: "#653218", 900: "#45240d" },
+  purple: { 25: "#f8f5fd", 50: "#ede5fc", 200: "#b897f4", 300: "#a67df2", 400: "#8952ee", 500: "#7849d1", 700: "#4e2f88", 800: "#3b2366", 900: "#291947" },
+} as const satisfies Record<string, Record<number, string>>;
+
+export const CHATGPT_ACCENTS = ["default", "blue", "green", "yellow", "pink", "orange", "purple", "black"] as const;
+export type ChatgptAccent = (typeof CHATGPT_ACCENTS)[number];
+const NAMED_SWATCHES = { blue: "#3566f0", green: "#19b79e", yellow: "#fdcd54", pink: "#fa70ab", orange: "#ff8771", purple: "#ab5eff" };
+// "black" is stored as a white accent; Codex labels it White in dark mode.
+const BLACK_ACCENT = "#ffffff";
+
+// Codex `gba(name, variant)`.
+function chatgptLayer(name: ChatgptAccent, variant: CodexThemeVariant) {
+  const dark = variant === "dark";
+  const neutral = name === "default" || name === "black";
+  const palette: Record<number, string> = CHATGPT_PALETTES[neutral ? "blue" : name];
+  const shade = name === "yellow" ? (dark ? 400 : 600) : dark && (name === "pink" || name === "orange") ? 400 : 500;
+  let selection = dark ? `${palette[400]}${name === "yellow" ? "80" : "99"}` : `${palette[300]}59`;
+  if (name === "default") selection = dark ? `${palette[200]}66` : `${palette[300]}59`;
+  if (name === "black") selection = dark ? "#78787866" : "#afafaf66";
+  let userMessageBackground = palette[dark ? 700 : 50];
+  let userMessageText = palette[dark ? 25 : 900];
+  if (neutral) {
+    userMessageBackground = dark ? "rgb(50 50 50 / 85%)" : "rgb(233 233 233 / 50%)";
+    userMessageText = dark ? "#ffffff" : "#0d0d0d";
+  }
+  if (name === "black" && !dark) {
+    userMessageBackground = "#000000";
+    userMessageText = "#ffffff";
+  }
+  return {
+    accent: palette[name === "purple" ? 300 : 400],
+    text: palette[shade],
+    soft: palette[dark ? 800 : 50],
+    submitBackground: neutral ? (dark ? "#ffffff" : "#000000") : palette[dark && name !== "pink" ? 500 : 400],
+    submitText: neutral && dark ? "#000000" : "#ffffff",
+    userMessageBackground,
+    userMessageText,
+    selection,
+    attributionHighlight: name === "default" ? (dark ? "#734615" : "#fcefbe") : selection,
+  };
+}
+
+// Burette stores the accent as one hex value: the Codex default stands for the
+// ChatGPT default accent, and each named accent stores its palette color.
+export function chatgptAccentName(theme: CodexTheme, variant: CodexThemeVariant): ChatgptAccent | null {
+  const accent = theme.accent.toLowerCase();
+  if (accent === CODEX_DEFAULT_THEME[variant].accent) return "default";
+  if (accent === BLACK_ACCENT) return "black";
+  return CHATGPT_ACCENTS.find((name) => name !== "default" && name !== "black" && chatgptLayer(name, variant).accent === accent) ?? null;
+}
+
+export function chatgptAccentValue(name: ChatgptAccent, variant: CodexThemeVariant) {
+  if (name === "default") return CODEX_DEFAULT_THEME[variant].accent;
+  return name === "black" ? BLACK_ACCENT : chatgptLayer(name, variant).accent;
+}
+
+export function chatgptAccentSwatch(name: ChatgptAccent, variant: CodexThemeVariant) {
+  if (name === "default" || name === "black") return variant === "dark" ? "#ffffff" : "#000000";
+  return NAMED_SWATCHES[name];
+}
 const SURFACE_UNDER_BASE = { light: 0.04, dark: 0.16 };
 const SURFACE_UNDER_SLOPE = { light: 0.0012, dark: 0.0015 };
 const PANEL_BASE = { light: 0.18, dark: 0.03 };
@@ -173,7 +274,37 @@ function darkParts(surface: Rgb, ink: Rgb, accent: Rgb, c: number, theme: CodexT
   };
 }
 
-export function buildCodexThemeVariables(theme: CodexTheme, variant: CodexThemeVariant): Record<string, string> {
+export function codexAccent(theme: CodexTheme, variant: CodexThemeVariant) {
+  const name = chatgptAccentName(theme, variant);
+  return name ? chatgptLayer(name, variant).accent : theme.accent;
+}
+
+// Codex `Aba`: the theme is built from the ChatGPT accent, then the accent
+// layer replaces the message, selection and accent tints.
+export function buildCodexThemeVariables(baseTheme: CodexTheme, variant: CodexThemeVariant): Record<string, string> {
+  const name = chatgptAccentName(baseTheme, variant);
+  const chatgpt = name ? chatgptLayer(name, variant) : null;
+  const theme = chatgpt ? { ...baseTheme, accent: chatgpt.accent } : baseTheme;
+  const variables = buildThemeVariables(theme, variant);
+  return chatgpt ? {
+    ...variables,
+    "--app-color-text-unread-badge": name === "yellow" ? "var(--gray-fixed-1000)" : "var(--white)",
+    "--color-background-composer-primary": chatgpt.submitBackground,
+    "--color-text-composer-primary": chatgpt.submitText,
+    "--color-background-user-message": chatgpt.userMessageBackground,
+    "--color-text-user-message": chatgpt.userMessageText,
+    "--color-background-text-selection": chatgpt.selection,
+    "--color-background-attribution-highlight": chatgpt.attributionHighlight,
+    "--app-color-background-accent": chatgpt.soft,
+    "--app-color-background-accent-active": chatgpt.soft,
+    "--app-color-background-accent-hover": chatgpt.soft,
+    "--app-color-border-focus": chatgpt.accent,
+    "--app-color-icon-accent": chatgpt.text,
+    "--app-color-text-accent": chatgpt.text,
+  } : variables;
+}
+
+function buildThemeVariables(theme: CodexTheme, variant: CodexThemeVariant): Record<string, string> {
   const surface = parseHex(theme.surface);
   const ink = parseHex(theme.ink);
   const accent = parseHex(theme.accent);

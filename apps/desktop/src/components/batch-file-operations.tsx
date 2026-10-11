@@ -61,8 +61,8 @@ export function useBatchFileOperations(actions: ShellActions, state: ShellViewSt
     }
   };
   const items = (files: string[]) => !isTauriRuntime() || files.length < 2 || files.length > 200 ? [] : [
-    { ...menuItem("save-file-copy", "Selected Files…", () => exportFiles(files)), disabled: hasDirtyFile(files) },
-    menuItem("trash-file", "Move to Trash", () => trash(files)),
+    { ...menuItem("save-file-copy", "Selected files…", () => exportFiles(files)), disabled: hasDirtyFile(files) },
+    { ...menuItem("trash-file", "Move to trash", () => trash(files)), variant: "destructive" as const },
   ];
   const dialog = <TrashFilesDialog paths={paths} completed={completed.length} error={error} busy={busy}
     onDismiss={() => { if (!running.current) setPaths([]); }} onRetry={() => void trash(paths)} />;

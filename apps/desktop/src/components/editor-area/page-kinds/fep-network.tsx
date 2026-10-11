@@ -14,6 +14,7 @@ import { ArrowRotateCcw } from "../../ui/app-icons";
 import { Button } from "../../ui/button";
 import { ToggleGroup, ToggleGroupItem } from "../../ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../ui/tooltip";
+import { ShortcutTooltip } from "../../shortcut-tooltip";
 import { ViewerFrame } from "../viewer-frame";
 import { definePageKind } from "./types";
 
@@ -584,20 +585,20 @@ function FepNetworkPreview({ actions, location, preferences }: { actions: ShellA
                   })}
                 </svg>
                 {edgeLayouts.map(({ key, label, visual }) => label ? (
-                  <button
-                    type="button"
-                    key={`${key}:label`}
-                    className="fep-network-edge-label"
-                    aria-pressed={key === selectedEdgeKey}
-                    data-active={key === activeEdgeKey ? "true" : undefined}
-                    data-dimmed={activeEdgeKey && key !== activeEdgeKey ? "true" : undefined}
-                    style={{ left: label.x, top: label.y }}
-                    title={visual.title}
-                    {...edgeHandlers(key)}
-                  >
-                    <span>{visual.metric}</span>
-                    {visual.label}
-                  </button>
+                  <ShortcutTooltip key={`${key}:label`} label={visual.title}>
+                    <button
+                      type="button"
+                      className="fep-network-edge-label"
+                      aria-pressed={key === selectedEdgeKey}
+                      data-active={key === activeEdgeKey ? "true" : undefined}
+                      data-dimmed={activeEdgeKey && key !== activeEdgeKey ? "true" : undefined}
+                      style={{ left: label.x, top: label.y }}
+                      {...edgeHandlers(key)}
+                    >
+                      <span>{visual.metric}</span>
+                      {visual.label}
+                    </button>
+                  </ShortcutTooltip>
                 ) : null)}
                 {visibleNodes.map((node) => {
                   const position = positions[node.id];
@@ -678,7 +679,9 @@ function HydrogensToggle({ shown, onChange }: { shown: boolean; onChange: (shown
       value={shown ? "shown" : ""}
       onValueChange={(value) => onChange(value === "shown")}
     >
-      <ToggleGroupItem value="shown" aria-label="Show hydrogens" title="Show hydrogens">H</ToggleGroupItem>
+      <ShortcutTooltip label="Show hydrogens">
+        <ToggleGroupItem value="shown" aria-label="Show hydrogens">H</ToggleGroupItem>
+      </ShortcutTooltip>
     </ToggleGroup>
   );
 }

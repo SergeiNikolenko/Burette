@@ -15,7 +15,7 @@ import { join } from 'node:path';
 const root = new URL('../', import.meta.url);
 const atlasArg = process.argv.indexOf('--atlas');
 const atlas = (atlasArg > 0 ? process.argv[atlasArg + 1] : '~/Documents/Projects/InterfaceAtlas').replace(/^~/, homedir());
-const assets = join(atlas, 'snapshot/assets');
+const assets = join(atlas, 'snapshot-26.1007/assets');
 const sheet = (await readdir(assets)).find((name) => /^app-shared-.*\.css$/.test(name));
 if (!sheet) throw new Error(`No app-shared stylesheet under ${assets}`);
 const css = await readFile(join(assets, sheet), 'utf8');

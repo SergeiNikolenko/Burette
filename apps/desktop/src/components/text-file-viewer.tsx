@@ -17,6 +17,7 @@ import type { MarkdownOpenPaths } from "./text-file-viewer/markdown-link-navigat
 import { hasStructureTextHighlighting, structureTextHighlighting, textNumberHighlighting } from "./text-file-viewer/structure-text-highlighting";
 import { Button } from "./ui/button";
 import { Search } from "./ui/app-icons";
+import { ShortcutTooltip } from "./shortcut-tooltip";
 import { createTextSearchPanel, toggleTextSearch } from "./text-file-viewer/text-search-panel";
 import { registerTextFind } from "../lib/text-find";
 import { classifySourceEditEligibility, classifySourceShape, sourceNotEditableMessage } from "../lib/source-editing/policy";
@@ -310,27 +311,43 @@ export function TextFileViewer({
             </span>
           )}
           {!nonEditorDocument && (
-            <Button type="button" variant="ghost" size="icon-xs" aria-label="Find in text" title="Find in text (⌘F)" onClick={() => { if (viewRef.current) toggleTextSearch(viewRef.current); }}>
-              <Search />
-            </Button>
+            <ShortcutTooltip label="Find in text" shortcut="⌘F">
+              <Button type="button" variant="ghost" size="icon-xs" aria-label="Find in text" onClick={() => { if (viewRef.current) toggleTextSearch(viewRef.current); }}>
+                <Search />
+              </Button>
+            </ShortcutTooltip>
           )}
           {sourceEditing?.onBeginEditing && !sourceEditing.editable && (
-            <Button type="button" variant="secondary" size="xs" disabled={Boolean(editDisabledReason)} title={editDisabledReason ?? undefined} onClick={sourceEditing.onBeginEditing}>Edit Source</Button>
+            editDisabledReason ? (
+              <ShortcutTooltip label={editDisabledReason}>
+                <span className="inline-flex">
+                  <Button type="button" variant="secondary" size="toolbar" disabled onClick={sourceEditing.onBeginEditing}>Edit source</Button>
+                </span>
+              </ShortcutTooltip>
+            ) : (
+              <Button type="button" variant="secondary" size="toolbar" onClick={sourceEditing.onBeginEditing}>Edit source</Button>
+            )
           )}
           {sourceEditing?.showApplyPreview && sourceEditing.editable && (
             <Button type="button" variant="secondary" size="xs" onClick={() => void sourceEditing.onApplyPreview?.()}>Apply Preview</Button>
           )}
           {sourceEditing?.editable && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="xs"
-              disabled={sourceEditing.saving || Boolean(sourceEditing.saveDisabledReason) || !sourceEditing.dirty}
-              title={sourceEditing.saveDisabledReason ?? "Save source (Command-S)"}
-              onClick={() => void sourceEditing.onSave?.()}
+            <ShortcutTooltip
+              label={sourceEditing.saveDisabledReason ?? "Save source"}
+              shortcut={sourceEditing.saveDisabledReason ? undefined : "⌘S"}
             >
-              Save
-            </Button>
+              <span className="inline-flex">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="xs"
+                  disabled={sourceEditing.saving || Boolean(sourceEditing.saveDisabledReason) || !sourceEditing.dirty}
+                  onClick={() => void sourceEditing.onSave?.()}
+                >
+                  Save
+                </Button>
+              </span>
+            </ShortcutTooltip>
           )}
         </div>
       </div>

@@ -35,10 +35,12 @@ import { joinColumnValues } from "../lib/merge-columns.mjs";
 import { readStructureText } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
 import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
+import { useJobLifecycle } from "./use-job-lifecycle";
 import type { DerivedColumnJob, ViewerDocument } from "../types";
 
 const DERIVED_SOURCE_BATCH = 200;
 const DERIVED_JOB_HISTORY_LIMIT = 20;
+const derivedColumnJobTitle = (job: DerivedColumnJob) => job.columnLabel;
 const DERIVED_STORE_BATCH = 2_000;
 const GRID_RECORDS_TIMEOUT_MS = 15_000;
 // A reference set is meant to be a series, not a screening library: past this
@@ -301,6 +303,7 @@ type UseAppDerivedColumnsOptions = {
 // in the host webview - the same code path a future browser toolbar would use.
 export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedColumnsOptions) {
   const [derivedColumnJobs, setDerivedColumnJobs] = useState<DerivedColumnJob[]>([]);
+  useJobLifecycle("columns", derivedColumnJobs, setDerivedColumnJobs, derivedColumnJobTitle);
   const [rgroupRuntimeAvailable, setRgroupRuntimeAvailable] = useState(false);
   const runningKeysRef = useRef(new Set<string>());
 

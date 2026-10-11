@@ -1,15 +1,15 @@
 import { useLayoutEffect, useRef, type ComponentProps, type MouseEvent } from "react";
 import * as RovingFocusGroup from "@radix-ui/react-roving-focus";
 import { DOCK_TAB_LABELS, type DockArea, type DockTab, type DockTabKind } from "../lib/dock";
-import { Atom, FileBlank, Folder, Plus, Search, X, type AppIconType } from "./ui/app-icons";
+import { Atom, Chart, Compare, Eye, FileCode, FileDocument, Folder, InfoCircle, Orbit, Plus, SettingsWrench, Stack, Stopwatch, X, type AppIconType } from "./ui/app-icons";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 const icons: Record<DockTabKind, AppIconType> = {
-  scene: Atom, xyzrender: Atom, files: Folder, spectrum: Atom, text: FileBlank,
-  story: FileBlank, inspector: Search, folding: Atom, "structure-basket": Atom,
-  compare: Atom, jobs: FileBlank, logs: FileBlank, diagnostics: Search,
-  review: Search, "chemical-space": Atom,
+  scene: Stack, xyzrender: Atom, files: Folder, spectrum: Chart, text: FileDocument,
+  story: FileDocument, inspector: InfoCircle, folding: Atom, "structure-basket": Stack,
+  compare: Compare, jobs: Stopwatch, logs: FileCode, diagnostics: SettingsWrench,
+  review: Eye, "chemical-space": Orbit,
 };
 
 export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transientTabId, fileDragProps, onSelect, onClose, onAdd, onHide }: {
@@ -39,7 +39,9 @@ export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transien
     onClose(id);
   };
 
-  return <TooltipProvider><div className="dock-header" ref={header}>
+  // The right dock's header shares the window title row (Codex side panel), so
+  // its empty space drags the window and the title-row toggle hides it.
+  return <TooltipProvider><div className="dock-header" ref={header} data-tauri-drag-region={area === "right" || undefined}>
     <RovingFocusGroup.Root asChild orientation="horizontal" loop>
       <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
         {tabs.map(tab => {
@@ -69,8 +71,8 @@ export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transien
       </div>
     </RovingFocusGroup.Root>
     {!readOnly && <>
-      <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-sm" className="dock-icon-button" onClick={onAdd} aria-label={`Add ${area} dock tab`}><Plus aria-hidden /></Button></TooltipTrigger><TooltipContent compact showArrow={false}>Add panel</TooltipContent></Tooltip>
-      <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-sm" className="dock-icon-button dock-hide-button" onClick={onHide} aria-label={`Close ${area} dock`}><X aria-hidden /></Button></TooltipTrigger><TooltipContent compact showArrow={false}>Close panel</TooltipContent></Tooltip>
+      <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-toolbar" className="dock-icon-button" onClick={onAdd} aria-label={`Add ${area} dock tab`}><Plus aria-hidden /></Button></TooltipTrigger><TooltipContent compact showArrow={false}>Add panel</TooltipContent></Tooltip>
+      {area === "bottom" && <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon-toolbar" className="dock-icon-button dock-hide-button" onClick={onHide} aria-label={`Close ${area} dock`}><X aria-hidden /></Button></TooltipTrigger><TooltipContent compact showArrow={false}>Close panel</TooltipContent></Tooltip>}
     </>}
   </div></TooltipProvider>;
 }

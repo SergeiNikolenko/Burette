@@ -1,6 +1,7 @@
 import { cancelComputeJob } from "../lib/compute-cluster";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { subscribeConformerJobs } from "../lib/conformer-job-events";
+import { useJobLifecycle } from "./use-job-lifecycle";
 import { open } from "@tauri-apps/plugin-dialog";
 
 import type { StatusKind } from "../components/types";
@@ -32,6 +33,8 @@ import type {
 } from "../types";
 
 type PushStatus = (message: string, kind?: StatusKind, details?: string[]) => void;
+const conformerJobTitle = (job: ConformerJob) => job.title;
+const xtbJobTitle = (job: XtbJob) => job.title;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
 
 type UseAppChemistryJobsOptions = {
@@ -51,6 +54,8 @@ export function useAppChemistryJobs({
   const [xtbJobs, setXtbJobs] = useState<XtbJob[]>([]);
   const cancelledConformerJobIdsRef = useRef(new Set<string>());
   const cancelledXtbJobIdsRef = useRef(new Set<string>());
+  useJobLifecycle("conformer", conformerJobs, setConformerJobs, conformerJobTitle);
+  useJobLifecycle("xtb", xtbJobs, setXtbJobs, xtbJobTitle);
 
   useEffect(() => subscribeConformerJobs((job) => {
     const stopping = cancelledConformerJobIdsRef.current.has(job.id) && job.status === "running";

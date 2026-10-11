@@ -40,7 +40,7 @@ test("collection style, color and debounced opacity keep exact viewer commands a
   try {
     await act(async () => root.render(<StructureInfoPanel {...props} />));
     const fileSection = mount.querySelector<HTMLElement>(".structure-inspector-details")!;
-    const disclosure = fileSection.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
+    const disclosure = fileSection.querySelector<HTMLElement>("summary")!;
     expect(disclosure.textContent).toBe("File");
     await act(async () => disclosure.click());
     expect(fileSection.textContent).toContain("Molecules2");

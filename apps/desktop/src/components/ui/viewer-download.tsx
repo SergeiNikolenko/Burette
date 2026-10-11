@@ -11,6 +11,7 @@ import {
 
 import { Spinner } from "@/components/ui/spinner";
 
+import { ShortcutTooltip } from "../shortcut-tooltip";
 import { Button } from "./button";
 import {
   DropdownMenu,
@@ -241,37 +242,39 @@ export function ViewerDownloadButton({
 
   if (href) {
     return (
-      <Button asChild variant={variant} size={size} className={className}>
-        <a
-          href={href}
-          download={action?.fileName}
-          aria-label={label}
-          title={label}
-        >
-          <Download aria-hidden className={showLabel ? "mr-1.5 size-4" : undefined} />
-          {showLabel ? label : null}
-        </a>
-      </Button>
+      <ShortcutTooltip label={label}>
+        <Button asChild variant={variant} size={size} className={className}>
+          <a
+            href={href}
+            download={action?.fileName}
+            aria-label={label}
+          >
+            <Download aria-hidden className={showLabel ? "mr-1.5 size-4" : undefined} />
+            {showLabel ? label : null}
+          </a>
+        </Button>
+      </ShortcutTooltip>
     );
   }
 
   return (
-    <Button
-      variant={variant}
-      size={size}
-      className={className}
-      aria-label={label}
-      title={label}
-      disabled={disabled || isPending}
-      onClick={handleClick}
-    >
-      {isPending ? (
-        <Spinner className="size-4 animate-spin" />
-      ) : (
-        <Download className={showLabel ? "mr-1.5 size-4" : undefined} />
-      )}
-      {showLabel ? label : null}
-    </Button>
+    <ShortcutTooltip label={label}>
+      <Button
+        variant={variant}
+        size={size}
+        className={className}
+        aria-label={label}
+        disabled={disabled || isPending}
+        onClick={handleClick}
+      >
+        {isPending ? (
+          <Spinner className="size-4 animate-spin" />
+        ) : (
+          <Download className={showLabel ? "mr-1.5 size-4" : undefined} />
+        )}
+        {showLabel ? label : null}
+      </Button>
+    </ShortcutTooltip>
   );
 }
 
@@ -292,23 +295,24 @@ export function ViewerDownloadMenu({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant={variant}
-          size={size}
-          className={className}
-          aria-label={label}
-          title={label}
-          disabled={pendingActionId != null}
-        >
-          {pendingActionId != null ? (
-            <Spinner className="size-4 animate-spin" />
-          ) : (
-            <Download className={showLabel ? "mr-1.5 size-4" : undefined} />
-          )}
-          {showLabel ? label : null}
-        </Button>
-      </DropdownMenuTrigger>
+      <ShortcutTooltip label={label}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant={variant}
+            size={size}
+            className={className}
+            aria-label={label}
+            disabled={pendingActionId != null}
+          >
+            {pendingActionId != null ? (
+              <Spinner className="size-4 animate-spin" />
+            ) : (
+              <Download className={showLabel ? "mr-1.5 size-4" : undefined} />
+            )}
+            {showLabel ? label : null}
+          </Button>
+        </DropdownMenuTrigger>
+      </ShortcutTooltip>
       <DropdownMenuContent align="end">
         {actions.map((action) => (
           <DropdownMenuItem

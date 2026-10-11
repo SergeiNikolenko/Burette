@@ -1,14 +1,15 @@
 import { useEffect, useState } from "react";
-import { Button, ButtonStyleContext } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Empty,
   EmptyContent,
   EmptyDescription,
   EmptyHeader,
+  EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
 import { Spinner } from "@/components/ui/spinner";
-import { Folder } from "@/components/ui/app-icons";
+import { Atom } from "@/components/ui/app-icons";
 import { Kbd } from "@/components/ui/kbd";
 import { isHostedMcpWidget } from "@/lib/hosted-mcp-widget";
 import type { ShellActions } from "../types";
@@ -39,24 +40,28 @@ export function WelcomeScreen({ actions }: { actions: ShellActions }) {
   if (isHostedMcpWidget()) return <HostedStructurePending />;
   const home = window.BuretteMcpWorkspace?.home;
   if (home) return <NativeWorkspaceHome actions={actions} home={home} />;
+  // Codex new-chat hero: a 56px mark at 30% opacity, 24px above a 28px title,
+  // with a single soft action in place of the composer.
   return (
-    <Empty className="new-tab-page border-0">
-      <EmptyContent className="new-tab-actions">
-        <ButtonStyleContext.Provider value="app">
-          <Button
-            type="button"
-            variant="secondary"
-            className="gap-2"
-            aria-label="Open file"
-            aria-keyshortcuts="Meta+O"
-            data-analytics-control="open_structure"
-            onClick={() => void actions.chooseFiles()}
-          >
-            <Folder className="size-4" aria-hidden />
-            Open file
-            <Kbd className="ml-2 bg-transparent text-(--color-text-tertiary)" aria-hidden>⌘O</Kbd>
-          </Button>
-        </ButtonStyleContext.Provider>
+    <Empty className="new-tab-page border-0 gap-6">
+      <EmptyMedia className="mb-0 size-14 text-(--color-text) opacity-30 [&_svg]:size-14" aria-hidden>
+        <Atom />
+      </EmptyMedia>
+      <EmptyHeader className="new-tab-copy">
+        <EmptyTitle className="text-[28px] leading-[1.2] font-normal tracking-normal text-(--color-text)">Drop a structure here</EmptyTitle>
+      </EmptyHeader>
+      <EmptyContent className="new-tab-actions flex-row justify-center gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          size="xs"
+          aria-keyshortcuts="Meta+O"
+          data-analytics-control="open_structure"
+          onClick={() => void actions.chooseFiles()}
+        >
+          Open file
+        </Button>
+        <Kbd className="bg-transparent text-(--color-text-tertiary)" aria-hidden>⌘O</Kbd>
       </EmptyContent>
     </Empty>
   );

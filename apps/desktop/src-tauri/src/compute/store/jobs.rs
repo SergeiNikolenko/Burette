@@ -241,6 +241,39 @@ impl ComputeStore {
         transaction.commit()?;
         Ok(())
     }
+
+    /// Deletes terminal jobs that finished before `finished_before_ms`, across
+    /// all owners. Jobs with published artifacts are kept, matching
+    /// `purge_job`: their files need coordinated filesystem cleanup.
+    pub(crate) fn prune_finished_jobs(&self, finished_before_ms: u64) -> ComputeResult<usize> {
+        let terminal_states = [
+            JobState::Cancelled,
+            JobState::Failed,
+            JobState::Succeeded,
+            JobState::SucceededWithFailures,
+        ]
+        .iter()
+        .map(super::enum_string)
+        .collect::<ComputeResult<Vec<_>>>()?;
+        let mut connection = self.open_connection()?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let deleted = transaction.execute(
+            "DELETE FROM jobs
+             WHERE finished_at_ms IS NOT NULL
+               AND finished_at_ms < ?1
+               AND state IN (?2, ?3, ?4, ?5)
+               AND NOT EXISTS (SELECT 1 FROM artifacts WHERE artifacts.job_id = jobs.job_id)",
+            params![
+                finished_before_ms as i64,
+                terminal_states[0],
+                terminal_states[1],
+                terminal_states[2],
+                terminal_states[3],
+            ],
+        )?;
+        transaction.commit()?;
+        Ok(deleted)
+    }
 }
 
 #[allow(

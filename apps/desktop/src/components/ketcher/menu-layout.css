@@ -1,0 +1,84 @@
+/* Layout only: shared menu, tab, accordion and form primitives own the skin. */
+.ketcher-ui-menu {
+  min-width: 0;
+  max-width: min(calc(100vw - 16px), var(--radix-dropdown-menu-content-available-width, var(--available-width, 320px)));
+}
+
+.ketcher-tool-options,
+.ketcher-context-menu {
+  width: 240px;
+}
+
+.ketcher-tool-option {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ketcher-tool-option-icon {
+  display: flex;
+  flex: 0 0 20px;
+  align-items: center;
+  justify-content: center;
+}
+
+.ketcher-tool-option-icon > svg {
+  position: static;
+  inset: auto;
+  transform: none;
+  width: 20px;
+  height: 20px;
+}
+
+.ketcher-library-tablist {
+  max-width: 100%;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.app-shell .ketcher-ui-dialog-body [class*="Save-module_previewArea"] {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.app-shell .ketcher-ui-dialog:has([class*="PeriodTable-module_periodTable"]) {
+  width: min(560px, calc(100vw - 24px));
+}
+
+.app-shell .ketcher-ui-dialog-body [class*="PeriodTable-module_periodTable"] {
+  overflow-x: auto;
+  overscroll-behavior: contain;
+}
+
+.app-shell .ketcher-ui-dialog-body [class*="template-lib-module_inputContainer"] input[type="search"] {
+  width: 100%;
+  margin: 0 0 12px;
+  padding-left: 32px;
+}
+
+.app-shell .ketcher-ui-dialog-body [class*="template-lib-module_searchIcon"] {
+  left: 8px;
+  top: 4px;
+  width: 20px;
+  height: 20px;
+  color: var(--muted-foreground);
+}
+
+.app-shell .ketcher-ui-dialog-body [class*="template-lib-module_tabsContent"] {
+  min-height: 0;
+  height: min(50vh, 360px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: transparent;
+}
+
+.app-shell .ketcher-ui-dialog-body [class*="template-lib-module_resultsContainer"] {
+  padding: 8px 0;
+  background: transparent;
+}
+
+.app-shell .ketcher-ui-dialog:has([class*="template-lib-module_dialog_body"]) span[data-testid="add-to-canvas-button"] {
+  display: none;
+}

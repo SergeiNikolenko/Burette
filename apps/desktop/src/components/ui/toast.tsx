@@ -3,7 +3,7 @@ import { createPortal } from "react-dom"
 import { Toaster as Sonner, toast as sonner } from "sonner"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Spinner } from "@/components/ui/spinner";
-import { Warning as Alert02Icon, X as Cancel01Icon, CheckCircle as CheckmarkCircle02Icon, InfoCircle as InformationCircleIcon } from "@/components/ui/app-icon-data";
+import { ExclamationCircle, X as Cancel01Icon, CheckCircle as CheckmarkCircle02Icon, InfoCircle as InformationCircleIcon } from "@/components/ui/app-icon-data";
 
 import { Button, ButtonStyleContext } from "@/components/ui/button"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
@@ -26,6 +26,16 @@ type ToastOptions = {
 
 const DEFAULT_TIMEOUT_MS = 5000
 
+// Codex toasts render its Alert with rich colors: status levels tint the
+// surface, outline and text, while info and progress stay neutral.
+const LEVEL_CLASSES: Record<ToastType, string> = {
+  info: "border-(--color-border) bg-(--color-surface-elevated-secondary) text-(--color-text)",
+  loading: "border-(--color-border) bg-(--color-surface-elevated-secondary) text-(--color-text)",
+  success: "border-(--color-text-success)/20 bg-(--color-background-success-surface) text-(--color-text-success)",
+  warning: "border-(--color-border-warning-outline) bg-(--color-background-warning-surface) text-(--color-text-warning)",
+  error: "border-(--color-border-danger-outline) bg-(--color-background-danger-surface) text-(--color-text-danger)",
+}
+
 function ToastIcon({ type }: { type: ToastType | undefined }) {
   let icon: ReactNode = null
 
@@ -33,12 +43,13 @@ function ToastIcon({ type }: { type: ToastType | undefined }) {
     icon = <HugeiconsIcon icon={CheckmarkCircle02Icon} aria-hidden="true" />
   }
 
-  if (type === "info" || type === "error") {
+  if (type === "info") {
     icon = <HugeiconsIcon icon={InformationCircleIcon} aria-hidden="true" />
   }
 
-  if (type === "warning") {
-    icon = <HugeiconsIcon icon={Alert02Icon} aria-hidden="true" />
+  // Codex marks both warning and danger toasts with the exclamation circle.
+  if (type === "warning" || type === "error") {
+    icon = <HugeiconsIcon icon={ExclamationCircle} aria-hidden="true" />
   }
 
   if (type === "loading") {
@@ -71,13 +82,13 @@ function ToastCard({ id, title, description, type, priority, actionProps, action
       data-slot="toast"
       data-type={type}
       role={priority === "high" ? "alert" : "status"}
-      className="atlas-toast ms-auto flex w-max max-w-[min(var(--width),calc(100vw-32px))] flex-col gap-2 rounded-xl border border-(--color-border) bg-(--color-surface-elevated-secondary) px-3 py-2 text-base leading-normal text-(--color-text) select-none"
+      className={`atlas-toast ms-auto flex w-max max-w-[min(var(--width),calc(100vw-32px))] flex-col gap-2 rounded-xl border px-3 py-2 text-base leading-normal select-none ${LEVEL_CLASSES[type ?? "info"]}`}
     >
       <div className={`flex min-w-0 ${inline ? "items-center gap-3" : "items-start gap-1"}`}>
         <ToastIcon type={type} />
         <div className={`flex min-w-0 flex-1 gap-3 ${inline ? "items-center" : "items-start"}`}>
           <div className="flex min-w-0 flex-1 flex-col">
-            <div data-slot="toast-title" className={`flex min-h-6 items-center text-base leading-normal font-medium whitespace-pre-wrap [overflow-wrap:anywhere]${type === "error" ? " text-(--color-text-danger)" : ""}`}>
+            <div data-slot="toast-title" className="flex min-h-6 items-center text-base leading-normal font-medium whitespace-pre-wrap [overflow-wrap:anywhere]">
               {title}
             </div>
             {description ? (

@@ -1,21 +1,9 @@
 import { useState } from "react";
-import { Pin, PinFilled, SidebarGlobe, SidebarFolder } from "../ui/app-icons";
-import { SidebarFolderIcon } from "../sidebar/sidebar-folder-icon";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import type { MenuItemSpec } from "../menu-types";
 import { removeSshProject, saveSshConnection, saveSshProject, useSshProjects, type SshConnection, type SshProject } from "../../lib/ssh-projects";
-
-export function SshProjectCard({ project, connection, status, available }: { project: SshProject; connection?: SshConnection; status: string; available: boolean }) {
-  const Icon = project.pinned ? PinFilled : Pin;
-  return <>
-    <div className="ssh-card-title"><SidebarFolderIcon expanded={false} badge={connection?.color ?? "cyan"} /><span>{project.name}</span><button aria-label={project.pinned ? "Unpin project" : "Pin project"} onClick={() => saveSshProject({ ...project, pinned: !project.pinned })}><Icon size={16} /></button></div>
-    <div className="ssh-card-line"><SidebarGlobe size={18} className={`project-folder-badge-${connection?.color ?? "cyan"}`} /><span>{connection?.name ?? project.host}</span></div>
-    <div className="ssh-card-line ssh-card-status"><span className={`ssh-connection-dot${available ? " available" : ""}`} /><span>{status}</span></div>
-    <div className="ssh-card-line"><SidebarFolder size={17} /><span className="break-all">{project.root}</span></div>
-  </>;
-}
 
 export function useSshProjectMenu(project: SshProject, connection: SshConnection | undefined) {
   const projects = useSshProjects();
@@ -42,7 +30,7 @@ export function useSshProjectMenu(project: SshProject, connection: SshConnection
     <label className="grid gap-2 text-sm">{editing === "edit" ? "Project name" : "Section name"}<Input autoFocus value={name} onChange={e => setName(e.target.value)} maxLength={160} /></label>
     {editing === "edit" && <label className="grid gap-2 text-sm">Folder on {connection?.name ?? project.host}<Input value={root} onChange={e => setRoot(e.target.value)} /></label>}
     {error && <p role="alert" className="ssh-dialog-error">{error}</p>}
-    <div className="ssh-dialog-footer justify-end"><Button variant="ghost" onClick={() => setEditing(null)}>Cancel</Button><Button disabled={!name.trim() || !root.trim()} onClick={() => { try { saveSshProject(editing === "edit" ? { ...project, name: name.trim(), root: root.trim() } : { ...project, section: name.trim() }); setEditing(null); } catch (e) { setError(String(e)); } }}>Save</Button></div>
+    <DialogFooter className="ssh-dialog-footer justify-end"><Button variant="secondary" onClick={() => setEditing(null)}>Cancel</Button><Button disabled={!name.trim() || !root.trim()} onClick={() => { try { saveSshProject(editing === "edit" ? { ...project, name: name.trim(), root: root.trim() } : { ...project, section: name.trim() }); setEditing(null); } catch (e) { setError(String(e)); } }}>Save</Button></DialogFooter>
   </DialogContent></Dialog>;
   return { items, dialog };
 }

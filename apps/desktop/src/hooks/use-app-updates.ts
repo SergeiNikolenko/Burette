@@ -133,7 +133,7 @@ export function useAppUpdates({ enabled = true, pushErrorStatus, pushStatus }: U
       ? await ask(message, {
         title: "Update Available",
         kind: "info",
-        okLabel: canInstall ? "Install and Restart" : "Open Release Page",
+        okLabel: canInstall ? "Install and restart" : "Open release page",
         cancelLabel: "Later",
       })
       : window.confirm(message);

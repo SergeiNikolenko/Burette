@@ -3,6 +3,8 @@ import { mountViewerAnimationControls } from './viewer-animation-controls';
 import { mountViewerQueryControls, mountViewerSelectionActions } from './viewer-selection-controls';
 import { mountViewerSelectionToolbar } from './viewer-selection-toolbar';
 import { mountViewerViewportToolbar } from './viewer-viewport-toolbar';
+import { styleViewerMainToolbar } from './viewer-main-toolbar';
+import { codexThemeColors } from '../lib/codex-theme';
 
 (() => {
   'use strict';
@@ -19,7 +21,13 @@ import { mountViewerViewportToolbar } from './viewer-viewport-toolbar';
     mountSelectionActions: mountViewerSelectionActions,
     mountSelectionToolbar: mountViewerSelectionToolbar,
     mountViewportToolbar: mountViewerViewportToolbar,
+    styleToolbar: styleViewerMainToolbar,
+    styleTooltip: (tooltip, tokens, mode) => {
+      tooltip.classList.add('atlas-floating-tooltip', 'atlas-tooltip-positioned');
+      styleViewerSurface(tooltip, tokens, mode);
+    },
     styleControls: styleViewerSurface,
+    themeColors: codexThemeColors,
     show(menu, { post, x, y, ...callbacks }) {
       const session = this.create(menu, callbacks);
       const requestId = `viewer-controls-${crypto.randomUUID()}`;
@@ -73,7 +81,8 @@ import { mountViewerViewportToolbar } from './viewer-viewport-toolbar';
       };
       const caption = element => {
         const label = element.querySelector('.buret-tree-menu-label, .ab-item-title')?.textContent?.trim()
-          || element.textContent.trim();
+          // A heading and its count are sibling spans; keep them apart.
+          || Array.from(element.childNodes, node => node.textContent.trim()).filter(Boolean).join(' ');
         const suffix = element.querySelector('.ab-item-meta')?.textContent.trim();
         return suffix ? `${label} ${suffix}` : label;
       };

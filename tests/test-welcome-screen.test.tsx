@@ -17,7 +17,7 @@ test("new tab preserves the file-open action and shortcut without redundant copy
   try {
     await act(async () => root.render(<WelcomeScreen actions={{ chooseFiles: () => { opens++; } } as ShellActions} />));
     const button = mount.querySelector<HTMLButtonElement>('button[data-analytics-control="open_structure"]')!;
-    expect(button.getAttribute("aria-label")).toBe("Open file");
+    expect(button.textContent).toBe("Open file");
     expect(mount.querySelectorAll("button")).toHaveLength(1);
     await act(async () => button.click()); expect(opens).toBe(1);
     expect(button.getAttribute("aria-keyshortcuts")).toBe("Meta+O");

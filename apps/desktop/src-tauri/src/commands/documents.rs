@@ -1381,6 +1381,15 @@ pub(crate) fn conformer_python_runtime_status() -> ConformerPythonRuntimeStatus 
 
 fn conformer_python_candidates() -> Vec<PythonCommand> {
     let mut candidates = Vec::new();
+    if let Some(python) = super::app_preferences::python_override() {
+        let python = python.to_string_lossy().to_string();
+        candidates.push(PythonCommand {
+            label: python.clone(),
+            command: python,
+            args: Vec::new(),
+            envs: Vec::new(),
+        });
+    }
     if let Ok(value) = env::var("BURETTE_RDKIT_PYTHON") {
         let value = value.trim();
         if !value.is_empty() {
@@ -3207,6 +3216,12 @@ fn sync_viewer_preferences_macos(preferences: &ViewerPreferences) -> Result<(), 
             NO
         };
         let _: () = msg_send![defaults, setBool: transparent_value forKey: transparent_key];
+        // Quick Look reads these per format before choosing the molecule grid.
+        for (key, enabled) in preferences.viewer_defaults.quick_look_grid_support() {
+            let key = autoreleased_nsstring(key)?;
+            let value = if enabled { YES } else { NO };
+            let _: () = msg_send![defaults, setBool: value forKey: key];
+        }
         let _: () = msg_send![defaults, synchronize];
     }
 
@@ -3345,6 +3360,7 @@ mod tests {
             theme_dark_editor_font: "-apple-system-body".to_string(),
             theme_dark_translucent: 20.0,
             theme_dark_contrast: 16.0,
+            viewer_defaults: Default::default(),
         }
     }
 

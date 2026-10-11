@@ -3,6 +3,7 @@ import type { MouseEvent } from "react";
 import { ColorTheme as Contrast, Stack as Layers3, DotsHorizontal as MoreHorizontal, ArrowCurvedRight as Redo2, Undo as Undo2, X } from "@/components/ui/app-icons";
 import type { ViewerDocument } from "../../types";
 import { Button } from "../ui/button";
+import { ShortcutTooltip } from "../shortcut-tooltip";
 import { MesoscaleScenePanel } from "./mesoscale-scene-panel";
 import { requestMesoscale, useMesoscaleStore } from "../../stores/mesoscale-store";
 import { showNativeContextMenu } from "../native-context-menu";
@@ -31,8 +32,8 @@ export function MesoscaleSceneOverlay({ document, onClose }: { document: ViewerD
       { kind: "select", id: "mesoscale-apply-snapshot", label: "Snapshot", value: current?.id ?? "", options: snapshots.map((snapshot) => snapshot.id), optionLabels: Object.fromEntries(snapshots.map((snapshot) => [snapshot.id, snapshot.name])), disabled: snapshots.length === 0, action: (id) => run({ type: "applySnapshot", id }) },
       { kind: "item", id: "mesoscale-delete-snapshot", text: "Delete current snapshot", variant: "destructive", icon: "Delete", disabled: !current, action: current ? () => run({ type: "deleteSnapshot", id: current.id }) : undefined },
       { kind: "separator" },
-      { kind: "item", id: "mesoscale-export-molx", text: "Export Mol* state (.molx)", icon: "Download", action: () => run({ type: "exportState", format: "molx" }) },
-      { kind: "item", id: "mesoscale-export-molj", text: "Export Mol* JSON (.molj)", icon: "Download", action: () => run({ type: "exportState", format: "molj" }) },
+      { kind: "item", id: "mesoscale-export-molx", text: "Export scene (.molx)", icon: "Download", action: () => run({ type: "exportState", format: "molx" }) },
+      { kind: "item", id: "mesoscale-export-molj", text: "Export scene as JSON (.molj)", icon: "Download", action: () => run({ type: "exportState", format: "molj" }) },
     ], { x: rect.right, y: rect.bottom + 6 });
   };
 
@@ -41,42 +42,49 @@ export function MesoscaleSceneOverlay({ document, onClose }: { document: ViewerD
       <header className="mesoscale-scene-overlay-header">
         <Layers3 size={15} aria-hidden="true" />
         <span>Scene</span>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          disabled={!(summary?.history?.canUndo ?? false)}
-          aria-label="Undo"
-          title="Undo"
-          onClick={() => run({ type: "undo" })}
-        >
-          <Undo2 size={15} />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          disabled={!(summary?.history?.canRedo ?? false)}
-          aria-label="Redo"
-          title="Redo"
-          onClick={() => run({ type: "redo" })}
-        >
-          <Redo2 size={15} />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-pressed={hoverDimming}
-          aria-label={hoverDimming ? "Keep other structures colored on hover" : "Fade other structures on hover"}
-          title={hoverDimming ? "Hover fades the rest" : "Hover keeps colors"}
-          onClick={() => run({ type: "setHoverDimming", enabled: !hoverDimming })}
-        >
-          <Contrast size={15} />
-        </Button>
-        <Button variant="ghost" size="icon-sm" aria-label="Scene actions" title="Scene actions" onClick={openSceneMenu}>
-          <MoreHorizontal size={15} />
-        </Button>
-        <Button variant="ghost" size="icon-sm" aria-label="Close scene" title="Close scene" onClick={onClose}>
-          <X size={14} />
-        </Button>
+        <ShortcutTooltip label="Undo">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={!(summary?.history?.canUndo ?? false)}
+            aria-label="Undo"
+            onClick={() => run({ type: "undo" })}
+          >
+            <Undo2 size={15} />
+          </Button>
+        </ShortcutTooltip>
+        <ShortcutTooltip label="Redo">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            disabled={!(summary?.history?.canRedo ?? false)}
+            aria-label="Redo"
+            onClick={() => run({ type: "redo" })}
+          >
+            <Redo2 size={15} />
+          </Button>
+        </ShortcutTooltip>
+        <ShortcutTooltip label={hoverDimming ? "Keep other structures colored on hover" : "Fade other structures on hover"}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-pressed={hoverDimming}
+            aria-label={hoverDimming ? "Keep other structures colored on hover" : "Fade other structures on hover"}
+            onClick={() => run({ type: "setHoverDimming", enabled: !hoverDimming })}
+          >
+            <Contrast size={15} />
+          </Button>
+        </ShortcutTooltip>
+        <ShortcutTooltip label="Scene actions">
+          <Button variant="ghost" size="icon-sm" aria-label="Scene actions" onClick={openSceneMenu}>
+            <MoreHorizontal size={15} />
+          </Button>
+        </ShortcutTooltip>
+        <ShortcutTooltip label="Close scene">
+          <Button variant="ghost" size="icon-sm" aria-label="Close scene" onClick={onClose}>
+            <X size={14} />
+          </Button>
+        </ShortcutTooltip>
       </header>
       <div className="mesoscale-scene-overlay-body">
         <MesoscaleScenePanel document={document} />
@@ -87,16 +95,17 @@ export function MesoscaleSceneOverlay({ document, onClose }: { document: ViewerD
 
 export function MesoscaleSceneToggle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      className={`mesoscale-scene-toggle${open ? " active" : ""}`}
-      aria-label={open ? "Close scene" : "Open scene"}
-      title={open ? "Close scene" : "Open scene"}
-      aria-pressed={open}
-      onClick={onToggle}
-    >
-      <Layers3 size={16} />
-    </Button>
+    <ShortcutTooltip label={open ? "Close scene" : "Open scene"}>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className={`mesoscale-scene-toggle${open ? " active" : ""}`}
+        aria-label={open ? "Close scene" : "Open scene"}
+        aria-pressed={open}
+        onClick={onToggle}
+      >
+        <Layers3 size={16} />
+      </Button>
+    </ShortcutTooltip>
   );
 }

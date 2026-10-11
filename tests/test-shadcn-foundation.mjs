@@ -2,12 +2,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [componentsJson, styles, portalContainer, alertDialog, dropdownMenu, desktopTsconfig, rootTsconfig] = await Promise.all([
+const [componentsJson, styles, portalContainer, alertDialog, dropdownMenu, dropdownMenuCss, desktopTsconfig, rootTsconfig] = await Promise.all([
   readFile("apps/desktop/components.json", "utf8"),
   readFile("apps/desktop/src/styles.css", "utf8"),
   readFile("apps/desktop/src/components/ui/portal-container.ts", "utf8"),
   readFile("apps/desktop/src/components/ui/alert-dialog.tsx", "utf8"),
   readFile("apps/desktop/src/components/ui/dropdown-menu.tsx", "utf8"),
+  readFile("apps/desktop/src/components/ui/dropdown-menu.css", "utf8"),
   readFile("apps/desktop/tsconfig.json", "utf8"),
   readFile("tsconfig.json", "utf8"),
 ]);
@@ -38,11 +39,10 @@ assert.match(alertDialog, /container=\{container \?\? appShellContainer\}/);
 
 // Menus hang off icon-sized triggers, so they must size to their content
 // instead of the trigger, or long entries get clipped.
-const dropdownContentClass = dropdownMenu.match(
-  /data-slot="dropdown-menu-content"[\s\S]*?className=\{cn\("([^"]*)"/,
-)?.[1];
-assert.ok(dropdownContentClass, "dropdown menu content class list not found");
-assert.doesNotMatch(dropdownContentClass, /(?:^|\s)w-\(--radix-dropdown-menu-trigger-width\)/);
-assert.match(dropdownContentClass, /max-w-\[min\(var\(--radix-dropdown-menu-content-available-width,100vw\),calc\(100vw-16px\)\)\] min-w-46/);
+assert.match(dropdownMenu, /data-slot="dropdown-menu-content"[\s\S]*?className=\{cn\("atlas-menu-content"/);
+const menuContentRule = dropdownMenuCss.match(/\.atlas-menu-content \{([^}]*)\}/)?.[1];
+assert.ok(menuContentRule, "Atlas menu content rule not found");
+assert.doesNotMatch(menuContentRule, /--radix-dropdown-menu-trigger-width/);
+assert.match(menuContentRule, /max-width: min\(var\(--radix-dropdown-menu-content-available-width, 100vw\), calc\(100vw - 16px\)\);/);
 
 console.log("shadcn foundation contract tests passed");

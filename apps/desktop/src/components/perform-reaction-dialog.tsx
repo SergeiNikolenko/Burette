@@ -159,7 +159,7 @@ export function PerformReactionDialog({
             A row the reaction does not fit keeps the reason in its cell.
           </p>
           <DialogFooter className="gap-2">
-            <Button type="button" variant="ghost" onClick={onDismiss}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={onDismiss}>Cancel</Button>
             <Button type="submit" disabled={!ready}>Add column</Button>
           </DialogFooter>
         </form>

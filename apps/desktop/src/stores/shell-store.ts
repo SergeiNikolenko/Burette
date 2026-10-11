@@ -85,7 +85,7 @@ function persistentExpandedProjectIds(projectIds: string[], projectRoots: string
 }
 
 function normalizeSidebarWidth(width: number) {
-  return Math.max(220, Math.min(420, Math.round(width)));
+  return Math.max(240, Math.min(520, Math.round(width)));
 }
 
 function cloneJson<T>(value: T): T {

@@ -72,7 +72,7 @@ export function BinsColumnDialog({
           </label>
           {problem && <p id={problemId} className="break-words text-sm text-(--color-text-danger)" role="alert">{problem}</p>}
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onDismiss}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={onDismiss}>Cancel</Button>
             <Button type="submit" disabled={!ready}>Add column</Button>
           </DialogFooter>
         </form>

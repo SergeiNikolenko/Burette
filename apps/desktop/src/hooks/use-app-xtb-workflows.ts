@@ -168,7 +168,7 @@ export function useAppXtbWorkflows({
         const documentWithSource = sourcePath ? { ...document, sourcePath } : document;
         openDocumentsInActiveTab([documentWithSource]);
         rememberRecentStructures([documentWithSource]);
-        pushStatus("Opened xTB optimization trajectory in the current Mol* view", "success");
+        pushStatus("Opened xTB optimization trajectory in the current 3D view", "success");
         return;
       }
     }
@@ -189,7 +189,7 @@ export function useAppXtbWorkflows({
       const documentWithSource = { ...document, sourcePath };
       openDocumentsInActiveTab([documentWithSource]);
       rememberRecentStructures([documentWithSource]);
-      pushStatus("Opened xTB optimized pose in the current Mol* view", "success");
+      pushStatus("Opened xTB optimized pose in the current 3D view", "success");
       return;
     }
     const sourceText = await readStructureText(sourcePath);
@@ -213,7 +213,7 @@ export function useAppXtbWorkflows({
     }, molstarPreferences);
     openDocumentsInActiveTab([document]);
     rememberRecentStructures([document]);
-    pushStatus("Opened xTB optimized pose in the current Mol* view", "success");
+    pushStatus("Opened xTB optimized pose in the current 3D view", "success");
   }, [openDocumentsInActiveTab, preferences, pushStatus, rememberRecentStructures]);
 
   const runXtbJob = useCallback(async (
@@ -373,7 +373,7 @@ export function useAppXtbWorkflows({
       return;
     }
     if (document.renderer === "grid2d") {
-      pushStatus("Open a specific molecule from the collection in Mol* before running xTB Properties.", "error");
+      pushStatus("Open one molecule from the collection before running xTB Properties.", "error");
       return;
     }
     const inputRequest = xtbInputRequestForDocument(document);

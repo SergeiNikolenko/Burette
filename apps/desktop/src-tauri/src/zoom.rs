@@ -1,38 +1,63 @@
 use std::sync::Mutex;
 
-use tauri::{Manager, Runtime};
+use tauri::{Emitter, Manager, Runtime};
 
 const ZOOM_LEVELS: [f64; 13] = [
     0.5, 0.67, 0.75, 0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0,
 ];
-const DEFAULT_ZOOM_INDEX: usize = 5;
+const DEFAULT_ZOOM: f64 = 1.0;
+const MIN_ZOOM: f64 = ZOOM_LEVELS[0];
+const MAX_ZOOM: f64 = ZOOM_LEVELS[ZOOM_LEVELS.len() - 1];
+const LEVEL_EPSILON: f64 = 1e-3;
+/// Tells every window that keyboard zoom changed the interface scale, so the
+/// persisted setting follows it.
+const INTERFACE_SCALE_EVENT: &str = "interface-scale-changed";
 
 pub(crate) struct WindowZoom {
-    level_index: Mutex<usize>,
+    factor: Mutex<f64>,
 }
 
 impl Default for WindowZoom {
     fn default() -> Self {
         Self {
-            level_index: Mutex::new(DEFAULT_ZOOM_INDEX),
+            factor: Mutex::new(DEFAULT_ZOOM),
         }
     }
 }
 
-fn zoomed_in(index: usize) -> usize {
-    index.saturating_add(1).min(ZOOM_LEVELS.len() - 1)
+/// The next ladder level above `factor`; scales set from Settings can sit
+/// between levels.
+fn zoomed_in(factor: f64) -> f64 {
+    ZOOM_LEVELS
+        .iter()
+        .copied()
+        .find(|level| *level > factor + LEVEL_EPSILON)
+        .unwrap_or(MAX_ZOOM)
 }
 
-fn zoomed_out(index: usize) -> usize {
-    index.saturating_sub(1)
+fn zoomed_out(factor: f64) -> f64 {
+    ZOOM_LEVELS
+        .iter()
+        .rev()
+        .copied()
+        .find(|level| *level < factor - LEVEL_EPSILON)
+        .unwrap_or(MIN_ZOOM)
 }
 
-fn command_target_index(command: &str, current: usize) -> Option<usize> {
+fn command_target_factor(command: &str, current: f64) -> Option<f64> {
     match command {
-        "view.zoom-actual" => Some(DEFAULT_ZOOM_INDEX),
+        "view.zoom-actual" => Some(DEFAULT_ZOOM),
         "view.zoom-in" => Some(zoomed_in(current)),
         "view.zoom-out" => Some(zoomed_out(current)),
         _ => None,
+    }
+}
+
+fn normalized_factor(scale: f64) -> f64 {
+    if scale.is_finite() {
+        scale.clamp(MIN_ZOOM, MAX_ZOOM)
+    } else {
+        DEFAULT_ZOOM
     }
 }
 
@@ -55,27 +80,53 @@ fn apply_zoom_to_window<R: Runtime>(window: &tauri::WebviewWindow<R>, factor: f6
     }
 }
 
+/// Stores `factor` and applies it to every window. Returns `false` when the
+/// factor was already current.
+fn set_factor<R: Runtime>(app: &tauri::AppHandle<R>, zoom: &WindowZoom, factor: f64) -> bool {
+    {
+        let mut current = zoom
+            .factor
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if (*current - factor).abs() < f64::EPSILON {
+            return false;
+        }
+        *current = factor;
+    }
+    for window in app.webview_windows().values() {
+        apply_zoom_to_window(window, factor);
+    }
+    true
+}
+
 /// Handles the View menu zoom commands. Returns `false` for unrelated ids so
 /// the menu dispatcher can fall through to the forwarding path.
 pub(crate) fn handle_menu_command<R: Runtime>(app: &tauri::AppHandle<R>, command: &str) -> bool {
     let Some(zoom) = app.try_state::<WindowZoom>() else {
         return false;
     };
-    let factor = {
-        let mut index = zoom
-            .level_index
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let Some(target) = command_target_index(command, *index) else {
-            return false;
-        };
-        *index = target;
-        ZOOM_LEVELS[target]
+    let current = *zoom
+        .factor
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(target) = command_target_factor(command, current) else {
+        return false;
     };
-    for window in app.webview_windows().values() {
-        apply_zoom_to_window(window, factor);
+    if set_factor(app, &zoom, target) {
+        if let Err(error) = app.emit(INTERFACE_SCALE_EVENT, target) {
+            eprintln!("failed to announce the interface scale change: {error}");
+        }
     }
     true
+}
+
+/// Applies the Settings interface scale; the shell calls it on launch and
+/// whenever the preference changes.
+#[tauri::command]
+pub(crate) fn set_interface_scale<R: Runtime>(app: tauri::AppHandle<R>, scale: f64) {
+    if let Some(zoom) = app.try_state::<WindowZoom>() {
+        set_factor(&app, &zoom, normalized_factor(scale));
+    }
 }
 
 /// Re-syncs the shared zoom factor after a page load, so freshly loaded
@@ -92,14 +143,14 @@ pub(crate) fn apply_current_zoom<R: Runtime>(window: &tauri::WebviewWindow<R>) {
     let Some(zoom) = window.app_handle().try_state::<WindowZoom>() else {
         return;
     };
-    let index = *zoom
-        .level_index
+    let factor = *zoom
+        .factor
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if index == DEFAULT_ZOOM_INDEX {
+    if (factor - DEFAULT_ZOOM).abs() < f64::EPSILON {
         return;
     }
-    apply_zoom_to_window(window, ZOOM_LEVELS[index]);
+    apply_zoom_to_window(window, factor);
 }
 
 #[cfg(test)]
@@ -107,12 +158,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_level_is_actual_size() {
-        assert_eq!(ZOOM_LEVELS[DEFAULT_ZOOM_INDEX], 1.0);
-    }
-
-    #[test]
-    fn ladder_is_strictly_increasing() {
+    fn ladder_contains_actual_size_and_is_strictly_increasing() {
+        assert!(ZOOM_LEVELS.contains(&DEFAULT_ZOOM));
         for pair in ZOOM_LEVELS.windows(2) {
             assert!(pair[0] < pair[1]);
         }
@@ -120,46 +167,57 @@ mod tests {
 
     #[test]
     fn zoom_in_steps_up_and_clamps_at_top() {
-        let top = ZOOM_LEVELS.len() - 1;
-        assert_eq!(zoomed_in(0), 1);
-        assert_eq!(zoomed_in(top - 1), top);
-        assert_eq!(zoomed_in(top), top);
+        assert_eq!(zoomed_in(0.5), 0.67);
+        assert_eq!(zoomed_in(2.5), 3.0);
+        assert_eq!(zoomed_in(3.0), 3.0);
     }
 
     #[test]
     fn zoom_out_steps_down_and_clamps_at_bottom() {
-        assert_eq!(zoomed_out(2), 1);
-        assert_eq!(zoomed_out(1), 0);
-        assert_eq!(zoomed_out(0), 0);
+        assert_eq!(zoomed_out(0.75), 0.67);
+        assert_eq!(zoomed_out(0.67), 0.5);
+        assert_eq!(zoomed_out(0.5), 0.5);
+    }
+
+    #[test]
+    fn off_ladder_scales_step_to_the_neighbouring_levels() {
+        assert_eq!(zoomed_in(1.2), 1.25);
+        assert_eq!(zoomed_out(1.2), 1.1);
     }
 
     #[test]
     fn actual_size_returns_to_default_from_either_end() {
         assert_eq!(
-            command_target_index("view.zoom-actual", 0),
-            Some(DEFAULT_ZOOM_INDEX)
+            command_target_factor("view.zoom-actual", MIN_ZOOM),
+            Some(DEFAULT_ZOOM)
         );
         assert_eq!(
-            command_target_index("view.zoom-actual", ZOOM_LEVELS.len() - 1),
-            Some(DEFAULT_ZOOM_INDEX)
+            command_target_factor("view.zoom-actual", MAX_ZOOM),
+            Some(DEFAULT_ZOOM)
         );
     }
 
     #[test]
     fn menu_commands_map_to_their_directions() {
-        assert_eq!(command_target_index("view.zoom-in", 5), Some(6));
-        assert_eq!(command_target_index("view.zoom-out", 5), Some(4));
+        assert_eq!(command_target_factor("view.zoom-in", 1.0), Some(1.1));
+        assert_eq!(command_target_factor("view.zoom-out", 1.0), Some(0.9));
     }
 
     #[test]
     fn round_trip_returns_to_the_starting_level() {
-        let stepped = zoomed_out(zoomed_in(DEFAULT_ZOOM_INDEX));
-        assert_eq!(stepped, DEFAULT_ZOOM_INDEX);
+        assert_eq!(zoomed_out(zoomed_in(DEFAULT_ZOOM)), DEFAULT_ZOOM);
+    }
+
+    #[test]
+    fn settings_scale_is_clamped_to_the_ladder_range() {
+        assert_eq!(normalized_factor(0.1), MIN_ZOOM);
+        assert_eq!(normalized_factor(9.0), MAX_ZOOM);
+        assert_eq!(normalized_factor(f64::NAN), DEFAULT_ZOOM);
     }
 
     #[test]
     fn unrelated_commands_are_ignored() {
-        assert_eq!(command_target_index("view.toggle-sidebar", 3), None);
-        assert_eq!(command_target_index("file.new-window", 0), None);
+        assert_eq!(command_target_factor("view.toggle-sidebar", 1.0), None);
+        assert_eq!(command_target_factor("file.new-window", 1.0), None);
     }
 }

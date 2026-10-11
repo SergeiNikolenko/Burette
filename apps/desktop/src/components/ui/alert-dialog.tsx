@@ -3,6 +3,7 @@ import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { Button, ButtonStyleContext } from "@/components/ui/button"
+import { X } from "@/components/ui/app-icons"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
 import "./dialog-overlay.atlas.css"
 
@@ -51,9 +52,13 @@ function AlertDialogOverlay({
   )
 }
 
+// Atlas ConfirmationDialog: the codex-dialog surface at 380px, a left-aligned
+// heading and the corner close button, which here dismisses as Cancel.
 function AlertDialogContent({
   className,
   size = "default",
+  children,
+  onOpenAutoFocus,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
   size?: "default" | "sm"
@@ -64,13 +69,33 @@ function AlertDialogContent({
       <AlertDialogPrimitive.Content
         data-slot="alert-dialog-content"
         data-size={size}
+        onOpenAutoFocus={event => {
+          onOpenAutoFocus?.(event)
+          // The corner close is also a Cancel; start on the footer's, as Atlas does.
+          const cancel = (event.currentTarget as HTMLElement).querySelector<HTMLElement>('[data-slot="alert-dialog-cancel"]')
+          if (!event.defaultPrevented && cancel) {
+            event.preventDefault()
+            cancel.focus({ preventScroll: true })
+          }
+        }}
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 flex w-full max-w-[min(92vw,420px)] max-h-[calc(100dvh-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-6 overflow-y-auto rounded-[24px] bg-(--color-surface-elevated-secondary) p-8 text-base leading-normal tracking-normal text-(--color-text) [--font-weight-semibold:590] [--font-weight-medium:510] shadow-[0_20px_25px_-5px_#0000001a] outline-none duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 motion-reduce:animate-none!",
-          size === "sm" && "max-w-[min(92vw,380px)]",
+          "fixed top-1/2 left-1/2 z-50 flex w-full max-w-[min(92vw,380px)] max-h-[calc(100dvh-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col gap-3 overflow-y-auto rounded-3xl bg-(--color-surface-elevated-secondary)/90 p-5 text-base leading-normal tracking-normal text-(--color-text) shadow-(--shadow-lg) ring-[0.5px] ring-(--color-border) backdrop-blur-xl outline-none duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 motion-reduce:animate-none!",
           className
         )}
         {...props}
-      />
+      >
+        {children}
+        <AlertDialogPrimitive.Cancel asChild>
+          <button
+            type="button"
+            data-slot="alert-dialog-close"
+            className="absolute top-4 right-4 inline-flex items-center justify-center rounded p-1 text-(--color-text)/80 outline-none hover:bg-(--color-background-primary-ghost-hover) focus-visible:ring-2 focus-visible:ring-(--color-ring)"
+            aria-label="Close dialog"
+          >
+            <X size={16} aria-hidden />
+          </button>
+        </AlertDialogPrimitive.Cancel>
+      </AlertDialogPrimitive.Content>
     </AlertDialogPortal>
   )
 }
@@ -83,7 +108,7 @@ function AlertDialogHeader({
     <div
       data-slot="alert-dialog-header"
       className={cn(
-        "flex flex-col items-start gap-1",
+        "flex flex-col items-start gap-1 self-stretch pe-8",
         className
       )}
       {...props}
@@ -134,7 +159,7 @@ function AlertDialogTitle({
     <AlertDialogPrimitive.Title
       data-slot="alert-dialog-title"
       className={cn(
-        "min-w-0 px-6 text-center text-(length:--text-heading-lg) leading-7 font-semibold",
+        "min-w-0 text-(length:--text-heading-md) leading-7 font-semibold",
         className
       )}
       {...props}

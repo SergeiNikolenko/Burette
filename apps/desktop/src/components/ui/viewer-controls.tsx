@@ -7,6 +7,7 @@ import { Download, Expand as Maximize, Minus, ArrowRotateCw as RotateCw } from "
 import { cn } from "@/lib/utils";
 import type { ViewerDownloadAction } from "@/lib/viewer-download-actions";
 import { Button } from "@/components/ui/button";
+import { ShortcutTooltip } from "@/components/shortcut-tooltip";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -330,16 +331,17 @@ export function ViewerControlButton({
   ...props
 }: React.ComponentProps<typeof Button> & { label: string }) {
   return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      className={cn("size-7", className)}
-      aria-label={label}
-      title={label}
-      {...props}
-    >
-      {children}
-    </Button>
+    <ShortcutTooltip label={label}>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className={cn("size-7", className)}
+        aria-label={label}
+        {...props}
+      >
+        {children}
+      </Button>
+    </ShortcutTooltip>
   );
 }
 
@@ -375,18 +377,19 @@ function ViewerZoomControls({ zoom }: { zoom: ViewerZoomControl }) {
         <Minus />
       </ViewerControlButton>
       {zoom.onReset ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="w-12 text-xs font-normal tabular-nums"
-          aria-label="Reset zoom"
-          title="Reset zoom"
-          onClick={zoom.onReset}
-          disabled={zoom.isDisabled}
-        >
-          {zoom.scale == null ? "Fit" : `${Math.round(zoom.scale * 100)}%`}
-        </Button>
+        <ShortcutTooltip label="Reset zoom">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-12 text-xs font-normal tabular-nums"
+            aria-label="Reset zoom"
+            onClick={zoom.onReset}
+            disabled={zoom.isDisabled}
+          >
+            {zoom.scale == null ? "Fit" : `${Math.round(zoom.scale * 100)}%`}
+          </Button>
+        </ShortcutTooltip>
       ) : (
         <span className="text-muted-foreground w-12 text-center text-xs tabular-nums">
           {zoom.scale == null ? "Fit" : `${Math.round(zoom.scale * 100)}%`}

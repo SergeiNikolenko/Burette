@@ -114,7 +114,7 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
         {error && <p className="text-sm text-(--color-text-danger)" role="alert">{error}</p>}
         <DialogFooter className="gap-2">
           {contents && <span className="mr-auto text-xs text-(--color-text-secondary)" role="status">{selected.size} of {contents.files.length} selected</span>}
-          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
           <Button type="submit" disabled={busy || !contents || !paths.length || paths.length > 200 || !validMode}>
             {busy ? <><Spinner className="size-4" aria-hidden />Opening…</> : `Open${paths.length ? ` ${paths.length}` : ""}`}
           </Button>

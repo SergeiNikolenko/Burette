@@ -2,6 +2,13 @@
 .structure-brief > [data-slot="collapsible-section"] {
   padding-inline: 4px;
 }
+/* The atlas section title is sized for full-width detail pages; a side panel
+   uses the Codex settings section heading instead. */
+.dock-panel [data-slot="section-header"] > span:first-child {
+  font-size: var(--text-base);
+  line-height: 20px;
+  font-weight: 500;
+}
 .structure-brief > .structure-brief-card {
   border: 0;
   border-radius: 0;
@@ -38,6 +45,15 @@
   background: transparent;
 }
 .structure-brief :is(.structure-brief-row, .structure-inspector-xtb-table, .structure-inspector-xtb-runtime) { padding-inline: 0; }
+/* Atlas FileInfoPanel: 13px secondary subheadings over borderless label/value
+   rows; each later group opens with its own rule. */
+.structure-brief .structure-inspector-details-body > .structure-inspector-section-header:not(:first-child) { margin-top: 8px; border-top: 1px solid var(--line-subtle); padding-top: 20px; }
+.structure-brief .structure-inspector-section-header h4 { color: var(--color-text-secondary); font-size: 13px; font-weight: 430; line-height: 18px; }
+.structure-brief .structure-brief-rows { gap: 12px; }
+.structure-brief .structure-brief-row { gap: 12px; padding-block: 0; border-top: 0; }
+.structure-brief .structure-brief-row :is(span, strong) { font-size: 13px; font-weight: 430; line-height: 18px; }
+.structure-brief .structure-brief-row span { color: var(--color-text-secondary); }
+.structure-brief .structure-brief-row strong { color: var(--color-text); text-align: left; }
 .structure-brief-notes span { background: transparent; padding: 4px 0; }
 .structure-brief .structure-brief-action-entry[data-selected="true"] :is(.structure-brief-action-row, .structure-brief-action-summary, .structure-brief-chip-button, .structure-brief-chip-summary) {
   border-color: var(--line-subtle);

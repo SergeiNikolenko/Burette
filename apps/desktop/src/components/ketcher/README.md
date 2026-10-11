@@ -1,6 +1,6 @@
 # Ketcher presentation adapters
 
-`primitives.tsx` maps Ketcher 3.15.0 presentation components to Burette's shared
+`primitives.tsx` maps Ketcher 3.18.0 presentation components to Burette's shared
 shadcn components. `workspace.css` owns the surrounding layout and theme fixes,
 including macromolecule panels and dialogs rendered outside the editor shell.
 
@@ -37,8 +37,8 @@ snapshot with `node scripts/sync-app-icons.mjs`.
 Molecule tool groups have separate primary and dropdown buttons: the primary
 selects the current tool, while a chevron shown on hover or keyboard focus opens alternatives.
 Selecting an option still dispatches the original action. The molecular canvas takes the whole
-area under the action strip; the side rails and the template bar float over it as content-sized
-cards. Side rails use native overflow scrolling,
+area under the action strip; the side rails and the template bar float over it without
+backing cards. Side rails use native overflow scrolling,
 without upstream arrow strips. Check arrow selection and drawing, wheel access
 to both ends of each rail, and clipboard dropdowns after changing these rules.
 
@@ -48,3 +48,17 @@ its header; verify both entry and exit. Molecular selection plates and transform
 handles use neutral theme colors, scoped to the canvas's pinned color markers.
 
 The active Ketcher page portals its Import/Export text controls into the right dock. Import retains automatic format detection and live loading; export subscribes to sketch changes. Close/reopen preserves panel state, and inactive kept-alive pages must not render into the shared dock.
+
+Sketch autosaves belong to their originating tab, on desktop and hosted surfaces.
+The persisted location stores KET alongside MOL so macromolecules, reactions and
+annotations survive restoration. Late exports cannot overwrite a newer snapshot
+or another active tab; autosaves must not re-import themselves into the live
+editor. Run `bun tests/test-ketcher-draft-persistence.mjs` after changing this path.
+
+The 3.18 adapter also routes annotation, import/CDX, periodic table, chemical
+properties, macromolecule library and 3D preview surfaces through shared controls.
+The loader publishes its API after rendering preferences settle. Rendering defaults
+preserve explicit bond sizes; only the complete legacy thin-line signature migrates.
+Canvas replacement retains scoped dark ink and selection styling. The Miew lifecycle
+removes only its own settings listeners on disposal. Validate these through
+`tests/test-ketcher-molecule-3d.mjs` and the browser editor in both themes.

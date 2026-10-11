@@ -1,6 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
-import { ChevronDown, ColorTheme } from "@/components/ui/app-icons";
+import { ChevronDown, GripVertical, SidebarLeft, SidebarRight, ThemeAuto, ThemeDark, ThemeLight } from "@/components/ui/app-icons";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ToolbarButton } from "@/components/ui/toolbar-button";
+import { ShortcutTooltip } from "../shortcut-tooltip";
 import type { ViewerDocument, ViewerPreferences } from "../../types";
 import type { ShellActions } from "../types";
 import { positionMesoscaleControls, requestMesoscale, useMesoscaleStore } from "../../stores/mesoscale-store";
@@ -13,6 +17,8 @@ const GRAPHICS: Array<{ value: MesoscaleGraphicsMode; label: string }> = [
   { value: "balanced", label: "Balanced" },
   { value: "performance", label: "Performance" },
 ];
+
+const THEME_ICONS = { auto: ThemeAuto, light: ThemeLight, dark: ThemeDark };
 
 type ToolbarPosition = { left: number; top: number };
 type ToolbarDrag = { pointerId: number; startX: number; startY: number; left: number; top: number; moved: boolean };
@@ -79,7 +85,9 @@ export function MesoscaleToolbar({ document, actions, preferences }: { document:
   const [collapsed, setCollapsed] = useState(readToolbarCollapsed);
   const [position, setPosition] = useState<ToolbarPosition | null>(readToolbarPosition);
   const nextTheme = preferences.theme === "auto" ? "light" : preferences.theme === "light" ? "dark" : "auto";
-  const themeLabel = `Theme: ${preferences.theme === "auto" ? "Auto (system)" : preferences.theme}. Switch to ${nextTheme}`;
+  const themeLabel = `Switch to ${nextTheme === "auto" ? "system" : nextTheme} theme`;
+  const ThemeIcon = THEME_ICONS[preferences.theme];
+  const graphics = session?.summary?.graphics ?? "balanced";
   const disabled = !session || session.status === "loading" || session.status === "disposed";
   const run = (action: Parameters<typeof requestMesoscale>[1]) => void requestMesoscale(document.id, action).catch(() => undefined);
   const toggleRegion = (region: "left" | "right") => run({
@@ -214,57 +222,51 @@ export function MesoscaleToolbar({ document, actions, preferences }: { document:
   return (
     <div ref={toolbarRef} style={toolbarStyle} className={`mesoscale-toolbar${collapsed ? " collapsed" : ""}`} role="toolbar" aria-label="Mesoscale preview controls">
       <div className="mesoscale-toolbar-content">
-        <button
-          type="button"
-          className={`mesoscale-toolbar-letter${session?.summary?.layout.left ? " active" : ""}`}
-          disabled={disabled}
-          aria-pressed={session?.summary?.layout.left ?? false}
-          onClick={() => toggleRegion("left")}
-          title="Toggle Mol* left object tree"
-          aria-label="Toggle Mol* left object tree"
-        >L</button>
-        <button
-          type="button"
-          className={`mesoscale-toolbar-letter${session?.summary?.layout.right ? " active" : ""}`}
-          disabled={disabled}
-          aria-pressed={session?.summary?.layout.right ?? false}
-          onClick={() => toggleRegion("right")}
-          title="Toggle Mol* right properties panel"
-          aria-label="Toggle Mol* right properties panel"
-        >R</button>
-        <label className="mesoscale-toolbar-select">
-          <span className="sr-only">Graphics quality</span>
-          <select
-            value={session?.summary?.graphics ?? "balanced"}
-            disabled={disabled}
-            onChange={(event) => run({ type: "setGraphics", graphics: event.target.value as MesoscaleGraphicsMode })}
-          >
-            {GRAPHICS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </select>
-          <ChevronDown size={13} aria-hidden="true" />
-        </label>
-        <button
-          type="button"
-          className="mesoscale-toolbar-theme"
-          aria-label={themeLabel}
-          title={themeLabel}
-          onClick={() => actions.setPreference("theme", nextTheme)}
-        ><ColorTheme size={17} aria-hidden="true" /></button>
+        <ShortcutTooltip label="Scene tree">
+          <ToolbarButton disabled={disabled} selected={session?.summary?.layout.left ?? false} aria-label="Scene tree" onClick={() => toggleRegion("left")}>
+            <SidebarLeft aria-hidden />
+          </ToolbarButton>
+        </ShortcutTooltip>
+        <ShortcutTooltip label="Properties">
+          <ToolbarButton disabled={disabled} selected={session?.summary?.layout.right ?? false} aria-label="Properties" onClick={() => toggleRegion("right")}>
+            <SidebarRight aria-hidden />
+          </ToolbarButton>
+        </ShortcutTooltip>
+        <DropdownMenu>
+          <ShortcutTooltip label="Graphics quality">
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="toolbar" className="mesoscale-toolbar-graphics" disabled={disabled} aria-label="Graphics quality">
+                {GRAPHICS.find((item) => item.value === graphics)?.label}
+                <ChevronDown aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+          </ShortcutTooltip>
+          <DropdownMenuContent align="end">
+            <DropdownMenuRadioGroup value={graphics} onValueChange={(value) => run({ type: "setGraphics", graphics: value as MesoscaleGraphicsMode })}>
+              {GRAPHICS.map((item) => <DropdownMenuRadioItem key={item.value} value={item.value}>{item.label}</DropdownMenuRadioItem>)}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <ShortcutTooltip label={themeLabel}>
+          <ToolbarButton aria-label={themeLabel} onClick={() => actions.setPreference("theme", nextTheme)}>
+            <ThemeIcon aria-hidden />
+          </ToolbarButton>
+        </ShortcutTooltip>
       </div>
-      <button
-        type="button"
-        className="mesoscale-toolbar-grip"
-        aria-label={collapsed ? "Expand viewer toolbar" : "Collapse viewer toolbar"}
-        title={`${collapsed ? "Expand controls" : "Collapse controls"} · drag to move`}
-        aria-expanded={!collapsed}
-        onPointerDown={onGripPointerDown}
-        onPointerMove={onGripPointerMove}
-        onPointerUp={finishGripDrag}
-        onPointerCancel={cancelGripDrag}
-        onClick={toggleCollapsed}
-      >
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor" /></svg>
-      </button>
+      <ShortcutTooltip label={collapsed ? "Expand controls" : "Collapse controls"}>
+        <ToolbarButton
+          className="mesoscale-toolbar-grip"
+          aria-label={collapsed ? "Expand viewer toolbar" : "Collapse viewer toolbar"}
+          aria-expanded={!collapsed}
+          onPointerDown={onGripPointerDown}
+          onPointerMove={onGripPointerMove}
+          onPointerUp={finishGripDrag}
+          onPointerCancel={cancelGripDrag}
+          onClick={toggleCollapsed}
+        >
+          <GripVertical aria-hidden />
+        </ToolbarButton>
+      </ShortcutTooltip>
       <MesoscaleViewportRail document={document} hidden={collapsed} />
     </div>
   );

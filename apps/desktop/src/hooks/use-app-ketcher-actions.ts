@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 
-import type { KetcherImportRequest, KetcherSketchRequest, StatusKind } from "../components/types";
+import type { KetcherDraftRequest, KetcherImportRequest, KetcherSketchRequest, StatusKind } from "../components/types";
 import type { KetcherLocation } from "../components/editor-area/page-kinds/ketcher";
 import { browserDevComputeReportDocument, runBrowserDevSemiempirical } from "../lib/browser-dev-compute";
 import { appendToBrowserDevCollection, generateBrowserDev3DConformer, openBrowserDevTextDocument, readBrowserDevVirtualTextDocument } from "../lib/browser-dev-documents";
@@ -82,12 +82,13 @@ export function useAppKetcherActions({
   const [ketcherImportRequest, setKetcherImportRequest] = useState<KetcherImportRequest | null>(null);
   const [ketcherDraftMolfile, setKetcherDraftMolfile] = useState("");
   const ketcherImportSequenceRef = useRef(0);
-  const saveKetcherDraft = useCallback((molfile: string) => {
+  const saveKetcherDraft = useCallback(({ tabId, molfile, ket }: KetcherDraftRequest) => {
+    // Exports can finish after a tab switch or close. Never target activeTabId.
+    if (!useMoleculeStore.getState().tabs.some(tab => tab.id === tabId && tab.location.kind === "ketcher")) return;
     setKetcherDraftMolfile(molfile);
-    if (!window.BuretteMcpWorkspace) return;
     useMoleculeStore.setState(current => ({ tabs: current.tabs.map(tab => (
-      tab.id === current.activeTabId && tab.location.kind === "ketcher"
-        ? { ...tab, location: { ...tab.location, draftMolfile: molfile } }
+      tab.id === tabId && tab.location.kind === "ketcher"
+        ? { ...tab, location: { ...tab.location, draftMolfile: molfile, draftKet: ket } }
         : tab
     )) }));
   }, []);

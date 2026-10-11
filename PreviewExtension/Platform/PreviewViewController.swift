@@ -2276,62 +2276,36 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let denseMode = graph.nodes.count > 12
         let edges = graph.edges.compactMap { edge -> String? in
             guard let source = nodeByID[edge.source], let target = nodeByID[edge.target] else { return nil }
-            let score = edge.score.map { "score: " + String(format: "%.3f", $0) } ?? ""
-            let labelX = (source.x + target.x) / 2
-            let labelY = (source.y + target.y) / 2
-            if denseMode || score.isEmpty {
-                return """
-                <line x1="\(source.x)" y1="\(source.y)" x2="\(target.x)" y2="\(target.y)" />
-                """
-            }
             return """
             <line x1="\(source.x)" y1="\(source.y)" x2="\(target.x)" y2="\(target.y)" />
-            <text class="edge-score" x="\(labelX)" y="\(labelY)">\(escapeHTML(score))</text>
+            """
+        }.joined(separator: "\n")
+        // Score pills sit on the edge midpoints, as on the app's network page.
+        let edgeLabels = denseMode ? "" : graph.edges.compactMap { edge -> String? in
+            guard let source = nodeByID[edge.source], let target = nodeByID[edge.target], let score = edge.score else { return nil }
+            return """
+            <span class="edge-score" style="left:\((source.x + target.x) / 2)%;top:\((source.y + target.y) / 2)%"><span>Score</span>\(String(format: "%.2f", score))</span>
             """
         }.joined(separator: "\n")
         let nodes = graph.nodes.enumerated().map { index, node -> String in
             if denseMode {
                 let label = graph.nodes.count <= 24 || index < 8 ? escapeHTML(shortGraphMLLabel(node.label)) : ""
-                let score = node.dockingScore.map { String(format: "%.2f", $0) } ?? "n/a"
                 return """
                 <article class="node-dot" style="left:\(node.x)%;top:\(node.y)%" title="\(escapeHTML(node.label))">
                   <i></i>
                   <span>\(label)</span>
-                  <em>\(escapeHTML(score))</em>
                 </article>
                 """
             }
-            let score = node.dockingScore.map { String(format: "%.2f", $0) } ?? "n/a"
-            let moleculeBlock = node.atoms > 0
-                ? """
-                  <div class="node-molecule" data-node-id="\(escapeHTML(node.id))"><span>Rendering molecule</span></div>
-                """
-                : """
-                  <div class="node-summary"><span>Network node</span></div>
-                """
-            let moleculeFooter = node.atoms > 0
-                ? """
-                    <span>\(node.heavyAtoms)/\(node.atoms) atoms</span>
-                    <span>\(node.bonds) bonds - score \(escapeHTML(score))</span>
-                """
-                : """
-                    <span>edge-list node</span>
-                    <span>score \(escapeHTML(score))</span>
-                """
+            let moleculeID = node.atoms > 0 ? " data-node-id=\"\(escapeHTML(node.id))\"" : ""
+            let score = node.dockingScore.map { "<span class=\"node-score\" title=\"Docking score\">\(String(format: "%.2f", $0))</span>" } ?? ""
             return """
-            <article class="node-card" style="left:\(node.x)%;top:\(node.y)%">
-              <strong>\(escapeHTML(shortGraphMLLabel(node.label)))</strong>
-              \(moleculeBlock)
-              <footer>
-                \(moleculeFooter)
-              </footer>
+            <article class="node-card" style="left:\(node.x)%;top:\(node.y)%" title="\(escapeHTML(node.label))">
+              <div class="node-molecule"\(moleculeID)></div>
+              <footer><span>\(escapeHTML(shortGraphMLLabel(node.label)))</span>\(score)</footer>
             </article>
             """
         }.joined(separator: "\n")
-        let scoreValues = graph.edges.compactMap { $0.score }
-        let scoreSummary = scoreValues.isEmpty
-            ? "scores unavailable"
-            : "\(scoreValues.count) scored edges, min \(String(format: "%.2f", scoreValues.min() ?? 0)), max \(String(format: "%.2f", scoreValues.max() ?? 0))"
         let bodyClass = denseMode ? "dense-network" : "card-network"
         let safeTitle = escapeHTML(title)
         return """
@@ -2341,47 +2315,34 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <meta http-equiv="Content-Security-Policy" content="\(gridRuntimeCSP)" />
-          <title>Burette FEP Network - \(safeTitle)</title>
+          <title>\(safeTitle)</title>
           <style>
-            html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#f8fafc;color:#172033}
-            body{font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-            .wrap{position:relative;width:100%;height:100%;box-sizing:border-box;background:#f8fafc}
-            header{position:absolute;z-index:3;left:0;right:0;top:0;min-height:58px;box-sizing:border-box;padding:10px 14px;display:flex;justify-content:space-between;gap:16px;align-items:center;border-bottom:1px solid rgba(23,32,51,.12);background:rgba(248,250,252,.94)}
-            h1{font-size:13px;line-height:1.2;margin:0;font-weight:600;max-width:62%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-            h1 span{display:block;color:#64748b;font-size:11px;font-weight:500;text-transform:uppercase}
-            .meta{color:#475569;text-align:right;line-height:1.35}
-            .meta small{display:block;color:#64748b}
-            .stage{position:absolute;inset:58px 0 0;background:linear-gradient(rgba(100,116,139,.10) 1px,transparent 1px),linear-gradient(90deg,rgba(100,116,139,.10) 1px,transparent 1px),#f8fafc;background-size:32px 32px}
-            svg{position:absolute;inset:0;width:100%;height:100%}
-            line{stroke:#af52de;stroke-width:.42;stroke-linecap:round;stroke-opacity:.62}
-            .edge-score{font-size:3px;fill:#334155;paint-order:stroke;stroke:#f8fafc;stroke-width:1.1px}
-            .node-card{position:absolute;z-index:2;width:clamp(142px,24vw,188px);min-height:126px;transform:translate(-50%,-50%);box-sizing:border-box;padding:9px 10px;border:1px solid rgba(175,82,222,.22);border-radius:8px;background:rgba(255,255,255,.96);box-shadow:0 8px 22px rgba(15,23,42,.12)}
-            .node-card strong{display:block;font-size:12px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-            .node-card footer{display:grid;gap:3px;margin-top:4px}
-            .node-card span{display:block;color:#475569;font-size:10px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-            .node-molecule{height:76px;margin-top:5px;border-radius:6px;background:rgba(248,250,252,.86);display:grid;place-items:center;overflow:hidden}
-            .node-molecule svg{position:static;width:100%;height:100%;display:block}
-            .node-molecule span{margin:0;color:#94a3b8;font-size:10px}
-            .node-summary{height:76px;margin-top:5px;border-radius:6px;background:rgba(248,250,252,.86);display:grid;place-items:center;overflow:hidden}
-            .node-summary span{color:#64748b;font-size:11px}
-            .node-dot{position:absolute;z-index:2;transform:translate(-50%,-50%);display:grid;justify-items:center;gap:3px;color:#172033}
-            .node-dot i{display:block;width:12px;height:12px;border-radius:50%;box-sizing:border-box;border:2px solid #f8fafc;background:#af52de;box-shadow:0 0 0 1px rgba(175,82,222,.26),0 5px 12px rgba(15,23,42,.18)}
-            .node-dot span{display:block;max-width:84px;padding:2px 5px;border-radius:6px;background:rgba(255,255,255,.86);font-size:10px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-            .node-dot em{display:none}
-            .dense-network line{stroke-width:.34;stroke-opacity:.5}
-            .dense-network .stage{background-size:28px 28px}
+            :root{color-scheme:light dark;--bg:light-dark(#ffffff,#181818);--text:light-dark(#1a1c1f,#ffffff);--text-secondary:light-dark(rgb(26 28 31 / .65),rgb(255 255 255 / .65));--paper:light-dark(#ffffff,#1b1b1b);--card-line:light-dark(#d4d4d4,#404040);--edge:light-dark(#8f8f8f,#8a8a8a);--atom-nitrogen:light-dark(#2f4fd8,#7da2ff)}
+            html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--text)}
+            body{font:13px/18px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+            .stage{position:absolute;inset:24px}
+            .edges{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+            line{stroke:var(--edge);stroke-width:2;stroke-linecap:round;vector-effect:non-scaling-stroke}
+            .dense-network line{stroke-width:1.5}
+            .edge-score{position:absolute;z-index:3;transform:translate(-50%,-50%);padding:3px 9px;border:1px solid var(--card-line);border-radius:999px;background:var(--bg);font-size:12px;font-weight:500;line-height:16px;font-variant-numeric:tabular-nums;white-space:nowrap}
+            .edge-score span{margin-right:5px;color:var(--text-secondary);font-weight:400}
+            .node-card{position:absolute;z-index:2;width:clamp(160px,22vw,232px);transform:translate(-50%,-50%);box-sizing:border-box;display:grid;grid-template-rows:auto 36px;overflow:hidden;border:1px solid var(--card-line);border-radius:12px;background:var(--paper);box-shadow:0 1px 3px rgb(0 0 0 / .1)}
+            .node-molecule{aspect-ratio:232/150;display:grid;place-items:center;overflow:hidden;color:var(--text);background:var(--paper)}
+            .node-molecule svg{display:block;width:100%;height:100%}
+            .node-card footer{min-width:0;padding:0 12px;display:flex;align-items:center;gap:8px;font-weight:500;white-space:nowrap}
+            .node-card footer span:first-child{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis}
+            .node-score{color:var(--text-secondary);font-weight:400;font-variant-numeric:tabular-nums}
+            .node-dot{position:absolute;z-index:2;transform:translate(-50%,-50%);display:grid;justify-items:center;gap:4px}
+            .node-dot i{display:block;width:10px;height:10px;border-radius:50%;background:var(--text);box-shadow:0 0 0 2px var(--bg)}
+            .node-dot span{max-width:96px;padding:2px 6px;border-radius:6px;background:var(--bg);font-size:11px;line-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+            .node-dot span:empty{display:none}
           </style>
         </head>
         <body>
-          <main class="wrap \(bodyClass)">
-            <header>
-              <h1><span>FEP Network</span>\(safeTitle)</h1>
-              <div class="meta">\(graph.nodes.count) ligands - \(graph.edges.count) transformations<small>\(escapeHTML(scoreSummary))</small></div>
-            </header>
-            <section class="stage" aria-label="FEP ligand network">
-              <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">\(edges)</svg>
-              \(nodes)
-            </section>
+          <main class="stage \(bodyClass)" aria-label="FEP ligand network">
+            <svg class="edges" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">\(edges)</svg>
+            \(edgeLabels)
+            \(nodes)
           </main>
           <script src="preview-rdkit-wasm.js"></script>
           <script src="../assets/rdkit/RDKit_minimal.js"></script>
@@ -2421,14 +2382,16 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
                   mol = rdkit.get_mol(String(entry.molblock || ''));
                   if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
                   try { mol.set_new_coords?.(); } catch (_) {}
-                  const svg = sanitizeSVG(mol.get_svg(190, 110));
+                  // RDKit draws in fixed colours; swap them for the theme, as the app does.
+                  const svg = sanitizeSVG(String(mol.get_svg(464, 300) || '')
+                    .replace(/#FFFFFF/gi, 'var(--paper)')
+                    .replace(/#000000/gi, 'currentColor')
+                    .replace(/#(?:0000FF|3333FF)/gi, 'var(--atom-nitrogen)'));
                   if (!svg) throw new Error('empty drawing');
                   target.replaceChildren(svg);
                   rendered += 1;
-                } catch (error) {
-                  const span = document.createElement('span');
-                  span.textContent = error?.message || 'Molecule unavailable';
-                  target.replaceChildren(span);
+                } catch (_) {
+                  target.replaceChildren();
                 } finally {
                   try { mol?.delete?.(); } catch (_) {}
                 }

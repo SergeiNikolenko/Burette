@@ -118,7 +118,7 @@ export function CalculatePropertiesDialog({
           <span className="mr-auto text-xs text-(--color-text-secondary) tabular-nums" role="status">
             {selectedCount.toLocaleString()} propert{selectedCount === 1 ? "y" : "ies"} selected{mordred ? " + extended descriptors" : ""}
           </span>
-          <Button type="button" variant="ghost" onClick={onDismiss}>Cancel</Button>
+          <Button type="button" variant="secondary" onClick={onDismiss}>Cancel</Button>
           <Button type="button" disabled={selectedCount === 0 && !mordred} onClick={run}>Calculate</Button>
         </DialogFooter>
       </DialogContent>

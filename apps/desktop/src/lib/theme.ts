@@ -1,6 +1,6 @@
 import { useSyncExternalStore, type CSSProperties } from "react";
 import type { ViewerPreferences } from "../types";
-import { buildCodexThemeVariables, CODEX_DEFAULT_THEME, type CodexTheme } from "./codex-theme";
+import { buildCodexThemeVariables, codexAccent, codexThemeFromTokens, type CodexTheme } from "./codex-theme";
 
 export type ThemeMode = "light" | "dark";
 
@@ -68,27 +68,8 @@ export function readThemeTokens(preferences: ViewerPreferences, mode: ThemeMode)
   };
 }
 
-// Appearance values saved before the Codex theme. A field still holding one of
-// these was never customized, so it follows the Codex default instead.
-const LEGACY_DEFAULTS: Record<ThemeMode, CodexTheme> = {
-  light: { accent: "#af52de", surface: "#ffffff", ink: "#0d0d0d", contrast: 20 },
-  dark: { accent: "#af52de", surface: "#111111", ink: "#fcfcfc", contrast: 16 },
-};
-
 export function resolveAppearanceTheme(preferences: ViewerPreferences, mode: ThemeMode): CodexTheme {
-  const tokens = readThemeTokens(preferences, mode);
-  const legacy = LEGACY_DEFAULTS[mode];
-  const fallback = CODEX_DEFAULT_THEME[mode];
-  const color = (value: string, key: "accent" | "surface" | "ink") => {
-    const normalized = value.trim().toLowerCase();
-    return /^#[0-9a-f]{6}$/.test(normalized) && normalized !== legacy[key] ? normalized : fallback[key];
-  };
-  return {
-    accent: color(tokens.accent, "accent"),
-    surface: color(tokens.background, "surface"),
-    ink: color(tokens.foreground, "ink"),
-    contrast: tokens.contrast === legacy.contrast ? fallback.contrast : clamp(tokens.contrast, 0, 100),
-  };
+  return codexThemeFromTokens(readThemeTokens(preferences, mode), mode);
 }
 
 // The viewer frames derive their chrome from these colours, so they get the
@@ -97,6 +78,26 @@ export function readPreviewThemeTokens(preferences: ViewerPreferences, mode: The
   const tokens = readThemeTokens(preferences, mode);
   const codex = resolveAppearanceTheme(preferences, mode);
   return { ...tokens, accent: codex.accent, background: codex.surface, foreground: codex.ink, contrast: codex.contrast };
+}
+
+export function viewerAppearanceMessage(preferences: ViewerPreferences) {
+  return {
+    type: "setViewerTheme" as const,
+    value: preferences.theme,
+    themeTokens: { light: readPreviewThemeTokens(preferences, "light"), dark: readPreviewThemeTokens(preferences, "dark") },
+    canvasBackground: preferences.canvasBackground,
+  };
+}
+
+export function previewBackgroundStyle(preferences: ViewerPreferences): string {
+  const background = (mode: ThemeMode) => {
+    const selected = preferences.canvasBackground;
+    return selected === "auto" ? readPreviewThemeTokens(preferences, mode).background
+      : selected === "transparent" ? "transparent"
+      : selected === "white" ? "#ffffff" : selected === "graphite" ? "#111111" : "#000000";
+  };
+  return `html{color-scheme:${preferences.theme === "auto" ? "light dark" : preferences.theme};background:${background(preferences.theme === "light" ? "light" : "dark")}}body{background:inherit}`
+    + (preferences.theme === "auto" ? `@media(prefers-color-scheme:light){html{background:${background("light")}}}` : "");
 }
 
 export function buildThemeStyle(preferences: ViewerPreferences, systemThemeMode?: ThemeMode): CSSProperties {
@@ -108,7 +109,7 @@ export function buildThemeStyle(preferences: ViewerPreferences, systemThemeMode?
   // Burette's semantic names resolve to Codex tokens (styles/codex-tokens.css).
   const style = {
     ...buildCodexThemeVariables(codex, mode),
-    "--accent": codex.accent,
+    "--accent": codexAccent(codex, mode),
     "--bg-base": codex.surface,
     "--fg-base": codex.ink,
     "--ui-font": tokens.uiFont,

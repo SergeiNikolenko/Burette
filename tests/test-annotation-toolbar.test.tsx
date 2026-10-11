@@ -14,8 +14,8 @@ test('annotation entry remains visibly labelled before activation', () => {
   const html = renderToStaticMarkup(<AnnotateToggle />);
   expect(html).toContain('<span>Annotate</span>');
   expect(html).toContain('aria-pressed="false"');
-  expect(html).toContain('Annotate this page');
-  expect(html).toContain('⌘.');
+  // The hint and its ⌘. shortcut live in the shared floating tooltip.
+  expect(html).toContain('data-tooltip-trigger=""');
 });
 test('reference toolbar keeps its controls in order, with an explicit zero count', () => {
   workspace(); useAnnotationStore.getInitialState().active = true; useAnnotationStore.setState({ active: true });

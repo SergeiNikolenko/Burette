@@ -152,7 +152,8 @@ pub(crate) fn durable_semiempirical_request(
             },
         },
         execution_policy: ExecutionPolicy {
-            backend_policy: BackendPolicy::GpuRequired,
+            backend_policy: crate::commands::app_preferences::compute_backend()
+                .apply(BackendPolicy::GpuRequired),
             scheduling_policy: SchedulingPolicy::Throughput,
         },
         limits: AnalysisResourceLimits {

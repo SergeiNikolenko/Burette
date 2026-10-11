@@ -17,11 +17,9 @@ import viewportToolbar from "./viewer-viewport-toolbar.css" with { type: "text" 
 import tooltipStyles from "../components/ui/tooltip.css" with { type: "text" };
 import { buttonPressScale } from "../components/ui/button-press-scale";
 import behavior from "./viewer-atlas-menu.css" with { type: "text" };
-import { buildCodexThemeVariables, CODEX_DEFAULT_THEME } from "../lib/codex-theme";
+import { buildCodexThemeVariables, codexThemeFromTokens, type CodexThemeTokens } from "../lib/codex-theme";
 
-type ThemeTokens = Partial<Record<"light" | "dark", {
-  accent?: string; background?: string; foreground?: string; contrast?: number;
-}>>;
+type ThemeTokens = Partial<Record<"light" | "dark", CodexThemeTokens>>;
 
 // The standalone viewer has no Tailwind layers or shell stylesheet. Scope the
 // original tokens to the popup and use the same Menu stylesheet, unlayered.
@@ -98,14 +96,6 @@ export function styleViewerSurface(menu: HTMLElement, themeTokens: ThemeTokens |
   }
   menu.classList.add("buret-atlas-surface");
   menu.dataset.effectiveTheme = mode;
-  const input = themeTokens?.[mode];
-  const defaults = CODEX_DEFAULT_THEME[mode];
-  const color = (value: string | undefined, fallback: string) => value && /^#[0-9a-f]{6}$/i.test(value) ? value : fallback;
-  const variables = buildCodexThemeVariables({
-    accent: color(input?.accent, defaults.accent),
-    surface: color(input?.background, defaults.surface),
-    ink: color(input?.foreground, defaults.ink),
-    contrast: Number.isFinite(input?.contrast) ? Math.min(100, Math.max(0, input!.contrast!)) : defaults.contrast,
-  }, mode);
+  const variables = buildCodexThemeVariables(codexThemeFromTokens(themeTokens?.[mode], mode), mode);
   for (const [name, value] of Object.entries(variables)) menu.style.setProperty(name, value);
 }

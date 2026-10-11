@@ -27,9 +27,23 @@ import {
   type SettingRow,
 } from "./setting-control";
 import { KeyboardShortcutsSection } from "./keyboard-shortcuts-section";
-import { ThemesSection } from "./themes-section";
+import { AppearanceSettings } from "./themes-section";
+import { ViewerDefaultsSection } from "./viewer-defaults-section";
+import { JobsSettingsSections, restoreSessionRow, useMaintenanceCacheRows } from "./app-settings-sections";
 
 const defaultRendererModeOptions: Array<ViewerPreferences["rendererMode"]> = ["auto", "molstar", "xyzrender-external"];
+const structureStyleLabels: Record<ViewerPreferences["molstarStyle"], string> = {
+  default: "Standard",
+  illustrative: "Illustrative",
+  "illustrative-surface": "Illustrative surface",
+  "polymer-ligand": "Polymer and ligand",
+  cartoon: "Cartoon",
+  "ball-and-stick": "Ball and stick",
+  spacefill: "Spacefill",
+  line: "Lines",
+  "molecular-surface": "Molecular surface",
+};
+const structureStyleOptions = Object.keys(structureStyleLabels) as Array<ViewerPreferences["molstarStyle"]>;
 type SettingsPanelLocation = { kind: "settings"; section: AppSettingsSectionId };
 type OpenInDefaultDestination = ViewerPreferences["openInDefaultDestination"];
 type OpenDestinationOption = {
@@ -77,6 +91,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
       (openInDefaultDestination) => actions.setPreference("openInDefaultDestination", openInDefaultDestination),
     ),
   ], [actions, openDestinationTargets, preferences.openInDefaultDestination]);
+  const maintenanceCacheRows = useMaintenanceCacheRows(actions.clearCache);
 
   const updateRows: SettingRow[] = [
     {
@@ -108,7 +123,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
     updateRows.push(actionRow(
       "Available release",
       update.availableRelease.installAsset ? update.availableRelease.installAsset.name : "Current " + CURRENT_VERSION + ", latest " + update.availableRelease.tagName,
-      update.availableRelease.installAsset ? (update.isInstalling ? "Installing..." : "Install and Restart") : "Open Release Page",
+      update.availableRelease.installAsset ? (update.isInstalling ? "Installing..." : "Install and restart") : "Open release page",
       update.availableRelease.installAsset ? () => void actions.installUpdate() : () => void actions.openUpdateRelease(),
       update.isInstalling,
     ));
@@ -124,27 +139,18 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
             <>
               <h1>{settingsSectionLabel(section)}</h1>
               {section === "general" ? (
-                <SettingsSection title="Work mode" rows={openDestinationRows} />
+                <SettingsSection title="Work mode" rows={[...openDestinationRows, restoreSessionRow(preferences, actions.setPreference)]} />
               ) : null}
               {section === "appearance" ? (
-                <>
-                  <SettingsSection
-                    title="Display"
-                    rows={[
-                      preferenceRow<"theme">("Theme", "", preferences.theme, ["auto", "light", "dark"], defaultPreferences.theme, (theme) => actions.setPreference("theme", theme), { auto: "System", light: "Light", dark: "Dark" }),
-                      preferenceRow<"canvasBackground">("Canvas", "", preferences.canvasBackground, ["auto", "black", "graphite", "white", "transparent"], defaultPreferences.canvasBackground, (canvasBackground) => actions.setPreference("canvasBackground", canvasBackground), { auto: "Match theme", black: "Black", graphite: "Graphite", white: "White", transparent: "Transparent" }),
-                    ]}
-                  />
-                  <ThemesSection preferences={preferences} actions={actions} />
-                </>
+                <AppearanceSettings preferences={preferences} actions={actions} />
               ) : null}
               {section === "keyboard" ? <KeyboardShortcutsSection /> : null}
               {section === "structure" ? (
                 <SettingsSection
-                  title="Structure Rendering"
+                  title="Structure rendering"
                   rows={[
                     preferenceRow<"rendererMode">("Mode", "Preferred renderer for direct previews. Files opened normally use Auto; use Open As to choose a renderer for one file.", preferences.rendererMode, defaultRendererModeOptions, defaultPreferences.rendererMode, (rendererMode) => actions.setPreference("rendererMode", rendererMode), { auto: "Auto", molstar: "Interactive 3D", "xyzrender-external": "3D render" }),
-                    preferenceRow<"molstarStyle">("Mol* appearance", "Default lighting and outline appearance for the Mol* renderer.", preferences.molstarStyle, ["default", "illustrative"], defaultPreferences.molstarStyle, (molstarStyle) => actions.setPreference("molstarStyle", molstarStyle), { default: "Standard", illustrative: "Illustrative" }),
+                    preferenceRow<"molstarStyle">("Default style", "Representation and lighting used when a structure opens.", preferences.molstarStyle, structureStyleOptions, defaultPreferences.molstarStyle, (molstarStyle) => actions.setPreference("molstarStyle", molstarStyle), structureStyleLabels),
                     {
                       label: "Desktop preview limit",
                       description: "Maximum source file size the desktop app opens in the structure viewer.",
@@ -169,41 +175,42 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                   ]}
                 />
               ) : null}
+              {section === "structure" ? <ViewerDefaultsSection preferences={preferences} actions={actions} /> : null}
+              {section === "jobs" ? <JobsSettingsSections preferences={preferences} actions={actions} /> : null}
               {section === "xtb" ? (
                 <>
                   <SettingsSection
-                    title="xTB Runtime"
+                    title="xTB runtime"
                     rows={[
                       actionRow(
                         "Status",
-                        state.xtbStatus?.installed ? `Ready${state.xtbStatus.version ? ` · ${state.xtbStatus.version}` : ""}` : state.xtbStatus?.installHint ?? "xTB status has not been checked.",
+                        // xtb --version is a banner with the build host; show the number only.
+                        state.xtbStatus?.installed ? ["Ready", state.xtbStatus.version?.match(/\d+(?:\.\d+)+/u)?.[0]].filter(Boolean).join(" · ") : state.xtbStatus?.installHint ?? "xTB status has not been checked.",
                         "Check",
                         () => void actions.checkXtbStatus(),
                       ),
                       actionRow(
                         "Executable",
-                        state.xtbStatus?.executablePath
-                          ? `${state.xtbStatus.executablePath}${state.xtbStatus.source ? ` · ${state.xtbStatus.source}` : ""}`
-                          : "No xTB executable found.",
-                        "Use Existing…",
+                        state.xtbStatus?.executablePath ?? "No xTB executable found.",
+                        "Use existing…",
                         () => void actions.chooseXtbExecutable(),
                       ),
                       actionRow(
                         "Selection",
                         state.xtbStatus?.selectedExecutablePath ? "An explicit executable is selected." : "Burette is discovering xTB automatically.",
-                        "Use Automatically",
+                        "Use automatically",
                         () => void actions.clearXtbExecutableSelection(),
                         !state.xtbStatus?.selectedExecutablePath,
                       ),
                       actionRow(
-                        "Managed Runtime",
+                        "Managed runtime",
                         "Install xTB in an isolated Burette environment.",
-                        "Install Managed",
+                        "Install managed",
                         () => void actions.installXtb(),
                       ),
                       actionRow(
                         "Runs",
-                        state.xtbStatus?.installer ? `Runtime source: ${state.xtbStatus.source ?? state.xtbStatus.installer}` : "Open recent and active xTB jobs.",
+                        "Open recent and active xTB jobs.",
                         "Jobs",
                         () => {
                           actions.openDockTab("bottom", "jobs");
@@ -214,7 +221,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                     ]}
                   />
                   <SettingsSection
-                    title="Calculation Defaults"
+                    title="Calculation defaults"
                     rows={xtbSettingsRows(state.xtbSettings, actions.setXtbSettings)}
                   />
                 </>
@@ -223,7 +230,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
               {section === "connections" ? <SshConnections /> : null}
               {section === "workspace" ? (
                 <SettingsSection
-                  title="Files and Projects"
+                  title="Files and projects"
                   rows={[
                     actionRow("Project folder", state.workspacePath ?? "No active project folder.", "Open", () => void actions.openWorkspaceFolder(), !state.workspacePath),
                     actionRow("Add project folder", "Choose a folder to show in the sidebar project list.", "Choose", () => void actions.chooseWorkspace()),
@@ -239,7 +246,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                     actionRow("Logs", "Open the Quick Look extension log folder.", "Open", () => void actions.openLogs()),
                     actionRow("Diagnostics", "Export logs, environment, size report, performance marks, and recent errors.", "Export", () => void actions.exportDiagnostics()),
                     actionRow("Runtime doctor", "Check external runtime availability for molecular workflows.", "Run", () => void actions.runExternalRuntimeDoctor()),
-                    actionRow("Preview cache", "Delete generated viewer runtimes except shared assets.", "Clear", () => void actions.clearCache(), false, true),
+                    ...maintenanceCacheRows,
                   ]}
                 />
               ) : null}
@@ -436,13 +443,15 @@ function OpenDestinationControl({
       items={items}
       trigger={(
         <Button variant="outline" size="settings" className="settings-open-destination-trigger" aria-label="Default open destination">
-          {selected.iconUrl ? (
-            <img className="settings-open-destination-icon" src={selected.iconUrl} width={16} height={16} alt="" aria-hidden="true" />
-          ) : (
-            <span className="settings-open-destination-icon" aria-hidden="true">{selected.iconText}</span>
-          )}
-          <span>{selected.label}</span>
-          <ChevronDown size={16} aria-hidden />
+          <span className="settings-open-destination-value">
+            {selected.iconUrl ? (
+              <img className="settings-open-destination-icon" src={selected.iconUrl} width={18} height={18} alt="" aria-hidden="true" />
+            ) : (
+              <span className="settings-open-destination-icon" aria-hidden="true">{selected.iconText}</span>
+            )}
+            <span className="truncate">{selected.label}</span>
+          </span>
+          <ChevronDown size={14} aria-hidden />
         </Button>
       )}
     />

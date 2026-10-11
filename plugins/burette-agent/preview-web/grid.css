@@ -44,12 +44,12 @@
      mix over the table surface, so one definition serves both themes. */
   --buret-table-row-hover: color-mix(in srgb, var(--buret-accent) 7%, var(--buret-table-surface));
   --buret-table-row-selected: color-mix(in srgb, var(--buret-accent) 14%, var(--buret-table-surface));
-  --buret-picture-bg: #ffffff;
-  --buret-picture-bg-soft: #ffffff;
+  --buret-picture-bg: transparent;
+  --buret-picture-bg-soft: transparent;
   --buret-card-effective-min: var(--buret-card-auto-min);
   --buret-card-gap: clamp(5px, calc(var(--buret-card-effective-min) * 0.06), 12px);
   --buret-card-auto-min: clamp(136px, 18vw, 190px);
-  --buret-card-min: clamp(calc((100% - (var(--buret-card-gap) * 29)) / 30), var(--buret-card-auto-min), calc((100% - (var(--buret-card-gap) * 2)) / 3));
+  --buret-card-min: clamp(calc((100% - (var(--buret-card-gap) * 29)) / 30), var(--buret-card-auto-min), max(min(136px, 100%), calc((100% - (var(--buret-card-gap) * 2)) / 3)));
   --buret-picture-min-height: clamp(136px, 18vw, 190px);
   --buret-drawing-max-width: 100%;
   --buret-drawing-max-height: 100%;
@@ -650,6 +650,13 @@ button:where(:not(.atlas-button, .atlas-menu-item)):disabled {
   padding-inline: var(--buret-grid-content-padding-inline);
 }
 
+/* A chosen card size is the card's width: stretching 1fr tracks would hold
+   the size still and then jump whenever the column count changes mid-drag. */
+body.buret-grid-manual-size:not([data-buret-grid-view-mode="table"]) .buret-grid {
+  grid-template-columns: repeat(auto-fill, min(var(--buret-card-min), 100%));
+  justify-content: start;
+}
+
 /* A floored grid spills under the floating right dock. Cards have no
    horizontal scroll, so they lay out in the strip the dock leaves exposed;
    the table keeps spilling and scrolls its columns out from under it. */
@@ -933,7 +940,7 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
    spectrum peak table's row-state language on top. */
 .buret-grid-table {
   width: max-content;
-  min-width: 0;
+  min-width: 100%;
   border: 1px solid var(--buret-border);
   border-collapse: separate;
   border-spacing: 0;
@@ -961,6 +968,13 @@ body[data-buret-grid-view-mode="table"] .buret-grid {
 .buret-grid-table td {
   background: var(--buret-table-surface);
   transition: background 120ms ease-out;
+}
+
+.buret-grid-table :is(th, td).buret-grid-table-fill {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  padding: 0;
 }
 
 /* Keep the vertical position stable when structural columns leave the window. */
@@ -2030,6 +2044,14 @@ body.buret-grid-rail-dragging .buret-grid-rail-tick-pill {
   object-fit: contain;
 }
 
+/* Change only neutral ink/background, never element or highlight colours.
+   Table drawings keep their paper: small tiles lose hydrogens and line weight
+   when recoloured onto the dark surface. */
+.buret-theme-dark svg[data-buret-rdkit-svg]:not(:is(.buret-grid-table-molecule, .buret-grid-table-molecule-popover-image, .buret-grid-table-fragment) svg) > rect[style*="fill:#FFFFFF"] { fill: transparent !important; }
+.buret-theme-dark svg[data-buret-rdkit-svg]:not(:is(.buret-grid-table-molecule, .buret-grid-table-molecule-popover-image, .buret-grid-table-fragment) svg) [style*="stroke:#000000"] { stroke: var(--buret-text) !important; }
+.buret-theme-dark svg[data-buret-rdkit-svg]:not(:is(.buret-grid-table-molecule, .buret-grid-table-molecule-popover-image, .buret-grid-table-fragment) svg) :is([style*="fill:#000000"], [fill="#000000"]) { fill: var(--buret-text) !important; }
+.buret-theme-dark :is(.buret-grid-table-molecule, .buret-grid-table-molecule-popover-image, .buret-grid-table-fragment) { background: #ffffff; }
+
 .buret-molecule-picture img.buret-rdkit-card-image,
 .buret-molecule-picture img.buret-xyzrender-card-image {
   display: block;
@@ -2463,22 +2485,35 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
 }
 .buret-actionbar .ab-actions-menu { margin-left: auto; }
 
-/* Size against the exposed strip, not the iframe hidden beneath a dock. */
+/* Keep controls in one scrollable row in a narrow dock, not a tall tower. The
+   end padding lets the last control scroll clear of the edge fade. */
 
 @container grid-controls (max-width: 420px) {
   #grid-controls .buret-toolbar-row-main {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+@container grid-controls (max-width: 640px) {
   #grid-controls .buret-toolbar-row-view {
     gap: 4px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-block: 3px;
+    padding-inline-end: 24px;
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
   }
+  #grid-controls .buret-toolbar-row-view > * { flex-shrink: 0; }
+  /* The row scrolls, so the segmented track keeps its width instead of being
+     capped to the visible strip by its own max-width. */
+  #grid-controls .buret-toolbar-row-view > .atlas-segmented-control { max-width: none; }
   #grid-controls .ab-menu-wrap {
-    margin-left: auto;
+    margin-left: 0;
   }
   #grid-controls .buret-selection-actions {
-    order: 1;
-    flex-basis: 100%;
-    flex-wrap: wrap;
+    order: 0;
+    flex-basis: auto;
+    flex-wrap: nowrap;
   }
   #grid-controls .buret-selection-count {
     min-width: 0;

@@ -24,7 +24,7 @@ export function SceneNameDialog({ document, onClose }: { document: ViewerDocumen
           <Input variant="field" name="sceneName" autoComplete="off" aria-label="Scene name" value={name} maxLength={200} onChange={event => setName(event.target.value)} />
         </label>
         <DialogFooter>
-          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
           <Button type="submit" disabled={!name.trim()}>Rename</Button>
         </DialogFooter>
       </form>

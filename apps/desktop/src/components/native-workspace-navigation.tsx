@@ -5,6 +5,7 @@ import type { ShellActions, ShellViewState } from "./types";
 import { AnimatedOrbitIcon } from "./ui/animated-icons";
 import { SidebarLeft } from "./ui/app-icons";
 import { Button } from "./ui/button";
+import { ShortcutTooltip } from "./shortcut-tooltip";
 
 type Props = { state: ShellViewState; actions: ShellActions };
 
@@ -51,8 +52,8 @@ export function NativeWorkspaceMenu({ state, actions, sidebarVisible, onToggleSi
     {onToggleSidebar ? <button type="button" className="workspace-file-icon-button workspace-file-pill"
       aria-label={sidebarVisible ? "Hide workspace navigation" : "Show workspace navigation"}
       aria-pressed={sidebarVisible} onClick={onToggleSidebar}><SidebarLeft size={18} aria-hidden /></button> : null}
-    {!onToggleSidebar ? <RadixDropdownMenu items={items} align="start" trigger={<button type="button" className="workspace-file-icon-button workspace-file-pill"
-      aria-label="Workspace pages" title="Workspace navigation"><SidebarLeft size={18} aria-hidden /></button>} /> : null}
+    {!onToggleSidebar ? <RadixDropdownMenu items={items} align="start" trigger={<ShortcutTooltip label="Workspace pages"><button type="button" className="workspace-file-icon-button workspace-file-pill"
+      aria-label="Workspace pages"><SidebarLeft size={18} aria-hidden /></button></ShortcutTooltip>} /> : null}
   </div>;
 }
 

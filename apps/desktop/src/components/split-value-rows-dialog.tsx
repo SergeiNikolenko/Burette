@@ -60,7 +60,7 @@ export function SplitValueRowsDialog({
               onChange={event => setDelimiter(event.target.value)} />
           </label>
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onDismiss}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={onDismiss}>Cancel</Button>
             <Button type="submit" disabled={!ready}>Split</Button>
           </DialogFooter>
         </form>

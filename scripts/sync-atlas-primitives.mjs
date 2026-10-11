@@ -1,6 +1,7 @@
 // Extract original component modules, not hand-maintained approximations.
 // node scripts/sync-atlas-primitives.mjs --atlas /path/to/InterfaceAtlas
 // Add --check to verify source fidelity without rewriting generated modules.
+// Sheets come from the Codex 26.1007 snapshot that the theme tokens and glyphs use.
 import { readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -9,21 +10,23 @@ import { createHash } from 'node:crypto';
 const index = process.argv.indexOf('--atlas');
 const check = process.argv.includes('--check');
 const atlas = index < 0 ? join(homedir(), 'Documents/Projects/InterfaceAtlas') : process.argv[index + 1];
-const shared = 'app-shared-342447930c78.css';
+const snapshot = 'snapshot-26.1007';
+const shared = 'app-shared-9a94b907ed47.css';
+const initial = 'app-initial-99e8b4b455fa.css';
 const modules = [
-  { name: 'command', sheet: 'app-initial-e55cd978d577.css', bounds: ['.command-menu-dialog{'], names: {
+  { name: 'command', sheet: initial, bounds: ['.command-menu-dialog{'], names: {
     'global-command-menu-dialog': 'atlas-command-dialog-global',
     'command-menu-dialog': 'atlas-command-dialog',
     '--codex-window-zoom': '--window-zoom',
   } },
-  { name: 'dialog-overlay', sheet: shared, bounds: ['._dimmedOverlay_12rau_2{', '._imageOverlay_12rau_2:'], names: {
-    _dimmedOverlay_12rau_2: 'atlas-dialog-dimmed-overlay',
+  { name: 'dialog-overlay', sheet: shared, bounds: ['._dimmedOverlay_1eyrb_2{', '._chatgptConfirmationSurface_1eyrb_2{'], names: {
+    _dimmedOverlay_1eyrb_2: 'atlas-dialog-dimmed-overlay',
   } },
-  { name: 'slider', sheet: 'SegmentedControl-1b0cd2c8f252.css', bounds: ['._Slider_pudb7_1{', '._SliderLabel_pudb7_78{'], names: {
+  { name: 'slider', sheet: 'SegmentedControl-c7b6717dfc2d.css', bounds: ['._Slider_pudb7_1{', '._SliderLabel_pudb7_78{'], names: {
     _Slider_pudb7_1: 'atlas-slider', _Track_pudb7_32: 'atlas-slider-track',
     _Range_pudb7_41: 'atlas-slider-range', _Thumb_pudb7_49: 'atlas-slider-thumb',
   } },
-  { name: 'select-menu', sheet: 'SegmentedControl-1b0cd2c8f252.css', bounds: ['._MenuList_1rueu_8{', '@media (hover:hover) and (pointer:fine){._SliderWrap'], names: {
+  { name: 'select-menu', sheet: 'SegmentedControl-c7b6717dfc2d.css', bounds: ['._MenuList_1rueu_8{', '@media (hover:hover) and (pointer:fine){._SliderWrap'], names: {
     _MenuList_1rueu_8: 'atlas-select-menu', _Menu_1rueu_4: 'atlas-select-transition',
     _MenuInner_1rueu_57: 'atlas-select-menu-inner', _OptionsList_1rueu_74: 'atlas-select-options',
     _Option_1rueu_74: 'atlas-select-option', _PressableInner_1rueu_132: 'atlas-select-pressable',
@@ -37,7 +40,7 @@ const modules = [
     '[data-selected]': '[data-state=checked]', '[data-highlight]': '[data-highlighted]',
     '--radix-popover': '--radix-select',
   } },
-  { name: 'select', sheet: 'DatePicker-c4bc775bfdef.css', bounds: ['._SelectControl_1qm03_1{', '._CalendarContainer_1gw5r_1{'], names: {
+  { name: 'select', sheet: 'DatePicker-916e4078b8cc.css', bounds: ['._SelectControl_1qm03_1{', '._CalendarContainer_zxknp_1{'], names: {
     _SelectControl_1qm03_1: 'atlas-select', _Clear_1qm03_488: 'atlas-select-clear',
     _DropdownIcon_1qm03_489: 'atlas-select-icon', _TriggerText_1qm03_525: 'atlas-select-text',
     _IndicatorWrapper_1qm03_535: 'atlas-select-indicator', _StartIcon_1qm03_543: 'atlas-select-start-icon',
@@ -48,7 +51,7 @@ const modules = [
     _Button_eg66f_2: 'atlas-button', _ButtonInner_eg66f_2: 'atlas-button-inner', _ButtonLoader_eg66f_2: 'atlas-button-loader',
     '[data-variant': '[data-atlas-variant', '[data-size': '[data-atlas-size',
   } },
-  { name: 'checkbox', sheet: 'checkbox-a29fd55a92ab.css', names: {
+  { name: 'checkbox', sheet: initial, bounds: ['._Container_1mw3n_2{', '._InlineCodePane_1ozha_2{'], names: {
     _Container_1mw3n_2: 'atlas-checkbox-container', _Checkbox_1mw3n_2: 'atlas-checkbox',
     _CheckMark_1mw3n_2: 'atlas-checkbox-mark', _Label_1mw3n_2: 'atlas-checkbox-label',
   } },
@@ -64,16 +67,16 @@ const modules = [
   { name: 'tooltip', sheet: shared, bounds: ['._Tooltip_1cofb_2{', '._TriggerDecorator_1cofb_2{'], names: {
     _Tooltip_1cofb_2: 'atlas-tooltip',
   } },
-  { name: 'input', sheet: 'app-initial-e55cd978d577.css', bounds: ['._numberField_1jhuu_11{', '._banner_iwyc9_1{'], names: {
+  { name: 'input', sheet: initial, bounds: ['._numberField_1jhuu_11{', '._composer_hs61p_1{'], names: {
     _numberField_1jhuu_11: 'atlas-input-number',
   } },
-  { name: 'toast', sheet: shared, bounds: ['._toast_zsre1_1{', '._background_18gud_1{'], names: {
+  { name: 'toast', sheet: shared, bounds: ['._toast_zsre1_1{', '._background_1u6c1_1,'], names: {
     _toast_zsre1_1: 'atlas-toast-item', _contents_zsre1_7: 'atlas-toast-contents',
     _alert_zsre1_11: 'atlas-toast', _chatgptSuccess_zsre1_19: 'atlas-toast-success',
   } },
 ];
 for (const { name, sheet, bounds, names } of modules) {
-  const source = await readFile(join(atlas, 'snapshot/assets', sheet), 'utf8');
+  const source = await readFile(join(atlas, snapshot, 'assets', sheet), 'utf8');
   const start = bounds ? source.indexOf(bounds[0]) : 0;
   const end = bounds?.[1] ? source.indexOf(bounds[1], start) : source.length;
   if (start < 0 || end < 0) throw new Error(`Expected Atlas ${name} module not found`);
@@ -90,7 +93,7 @@ for (const { name, sheet, bounds, names } of modules) {
   css = css.replaceAll('}', '}\n');
   if (bounds) css = `@layer components {\n${css}}\n`;
   const output = `/* Generated by scripts/sync-atlas-primitives.mjs. Do not edit.
- * Source: InterfaceAtlas snapshot/assets/${sheet}, ${name} module.
+ * Source: InterfaceAtlas ${snapshot}/assets/${sheet}, ${name} module.
  * Source module SHA-256: ${digest}
  * Only class/keyframe names and Burette's mapped attributes differ.
  */\n@layer theme, base, components, utilities;\n${css}`;

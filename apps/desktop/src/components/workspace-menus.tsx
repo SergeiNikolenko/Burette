@@ -76,32 +76,37 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
     const compatible = paths.length > 1 && scenePaths.length === paths.length;
     const openFolder = (mode: string) => () => setBatch({ path, mode });
     const pinned = state.sidebarProjects.some(project => project.rootPath === path && project.isPinned);
-    return menuSections(
-      submenu("folder-open", "Open", [
-        item("open-folder", "In Tabs…", openFolder("tabs")),
-        ...(isTauriRuntime() ? [item("open-window", "In New Window…", openFolder("window"))] : []),
-        ...(scenePaths.length > 1 && scenePaths.length <= 200 ? [item("open-together", "In One Scene",
+    // Codex groups a row menu by intent (open/create, edit the row, remove) and
+    // separates only the groups, never single commands.
+    return menuSections([
+      ...submenu("folder-open", "Open", [
+        item("open-folder", "In tabs…", openFolder("tabs")),
+        ...(isTauriRuntime() ? [item("open-window", "In new window…", openFolder("window"))] : []),
+        ...(scenePaths.length > 1 && scenePaths.length <= 200 ? [item("open-together", "In one scene",
           () => actions.openDockingDocument(scenePaths[0], scenePaths.slice(1), { sceneMode: "structureAll" }))] : []),
         ...(compatible ? [
           ...(paths.every(path => fileCapabilities(path).protein) ? [item("open-aligned", "Aligned…", openFolder("aligned"))] : []),
-          ...(paths.every(path => fileCapabilities(path).poses) ? [item("open-poses", "As Poses…", openFolder("poses"))] : [])] : []),
-        ...submenu("add-scene", "Add to Scene", workflows.sceneTargets(paths).map((target, index) => item(`add-scene-${index}`, target.title, openFolder(`scene:${target.id}`)))),
+          ...(paths.every(path => fileCapabilities(path).poses) ? [item("open-poses", "As poses…", openFolder("poses"))] : [])] : []),
+        ...submenu("add-scene", "Add to scene", workflows.sceneTargets(paths).map((target, index) => item(`add-scene-${index}`, target.title, openFolder(`scene:${target.id}`)))),
         item("folder-finder", "Finder", () => actions.revealPath(path, "folder"))
       ], "arrow.up.forward"),
-      [root ? item("rename-project", "Rename Label…", rename) : disk.find(entry => "id" in entry && entry.id === "rename-folder")].filter((entry): entry is MenuItemSpec => Boolean(entry)),
-      [item("pin-folder", pinned ? "Unpin" : "Pin", () => actions.togglePinnedProjectRoot(path))],
-      submenu("folder-new", "New", [...disk.filter(entry => "id" in entry && entry.id === "new-folder"), item("new-molecule", "Molecule", actions.openKetcher)]),
-      submenu("folder-copy", "Copy", [item("copy-folder-name", "Name", () => workflows.copyNames([path])), item("copy-folder-path", "Path", () => actions.copyPath(path, "folder"))]),
-      [item("refresh-folder", "Refresh", refresh)],
-      root ? [item("remove-project", "Remove from Sidebar", () => actions.removeProjectRoot(path))]
-        : disk.filter(entry => "id" in entry && entry.id === "trash-folder"),
+      ...submenu("folder-new", "New", [...disk.filter(entry => "id" in entry && entry.id === "new-folder"), item("new-molecule", "Molecule", actions.openKetcher)]),
+    ], [
+      ...disk.filter(entry => "id" in entry && entry.id === "rename-folder"),
+      ...(root ? [item("rename-project", "Rename sidebar label…", rename)] : []),
+      item("pin-folder", pinned ? "Unpin" : "Pin", () => actions.togglePinnedProjectRoot(path)),
+      ...submenu("folder-copy", "Copy", [item("copy-folder-name", "Name", () => workflows.copyNames([path])), item("copy-folder-path", "Path", () => actions.copyPath(path, "folder"))]),
+      item("refresh-folder", "Refresh", refresh),
+    ],
+      [...(root ? [item("remove-project", "Remove from sidebar", () => actions.removeProjectRoot(path))] : []),
+        ...disk.filter(entry => "id" in entry && entry.id === "trash-folder")],
     );
   };
-  const scene: Menus["scene"] = document => workflows.isCombinedScene(document) ? [
+  const scene: Menus["scene"] = document => document.renderer === "molstar" ? [
     menuItem("rename-scene", "Rename…", () => setRenamingScene(document)),
-    menuItem("save-scene", "Save Scene…", run(() => workflows.saveScene(document))),
+    menuItem("save-scene", "Save scene…", run(() => workflows.saveScene(document))),
     // The whole scene, with everything added to it, joins the target; the target can then join another scene.
-    ...submenu("merge-scene", "Add to Scene", workflows.mergeTargets(document).map((target, index) =>
+    ...submenu("merge-scene", "Add to scene", workflows.mergeTargets(document).map((target, index) =>
       menuItem(`merge-scene-${index}`, target.title, run(() => workflows.mergeScene(document, target))))),
   ] : [];
   const select: Menus["select"] = (path, event) => {

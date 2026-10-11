@@ -48,7 +48,9 @@
   padding: 0;
   border: 0;
 }
-.buret-animation-section > .atlas-segmented-control { align-self: flex-start; }
+/* Each choice row spans the popover in equal segments, like Codex settings rows. */
+.buret-animation-section > .atlas-segmented-control { display: flex; align-self: stretch; }
+.buret-animation-section > .atlas-segmented-control > .atlas-segmented-control-item { flex: 1 1 0; min-width: 0; }
 .buret-animation-panel .atlas-slider-thumb:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 2px; }
 .buret-animation-section legend { padding: 0 0 8px; font-weight: 500; }
 .buret-animation-slider-label { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; }

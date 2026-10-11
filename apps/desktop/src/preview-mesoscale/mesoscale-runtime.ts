@@ -52,6 +52,8 @@ type MesoscaleConfig = {
   sourceExtension?: string;
   uiMode?: "hosted" | "standalone" | "diagnostic";
   theme?: "auto" | "dark" | "light";
+  themeTokens?: Partial<Record<"light" | "dark", { background?: string }>>;
+  canvasBackground?: "auto" | "black" | "graphite" | "white" | "transparent";
 };
 
 type AgentAction = {
@@ -1349,13 +1351,19 @@ function resolveViewerTheme(theme: MesoscaleConfig["theme"]) {
 
 function applyViewerTheme(runtime: MesoscaleRuntimeApi, theme: MesoscaleConfig["theme"]) {
   const resolved = resolveViewerTheme(theme);
+  // The scene sits on the app's own surface, as the structure viewer's canvas does.
+  const themed = window.BuretteConfig?.themeTokens?.[resolved]?.background;
+  const canvas = window.BuretteConfig?.canvasBackground;
+  const themeBackground = themed && /^#[0-9a-f]{6}$/iu.test(themed) ? themed : resolved === "light" ? "#ffffff" : "#181818";
+  const background = canvas === "black" ? "#000000" : canvas === "graphite" ? "#111111" : canvas === "white" ? "#ffffff" : themeBackground;
   document.documentElement.dataset.buretteTheme = resolved;
+  document.documentElement.style.backgroundColor = canvas === "transparent" ? "transparent" : background;
   document.body?.classList.toggle("buret-theme-light", resolved === "light");
   document.body?.classList.toggle("buret-theme-dark", resolved === "dark");
-  document.body?.style.setProperty("background-color", resolved === "light" ? "#ffffff" : "#101010");
+  document.body?.style.setProperty("background-color", canvas === "transparent" ? "transparent" : background);
   runtime.plugin.canvas3d?.setProps({
-    transparentBackground: false,
-    renderer: { backgroundColor: Color(resolved === "light" ? 0xffffff : 0x101010) },
+    transparentBackground: canvas === "transparent",
+    renderer: { backgroundColor: Color(Number.parseInt(background.slice(1), 16)) },
   });
   runtime.plugin.canvas3d?.requestDraw();
 }
@@ -1374,8 +1382,8 @@ function applyBuretteSelectionAppearance(runtime: MesoscaleRuntimeApi) {
     },
     marking: {
       enabled: true,
-      highlightEdgeColor: Color(0xaf52de),
-      selectEdgeColor: Color(0xaf52de),
+      highlightEdgeColor: Color(0x3a83f7),
+      selectEdgeColor: Color(0x3a83f7),
       highlightEdgeStrength: 1,
       selectEdgeStrength: 0.85,
       ghostEdgeStrength: 0.25,
@@ -1808,8 +1816,13 @@ function installActionBridge(runtime: MesoscaleRuntimeApi) {
       return;
     }
     if (envelope?.source === "burette-host" && envelope.body?.type === "setViewerTheme") {
+      if (event.source !== window.parent) return;
       const theme = String(envelope.body.value || "auto") as MesoscaleConfig["theme"];
-      if (window.BuretteConfig) window.BuretteConfig.theme = theme;
+      if (window.BuretteConfig) {
+        window.BuretteConfig.theme = theme;
+        if (envelope.body.themeTokens && typeof envelope.body.themeTokens === "object") window.BuretteConfig.themeTokens = envelope.body.themeTokens;
+        if (["auto", "black", "graphite", "white", "transparent"].includes(envelope.body.canvasBackground)) window.BuretteConfig.canvasBackground = envelope.body.canvasBackground;
+      }
       applyViewerTheme(runtime, theme);
       return;
     }

@@ -1010,7 +1010,7 @@ assert.match(quickLookPreviewController, /<script src="\.\.\/assets\/rdkit\/RDKi
 assert.match(quickLookPreviewController, /rdkit\.get_mol\(String\(entry\.molblock \|\| ''\)\)/);
 assert.match(quickLookPreviewController, /mol\.set_new_coords\?\.\(\)/);
 assert.match(quickLookPreviewController, /rdkitImages: rdkitImages/);
-assert.match(quickLookPreviewController, /score: " \+ String\(format: "%\.3f", \$0\)/);
+assert.match(quickLookPreviewController, /<span>Score<\/span>\\\(String\(format: "%\.2f", score\)\)/);
 assert.match(quickLookPreviewController, /shouldUseTextArtifactPreview\(url: URL, fileExtension: String, previewPlan: BurettePreviewPlan\?\)/);
 assert.match(quickLookPreviewController, /private static func isPreferredTextArtifact\(url: URL\) -> Bool \{[\s\S]*url\.lastPathComponent\.lowercased\(\) == "log\.lammps"/);
 assert.match(quickLookPreviewController, /detected\.previewMode=text-artifact/);
@@ -1192,14 +1192,18 @@ assertSourceIncludesAll(nativeMenuSource, [
   'file.close-tab',
   'file.close-other-tabs',
   'file.close-all-tabs',
+  'file.reopen-closed-tab',
   'file.close-window',
   'edit.menu',
   'edit.undo-grid',
   'edit.redo-grid',
   'edit.find',
+  'view.navigate-back',
+  'view.navigate-forward',
   'view.toggle-sidebar',
   'view.toggle-inspector',
   'view.toggle-bottom-panel',
+  'view.toggle-side-panel',
   'view.grid-cards',
   'view.grid-table',
   'view.grid-properties',
@@ -1277,6 +1281,8 @@ assertSourceIncludesAll(menuEvents, [
   'file.open-clipboard',
   'file.close-other-tabs',
   'file.close-all-tabs',
+  'file.reopen-closed-tab',
+  'view.toggle-side-panel',
   'edit.undo-grid',
   'edit.redo-grid',
   'edit.find',
@@ -1345,6 +1351,18 @@ for (const [id, accelerator] of [
   assertMenuItemAccelerator(nativeMenuSource, id, accelerator);
 }
 assert.match(menuEvents, /crate::zoom::handle_menu_command/);
+// Settings > Keyboard shortcuts: every customizable menu row in the shared
+// registry names a real menu item and repeats its build-time default, and the
+// runtime override command is registered and permitted.
+const shortcutRegistrySource = await source('apps/desktop/src/lib/keyboard-shortcuts.ts');
+const registryMenuShortcuts = [...shortcutRegistrySource.matchAll(/\{ id: "([^"]+)",[^\n]*scope: "menu", defaultAccelerator: "([^"]+)" \}/g)];
+assert.ok(registryMenuShortcuts.length >= 20, 'shortcut registry must list the native menu accelerators');
+for (const [, id, accelerator] of registryMenuShortcuts) {
+  assertMenuItemAccelerator(nativeMenuSource, id, accelerator.replaceAll('\\\\', '\\'));
+}
+assert.match(menu, /pub\(crate\) fn set_menu_accelerators/);
+assert.match(lib, /menu::set_menu_accelerators,/);
+assert.match(await source('apps/desktop/src-tauri/permissions/burette.toml'), /"set_menu_accelerators"/);
 assert.doesNotMatch(nativeMenuSource, /accelerator\("CmdOrCtrl\+Shift\+N"\)/);
 assert.match(nativeMenuSource, /accelerator\("CmdOrCtrl\+P"\)/);
 assert.doesNotMatch(nativeMenuSource, /accelerator\("CmdOrCtrl\+U"\)/);

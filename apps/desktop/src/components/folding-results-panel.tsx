@@ -2,11 +2,14 @@ import { Spinner } from "@/components/ui/spinner";
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { CollapsibleSection } from "./ui/collapsible-section";
+import { PanelEmptyState } from "./ui/panel-empty-state";
+import { FileBlank, Warning } from "./ui/app-icons";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { hasFoldingResultContent, readFoldingResultBundle } from "../lib/folding-results";
 import { readStructureText } from "../lib/structure-text";
 import type { FoldingArtifact, FoldingMatrixPreview, FoldingModel, FoldingProfile, FoldingResultBundle, ViewerDocument } from "../types";
 import { formatBytes } from "./format";
+import { ShortcutTooltip } from "./shortcut-tooltip";
 import type { ShellActions } from "./types";
 
 type FoldingResultState = {
@@ -194,18 +197,18 @@ export function FoldingResultsPanel({ state, actions }: { state: FoldingResultSt
                 <strong>Artifacts</strong>
                 <div>
                   {activeModel.artifacts.slice(0, 12).map((artifact) => (
-                    <Button
-                      key={artifact.path}
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="min-w-0 max-w-full justify-start"
-                      title={`${artifact.title} · ${formatBytes(artifact.byteCount)}`}
-                      onClick={() => openFoldingArtifact(artifact, actions)}
-                    >
-                      <span>{artifactKindLabel(artifact.kind)}</span>
-                      <span className="truncate">{artifact.title}</span>
-                    </Button>
+                    <ShortcutTooltip key={artifact.path} label={`${artifact.title} (${formatBytes(artifact.byteCount)})`}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="min-w-0 max-w-full justify-start"
+                        onClick={() => openFoldingArtifact(artifact, actions)}
+                      >
+                        <span>{artifactKindLabel(artifact.kind)}</span>
+                        <span className="truncate">{artifact.title}</span>
+                      </Button>
+                    </ShortcutTooltip>
                   ))}
                 </div>
               </div>
@@ -273,14 +276,14 @@ export function FoldingAnalysisPanel({ document, actions }: { document: ViewerDo
   if (state.error) {
     return (
       <div className="dock-content dock-content-empty">
-        <div className="dock-empty dock-empty-large">Folding results failed to load</div>
+        <PanelEmptyState title="Couldn’t load folding results" icon={<Warning />} />
       </div>
     );
   }
   if (!bundle || !activeModel) {
     return (
       <div className="dock-content dock-content-empty">
-        <div className="dock-empty dock-empty-large">Open a folding result model to inspect PAE</div>
+        <PanelEmptyState title="Open a folding model to inspect PAE" icon={<FileBlank />} />
       </div>
     );
   }

@@ -9,7 +9,6 @@
     border: 1px solid var(--color-border-primary-outline);
     background: var(--color-background-page-search);
   }
-  .atlas-search-input:focus-within { outline: 2px solid var(--color-ring); }
   .atlas-search-input[data-disabled] { opacity: .5; }
   .atlas-search-input > svg { flex-shrink: 0; width: 16px; height: 16px; color: var(--color-text-secondary); }
   .atlas-search-input > input {

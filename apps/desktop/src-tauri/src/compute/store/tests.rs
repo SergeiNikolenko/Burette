@@ -241,6 +241,12 @@ fn compare_and_swap_allows_only_one_concurrent_cancellation() {
         test.store.purge_job(MAIN_WINDOW_LABEL, snapshot.job_id),
         Err(ComputeCoordinatorError::Forbidden(_))
     ));
+    assert_eq!(
+        test.store
+            .prune_finished_jobs(1_000_000)
+            .expect("history pruning keeps jobs with artifacts"),
+        0
+    );
     let connection = Connection::open(test.store.database_path()).expect("open compute database");
     connection
         .execute(
@@ -249,6 +255,12 @@ fn compare_and_swap_allows_only_one_concurrent_cancellation() {
         )
         .expect("simulate coordinated artifact cleanup");
     drop(connection);
+    assert_eq!(
+        test.store
+            .prune_finished_jobs(120)
+            .expect("history pruning keeps jobs finished at the cutoff"),
+        0
+    );
     test.store
         .purge_job(MAIN_WINDOW_LABEL, snapshot.job_id)
         .expect("purge terminal job");

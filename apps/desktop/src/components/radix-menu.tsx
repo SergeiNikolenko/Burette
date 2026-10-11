@@ -32,6 +32,7 @@ import { ScrubNumberField } from "@/components/ui/scrub-number-input";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import type { MenuItemSpec } from "./menu-types";
+import { formatAccelerator } from "../lib/keyboard-shortcuts";
 import { HugeiconsIcon } from "@hugeicons/react";
 import * as appIconData from "./ui/app-icon-data";
 import { AppImageIcon } from "./ui/app-image-icon";
@@ -172,7 +173,7 @@ function renderDropdownItem(item: MenuItemSpec, index: number) {
         onCheckedChange={(checked) => item.action?.(checked === true)}
       >
         {renderItemBody(item)}
-        {item.accelerator ? <DropdownMenuShortcut>{item.accelerator}</DropdownMenuShortcut> : null}
+        {item.accelerator ? <DropdownMenuShortcut>{formatAccelerator(item.accelerator)}</DropdownMenuShortcut> : null}
       </DropdownMenuCheckboxItem>
     );
   }
@@ -198,7 +199,7 @@ function renderDropdownItem(item: MenuItemSpec, index: number) {
       onSelect={() => item.action?.()}
     >
       {renderItemBody(item)}
-      {item.accelerator ? <DropdownMenuShortcut>{item.accelerator}</DropdownMenuShortcut> : null}
+      {item.accelerator ? <DropdownMenuShortcut>{formatAccelerator(item.accelerator)}</DropdownMenuShortcut> : null}
     </DropdownMenuItem>
   );
 }
@@ -220,7 +221,7 @@ function renderContextItem(item: MenuItemSpec, index: number) {
         onCheckedChange={(checked) => item.action?.(checked === true)}
       >
         {renderItemBody(item)}
-        {item.accelerator ? <ContextMenuShortcut>{item.accelerator}</ContextMenuShortcut> : null}
+        {item.accelerator ? <ContextMenuShortcut>{formatAccelerator(item.accelerator)}</ContextMenuShortcut> : null}
       </ContextMenuCheckboxItem>
     );
   }
@@ -246,7 +247,7 @@ function renderContextItem(item: MenuItemSpec, index: number) {
       onSelect={() => item.action?.()}
     >
       {renderItemBody(item)}
-      {item.accelerator ? <ContextMenuShortcut>{item.accelerator}</ContextMenuShortcut> : null}
+      {item.accelerator ? <ContextMenuShortcut>{formatAccelerator(item.accelerator)}</ContextMenuShortcut> : null}
     </ContextMenuItem>
   );
 }
@@ -256,23 +257,7 @@ function renderContextItem(item: MenuItemSpec, index: number) {
 // They stop selection and keypresses from reaching the menu instead.
 function renderControl(item: Extract<MenuItemSpec, { kind: "swatches" | "select" | "number" | "text" }>) {
   const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
-  if (item.kind === "swatches") {
-    return (
-      <div key={item.id} className="radix-menu-swatches" onKeyDown={stop}>
-        {item.colors.map((color) => (
-          <button
-            key={color}
-            type="button"
-            className="radix-menu-swatch"
-            data-active={item.activeColor === color || undefined}
-            style={{ background: color }}
-            aria-label={item.label ? `${item.label}: ${color}` : color}
-            onClick={(event) => { stop(event); item.action?.(color); }}
-          />
-        ))}
-      </div>
-    );
-  }
+  if (item.kind === "swatches") return <RadixMenuSwatches key={item.id} item={item} />;
   // The menu's items are a snapshot taken when it opened, so a controlled value
   // would spring back to that snapshot on every keystroke even though the write
   // succeeded. These seed from the current value and then keep what is typed.
@@ -288,6 +273,9 @@ function renderControl(item: Extract<MenuItemSpec, { kind: "swatches" | "select"
           onClick={stop}
           onChange={(event) => item.action?.(event.currentTarget.value)}
         >
+          {/* An action picker such as "Add" has no current value: name the choice
+              instead of rendering an empty control. */}
+          {!item.options.includes(item.value) && <option value={item.value} disabled>Choose…</option>}
           {item.options.map((option) => (
             <option key={option} value={option}>{item.optionLabels?.[option] ?? option}</option>
           ))}
@@ -314,6 +302,59 @@ function renderControl(item: Extract<MenuItemSpec, { kind: "swatches" | "select"
     );
   }
   return <RadixMenuNumberControl key={item.id} item={item} />;
+}
+
+function hsbHex(hue: number, saturation: number, brightness: number) {
+  const channel = (n: number) => {
+    const k = (n + hue * 6) % 6;
+    return Math.round(255 * brightness * (1 - saturation * Math.max(0, Math.min(k, 4 - k, 1))));
+  };
+  return `#${[5, 3, 1].map((n) => channel(n).toString(16).padStart(2, "0")).join("")}`;
+}
+
+// The native menu's row: the caller's palette first, then three tones of an
+// 18-step hue wheel, so any colour is a scroll away rather than behind a dialog.
+const HUE_WHEEL = [[0.32, 0.97], [0.62, 0.92], [0.85, 0.72]].flatMap(([saturation, brightness]) =>
+  Array.from({ length: 18 }, (_, step) => hsbHex(step / 18, saturation, brightness)));
+
+function RadixMenuSwatches({ item }: { item: Extract<MenuItemSpec, { kind: "swatches" }> }) {
+  const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
+  const colors = [...new Set([...item.colors, ...HUE_WHEEL])];
+  const [active, setActive] = useState(item.activeColor);
+  const choose = (color: string) => { setActive(color); item.action?.(color); };
+  const label = item.label || "Colour";
+  return (
+    <div className="radix-menu-swatches" role="group" aria-label={label} onKeyDown={stop}>
+      <div
+        className="radix-menu-swatch-strip"
+        // Bring the chosen swatch into view when the menu opens.
+        ref={(strip) => { strip?.querySelector<HTMLElement>("[data-active]")?.scrollIntoView({ block: "nearest", inline: "center" }); }}
+        // A mouse wheel only scrolls vertically; let it browse the row too.
+        onWheel={(event) => { if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) event.currentTarget.scrollLeft += event.deltaY; }}
+      >
+        {colors.map((color) => (
+          <button
+            key={color}
+            type="button"
+            className="radix-menu-swatch"
+            data-active={active === color || undefined}
+            aria-pressed={active === color}
+            style={{ background: color }}
+            aria-label={`${label}: ${color}`}
+            onClick={(event) => { stop(event); choose(color); }}
+          />
+        ))}
+      </div>
+      <label className="radix-menu-swatch-custom" title="Custom colour" onClick={stop} onPointerDown={stop}>
+        <input
+          type="color"
+          aria-label={`Custom ${label.toLowerCase()}`}
+          defaultValue={active && /^#[0-9a-f]{6}$/i.test(active) ? active : "#3b82f6"}
+          onChange={(event) => choose(event.currentTarget.value)}
+        />
+      </label>
+    </div>
+  );
 }
 
 function RadixMenuNumberControl({ item }: { item: Extract<MenuItemSpec, { kind: "number" }> }) {

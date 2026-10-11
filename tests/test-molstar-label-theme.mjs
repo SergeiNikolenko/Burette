@@ -5,6 +5,7 @@ import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
 import { StructureElement } from 'molstar/lib/mol-model/structure.js';
 import { OrderedSet } from 'molstar/lib/mol-data/int.js';
 import { setCanvasModule } from 'molstar/lib/mol-geo/geometry/text/font-atlas.js';
+import { codexThemeColors } from '../apps/desktop/src/lib/codex-theme.ts';
 
 // State integration only; real text rasterization is checked in the browser.
 setCanvasModule({ createCanvas: () => ({ getContext: () => ({
@@ -17,7 +18,9 @@ const previousDocument = globalThis.document;
 globalThis.document = dom.document;
 const plugin = new PluginContext({ actions: [], behaviors: [] });
 const source = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
-const helper = source.match(/\n  function applyViewerBackground\([\s\S]*?\n  \}/u)[0];
+const helper = ['themeTokensFor', 'resolvedCanvasBackground', 'themeCanvasHex', 'canvasBackgroundCSS',
+  'canvasBackgroundColor', 'viewerHasLightBackground', 'cameraAxesParams', 'applyCameraAxesStyle', 'applyViewerBackground']
+  .map(name => source.match(new RegExp(`\\n  function ${name}\\([\\s\\S]*?\\n  \\}`, 'u'))[0]).join('');
 const errors = [];
 try {
   await plugin.init();
@@ -40,30 +43,52 @@ try {
   let updates = 0;
   const setOptions = manager.setOptions.bind(manager);
   manager.setOptions = options => { updates++; return (pending = setOptions(options)); };
-  const apply = async (background, theme = 'dark', transparent = false) => {
+  const apply = async (background, theme, themeBackground) => {
+    const transparent = background === 'transparent';
+    const canvasUpdates = [];
     const bindings = {
       applyDocumentBackground() {}, applyStaticRendererTheme() {},
+      activeConfig: { themeTokens: { [theme]: { background: themeBackground } } },
+      canvasBackground: background,
       transparentBackground: transparent, resolveViewerTheme: () => theme,
-      resolvedCanvasBackground: () => background, debug: error => errors.push(error),
+      window: { BuretteConfig: {}, BuretteNativeViewerMenus: { themeColors: codexThemeColors } },
+      debug: error => errors.push(error),
     };
     const run = new Function(...Object.keys(bindings), `${helper}; return applyViewerBackground;`)(...Object.values(bindings));
-    run({ plugin });
+    run({ plugin: { managers: plugin.managers, canvas3d: {
+      props: { camera: { helper: { axes: { name: 'off' } } } },
+      setProps: props => canvasUpdates.push(props), requestDraw() {},
+    } } });
     await pending;
+    return canvasUpdates;
   };
-  for (const [background, theme, transparent, color] of [
-    ['graphite', 'dark', false, 0xfcfcfc],
-    ['white', 'light', false, 0x0d0d0d],
-    ['black', 'light', false, 0xfcfcfc],
-    ['transparent', 'light', true, 0x0d0d0d],
-    ['transparent', 'dark', true, 0xfcfcfc],
+  for (const [background, theme, themeBackground, canvas, color] of [
+    ['graphite', 'dark', undefined, 0x111111, 0xfcfcfc],
+    ['white', 'light', undefined, 0xffffff, 0x0d0d0d],
+    ['black', 'light', undefined, 0x000000, 0xfcfcfc],
+    ['transparent', 'light', undefined, null, 0x0d0d0d],
+    ['transparent', 'dark', undefined, null, 0xfcfcfc],
+    ['auto', 'light', '#000000', 0x000000, 0xfcfcfc],
+    ['auto', 'dark', '#ffffff', 0xffffff, 0x0d0d0d],
+    ['auto', 'dark', '#111111', 0x181818, 0xfcfcfc],
+    ['auto', 'dark', undefined, 0x181818, 0xfcfcfc],
+    ['auto', 'dark', '#eab308', 0xeab308, 0x0d0d0d],
+    ['auto', 'light', '#0000ff', 0x0000ff, 0xfcfcfc],
+    ['transparent', 'light', '#000000', null, 0xfcfcfc],
+    ['transparent', 'dark', '#ffffff', null, 0x0d0d0d],
+    ['white', 'dark', '#000000', 0xffffff, 0x0d0d0d],
+    ['graphite', 'light', '#ffffff', 0x111111, 0xfcfcfc],
   ]) {
-    await apply(background, theme, transparent);
+    const canvasUpdates = await apply(background, theme, themeBackground);
+    assert.deepEqual(canvasUpdates, canvas === null
+      ? [{ transparentBackground: true }]
+      : [{ transparentBackground: false, renderer: { backgroundColor: canvas } }]);
     assert.deepEqual(labels.map(label => label.representation.cell.transform.params), original.map(params => ({ ...params, textColor: color })));
     const added = await manager.addDistance(loci[1], loci[2]);
     assert.equal(added.representation.cell.transform.params.textColor, color, 'new measurements inherit the current theme');
     assert.equal(structure.data, structureData, 'theme changes preserve the loaded structure');
     const previousUpdates = updates;
-    await apply(background, theme, transparent);
+    await apply(background, theme, themeBackground);
     assert.equal(updates, previousUpdates, 'repeated background refreshes do not feed back into Story state updates');
   }
   assert.deepEqual(errors, []);

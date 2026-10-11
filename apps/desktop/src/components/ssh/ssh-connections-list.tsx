@@ -2,7 +2,7 @@ import { useRef, useState, type RefObject } from "react";
 import type { SshConnection } from "../../lib/ssh-projects";
 import { NativeDropdownMenu } from "../native-dropdown-menu";
 import { DotsHorizontal, SidebarGlobe } from "../ui/app-icons";
-import { Button } from "../ui/button";
+import { Button, ButtonStyleContext } from "../ui/button";
 import { Card } from "../ui/card";
 import { Switch } from "../ui/switch";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "../ui/alert-dialog";
@@ -17,7 +17,10 @@ type ConnectionActions = {
 export function SshConnectionsList({ connections, onAdd, ...actions }: ConnectionActions & { connections: SshConnection[]; onAdd: () => void }) {
   const addButton = useRef<HTMLButtonElement>(null);
   return <section className="ssh-connections" aria-label="SSH connections">
-    <div className="ssh-connections-header"><h2>SSH connections from this Mac</h2><Button ref={addButton} size="xs" onClick={onAdd}>Add</Button></div>
+    <div className="ssh-connections-header"><h2>SSH connections from this Mac</h2>
+      {/* Codex section actions are the small primary app pill. */}
+      <ButtonStyleContext value="app"><Button ref={addButton} size="xs" className="rounded-full text-sm leading-[18px]" onClick={onAdd}>Add</Button></ButtonStyleContext>
+    </div>
     {connections.length > 0 && <Card className="settings-card">
       {connections.map(connection => <ConnectionRow key={connection.host} connection={connection} returnFocus={addButton} {...actions} />)}
     </Card>}

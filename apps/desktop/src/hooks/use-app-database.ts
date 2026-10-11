@@ -17,7 +17,10 @@ import {
 } from "../lib/database";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import { isTauriRuntime } from "../lib/tauri";
+import { useJobLifecycle } from "./use-job-lifecycle";
 import type { DatabaseJob, ViewerDocument, ViewerPreferences } from "../types";
+
+const databaseJobTitle = (job: DatabaseJob) => job.title;
 
 /** Job history is capped like the conformer and xTB lists in the Jobs panel. */
 const MAX_DATABASE_JOBS = 20;
@@ -95,6 +98,7 @@ export function useAppDatabase({
   pushStatus,
 }: UseAppDatabaseOptions) {
   const [databaseJobs, setDatabaseJobs] = useState<DatabaseJob[]>([]);
+  useJobLifecycle("database", databaseJobs, setDatabaseJobs, databaseJobTitle);
   const [databaseQuery, setDatabaseQuery] = useState<DatabaseQueryDraft | null>(null);
 
   const openDatabaseQuery = useCallback((

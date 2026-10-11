@@ -110,7 +110,7 @@ assert.match(textViewer, /EditorView\.editable\.of\(false\)/);
 assert.match(textViewer, /EditorState\.readOnly\.of\(false\)/);
 assert.match(textViewer, /EditorView\.editable\.of\(true\)/);
 assert.match(textViewer, /onContentChangeRef\.current\?\.\(update\.state\.doc\.toString\(\)\)/);
-assert.match(textViewer, />Edit Source<\/Button>/);
+assert.match(textViewer, />Edit source<\/Button>/);
 assert.match(textViewer, /key: "Mod-s"/);
 assert.match(textViewer, /saveSourceRef\.current\(\)/);
 assert.doesNotMatch(textViewer, /EditorView\.lineWrapping/);

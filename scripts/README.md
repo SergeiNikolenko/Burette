@@ -89,7 +89,8 @@ when debugging that specific script boundary.
 
 `sync-codex-tokens.mjs` regenerates `apps/desktop/src/styles/codex-tokens.css`
 from the Codex desktop stylesheet in a local InterfaceAtlas checkout
-(`--atlas <path>`, default `~/Documents/Projects/InterfaceAtlas`). Run it when
+(`--atlas <path>`, default `~/Documents/Projects/InterfaceAtlas`). Both sync
+scripts read that checkout's `snapshot-26.1007/assets`. Run it when
 that snapshot changes and commit the regenerated file.
 
 `node scripts/sync-atlas-primitives.mjs --atlas <path>` extracts the original

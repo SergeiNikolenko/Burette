@@ -77,7 +77,7 @@ assert.match(fileOpen, /documentFallbackExtensions\.has\(pathExtension\(path\)\)
 // The grid's rejection must stay silent when the caller will fall back; the
 // option is only honored if both status pushes actually check it.
 assert.match(fileOpen, /if \(!options\.deferErrorStatus\) pushStatus/);
-assert.match(fileOpen, /if \(!options\.deferErrorStatus\) pushErrorStatus\(error\);/);
+assert.match(fileOpen, /if \(!options\.deferErrorStatus\) pushErrorStatus\(error[,)]/);
 assert.match(store, /openDocumentTab: \(path\) =>/);
 assert.match(store, /tab\.location\.kind === "document" && tab\.location\.path === path/);
 

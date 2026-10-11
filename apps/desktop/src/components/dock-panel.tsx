@@ -7,7 +7,7 @@ import { Switch } from "./ui/switch";
 import { Badge } from "./ui/badge";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
-import { ChevronDown, FileBlank } from "./ui/app-icons";
+import { ChevronDown, FileBlank, Warning } from "./ui/app-icons";
 import { XyzrenderProperties } from "./xyzrender-properties";
 import { StoryMarkdown } from "./story-markdown";
 import { DockHeader } from "./dock-header";
@@ -811,18 +811,13 @@ function XyzrenderPresetGallery({ preset, onSelect }: { preset: string; onSelect
   return (
     <div className="xyzrender-dock-preset-gallery" role="group" aria-label="Rendering style">
       {XYZRENDER_README_PRESET_GALLERY.map((option) => (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="xyzrender-dock-preset-tile text-(--color-text) aria-pressed:border-(--color-border) aria-pressed:bg-(--color-background-primary-ghost-hover)"
+        <XyzrenderGalleryTile
           key={option.value}
-          aria-pressed={preset === option.value}
-          onClick={() => onSelect(option.value)}
-        >
-          <span>{option.label}</span>
-          <XyzrenderGalleryTileImage src={option.image} />
-        </Button>
+          label={option.label}
+          image={option.image}
+          pressed={preset === option.value}
+          onSelect={() => onSelect(option.value)}
+        />
       ))}
     </div>
   );
@@ -844,20 +839,15 @@ function XyzrenderDisplayOptionsGallery({
             ? (controls.displayHydrogens ?? "auto") === option.value
             : (controls.bondNotation ?? "aromatic") === option.value;
           return (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="xyzrender-dock-preset-tile text-(--color-text) aria-pressed:border-(--color-border) aria-pressed:bg-(--color-background-primary-ghost-hover)"
+            <XyzrenderGalleryTile
               key={`${option.group}-${option.value}`}
-              aria-pressed={active}
-              onClick={() => onSelect(option.group === "hydrogens"
+              label={option.label}
+              image={option.image}
+              pressed={active}
+              onSelect={() => onSelect(option.group === "hydrogens"
                 ? { ...controls, displayHydrogens: option.value as XyzrenderControls["displayHydrogens"] }
                 : { ...controls, bondNotation: option.value as XyzrenderControls["bondNotation"] })}
-            >
-              <span>{option.label}</span>
-              <XyzrenderGalleryTileImage src={option.image} />
-            </Button>
+            />
           );
         })}
       </div>
@@ -880,18 +870,13 @@ function XyzrenderVdwGallery({
       <div className="xyzrender-dock-subtitle">vdW spheres</div>
       <div className="xyzrender-dock-vdw-grid">
         {XYZRENDER_README_VDW_OPTIONS.map((option) => (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="xyzrender-dock-preset-tile text-(--color-text) aria-pressed:border-(--color-border) aria-pressed:bg-(--color-background-primary-ghost-hover)"
+          <XyzrenderGalleryTile
             key={option.value}
-            aria-pressed={active === option.value}
-            onClick={() => onSelect(option.value)}
-          >
-            <span>{option.label}</span>
-            <XyzrenderGalleryTileImage src={option.image} />
-          </Button>
+            label={option.label}
+            image={option.image}
+            pressed={active === option.value}
+            onSelect={() => onSelect(option.value)}
+          />
         ))}
       </div>
     </div>
@@ -910,18 +895,13 @@ function XyzrenderHullGallery({
       <div className="xyzrender-dock-subtitle">Convex hull</div>
       <div className="xyzrender-dock-hull-grid">
         {XYZRENDER_README_HULL_OPTIONS.map((option) => (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="xyzrender-dock-preset-tile text-(--color-text) aria-pressed:border-(--color-border) aria-pressed:bg-(--color-background-primary-ghost-hover)"
+          <XyzrenderGalleryTile
             key={option.value}
-            aria-pressed={controls.hullMode === option.value}
-            onClick={() => onSelect(option.value)}
-          >
-            <span>{option.label}</span>
-            <XyzrenderGalleryTileImage src={option.image} />
-          </Button>
+            label={option.label}
+            image={option.image}
+            pressed={controls.hullMode === option.value}
+            onSelect={() => onSelect(option.value)}
+          />
         ))}
       </div>
     </div>
@@ -940,21 +920,25 @@ function XyzrenderPoreGallery({
       <div className="xyzrender-dock-subtitle">Hull faces &amp; pore detection</div>
       <div className="xyzrender-dock-pore-grid">
         {XYZRENDER_README_PORE_OPTIONS.map((option) => (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="xyzrender-dock-preset-tile text-(--color-text) aria-pressed:border-(--color-border) aria-pressed:bg-(--color-background-primary-ghost-hover)"
+          <XyzrenderGalleryTile
             key={option.value}
-            aria-pressed={controls.hullMode === option.value}
-            onClick={() => onSelect(option.value)}
-          >
-            <span>{option.label}</span>
-            <XyzrenderGalleryTileImage src={option.image} />
-          </Button>
+            label={option.label}
+            image={option.image}
+            pressed={controls.hullMode === option.value}
+            onSelect={() => onSelect(option.value)}
+          />
         ))}
       </div>
     </div>
+  );
+}
+
+function XyzrenderGalleryTile({ label, image, pressed, onSelect }: { label: string; image: string; pressed: boolean; onSelect: () => void }) {
+  return (
+    <Button type="button" variant="ghost" size="sm" className="xyzrender-dock-preset-tile" aria-pressed={pressed} onClick={onSelect}>
+      <XyzrenderGalleryTileImage src={image} />
+      <span className="xyzrender-dock-preset-label">{label}</span>
+    </Button>
   );
 }
 
@@ -1208,9 +1192,9 @@ function SingleDocumentTextPanel({
 
   return (
     <div className="dock-content dock-content-empty">
-      <div className="dock-empty dock-empty-large">
-        {error ? `Text preview failed: ${error}` : <Spinner className="mx-auto" aria-label="Loading text" />}
-      </div>
+      {error ? <PanelEmptyState title="Couldn’t load this preview" description={error} icon={<Warning />} /> : (
+        <div className="dock-empty dock-empty-large"><Spinner className="mx-auto" aria-label="Loading text" /></div>
+      )}
     </div>
   );
 }
@@ -1274,7 +1258,7 @@ function DockingDocumentTextPanel({
   if (!activeSource) {
     return (
       <div className="dock-content dock-content-empty">
-        <div className="dock-empty dock-empty-large">No source files are attached to this view.</div>
+        <PanelEmptyState title="No source files attached" icon={<FileBlank />} />
       </div>
     );
   }
@@ -1301,9 +1285,11 @@ function DockingDocumentTextPanel({
         </div>
       ) : (
         <div className="dock-content dock-content-empty">
-          <div className="dock-empty dock-empty-large">
-            {errors[activeSource.key] ? `Text preview failed for ${activeSource.title}: ${errors[activeSource.key]}` : <Spinner className="mx-auto" aria-label={`Loading ${activeSource.title}`} />}
-          </div>
+          {errors[activeSource.key] ? (
+            <PanelEmptyState title={`Couldn’t load ${activeSource.title}`} description={errors[activeSource.key]} icon={<Warning />} />
+          ) : (
+            <div className="dock-empty dock-empty-large"><Spinner className="mx-auto" aria-label={`Loading ${activeSource.title}`} /></div>
+          )}
         </div>
       )}
     </div>

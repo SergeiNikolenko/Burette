@@ -22,6 +22,8 @@ const viewerCss = await read("PreviewExtension/Web/viewer-runtime.css");
 const panel = await read("apps/desktop/src/components/structure-info-panel.tsx");
 const styles = await read("apps/desktop/src/styles.css");
 const button = await read("apps/desktop/src/components/ui/button.tsx");
+const atlasButtonCss = await read("apps/desktop/src/components/ui/button.atlas.css");
+const codexTokens = await read("apps/desktop/src/styles/codex-tokens.css");
 
 function ruleBody(css, selector, label) {
   const escaped = selector.replace(/[.[\]*+?^${}()|\\]/g, "\\$&");
@@ -146,8 +148,10 @@ assert.equal(declaration(treeAction, "height"), "20px");
 assert.equal(declaration(ruleBody(viewerCss, ".buret-tree-action > svg", "viewer"), "width"), "13px");
 const iconVariant = button.match(/"icon-2xs":\s*\n?\s*"([^"]+)"/);
 assert.ok(iconVariant, "Button has no icon-2xs size");
-assert.match(iconVariant[1], /(^|\s)size-5(\s|$)/); // 20px
-assert.match(iconVariant[1], /size-\[13px\]/);
+// icon-2xs is the Atlas 3xs button, whose box is the 20px 4xs control.
+assert.equal(iconVariant[1], "3xs");
+assert.match(atlasButtonCss, /\[data-atlas-size="3xs"\]\)\{--button-size:var\(--control-size-4xs\)/);
+assert.match(codexTokens, /--control-size-4xs: 1\.25rem;/);
 assert.match(panel, /size="icon-2xs"\n\s*className="structure-inspector-row-action"/);
 // Remove sits ahead of the eye in both lists.
 assert.ok(

@@ -118,7 +118,7 @@ export function SubstructureCountDialog({
           </fieldset>
           <DialogFooter className="gap-2">
             {checking && <span className="mr-auto flex items-center gap-2 text-xs text-(--color-text-secondary)" role="status"><Spinner className="size-3" aria-hidden />Checking…</span>}
-            <Button type="button" variant="ghost" onClick={onDismiss}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={onDismiss}>Cancel</Button>
             <Button type="submit" disabled={!ready}>Add column</Button>
           </DialogFooter>
         </form>

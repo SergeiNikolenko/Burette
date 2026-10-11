@@ -125,4 +125,24 @@ workspace.openDockTab("close-test", "right", "inspector");
 assert.deepEqual(getTabWorkspace("close-test").right.tabs.map(tab => tab.kind), ["files", "inspector"]);
 assert.equal(getTabWorkspace("close-test").right.activeTab, "inspector");
 
+// Opening a tool or document restores its destination after Files was closed.
+for (const area of ["right", "bottom"]) {
+  for (const target of ["tool", "document"]) {
+    resetStore();
+    workspace.openDockTab("reopen", area, "text");
+    workspace.closeDockTab("reopen", area, "dock-files");
+    const open = () => target === "tool"
+      ? workspace.setDockTool("reopen", area, "ketcher")
+      : workspace.setDockDocument("reopen", area, "structure-1");
+    open();
+    open();
+    const dock = getTabWorkspace("reopen")[area];
+    assert.equal(dock.activeTab, "files");
+    assert.equal(dock.tabs.filter(tab => tab.kind === "files").length, 1);
+    assert.equal(dock.open, true);
+    assert.equal(dock.tool, target === "tool" ? "ketcher" : null);
+    assert.equal(dock.documentId, target === "document" ? "structure-1" : null);
+  }
+}
+
 console.log("tab workspace store behavior tests passed");

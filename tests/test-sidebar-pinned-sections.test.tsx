@@ -13,7 +13,7 @@ const { createRoot } = await import("react-dom/client");
 const { FileBrowser } = await import("../apps/desktop/src/components/sidebar/file-browser");
 const { TooltipProvider } = await import("../apps/desktop/src/components/ui/tooltip");
 
-test("folders move between Pinned and Recents without duplicate root rows; collapse and search keep working", async () => {
+test("folders move between Pinned and Projects without duplicate root rows; collapse and search keep working", async () => {
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
   const folder = (title: string): SidebarProject => ({ id: `project:/fixtures/${title}`, rootPath: `/fixtures/${title}`, title,
@@ -25,12 +25,12 @@ test("folders move between Pinned and Recents without duplicate root rows; colla
   } : () => {} }) as ShellActions;
   const render = async (query = "") => { await act(async () => root.render(<TooltipProvider><FileBrowser
     state={{ ...state, sidebarProjects: projects, sidebarQuery: query } as ShellViewState} actions={actions} /></TooltipProvider>)); };
-  const rows = () => Object.fromEntries(Array.from(host.querySelectorAll('section[aria-label="Pinned"], section[aria-label="Recents"]')).map(section => [
+  const rows = () => Object.fromEntries(Array.from(host.querySelectorAll('section[aria-label="Pinned"], section[aria-label="Projects"]')).map(section => [
     section.getAttribute("aria-label"), Array.from(section.querySelectorAll('.project-group-title')).map(row => row.textContent),
   ]));
   const click = async (label: string) => { await act(async () => host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!.click()); await render(); };
   try {
-    await render(); expect(rows()).toEqual({ Recents: ["Samples", "Collections"] });
+    await render(); expect(rows()).toEqual({ Projects: ["Samples", "Collections"] });
     // The parent tree row must not cancel native button activation.
     for (const key of ["Enter", " "]) {
       const pin = host.querySelector<HTMLButtonElement>('button[aria-label="Pin Collections"]')!;
@@ -38,12 +38,12 @@ test("folders move between Pinned and Recents without duplicate root rows; colla
       await act(async () => { pin.focus(); pin.dispatchEvent(event); });
       expect(event.defaultPrevented).toBe(false);
     }
-    await click("Pin Collections"); expect(rows()).toEqual({ Pinned: ["Collections"], Recents: ["Samples"] });
+    await click("Pin Collections"); expect(rows()).toEqual({ Pinned: ["Collections"], Projects: ["Samples"] });
     await act(async () => host.querySelector<HTMLButtonElement>('[aria-controls="sidebar-pinned-tree"]')!.click());
-    expect(rows()).toEqual({ Pinned: [], Recents: ["Samples"] });
-    await render("collections"); expect(rows()).toEqual({ Pinned: ["Collections"], Recents: [] });
-    await click("Unpin Collections"); expect(rows()).toEqual({ Recents: ["Samples", "Collections"] });
+    expect(rows()).toEqual({ Pinned: [], Projects: ["Samples"] });
+    await render("collections"); expect(rows()).toEqual({ Pinned: ["Collections"], Projects: [] });
+    await click("Unpin Collections"); expect(rows()).toEqual({ Projects: ["Samples", "Collections"] });
     await click("Pin Samples"); await click("Pin Collections");
-    await render("collections"); expect(rows()).toEqual({ Pinned: ["Collections"], Recents: [] });
+    await render("collections"); expect(rows()).toEqual({ Pinned: ["Collections"], Projects: [] });
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

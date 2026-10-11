@@ -1820,20 +1820,20 @@ function StructurePoseControlsCard({
             const selected = key !== null && key === activeActionKey;
             const name = fileName(poseNames[index]);
             return (
-              <Button
-                key={`${action.type}:${action.index}`}
-                type="button"
-                variant={selected ? "secondary" : "ghost"}
-                size="sm"
-                className="structure-inspector-pose-row text-(--color-text)"
-                data-selected={selected || undefined}
-                aria-pressed={selected}
-                title={name}
-                onClick={() => runAction(action)}
-              >
-                <span className="structure-inspector-pose-rank">{action.index + 1}</span>
-                <span className="structure-inspector-pose-name">{name}</span>
-              </Button>
+              <ShortcutTooltip key={`${action.type}:${action.index}`} label={name}>
+                <Button
+                  type="button"
+                  variant={selected ? "secondary" : "ghost"}
+                  size="sm"
+                  className="structure-inspector-pose-row text-(--color-text)"
+                  data-selected={selected || undefined}
+                  aria-pressed={selected}
+                  onClick={() => runAction(action)}
+                >
+                  <span className="structure-inspector-pose-rank">{action.index + 1}</span>
+                  <span className="structure-inspector-pose-name">{name}</span>
+                </Button>
+              </ShortcutTooltip>
             );
           })}
         </div>
@@ -1847,20 +1847,20 @@ function StructurePoseControlsCard({
           const key = selectionActionKey(document, action);
           const selected = key !== null && key === activeActionKey;
           return (
-            <Button
-              key={`${action.type}:${action.index}`}
-              type="button"
-              variant={selected ? "secondary" : "ghost"}
-              size="sm"
-              className="min-w-0 overflow-hidden px-1 tabular-nums"
-              aria-label={action.label}
-              data-selected={selected || undefined}
-              aria-pressed={selected}
-              title={action.label}
-              onClick={() => runAction(action)}
-            >
-              {action.index + 1}
-            </Button>
+            <ShortcutTooltip key={`${action.type}:${action.index}`} label={action.label}>
+              <Button
+                type="button"
+                variant={selected ? "secondary" : "ghost"}
+                size="sm"
+                className="min-w-0 overflow-hidden px-1 tabular-nums"
+                aria-label={action.label}
+                data-selected={selected || undefined}
+                aria-pressed={selected}
+                onClick={() => runAction(action)}
+              >
+                {action.index + 1}
+              </Button>
+            </ShortcutTooltip>
           );
         })}
       </div>
@@ -3002,7 +3002,7 @@ function XtbResultsPanel({ document, job, actions }: { document: ViewerDocument;
   const colorFukuiInMolstar = (mode: "fplus" | "fminus" | "fzero") => {
     actions.runStructureViewerAction(document, {
       type: "color_xtb_fukui",
-      label: `Highlight xTB ${fukuiModeLabel(mode)} in Mol*`,
+      label: `Highlight xTB ${fukuiModeLabel(mode)}`,
       mode,
       values: fukui.map((row) => row[mode]),
     });
@@ -3086,16 +3086,16 @@ function XtbResultsPanel({ document, job, actions }: { document: ViewerDocument;
             <strong>{group.title}</strong>
             <div>
               {group.artifacts.map((artifact) => (
-                <button
-                  type="button"
-                  className="dock-action structure-inspector-xtb-file-button"
-                  key={artifact.path}
-                  onClick={() => void openXtbArtifact(artifact, actions)}
-                  onContextMenu={(event) => showArtifactMenu(event, artifact)}
-                  title={xtbArtifactButtonTitle(artifact)}
-                >
-                  {artifact.title}
-                </button>
+                <ShortcutTooltip key={artifact.path} label={xtbArtifactButtonTitle(artifact)}>
+                  <button
+                    type="button"
+                    className="dock-action structure-inspector-xtb-file-button"
+                    onClick={() => void openXtbArtifact(artifact, actions)}
+                    onContextMenu={(event) => showArtifactMenu(event, artifact)}
+                  >
+                    {artifact.title}
+                  </button>
+                </ShortcutTooltip>
               ))}
             </div>
           </div>
@@ -3590,7 +3590,8 @@ function compositionShares(groups: CompositionGroup[]) {
     .map((group) => ({ tone: group.tone, label: group.row.label, atoms: compositionAtomCount(group.row.value) }))
     .filter((share) => share.atoms > 0);
   const total = shares.reduce((sum, share) => sum + share.atoms, 0);
-  if (total === 0 || shares.length < 2) return [];
+  // Entries have no tone of their own, so a bar made only of them is a grey strip.
+  if (total === 0 || shares.length < 2 || shares.every((share) => share.tone === "entry")) return [];
   return shares.map((share) => ({ ...share, percent: (share.atoms / total) * 100 }));
 }
 
@@ -3791,7 +3792,7 @@ function StructureCompositionCard({
         {visibleGroups.length === 0 ? (
           <div className="dock-empty">{query ? `Nothing matches “${query}”.` : "No components in this scene."}</div>
         ) : (
-        <div className="structure-brief-rows structure-inspector-tree" onKeyDown={structureRowsKeyDown}>
+        <div className="structure-brief-rows structure-inspector-tree" data-flat={visibleGroups.every(({ group }) => group.children.length === 0) || undefined} onKeyDown={structureRowsKeyDown}>
           {visibleGroups.map(({ group, match }) => {
             const open = needle ? true : expanded.has(group.key);
             return (
@@ -3808,16 +3809,17 @@ function StructureCompositionCard({
                   setActiveActionKey={setActiveActionKey}
                   compact={false}
                   leading={group.children.length > 0 ? (
-                    <button
-                      type="button"
-                      className="structure-inspector-tree-toggle"
-                      aria-expanded={open}
-                      aria-label={`${open ? "Collapse" : "Expand"} ${group.row.label}`}
-                      title={open ? "Collapse" : "Expand"}
-                      onClick={() => toggle(group.key)}
-                    >
-                      <TreeDisclosureIcon />
-                    </button>
+                    <ShortcutTooltip label={open ? "Collapse" : "Expand"}>
+                      <button
+                        type="button"
+                        className="structure-inspector-tree-toggle"
+                        aria-expanded={open}
+                        aria-label={`${open ? "Collapse" : "Expand"} ${group.row.label}`}
+                        onClick={() => toggle(group.key)}
+                      >
+                        <TreeDisclosureIcon />
+                      </button>
+                    </ShortcutTooltip>
                   ) : <span className="structure-inspector-tree-spacer" aria-hidden="true" />}
                 />
                 {open && match.children.length > 0 ? (
@@ -4007,44 +4009,51 @@ function StructureActionRow({
   return (
     <div className="structure-brief-action-entry" data-leading={leading ? "true" : undefined} data-selected={selected || undefined} data-hidden={hidden ? "true" : undefined} onContextMenu={showContextMenu}>
       {leading}
-      <button
-        type="button"
-        className={compact ? "structure-brief-chip-button" : "structure-brief-action-row"}
-        onClick={() => runAction(primaryAction)}
-        title={primaryAction.label}
-        aria-pressed={selected}
-      >
-        {content()}
-      </button>
+      <ShortcutTooltip label={primaryAction.label}>
+        <button
+          type="button"
+          className={compact ? "structure-brief-chip-button" : "structure-brief-action-row"}
+          onClick={() => runAction(primaryAction)}
+          aria-pressed={selected}
+        >
+          {content()}
+        </button>
+      </ShortcutTooltip>
       {hideAction && showAction && removeAction ? (
         // Remove sits ahead of the eye because that is the order the scene tree
         // puts them in; a row that reads the same in both places has to reach
         // the same control at the same spot.
         <span className="structure-inspector-row-actions">
-          {color ? <button type="button" className="structure-inspector-row-dot" style={{ backgroundColor: color }} aria-label={`Colour ${row.label}`} title={`Colour ${row.label}`} onClick={showContextMenu} /> : null}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-2xs"
-            className="structure-inspector-row-action"
-            aria-label={`Remove ${row.label.toLowerCase()}`}
-            title={`Remove ${row.label.toLowerCase()}`}
-            onClick={() => runAction(removeAction)}
-          >
-            <TrashIcon />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-2xs"
-            className="structure-inspector-row-action"
-            data-hidden={hidden ? "true" : undefined}
-            aria-label={`${hidden ? "Show" : "Hide"} ${row.label.toLowerCase()}`}
-            title={`${hidden ? "Show" : "Hide"} ${row.label.toLowerCase()}`}
-            onClick={() => runAction(hidden ? showAction : hideAction)}
-          >
-            {hidden ? <EyeOffIcon /> : <EyeIcon />}
-          </Button>
+          {color ? (
+            <ShortcutTooltip label={`Colour ${row.label}`}>
+              <button type="button" className="structure-inspector-row-dot" style={{ backgroundColor: color }} aria-label={`Colour ${row.label}`} onClick={showContextMenu} />
+            </ShortcutTooltip>
+          ) : null}
+          <ShortcutTooltip label={`Remove ${row.label.toLowerCase()}`}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-2xs"
+              className="structure-inspector-row-action"
+              aria-label={`Remove ${row.label.toLowerCase()}`}
+              onClick={() => runAction(removeAction)}
+            >
+              <TrashIcon />
+            </Button>
+          </ShortcutTooltip>
+          <ShortcutTooltip label={`${hidden ? "Show" : "Hide"} ${row.label.toLowerCase()}`}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-2xs"
+              className="structure-inspector-row-action"
+              data-hidden={hidden ? "true" : undefined}
+              aria-label={`${hidden ? "Show" : "Hide"} ${row.label.toLowerCase()}`}
+              onClick={() => runAction(hidden ? showAction : hideAction)}
+            >
+              {hidden ? <EyeOffIcon /> : <EyeIcon />}
+            </Button>
+          </ShortcutTooltip>
         </span>
       ) : null}
     </div>
@@ -4234,16 +4243,17 @@ function StructureMiniAction({
   const hides = action.type === "hide_waters" || action.type === "hide_components";
   const shows = action.type === "show_waters" || action.type === "show_components";
   return (
-    <button
-      type="button"
-      className="structure-brief-mini-action"
-      data-icon={hides || shows ? "visibility" : undefined}
-      onClick={() => run(action)}
-      title={action.label}
-      aria-label={hides || shows ? action.label : undefined}
-    >
-      {hides ? <EyeIcon /> : shows ? <EyeOffIcon /> : miniActionLabel(action.label)}
-    </button>
+    <ShortcutTooltip label={action.label}>
+      <button
+        type="button"
+        className="structure-brief-mini-action"
+        data-icon={hides || shows ? "visibility" : undefined}
+        onClick={() => run(action)}
+        aria-label={hides || shows ? action.label : undefined}
+      >
+        {hides ? <EyeIcon /> : shows ? <EyeOffIcon /> : miniActionLabel(action.label)}
+      </button>
+    </ShortcutTooltip>
   );
 }
 
