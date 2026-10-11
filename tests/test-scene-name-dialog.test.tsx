@@ -8,7 +8,7 @@ for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLInputE
 }
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import("react-dom/client");
-const { SceneNameDialog } = await import("../apps/desktop/src/components/scene-name-dialog");
+const { SceneNameDialog, TabNameDialog } = await import("../apps/desktop/src/components/scene-name-dialog");
 const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store");
 type Scene = NonNullable<React.ComponentProps<typeof SceneNameDialog>["document"]>;
 const scene = { id: "scene", title: "Complex", path: "/set/a.pdb", extension: "pdb", renderer: "molstar", runtimePath: "/viewer.html", byteCount: 123 } as Scene;
@@ -31,6 +31,25 @@ async function fill(mount: Element, value: string) {
   });
 }
 const submit = (mount: Element) => act(async () => mount.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
+
+test("a tab label changes independently of the scene title and source file", async () => {
+  const snapshot = useMoleculeStore.getState();
+  const tab = { id: "named-tab", location: { kind: "file" as const, path: scene.path, documentId: scene.id }, back: [], forward: [] };
+  useMoleculeStore.setState({ tabs: [tab], documents: [scene], activeTabId: tab.id });
+  const mount = document.createElement("div"); mount.className = "app-shell"; document.body.append(mount);
+  const root = createRoot(mount);
+  let closed = 0;
+  try {
+    await act(async () => root.render(<TabNameDialog tab={tab} defaultName={scene.title} onClose={() => closed++} />));
+    expect(mount.querySelector('[aria-label="Tab name"]')).not.toBeNull();
+    await fill(mount, "  Ligand detail  "); await submit(mount);
+    expect({ closed, tabs: useMoleculeStore.getState().tabs, documents: useMoleculeStore.getState().documents }).toEqual({
+      closed: 1, tabs: [{ ...tab, title: "Ligand detail" }], documents: [scene],
+    });
+  } finally {
+    await act(async () => root.unmount()); mount.remove(); useMoleculeStore.setState(snapshot);
+  }
+});
 
 test("rename trims the scene title without changing another scene or its file data", async () => {
   await fixture(async (mount, closed) => {

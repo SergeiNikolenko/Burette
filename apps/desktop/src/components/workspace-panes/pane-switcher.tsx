@@ -1,4 +1,4 @@
-import type { MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 import type { ShellActions, ShellViewState } from "../types";
 import type { MenuItemSpec } from "../menu-types";
 import { showNativeContextMenu } from "../native-context-menu";
@@ -10,6 +10,7 @@ import { ChevronDown } from "../ui/app-icons";
 import { Button } from "../ui/button";
 import { isMainTab, type MoleculeTab, type TabPane } from "../../stores/molecule-store";
 import { SCREEN_ENTRIES, openScreen, paneMoveItems, placeScreen, showSideScreen } from "./pane-actions";
+import { TabNameDialog } from "../scene-name-dialog";
 
 // The "Codex ⌄" control of a pane header: the screen's glyph and title, and a
 // menu to show another screen in this pane or move this one elsewhere.
@@ -19,17 +20,20 @@ export function PaneSwitcher({ pane, tab, state, actions }: {
   state: ShellViewState;
   actions: ShellActions;
 }) {
-  const title = pageKind(tab.location).title(tab.location, state);
+  const defaultName = pageKind(tab.location).title(tab.location, state);
+  const title = tab.title ?? defaultName;
+  const [renaming, setRenaming] = useState(false);
   const open = (event: MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
-    void showNativeContextMenu(paneSwitcherItems(pane, tab, state, actions), { x: rect.left, y: rect.bottom + 4 }, { presentation: "dropdown" });
+    void showNativeContextMenu(paneSwitcherItems(pane, tab, state, actions, () => setRenaming(true)), { x: rect.left, y: rect.bottom + 4 }, { presentation: "dropdown" });
   };
   return (
+    <><TabNameDialog tab={renaming ? tab : null} defaultName={defaultName} onClose={() => setRenaming(false)} />
     <Button type="button" variant="ghost" size="toolbar" className="pane-switcher" onPointerDown={(event) => event.stopPropagation()} onClick={open} aria-label={`${title}, switch screen`}>
       <span className="pane-switcher-icon" aria-hidden><TabKindIcon location={tab.location} state={state} /></span>
       <MarqueeName className="pane-switcher-title">{title}</MarqueeName>
       <ChevronDown className="pane-switcher-chevron" size={12} aria-hidden />
-    </Button>
+    </Button></>
   );
 }
 
@@ -37,13 +41,13 @@ function screenRow(candidate: MoleculeTab, state: ShellViewState, current: Molec
   return {
     kind: "checkbox",
     id: `pane-screen-${candidate.id}`,
-    text: pageKind(candidate.location).title(candidate.location, state),
+    text: candidate.title ?? pageKind(candidate.location).title(candidate.location, state),
     checked: candidate.id === current.id,
     action: select,
   };
 }
 
-export function paneSwitcherItems(pane: TabPane, tab: MoleculeTab, state: ShellViewState, actions: ShellActions): MenuItemSpec[] {
+export function paneSwitcherItems(pane: TabPane, tab: MoleculeTab, state: ShellViewState, actions: ShellActions, rename?: () => void): MenuItemSpec[] {
   // The side panel switches among its own screens; the floating window holds
   // one screen and takes any open tab in exchange.
   const here = state.tabs.filter((candidate) => candidate.pane === pane);
@@ -54,7 +58,7 @@ export function paneSwitcherItems(pane: TabPane, tab: MoleculeTab, state: ShellV
   const bring: MenuItemSpec[] = elsewhere.map((candidate) => ({
     kind: "item",
     id: `pane-bring-${candidate.id}`,
-    text: pageKind(candidate.location).title(candidate.location, state),
+    text: candidate.title ?? pageKind(candidate.location).title(candidate.location, state),
     action: () => placeScreen(candidate.id, pane),
   }));
   const open: MenuItemSpec[] = SCREEN_ENTRIES
@@ -65,6 +69,7 @@ export function paneSwitcherItems(pane: TabPane, tab: MoleculeTab, state: ShellV
     bring.length ? [{ kind: "submenu", id: "pane-bring", text: pane === "side" ? "Show Tab Here" : "Show Tab in Window", items: bring }] : [],
     open.length ? [{ kind: "submenu", id: "pane-open", text: "Open", items: open }] : [],
     paneMoveItems(tab),
+    rename ? [{ kind: "item", id: "rename-tab", text: "Rename tab…", action: rename }] : [],
     [{ kind: "item", id: "pane-close-screen", text: "Close", action: () => { void actions.closeTab(tab.id); } }],
   );
 }

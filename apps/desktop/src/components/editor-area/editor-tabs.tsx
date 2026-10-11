@@ -22,6 +22,7 @@ import { Plus } from "../ui/app-icons";
 import { isMainTab } from "../../stores/molecule-store";
 import { SCREEN_ENTRIES, openScreen, paneMoveItems } from "../workspace-panes/pane-actions";
 import { TabKindIcon } from "./tab-kind-icon";
+import { TabNameDialog } from "../scene-name-dialog";
 
 const TAB_REORDER_ANIMATION_MS = 170;
 const TAB_DRAG_ACTIVATE_DELAY_MS = 520;
@@ -58,6 +59,8 @@ export function EditorTabs({
   latestTabsRef.current = visibleTabs;
   const stripRef = useRef<HTMLDivElement>(null);
   const activeTabId = state.activeTabId;
+  const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
+  const renamingTab = state.tabs.find(tab => tab.id === renamingTabId) ?? null;
 
   useEffect(() => {
     if (!activeTabId) return;
@@ -124,7 +127,7 @@ export function EditorTabs({
     const kind = pageKind(tab.location);
     return {
       kind: tab.location.kind === "ketcher" ? "ketcher" as const : tab.location.kind === "text-file" ? "writer" as const : "tab" as const,
-      title: kind.title(tab.location, state),
+      title: tab.title ?? kind.title(tab.location, state),
       detail: kind.description,
       path,
     };
@@ -481,7 +484,7 @@ export function EditorTabs({
     if (!tab) return null;
     const path = tabPathForLocation(tab);
     return {
-      title: pageKind(tab.location).title(tab.location, state),
+      title: tab.title ?? pageKind(tab.location).title(tab.location, state),
       subtitle: path ? path.slice(0, path.lastIndexOf("/")).replace(/^\/Users\/[^/]+(?=\/|$)/, "~") : null,
       active: tab.id === activeTabId,
       newTab: tab.location.kind === "launcher",
@@ -492,6 +495,7 @@ export function EditorTabs({
     // Entering the strip usually precedes a switch, so the page is still visible here.
     <div ref={stripRef} className="tab-strip" onPointerEnter={() => { if (activeTabId) void captureTabThumbnail(activeTabId); }}>
       <TabHoverPreview stripRef={stripRef} describe={describeTabPreview} />
+      <TabNameDialog tab={renamingTab} defaultName={renamingTab ? pageKind(renamingTab.location).title(renamingTab.location, state) : ""} onClose={() => setRenamingTabId(null)} />
       <ScrollFade
         axis="horizontal"
         className="tab-scroll-region"
@@ -503,7 +507,7 @@ export function EditorTabs({
       >
         {visibleTabs.map((tab, index) => {
           const kind = pageKind(tab.location);
-          const title = kind.title(tab.location, state);
+          const title = tab.title ?? kind.title(tab.location, state);
           const active = index === activeTabIndex;
           const fileLocation = tab.location.kind === "file" ? tab.location : null;
           const textFileLocation = tab.location.kind === "text-file" ? tab.location : null;
@@ -583,7 +587,9 @@ export function EditorTabs({
             const pin = { kind: "item" as const, id: "pin-tabs", text: chosenTabs.every(tab => tab.pinned) ? "Unpin" : "Pin", action: () => {
               const pinned = chosenTabs.every(tab => tab.pinned); chosenTabs.forEach(tab => { if (Boolean(tab.pinned) === pinned) actions.togglePinnedTab(tab.id); });
             } };
-            const sceneMenu = chosenTabs.length === 1 && tabDocument ? workspaceMenus.scene(tabDocument) : [];
+            const sceneMenu = chosenTabs.length === 1 && tabDocument ? workspaceMenus.scene(tabDocument).filter(entry => !("id" in entry && entry.id === "rename-scene")) : [];
+            const rename: MenuItemSpec[] = chosenTabs.length === 1
+              ? [{ kind: "item", id: "rename-tab", text: "Rename tab…", action: () => setRenamingTabId(tab.id) }] : [];
             const tabMenu = shared.filter(entry => !("id" in entry && ["pin-files", "trash-file", "rename-file", "duplicate-file"].includes(entry.id)));
             if (sceneMenu.length) {
               const exports = tabMenu.find(entry => entry.kind === "submenu" && entry.id === "file-export");
@@ -604,7 +610,7 @@ export function EditorTabs({
             const only = closing.length === 1 && closing[0].kind === "item" ? closing[0] : undefined;
             const close: MenuItemSpec[] = only ? [{ ...only, id: "close-tabs", text: `Close ${only.text}` }] : submenu("close-tabs", "Close", closing, "xmark");
             const bare = !compact.length && !sceneMenu.length && !reveal.length;
-            void showNativeContextMenu(menuSections(opening, [pin, ...sceneMenu, ...(bare ? close : [])],
+            void showNativeContextMenu(menuSections(opening, [pin, ...rename, ...sceneMenu, ...(bare ? close : [])],
               [...compact.filter(entry => !opening.includes(entry)), ...reveal], window.BuretteMcpWorkspace ? [] : paneMoveItems(tab), bare ? [] : close), { x: event.clientX, y: event.clientY });
           };
           return (

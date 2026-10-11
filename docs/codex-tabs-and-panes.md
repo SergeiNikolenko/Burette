@@ -58,6 +58,7 @@ Placed keep-alive screens stay mounted while their pane shows another screen.
 | Hide or show the side panel | panel toggle in the side panel header and in the title bar controls |
 | Move, resize, minimize the floating window | drag the header, drag the bottom-right corner, "-" button |
 | Close a screen | Close in any of the menus above, or its tab |
+| Rename tab | tab context menu or pane switcher; changes the label without renaming the source file |
 
 Settings is a full-window mode: both panes step aside while it is open and
 come back unchanged.
@@ -66,10 +67,19 @@ come back unchanged.
 
 - Screen places persist with the session (`burette.molecule.session`):
   `pane` on each tab and `sidePaneTabId`.
+- Optional tab `title` labels persist in the session and exported session
+  snapshots. Labels are trimmed and limited to 200 characters; older sessions
+  without a label continue to use the page title.
 - Pane geometry persists in `burette.workspace-panes`: side panel width and
   hidden flag, floating window rectangle and minimized flag.
 - With `restoreSessionOnLaunch` off, tabs and their places start fresh; the
   geometry is kept as a window preference.
+
+Save scene exports the current Mol* snapshot as `.molj`. After a successful
+native save, the saved file opens and is pinned in the sidebar. Cancellation
+and failure leave the sidebar unchanged. Browser downloads do not return a
+filesystem path, so they cannot be pinned automatically. This action currently
+uses the agent session export transport, whose inline payload limit is 2 MiB.
 
 ## Docks
 

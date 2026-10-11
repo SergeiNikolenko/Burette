@@ -44,6 +44,7 @@ import { useSettingsStore } from "./settings-store";
 export type TabPane = "side" | "floating";
 
 export type MoleculeTab = {
+  title?: string;
   pinned?: boolean;
   pane?: TabPane;
   id: string;
@@ -53,6 +54,7 @@ export type MoleculeTab = {
 };
 
 export type SessionTab = {
+  title?: string;
   pinned?: boolean;
   pane?: TabPane;
   id?: string;
@@ -104,6 +106,7 @@ type MoleculeState = {
   openScreenTab: (location: Location, pane?: TabPane | null) => void;
   showSidePaneTab: (id: string) => void;
   togglePinnedTab: (id: string) => void;
+  renameTab: (id: string, title: string) => void;
   closeTab: (id: string) => void;
   closeDocument: (id: string) => void;
   closeActiveDocument: () => void;
@@ -225,7 +228,13 @@ export function createPoseReviewTab(location: PoseReviewLocation, id = createTab
 }
 
 function cloneTab(tab: MoleculeTab): MoleculeTab {
-  return { ...tab, back: [...tab.back], forward: [...tab.forward] };
+  const { title, ...rest } = tab;
+  return { ...rest, ...tabTitle(title), back: [...tab.back], forward: [...tab.forward] };
+}
+
+function tabTitle(value: unknown): { title?: string } {
+  const title = typeof value === "string" ? value.trim().slice(0, 200) : "";
+  return title ? { title } : {};
 }
 
 // Copies what a JSON round trip would, but shares strings: history snapshots
@@ -367,6 +376,15 @@ export function isMainTab(tab: MoleculeTab) {
   return tab.location.kind !== "settings" && !tab.pane;
 }
 
+// Keyboard tab navigation follows the visible strip and leaves parked screens in place.
+export function adjacentMainTabId(tabs: MoleculeTab[], activeTabId: string | null, offset: -1 | 1) {
+  const mainTabs = tabs.filter(isMainTab);
+  if (mainTabs.length === 0) return null;
+  const index = mainTabs.findIndex((tab) => tab.id === activeTabId);
+  if (index < 0) return mainTabs[offset === 1 ? 0 : mainTabs.length - 1].id;
+  return mainTabs[(index + offset + mainTabs.length) % mainTabs.length].id;
+}
+
 function activeTabIdOrFirst(tabs: MoleculeTab[], activeTabId: string | null) {
   // An explicitly requested placed tab is kept: the store moves it back to
   // the strip right after (see the subscription at the end of this module).
@@ -439,6 +457,7 @@ function serializeTab(tab: MoleculeTab): SessionTab | null {
   if (!location) return null;
   return {
     id: tab.id,
+    ...tabTitle(tab.title),
     ...(tab.pinned ? { pinned: true } : {}),
     ...(tab.pane ? { pane: tab.pane } : {}),
     location,
@@ -452,6 +471,7 @@ function hydrateTab(tab: SessionTab, id = tab.id ?? createTabId()): MoleculeTab 
   if (!location) return null;
   return {
     id,
+    ...tabTitle(tab.title),
     ...(tab.pinned ? { pinned: true } : {}),
     ...(isTabPane(tab.pane) ? { pane: tab.pane } : {}),
     location,
@@ -1003,6 +1023,13 @@ export const useMoleculeStore = create<MoleculeState>()(
       },
       showSidePaneTab: (id) =>
         set((state) => (state.tabs.some((tab) => tab.id === id && tab.pane === "side") ? { sidePaneTabId: id } : state)),
+      renameTab: (id, title) => set((state) => ({
+        tabs: state.tabs.map((tab) => {
+          if (tab.id !== id) return tab;
+          const { title: _previous, ...rest } = tab;
+          return { ...rest, ...tabTitle(title) };
+        }),
+      })),
       closeTab: (id) =>
         set((state) => {
           const closing = state.tabs.find((tab) => tab.id === id);

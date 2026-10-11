@@ -24,7 +24,7 @@ const names: Record<string, string> = {
   'open-together': 'Cube', 'open-poses': 'CompareArrows', 'open-aligned': 'CompareArrows', 'open-table': 'TableFilled',
   'open-cards': 'Grid', 'open-text': 'Text', 'open-finder': 'FolderDocumentsFinder', 'folder-finder': 'FolderDocumentsFinder',
   'open-external': 'ExternalLink', 'open-default-app': 'ExternalLink', 'open-folder': 'FolderOpen',
-  'rename-scene': 'Edit', 'rename-file': 'Edit', 'rename-folder': 'Edit', 'rename-project': 'Edit', 'edit-ketcher': 'Edit',
+  'rename-scene': 'Edit', 'rename-tab': 'Edit', 'rename-file': 'Edit', 'rename-folder': 'Edit', 'rename-project': 'Edit', 'edit-ketcher': 'Edit',
   'duplicate-file': 'Copy', 'copy-names': 'Text', 'copy-paths': 'Link', 'copy-folder-name': 'Text', 'copy-folder-path': 'Link',
   'save-file-copy': 'Download', 'save-scene': 'Download', 'export-table': 'Download', 'trash-file': 'Trash', 'trash-folder': 'Trash',
   'new-folder': 'FolderPlus', 'new-molecule': 'Plus', 'refresh-folder': 'ArrowRotateCw', 'remove-project': 'CloseBold',

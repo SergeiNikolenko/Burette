@@ -42,9 +42,21 @@ export async function reopenClosedTab(actions: Pick<ShellActions, "openStructure
   const tab = takeClosedTab();
   if (!tab) return;
   const { location } = tab;
+  const existingIds = new Set(useMoleculeStore.getState().tabs.map(current => current.id));
   if (location.kind === "file") await actions.openStructurePaths([location.path]);
   else if (location.kind === "text-file") await actions.openTextPaths([location.path]);
   else openScreen(location, tab.pane ?? null);
+  // Apply the label only to the restored screen, not another tab opened while
+  // a file was loading or an existing screen that the open action reused.
+  if (tab.title) {
+    const restored = useMoleculeStore.getState().tabs.find(current => !existingIds.has(current.id) && (
+      current.location === location || (
+        (location.kind === "file" || location.kind === "text-file")
+        && current.location.kind === location.kind && current.location.path === location.path
+      )
+    ));
+    if (restored) useMoleculeStore.getState().renameTab(restored.id, tab.title);
+  }
 }
 
 // The screens that are not files, offered by the new-tab menu and the pane

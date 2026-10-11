@@ -71,7 +71,12 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     const result = await requestViewerAction(document.id, { type: "export_session", args: { type: "molj", maxBytes: 24 * 1024 * 1024 } });
     if (typeof result.dataBase64 !== "string") throw new Error("The scene did not return a session file.");
     const bytes = Uint8Array.from(atob(result.dataBase64), c => c.charCodeAt(0));
-    await actions.saveKetcherExportFile({ title: document.title.replace(/\.[^.]+$/, '') + '.molj', extension: "molj", text: new TextDecoder().decode(bytes) });
+    const tab = state.tabs.find(tab => tab.location.kind === "file" && tab.location.documentId === document.id);
+    const saved = await actions.saveKetcherExportFile({ title: (tab?.title ?? document.title).replace(/\.[^.]+$/, '') + '.molj', extension: "molj", text: new TextDecoder().decode(bytes) });
+    if (saved.status !== "saved" || !saved.path) return;
+    await actions.openPaths([saved.path]);
+    if (!state.pinnedStructurePaths.includes(saved.path)) actions.togglePinnedStructure(saved.path);
+    window.dispatchEvent(new Event("burette-folder-contents-changed"));
   };
   const openRecordScene = async (records: StructureDragRecord[], mode: "all" | "single") => {
     if (records.length < 2 || records.length > 200 || !records.every(record => ['sdf', 'mol'].includes(record.inputExtension))) throw new Error("Choose 2–200 MOL or SDF records.");

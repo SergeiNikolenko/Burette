@@ -1,3 +1,4 @@
+import { adjacentMainTabId } from "../stores/molecule-store";
 import { useEffect } from "react";
 import type { ShellActions, ShellViewState } from "../components/types";
 import {
@@ -29,11 +30,8 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
     const bindings = resolveShortcutBindings(shortcutOverrides);
     const matches = (id: ShortcutId, event: KeyboardEvent) => matchesAccelerator(event, bindings[id]);
     const selectAdjacentTab = (offset: -1 | 1) => {
-      if (state.tabs.length === 0) return;
-      const activeIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
-      const currentIndex = activeIndex >= 0 ? activeIndex : 0;
-      const nextIndex = (currentIndex + offset + state.tabs.length) % state.tabs.length;
-      actions.selectTab(state.tabs[nextIndex].id);
+      const nextId = adjacentMainTabId(state.tabs, state.activeTabId, offset);
+      if (nextId) actions.selectTab(nextId);
     };
     // Browser runtime only: the desktop app receives these through native menu
     // accelerators, which Settings updates at runtime.

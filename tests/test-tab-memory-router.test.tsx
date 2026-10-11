@@ -8,7 +8,7 @@ for (const key of ["window", "document", "navigator", "HTMLElement", "Node", "Ev
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import("react-dom/client");
 const { useNavigate, useLocation } = await import("react-router");
-const { useMoleculeStore, getMoleculeSessionSnapshot } = await import("../apps/desktop/src/stores/molecule-store");
+const { useMoleculeStore, getMoleculeSessionSnapshot, adjacentMainTabId } = await import("../apps/desktop/src/stores/molecule-store");
 const { TabMemoryRouter } = await import("../apps/desktop/src/components/editor-area/tab-router");
 
 test("router navigation shares tab history, session restore, and native Back/Forward without changing browser URL", async () => {
@@ -56,4 +56,58 @@ test("router navigation shares tab history, session restore, and native Back/For
   } finally {
     await act(async () => root.unmount()); container.remove();
   }
+});
+
+
+test("cycling the main strip preserves side and floating screens", () => {
+  const store = useMoleculeStore;
+  store.getState().closeAllDocuments();
+  store.getState().openScreenTab({ kind: "jobs" }, "side");
+  store.getState().openScreenTab({ kind: "chemical-space" }, "floating");
+  store.getState().openSettingsSection("general");
+  store.getState().activateLastNonSettingsTab();
+  store.getState().openScreenTab({ kind: "ketcher" });
+  store.getState().openNewTab();
+  const initial = store.getState();
+  const panes = initial.tabs.filter(tab => tab.pane).map(tab => ({ id: tab.id, pane: tab.pane }));
+  const mainIds = initial.tabs.filter(tab => !tab.pane && tab.location.kind !== "settings").map(tab => tab.id);
+  expect(mainIds.length).toBe(2);
+  for (const offset of [1, -1] as const) {
+    store.getState().setActiveTab(mainIds[0]);
+    for (const expected of [mainIds[1], mainIds[0]]) {
+      const { tabs, activeTabId } = store.getState();
+      const nextId = adjacentMainTabId(tabs, activeTabId, offset)!;
+      store.getState().setActiveTab(nextId);
+      expect(store.getState().activeTabId).toBe(expected);
+      expect(store.getState().tabs.filter(tab => tab.pane).map(tab => ({ id: tab.id, pane: tab.pane }))).toEqual(panes);
+    }
+  }
+});
+
+
+test("reopening named screens and files preserves their labels without renaming unrelated tabs", async () => {
+  const { reopenClosedTab } = await import("../apps/desktop/src/components/workspace-panes/pane-actions");
+  const store = useMoleculeStore;
+  store.getState().closeAllDocuments();
+  store.getState().openScreenTab({ kind: "jobs" }, "side");
+  const jobs = store.getState().tabs.find(tab => tab.location.kind === "jobs")!;
+  store.getState().renameTab(jobs.id, "My calculations");
+  store.getState().closeTab(jobs.id);
+  await reopenClosedTab({ openStructurePaths: () => {}, openTextPaths: () => {} });
+  expect(store.getState().tabs.filter(tab => tab.location.kind === "jobs").map(tab => ({ title: tab.title, pane: tab.pane })))
+    .toEqual([{ title: "My calculations", pane: "side" }]);
+
+  const molecule = { id: "named-file", path: "/example.pdb", title: "example.pdb", extension: "pdb", renderer: "molstar" as const, runtimePath: "", byteCount: 1 };
+  store.getState().addDocuments([molecule]);
+  const fileId = store.getState().activeTabId!;
+  store.getState().renameTab(fileId, "Binding site");
+  store.getState().closeTab(fileId);
+  await reopenClosedTab({ openTextPaths: () => {}, openStructurePaths: async () => {
+    // A different tab may appear while the document is being read.
+    store.getState().openScreenTab({ kind: "chemical-space" });
+    store.getState().addDocuments([molecule]);
+  } });
+  expect(store.getState().tabs.filter(tab => tab.location.kind === "file").map(tab => tab.title)).toEqual(["Binding site"]);
+  expect(store.getState().tabs.find(tab => tab.location.kind === "chemical-space")?.title).toBeUndefined();
+  expect(store.getState().documents[0].title).toBe("example.pdb");
 });

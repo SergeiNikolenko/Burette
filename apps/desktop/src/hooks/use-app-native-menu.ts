@@ -1,3 +1,4 @@
+import { adjacentMainTabId } from "../stores/molecule-store";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -431,11 +432,8 @@ export function useAppNativeMenu({
       if (activeDocument?.renderer === "grid2d") postGridMenuCommand(activeDocument.id, command);
     };
     const selectAdjacentTab = (offset: -1 | 1) => {
-      if (state.tabs.length === 0) return;
-      const activeIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
-      const currentIndex = activeIndex >= 0 ? activeIndex : 0;
-      const nextIndex = (currentIndex + offset + state.tabs.length) % state.tabs.length;
-      actions.selectTab(state.tabs[nextIndex].id);
+      const nextId = adjacentMainTabId(state.tabs, state.activeTabId, offset);
+      if (nextId) actions.selectTab(nextId);
     };
 
     if (command.startsWith("analyze.") && canOpenCollectionAnalysis && activeDocument) {
