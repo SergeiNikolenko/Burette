@@ -3,6 +3,9 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-scene-save-sidebar.mjs": () => import("./test-scene-save-sidebar.mjs"),
+  "test-browser-sidebar-file-operations.mjs": () => import("./test-browser-sidebar-file-operations.mjs"),
+  "test-tab-thumbnail-images.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-tab-thumbnail-images.mjs", import.meta.url))]),
   "test-grid-search-export.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-grid-search-export.mjs", import.meta.url))]),
   "test-ketcher-ui-primitives.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-ketcher-ui-primitives.mjs", import.meta.url))]),
   "test-folding-panel.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-folding-panel.test.tsx", import.meta.url))]),
@@ -18,6 +21,7 @@ const contractScripts = {
   "test-welcome-screen.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-welcome-screen.test.tsx", import.meta.url))]),
   "test-inspector-tool-row.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-inspector-tool-row.test.tsx", import.meta.url))]),
   "test-settings-controls.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-settings-controls.test.tsx", import.meta.url))]),
+  "test-agent-integration-panel.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-agent-integration-panel.test.tsx", import.meta.url))]),
   "test-browser-select.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-browser-select.test.tsx", import.meta.url))]),
   "test-toast-interactions.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-toast-interactions.test.tsx", import.meta.url))]),
   "test-input-fields.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-input-fields.test.tsx", import.meta.url))]),

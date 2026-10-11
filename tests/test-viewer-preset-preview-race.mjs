@@ -42,19 +42,24 @@ function fixture() {
     },
   })
   return {state, pending, captured, errors, context, renders,
-    hover(preset) {context.scheduleMolstarPresetPreview({dataset: {buretMolstarPreset: preset}})},
+    async hover(preset) {
+      context.scheduleMolstarPresetPreview({dataset: {buretMolstarPreset: preset}})
+      // Production yields twice so its loading shell paints before copying the scene.
+      // Let those awaits settle before controlling the pending snapshot task.
+      await new Promise(resolve => setImmediate(resolve))
+    },
   }
 }
 
 for (const mode of ['cache', 'constrained', 'budget']) {
   test(`a ${mode} hover invalidates an older asynchronous preview`, async () => {
     const f = fixture()
-    f.hover('spacefill')
+    await f.hover('spacefill')
     assert.equal(f.pending.length, 1)
     if (mode === 'cache') f.state.cached = 'ghost-surface'
     if (mode === 'constrained') f.state.constrained = true
     if (mode === 'budget') f.state.budget = 'Preview unavailable'
-    f.hover('ghost-surface')
+    await f.hover('ghost-surface')
     assert.equal(f.context.molstarPresetPreviewSerial, 2)
     assert.equal(f.pending.length, 1, 'early return must not start a new renderer')
     f.pending[0]()
@@ -66,8 +71,8 @@ for (const mode of ['cache', 'constrained', 'budget']) {
 
 test('a current preview still renders; repeated hover does not restart it', async () => {
   const f = fixture()
-  f.hover('ghost-surface')
-  f.hover('ghost-surface')
+  await f.hover('ghost-surface')
+  await f.hover('ghost-surface')
   assert.equal(f.context.molstarPresetPreviewSerial, 1)
   f.pending[0]()
   await Promise.all(f.renders)

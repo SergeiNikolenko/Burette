@@ -648,7 +648,7 @@ test("browser viewer menu keeps the bridge open for live edits, commits on dismi
   const replies: unknown[] = [];
   let handle!: ReturnType<typeof useAppXyzrenderSheetMessages>["handleXyzrenderSheetMessage"];
   function Harness() {
-    ({ handleXyzrenderSheetMessage: handle } = useAppXyzrenderSheetMessages({ postMessageToViewerSource: (_source, payload) => replies.push(payload) }));
+    ({ handleXyzrenderSheetMessage: handle } = useAppXyzrenderSheetMessages({ documents: [], postMessageToViewerSource: (_source, payload) => replies.push(payload) }));
     return null;
   }
   const request = (requestId: string) => ({ type: "molstarContextMenu", requestId, clientX: 20, clientY: 20, items: [

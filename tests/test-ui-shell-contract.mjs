@@ -1903,7 +1903,9 @@ assert.doesNotMatch(browserDevDocuments, /window\.parent\.postMessage\(\{ source
 assert.match(gridViewer, /function resolveTheme\(value\)/);
 assert.match(gridViewer, /function normalizeCanvasBackground\(value\)/);
 assert.match(gridViewer, /function resolveCanvasBackground\(theme, value\)/);
-assert.match(gridViewer, /style\.setProperty\('--buret-grid-canvas-background', canvasBackgroundCSS\(canvasBackground\)\)/);
+assert.match(gridViewer, /const themed = window\.BuretteGridUI\.themeColors\(cfg\.themeTokens\?\.\[theme\], theme\)\.background/);
+assert.match(gridViewer, /const background = normalizeCanvasBackground\(cfg\.canvasBackground\) === 'auto' \? themed : canvasBackgroundCSS\(canvasBackground\)/);
+assert.match(gridViewer, /style\.setProperty\('--buret-grid-canvas-background', background\)/);
 assert.match(gridViewer, /function loadBatchSize\(cfg\)/);
 assert.match(gridViewer, /function rdkitWasmCandidates\(cfg\)/);
 assert.match(gridViewer, /function rdkitWasmAssetURLFromLocation\(\)/);
@@ -5231,7 +5233,7 @@ assert.match(
   /\.buret-generate-3d-control\[aria-expanded="true"\] > \.buret-tooltip \{[^}]*opacity: 0;[^}]*visibility: hidden;/s,
 );
 assert.match(previewRuntimeCss, /\.buret-molstar-tooltip#buret-shared-control-tooltip \{/);
-assert.match(previewRuntimeCss, /\.buret-molstar-tooltip\.visible \{/);
+assert.match(previewRuntimeCss, /\.buret-molstar-tooltip#buret-shared-control-tooltip\.visible \{/);
 assert.doesNotMatch(
   previewRuntimeCss,
   /--buret-(?:panel|toolbar|molstar-(?:panel|row|field|hover))-background:\s*rgba\(/,
@@ -5461,7 +5463,8 @@ assert.match(gridViewer, /cfg\.transparentBackground === true \|\| canvasBackgro
 assert.match(gridViewer, /if \(background === 'graphite'\) return '#111111';/);
 assert.match(previewViewer, /if \(background === 'graphite'\) return '#111111';/);
 // "Match theme" follows the app background instead of a fixed canvas colour.
-assert.match(previewViewer, /const value = themeTokensFor\(resolveViewerTheme\(\)\)\?\.background;/);
+assert.match(previewViewer, /const tokens = themeTokensFor\(theme\);/);
+assert.match(previewViewer, /const value = window\.BuretteNativeViewerMenus\?\.themeColors\?\.\(tokens, theme\)\?\.background \?\? tokens\?\.background;/);
 assert.match(gridViewer, /if \(background === 'white'\) return '#ffffff';/);
 assert.match(previewRuntimeCss, /--buret-canvas-background:/);
 assert.match(gridCss, /background: var\(--buret-grid-canvas-background, var\(--buret-bg\)\);/);
@@ -7893,18 +7896,19 @@ assert.match(appPreferenceEffectsHook, /void openDocuments\(\[path\], undefined,
 // Theme and Mol* style changes must reach mounted viewers as messages instead of
 // reopening the document, otherwise the live Mol* scene (camera, components,
 // selections) is lost.
-assert.match(appPreferenceEffectsHook, /const LIVE_APPLIED_PREFERENCE_MESSAGES = \{\s*theme: "setViewerTheme",\s*molstarStyle: "setViewerStyle",[\s\S]*?gridViewMode: "setGridViewModeDefault",[\s\S]*?quickLookGridSdf: null,[\s\S]*?\}/s);
+assert.match(appPreferenceEffectsHook, /const LIVE_APPLIED_PREFERENCE_MESSAGES = \{\s*theme: "setViewerTheme",\s*canvasBackground: "setViewerTheme",[\s\S]*?molstarStyle: "setViewerStyle",[\s\S]*?gridViewMode: "setGridViewModeDefault",[\s\S]*?quickLookGridSdf: null,[\s\S]*?\}/s);
 // Settings-owned screenshot and grid defaults are live messages, never rebuilds.
 assert.match(previewViewer, /if \(body\.type === 'setScreenshotFormatDefault'\) \{\s*setViewportScreenshotDefault\('screenshotFormat', body\.value\);/s);
 assert.match(gridViewer, /if \(Object\.hasOwn\(GRID_APP_DEFAULT_MESSAGES, body\.type\)\) \{/);
 assert.match(appPreferenceEffectsHook, /function changedLiveAppliedKeys\(previous: ViewerPreferences, next: ViewerPreferences\)/);
 assert.match(appPreferenceEffectsHook, /querySelectorAll<HTMLIFrameElement>\("iframe\[data-document-id\]"\)/);
-assert.match(appPreferenceEffectsHook, /body: \{ type: LIVE_APPLIED_PREFERENCE_MESSAGES\[key\], value: preferences\[key\] \}/);
+assert.match(appPreferenceEffectsHook, /const type = LIVE_APPLIED_PREFERENCE_MESSAGES\[key\];/);
+assert.match(appPreferenceEffectsHook, /body: type === "setViewerTheme" \? viewerAppearanceMessage\(preferences\) : \{ type, value: preferences\[key\] \}/);
 assert.match(appPreferenceEffectsHook, /if \(liveKeys\) broadcastLiveAppliedPreferences\(liveKeys, preferences\)/);
-assert.match(previewViewer, /if \(body\.type === 'setViewerTheme'\) \{\s*const nextTheme = normalizeViewerTheme\(body\.value\);/s);
+assert.match(previewViewer, /if \(body\.type === 'setViewerTheme'\) \{\s*if \(event\.source !== window\.parent\) return;\s*const nextTheme = normalizeViewerTheme\(body\.value\);/s);
 assert.match(previewViewer, /setViewerTheme\(nextTheme, activeViewer\);/);
 // The molecule grid is a separate runtime and must follow the same live theme message.
-assert.match(gridViewer, /if \(body\.type === 'setViewerTheme'\) \{\s*const cfg = safeConfig\(\);\s*if \(!cfg\) return;\s*cfg\.theme = [^;]+;\s*applyTheme\(cfg\);/s);
+assert.match(gridViewer, /if \(body\.type === 'setViewerTheme'\) \{\s*if \(event\.source !== window\.parent\) return;\s*const cfg = safeConfig\(\);\s*if \(!cfg\) return;[\s\S]*?cfg\.theme = [^;]+;\s*applyTheme\(cfg\);/s);
 assert.match(previewViewer, /if \(body\.type === 'setViewerStyle'\) \{\s*const style = normalizeMolstarStyle\(body\.value\);\s*if \(style === 'default' \|\| style === 'illustrative'\) void requestMolstarAppearance\(style\);\s*else requestMolstarStyle\(style\);/s);
 assert.match(appMaintenanceHook, /Quick Look reset completed/);
 assert.match(appMaintenanceHook, /Quick Look reset reported issues/);

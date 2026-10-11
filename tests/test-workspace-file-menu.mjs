@@ -31,7 +31,7 @@ assert.ok(!table.some(item => item.id === 'open-3d'));
 for (const extension of ['pdb', 'ent', 'cif', 'mcif', 'sdf', 'sd', 'xyz']) {
   const path = `/structure.${extension}`;
   const modes = flatten(withMenuIcons(workspaceFileMenu([path], state, actions, workflows, [], run)));
-  for (const [id, label, renderer] of [['open-3d', 'Mol*', 'molstar'], ['open-xyzrender', 'xyzrender', 'xyzrender-external']]) {
+  for (const [id, label, renderer] of [['open-3d', 'Interactive 3D', 'molstar'], ['open-xyzrender', '3D render', 'xyzrender-external']]) {
     const option = modes.find(item => item.id === id);
     assert.equal(option.text, label);
     assert.ok(option.iconUrl?.startsWith('data:image/svg+xml'));

@@ -17,7 +17,7 @@ const conformerExecutor = source("apps/desktop/src-tauri/src/compute/conformer_e
 const artifactPublisher = source("apps/desktop/src-tauri/src/compute/artifact_publisher.rs");
 
 assert.match(structureInfoPanel, /document\.renderer !== "grid2d" && canUseConformerWorkflow/);
-assert.match(conformerWorkflow, /Open a specific molecule from the collection in Mol\* before running CREST/);
+assert.match(conformerWorkflow, /Open one molecule from the collection before running CREST/);
 
 for (const text of [chemistrySettings, chemistryTypes, structureInfoPanel, conformerWorkflow, conformerCommand, viteConfig]) {
   assert.doesNotMatch(text, /prismRotamerPruning|prism_rotamer_pruning/u);
