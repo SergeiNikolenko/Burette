@@ -25,9 +25,9 @@ const jobStatusCard = source("apps/desktop/src/components/grid-descriptor-status
 // The desktop command answers with a running job, so the host has to poll it.
 // Without this the run is invisible from the moment it starts.
 assert.match(descriptors, /gridDescriptorJobStatus/);
-assert.match(descriptors, /if \(status\.running\) \{\s*void followGridDescriptorJob\(documentId\);/);
+assert.match(descriptors, /if \(status\.running\) \{\s*await followGridDescriptorJob\(documentId, controller.signal, status\);/);
 assert.match(descriptors, /const status = await gridDescriptorJobStatus\(documentId\);/);
-assert.match(descriptors, /publishGridDescriptorJobFor\(documentId, status\);\s*if \(status\.running\) continue;/);
+assert.match(descriptors, /previous = status;\s*if \(status\.running\) continue;/);
 
 // Browser-dev computes inline and answers with rows; that path must not start a
 // follower, and must keep applying the rows it was given.

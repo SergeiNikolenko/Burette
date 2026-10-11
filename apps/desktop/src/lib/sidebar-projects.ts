@@ -150,12 +150,25 @@ export function filterSidebarProjects(projects: SidebarProject[], query: string)
   if (!normalizedQuery) return projects;
   return projects
     .map((project) => {
-      const items = project.items.filter((item) => item.matchText.includes(normalizedQuery));
       if (project.matchText.includes(normalizedQuery)) return project;
+      const items = project.items.filter((item) => item.matchText.includes(normalizedQuery));
       if (items.length === 0) return null;
       return { ...project, items };
     })
     .filter((project): project is SidebarProject => project !== null);
+}
+
+export function sortSidebarProjects(projects: SidebarProject[], sort: "manual" | "priority" | "recent") {
+  if (sort === "manual") return projects;
+  if (sort === "priority") return [...projects].sort((a, b) => Number(b.isPinned) - Number(a.isPinned));
+  // Compute each project's recency once, not once per comparator invocation.
+  // Avoid spreading file arrays into Math.max: large projects hit argument limits.
+  const recency = new Map(projects.map((project) => {
+    let latest = 0;
+    for (const item of project.items) latest = Math.max(latest, item.openedAt ?? 0);
+    return [project, latest] as const;
+  }));
+  return [...projects].sort((a, b) => recency.get(b)! - recency.get(a)!);
 }
 
 export function normalizePath(path: string) {

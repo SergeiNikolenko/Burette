@@ -1,4 +1,5 @@
 import { FolderExpandCollapseIcon } from "./folder-expand-collapse-icon";
+import { TreeCollapse } from "./tree-collapse";
 import { useWorkspaceMenus } from "../workspace-menus";
 import { SidebarTooltip } from "./sidebar-tooltip";
 import { Pin, PinFilled, DotsHorizontal } from "../ui/app-icons";
@@ -28,6 +29,7 @@ type ProjectTreeNode =
     name: string;
     path: string;
     children: ProjectTreeNode[];
+    hasItems: boolean;
   }
   | {
     kind: "item";
@@ -66,9 +68,8 @@ export function ProjectGroup({
   const hasSidebarQuery = sidebarQuery.length > 0;
   const expanded = hasSidebarQuery || state.expandedProjectIds.includes(project.id);
   const canRenameProject = Boolean(project.rootPath);
-  // The tail past the limit stays mounted inside a collapsible shell so "Show
-  // more" can animate it open instead of popping the rows in; a search shows
-  // every match inline and needs no shell at all.
+  // A search shows every match inline. Closed folders and overflow tails are
+  // mounted on demand; TreeCollapse retains them only through the closing slide.
   const limitItems = !hasSidebarQuery && projectTree.length >= COLLAPSE_PROJECT_ITEMS_FROM;
   const leadingTree = limitItems ? projectTree.slice(0, COLLAPSED_PROJECT_ITEM_LIMIT) : projectTree;
   const trailingTree = limitItems ? projectTree.slice(COLLAPSED_PROJECT_ITEM_LIMIT) : [];
@@ -336,26 +337,22 @@ export function ProjectGroup({
           </button>
         </span>
       </div>
-      <div
+      <TreeCollapse
         className="project-group-children-shell"
-        data-expanded={expanded ? "true" : "false"}
-        aria-hidden={!expanded}
-        inert={!expanded}
+        open={expanded}
       >
-        <div className="project-children" role="list">
+        {() => <div className="project-children" role="list">
           {leadingTree.map(renderNode)}
           {limitItems && (
             <>
-              <div
+              <TreeCollapse
                 className="project-tail-shell"
-                data-expanded={showAllItems ? "true" : "false"}
-                aria-hidden={!showAllItems}
-                inert={!showAllItems}
+                open={showAllItems}
               >
-                <div className="project-tail">
+                {() => <div className="project-tail">
                   {trailingTree.map(renderNode)}
-                </div>
-              </div>
+                </div>}
+              </TreeCollapse>
               <button
                 type="button"
                 className="project-show-more"
@@ -367,8 +364,8 @@ export function ProjectGroup({
               </button>
             </>
           )}
-        </div>
-      </div>
+        </div>}
+      </TreeCollapse>
     </div>
   );
 }
@@ -404,7 +401,6 @@ function ProjectTreeNodeView({
     return <ProjectItem item={node.item} state={state} actions={actions} depth={depth} />;
   }
 
-  const nodeItems = projectTreeNodeItems(node);
   const expanded = forceExpanded || expandedFolderPaths.has(node.path);
   const folderPath = project.rootPath ? `${project.rootPath}/${node.path}` : null;
   const displayName = folderPath ? state.projectNameOverrides?.[folderPath]?.trim() || node.name : node.name;
@@ -449,9 +445,10 @@ function ProjectTreeNodeView({
   };
   const sidebarDrag = useSidebarStructureDrag({
     actions,
-    getPayload: () => sidebarProjectItemsDragPayload(nodeItems, folderPath),
+    getPayload: () => sidebarProjectItemsDragPayload(projectTreeNodeItems(node), folderPath),
     state,
   });
+  const nodeItems = useMemo(() => projectTreeNodeItems(node), [node]);
   const hoverCard = useSidebarHoverCard(folderHoverCard({ title: displayName, path: folderPath, items: nodeItems }));
   const showAllChildren = showAllFolderPaths.has(node.path);
   const limitChildren = !forceExpanded && node.children.length >= COLLAPSE_PROJECT_ITEMS_FROM;
@@ -484,7 +481,7 @@ function ProjectTreeNodeView({
         {...hoverCard}
         data-drop-directory={project.rootPath ? `${project.rootPath}/${node.path}` : undefined}
         style={projectDepthStyle(depth)}
-        draggable={nodeItems.length > 0}
+        draggable={node.hasItems}
         onMouseDown={(event) => {
           handleRowMouseDown(event);
           sidebarDrag.onMouseDown(event);
@@ -524,26 +521,22 @@ function ProjectTreeNodeView({
           />
         )}
       </div>
-      <div
+      <TreeCollapse
         className="project-folder-children-shell"
-        data-expanded={expanded ? "true" : "false"}
-        aria-hidden={!expanded}
-        inert={!expanded}
+        open={expanded}
       >
-        <div className="project-folder-children" role="list">
+        {() => <div className="project-folder-children" role="list">
           {leadingChildren.map(renderChild)}
           {limitChildren && (
             <>
-              <div
+              <TreeCollapse
                 className="project-tail-shell"
-                data-expanded={showAllChildren ? "true" : "false"}
-                aria-hidden={!showAllChildren}
-                inert={!showAllChildren}
+                open={showAllChildren}
               >
-                <div className="project-tail">
+                {() => <div className="project-tail">
                   {trailingChildren.map(renderChild)}
-                </div>
-              </div>
+                </div>}
+              </TreeCollapse>
               <button
                 type="button"
                 className="project-show-more"
@@ -556,8 +549,8 @@ function ProjectTreeNodeView({
               </button>
             </>
           )}
-        </div>
-      </div>
+        </div>}
+      </TreeCollapse>
     </div>
   );
 }
@@ -697,7 +690,7 @@ function buildProjectTree(items: SidebarProjectItem[], emptyFolders: string[] = 
   const roots: ProjectTreeNode[] = [];
   const folders = new Map<string, Extract<ProjectTreeNode, { kind: "folder" }>>();
 
-  const childrenFor = (folderPath: string | null) => {
+  const childrenFor = (folderPath: string | null, hasItems = false) => {
     if (!folderPath) return roots;
     let folder = folders.get(folderPath);
     if (!folder) {
@@ -708,10 +701,15 @@ function buildProjectTree(items: SidebarProjectItem[], emptyFolders: string[] = 
         name: segments.at(-1) ?? folderPath,
         path: folderPath,
         children: [],
+        hasItems,
       };
       folders.set(folderPath, folder);
       const parentPath = segments.length > 1 ? segments.slice(0, -1).join("/") : null;
-      childrenFor(parentPath).push(folder);
+      childrenFor(parentPath, hasItems).push(folder);
+    } else if (hasItems && !folder.hasItems) {
+      folder.hasItems = true;
+      const separator = folderPath.lastIndexOf("/");
+      childrenFor(separator < 0 ? null : folderPath.slice(0, separator), true);
     }
     return folder.children;
   };
@@ -720,7 +718,7 @@ function buildProjectTree(items: SidebarProjectItem[], emptyFolders: string[] = 
   for (const item of items) {
     const segments = item.relativePath.split("/").filter(Boolean);
     const parentPath = segments.length > 1 ? segments.slice(0, -1).join("/") : null;
-    childrenFor(parentPath).push({
+    childrenFor(parentPath, true).push({
       kind: "item",
       key: item.key,
       item,
@@ -751,9 +749,12 @@ function childrenForFolder(nodes: ProjectTreeNode[], path: string): ProjectTreeN
 
 function collectProjectFolderPaths(nodes: ProjectTreeNode[]) {
   const paths: string[] = [];
-  for (const node of nodes) {
+  const pending = [...nodes].reverse();
+  while (pending.length) {
+    const node = pending.pop()!;
     if (node.kind !== "folder") continue;
-    paths.push(node.path, ...collectProjectFolderPaths(node.children));
+    paths.push(node.path);
+    for (let index = node.children.length - 1; index >= 0; index--) pending.push(node.children[index]);
   }
   return paths;
 }

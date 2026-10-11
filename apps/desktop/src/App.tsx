@@ -1063,6 +1063,7 @@ export default function App() {
     activeDocument,
     addBackgroundDocuments,
     addDocuments,
+    appendGridRecords,
     calculateGridDescriptors,
     deleteDuplicateGridRows,
     updateHoveredGridRow,

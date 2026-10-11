@@ -103,12 +103,13 @@ function browserDevFoldersFromParams(params: URLSearchParams) {
     .slice(0, BROWSER_DEV_FOLDER_ROOT_LIMIT);
 }
 
-export async function scanBrowserDevFolders(folders: string[]): Promise<BrowserDevFolderScan> {
+export async function scanBrowserDevFolders(folders: string[], signal?: AbortSignal): Promise<BrowserDevFolderScan> {
   const files = new Set<string>();
   let truncated = folders.length > BROWSER_DEV_FOLDER_ROOT_LIMIT;
   let scannedEntries = 0;
   let scannedDirectories = 0;
   for (const root of folders.slice(0, BROWSER_DEV_FOLDER_ROOT_LIMIT)) {
+    signal?.throwIfAborted();
     const remainingFiles = BROWSER_DEV_FOLDER_FILE_LIMIT - files.size;
     const remainingEntries = BROWSER_DEV_FOLDER_ENTRY_LIMIT - scannedEntries;
     const remainingDirectories = BROWSER_DEV_FOLDER_DIRECTORY_LIMIT - scannedDirectories;
@@ -122,9 +123,10 @@ export async function scanBrowserDevFolders(folders: string[]): Promise<BrowserD
       maxEntries: String(remainingEntries),
       maxDirectories: String(remainingDirectories),
     });
-    const response = await fetch(`/__burette/dev-files?${query}`, { cache: "no-store" });
+    const response = await fetch(`/__burette/dev-files?${query}`, { cache: "no-store", signal });
     if (!response.ok) throw new Error(`Could not load dev folder: ${response.status}`);
     const payload = await response.json() as Partial<BrowserDevFolderScan>;
+    signal?.throwIfAborted();
     for (const path of Array.isArray(payload.files) ? payload.files : []) {
       if (files.size >= BROWSER_DEV_FOLDER_FILE_LIMIT) break;
       files.add(path);

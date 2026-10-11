@@ -45,7 +45,7 @@ const bestEffort = fn("bestEffortSuperpositionPlan");
 assert.match(bestEffort, /method === 'auto' \? \['auto', 'chains', 'tm-align'\] : \[method\]/);
 assert.match(bestEffort, /movingIds: \[moving\.id\]/);
 assert.match(bestEffort, /if \(!plans\.length\) throw/);
-assert.match(fn("createStructureSuperpositionController"), /const plan = bestEffortSuperpositionPlan\(entries, request, prepared\)/);
+assert.match(fn("createStructureSuperpositionController"), /const plan = await bestEffortSuperpositionPlan\(entries, request, prepared\)/);
 
 // Needleman-Wunsch keeps its guard rail and only anchors on identical residues; a
 // mismatched pair that the matrix walked through would drag the fit.
@@ -72,11 +72,8 @@ assert.match(
   /const refreshEntries = async \(\) => \{\s*\n\s*entries = superpositionStructureEntries\(viewer, prepared\);/,
 );
 assert.doesNotMatch(fn("createStructureSuperpositionController"), /prepareSuperpositionScene|applyDockingSceneVisibility/);
-assert.match(
-  fn("createStructureSuperpositionController"),
-  /const restoreAfterSceneReload = async \(\) => \{[\s\S]*?if \(!result\) return false;[\s\S]*?await refreshEntries\(\);[\s\S]*?await commitSuperpositionPlan\(viewer, entries, result\);/,
-);
-assert.match(fn("reloadSdfPoseMode"), /await activeStructureAlignmentControl\?\.restoreAfterSceneReload\?\.\(\)/);
+// Scene reload and alignment ownership are exercised behaviorally by
+// test-viewer-scene-recovery.mjs, including scene replacement on one viewer.
 // Superposition is a transform inside the scene, not a different scene. Keying
 // the docking scene on the alignment flag made the first structure step after
 // Align rebuild the scene from scratch, which dropped every transform cell and

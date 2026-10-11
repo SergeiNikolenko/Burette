@@ -1,9 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback } from "react";
-import { openBrowserDevMolstarContextDocument } from "../lib/browser-dev-documents";
+import { openBrowserDevMolstarContextDocument, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { normalizeMolstarStylePreference } from "../lib/conformer-generation";
 import { molstarContextEntryExtension } from "../lib/molstar-context";
+import type { StructureDragPayload } from "../lib/structure-drag";
 import { isTauriRuntime } from "../lib/tauri";
+import { requestViewerAction } from "../lib/viewer-bridge";
+import { focusSceneDocument } from "./workspace-scene-import";
 import type { ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
 type MolstarContextDocument = Parameters<typeof openBrowserDevMolstarContextDocument>[0];
@@ -15,6 +18,7 @@ type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => 
 type UseAppMolstarContextMessagesOptions = {
   activeDocument: ViewerDocument | null;
   addDocuments: (documents: ViewerDocument[]) => void;
+  appendGridRecords: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
   documents: ViewerDocument[];
   openDockingDocument: (receptorPath: string, ligandPaths: string[]) => Promise<unknown> | void;
   openDocuments: (
@@ -36,6 +40,7 @@ function bodyString(value: unknown) {
 export function useAppMolstarContextMessages({
   activeDocument,
   addDocuments,
+  appendGridRecords,
   documents,
   openDockingDocument,
   openDocuments,
@@ -56,11 +61,46 @@ export function useAppMolstarContextMessages({
         rendererMode: "molstar" as const,
         molstarStyle: requestedMolstarStyle ?? preferences.molstarStyle,
       };
+      const entries = (contextDocument.entries ?? []).filter((entry): entry is MolstarContextEntry & { data: string } => (
+        typeof entry?.data === "string" && entry.data.length > 0
+      ));
+      const toGrid = body.destination === "grid";
+      // Several molecules, or any molecule bound for a grid, travel as SDF records.
+      if (toGrid || entries.length > 1) {
+        if (!entries.length || entries.length > 200 || !entries.every(entry => molstarContextEntryExtension(entry.format) === "sdf")) {
+          pushStatus("These molecules cannot be opened together.", "error");
+          return true;
+        }
+        const records = entries.map(entry => ({
+          path: `${entry.label?.trim() || "Molecule"}.sdf`,
+          inputExtension: "sdf",
+          text: `${entry.data.replace(/\n?\$\$\$\$\s*$/u, "").trimEnd()}\n$$$$\n`,
+        }));
+        const gridDocumentId = bodyString(body.gridDocumentId);
+        if (toGrid && gridDocumentId) {
+          if (!appendGridRecords(gridDocumentId, { paths: [], records })) pushStatus("That grid is no longer open.", "error");
+          return true;
+        }
+        const title = toGrid ? "Ligands.sdf" : `Selected ${entries.length} molecules.sdf`;
+        const text = records.map(record => record.text).join("");
+        const openPreferences = toGrid ? { ...preferences, rendererMode: "grid2d" as const } : molstarPreferences;
+        const reloadOptions = toGrid ? undefined : { sdfPoseControlLabel: "Molecule" };
+        void (isTauriRuntime()
+          ? invoke<ViewerDocument>("open_text_structure", { request: { title, extension: "sdf", text }, preferences: openPreferences, reloadOptions })
+          : openBrowserDevTextDocument(title, "sdf", text, openPreferences, reloadOptions))
+          .then(async (document) => {
+            addDocuments([document]);
+            pushStatus(toGrid ? "Opened selected molecules in a grid" : "Opened selected molecules");
+            if (toGrid) return;
+            // Show every molecule at once, the same scene "Together" builds from grid rows.
+            await focusSceneDocument(document, () => {});
+            await requestViewerAction(document.id, { type: "set_sdf_pose_mode", mode: "all" });
+          })
+          .catch((error) => pushErrorStatus(error, "Opening selected molecules failed"));
+        return true;
+      }
       const openContextDocument = async () => {
         if (!isTauriRuntime()) return openBrowserDevMolstarContextDocument(contextDocument, molstarPreferences);
-        const entries = (contextDocument.entries ?? []).filter((entry): entry is MolstarContextEntry & { data: string } => (
-          typeof entry?.data === "string" && entry.data.length > 0
-        ));
         if (entries.length !== 1) {
           throw new Error("Native Molstar context view supports one inline structure at a time.");
         }
@@ -101,7 +141,7 @@ export function useAppMolstarContextMessages({
       pushStatus("This virtual structure cannot be opened separately.", "error");
     }
     return true;
-  }, [activeDocument, addDocuments, documents, openDockingDocument, openDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
+  }, [activeDocument, addDocuments, appendGridRecords, documents, openDockingDocument, openDocuments, preferences, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   return { handleMolstarContextMessage };
 }

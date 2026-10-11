@@ -43,7 +43,7 @@ const stale = harness.align([large,large],new AbortController().signal);
 harness.replace();
 await assert.rejects(stale,{name:'AbortError'});
 assert.equal(active,0,'document replacement terminates the old calculation');
-const queue = new Function(`let molstarSceneRebuildChain=Promise.resolve(); const pendingSceneAppearance=new Map(); ${extract('queueMolstarSceneRebuild')} return queueMolstarSceneRebuild;`)();
+const queue = new Function(`let molstarSceneRebuildChain=Promise.resolve(); const pendingSceneAppearance=new Map(); const activeViewer=null; let molstarDrawHoldDepth=0, molstarDrawHoldEndedAt=0; ${extract('withMolstarDrawHold')} ${extract('queueMolstarSceneRebuild')} return queueMolstarSceneRebuild;`)();
 let release; const gate=new Promise(r=>release=r); const calls=[];
 const blocker=queue(()=>gate);
 const old=queue(()=>calls.push('old'),'same-document');

@@ -1,0 +1,1 @@
+import{a as e}from"./document-page-BI_YKbx2.js";export{e as PdfResourceContent};

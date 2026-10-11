@@ -8,11 +8,11 @@ import { sidebarCreationItems } from "./context-actions";
 import { showNativeContextMenu } from "../native-context-menu";
 import { SidebarTooltip } from "./sidebar-tooltip";
 import { useDropHighlightReset } from "../../hooks/use-drop-highlight-reset";
-import { useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useMemo, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Search as Search01Icon } from "@/components/ui/app-icon-data";
 import { AnimatedOrbitIcon } from "../ui/animated-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { filterSidebarProjects } from "../../lib/sidebar-projects";
+import { filterSidebarProjects, sortSidebarProjects } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload } from "../../lib/structure-drag";
 import { isWebDemoWorkspace, webDemoProjectRoot } from "../../lib/web-demo-workspace";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
@@ -95,10 +95,12 @@ export function FileBrowser({
   const hideProjectPreviews = state.buildInfo.isAgentShell && !state.workspacePath;
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
-  const visibleProjects = hideProjectPreviews ? [] : [...filterSidebarProjects(state.sidebarProjects, state.sidebarQuery)].sort((a, b) => organization.sort === "priority" ? Number(b.isPinned) - Number(a.isPinned) : organization.sort === "recent" ? Math.max(0, ...b.items.map(i => i.openedAt ?? 0)) - Math.max(0, ...a.items.map(i => i.openedAt ?? 0)) : 0);
+  const visibleProjects = useMemo(() => hideProjectPreviews ? [] : sortSidebarProjects(
+    filterSidebarProjects(state.sidebarProjects, state.sidebarQuery), organization.sort,
+  ), [hideProjectPreviews, state.sidebarProjects, state.sidebarQuery, organization.sort]);
+  const pinnedItems = useMemo(() => visibleProjects.flatMap((project) => project.items.filter((item) => item.isPinned)), [visibleProjects]);
   const pinnedProjects = visibleProjects.filter((project) => project.isPinned);
   const recentProjects = visibleProjects.filter((project) => !project.isPinned);
-  const pinnedItems = visibleProjects.flatMap((project) => project.items.filter((item) => item.isPinned));
   const hasPinned = pinnedProjects.length > 0 || pinnedItems.length > 0
     || (!hideProjectPreviews && sshProjects.some((project) => project.pinned && `${project.name} ${project.host} ${project.root}`.toLowerCase().includes(sidebarQuery.toLowerCase())));
   const pinnedExpanded = pinnedOpen || hasSidebarQuery;

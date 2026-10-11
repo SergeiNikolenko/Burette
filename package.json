@@ -56,6 +56,7 @@
     "test": "bun run test:mesoscale && bun run test:agent && bun run test:update && bun run test:ui",
     "test-ui": "bun run test:ui",
     "ci:fast": "bash scripts/ci-fast.sh",
+    "test:responsiveness": "vp test -t 'test-(shell-performance|background-performance|sidebar-tree-collapse|viewer-scene-recovery|story-preset-entrypoints)'",
     "ci": "bash scripts/ci.sh",
     "ready": "vp check && vp test && vp build && vp run check && vp run test",
     "prepare": "lefthook install || echo 'warning: lefthook install skipped'",

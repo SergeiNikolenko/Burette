@@ -5,10 +5,12 @@ import { showNativeContextMenu } from "../components/native-context-menu";
 import { xyzrenderContextMenuItems } from "../components/xyzrender-context-menu";
 import { isTauriRuntime } from "../lib/tauri";
 import type { PostMessageToViewerSource } from "../lib/viewer-bridge";
+import type { ViewerDocument } from "../types";
 
 type XyzrenderSheetMessageBody = Record<string, unknown> | null | undefined;
 
 type UseAppXyzrenderSheetMessagesOptions = {
+  documents: ViewerDocument[];
   postMessageToViewerSource: PostMessageToViewerSource;
 };
 
@@ -25,6 +27,7 @@ function viewerFramePoint(source: MessageEventSource | null, body: Record<string
 }
 
 export function useAppXyzrenderSheetMessages({
+  documents,
   postMessageToViewerSource,
 }: UseAppXyzrenderSheetMessagesOptions) {
   const handleXyzrenderSheetMessage = useCallback((
@@ -59,7 +62,11 @@ export function useAppXyzrenderSheetMessages({
         postMessageToViewerSource(source, { source: "burette-host", body: { type: resultType, requestId, ...result } });
       // The same bounded menu model feeds Atlas in the browser and NSMenu in
       // Tauri. Closing either presentation commits the viewer's live edits.
-      const items = molstarContextMenuItems(body.items, (id, value) => reply({ event: "select", id, value }));
+      // SDF grids accept the SDF records "Open in" sends; other grid formats do not.
+      const gridTargets = documents
+        .filter(document => document.renderer === "grid2d" && ["sdf", "sd"].includes(document.extension.toLowerCase()))
+        .map(document => ({ id: document.id, title: document.title }));
+      const items = molstarContextMenuItems(body.items, (id, value) => reply({ event: "select", id, value }), gridTargets);
       if (!items.length) {
         reply({ event: "unsupported" });
         return true;
@@ -123,7 +130,7 @@ export function useAppXyzrenderSheetMessages({
       }
     })();
     return true;
-  }, [postMessageToViewerSource]);
+  }, [documents, postMessageToViewerSource]);
 
   return { handleXyzrenderSheetMessage };
 }

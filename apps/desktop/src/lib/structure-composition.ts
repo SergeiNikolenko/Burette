@@ -213,8 +213,44 @@ const PROTEIN_RESIDUES = new Set([
 ]);
 const NUCLEIC_RESIDUES = new Set(["A", "C", "G", "T", "U", "DA", "DC", "DG", "DT", "DU", "ADE", "CYT", "GUA", "THY", "URA"]);
 
+// Panels ask for the same file again on every tab switch and pose step.
+const compositionCache = new Map<string, {
+  extension: string;
+  summary: StructureCompositionSummary;
+  bytes: number;
+}>();
+const COMPOSITION_CACHE_TEXTS = 64;
+// Estimated UTF-16 payload budget, shared by all formats (not a heap limit).
+const COMPOSITION_CACHE_BYTES = 32 * 1024 * 1024;
+let compositionCacheBytes = 0;
+
 export function parseStructureComposition(text: string, extension: string): StructureCompositionSummary | null {
   const normalizedExtension = extension.toLowerCase();
+  const cached = compositionCache.get(text);
+  if (cached?.extension === normalizedExtension) {
+    compositionCache.delete(text);
+    compositionCache.set(text, cached);
+    return cached.summary;
+  }
+  const summary = parseStructureCompositionText(text, normalizedExtension);
+  if (!summary || text.length * 2 > COMPOSITION_CACHE_BYTES) return summary;
+  const bytes = 2 * (text.length + JSON.stringify(summary).length);
+  if (bytes > COMPOSITION_CACHE_BYTES) return summary;
+  if (cached) {
+    compositionCache.delete(text);
+    compositionCacheBytes -= cached.bytes;
+  }
+  while (compositionCache.size >= COMPOSITION_CACHE_TEXTS || compositionCacheBytes + bytes > COMPOSITION_CACHE_BYTES) {
+    const oldest = compositionCache.entries().next().value!;
+    compositionCache.delete(oldest[0]);
+    compositionCacheBytes -= oldest[1].bytes;
+  }
+  compositionCache.set(text, { extension: normalizedExtension, summary, bytes });
+  compositionCacheBytes += bytes;
+  return summary;
+}
+
+function parseStructureCompositionText(text: string, normalizedExtension: string): StructureCompositionSummary | null {
   if (["pdb", "ent"].includes(normalizedExtension)) return parsePdbComposition(text);
   if (normalizedExtension === "pdbqt") return parsePdbqtComposition(text);
   if (["cif", "mmcif"].includes(normalizedExtension)) return parseCifComposition(text);
