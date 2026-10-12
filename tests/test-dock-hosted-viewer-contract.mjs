@@ -43,9 +43,10 @@ assert.doesNotMatch(viewerBridgeMessages, /isReadOnlyViewerMessageSource/);
 assert.doesNotMatch(viewerBridgeMessages, /page-surface/);
 assert.match(viewerBridge, /querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
 assert.match(viewerBridge, /querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-read-only=\\"true\\"\]"\)/);
-// Host -> viewer lookups prefer the editable tab frame and fall back to the
-// dock frame when the document lives only there.
-assert.match(viewerBridge, /`\.viewer-iframe\[data-document-id="\$\{escapedId\}"\]\$\{rendererSelector\}:not\(\[data-read-only="true"\]\)`,\s*\) \?\? document\.querySelector<HTMLIFrameElement>\(\s*`\.page-surface\[data-active="true"\] \.viewer-iframe\[data-document-id="\$\{escapedId\}"\]\$\{rendererSelector\}`,\s*\) \?\? document\.querySelector<HTMLIFrameElement>\(\s*`\.viewer-iframe\[data-document-id="\$\{escapedId\}"\]\$\{rendererSelector\}`,/);
+// Visible current pages and panes win over retained history copies; the
+// duplicate-document behavior is covered by test-viewer-frame-routing.test.ts.
+assert.match(viewerBridge, /const visible = frames\.filter\(isViewerFrameVisible\)/);
+assert.match(viewerBridge, /const iframe = activeViewerIframeForDocument\(documentId\)/);
 
 // The grid's native molecule menu is served for the dock frame too; read-only
 // only removes the entries that write back into the collection.

@@ -69,3 +69,27 @@ test("read-only and transient tabs cannot be closed", async () => {
     expect(Array.from(mount.querySelectorAll("button"), button => button.getAttribute("aria-label"))).toEqual(["Style", "Add right dock tab"]);
   } finally { await act(async () => root.unmount()); mount.remove(); }
 });
+
+test("screens and dock tabs switch in one tablist and closing a dock tab leaves the screen reachable", async () => {
+  const mount = document.createElement("div"); document.body.append(mount); const root = createRoot(mount);
+  const calls: string[] = [];
+  function Fixture() {
+    const [screen, selectScreen] = useState(true);
+    return <DockHeader area="right" tabs={[{ id: "info", kind: "inspector" }]} activeKind={screen ? null : "inspector"}
+      screens={[{ id: "scene", title: "My scene", icon: <span />, active: screen }]} panelId="right" readOnly={false} fileDragProps={{}}
+      onSelectScreen={id => { calls.push(id); selectScreen(true); }} onCloseScreen={id => calls.push(`close:${id}`)}
+      onSelect={kind => { calls.push(kind); selectScreen(false); }} onClose={id => calls.push(`close:${id}`)}
+      onAdd={() => {}} onHide={() => calls.push("hide")} />;
+  }
+  try {
+    await act(async () => root.render(<Fixture />));
+    const tabs = () => Array.from(mount.querySelectorAll('[role="tab"]'), tab => [tab.getAttribute("aria-label"), tab.getAttribute("aria-selected")]);
+    expect(mount.querySelectorAll('[role="tablist"]').length).toBe(1);
+    expect(tabs()).toEqual([["My scene", "true"], ["Info", "false"]]);
+    await act(async () => mount.querySelector<HTMLButtonElement>('[aria-label="Info"]')!.click());
+    expect(tabs()).toEqual([["My scene", "false"], ["Info", "true"]]);
+    await act(async () => mount.querySelector<HTMLButtonElement>('[aria-label="My scene"]')!.click());
+    await act(async () => mount.querySelector<HTMLButtonElement>('[aria-label="Close Info"]')!.click());
+    expect(calls).toEqual(["inspector", "scene", "close:info"]);
+  } finally { await act(async () => root.unmount()); mount.remove(); }
+});

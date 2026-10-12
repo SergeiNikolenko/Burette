@@ -179,3 +179,39 @@ test("viewer transport releases timers/listeners on clone errors and ignores unr
     await promise;
   } finally { viewer.remove(); clearTimeout.mockRestore(); clearInterval.mockRestore(); remove.mockRestore(); }
 });
+
+test("window resize batches iframe layout and React bounds until settling, and releases on unmount", async () => {
+  const { useWindowResizeSession } = await import("../apps/desktop/src/components/ui/use-window-resize-session");
+  const frames = new Map<number, FrameRequestCallback>();
+  const timers = new Map<number, () => void>();
+  let serial = 0, commits = 0, measures = 0;
+  const originalRequest = globalThis.requestAnimationFrame, originalCancel = globalThis.cancelAnimationFrame;
+  globalThis.requestAnimationFrame = callback => { frames.set(++serial, callback); return serial; };
+  globalThis.cancelAnimationFrame = id => { frames.delete(id); };
+  const setTimer = spyOn(window, "setTimeout").mockImplementation(((callback: () => void) => { timers.set(++serial, callback); return serial; }) as typeof window.setTimeout);
+  const clearTimer = spyOn(window, "clearTimeout").mockImplementation(id => { timers.delete(Number(id)); });
+  const shell = document.createElement("div");
+  const iframe = document.createElement("iframe"); iframe.className = "viewer-iframe";
+  iframe.getBoundingClientRect = () => { measures++; return { width: 500, height: 300 } as DOMRect; };
+  shell.append(iframe); document.body.append(shell);
+  const mount = document.createElement("div"); document.body.append(mount); const root = createRoot(mount);
+  const ref = { current: shell };
+  function Fixture() { useWindowResizeSession(ref, () => { commits++; }); return null; }
+  const tick = () => { const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(0)); };
+  try {
+    await act(async () => root.render(<Fixture />));
+    for (let i = 0; i < 200; i++) window.dispatchEvent(new browser.Event("resize"));
+    expect([measures, commits, timers.size, iframe.style.width]).toEqual([1, 0, 1, "500px"]);
+    await act(async () => { const pending = [...timers.values()]; timers.clear(); pending.forEach(callback => callback()); });
+    expect(commits).toBe(1);
+    tick(); expect(iframe.style.width).toBe("500px");
+    tick(); expect(iframe.style.width).toBe("");
+    expect(shell.querySelector("iframe")).toBe(iframe);
+    window.dispatchEvent(new browser.Event("resize"));
+    await act(async () => root.unmount());
+    expect([iframe.style.width, shell.hasAttribute("data-resizing"), timers.size, frames.size]).toEqual(["", false, 0, 0]);
+  } finally {
+    setTimer.mockRestore(); clearTimer.mockRestore(); globalThis.requestAnimationFrame = originalRequest; globalThis.cancelAnimationFrame = originalCancel;
+    shell.remove(); mount.remove();
+  }
+});

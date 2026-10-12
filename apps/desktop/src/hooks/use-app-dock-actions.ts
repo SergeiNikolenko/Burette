@@ -1,3 +1,5 @@
+import { useWorkspacePanesStore } from "../stores/workspace-panes-store";
+import { useMoleculeStore } from "../stores/molecule-store";
 import { useCallback } from "react";
 import type { DockArea, DockTabKind } from "../lib/dock";
 
@@ -21,7 +23,8 @@ export function useAppDockActions({
   const toggleDockTab = useCallback((area: DockArea, kind: DockTabKind) => {
     const open = area === "right" ? rightDockOpen : bottomDockOpen;
     const activeKind = area === "right" ? rightDockActiveTab : bottomDockActiveTab;
-    if (open && activeKind === kind) {
+    const screenSelected = area === "right" && !useWorkspacePanesStore.getState().sideHidden && useMoleculeStore.getState().tabs.some(tab => tab.pane === "side");
+    if (open && !screenSelected && activeKind === kind) {
       setDockOpen(area, false);
       return;
     }
