@@ -1,3 +1,4 @@
+import { useMoleculeStore } from "./stores/molecule-store";
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { AppLayout } from "./components/app-layout";
 import { DatabaseQueryDialog } from "./components/database-query-dialog";
@@ -672,20 +673,26 @@ export default function App() {
   const combinedWindowDirtyRevisionRef = useRef({
     gridRevision: null as number | null,
     sourceRevision: null as number | null,
+    sceneSignature: "",
     revision: 0,
   });
   const getWindowDocumentDirtySnapshot = useCallback(() => {
     const gridSnapshot = getGridWindowDocumentDirtySnapshot();
     const sourceSnapshot = sourceEditing.getWindowDirtySnapshot();
+    const unsavedScenes = useMoleculeStore.getState().documents.filter(document => document.sceneUnsaved);
+    const sceneSignature = JSON.stringify(unsavedScenes.map(document => [document.id, document.sceneSourcePaths]));
     const combined = combinedWindowDirtyRevisionRef.current;
     if (combined.gridRevision !== gridSnapshot.revision
-      || combined.sourceRevision !== sourceSnapshot.revision) {
+      || combined.sourceRevision !== sourceSnapshot.revision
+      || combined.sceneSignature !== sceneSignature) {
       combined.gridRevision = gridSnapshot.revision;
       combined.sourceRevision = sourceSnapshot.revision;
+      combined.sceneSignature = sceneSignature;
       combined.revision += 1;
     }
     return {
-      dirty: gridSnapshot.dirty || sourceSnapshot.dirty,
+      dirty: gridSnapshot.dirty || sourceSnapshot.dirty || unsavedScenes.length > 0,
+      sceneDirty: unsavedScenes.length > 0,
       gridDirty: gridSnapshot.dirty,
       sourceDirty: sourceSnapshot.dirty,
       revision: combined.revision,
@@ -1349,7 +1356,7 @@ export default function App() {
     openDocuments,
     getWindowDocumentDirtySnapshot,
     confirmSourceCloseWindow: sourceEditing.confirmCloseWindow,
-    windowDocumentDirty: hasDirtyGridDocuments || sourceEditing.hasUnsavedOrSavingSessions,
+    windowDocumentDirty: hasDirtyGridDocuments || sourceEditing.hasUnsavedOrSavingSessions || documents.some(document => document.sceneUnsaved),
     sourceSaveEnabled,
     saveActiveSource,
   });
