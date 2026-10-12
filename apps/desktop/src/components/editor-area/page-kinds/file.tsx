@@ -5,6 +5,7 @@ import type { StructureDragPayload } from "../../../lib/structure-drag";
 import { runShellDropActionChoices, shellDropActionChoices } from "../../drop-action-executor";
 import type { ShellActions } from "../../types";
 import { ViewerFrame } from "../viewer-frame";
+import { SceneComputeMenu } from "../scene-compute-menu";
 import { showNativeContextMenu } from "../../native-context-menu";
 import { definePageKind } from "./types";
 import { SpectrumViewer } from "../../spectrum-viewer";
@@ -169,6 +170,7 @@ function StructureViewerSurface({
         onViewerLoad={handleViewerLoad}
         onStagingLoad={(identity, frame) => sourceEditing?.stagingLoaded(document, identity, frame)}
       />
+      {!mesoscale && isActive ? <SceneComputeMenu document={document} actions={actions} /> : null}
       {mesoscale ? <MesoscaleCanvasContextMenu document={document} /> : null}
       {mesoscale ? <MesoscaleSelectionBar documentId={document.id} /> : null}
       {mesoscale && mesoscaleSceneOpen ? <MesoscaleSceneOverlay document={document} onClose={() => setMesoscaleSceneOpen(document.id, false)} /> : null}

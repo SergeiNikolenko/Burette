@@ -18,7 +18,14 @@ page.className = "page-surface";
 page.setAttribute("data-active", "");
 browser.document.body.append(page);
 const frame = browser.document.createElement("iframe");
-page.append(frame);
+const history = browser.document.createElement("div");
+history.hidden = true;
+const oldFrame = browser.document.createElement("iframe");
+history.append(oldFrame);
+const current = browser.document.createElement("div");
+current.className = "tab-history-page";
+current.append(frame);
+page.append(history, current);
 const picture = frame.contentDocument.createElement("img");
 frame.contentDocument.body.append(picture);
 Object.defineProperties(picture, { complete: { value: true }, naturalWidth: { value: 200 } });
@@ -35,7 +42,10 @@ browser.HTMLCanvasElement.prototype.toDataURL = () => { encoded++; return "data:
 try {
   await captureTabThumbnail("image-tab");
   assert.deepEqual(drawn, [[picture, 0, 0, 200, 100]]);
-  assert.equal(encoded, 1, "a frame with only a raster image must produce a thumbnail");
+  assert.equal(encoded, 1, "the current frame must produce a thumbnail even with older hidden history first");
+  current.hidden = true;
+  await captureTabThumbnail("image-tab");
+  assert.equal(encoded, 1, "hidden history must never supply a stale tab thumbnail");
 } finally {
   pruneTabThumbnails(new Set());
   await browser.happyDOM.close();

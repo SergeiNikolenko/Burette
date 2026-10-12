@@ -16,6 +16,7 @@ import {
 } from "../lib/dock";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
 import { workspaceStorageKey } from "../lib/window-scope";
+import { useWorkspacePanesStore } from "./workspace-panes-store";
 import { useMoleculeStore } from "./molecule-store";
 
 export type DockAreaWorkspace = {
@@ -213,28 +214,37 @@ export function getTabWorkspaceStoreSnapshot(): TabWorkspaceSnapshot {
 
 export const useTabWorkspaceStore = create<TabWorkspaceState>()(
   persist<TabWorkspaceState, [], [], TabWorkspaceSnapshot>(
-    (set) => ({
+    (set, get) => ({
       workspaces: {},
-      setDockOpen: (tabId, area, open) => set((state) => updateWorkspace(state, tabId, (workspace) => ({
-        ...workspace,
-        [area]: {
-          ...workspace[area],
-          open,
-        },
-      }))),
+      setDockOpen: (tabId, area, open) => {
+        if (area === "right" && tabId === useMoleculeStore.getState().activeTabId) {
+          const panes = useWorkspacePanesStore.getState();
+          if (open) panes.showDockContent();
+          else panes.setSideHidden(true);
+        }
+        set((state) => updateWorkspace(state, tabId, (workspace) => ({
+          ...workspace, [area]: { ...workspace[area], open },
+        })));
+      },
       setDockSize: (tabId, area, size) => set((state) => updateWorkspace(state, tabId, (workspace) => ({
         ...workspace,
         [area]: { ...workspace[area], size: normalizeSize(area, size) },
       }))),
-      toggleDock: (tabId, area) => set((state) => updateWorkspace(state, tabId, (workspace) => ({
-        ...workspace,
-        [area]: {
-          ...workspace[area],
-          open: !workspace[area].open,
-        },
-      }))),
+      toggleDock: (tabId, area) => {
+        const workspace = get().workspaces[tabId] ?? defaultTabWorkspace();
+        const panes = useWorkspacePanesStore.getState();
+        const activeWorkspace = tabId === useMoleculeStore.getState().activeTabId;
+        const hasScreens = activeWorkspace && useMoleculeStore.getState().tabs.some(tab => tab.pane === "side");
+        const screenOpen = area === "right" && hasScreens && !panes.sideHidden;
+        if (area === "right" && !workspace.right.open && !screenOpen && hasScreens && panes.rightPanelContent === "screen") {
+          panes.setSideHidden(false);
+          return;
+        }
+        get().setDockOpen(tabId, area, !(workspace[area].open || screenOpen));
+      },
       openDockTab: (tabId, area, kind) => set((state) => {
         if (!dockTabCatalog(area).includes(kind)) return state;
+        if (area === "right" && tabId === useMoleculeStore.getState().activeTabId) useWorkspacePanesStore.getState().showDockContent();
         return updateWorkspace(state, tabId, (workspace) => {
           const current = workspace[area];
           const tabs = current.tabs.some((tab) => tab.kind === kind) ? current.tabs : [...current.tabs, createDockTab(kind)];
@@ -248,40 +258,48 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
       })),
       setDockActiveTab: (tabId, area, kind) => set((state) => updateWorkspace(state, tabId, (workspace) => {
         const current = workspace[area];
+        if (area === "right" && current.tabs.some(tab => tab.kind === kind) && tabId === useMoleculeStore.getState().activeTabId) useWorkspacePanesStore.getState().showDockContent();
         return current.tabs.some((tab) => tab.kind === kind)
-          ? { ...workspace, [area]: { ...current, activeTab: kind } }
+          ? { ...workspace, [area]: { ...current, open: area === "right" ? true : current.open, activeTab: kind } }
           : workspace;
       })),
-      setDockDocument: (tabId, area, documentId) => set((state) => updateWorkspace(state, tabId, (workspace) => ({
-        ...workspace,
-        [area]: {
-          ...workspace[area],
-          open: true,
-          documentId,
-          tool: null,
-          tabs: workspace[area].tabs.some((tab) => tab.kind === "files")
-            ? workspace[area].tabs
-            : [...workspace[area].tabs, createDockTab("files")],
-          activeTab: "files",
-        },
-      }))),
-      setDockTool: (tabId, area, tool) => set((state) => updateWorkspace(state, tabId, (workspace) => ({
-        ...workspace,
-        [area]: {
-          ...workspace[area],
-          open: true,
-          documentId: null,
-          tool,
-          tabs: workspace[area].tabs.some((tab) => tab.kind === "files")
-            ? workspace[area].tabs
-            : [...workspace[area].tabs, createDockTab("files")],
-          activeTab: "files",
-        },
-      }))),
+      setDockDocument: (tabId, area, documentId) => {
+        if (area === "right" && tabId === useMoleculeStore.getState().activeTabId) useWorkspacePanesStore.getState().showDockContent();
+        set((state) => updateWorkspace(state, tabId, (workspace) => ({
+          ...workspace,
+          [area]: {
+            ...workspace[area],
+            open: true,
+            documentId,
+            tool: null,
+            tabs: workspace[area].tabs.some((tab) => tab.kind === "files")
+              ? workspace[area].tabs
+              : [...workspace[area].tabs, createDockTab("files")],
+            activeTab: "files",
+          },
+        })));
+      },
+      setDockTool: (tabId, area, tool) => {
+        if (area === "right" && tabId === useMoleculeStore.getState().activeTabId) useWorkspacePanesStore.getState().showDockContent();
+        set((state) => updateWorkspace(state, tabId, (workspace) => ({
+          ...workspace,
+          [area]: {
+            ...workspace[area],
+            open: true,
+            documentId: null,
+            tool,
+            tabs: workspace[area].tabs.some((tab) => tab.kind === "files")
+              ? workspace[area].tabs
+              : [...workspace[area].tabs, createDockTab("files")],
+            activeTab: "files",
+          },
+        })));
+      },
       addDockDrop: (tabId, input) => set((state) => {
         if (!dockTabCatalog(input.area).includes(input.tabKind)) return state;
         const items = dockDropItems(input);
         if (items.length === 0) return state;
+        if (input.area === "right" && tabId === useMoleculeStore.getState().activeTabId) useWorkspacePanesStore.getState().showDockContent();
         return updateWorkspace(state, tabId, (workspace) => {
           const current = workspace[input.area];
           const tabs = current.tabs.some((tab) => tab.kind === input.tabKind)
