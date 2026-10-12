@@ -4,17 +4,24 @@ import { takeClosedTab } from "../../stores/closed-tabs";
 import type { Location } from "../editor-area/page-kinds";
 import { useMoleculeStore, type MoleculeTab, type TabPane } from "../../stores/molecule-store";
 import { useWorkspacePanesStore } from "../../stores/workspace-panes-store";
+import { useTabWorkspaceStore } from "../../stores/tab-workspace-store";
+import { isTauriRuntime } from "../../lib/tauri";
+import { isNativePopoutTab, nativePopoutReason, popOutNativeScene, returnNativePopout } from "./native-popout";
+import { toast } from "../ui/toast";
 
 // Moving a screen between the main strip, the side panel and the floating
 // window. The page itself never remounts (see ViewerArea); these only change
 // where its surface is laid out.
 export function placeScreen(tabId: string, pane: TabPane | null) {
+  if (pane === "floating" && isTauriRuntime()) { void popOutNativeScene(tabId); return; }
   useMoleculeStore.getState().placeTab(tabId, pane);
   if (pane === "side") useWorkspacePanesStore.getState().setSideHidden(false);
   if (pane === "floating") useWorkspacePanesStore.getState().setFloatingMinimized(false);
 }
 
 export function openScreen(location: Location, pane: TabPane | null = null) {
+  // Legacy browser floating locations never create a fake desktop window.
+  if (pane === "floating" && isTauriRuntime()) pane = null;
   useMoleculeStore.getState().openScreenTab(location, pane);
   if (pane === "side") useWorkspacePanesStore.getState().setSideHidden(false);
   if (pane === "floating") useWorkspacePanesStore.getState().setFloatingMinimized(false);
@@ -25,15 +32,10 @@ export function showSideScreen(tabId: string) {
   useWorkspacePanesStore.getState().setSideHidden(false);
 }
 
-// Like Codex's title-bar toggle: an empty side panel opens straight onto a
-// new page instead of showing nothing.
+// The title-bar toggle shares the unified right dock/screen region.
 export function toggleSidePanel() {
-  if (!useMoleculeStore.getState().tabs.some((tab) => tab.pane === "side")) {
-    openScreen({ kind: "launcher" }, "side");
-    return;
-  }
-  const { sideHidden, setSideHidden } = useWorkspacePanesStore.getState();
-  setSideHidden(!sideHidden);
+  const tabId = useMoleculeStore.getState().activeTabId;
+  if (tabId) useTabWorkspaceStore.getState().toggleDock(tabId, "right");
 }
 
 // Codex's ⇧⌘T. Files are read again from disk because closing a tab unloads
@@ -72,6 +74,9 @@ export const SCREEN_ENTRIES: { id: string; text: string; location: Location }[] 
 // shared by the tab context menu and both pane headers so they always agree.
 export function paneMoveItems(tab: MoleculeTab): MenuItemSpec[] {
   const items: MenuItemSpec[] = [];
+  if (isNativePopoutTab(tab.id)) return [{ kind: "item", id: "pane-return-main", text: "Move to Main Window", action: () => {
+    void returnNativePopout().catch(() => toast.add({ title: "Could not return scene", description: "Keep this window open and try again.", type: "error" }));
+  } }];
   if (tab.pane) {
     items.push({ kind: "item", id: "pane-move-main", text: "Move to Main Window", action: () => placeScreen(tab.id, null) });
   }
@@ -79,7 +84,8 @@ export function paneMoveItems(tab: MoleculeTab): MenuItemSpec[] {
     items.push({ kind: "item", id: "pane-open-side", text: "Open in Side Panel", action: () => placeScreen(tab.id, "side") });
   }
   if (tab.pane !== "floating") {
-    items.push({ kind: "item", id: "pane-pop-out", text: "Pop out", action: () => placeScreen(tab.id, "floating") });
+    const reason = nativePopoutReason(tab);
+    items.push({ kind: "item", id: "pane-pop-out", text: "Pop out", disabled: Boolean(reason), tooltip: reason ?? undefined, action: () => placeScreen(tab.id, "floating") });
   }
   return items;
 }

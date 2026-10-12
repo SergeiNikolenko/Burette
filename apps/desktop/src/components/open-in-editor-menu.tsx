@@ -14,7 +14,6 @@ import { WorkspaceFileHeader } from "./workspace-file-header";
 import { useNativeApplicationIcons } from "../hooks/use-native-application-icons";
 import { visibleEditorTargets } from "../lib/chemical-editor-targets";
 import { isLocalFilePath } from "../lib/browser-file-actions";
-import { ScreenGuide } from "./onboarding";
 
 type ActiveFile = {
   path: string;
@@ -94,9 +93,8 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
     ];
   }, [actions, activeFile, filePath, defaultApplicationIconUrl, finderIconUrl, loading, targets, nativeIcons, state.preferences.openInDefaultDestination]);
 
-  const guide = <ScreenGuide state={state} actions={actions} />;
-  if (!activeFile) return navigation ? <header className="workspace-file-header" aria-label="Workspace">{navigation([])}<span className="flex-1" />{guide}</header> : guide;
-  if (!filePath && presentation !== "file-header") return guide;
+  if (!activeFile) return navigation ? <header className="workspace-file-header" aria-label="Workspace">{navigation([])}</header> : null;
+  if (!filePath && presentation !== "file-header") return null;
 
   const visibleTargets = targets.length > 0 ? targets : browserDevPreviewTargets(activeFile.path);
   const preferredTarget = preferredTargetForDestination(state.preferences.openInDefaultDestination, visibleTargets);
@@ -112,7 +110,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
       .filter((path): path is string => Boolean(path && activeFile.path.startsWith(`${path}/`)))
       .sort((a, b) => b.length - a.length)[0];
     const renderer = state.activeDocument?.renderer;
-    return <WorkspaceFileHeader guide={guide} navigation={navigation?.(items)} activeFile={activeFile} rootPath={rootPath}
+    return <WorkspaceFileHeader navigation={navigation?.(items)} activeFile={activeFile} rootPath={rootPath}
       bandDocumentId={renderer === "molstar" || renderer === "xyzrender-external" ? state.activeDocument?.id ?? null : null}
       fileActionsAvailable={Boolean(filePath)}
       rightDockOpen={state.rightDockOpen}
@@ -124,7 +122,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
       }} />;
   }
 
-  return <>{guide}{(
+  return (
     <RadixDropdownMenu
       align="end"
       side="bottom"
@@ -149,7 +147,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
         </ShortcutTooltip>
       )}
     />
-  )}</>;
+  );
 }
 
 function preferredTargetForDestination(destination: string, targets: ChemicalEditorTarget[]) {
