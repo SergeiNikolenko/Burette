@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Window } from "happy-dom";
 import React, { act } from "react";
-import type { ShellViewState } from "../apps/desktop/src/components/types";
+import type { ShellActions, ShellViewState } from "../apps/desktop/src/components/types";
 
 const browser = new Window();
 for (const key of ["window", "document", "navigator", "localStorage", "HTMLElement", "Element", "DOMRect", "DocumentFragment", "HTMLInputElement", "HTMLFormElement", "HTMLSelectElement", "Node", "NodeFilter", "CustomEvent", "Event", "KeyboardEvent", "MouseEvent", "MutationObserver", "ResizeObserver", "getComputedStyle", "requestAnimationFrame", "cancelAnimationFrame"] as const) {
@@ -9,75 +9,118 @@ for (const key of ["window", "document", "navigator", "localStorage", "HTMLEleme
 }
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import("react-dom/client");
-const { ScreenGuide } = await import("../apps/desktop/src/components/onboarding");
+const { OnboardingHost, resetOnboarding } = await import("../apps/desktop/src/components/onboarding");
 const { guideForState } = await import("../apps/desktop/src/components/onboarding/guides");
-const storageKey = "burette.screen-guides.v1";
-const initial = { page: "viewer", documents: [], recentStructures: [], sidebarProjects: [], tabs: [], activeDocument: null, activeTab: null } as unknown as ShellViewState;
-const actions = { openSettingsSection: () => {} };
-const guidePanel = () => document.querySelector('[data-slot="popover-content"]');
+const initial = { page: "viewer", preferences: { theme: "auto" }, documents: [], recentStructures: [], sidebarProjects: [], tabs: [], activeDocument: null, activeTab: null } as unknown as ShellViewState;
+const panel = () => document.querySelector('[role="dialog"]');
+const title = () => panel()?.querySelector('[data-slot="dialog-title"]')?.textContent;
 const click = async (label: string) => {
   const button = [...document.querySelectorAll<HTMLButtonElement>("button")].find(item => item.textContent === label || item.getAttribute("aria-label") === label);
   expect(button).toBeDefined();
   await act(async () => button!.click());
 };
+const finishIntroduction = async () => { await click("Get started"); await click("Continue"); await click("Explore on my own"); };
 
-async function mountGuide(state = initial) {
+async function mountOnboarding(state = initial, actionOverrides: Partial<ShellActions> = {}) {
   const mount = document.createElement("div"); document.body.append(mount); const root = createRoot(mount);
-  await act(async () => root.render(<ScreenGuide state={state} actions={actions} />));
-  return { render: async (next: ShellViewState) => act(async () => root.render(<ScreenGuide state={next} actions={actions} />)),
+  const actions = { openSettingsSection: () => {}, setPreference: () => {}, chooseFiles: () => {}, openKetcher: () => {}, chooseWorkspace: () => {}, ...actionOverrides } as ShellActions;
+  await act(async () => root.render(<OnboardingHost state={state} actions={actions} />));
+  return { render: async (next: ShellViewState) => act(async () => root.render(<OnboardingHost state={next} actions={actions} />)),
     dispose: async () => { await act(async () => root.unmount()); mount.remove(); } };
 }
 
-test("first visit can be dismissed, reopened and stays dismissed after remount", async () => {
-  localStorage.clear();
-  const view = await mountGuide();
-  expect(guidePanel()?.textContent).toContain("Getting started");
-  expect(guidePanel()?.querySelectorAll("li")).toHaveLength(3);
-  await click("Got it");
-  expect(guidePanel()).toBeNull();
-  await click("Screen guide");
-  expect(guidePanel()?.textContent).toContain("Getting started");
-  await click("Got it");
-  await view.dispose();
-  const restored = await mountGuide();
-  expect(guidePanel()).toBeNull();
-  await restored.dispose();
+test("first run has welcome, real appearance controls and three working start actions", async () => {
+  for (const [button, action] of [["Open file", "chooseFiles"], ["Draw a molecule", "openKetcher"], ["Add folder", "chooseWorkspace"]] as const) {
+    localStorage.clear();
+    const calls: string[] = [];
+    const themes: unknown[] = [];
+    const view = await mountOnboarding(initial, { [action]: () => { calls.push(action); }, setPreference: (key, value) => { themes.push([key, value]); } });
+    try {
+      expect(title()).toBe("Welcome to Burette");
+      expect(document.querySelector('[aria-label="Screen guide"]')).toBeNull();
+      await click("Get started");
+      expect(title()).toBe("Choose your appearance");
+      await act(async () => document.querySelector<HTMLInputElement>('input[aria-label="Dark"]')!.click());
+      expect(themes).toEqual([["theme", "dark"]]);
+      await click("Continue");
+      expect(title()).toBe("Start with a structure");
+      await click(button);
+      expect(calls).toEqual([action]);
+      expect(panel()).toBeNull();
+    } finally { await view.dispose(); }
+  }
 });
 
-test("new screens receive one contextual hint; disabling automatic tips preserves manual help", async () => {
+test("contextual education appears once per screen and survives remount", async () => {
   localStorage.clear();
-  const view = await mountGuide();
-  await click("Got it");
+  const view = await mountOnboarding();
   const sketch = { ...initial, activeTab: { location: { kind: "ketcher" } } } as ShellViewState;
-  await view.render(sketch);
-  expect(guidePanel()?.textContent).toContain("Draw a molecule");
-  await act(async () => document.querySelector<HTMLButtonElement>('[role="checkbox"]')!.click());
-  await click("Got it");
-  await view.render({ ...initial, activeTab: { location: { kind: "jobs" } } } as ShellViewState);
-  expect(guidePanel()).toBeNull();
-  await click("Screen guide");
-  expect(guidePanel()?.textContent).toContain("Calculations");
-  await view.dispose();
-  expect(JSON.parse(localStorage.getItem(storageKey)!).automatic).toBe(false);
+  try {
+    await finishIntroduction();
+    await view.render(sketch);
+    expect(title()).toBe("Draw a molecule");
+    await click("Start drawing");
+    expect(panel()).toBeNull();
+    await view.render(initial); await view.render(sketch);
+    expect(panel()).toBeNull();
+    await view.render({ ...initial, activeTab: { location: { kind: "jobs" } } } as ShellViewState);
+    expect(title()).toBe("Calculations");
+    await click("Don't show tips");
+    await view.render({ ...initial, activeTab: { location: { kind: "document", path: "/notes.pdf" } } } as ShellViewState);
+    expect(panel()).toBeNull();
+  } finally { await view.dispose(); }
+  const restored = await mountOnboarding(sketch);
+  try { expect(panel()).toBeNull(); } finally { await restored.dispose(); }
 });
 
-test("existing work and embedded surfaces are not interrupted", async () => {
+test("reset restarts welcome immediately and preserves workspace and preference storage", async () => {
   localStorage.clear();
-  const existing = await mountGuide({ ...initial, recentStructures: [{ path: "/molecule.pdb" }] } as ShellViewState);
-  expect(guidePanel()).toBeNull();
-  await click("Screen guide");
-  expect(guidePanel()).not.toBeNull();
-  await existing.dispose();
+  localStorage.setItem("burette.shell", '{"theme":"dark"}');
+  localStorage.setItem("burette.molecule.session", '{"tabs":["protein"]}');
+  localStorage.setItem("burette.screen-guides.v1", '{"automatic":true,"seen":["launcher"]}');
+  const view = await mountOnboarding();
+  try {
+    expect(panel()).toBeNull();
+    await act(async () => resetOnboarding());
+    expect(title()).toBe("Welcome to Burette");
+    expect(localStorage.getItem("burette.shell")).toBe('{"theme":"dark"}');
+    expect(localStorage.getItem("burette.molecule.session")).toBe('{"tabs":["protein"]}');
+    await click("Skip introduction");
+    expect(panel()).toBeNull();
+    await act(async () => resetOnboarding());
+    expect(title()).toBe("Welcome to Burette");
+  } finally { await view.dispose(); }
+});
+
+test("established workspaces and hosted workspaces are not interrupted", async () => {
+  localStorage.clear();
+  const existing = await mountOnboarding({ ...initial, recentStructures: [{ path: "/molecule.pdb" }] } as ShellViewState);
+  try { expect(panel()).toBeNull(); } finally { await existing.dispose(); }
   localStorage.clear();
   window.__BURETTE_HOSTED_MCP_WIDGET__ = true;
-  const embedded = await mountGuide();
-  expect(document.querySelector('[aria-label="Screen guide"]')).toBeNull();
-  expect(localStorage.getItem(storageKey)).toBeNull();
-  await embedded.dispose();
-  delete window.__BURETTE_HOSTED_MCP_WIDGET__;
+  const embedded = await mountOnboarding();
+  try { expect(panel()).toBeNull(); expect(localStorage.length).toBe(0); }
+  finally { await embedded.dispose(); delete window.__BURETTE_HOSTED_MCP_WIDGET__; }
 });
 
-test("file renderer and agent settings get the relevant guide", () => {
+test("context CTA opens the real settings destination and Escape dismisses a visited screen", async () => {
+  localStorage.clear();
+  const calls: string[] = [];
+  const view = await mountOnboarding(initial, { openSettingsSection: section => calls.push(section) });
+  try {
+    await finishIntroduction();
+    await view.render({ ...initial, activeTab: { location: { kind: "settings", section: "general" } } } as ShellViewState);
+    expect(title()).toBe("Make Burette yours");
+    await click("Choose appearance");
+    expect(calls).toEqual(["appearance"]);
+    await view.render({ ...initial, activeTab: { location: { kind: "jobs" } } } as ShellViewState);
+    expect(title()).toBe("Calculations");
+    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(panel()).toBeNull();
+  } finally { await view.dispose(); }
+});
+
+test("file renderer and agent settings get the relevant education screen", () => {
   for (const [renderer, expected] of [["molstar", "file"], ["grid2d", "grid"], ["spectrum", "spectrum"], ["xyzrender-external", "illustration"]]) {
     expect(guideForState({ ...initial, activeDocument: { renderer, extension: "pdb" } } as ShellViewState)).toBe(expected);
   }

@@ -11,7 +11,7 @@ import { isTauriRuntime } from "../../lib/tauri";
 import { XTB_METHOD_LABELS, XTB_OPT_LEVEL_LABELS, XTB_SOLVATION_LABELS, XTB_SOLVENT_LABELS, XTB_SOLVENT_OPTIONS } from "../../lib/chemistry-settings";
 import { useFinderIconUrl } from "../../hooks/use-finder-icon-url";
 import { AgentIntegrationPanel } from "../agent-integration-panel";
-import { ScreenGuide } from "../onboarding";
+import { resetOnboarding } from "../onboarding";
 import { EditorScrollContainer } from "../editor-area/editor-scroll-container";
 import { RadixDropdownMenu } from "../radix-menu";
 import { Button } from "../ui/button";
@@ -134,14 +134,16 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
     <div className="settings-panel" data-settings-panel data-settings-section={section}>
       <EditorScrollContainer>
         <div className="settings-panel-content">
-          <div className="float-right"><ScreenGuide state={state} actions={actions} /></div>
           {section === "agent" ? (
             <AgentIntegrationPanel embedded />
           ) : (
             <>
               <h1>{settingsSectionLabel(section)}</h1>
               {section === "general" ? (
-                <SettingsSection title="Work mode" rows={[...openDestinationRows, restoreSessionRow(preferences, actions.setPreference)]} />
+                <>
+                  <SettingsSection title="Work mode" rows={[...openDestinationRows, restoreSessionRow(preferences, actions.setPreference)]} />
+                  <SettingsSection title="Getting started" rows={[actionRow("Onboarding", "", "Reset onboarding", resetOnboarding)]} />
+                </>
               ) : null}
               {section === "appearance" ? (
                 <AppearanceSettings preferences={preferences} actions={actions} />
