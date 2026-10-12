@@ -111,6 +111,7 @@ pub(crate) fn create_runtime<R: Runtime>(
     let trajectory_frame_count = xyz_frame_count.max(pdb_model_count);
     let is_trajectory = trajectory_frame_count > 1;
     let xyzrender_available = xyzrender_available_for_document(format, data);
+    let popout_sheet = crate::commands::popout_scene::sheet_checkpoint(app, file_path)?;
     let mut renderer = renderer.to_string();
     let requested_renderer = normalize_renderer_mode(&preferences.renderer_mode);
     if is_trajectory && requested_renderer == "auto" && renderer != "molstar" {
@@ -121,6 +122,9 @@ pub(crate) fn create_runtime<R: Runtime>(
     }
     if renderer == "molstar" && format.external_only && external_molstar_data.is_none() {
         renderer = "xyzrender-external".to_string();
+    }
+    if popout_sheet.is_some() {
+        renderer = "xyzrender-external".to_owned();
     }
     let mut external_artifact = None;
     let mut external_status = None;
@@ -142,7 +146,7 @@ pub(crate) fn create_runtime<R: Runtime>(
             .map(|payload| payload.data.as_slice())
             .or(source_xyz_data.as_deref())
     };
-    if renderer == "xyzrender-external" {
+    if renderer == "xyzrender-external" && popout_sheet.is_none() {
         match create_xyzrender_artifact(
             xyzrender_artifact_input,
             &runtime,
@@ -308,6 +312,14 @@ pub(crate) fn create_runtime<R: Runtime>(
             "elapsedMs": artifact.elapsed_ms,
             "log": artifact.log
         });
+    }
+    if let Some(sheet) = popout_sheet {
+        config["xyzrenderViewer"] = json!(true);
+        config["xyzrenderPresetOptions"] = xyzrender_preset_options();
+        config["xyzrenderPreset"] = sheet["items"][0]["preset"].clone();
+        config["xyzrenderControls"] = sheet["items"][0]["controls"].clone();
+        config["externalArtifact"] = json!({ "inlineSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"></svg>", "type": "svg", "renderer": "xyzrender" });
+        config["popoutSheet"] = sheet;
     }
     if let Some(status) = external_status {
         config["externalRendererStatus"] = status;

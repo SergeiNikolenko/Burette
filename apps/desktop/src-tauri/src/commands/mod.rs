@@ -18,6 +18,7 @@ pub(crate) mod job_host;
 pub(crate) mod mdsmooth;
 pub(crate) mod native_updates;
 pub(crate) mod numpy_artifact;
+pub(crate) mod popout_scene;
 pub(crate) mod preview_cache;
 pub(crate) mod pubchem;
 pub(crate) mod quicklook;
