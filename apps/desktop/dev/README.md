@@ -30,3 +30,13 @@ The connection list uses the production `SshConnectionsList` with in-memory
 connections. Its menu, enable switch, status, and removal confirmation are live;
 no SSH request or saved connection is changed. `build-box` checks succeed,
 `Research` checks fail, and Add folder renames the fixture row to `Structures`.
+
+## Welcome and screen guides
+
+Open `/dev/onboarding.html` to see all 16 screen guides and the three first-visit
+steps. Cards and full-size previews render the same `OnboardingContent` used by
+`OnboardingHost`, including its live `GuideVisual`, tips and action labels.
+Light/Dark changes only this page. Welcome navigation works inside the preview;
+workspace actions and dismissals close it without opening files, starting work,
+or changing saved onboarding progress. Each card has a stable fragment, such as
+`#welcome`, `#appearance` or `#guide-ketcher`.
