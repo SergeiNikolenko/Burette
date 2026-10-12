@@ -10,7 +10,12 @@ import { useSettingsStore } from "../stores/settings-store";
 
 export async function focusSceneDocument(document: ViewerDocument, select: (id: string) => void) {
   select(document.id);
+  return waitForSceneDocument(document);
+}
+
+async function waitForSceneDocument(document: ViewerDocument, signal?: AbortSignal) {
   for (let attempt = 0; attempt < 50; attempt++) {
+    signal?.throwIfAborted();
     if (activeViewerIframeForDocument(document.id, document.renderer)?.contentWindow) {
       if (document.renderer !== "molstar") return;
       try {
@@ -63,12 +68,13 @@ async function rebuildStructureScene(document: ViewerDocument, paths: string[], 
   return { ok: true, command: "append_scene_files", result: { added, paths } };
 }
 
-export async function appendScenePayload(documentId: string, payload: StructureDragPayload) {
+export async function appendScenePayload(documentId: string, payload: StructureDragPayload, options: { incremental?: boolean; signal?: AbortSignal } = {}) {
   const { useMoleculeStore } = await import("../stores/molecule-store");
   const store = useMoleculeStore.getState();
   const document = store.documents.find(candidate => candidate.id === documentId);
   if (!document || document.renderer !== "molstar") throw new Error("The target scene is no longer open.");
-  const scenePaths = structureScenePaths(document, payload);
+  options.signal?.throwIfAborted();
+  const scenePaths = options.incremental || document.sceneSourcePaths ? null : structureScenePaths(document, payload);
   if (scenePaths) return rebuildStructureScene(document, scenePaths, payload.paths.length);
   const sources = payload.records.map(record => ({
     path: record.path, label: record.path.split('/').pop(), format: record.inputExtension, data: record.text,
@@ -83,8 +89,16 @@ export async function appendScenePayload(documentId: string, payload: StructureD
     sources.push({ path, label: path.split('/').pop(), format: pathExtension(path), data: source.content });
   }
   if (total > 24 * 1024 * 1024) throw new Error("Scene imports are limited to 24 MB at a time.");
-  await focusSceneDocument(document, store.setActiveDocument);
-  const existingPaths = document.dockingRequest
-    ? [document.dockingRequest.receptorPath, ...document.dockingRequest.ligandPaths] : [document.path];
-  return requestViewerAction(document.id, { type: "append_scene_files", sources, existingPaths });
+  if (options.incremental) await waitForSceneDocument(document, options.signal);
+  else await focusSceneDocument(document, store.setActiveDocument);
+  options.signal?.throwIfAborted();
+  const existingPaths = document.sceneSourcePaths ?? (document.dockingRequest
+    ? [document.dockingRequest.receptorPath, ...document.dockingRequest.ligandPaths] : [document.path]);
+  if (sources.some(source => existingPaths.includes(source.path))) throw new Error("A selected file is already in this scene.");
+  if (existingPaths.length + sources.length > 200) throw new Error("A scene supports up to 200 source files.");
+  const result = await requestViewerAction(document.id, { type: "append_scene_files", sources, existingPaths });
+  useMoleculeStore.setState(current => ({ documents: current.documents.map(candidate => candidate.id === document.id
+    ? { ...candidate, sceneSourcePaths: [...existingPaths, ...sources.map(source => source.path)], sceneUnsaved: true }
+    : candidate) }));
+  return result;
 }

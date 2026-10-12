@@ -446,6 +446,9 @@ export type ViewerDocument = {
   virtual?: boolean;
   openClaimId?: string;
   sourcePath?: string | null;
+  /** Sources in an incrementally assembled scene; bounded to 200 paths. */
+  sceneSourcePaths?: string[];
+  sceneUnsaved?: boolean;
   dockingRequest?: DockingDocumentRequest;
   mergedCollection?: MergedCollectionDocument;
   xyzrenderControls?: XyzrenderControls | null;
