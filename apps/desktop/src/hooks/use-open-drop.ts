@@ -12,7 +12,7 @@ import { buildFileDropPreview } from "../lib/drop-preview";
 import type { DropPreviewTarget, FileDropPreview } from "../lib/drop-preview";
 import { describeDropTargetElement } from "../lib/drop-target";
 import { requestMoveIntoFolder } from "../lib/move-into-folder";
-import { nativeFileDragPayload } from "../lib/native-file-drag";
+import { nativeFileDragPayload, nativeFileDragTabId } from "../lib/native-file-drag";
 import { parentDirectory } from "../lib/sidebar-projects";
 import { TAB_DRAG_MIME, hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
@@ -432,13 +432,13 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         window.dispatchEvent(new Event("burette-native-drag-end"));
         return;
       }
-      if (event.type === "enter" && !event.paths.length) nativeTabDragRef.current = browserTabDragRef.current;
+      if (event.type === "enter") nativeTabDragRef.current = event.paths.length ? nativeFileDragTabId(event.paths) : browserTabDragRef.current;
       if (event.type === "enter" || event.type === "over") {
         const element = elementFromTauriDropPosition(event.position);
         window.dispatchEvent(new CustomEvent("burette-native-drag-hover", {
           detail: {
             tabId: element?.closest<HTMLElement>(".tab-shell")?.dataset.tabId ?? null,
-            sourceTabId: event.type === "enter" && event.paths.length ? null : nativeTabDragRef.current,
+            sourceTabId: nativeTabDragRef.current,
             x: tauriDropPoint(event.position)?.x,
           },
         }));
@@ -446,7 +446,6 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         window.dispatchEvent(new Event("burette-native-drag-end"));
       }
       if (event.type === "enter") {
-        if (event.paths.length) nativeTabDragRef.current = null;
         nativeDragPayloadRef.current = event.paths.length
           ? nativeFileDragPayload(event.paths) ?? { paths: event.paths, records: [] }
           : browserDragPayloadRef.current ?? { paths: [], records: [] };
@@ -478,6 +477,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         nativeTabDragRef.current = null;
         browserTabDragRef.current = null;
         if (tabId && element?.closest(".tab-strip")) {
+          if (event.paths.length) nativeFileDragPayload(event.paths, { consume: true });
           nativeDragPayloadRef.current = null;
           browserDragPayloadRef.current = null;
           hideDropFeedback();
