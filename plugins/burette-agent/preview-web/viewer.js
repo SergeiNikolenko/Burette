@@ -672,8 +672,29 @@
 
   async function executeBuretteAgentAction(action) {
     const type = String(action?.type || '');
+    if (type === 'workspace_scene_snapshot') {
+      if ((activeConfig || window.BuretteConfig || {}).renderer === 'xyzrender-external') {
+        const items = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item'));
+        if (!items.length || items.length > 200) throw new Error('Wait for the sheet to load.');
+        const sheet = { version: 1, view: externalArtifactViewSnapshot?.(), items: items.map(item => ({
+          ...xyzrenderItemPayload(item, activeConfig || window.BuretteConfig || {}),
+          svg: item.querySelector('.buret-xyzrender-sheet-item-body > svg')?.outerHTML,
+          animation: xyzrenderPopoutAnimation(item),
+          geometry: { left: item.offsetLeft, top: item.offsetTop, width: item.offsetWidth, height: item.offsetHeight, rotation: Number(item.dataset.rotation || 0) },
+          selected: item.classList.contains('selected'), zIndex: item.style.zIndex,
+        })) };
+        if (sheet.items.some(item => !item.svg)) throw new Error('Wait for every structure to finish rendering.');
+        if (new TextEncoder().encode(JSON.stringify(sheet)).length > 24 * 1024 * 1024) throw new Error('The sheet is too large to move.');
+        return { ok: true, result: { sheet } };
+      }
+      const plugin = activeMolstarViewer()?.plugin;
+      if (!plugin) throw new Error('Wait for the scene to load.');
+      const archive = await plugin.managers.snapshot.serialize({ type: 'molx', params: { structureSelection: true, cameraTransition: { name: 'instant', params: {} } } });
+      if (archive.size > 24 * 1024 * 1024) throw new Error('The scene is too large to move.');
+      return { ok: true, result: { dataBase64: bytesToBase64(new Uint8Array(await archive.arrayBuffer())) } };
+    }
     if (type === 'workspace_scene_state') {
-      return { ok: true, result: { ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length) } };
+      return { ok: true, result: { ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length || (document.querySelector('.buret-external-artifact-root .buret-xyzrender-sheet-item-body > svg') && !document.querySelector('[data-buret-popout-animation=loading], [data-buret-popout-animation=failed]'))) } };
     }
     if (type === 'align_scene_files') {
       if (!activeStructureAlignmentControl) throw new Error('This scene does not support structure alignment.');
@@ -3161,6 +3182,36 @@
     const configuredPoseCount = Number(config?.trajectoryFrameCount || 0);
     const preparedPoseCount = Number(activeMolstarPrepared?.sdfPoseRecordCount || activeMolstarPrepared?.poseCount || 0);
     return (config?.sdfPosePager === true && configuredPoseCount > 1) || preparedPoseCount > 1;
+  }
+
+  function xyzrenderPopoutAnimation(item) {
+    const content = item.querySelector('.buret-xyzrender-sheet-item-body');
+    // Inspector previews are still editable drafts held by the owning window.
+    // Applying or cancelling them leaves the item's durable GIF or drawing.
+    if (content?.querySelector('.buret-xyzrender-animation-canvas')) throw new Error('Apply or cancel the animation preview before moving this sheet.');
+    const image = content?.querySelector('.buret-xyzrender-animation-image');
+    if (!image) return null;
+    const data = image.getAttribute('src');
+    if (typeof data !== 'string' || data.length > 24000000 || !/^data:image\/(png|gif);base64,[A-Za-z0-9+/=]+$/.test(data)) throw new Error('The animation could not be moved.');
+    if (!image.complete || !image.naturalWidth) throw new Error('Wait for the animation to finish loading.');
+    return data;
+  }
+
+  function restoreXyzrenderPopoutAnimation(item, data) {
+    if (typeof data !== 'string' || data.length > 24000000 || !/^data:image\/(png|gif);base64,[A-Za-z0-9+/=]+$/.test(data)) throw new Error('The saved animation is invalid.');
+    const content = item.querySelector('.buret-xyzrender-sheet-item-body');
+    const image = document.createElement('img');
+    image.className = 'buret-xyzrender-animation-image';
+    image.alt = 'Molecular animation';
+    image.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:inherit;pointer-events:none';
+    image.dataset.buretPopoutAnimation = 'loading';
+    image.addEventListener('load', () => { image.dataset.buretPopoutAnimation = 'ready'; }, { once: true });
+    image.addEventListener('error', () => { image.dataset.buretPopoutAnimation = 'failed'; }, { once: true });
+    content.querySelector('svg')?.style.setProperty('visibility', 'hidden');
+    content.append(image);
+    // The same encoded GIF retains every frame, its timing and transparency.
+    // A new image starts its loop at the beginning; img exposes no seek position.
+    image.src = data;
   }
 
   window.addEventListener('message', event => {
@@ -14968,6 +15019,31 @@ SOFTWARE.
     if (baseItem && savedView?.item) {
       for (const key of ['left', 'top', 'width', 'height']) baseItem.style[key] = `${savedView.item[key]}px`;
       setSheetItemRotation(baseItem, savedView.item.rotation);
+    }
+    const restoredSheet = activeConfig?.popoutSheet;
+    if (restoredSheet?.version === 1 && Array.isArray(restoredSheet.items)) {
+      const sheet = ensureXyzrenderSheet(stage);
+      root.querySelectorAll('.buret-xyzrender-sheet-item').forEach(item => item.remove());
+      for (const saved of restoredSheet.items) {
+        const item = addXyzrenderSheetItem(sheet, saved.svg, saved.path, { x: saved.geometry.left, y: saved.geometry.top }, 1, () => scale, saved);
+        for (const key of ['left', 'top', 'width', 'height']) item.style[key] = `${saved.geometry[key]}px`;
+        setSheetItemRotation(item, saved.geometry.rotation);
+        item.style.zIndex = saved.zIndex || '';
+        item.classList.toggle('selected', saved.selected === true);
+        item.dataset.buretXyzrenderPreset = saved.preset;
+        item.dataset.buretXyzrenderControls = JSON.stringify(saved.controls || {});
+        setXyzrenderSheetItemRegions(item, saved.controls?.regions);
+        setXyzrenderSheetItemVdwAtoms(item, saved.controls?.vdwAtoms);
+        if (saved.orientationRef) item.dataset.buretXyzrenderOrientationRef = saved.orientationRef;
+        if (saved.orientationBaseRef) item.dataset.buretXyzrenderOrientationBase = saved.orientationBaseRef;
+        if (saved.angles) item.dataset.buretXyzrenderOrientationAngles = JSON.stringify(saved.angles);
+        if (saved.animation) restoreXyzrenderPopoutAnimation(item, saved.animation);
+      }
+      scale = restoredSheet.view?.scale || 1;
+      translateX = restoredSheet.view?.x || 0;
+      translateY = restoredSheet.view?.y || 0;
+      // A checkpoint is applied once; changing styles must not replay old items.
+      delete activeConfig.popoutSheet;
     }
     const viewportCleanup = window.BuretteRendererViewState?.observeSheetViewport(root, savedView?.viewport);
     externalArtifactViewSnapshot = () => ({
