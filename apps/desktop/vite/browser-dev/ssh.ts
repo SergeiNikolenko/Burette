@@ -1,7 +1,9 @@
+import { SshPreviewCache } from "./ssh-preview-cache";
+import { SshRequestQueue } from "./ssh-request-queue";
 import { SshSession } from "./ssh-session";
-import { mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import type { ViteDevServer } from "vite";
 import { readJsonBody, sendJson, sendJsonError } from "./http";
 
@@ -11,14 +13,13 @@ const validHost = (host: unknown): host is string => typeof host === "string" &&
 // The browser never gets SSH credentials. This opt-in, loopback-only transport
 // runs the same Python file worker as the native app, through system SSH.
 export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: string) {
-  let active = 0;
-  let bytesCached = 0;
-  let filesCached = 0;
-  let downloads = 0;
+  const requests = new SshRequestQueue();
   let cache: Promise<string> | undefined;
   const cacheRoot = () => cache ??= mkdir(join(repoRoot, "node_modules/.cache"), { recursive: true }).then(() => mkdtemp(join(repoRoot, "node_modules/.cache/burette-ssh-")));
+  const previews = new SshPreviewCache(cacheRoot);
   const sessions = new Map<string, SshSession>();
   server.httpServer?.once("close", () => {
+    requests.close();
     for (const session of sessions.values()) session.close();
     if (cache) void cache.then(path => rm(path, { recursive: true, force: true }));
   });
@@ -32,8 +33,10 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
       return;
     }
     if (req.method !== "POST") { sendJson(res, 405, { error: "Method not allowed" }); return; }
-    let acquired = false;
-    let downloading = false;
+    let release: (() => void) | undefined;
+    const controller = new AbortController();
+    const abort = () => { if (!res.writableEnded) controller.abort(); };
+    res.once("close", abort);
     try {
       const request = await readJsonBody(req, 8192);
       const action = req.url?.split("?")[0];
@@ -56,14 +59,12 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
       const chemical = action === "/list" && request.chemical === true;
       const registry = chemical ? JSON.parse(await readFile(join(repoRoot, "config/preview-formats.json"), "utf8")) : null;
       const extensions = registry?.formats.filter((format: { preview?: { strategy?: string } }) => format.preview?.strategy !== "text").flatMap((format: { extensions: string[] }) => format.extensions);
-      const payload = JSON.stringify({ operation: chemical ? "discover" : action === "/delete-folder" ? "delete-folder" : action === "/list" ? "list" : "read", root, path, ...(chemical ? { extensions } : {}) });
+      const cacheKey = JSON.stringify([host, root, path]);
+      const known = action === "/preview" ? await previews.known(cacheKey) : undefined;
+      const payload = JSON.stringify({ known, operation: chemical ? "discover" : action === "/delete-folder" ? "delete-folder" : action === "/list" ? "list" : "preview", root, path, ...(chemical ? { extensions } : {}) });
       if (Buffer.byteLength(payload) > 8192) throw new Error("Remote path request is too large");
-      if (active >= 2) { sendJson(res, 429, { error: "Two SSH requests are running. Try again when they finish." }); return; }
-      active++; acquired = true;
-      if (action === "/preview") {
-        if (filesCached + downloads >= 256 || bytesCached + (downloads + 1) * MAX_BYTES > 512 * 1024 * 1024) throw new Error("SSH preview cache is full. Restart the preview server to clear it.");
-        downloads++; downloading = true;
-      }
+      release = await requests.acquire(controller.signal);
+      controller.signal.throwIfAborted();
       const started = performance.now();
       const worker = (await Promise.all(["chemistry.py", "reader.py"].map(file => readFile(join(repoRoot, "apps/desktop/src-tauri/src/commands/ssh", file), "utf8")))).join("\n");
       let session = sessions.get(host);
@@ -76,24 +77,13 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
         session = new SshSession(host, worker, () => { if (sessions.get(host) === session) sessions.delete(host); });
         sessions.set(host, session);
       }
-      const controller = new AbortController();
-      const abort = () => { if (!res.writableEnded) controller.abort(); };
-      res.once("close", abort);
-      let data: Buffer;
-      try { data = await session.run(payload, action === "/preview" ? MAX_BYTES : 2 * 1024 * 1024, controller.signal); }
-      finally { res.off("close", abort); }
+      const data = await session.run(payload, action === "/preview" ? MAX_BYTES + 1024 : 2 * 1024 * 1024, controller.signal);
       res.setHeader("Server-Timing", `ssh;dur=${(performance.now() - started).toFixed(1)}`);
       if (action !== "/preview") sendJson(res, 200, JSON.parse(data.toString()), "no-store");
       else {
-        const parent = join(await cacheRoot(), "ssh-previews");
-        await mkdir(parent, { recursive: true, mode: 0o700 });
-        const folder = await mkdtemp(join(parent, "file-"));
-        const destination = join(folder, basename(path));
-        await writeFile(destination, data, { mode: 0o600, flag: "wx" });
-        bytesCached += data.length; filesCached++;
-        sendJson(res, 200, destination, "no-store");
+        sendJson(res, 200, await previews.store(cacheKey, path, data), "no-store");
       }
     } catch (error) { if (!res.destroyed) sendJsonError(res, 400, error, "no-store"); }
-    finally { if (acquired) active--; if (downloading) downloads--; }
+    finally { res.off("close", abort); release?.(); }
   });
 }
