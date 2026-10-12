@@ -28,6 +28,15 @@ distant dock is never preferred through a second coordinate fallback.
 
 ## Reliability and limits
 
+- On macOS, dragging a file, text, document or sketch tab uses the same AppKit
+  file-URL drag as sidebar files, so Finder receives files rather than text
+  clippings. Native tab identity is retained for reordering within the app.
+  Inline text, sketch drafts, edited source text and combined molecular scenes
+  are materialized in the preview cache before dragging; originals stay intact.
+  This accepts at most 200 tabs and 24 MiB of generated text. Scene export also
+  retains its existing viewer transport limit. Dirty collections and incomplete
+  virtual text require saving first. Screens without file content offer no text
+  fallback to Finder. Cancelling a drag does not open its files.
 - A collection drag transfers at most 200 loaded records and 24 MiB of text. A
   selection containing unloaded remote rows is rejected with an explanation;
   it is never silently truncated.
@@ -58,6 +67,8 @@ distant dock is never preferred through a second coordinate fallback.
 `tests/test-drop-actions.mjs` covers the action matrix. `tests/test-drop-routing.mjs`
 executes the shell hook and checks destination identity, folder routing, browser
 formats, and multiple cold-tab drops with a matching-frame readiness handshake.
+`tests/test-native-tab-file-drag.test.ts` checks actual tab-handler native command
+dispatch, cancellation, cached exports and rejection of stale/incomplete content.
 `tests/test-browser-dev-path-boundaries.mjs` and the Rust `file_operations` tests
 check unique creation, traversal rejection and overwrite protection.
 `tests/test-xyzrender-sheet-editing.mjs` checks layout under zoom/pan and preservation

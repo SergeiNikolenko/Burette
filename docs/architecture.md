@@ -61,6 +61,13 @@ history. The router navigator and native Back/Forward actions share that cursor
 rather than maintaining two independent histories. Session restoration and
 workspace undo therefore keep the same payload shape. Tab keep-alive limits,
 dirty-view retention, and file-opening guards remain in their existing owners.
+Within a visible tab, `tab-history-pages.tsx` retains the last three visited file
+views so Back/Forward reuses the iframe and camera rather than rebuilding it.
+Inactive tabs retain only their current view, with unsaved grids and assembled
+scenes protected from eviction. When branching discards Forward entries, a
+protected view remains in the same tab and is restored to Back history so its
+original editor stays reachable. Hidden history views receive the existing visibility signal to pause
+trajectory playback; stable DOM order avoids iframe reloads during navigation.
 
 
 The desktop shell is a compact molecule workspace:
@@ -292,8 +299,19 @@ menu. Trajectory pairing retains its separate document workflow. Combined scenes
 Add to Scene skips files the target already holds, and a combined scene's tab
 menu adds the whole scene, including files and records added to it earlier, to
 another open scene, so scenes can be chained.
-SSH requests wait for the shared native worker rather than treating contention
-as a connection failure; refreshing a remote project keeps its cached tree visible.
+SSH allows three native requests at a time and reuses OpenSSH connections through
+an app-private 0700 control-socket directory with a 60-second idle lifetime.
+Strict known-host checking, batch authentication, and disabled forwarding remain
+in force; the user's SSH configuration and credentials are never changed.
+Browser-dev keeps its existing sequential per-host worker, admits three requests
+at a time, and queues up to 200 more for at most 45 seconds each. Disconnected
+requests leave the queue before acquiring a worker. Both transports revalidate remote device/inode,
+size, modification and change timestamps before reusing a preview. Changed files
+get immutable new local paths; open previews are never deleted to make room.
+Cache admission preserves the 256-file / 512-MiB bounds, with a 64-MiB file limit.
+The internal preview response is a bounded JSON header followed by raw bytes;
+remote paths still travel only as JSON on stdin. Refreshing a remote project
+keeps its cached tree visible.
 
 ### Native conformers in Mol* collections
 
