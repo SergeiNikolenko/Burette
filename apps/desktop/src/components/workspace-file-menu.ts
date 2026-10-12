@@ -7,8 +7,9 @@ import { menuItem as item, submenu, menuSections, fileCapabilities } from "./wor
 
 type Workflows = ReturnType<typeof useWorkspaceFileActions>;
 export function workspaceFileMenu(paths: string[], state: ShellViewState, actions: ShellActions, workflows: Workflows,
-  diskItems: MenuItemSpec[], run: (action: () => unknown | Promise<unknown>) => () => void): MenuItemSpec[] {
-  if (!paths.length || paths.length > 200) return [];
+  diskItems: MenuItemSpec[], run: (action: () => unknown | Promise<unknown>) => () => void,
+  openBatch: (paths: string[], mode: "scene" | "tabs") => unknown): MenuItemSpec[] {
+  if (!paths.length) return [];
   const command = (id: string, text: string, action: () => unknown | Promise<unknown>) => item(id, text, run(action));
   const single = paths.length === 1;
   const path = paths[0];
@@ -16,13 +17,13 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
   const local = paths.every(path => path.startsWith("/"));
   const document = single ? state.documents.find(document => document.path === path) : null;
   const opening = [
-    command("open-tabs", single ? "New tab" : "In tabs", () => actions.openPaths(paths)),
+    command("open-tabs", single ? "New tab" : "In separate tabs", () => openBatch(paths, "tabs")),
     command("open-right", "Right panel", () => actions.openDockPayload({ area: "right", tabKind: "files", payload: {
       paths, records: [], items: paths.map(path => ({ kind: "file", path, title: path.split('/').pop() || path })),
     } })),
     ...(isTauriRuntime() && local ? [command("open-window", "New window", () => actions.openNewWindow(paths))] : []),
     ...(!single && caps.every(cap => cap.scene) ? [
-      command("open-together", "Together", () => actions.openDockingDocument(path, paths.slice(1), { sceneMode: "structureAll" })),
+      command("open-together", "In one scene", () => openBatch(paths, "scene")),
       ...(caps.every(cap => cap.protein) ? [command("open-aligned", "Aligned", () => workflows.openAligned(paths))] : []),
       ...(caps.every(cap => cap.poses) ? [command("open-poses", "As poses", () => workflows.openPoses(paths))] : []),
     ] : []),

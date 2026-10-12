@@ -17,6 +17,7 @@ const aliases: Record<string, keyof typeof iconData> = {
 };
 const names: Record<string, string> = {
   'file-open': 'ArrowUpRight', 'folder-open': 'FolderOpen', 'row-open': 'ArrowUpRight',
+  'open-all-scene': 'Cube', 'stop-watching-folder': 'CloseBold',
   'file-edit': 'Edit', 'row-edit': 'Edit', 'file-copy': 'Copy', 'folder-copy': 'Copy', 'row-copy': 'Copy',
   'file-export': 'Download', 'row-export': 'Download', 'row-select': 'SelectText', 'row-search': 'Search',
   'folder-new': 'Plus', 'close-tabs': 'CloseBold', 'open-tabs': 'Plus', 'open-window': 'ExternalLink',

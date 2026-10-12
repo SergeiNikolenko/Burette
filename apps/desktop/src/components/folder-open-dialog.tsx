@@ -9,18 +9,27 @@ import { isTauriRuntime } from "../lib/tauri";
 import type { ShellActions, ShellViewState } from "./types";
 import { fileCapabilities } from "./workspace-menu-items";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
+import type { useLocalFileBatch } from "../hooks/use-local-file-batch";
+import { scanBrowserDevFolders } from "../lib/browser-dev-startup";
 
 type FolderContents = { files: string[]; folders: string[]; truncated: boolean };
 export async function readFolderContents(path: string, recursive: boolean, state: ShellViewState): Promise<FolderContents> {
   if (isTauriRuntime()) return invoke("read_folder_contents", { path, recursive });
   const prefix = path + '/';
+  if (state.buildInfo?.isBrowserDev) {
+    const scan = await scanBrowserDevFolders([path]);
+    return { files: scan.files.filter(file => recursive || !file.slice(prefix.length).includes('/')), folders: [], truncated: scan.truncated };
+  }
   const paths = Array.from(new Set(state.sidebarProjects.flatMap(project => project.items.map(item => item.path))));
   const files = paths.filter(file => file.startsWith(prefix) && (recursive || !file.slice(prefix.length).includes('/')));
   return { files, folders: [], truncated: false };
 }
-export function FolderOpenDialog({ path, state, actions, onClose, initialMode, workflows }: {
+export function FolderOpenDialog({ path, state, actions, onClose, initialMode, workflows, openBatch, cancelBatch, progress }: {
   initialMode: string; workflows: ReturnType<typeof useWorkspaceFileActions>;
   path: string | null; state: ShellViewState; actions: ShellActions; onClose: () => void;
+  openBatch: ReturnType<typeof useLocalFileBatch>["open"];
+  cancelBatch: () => void;
+  progress: ReturnType<typeof useLocalFileBatch>["progress"];
 }) {
   const [recursive, setRecursive] = useState(false);
   const [contents, setContents] = useState<FolderContents | null>(null);
@@ -28,21 +37,26 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
   const [mode, setMode] = useState("tabs");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(() => { setRecursive(false); setMode(initialMode); }, [path, initialMode]);
+  const [watch, setWatch] = useState(false);
+  useEffect(() => { setRecursive(false); setMode(initialMode); setWatch(false); }, [path, initialMode]);
   useEffect(() => {
     if (!path) return;
     let current = true;
     setContents(null); setSelected(new Set()); setError("");
     void readFolderContents(path, recursive, state).then(result => {
-      if (current) { setContents(result); setSelected(new Set(result.files.length <= 200 ? result.files : [])); }
+      if (current) {
+        setContents(result);
+        const candidates = initialMode === "together" ? result.files.filter(file => fileCapabilities(file).scene) : result.files;
+        setSelected(new Set(candidates.length <= 200 ? candidates : []));
+      }
     }).catch(error => { if (current) { console.error("[Folder open]", error); setError("Could not read this folder. Try reopening it."); } });
     return () => { current = false; };
   }, [path, recursive]);
   const paths = Array.from(selected);
-  const compatible = paths.length > 1 && paths.every(path => fileCapabilities(path).scene);
+  const compatible = paths.length > 0 && paths.every(path => fileCapabilities(path).scene);
   const targets = workflows.sceneTargets(paths);
-  const canAlign = compatible && paths.every(path => fileCapabilities(path).protein);
-  const poses = compatible && paths.every(path => fileCapabilities(path).poses);
+  const canAlign = paths.length > 1 && compatible && paths.every(path => fileCapabilities(path).protein);
+  const poses = paths.length > 1 && compatible && paths.every(path => fileCapabilities(path).poses);
   const validMode = mode.startsWith("scene:") ? targets.some(target => mode === `scene:${target.id}`)
     : mode === "aligned" ? canAlign : mode === "poses" ? poses : mode !== "together" || compatible;
   const submit = async () => {
@@ -59,10 +73,8 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
         paths, records: [], items: paths.map(path => ({ kind: "file", path, title: path.split('/').pop() || path })),
       } });
       else if (mode === "poses") await workflows.openPoses(paths);
-      else if (mode === "together") await actions.openDockingDocument(paths[0], paths.slice(1), {
-        sceneMode: "structureAll",
-      });
-      else await actions.openPaths(paths);
+      else if (mode === "together") await openBatch(paths, "scene", watch && path ? { path, recursive, baseline: contents.files } : undefined);
+      else await openBatch(paths, "tabs");
       onClose();
     } catch (error) { console.error("[Folder open]", error); setError("Could not open the selected files. Try again."); }
     finally { setBusy(false); }
@@ -104,19 +116,23 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
             <NativeSelectOption value="tabs">In Tabs</NativeSelectOption>
             <NativeSelectOption value="right">In Right Panel</NativeSelectOption>
             {isTauriRuntime() ? <NativeSelectOption value="window">In New Window</NativeSelectOption> : null}
-            <NativeSelectOption value="together" disabled={!compatible}>Together</NativeSelectOption>
+            <NativeSelectOption value="together" disabled={!compatible}>In one scene</NativeSelectOption>
             <NativeSelectOption value="aligned" disabled={!canAlign}>Aligned</NativeSelectOption>
             <NativeSelectOption value="poses" disabled={!poses}>As Poses</NativeSelectOption>
             {targets.map(target => <NativeSelectOption key={target.id} value={`scene:${target.id}`}>Add to {target.title}</NativeSelectOption>)}
           </NativeSelect>
         </label>
+        {mode === "together" && (isTauriRuntime() || state.buildInfo?.isBrowserDev) && <label className="flex items-center gap-2 text-sm">
+          <Checkbox checked={watch} disabled={busy || contents?.truncated} onCheckedChange={checked => setWatch(checked === true)} />
+          Add new files as they appear
+        </label>}
         {paths.length > 200 && <p className="text-sm text-(--color-text-danger)" role="alert">Select at most 200 files.</p>}
         {error && <p className="text-sm text-(--color-text-danger)" role="alert">{error}</p>}
         <DialogFooter className="gap-2">
           {contents && <span className="mr-auto text-xs text-(--color-text-secondary)" role="status">{selected.size} of {contents.files.length} selected</span>}
-          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button type="button" variant="secondary" onClick={busy ? cancelBatch : onClose} disabled={busy && mode !== "tabs" && mode !== "together"}>{busy ? "Stop" : "Cancel"}</Button>
           <Button type="submit" disabled={busy || !contents || !paths.length || paths.length > 200 || !validMode}>
-            {busy ? <><Spinner className="size-4" aria-hidden />Opening…</> : `Open${paths.length ? ` ${paths.length}` : ""}`}
+            {busy ? <><Spinner className="size-4" aria-hidden />{progress ? `Opening ${progress.completed} of ${progress.total}` : "Opening…"}</> : `Open${paths.length ? ` ${paths.length}` : ""}`}
           </Button>
         </DialogFooter>
       </form>
