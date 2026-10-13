@@ -54,10 +54,11 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
       if (action !== "/list" && action !== "/preview" && action !== "/download" && action !== "/delete-folder") { sendJson(res, 404, { error: "Unknown SSH operation" }); return; }
       const { host, root, path } = request;
       if (!validHost(host) || typeof root !== "string" || typeof path !== "string" || (root + path).includes("\0")) throw new Error("Invalid SSH host or remote path");
+      const archive = action === "/download" && request.archive === true;
       const chemical = action === "/list" && request.chemical === true;
       const registry = chemical ? JSON.parse(await readFile(join(repoRoot, "config/preview-formats.json"), "utf8")) : null;
       const extensions = registry?.formats.filter((format: { preview?: { strategy?: string } }) => format.preview?.strategy !== "text").flatMap((format: { extensions: string[] }) => format.extensions);
-      const payload = JSON.stringify({ operation: chemical ? "discover" : action === "/delete-folder" ? "delete-folder" : action === "/list" ? "list" : "read", root, path, ...(chemical ? { extensions } : {}) });
+      const payload = JSON.stringify({ operation: archive ? "archive" : chemical ? "discover" : action === "/delete-folder" ? "delete-folder" : action === "/list" ? "list" : "read", root, path, ...(chemical ? { extensions } : {}) });
       if (Buffer.byteLength(payload) > 8192) throw new Error("Remote path request is too large");
       if (active >= 2) { sendJson(res, 429, { error: "Two SSH requests are running. Try again when they finish." }); return; }
       active++; acquired = true;
@@ -66,7 +67,7 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
         downloads++; downloading = true;
       }
       const started = performance.now();
-      const worker = (await Promise.all(["chemistry.py", "reader.py"].map(file => readFile(join(repoRoot, "apps/desktop/src-tauri/src/commands/ssh", file), "utf8")))).join("\n");
+      const worker = (await Promise.all(["chemistry.py", "archive.py", "reader.py"].map(file => readFile(join(repoRoot, "apps/desktop/src-tauri/src/commands/ssh", file), "utf8")))).join("\n");
       let session = sessions.get(host);
       if (!session) {
         if (sessions.size >= 4) {
@@ -81,10 +82,10 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
       const abort = () => { if (!res.writableEnded) controller.abort(); };
       res.once("close", abort);
       let data: Buffer;
-      try { data = await session.run(payload, action === "/preview" || action === "/download" ? MAX_BYTES : 2 * 1024 * 1024, controller.signal); }
+      try { data = await session.run(payload, archive ? 512 * 1024 * 1024 : action === "/preview" || action === "/download" ? MAX_BYTES : 2 * 1024 * 1024, controller.signal, archive ? 120000 : 45000); }
       finally { res.off("close", abort); }
       res.setHeader("Server-Timing", `ssh;dur=${(performance.now() - started).toFixed(1)}`);
-      if (action === "/download") sendJson(res, 200, await saveSshDownload(join(homedir(), "Desktop"), path, data), "no-store");
+      if (action === "/download") sendJson(res, 200, await saveSshDownload(join(homedir(), "Desktop"), archive ? `${basename(path === "." ? root : path) || "project"}.zip` : path, data), "no-store");
       else if (action !== "/preview") sendJson(res, 200, JSON.parse(data.toString()), "no-store");
       else {
         const parent = join(await cacheRoot(), "ssh-previews");

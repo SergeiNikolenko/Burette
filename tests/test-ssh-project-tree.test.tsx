@@ -157,10 +157,10 @@ test("right-clicking SSH folders opens the same menu as their options button", a
   try {
     await act(async () => { root.render(<RemoteProject project={{ id: "test", name: "Remote", host: "fixture", root: "/data" }} onOpen={() => {}} {...shellStub} />); });
     const project = await menuText(container.querySelector('[role="treeitem"][aria-label="Remote"]')!);
-    expect(project).toEqual({ prevented: true, text: ["Refresh", "Pin", "Edit…", "Section", "Connection color", "Remove project"] });
+    expect(project).toEqual({ prevented: true, text: ["Download ZIP to Desktop", "Refresh", "Pin", "Edit…", "Section", "Connection color", "Remove project"] });
     await act(async () => { container.querySelector<HTMLButtonElement>('button[aria-label="Expand Remote"]')!.click(); });
     const folder = await menuText(container.querySelector('[role="treeitem"][aria-label="ligands"]')!);
-    expect(folder).toEqual({ prevented: true, text: ["Refresh folder", "Collapse folder", "Add as project", "Copy path", "Delete folder from server…"] });
+    expect(folder).toEqual({ prevented: true, text: ["Download ZIP to Desktop", "Refresh folder", "Collapse folder", "Add as project", "Copy path", "Delete folder from server…"] });
   } finally {
     await act(async () => root.unmount());
     container.remove();
@@ -195,7 +195,36 @@ test("SSH file download uses the original remote path without opening a preview 
     expect(container.textContent).toContain("Could not download file");
     expect(container.textContent).not.toContain("Downloaded to Desktop");
     await act(async () => [...container.querySelectorAll("button")].find(button => button.textContent === "Retry")!.click());
-    expect(requests).toEqual([{ host: "fixture", root: "/data", path: "mini.pdb" }, { host: "fixture", root: "/data", path: "mini.pdb" }]);
+    expect(requests).toEqual([{ host: "fixture", root: "/data", path: "mini.pdb", archive: false }, { host: "fixture", root: "/data", path: "mini.pdb", archive: false }]);
+    expect(opened).toEqual([]);
+    expect(container.textContent).toContain("Downloaded to Desktop");
+  } finally {
+    await act(async () => root.unmount());
+    document.querySelector(".radix-context-menu-mount")?.remove();
+    container.remove(); globalThis.fetch = originalFetch;
+  }
+});
+
+for (const path of [".", "ligands"]) test(`SSH folder ${path} downloads an archive without opening previews`, async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: unknown[] = [];
+  globalThis.fetch = (async (url: unknown, options: RequestInit) => {
+    const request = JSON.parse(String(options.body));
+    const value = String(url).endsWith("/download")
+      ? (requests.push(request), "/Desktop/ligands.zip")
+      : { root: "/data", path: ".", entries: [{ name: "ligands", directory: true }] };
+    return new Response(JSON.stringify(value), { headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  const opened: string[][] = [];
+  try {
+    await act(async () => root.render(<RemoteProject project={{ id: "archive", name: "Remote", host: "fixture", root: "/data" }} onOpen={paths => { opened.push(paths); }} {...shellStub} />));
+    if (path !== ".") await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Expand Remote"]')!.click());
+    await act(async () => container.querySelector(`[role="treeitem"][aria-label="${path === "." ? "Remote" : "ligands"}"]`)!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 20, clientY: 20 })));
+    for (let attempt = 0; attempt < 50 && !document.querySelector('[role="menu"]'); attempt++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
+    await act(async () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item => item.textContent?.trim() === "Download ZIP to Desktop")!.click());
+    expect(requests).toEqual([{ host: "fixture", root: "/data", path, archive: true }]);
     expect(opened).toEqual([]);
     expect(container.textContent).toContain("Downloaded to Desktop");
   } finally {

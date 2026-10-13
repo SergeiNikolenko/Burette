@@ -1,4 +1,4 @@
-import json, pathlib, subprocess, tempfile, unittest
+import io, zipfile, json, pathlib, subprocess, tempfile, unittest
 WORKER = pathlib.Path(__file__).resolve().parents[1] / 'apps/desktop/src-tauri/src/commands/ssh/reader.py'
 
 class RemoteReader(unittest.TestCase):
@@ -23,6 +23,34 @@ class RemoteReader(unittest.TestCase):
                 response = self.request(root, 'read', path)
                 self.assertNotEqual(response.returncode, 0)
                 self.assertEqual(response.stdout, b'')
+
+    def test_archive_preserves_all_files_and_empty_folders(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            (root / 'nested/empty').mkdir(parents=True)
+            (root / 'nested/data.bin').write_bytes(b'\x00binary\xff')
+            (root / '.hidden.txt').write_text('included')
+            for path, expected in [('.', {'nested/', 'nested/empty/', 'nested/data.bin', '.hidden.txt'}), ('nested', {'empty/', 'data.bin'})]:
+                result = self.request(root, 'archive', path)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                with zipfile.ZipFile(io.BytesIO(result.stdout)) as archive:
+                    self.assertEqual(set(archive.namelist()), expected)
+                    self.assertEqual(archive.read('nested/data.bin' if path == '.' else 'data.bin'), b'\x00binary\xff')
+            (root / 'escape').symlink_to('/etc')
+            for path in ('.', 'escape', 'escape/subdir', '../', '/etc'):
+                result = self.request(root, 'archive', path)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, b'')
+
+    def test_archive_bounds_reject_without_partial_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            with (root / 'large').open('wb') as file:
+                file.truncate(512 * 1024 * 1024 + 1)
+            result = self.request(root, 'archive')
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(result.stdout, b'')
+            self.assertIn(b'512 MiB', result.stderr)
 
     def test_delete_folder_is_confined_and_preserves_symlink_targets(self):
         with tempfile.TemporaryDirectory() as temporary:

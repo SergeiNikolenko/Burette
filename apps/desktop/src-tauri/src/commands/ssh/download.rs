@@ -73,19 +73,33 @@ pub(crate) async fn ssh_download(
     validate(&request)?;
     let desktop = app.path().desktop_dir().map_err(|e| e.to_string())?;
     tauri::async_runtime::spawn_blocking(move || {
-        let name = Path::new(&request.path)
+        let source = if request.path == "." {
+            &request.root
+        } else {
+            &request.path
+        };
+        let base = Path::new(source)
             .file_name()
             .and_then(|s| s.to_str())
-            .ok_or("Choose a file")?;
+            .unwrap_or("project");
+        let name = if request.archive {
+            format!("{base}.zip")
+        } else {
+            base.to_owned()
+        };
         let output = match destination {
-            Destination::Desktop => desktop.join(name),
+            Destination::Desktop => desktop.join(&name),
             Destination::Choose => {
                 let Some(path) = app
                     .dialog()
                     .file()
-                    .set_title("Download File")
+                    .set_title(if request.archive {
+                        "Download Folder"
+                    } else {
+                        "Download File"
+                    })
                     .set_directory(&desktop)
-                    .set_file_name(name)
+                    .set_file_name(&name)
                     .blocking_save_file()
                 else {
                     return Ok(None);
@@ -93,7 +107,7 @@ pub(crate) async fn ssh_download(
                 path.into_path().map_err(|e| e.to_string())?
             }
         };
-        let bytes = run(&request, "read")?;
+        let bytes = run(&request, if request.archive { "archive" } else { "read" })?;
         let directory = output.parent().ok_or("Choose a destination folder")?;
         let name = output
             .file_name()

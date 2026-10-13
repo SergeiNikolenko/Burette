@@ -31,6 +31,8 @@ def process_request(request):
     leaf = parts[-1] if parts else '.'
     path = os.path.join(root, *parts)
     try:
+        if request['operation'] == 'archive':
+            return download_archive(parent, leaf)
         if request['operation'] == 'delete-folder':
             if not parts:
                 raise ValueError('The project root cannot be deleted')
@@ -88,6 +90,9 @@ def process_request(request):
         raise ValueError('Unsupported operation')
     finally:
         os.close(parent)
+
+if 'download_archive' not in globals():
+    from archive import download_archive
 
 if 'chemistry_tree' not in globals():
     import chemistry
