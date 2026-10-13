@@ -6517,7 +6517,7 @@ assert.match(previewViewer, /target\?\.scope === 'ligand' && target\.selectedEnt
 assert.match(previewViewer, /function pdbLigandSdfEntryForResidue\(receptor, atom\)/);
 assert.match(previewViewer, /function pdbConectPairsForSerials\(pdbData, includedSerials\)/);
 assert.match(previewViewer, /formatSdfCountsLine\(parsedAtoms\.length, sdfBonds\.length\)/);
-assert.match(previewViewer, /const ligandEntry = pdbLigandSdfEntryForResidue\(target\.sourceEntry, target\.atom\) \|\| target\.selectedEntry;/);
+assert.match(previewViewer, /const ligandEntry = pdbEntryForResidue\(target\.sourceEntry, target\.atom\) \|\| target\.selectedEntry;/);
 assert.match(previewViewer, /role: 'ligand',\s*label: ligandEntry\.label \|\| target\.label \|\| 'Ligand'/s);
 assert.match(previewViewer, /format: normalizeFormat\(ligandEntry\.format\)/);
 assert.match(previewViewer, /data: ligandEntry\.data/);

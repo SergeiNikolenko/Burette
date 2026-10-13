@@ -17,6 +17,7 @@ import ligandProLogo from "../assets/short-logo-ligandpro.svg";
 import { collectionExtension, collectionFamily as collectionFamilyForExtension, type CollectionFamily } from "../lib/collection-documents";
 import { detectKetcherImportFormat, normalizeKetcherSmilesImport } from "../lib/ketcher-import-format";
 import { readStructureText } from "../lib/structure-text";
+import { prepareKetcherPdbImport } from "../lib/ketcher-pdb-import";
 import { isTauriRuntime } from "../lib/tauri";
 import { hasStructureDrag, readStructureDragPayload, structureDragRecordsToFragments, writeStructureDragRecords } from "../lib/structure-drag";
 import { resolveThemeMode, useSystemThemeMode } from "../lib/theme";
@@ -925,21 +926,23 @@ export function KetcherPage({
           }
         };
         for (const path of cleanPaths) {
-          const text = await readStructureText(path);
+          const original = await readStructureText(path);
+          const text = await prepareKetcherPdbImport(original);
           if (itemCount === 1) {
-            source3d = { title: fileName(path), extension: fileExtension(path) || "sdf", text };
+            source3d = { title: fileName(path), extension: text !== original ? "sdf" : fileExtension(path) || "sdf", text };
           }
           await addStructure(text);
         }
         for (const fragment of cleanFragments) {
+          const text = await prepareKetcherPdbImport(fragment.text);
           if (itemCount === 1) {
-            source3d = fragment.source3d ?? {
+            source3d = text !== fragment.text ? { title: fragment.title || "structure", extension: "sdf", text } : fragment.source3d ?? {
               title: fragment.title || "structure",
               extension: fileExtension(fragment.title) || "sdf",
               text: fragment.text,
             };
           }
-          await addStructure(fragment.text);
+          await addStructure(text);
         }
         if (hasImportedStructure) {
           const molfile = await withKetcherTimeout(ketcher.getMolfile("v2000"), "Imported sketch export");

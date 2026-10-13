@@ -1538,7 +1538,7 @@ fn request_clone_without_job(request: &ConformerRunRequest) -> ConformerRunReque
     }
 }
 
-fn resolve_executable(name: &str) -> Option<PathBuf> {
+pub(super) fn resolve_executable(name: &str) -> Option<PathBuf> {
     let mut candidates = Vec::new();
     if let Some(home) = std::env::var_os("HOME") {
         let home = PathBuf::from(home);

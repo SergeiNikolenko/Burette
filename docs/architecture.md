@@ -330,3 +330,20 @@ a separate operation and is hidden when the collection cannot be aligned.
 The initial Mol* canvas stays hidden until its background is configured. Paint
 waits use a timer fallback because WKWebView can suspend animation callbacks for
 hidden canvases; startup must not depend on revealing the canvas first.
+
+## PDB transfer to Ketcher
+
+The molecule preview and extracted PDB residues retain their original atom
+records and filtered CONECT records. Ketcher import uses local Open Babel
+(`obabel -ipdb -osdf`) through `prepare_ketcher_pdb` on desktop or the
+browser-dev `prepare-ketcher-pdb` route. It validates atom identity and 3D
+coordinates before loading the resulting MOL block. Existing SDF chemistry
+is imported directly. Coordinate-only PDB chemistry is inferred, not an
+authoritative replacement for a ligand's original SDF.
+
+This conversion requires an installed Open Babel executable. Hosted surfaces
+without the local converter reject PDB editor imports with an actionable error
+instead of silently replacing bond orders with single bonds. The focused
+integration check is `bun tests/test-ketcher-pdb-import.mjs` (Open Babel needed
+for chemical perception); the native converter check is
+`cargo test --lib ketcher_pdb -- --include-ignored` from the Tauri crate.
