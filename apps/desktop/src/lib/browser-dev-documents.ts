@@ -5,6 +5,7 @@ import { runBrowserDevMetalConformer } from "./browser-dev-compute";
 import { parseDataWarrior } from "./datawarrior";
 import { nativePreviewHtml } from "./native-mcp-workspace";
 import { isHostedMcpWidget } from "./hosted-mcp-widget";
+import { validatePdbMolecule } from "./pdb-chemistry";
 import { previewBackgroundStyle, readPreviewThemeTokens } from "./theme";
 import type { DockingDocumentRequest, DockingSceneMode, OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls } from "../types";
 import previewFormatRegistry from "../../../../config/preview-formats.json";
@@ -1982,6 +1983,12 @@ function ketcherEditConfig(
   let atomCount = 0;
   if (normalized === "mol") {
     atomCount = molfileAtomCount(text);
+  } else if (normalized === "pdb" || normalized === "ent") {
+    try {
+      atomCount = validatePdbMolecule(text).length;
+    } catch {
+      return null;
+    }
   } else if (isSdfExtension(normalized)) {
     if (sdfRecordCount !== 1) return null;
     const record = parseSdfCollectionRecords(text)[0]?.molblock ?? text;
