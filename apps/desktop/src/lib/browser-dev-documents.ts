@@ -1208,6 +1208,13 @@ function browserDevMolstarContextFocus(context: Record<string, unknown> | undefi
 }
 
 function isMesoscaleDocument(path: string, extension: string, bytes: Uint8Array) {
+  if (extension === "molj") {
+    try {
+      const session = JSON.parse(new TextDecoder().decode(bytes));
+      if (Array.isArray(session.entries)) return session.entries.some((entry: { snapshot?: { data?: { tree?: { transforms?: { transformer?: string }[] } } } }) =>
+        entry.snapshot?.data?.tree?.transforms?.some(transform => transform.transformer === "ms-plugin.mesoscale-state"));
+    } catch { /* Let the session viewer report invalid files. */ }
+  }
   if (MESOSCALE_EXTENSIONS.has(extension)) return true;
   const normalizedPath = path.toLowerCase();
   if (extension === "bcif") {

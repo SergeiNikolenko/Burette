@@ -193,13 +193,16 @@ fn create_workspace_window<R: Runtime>(
                 DEFAULT_WORKSPACE_WINDOW_HEIGHT
             },
         )
-        .always_on_top(preview)
-        .visible_on_all_workspaces(preview)
         .min_inner_size(MIN_WORKSPACE_WINDOW_WIDTH, MIN_WORKSPACE_WINDOW_HEIGHT)
         .decorations(true)
         .visible(false)
         .focused(false)
         .prevent_overflow();
+    let builder = if preview {
+        builder.always_on_top(true).visible_on_all_workspaces(true)
+    } else {
+        builder
+    };
     let builder = builder
         .transparent(true)
         .background_color(Color(0, 0, 0, 0));

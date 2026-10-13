@@ -219,6 +219,7 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
             .path()
             .app_cache_dir()
             .map_err(|error| error.to_string())?
+            .join("viewer")
             .join("popouts")
             .join(uuid::Uuid::new_v4().to_string());
         fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
