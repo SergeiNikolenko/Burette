@@ -1,6 +1,22 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { registerBrowserDevSshRoutes } from '../apps/desktop/vite/browser-dev/ssh.ts';
+import { saveSshDownload } from '../apps/desktop/vite/browser-dev/ssh-download.ts';
+import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const downloadFolder = await mkdtemp(join(tmpdir(), 'burette-ssh-download-test-'));
+try {
+  await writeFile(join(downloadFolder, 'mini.pdb'), 'existing');
+  await symlink(join(downloadFolder, 'mini.pdb'), join(downloadFolder, 'mini (1).pdb'));
+  const bytes = Buffer.from([0, 255, 13, 10]);
+  const paths = await Promise.all([saveSshDownload(downloadFolder, 'nested/mini.pdb', bytes), saveSshDownload(downloadFolder, 'mini.pdb', bytes)]);
+  assert.deepEqual(paths.sort(), [join(downloadFolder, 'mini (2).pdb'), join(downloadFolder, 'mini (3).pdb')]);
+  for (const path of paths) assert.deepEqual(await readFile(path), bytes);
+  assert.equal(await readFile(join(downloadFolder, 'mini.pdb'), 'utf8'), 'existing');
+  assert.equal((await readdir(downloadFolder)).length, 4);
+} finally { await rm(downloadFolder, { recursive: true, force: true }); }
 
 let handler;
 const server = createServer((req, res) => handler(req, res));
@@ -21,6 +37,8 @@ try {
   assert.equal((await post('/list', { host: 'research', root: 'x'.repeat(9000), path: '.' })).status, 413);
   assert.equal((await post('/delete-folder', { host: '-oProxyCommand=evil', root: '~', path: 'folder' })).status, 400);
   assert.equal((await post('/delete-folder', {}, { Origin: 'http://attacker.example' })).status, 403);
+  assert.equal((await post('/download', { host: '-oProxyCommand=evil', root: '~', path: 'mini.pdb' })).status, 400);
+  assert.equal((await post('/download', {}, { Origin: 'http://attacker.example' })).status, 403);
   assert.equal((await post('/other', {})).status, 404);
   const hosts = await post('/hosts', {});
   assert.equal(hosts.status, 200);

@@ -11,7 +11,8 @@ import { DotsHorizontal } from "../ui/app-icons";
 import { NativeDropdownMenu } from "../native-dropdown-menu";
 import { showNativeContextMenu } from "../native-context-menu";
 import type { MenuItemSpec } from "../menu-types";
-import { saveSshProject, sshList, sshPreview, type SshConnection, type SshDirectory, type SshProject } from "../../lib/ssh-projects";
+import { saveSshProject, sshList, sshPreview, sshDownload, type SshConnection, type SshDirectory, type SshProject } from "../../lib/ssh-projects";
+import { isTauriRuntime } from "../../lib/tauri";
 import type { StructureDragPayload } from "../../lib/structure-drag";
 import { useSidebarStructureDrag } from "../sidebar/use-sidebar-structure-drag";
 import { sshProjectHoverCard, useSidebarHoverCard } from "../sidebar/sidebar-hover-card";
@@ -22,7 +23,7 @@ import { copyTextWithSelectionFallback } from "../../lib/clipboard";
 // Every download takes its own slot in the 256-entry SSH preview cache.
 const MAX_DROPPED_REMOTE_FILES = 64;
 
-type Operation = { type: "list" | "preview"; path: string };
+type Operation = { type: "list" | "preview"; path: string } | { type: "download"; path: string; destination: "desktop" | "choose" };
 export function RemoteProject({ project, connection, onOpen, actions, state }: { project: SshProject; connection?: SshConnection; onOpen: (paths: string[]) => void | Promise<void>; actions: ShellActions; state: ShellViewState }) {
   const [expanded, setExpanded] = useState(new Set<string>());
   const [directories, setDirectories] = useState(new Map<string, { time: number; value: SshDirectory }>());
@@ -49,7 +50,7 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
   const hoverCard = useSidebarHoverCard(sshProjectHoverCard({ project, status, available: enabled && !!(health ? health.available : !!lastSuccess) && !failure, failed: !!failure }));
   async function run(operation: Operation, refresh = false) {
     if (lock.current) {
-      const existing = queued.current.find(item => item.operation.type === operation.type && item.operation.path === operation.path);
+      const existing = queued.current.find(item => item.operation.type === operation.type && item.operation.path === operation.path && (item.operation.type !== "download" || operation.type !== "download" || item.operation.destination === operation.destination));
       if (existing) existing.refresh ||= refresh;
       else queued.current.push({ operation, refresh });
       return;
@@ -60,6 +61,7 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
       const cached = directories.get(operation.path);
       if (operation.type === "list" && !refresh && cached && Date.now() - cached.time < 30000) { setFailure(null); return; }
       setPending(operation); setFailure(null);
+      if (operation.type === "download") setDropNotice(null);
       if (operation.type === "list") {
         const value = await sshList(project.host, project.root, operation.path, true);
         const records = [value, ...(value.discovered ?? [])];
@@ -84,6 +86,10 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
           if (!previous.has(operation.path)) return previous;
           return new Set([...previous, ...(value.expanded ?? [])]);
         });
+      } else if (operation.type === "download") {
+        const saved = await sshDownload(project, operation.path, operation.destination);
+        if (!saved) return;
+        setDropNotice({ path: operation.path, message: operation.destination === "desktop" ? "Downloaded to Desktop" : "Downloaded", error: false });
       } else {
         await onOpen([await sshPreview(project, operation.path)]);
         setSelected(operation.path);
@@ -162,6 +168,12 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
       {directory?.entries.slice(0, limits[path] ?? 100).map(entry => {
         const child = path === "." ? entry.name : `${path}/${entry.name}`;
         const kind = fileKindForPath(entry.name);
+        const fileItems: MenuItemSpec[] = [
+          { kind: "item", id: "open", text: "Open", disabled: !!pending || !enabled, action: () => void run({ type: "preview", path: child }) },
+          { kind: "item", id: "download", text: "Download to Desktop", disabled: !!pending || !enabled, action: () => void run({ type: "download", path: child, destination: "desktop" }) },
+          ...(isTauriRuntime() ? [{ kind: "item" as const, id: "download-as", text: "Download to…", disabled: !!pending || !enabled, action: () => void run({ type: "download", path: child, destination: "choose" }) }] : []),
+          { kind: "item", id: "copy", text: "Copy path", action: () => { copyTextWithSelectionFallback(`${directory!.root.replace(/\/$/, "")}/${child}`); } },
+        ];
         const folderItems: MenuItemSpec[] = [
           { kind: "item", id: "refresh", text: "Refresh folder", disabled: !!pending, action: () => { setExpanded(previous => new Set([...previous, child])); void run({ type: "list", path: child }, true); } },
           { kind: "item", id: "collapse", text: "Collapse folder", disabled: !expanded.has(child), action: () => setExpanded(previous => new Set([...previous].filter(path => path !== child && !path.startsWith(`${child}/`)))) },
@@ -180,10 +192,13 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
             </span>
           </div>{dropStatus(child)}{children(child)}
         </div> : <div key={child}>
-          <button className={`project${selected === child ? " active" : ""}`} role="treeitem" aria-selected={selected === child} data-sidebar-structure-path={`ssh://${project.host}/${project.root}/${child}`} disabled={pending?.type === "preview"} onMouseDown={event => startDrag(event, child, false)} onClickCapture={drag.onClickCapture} onClick={() => void run({ type: "preview", path: child })}>
+          <div className="ssh-file-row" onContextMenu={showMenu(fileItems)}>
+          <button className={`project${selected === child ? " active" : ""}`} role="treeitem" aria-selected={selected === child} data-sidebar-structure-path={`ssh://${project.host}/${project.root}/${child}`} disabled={pending?.type === "preview" || pending?.type === "download"} onMouseDown={event => startDrag(event, child, false)} onClickCapture={drag.onClickCapture} onClick={() => void run({ type: "preview", path: child })}>
             <span className="project-icon" data-file-kind={kind} aria-hidden="true"><FileKindIcon kind={kind} /></span><MarqueeName className="project-name">{entry.name}</MarqueeName>
             {pending?.path === child && <span className="ssh-activity" aria-label="Downloading" />}
           </button>
+          <span className="project-group-actions"><NativeDropdownMenu items={fileItems} trigger={<button className="project-group-menu-button" aria-label={`Options for ${entry.name}`}><DotsHorizontal size={14} /></button>} /></span>
+          </div>
           {failure?.operation.path === child && <div className="ssh-tree-error" role="alert">{failure.message}<button onClick={() => void run(failure.operation, true)}>Retry</button></div>}
           {dropStatus(child)}
         </div>;

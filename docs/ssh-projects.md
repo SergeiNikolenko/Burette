@@ -7,6 +7,13 @@ a preview copy and opens the existing Burette viewer. Settings → Connections
 stores named SSH connections separately from projects. One host can supply
 multiple project folders; connections can be disabled, checked or removed. Removing a project never deletes server files.
 
+Right-click a remote file or use its **…** menu to **Download to Desktop**.
+The original remote bytes are saved on this Mac; an existing name gets a numbered
+suffix. The desktop app also offers **Download to…**, starting on Desktop; choose
+a new name if one already exists. Cancelling that dialog starts no transfer.
+Downloads use the same 64 MiB / 45-second transfer limits as previews, without
+consuming preview-cache space. Browser development supports Download to Desktop.
+
 The remote host needs Python 3. System OpenSSH handles keys, SSH agent,
 configuration and ProxyJump. Authentication must already work noninteractively,
 and the host must already be trusted in known_hosts. Burette does not enroll host
@@ -48,7 +55,7 @@ colors. The hover card shows the full path and last observed connection status.
 
 The SSH transport is native Tauri code in `commands/ssh`. Paths travel as JSON on
 stdin to a bundled Python file worker, never interpolated into shell code.
-The frontend uses typed commands: `ssh_hosts`, `ssh_list`, `ssh_preview`, and `ssh_delete_folder`.
+The frontend uses typed commands: `ssh_hosts`, `ssh_list`, `ssh_preview`, `ssh_download`, and `ssh_delete_folder`.
 The local browser-dev server also supports these operations when explicitly
 started with `BURETTE_DEV_SSH=1`. It uses the same Python worker and OpenSSH,
 requires loopback clients and exact same-origin POST requests with a custom

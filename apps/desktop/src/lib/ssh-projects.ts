@@ -85,6 +85,14 @@ export async function sshPreview(project: SshProject, path: string) {
   return invoke<string>("ssh_preview", { request: { host: project.host, root: project.root, path } });
 }
 
+export async function sshDownload(project: SshProject, path: string, destination: "desktop" | "choose" = "desktop") {
+  requireEnabled(project.host);
+  const request = { host: project.host, root: project.root, path };
+  return isTauriRuntime()
+    ? invoke<string | null>("ssh_download", { request, destination })
+    : browserSsh<string>("download", request);
+}
+
 export async function sshDeleteFolder(project: SshProject, path: string) {
   requireEnabled(project.host);
   const request = { host: project.host, root: project.root, path };

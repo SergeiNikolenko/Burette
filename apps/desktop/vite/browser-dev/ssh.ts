@@ -1,4 +1,5 @@
 import { SshSession } from "./ssh-session";
+import { saveSshDownload } from "./ssh-download";
 import { mkdir, mkdtemp, open, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
@@ -50,7 +51,7 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
         sendJson(res, 200, [...new Set(aliases)].slice(0, 256).map(alias => ({ alias })), "no-store");
         return;
       }
-      if (action !== "/list" && action !== "/preview" && action !== "/delete-folder") { sendJson(res, 404, { error: "Unknown SSH operation" }); return; }
+      if (action !== "/list" && action !== "/preview" && action !== "/download" && action !== "/delete-folder") { sendJson(res, 404, { error: "Unknown SSH operation" }); return; }
       const { host, root, path } = request;
       if (!validHost(host) || typeof root !== "string" || typeof path !== "string" || (root + path).includes("\0")) throw new Error("Invalid SSH host or remote path");
       const chemical = action === "/list" && request.chemical === true;
@@ -80,10 +81,11 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
       const abort = () => { if (!res.writableEnded) controller.abort(); };
       res.once("close", abort);
       let data: Buffer;
-      try { data = await session.run(payload, action === "/preview" ? MAX_BYTES : 2 * 1024 * 1024, controller.signal); }
+      try { data = await session.run(payload, action === "/preview" || action === "/download" ? MAX_BYTES : 2 * 1024 * 1024, controller.signal); }
       finally { res.off("close", abort); }
       res.setHeader("Server-Timing", `ssh;dur=${(performance.now() - started).toFixed(1)}`);
-      if (action !== "/preview") sendJson(res, 200, JSON.parse(data.toString()), "no-store");
+      if (action === "/download") sendJson(res, 200, await saveSshDownload(join(homedir(), "Desktop"), path, data), "no-store");
+      else if (action !== "/preview") sendJson(res, 200, JSON.parse(data.toString()), "no-store");
       else {
         const parent = join(await cacheRoot(), "ssh-previews");
         await mkdir(parent, { recursive: true, mode: 0o700 });
