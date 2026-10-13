@@ -3,7 +3,7 @@ type WorkspaceStorageKeyOptions = {
 };
 
 export function isNativePreviewWindow() {
-  return typeof window !== "undefined" && new URLSearchParams(window.location.search)
+  return typeof window !== "undefined" && Boolean(window.location) && new URLSearchParams(window.location.search)
     .get("buretteWindow")?.startsWith("workspace-preview-") === true;
 }
 
