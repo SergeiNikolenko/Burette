@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-ketcher-pdb-import.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-ketcher-pdb-import.mjs", import.meta.url))]),
   "test-scene-save-sidebar.mjs": () => import("./test-scene-save-sidebar.mjs"),
   "test-browser-sidebar-file-operations.mjs": () => import("./test-browser-sidebar-file-operations.mjs"),
   "test-tab-thumbnail-images.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-tab-thumbnail-images.mjs", import.meta.url))]),

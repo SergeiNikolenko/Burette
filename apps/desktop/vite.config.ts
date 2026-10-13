@@ -26,6 +26,7 @@ import { registerBrowserDevAgentIntegrationRoute } from "./vite/browser-dev/agen
 import { registerBrowserDevAgentSessionRoute } from "./vite/browser-dev/agent-session";
 import { registerBrowserDevConformerJobRoutes } from "./vite/browser-dev/conformer-jobs";
 import { registerBrowserDevInlineConformerRoute } from "./vite/browser-dev/conformer-inline";
+import { registerBrowserDevKetcherPdbRoute } from "./vite/browser-dev/ketcher-pdb";
 import { registerBrowserDevDescriptorRoutes } from "./vite/browser-dev/descriptors";
 import { registerBrowserDevRequestGuard } from "./vite/browser-dev/http";
 import {
@@ -3562,6 +3563,7 @@ export function browserDevXyzrenderPlugin() {
       registerBrowserDevFileDiscoveryRoute(server, fileRoutes);
       registerBrowserDevRdkitWasmRoute(server, RDKIT_WASM_PATH);
       registerBrowserDevInlineConformerRoute(server, generate3DConformerForBrowserDev);
+      registerBrowserDevKetcherPdbRoute(server);
       registerBrowserDevMsbuddyRoutes(server, {
         annotateSpectrum: annotateBrowserDevSpectrumWithMsbuddy,
         status: browserDevMsbuddyStatus,

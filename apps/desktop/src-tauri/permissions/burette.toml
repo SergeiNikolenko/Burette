@@ -56,6 +56,7 @@ commands.allow = [
   "read_document_file",
   "open_text_files",
   "read_structure_text",
+  "prepare_ketcher_pdb",
   "fetch_pdb_structure",
   "open_source_edit_session",
   "inspect_source_edit_session",
