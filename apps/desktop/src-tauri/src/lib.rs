@@ -229,6 +229,7 @@ pub fn run() {
             commands::text_files::read_document_file,
             commands::text_files::open_text_files,
             commands::documents::read_structure_text,
+            commands::ketcher_pdb::prepare_ketcher_pdb,
             commands::documents::fetch_pdb_structure,
             commands::source_editing::open_source_edit_session,
             commands::source_editing::inspect_source_edit_session,
