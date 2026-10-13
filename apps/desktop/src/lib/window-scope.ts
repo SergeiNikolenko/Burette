@@ -2,6 +2,11 @@ type WorkspaceStorageKeyOptions = {
   windowScoped?: boolean;
 };
 
+export function isNativePreviewWindow() {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search)
+    .get("buretteWindow")?.startsWith("workspace-preview-") === true;
+}
+
 function currentWindowStorageSuffix() {
   if (typeof window === "undefined" || !window.location) return "";
   if (window.BuretteMcpWorkspace) return `.mcp-${window.BuretteMcpWorkspace.sessionId}`;

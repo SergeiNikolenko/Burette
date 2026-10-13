@@ -76,7 +76,7 @@ export function FloatingPaneHeader({ tab, state, actions, minimized }: {
       const dx = move.clientX - start.x;
       const dy = move.clientY - start.y;
       const next = mode === "move"
-        ? { ...start.rect, x: start.rect.x + dx, y: start.rect.y + dy }
+        ? { ...start.rect, x: Math.max(0, start.rect.x + dx), y: Math.max(0, start.rect.y + dy) }
         : {
             ...start.rect,
             width: Math.max(FLOATING_PANE_MIN_WIDTH, start.rect.width + dx),

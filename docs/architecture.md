@@ -347,3 +347,9 @@ instead of silently replacing bond orders with single bonds. The focused
 integration check is `bun tests/test-ketcher-pdb-import.mjs` (Open Babel needed
 for chemical perception); the native converter check is
 `cargo test --lib ketcher_pdb -- --include-ignored` from the Tauri crate.
+
+### Detached structure previews
+
+On desktop, **Pop out** for a file opens an independent `workspace-preview-*` native window. It can move between displays and appears across macOS workspaces; it starts compact, above normal windows, with the sidebar closed. Geometry and restoration use the existing workspace-window registry. Mol* viewers export the live scene (including camera and representations) to a bounded 24 MiB MOLJ snapshot in the application cache before opening the window. The original tab remains available. Non-Mol* files use the existing path-based open contract; non-file pages and browser previews retain the embedded pane.
+
+`open_new_workspace_window` accepts optional `presentation` (`workspace` by default, or `preview`) and an optional `scene` object (`title`, `dataBase64`). A scene requires preview presentation and no file paths. Snapshot names and payloads are validated before writing; existing callers that supply only paths retain their behavior.

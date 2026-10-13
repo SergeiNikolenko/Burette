@@ -1,5 +1,6 @@
 import type { MenuItemSpec } from "../menu-types";
-import type { ShellActions } from "../types";
+import type { ShellActions, ShellViewState } from "../types";
+import { canOpenNativePopout, openNativePopout } from "./native-popout";
 import { takeClosedTab } from "../../stores/closed-tabs";
 import type { Location } from "../editor-area/page-kinds";
 import { useMoleculeStore, type MoleculeTab, type TabPane } from "../../stores/molecule-store";
@@ -70,7 +71,7 @@ export const SCREEN_ENTRIES: { id: string; text: string; location: Location }[] 
 
 // "Open in Side Panel", "Pop out" and "Move to Main Window" for one screen,
 // shared by the tab context menu and both pane headers so they always agree.
-export function paneMoveItems(tab: MoleculeTab): MenuItemSpec[] {
+export function paneMoveItems(tab: MoleculeTab, state: ShellViewState, actions: ShellActions): MenuItemSpec[] {
   const items: MenuItemSpec[] = [];
   if (tab.pane) {
     items.push({ kind: "item", id: "pane-move-main", text: "Move to Main Window", action: () => placeScreen(tab.id, null) });
@@ -78,8 +79,12 @@ export function paneMoveItems(tab: MoleculeTab): MenuItemSpec[] {
   if (tab.pane !== "side") {
     items.push({ kind: "item", id: "pane-open-side", text: "Open in Side Panel", action: () => placeScreen(tab.id, "side") });
   }
-  if (tab.pane !== "floating") {
-    items.push({ kind: "item", id: "pane-pop-out", text: "Pop out", action: () => placeScreen(tab.id, "floating") });
+  if (canOpenNativePopout(tab) || tab.pane !== "floating") {
+    items.push({ kind: "item", id: "pane-pop-out", text: "Pop out", action: async () => {
+      if (canOpenNativePopout(tab)) {
+        if (await openNativePopout(tab, state, actions)) placeScreen(tab.id, null);
+      } else placeScreen(tab.id, "floating");
+    } });
   }
   return items;
 }

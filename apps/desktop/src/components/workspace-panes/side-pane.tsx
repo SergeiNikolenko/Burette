@@ -21,7 +21,7 @@ export function SidePane({ state, actions }: { state: ShellViewState; actions: S
   const openMore = (event: MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     void showNativeContextMenu(menuSections(
-      paneMoveItems(visibleTab),
+      paneMoveItems(visibleTab, state, actions),
       [{ kind: "item", id: "side-pane-close-screen", text: "Close", action: () => { void actions.closeTab(visibleTab.id); } }],
     ), { x: rect.left, y: rect.bottom + 4 }, { presentation: "dropdown" });
   };
