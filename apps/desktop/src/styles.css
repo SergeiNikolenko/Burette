@@ -8541,6 +8541,9 @@ img.settings-open-destination-icon {
 .ssh-project-tree .project-folder-row:hover > .project-group-actions > button:first-child,
 .ssh-project-tree .project-folder-row:focus-within > .project-group-actions > button:first-child { opacity: 1; pointer-events: auto; }
 .ssh-project-row > .project-group-actions { opacity: 0; pointer-events: none; }
+.ssh-file-row { position: relative; }
+.ssh-file-row > .project-group-actions { opacity: 0; pointer-events: none; }
+.ssh-file-row:hover > .project-group-actions, .ssh-file-row:focus-within > .project-group-actions { opacity: 1; pointer-events: auto; }
 .ssh-project-row:hover > .project-group-actions, .ssh-project-row:has(.project-group-menu-button:focus-visible) > .project-group-actions { opacity: 1; pointer-events: auto; }
 .ssh-project-row:hover > :is(.ssh-host-name, .ssh-connection-dot), .ssh-project-row:has(.project-group-menu-button:focus-visible) > :is(.ssh-host-name, .ssh-connection-dot) { visibility: hidden; }
 

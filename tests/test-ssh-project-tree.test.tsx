@@ -3,7 +3,7 @@ import { Window } from "happy-dom";
 import React, { act } from "react";
 
 const browser = new Window();
-for (const key of ["window", "document", "navigator", "HTMLElement", "Element", "Node", "Event", "MouseEvent", "MutationObserver", "ResizeObserver", "getComputedStyle", "localStorage", "DOMRect", "CustomEvent", "KeyboardEvent", "PointerEvent", "FocusEvent"] as const) {
+for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLInputElement", "Element", "Node", "Event", "MouseEvent", "MutationObserver", "ResizeObserver", "getComputedStyle", "localStorage", "DOMRect", "CustomEvent", "KeyboardEvent", "PointerEvent", "FocusEvent"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : (browser as any)[key] });
 }
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -165,5 +165,42 @@ test("right-clicking SSH folders opens the same menu as their options button", a
     await act(async () => root.unmount());
     container.remove();
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("SSH file download uses the original remote path without opening a preview and can retry failures", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: unknown[] = [];
+  let attempts = 0;
+  globalThis.fetch = (async (url: unknown, options: RequestInit) => {
+    const request = JSON.parse(String(options.body));
+    const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
+    if (String(url).endsWith("/download")) {
+      requests.push(request);
+      return ++attempts === 1 ? json({ error: "Could not download file" }, 400) : json("/Desktop/mini.pdb");
+    }
+    return json({ root: "/data", path: ".", entries: [{ name: "mini.pdb", directory: false }] });
+  }) as typeof fetch;
+  const opened: string[][] = [];
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => root.render(<RemoteProject project={{ id: "download", name: "Remote", host: "fixture", root: "/data" }} onOpen={paths => { opened.push(paths); }} {...shellStub} />));
+    await act(async () => container.querySelector<HTMLButtonElement>('button[aria-label="Expand Remote"]')!.click());
+    await act(async () => container.querySelector(".ssh-file-row")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 20, clientY: 20 })));
+    for (let attempt = 0; attempt < 50 && !document.querySelector('[role="menu"]'); attempt++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 5)); });
+    const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    expect(items.map(item => item.textContent?.trim())).toEqual(["Open", "Download to Desktop", "Copy path"]);
+    await act(async () => items.find(item => item.textContent?.trim() === "Download to Desktop")!.click());
+    expect(container.textContent).toContain("Could not download file");
+    expect(container.textContent).not.toContain("Downloaded to Desktop");
+    await act(async () => [...container.querySelectorAll("button")].find(button => button.textContent === "Retry")!.click());
+    expect(requests).toEqual([{ host: "fixture", root: "/data", path: "mini.pdb" }, { host: "fixture", root: "/data", path: "mini.pdb" }]);
+    expect(opened).toEqual([]);
+    expect(container.textContent).toContain("Downloaded to Desktop");
+  } finally {
+    await act(async () => root.unmount());
+    document.querySelector(".radix-context-menu-mount")?.remove();
+    container.remove(); globalThis.fetch = originalFetch;
   }
 });

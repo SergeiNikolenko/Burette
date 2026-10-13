@@ -12,6 +12,7 @@ commands.allow = [
   "ssh_hosts",
   "ssh_list",
   "ssh_preview",
+  "ssh_download",
   "ssh_delete_folder",
   "default_application_icon_path",
   "finder_icon_path",

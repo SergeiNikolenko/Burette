@@ -8,6 +8,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::Manager;
+pub(crate) mod download;
 static REQUEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 const WORKER: &str = concat!(
