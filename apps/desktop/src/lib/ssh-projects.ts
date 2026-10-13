@@ -85,9 +85,9 @@ export async function sshPreview(project: SshProject, path: string) {
   return invoke<string>("ssh_preview", { request: { host: project.host, root: project.root, path } });
 }
 
-export async function sshDownload(project: SshProject, path: string, destination: "desktop" | "choose" = "desktop") {
+export async function sshDownload(project: SshProject, path: string, destination: "desktop" | "choose" = "desktop", archive = false) {
   requireEnabled(project.host);
-  const request = { host: project.host, root: project.root, path };
+  const request = { host: project.host, root: project.root, path, archive };
   return isTauriRuntime()
     ? invoke<string | null>("ssh_download", { request, destination })
     : browserSsh<string>("download", request);

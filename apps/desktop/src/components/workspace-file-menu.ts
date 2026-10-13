@@ -49,6 +49,7 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
     ...submenu("file-open", "Open", opening, "arrow.up.forward"),
     ...submenu("file-edit", "Edit", caps.every(cap => cap.molecule) ? [command("edit-ketcher", "Ketcher", () => actions.openKetcherWithStructures(paths))] : []),
   ], [
+    ...(single && path.split("/").includes("ssh-previews") ? take("save-file-copy").map(entry => ({ ...entry, id: "download", text: "Download…" })) : []),
     ...take("rename-file"), command("pin-files", pinned ? "Unpin" : "Pin", () => {
       paths.forEach(path => { if (state.pinnedStructurePaths.includes(path) === pinned) actions.togglePinnedStructure(path); });
     }), ...take("duplicate-file"),

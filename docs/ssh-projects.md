@@ -26,6 +26,11 @@ list of projects. Sort by priority (pinned first), last opened, or saved manual
 order. Remote project menus support pinning, editing, sections, and connection
 colors. The hover card shows the full path and last observed connection status.
 
+Folder and project context menus offer **Download ZIP to Desktop** and native
+**Download ZIP to…**. Archives include all nested regular files (including hidden
+and nonchemical files) and empty folders. The menu of an already opened server
+file also offers **Download…**, saving its current cached copy.
+
 ## Data and limits
 
 - Edits to a downloaded preview affect only its local copy. Folder menus also
@@ -39,6 +44,10 @@ colors. The hover card shows the full path and last observed connection status.
   are retained for 30 seconds; Refresh bypasses that cache. Chemistry discovery walks a bounded subtree and expands paths to supported
   chemical files. Hosts are checked once when their projects mount; there is no
   periodic background polling.
+- Folder ZIP downloads are limited to 512 MiB of source data and archive output,
+  10,000 entries, 64 nested levels, and 120 seconds. Symbolic links and special
+  files cause an error; they are never silently omitted or followed. Detected
+  file or directory changes abort the download without publishing an archive.
 - Preview downloads are limited to 64 MiB with a 45-second operation timeout.
   One native SSH request or two browser-server requests run at a time.
   Errors leave saved projects intact.
@@ -56,7 +65,8 @@ colors. The hover card shows the full path and last observed connection status.
 The SSH transport is native Tauri code in `commands/ssh`. Paths travel as JSON on
 stdin to a bundled Python file worker, never interpolated into shell code.
 The frontend uses typed commands: `ssh_hosts`, `ssh_list`, `ssh_preview`, `ssh_download`, and `ssh_delete_folder`.
-The local browser-dev server also supports these operations when explicitly
+`ssh_download` accepts optional `request.archive: true` for a folder ZIP; omitted
+or false retains the original single-file behavior. The local browser-dev server also supports these operations when explicitly
 started with `BURETTE_DEV_SSH=1`. It uses the same Python worker and OpenSSH,
 requires loopback clients and exact same-origin POST requests with a custom
 header, and never exposes SSH credentials to the browser. Preview copies live

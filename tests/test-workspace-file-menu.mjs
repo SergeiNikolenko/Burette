@@ -42,3 +42,10 @@ for (const extension of ['pdb', 'ent', 'cif', 'mcif', 'sdf', 'sd', 'xyz']) {
 assert.ok(!table.some(item => item.id === 'open-xyzrender'));
 assert.deepEqual(workspaceFileMenu(Array(201).fill('/x.pdb'), state, actions, workflows, [], run), []);
 console.log('Workspace menus: compatible modes, actual scene targets, exact multi-file payloads and SDK icons passed');
+
+const saved = [];
+const disk = [{ kind: 'item', id: 'save-file-copy', text: 'Save file copy as…', action: () => saved.push('copy') }];
+const remote = workspaceFileMenu(['/cache/ssh-previews/id/ligand.sdf'], state, actions, workflows, disk, run);
+remote.find(item => item.id === 'download').action();
+assert.deepEqual(saved, ['copy']);
+assert.ok(!workspaceFileMenu(['/data/ligand.sdf'], state, actions, workflows, disk, run).some(item => item.id === 'download'));

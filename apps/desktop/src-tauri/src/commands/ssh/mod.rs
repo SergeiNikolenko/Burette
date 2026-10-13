@@ -14,6 +14,8 @@ static REQUEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 const WORKER: &str = concat!(
     include_str!("chemistry.py"),
     "\n",
+    include_str!("archive.py"),
+    "\n",
     include_str!("reader.py")
 );
 const MAX_BYTES: u64 = 64 * 1024 * 1024;
@@ -26,6 +28,8 @@ pub(crate) struct Request {
     path: String,
     #[serde(default)]
     chemical: bool,
+    #[serde(default)]
+    archive: bool,
 }
 
 #[derive(Serialize)]
@@ -110,7 +114,9 @@ fn run(request: &Request, operation: &str) -> Result<Vec<u8>, String> {
     let mut input = child.stdin.take().ok_or("SSH stdin unavailable")?;
     let output = child.stdout.take().ok_or("SSH stdout unavailable")?;
     let errors = child.stderr.take().ok_or("SSH stderr unavailable")?;
-    let limit = if operation == "read" {
+    let limit = if operation == "archive" {
+        512 * 1024 * 1024
+    } else if operation == "read" {
         MAX_BYTES
     } else {
         2 * 1024 * 1024
@@ -128,11 +134,12 @@ fn run(request: &Request, operation: &str) -> Result<Vec<u8>, String> {
     });
     let written = input.write_all(payload.as_bytes());
     drop(input);
+    let timeout = Duration::from_secs(if operation == "archive" { 120 } else { 45 });
     let started = Instant::now();
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Ok(status),
-            Ok(None) if started.elapsed() < Duration::from_secs(45) && written.is_ok() => {
+            Ok(None) if started.elapsed() < timeout && written.is_ok() => {
                 std::thread::sleep(Duration::from_millis(25))
             }
             other => {
@@ -196,6 +203,7 @@ pub(crate) async fn ssh_hosts() -> Result<Vec<Host>, String> {
                     root: String::new(),
                     path: String::new(),
                     chemical: false,
+                    archive: false,
                 })
                 .is_ok()
             {
@@ -295,6 +303,7 @@ mod tests {
                 root: "~".into(),
                 path: ".".into(),
                 chemical: false,
+                archive: false,
             };
             assert!(run(&request, "list").is_err());
         }
@@ -303,7 +312,8 @@ mod tests {
                 host: host.into(),
                 root: "~/My structures".into(),
                 path: "ligand's molecule.sdf".into(),
-                chemical: false
+                chemical: false,
+                archive: false
             })
             .is_ok());
         }
@@ -316,6 +326,7 @@ mod tests {
             root: std::env::var("BURETTE_SSH_TEST_ROOT").expect("test root"),
             path: ".".into(),
             chemical: false,
+            archive: false,
         };
         let start = std::sync::Arc::new(std::sync::Barrier::new(2));
         let workers: Vec<_> = (0..2)
@@ -345,6 +356,7 @@ mod tests {
             root,
             path: ".".into(),
             chemical: false,
+            archive: false,
         };
         let listing: serde_json::Value =
             serde_json::from_slice(&run(&request, "list").expect("remote listing")).unwrap();

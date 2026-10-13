@@ -23,7 +23,7 @@ import { copyTextWithSelectionFallback } from "../../lib/clipboard";
 // Every download takes its own slot in the 256-entry SSH preview cache.
 const MAX_DROPPED_REMOTE_FILES = 64;
 
-type Operation = { type: "list" | "preview"; path: string } | { type: "download"; path: string; destination: "desktop" | "choose" };
+type Operation = { type: "list" | "preview"; path: string } | { type: "download"; path: string; destination: "desktop" | "choose"; archive?: boolean };
 export function RemoteProject({ project, connection, onOpen, actions, state }: { project: SshProject; connection?: SshConnection; onOpen: (paths: string[]) => void | Promise<void>; actions: ShellActions; state: ShellViewState }) {
   const [expanded, setExpanded] = useState(new Set<string>());
   const [directories, setDirectories] = useState(new Map<string, { time: number; value: SshDirectory }>());
@@ -46,7 +46,7 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
     state,
   });
   const health = useSshStatus(project.host);
-  const status = !enabled ? "Disabled" : pending ? "Connecting…" : failure ? "Connection or file error" : (health ? health.available : !!lastSuccess) ? "Available" : "Connects when needed";
+  const status = !enabled ? "Disabled" : pending ? (pending.type === "download" ? "Downloading…" : "Connecting…") : failure ? "Connection or file error" : (health ? health.available : !!lastSuccess) ? "Available" : "Connects when needed";
   const hoverCard = useSidebarHoverCard(sshProjectHoverCard({ project, status, available: enabled && !!(health ? health.available : !!lastSuccess) && !failure, failed: !!failure }));
   async function run(operation: Operation, refresh = false) {
     if (lock.current) {
@@ -87,7 +87,7 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
           return new Set([...previous, ...(value.expanded ?? [])]);
         });
       } else if (operation.type === "download") {
-        const saved = await sshDownload(project, operation.path, operation.destination);
+        const saved = await sshDownload(project, operation.path, operation.destination, operation.archive);
         if (!saved) return;
         setDropNotice({ path: operation.path, message: operation.destination === "desktop" ? "Downloaded to Desktop" : "Downloaded", error: false });
       } else {
@@ -153,6 +153,12 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
       void showNativeContextMenu(items, { x: event.clientX, y: event.clientY });
     };
   }
+  function downloadItems(path: string): MenuItemSpec[] {
+    return [
+      { kind: "item", id: "download", text: "Download ZIP to Desktop", disabled: !!pending || !enabled, action: () => void run({ type: "download", path, destination: "desktop", archive: true }) },
+      ...(isTauriRuntime() ? [{ kind: "item" as const, id: "download-as", text: "Download ZIP to…", disabled: !!pending || !enabled, action: () => void run({ type: "download", path, destination: "choose", archive: true }) }] : []),
+    ];
+  }
   function toggle(path: string) {
     const opening = !expanded.has(path);
     setExpanded(previous => { const next = new Set(previous); if (opening) next.add(path); else next.delete(path); return next; });
@@ -175,6 +181,7 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
           { kind: "item", id: "copy", text: "Copy path", action: () => { copyTextWithSelectionFallback(`${directory!.root.replace(/\/$/, "")}/${child}`); } },
         ];
         const folderItems: MenuItemSpec[] = [
+          ...downloadItems(child),
           { kind: "item", id: "refresh", text: "Refresh folder", disabled: !!pending, action: () => { setExpanded(previous => new Set([...previous, child])); void run({ type: "list", path: child }, true); } },
           { kind: "item", id: "collapse", text: "Collapse folder", disabled: !expanded.has(child), action: () => setExpanded(previous => new Set([...previous].filter(path => path !== child && !path.startsWith(`${child}/`)))) },
           { kind: "item", id: "add", text: "Add as project", action: () => { try { saveSshProject({ id: crypto.randomUUID(), name: entry.name, host: project.host, root: `${directory!.root.replace(/\/$/, "")}/${child}` }); } catch (error) { setFailure({ operation: { type: "list", path }, message: String(error) }); } } },
@@ -185,7 +192,7 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
         return entry.directory ? <div className="project-folder-node" key={child}>
           <div className="project-folder-row" role="treeitem" tabIndex={0} aria-expanded={expanded.has(child)} aria-label={entry.name} onContextMenu={showMenu(folderItems)} onMouseDown={event => startDrag(event, child, true)} onClickCapture={drag.onClickCapture} onClick={() => toggle(child)} onKeyDown={event => { if (event.target === event.currentTarget && ["Enter", " "].includes(event.key)) { event.preventDefault(); toggle(child); } }}>
             <SidebarFolderIcon expanded={expanded.has(child)} /><MarqueeName className="project-folder-name">{entry.name}</MarqueeName>
-            {pending?.type === "preview" && pending.path === child && <span className="ssh-activity" aria-label="Downloading" />}
+            {(pending?.type === "preview" || pending?.type === "download") && pending.path === child && <span className="ssh-activity" aria-label="Downloading" />}
             <span className="project-group-actions" onClick={event => event.stopPropagation()}>
               <button type="button" className="project-group-menu-button" aria-label={`${expanded.has(child) ? "Collapse" : "Expand"} ${entry.name}`} onClick={() => { if (expanded.has(child)) setExpanded(previous => new Set([...previous].filter(path => path !== child && !path.startsWith(`${child}/`)))); else toggle(child); }}><FolderExpandCollapseIcon collapse={expanded.has(child)} /></button>
               <NativeDropdownMenu items={folderItems} trigger={<button className="project-group-menu-button" aria-label={`Options for ${entry.name}`}><DotsHorizontal size={14} /></button>} />
@@ -212,6 +219,7 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
     </div>;
   }
   const projectItems: MenuItemSpec[] = [
+    ...downloadItems("."),
     { kind: "item", id: "refresh", text: "Refresh", disabled: !!pending, action: () => { setExpanded(new Set(["."])); void run({ type: "list", path: "." }, true); } },
     ...projectMenu.items,
   ];
@@ -227,6 +235,8 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
       </span>
     </div>
     {projectMenu.dialog}
+    {dropStatus(".")}
+    {!expanded.has(".") && failure?.operation.path === "." && <div className="ssh-tree-error" role="alert">{failure.message}<button onClick={() => void run(failure.operation, true)}>Retry</button></div>}
     {children(".")}
     {deleting && <SshDeleteFolderDialog project={project} path={deleting.path} fullPath={deleting.fullPath} onClose={() => setDeleting(null)} onDeleted={() => {
       const removed = deleting.path;

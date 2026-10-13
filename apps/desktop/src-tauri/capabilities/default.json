@@ -20,6 +20,8 @@
     "dialog:allow-message",
     "dialog:allow-open",
     "dialog:allow-save",
+    "core:path:allow-resolve-directory",
+    "core:path:allow-join",
     "opener:allow-open-path",
     "allow-viewer-commands"
   ]

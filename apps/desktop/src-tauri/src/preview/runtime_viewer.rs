@@ -692,6 +692,20 @@ fn ketcher_edit_config(
     }
     let text = String::from_utf8_lossy(data);
     let atom_count = match extension {
+        "pdb" | "ent" => {
+            if source_byte_count > 512 * 1024
+                || text
+                    .lines()
+                    .filter(|line| line.starts_with("MODEL "))
+                    .count()
+                    > 1
+            {
+                return None;
+            }
+            text.lines()
+                .filter(|line| line.starts_with("ATOM  ") || line.starts_with("HETATM"))
+                .count()
+        }
         "mol" => molfile_atom_count(&text),
         "sdf" | "sd" => {
             if sdf_record_count != 1 {
@@ -788,13 +802,30 @@ fn protein_like_atom_record_count(data: &[u8]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        copy_web_assets, protein_like_atom_record_count, xyzrender_available_for_document,
-        AssetProfile,
+        copy_web_assets, ketcher_edit_config, protein_like_atom_record_count,
+        xyzrender_available_for_document, AssetProfile,
     };
     use crate::preview::formats::FormatInfo;
     use crate::preview::runtime::ViewerPreferences;
     use std::fs;
     use std::path::Path;
+
+    #[test]
+    fn extracted_pdb_molecules_offer_ketcher_without_enabling_large_or_multi_model_files() {
+        let atom =
+            "HETATM    1 FE   HEM H   1       1.000   2.000   3.000  1.00  0.00          FE\n";
+        let path = Path::new("HEM-H-1.pdb");
+        let config = ketcher_edit_config(path, "pdb", atom.as_bytes(), atom.len(), 0).unwrap();
+        assert_eq!(config["ketcherAtomCount"], 1);
+        assert_eq!(config["ketcherSourceExtension"], "pdb");
+        for text in [
+            atom.repeat(301),
+            format!("MODEL        1\n{atom}ENDMDL\nMODEL        2\n{atom}ENDMDL\n"),
+            "END\n".into(),
+        ] {
+            assert!(ketcher_edit_config(path, "pdb", text.as_bytes(), text.len(), 0).is_none());
+        }
+    }
 
     fn format(molstar_format: &str) -> FormatInfo {
         FormatInfo {
