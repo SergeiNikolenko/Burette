@@ -119,7 +119,7 @@
         "gifenc": "^1.0.3",
         "gifuct-js": "^2.1.2",
         "hast-util-to-jsx-runtime": "^2.3.6",
-        "katex": "^0.18.9",
+        "katex": "^0.19.0",
         "ketcher-core": "3.18.0",
         "ketcher-react": "3.18.0",
         "ketcher-standalone": "3.18.0",
@@ -1880,7 +1880,7 @@
 
     "jszip": ["jszip@3.10.2", "", { "dependencies": { "lie": "~3.3.0", "pako": "~1.0.2", "readable-stream": "~2.3.6", "setimmediate": "^1.0.5" } }, "sha512-3l+rb15IOWtUhU0H5MFqES/T6Kh7abYwjosBey/vD6hDt8zoEffkSC5Ws5SGtgVw3gBx2NEbhTeSW1+kWkpyTQ=="],
 
-    "katex": ["katex@0.18.9", "", { "dependencies": { "commander": "^15.0.0" }, "bin": { "katex": "cli.js" } }, "sha512-8ad9RyoKsb/g8/yLFE+KAlP+DhbCTRUNi/V9XGsxn0R+trJJltNwzcDNo0q/DEkOy5fQUQTAQyCXCYSE+OakTQ=="],
+    "katex": ["katex@0.19.0", "", { "dependencies": { "commander": "^15.0.0" }, "bin": { "katex": "cli.js" } }, "sha512-v6Tznz3zJ7u3niRCoDTsumM2+HA2XXcCu+WAacCeHD2z3p9A9Ks987o5FzfTGBN0e8A0vjEgIDvLbICrXpdw/Q=="],
 
     "ketcher-core": ["ketcher-core@3.18.0", "", { "dependencies": { "@babel/runtime": "^7.26.10", "ajv": "^8.10.0", "assert": "^2.0.0", "d3": "^7.8.5", "dpdm": "^4.2.0", "file-saver": "^2.0.5", "jsonschema": "^1.5.0", "lodash": "^4.18.1", "paper": "^0.12.18", "raphael": "^2.3.0", "react-device-detect": "^2.2.2", "svgpath": "^2.3.1" } }, "sha512-8MWLJDpFnR0+f1MgIjmYfPCZLKymwwK7aGoWNL8JRG5CkI/NvmhL+DBE2T8W0Ttve8pIebV2d7daXFDFU8Ydng=="],
 

@@ -30,7 +30,7 @@
     "gifenc": "^1.0.3",
     "gifuct-js": "^2.1.2",
     "hast-util-to-jsx-runtime": "^2.3.6",
-    "katex": "^0.18.9",
+    "katex": "^0.19.0",
     "ketcher-core": "3.18.0",
     "ketcher-react": "3.18.0",
     "ketcher-standalone": "3.18.0",
