@@ -125,7 +125,7 @@
         "ketcher-standalone": "3.18.0",
         "marked": "18.0.14",
         "mermaid": "^12.0.0",
-        "miew": "0.11.1",
+        "miew": "0.12.0",
         "motion": "^13.4.4",
         "pdfjs-dist": "6.3.289",
         "pptxviewjs": "1.1.9",
@@ -2084,7 +2084,7 @@
 
     "micromatch": ["micromatch@4.0.8", "", { "dependencies": { "braces": "^3.0.3", "picomatch": "^2.3.1" } }, "sha512-PXwfBhYu0hBCPw8Dn0E+WDYb7af3dSLVWKi3HGv84IdF4TyFoC0ysxFd0Goxw7nSv4T/PzEJQxsYsEiFCKo2BA=="],
 
-    "miew": ["miew@0.11.1", "", { "dependencies": { "lodash": "^4.17.21", "three": "0.153.0" } }, "sha512-CIhZfI9eB0P/covNrst45Y8Xd+MUncyxjNLkZULr+dcyS1ALxjtb+W2icbZEHEsn7zZJJ4ybIMIwQGnzS25IbQ=="],
+    "miew": ["miew@0.12.0", "", { "dependencies": { "lodash": "^4.18.1", "three": "0.153.0" } }, "sha512-rUwkWp8+CHPAvmqBgVV/adVyUREyp4Kl3MX1TxgT2ZHbukkmUAqx4+DguN/HrQ86bAtRouaphF7NIB8JTY8rEw=="],
 
     "miew-react": ["miew-react@0.11.0", "", { "dependencies": { "miew": "^0.11.0" }, "peerDependencies": { "react": "^18.2.0", "react-dom": "^18.2.0" } }, "sha512-IdJYzrbkpotS4Hx0JYg7KyOcpwyTdGRS1hnc504Y//Xvdl24Ft6uahuf9mbCEI2PNVPDARLc+hqzMTbpDWD88A=="],
 
@@ -2804,6 +2804,8 @@
 
     "miew/three": ["three@0.153.0", "", {}, "sha512-OCP2/uQR6GcDpSLnJt/3a4mdS0kNWcbfUXIwLoEMgLzEUIVIYsSDwskpmOii/AkDM+BBwrl6+CKgrjX9+E2aWg=="],
 
+    "miew-react/miew": ["miew@0.11.1", "", { "dependencies": { "lodash": "^4.17.21", "three": "0.153.0" } }, "sha512-CIhZfI9eB0P/covNrst45Y8Xd+MUncyxjNLkZULr+dcyS1ALxjtb+W2icbZEHEsn7zZJJ4ybIMIwQGnzS25IbQ=="],
+
     "molstar/@types/node": ["@types/node@22.20.4", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-zJRE40jpHtKqE/C4fgHrAKQLJuSpzEnP9ff9Y7YtoR3Wd2pwqzlekDeEuUQXjRd+QCYnVnNwuJYmhdk9XV8gvA=="],
 
     "next/postcss": ["postcss@8.5.23", "", { "dependencies": { "nanoid": "^3.3.16", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-g50586zr4bZmwFiTlflMu8E0bDTb5I5gertgwAKmsdUlTQIhZtunzUlD1WSzwcVWPoAVpsrA6vlfCD7oXvRwgg=="],
@@ -3027,6 +3029,8 @@
     "mermaid/katex/commander": ["commander@8.3.0", "", {}, "sha512-OkTL9umf+He2DZkUq8f8J9of7yL6RJKI24dVITBmNfZBmri9zYZQrKkuXiKhyfPSu8tUhnVBB1iKXevvnlR4Ww=="],
 
     "micromark-extension-math/katex/commander": ["commander@8.3.0", "", {}, "sha512-OkTL9umf+He2DZkUq8f8J9of7yL6RJKI24dVITBmNfZBmri9zYZQrKkuXiKhyfPSu8tUhnVBB1iKXevvnlR4Ww=="],
+
+    "miew-react/miew/three": ["three@0.153.0", "", {}, "sha512-OCP2/uQR6GcDpSLnJt/3a4mdS0kNWcbfUXIwLoEMgLzEUIVIYsSDwskpmOii/AkDM+BBwrl6+CKgrjX9+E2aWg=="],
 
     "molstar/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
