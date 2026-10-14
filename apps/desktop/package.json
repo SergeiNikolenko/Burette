@@ -40,7 +40,7 @@
     "motion": "^13.4.4",
     "pdfjs-dist": "6.3.289",
     "pptxviewjs": "1.1.9",
-    "radix-ui": "^1.6.7",
+    "radix-ui": "^1.7.0",
     "raphael": "2.3.0",
     "recharts": "3.10.1",
     "rehype-katex": "^7.0.1",
