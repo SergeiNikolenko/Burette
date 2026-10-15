@@ -17911,7 +17911,9 @@ SOFTWARE.
     if (prepared.kind === 'session') {
       activeMolstarPrepared = prepared;
       activeDockingPrepared = null;
-      await viewer.plugin.managers.snapshot.setStateSnapshot(JSON.parse(prepared.data));
+      const snapshot = await viewer.plugin.managers.snapshot.setStateSnapshot(JSON.parse(prepared.data));
+      prepared.hasSessionCamera = Number(snapshot?.camera?.current?.radius) > 0;
+      if (!prepared.hasSessionCamera) viewer.plugin.managers.camera.reset();
       installDockingPoseControls(viewer, null);
       return;
     }
@@ -28864,7 +28866,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
           up: Array.from(cameraState.up)
         });
       }
-    } else if (!hasMolstarContextFocus(config) && prepared.kind !== 'session') {
+    } else if (!hasMolstarContextFocus(config) && !prepared.hasSessionCamera) {
       scheduleMolstarStructureFocus(viewer, { reason: 'initial-load', durationMs: 120 });
     }
     {

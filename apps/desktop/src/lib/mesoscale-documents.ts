@@ -4,7 +4,7 @@ const MESOSCALE_EXTENSIONS = new Set(["molj", "molx", "mesozip"]);
 
 export function isMesoscaleViewerDocument(document: ViewerDocument | null | undefined): document is ViewerDocument {
   if (!document) return false;
-  if (document.viewerProfile === "mesoscale") return true;
+  if (document.viewerProfile) return document.viewerProfile === "mesoscale";
   const extension = document.extension.toLowerCase();
   if (MESOSCALE_EXTENSIONS.has(extension)) return true;
   // Scene documents carry long paths, so the extension is checked before them.

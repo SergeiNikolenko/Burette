@@ -37,3 +37,11 @@ test("non-Molstar files open in a native preview through the existing path contr
   expect(await openNativePopout(tab, { documents: [] } as unknown as ShellViewState, {} as ShellActions)).toBe(true);
   expect(calls).toEqual([["open_new_workspace_window", { presentation: "preview", paths: ["/source/HEM.pdb"] }]]);
 });
+
+test("ordinary session previews use structure controls while Mesoscale keeps its own controls", async () => {
+  const { isMesoscaleViewerDocument } = await import("../apps/desktop/src/lib/mesoscale-documents");
+  const document = { extension: "molj", path: "/cache/scene.molj", runtimePath: "/cache/index.html" };
+  expect(["structure", "mesoscale", undefined].map(viewerProfile =>
+    isMesoscaleViewerDocument({ ...document, viewerProfile } as import("../apps/desktop/src/types").ViewerDocument),
+  )).toEqual([false, true, true]);
+});
