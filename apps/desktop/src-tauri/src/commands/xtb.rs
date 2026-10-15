@@ -272,17 +272,22 @@ fn xtb_work_dir<R: Runtime>(
     request: &XtbRunRequest,
 ) -> Result<PathBuf, String> {
     if request.save_run_files.unwrap_or(true) {
-        if let Some(source_path) = request
-            .source_path
-            .as_deref()
-            .or(request.input_path.as_deref())
-        {
-            let canonical = PathBuf::from(source_path)
+        // Run folders sit next to the file the structure came from. That file
+        // may have been deleted or be a virtual scene path while the input
+        // itself is still valid, so anchor on the first file that still exists
+        // and otherwise keep the run in the cache instead of refusing it.
+        if let Some(canonical) = [
+            request.source_path.as_deref(),
+            request.input_path.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .find_map(|path| {
+            PathBuf::from(path)
                 .canonicalize()
-                .map_err(|err| format!("{source_path}: {err}"))?;
-            if !canonical.is_file() {
-                return Err(format!("{} is not a file.", canonical.display()));
-            }
+                .ok()
+                .filter(|path| path.is_file())
+        }) {
             let parent = xtb_run_parent_for_source_path(&canonical)?;
             return create_numbered_xtb_run_dir(&parent, &request.operation);
         }
@@ -1730,5 +1735,64 @@ molecular dipole:
 
         fs::remove_dir_all(&work_dir).expect("remove test work dir");
         assert_eq!(status.code(), Some(124));
+    }
+
+    /// Runs every operation the app offers through the same job path as the
+    /// UI, against the installed xtb binary. Needs xtb on this machine:
+    /// `cargo test --lib xtb_operations_smoke -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "runs the real xtb binary"]
+    fn xtb_operations_smoke() {
+        let app = tauri::test::mock_app();
+        let ethanol = "9\nethanol\nC -0.0012 1.5163 0.0000\nC 0.0021 -0.0154 0.0000\nO 1.3446 -0.4790 0.0000\nH 1.3654 -1.4482 0.0000\nH -1.0331 1.8952 0.0000\nH 0.5045 1.8996 0.8889\nH 0.5045 1.8996 -0.8889\nH -0.5064 -0.3987 0.8919\nH -0.5064 -0.3987 -0.8919\n";
+        // Runs land next to their input, so the whole smoke stays in one temp folder.
+        let root = std::env::temp_dir().join(format!("xtb-smoke-{}", unix_timestamp_ms()));
+        fs::create_dir(&root).expect("create smoke dir");
+        let input = root.join("ethanol.xyz");
+        fs::write(&input, ethanol).expect("write input");
+        let mut failures = Vec::new();
+        for operation in [
+            "optimize",
+            "properties",
+            "cube",
+            "hessian",
+            "optimized-hessian",
+            "vip",
+            "vea",
+            "vipea",
+            "vfukui",
+            "vomega",
+            "md",
+            "metadyn",
+        ] {
+            let request: XtbRunRequest = serde_json::from_value(serde_json::json!({
+                "operation": operation,
+                "inputPath": input,
+                "label": "ethanol.xyz",
+                "threads": 4,
+                "mdTimePs": 0.5,
+                "timeoutSeconds": 300,
+            }))
+            .expect("request");
+            let result = run_xtb_job_blocking(app.handle().clone(), request);
+            match &result {
+                Ok(result) => println!(
+                    "{operation}: ok={} {:.1}s primary={:?} error={:?}",
+                    result.ok,
+                    result.elapsed_ms as f64 / 1000.0,
+                    result
+                        .primary_open_path
+                        .as_deref()
+                        .map(|path| Path::new(path).file_name()),
+                    result.error
+                ),
+                Err(error) => println!("{operation}: {error}"),
+            }
+            if !result.as_ref().is_ok_and(|result| result.ok) {
+                failures.push(operation);
+            }
+        }
+        fs::remove_dir_all(&root).expect("remove smoke dir");
+        assert!(failures.is_empty(), "failed operations: {failures:?}");
     }
 }

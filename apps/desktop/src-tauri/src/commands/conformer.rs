@@ -1,3 +1,5 @@
+mod prism_input;
+
 use crate::commands::xtb_runtime;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
@@ -260,6 +262,7 @@ fn run_conformer_job_blocking<R: Runtime>(
         .map_err(|err| format!("{}: {err}", copied_input.input_path.display()))?;
     assert_direct_conformer_input(&input_text, &copied_input.input_extension, &operation)?;
 
+    let mut prism_energies = false;
     let mut prepared_input = if operation == "crest-generate" {
         prepare_crest_input(
             &copied_input.input_path,
@@ -268,8 +271,14 @@ fn run_conformer_job_blocking<R: Runtime>(
             job_id.as_deref(),
         )?
     } else {
+        let prism = prism_input::prepare_prism_input(
+            &input_text,
+            &copied_input.input_extension,
+            &work_dir,
+        )?;
+        prism_energies = prism.has_energies;
         PreparedInput {
-            path: copied_input.input_path.clone(),
+            path: prism.path,
             text: input_text.clone(),
             source: "input".into(),
         }
@@ -287,18 +296,42 @@ fn run_conformer_job_blocking<R: Runtime>(
     );
     let job_id = job_id.as_deref();
     let mut run_request = request_clone_without_job(&request);
-    let mut args = conformer_args(
-        &operation,
-        &run_request,
-        &prepared_input.path,
-        &input_text,
-        &prepared_input.text,
-        &prepared_input.source,
-    );
+    let mut args = if operation == "prism-prune" {
+        prism_args(&run_request, &prepared_input.path, prism_energies)
+    } else {
+        conformer_args(
+            &run_request,
+            &prepared_input.path,
+            &input_text,
+            &prepared_input.text,
+            &prepared_input.source,
+        )
+    };
     let mut status =
         run_logged_executable(&executable, &args, &work_dir, &log_path, timeout, job_id)?;
     let mut log = fs::read_to_string(&log_path).unwrap_or_default();
     let mut recoveries = Vec::new();
+
+    // conda-forge CREST 3.0.x builds crash inside the built-in tblite optimizer
+    // (gfortran rejects a format string in ancopt.f90), so either the initial
+    // optimization fails or no sampled structure gets optimized. The legacy
+    // engine drives the standalone xtb binary and works with the same input.
+    if operation == "crest-generate" && should_retry_crest_with_legacy_engine(&status, &log) {
+        let recovery = "CREST retry with the standalone xtb engine (--legacy)";
+        args.push("--legacy".into());
+        let retry_log_path = work_dir.join("crest-generate-legacy-retry.log");
+        status = run_logged_executable(
+            &executable,
+            &args,
+            &work_dir,
+            &retry_log_path,
+            timeout,
+            job_id,
+        )?;
+        append_file_to_log(&log_path, recovery, &retry_log_path)?;
+        log = fs::read_to_string(&retry_log_path).unwrap_or_default();
+        recoveries.push(recovery.to_string());
+    }
 
     if operation == "crest-generate"
         && should_retry_crest_with_xtb_preopt(&run_request, &status, &log)
@@ -335,7 +368,6 @@ fn run_conformer_job_blocking<R: Runtime>(
                         ..request_clone_without_job(&request)
                     };
                     args = conformer_args(
-                        &operation,
                         &run_request,
                         &prepared_input.path,
                         &input_text,
@@ -365,7 +397,6 @@ fn run_conformer_job_blocking<R: Runtime>(
                             ..request_clone_without_job(&run_request)
                         };
                         args = conformer_args(
-                            &operation,
                             &run_request,
                             &prepared_input.path,
                             &input_text,
@@ -404,7 +435,6 @@ fn run_conformer_job_blocking<R: Runtime>(
             ..request_clone_without_job(&run_request)
         };
         args = conformer_args(
-            &operation,
             &run_request,
             &prepared_input.path,
             &input_text,
@@ -452,7 +482,8 @@ fn run_conformer_job_blocking<R: Runtime>(
     };
     let primary_open_path = primary_conformer_open_path(&operation, &artifacts, exit_code == 0)
         .or(recovered_primary_open_path);
-    let ok = !cancelled && (exit_code == 0 || (exit_code != 124 && primary_open_path.is_some()));
+    // CREST can exit 0 with an empty ensemble; without a result file the run failed.
+    let ok = !cancelled && exit_code != 124 && primary_open_path.is_some();
     let result = ConformerRunResult {
         ok,
         operation: operation.clone(),
@@ -746,23 +777,22 @@ fn prepare_crest_input_with_openbabel(
     Ok(None)
 }
 
+fn prism_args(request: &ConformerRunRequest, input_path: &Path, has_energies: bool) -> Vec<String> {
+    let mut args = Vec::new();
+    if has_energies && request.prism_energy_sort != Some(false) {
+        args.push("-e".into());
+    }
+    args.push(input_path.to_string_lossy().to_string());
+    args
+}
+
 fn conformer_args(
-    operation: &str,
     request: &ConformerRunRequest,
     input_path: &Path,
     original_input_text: &str,
     prepared_input_text: &str,
     prepared_input_source: &str,
 ) -> Vec<String> {
-    if operation == "prism-prune" {
-        let mut args = Vec::new();
-        if request.prism_energy_sort != Some(false) {
-            args.push("-e".into());
-        }
-        args.push(input_path.to_string_lossy().to_string());
-        return args;
-    }
-
     let method = request.method.as_deref().unwrap_or("gfn2");
     let mut args = vec![input_path.to_string_lossy().to_string()];
     match method {
@@ -1143,10 +1173,6 @@ fn primary_conformer_open_path(
             "crest_ensemble.xyz",
             "crest_best.xyz",
             "crest_rotamers.xyz",
-            "xtbopt.sdf",
-            "xtbopt.xyz",
-            "xtbopt.mol",
-            "xtbtopo.sdf",
         ]
     };
     for name in preferred {
@@ -1196,6 +1222,11 @@ fn conformer_error_summary(
         return Some(format!(
             "{tool} timed out before producing an ensemble. Increase the timeout or use a faster preset."
         ));
+    }
+    if crest_found_no_conformers(log) {
+        return Some(
+            "CREST could not optimize any sampled structure, so no conformer ensemble was produced. Check the CREST installation, charge, and protonation.".into(),
+        );
     }
     if log
         .to_ascii_lowercase()
@@ -1431,6 +1462,21 @@ fn infer_sdf_formal_charge(text: &str) -> Option<i32> {
         return Some(total);
     }
     None
+}
+
+fn should_retry_crest_with_legacy_engine(status: &ExitStatus, log: &str) -> bool {
+    should_retry_crest_after_initial_optimization_failure(status, log)
+        || (!matches!(exit_code_for_status(status), 124 | 130) && crest_found_no_conformers(log))
+}
+
+fn crest_found_no_conformers(log: &str) -> bool {
+    log.lines().any(|line| {
+        let line = line.trim();
+        line.starts_with("empty ensemble file")
+            || line
+                .strip_prefix("> 0 of ")
+                .is_some_and(|rest| rest.contains("structures successfully optimized"))
+    })
 }
 
 fn should_retry_crest_with_xtb_preopt(
@@ -1765,6 +1811,35 @@ mod tests {
             &status,
             log,
         ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn empty_crest_ensemble_retries_with_legacy_engine_and_then_fails() {
+        use std::os::unix::process::ExitStatusExt;
+        // Tail of a CREST 3.0.2 run whose built-in optimizer crashed on every structure.
+        let log = " Optimizing all 1666 structures from file \"crest_dynamics.trj\" ...\n> 0 of 1666 structures successfully optimized (0.0% success)\n empty ensemble filecrest_rotamers_0.xyz\n";
+        let success = ExitStatus::from_raw(0);
+
+        assert!(should_retry_crest_with_legacy_engine(&success, log));
+        assert!(should_retry_crest_with_legacy_engine(
+            &ExitStatus::from_raw(1 << 8),
+            "Initial geometry optimization failed!"
+        ));
+        assert!(!should_retry_crest_with_legacy_engine(
+            &timeout_exit_status(),
+            log
+        ));
+        assert!(!should_retry_crest_with_legacy_engine(
+            &success,
+            "> 10 of 1666 structures successfully optimized (0.6% success)"
+        ));
+        assert!(
+            conformer_error_summary("crest-generate", 0, log, "input", "", false, false)
+                .is_some_and(
+                    |summary| summary.starts_with("CREST could not optimize any sampled structure")
+                )
+        );
     }
 
     #[test]
