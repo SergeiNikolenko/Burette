@@ -1954,7 +1954,7 @@ assert.match(gridViewer, /const GRID_MAX_WINDOW_ROWS = 18;/);
 assert.doesNotMatch(gridViewer, /GRID_WINDOW_RENDER_BATCH/);
 assert.match(gridViewer, /const RDKIT_CARD_FRAME_BATCH = 6;/);
 assert.match(gridViewer, /const RDKIT_CARD_FRAME_BUDGET_MS = 8;/);
-assert.match(gridViewer, /const RDKIT_SVG_CACHE_LIMIT = 220;/);
+assert.match(gridViewer, /const RDKIT_SVG_CACHE_LIMIT = 2000;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_CACHE_LIMIT = 1500;/);
 assert.match(gridViewer, /rdkitCardQueue: \[\]/);
 assert.match(gridViewer, /rdkitCardPending: new Map\(\)/);

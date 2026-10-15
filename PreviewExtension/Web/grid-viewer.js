@@ -80,7 +80,9 @@
   const TABLE_COLUMN_MIN_WIDTH = 64;
   const TABLE_COLUMN_MAX_WIDTH = 640;
   const TABLE_COLUMN_OVERSCAN_PX = 360;
-  const RDKIT_SVG_CACHE_LIMIT = 220;
+  // Above the row count of a typical SDF, so a re-windowed grid redraws from
+  // cache instead of queueing RDKit layout again for every card.
+  const RDKIT_SVG_CACHE_LIMIT = 2000;
   const XYZRENDER_CARD_CACHE_LIMIT = 1500;
   const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
   let activeStructureDrag = false;
@@ -202,6 +204,7 @@
     loadObserver: null,
     scrollHandler: null,
     resizeHandler: null,
+    resizeFrame: 0,
     virtualFrame: 0,
     lastPerfMetricAt: 0,
     windowStart: 0,
@@ -3550,12 +3553,20 @@
     state.scrollHandler = () => handleGridScroll(cfg);
     window.addEventListener('scroll', state.scrollHandler, { passive: true });
     if (state.resizeHandler) window.removeEventListener('resize', state.resizeHandler);
+    if (state.resizeFrame) window.cancelAnimationFrame(state.resizeFrame);
+    state.resizeFrame = 0;
+    // Each pass forces layout and walks every card, so resize events and host
+    // cover pushes are coalesced into one pass per frame.
     state.resizeHandler = () => {
-      updateVirtualGridMetrics();
-      scheduleVirtualWindowRender(cfg);
-      updateGridRailActive();
-      updateTableHeaderStick();
-      maybeLoadMore(cfg);
+      if (state.resizeFrame) return;
+      state.resizeFrame = window.requestAnimationFrame(() => {
+        state.resizeFrame = 0;
+        updateVirtualGridMetrics();
+        scheduleVirtualWindowRender(cfg);
+        updateGridRailActive();
+        updateTableHeaderStick();
+        maybeLoadMore(cfg);
+      });
     };
     window.addEventListener('resize', state.resizeHandler, { passive: true });
   }
