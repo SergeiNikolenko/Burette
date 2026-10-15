@@ -97,6 +97,19 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
         );
     }
     show_workspace_application(app)?;
+    // The popout is a reusable molecule inspector. Reusing its live webview
+    // avoids booting another complete application for every picked molecule.
+    if presentation == WindowPresentation::Preview {
+        if let Some(window) = app
+            .webview_windows()
+            .values()
+            .find(|window| window.label().starts_with("workspace-preview-"))
+        {
+            let label = window.label().to_string();
+            focus_or_create_workspace_window(app, Some(&label))?;
+            return Ok(label);
+        }
+    }
     let label = match presentation {
         WindowPresentation::Workspace => next_workspace_label(app),
         WindowPresentation::Preview => format!("workspace-preview-{}", uuid::Uuid::new_v4()),

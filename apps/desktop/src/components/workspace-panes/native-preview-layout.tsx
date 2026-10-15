@@ -25,6 +25,7 @@ export function NativePreviewLayout({ state, actions }: {
       <ToolbarButton aria-label="Minimize" onClick={() => void getCurrentWindow().minimize()}><Minus size={16} aria-hidden /></ToolbarButton>
       <div className="floating-pane-title" data-tauri-drag-region>
         <RadixDropdownMenu items={[
+          ...state.documents.map(document => ({ kind: "item" as const, id: `preview-${document.id}`, text: document.title, action: () => actions.selectDocument(document.id) })),
           { kind: "item", id: "preview-open", text: "Open…", action: () => actions.chooseFiles() },
           { kind: "item", id: "preview-close", text: "Close", action: () => getCurrentWindow().close() },
         ]} trigger={<Button variant="ghost" size="toolbar" className="pane-switcher" aria-label="Molecule menu">
