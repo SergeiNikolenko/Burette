@@ -68,6 +68,10 @@ const SVG_CACHE_LIMIT = 200;
 // instead of being letterboxed inside it. Sizes round to this step so dragging
 // the handle re-renders a handful of times rather than once per pixel.
 const SVG_SIZE_STEP = 8;
+// A dock drag resizes the well every frame. The current SVG scales with the
+// well meanwhile, and RDKit redraws once the size has held still this long:
+// a 2x redraw per size step ran on the main thread and stalled the drag.
+const SVG_RESIZE_SETTLE_MS = 160;
 
 function roundedSize(value: number, minimum: number): number {
   return Math.max(minimum, Math.round(value / SVG_SIZE_STEP) * SVG_SIZE_STEP);
@@ -146,6 +150,7 @@ export function GridHoverMoleculeCard({
   // for at these numbers so it fills the box at any drag height.
   const [wellSize, setWellSize] = useState<{ width: number; height: number } | null>(null);
   const wellObserverRef = useRef<ResizeObserver | null>(null);
+  const wellSettleTimerRef = useRef<number | undefined>(undefined);
   const wellNodeRef = useRef<HTMLDivElement | null>(null);
   const renderTokenRef = useRef(0);
   const lastRowRef = useRef<HoveredGridRow | null>(null);
@@ -200,6 +205,7 @@ export function GridHoverMoleculeCard({
   // list would run before the well exists and never attach.
   const attachWell = useCallback((node: HTMLDivElement | null) => {
     wellObserverRef.current?.disconnect();
+    window.clearTimeout(wellSettleTimerRef.current);
     wellNodeRef.current = node;
     if (!node) {
       wellObserverRef.current = null;
@@ -216,7 +222,11 @@ export function GridHoverMoleculeCard({
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
       if (!rect || rect.width === 0 || rect.height === 0) return;
-      setWellSize({ width: roundedSize(rect.width, 120), height: roundedSize(rect.height, 80) });
+      const next = { width: roundedSize(rect.width, 120), height: roundedSize(rect.height, 80) };
+      window.clearTimeout(wellSettleTimerRef.current);
+      wellSettleTimerRef.current = window.setTimeout(() => {
+        setWellSize((current) => current?.width === next.width && current.height === next.height ? current : next);
+      }, SVG_RESIZE_SETTLE_MS);
     });
     observer.observe(node);
     wellObserverRef.current = observer;

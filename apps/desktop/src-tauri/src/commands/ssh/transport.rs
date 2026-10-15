@@ -38,9 +38,12 @@ pub(super) fn multiplex_options(host: &str) -> Result<[String; 3], String> {
         // A fresh exclusive 0700 directory prevents socket sharing with any
         // user-configured master, another app instance, or another local user.
         // Alias hash below also isolates distinct ProxyCommand/identity configs.
+        // The whole socket path must stay under the 104-byte sun_path limit:
+        // "/tmp/burette-ssh-" + 8 + "/" + 8 + "-" + %C (40) is 75 bytes, and
+        // ssh appends a 17-byte temporary suffix while it binds the master.
         let path = std::path::Path::new("/tmp").join(format!(
             "burette-ssh-{}",
-            &uuid::Uuid::new_v4().simple().to_string()[..16]
+            &uuid::Uuid::new_v4().simple().to_string()[..8]
         ));
         std::fs::DirBuilder::new()
             .mode(0o700)
@@ -49,7 +52,7 @@ pub(super) fn multiplex_options(host: &str) -> Result<[String; 3], String> {
         Ok(path)
     });
     let directory = directory.as_ref().map_err(Clone::clone)?;
-    let alias = Sha256::digest(host.as_bytes())[..8]
+    let alias = Sha256::digest(host.as_bytes())[..4]
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();

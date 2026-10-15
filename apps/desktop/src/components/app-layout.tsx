@@ -449,7 +449,13 @@ function WorkspaceAppLayout({
   useEffect(() => {
     if (!activeGridId) return;
     const observer = new ResizeObserver(() => post());
+    const shell = shellRef.current;
     const post = () => {
+      // While a gesture holds the frames pinned, every cover change would make
+      // the grid re-measure and rebuild its cards on the shared main thread
+      // (the drag then lagged the pointer by up to a second). The cover is sent
+      // once when the pin lifts instead.
+      if (shell?.hasAttribute("data-resizing")) return;
       const iframe = activeViewerIframeForDocument(activeGridId, "grid2d");
       const win = iframe?.contentWindow ?? null;
       if (!iframe || !win) return;
@@ -464,6 +470,8 @@ function WorkspaceAppLayout({
       if (event.target === activeViewerIframeForDocument(activeGridId, "grid2d")) post();
     };
     window.addEventListener("load", onViewerLoad, true);
+    const pinObserver = new MutationObserver(() => post());
+    if (shell) pinObserver.observe(shell, { attributes: true, attributeFilter: ["data-resizing"] });
     const dockEl = rightDockElementRef.current;
     if (dockEl) observer.observe(dockEl);
     if (workbenchGroupRef.current) observer.observe(workbenchGroupRef.current);
@@ -471,6 +479,7 @@ function WorkspaceAppLayout({
     const timer = window.setTimeout(post, 400);
     return () => {
       observer?.disconnect();
+      pinObserver.disconnect();
       window.clearTimeout(timer);
       window.removeEventListener("load", onViewerLoad, true);
     };
@@ -478,7 +487,7 @@ function WorkspaceAppLayout({
     // resize moves the dock without changing its size, so the dock's own observer
     // stays silent while `cover` has in fact changed. The width is quantised, so
     // this re-runs once per resize step rather than once per pixel.
-  }, [activeGridId, rightDockOpen, viewportWidth]);
+  }, [activeGridId, rightDockOpen, viewportWidth, shellRef]);
   const systemThemeMode = useSystemThemeMode();
   // The layout widths seed the chrome before the edge observer's first pass;
   // `--sidebar-edge` / `--right-dock-edge` take over from there.
