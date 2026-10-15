@@ -4175,7 +4175,15 @@
     const viewportTop = Math.max(0, scrollTop() - gridTop);
     const viewportBottom = viewportTop + viewportHeight();
     const rowHeight = estimatedRowStride();
-    const firstGridRow = Math.max(0, Math.floor(viewportTop / rowHeight) - GRID_WINDOW_OVERSCAN_ROWS);
+    // A wider pane packs the rows into fewer grid rows while the scroll offset
+    // still points into the old, taller layout. Clamping keeps the last screen
+    // of cards in the window; otherwise it lands past the end, renders nothing,
+    // and the top spacer holds the page height so the scroll never clamps back.
+    const tailGridRows = Math.ceil(viewportHeight() / rowHeight) + GRID_WINDOW_OVERSCAN_ROWS;
+    const firstGridRow = Math.min(
+      Math.max(0, totalGridRows - tailGridRows),
+      Math.max(0, Math.floor(viewportTop / rowHeight) - GRID_WINDOW_OVERSCAN_ROWS)
+    );
     const lastGridRow = Math.min(
       totalGridRows,
       Math.ceil(viewportBottom / rowHeight) + GRID_WINDOW_OVERSCAN_ROWS
