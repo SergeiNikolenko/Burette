@@ -57,3 +57,16 @@ for (const kind of ['pdb', 'session', 'sdf']) {
   assert.equal(cleaned, true);
   assert.deepEqual(snapshot, { canvas3d: { props: { postprocessing: { outline: true } } } });
 }
+
+const focusSource = source.slice(source.indexOf('  function requestMolstarStructureFocus(viewer, options = {})'), source.indexOf('  function observeMolstarViewportPanel()'));
+for (const mode of ['orthographic', 'perspective']) {
+  let reset;
+  let atomFit = false;
+  const camera = { state: { mode, radius: 10 }, target: [0, 0, 0], getFocus: () => ({ mode }) };
+  const focus = new Function('document', 'fittedMolstarStructureFocus', 'debug', `${focusSource}; return requestMolstarStructureFocus;`)(
+    { body: { classList: { contains: () => false } } }, () => { atomFit = true; return {}; }, () => {},
+  );
+  focus({ plugin: { canvas3d: { camera, requestCameraReset: value => { reset = value; } } } }, { mode });
+  assert.equal(reset.snapshot.mode, mode);
+  assert.equal(atomFit, mode === 'perspective');
+}

@@ -5196,7 +5196,6 @@ assert.match(previewViewer, /if \(options\.force !== true && !molstarAutoFocusEn
 assert.match(previewViewer, /function molstarAutoFocusEnabled\(config\) \{\s*return !isQuickLookHost\(\) && config\?\.autoFocusStructure === true;\s*\}/);
 assert.match(previewViewer, /function requestMolstarStructureFocus\(viewer, options = \{\}\)/);
 assert.match(previewViewer, /camera\.getFocus\(target, Math\.max\(0\.1, safeRadius \* radiusScale\), up, direction\)/);
-assert.match(previewViewer, /snapshot\.mode = 'perspective'/);
 assert.match(
   previewViewer,
   /await applyConfiguredMolstarPreset\(viewer, activeConfig \|\| config\);[\s\S]*scheduleMolstarStructureFocus\(viewer, \{ reason: 'initial-load', durationMs: 120 \}\);/,
