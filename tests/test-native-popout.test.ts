@@ -12,7 +12,7 @@ mock.module("../apps/desktop/src/lib/viewer-bridge", () => ({ requestViewerActio
 } }));
 mock.module("../apps/desktop/src/hooks/workspace-scene-import", () => ({ focusSceneDocument: async () => {} }));
 mock.module("../apps/desktop/src/components/ui/toast", () => ({ toast: { add: () => {} } }));
-const { openNativePopout } = await import("../apps/desktop/src/components/workspace-panes/native-popout");
+const { openNativePopout, returnNativePopout } = await import("../apps/desktop/src/components/workspace-panes/native-popout");
 const tab = { id: "hem", location: { kind: "file", documentId: "hem", path: "/source/HEM.pdb" } } as MoleculeTab;
 const state = { documents: [{ id: "hem", title: "HEM.pdb", renderer: "molstar" }] } as ShellViewState;
 
@@ -44,4 +44,19 @@ test("ordinary session previews use structure controls while Mesoscale keeps its
   expect(["structure", "mesoscale", undefined].map(viewerProfile =>
     isMesoscaleViewerDocument({ ...document, viewerProfile } as import("../apps/desktop/src/types").ViewerDocument),
   )).toEqual([false, true, true]);
+});
+
+test("returning transfers the current scene to the normal workspace", async () => {
+  calls.length = 0;
+  expect(await returnNativePopout(tab, state, {} as ShellActions)).toBe(true);
+  expect(calls).toEqual([["open_new_workspace_window", {
+    presentation: "workspace", target: "mainWindow",
+    scene: { title: "HEM", dataBase64: "eyJjYW1lcmEiOnt9LCJlbnRyaWVzIjpbXX0=" },
+  }]]);
+  calls.length = 0;
+  failSnapshot = true;
+  try {
+    expect(await returnNativePopout(tab, state, {} as ShellActions)).toBe(false);
+    expect(calls).toEqual([]);
+  } finally { failSnapshot = false; }
 });

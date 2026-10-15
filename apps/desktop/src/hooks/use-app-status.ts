@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 
 import type { StatusKind, StatusNotice } from "../components/types";
 import { toast } from "../components/ui/toast";
+import { logFrontendError } from "../lib/frontend-error-log";
 import { trackWebDemoHandledError } from "../lib/web-demo-analytics";
 
 export type RecentStatusError = {
@@ -52,11 +53,12 @@ export function useAppStatus() {
     const normalizedDetails = details.filter(Boolean);
     if (kind === "error") {
       recentErrorsRef.current.push({
-        message: trimmed,
-        details: normalizedDetails,
+        message: trimmed.slice(0, 1024),
+        details: normalizedDetails.slice(0, 8).map(detail => detail.slice(0, 1024)),
         timestampMs: Date.now(),
       });
       recentErrorsRef.current = recentErrorsRef.current.slice(-20);
+      logFrontendError("status-error", [trimmed, ...normalizedDetails.slice(0, 8)].join("\n").slice(0, 4096));
     }
     setStatus({ kind, message: trimmed });
     if (kind !== "error") return;

@@ -220,17 +220,21 @@ fn create_workspace_window<R: Runtime>(
         .transparent(true)
         .background_color(Color(0, 0, 0, 0));
     #[cfg(target_os = "macos")]
-    let builder = builder
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true)
-        .traffic_light_position(crate::macos::TRAFFIC_LIGHT_INSET)
-        .effects(
-            EffectsBuilder::new()
-                .effect(Effect::HudWindow)
-                .state(EffectState::Active)
-                .build(),
-        )
-        .shadow(true);
+    let builder = if preview {
+        builder.shadow(true)
+    } else {
+        builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(crate::macos::TRAFFIC_LIGHT_INSET)
+            .effects(
+                EffectsBuilder::new()
+                    .effect(Effect::HudWindow)
+                    .state(EffectState::Active)
+                    .build(),
+            )
+            .shadow(true)
+    };
     let window = builder.build().map_err(|error| error.to_string())?;
     if crate::menu::exit_transition_is_active(app) {
         let _ = window.destroy();

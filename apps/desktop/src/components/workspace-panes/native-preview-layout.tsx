@@ -1,8 +1,10 @@
+import { useState } from "react";
+import { returnNativePopout } from "./native-popout";
 import { Button } from "../ui/button";
 import { RadixDropdownMenu } from "../radix-menu";
 import { TabKindIcon } from "../editor-area/tab-kind-icon";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { ChevronDown, Expand, Minus } from "../ui/app-icons";
+import { ChevronDown, Expand, Minus, Undo, X } from "../ui/app-icons";
 import { ToolbarButton } from "../ui/toolbar-button";
 import "./workspace-panes.css";
 import { buildThemeStyle, resolveThemeMode, useSystemThemeMode } from "../../lib/theme";
@@ -16,12 +18,21 @@ export function NativePreviewLayout({ state, actions }: {
   state: ShellViewState;
   actions: ShellActions;
 }) {
+  const [returning, setReturning] = useState(false);
+  const returnToWorkspace = async () => {
+    if (!state.activeTab || returning) return;
+    setReturning(true);
+    try {
+      if (await returnNativePopout(state.activeTab, state, actions)) await getCurrentWindow().close();
+    } finally { setReturning(false); }
+  };
   const systemTheme = useSystemThemeMode();
   const theme = resolveThemeMode(state.preferences.theme, systemTheme);
   const style = buildThemeStyle(state.preferences, systemTheme);
   return <main className="app-shell native-preview-shell" data-runtime="tauri"
     data-theme={theme} data-effective-theme={theme} style={style}>
     <header className="floating-pane-header native-preview-title" data-tauri-drag-region>
+      <ToolbarButton aria-label="Close preview" onClick={() => void getCurrentWindow().close()}><X size={16} aria-hidden /></ToolbarButton>
       <ToolbarButton aria-label="Minimize" onClick={() => void getCurrentWindow().minimize()}><Minus size={16} aria-hidden /></ToolbarButton>
       <div className="floating-pane-title" data-tauri-drag-region>
         <RadixDropdownMenu items={[
@@ -34,6 +45,7 @@ export function NativePreviewLayout({ state, actions }: {
           <ChevronDown size={12} aria-hidden />
         </Button>} />
       </div>
+      <ToolbarButton aria-label="Return to main window" disabled={returning || !state.activeTab} onClick={() => void returnToWorkspace()}><Undo size={16} aria-hidden /></ToolbarButton>
       <ToolbarButton aria-label="Expand" onClick={() => void getCurrentWindow().toggleMaximize()}><Expand size={16} aria-hidden /></ToolbarButton>
       <span className="floating-pane-grip" aria-hidden data-tauri-drag-region />
     </header>
