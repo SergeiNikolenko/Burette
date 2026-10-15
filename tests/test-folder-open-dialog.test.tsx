@@ -19,8 +19,8 @@ async function fixture(files: string[], run: (mount: HTMLDivElement, calls: unkn
   const props = {
     path: "/set", initialMode: "tabs", onClose: () => { calls.push(["close"]); },
     state: { sidebarProjects: [{ items: files.map(path => ({ path })) }] } as Props["state"],
-    actions: { openPaths: record("tabs"), openNewWindow: record("window"), openDockPayload: record("right"), openDockingDocument: record("together") } as Props["actions"],
-    workflows: { sceneTargets: () => [{ id: "target", title: "Complex" }], addToScene: record("scene"), openAligned: record("aligned"), openPoses: record("poses") } as unknown as Props["workflows"],
+    actions: { openPaths: record("tabs"), openNewWindow: record("window"), openDockPayload: record("right") } as Props["actions"],
+    workflows: { sceneTargets: () => [{ id: "target", title: "Complex" }], addToScene: record("scene"), openTogether: record("together"), openAligned: record("aligned"), openPoses: record("poses") } as unknown as Props["workflows"],
     ...patch,
   };
   const mount = document.createElement("div"); mount.className = "app-shell"; document.body.append(mount); const root = createRoot(mount);
@@ -51,8 +51,7 @@ test("folder modes preserve scene, alignment, poses and right-panel dispatch", a
     const files = mode === "poses" ? molecules : proteins;
     await fixture(files, async (mount, calls) => {
       await submit(mount);
-      const expected = mode === "together" ? ["together", files[0], [files[1]], { sceneMode: "structureAll" }]
-        : mode === "scene:target" ? ["scene", files, { id: "target", title: "Complex" }]
+      const expected = mode === "scene:target" ? ["scene", files, { id: "target", title: "Complex" }]
         : mode === "right" ? ["right", { area: "right", tabKind: "files", payload: { paths: files, records: [], items: files.map(path => ({ kind: "file", path, title: path.split("/").pop() })) } }]
         : [mode, files];
       expect(calls).toEqual([expected, ["close"]]);
