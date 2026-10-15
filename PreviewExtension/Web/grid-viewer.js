@@ -2022,6 +2022,7 @@
         store(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, state.rdkitUseInputCoords ? 'true' : 'false');
         state.svgCache.clear();
         render(cfg);
+        post('chemicalSpaceMoleculePreviewsStale', '', {});
       }
     });
     const sortControl = document.getElementById('sort');
@@ -6630,7 +6631,14 @@
         let molecule = null;
         try {
           molecule = rdkit.get_mol(input);
-          if (molecule) svg = molecule.get_svg(240, 160);
+          if (molecule) {
+            // The map's hover card draws the molecule the way its grid card does.
+            applyHydrogenDisplay(molecule, null);
+            if (!(state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock))) {
+              try { molecule.set_new_coords?.(); } catch (_) {}
+            }
+            svg = molecule.get_svg(240, 160);
+          }
         } finally {
           molecule?.delete?.();
         }

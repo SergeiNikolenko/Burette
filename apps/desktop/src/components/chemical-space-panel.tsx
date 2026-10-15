@@ -749,6 +749,13 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
         setHovered(nextHovered);
         setPreview((current) => current?.sourceRecordId === nextHovered ? current : null);
       }
+      // The grid's 2D/3D drawing toggle changed, so every cached drawing is out
+      // of date; open cliff pairs ask for theirs again once the cache is empty.
+      if (data.body.type === "chemicalSpaceMoleculePreviewsStale") {
+        setPreview(null);
+        setMoleculePreviews(new Map());
+        return;
+      }
       if (data.body.type === "chemicalSpaceMoleculePreview") {
         const index = Number(data.body.sourceRecordId);
         if (!Number.isSafeInteger(index) || index < 0) {
