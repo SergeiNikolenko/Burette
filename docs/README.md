@@ -32,6 +32,8 @@ contains only documents that describe the active project.
   gesture feedback, bounds and focused checks.
 - [Scene naming proposal](scene-naming.md): content-based automatic titles, stable file
   identity, manual names and export scope; proposed, not yet implemented.
+- [Remote compute jobs over SSH](remote-jobs.md): detached runs on SSH hosts,
+  reattach after restart, results download; proposed, not yet implemented.
 - [Renderer support](renderer-support.md): renderer modes, supported formats,
   Ketcher editing scope, artifacts, and checks.
 - [Mesoscale viewer implementation plan](mesoscale-viewer-implementation-plan.md):
