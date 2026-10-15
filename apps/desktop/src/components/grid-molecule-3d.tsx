@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
+import bootstrapUrl from "../preview-grid/molecule-preview-bootstrap.js?url&no-inline";
+import { logFrontendError } from "../lib/frontend-error-log";
 
 // Use the same packaged renderer, presets and menu as the main viewport.
 const assets = import.meta.glob<string>("../../../../PreviewExtension/Web/{molstar.js,molstar.css,viewer.js,viewer-shell.js,viewer-runtime.css,renderer-view-state.js,molstar-preset-preview-controller.js,color-picker.js,sequence-panel.js,native-viewer-menus.js,scene-file-actions.js}", { eager: true, query: "?url", import: "default" });
@@ -6,16 +8,18 @@ const asset = (name: string) => new URL(assets[`../../../../PreviewExtension/Web
 
 export default function GridMolecule3D({ molblock, theme, height, onOpen }: { molblock: string; theme: string; height: number; onOpen: () => void }) {
   const frame = useRef<HTMLIFrameElement>(null);
-  const initial = useRef(molblock);
+  const initial = useRef("");
+  if (!initial.current && molblock && molblock.length <= 350_000) initial.current = molblock;
+  const initialMolblock = initial.current;
   const open = useRef(onOpen);
   open.current = onOpen;
   const html = useMemo(() => {
-    if (!initial.current || initial.current.length > 350_000) return "<!doctype html><html></html>";
+    if (!initialMolblock) return "<!doctype html><html></html>";
     const config = { format: "mol", molstarFormat: "mol", renderer: "molstar", label: "Molecule", appViewer: true,
       inspectorPreview: true, autoFocusStructure: true, theme, canvasBackground: theme === "dark" ? "#111111" : "#ffffff",
       molstarPreset: "automatic", molstarStyle: "illustrative", xyzrenderAvailable: false, sdfGrid: false,
       defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" } };
-    const data = btoa(Array.from(new TextEncoder().encode(initial.current), byte => String.fromCharCode(byte)).join(""));
+    const data = btoa(Array.from(new TextEncoder().encode(initialMolblock), byte => String.fromCharCode(byte)).join(""));
     const scripts = ["molstar.js", "viewer-shell.js", "renderer-view-state.js", "molstar-preset-preview-controller.js", "color-picker.js", "sequence-panel.js", "native-viewer-menus.js", "scene-file-actions.js", "viewer.js"];
     return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:${theme === "dark" ? "dark" : "light"};background:${theme === "dark" ? "#111111" : "#ffffff"}}</style>
       <link rel="stylesheet" href="${asset("molstar.css")}"><link rel="stylesheet" href="${asset("viewer-runtime.css")}">
@@ -28,23 +32,17 @@ export default function GridMolecule3D({ molblock, theme, height, onOpen }: { mo
       .buret-molstar-preset-trigger{background:${theme === "dark" ? "#262626" : "#f5f5f5"}!important;border:0!important;border-radius:6px}
 
       </style></head><body><div id="app" class="buret-inspector-updating"></div><div id="status" class="hidden"></div>
-      <script>window.BuretteConfig=${JSON.stringify(config)};window.BuretteDataBase64="${data}";</script>
+      <script type="application/json" id="burette-inspector-input">${JSON.stringify({ config, data }).replaceAll("<", "\\u003c")}</script>
+      <script src="${new URL(bootstrapUrl, window.location.href).href}"></script>
       ${scripts.map(name => `<script src="${asset(name)}"></script>`).join("")}
-      <script>
-        let start;
-        document.addEventListener('pointerdown', event => { start = event.target instanceof HTMLCanvasElement && event.button === 0 ? { x: event.clientX, y: event.clientY } : null; }, true);
-        document.addEventListener('pointerup', event => {
-          if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 4) window.parent.postMessage({ source: 'burette-inspector-open' }, '*');
-          start = null;
-        }, true);
-        document.addEventListener('pointercancel', () => { start = null; });
-      </script></body></html>`;
-  }, [theme]);
+      </body></html>`;
+  }, [theme, initialMolblock]);
   useEffect(() => {
     const send = () => frame.current?.contentWindow?.postMessage({ source: "burette-inspector-host", molblock }, "*");
     const ready = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow) return;
       if (event.data?.source === "burette-inspector-ready") send();
+      if (event.data?.source === "burette-inspector-error") logFrontendError("inspector-preview", String(event.data.message).slice(0, 1024));
       if (event.data?.source === "burette-inspector-open") open.current();
     };
     window.addEventListener("message", ready);
