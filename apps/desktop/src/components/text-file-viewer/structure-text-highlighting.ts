@@ -1,5 +1,4 @@
-import { RangeSetBuilder } from "@codemirror/state";
-import type { Extension } from "@codemirror/state";
+import type { Extension, Range } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 
 type StructureLanguage = "pdb" | "cif" | "gro" | "xyz" | "sdf" | "mol2" | "cube" | "maestro";
@@ -75,7 +74,7 @@ function structureLanguageForExtension(extension: string): StructureLanguage | n
 }
 
 function buildDecorations(view: EditorView, language: StructureLanguage) {
-  const builder = new RangeSetBuilder<Decoration>();
+  const builder: Range<Decoration>[] = [];
   for (const range of view.visibleRanges) {
     let position = range.from;
     while (position <= range.to) {
@@ -84,11 +83,12 @@ function buildDecorations(view: EditorView, language: StructureLanguage) {
       position = line.to + 1;
     }
   }
-  return builder.finish();
+  // Format parsers may emit atom labels after the numeric fields on the same line.
+  return Decoration.set(builder, true);
 }
 
 function buildNumberDecorations(view: EditorView) {
-  const builder = new RangeSetBuilder<Decoration>();
+  const builder: Range<Decoration>[] = [];
   for (const range of view.visibleRanges) {
     let position = range.from;
     while (position <= range.to) {
@@ -98,10 +98,10 @@ function buildNumberDecorations(view: EditorView) {
       position = line.to + 1;
     }
   }
-  return builder.finish();
+  return Decoration.set(builder, true);
 }
 
-function highlightLine(builder: RangeSetBuilder<Decoration>, language: StructureLanguage, from: number, text: string, lineNumber: number) {
+function highlightLine(builder: Range<Decoration>[], language: StructureLanguage, from: number, text: string, lineNumber: number) {
   activeLineLength = text.length;
   if (language === "pdb") return highlightPdbLine(builder, from, text);
   if (language === "cif") return highlightCifLine(builder, from, text);
@@ -113,7 +113,7 @@ function highlightLine(builder: RangeSetBuilder<Decoration>, language: Structure
   highlightCubeLine(builder, from, text, lineNumber);
 }
 
-function highlightPdbLine(builder: RangeSetBuilder<Decoration>, from: number, text: string) {
+function highlightPdbLine(builder: Range<Decoration>[], from: number, text: string) {
   const record = text.slice(0, 6).trim();
   if (!record) return;
   markRange(builder, from, 0, Math.min(6, text.length), recordMark);
@@ -133,7 +133,7 @@ function highlightPdbLine(builder: RangeSetBuilder<Decoration>, from: number, te
   }
 }
 
-function highlightCifLine(builder: RangeSetBuilder<Decoration>, from: number, text: string) {
+function highlightCifLine(builder: Range<Decoration>[], from: number, text: string) {
   const trimmed = text.trimStart();
   const offset = text.length - trimmed.length;
   if (!trimmed) return;
@@ -154,7 +154,7 @@ function highlightCifLine(builder: RangeSetBuilder<Decoration>, from: number, te
   highlightNumbers(builder, from, text, offset);
 }
 
-function highlightGroLine(builder: RangeSetBuilder<Decoration>, from: number, text: string, lineNumber: number) {
+function highlightGroLine(builder: Range<Decoration>[], from: number, text: string, lineNumber: number) {
   if (lineNumber === 1) {
     markRange(builder, from, 0, text.length, commentMark);
     return;
@@ -171,7 +171,7 @@ function highlightGroLine(builder: RangeSetBuilder<Decoration>, from: number, te
   highlightNumbers(builder, from, text, 20);
 }
 
-function highlightXyzLine(builder: RangeSetBuilder<Decoration>, from: number, text: string, lineNumber: number) {
+function highlightXyzLine(builder: Range<Decoration>[], from: number, text: string, lineNumber: number) {
   if (lineNumber === 1) {
     highlightNumbers(builder, from, text, 0);
     return;
@@ -185,7 +185,7 @@ function highlightXyzLine(builder: RangeSetBuilder<Decoration>, from: number, te
   highlightNumbers(builder, from, text, elementMatch?.[0].length ?? 0);
 }
 
-function highlightSdfLine(builder: RangeSetBuilder<Decoration>, from: number, text: string, lineNumber: number) {
+function highlightSdfLine(builder: Range<Decoration>[], from: number, text: string, lineNumber: number) {
   if (text === "$$$$" || text.startsWith("M  ") || text.startsWith("V2000") || text.startsWith("V3000")) {
     markRange(builder, from, 0, text.length, recordMark);
     return;
@@ -206,7 +206,7 @@ function highlightSdfLine(builder: RangeSetBuilder<Decoration>, from: number, te
   }
 }
 
-function highlightMol2Line(builder: RangeSetBuilder<Decoration>, from: number, text: string) {
+function highlightMol2Line(builder: Range<Decoration>[], from: number, text: string) {
   if (text.startsWith("@<TRIPOS>")) {
     markRange(builder, from, 0, text.length, recordMark);
     return;
@@ -220,7 +220,7 @@ function highlightMol2Line(builder: RangeSetBuilder<Decoration>, from: number, t
   }
 }
 
-function highlightCubeLine(builder: RangeSetBuilder<Decoration>, from: number, text: string, lineNumber: number) {
+function highlightCubeLine(builder: Range<Decoration>[], from: number, text: string, lineNumber: number) {
   if (lineNumber <= 2) {
     markRange(builder, from, 0, text.length, commentMark);
     return;
@@ -228,7 +228,7 @@ function highlightCubeLine(builder: RangeSetBuilder<Decoration>, from: number, t
   highlightNumbers(builder, from, text, 0);
 }
 
-function highlightMaestroLine(builder: RangeSetBuilder<Decoration>, from: number, text: string) {
+function highlightMaestroLine(builder: Range<Decoration>[], from: number, text: string) {
   const trimmed = text.trimStart();
   const offset = text.length - trimmed.length;
   if (!trimmed) return;
@@ -251,7 +251,7 @@ function highlightMaestroLine(builder: RangeSetBuilder<Decoration>, from: number
   highlightNumbers(builder, from, text, offset);
 }
 
-function highlightNumbers(builder: RangeSetBuilder<Decoration>, from: number, text: string, start: number) {
+function highlightNumbers(builder: Range<Decoration>[], from: number, text: string, start: number) {
   const numberPattern = /[-+]?(?:\d+\.\d*|\.\d+|\d+)(?:[Ee][-+]?\d+)?/g;
   const offset = Math.max(0, start);
   const slice = text.slice(offset);
@@ -265,9 +265,9 @@ function firstTokenLength(text: string) {
   return text.match(/^\S+/)?.[0].length ?? text.length;
 }
 
-function markRange(builder: RangeSetBuilder<Decoration>, from: number, start: number, end: number, mark: Decoration) {
+function markRange(builder: Range<Decoration>[], from: number, start: number, end: number, mark: Decoration) {
   const clampedStart = Math.max(0, start);
   const clampedEnd = Math.min(Math.max(clampedStart, end), activeLineLength);
   if (clampedEnd <= clampedStart) return;
-  builder.add(from + clampedStart, from + clampedEnd, mark);
+  builder.push(mark.range(from + clampedStart, from + clampedEnd));
 }

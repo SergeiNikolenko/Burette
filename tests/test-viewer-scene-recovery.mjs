@@ -151,6 +151,53 @@ for (const failure of ['throw', 'empty']) {
 }
 console.log('Scene switching, hidden presets, aligned reloads and partial builder failures passed');
 
+// A representation preset must not invalidate the receptor+SDF pose cache.
+// The next step should replace only the foreground at the existing camera.
+{
+  const docking = { kind: 'docking', sdfPoseOverlayAvailable: true, poses: [{ label: 'Pose 1' }, { label: 'Pose 2' }] };
+  const poseViewer = { plugin: {
+    clear: async () => { throw Error('Preset must not reload the scene'); },
+    builders: { data: { rawData() {} }, structure: { parseTrajectory() {}, hierarchy: { applyPreset() {} } } },
+  } };
+  const state = { viewer: poseViewer, key: 'old-style', receptorRefs: ['receptor'], backgroundRefs: [], activeRefs: ['ligand-1'], activeIndex: 0 };
+  const context = {
+    activeMolstarPrepared: docking, activeConfig: { molstarStyle: 'ball-and-stick' }, activeSdfPoseMode: 'single',
+    activeDockingPoseCollectionState: state,
+    configuredMolstarStyle: config => config.molstarStyle,
+    dockingSceneBackgroundStyle: value => value, readSdfCollectionContextStyle: () => 'match',
+    readSdfCollectionContextOpacity: () => 0.2, readSdfCollectionContextColor: () => 'gray',
+    dockingPoseCollectionStateKey: (_prepared, style) => style,
+    dockingPoseCollectionStateStillLoaded: () => true,
+    molstarStructuresByRefs: () => [], applySdfCollectionMolstarStyle: async () => {},
+    document: { querySelector: () => null }, updateStructureOverlayToggleButton() {},
+    applyMolstarWaterLineRepresentation: async () => {},
+    switchCachedPoseLayer: async (_viewer, target, index) => { target.activeIndex = index; target.activeRefs = [`ligand-${index + 1}`]; },
+  };
+  runInNewContext(extract('resyncDockingSceneAfterRestyle') + extract('applyDockingPoseCollectionVisibilityNow'), context);
+  context.applyDockingPoseCollectionVisibility = context.applyDockingPoseCollectionVisibilityNow;
+  await context.resyncDockingSceneAfterRestyle(poseViewer);
+  await context.applyDockingPoseCollectionVisibilityNow(poseViewer, docking, 1, { focus: false });
+  assert.deepEqual({ key: state.key, receptor: state.receptorRefs, active: state.activeRefs, index: state.activeIndex }, {
+    key: 'ball-and-stick', receptor: ['receptor'], active: ['ligand-2'], index: 1,
+  });
+}
+
+// Light/outline appearance is independent of the geometric representation.
+for (const appearance of ['illustrative', 'lit']) {
+  const applied = [];
+  const context = {
+    activeConfig: { appearance }, normalizeMolstarStyle: value => value,
+    sdfCollectionRepresentationForStyle: () => ({}),
+    applyMolstarRepresentationsToStructures: async () => applied.push('geometry'),
+    configuredMolstarAppearance: config => config.appearance,
+    applyMolstarAppearance: async (_viewer, value) => applied.push(value),
+  };
+  const apply = runInNewContext(extract('applySdfCollectionMolstarStyle') + '\napplySdfCollectionMolstarStyle', context);
+  await apply({}, 'ball-and-stick', [{}]);
+  assert.deepEqual(applied, ['geometry', appearance]);
+}
+console.log('Docking preset keeps receptor/pose cache and independent appearance');
+
 // Old controls remain alive briefly while the next scene is loading. Their
 // alignment must not touch either another viewer or new data in the same one.
 let alignmentCommits = 0;
