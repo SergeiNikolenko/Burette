@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
+import { spawnSync } from 'node:child_process';
 import { snapshotNativeResources } from '../plugins/burette-agent/mcp/lib/native-resource-snapshot.mjs';
 import { readMcpAppAsset } from '../scripts/mcp-app-assets.mjs';
 
@@ -30,4 +31,26 @@ test('mounted server retains one resource generation after installer removes its
     resources.dispose();
     await assert.rejects(access(resources.assetRoot));
   } finally { resources?.dispose(); await rm(root, { recursive: true, force: true }); }
+});
+
+test('a new server removes generations left by servers that were killed', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'burette-resource-test-'));
+  const exited = spawnSync(process.execPath, ['-e', '']);
+  const orphan = join(tmpdir(), `burette-mcp-resources-${exited.pid}-orphan`);
+  const live = join(tmpdir(), `burette-mcp-resources-${process.ppid}-live`);
+  let resources;
+  try {
+    await mkdir(join(root, 'native-workspace'));
+    await writeFile(join(root, 'native-workspace.html'), '');
+    await writeFile(join(root, 'local-viewer.html'), '');
+    await mkdir(orphan);
+    await mkdir(live);
+    resources = await snapshotNativeResources(root);
+    await assert.rejects(access(orphan));
+    await access(live);
+    assert.match(resources.assetRoot, new RegExp(`burette-mcp-resources-${process.pid}-`));
+  } finally {
+    resources?.dispose();
+    await Promise.all([root, orphan, live].map((path) => rm(path, { recursive: true, force: true })));
+  }
 });
