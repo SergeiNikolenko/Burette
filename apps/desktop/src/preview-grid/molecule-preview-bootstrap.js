@@ -5,7 +5,7 @@
   window.BuretteDataBase64 = input.data;
   let errors = 0;
   const report = message => {
-    if (errors++ < 10) window.parent.postMessage({ source: 'burette-inspector-error', message: String(message).slice(0, 1024) }, '*');
+    if (errors++ < 10) window.parent.postMessage({ source: 'burette-inspector-error', channel: input.config.inspectorChannel, message: String(message).slice(0, 1024) }, '*');
   };
   const originalError = console.error.bind(console);
   console.error = (...parts) => {
@@ -19,7 +19,7 @@
     start = event.target instanceof HTMLCanvasElement && event.button === 0 ? { x: event.clientX, y: event.clientY } : null;
   }, true);
   document.addEventListener('pointerup', event => {
-    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 4) window.parent.postMessage({ source: 'burette-inspector-open' }, '*');
+    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) < 4) window.parent.postMessage({ source: 'burette-inspector-open', channel: input.config.inspectorChannel }, '*');
     start = null;
   }, true);
   document.addEventListener('pointercancel', () => { start = null; });

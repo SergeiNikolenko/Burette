@@ -13,15 +13,16 @@ export default function GridMolecule3D({ molblock, theme, height, onOpen }: { mo
   const initialMolblock = initial.current;
   const open = useRef(onOpen);
   open.current = onOpen;
-  const html = useMemo(() => {
-    if (!initialMolblock) return "<!doctype html><html></html>";
+  const { html, channel } = useMemo(() => {
+    if (!initialMolblock) return { html: "<!doctype html><html></html>", channel: "" };
+    const channel = crypto.randomUUID();
     const config = { format: "mol", molstarFormat: "mol", renderer: "molstar", label: "Molecule", appViewer: true,
-      inspectorPreview: true, autoFocusStructure: true, theme, canvasBackground: theme === "dark" ? "#111111" : "#ffffff",
+      inspectorPreview: true, inspectorChannel: channel, autoFocusStructure: true, theme, canvasBackground: theme === "dark" ? "#111111" : "#ffffff",
       molstarPreset: "automatic", molstarStyle: "illustrative", xyzrenderAvailable: false, sdfGrid: false,
       defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" } };
     const data = btoa(Array.from(new TextEncoder().encode(initialMolblock), byte => String.fromCharCode(byte)).join(""));
     const scripts = ["molstar.js", "viewer-shell.js", "renderer-view-state.js", "molstar-preset-preview-controller.js", "color-picker.js", "sequence-panel.js", "native-viewer-menus.js", "scene-file-actions.js", "viewer.js"];
-    return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:${theme === "dark" ? "dark" : "light"};background:${theme === "dark" ? "#111111" : "#ffffff"}}</style>
+    return { channel, html: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:${theme === "dark" ? "dark" : "light"};background:${theme === "dark" ? "#111111" : "#ffffff"}}</style>
       <link rel="stylesheet" href="${asset("molstar.css")}"><link rel="stylesheet" href="${asset("viewer-runtime.css")}">
       <style>html,body,#app{margin:0;width:100%;height:100%;overflow:hidden}#status,.msp-toast-container,.msp-highlight-toast-wrapper{display:none!important}
       #buret-toolbar{left:auto!important;right:4px!important;top:4px!important;bottom:auto!important;width:auto!important}
@@ -35,12 +36,12 @@ export default function GridMolecule3D({ molblock, theme, height, onOpen }: { mo
       <script type="application/json" id="burette-inspector-input">${JSON.stringify({ config, data }).replaceAll("<", "\\u003c")}</script>
       <script src="${new URL(bootstrapUrl, window.location.href).href}"></script>
       ${scripts.map(name => `<script src="${asset(name)}"></script>`).join("")}
-      </body></html>`;
+      </body></html>` };
   }, [theme, initialMolblock]);
   useEffect(() => {
-    const send = () => frame.current?.contentWindow?.postMessage({ source: "burette-inspector-host", molblock }, "*");
+    const send = () => frame.current?.contentWindow?.postMessage({ source: "burette-inspector-host", channel, molblock }, "*");
     const ready = (event: MessageEvent) => {
-      if (event.source !== frame.current?.contentWindow) return;
+      if (event.source !== frame.current?.contentWindow || event.data?.channel !== channel) return;
       if (event.data?.source === "burette-inspector-ready") send();
       if (event.data?.source === "burette-inspector-error") logFrontendError("inspector-preview", String(event.data.message).slice(0, 1024));
       if (event.data?.source === "burette-inspector-open") open.current();
@@ -48,6 +49,6 @@ export default function GridMolecule3D({ molblock, theme, height, onOpen }: { mo
     window.addEventListener("message", ready);
     const timer = window.setTimeout(send, 60);
     return () => { window.clearTimeout(timer); window.removeEventListener("message", ready); };
-  }, [molblock, html]);
+  }, [molblock, html, channel]);
   return <iframe ref={frame} className="grid-molecule-3d" title="Molecule 3D preview" style={{ height }} srcDoc={html} sandbox="allow-scripts allow-same-origin allow-downloads" />;
 }
