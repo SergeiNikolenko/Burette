@@ -1548,11 +1548,10 @@ assert.doesNotMatch(editorTabs, /className="tab-history-controls"/);
 assert.match(editorTabs, /import \{ CloseIcon \} from "\.\.\/close-icon"/);
 assert.match(editorTabs, /<CloseIcon size=\{13\} \/>/);
 assert.match(appLayout, /className="chrome-leading-controls"/);
-const panelsMenu = await source("apps/desktop/src/components/workspace-panes/panels-menu.tsx");
-assert.match(appLayout, /<PanelsMenu/);
-for (const [state, action, label] of [["sideOpen", "toggleSide", "Side panel"], ["rightOpen", "toggleRight", "Right dock"], ["bottomOpen", "toggleBottom", "Bottom dock"]]) {
-  assert.ok(panelsMenu.includes(`checked={${state}} onCheckedChange={${action}}>${label}</DropdownMenuCheckboxItem>`), `${label} retains its real toggle and state`);
-}
+// The trailing title-bar button toggles the right dock directly; the bottom
+// dock opens from its shortcut only.
+assert.match(appLayout, /<RightDockToggle open=\{rightDockOpen\} toggle=\{\(\) => actions\.toggleDock\("right"\)\} \/>/);
+assert.doesNotMatch(appLayout, /toggleDock\("bottom"\)/);
 
 assert.match(appLayout, /from "\.\/shortcut-tooltip"/);
 assert.doesNotMatch(appLayout, /<ShortcutTooltip label=\{state\.sidebarOpen \? "Hide sidebar" : "Show sidebar"\} shortcut=\{"⌘\\\\"\} \/>/);

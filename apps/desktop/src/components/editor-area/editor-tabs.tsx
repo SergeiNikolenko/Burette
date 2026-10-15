@@ -42,7 +42,7 @@ export function EditorTabs({
   readOnly?: boolean;
 }) {
   const workspaceMenus = useWorkspaceMenus();
-  // Screens moved to the side panel or the floating window leave the strip.
+  // A screen moved to the floating window leaves the strip.
   const visibleTabs = state.tabs.filter(isMainTab);
   const activeTabIndex = visibleTabs.findIndex((tab) => tab.id === state.activeTabId);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);

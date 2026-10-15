@@ -47,7 +47,6 @@ export const SHORTCUT_DEFINITIONS = [
   { id: "view.toggle-sidebar", label: "Toggle sidebar", description: "Show or hide the project and structure browser.", scope: "menu", defaultAccelerator: "CmdOrCtrl+B" },
   { id: "view.toggle-bottom-panel", label: "Toggle bottom dock", description: "Show or hide the bottom workspace dock.", scope: "menu", defaultAccelerator: "CmdOrCtrl+J" },
   { id: "view.toggle-inspector", label: "Toggle right dock", description: "Show or hide the right workspace dock.", scope: "menu", defaultAccelerator: "CmdOrCtrl+Alt+B" },
-  { id: "view.toggle-side-panel", label: "Toggle side panel", description: "Show or hide the side panel, opening a new page there when it is empty.", scope: "menu", defaultAccelerator: "CmdOrCtrl+Alt+S" },
   { id: "view.zoom-in", label: "Zoom in", description: "Scale all window content up one step.", scope: "menu", defaultAccelerator: "CmdOrCtrl+=" },
   { id: "view.zoom-out", label: "Zoom out", description: "Scale all window content down one step.", scope: "menu", defaultAccelerator: "CmdOrCtrl+-" },
   { id: "view.zoom-actual", label: "Actual size", description: "Reset window content scaling to 100%.", scope: "menu", defaultAccelerator: "CmdOrCtrl+0" },

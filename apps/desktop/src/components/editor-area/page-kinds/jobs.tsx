@@ -3,8 +3,8 @@ import { definePageKind } from "./types";
 
 export type JobsLocation = { kind: "jobs" };
 
-// The Jobs list as a screen of its own, so it can sit in the main strip, the
-// side panel or the floating window next to the structure it is computing.
+// The Jobs list as a screen of its own, so it can sit in the main strip or the
+// floating window next to the structure it is computing.
 export const jobsKind = definePageKind<"jobs", JobsLocation>({
   kind: "jobs",
   title: () => "Jobs",

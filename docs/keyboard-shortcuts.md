@@ -33,7 +33,6 @@ or the hosted MCP widget is open.
 | Cmd+B | Toggle sidebar |
 | Cmd+Option+B | Toggle Inspector (right dock) |
 | Cmd+J | Toggle bottom panel |
-| Cmd+Option+S | Toggle the side panel; an empty side panel opens a new page |
 | Cmd+. | Annotate the view: mark regions and send comments to the agent (agent plugin) |
 | Cmd+\ | Toggle sidebar (browser runtime) |
 | Cmd+= | Zoom in window content (desktop app) |

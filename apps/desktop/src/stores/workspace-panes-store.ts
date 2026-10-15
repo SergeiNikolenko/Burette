@@ -2,37 +2,25 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { workspaceStorageKey } from "../lib/window-scope";
 
-// Geometry of the two secondary panes. Which screen each one shows is a
-// property of the tab itself (`MoleculeTab.pane` in the molecule store), so
-// this store only remembers how the panes are laid out.
+// Geometry of the floating window. Which screen it shows is a property of the
+// tab itself (`MoleculeTab.pane` in the molecule store), so this store only
+// remembers how the window is laid out.
 export type FloatingPaneRect = { x: number; y: number; width: number; height: number };
 
 type WorkspacePanesState = {
-  sideWidth: number;
-  sideHidden: boolean;
   floating: FloatingPaneRect;
   floatingMinimized: boolean;
-  setSideWidth: (width: number) => void;
-  setSideHidden: (hidden: boolean) => void;
   setFloatingRect: (rect: FloatingPaneRect) => void;
   setFloatingMinimized: (minimized: boolean) => void;
 };
 
-type PersistedWorkspacePanes = Pick<WorkspacePanesState, "sideWidth" | "sideHidden" | "floating" | "floatingMinimized">;
+type PersistedWorkspacePanes = Pick<WorkspacePanesState, "floating" | "floatingMinimized">;
 
-export const SIDE_PANE_MIN_WIDTH = 320;
-export const SIDE_PANE_DEFAULT_WIDTH = 440;
 // The atlas hotkey window: 470 x 640 by default, at least 400 x 400.
 export const FLOATING_PANE_MIN_WIDTH = 400;
 export const FLOATING_PANE_MIN_HEIGHT = 400;
 
 const DEFAULT_FLOATING: FloatingPaneRect = { x: -1, y: -1, width: 470, height: 640 };
-
-export function normalizeSideWidth(width: unknown) {
-  return typeof width === "number" && Number.isFinite(width)
-    ? Math.max(SIDE_PANE_MIN_WIDTH, Math.min(1200, Math.round(width)))
-    : SIDE_PANE_DEFAULT_WIDTH;
-}
 
 function finite(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? Math.round(value) : fallback;
@@ -65,12 +53,8 @@ export function placeFloatingRect(rect: FloatingPaneRect, viewport: { width: num
 export const useWorkspacePanesStore = create<WorkspacePanesState>()(
   persist<WorkspacePanesState, [], [], PersistedWorkspacePanes>(
     (set) => ({
-      sideWidth: SIDE_PANE_DEFAULT_WIDTH,
-      sideHidden: false,
       floating: DEFAULT_FLOATING,
       floatingMinimized: false,
-      setSideWidth: (width) => set({ sideWidth: normalizeSideWidth(width) }),
-      setSideHidden: (sideHidden) => set({ sideHidden }),
       setFloatingRect: (rect) => set({ floating: normalizeFloatingRect(rect) }),
       setFloatingMinimized: (floatingMinimized) => set({ floatingMinimized }),
     }),
@@ -79,8 +63,6 @@ export const useWorkspacePanesStore = create<WorkspacePanesState>()(
       storage: createJSONStorage(() => window.BuretteMcpWorkspace?.storage ?? localStorage),
       version: 1,
       partialize: (state) => ({
-        sideWidth: state.sideWidth,
-        sideHidden: state.sideHidden,
         floating: state.floating,
         floatingMinimized: state.floatingMinimized,
       }),
@@ -88,8 +70,6 @@ export const useWorkspacePanesStore = create<WorkspacePanesState>()(
         const stored = persisted as Partial<PersistedWorkspacePanes> | undefined;
         return {
           ...current,
-          sideWidth: normalizeSideWidth(stored?.sideWidth),
-          sideHidden: stored?.sideHidden === true,
           floating: normalizeFloatingRect(stored?.floating),
           floatingMinimized: stored?.floatingMinimized === true,
         };

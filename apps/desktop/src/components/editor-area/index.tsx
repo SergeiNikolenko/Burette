@@ -26,7 +26,7 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
     () => warmMountedTabs(tabs, activeTabIndex, recentlyUsedTabIds, warmPageLimit, dirtyTabIds),
     [activeTabIndex, recentlyUsedTabIds, tabs, warmPageLimit, dirtyTabIds],
   );
-  const paneVisibility = usePaneVisibility(tabs, state.page === "settings");
+  const paneVisibility = usePaneVisibility(state.page === "settings");
 
   useEffect(() => {
     setRecentlyUsedTabIds((current) => {
@@ -40,7 +40,7 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
   }, [activeTabId, tabs]);
 
   // Every screen stays a child of this one stack wherever it is shown: the
-  // side panel and the floating window only reposition its surface. Moving an
+  // floating window only repositions its surface. Moving an
   // iframe to another parent reloads it, which would rebuild the Mol* scene.
   return (
     <div className="page-stack">

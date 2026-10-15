@@ -598,7 +598,6 @@ pub(super) fn sync_native_menu<R: Runtime>(
     set_enabled(&app, "view.toggle-sidebar", true)?;
     set_enabled(&app, "view.toggle-inspector", true)?;
     set_enabled(&app, "view.toggle-bottom-panel", true)?;
-    set_enabled(&app, "view.toggle-side-panel", true)?;
     set_checked(&app, "view.toggle-sidebar", state.sidebar_open)?;
     set_checked(&app, "view.toggle-inspector", state.right_dock_open)?;
     set_checked(&app, "view.toggle-bottom-panel", state.bottom_dock_open)?;
@@ -889,7 +888,6 @@ pub(super) fn reset_native_menu_for_no_windows<R: Runtime>(
         "view.toggle-sidebar",
         "view.toggle-inspector",
         "view.toggle-bottom-panel",
-        "view.toggle-side-panel",
         "view.grid-cards",
         "view.grid-table",
         "view.grid-properties",
