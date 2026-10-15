@@ -99,7 +99,11 @@ const contractScripts = {
   "test-molecule-store-behavior.mjs": () => import("./test-molecule-store-behavior.mjs"),
   "test-markdown-block-layout.mjs": () => import("./test-markdown-block-layout.mjs"),
   "test-text-find.mjs": () => import("./test-text-find.mjs"),
+  "test-structure-text-highlighting.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-structure-text-highlighting.test.ts", import.meta.url))]),
+  "test-smoothing-education.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-smoothing-education.test.tsx", import.meta.url))]),
+  "test-screen-guides.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-screen-guides.test.tsx", import.meta.url))]),
   // Mol* captures its scheduler globals on import; keep real DOM tests separate from store mocks.
+  "test-docking-sdf-poses.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-docking-sdf-poses.mjs", import.meta.url))]),
   "test-mmcif-block-loading.mjs": () => promisify(execFile)(process.execPath, [fileURLToPath(new URL("./test-mmcif-block-loading.mjs", import.meta.url))]),
   "test-shell-store-behavior.mjs": () => import("./test-shell-store-behavior.mjs"),
   "test-fep-setup-store.mjs": () => import("./test-fep-setup-store.mjs"),

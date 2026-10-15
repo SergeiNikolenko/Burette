@@ -46,6 +46,7 @@ import type { GridFilterModel } from "./types";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { getMdsmoothCapabilities, installDeepTica, runMdsmooth, type MdsmoothMode, type MdsmoothProgress, type MdsmoothResult, type MdsmoothSignal } from "../lib/mdsmooth";
 import { Progress } from "@/components/ui/progress";
+import { claimContextualGuide, markContextualGuideSeen, releaseContextualGuide, resetOnboardingEvent } from "./onboarding/progress";
 import { isTauriRuntime } from "../lib/tauri";
 import { showMacAvailability } from "../lib/browser-availability";
 import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings, HoveredGridRow } from "../types";
@@ -159,7 +160,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
   const [sdfContextOpacity, setSdfContextOpacity] = useState(SDF_CONTEXT_OPACITY_DEFAULT);
   const [xtbOpen, setXtbOpen] = useState(true);
   const [xtbOperation, setXtbOperation] = useState<keyof typeof XTB_ACTION_TOOLTIPS>("optimize");
-  const [trajectorySmoothingOpen, setTrajectorySmoothingOpen] = useState(true);
+  const [trajectorySmoothingOpen, setTrajectorySmoothingOpen] = useState(false);
   const [trajectorySmoothingAdvanced, setTrajectorySmoothingAdvanced] = useState(false);
   const [trajectorySmoothingPreset, setTrajectorySmoothingPreset] = useState<"light" | "balanced" | "strong">("balanced");
   const [trajectorySmoothingTargetFrames, setTrajectorySmoothingTargetFrames] = useState(50);
@@ -865,11 +866,30 @@ function TrajectorySmoothingCard({
   const [powerRetained, setPowerRetained] = useState(0.95);
   const [filterOrder, setFilterOrder] = useState(5);
   const [includeEnds, setIncludeEnds] = useState(true);
+  const [showEducation, setShowEducation] = useState(false);
   const [kineticStates, setKineticStates] = useState(5);
   const [lagFrames, setLagFrames] = useState(Math.max(1, Math.min(50, Math.round(frameCount / 20))));
   const failedAutoUpdate = useRef<string | null>(null);
   const requestSerial = useRef(0);
   const updatedTimer = useRef<number | null>(null);
+  const openSettings = () => {
+    setOpen(true);
+    if (claimContextualGuide("trajectory-smoothing")) setShowEducation(true);
+  };
+  const dismissEducation = () => {
+    markContextualGuideSeen("trajectory-smoothing");
+    releaseContextualGuide("trajectory-smoothing");
+    setShowEducation(false);
+  };
+  useEffect(() => {
+    setShowEducation(false);
+    const reset = () => setShowEducation(false);
+    window.addEventListener(resetOnboardingEvent, reset);
+    return () => {
+      window.removeEventListener(resetOnboardingEvent, reset);
+      releaseContextualGuide("trajectory-smoothing");
+    };
+  }, [document.id]);
   const settingsSignature = JSON.stringify([document.id, document.runtimePath, playback?.sourcePath, signal, mode, preset, targetFrames, referenceFrame, align, rmsdFilter, cutoffFrequency, powerRetained, filterOrder, includeEnds, kineticStates, lagFrames]);
   const latestSettingsSignature = useRef(settingsSignature);
   latestSettingsSignature.current = settingsSignature;
@@ -1019,7 +1039,7 @@ function TrajectorySmoothingCard({
     const toggle = (event: Event) => {
       const detail = (event as CustomEvent<Record<string, unknown>>).detail;
       if (String(detail?.documentId || "") !== document.id) return;
-      setOpen(true);
+      openSettings();
       if (!built) void build();
       else changeView(view === "smoothed" ? "original" : "smoothed");
     };
@@ -1028,12 +1048,15 @@ function TrajectorySmoothingCard({
   });
   return (
     <TooltipProvider delayDuration={180}>
-      <CollapsibleSection title="Smooth motion" open={open} onOpenChange={setOpen}
+      <CollapsibleSection title="Smooth motion" open={open} onOpenChange={next => {
+        if (next) openSettings();
+        else { setOpen(false); if (showEducation) dismissEducation(); }
+      }}
         className="structure-inspector-section trajectory-smoothing-card"
         actions={
           <SegmentedControl aria-label="Smooth motion" value={built && view === "smoothed" ? "on" : "off"} onValueChange={(value) => {
             if (value === "off" && built) changeView("original");
-            if (value === "on") { if (built) changeView("smoothed"); else void build(); }
+            if (value === "on") { openSettings(); if (built) changeView("smoothed"); else void build(); }
           }}>
             <SegmentedControlItem value="off">Off</SegmentedControlItem>
             <SegmentedControlItem value="on">On</SegmentedControlItem>
@@ -1041,6 +1064,10 @@ function TrajectorySmoothingCard({
         }
       >
         <div className="grid min-w-0 gap-3">
+          {showEducation ? <Alert role="note" aria-label="About smoothing">
+            <AlertDescription>Smooth motion selects key conformations from the aligned trajectory and interpolates coordinates between them. Light retains more keyframes; Strong retains fewer. Off restores original playback; your source file stays unchanged.</AlertDescription>
+            <AlertAction><Button variant="secondary" size="xs" onClick={dismissEducation}>Got it</Button></AlertAction>
+          </Alert> : null}
           <SegmentedControl className="w-full" aria-label="Smoothing strength" value={preset} disabled={mode === "kinetic"} onValueChange={(value) => {
             if (value === "light" || value === "balanced" || value === "strong") selectPreset(value);
           }}>

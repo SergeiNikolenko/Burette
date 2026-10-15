@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { Window } from "happy-dom";
 import React, { act } from "react";
 import type { ShellActions, ShellViewState } from "../apps/desktop/src/components/types";
@@ -11,6 +11,7 @@ Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import("react-dom/client");
 const { OnboardingHost, resetOnboarding } = await import("../apps/desktop/src/components/onboarding");
 const { guideForState } = await import("../apps/desktop/src/components/onboarding/guides");
+const { claimContextualGuide, markContextualGuideSeen, releaseContextualGuide, readOnboardingProgress, saveOnboardingProgress } = await import("../apps/desktop/src/components/onboarding/progress");
 const initial = { page: "viewer", preferences: { theme: "auto" }, documents: [], recentStructures: [], sidebarProjects: [], tabs: [], activeDocument: null, activeTab: null } as unknown as ShellViewState;
 const panel = () => document.querySelector('[role="dialog"]');
 const title = () => panel()?.querySelector('[data-slot="dialog-title"]')?.textContent;
@@ -51,25 +52,19 @@ test("first run has welcome, real appearance controls and three working start ac
   }
 });
 
-test("contextual education appears once per screen and survives remount", async () => {
+test("navigation never opens contextual education after the welcome or on remount", async () => {
   localStorage.clear();
   const view = await mountOnboarding();
-  const sketch = { ...initial, activeTab: { location: { kind: "ketcher" } } } as ShellViewState;
+  const destinations = ["ketcher", "jobs", "settings", "document", "file"];
   try {
     await finishIntroduction();
-    await view.render(sketch);
-    expect(title()).toBe("Draw a molecule");
-    await click("Start drawing");
-    expect(panel()).toBeNull();
-    await view.render(initial); await view.render(sketch);
-    expect(panel()).toBeNull();
-    await view.render({ ...initial, activeTab: { location: { kind: "jobs" } } } as ShellViewState);
-    expect(title()).toBe("Calculations");
-    await click("Don't show tips");
-    await view.render({ ...initial, activeTab: { location: { kind: "document", path: "/notes.pdf" } } } as ShellViewState);
-    expect(panel()).toBeNull();
+    for (const kind of destinations) {
+      await view.render({ ...initial, activeTab: { location: { kind } } } as ShellViewState);
+      expect(panel()).toBeNull();
+    }
+    expect(readOnboardingProgress().seen).toEqual(["launcher"]);
   } finally { await view.dispose(); }
-  const restored = await mountOnboarding(sketch);
+  const restored = await mountOnboarding({ ...initial, activeTab: { location: { kind: "ketcher" } } } as ShellViewState);
   try { expect(panel()).toBeNull(); } finally { await restored.dispose(); }
 });
 
@@ -103,21 +98,103 @@ test("established workspaces and hosted workspaces are not interrupted", async (
   finally { await embedded.dispose(); delete window.__BURETTE_HOSTED_MCP_WIDGET__; }
 });
 
-test("context CTA opens the real settings destination and Escape dismisses a visited screen", async () => {
+test("Escape dismisses welcome and disables future automatic education", async () => {
   localStorage.clear();
-  const calls: string[] = [];
-  const view = await mountOnboarding(initial, { openSettingsSection: section => calls.push(section) });
+  const view = await mountOnboarding();
   try {
-    await finishIntroduction();
-    await view.render({ ...initial, activeTab: { location: { kind: "settings", section: "general" } } } as ShellViewState);
-    expect(title()).toBe("Make Burette yours");
-    await click("Choose appearance");
-    expect(calls).toEqual(["appearance"]);
-    await view.render({ ...initial, activeTab: { location: { kind: "jobs" } } } as ShellViewState);
-    expect(title()).toBe("Calculations");
     await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
     expect(panel()).toBeNull();
+    expect(readOnboardingProgress()).toMatchObject({ enabled: false, welcomeCompleted: true });
+    expect(claimContextualGuide("trajectory-smoothing")).toBe(false);
   } finally { await view.dispose(); }
+});
+
+const enableContextualGuides = () => {
+  resetOnboarding();
+  saveOnboardingProgress({ enabled: true, welcomeCompleted: true, seen: [] });
+};
+
+test("welcome completion preserves guidance recorded by another mounted feature", async () => {
+  localStorage.clear();
+  resetOnboarding();
+  const view = await mountOnboarding();
+  try {
+    await click("Get started");
+    await click("Continue");
+    saveOnboardingProgress({ enabled: true, welcomeCompleted: true, seen: [] });
+    expect(claimContextualGuide("trajectory-smoothing")).toBe(true);
+    await click("Explore on my own");
+    expect(readOnboardingProgress().seen).toEqual(["trajectory-smoothing", "launcher"]);
+    expect(readOnboardingProgress().contextual?.count).toBe(1);
+    releaseContextualGuide("trajectory-smoothing");
+  } finally { await view.dispose(); }
+});
+
+test("feature claims persist immediately, and dismissal or release never makes a tip eligible again", () => {
+  enableContextualGuides();
+  expect(claimContextualGuide("trajectory-smoothing")).toBe(true);
+  expect(readOnboardingProgress().seen).toEqual(["trajectory-smoothing"]);
+  expect(JSON.parse(localStorage.getItem("burette.onboarding.v2")!).seen).toEqual(["trajectory-smoothing"]);
+  markContextualGuideSeen("trajectory-smoothing");
+  releaseContextualGuide("trajectory-smoothing");
+  expect(claimContextualGuide("trajectory-smoothing")).toBe(false);
+  expect(readOnboardingProgress().seen).toEqual(["trajectory-smoothing"]);
+});
+
+test("one active guide, persisted cooldown and daily budget limit contextual interruptions", () => {
+  enableContextualGuides();
+  let now = new Date("2026-10-13T12:00:00Z").getTime();
+  const clock = spyOn(Date, "now").mockImplementation(() => now);
+  try {
+    expect(claimContextualGuide("trajectory-smoothing")).toBe(true);
+    now += 10 * 60 * 1000;
+    expect(claimContextualGuide("pose-compare")).toBe(false);
+    releaseContextualGuide("pose-compare");
+    expect(claimContextualGuide("pose-compare")).toBe(false);
+    releaseContextualGuide("trajectory-smoothing");
+    now -= 1;
+    expect(claimContextualGuide("pose-compare")).toBe(false);
+    now += 1;
+    expect(claimContextualGuide("pose-compare")).toBe(true);
+    releaseContextualGuide("pose-compare");
+    now += 10 * 60 * 1000;
+    // Re-reading saved progress retains the limit across mounted feature controls.
+    saveOnboardingProgress(readOnboardingProgress());
+    expect(claimContextualGuide("scene-compose")).toBe(false);
+    expect(readOnboardingProgress().seen).toEqual(["trajectory-smoothing", "pose-compare"]);
+    now += 24 * 60 * 60 * 1000;
+    expect(claimContextualGuide("scene-compose")).toBe(true);
+    releaseContextualGuide("scene-compose");
+  } finally { clock.mockRestore(); }
+});
+
+test("policy requires completed enabled onboarding and excludes hosted or established users", () => {
+  resetOnboarding();
+  expect(claimContextualGuide("trajectory-smoothing")).toBe(false);
+  saveOnboardingProgress({ enabled: false, welcomeCompleted: true, seen: [] });
+  expect(claimContextualGuide("trajectory-smoothing")).toBe(false);
+  localStorage.clear();
+  localStorage.setItem("burette.screen-guides.v1", '{"automatic":true}');
+  expect(claimContextualGuide("trajectory-smoothing")).toBe(false);
+  enableContextualGuides();
+  window.__BURETTE_HOSTED_MCP_WIDGET__ = true;
+  try { expect(claimContextualGuide("trajectory-smoothing")).toBe(false); }
+  finally { delete window.__BURETTE_HOSTED_MCP_WIDGET__; }
+  expect(readOnboardingProgress().seen).toEqual([]);
+  localStorage.setItem("burette.onboarding.v2", "corrupt");
+  expect(claimContextualGuide("trajectory-smoothing")).toBe(false);
+});
+
+test("reset clears active guide, seen, cooldown and budget and requires welcome again", () => {
+  enableContextualGuides();
+  expect(claimContextualGuide("trajectory-smoothing")).toBe(true);
+  resetOnboarding();
+  expect(readOnboardingProgress()).toMatchObject({ enabled: true, welcomeCompleted: false, seen: [] });
+  expect(readOnboardingProgress().contextual).toBeUndefined();
+  expect(claimContextualGuide("trajectory-smoothing")).toBe(false);
+  saveOnboardingProgress({ ...readOnboardingProgress(), welcomeCompleted: true });
+  expect(claimContextualGuide("trajectory-smoothing")).toBe(true);
+  releaseContextualGuide("trajectory-smoothing");
 });
 
 test("file renderer and agent settings get the relevant education screen", () => {

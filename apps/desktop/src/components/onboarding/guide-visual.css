@@ -1,95 +1,52 @@
 .guide-visual {
-  --guide-a: #f0a4c5; --guide-b: #c9b4f4; --guide-c: #ffe7c4; --guide-base: #f4d6e4;
-  --guide-ink: #3b4261; --guide-panel: rgb(255 255 255 / 90%);
-  position: relative; isolation: isolate; height: 220px; min-height: 200px; overflow: hidden;
+  --guide-a: #f0a4c5;
+  --guide-b: #b5a4f0;
+  --guide-c: #ffe3ad;
+  --guide-base: #f4d6e4;
+  position: relative;
+  isolation: isolate;
+  height: 230px;
+  overflow: hidden;
   background: radial-gradient(ellipse at 8% 90%, var(--guide-c), transparent 65%), radial-gradient(ellipse at 88% 5%, var(--guide-b), transparent 65%), var(--guide-base);
-  pointer-events: none; user-select: none; color: var(--guide-ink);
+  user-select: none;
 }
-.guide-palette-sky { --guide-a:#83c8ed; --guide-b:#b0b1ed; --guide-c:#d4f2ed; --guide-base:#c7dff5; }
-.guide-palette-mint { --guide-a:#91d9be; --guide-b:#84c6dd; --guide-c:#f3e7b1; --guide-base:#c5e8d5; }
-.guide-palette-ocean { --guide-a:#66c8ca; --guide-b:#879be0; --guide-c:#b8e9d5; --guide-base:#a7d8e3; }
-.guide-palette-peach { --guide-a:#f3b58e; --guide-b:#e3a9c9; --guide-c:#fff0bd; --guide-base:#f7d6c6; }
-.guide-palette-violet { --guide-a:#b5a4e8; --guide-b:#8fc5e6; --guide-c:#efc3e4; --guide-base:#d9c9f2; }
-.guide-aurora { position:absolute; z-index:-1; border-radius:50%; }
-.guide-aurora-one { width:620px; height:340px; left:-190px; top:-250px; background:var(--guide-a); box-shadow:0 36px 65px 12px var(--guide-a); transform:rotate(-24deg); opacity:.75; }
-.guide-aurora-two { width:650px; height:340px; right:-160px; bottom:-305px; border:34px solid rgb(255 255 255 / 24%); transform:rotate(-20deg); box-shadow:0 -20px 65px var(--guide-c); }
-.guide-aurora-three { width:370px; height:250px; right:-270px; top:-120px; background:var(--guide-b); box-shadow:-45px 65px 70px var(--guide-b); opacity:.7; }
-.guide-visual::after { content:""; position:absolute; inset:0; box-shadow:inset 0 -1px rgb(255 255 255 / 20%); }
-.guide-visual-stage { width:360px; height:180px; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); }
-.guide-visual-stage svg { width:16px; height:16px; flex-shrink:0; }
-.guide-window { position:relative; background:var(--guide-panel); border:1px solid rgb(255 255 255 / 78%); border-radius:12px; box-shadow:0 14px 36px -12px rgb(44 48 98 / 27%), 0 2px 6px rgb(44 48 98 / 8%); overflow:hidden; }
-.guide-window-bar { height:19px; display:flex; align-items:center; gap:3px; padding:0 9px; border-bottom:1px solid rgb(75 85 120 / 7%); background:rgb(255 255 255 / 30%); }
-.guide-window-bar i { width:4px; height:4px; border-radius:50%; background:#bdc4d3; }
-.guide-window-bar span { margin-left:8px; width:43px; height:3px; border-radius:4px; background:#dce0e9; }
-.guide-molecule { display:block; object-fit:contain; mix-blend-mode:multiply; max-width:100%; }
-.guide-lines { display:flex; flex-direction:column; gap:6px; width:100%; }
-.guide-lines i { display:block; height:4px; width:100%; background:currentColor; opacity:.13; border-radius:3px; }
-.guide-lines i:nth-child(2n) { width:72%; }
-.guide-lines i:last-child { width:48%; }
-.guide-float { position:absolute; border:1px solid rgb(255 255 255 / 75%); background:var(--guide-panel); box-shadow:0 10px 24px -8px rgb(44 48 98 / 20%); border-radius:10px; }
-.guide-scene { width:268px; height:174px; margin:3px auto; }
-.guide-scene-canvas { height:154px; position:relative; background:radial-gradient(ellipse at 52% 70%,#edf1f9,transparent 75%); }
-.guide-scene-canvas>.guide-molecule { width:196px; height:149px; margin:auto; }
-.guide-scene-tools { position:absolute; right:9px; top:18px; display:flex; flex-direction:column; gap:13px; color:#727c97; }
-.guide-welcome-orbit { position:absolute; border:1px solid rgb(255 255 255 / 50%); width:330px; height:330px; border-radius:50%; left:25px; top:-80px; }
-.guide-welcome-collection { position:absolute; left:0; top:23px; transform:rotate(-9deg) scale(.65); transform-origin:0 0; }
-.guide-welcome-scene { position:absolute; right:2px; top:-3px; transform:rotate(7deg) scale(.9); }
-.guide-welcome-file { width:103px; height:47px; bottom:0; left:30px; transform:rotate(-5deg); display:flex; align-items:center; gap:10px; padding:10px; }
-.guide-selection { display:flex; align-items:center; gap:7px; padding:9px 12px; left:11px; bottom:11px; transform:rotate(-5deg); }
-.guide-selection span { width:14px; height:14px; border-radius:50%; background:#8cafc8; }
-.guide-selection span:nth-child(2) { background:#ce94a8; }.guide-selection span:nth-child(3) { background:#a4bb93; }
-.guide-collection { width:284px; height:164px; margin:8px auto; }
-.guide-collection-head { display:flex; gap:9px; align-items:center; padding:9px 11px; }
-.guide-collection-head span { height:5px; width:66px; border-radius:4px; background:#cbd5d9; margin-right:auto; }
-.guide-molecule-cards { display:flex; gap:7px; padding:0 9px; }
-.guide-molecule-cards>div { flex:1; min-width:0; border:1px solid #e7ebec; border-radius:6px; background:rgb(255 255 255 / 60%); padding:5px; }
-.guide-molecule-cards .guide-molecule { width:75px; height:65px; }
-.guide-molecule-cards>div>span { display:block; height:3px; background:#dce2e9; margin:3px 8px; }
-.guide-collection-table { width:310px; height:178px; margin-top:1px; transform:rotate(-3deg); }
-.guide-collection-table .guide-molecule-cards { flex-direction:column; gap:3px; }
-.guide-collection-table .guide-molecule-cards>div { display:flex; align-items:center; gap:18px; padding:1px 8px; }
-.guide-collection-table .guide-molecule { width:37px; height:32px; }
-.guide-collection-table .guide-lines { flex-direction:row; gap:15px; }
-.guide-collection-table .guide-lines i { width:36px; }
-.guide-assembly { width:117px; height:105px; right:0; bottom:-4px; transform:rotate(8deg); padding:7px; }
-.guide-assembly .guide-molecule { width:85px; height:68px; margin:auto; }
-.guide-layer-lines { padding:6px 7px; }.guide-layer-lines .guide-lines { gap:4px; }
-.guide-illustrations { display:flex; gap:10px; align-items:center; height:180px; }
-.guide-illustrations>div { width:112px; height:142px; border-radius:10px; background:#fffdf8; box-shadow:0 15px 30px -10px #81645555; border:6px solid white; display:flex; align-items:center; }
-.guide-illustrations>div:first-child { transform:rotate(-12deg) translateY(9px); }.guide-illustrations>div:nth-child(2) { transform:translateY(-9px); z-index:1; }.guide-illustrations>div:last-child { transform:rotate(12deg) translateY(9px); }
-.guide-illustrations .guide-molecule { height:118px; }
-.guide-spectrum { width:300px; height:161px; transform:rotate(-4deg); left:10px; top:10px; }
-.guide-plot-grid { position:absolute; inset:34px 17px 20px; background-image:linear-gradient(#a6afcc20 1px,transparent 1px),linear-gradient(90deg,#a6afcc20 1px,transparent 1px); background-size:28px 24px; }
-.guide-spectrum>svg { position:absolute; width:274px; height:120px; left:12px; top:30px; fill:none; stroke:#8274b7; stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; }
-.guide-plot-dot { position:absolute; top:46px; left:140px; width:8px; height:8px; border-radius:50%; background:#8c72be; box-shadow:0 0 0 5px #b6a1df33; }
-.guide-spectrum-molecule { width:89px; height:80px; bottom:0; right:0; transform:rotate(10deg); }.guide-spectrum-molecule img { height:74px; }
-.guide-sketch { width:267px; height:174px; margin:2px auto; transform:rotate(3deg); background:#fffcf6; }
-.guide-sketch>.guide-molecule { width:175px; height:151px; margin:auto; }
-.guide-sketch-tools { position:absolute; left:10px; top:31px; display:flex; flex-direction:column; gap:11px; font-size:11px; font-weight:600; align-items:center; }
-.guide-sketch-tools>span:nth-child(3) { color:#5278b8; }.guide-sketch-tools>span:last-child { color:#bd6675; }
-.guide-sketch-cursor { position:absolute; right:37px; bottom:38px; width:26px; height:26px; display:grid; place-items:center; border:1px solid #b1bacc; border-radius:6px; background:#ffffffb3; }
-.guide-code { width:291px; height:170px; margin:4px auto; transform:rotate(-3deg); background:#f7faff; }
-.guide-code-heading { display:flex; align-items:center; gap:7px; padding:9px 13px; font-size:10px; }.guide-code-heading>svg:last-child { margin-left:auto; }
-.guide-code-lines { font:9px/17px ui-monospace,monospace; }.guide-code-lines>div { display:flex; gap:14px; padding:0 12px; }.guide-code-lines span { opacity:.3; }.guide-code-lines code { color:#6183a4; }.guide-code-lines>div:nth-child(3) { background:#d8e9fa; }
-.guide-document-back { position:absolute; left:0; top:11px; transform:scale(.82) rotate(-7deg); transform-origin:0 0; }
-.guide-paper { position:absolute; right:33px; top:-2px; width:137px; height:180px; background:#fffdf8; padding:15px; border-radius:4px 13px 4px 4px; box-shadow:0 15px 25px #54547025; transform:rotate(8deg); }
-.guide-paper>.guide-lines { margin-top:10px; }.guide-paper>.guide-molecule { height:66px; width:95px; margin:auto; }
-.guide-space { width:292px; height:174px; margin:3px auto; transform:rotate(-3deg); }
-.guide-space>i { position:absolute; width:6px; height:6px; border-radius:50%; background:#8c80bd; }.guide-space>i:nth-of-type(3n) { background:#68a5b7; }.guide-space>i:nth-of-type(3n + 1) { background:#d397b4; }
-.guide-lasso { position:absolute; width:91px; height:94px; left:116px; top:45px; border:1px dashed #8c80bd; border-radius:47% 62% 35% 48%; transform:rotate(16deg); background:#b2a4e51a; }
-.guide-point-molecule { position:absolute; right:6px; top:1px; width:62px; height:55px; }
-.guide-network { position:relative; width:320px; height:170px; margin:5px auto; }.guide-network>svg { position:absolute; width:320px; height:170px; fill:none; stroke:#ffffffb0; stroke-width:3; }
-.guide-node { position:absolute; width:63px; height:57px; background:#fffefb; border:3px solid #ffffffd6; border-radius:11px; box-shadow:0 8px 18px #4b60922e; }.guide-node img { width:57px; height:51px; }.guide-node-0 { left:18px; top:55px; }.guide-node-1 { left:121px; top:4px; }.guide-node-2 { left:233px; top:53px; }.guide-node-3 { left:136px; top:116px; }
-.guide-pose { display:flex; align-items:center; gap:12px; height:180px; }.guide-pose-source { width:107px; flex-shrink:0; transform:rotate(-5deg); padding-bottom:9px; }.guide-pose-source>.guide-molecule { height:87px; }.guide-pose-source>.guide-lines { padding:0 12px; }.guide-pose-source>svg { position:absolute; bottom:12px; right:11px; color:#76a698; }.guide-pose .guide-scene { width:210px; transform:rotate(5deg); }.guide-pose-arrow { opacity:.65; }
-.guide-setup { display:flex; align-items:center; gap:21px; width:304px; height:160px; margin:10px auto; padding:20px 18px 8px; transform:rotate(-3deg); }.guide-setup>.guide-window-bar { position:absolute; top:0; left:0; right:0; }.guide-setup-molecule { position:relative; width:112px; flex-shrink:0; }.guide-setup-molecule>.guide-molecule { height:117px; }.guide-setup-molecule>svg { position:absolute; right:4px; bottom:3px; color:#6ca78e; }
-.guide-checklist { display:flex; flex-direction:column; gap:13px; font-size:10px; flex:1; }.guide-checklist>div:not(:last-child) { display:flex; align-items:center; gap:7px; }.guide-checklist svg { color:#6ca78e; width:13px; }.guide-setup-progress { height:5px; border-radius:3px; background:#dcebe4; margin-top:4px; }.guide-setup-progress i { display:block; width:80%; height:100%; background:#8ab8a1; border-radius:inherit; }
-.guide-jobs { width:280px; height:173px; margin:3px auto; transform:rotate(-3deg); }.guide-job { display:flex; align-items:center; gap:10px; padding:6px 14px; }.guide-job>div { flex:1; font-size:10px; }.guide-job>div>i { display:block; height:4px; margin-top:6px; background:#e7e5e0; border-radius:3px; }.guide-job b { display:block; height:100%; width:68%; background:#d3a385; border-radius:inherit; }.guide-job-1 b { width:38%; background:#b0a1cb; }.guide-job-2 b { width:100%; background:#8eaf9f; }.guide-job>svg { color:#a48b79; width:14px; }.guide-job-2>svg { color:#709f84; }.guide-job>.guide-molecule { width:43px; height:36px; }
-.guide-settings-pair { display:flex; align-items:center; justify-content:center; gap:16px; height:180px; }.guide-settings-pair>.guide-window { width:143px; height:150px; }.guide-settings-light { transform:rotate(-8deg) translateY(6px); }.guide-settings-dark { transform:rotate(8deg) translateY(-5px); --guide-panel:#343a52; color:#d5daed; border-color:#727b97; }.guide-settings-dark .guide-window-bar { background:#ffffff08; border-color:#ffffff12; }.guide-settings-content { padding:13px 16px; }.guide-settings-content>svg { width:19px; height:19px; margin-bottom:9px; }.guide-swatches { display:flex; gap:7px; margin-bottom:14px; }.guide-swatches i { width:14px; height:14px; border-radius:50%; background:#bec9e8; }.guide-swatches i:nth-child(2) { background:#dea5b6; }.guide-swatches i:last-child { background:#a5c9ba; }.guide-slider { height:3px; margin-top:14px; background:#b7bccb; width:100%; }.guide-slider i { display:block; position:relative; width:9px; height:9px; top:-3px; left:61%; background:#8995b6; border-radius:50%; }.guide-appearance { gap:0; }.guide-appearance .guide-settings-light { transform:rotate(-10deg) translate(6px,6px); }.guide-appearance .guide-settings-dark { transform:rotate(10deg) translate(-6px,-5px); }
-.guide-agent { display:flex; align-items:center; gap:0; height:180px; }.guide-agent-chat { width:142px; flex-shrink:0; height:147px; transform:rotate(-5deg); }.guide-chat-bubble { padding:13px 11px; margin:12px 9px; border-radius:10px 10px 2px 10px; background:#e3ebf5; }.guide-chat-reply { display:flex; gap:8px; padding:3px 10px; }.guide-chat-reply>svg { color:#7baca4; }.guide-chat-reply .guide-lines { padding-top:3px; }.guide-agent-link { background:#f9fcff; border:4px solid var(--guide-base); border-radius:50%; width:36px; height:36px; display:grid; place-items:center; flex-shrink:0; z-index:2; margin:0 -9px; }.guide-agent>.guide-scene { width:204px; transform:rotate(5deg); }.guide-agent .guide-scene-canvas>.guide-molecule { width:172px; }
-.guide-start { position:relative; height:180px; }.guide-start-folder { position:absolute; width:123px; height:125px; left:12px; top:23px; padding:20px; border-radius:12px; background:#edf7e9; box-shadow:0 10px 24px #536f6624; transform:rotate(-10deg); }.guide-start-folder>svg { width:42px; height:42px; color:#90b79c; margin-bottom:14px; }.guide-start-molecule { position:absolute; width:146px; height:166px; left:111px; top:4px; border:7px solid #fff; border-radius:10px; background:#fffdf7; box-shadow:0 15px 26px #536f6630; z-index:1; transform:rotate(3deg); }.guide-start-molecule img { height:152px; }.guide-start-sketch { position:absolute; width:112px; height:137px; right:3px; top:25px; border:6px solid #fff; border-radius:8px; background:#fffdf7; transform:rotate(14deg); box-shadow:0 10px 24px #536f6624; }.guide-start-sketch img { height:122px; }.guide-start-add { position:absolute; bottom:0; left:111px; width:32px; height:32px; display:grid; place-items:center; border:3px solid #fff; border-radius:50%; background:#b7dace; z-index:2; }
-:where(.dark,[data-theme="dark"]) .guide-visual { background:radial-gradient(ellipse at 8% 90%,color-mix(in srgb,var(--guide-c) 35%,#182438),transparent 65%),radial-gradient(ellipse at 88% 5%,color-mix(in srgb,var(--guide-b) 48%,#1c243c),transparent 65%),color-mix(in srgb,var(--guide-base) 45%,#202b40); }
-:where(.dark,[data-theme="dark"]) .guide-aurora { opacity:.4; }
-:where(.dark,[data-theme="dark"]) .guide-window,:where(.dark,[data-theme="dark"]) .guide-float { box-shadow:0 14px 36px -12px #040a214f,0 2px 6px #040a211f; }
-@media (max-width:400px) { .guide-visual { height:200px; }.guide-visual-stage { transform:translate(-50%,-50%) scale(.85); } }
-@media (prefers-reduced-motion:no-preference) { .guide-visual-stage { animation:guide-visual-enter .55s cubic-bezier(.2,.8,.2,1) both; } }
-@keyframes guide-visual-enter { from { opacity:0; } to { opacity:1; } }
+.guide-palette-sky { --guide-a: #63b9ee; --guide-b: #9198ed; --guide-c: #c4f4e5; --guide-base: #bddaf5; }
+.guide-palette-mint { --guide-a: #65cea5; --guide-b: #71b9da; --guide-c: #f5e39c; --guide-base: #b9e7d0; }
+.guide-palette-ocean { --guide-a: #41bfc4; --guide-b: #6c87df; --guide-c: #a3ecd2; --guide-base: #a7d8e3; }
+.guide-palette-peach { --guide-a: #ee9c74; --guide-b: #dc90c0; --guide-c: #fff0ad; --guide-base: #f7cdbb; }
+.guide-palette-violet { --guide-a: #a08ae8; --guide-b: #72b7e4; --guide-c: #f2b4df; --guide-base: #d4bef0; }
+.guide-aurora { position: absolute; z-index: -1; border-radius: 50%; }
+.guide-aurora-one { width: 500px; height: 250px; left: -180px; top: -200px; background: var(--guide-a); box-shadow: 0 45px 65px 20px var(--guide-a); transform: rotate(-24deg); opacity: .8; }
+.guide-aurora-two { width: 500px; height: 260px; right: -130px; bottom: -250px; border: 30px solid rgb(255 255 255 / 30%); transform: rotate(-20deg); box-shadow: 0 -25px 60px var(--guide-c); }
+.guide-visual-stage { pointer-events: none; position: absolute; width: min(78%, 340px); height: 184px; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-3deg); }
+.guide-product-screen { display: block; width: 100%; height: 100%; object-fit: contain; background: #fff; border: 3px solid rgb(255 255 255 / 90%); border-radius: 12px; box-shadow: 0 18px 40px -10px rgb(31 44 84 / 40%), 0 2px 8px rgb(31 44 84 / 12%); }
+:where(.dark, [data-theme="dark"]) .guide-visual { background: radial-gradient(ellipse at 8% 90%, color-mix(in srgb, var(--guide-c) 50%, #182438), transparent 65%), radial-gradient(ellipse at 88% 5%, color-mix(in srgb, var(--guide-b) 65%, #1c243c), transparent 65%), color-mix(in srgb, var(--guide-base) 55%, #202b40); }
+@media (max-width: 400px) { .guide-visual { height: 210px; } .guide-visual-stage { height: 166px; width: 80%; } }
+@media (prefers-reduced-motion: no-preference) { .guide-visual-stage { animation: guide-visual-enter .4s ease-out both; } }
+@keyframes guide-visual-enter { from { opacity: 0; } to { opacity: 1; } }
+
+.guide-treatment-structure .guide-visual-stage { width: 82%; transform: translate(-50%, -50%) rotate(2deg); }
+.guide-treatment-scene .guide-visual-stage { width: 88%; height: 190px; transform: translate(-50%, -45%); }
+.guide-treatment-poses .guide-visual-stage { width: 86%; height: 190px; transform: translate(-50%, -50%) rotate(-5deg); }
+.guide-treatment-trajectory .guide-visual-stage { width: 94%; height: 184px; transform: translate(-50%, -50%) rotate(2deg); }
+.guide-treatment-sketch .guide-visual-stage { width: 70%; height: 190px; transform: translate(-50%, -48%) rotate(6deg); }
+.guide-treatment-panels .guide-visual-stage { width: 92%; height: 190px; transform: translate(-50%, -45%) rotate(-2deg); }
+.guide-treatment-collection .guide-visual-stage { width: 88%; transform: translate(-50%, -50%) rotate(-4deg); }
+.guide-treatment-settings .guide-visual-stage { width: 74%; transform: translate(-50%, -50%) rotate(4deg); }
+.guide-treatment-space .guide-visual-stage { width: 86%; transform: translate(-50%, -50%); }
+.guide-treatment-network .guide-visual-stage { width: 92%; transform: translate(-50%, -50%) rotate(3deg); }
+.guide-treatment-illustration .guide-visual-stage { width: 72%; height: 192px; transform: translate(-50%, -50%) rotate(-7deg); }
+.guide-treatment-welcome { height: 260px; }
+.guide-treatment-welcome .guide-visual-stage { width: 84%; height: 210px; transform: translate(-50%, -52%); animation: none; }
+.guide-treatment-welcome .guide-product-screen { position: absolute; width: 78%; height: 176px; }
+.guide-welcome-sketch { left: -5%; top: 3px; transform: rotate(-8deg); }
+.guide-welcome-structure { right: -5%; bottom: 0; transform: rotate(7deg); }
+.guide-replay { position: absolute; right: 12px; bottom: 9px; height: 28px; background: rgb(255 255 255 / 82%); color: #273049; font-size: 11px; }
+.guide-replay:hover { background: #fff; }
+@media (prefers-reduced-motion: no-preference) {
+  .guide-welcome-sketch { animation: guide-sketch-reveal 1.1s cubic-bezier(.2,.8,.2,1) both; }
+  .guide-welcome-structure { animation: guide-structure-reveal 1.2s .25s cubic-bezier(.2,.8,.2,1) both; }
+}
+@keyframes guide-sketch-reveal { from { opacity: 0; transform: translate(35px, 20px) rotate(0) scale(.9); } to { opacity: 1; transform: rotate(-8deg); } }
+@keyframes guide-structure-reveal { from { opacity: 0; transform: translate(-20px, 35px) rotate(-3deg) scale(.9); } to { opacity: 1; transform: rotate(7deg); } }
+@media (max-width: 400px) { .guide-treatment-welcome { height: 230px; } .guide-treatment-welcome .guide-visual-stage { height: 185px; } .guide-treatment-welcome .guide-product-screen { height: 156px; } }
