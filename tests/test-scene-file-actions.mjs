@@ -62,3 +62,22 @@ console.log('Same-name grid poses import separately with stable source-scoped id
 
 await window.BuretteSceneFiles.append(viewer, { sources: [{ path: '/poses.sdf', format: 'sdf', data: 'poses' }] }, context);
 assert.equal(loaded.at(-1).loadPreset, 'all-models', 'append must retain every ligand in an SDF collection');
+
+// Re-dropping a folder only appends new files, without failing the whole batch.
+const freshDrop = await window.BuretteSceneFiles.append(viewer, {
+  sources: [source('/protein.pdb'), source('/new-from-folder.pdb'), source('/new-from-folder.pdb')],
+  skipExisting: true,
+}, context);
+assert.equal(freshDrop.result.added, 1);
+const repeatedDrop = await window.BuretteSceneFiles.append(viewer, {
+  sources: [source('/new-from-folder.pdb')], skipExisting: true,
+}, context);
+assert.equal(repeatedDrop.result.added, 0);
+assert.equal(cells.get('protein').style, 'cartoon');
+assert.equal(restored, camera);
+const otherCells = new Map([['root', { transform: { parent: 'root' } }]]);
+const otherViewer = { plugin: { state: { data: { cells: otherCells } } } };
+const otherContext = { ...context, load: async (_, item) => otherCells.set(item.path, { transform: { parent: 'root' } }) };
+assert.equal((await window.BuretteSceneFiles.append(otherViewer, {
+  sources: [source('/new-from-folder.pdb')], skipExisting: true,
+}, otherContext)).result.added, 1, 'duplicate tracking belongs to each scene');

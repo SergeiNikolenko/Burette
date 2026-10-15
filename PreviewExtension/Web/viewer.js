@@ -1468,6 +1468,8 @@
   function observeMolstarStoryState(viewer) {
     molstarStoryStateCleanup?.();
     molstarStoryStateCleanup = null;
+    // Ordinary scene snapshots must retain their authored canvas presentation.
+    if (activeMolstarPrepared?.kind !== 'mvs') return;
     const manager = viewer?.plugin?.managers?.snapshot;
     detachMolstarStoryPresentation(manager);
     setMolstarStoryTransition(manager, MOLSTAR_STORY_TRANSITION_MS);
@@ -3727,11 +3729,11 @@
       const direction = Array.isArray(options.direction) && options.direction.length >= 3
         ? options.direction
         : [0.85, -0.38, 0.92];
-      const fitted = fittedMolstarStructureFocus(viewer, camera, direction, up);
+      const fitted = options.mode === 'orthographic' ? null : fittedMolstarStructureFocus(viewer, camera, direction, up);
       const snapshot = fitted || (typeof camera.getFocus === 'function'
         ? camera.getFocus(target, Math.max(0.1, safeRadius * radiusScale), up, direction)
         : null);
-      if (snapshot) snapshot.mode = 'perspective';
+      if (snapshot) snapshot.mode = options.mode || 'perspective';
       canvas3d.requestCameraReset({
         snapshot: snapshot || undefined,
         durationMs: Number.isFinite(Number(options.durationMs)) ? Number(options.durationMs) : 160,
@@ -12790,6 +12792,9 @@ SOFTWARE.
     if (sceneEntries.length > 1) {
       return prepareStagedStructureScene(config, sceneEntries);
     }
+    if (normalized === 'molj') {
+      return { kind: 'session', format: normalized, data: rawStructureData(config), label: config.label };
+    }
     if (isMolViewSpecFormat(normalized)) {
       const data = rawStructureData(config);
       return {
@@ -18018,6 +18023,17 @@ SOFTWARE.
   }
 
   async function loadPreparedStructure(viewer, prepared) {
+    if (prepared.kind === 'session') {
+      activeMolstarPrepared = prepared;
+      activeDockingPrepared = null;
+      const session = JSON.parse(prepared.data);
+      prepared.fitSessionCamera = session.burettePreview === true;
+      const snapshot = await viewer.plugin.managers.snapshot.setStateSnapshot(session);
+      prepared.hasSessionCamera = Number(snapshot?.camera?.current?.radius) > 0;
+      if (!prepared.hasSessionCamera) viewer.plugin.managers.camera.reset();
+      installDockingPoseControls(viewer, null);
+      return;
+    }
     cancelScheduledMolstarWaterRepresentation();
     activeMolstarPrepared = prepared;
     updateSdfPoseButton(prepared);
@@ -23367,6 +23383,9 @@ SOFTWARE.
       return {
         label,
         scope: 'ligand',
+        ...((format === 'pdb' || format === 'pdbqt') ? {
+          sourceEntry: { data: modelTexts[activeModel] || text, format: 'pdb', label }
+        } : {}),
         ligand: {
           data,
           format: 'sdf',
@@ -23680,15 +23699,19 @@ SOFTWARE.
     const { lines, compId, chainId, seqId } = residue;
     const firstAtom = parsePdbAtomLine(lines[0]);
     const resolvedCompId = compId || firstAtom?.compId || 'Ligand';
+    const serials = new Set(lines.map(line => parsePdbAtomLine(line).serial));
+    const conect = String(receptor.data || '').split(/\r?\n/u)
+      .filter(line => line.startsWith('CONECT'))
+      .map(line => filteredPdbConectLine(line, serials)).filter(Boolean);
     return {
-      data: ['HEADER    BURETTE PICKED SELECTION', ...lines, 'END', ''].join('\n'),
+      data: ['HEADER    BURETTE PICKED SELECTION', ...lines, ...conect, 'END', ''].join('\n'),
       format: 'pdb',
       label: [resolvedCompId, chainId, seqId].filter(Boolean).join(' ')
     };
   }
 
   function pdbConectPairsForSerials(pdbData, includedSerials) {
-    const pairs = new Set();
+    const directed = new Map();
     for (const line of String(pdbData || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')) {
       if (!line.startsWith('CONECT')) continue;
       const source = Number(line.slice(6, 11).trim());
@@ -23696,15 +23719,18 @@ SOFTWARE.
       for (let offset = 11; offset + 5 <= line.length; offset += 5) {
         const target = Number(line.slice(offset, offset + 5).trim());
         if (!Number.isFinite(target) || !includedSerials.has(target) || target === source) continue;
-        const a = Math.min(source, target);
-        const b = Math.max(source, target);
-        pairs.add(`${a}:${b}`);
+        const key = `${source}:${target}`;
+        directed.set(key, (directed.get(key) || 0) + 1);
       }
     }
-    return Array.from(pairs).map(pair => {
-      const [a, b] = pair.split(':').map(Number);
-      return { a, b };
-    });
+    const pairs = new Map();
+    for (const [key, count] of directed) {
+      const [source, target] = key.split(':').map(Number);
+      const a = Math.min(source, target), b = Math.max(source, target);
+      const pair = `${a}:${b}`;
+      pairs.set(pair, { a, b, order: Math.min(3, Math.max(count, pairs.get(pair)?.order || 0)) });
+    }
+    return Array.from(pairs.values());
   }
 
   function pdbLigandSdfEntryForResidue(receptor, atom) {
@@ -23720,7 +23746,7 @@ SOFTWARE.
     const firstAtom = parsedAtoms[0];
     const label = [residue.compId || firstAtom.compId || 'Ligand', residue.chainId, residue.seqId].filter(Boolean).join(' ');
     const sdfBonds = bonds.length
-      ? bonds.map(bond => ({ a: serialToSdfIndex.get(bond.a), b: serialToSdfIndex.get(bond.b) }))
+      ? bonds.map(bond => ({ a: serialToSdfIndex.get(bond.a), b: serialToSdfIndex.get(bond.b), order: bond.order }))
       : inferStandalonePreviewBonds(parsedAtoms);
     if (sdfBonds.length > 999) return null;
     return {
@@ -23735,7 +23761,7 @@ SOFTWARE.
           z: current.z,
           tail: ` ${String(current.element || 'C').padEnd(3, ' ')} 0  0  0  0  0  0  0  0  0  0  0  0`
         }, current.x, current.y, current.z)),
-        ...sdfBonds.map(bond => `${padSdfInt(bond.a)}${padSdfInt(bond.b)}  1  0  0  0  0`),
+        ...sdfBonds.map(bond => `${padSdfInt(bond.a)}${padSdfInt(bond.b)}${padSdfInt(bond.order || 1)}  0  0  0  0`),
         'M  END',
         '$$$$',
         ''
@@ -23801,7 +23827,7 @@ SOFTWARE.
       };
     }
     if (target?.scope === 'ligand' && target.selectedEntry && target.sourceEntry) {
-      const ligandEntry = pdbLigandSdfEntryForResidue(target.sourceEntry, target.atom) || target.selectedEntry;
+      const ligandEntry = pdbEntryForResidue(target.sourceEntry, target.atom) || target.selectedEntry;
       return {
         label: ligandEntry.label || target.label || 'Ligand',
         entries: [
@@ -23834,6 +23860,7 @@ SOFTWARE.
 
   const MOLSTAR_OPEN_IN_ACTION = 'open-in';
   const MOLSTAR_OPEN_IN_TAB_ACTION = 'open-in:tab';
+  const MOLSTAR_OPEN_IN_POPOUT_ACTION = 'open-in:popout';
   const MOLSTAR_OPEN_IN_GRID_ACTION = 'open-in:grid';
   const MOLSTAR_OPEN_IN_MAX_MOLECULES = 200;
   const MOLSTAR_OPEN_IN_MAX_ATOMS = 20000;
@@ -24213,7 +24240,7 @@ SOFTWARE.
       if (ligandFormat === 'sdf') return target.ligand;
     }
     if (target?.scope === 'ligand' && target.selectedEntry && target.sourceEntry) {
-      const ligandEntry = pdbLigandSdfEntryForResidue(target.sourceEntry, target.atom) || target.selectedEntry;
+      const ligandEntry = pdbEntryForResidue(target.sourceEntry, target.atom) || target.selectedEntry;
       if (normalizeFormat(ligandEntry?.format) === 'sdf') return ligandEntry;
     }
     if (target?.scope === 'ligand' && normalizeFormat(target.selectedEntry?.format) === 'sdf') {
@@ -25531,7 +25558,8 @@ SOFTWARE.
     if (!mobileHost && molstarOpenInMolecules(target).length) {
       actions.push(moleculeMenuNestedAction(MOLSTAR_OPEN_IN_ACTION, 'Open in', [
         [MOLSTAR_OPEN_IN_TAB_ACTION, 'New Tab'],
-        [MOLSTAR_OPEN_IN_GRID_ACTION, 'New Grid']
+        [MOLSTAR_OPEN_IN_GRID_ACTION, 'New Grid'],
+        ...(molstarOpenInMolecules(target).length === 1 ? [[MOLSTAR_OPEN_IN_POPOUT_ACTION, 'Popout']] : [])
       ]));
     } else if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in new tab']);
     // The desktop overlay carries the scene-tree powers into the 3D right click.
@@ -25986,18 +26014,18 @@ SOFTWARE.
         pushMolstarEditUndoSnapshot(undoSnapshot);
         setMolstarStructureDirty(true);
         setStatus(`[web] Deleted ${atomLabel}.`);
-      } else if (action === 'molstar' || action === MOLSTAR_OPEN_IN_TAB_ACTION || action.startsWith(MOLSTAR_OPEN_IN_GRID_ACTION)) {
+      } else if (action === 'molstar' || action === MOLSTAR_OPEN_IN_TAB_ACTION || action === MOLSTAR_OPEN_IN_POPOUT_ACTION || action.startsWith(MOLSTAR_OPEN_IN_GRID_ACTION)) {
         const toGrid = action.startsWith(MOLSTAR_OPEN_IN_GRID_ACTION);
         const records = molstarOpenInMolecules(target).map(molstarMoleculeSdfRecord).filter(Boolean);
         // One molecule bound for a tab keeps the source-text entry when the file has one.
         const contextDocument = (!toGrid && records.length < 2 ? molstarContextDocumentPayload(target) : null)
           || molstarOpenInDocumentPayload(records);
         if (!contextDocument) throw new Error('No molecule-level Mol* context is available for this target.');
-        const gridDocumentId = action.slice(MOLSTAR_OPEN_IN_GRID_ACTION.length + 1);
+        const gridDocumentId = toGrid ? action.slice(MOLSTAR_OPEN_IN_GRID_ACTION.length + 1) : '';
         const posted = postHostMessage({
           type: 'openMolstarContextDocument',
           renderer: 'molstar',
-          destination: toGrid ? 'grid' : 'tab',
+          destination: toGrid ? 'grid' : action === MOLSTAR_OPEN_IN_POPOUT_ACTION ? 'popout' : 'tab',
           ...(gridDocumentId ? { gridDocumentId } : {}),
           contextDocument
         });
@@ -26416,8 +26444,14 @@ SOFTWARE.
   }
 
   function openMolstarMoleculePreviewInKetcher(target) {
-    const entry = molstarMoleculePreviewEntry(target);
-    const text = String(entry?.data || '').trim();
+    // Preserve the coordinate source for chemical bond perception in the host;
+    // the distance-only SDF used by the preview is not an editable molecule.
+    const source = target?.sourceEntry || target?.receptor;
+    const entry = (target?.atom && normalizeFormat(target.ligand?.format) === 'sdf' && target.ligand)
+      || (target?.atom && pdbEntryForResidue(source, target.atom))
+      || (!target?.atom && normalizeFormat(source?.format) === 'pdb' && source)
+      || molstarMoleculePreviewEntry(target);
+    const text = String(entry?.data || '').trimEnd();
     if (!text) {
       setStatus('[web] This molecule has no structure text to open in Ketcher.', 'error');
       return;
@@ -28927,7 +28961,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       }
     }
     try {
-      await applyConfiguredMolstarPreset(viewer, activeConfig || config);
+      if (prepared.kind !== 'session') await applyConfiguredMolstarPreset(viewer, activeConfig || config);
     } catch (error) {
       debug('Configured Mol* preset failed: ' + (error?.message || String(error)));
       if (window.BuretteNativeFirstFrame) throw error;
@@ -28937,7 +28971,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {
       molstarStructureFocusSerial += 1;
       restoreMolstarCameraSnapshotNow(viewer, savedCamera);
-    } else if (isQuickLookHost() && !hasMolstarContextFocus(config)) {
+    } else if ((isQuickLookHost() || prepared.fitSessionCamera) && !hasMolstarContextFocus(config)) {
       // Quick Look keeps the file's orientation and never animates the camera; it
       // only trades Mol*'s bounding-sphere distance for the atom-fitted one. An MVS
       // scene brings its own camera.
@@ -28945,13 +28979,14 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       if (cameraState && prepared.kind !== 'mvs') {
         scheduleMolstarStructureFocus(viewer, {
           reason: 'quick-look-frame',
+          mode: prepared.fitSessionCamera ? cameraState.mode : 'perspective',
           durationMs: 0,
           force: true,
           direction: [0, 1, 2].map(axis => cameraState.position[axis] - cameraState.target[axis]),
           up: Array.from(cameraState.up)
         });
       }
-    } else if (!hasMolstarContextFocus(config)) {
+    } else if (!hasMolstarContextFocus(config) && !prepared.hasSessionCamera) {
       scheduleMolstarStructureFocus(viewer, { reason: 'initial-load', durationMs: 120 });
     }
     {
@@ -29017,10 +29052,16 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       activeViewer.plugin.canvas3d?.setProps({ cameraResetDurationMs: 0, camera: { helper: { axes: { name: 'off', params: {} } } } });
       const settlePreview = async () => {
         const plugin = activeViewer.plugin;
+        activeViewer.handleResize();
         plugin.canvas3d?.commit(true);
-        requestMolstarStructureFocus(activeViewer, { durationMs: 0 });
-        await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
         plugin.managers.camera.orientAxes(undefined, 0);
+        await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
+        const camera = plugin.canvas3d?.camera?.state;
+        requestMolstarStructureFocus(activeViewer, {
+          durationMs: 0,
+          direction: camera && Array.from(camera.position, (value, axis) => value - camera.target[axis]),
+          up: camera && Array.from(camera.up),
+        });
         await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
       };
       await settlePreview();
@@ -29029,7 +29070,11 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       let running = false;
       let current = structureDataForMolstar(config).data;
       window.addEventListener('message', async event => {
-        if (event.source !== window.parent || event.data?.source !== 'burette-inspector-host') return;
+        // WKWebView can report the receiving frame as event.source for a
+        // parent's timer/effect postMessage. Bind updates to this document's
+        // unguessable channel instead; never accept another inspector's data.
+        if (!config.inspectorChannel || event.data?.channel !== config.inspectorChannel
+          || event.data?.source !== 'burette-inspector-host') return;
         const data = event.data.molblock;
         if (typeof data !== 'string' || !data || data.length > 350000) return;
         pending = data;
@@ -29058,7 +29103,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
           running = false;
         }
       });
-      window.parent.postMessage({ source: 'burette-inspector-ready' }, '*');
+      window.parent.postMessage({ source: 'burette-inspector-ready', channel: config.inspectorChannel }, '*');
     }
 
   }

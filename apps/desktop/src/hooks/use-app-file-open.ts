@@ -1,3 +1,4 @@
+import { isNativePreviewWindow } from "../lib/window-scope";
 import { useCallback } from "react";
 import { saveStructureRecordsInFolder } from "./save-structure-records";
 import { useMoleculeStore } from "../stores/molecule-store";
@@ -197,7 +198,11 @@ export function useAppFileOpen({
         }
       }
       if (structurePaths.length === 0) return;
-      const effectivePreferences = preferencesOverride ? { ...preferences, ...preferencesOverride } : preferences;
+      const effectivePreferences = {
+        ...preferences,
+        ...(isNativePreviewWindow() ? { rendererMode: "molstar" as const } : {}),
+        ...preferencesOverride,
+      };
       pushStatus("Opening structures...");
       try {
         const result = isTauriRuntime()

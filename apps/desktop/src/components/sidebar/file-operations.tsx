@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { desktopDir, join } from "@tauri-apps/api/path";
 import { save } from "@tauri-apps/plugin-dialog";
 import { isTauriRuntime } from "../../lib/tauri";
 import { basename } from "../../lib/sidebar-projects";
@@ -131,7 +132,8 @@ export function SidebarFileOperations({ state, actions, children }: {
         action: () => { void run({ operation: "duplicate", path }); } },
       ...(isTauriRuntime() ? [{ kind: "item" as const, id: "save-file-copy", text: "Save file copy as…", disabled: dirty, action: async () => {
         try {
-          const destination = await save({ title: "Save File Copy", defaultPath: path });
+          const defaultPath = path.split("/").includes("ssh-previews") ? await join(await desktopDir(), basename(path)) : path;
+          const destination = await save({ title: "Save File Copy", defaultPath });
           if (destination) await run({ operation: "saveCopy", path, destination });
         } catch (cause) {
           choose({ operation: "saveCopy", path, destination: "" });

@@ -45,3 +45,10 @@ const large = Array.from({ length: 201 }, (_, index) => `/set/${index}.pdb`);
 flatten(workspaceFileMenu(large, state, actions, workflows, [], run, openBatch)).find(item => item.id === 'open-together').action();
 assert.deepEqual(called.pop(), ['batch', large, 'scene'], 'The batch reports its explicit size limit instead of showing an empty menu');
 console.log('Workspace menus: compatible modes, actual scene targets, exact multi-file payloads and SDK icons passed');
+
+const saved = [];
+const disk = [{ kind: 'item', id: 'save-file-copy', text: 'Save file copy as…', action: () => saved.push('copy') }];
+const remote = workspaceFileMenu(['/cache/ssh-previews/id/ligand.sdf'], state, actions, workflows, disk, run);
+remote.find(item => item.id === 'download').action();
+assert.deepEqual(saved, ['copy']);
+assert.ok(!workspaceFileMenu(['/data/ligand.sdf'], state, actions, workflows, disk, run).some(item => item.id === 'download'));

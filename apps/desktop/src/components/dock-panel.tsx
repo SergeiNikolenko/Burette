@@ -1,12 +1,3 @@
-import { useSidePaneTabs } from "./workspace-panes/use-pane-tabs";
-import { useWorkspacePanesStore } from "../stores/workspace-panes-store";
-import { openScreen, SCREEN_ENTRIES, showSideScreen } from "./workspace-panes/pane-actions";
-import { paneSwitcherItems } from "./workspace-panes/pane-switcher";
-import { pageKind } from "./editor-area/page-kinds";
-import { TabKindIcon } from "./editor-area/tab-kind-icon";
-import { TabNameDialog } from "./scene-name-dialog";
-import type { MoleculeTab } from "../stores/molecule-store";
-import "./workspace-panes/workspace-panes.css";
 import { Spinner } from "@/components/ui/spinner";
 import { useSidebarStructureDrag } from "./sidebar/use-sidebar-structure-drag";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
@@ -93,10 +84,6 @@ function resolveChemicalSpaceDocument(
 
 export function DockPanel({ area, state, actions, readOnly = false }: DockPanelProps) {
   const panelId = useId();
-  const { sideTabs, visibleTab } = useSidePaneTabs();
-  const sideHidden = useWorkspacePanesStore(panes => panes.sideHidden);
-  const screenSelected = area === "right" && !readOnly && !window.BuretteMcpWorkspace && !sideHidden && Boolean(visibleTab);
-  const [renamingScreen, setRenamingScreen] = useState<MoleculeTab | null>(null);
   const panel = useRef<HTMLElement>(null);
   const [dropActive, setDropActive] = useState(false);
   useDropHighlightReset(setDropActive);
@@ -108,7 +95,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const open = area === "right" ? state.rightDockOpen : state.bottomDockOpen;
   useLayoutEffect(() => {
     if (open || !panel.current?.contains(document.activeElement)) return;
-    panel.current.closest(".app-shell")?.querySelector<HTMLButtonElement>('button[aria-label="Panels"]')?.focus();
+    panel.current.closest(".app-shell")?.querySelector<HTMLButtonElement>(`button[aria-label="Show ${area} dock"]`)?.focus();
   }, [open, area]);
   const dockDocumentId = area === "right" ? state.rightDockDocumentId : state.bottomDockDocumentId;
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
@@ -166,16 +153,16 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
       autoOpenedXyzrenderDocumentId.current = null;
       return;
     }
-    if (!open || screenSelected) return;
+    if (!open) return;
     if (autoOpenedXyzrenderDocumentId.current === xyzrenderDockDocument.id) return;
     autoOpenedXyzrenderDocumentId.current = xyzrenderDockDocument.id;
     actions.openDockTab("right", "xyzrender");
-  }, [actions, area, open, screenSelected, xyzrenderDockDocument]);
+  }, [actions, area, open, xyzrenderDockDocument]);
 
   const showAddMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
     void showNativeContextMenu(
-      [...(area === "right" && !pluginSurface ? [{ kind: "submenu" as const, id: "right-panel-open", text: "Open screen", items: SCREEN_ENTRIES.map(entry => ({ kind: "item" as const, id: entry.id, text: entry.text, action: () => openScreen(entry.location, "side") })) }] : []), ...catalog.filter((kind) => {
+      catalog.filter((kind) => {
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
         if (kind === "xyzrender") return Boolean(xyzrenderDockDocument);
@@ -189,7 +176,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
         text: DOCK_TAB_LABELS[kind],
         disabled: tabs.some((tab) => tab.kind === kind),
         action: () => actions.openDockTab(area, kind),
-      }))],
+      })),
       { x: rect.left, y: rect.bottom + 6 },
     );
   };
@@ -235,27 +222,15 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
         clearDrop();
       }}
       onDrop={readOnly ? undefined : handleDrop}
-      aria-label={area === "right" ? "Side panel" : "bottom dock"}
+      aria-label={`${area} dock`}
     >
-      <TabNameDialog tab={renamingScreen} defaultName={renamingScreen ? pageKind(renamingScreen.location).title(renamingScreen.location, state) : ""} onClose={() => setRenamingScreen(null)} />
       <div className="dock-panel-inner">
-        <DockHeader area={area} tabs={visibleTabs} activeKind={screenSelected ? null : activeTab.kind} panelId={panelId} readOnly={readOnly}
-          screens={area === "right" && !readOnly && !pluginSurface ? sideTabs.map(tab => ({
-            id: tab.id, title: tab.title ?? pageKind(tab.location).title(tab.location, state),
-            icon: <TabKindIcon location={tab.location} state={state} />, active: screenSelected && tab.id === visibleTab?.id,
-          })) : []}
-          onSelectScreen={showSideScreen}
-          onCloseScreen={id => { void actions.closeTab(id); }}
-          onScreenMenu={(id, event) => {
-            event.preventDefault();
-            const tab = sideTabs.find(candidate => candidate.id === id);
-            if (tab) void showNativeContextMenu(paneSwitcherItems("side", tab, state, actions, () => setRenamingScreen(tab)), { x: event.clientX, y: event.clientY });
-          }}
+        <DockHeader area={area} tabs={visibleTabs} activeKind={activeTab.kind} panelId={panelId} readOnly={readOnly}
           transientTabId={rawTabs.some(tab => tab.kind === "xyzrender") ? undefined : visibleTabs.find(tab => tab.kind === "xyzrender")?.id}
           fileDragProps={{ ...filesTabDrag, draggable: Boolean(filesTabDragPayload) }}
           onSelect={kind => actions.setDockActiveTab(area, kind)} onClose={id => actions.closeDockTab(area, id)}
           onAdd={showAddMenu} onHide={() => actions.setDockOpen(area, false)} />
-        <div className="dock-panel-body" hidden={screenSelected} inert={screenSelected} style={screenSelected ? { display: "none" } : undefined} role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${activeTab.kind}`} tabIndex={0}>
+        <div className="dock-panel-body" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${activeTab.kind}`} tabIndex={0}>
         <DockPanelContent
           area={area}
           activeTabKind={activeTab.kind}

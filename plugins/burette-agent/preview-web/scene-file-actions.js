@@ -31,7 +31,7 @@
         sessions.set(viewer, session);
       }
       if (session.busy) throw new Error('Wait for the current scene import to finish.');
-      const sources = action.sources;
+      let sources = action.sources;
       if (!Array.isArray(sources) || !sources.length || sources.length > 200) throw new Error('Choose 1–200 structures.');
       let bytes = 0;
       const incoming = new Set();
@@ -41,11 +41,16 @@
           throw new Error('Unsupported scene source.');
         }
         bytes += new TextEncoder().encode(source.data).length;
-        if (incoming.has(source.path)) throw new Error('The selection contains duplicate files.');
+        if (incoming.has(source.path) && !action.skipExisting) throw new Error('The selection contains duplicate files.');
         incoming.add(source.path);
       }
       if (bytes > 24 * 1024 * 1024) throw new Error('Scene imports are limited to 24 MB at a time.');
       for (const path of (action.existingPaths || []).slice(0, 200)) session.paths.add(path);
+      if (action.skipExisting) {
+        const fresh = new Map(sources.filter(source => !session.paths.has(source.path)).map(source => [source.path, source]));
+        sources = Array.from(fresh.values());
+        if (!sources.length) return { ok: true, command: 'append_scene_files', result: { added: 0, paths: Array.from(session.paths) } };
+      }
       if (sources.some(source => session.paths.has(source.path))) throw new Error('A selected file is already in this scene.');
       if (session.paths.size + sources.length > 200) throw new Error('A scene supports up to 200 source files.');
       session.busy = true;

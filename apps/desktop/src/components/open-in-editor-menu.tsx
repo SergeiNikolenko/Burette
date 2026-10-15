@@ -93,7 +93,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
     ];
   }, [actions, activeFile, filePath, defaultApplicationIconUrl, finderIconUrl, loading, targets, nativeIcons, state.preferences.openInDefaultDestination]);
 
-  if (!activeFile) return navigation ? <header className="workspace-file-header" aria-label="Workspace">{navigation([])}</header> : null;
+  if (!activeFile) return navigation ? <header className="workspace-file-header" aria-label="Workspace">{navigation([])}<span className="flex-1" /></header> : null;
   if (!filePath && presentation !== "file-header") return null;
 
   const visibleTargets = targets.length > 0 ? targets : browserDevPreviewTargets(activeFile.path);

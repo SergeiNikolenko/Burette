@@ -39,9 +39,9 @@ import { isTauriRuntime } from "../lib/tauri";
 import { workspaceStorageKey } from "../lib/window-scope";
 import { useSettingsStore } from "./settings-store";
 
-// Where a screen is shown when it is not in the main tab strip: the right side
-// panel or the floating window. A tab without a pane lives in the main strip.
-export type TabPane = "side" | "floating";
+// Where a screen is shown when it is not in the main tab strip: the floating
+// window. A tab without a pane lives in the main strip.
+export type TabPane = "floating";
 
 export type MoleculeTab = {
   title?: string;
@@ -70,7 +70,6 @@ type MoleculeState = {
   tabs: MoleculeTab[];
   activeTabId: string | null;
   activeDocumentId: string | null;
-  sidePaneTabId: string | null;
   recentStructures: RecentStructure[];
   setDocuments: (documents: ViewerDocument[]) => void;
   addDocuments: (documents: ViewerDocument[]) => void;
@@ -104,7 +103,6 @@ type MoleculeState = {
   moveTab: (id: string, toIndex: number) => void;
   placeTab: (id: string, pane: TabPane | null) => void;
   openScreenTab: (location: Location, pane?: TabPane | null) => void;
-  showSidePaneTab: (id: string) => void;
   togglePinnedTab: (id: string) => void;
   renameTab: (id: string, title: string) => void;
   closeTab: (id: string) => void;
@@ -128,7 +126,7 @@ export type MoleculeStoreSnapshot = {
 type PersistedMoleculeState = Pick<
   MoleculeState,
   "documents" | "tabs" | "activeTabId" | "recentStructures"
-> & { sidePaneTabId?: string | null };
+>;
 
 let tabSequence = 0;
 
@@ -371,7 +369,7 @@ function settingsReturnTabId(state: MoleculeState) {
 }
 
 // A tab shown in the main strip: Settings is a separate full-window mode and
-// placed tabs live in the side panel or the floating window.
+// a placed tab lives in the floating window.
 export function isMainTab(tab: MoleculeTab) {
   return tab.location.kind !== "settings" && !tab.pane;
 }
@@ -394,7 +392,7 @@ function activeTabIdOrFirst(tabs: MoleculeTab[], activeTabId: string | null) {
 }
 
 // Opening a document replaces the start page, but a start page parked in the
-// side panel or the floating window is a screen the user placed there.
+// floating window is a screen the user placed there.
 function retainedOnOpen(tab: MoleculeTab) {
   return tab.location.kind !== "launcher" || Boolean(tab.pane);
 }
@@ -414,7 +412,8 @@ function neighborMainTabId(tabs: MoleculeTab[], id: string) {
 }
 
 function isTabPane(value: unknown): value is TabPane {
-  return value === "side" || value === "floating";
+  // Tabs saved in the retired side panel ("side") load into the main strip.
+  return value === "floating";
 }
 
 function moveTabToIndex(tabs: MoleculeTab[], id: string, toIndex: number) {
@@ -529,7 +528,6 @@ export const useMoleculeStore = create<MoleculeState>()(
       tabs: [createLauncherTab()],
       activeTabId: "tab-1",
       activeDocumentId: null,
-      sidePaneTabId: null,
       recentStructures: loadGlobalRecentStructures() ?? [],
       setDocuments: (documents) =>
         set(() => {
@@ -995,7 +993,6 @@ export const useMoleculeStore = create<MoleculeState>()(
           const target = state.tabs.find((tab) => tab.id === id);
           if (!target || target.location.kind === "settings") return state;
           if ((target.pane ?? null) === pane) {
-            if (pane === "side") return { sidePaneTabId: id };
             return pane === null ? { activeTabId: id, activeDocumentId: activeDocumentIdFrom(state.tabs, id, state.documents) } : state;
           }
           const successor = state.activeTabId === id ? neighborMainTabId(state.tabs, id) : state.activeTabId;
@@ -1010,7 +1007,6 @@ export const useMoleculeStore = create<MoleculeState>()(
             tabs,
             activeTabId,
             activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, state.documents),
-            sidePaneTabId: pane === "side" ? id : state.sidePaneTabId,
           };
         }),
       // Opens a screen that is not a file (Jobs, Chemical Space...) or brings
@@ -1021,8 +1017,6 @@ export const useMoleculeStore = create<MoleculeState>()(
         if (!existing) set((state) => ({ tabs: [...(pane ? state.tabs : state.tabs.filter(retainedOnOpen)), tab] }));
         get().placeTab(tab.id, pane);
       },
-      showSidePaneTab: (id) =>
-        set((state) => (state.tabs.some((tab) => tab.id === id && tab.pane === "side") ? { sidePaneTabId: id } : state)),
       renameTab: (id, title) => set((state) => ({
         tabs: state.tabs.map((tab) => {
           if (tab.id !== id) return tab;
@@ -1133,7 +1127,6 @@ export const useMoleculeStore = create<MoleculeState>()(
             documents: [],
             tabs: persistedTabs(collapseDuplicateKetcherTabs(state.tabs, state.activeTabId)),
             activeTabId: state.activeTabId,
-            sidePaneTabId: state.sidePaneTabId,
             recentStructures: state.recentStructures.filter(isPersistentRecentStructure),
           }),
       merge: (persisted, current) => {
@@ -1167,7 +1160,6 @@ export const useMoleculeStore = create<MoleculeState>()(
           documents,
           tabs,
           activeTabId,
-          sidePaneTabId: restoreTabs && typeof stored?.sidePaneTabId === "string" ? stored.sidePaneTabId : null,
           activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents),
           recentStructures: recentStructuresForMigration(stored?.recentStructures, current.recentStructures),
         };
@@ -1176,10 +1168,10 @@ export const useMoleculeStore = create<MoleculeState>()(
   ),
 );
 
-// Opening or selecting a screen that is parked in the side panel or the
-// floating window (from the sidebar, a menu, a deep link...) brings it back to
-// the main strip: every action that activates a tab goes through here, so the
-// rule needs no copy in each of them.
+// Opening or selecting a screen that is parked in the floating window (from
+// the sidebar, a menu, a deep link...) brings it back to the main strip: every
+// action that activates a tab goes through here, so the rule needs no copy in
+// each of them.
 useMoleculeStore.subscribe((state) => {
   const active = state.tabs.find((tab) => tab.id === state.activeTabId);
   if (!active?.pane) return;

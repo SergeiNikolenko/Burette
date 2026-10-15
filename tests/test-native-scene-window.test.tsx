@@ -27,7 +27,7 @@ mock.module("@tauri-apps/api/core", () => ({ invoke: async (command: string, arg
   if (command === "open_new_workspace_window") return "workspace-peer";
   if (command === "relay_popout_handoff") latest = { ...args.message, target: args.target };
 } }));
-const { useNativePopoutSession, popOutNativeScene, returnNativePopout, nativePopoutBusy } = await import("../apps/desktop/src/components/workspace-panes/native-popout");
+const { useNativePopoutSession, popOutNativeScene, returnNativePopout, nativePopoutBusy } = await import("../apps/desktop/src/components/workspace-panes/native-scene-window");
 function Listener() { useNativePopoutSession({ openStructurePaths: async () => {} } as any); return null; }
 async function withListener(run: () => Promise<void>) {
   reset(); const mount = document.createElement("div"); document.body.append(mount); const root = createRoot(mount);

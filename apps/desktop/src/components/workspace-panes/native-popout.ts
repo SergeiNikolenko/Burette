@@ -1,198 +1,49 @@
-import { useEffect, useRef } from "react";
-import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow, Window } from "@tauri-apps/api/window";
-import type { ShellActions } from "../types";
-import type { MoleculeTab } from "../../stores/molecule-store";
-import { useMoleculeStore } from "../../stores/molecule-store";
-import { requestViewerAction, activeViewerIframeForDocument } from "../../lib/viewer-bridge";
+import { isTauriRuntime } from "../../lib/tauri";
+import { requestViewerAction } from "../../lib/viewer-bridge";
 import { focusSceneDocument } from "../../hooks/workspace-scene-import";
-import { isTauriRuntime, trackTauriListener } from "../../lib/tauri";
+import type { MoleculeTab } from "../../stores/molecule-store";
+import type { ShellActions, ShellViewState } from "../types";
 import { toast } from "../ui/toast";
-import { useSourceEditing, type SourceEditingContextValue } from "../../lib/source-editing/context";
 
-let sourceEditing: SourceEditingContextValue | null = null;
-const CHANNEL = "burette-scene-window-handoff";
-type Placement = { title: string; index: number; pinned: boolean };
-type Offer = Placement & { kind: "offer" | "return"; id: string; from: string; path: string };
-type Reply = { kind: "ready" | "failed"; id: string; from: string };
-type Owner = Placement & { parent: string; tabId: string };
-const usePopout = create<{ owner: Owner | null; busy: boolean }>(() => ({ owner: null, busy: false }));
-const pending = new Map<string, { peer: string; finish: (ok: boolean) => void }>();
-const emitTo = (target: string, _channel: string, message: Offer | Reply) => invoke("relay_popout_handoff", { target, message });
+const opening = new Set<string>();
 
-export function nativePopoutReason(tab: MoleculeTab): string | null {
-  if (!isTauriRuntime()) return null;
+export function canOpenNativePopout(tab: MoleculeTab) {
+  return isTauriRuntime() && (tab.location.kind === "file" || tab.location.kind === "text-file");
+}
+
+// A native window owns its own viewer; copy the live Mol* session rather than
+// re-reading the source and losing the current camera, representations or added structures.
+export function openNativePopout(tab: MoleculeTab, state: ShellViewState, actions: ShellActions) {
+  return transferNativeScene(tab, state, actions, "preview");
+}
+
+export function returnNativePopout(tab: MoleculeTab, state: ShellViewState, actions: ShellActions) {
+  return transferNativeScene(tab, state, actions, "main");
+}
+
+async function transferNativeScene(tab: MoleculeTab, state: ShellViewState, actions: ShellActions, destination: "preview" | "main") {
+  if (!canOpenNativePopout(tab) || opening.has(tab.id)) return false;
   const location = tab.location;
-  const document = location.kind === "file"
-    ? useMoleculeStore.getState().documents.find(doc => doc.id === location.documentId)
-    : null;
-  if (!document || !["molstar", "xyzrender-external"].includes(document.renderer)) return "Available for molecular scenes and sheets";
-  const source = sourceEditing?.sessionForDocument(document);
-  if (source?.dirty || source?.saving) return "Save source changes before moving this scene";
-  if (document.dockingRequest && !document.dockingRequest.sceneMode || /\.(mvsj|mvsx|xtc|dcd|trr|nc)$/i.test(document.path)) return "Keep this trajectory or Story in its workspace";
-  if (usePopout.getState().busy) return "Wait for the scene to finish moving";
-  return null;
-}
-
-function currentDocument(tabId: string) {
-  const store = useMoleculeStore.getState();
-  const tab = store.tabs.find(tab => tab.id === tabId);
-  const location = tab?.location;
-  const document = location?.kind === "file" ? store.documents.find(doc => doc.id === location.documentId) : null;
-  if (!document) throw new Error("The scene is no longer open.");
-  return document;
-}
-
-async function checkpoint(tabId: string) {
-  const document = currentDocument(tabId);
-  await focusSceneDocument(document, useMoleculeStore.getState().setActiveDocument);
-  const source = sourceEditing?.sessionForDocument(document);
-  if (source?.dirty || source?.saving) throw new Error("Save source changes before moving this scene.");
-  if (document.renderer === "molstar") {
-    const story = await requestViewerAction(document.id, { type: "observe_story" });
-    if (Number(story.count) > 1) throw new Error("Keep this Story in its workspace.");
-  }
-  const archive = await requestViewerAction(document.id, { type: "workspace_scene_snapshot" });
-  if (archive.sheet) return invoke<string>("save_popout_sheet", { sourcePath: document.path, sheet: archive.sheet });
-  if (typeof archive.dataBase64 !== "string") throw new Error("The scene could not be captured.");
-  return invoke<string>("save_popout_scene", { dataBase64: archive.dataBase64 });
-}
-
-function tell(peer: string, message: Offer) {
-  return new Promise<void>((resolve, reject) => {
-    const finish = (ok: boolean) => {
-      clearTimeout(timeout); clearInterval(retry); pending.delete(message.id);
-      if (ok) resolve(); else reject(new Error("The other window could not load the scene. Your scene is still open."));
-    };
-    const send = () => { void emitTo(peer, CHANNEL, message).catch(() => finish(false)); };
-    const timeout = setTimeout(() => finish(false), 60000);
-    const retry = setInterval(send, 1000);
-    pending.set(message.id, { peer, finish });
-    send();
-  });
-}
-
-export async function popOutNativeScene(tabId: string) {
-  const store = useMoleculeStore.getState();
-  const tab = store.tabs.find(tab => tab.id === tabId);
-  if (!tab || nativePopoutReason(tab)) return;
-  usePopout.setState({ busy: true });
-  let surface: HTMLElement | null | undefined;
+  if (location.kind !== "file" && location.kind !== "text-file") return false;
+  opening.add(tab.id);
+  const target = destination === "preview" ? { presentation: "preview" } : { presentation: "workspace", target: "mainWindow" };
   try {
-    surface = activeViewerIframeForDocument(currentDocument(tabId).id)?.closest<HTMLElement>(".page-surface");
-    if (surface) surface.inert = true;
-    const path = await checkpoint(tabId);
-    const peer = await invoke<string>("open_new_workspace_window", { paths: [path] });
-    await tell(peer, { kind: "offer", id: crypto.randomUUID(), from: getCurrentWindow().label,
-      path, title: tab.title ?? currentDocument(tabId).title, index: store.tabs.indexOf(tab), pinned: tab.pinned === true });
-    // Only an acknowledged, nonempty loaded destination can retire the original scene.
-    useMoleculeStore.getState().closeTab(tabId);
-  } catch (error) {
-    toast.add({ title: "Could not move scene", description: error instanceof Error ? error.message : "Try again with the scene open.", type: "error" });
-  } finally {
-    if (surface) surface.inert = false;
-    usePopout.setState({ busy: false });
-  }
-}
-
-// Closing the detached window returns its latest scene if the parent still
-// exists. If it has closed, a durable checkpoint remains in this workspace.
-export async function returnNativePopout(): Promise<boolean> {
-  const { owner, busy } = usePopout.getState();
-  if (!owner) return false;
-  if (!useMoleculeStore.getState().tabs.some(tab => tab.id === owner.tabId)) { usePopout.setState({ owner: null }); return false; }
-  if (busy) throw new Error("Wait for the scene to finish moving.");
-  usePopout.setState({ busy: true });
-  let surface: HTMLElement | null | undefined;
-  try {
-    surface = activeViewerIframeForDocument(currentDocument(owner.tabId).id)?.closest<HTMLElement>(".page-surface");
-    if (surface) surface.inert = true;
-    const path = await checkpoint(owner.tabId);
-    if (!await Window.getByLabel(owner.parent)) {
-      retainCheckpoint(owner.tabId, path);
-      usePopout.setState({ owner: null });
-      return false;
+    const document = location.kind === "file" ? state.documents.find(item => item.id === location.documentId) : undefined;
+    if (document?.renderer === "molstar") {
+      await focusSceneDocument(document, actions.selectDocument);
+      const result = await requestViewerAction(document.id, { type: "export_session", args: { type: "molj", maxBytes: 24 * 1024 * 1024 } });
+      if (typeof result.dataBase64 !== "string") throw new Error("The scene could not be opened in a new window.");
+      const title = (tab.title ?? document.title).replace(/\.[^.]+$/u, "").replace(/[\u0000-\u001f/\\:]/gu, "-").slice(0, 60) || "Scene";
+      await invoke("open_new_workspace_window", { ...target, scene: { title, dataBase64: result.dataBase64 } });
+    } else {
+      await invoke("open_new_workspace_window", { ...target, paths: [location.path] });
     }
-    await tell(owner.parent, { ...owner, kind: "return", id: crypto.randomUUID(), from: getCurrentWindow().label, path });
-    useMoleculeStore.getState().closeTab(owner.tabId);
-    usePopout.setState({ owner: null });
-    const remaining = useMoleculeStore.getState().tabs.some(tab => !["launcher", "settings"].includes(tab.location.kind));
-    if (remaining) return false;
-    await invoke("close_workspace_window");
     return true;
+  } catch (error) {
+    toast.add({ title: destination === "preview" ? "Could not open preview window" : "Could not return to workspace", description: String(error), type: "error" });
+    return false;
   } finally {
-    if (surface) surface.inert = false;
-    usePopout.setState({ busy: false });
+    opening.delete(tab.id);
   }
 }
-
-function retainCheckpoint(tabId: string, path: string) {
-  const document = currentDocument(tabId);
-  useMoleculeStore.setState(state => ({
-    documents: state.documents.map(doc => doc.id === document.id ? { ...doc, path, virtual: false } : doc),
-    tabs: state.tabs.map(tab => tab.id === tabId && tab.location.kind === "file" ? { ...tab, location: { ...tab.location, path } } : tab),
-  }));
-}
-
-export async function checkpointNativePopoutForExit() {
-  if (usePopout.getState().busy) throw new Error("Wait for the scene to finish moving.");
-  const owner = usePopout.getState().owner;
-  if (!owner) return;
-  if (!useMoleculeStore.getState().tabs.some(tab => tab.id === owner.tabId)) { usePopout.setState({ owner: null }); return; }
-  usePopout.setState({ busy: true });
-  try { retainCheckpoint(owner.tabId, await checkpoint(owner.tabId)); }
-  finally { usePopout.setState({ busy: false }); }
-}
-
-export function useNativePopoutSession(actions: ShellActions) {
-  sourceEditing = useSourceEditing();
-  const actionsRef = useRef(actions);
-  actionsRef.current = actions;
-  useEffect(() => {
-    if (!isTauriRuntime()) return;
-    const current = getCurrentWindow();
-    const received = new Map<string, Promise<boolean>>();
-    return trackTauriListener(current.listen<Offer | Reply>(CHANNEL, async ({ payload }) => {
-      if (!payload || typeof payload !== "object" || typeof payload.id !== "string" || typeof payload.from !== "string") return;
-      if (payload.kind === "ready" || payload.kind === "failed") {
-        const waiting = pending.get(payload.id);
-        if (waiting?.peer === payload.from) waiting.finish(payload.kind === "ready");
-        return;
-      }
-      if (!("path" in payload)) return;
-      if (!["offer", "return"].includes(payload.kind) || !/^[a-zA-Z0-9-]+$/.test(payload.from)
-        || typeof payload.path !== "string" || !/\/popout-scenes\/[a-f0-9-]+\.[a-zA-Z0-9]{1,10}$/.test(payload.path) || payload.path.length > 4096
-        || typeof payload.title !== "string" || payload.title.length > 1024 || typeof payload.pinned !== "boolean" || !Number.isInteger(payload.index)) return;
-      let receipt = received.get(payload.id);
-      if (!receipt) {
-        receipt = (async () => {
-          if (payload.kind === "return") await actionsRef.current.openStructurePaths([payload.path], { mode: "individual" });
-          const store = useMoleculeStore.getState();
-          const document = store.documents.find(doc => doc.path === payload.path);
-          if (!document) return false;
-          const tab = store.tabs.find(tab => tab.location.kind === "file" && tab.location.documentId === document.id);
-          if (!tab) return false;
-          await focusSceneDocument(document, store.setActiveDocument);
-          const ready = await requestViewerAction(document.id, { type: "workspace_scene_state" });
-          if (!ready.ready) return false;
-          store.renameTab(tab.id, payload.title);
-          if (Boolean(tab.pinned) !== payload.pinned) store.togglePinnedTab(tab.id);
-          if (payload.kind === "offer") usePopout.setState({ owner: { parent: payload.from, tabId: tab.id, title: payload.title, index: payload.index, pinned: payload.pinned } });
-          else store.moveTab(tab.id, Math.max(0, Math.min(payload.index, store.tabs.length - 1)));
-          return true;
-        })().catch(() => false);
-        received.set(payload.id, receipt);
-        if (received.size > 16) received.delete(received.keys().next().value!);
-      }
-      const ok = await receipt;
-      // A fresh window may receive the offer before startup has opened its file.
-      if (!ok) received.delete(payload.id);
-      if (ok) await emitTo(payload.from, CHANNEL, { kind: "ready", id: payload.id, from: current.label } satisfies Reply);
-    }), "native scene handoff");
-  }, []);
-}
-
-export function useNativePopoutOwner() { return usePopout(state => state.owner); }
-export function nativePopoutBusy() { return usePopout.getState().busy; }
-export function isNativePopoutTab(tabId: string) { return usePopout.getState().owner?.tabId === tabId; }

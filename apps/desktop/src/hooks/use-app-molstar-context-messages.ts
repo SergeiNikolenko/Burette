@@ -1,3 +1,4 @@
+import { useMoleculeStore } from "../stores/molecule-store";
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback } from "react";
 import { openBrowserDevMolstarContextDocument, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
@@ -107,19 +108,26 @@ export function useAppMolstarContextMessages({
         const entry = entries[0];
         const extension = molstarContextEntryExtension(entry.format);
         const label = contextDocument.label?.trim() || entry.label?.trim() || "Molstar context";
+        const request = { title: `${label}.${extension}`, extension, text: entry.data };
+        if (body.destination === "popout") {
+          await invoke("open_new_workspace_window", { presentation: "preview", structure: request });
+          return null;
+        }
         return invoke<ViewerDocument>("open_text_structure", {
-          request: {
-            title: `${label}.${extension}`,
-            extension,
-            text: entry.data,
-          },
+          request,
           preferences: molstarPreferences,
           reloadOptions: {},
         });
       };
       void openContextDocument()
-        .then((document) => {
+        .then(async (document) => {
+          if (!document) return;
           addDocuments([document]);
+          if (body.destination === "popout") {
+            const store = useMoleculeStore.getState();
+            const tab = store.tabs.find(tab => tab.location.kind === "file" && tab.location.documentId === document.id);
+            if (tab) store.placeTab(tab.id, "floating");
+          }
           rememberRecentStructures([document]);
           pushStatus("Opened selected Molstar context");
         })

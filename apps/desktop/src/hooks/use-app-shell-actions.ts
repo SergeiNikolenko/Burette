@@ -1,4 +1,4 @@
-import { isNativePopoutTab, nativePopoutBusy, returnNativePopout } from "../components/workspace-panes/native-popout";
+import { isNativePopoutTab, nativePopoutBusy, returnNativePopout } from "../components/workspace-panes/native-scene-window";
 import { confirmUnsavedSceneClose } from "./file-batch-scene";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
 import { useEffect, useMemo, useState } from "react";

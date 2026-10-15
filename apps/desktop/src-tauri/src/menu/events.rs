@@ -38,7 +38,6 @@ const FORWARDED_COMMANDS: &[&str] = &[
     "view.toggle-sidebar",
     "view.toggle-inspector",
     "view.toggle-bottom-panel",
-    "view.toggle-side-panel",
     "view.grid-cards",
     "view.grid-table",
     "view.grid-properties",
@@ -198,7 +197,7 @@ pub(crate) fn handle_event<R: Runtime>(app: &tauri::AppHandle<R>, id: &str) {
     }
 
     if id == "file.new-window" {
-        let _ = crate::windows::open_new_workspace_window(app);
+        let _ = crate::windows::open_new_workspace_window(app, Default::default());
         return;
     }
 

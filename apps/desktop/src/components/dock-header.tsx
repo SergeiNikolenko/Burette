@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ComponentProps, type MouseEvent, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type ComponentProps, type MouseEvent } from "react";
 import * as RovingFocusGroup from "@radix-ui/react-roving-focus";
 import { DOCK_TAB_LABELS, type DockArea, type DockTab, type DockTabKind } from "../lib/dock";
 import { Atom, Chart, Compare, Eye, FileCode, FileDocument, Folder, InfoCircle, Orbit, Plus, SettingsWrench, Stack, Stopwatch, X, type AppIconType } from "./ui/app-icons";
@@ -12,14 +12,10 @@ const icons: Record<DockTabKind, AppIconType> = {
   review: Eye, "chemical-space": Orbit,
 };
 
-export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transientTabId, fileDragProps, onSelect, onClose, onAdd, onHide, screens = [], onSelectScreen, onCloseScreen, onScreenMenu }: {
+export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transientTabId, fileDragProps, onSelect, onClose, onAdd, onHide }: {
   area: DockArea;
   tabs: DockTab[];
-  activeKind: DockTabKind | null;
-  screens?: { id: string; title: string; icon: ReactNode; active: boolean }[];
-  onSelectScreen?: (id: string) => void;
-  onCloseScreen?: (id: string) => void;
-  onScreenMenu?: (id: string, event: MouseEvent<HTMLButtonElement>) => void;
+  activeKind: DockTabKind;
   panelId: string;
   readOnly: boolean;
   transientTabId?: string;
@@ -35,10 +31,10 @@ export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transien
     if (!restoreFocus.current) return;
     restoreFocus.current = false;
     header.current?.querySelector<HTMLButtonElement>('[role="tab"][aria-selected="true"]')?.focus();
-  }, [tabs, screens, activeKind]);
+  }, [tabs, activeKind]);
 
   const close = (id: string) => {
-    if (tabs.length + screens.length === 1) { onHide(); return; }
+    if (tabs.length === 1) { onHide(); return; }
     restoreFocus.current = true;
     onClose(id);
   };
@@ -47,25 +43,7 @@ export function DockHeader({ area, tabs, activeKind, panelId, readOnly, transien
   // its empty space drags the window and the title-row toggle hides it.
   return <TooltipProvider><div className="dock-header" ref={header} data-tauri-drag-region={area === "right" || undefined}>
     <RovingFocusGroup.Root asChild orientation="horizontal" loop>
-      <div className="dock-tab-strip" role="tablist" aria-label={area === "right" ? "Side panel tabs" : "bottom dock tabs"}>
-        {screens.map(screen => <div className="dock-tab-shell" data-active={screen.active || undefined} key={screen.id}>
-          <RovingFocusGroup.Item asChild active={screen.active}>
-            <Button type="button" variant="ghost" size="sm" className="dock-tab" role="tab"
-              aria-selected={screen.active} aria-label={screen.title} aria-keyshortcuts="Delete"
-              data-active={screen.active || undefined} data-closable
-              onClick={() => onSelectScreen?.(screen.id)}
-              onContextMenu={event => onScreenMenu?.(screen.id, event)}
-              onKeyDown={event => {
-                if (event.key === "Delete") { event.preventDefault(); restoreFocus.current = true; onCloseScreen?.(screen.id); }
-              }}>
-              {screen.icon}<span>{screen.title}</span>
-            </Button>
-          </RovingFocusGroup.Item>
-          <Tooltip><TooltipTrigger asChild>
-            <Button type="button" variant="ghost" size="icon-2xs" className="dock-tab-close"
-              aria-label={`Close ${screen.title}`} onClick={() => { restoreFocus.current = true; onCloseScreen?.(screen.id); }}><X aria-hidden /></Button>
-          </TooltipTrigger><TooltipContent compact showArrow={false}>Close {screen.title}</TooltipContent></Tooltip>
-        </div>)}
+      <div className="dock-tab-strip" role="tablist" aria-label={`${area} dock tabs`}>
         {tabs.map(tab => {
           const Icon = icons[tab.kind];
           const active = tab.kind === activeKind;

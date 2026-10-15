@@ -50,7 +50,7 @@ export function EditorTabs({
   const nativeDragPendingRef = useRef(false);
   const nativeDragGenerationRef = useRef(0);
   const suppressDragClickRef = useRef(false);
-  // Screens moved to the side panel or the floating window leave the strip.
+  // A screen moved to the floating window leaves the strip.
   const visibleTabs = state.tabs.filter(isMainTab);
   const activeTabIndex = visibleTabs.findIndex((tab) => tab.id === state.activeTabId);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
@@ -645,7 +645,7 @@ export function EditorTabs({
             const close: MenuItemSpec[] = only ? [{ ...only, id: "close-tabs", text: `Close ${only.text}` }] : submenu("close-tabs", "Close", closing, "xmark");
             const bare = !compact.length && !sceneMenu.length && !reveal.length;
             void showNativeContextMenu(menuSections(opening, [pin, ...rename, ...sceneMenu, ...(bare ? close : [])],
-              [...compact.filter(entry => !opening.includes(entry)), ...reveal], window.BuretteMcpWorkspace ? [] : paneMoveItems(tab), bare ? [] : close), { x: event.clientX, y: event.clientY });
+              [...compact.filter(entry => !opening.includes(entry)), ...reveal], window.BuretteMcpWorkspace ? [] : paneMoveItems(tab, state, actions), bare ? [] : close), { x: event.clientX, y: event.clientY });
           };
           return (
             <div

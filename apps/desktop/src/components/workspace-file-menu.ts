@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { copyChemicalFiles } from "../hooks/workspace-chemical-copy";
 import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState } from "./types";
@@ -22,6 +23,7 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
       paths, records: [], items: paths.map(path => ({ kind: "file", path, title: path.split('/').pop() || path })),
     } })),
     ...(isTauriRuntime() && local ? [command("open-window", "New window", () => actions.openNewWindow(paths))] : []),
+    ...(isTauriRuntime() && local && single && caps[0].scene ? [command("open-popout", "Popout", () => invoke("open_new_workspace_window", { paths, presentation: "preview" }))] : []),
     ...(!single && caps.every(cap => cap.scene) ? [
       command("open-together", "In one scene", () => openBatch(paths, "scene")),
       ...(caps.every(cap => cap.protein) ? [command("open-aligned", "Aligned", () => workflows.openAligned(paths))] : []),
@@ -50,6 +52,7 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
     ...submenu("file-open", "Open", opening, "arrow.up.forward"),
     ...submenu("file-edit", "Edit", caps.every(cap => cap.molecule) ? [command("edit-ketcher", "Ketcher", () => actions.openKetcherWithStructures(paths))] : []),
   ], [
+    ...(single && path.split("/").includes("ssh-previews") ? take("save-file-copy").map(entry => ({ ...entry, id: "download", text: "Download…" })) : []),
     ...take("rename-file"), command("pin-files", pinned ? "Unpin" : "Pin", () => {
       paths.forEach(path => { if (state.pinnedStructurePaths.includes(path) === pinned) actions.togglePinnedStructure(path); });
     }), ...take("duplicate-file"),

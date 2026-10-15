@@ -1,3 +1,4 @@
+import { isNativePreviewWindow } from "../lib/window-scope";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 
@@ -307,17 +308,21 @@ export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedCol
   const [rgroupRuntimeAvailable, setRgroupRuntimeAvailable] = useState(false);
   const runningKeysRef = useRef(new Set<string>());
 
+  // A molecule popout must not start a Python/RDKit probe for grid tools.
+  // Probe only if a collection is actually opened there.
+  const needsRgroupProbe = !isNativePreviewWindow() || documents.some(document => document.renderer === "grid2d");
+
   // Asked once at startup so Decompose R-Groups can be disabled before it is
   // clicked rather than after: the probe launches a Python interpreter, which
   // is far too slow to do while a menu is opening.
   useEffect(() => {
-    if (!isTauriRuntime()) return;
+    if (!isTauriRuntime() || !needsRgroupProbe) return;
     let cancelled = false;
     void rgroupRuntimeStatus()
       .then((status) => { if (!cancelled) setRgroupRuntimeAvailable(status.available); })
       .catch(() => { if (!cancelled) setRgroupRuntimeAvailable(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [needsRgroupProbe]);
 
   const clearDerivedColumnJobs = useCallback(() => {
     setDerivedColumnJobs((previous) => previous.filter((job) => job.status === "running"));

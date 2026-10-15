@@ -9,7 +9,7 @@ import { MarqueeName } from "../marquee-name";
 import { ChevronDown } from "../ui/app-icons";
 import { Button } from "../ui/button";
 import { isMainTab, type MoleculeTab, type TabPane } from "../../stores/molecule-store";
-import { SCREEN_ENTRIES, openScreen, paneMoveItems, placeScreen, showSideScreen } from "./pane-actions";
+import { SCREEN_ENTRIES, openScreen, paneMoveItems, placeScreen } from "./pane-actions";
 import { TabNameDialog } from "../scene-name-dialog";
 
 // The "Codex ⌄" control of a pane header: the screen's glyph and title, and a
@@ -48,13 +48,10 @@ function screenRow(candidate: MoleculeTab, state: ShellViewState, current: Molec
 }
 
 export function paneSwitcherItems(pane: TabPane, tab: MoleculeTab, state: ShellViewState, actions: ShellActions, rename?: () => void): MenuItemSpec[] {
-  // The side panel switches among its own screens; the floating window holds
-  // one screen and takes any open tab in exchange.
+  // The floating window holds one screen and takes any open tab in exchange.
   const here = state.tabs.filter((candidate) => candidate.pane === pane);
-  const elsewhere = state.tabs.filter((candidate) => isMainTab(candidate) || (pane === "floating" && candidate.pane === "side"));
-  const screens = here.map((candidate) => screenRow(candidate, state, tab, () => {
-    if (pane === "side") showSideScreen(candidate.id);
-  }));
+  const elsewhere = state.tabs.filter(isMainTab);
+  const screens = here.map((candidate) => screenRow(candidate, state, tab, () => {}));
   const bring: MenuItemSpec[] = elsewhere.map((candidate) => ({
     kind: "item",
     id: `pane-bring-${candidate.id}`,
@@ -66,9 +63,9 @@ export function paneSwitcherItems(pane: TabPane, tab: MoleculeTab, state: ShellV
     .map((entry) => ({ kind: "item", id: `pane-open-${entry.id}`, text: entry.text, action: () => openScreen(entry.location, pane) }));
   return menuSections(
     screens,
-    bring.length ? [{ kind: "submenu", id: "pane-bring", text: pane === "side" ? "Show Tab Here" : "Show Tab in Window", items: bring }] : [],
+    bring.length ? [{ kind: "submenu", id: "pane-bring", text: "Show Tab in Window", items: bring }] : [],
     open.length ? [{ kind: "submenu", id: "pane-open", text: "Open", items: open }] : [],
-    paneMoveItems(tab),
+    paneMoveItems(tab, state, actions),
     rename ? [{ kind: "item", id: "rename-tab", text: "Rename tab…", action: rename }] : [],
     [{ kind: "item", id: "pane-close-screen", text: "Close", action: () => { void actions.closeTab(tab.id); } }],
   );

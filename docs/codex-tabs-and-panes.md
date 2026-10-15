@@ -1,9 +1,9 @@
 # Tabs, Screens, And Panes
 
 A screen is a `MoleculeTab` whose `location` selects a page kind. The main tab
-strip, right side panel and browser floating surface share screen placement
-state. A native detached window has a separate runtime and transfers a saved
-checkpoint instead of moving a live iframe between windows.
+strip and the browser floating surface share screen placement state. Native
+detached windows have a separate runtime and receive a saved scene instead of a
+live iframe moved between windows.
 
 ## Screens And Placement
 
@@ -23,34 +23,34 @@ and included in session snapshots and closed-tab restoration.
 | Place | Layout and ownership |
 | --- | --- |
 | Main | Multiple screens with one active tab |
-| Side panel | One resizable right-hand region containing both screen tabs and inspector/tool tabs |
 | Browser floating surface | One in-page floating screen; movable, resizable and minimizable |
-| Native detached window | A separate Tauri workspace window for a supported molecular scene or illustration sheet |
+| Native preview window | A compact Tauri window holding a copy of a file screen (Pop out) |
+| Native detached window | A separate Tauri workspace window that owns a moved molecular scene or illustration sheet (Move to New Window) |
 
-`MoleculeTab.pane` records `side`, `floating` or main placement.
-`sidePaneTabId` selects a placed screen. Bringing a placed screen to the main
-workspace clears its placement. Settings temporarily hides placed surfaces.
+`MoleculeTab.pane` (`"floating" | undefined`) records the place.
+`activeTabId` always names a main tab; making a placed screen active (sidebar,
+deep link, open actions) brings it back to the main strip. Tabs saved by older
+builds in the retired side panel (`pane: "side"`) load into the main strip.
+Settings temporarily hides placed surfaces.
 
-### One Right Panel
+## Docks
 
-The right panel has one width and one header. `DockHeader` lists moved screens
-alongside the active main tab's dock tools. Selecting a screen shows its page;
-selecting a dock tab shows the corresponding inspector/tool content. These
-choices occupy the same region, not adjacent columns.
+| Dock | Holds | Toggle |
+| --- | --- | --- |
+| Right dock | Per-tab tools (Info, Text, Files, Ketcher, Jobs, Chemical space, ...) following the front tab | title bar panel button, Opt+Cmd+B |
+| Bottom dock | Shared tools (Jobs, logs) | Cmd+J only; the title bar has no button for it |
 
-`rightPanelContent` and `sideHidden` in `workspace-panes-store` preserve the
-content choice. Dock tabs, selected dock tool, open state and width live in
-`tab-workspace-store`. The legacy `sideWidth` field remains readable for old
-snapshots; it no longer controls a second column. Panels offers Side panel and
-Bottom dock. The bottom dock remains a separate region.
+The right dock is the only panel beside the main column. The separate side
+panel was removed because it duplicated the right dock's tools. Dock tabs,
+selected dock tool, open state and width live in `tab-workspace-store`.
 
 ## Placement And Runtime Lifetime
 
 Within one browser document, `ViewerArea` owns a single `.page-stack`.
 Placement changes the CSS position of an existing `.page-surface`; it does not
-reparent the iframe. The side surface uses the right panel's measured edge,
-while the floating surface uses its stored rectangle. Browser floating starts
-at 470 × 640, with a 400 × 400 minimum, and is clamped to the viewport.
+reparent the iframe. The floating surface uses its stored rectangle. Browser
+floating starts at 470 × 640, with a 400 × 400 minimum, and is clamped to the
+viewport.
 
 This placement mechanism does not promise that every page stays mounted
 forever. Inactive main tabs use a bounded warm cache: normally 10 pages,
@@ -77,11 +77,18 @@ Closing a tab is different from navigating its history: its runtime may unload.
 Reopen closed tab reads file content again and restores the saved label when a
 new matching tab is created; it is not a live viewer undo operation.
 
-## Native Pop Out And Return
+## Native Pop Out, Move And Return
 
-`pane-actions` routes Pop out to `native-popout` in Tauri. In a browser it uses
-the floating placement described above. Native transfer supports Mol* scenes
-and XYZ illustration sheets. It does not share a WebGL context across windows.
+In Tauri, Pop out on a file screen copies it into a compact native preview
+window (`workspace-panes/native-popout.ts`): a Mol* scene travels as an
+exported session, other files by path. The main tab stays where it is. The
+preview window's Return button sends the current scene back to the main window
+and closes the preview. In a browser, and for non-file screens, Pop out uses
+the floating placement described above.
+
+Move to New Window (`workspace-panes/native-scene-window.ts`) moves a supported
+Mol* scene or XYZ illustration sheet into an independent workspace window. It
+does not share a WebGL context across windows.
 
 The source becomes inert while a checkpoint is captured. A destination window
 opens that checkpoint and acknowledges a nonempty loaded viewer before the
@@ -113,10 +120,17 @@ may still reference them.
 
 ## Actions And File Drag
 
-Tab context menus and panel headers provide Open in Side Panel, Pop out,
-Move to Main Window, Rename and Close as applicable. The new-tab menu offers
-New tab, Jobs, Chemical space and Ketcher. Jobs and Chemical space are not
-permanent sidebar cards.
+| Action | Where |
+| --- | --- |
+| Pop out, Move to New Window, Move to Main Window | tab context menu, pane switcher |
+| Switch screen, show a main tab here, open Jobs, Chemical space, Ketcher | pane switcher (title and chevron) |
+| New screen of any kind | right-click "+" in the tab strip; click "+" is New Tab (Cmd+T) |
+| Hide or show the right dock | panel button at the end of the title bar, or Opt+Cmd+B |
+| Hide or show the bottom dock | Cmd+J |
+| Move, resize, minimize the floating window | drag the header, drag the bottom-right corner, "-" button |
+| Rename tab | tab context menu or pane switcher; changes the label without renaming the source file |
+
+Jobs and Chemical space are not permanent sidebar cards.
 
 Keyboard commands are defined in `lib/keyboard-shortcuts.ts`, including
 Back/Forward, sidebar and panel toggles, close others and reopen closed tab.
@@ -139,8 +153,8 @@ paths; see [Drag and Drop](drag-and-drop.md) for their routing contracts.
 ## Persistence And Scene Saving
 
 Screen locations, history, labels and placement are part of the molecular
-session. Pane content choice and browser floating geometry use the window-scoped
-workspace-panes store; per-tab dock layout uses the tab-workspace store.
+session. Browser floating geometry uses the window-scoped workspace-panes store;
+per-tab dock layout uses the tab-workspace store.
 Disabling restore-on-launch starts fresh tabs while retaining layout preferences.
 
 Save scene captures the current Mol* state as a `.molx` archive with embedded
@@ -157,7 +171,9 @@ transport used for complete scene archives has a 24 MiB bound; the public agent
   `dock-header.tsx`, `app-layout.tsx` and the two workspace stores.
 - History lifetime: `editor-area/index.tsx`, `tab-history-pages.tsx` and
   `lib/viewer-frame-visibility.ts`.
-- Native transfer: `workspace-panes/native-popout.ts`, native
+- Native preview: `workspace-panes/native-popout.ts`,
+  `native-preview-layout.tsx` and `open_new_workspace_window`.
+- Native move: `workspace-panes/native-scene-window.ts`, native
   `commands/popout_scene.rs` and the private viewer snapshot handlers.
 - Native file drag: `editor-area/tab-file-drag.ts`, `editor-tabs.tsx` and
   `lib/native-file-drag.ts`.

@@ -44,3 +44,29 @@ assert.deepEqual(results, [{ current: 'two' }, { current: 'two' }, { current: 't
 assert.deepEqual(await control({ operation: 'goto', id: 'missing' }), { error: 'STORY_STEP_NOT_FOUND' });
 assert.deepEqual(await control({ operation: 'goto', index: 0 }), { current: 'one' });
 console.log('Story controls: ordered steps, duplicate selection skipped, invalid selection preserves queue');
+
+// Exporting an ordinary molecule must not install the Story snapshot mutator.
+const observer = source.slice(source.indexOf('  function observeMolstarStoryState(viewer)'), source.indexOf('  function buretteSceneSpecOperations'));
+for (const kind of ['pdb', 'session', 'sdf']) {
+  let cleaned = false;
+  const snapshot = { canvas3d: { props: { postprocessing: { outline: true } } } };
+  const observe = new Function('activeMolstarPrepared', 'molstarStoryStateCleanup', 'detachMolstarStoryPresentation', `${observer}; return observeMolstarStoryState;`)(
+    { kind }, () => { cleaned = true; }, () => { delete snapshot.canvas3d; },
+  );
+  observe({ plugin: { managers: { snapshot: { state: { entries: [{ snapshot }] } } } } });
+  assert.equal(cleaned, true);
+  assert.deepEqual(snapshot, { canvas3d: { props: { postprocessing: { outline: true } } } });
+}
+
+const focusSource = source.slice(source.indexOf('  function requestMolstarStructureFocus(viewer, options = {})'), source.indexOf('  function observeMolstarViewportPanel()'));
+for (const mode of ['orthographic', 'perspective']) {
+  let reset;
+  let atomFit = false;
+  const camera = { state: { mode, radius: 10 }, target: [0, 0, 0], getFocus: () => ({ mode }) };
+  const focus = new Function('document', 'fittedMolstarStructureFocus', 'debug', `${focusSource}; return requestMolstarStructureFocus;`)(
+    { body: { classList: { contains: () => false } } }, () => { atomFit = true; return {}; }, () => {},
+  );
+  focus({ plugin: { canvas3d: { camera, requestCameraReset: value => { reset = value; } } } }, { mode });
+  assert.equal(reset.snapshot.mode, mode);
+  assert.equal(atomFit, mode === 'perspective');
+}

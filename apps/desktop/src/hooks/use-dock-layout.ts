@@ -1,11 +1,8 @@
 import { useCallback, useMemo } from "react";
-import { useWorkspacePanesStore } from "../stores/workspace-panes-store";
 import { useMoleculeStore } from "../stores/molecule-store";
 import { defaultTabWorkspace, useTabWorkspaceStore } from "../stores/tab-workspace-store";
 
 export function useDockLayout(activeTabId: string | null) {
-  const screenOpen = useMoleculeStore(state => state.tabs.some(tab => tab.pane === "side"));
-  const sideHidden = useWorkspacePanesStore(state => state.sideHidden);
   const workspace = useTabWorkspaceStore((state) => activeTabId ? state.workspaces[activeTabId] : undefined);
   const fallback = useMemo(defaultTabWorkspace, []);
   const current = workspace ?? fallback;
@@ -57,7 +54,7 @@ export function useDockLayout(activeTabId: string | null) {
   }, [addDockDropAction, currentTabId]);
 
   return {
-    rightDockOpen: current.right.open || (screenOpen && !sideHidden),
+    rightDockOpen: current.right.open,
     rightDockWidth: current.right.size,
     rightDockTabs: current.right.tabs,
     rightDockActiveTab: current.right.activeTab,

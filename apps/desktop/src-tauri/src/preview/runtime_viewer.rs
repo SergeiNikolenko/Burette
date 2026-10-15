@@ -704,6 +704,20 @@ fn ketcher_edit_config(
     }
     let text = String::from_utf8_lossy(data);
     let atom_count = match extension {
+        "pdb" | "ent" => {
+            if source_byte_count > 512 * 1024
+                || text
+                    .lines()
+                    .filter(|line| line.starts_with("MODEL "))
+                    .count()
+                    > 1
+            {
+                return None;
+            }
+            text.lines()
+                .filter(|line| line.starts_with("ATOM  ") || line.starts_with("HETATM"))
+                .count()
+        }
         "mol" => molfile_atom_count(&text),
         "sdf" | "sd" => {
             if sdf_record_count != 1 {
@@ -800,13 +814,50 @@ fn protein_like_atom_record_count(data: &[u8]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        copy_web_assets, protein_like_atom_record_count, xyzrender_available_for_document,
-        AssetProfile,
+        copy_web_assets, ketcher_edit_config, protein_like_atom_record_count,
+        xyzrender_available_for_document, AssetProfile,
     };
     use crate::preview::formats::FormatInfo;
     use crate::preview::runtime::ViewerPreferences;
     use std::fs;
     use std::path::Path;
+
+    #[test]
+    fn ordinary_and_mesoscale_sessions_choose_their_own_runtime() {
+        for (transformer, expected) in [
+            ("ms-plugin.raw-data", false),
+            ("ms-plugin.mesoscale-state", true),
+        ] {
+            let session = serde_json::json!({"entries": [{"snapshot": {"data": {"tree": {
+                "transforms": [{"transformer": transformer}]
+            }}}}]});
+            assert_eq!(
+                super::is_mesoscale_document(
+                    Path::new("scene.molj"),
+                    "molj",
+                    session.to_string().as_bytes()
+                ),
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn extracted_pdb_molecules_offer_ketcher_without_enabling_large_or_multi_model_files() {
+        let atom =
+            "HETATM    1 FE   HEM H   1       1.000   2.000   3.000  1.00  0.00          FE\n";
+        let path = Path::new("HEM-H-1.pdb");
+        let config = ketcher_edit_config(path, "pdb", atom.as_bytes(), atom.len(), 0).unwrap();
+        assert_eq!(config["ketcherAtomCount"], 1);
+        assert_eq!(config["ketcherSourceExtension"], "pdb");
+        for text in [
+            atom.repeat(301),
+            format!("MODEL        1\n{atom}ENDMDL\nMODEL        2\n{atom}ENDMDL\n"),
+            "END\n".into(),
+        ] {
+            assert!(ketcher_edit_config(path, "pdb", text.as_bytes(), text.len(), 0).is_none());
+        }
+    }
 
     fn format(molstar_format: &str) -> FormatInfo {
         FormatInfo {
@@ -1470,7 +1521,26 @@ fn mesoscale_viewer_html(
 }
 
 fn is_mesoscale_document(file_path: &Path, extension: &str, data: &[u8]) -> bool {
-    if matches!(extension, "molj" | "molx" | "mesozip") {
+    if extension == "molj" {
+        // Ordinary Mol* sessions and Mesoscale sessions share the same extension.
+        return serde_json::from_slice::<serde_json::Value>(data)
+            .ok()
+            .and_then(|session| session.get("entries").and_then(|v| v.as_array()).cloned())
+            .is_none_or(|entries| {
+                entries.iter().any(|entry| {
+                    entry
+                        .pointer("/snapshot/data/tree/transforms")
+                        .and_then(|v| v.as_array())
+                        .is_some_and(|transforms| {
+                            transforms.iter().any(|transform| {
+                                transform.get("transformer").and_then(|v| v.as_str())
+                                    == Some("ms-plugin.mesoscale-state")
+                            })
+                        })
+                })
+            });
+    }
+    if matches!(extension, "molx" | "mesozip") {
         return true;
     }
     let name = file_path

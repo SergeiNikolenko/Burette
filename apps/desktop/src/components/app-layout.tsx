@@ -1,3 +1,5 @@
+import { NativePreviewLayout } from "./workspace-panes/native-preview-layout";
+import { isNativePreviewWindow } from "../lib/window-scope";
 import { Spinner } from "@/components/ui/spinner";
 import { ToolbarButton } from "@/components/ui/toolbar-button";
 import { NativeWorkspaceMenu, NativeWorkspaceSidebar } from "./native-workspace-navigation";
@@ -10,7 +12,7 @@ import { SidebarFileOperations } from "./sidebar/file-operations";
 import { WorkspaceMenus } from "./workspace-menus";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { ArrowLeft, ArrowRight, SidebarLeft as PanelLeft } from "@/components/ui/app-icons";
-import { PanelsMenu } from "./workspace-panes/panels-menu";
+import { RightDockToggle } from "./workspace-panes/right-dock-toggle";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { DockPanel } from "./dock-panel";
 import { ViewerArea } from "./editor-area";
@@ -263,7 +265,13 @@ function useViewportWidth(shellRef: React.RefObject<HTMLElement | null>) {
   return width;
 }
 
-export function AppLayout({
+export function AppLayout(props: Parameters<typeof WorkspaceAppLayout>[0]) {
+  return isNativePreviewWindow()
+    ? <NativePreviewLayout state={props.state} actions={props.actions} />
+    : <WorkspaceAppLayout {...props} />;
+}
+
+function WorkspaceAppLayout({
   state,
   actions,
   onToggleSidebar,
@@ -440,10 +448,12 @@ export function AppLayout({
   // layout directly, and its widths do not always flow back through state in time.
   useEffect(() => {
     if (!activeGridId) return;
+    const observer = new ResizeObserver(() => post());
     const post = () => {
       const iframe = activeViewerIframeForDocument(activeGridId, "grid2d");
       const win = iframe?.contentWindow ?? null;
       if (!iframe || !win) return;
+      observer.observe(iframe);
       const dockEl = rightDockOpen ? rightDockElementRef.current : null;
       const dockLeft = dockEl?.getBoundingClientRect().left;
       const cover = dockLeft === undefined ? 0 : Math.max(0, Math.round(iframe.getBoundingClientRect().right - dockLeft));
@@ -455,8 +465,8 @@ export function AppLayout({
     };
     window.addEventListener("load", onViewerLoad, true);
     const dockEl = rightDockElementRef.current;
-    const observer = dockEl ? new ResizeObserver(() => post()) : null;
-    if (dockEl && observer) observer.observe(dockEl);
+    if (dockEl) observer.observe(dockEl);
+    if (workbenchGroupRef.current) observer.observe(workbenchGroupRef.current);
     // The iframe may not be mounted yet right after a load; retry once shortly.
     const timer = window.setTimeout(post, 400);
     return () => {
@@ -579,15 +589,11 @@ export function AppLayout({
           <div className="chrome-trailing-controls" ref={trailingControlsRef} data-tauri-drag-region>
             {!hostedMcpWidget ? <ActivityIndicator state={layoutState} actions={actions} /> : null}
             {!hostedMcpWidget && pluginSurface ? <AnnotateToggle className="chrome-button dock-toggle-button" /> : null}
-            {!hostedMcpWidget && !window.BuretteMcpWorkspace && <PanelsMenu
-              rightOpen={rightDockOpen} bottomOpen={bottomDockOpen}
-              bottomAvailable={!pluginSurface}
-              toggleRight={() => actions.toggleDock("right")} toggleBottom={() => actions.toggleDock("bottom")}
-            />}
+            {!hostedMcpWidget && !window.BuretteMcpWorkspace && <RightDockToggle open={rightDockOpen} toggle={() => actions.toggleDock("right")} />}
           </div>
           <header className="topbar">
             <EditorTabs state={layoutState} actions={actions} readOnly={hostedMcpWidget} />
-            {/* Codex keeps "Open in" at the end of the thread header, left of the side panel. */}
+            {/* Codex keeps "Open in" at the end of the thread header, left of the right dock. */}
             {!hostedMcpWidget ? <div className="topbar-actions"><OpenInEditorMenu state={layoutState} actions={actions} /></div> : null}
           </header>
         </>
@@ -663,7 +669,6 @@ export function AppLayout({
                   if (px > 1) rightDockResize.report(px);
                   const open = isPanelOpen(panel, px);
                   if (open !== rightDockOpenRef.current) actions.setDockOpen("right", open);
-
                 }}
               >
                 <ResizablePanel

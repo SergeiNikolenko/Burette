@@ -1,9 +1,10 @@
 import { SshPreviewCache } from "./ssh-preview-cache";
 import { SshRequestQueue } from "./ssh-request-queue";
 import { SshSession } from "./ssh-session";
+import { saveSshDownload } from "./ssh-download";
 import { mkdir, mkdtemp, open, readFile, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import type { ViteDevServer } from "vite";
 import { readJsonBody, sendJson, sendJsonError } from "./http";
 
@@ -53,20 +54,23 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
         sendJson(res, 200, [...new Set(aliases)].slice(0, 256).map(alias => ({ alias })), "no-store");
         return;
       }
-      if (action !== "/list" && action !== "/preview" && action !== "/delete-folder") { sendJson(res, 404, { error: "Unknown SSH operation" }); return; }
+      if (action !== "/list" && action !== "/preview" && action !== "/download" && action !== "/delete-folder") { sendJson(res, 404, { error: "Unknown SSH operation" }); return; }
       const { host, root, path } = request;
       if (!validHost(host) || typeof root !== "string" || typeof path !== "string" || (root + path).includes("\0")) throw new Error("Invalid SSH host or remote path");
+      const archive = action === "/download" && request.archive === true;
       const chemical = action === "/list" && request.chemical === true;
       const registry = chemical ? JSON.parse(await readFile(join(repoRoot, "config/preview-formats.json"), "utf8")) : null;
       const extensions = registry?.formats.filter((format: { preview?: { strategy?: string } }) => format.preview?.strategy !== "text").flatMap((format: { extensions: string[] }) => format.extensions);
       const cacheKey = JSON.stringify([host, root, path]);
       const known = action === "/preview" ? await previews.known(cacheKey) : undefined;
-      const payload = JSON.stringify({ known, operation: chemical ? "discover" : action === "/delete-folder" ? "delete-folder" : action === "/list" ? "list" : "preview", root, path, ...(chemical ? { extensions } : {}) });
+      // Previews carry a fingerprint header for the local cache; downloads stay raw bytes.
+      const operation = archive ? "archive" : chemical ? "discover" : action === "/delete-folder" ? "delete-folder" : action === "/list" ? "list" : action === "/preview" ? "preview" : "read";
+      const payload = JSON.stringify({ known, operation, root, path, ...(chemical ? { extensions } : {}) });
       if (Buffer.byteLength(payload) > 8192) throw new Error("Remote path request is too large");
       release = await requests.acquire(controller.signal);
       controller.signal.throwIfAborted();
       const started = performance.now();
-      const worker = (await Promise.all(["chemistry.py", "reader.py"].map(file => readFile(join(repoRoot, "apps/desktop/src-tauri/src/commands/ssh", file), "utf8")))).join("\n");
+      const worker = (await Promise.all(["chemistry.py", "archive.py", "reader.py"].map(file => readFile(join(repoRoot, "apps/desktop/src-tauri/src/commands/ssh", file), "utf8")))).join("\n");
       let session = sessions.get(host);
       if (!session) {
         if (sessions.size >= 4) {
@@ -77,9 +81,11 @@ export function registerBrowserDevSshRoutes(server: ViteDevServer, repoRoot: str
         session = new SshSession(host, worker, () => { if (sessions.get(host) === session) sessions.delete(host); });
         sessions.set(host, session);
       }
-      const data = await session.run(payload, action === "/preview" ? MAX_BYTES + 1024 : 2 * 1024 * 1024, controller.signal);
+      const limit = archive ? 512 * 1024 * 1024 : action === "/preview" ? MAX_BYTES + 1024 : action === "/download" ? MAX_BYTES : 2 * 1024 * 1024;
+      const data = await session.run(payload, limit, controller.signal, archive ? 120000 : 45000);
       res.setHeader("Server-Timing", `ssh;dur=${(performance.now() - started).toFixed(1)}`);
-      if (action !== "/preview") sendJson(res, 200, JSON.parse(data.toString()), "no-store");
+      if (action === "/download") sendJson(res, 200, await saveSshDownload(join(homedir(), "Desktop"), archive ? `${basename(path === "." ? root : path) || "project"}.zip` : path, data), "no-store");
+      else if (action !== "/preview") sendJson(res, 200, JSON.parse(data.toString()), "no-store");
       else {
         sendJson(res, 200, await previews.store(cacheKey, path, data), "no-store");
       }

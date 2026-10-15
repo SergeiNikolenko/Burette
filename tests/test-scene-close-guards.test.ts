@@ -3,7 +3,7 @@ import { expect, mock, test } from "bun:test";
 let busy = false;
 let owner: string | null = null;
 const returning = mock(async () => { owner = null; return false; });
-mock.module("../apps/desktop/src/components/workspace-panes/native-popout", () => ({
+mock.module("../apps/desktop/src/components/workspace-panes/native-scene-window", () => ({
   nativePopoutBusy: () => busy,
   isNativePopoutTab: (id: string) => owner === id,
   returnNativePopout: returning,

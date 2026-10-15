@@ -1,41 +1,25 @@
 import type { MenuItemSpec } from "../menu-types";
-import type { ShellActions } from "../types";
+import type { ShellActions, ShellViewState } from "../types";
+import { canOpenNativePopout, openNativePopout } from "./native-popout";
 import { takeClosedTab } from "../../stores/closed-tabs";
 import type { Location } from "../editor-area/page-kinds";
 import { useMoleculeStore, type MoleculeTab, type TabPane } from "../../stores/molecule-store";
 import { useWorkspacePanesStore } from "../../stores/workspace-panes-store";
-import { useTabWorkspaceStore } from "../../stores/tab-workspace-store";
 import { isTauriRuntime } from "../../lib/tauri";
-import { isNativePopoutTab, nativePopoutReason, popOutNativeScene, returnNativePopout } from "./native-popout";
+import { isNativePopoutTab, nativePopoutReason, popOutNativeScene, returnNativePopout as returnMovedScene } from "./native-scene-window";
 import { toast } from "../ui/toast";
 
-// Moving a screen between the main strip, the side panel and the floating
-// window. The page itself never remounts (see ViewerArea); these only change
-// where its surface is laid out.
+// Moving a screen between the main strip and the floating window. The page
+// itself never remounts (see ViewerArea); these only change where its surface
+// is laid out.
 export function placeScreen(tabId: string, pane: TabPane | null) {
-  if (pane === "floating" && isTauriRuntime()) { void popOutNativeScene(tabId); return; }
   useMoleculeStore.getState().placeTab(tabId, pane);
-  if (pane === "side") useWorkspacePanesStore.getState().setSideHidden(false);
   if (pane === "floating") useWorkspacePanesStore.getState().setFloatingMinimized(false);
 }
 
 export function openScreen(location: Location, pane: TabPane | null = null) {
-  // Legacy browser floating locations never create a fake desktop window.
-  if (pane === "floating" && isTauriRuntime()) pane = null;
   useMoleculeStore.getState().openScreenTab(location, pane);
-  if (pane === "side") useWorkspacePanesStore.getState().setSideHidden(false);
   if (pane === "floating") useWorkspacePanesStore.getState().setFloatingMinimized(false);
-}
-
-export function showSideScreen(tabId: string) {
-  useMoleculeStore.getState().showSidePaneTab(tabId);
-  useWorkspacePanesStore.getState().setSideHidden(false);
-}
-
-// The title-bar toggle shares the unified right dock/screen region.
-export function toggleSidePanel() {
-  const tabId = useMoleculeStore.getState().activeTabId;
-  if (tabId) useTabWorkspaceStore.getState().toggleDock(tabId, "right");
 }
 
 // Codex's ⇧⌘T. Files are read again from disk because closing a tab unloads
@@ -70,22 +54,28 @@ export const SCREEN_ENTRIES: { id: string; text: string; location: Location }[] 
   { id: "screen-ketcher", text: "Ketcher", location: { kind: "ketcher" } },
 ];
 
-// "Open in Side Panel", "Pop out" and "Move to Main Window" for one screen,
-// shared by the tab context menu and both pane headers so they always agree.
-export function paneMoveItems(tab: MoleculeTab): MenuItemSpec[] {
+// "Pop out", "Move to New Window" and "Move to Main Window" for one screen, shared by the tab context
+// menu and the floating window header so they always agree.
+export function paneMoveItems(tab: MoleculeTab, state: ShellViewState, actions: ShellActions): MenuItemSpec[] {
   const items: MenuItemSpec[] = [];
   if (isNativePopoutTab(tab.id)) return [{ kind: "item", id: "pane-return-main", text: "Move to Main Window", action: () => {
-    void returnNativePopout().catch(() => toast.add({ title: "Could not return scene", description: "Keep this window open and try again.", type: "error" }));
+    void returnMovedScene().catch(() => toast.add({ title: "Could not return scene", description: "Keep this window open and try again.", type: "error" }));
   } }];
   if (tab.pane) {
     items.push({ kind: "item", id: "pane-move-main", text: "Move to Main Window", action: () => placeScreen(tab.id, null) });
   }
-  if (tab.pane !== "side") {
-    items.push({ kind: "item", id: "pane-open-side", text: "Open in Side Panel", action: () => placeScreen(tab.id, "side") });
+  if (canOpenNativePopout(tab) || tab.pane !== "floating") {
+    items.push({ kind: "item", id: "pane-pop-out", text: "Pop out", action: async () => {
+      if (canOpenNativePopout(tab)) {
+        if (await openNativePopout(tab, state, actions)) placeScreen(tab.id, null);
+      } else placeScreen(tab.id, "floating");
+    } });
   }
-  if (tab.pane !== "floating") {
+  // Pop out copies the scene into a compact preview; this moves the scene and
+  // its checkpointed state into an independent workspace window instead.
+  if (isTauriRuntime() && !tab.pane) {
     const reason = nativePopoutReason(tab);
-    items.push({ kind: "item", id: "pane-pop-out", text: "Pop out", disabled: Boolean(reason), tooltip: reason ?? undefined, action: () => placeScreen(tab.id, "floating") });
+    items.push({ kind: "item", id: "pane-move-window", text: "Move to New Window", disabled: Boolean(reason), tooltip: reason ?? undefined, action: () => { void popOutNativeScene(tab.id); } });
   }
   return items;
 }

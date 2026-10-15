@@ -146,39 +146,3 @@ for (const area of ["right", "bottom"]) {
 }
 
 console.log("tab workspace store behavior tests passed");
-
-// A screen and Info/Files share the right panel. Closing/reopening retains the
-// selected screen, selecting a dock tab replaces it, and bottom stays independent.
-const { useWorkspacePanesStore } = await import("../apps/desktop/src/stores/workspace-panes-store.ts");
-const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store.ts");
-useMoleculeStore.setState({ tabs: [
-  { id: "main", location: { kind: "launcher" } },
-  { id: "screen", location: { kind: "jobs" }, pane: "side" },
-], activeTabId: "main" });
-resetStore();
-const panes = useWorkspacePanesStore.getState();
-panes.setSideHidden(false);
-workspace.toggleDock("main", "right");
-assert.equal(useWorkspacePanesStore.getState().sideHidden, true);
-assert.equal(getTabWorkspace("main").right.open, false);
-workspace.toggleDock("main", "right");
-assert.equal(useWorkspacePanesStore.getState().sideHidden, false);
-workspace.openDockTab("main", "right", "inspector");
-assert.equal(useWorkspacePanesStore.getState().sideHidden, true);
-assert.equal(getTabWorkspace("main").right.open, true);
-panes.setSideHidden(false);
-workspace.setDockActiveTab("main", "right", "inspector");
-assert.equal(useWorkspacePanesStore.getState().sideHidden, true);
-panes.setSideHidden(false);
-workspace.openDockTab("main", "bottom", "jobs");
-assert.equal(useWorkspacePanesStore.getState().sideHidden, false);
-workspace.setDockDocument("main", "right", "doc");
-assert.equal(useWorkspacePanesStore.getState().rightPanelContent, "dock");
-assert.equal(getTabWorkspace("main").right.activeTab, "files");
-assert.equal(getTabWorkspace("main").bottom.open, true);
-const mergePanes = useWorkspacePanesStore.persist.getOptions().merge;
-const legacy = mergePanes({ sideHidden: false, sideWidth: 470 }, panes);
-assert.equal(legacy.rightPanelContent, "screen");
-assert.equal(legacy.sideHidden, false);
-const restored = mergePanes({ sideHidden: true, rightPanelContent: "screen" }, panes);
-assert.equal(restored.rightPanelContent, "screen", "closing the unified panel retains its selection across restart");

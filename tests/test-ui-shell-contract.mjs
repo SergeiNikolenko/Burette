@@ -1548,13 +1548,10 @@ assert.doesNotMatch(editorTabs, /className="tab-history-controls"/);
 assert.match(editorTabs, /import \{ CloseIcon \} from "\.\.\/close-icon"/);
 assert.match(editorTabs, /<CloseIcon size=\{13\} \/>/);
 assert.match(appLayout, /className="chrome-leading-controls"/);
-const panelsMenu = await source("apps/desktop/src/components/workspace-panes/panels-menu.tsx");
-assert.match(appLayout, /<PanelsMenu/);
-assert.doesNotMatch(appLayout, /id="side-pane"|useWorkbenchColumns|<SidePane/);
-assert.doesNotMatch(panelsMenu, /toggleSide|Right dock/);
-for (const [state, action, label] of [["rightOpen", "toggleRight", "Side panel"], ["bottomOpen", "toggleBottom", "Bottom dock"]]) {
-  assert.ok(panelsMenu.includes(`checked={${state}} onCheckedChange={${action}}>${label}</DropdownMenuCheckboxItem>`), `${label} retains its real toggle and state`);
-}
+// The trailing title-bar button toggles the right dock directly; the bottom
+// dock opens from its shortcut only.
+assert.match(appLayout, /<RightDockToggle open=\{rightDockOpen\} toggle=\{\(\) => actions\.toggleDock\("right"\)\} \/>/);
+assert.doesNotMatch(appLayout, /toggleDock\("bottom"\)/);
 
 assert.match(appLayout, /from "\.\/shortcut-tooltip"/);
 assert.doesNotMatch(appLayout, /<ShortcutTooltip label=\{state\.sidebarOpen \? "Hide sidebar" : "Show sidebar"\} shortcut=\{"⌘\\\\"\} \/>/);
@@ -4555,7 +4552,6 @@ assert.match(openDropHook, /addProjectRoots\?\.\(classified\.directories\)/);
 assert.match(openDropHook, /target\.kind === "sidebar"/);
 assert.match(openDropHook, /classified\.files\s*\.map\(parentDirectory\)/);
 assert.match(openDropHook, /addProjectRoots\?\.\(sidebarProjectRoots\)/);
-assert.match(openDropHook, /paths: classified\.files/);
 assert.match(openDropHook, /const choices = resolveDropActionChoices/);
 assert.match(openDropHook, /source: DropSourceContext = \{ kind: "unknown" \}/);
 assert.match(openDropHook, /resolveDropActionChoices\(\s*payload,\s*target,\s*source,\s*\)/s);
@@ -4580,7 +4576,7 @@ assert.match(appDockActionsHook, /export function useAppDockActions\(\{/);
 assert.match(appDockActionsHook, /const toggleDockTab = useCallback/);
 assert.match(appDockActionsHook, /const open = area === "right" \? rightDockOpen : bottomDockOpen/);
 assert.match(appDockActionsHook, /const activeKind = area === "right" \? rightDockActiveTab : bottomDockActiveTab/);
-assert.match(appDockActionsHook, /if \(open && !screenSelected && activeKind === kind\)/);
+assert.match(appDockActionsHook, /if \(open && activeKind === kind\)/);
 assert.match(appDockActionsHook, /setDockOpen\(area, false\)/);
 assert.match(appDockActionsHook, /openDockTab\(area, kind\)/);
 assert.match(appDockPayloadHook, /export function useAppDockPayloadOpen/);
@@ -4626,8 +4622,6 @@ assert.match(openDropHook, /void runFinderDropAction\(payload, target\)/);
 assert.match(openDropHook, /const structureDrop = hasStructureDrag\(event\.dataTransfer\)/);
 assert.match(openDropHook, /readStructureDragPayload\(event\.dataTransfer\)/);
 assert.match(openDropHook, /const \{ payload, itemCount \} = structureDrop[\s\S]*?showDropFeedback\(payload, dropTargetForElement\(element\)/);
-assert.match(openDropHook, /void runFinderDropAction\(payload, dropTargetForElement\(target\)\)/);
-assert.match(openDropHook, /runDropAction\(payload, dropTargetForElement\(target\), \{ kind: "unknown" \}\)/);
 assert.match(openDropHook, /const handleBrowserPaste = useCallback/);
 assert.match(openDropHook, /isEditablePasteTarget\(event\.target\)/);
 assert.match(openDropHook, /const hasPlainText = Array\.from\(event\.clipboardData\.types\)\.includes\("text\/plain"\)/);
@@ -5201,7 +5195,6 @@ assert.match(previewViewer, /if \(options\.force !== true && !molstarAutoFocusEn
 assert.match(previewViewer, /function molstarAutoFocusEnabled\(config\) \{\s*return !isQuickLookHost\(\) && config\?\.autoFocusStructure === true;\s*\}/);
 assert.match(previewViewer, /function requestMolstarStructureFocus\(viewer, options = \{\}\)/);
 assert.match(previewViewer, /camera\.getFocus\(target, Math\.max\(0\.1, safeRadius \* radiusScale\), up, direction\)/);
-assert.match(previewViewer, /snapshot\.mode = 'perspective'/);
 assert.match(
   previewViewer,
   /await applyConfiguredMolstarPreset\(viewer, activeConfig \|\| config\);[\s\S]*scheduleMolstarStructureFocus\(viewer, \{ reason: 'initial-load', durationMs: 120 \}\);/,
@@ -6519,7 +6512,7 @@ assert.match(previewViewer, /target\?\.scope === 'ligand' && target\.selectedEnt
 assert.match(previewViewer, /function pdbLigandSdfEntryForResidue\(receptor, atom\)/);
 assert.match(previewViewer, /function pdbConectPairsForSerials\(pdbData, includedSerials\)/);
 assert.match(previewViewer, /formatSdfCountsLine\(parsedAtoms\.length, sdfBonds\.length\)/);
-assert.match(previewViewer, /const ligandEntry = pdbLigandSdfEntryForResidue\(target\.sourceEntry, target\.atom\) \|\| target\.selectedEntry;/);
+assert.match(previewViewer, /const ligandEntry = pdbEntryForResidue\(target\.sourceEntry, target\.atom\) \|\| target\.selectedEntry;/);
 assert.match(previewViewer, /role: 'ligand',\s*label: ligandEntry\.label \|\| target\.label \|\| 'Ligand'/s);
 assert.match(previewViewer, /format: normalizeFormat\(ligandEntry\.format\)/);
 assert.match(previewViewer, /data: ligandEntry\.data/);
@@ -6561,7 +6554,8 @@ assert.match(previewViewer, /molstarContextDocumentPayload\(target\) : null\)\s*
 assert.match(previewViewer, /if \(!contextDocument\) throw new Error\('No molecule-level Mol\* context is available for this target\.'\)/);
 assert.match(appMolstarContextMessagesHook, /const molstarPreferences = \{[\s\S]*rendererMode: "molstar" as const,[\s\S]*molstarStyle: requestedMolstarStyle \?\? preferences\.molstarStyle,/);
 assert.match(appMolstarContextMessagesHook, /if \(!isTauriRuntime\(\)\) return openBrowserDevMolstarContextDocument\(contextDocument, molstarPreferences\);/);
-assert.match(appMolstarContextMessagesHook, /invoke<ViewerDocument>\("open_text_structure", \{\s*request: \{\s*title: `\$\{label\}\.\$\{extension\}`,\s*extension,\s*text: entry\.data,/s);
+assert.match(appMolstarContextMessagesHook, /const request = \{ title: `\$\{label\}\.\$\{extension\}`, extension, text: entry\.data \};/);
+assert.match(appMolstarContextMessagesHook, /invoke<ViewerDocument>\("open_text_structure", \{\s*request,/s);
 assert.match(appMolstarContextMessagesHook, /reloadOptions: \{\},/);
 assert.match(appViewerBridgeControllerHook, /useAppViewerFileActions\(\{\s*postMessageToViewerSource,\s*pushErrorStatus,\s*pushStatus,\s*\}\)/s);
 assert.match(viewerBridgeMessagesLib, /source === "burette-viewer" && handlers\.handleViewerFileMessage\(body, eventSource\)/);

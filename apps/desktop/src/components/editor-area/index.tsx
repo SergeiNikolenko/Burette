@@ -4,7 +4,7 @@ import { pageKind, type Location } from "./page-kinds";
 import { TabHistoryPages } from "./tab-history-pages";
 import type { MoleculeTab, TabPane } from "../../stores/molecule-store";
 import { FloatingPaneHeader } from "../workspace-panes/floating-pane";
-import { useNativePopoutSession } from "../workspace-panes/native-popout";
+import { useNativePopoutSession } from "../workspace-panes/native-scene-window";
 import { usePaneVisibility, type PaneShown } from "../workspace-panes/use-pane-tabs";
 
 const DEFAULT_WARM_PAGE_LIMIT = 10;
@@ -33,7 +33,7 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
     () => warmMountedTabs(tabs, activeTabIndex, recentlyUsedTabIds, warmPageLimit, dirtyTabIds),
     [activeTabIndex, recentlyUsedTabIds, tabs, warmPageLimit, dirtyTabIds],
   );
-  const paneVisibility = usePaneVisibility(tabs, state.page === "settings");
+  const paneVisibility = usePaneVisibility(state.page === "settings");
 
   useEffect(() => {
     setRecentlyUsedTabIds((current) => {
@@ -47,7 +47,7 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
   }, [activeTabId, tabs]);
 
   // Every screen stays a child of this one stack wherever it is shown: the
-  // side panel and the floating window only reposition its surface. Moving an
+  // floating window only repositions its surface. Moving an
   // iframe to another parent reloads it, which would rebuild the Mol* scene.
   return (
     <div className="page-stack">

@@ -11,7 +11,7 @@ test("duplicate documents route to the visible scene before warm history, includ
       <div class="tab-history-page" hidden><iframe id="history" class="viewer-iframe" data-document-id="a" data-renderer="molstar"></iframe></div>
       <div class="tab-history-page"><iframe id="current" class="viewer-iframe" data-document-id="b" data-renderer="molstar"></iframe></div>
     </div>
-    <div class="page-surface" data-pane="side" data-pane-shown="visible">
+    <div class="page-surface" data-pane="floating" data-pane-shown="visible">
       <div class="tab-history-page"><iframe id="pane" class="viewer-iframe" data-document-id="a" data-renderer="molstar"></iframe></div>
     </div>`;
   const history = document.querySelector<HTMLIFrameElement>("#history")!;
