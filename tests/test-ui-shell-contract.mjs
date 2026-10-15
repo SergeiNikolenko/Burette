@@ -6559,7 +6559,8 @@ assert.match(previewViewer, /molstarContextDocumentPayload\(target\) : null\)\s*
 assert.match(previewViewer, /if \(!contextDocument\) throw new Error\('No molecule-level Mol\* context is available for this target\.'\)/);
 assert.match(appMolstarContextMessagesHook, /const molstarPreferences = \{[\s\S]*rendererMode: "molstar" as const,[\s\S]*molstarStyle: requestedMolstarStyle \?\? preferences\.molstarStyle,/);
 assert.match(appMolstarContextMessagesHook, /if \(!isTauriRuntime\(\)\) return openBrowserDevMolstarContextDocument\(contextDocument, molstarPreferences\);/);
-assert.match(appMolstarContextMessagesHook, /invoke<ViewerDocument>\("open_text_structure", \{\s*request: \{\s*title: `\$\{label\}\.\$\{extension\}`,\s*extension,\s*text: entry\.data,/s);
+assert.match(appMolstarContextMessagesHook, /const request = \{ title: `\$\{label\}\.\$\{extension\}`, extension, text: entry\.data \};/);
+assert.match(appMolstarContextMessagesHook, /invoke<ViewerDocument>\("open_text_structure", \{\s*request,/s);
 assert.match(appMolstarContextMessagesHook, /reloadOptions: \{\},/);
 assert.match(appViewerBridgeControllerHook, /useAppViewerFileActions\(\{\s*postMessageToViewerSource,\s*pushErrorStatus,\s*pushStatus,\s*\}\)/s);
 assert.match(viewerBridgeMessagesLib, /source === "burette-viewer" && handlers\.handleViewerFileMessage\(body, eventSource\)/);

@@ -200,6 +200,7 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
     paths: Option<Vec<String>>,
     presentation: Option<windows::WindowPresentation>,
     scene: Option<PreviewScene>,
+    structure: Option<super::documents::TextStructureRequest>,
 ) -> Result<String, String> {
     let mut paths = paths.unwrap_or_default();
     if paths.len() > 200
@@ -210,6 +211,21 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
         return Err("Choose at most 200 absolute file paths".into());
     }
     let presentation = presentation.unwrap_or_default();
+    if let Some(structure) = structure {
+        if presentation != windows::WindowPresentation::Preview
+            || !paths.is_empty()
+            || scene.is_some()
+        {
+            return Err(
+                "Choose either a structure, a scene or files for the preview window".into(),
+            );
+        }
+        paths.push(
+            super::documents::write_text_structure(&app, structure)?
+                .to_string_lossy()
+                .into_owned(),
+        );
+    }
     if let Some(scene) = scene {
         if presentation != windows::WindowPresentation::Preview || !paths.is_empty() {
             return Err("Choose either a scene or files for the preview window".into());

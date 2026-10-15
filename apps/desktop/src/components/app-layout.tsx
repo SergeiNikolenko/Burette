@@ -273,7 +273,13 @@ function useViewportWidth() {
   return width;
 }
 
-export function AppLayout({
+export function AppLayout(props: Parameters<typeof WorkspaceAppLayout>[0]) {
+  return isNativePreviewWindow()
+    ? <NativePreviewLayout state={props.state} actions={props.actions} />
+    : <WorkspaceAppLayout {...props} />;
+}
+
+function WorkspaceAppLayout({
   state,
   actions,
   onToggleSidebar,
@@ -517,9 +523,6 @@ export function AppLayout({
   const activePageKind = state.activeTab?.location.kind ?? null;
   if (import.meta.env.VITE_BURETTE_WEB_DEMO === "1" && viewportWidth < 768 && !heroEmbed && !state.quickLookStandalone) {
     return <MobileWebDemoLayout state={state} actions={actions} style={shellStyle} theme={effectiveTheme} />;
-  }
-  if (isNativePreviewWindow()) {
-    return <NativePreviewLayout state={state} actions={actions} style={shellStyle} theme={effectiveTheme} />;
   }
   if (state.quickLookStandalone) {
     return (

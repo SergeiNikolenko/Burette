@@ -194,7 +194,7 @@ fn create_workspace_window<R: Runtime>(
             },
         )
         .min_inner_size(MIN_WORKSPACE_WINDOW_WIDTH, MIN_WORKSPACE_WINDOW_HEIGHT)
-        .decorations(true)
+        .decorations(!preview)
         .visible(false)
         .focused(false)
         .prevent_overflow();
@@ -230,7 +230,9 @@ fn create_workspace_window<R: Runtime>(
     registry.apply_geometry(&window);
     attach_window_cleanup(app, &window);
     #[cfg(target_os = "macos")]
-    crate::macos::keep_traffic_lights_inset(&window);
+    if !preview {
+        crate::macos::keep_traffic_lights_inset(&window);
+    }
     crate::zoom::apply_current_zoom(&window);
     Ok(window)
 }
@@ -273,6 +275,9 @@ pub(crate) fn attach_window_cleanup<R: Runtime>(
 }
 
 fn reposition_traffic_lights<R: Runtime>(window: &WebviewWindow<R>) {
+    if window.label().starts_with("workspace-preview-") {
+        return;
+    }
     #[cfg(target_os = "macos")]
     crate::macos::reposition_traffic_lights(window);
     #[cfg(not(target_os = "macos"))]

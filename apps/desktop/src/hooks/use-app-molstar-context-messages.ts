@@ -108,22 +108,20 @@ export function useAppMolstarContextMessages({
         const entry = entries[0];
         const extension = molstarContextEntryExtension(entry.format);
         const label = contextDocument.label?.trim() || entry.label?.trim() || "Molstar context";
+        const request = { title: `${label}.${extension}`, extension, text: entry.data };
+        if (body.destination === "popout") {
+          await invoke("open_new_workspace_window", { presentation: "preview", structure: request });
+          return null;
+        }
         return invoke<ViewerDocument>("open_text_structure", {
-          request: {
-            title: `${label}.${extension}`,
-            extension,
-            text: entry.data,
-          },
+          request,
           preferences: molstarPreferences,
           reloadOptions: {},
         });
       };
       void openContextDocument()
         .then(async (document) => {
-          if (body.destination === "popout" && isTauriRuntime()) {
-            await invoke("open_new_workspace_window", { presentation: "preview", paths: [document.path] });
-            return;
-          }
+          if (!document) return;
           addDocuments([document]);
           if (body.destination === "popout") {
             const store = useMoleculeStore.getState();

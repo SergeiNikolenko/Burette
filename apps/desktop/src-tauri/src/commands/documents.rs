@@ -1705,6 +1705,23 @@ fn open_text_structure_for_window_label<R: Runtime>(
     preferences: ViewerPreferences,
     reload_options: Option<ViewerReloadOptions>,
 ) -> Result<ViewerDocument, String> {
+    let output_path = write_text_structure(app, request)?;
+    open_document_for_window(
+        app,
+        window_label,
+        output_path,
+        &preferences,
+        reload_options.as_ref(),
+    )
+    .map(|document| document.into_virtual())
+}
+
+// Persist the bounded source without constructing a viewer in the caller's window.
+// A detached preview constructs its runtime once, in the destination window.
+pub(crate) fn write_text_structure<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    request: TextStructureRequest,
+) -> Result<PathBuf, String> {
     let extension = request
         .extension
         .trim()
@@ -1737,14 +1754,7 @@ fn open_text_structure_for_window_label<R: Runtime>(
         output_directory.join(safe_text_structure_file_name(&request.title, &extension));
     fs::write(&output_path, request.text)
         .map_err(|err| format!("{}: {err}", output_path.display()))?;
-    open_document_for_window(
-        app,
-        window_label,
-        output_path,
-        &preferences,
-        reload_options.as_ref(),
-    )
-    .map(|document| document.into_virtual())
+    Ok(output_path)
 }
 
 #[tauri::command]
