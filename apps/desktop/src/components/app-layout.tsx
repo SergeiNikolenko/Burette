@@ -1,3 +1,5 @@
+import { NativePreviewLayout } from "./workspace-panes/native-preview-layout";
+import { isNativePreviewWindow } from "../lib/window-scope";
 import { Spinner } from "@/components/ui/spinner";
 import { ToolbarButton } from "@/components/ui/toolbar-button";
 import { NativeWorkspaceMenu, NativeWorkspaceSidebar } from "./native-workspace-navigation";
@@ -515,6 +517,9 @@ export function AppLayout({
   const activePageKind = state.activeTab?.location.kind ?? null;
   if (import.meta.env.VITE_BURETTE_WEB_DEMO === "1" && viewportWidth < 768 && !heroEmbed && !state.quickLookStandalone) {
     return <MobileWebDemoLayout state={state} actions={actions} style={shellStyle} theme={effectiveTheme} />;
+  }
+  if (isNativePreviewWindow()) {
+    return <NativePreviewLayout state={state} actions={actions} style={shellStyle} theme={effectiveTheme} />;
   }
   if (state.quickLookStandalone) {
     return (

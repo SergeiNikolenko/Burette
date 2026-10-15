@@ -23743,6 +23743,7 @@ SOFTWARE.
 
   const MOLSTAR_OPEN_IN_ACTION = 'open-in';
   const MOLSTAR_OPEN_IN_TAB_ACTION = 'open-in:tab';
+  const MOLSTAR_OPEN_IN_POPOUT_ACTION = 'open-in:popout';
   const MOLSTAR_OPEN_IN_GRID_ACTION = 'open-in:grid';
   const MOLSTAR_OPEN_IN_MAX_MOLECULES = 200;
   const MOLSTAR_OPEN_IN_MAX_ATOMS = 20000;
@@ -25440,7 +25441,8 @@ SOFTWARE.
     if (!mobileHost && molstarOpenInMolecules(target).length) {
       actions.push(moleculeMenuNestedAction(MOLSTAR_OPEN_IN_ACTION, 'Open in', [
         [MOLSTAR_OPEN_IN_TAB_ACTION, 'New Tab'],
-        [MOLSTAR_OPEN_IN_GRID_ACTION, 'New Grid']
+        [MOLSTAR_OPEN_IN_GRID_ACTION, 'New Grid'],
+        ...(molstarOpenInMolecules(target).length === 1 ? [[MOLSTAR_OPEN_IN_POPOUT_ACTION, 'Popout']] : [])
       ]));
     } else if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in new tab']);
     // The desktop overlay carries the scene-tree powers into the 3D right click.
@@ -25895,18 +25897,18 @@ SOFTWARE.
         pushMolstarEditUndoSnapshot(undoSnapshot);
         setMolstarStructureDirty(true);
         setStatus(`[web] Deleted ${atomLabel}.`);
-      } else if (action === 'molstar' || action === MOLSTAR_OPEN_IN_TAB_ACTION || action.startsWith(MOLSTAR_OPEN_IN_GRID_ACTION)) {
+      } else if (action === 'molstar' || action === MOLSTAR_OPEN_IN_TAB_ACTION || action === MOLSTAR_OPEN_IN_POPOUT_ACTION || action.startsWith(MOLSTAR_OPEN_IN_GRID_ACTION)) {
         const toGrid = action.startsWith(MOLSTAR_OPEN_IN_GRID_ACTION);
         const records = molstarOpenInMolecules(target).map(molstarMoleculeSdfRecord).filter(Boolean);
         // One molecule bound for a tab keeps the source-text entry when the file has one.
         const contextDocument = (!toGrid && records.length < 2 ? molstarContextDocumentPayload(target) : null)
           || molstarOpenInDocumentPayload(records);
         if (!contextDocument) throw new Error('No molecule-level Mol* context is available for this target.');
-        const gridDocumentId = action.slice(MOLSTAR_OPEN_IN_GRID_ACTION.length + 1);
+        const gridDocumentId = toGrid ? action.slice(MOLSTAR_OPEN_IN_GRID_ACTION.length + 1) : '';
         const posted = postHostMessage({
           type: 'openMolstarContextDocument',
           renderer: 'molstar',
-          destination: toGrid ? 'grid' : 'tab',
+          destination: toGrid ? 'grid' : action === MOLSTAR_OPEN_IN_POPOUT_ACTION ? 'popout' : 'tab',
           ...(gridDocumentId ? { gridDocumentId } : {}),
           contextDocument
         });

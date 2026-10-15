@@ -1,0 +1,13 @@
+.app-shell.native-preview-shell { display: flex; flex-direction: column; }
+.native-preview-title {
+  height: 56px;
+  flex: 0 0 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 90px;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.native-preview-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.native-preview-content { flex: 1; min-height: 0; position: relative; }
