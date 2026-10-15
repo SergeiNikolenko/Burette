@@ -1952,6 +1952,8 @@
   let xyzFrameAlignment = null;
   let sdfCollectionAlignment = null;
   let activeDockingPoseCollectionState = null;
+  // Poses kept on screen while other poses are browsed, for the open docking set.
+  let dockingPinnedPoseState = { key: '', indices: new Set() };
   let activeDockingSceneVisibilityState = null;
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
@@ -12751,6 +12753,23 @@ SOFTWARE.
     return groups;
   }
 
+  const DOCKING_REFERENCE_FILE_PATTERN = /(^|[^a-z])(crystal|xtal|native|ref|reference|cocrystal)([^a-z]|$)/i;
+  const DOCKING_REFERENCE_CARBON_COLOR = 0xf97316;
+
+  // Pins live per docking set. A fresh set pins its single-pose reference
+  // files (crystal/native ligand) so they stay visible next to every pose.
+  function dockingPinnedPoseIndices(prepared) {
+    const groups = Array.isArray(prepared?.poseGroups) ? prepared.poseGroups : [];
+    const key = [activeConfig?.documentId || '', ...groups.map(group => `${group.label}:${group.frameCount}`)].join('|');
+    if (dockingPinnedPoseState.key !== key) {
+      const references = groups.length > 1
+        ? groups.filter(group => group.frameCount === 1 && DOCKING_REFERENCE_FILE_PATTERN.test(group.label || ''))
+        : [];
+      dockingPinnedPoseState = { key, indices: new Set(references.map(group => group.startFrame)) };
+    }
+    return dockingPinnedPoseState.indices;
+  }
+
   function normalizeRenderer(renderer) {
     const value = String(renderer || 'molstar').toLowerCase();
     if (value === 'xyzrender-external' || value === 'external-xyzrender') return 'xyzrender-external';
@@ -16145,8 +16164,16 @@ SOFTWARE.
     return molstarRefsStillLoaded(viewer, [
       ...(state.receptorRefs || []),
       ...(state.backgroundRefs || []),
+      ...[...(state.pinnedRefsByIndex?.values() || [])].flat(),
       ...(state.activeRefs || [])
     ]);
+  }
+
+  // The active pose already draws itself; its pinned copy would only overlap it.
+  function syncDockingPinnedPoseVisibility(viewer, state, activeIndex) {
+    for (const [index, refs] of state.pinnedRefsByIndex || []) {
+      setDockingSceneRefsHidden(viewer, refs, index === activeIndex);
+    }
   }
 
   function applyDockingPoseCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
@@ -16171,12 +16198,15 @@ SOFTWARE.
     const allGroup = allMode
       ? (prepared.poseGroups || []).find(group => activeIndex >= group.startFrame && activeIndex <= group.endFrame)
       : null;
-    const backgroundPoses = allGroup ? poses.slice(allGroup.startFrame, allGroup.endFrame + 1) : poses;
+    const pinnedIndices = [...dockingPinnedPoseIndices(prepared)].filter(index => index < poses.length).sort((a, b) => a - b);
+    const pinned = new Set(pinnedIndices);
+    const backgroundPoses = (allGroup ? poses.slice(allGroup.startFrame, allGroup.endFrame + 1) : poses)
+      .filter((_, offset) => !pinned.has((allGroup ? allGroup.startFrame : 0) + offset));
     const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
     const resolvedContextStyle = dockingSceneBackgroundStyle(contextStyle, style);
     const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
     const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
-    const stateKey = `${dockingPoseCollectionStateKey(prepared, style, allMode, resolvedContextStyle, contextOpacity, contextColor)}|${allGroup ? allGroup.startFrame : ''}`;
+    const stateKey = `${dockingPoseCollectionStateKey(prepared, style, allMode, resolvedContextStyle, contextOpacity, contextColor)}|${allGroup ? allGroup.startFrame : ''}|${pinnedIndices.join(',')}`;
     let state = activeDockingPoseCollectionState;
     if (!state || state.key !== stateKey || !dockingPoseCollectionStateStillLoaded(viewer, state)) {
       resetXyzFrameOverlayState(viewer);
@@ -16197,11 +16227,19 @@ SOFTWARE.
           await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, backgroundStructures, contextOpacity, contextColor);
         }
       }
+      const pinnedRefsByIndex = new Map();
+      for (const index of pinnedIndices) {
+        const structures = await loadMolstarEntryWithStructureRefs(viewer, poses[index], { representationPreset: 'empty' });
+        if (!structures.length) continue;
+        await applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'reference');
+        pinnedRefsByIndex.set(index, molstarStructureRefsOf(structures));
+      }
       state = {
         viewer,
         key: stateKey,
         receptorRefs: molstarStructureRefsOf(receptorStructures),
         backgroundRefs: molstarStructureRefsOf(backgroundStructures),
+        pinnedRefsByIndex,
         activeRefs: [],
         activeIndex: -1
       };
@@ -16223,6 +16261,7 @@ SOFTWARE.
 
     await switchCachedPoseLayer(viewer, state, activeIndex, activeEntry,
       structures => applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'colored'));
+    syncDockingPinnedPoseVisibility(viewer, state, activeIndex);
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     await applyMolstarWaterLineRepresentation(viewer);
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
@@ -16715,7 +16754,10 @@ SOFTWARE.
     const color = normalizeSdfCollectionContextColor(colorMode) === 'colored' ? 'element-symbol' : 'uniform';
     const colorParams = color === 'uniform' ? { value: 0x6f7886 } : undefined;
     const themed = (representation) => colorParams ? { ...representation, color, colorParams } : { ...representation, color };
-    return { ghost, withAlpha, themed };
+    if (colorMode !== 'reference') return { ghost, withAlpha, themed };
+    // Reference (pinned) poses keep element colours on a fixed carbon tint.
+    const referenceParams = { carbonColor: { name: 'uniform', params: { value: DOCKING_REFERENCE_CARBON_COLOR } } };
+    return { ghost, withAlpha, themed: (representation) => ({ ...representation, color, colorParams: referenceParams }) };
   }
 
   function sdfCollectionRepresentationForStyle(style, alpha = 1, colorMode = 'gray', minAlpha = 0.04) {
@@ -20399,6 +20441,17 @@ SOFTWARE.
     const fileButtons = [];
     // The pose each list row jumps to, parallel to fileButtons.
     const fileTargets = [];
+    // Pin toggles for single poses and whole files; pinned poses stay drawn as references.
+    const canPinPoses = hasPoseGroups && prepared.kind === 'docking' && !prepared.dockingSceneMode && prepared.sdfPoseOverlayAvailable === true;
+    const pinControls = [];
+    const pinButton = (indices, label) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-docking-pose-pin';
+      button.append(sceneTreeIconElement(APP_ICON_DATA.Pin));
+      pinControls.push({ button, indices, label });
+      return button;
+    };
     if (fileList && hasPoseGroups) {
       fileList.className = 'buret-docking-pose-files';
       fileList.setAttribute('role', 'listbox');
@@ -20417,6 +20470,10 @@ SOFTWARE.
         const count = document.createElement('span');
         count.className = 'buret-docking-pose-file-meta';
         count.textContent = `${group.frameCount} ${group.frameCount === 1 ? 'pose' : 'poses'}`;
+        if (canPinPoses) {
+          heading.classList.add('buret-docking-pose-pin-heading');
+          heading.append(pinButton(group.poses.map((_, offset) => group.startFrame + offset), group.label));
+        }
         heading.append(name, count);
         section.append(heading);
         group.poses.forEach((pose, offset) => {
@@ -20437,7 +20494,14 @@ SOFTWARE.
           }
           fileButtons.push(button);
           fileTargets.push(group.startFrame + offset);
-          section.append(button);
+          if (canPinPoses) {
+            const row = document.createElement('div');
+            row.className = 'buret-docking-pose-pin-row';
+            row.append(pinButton([group.startFrame + offset], `${group.label} · ${pose.label}`), button);
+            section.append(row);
+          } else {
+            section.append(button);
+          }
         });
         fileList.append(section);
       });
@@ -21028,6 +21092,31 @@ SOFTWARE.
       window.addEventListener('pointerdown', onOutsidePointerDown, true);
       fileListDisposer = () => window.removeEventListener('pointerdown', onOutsidePointerDown, true);
     }
+    const refreshPinControls = () => {
+      const pinned = dockingPinnedPoseIndices(prepared);
+      pinControls.forEach(({ button, indices, label: pinLabel }) => {
+        const count = indices.filter(index => pinned.has(index)).length;
+        const all = count === indices.length;
+        button.classList.toggle('pinned', all);
+        button.classList.toggle('partial', count > 0 && !all);
+        button.setAttribute('aria-pressed', all ? 'true' : count ? 'mixed' : 'false');
+        button.title = `${all ? 'Unpin' : 'Pin'} ${pinLabel}`;
+        button.setAttribute('aria-label', button.title);
+      });
+    };
+    pinControls.forEach(({ button, indices }) => {
+      button.addEventListener('click', () => {
+        const pinned = dockingPinnedPoseIndices(prepared);
+        const pin = !indices.every(index => pinned.has(index));
+        indices.forEach(index => (pin ? pinned.add(index) : pinned.delete(index)));
+        refreshPinControls();
+        // Queue behind pending steps so the rebuild draws the pose they settle on.
+        const queued = poseUpdateQueue.then(() => applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: false }));
+        // eslint-disable-next-line no-console
+        poseUpdateQueue = queued.catch(error => console.error(error));
+      });
+    });
+    refreshPinControls();
     if (story && storyPanel) {
       story.addEventListener('click', () => {
         const open = root.classList.toggle('buret-docking-poses-story-closed') === false;

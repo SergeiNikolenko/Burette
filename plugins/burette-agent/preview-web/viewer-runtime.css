@@ -2851,6 +2851,56 @@ body.burette-mobile-host .buret-docking-poses button {
   grid-template-columns: minmax(0, 1fr) auto;
   padding-left: 14px;
 }
+.buret-docking-pose-group-label.buret-docking-pose-pin-heading {
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  padding-left: 2px;
+}
+.buret-docking-pose-pin-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  padding-left: 10px;
+}
+.buret-docking-poses .buret-docking-pose-pin-row .buret-docking-pose-group-pose {
+  padding-left: 4px;
+}
+.buret-docking-poses .buret-docking-pose-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.28;
+  cursor: pointer;
+}
+.buret-docking-poses .buret-docking-pose-pin svg {
+  width: 13px;
+  height: 13px;
+}
+.buret-docking-pose-pin-row:hover .buret-docking-pose-pin,
+.buret-docking-pose-pin-heading:hover .buret-docking-pose-pin,
+.buret-docking-poses .buret-docking-pose-pin:focus-visible {
+  opacity: 0.7;
+}
+.buret-docking-poses .buret-docking-pose-pin:hover,
+.buret-docking-poses .buret-docking-pose-pin:focus-visible {
+  background: var(--buret-menu-section-background);
+  outline: none;
+}
+.buret-docking-poses .buret-docking-pose-pin.pinned,
+.buret-docking-poses .buret-docking-pose-pin.partial {
+  color: var(--buret-molstar-accent);
+  opacity: 1;
+}
+.buret-docking-poses .buret-docking-pose-pin.partial {
+  opacity: 0.6;
+}
 .buret-docking-pose-file-meta {
   min-width: 0 !important;
   color: color-mix(in srgb, var(--buret-toolbar-color) 52%, transparent);
