@@ -1,4 +1,5 @@
 import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 import type { StructureViewerAction } from "../components/types";
 import { readBrowserDevVirtualTextDocument, type openBrowserDevMolstarContextDocument } from "../lib/browser-dev-documents";
@@ -45,6 +46,15 @@ type UseAppConformerWorkflowsOptions = {
   setConformerJobs: Dispatch<SetStateAction<ConformerJob[]>>;
   setConformerStatus: Dispatch<SetStateAction<ConformerStatus | null>>;
 };
+
+// A document remembers the file it was opened from. When that file has since
+// been deleted, run on the document's own copy instead of failing on the
+// stale source path.
+async function liveSourcePath(document: ViewerDocument) {
+  if (!document.sourcePath || document.sourcePath === document.path || !isTauriRuntime()) return document.sourcePath ?? document.path;
+  const existing = await invoke<string[]>("existing_paths", { paths: [document.sourcePath] }).catch(() => [document.sourcePath!]);
+  return existing.length ? document.sourcePath : document.path;
+}
 
 function conformerOutputDirectory(document: ViewerDocument) {
   const sourcePath = document.sourcePath?.trim() || (!document.virtual ? document.path : "");
@@ -262,13 +272,14 @@ export function useAppConformerWorkflows({
       pushStatus(guardMessage, "error");
       return;
     }
+    const path = await liveSourcePath(document);
     await runConformerJob({
       operation,
-      path: document.sourcePath ?? document.path,
+      path,
       title: selectedInput?.title ?? document.title,
       extension: selectedInput?.extension ?? document.extension,
       inputDataBase64: inputText === null ? null : textToBase64(inputText),
-      outputDirectory: conformerOutputDirectory(document),
+      outputDirectory: path === document.sourcePath ? conformerOutputDirectory(document) : null,
     });
   }, [activeDocument, pushErrorStatus, pushStatus, requestMolstarXtbContextDocument, runConformerJob]);
 

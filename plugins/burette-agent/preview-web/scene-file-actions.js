@@ -1,7 +1,28 @@
 // Workspace file imports only; the scene's object context menus own their UI.
 (function () {
   const sessions = new WeakMap();
+  // A source file stays part of the scene while a top-level data node still
+  // carries its file name. Deleting a structure in the tree frees the file for
+  // a later import, and a rebuild no longer resurrects it. Scenes whose data
+  // nodes use other labels keep the given list unchanged.
+  function livePaths(viewer, paths) {
+    const data = viewer?.plugin?.state?.data;
+    const root = data?.tree?.root?.ref;
+    if (!root) return paths;
+    let children = 0;
+    const labels = new Set();
+    for (const [ref, cell] of data.cells) {
+      if (ref === root || cell.transform.parent !== root) continue;
+      children += 1;
+      const label = cell.obj?.label || cell.transform.params?.label;
+      if (label) labels.add(label);
+    }
+    if (!children) return [];
+    const live = paths.filter(path => labels.has(path.split('/').pop()));
+    return live.length ? live : paths;
+  }
   window.BuretteSceneFiles = {
+    livePaths,
     sequence(viewer) {
       const records = [];
       const seen = new Set();
@@ -46,6 +67,7 @@
       }
       if (bytes > 24 * 1024 * 1024) throw new Error('Scene imports are limited to 24 MB at a time.');
       for (const path of (action.existingPaths || []).slice(0, 200)) session.paths.add(path);
+      session.paths = new Set(livePaths(viewer, Array.from(session.paths)));
       if (action.skipExisting) {
         const fresh = new Map(sources.filter(source => !session.paths.has(source.path)).map(source => [source.path, source]));
         sources = Array.from(fresh.values());

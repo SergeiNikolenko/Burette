@@ -14,6 +14,7 @@ mock.module("../apps/desktop/src/lib/viewer-bridge", () => ({
   activeViewerIframeForDocument: () => ({ contentWindow: {} }),
   requestViewerAction: async (id: string, action: Record<string, unknown>) => {
     if (action.type === "workspace_scene_state") return { ready: true };
+    if (action.type === "scene_source_paths") return { paths: action.paths };
     calls.push([id, action]);
     if (id === "left") await hold;
     if (fail) { fail = false; throw new Error("Broken molecule"); }

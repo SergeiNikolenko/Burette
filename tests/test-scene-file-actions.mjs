@@ -35,6 +35,21 @@ await window.BuretteSceneFiles.append(viewer, { sources: [source('/new.pdb')] },
 assert.ok(cells.has('/new.pdb'), 'failed imports must not poison duplicate detection');
 console.log('Scene file imports preserve existing objects and camera, reject duplicates, and roll back partial imports');
 
+// Deleting a structure in the scene tree frees its file: it can be added again
+// and the host no longer counts it when the scene is rebuilt.
+const ROOT = '-=root=-';
+const liveCells = new Map([[ROOT, { transform: { parent: ROOT } }], ['p', { transform: { parent: ROOT }, obj: { label: 'protein.pdb' } }]]);
+const liveViewer = { plugin: { state: { data: { tree: { root: { ref: ROOT } }, cells: liveCells } } } };
+const liveContext = { ...context, load: async (_, item) => { liveCells.set(item.path, { transform: { parent: ROOT }, obj: { label: item.path.split('/').pop() } }); } };
+await window.BuretteSceneFiles.append(liveViewer, { sources: [source('/run/ligand.pdb')], existingPaths: ['/run/protein.pdb'] }, liveContext);
+await assert.rejects(window.BuretteSceneFiles.append(liveViewer, { sources: [source('/run/ligand.pdb')] }, liveContext), /already in this scene/);
+liveCells.delete('/run/ligand.pdb');
+assert.deepEqual(window.BuretteSceneFiles.livePaths(liveViewer, ['/run/protein.pdb', '/run/ligand.pdb']), ['/run/protein.pdb']);
+assert.equal((await window.BuretteSceneFiles.append(liveViewer, { sources: [source('/run/ligand.pdb')] }, liveContext)).result.added, 1);
+for (const ref of [...liveCells.keys()]) if (ref !== ROOT) liveCells.delete(ref);
+assert.equal(window.BuretteSceneFiles.livePaths(liveViewer, ["/run/protein.pdb", "/run/ligand.pdb"]).length, 0);
+console.log('Structures deleted in the scene tree can be imported again');
+
 // Grid records use names for display, but names cannot identify rows or sources.
 const gridSource = readFileSync('PreviewExtension/Web/grid-viewer.js', 'utf8');
 function gridFunction(name) {
