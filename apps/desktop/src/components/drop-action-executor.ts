@@ -1,5 +1,5 @@
 import { toast } from "./ui/toast";
-import { appendScenePayload } from "../hooks/workspace-scene-import";
+import { appendSceneDrop } from "../hooks/workspace-scene-import";
 import { resolveDropActionChoices, type DropActionChoice, type DropSourceContext, type DropTargetContext } from "../lib/drop-actions";
 import { requestMoveIntoFolder } from "../lib/move-into-folder";
 import { structureDragRecordsToFragments, type StructureDragPayload } from "../lib/structure-drag";
@@ -60,7 +60,7 @@ function runShellDropAction(
 ) {
   const action = choice.action;
   if (action.kind === "append-scene-files") {
-    void appendScenePayload(action.targetDocumentId, action.payload).catch(error => toast.add({ title: "Add to scene failed", description: String(error), type: "error" }));
+    void appendSceneDrop(action.targetDocumentId, action.payload).catch(error => toast.add({ title: "Add to scene failed", description: String(error), type: "error" }));
     return;
   }
   if (action.kind === "merge-collection") {

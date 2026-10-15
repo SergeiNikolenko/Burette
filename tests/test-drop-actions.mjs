@@ -988,34 +988,32 @@ assert.equal(buildFileDropPreview({
   bounds: previewBounds, point: { x: 400, y: 200 },
 }).itemLabel, "ligand.sdf");
 
-// SDF ligands dropped on a receptor open the docking view, the only scene that
-// pages through their records as poses. Adding them to the mounted scene stays
-// one menu choice away and never rebuilds the receptor.
+// Every molecular drop addresses the scene under the pointer without a menu.
 for (const source of [{ kind: "sidebar" }, { kind: "grid" }, { kind: "finder" }, { kind: "tab" }]) {
-  const target = { kind: "active-viewer", documentId: "receptor-tab", documentPath: "/tmp/receptor.pdb", renderer: "molstar" };
-  const append = (incoming) => ({ kind: "append-scene-files", targetDocumentId: "receptor-tab", payload: incoming });
-  const poses = payload(["/tmp/poses.sdf"]);
-  assert.deepEqual(resolveDropActionChoices(poses, target, source).map(({ label, action }) => ({ label, action })), [
-    { label: "Open docking view", action: { kind: "open-docking", request: { receptorPath: "/tmp/receptor.pdb", ligandPaths: ["/tmp/poses.sdf"] } } },
-    { label: "Add to scene", action: append(poses) },
-    { label: "Open separately", action: { kind: "open-documents", paths: ["/tmp/poses.sdf"] } },
-    { label: "Open as text file", action: { kind: "open-text-files", paths: ["/tmp/poses.sdf"] } },
-  ]);
-  assert.deepEqual(resolveDropAction(poses, { ...target, dockingRequest: { receptorPath: "/tmp/receptor.pdb", ligandPaths: ["/tmp/old.sdf"] } }, source), {
-    kind: "open-docking", request: { receptorPath: "/tmp/receptor.pdb", ligandPaths: ["/tmp/old.sdf", "/tmp/poses.sdf"] },
-  });
-  const records = payload([], [{ path: "collection/row-7/ligand.sdf", inputExtension: "sdf", text: "ligand" }]);
-  assert.equal(resolveDropAction(records, target, source).kind, "open-docking-with-records");
-  assert.deepEqual(resolveDropActionChoices(records, target, source)[1].action, append(records));
-  // Structures other than SDF ligands, and ligand-only scenes, still append.
-  for (const [incoming, scene] of [
-    [payload(["/tmp/partner.pdb"]), target],
-    [poses, { ...target, documentPath: "/tmp/ligand.sdf" }],
-    [poses, { ...target, dockingRequest: { receptorPath: "/tmp/receptor.pdb", ligandPaths: ["/tmp/b.pdb"], sceneMode: "structureAll" } }],
-  ]) {
-    assert.deepEqual(resolveDropAction(incoming, scene, source), append(incoming));
+  for (const documentId of ["left-scene", "right-scene"]) {
+    const target = { kind: "active-viewer", documentId, documentPath: "/tmp/receptor.pdb", renderer: "molstar" };
+    for (const incoming of [
+      payload(["/tmp/poses.sdf"]),
+      payload(["/tmp/partner.pdb", "/tmp/second.cif", "/tmp/ligand.sdf"]),
+      payload([], [{ path: "collection/row-7/ligand.sdf", inputExtension: "sdf", text: "ligand" }]),
+    ]) {
+      for (const scene of [target, { ...target, dockingRequest: { receptorPath: "/tmp/receptor.pdb", ligandPaths: ["/tmp/old.sdf"] } }]) {
+        assert.deepEqual(resolveDropActionChoices(incoming, scene, source), [{
+          id: "append-scene-files", label: "Add to scene", confidence: "default", source,
+          action: { kind: "append-scene-files", targetDocumentId: documentId, payload: incoming },
+        }]);
+      }
+    }
   }
 }
 assert.equal(resolveDropAction(payload(["/tmp/motion.xtc"]), {
   kind: "active-viewer", documentId: "receptor-tab", documentPath: "/tmp/receptor.pdb", renderer: "molstar",
 }).kind, "open-docking", "trajectory pairing retains its explicit workflow");
+
+const folderDrop = { paths: ["/folder/a.pdb", "/folder/nested/b.sdf", "/folder/readme.txt"], records: [], entries: ["/folder"] };
+assert.deepEqual(resolveDropActionChoices(folderDrop, {
+  kind: "active-viewer", documentId: "folder-target", documentPath: "/base.pdb", renderer: "molstar",
+}).map(({ action }) => action), [{
+  kind: "append-scene-files", targetDocumentId: "folder-target",
+  payload: { ...folderDrop, paths: ["/folder/a.pdb", "/folder/nested/b.sdf"] },
+}]);

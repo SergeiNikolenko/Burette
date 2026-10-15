@@ -353,3 +353,14 @@ for chemical perception); the native converter check is
 On desktop, **Pop out** for a file opens an independent `workspace-preview-*` native window. It can move between displays and appears across macOS workspaces; it starts compact, above normal windows, with the original compact 36 px pane header and the viewer. The header uses native dragging, minimize and expand actions without a system title bar. Workspace tabs, browser navigation, sidebars and guides are not mounted in this window. Files offer **Open → Popout**, and a single molecule selected in Mol* offers **Open in → Popout**. Geometry and restoration use the existing workspace-window registry. Mol* viewers export the live scene (including camera and representations) to a bounded 24 MiB MOLJ snapshot in the application cache before opening the window. Opening another molecule reuses the existing preview webview, with prior documents available from the compact title menu. Selected-molecule popouts persist the validated source directly and prepare it only in the destination, avoiding construction of an unused viewer in the originating window. The original tab remains available. Non-Mol* files use the existing path-based open contract; non-file pages and browser previews retain the embedded pane.
 
 `open_new_workspace_window` accepts optional `presentation` (`workspace` by default, or `preview`) and an optional `scene` object (`title`, `dataBase64`). A scene requires preview presentation and no file paths. Snapshot names and payloads are validated before writing; existing callers that supply only paths retain their behavior.
+
+### Dropping structures into scenes
+
+Molecular files dropped onto a Mol* document append directly to that document,
+without an action picker or switching to a docking document. Each document has
+its own import queue; batches preserve the mounted scene and camera. Repeated
+paths are skipped, and failed batches roll back their new objects. Finder
+folders use the bounded recursive project scanner before importing; incomplete
+or unreadable scans fail rather than silently importing a partial folder.
+Scene drops retain all SDF models. Explicit comparison/docking commands remain
+available for pose paging and structure alignment.
