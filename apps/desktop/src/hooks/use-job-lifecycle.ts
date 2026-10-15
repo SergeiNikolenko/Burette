@@ -1,5 +1,6 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { journalAction } from "../lib/action-journal";
 import { isTauriRuntime } from "../lib/tauri";
 import { useSettingsStore } from "../stores/settings-store";
 
@@ -24,6 +25,27 @@ const STATUS_PHRASES: Record<string, string> = {
 };
 
 const isActive = (job: LifecycleJob) => ACTIVE_STATUSES.has(job.status);
+
+const JOURNAL_FIELDS = ["operation", "inputLabel", "inputTitle", "documentTitle", "query", "progress", "backend", "durableJobId", "workDir", "logPath", "reportPath", "primaryOpenPath", "error"];
+const JOURNAL_RESULT_FIELDS = ["inputPath", "workDir", "primaryOpenPath", "exitCode", "errorSummary", "error"];
+
+function pickFields(source: unknown, fields: string[]) {
+  if (!source || typeof source !== "object") return undefined;
+  const record = source as Record<string, unknown>;
+  const picked = Object.fromEntries(fields
+    .filter(field => typeof record[field] === "string" || typeof record[field] === "number")
+    .map(field => [field, record[field]]));
+  return Object.keys(picked).length > 0 ? picked : undefined;
+}
+
+/** Journals each status change with the inputs and run folder needed to replay it. */
+function journalJobTransition(listKey: string, title: string, job: LifecycleJob) {
+  const result = pickFields((job as { result?: unknown }).result, JOURNAL_RESULT_FIELDS);
+  journalAction("job", `${listKey}:${job.status}`, {
+    target: title,
+    detail: { id: job.id, ...pickFields(job, JOURNAL_FIELDS), ...(result ? { result } : {}) },
+  });
+}
 
 // Running-job counts per job list, aggregated so one window holds a single
 // sleep-prevention request no matter how many lists have work in flight.
@@ -70,6 +92,7 @@ export function useJobLifecycle<T extends LifecycleJob>(
     const now = Date.now();
     for (const job of jobs) {
       const previous = previousStatuses.get(job.id);
+      if (previous !== job.status) journalJobTransition(listKey, jobTitle(job), job);
       if (
         notifyOnJobCompletion
         && previous && ACTIVE_STATUSES.has(previous) && !isActive(job)

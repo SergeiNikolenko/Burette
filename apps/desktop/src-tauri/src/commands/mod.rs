@@ -1,3 +1,4 @@
+pub(crate) mod action_journal;
 pub(crate) mod agent_integration;
 pub(crate) mod app_preferences;
 pub(crate) mod chemical_editors;

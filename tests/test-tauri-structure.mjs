@@ -375,6 +375,7 @@ for (const commandPath of [
   'commands::runtime_doctor::external_runtime_doctor',
   'commands::shell::export_diagnostics_bundle',
   'commands::shell::open_logs_folder',
+  'commands::action_journal::append_action_journal',
   'commands::shell::open_external_url',
   'commands::shell::existing_paths',
   'commands::shell::open_new_workspace_window',

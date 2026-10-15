@@ -11,6 +11,7 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager, Runtime, State, WebviewWindow};
 
+use crate::commands::action_journal::{ACTION_JOURNAL_NAME, ACTION_JOURNAL_PREVIOUS_NAME};
 use crate::preview::trace::PREVIEW_TRACE_FILE;
 use crate::windows;
 
@@ -463,6 +464,9 @@ pub(crate) fn export_diagnostics_bundle<R: Runtime>(
 
     let app_log_path = cache_dir.join(APP_LOG_NAME);
     copy_redacted_or_create_empty(&app_log_path, &output_dir.join("app-log.txt"))?;
+    for name in [ACTION_JOURNAL_PREVIOUS_NAME, ACTION_JOURNAL_NAME] {
+        copy_redacted_if_exists(&cache_dir.join(name), &output_dir.join(name))?;
+    }
     let preview_trace_copied = copy_redacted_or_create_empty(
         &cache_dir.join(PREVIEW_TRACE_FILE),
         &output_dir.join(PREVIEW_TRACE_FILE),

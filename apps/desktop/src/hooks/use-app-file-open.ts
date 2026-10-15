@@ -26,6 +26,7 @@ import {
   summarizeErrors,
   type GridDelimitedColumnChoice,
 } from "../lib/file-routing";
+import { journalAction } from "../lib/action-journal";
 import { markPerformanceOnce } from "../lib/performance";
 import { fetchRemoteStructure } from "../lib/remote-structure";
 import { currentDocumentRegistryRevision } from "../lib/native-menu";
@@ -359,6 +360,7 @@ export function useAppFileOpen({
     let openedAny = false;
     const requestedPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
     if (!requestedPaths.length) return;
+    journalAction("file", "open", { detail: { paths: requestedPaths.slice(0, 20), count: requestedPaths.length } });
     let filePaths = requestedPaths;
     if (isTauriRuntime()) {
       try {

@@ -280,6 +280,7 @@ pub fn run() {
             commands::shell::export_diagnostics_bundle,
             commands::shell::open_logs_folder,
             commands::shell::frontend_log,
+            commands::action_journal::append_action_journal,
             commands::shell::open_external_url,
             commands::shell::existing_paths,
             commands::shell::watch_project_roots,
