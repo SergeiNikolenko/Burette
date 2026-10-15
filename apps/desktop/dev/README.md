@@ -31,12 +31,11 @@ connections. Its menu, enable switch, status, and removal confirmation are live;
 no SSH request or saved connection is changed. `build-box` checks succeed,
 `Research` checks fail, and Add folder renames the fixture row to `Structures`.
 
-## Welcome and screen guides
+## Welcome and contextual guides
 
-Open `/dev/onboarding.html` to see all 16 screen guides and the three first-visit
-steps. Cards and full-size previews render the same `OnboardingContent` used by
-`OnboardingHost`, including its live `GuideVisual`, tips and action labels.
-Light/Dark changes only this page. Welcome navigation works inside the preview;
-workspace actions and dismissals close it without opening files, starting work,
-or changing saved onboarding progress. Each card has a stable fragment, such as
-`#welcome`, `#appearance` or `#guide-ketcher`.
+Open `/dev/onboarding.html` to see the three first-visit steps and every
+contextual guide. Cards and full-size previews render the production
+`OnboardingContent` and `ContextualGuideCard`; each guide card lists where it
+appears and the user action that first shows it, from `contextual-guides.ts`.
+Light/Dark changes only this page. Previews never change saved onboarding
+progress. Each card has a stable fragment, such as `#welcome` or `#guide-ketcher`.

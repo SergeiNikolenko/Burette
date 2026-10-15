@@ -47,6 +47,7 @@ import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
 import { getMdsmoothCapabilities, installDeepTica, runMdsmooth, type MdsmoothMode, type MdsmoothProgress, type MdsmoothResult, type MdsmoothSignal } from "../lib/mdsmooth";
 import { Progress } from "@/components/ui/progress";
 import { claimContextualGuide, markContextualGuideSeen, releaseContextualGuide, resetOnboardingEvent } from "./onboarding/progress";
+import { ContextualGuideCard } from "./onboarding/contextual-guide-card";
 import { isTauriRuntime } from "../lib/tauri";
 import { showMacAvailability } from "../lib/browser-availability";
 import type { ConformerSettings, TextFileDocument, ViewerDocument, XtbArtifact, XtbRunResult, XtbSettings, HoveredGridRow } from "../types";
@@ -1064,10 +1065,7 @@ function TrajectorySmoothingCard({
         }
       >
         <div className="grid min-w-0 gap-3">
-          {showEducation ? <Alert role="note" aria-label="About smoothing">
-            <AlertDescription>Smooth motion selects key conformations from the aligned trajectory and interpolates coordinates between them. Light retains more keyframes; Strong retains fewer. Off restores original playback; your source file stays unchanged.</AlertDescription>
-            <AlertAction><Button variant="secondary" size="xs" onClick={dismissEducation}>Got it</Button></AlertAction>
-          </Alert> : null}
+          {showEducation ? <section role="note" aria-label="About smoothing"><ContextualGuideCard id="trajectory-smoothing" title="h3" onDone={dismissEducation} /></section> : null}
           <SegmentedControl className="w-full" aria-label="Smoothing strength" value={preset} disabled={mode === "kinetic"} onValueChange={(value) => {
             if (value === "light" || value === "balanced" || value === "strong") selectPreset(value);
           }}>

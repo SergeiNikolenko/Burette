@@ -1,35 +1,30 @@
 import type { ViewerPreferences } from "../../types";
 import { Button } from "../ui/button";
 import { DialogFooter, DialogTitle } from "../ui/dialog";
-import { ArrowLeft, ArrowRight, Edit as Pencil, FileUpload, FolderPlus, Check } from "../ui/app-icons";
+import { ArrowLeft, ArrowRight, Edit as Pencil, FileUpload, FolderPlus } from "../ui/app-icons";
 import { ThemeModeControl } from "../settings-panel/theme-mode-control";
-import { guides, type GuideId } from "./guides";
 import { GuideVisual } from "./guide-visual";
 
 export const welcomeTitles = ["Welcome to Burette", "Choose your appearance", "Start with a structure"] as const;
 export type WelcomeStep = 0 | 1 | 2;
 export type WelcomeAction = "file" | "draw" | "folder";
-type Props = { dialog?: boolean; onStopTips: () => void } & ({
-  welcome: true; step: WelcomeStep; theme: ViewerPreferences["theme"];
+type Props = {
+  dialog?: boolean; onStopTips: () => void; step: WelcomeStep; theme: ViewerPreferences["theme"];
   onThemeChange: (theme: ViewerPreferences["theme"]) => void;
   onStepChange: (step: WelcomeStep) => void;
   onCompleteWelcome: (action?: WelcomeAction) => void;
-} | { welcome: false; screen: GuideId; onPrimary: () => void });
+};
 
 // Shared by the real first-visit dialog and the isolated overview gallery.
 // This body owns no storage or workspace actions.
 export function OnboardingContent(props: Props) {
-  const welcome = props.welcome;
-  const step = props.welcome ? props.step : 0;
-  const current = props.welcome ? "launcher" : props.screen;
-  const guide = guides[current];
-  const title = welcome ? welcomeTitles[step] : guide.title;
+  const step = props.step;
   const Title = props.dialog ? DialogTitle : "h3";
   return <>
-      <GuideVisual welcome={welcome} screen={welcome ? (["launcher", "appearance", "start"] as const)[step] : current} />
+      <GuideVisual screen={(["launcher", "appearance", "start"] as const)[step]} />
       <div className="flex flex-col gap-5 px-7 pb-6 pt-5">
-        <Title className="text-center text-balance text-xl leading-7 font-semibold tracking-tight">{title}</Title>
-        {welcome ? <>
+        <Title className="text-center text-balance text-xl leading-7 font-semibold tracking-tight">{welcomeTitles[step]}</Title>
+        <>
           {step === 0 && <p className="text-center text-pretty text-sm leading-6">Draw a molecule, explore it in 3D, and keep related files together.</p>}
           {step === 1 && <div className="flex flex-col items-center gap-4 py-2">
             <ThemeModeControl value={props.theme} onChange={props.onThemeChange} />
@@ -48,15 +43,7 @@ export function OnboardingContent(props: Props) {
             {step < 2 ? <Button onClick={() => props.onStepChange((step + 1) as WelcomeStep)}>{step === 0 ? "Get started" : "Continue"}<ArrowRight className="size-4" aria-hidden /></Button>
               : <Button variant="secondary" onClick={() => props.onCompleteWelcome()}>Explore on my own</Button>}
           </DialogFooter>
-        </> : <>
-          <ul className="space-y-3 text-[13px] leading-5">
-            {guide.tips.map(tip => <li key={tip} className="flex items-start gap-3"><Check className="mt-0.5 size-4 shrink-0" aria-hidden /><span>{tip}</span></li>)}
-          </ul>
-          <DialogFooter className="flex-col gap-2 pt-1">
-            <Button className="h-11 w-full rounded-full" onClick={props.onPrimary}>{guide.primaryLabel}<ArrowRight className="size-4" aria-hidden /></Button>
-            <Button variant="ghost" className="h-8 rounded-full text-xs" onClick={props.onStopTips}>Don't show tips</Button>
-          </DialogFooter>
-        </>}
+        </>
       </div>
   </>;
 }

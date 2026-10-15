@@ -251,6 +251,16 @@
     } catch (_) {}
   }
 
+  // One-time contextual guides live in the app shell, which places the card by
+  // this frame-relative rect and drops repeats once the guide has been shown.
+  function requestContextualGuide(id, element, cfg) {
+    if (cfg?.appViewer !== true || window.parent === window || !element) return;
+    const { left, top, width, height } = element.getBoundingClientRect();
+    try {
+      window.parent.postMessage({ type: 'burette:contextual-guide', id, rect: { left, top, width, height } }, '*');
+    } catch (_) {}
+  }
+
   function gridReadyPayload(cfg = config(), extra = {}) {
     const cards = root ? root.querySelectorAll('.buret-card').length : 0;
     const rdkitImages = root ? root.querySelectorAll('.buret-rdkit-card-image').length : 0;
@@ -1976,7 +1986,10 @@
       onUndoGridEdit() { undoLastGridEdit(cfg); },
       onExportSmiles() { exportSmiles(cfg); },
       onExportCSV() { exportCSV(cfg); },
-      onViewModeChange(value) { setGridViewMode(value, cfg); },
+      onViewModeChange(value) {
+        setGridViewMode(value, cfg);
+        requestContextualGuide('grid', document.querySelector('[aria-label="Grid view mode"]'), cfg);
+      },
       onToggleTableColumns() { toggleTableColumnPanel(cfg); },
       onToggleTableFilters() { toggleTableFilters(cfg); },
       onSetCardRenderer(value) { setCardRenderer(value, cfg); },
@@ -3220,7 +3233,13 @@
     // rather than remaining valid until the debounce expires.
     state.token += 1;
     state.dataToken += 1;
-    state.searchTimer = setTimeout(() => refresh(cfg), 120);
+    state.searchTimer = setTimeout(async () => {
+      await refresh(cfg);
+      // Anchored under the whole toolbar so the card never covers the query.
+      if (state.smarts.trim() && state.smartsMatches.size) {
+        requestContextualGuide('smarts-search', document.getElementById('grid-controls'), cfg);
+      }
+    }, 120);
     refreshGridControls(cfg);
   }
 

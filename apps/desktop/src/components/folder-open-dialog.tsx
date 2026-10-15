@@ -11,6 +11,7 @@ import { fileCapabilities } from "./workspace-menu-items";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
 import type { useLocalFileBatch } from "../hooks/use-local-file-batch";
 import { scanBrowserDevFolders } from "../lib/browser-dev-startup";
+import { requestContextualGuide } from "./onboarding/request";
 
 type FolderContents = { files: string[]; folders: string[]; truncated: boolean };
 export async function readFolderContents(path: string, recursive: boolean, state: ShellViewState): Promise<FolderContents> {
@@ -59,6 +60,7 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
   const poses = paths.length > 1 && compatible && paths.every(path => fileCapabilities(path).poses);
   const validMode = mode.startsWith("scene:") ? targets.some(target => mode === `scene:${target.id}`)
     : mode === "aligned" ? canAlign : mode === "poses" ? poses : mode !== "together" || compatible;
+  const watchAvailable = mode === "together" && (isTauriRuntime() || Boolean(state.buildInfo?.isBrowserDev));
   const submit = async () => {
     if (busy || !contents || !paths.length || paths.length > 200 || !validMode) return;
     setBusy(true); setError("");
@@ -76,6 +78,8 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
       else if (mode === "together") await openBatch(paths, "scene", watch && path ? { path, recursive, baseline: contents.files } : undefined);
       else await openBatch(paths, "tabs");
       onClose();
+      // Once the folder scene exists, explain how it keeps filling itself.
+      if (watchAvailable) requestContextualGuide("folder-watch");
     } catch (error) { console.error("[Folder open]", error); setError("Could not open the selected files. Try again."); }
     finally { setBusy(false); }
   };
@@ -122,7 +126,7 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
             {targets.map(target => <NativeSelectOption key={target.id} value={`scene:${target.id}`}>Add to {target.title}</NativeSelectOption>)}
           </NativeSelect>
         </label>
-        {mode === "together" && (isTauriRuntime() || state.buildInfo?.isBrowserDev) && <label className="flex items-center gap-2 text-sm">
+        {watchAvailable && <label className="flex items-center gap-2 text-sm">
           <Checkbox checked={watch} disabled={busy || contents?.truncated} onCheckedChange={checked => setWatch(checked === true)} />
           Add new files as they appear
         </label>}

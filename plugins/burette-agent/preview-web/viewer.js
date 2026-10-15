@@ -269,6 +269,19 @@
     }
   }
 
+  // One-time contextual guides live in the app shell, which decides eligibility.
+  // The frame only reports the control the user reached, in its own viewport;
+  // Quick Look and the iPhone host have no shell to show them.
+  let sceneComposeGuideTimer = 0;
+  function requestContextualGuide(id, element) {
+    if (!window.parent || window.parent === window || window.webkit?.messageHandlers?.burette) return false;
+    if (isQuickLookHost() || document.body?.classList.contains('burette-mobile-host')) return false;
+    const box = element?.getBoundingClientRect?.();
+    if (!box || !(box.width > 0) || !(box.height > 0)) return false;
+    window.parent.postMessage({ type: 'burette:contextual-guide', id, rect: { left: box.left, top: box.top, width: box.width, height: box.height } }, '*');
+    return true;
+  }
+
   async function reportMolstarCapabilities() {
     if (!window.BuretteAgent?.run) {
       assemblySymmetryPending = false;
@@ -712,9 +725,15 @@
     }
     if (type === 'append_scene_files') {
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
-      return window.BuretteSceneFiles.append(activeMolstarViewer(), action, {
+      const appended = await window.BuretteSceneFiles.append(activeMolstarViewer(), action, {
         load: loadMolstarEntry, capture: captureMolstarCameraSnapshot, restore: restoreMolstarCameraSnapshotNow
       });
+      // "In one scene" appends a batch one file at a time; guide once it settles.
+      clearTimeout(sceneComposeGuideTimer);
+      if (appended?.result?.paths?.length > 1) {
+        sceneComposeGuideTimer = setTimeout(() => requestContextualGuide('scene-compose', document.getElementById('buret-scene-tree-toggle')), 1500);
+      }
+      return appended;
     }
     if (type === 'story_observe') {
       return molstarStoryResult('story_observe');
@@ -20428,6 +20447,7 @@ SOFTWARE.
     const animationRow = document.createElement('div');
     animationRow.className = 'buret-docking-pose-animation';
     const hasFileList = prepared.dockingSceneMode || hasTrajectorySegments;
+    const poseCompareGuide = prepared.kind === 'docking' && !prepared.nativeTrajectoryControls && prepared.dockingSceneMode !== 'structureAll';
     root.classList.toggle('buret-docking-poses-frames', !hasFileList);
     const listEntries = prepared.dockingSceneMode ? prepared.poses : trajectorySegments;
     const label = hasFileList ? document.createElement('button') : document.createElement('span');
@@ -21007,6 +21027,8 @@ SOFTWARE.
         }
         if (shouldFocus) scheduleMolstarStructureFocus(viewer, { reason: 'pose-selection', durationMs: 180, force: true });
         notifyDockingPoseChanged(activePose, prepared);
+        // Hovering an open pose list previews poses; only a committed switch counts.
+        if (options.userStep === true && poseCompareGuide && !isFileListOpen()) requestContextualGuide('pose-compare', label);
       } catch (error) {
         try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(previousIndex)); } catch (_) {}
         activePose = previousIndex;
@@ -21089,6 +21111,7 @@ SOFTWARE.
             if (result) {
               align.title = `Superimposed onto the first structure by atom order · ${result.atomCount} atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
               setStatus(`[web] Aligned ${xyzAlignFrames.length} structures onto the first one by atom order (${result.atomCount} atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
+              requestContextualGuide('trajectory', align);
             } else {
               align.title = 'Superimpose every structure onto the first one by atom order';
               setStatus('[web] Restored original structure coordinates.');

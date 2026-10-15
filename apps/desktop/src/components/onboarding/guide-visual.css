@@ -10,11 +10,6 @@
   background: radial-gradient(ellipse at 8% 90%, var(--guide-c), transparent 65%), radial-gradient(ellipse at 88% 5%, var(--guide-b), transparent 65%), var(--guide-base);
   user-select: none;
 }
-.guide-palette-sky { --guide-a: #63b9ee; --guide-b: #9198ed; --guide-c: #c4f4e5; --guide-base: #bddaf5; }
-.guide-palette-mint { --guide-a: #65cea5; --guide-b: #71b9da; --guide-c: #f5e39c; --guide-base: #b9e7d0; }
-.guide-palette-ocean { --guide-a: #41bfc4; --guide-b: #6c87df; --guide-c: #a3ecd2; --guide-base: #a7d8e3; }
-.guide-palette-peach { --guide-a: #ee9c74; --guide-b: #dc90c0; --guide-c: #fff0ad; --guide-base: #f7cdbb; }
-.guide-palette-violet { --guide-a: #a08ae8; --guide-b: #72b7e4; --guide-c: #f2b4df; --guide-base: #d4bef0; }
 .guide-aurora { position: absolute; z-index: -1; border-radius: 50%; }
 .guide-aurora-one { width: 500px; height: 250px; left: -180px; top: -200px; background: var(--guide-a); box-shadow: 0 45px 65px 20px var(--guide-a); transform: rotate(-24deg); opacity: .8; }
 .guide-aurora-two { width: 500px; height: 260px; right: -130px; bottom: -250px; border: 30px solid rgb(255 255 255 / 30%); transform: rotate(-20deg); box-shadow: 0 -25px 60px var(--guide-c); }
@@ -25,17 +20,8 @@
 @media (prefers-reduced-motion: no-preference) { .guide-visual-stage { animation: guide-visual-enter .4s ease-out both; } }
 @keyframes guide-visual-enter { from { opacity: 0; } to { opacity: 1; } }
 
-.guide-treatment-structure .guide-visual-stage { width: 82%; transform: translate(-50%, -50%) rotate(2deg); }
 .guide-treatment-scene .guide-visual-stage { width: 88%; height: 190px; transform: translate(-50%, -45%); }
-.guide-treatment-poses .guide-visual-stage { width: 86%; height: 190px; transform: translate(-50%, -50%) rotate(-5deg); }
-.guide-treatment-trajectory .guide-visual-stage { width: 94%; height: 184px; transform: translate(-50%, -50%) rotate(2deg); }
-.guide-treatment-sketch .guide-visual-stage { width: 70%; height: 190px; transform: translate(-50%, -48%) rotate(6deg); }
-.guide-treatment-panels .guide-visual-stage { width: 92%; height: 190px; transform: translate(-50%, -45%) rotate(-2deg); }
-.guide-treatment-collection .guide-visual-stage { width: 88%; transform: translate(-50%, -50%) rotate(-4deg); }
 .guide-treatment-settings .guide-visual-stage { width: 74%; transform: translate(-50%, -50%) rotate(4deg); }
-.guide-treatment-space .guide-visual-stage { width: 86%; transform: translate(-50%, -50%); }
-.guide-treatment-network .guide-visual-stage { width: 92%; transform: translate(-50%, -50%) rotate(3deg); }
-.guide-treatment-illustration .guide-visual-stage { width: 72%; height: 192px; transform: translate(-50%, -50%) rotate(-7deg); }
 .guide-treatment-welcome { height: 260px; }
 .guide-treatment-welcome .guide-visual-stage { width: 84%; height: 210px; transform: translate(-50%, -52%); animation: none; }
 .guide-treatment-welcome .guide-product-screen { position: absolute; width: 78%; height: 176px; }

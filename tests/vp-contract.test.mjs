@@ -102,7 +102,11 @@ const contractScripts = {
   "test-text-find.mjs": () => import("./test-text-find.mjs"),
   "test-structure-text-highlighting.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-structure-text-highlighting.test.ts", import.meta.url))]),
   "test-smoothing-education.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-smoothing-education.test.tsx", import.meta.url))]),
+  "test-grid-contextual-guides.mjs": () => import("./test-grid-contextual-guides.mjs"),
+  "test-analysis-contextual-guides.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-analysis-contextual-guides.test.tsx", import.meta.url))]),
   "test-screen-guides.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-screen-guides.test.tsx", import.meta.url))]),
+  "test-shell-contextual-guides.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-shell-contextual-guides.test.tsx", import.meta.url))]),
+  "test-viewer-contextual-guides.mjs": () => import("./test-viewer-contextual-guides.mjs"),
   // Mol* captures its scheduler globals on import; keep real DOM tests separate from store mocks.
   "test-docking-sdf-poses.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-docking-sdf-poses.mjs", import.meta.url))]),
   "test-mmcif-block-loading.mjs": () => promisify(execFile)(process.execPath, [fileURLToPath(new URL("./test-mmcif-block-loading.mjs", import.meta.url))]),

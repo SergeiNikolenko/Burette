@@ -1,5 +1,8 @@
 import type { ShellViewState } from "../types";
-import { guides, type GuideId } from "./guides";
+import { isContextualGuideId, type ContextualGuideId } from "./contextual-guides";
+
+export type GuideId = ContextualGuideId | "launcher";
+const isGuideId = (id: unknown): id is GuideId => id === "launcher" || isContextualGuideId(id);
 
 const storageKey = "burette.onboarding.v2";
 const legacyKey = "burette.screen-guides.v1";
@@ -19,7 +22,7 @@ export function readOnboardingProgress(state?: ShellViewState): OnboardingProgre
       const contextual = budget && typeof budget.day === "string" && Number.isInteger(budget.count) && budget.count >= 0
         && Number.isFinite(budget.lastShownAt) && budget.lastShownAt >= 0 ? budget : undefined;
       return { enabled: saved.enabled, welcomeCompleted: saved.welcomeCompleted,
-        seen: saved.seen.filter(id => typeof id === "string" && Object.hasOwn(guides, id)), contextual };
+        seen: saved.seen.filter(isGuideId), contextual };
     }
     // An update must not present a new first-run flow to an established user,
     // even when their current workspace is empty or restoration is still pending.

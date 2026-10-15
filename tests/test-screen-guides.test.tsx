@@ -10,7 +10,7 @@ for (const key of ["window", "document", "navigator", "localStorage", "HTMLEleme
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import("react-dom/client");
 const { OnboardingHost, resetOnboarding } = await import("../apps/desktop/src/components/onboarding");
-const { guideForState } = await import("../apps/desktop/src/components/onboarding/guides");
+const { requestContextualGuide } = await import("../apps/desktop/src/components/onboarding/request");
 const { claimContextualGuide, markContextualGuideSeen, releaseContextualGuide, readOnboardingProgress, saveOnboardingProgress } = await import("../apps/desktop/src/components/onboarding/progress");
 const initial = { page: "viewer", preferences: { theme: "auto" }, documents: [], recentStructures: [], sidebarProjects: [], tabs: [], activeDocument: null, activeTab: null } as unknown as ShellViewState;
 const panel = () => document.querySelector('[role="dialog"]');
@@ -197,10 +197,39 @@ test("reset clears active guide, seen, cooldown and budget and requires welcome 
   releaseContextualGuide("trajectory-smoothing");
 });
 
-test("file renderer and agent settings get the relevant education screen", () => {
-  for (const [renderer, expected] of [["molstar", "file"], ["grid2d", "grid"], ["spectrum", "spectrum"], ["xyzrender-external", "illustration"]]) {
-    expect(guideForState({ ...initial, activeDocument: { renderer, extension: "pdb" } } as ShellViewState)).toBe(expected);
-  }
-  expect(guideForState({ ...initial, activeDocument: { renderer: "molstar", extension: "molj" } } as ShellViewState)).toBe("mesoscale");
-  expect(guideForState({ ...initial, activeTab: { location: { kind: "settings", section: "agent" } } } as ShellViewState)).toBe("agent");
+test("a requested guide opens once beside its control, pages through, and closes", async () => {
+  localStorage.clear();
+  saveOnboardingProgress({ enabled: true, welcomeCompleted: true, seen: [] });
+  const view = await mountOnboarding();
+  const anchor = document.createElement("button"); document.body.append(anchor);
+  try {
+    await act(async () => { expect(requestContextualGuide("grid", anchor)).toBe(true); });
+    expect(panel()?.textContent).toContain("Look at the molecules");
+    expect(panel()?.querySelector("img")?.getAttribute("src")).toBe("/onboarding/guides/collection-cards.webp");
+    await click("Next");
+    expect(panel()?.textContent).toContain("Compare properties");
+    await click("Done");
+    expect(panel()).toBeNull();
+    expect(requestContextualGuide("grid", anchor)).toBe(false);
+    expect(readOnboardingProgress().seen).toEqual(["grid"]);
+  } finally { anchor.remove(); await view.dispose(); }
+});
+
+test("an announcement or an unanchored guide opens as a dialog", async () => {
+  localStorage.clear();
+  saveOnboardingProgress({ enabled: true, welcomeCompleted: true, seen: [] });
+  const view = await mountOnboarding();
+  try {
+    await act(async () => { expect(requestContextualGuide("ketcher")).toBe(true); });
+    expect(title()).toBe("Meet Ketcher");
+    await click("Got it");
+    expect(panel()).toBeNull();
+  } finally { await view.dispose(); }
+});
+
+test("guides are not requested without a mounted host", () => {
+  localStorage.clear();
+  saveOnboardingProgress({ enabled: true, welcomeCompleted: true, seen: [] });
+  expect(requestContextualGuide("grid")).toBe(false);
+  expect(readOnboardingProgress().seen).toEqual([]);
 });

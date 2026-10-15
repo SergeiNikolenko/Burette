@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import type { ShellActions, ShellViewState } from "../types";
 import { Dialog, DialogContent } from "../ui/dialog";
+import { ContextualGuideHost } from "./contextual-guide-host";
 import { OnboardingContent, type WelcomeStep } from "./onboarding-content";
 import { readOnboardingProgress, resetOnboardingEvent, saveOnboardingProgress, type OnboardingProgress } from "./progress";
 export { resetOnboarding } from "./progress";
+export { requestContextualGuide } from "./request";
 
 type Props = { state: ShellViewState; actions: ShellActions };
 
@@ -33,11 +35,14 @@ function LocalOnboarding({ state, actions }: Props) {
     updateProgress(previous => ({ ...previous, welcomeCompleted: true, seen: [...new Set([...previous.seen, "launcher" as const])] }));
     action?.();
   };
-  return <Dialog open={welcome} onOpenChange={next => { if (!next) dismiss(); }}>
+  return <>
+  <ContextualGuideHost />
+  <Dialog open={welcome} onOpenChange={next => { if (!next) dismiss(); }}>
     <DialogContent variant="form" size="medium" className="gap-0 overflow-x-hidden overscroll-contain p-0" aria-describedby={undefined}>
-      <OnboardingContent dialog welcome step={step} theme={state.preferences.theme}
+      <OnboardingContent dialog step={step} theme={state.preferences.theme}
         onThemeChange={theme => actions.setPreference("theme", theme)} onStepChange={setStep} onStopTips={dismiss}
         onCompleteWelcome={action => completeWelcome(action ? ({ file: actions.chooseFiles, draw: actions.openKetcher, folder: actions.chooseWorkspace })[action] : undefined)} />
     </DialogContent>
-  </Dialog>;
+  </Dialog>
+  </>;
 }

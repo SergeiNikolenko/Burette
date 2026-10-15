@@ -5,6 +5,7 @@ import type { ShellActions, ShellViewState } from "./types";
 import type { useWorkspaceFileActions } from "../hooks/use-workspace-file-actions";
 import { isTauriRuntime } from "../lib/tauri";
 import { menuItem as item, submenu, menuSections, fileCapabilities } from "./workspace-menu-items";
+import { requestContextualGuide } from "./onboarding/request";
 
 type Workflows = ReturnType<typeof useWorkspaceFileActions>;
 export function workspaceFileMenu(paths: string[], state: ShellViewState, actions: ShellActions, workflows: Workflows,
@@ -17,6 +18,11 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
   const caps = paths.map(fileCapabilities);
   const local = paths.every(path => path.startsWith("/"));
   const document = single ? state.documents.find(document => document.path === path) : null;
+  // The native menu has no anchor, so the comparison opens over the file the user chose to view.
+  const openAs = (rendererMode: "molstar" | "xyzrender-external") => async () => {
+    await actions.openStructurePaths(paths, { rendererMode });
+    if (caps[0].xyzrender) requestContextualGuide("view-modes");
+  };
   const opening = [
     command("open-tabs", single ? "New tab" : "In separate tabs", () => openBatch(paths, "tabs")),
     command("open-right", "Right panel", () => actions.openDockPayload({ area: "right", tabKind: "files", payload: {
@@ -30,8 +36,8 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
       ...(caps.every(cap => cap.poses) ? [command("open-poses", "As poses", () => workflows.openPoses(paths))] : []),
     ] : []),
     ...submenu("open-as", "As", [
-      ...(single && (caps[0].scene || caps[0].xyzrender) ? [command("open-3d", "Interactive 3D", () => actions.openStructurePaths(paths, { rendererMode: "molstar" }))] : []),
-      ...(single && caps[0].xyzrender ? [command("open-xyzrender", "3D render", () => actions.openStructurePaths(paths, { rendererMode: "xyzrender-external" }))] : []),
+      ...(single && (caps[0].scene || caps[0].xyzrender) ? [command("open-3d", "Interactive 3D", openAs("molstar"))] : []),
+      ...(single && caps[0].xyzrender ? [command("open-xyzrender", "3D render", openAs("xyzrender-external"))] : []),
       ...(single && caps[0].collection ? [
         command("open-table", "Table", () => workflows.gridView(path, "table")),
         command("open-cards", "Cards", () => workflows.gridView(path, "cards")),

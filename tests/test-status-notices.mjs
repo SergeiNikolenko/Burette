@@ -10,6 +10,7 @@ new Function('require', 'exports', code)(name => {
   if (name === 'react') return { useCallback: fn => fn, useRef: current => ({current}), useState: initial => [initial, value => states.push(value)] };
   if (name === '../components/ui/toast') return {toast:{add: notice => notices.push(notice)}};
   if (name === '../lib/web-demo-analytics') return {trackWebDemoHandledError(){}};
+  if (name === '../lib/frontend-error-log') return {logFrontendError(){}};
   throw new Error(name);
 }, exports);
 const status = exports.useAppStatus();

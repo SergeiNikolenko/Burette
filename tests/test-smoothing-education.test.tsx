@@ -36,7 +36,8 @@ test("smoothing explains first deliberate opening, dismisses once, and respects 
     expect(section().open).toBe(false);
     expect(hint()).toBeNull();
     await toggle();
-    expect(hint()?.textContent).toContain("your source file stays unchanged");
+    expect(hint()?.textContent).toContain("Off restores the original frames.");
+    expect(hint()?.querySelector("video")?.getAttribute("src")).toBe("/onboarding/guides/trajectory-aligned.mp4");
     expect(mount.querySelector('[role="dialog"]')).toBeNull();
     await act(async () => Array.from(hint()!.querySelectorAll("button")).find(button => button.textContent === "Got it")!.click());
     expect(hint()).toBeNull();
