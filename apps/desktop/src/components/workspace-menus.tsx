@@ -83,7 +83,7 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
         item("open-folder", "In tabs…", openFolder("tabs")),
         ...(isTauriRuntime() ? [item("open-window", "In new window…", openFolder("window"))] : []),
         ...(scenePaths.length > 1 && scenePaths.length <= 200 ? [item("open-together", "In one scene",
-          () => actions.openDockingDocument(scenePaths[0], scenePaths.slice(1), { sceneMode: "structureAll" }))] : []),
+          () => workflows.openTogether(scenePaths))] : []),
         ...(compatible ? [
           ...(paths.every(path => fileCapabilities(path).protein) ? [item("open-aligned", "Aligned…", openFolder("aligned"))] : []),
           ...(paths.every(path => fileCapabilities(path).poses) ? [item("open-poses", "As poses…", openFolder("poses"))] : [])] : []),

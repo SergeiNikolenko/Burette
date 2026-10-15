@@ -24,7 +24,7 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
     ...(isTauriRuntime() && local ? [command("open-window", "New window", () => actions.openNewWindow(paths))] : []),
     ...(isTauriRuntime() && local && single && caps[0].scene ? [command("open-popout", "Popout", () => invoke("open_new_workspace_window", { paths, presentation: "preview" }))] : []),
     ...(!single && caps.every(cap => cap.scene) ? [
-      command("open-together", "Together", () => actions.openDockingDocument(path, paths.slice(1), { sceneMode: "structureAll" })),
+      command("open-together", "Together", () => workflows.openTogether(paths)),
       ...(caps.every(cap => cap.protein) ? [command("open-aligned", "Aligned", () => workflows.openAligned(paths))] : []),
       ...(caps.every(cap => cap.poses) ? [command("open-poses", "As poses", () => workflows.openPoses(paths))] : []),
     ] : []),

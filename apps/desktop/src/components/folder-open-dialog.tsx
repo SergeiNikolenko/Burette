@@ -59,9 +59,7 @@ export function FolderOpenDialog({ path, state, actions, onClose, initialMode, w
         paths, records: [], items: paths.map(path => ({ kind: "file", path, title: path.split('/').pop() || path })),
       } });
       else if (mode === "poses") await workflows.openPoses(paths);
-      else if (mode === "together") await actions.openDockingDocument(paths[0], paths.slice(1), {
-        sceneMode: "structureAll",
-      });
+      else if (mode === "together") await workflows.openTogether(paths);
       else await actions.openPaths(paths);
       onClose();
     } catch (error) { console.error("[Folder open]", error); setError("Could not open the selected files. Try again."); }

@@ -2633,20 +2633,25 @@ body.burette-mobile-host .buret-docking-poses button {
 .buret-docking-poses-structure-scene {
   width: fit-content;
 }
+.buret-docking-poses-pose-groups,
 .buret-docking-poses-trajectory-segments {
   width: min(392px, calc(100vw - 24px));
 }
+.buret-docking-poses-pose-groups .buret-docking-pose-main,
 .buret-docking-poses-trajectory-segments .buret-docking-pose-main {
   width: 100%;
 }
+.buret-docking-poses-pose-groups .buret-docking-pose-current,
 .buret-docking-poses-trajectory-segments .buret-docking-pose-current {
   min-width: 0;
   flex: 1 1 0;
   width: auto;
 }
+.buret-docking-poses-pose-groups .buret-docking-pose-animation,
 .buret-docking-poses-trajectory-segments .buret-docking-pose-animation {
   width: 100%;
 }
+.buret-docking-poses-pose-groups .buret-docking-pose-slider,
 .buret-docking-poses-trajectory-segments .buret-docking-pose-slider {
   flex: 1 1 auto;
   width: auto;
@@ -2828,6 +2833,23 @@ body.burette-mobile-host .buret-docking-poses button {
   text-align: left !important;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.buret-docking-pose-group + .buret-docking-pose-group {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--buret-menu-border);
+}
+.buret-docking-pose-group-label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 2px;
+  font-weight: 600;
+}
+.buret-docking-poses .buret-docking-pose-group-pose {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-left: 14px;
 }
 .buret-docking-pose-file-meta {
   min-width: 0 !important;
