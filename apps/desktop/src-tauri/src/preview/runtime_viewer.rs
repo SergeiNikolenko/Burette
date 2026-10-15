@@ -811,6 +811,26 @@ mod tests {
     use std::path::Path;
 
     #[test]
+    fn ordinary_and_mesoscale_sessions_choose_their_own_runtime() {
+        for (transformer, expected) in [
+            ("ms-plugin.raw-data", false),
+            ("ms-plugin.mesoscale-state", true),
+        ] {
+            let session = serde_json::json!({"entries": [{"snapshot": {"data": {"tree": {
+                "transforms": [{"transformer": transformer}]
+            }}}}]});
+            assert_eq!(
+                super::is_mesoscale_document(
+                    Path::new("scene.molj"),
+                    "molj",
+                    session.to_string().as_bytes()
+                ),
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn extracted_pdb_molecules_offer_ketcher_without_enabling_large_or_multi_model_files() {
         let atom =
             "HETATM    1 FE   HEM H   1       1.000   2.000   3.000  1.00  0.00          FE\n";
@@ -1489,7 +1509,26 @@ fn mesoscale_viewer_html(
 }
 
 fn is_mesoscale_document(file_path: &Path, extension: &str, data: &[u8]) -> bool {
-    if matches!(extension, "molj" | "molx" | "mesozip") {
+    if extension == "molj" {
+        // Ordinary Mol* sessions and Mesoscale sessions share the same extension.
+        return serde_json::from_slice::<serde_json::Value>(data)
+            .ok()
+            .and_then(|session| session.get("entries").and_then(|v| v.as_array()).cloned())
+            .is_none_or(|entries| {
+                entries.iter().any(|entry| {
+                    entry
+                        .pointer("/snapshot/data/tree/transforms")
+                        .and_then(|v| v.as_array())
+                        .is_some_and(|transforms| {
+                            transforms.iter().any(|transform| {
+                                transform.get("transformer").and_then(|v| v.as_str())
+                                    == Some("ms-plugin.mesoscale-state")
+                            })
+                        })
+                })
+            });
+    }
+    if matches!(extension, "molx" | "mesozip") {
         return true;
     }
     let name = file_path

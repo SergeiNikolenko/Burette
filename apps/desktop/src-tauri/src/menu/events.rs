@@ -198,7 +198,7 @@ pub(crate) fn handle_event<R: Runtime>(app: &tauri::AppHandle<R>, id: &str) {
     }
 
     if id == "file.new-window" {
-        let _ = crate::windows::open_new_workspace_window(app);
+        let _ = crate::windows::open_new_workspace_window(app, Default::default());
         return;
     }
 

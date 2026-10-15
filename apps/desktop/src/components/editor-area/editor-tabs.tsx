@@ -611,7 +611,7 @@ export function EditorTabs({
             const close: MenuItemSpec[] = only ? [{ ...only, id: "close-tabs", text: `Close ${only.text}` }] : submenu("close-tabs", "Close", closing, "xmark");
             const bare = !compact.length && !sceneMenu.length && !reveal.length;
             void showNativeContextMenu(menuSections(opening, [pin, ...rename, ...sceneMenu, ...(bare ? close : [])],
-              [...compact.filter(entry => !opening.includes(entry)), ...reveal], window.BuretteMcpWorkspace ? [] : paneMoveItems(tab), bare ? [] : close), { x: event.clientX, y: event.clientY });
+              [...compact.filter(entry => !opening.includes(entry)), ...reveal], window.BuretteMcpWorkspace ? [] : paneMoveItems(tab, state, actions), bare ? [] : close), { x: event.clientX, y: event.clientY });
           };
           return (
             <div

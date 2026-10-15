@@ -12729,6 +12729,9 @@ SOFTWARE.
     if (sceneEntries.length > 1) {
       return prepareStagedStructureScene(config, sceneEntries);
     }
+    if (normalized === 'molj') {
+      return { kind: 'session', format: normalized, data: rawStructureData(config), label: config.label };
+    }
     if (isMolViewSpecFormat(normalized)) {
       const data = rawStructureData(config);
       return {
@@ -17905,6 +17908,15 @@ SOFTWARE.
   }
 
   async function loadPreparedStructure(viewer, prepared) {
+    if (prepared.kind === 'session') {
+      activeMolstarPrepared = prepared;
+      activeDockingPrepared = null;
+      const snapshot = await viewer.plugin.managers.snapshot.setStateSnapshot(JSON.parse(prepared.data));
+      prepared.hasSessionCamera = Number(snapshot?.camera?.current?.radius) > 0;
+      if (!prepared.hasSessionCamera) viewer.plugin.managers.camera.reset();
+      installDockingPoseControls(viewer, null);
+      return;
+    }
     cancelScheduledMolstarWaterRepresentation();
     activeMolstarPrepared = prepared;
     updateSdfPoseButton(prepared);
@@ -28830,7 +28842,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       }
     }
     try {
-      await applyConfiguredMolstarPreset(viewer, activeConfig || config);
+      if (prepared.kind !== 'session') await applyConfiguredMolstarPreset(viewer, activeConfig || config);
     } catch (error) {
       debug('Configured Mol* preset failed: ' + (error?.message || String(error)));
       if (window.BuretteNativeFirstFrame) throw error;
@@ -28854,7 +28866,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
           up: Array.from(cameraState.up)
         });
       }
-    } else if (!hasMolstarContextFocus(config)) {
+    } else if (!hasMolstarContextFocus(config) && !prepared.hasSessionCamera) {
       scheduleMolstarStructureFocus(viewer, { reason: 'initial-load', durationMs: 120 });
     }
     {

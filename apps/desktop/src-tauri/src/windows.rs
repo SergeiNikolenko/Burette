@@ -10,6 +10,14 @@ use crate::window_state::WindowStateRegistry;
 pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
 pub(crate) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-";
 
+#[derive(Clone, Copy, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum WindowPresentation {
+    #[default]
+    Workspace,
+    Preview,
+}
+
 const DEFAULT_WORKSPACE_WINDOW_WIDTH: f64 = 1180.0;
 const DEFAULT_WORKSPACE_WINDOW_HEIGHT: f64 = 760.0;
 const MIN_WORKSPACE_WINDOW_WIDTH: f64 = 390.0;
@@ -81,6 +89,7 @@ pub(crate) fn focus_or_create_workspace_window<R: Runtime>(
 
 pub(crate) fn open_new_workspace_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    presentation: WindowPresentation,
 ) -> Result<String, String> {
     if crate::menu::exit_transition_is_active(app) {
         return Err(
@@ -88,7 +97,10 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
         );
     }
     show_workspace_application(app)?;
-    let label = next_workspace_label(app);
+    let label = match presentation {
+        WindowPresentation::Workspace => next_workspace_label(app),
+        WindowPresentation::Preview => format!("workspace-preview-{}", uuid::Uuid::new_v4()),
+    };
     let window = create_workspace_window(app, label.clone())?;
     if crate::menu::exit_transition_is_active(app) {
         let _ = window.destroy();
@@ -166,17 +178,31 @@ fn create_workspace_window<R: Runtime>(
     label: String,
 ) -> Result<WebviewWindow<R>, String> {
     let url = WebviewUrl::App(format!("index.html?buretteWindow={label}").into());
+    let preview = label.starts_with("workspace-preview-");
     let builder = WebviewWindowBuilder::new(app, &label, url)
         .title("Burette")
         .inner_size(
-            DEFAULT_WORKSPACE_WINDOW_WIDTH,
-            DEFAULT_WORKSPACE_WINDOW_HEIGHT,
+            if preview {
+                540.0
+            } else {
+                DEFAULT_WORKSPACE_WINDOW_WIDTH
+            },
+            if preview {
+                680.0
+            } else {
+                DEFAULT_WORKSPACE_WINDOW_HEIGHT
+            },
         )
         .min_inner_size(MIN_WORKSPACE_WINDOW_WIDTH, MIN_WORKSPACE_WINDOW_HEIGHT)
         .decorations(true)
         .visible(false)
         .focused(false)
         .prevent_overflow();
+    let builder = if preview {
+        builder.always_on_top(true).visible_on_all_workspaces(true)
+    } else {
+        builder
+    };
     let builder = builder
         .transparent(true)
         .background_color(Color(0, 0, 0, 0));

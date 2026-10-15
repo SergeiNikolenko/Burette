@@ -198,8 +198,10 @@ fn changed_project_roots(
 pub(crate) fn open_new_workspace_window<R: Runtime>(
     app: tauri::AppHandle<R>,
     paths: Option<Vec<String>>,
+    presentation: Option<windows::WindowPresentation>,
+    scene: Option<PreviewScene>,
 ) -> Result<String, String> {
-    let paths = paths.unwrap_or_default();
+    let mut paths = paths.unwrap_or_default();
     if paths.len() > 200
         || paths
             .iter()
@@ -207,9 +209,58 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
     {
         return Err("Choose at most 200 absolute file paths".into());
     }
-    let label = windows::open_new_workspace_window(&app)?;
+    let presentation = presentation.unwrap_or_default();
+    if let Some(scene) = scene {
+        if presentation != windows::WindowPresentation::Preview || !paths.is_empty() {
+            return Err("Choose either a scene or files for the preview window".into());
+        }
+        let bytes = scene.decode()?;
+        let directory = app
+            .path()
+            .app_cache_dir()
+            .map_err(|error| error.to_string())?
+            .join("viewer")
+            .join("popouts")
+            .join(uuid::Uuid::new_v4().to_string());
+        fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+        let path = directory.join(format!("{}.molj", scene.title));
+        fs::write(&path, bytes).map_err(|error| error.to_string())?;
+        paths.push(path.to_string_lossy().into_owned());
+    }
+    let label = windows::open_new_workspace_window(&app, presentation)?;
     crate::startup::signal_open_documents_for_window(&app, &label, paths);
     Ok(label)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PreviewScene {
+    title: String,
+    data_base64: String,
+}
+
+impl PreviewScene {
+    fn decode(&self) -> Result<Vec<u8>, String> {
+        if self.title.is_empty()
+            || self.title.len() > 200
+            || self
+                .title
+                .chars()
+                .any(|c| c.is_control() || matches!(c, '/' | '\\' | ':'))
+            || self.data_base64.len() > 32 * 1024 * 1024
+        {
+            return Err("The preview scene is invalid or exceeds 24 MiB".into());
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&self.data_base64)
+            .map_err(|_| "The preview scene is invalid")?;
+        let value: Value =
+            serde_json::from_slice(&bytes).map_err(|_| "The preview scene is invalid")?;
+        if !value.is_object() || bytes.len() > 24 * 1024 * 1024 {
+            return Err("The preview scene is invalid or exceeds 24 MiB".into());
+        }
+        Ok(bytes)
+    }
 }
 
 /// Close the calling workspace window. With other windows still open the window
@@ -682,6 +733,32 @@ mod tests {
     use base64::Engine;
     use std::fs;
     use std::path::PathBuf;
+
+    #[test]
+    fn preview_scene_rejects_unsafe_names_and_invalid_session_data() {
+        let valid = base64::engine::general_purpose::STANDARD.encode(br#"{"entries":[]}"#);
+        let scene = super::PreviewScene {
+            title: "HEM".into(),
+            data_base64: valid.clone(),
+        };
+        assert_eq!(scene.decode().unwrap(), br#"{"entries":[]}"#);
+        for title in ["../outside", "folder\\name", "bad\nname", ""] {
+            assert!(super::PreviewScene {
+                title: title.into(),
+                data_base64: valid.clone()
+            }
+            .decode()
+            .is_err());
+        }
+        for data in ["invalid", "W10="] {
+            assert!(super::PreviewScene {
+                title: "HEM".into(),
+                data_base64: data.into()
+            }
+            .decode()
+            .is_err());
+        }
+    }
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(

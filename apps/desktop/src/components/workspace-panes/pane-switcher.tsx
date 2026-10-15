@@ -68,7 +68,7 @@ export function paneSwitcherItems(pane: TabPane, tab: MoleculeTab, state: ShellV
     screens,
     bring.length ? [{ kind: "submenu", id: "pane-bring", text: pane === "side" ? "Show Tab Here" : "Show Tab in Window", items: bring }] : [],
     open.length ? [{ kind: "submenu", id: "pane-open", text: "Open", items: open }] : [],
-    paneMoveItems(tab),
+    paneMoveItems(tab, state, actions),
     rename ? [{ kind: "item", id: "rename-tab", text: "Rename tab…", action: rename }] : [],
     [{ kind: "item", id: "pane-close-screen", text: "Close", action: () => { void actions.closeTab(tab.id); } }],
   );

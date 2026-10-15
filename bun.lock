@@ -151,7 +151,7 @@
     },
     "packages/burette": {
       "name": "burette",
-      "version": "2026.10.5",
+      "version": "2026.10.6",
       "bin": {
         "burette": "bin/burette.mjs",
       },
