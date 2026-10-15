@@ -271,6 +271,19 @@ fn compare_and_swap_allows_only_one_concurrent_cancellation() {
 }
 
 #[test]
+fn preview_windows_share_the_desktop_compute_owner() {
+    let test = TestStore::new();
+    let preview = format!("workspace-preview-{}", Uuid::new_v4());
+    assert!(test.store.list_jobs(&preview, 10).is_ok());
+    for label in [
+        "workspace-preview-invalid",
+        "workspace-preview-00000000-0000-0000-0000-000000000000",
+    ] {
+        assert!(test.store.list_jobs(label, 10).is_err());
+    }
+}
+
+#[test]
 fn rejects_untrusted_owner_labels_before_database_access() {
     let test = TestStore::new();
     for label in [

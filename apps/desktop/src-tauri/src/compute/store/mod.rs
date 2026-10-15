@@ -153,6 +153,7 @@ pub(crate) fn validate_owner_window_label(label: &str) -> ComputeResult<()> {
             "compute owner must be a Burette application window".into(),
         ));
     };
+    let suffix = suffix.strip_prefix("preview-").unwrap_or(suffix);
     let workspace_id = Uuid::parse_str(suffix).map_err(|_| {
         ComputeCoordinatorError::Forbidden(
             "compute owner must be a Burette application window".into(),

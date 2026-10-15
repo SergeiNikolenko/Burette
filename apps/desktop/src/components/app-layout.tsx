@@ -480,10 +480,12 @@ function WorkspaceAppLayout({
   // layout directly, and its widths do not always flow back through state in time.
   useEffect(() => {
     if (!activeGridId) return;
+    const observer = new ResizeObserver(() => post());
     const post = () => {
       const iframe = activeViewerIframeForDocument(activeGridId, "grid2d");
       const win = iframe?.contentWindow ?? null;
       if (!iframe || !win) return;
+      observer.observe(iframe);
       const dockEl = rightDockOpen ? rightDockElementRef.current : null;
       const dockLeft = dockEl?.getBoundingClientRect().left;
       const cover = dockLeft === undefined ? 0 : Math.max(0, Math.round(iframe.getBoundingClientRect().right - dockLeft));
@@ -495,8 +497,8 @@ function WorkspaceAppLayout({
     };
     window.addEventListener("load", onViewerLoad, true);
     const dockEl = rightDockElementRef.current;
-    const observer = dockEl ? new ResizeObserver(() => post()) : null;
-    if (dockEl && observer) observer.observe(dockEl);
+    if (dockEl) observer.observe(dockEl);
+    if (workbenchGroupRef.current) observer.observe(workbenchGroupRef.current);
     // The iframe may not be mounted yet right after a load; retry once shortly.
     const timer = window.setTimeout(post, 400);
     return () => {
