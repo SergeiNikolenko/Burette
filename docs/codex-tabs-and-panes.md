@@ -30,48 +30,48 @@ strip and in pane headers.
 | Place | Holds | Where it is drawn |
 | --- | --- | --- |
 | Main window | any number of screens, one in front | tab strip in the title bar row |
-| Side panel | any number of screens, one shown | resizable column between the main column and the right dock |
 | Floating window | one screen | 16 px rounded window over the workspace, 470 x 640 by default, at least 400 x 400 |
 
-`MoleculeTab.pane` (`"side" | "floating" | undefined`) records the place.
+`MoleculeTab.pane` (`"floating" | undefined`) records the place.
 `activeTabId` always names a main tab; making a placed screen active (sidebar,
-deep link, open actions) brings it back to the main window.
-`sidePaneTabId` is the screen the side panel shows.
+deep link, open actions) brings it back to the main window. Tabs saved by
+older builds in the retired side panel (`pane: "side"`) load into the main
+strip; the right dock covers what the side panel showed.
 
 ### No remount
 
 All screens stay children of the one `.page-stack` in `ViewerArea`. A placed
-screen's `.page-surface` is laid out over its pane with `position: fixed`
-(`workspace-panes/workspace-panes.css`): the side panel publishes its width as
-`--side-pane-edge`, and the floating header positions its own surface. Moving
-an iframe to another parent would reload it and rebuild the Mol* scene.
-Placed keep-alive screens stay mounted while their pane shows another screen.
+screen's `.page-surface` is laid out over the floating window with
+`position: fixed` (`workspace-panes/workspace-panes.css`), and the floating
+header positions its own surface. Moving an iframe to another parent would
+reload it and rebuild the Mol* scene.
 
 ## Interactions
 
 | Action | Where |
 | --- | --- |
-| Open in Side Panel, Pop Out, Move to Main Window | tab context menu, side panel "..." menu, pane switcher |
+| Pop Out, Move to Main Window | tab context menu, pane switcher |
 | Switch screen, show a main tab here, open Jobs, Chemical Space, Ketcher | pane switcher (title and chevron) |
 | New screen of any kind | right-click "+" in the tab strip; click "+" is New Tab (Cmd+T) |
 | Open New tab, Jobs, Chemical space, Ketcher in the main strip | sidebar rows under the title (Codex's New chat and Scheduled rows); the row of the front screen is highlighted |
-| Hide or show the side panel | panel toggle in the side panel header and in the title bar controls |
+| Hide or show the right dock | panel button at the end of the title bar, or Opt+Cmd+B |
+| Hide or show the bottom dock | Cmd+J only; the title bar has no button for it |
 | Move, resize, minimize the floating window | drag the header, drag the bottom-right corner, "-" button |
 | Close a screen | Close in any of the menus above, or its tab |
 | Rename tab | tab context menu or pane switcher; changes the label without renaming the source file |
 
-Settings is a full-window mode: both panes step aside while it is open and
+Settings is a full-window mode: the floating window and the docks step aside while it is open and
 come back unchanged.
 
 ## Persistence
 
 - Screen places persist with the session (`burette.molecule.session`):
-  `pane` on each tab and `sidePaneTabId`.
+  `pane` on each tab.
 - Optional tab `title` labels persist in the session and exported session
   snapshots. Labels are trimmed and limited to 200 characters; older sessions
   without a label continue to use the page title.
-- Pane geometry persists in `burette.workspace-panes`: side panel width and
-  hidden flag, floating window rectangle and minimized flag.
+- Floating window geometry persists in `burette.workspace-panes`: its
+  rectangle and minimized flag.
 - With `restoreSessionOnLaunch` off, tabs and their places start fresh; the
   geometry is kept as a window preference.
 
@@ -83,25 +83,22 @@ uses the agent session export transport, whose inline payload limit is 2 MiB.
 
 ## Docks
 
-| Dock | Today | Direction |
+| Dock | Holds | Toggle |
 | --- | --- | --- |
-| Right dock | per-tab inspector tools (Info, Text, Files, ...) following the front tab | Merge into the side panel: its tools become screens bound to the front tab, and Opt+Cmd+B then toggles the side panel as in Codex |
-| Bottom dock | shared tools (Jobs, logs) | Stays; Jobs is also a screen |
+| Right dock | per-tab tools (Info, Text, Files, Ketcher, Jobs, Chemical space, ...) following the front tab | title bar panel button, Opt+Cmd+B |
+| Bottom dock | shared tools (Jobs, logs) | Cmd+J |
 
-Until the merge, Opt+Cmd+B keeps toggling the right dock, and the side panel
-sits to its left.
+The right dock is the only panel beside the main column; the separate side
+panel was removed because it duplicated the right dock's tools.
 
 ## Stages
 
 1. Done: screen kinds with glyphs; Jobs and Chemical Space open as tabs; "+"
    context menu with screen kinds.
-2. Done: side panel column with switcher header; placement actions in the tab
-   and pane menus; layout of side panel and right dock in one pass.
+2. Done, then retired: a separate side panel column. The right dock holds
+   the same tools.
 3. Done: floating window with drag, resize, minimize and switcher; places and
    geometry persist and follow `restoreSessionOnLaunch`.
-4. Next: keyboard. Register a side panel command in
-   `lib/keyboard-shortcuts.ts` (Opt+Cmd+S, the atlas side chat shortcut) and
-   the atlas tab commands (Shift+Cmd+[ and ], Opt+Cmd+W close others,
-   Shift+Cmd+T reopen closed tab).
-5. Next: drag a tab from the strip onto the side panel or out of the window.
-6. Next: merge the right dock into the side panel (see Docks).
+4. Next: the atlas tab switching commands (Shift+Cmd+[ and ]) in
+   `lib/keyboard-shortcuts.ts`; close others and reopen closed tab are done.
+5. Next: drag a tab out of the window.

@@ -27,14 +27,14 @@ globalThis.window = {
   },
 };
 
-const { getMoleculeSessionSnapshot, useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store.ts");
+const { getMoleculeSessionSnapshot, isMainTab, useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store.ts");
 
 // User labels belong to tabs, not files, and survive both session export and
 // the persisted-store reload used on app launch.
 useMoleculeStore.getState().openScreenTab({ kind: "jobs" });
 const titledId = useMoleculeStore.getState().activeTabId;
 useMoleculeStore.getState().renameTab(titledId, "  Long calculation  ");
-useMoleculeStore.getState().placeTab(titledId, "side");
+useMoleculeStore.getState().placeTab(titledId, "floating");
 const titledSnapshot = getMoleculeSessionSnapshot(useMoleculeStore.getState());
 useMoleculeStore.getState().restoreSession(titledSnapshot.tabs, titledSnapshot.activeIndex);
 assert.equal(useMoleculeStore.getState().tabs.find(tab => tab.id === titledId)?.title, "Long calculation");
@@ -43,7 +43,7 @@ useMoleculeStore.getState().renameTab(titledId, "Changed");
 for (const [key, value] of persistedLabel) storage.set(key, value);
 await useMoleculeStore.persist.rehydrate();
 assert.deepEqual(useMoleculeStore.getState().tabs.filter(tab => tab.id === titledId).map(tab => ({ title: tab.title, pane: tab.pane })),
-  [{ title: "Long calculation", pane: "side" }]);
+  [{ title: "Long calculation", pane: "floating" }]);
 useMoleculeStore.getState().renameTab(titledId, "x".repeat(300));
 assert.equal(useMoleculeStore.getState().tabs.find(tab => tab.id === titledId)?.title.length, 200);
 useMoleculeStore.getState().renameTab(titledId, " ");
@@ -454,18 +454,10 @@ assert.deepEqual({ tabs: useMoleculeStore.getState().tabs, activeTabId: useMolec
 delete window.BuretteMcpWorkspace;
 
 
-// Screens placed in the side panel or the floating window leave the strip but
-// stay tabs; the active tab is always a main one.
-const { useSettingsStore } = await import("../apps/desktop/src/stores/settings-store.ts");
+// A screen placed in the floating window leaves the strip but stays a tab;
+// the active tab is always a main one.
 resetStore();
 useMoleculeStore.getState().addDocuments([document("main", "/data/main.pdb"), document("other", "/data/other.pdb")]);
-useMoleculeStore.getState().openScreenTab({ kind: "jobs" }, "side");
-{
-  const state = useMoleculeStore.getState();
-  const jobs = state.tabs.find((tab) => tab.location.kind === "jobs");
-  assert.deepEqual({ pane: jobs.pane, side: state.sidePaneTabId, activeKind: state.tabs.find((tab) => tab.id === state.activeTabId).location.kind },
-    { pane: "side", side: jobs.id, activeKind: "file" }, "opening a screen in the side panel keeps the main tab in front");
-}
 const otherTabId = useMoleculeStore.getState().activeTabId;
 useMoleculeStore.getState().placeTab(otherTabId, "floating");
 {
@@ -483,18 +475,17 @@ assert.equal(useMoleculeStore.getState().tabs.find((tab) => tab.id === mainTabId
   "activating a placed screen moves it back to the main window");
 
 const sessionKey = useMoleculeStore.persist.getOptions().name;
-const savedSession = storage.get(sessionKey);
-assert.match(savedSession, /"pane":"side"/);
-for (const restore of [true, false]) {
-  useSettingsStore.getState().setPreference("restoreSessionOnLaunch", restore);
-  resetStore();
-  storage.set(sessionKey, savedSession);
-  await useMoleculeStore.persist.rehydrate();
-  const state = useMoleculeStore.getState();
-  const side = state.tabs.find((tab) => tab.pane === "side");
-  assert.deepEqual({ side: Boolean(side), sidePaneTabId: state.sidePaneTabId === (side?.id ?? null) && Boolean(side) },
-    { side: restore, sidePaneTabId: restore }, `side panel layout restore follows restoreSessionOnLaunch=${restore}`);
+// Screens saved in the retired side panel come back in the main strip.
+const legacySession = JSON.parse(storage.get(sessionKey));
+legacySession.state.tabs.push({ id: "legacy-side", pane: "side", location: { kind: "jobs" }, back: [], forward: [] });
+legacySession.state.sidePaneTabId = "legacy-side";
+resetStore();
+storage.set(sessionKey, JSON.stringify(legacySession));
+await useMoleculeStore.persist.rehydrate();
+{
+  const jobs = useMoleculeStore.getState().tabs.find((tab) => tab.location.kind === "jobs");
+  assert.deepEqual({ restored: Boolean(jobs), main: Boolean(jobs && isMainTab(jobs)) }, { restored: true, main: true },
+    "a side panel screen from an older session loads into the main strip");
 }
-useSettingsStore.getState().setPreference("restoreSessionOnLaunch", true);
 
 console.log("tab close navigation checks passed");

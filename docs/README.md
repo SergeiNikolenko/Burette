@@ -92,7 +92,7 @@ contains only documents that describe the active project.
 - [Keyboard shortcuts](keyboard-shortcuts.md): app shortcuts and command palette
   actions.
 - [Tabs and panes](codex-tabs-and-panes.md): screen kinds in the tab strip, the
-  side panel, and the floating window.
+  floating window, and the docks.
 - [Agent platform](agent-platform.md): hosted public plugin, public MCP, local CLI,
   Browser shell, desktop session, plugin, observe/action, and visual QA
   boundaries.

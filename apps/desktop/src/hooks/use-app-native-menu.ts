@@ -5,7 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getAllWindows, getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
 import type { ShellActions, ShellViewState, StructureViewerAction } from "../components/types";
-import { reopenClosedTab, toggleSidePanel } from "../components/workspace-panes/pane-actions";
+import { reopenClosedTab } from "../components/workspace-panes/pane-actions";
 import { canInspectConformerEnsemble } from "../lib/conformer-ensemble";
 import { isMolstarViewerExtension } from "../lib/docking-documents";
 import { isKetcherImportExtension } from "../lib/drop-actions";
@@ -659,7 +659,6 @@ export function useAppNativeMenu({
       case "view.toggle-sidebar": actions.toggleSidebar(); return;
       case "view.toggle-inspector": actions.toggleDock("right"); return;
       case "view.toggle-bottom-panel": actions.toggleDock("bottom"); return;
-      case "view.toggle-side-panel": toggleSidePanel(); return;
       case "view.command-palette": actions.openCommandPalette(); return;
       case "structure.open-in-molstar":
         if (!activeDocument || !canOpenInMolstar) return;

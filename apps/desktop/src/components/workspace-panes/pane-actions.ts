@@ -6,35 +6,17 @@ import type { Location } from "../editor-area/page-kinds";
 import { useMoleculeStore, type MoleculeTab, type TabPane } from "../../stores/molecule-store";
 import { useWorkspacePanesStore } from "../../stores/workspace-panes-store";
 
-// Moving a screen between the main strip, the side panel and the floating
-// window. The page itself never remounts (see ViewerArea); these only change
-// where its surface is laid out.
+// Moving a screen between the main strip and the floating window. The page
+// itself never remounts (see ViewerArea); these only change where its surface
+// is laid out.
 export function placeScreen(tabId: string, pane: TabPane | null) {
   useMoleculeStore.getState().placeTab(tabId, pane);
-  if (pane === "side") useWorkspacePanesStore.getState().setSideHidden(false);
   if (pane === "floating") useWorkspacePanesStore.getState().setFloatingMinimized(false);
 }
 
 export function openScreen(location: Location, pane: TabPane | null = null) {
   useMoleculeStore.getState().openScreenTab(location, pane);
-  if (pane === "side") useWorkspacePanesStore.getState().setSideHidden(false);
   if (pane === "floating") useWorkspacePanesStore.getState().setFloatingMinimized(false);
-}
-
-export function showSideScreen(tabId: string) {
-  useMoleculeStore.getState().showSidePaneTab(tabId);
-  useWorkspacePanesStore.getState().setSideHidden(false);
-}
-
-// Like Codex's title-bar toggle: an empty side panel opens straight onto a
-// new page instead of showing nothing.
-export function toggleSidePanel() {
-  if (!useMoleculeStore.getState().tabs.some((tab) => tab.pane === "side")) {
-    openScreen({ kind: "launcher" }, "side");
-    return;
-  }
-  const { sideHidden, setSideHidden } = useWorkspacePanesStore.getState();
-  setSideHidden(!sideHidden);
 }
 
 // Codex's ⇧⌘T. Files are read again from disk because closing a tab unloads
@@ -69,15 +51,12 @@ export const SCREEN_ENTRIES: { id: string; text: string; location: Location }[] 
   { id: "screen-ketcher", text: "Ketcher", location: { kind: "ketcher" } },
 ];
 
-// "Open in Side Panel", "Pop out" and "Move to Main Window" for one screen,
-// shared by the tab context menu and both pane headers so they always agree.
+// "Pop out" and "Move to Main Window" for one screen, shared by the tab context
+// menu and the floating window header so they always agree.
 export function paneMoveItems(tab: MoleculeTab, state: ShellViewState, actions: ShellActions): MenuItemSpec[] {
   const items: MenuItemSpec[] = [];
   if (tab.pane) {
     items.push({ kind: "item", id: "pane-move-main", text: "Move to Main Window", action: () => placeScreen(tab.id, null) });
-  }
-  if (tab.pane !== "side") {
-    items.push({ kind: "item", id: "pane-open-side", text: "Open in Side Panel", action: () => placeScreen(tab.id, "side") });
   }
   if (canOpenNativePopout(tab) || tab.pane !== "floating") {
     items.push({ kind: "item", id: "pane-pop-out", text: "Pop out", action: async () => {

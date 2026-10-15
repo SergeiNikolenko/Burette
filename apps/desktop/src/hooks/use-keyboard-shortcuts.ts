@@ -12,7 +12,7 @@ import { matchesAccelerator, resolveShortcutBindings, type ShortcutId } from "..
 import { useAnnotationStore } from "../stores/annotation-store";
 import { useSettingsStore } from "../stores/settings-store";
 import { isAgentPluginSurface } from "../lib/native-mcp-workspace";
-import { reopenClosedTab, toggleSidePanel } from "../components/workspace-panes/pane-actions";
+import { reopenClosedTab } from "../components/workspace-panes/pane-actions";
 
 function isEditableTarget(target: EventTarget | null) {
   if (!(target instanceof HTMLElement)) return false;
@@ -51,7 +51,6 @@ export function useKeyboardShortcuts(state: ShellViewState, actions: ShellAction
       ["view.toggle-bottom-panel", () => actions.toggleDock("bottom")],
       ["view.toggle-sidebar", toggleSidebar],
       ["view.toggle-inspector", () => actions.toggleDock("right")],
-      ["view.toggle-side-panel", toggleSidePanel],
       ["view.toggle-sidebar-browser", toggleSidebar],
       ["settings.open", () => actions.openSettings()],
       ["help.keyboard-shortcuts", () => actions.openSettingsSection("keyboard")],
