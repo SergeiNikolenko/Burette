@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import bootstrapUrl from "../preview-grid/molecule-preview-bootstrap.js?url";
+import bootstrapUrl from "../preview-grid/molecule-preview-bootstrap.js?url&no-inline";
 import { logFrontendError } from "../lib/frontend-error-log";
 
 // Use the same packaged renderer, presets and menu as the main viewport.

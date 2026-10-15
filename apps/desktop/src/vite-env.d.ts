@@ -65,3 +65,8 @@ declare module "eve-raphael" {
 declare module "ketcher-standalone/dist/binaryWasm" {
   export * from "ketcher-standalone";
 }
+
+declare module "*?url&no-inline" {
+  const url: string;
+  export default url;
+}
