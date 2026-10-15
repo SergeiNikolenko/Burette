@@ -9,10 +9,15 @@ let source = readFileSync('apps/desktop/src/components/grid-molecule-3d.tsx', 'u
   .replace('export default function', 'function');
 const code = new Bun.Transpiler({ loader: 'tsx', tsconfig: { compilerOptions: { jsx: 'react' } } }).transformSync(source);
 const refs = []; let cursor = 0;
+let memo;
+const useMemo = (fn, deps) => {
+  if (!memo || deps.some((value, index) => !Object.is(value, memo.deps[index]))) memo = { deps, value: fn() };
+  return memo.value;
+};
 const render = new Function('React', 'useRef', 'useMemo', 'useEffect', 'window', 'bootstrapUrl', `${code};return GridMolecule3D;`)(
-  React, value => refs[cursor++] ??= { current: value }, fn => fn(), () => {}, { location: { href: 'https://burette.test/' } }, '/bootstrap.js',
+  React, value => refs[cursor++] ??= { current: value }, useMemo, () => {}, { location: { href: 'https://burette.test/' } }, '/bootstrap.js',
 );
-const view = molblock => { cursor = 0; return render({ molblock, theme: 'light', height: 400, onOpen() {} }).props.srcDoc; };
+const view = (molblock, theme = 'light') => { cursor = 0; return render({ molblock, theme, height: 400, onOpen() {} }).props.srcDoc; };
 assert.equal(view(''), '<!doctype html><html></html>');
 const molblock = 'Molecule\nheader\n\nM  END\n';
 const html = view(molblock);
@@ -22,6 +27,9 @@ for (const [, attrs, text] of scripts) assert(attrs.includes('type="application/
 assert.equal(view('next molecule'), html, 'changing rows reuses the live iframe');
 const data = JSON.parse(scripts.find(match => match[1].includes('application/json'))[2]);
 assert.equal(Buffer.from(data.data, 'base64').toString(), molblock);
+const darkHtml = view('next molecule', 'dark');
+const darkData = JSON.parse(darkHtml.match(/id="burette-inspector-input">([^]*?)<\/script>/)[1]);
+assert.notEqual(darkData.config.inspectorChannel, data.config.inspectorChannel, 'a replaced document has a fresh channel');
 const window = { parent: { postMessage() {} }, addEventListener() {} };
 runInNewContext(readFileSync('apps/desktop/src/preview-grid/molecule-preview-bootstrap.js', 'utf8'), {
   window, document: { getElementById: () => ({ textContent: JSON.stringify(data) }), addEventListener() {} },

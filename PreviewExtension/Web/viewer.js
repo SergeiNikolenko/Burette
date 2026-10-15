@@ -28939,10 +28939,16 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       activeViewer.plugin.canvas3d?.setProps({ cameraResetDurationMs: 0, camera: { helper: { axes: { name: 'off', params: {} } } } });
       const settlePreview = async () => {
         const plugin = activeViewer.plugin;
+        activeViewer.handleResize();
         plugin.canvas3d?.commit(true);
-        requestMolstarStructureFocus(activeViewer, { durationMs: 0 });
-        await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
         plugin.managers.camera.orientAxes(undefined, 0);
+        await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
+        const camera = plugin.canvas3d?.camera?.state;
+        requestMolstarStructureFocus(activeViewer, {
+          durationMs: 0,
+          direction: camera && Array.from(camera.position, (value, axis) => value - camera.target[axis]),
+          up: camera && Array.from(camera.up),
+        });
         await plugin.animationLoop.tick(performance.now(), { isSynchronous: true });
       };
       await settlePreview();
@@ -28951,7 +28957,11 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       let running = false;
       let current = structureDataForMolstar(config).data;
       window.addEventListener('message', async event => {
-        if (event.source !== window.parent || event.data?.source !== 'burette-inspector-host') return;
+        // WKWebView can report the receiving frame as event.source for a
+        // parent's timer/effect postMessage. Bind updates to this document's
+        // unguessable channel instead; never accept another inspector's data.
+        if (!config.inspectorChannel || event.data?.channel !== config.inspectorChannel
+          || event.data?.source !== 'burette-inspector-host') return;
         const data = event.data.molblock;
         if (typeof data !== 'string' || !data || data.length > 350000) return;
         pending = data;
@@ -28980,7 +28990,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
           running = false;
         }
       });
-      window.parent.postMessage({ source: 'burette-inspector-ready' }, '*');
+      window.parent.postMessage({ source: 'burette-inspector-ready', channel: config.inspectorChannel }, '*');
     }
 
   }

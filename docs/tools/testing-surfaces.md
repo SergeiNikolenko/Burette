@@ -238,3 +238,13 @@ vp run ready
 
 `vp run ready` is the broadest local pre-merge command. Use focused commands
 first while developing so failures stay attributable.
+
+## Inspector 3D Updates In WebKit
+
+`bun tests/test-inspector-webkit.mjs` runs a focused macOS check in an offscreen
+WKWebView with the desktop custom URL scheme and the production inspector
+component. It switches water → caffeine → water and asserts the live structure
+atom counts. It does not build or open Burette, create windows, or alter saved
+sessions. Use this alongside `bun tests/test-inspector-molstar-runtime.mjs` and
+`bun tests/test-grid-preview-bootstrap.mjs` when changing the inspector's iframe
+transport; browser-only checks do not cover WebKit's message source identity.
