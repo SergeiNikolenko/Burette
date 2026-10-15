@@ -97,6 +97,19 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
         );
     }
     show_workspace_application(app)?;
+    // The popout is a reusable molecule inspector. Reusing its live webview
+    // avoids booting another complete application for every picked molecule.
+    if presentation == WindowPresentation::Preview {
+        if let Some(window) = app
+            .webview_windows()
+            .values()
+            .find(|window| window.label().starts_with("workspace-preview-"))
+        {
+            let label = window.label().to_string();
+            focus_or_create_workspace_window(app, Some(&label))?;
+            return Ok(label);
+        }
+    }
     let label = match presentation {
         WindowPresentation::Workspace => next_workspace_label(app),
         WindowPresentation::Preview => format!("workspace-preview-{}", uuid::Uuid::new_v4()),
@@ -194,7 +207,7 @@ fn create_workspace_window<R: Runtime>(
             },
         )
         .min_inner_size(MIN_WORKSPACE_WINDOW_WIDTH, MIN_WORKSPACE_WINDOW_HEIGHT)
-        .decorations(true)
+        .decorations(!preview)
         .visible(false)
         .focused(false)
         .prevent_overflow();
@@ -207,17 +220,21 @@ fn create_workspace_window<R: Runtime>(
         .transparent(true)
         .background_color(Color(0, 0, 0, 0));
     #[cfg(target_os = "macos")]
-    let builder = builder
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true)
-        .traffic_light_position(crate::macos::TRAFFIC_LIGHT_INSET)
-        .effects(
-            EffectsBuilder::new()
-                .effect(Effect::HudWindow)
-                .state(EffectState::Active)
-                .build(),
-        )
-        .shadow(true);
+    let builder = if preview {
+        builder.shadow(true)
+    } else {
+        builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(crate::macos::TRAFFIC_LIGHT_INSET)
+            .effects(
+                EffectsBuilder::new()
+                    .effect(Effect::HudWindow)
+                    .state(EffectState::Active)
+                    .build(),
+            )
+            .shadow(true)
+    };
     let window = builder.build().map_err(|error| error.to_string())?;
     if crate::menu::exit_transition_is_active(app) {
         let _ = window.destroy();
@@ -230,7 +247,9 @@ fn create_workspace_window<R: Runtime>(
     registry.apply_geometry(&window);
     attach_window_cleanup(app, &window);
     #[cfg(target_os = "macos")]
-    crate::macos::keep_traffic_lights_inset(&window);
+    if !preview {
+        crate::macos::keep_traffic_lights_inset(&window);
+    }
     crate::zoom::apply_current_zoom(&window);
     Ok(window)
 }
@@ -273,6 +292,9 @@ pub(crate) fn attach_window_cleanup<R: Runtime>(
 }
 
 fn reposition_traffic_lights<R: Runtime>(window: &WebviewWindow<R>) {
+    if window.label().starts_with("workspace-preview-") {
+        return;
+    }
     #[cfg(target_os = "macos")]
     crate::macos::reposition_traffic_lights(window);
     #[cfg(not(target_os = "macos"))]

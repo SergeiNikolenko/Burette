@@ -1,3 +1,5 @@
+import { NativePreviewLayout } from "./workspace-panes/native-preview-layout";
+import { isNativePreviewWindow } from "../lib/window-scope";
 import { Spinner } from "@/components/ui/spinner";
 import { ToolbarButton } from "@/components/ui/toolbar-button";
 import { NativeWorkspaceMenu, NativeWorkspaceSidebar } from "./native-workspace-navigation";
@@ -271,7 +273,13 @@ function useViewportWidth() {
   return width;
 }
 
-export function AppLayout({
+export function AppLayout(props: Parameters<typeof WorkspaceAppLayout>[0]) {
+  return isNativePreviewWindow()
+    ? <NativePreviewLayout state={props.state} actions={props.actions} />
+    : <WorkspaceAppLayout {...props} />;
+}
+
+function WorkspaceAppLayout({
   state,
   actions,
   onToggleSidebar,

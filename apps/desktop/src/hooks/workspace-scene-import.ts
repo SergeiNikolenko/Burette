@@ -4,7 +4,7 @@ import type { StructureDragPayload } from "../lib/structure-drag";
 import { readStructureTextDocument } from "../lib/structure-text";
 import { activeViewerIframeForDocument, requestViewerAction } from "../lib/viewer-bridge";
 import { pathExtension } from "../lib/file-routing";
-import { isStructureComparisonSource } from "../lib/docking-documents";
+import { isMolstarSceneImportSource, isStructureComparisonSource } from "../lib/docking-documents";
 import { isTauriRuntime } from "../lib/tauri";
 import { useSettingsStore } from "../stores/settings-store";
 
@@ -63,19 +63,46 @@ async function rebuildStructureScene(document: ViewerDocument, paths: string[], 
   return { ok: true, command: "append_scene_files", result: { added, paths } };
 }
 
-export async function appendScenePayload(documentId: string, payload: StructureDragPayload) {
+// Serialize drops per document. Other scenes remain independent, and failures
+// release the queue so the next drop can still run.
+const pendingSceneDrops = new Map<string, Promise<unknown>>();
+
+export function appendSceneDrop(documentId: string, payload: StructureDragPayload) {
+  const previous = pendingSceneDrops.get(documentId) ?? Promise.resolve();
+  const operation = previous.catch(() => {}).then(() => appendScenePayload(documentId, payload, { preserveScene: true }));
+  pendingSceneDrops.set(documentId, operation);
+  void operation.finally(() => {
+    if (pendingSceneDrops.get(documentId) === operation) pendingSceneDrops.delete(documentId);
+  }).catch(() => {});
+  return operation;
+}
+
+export async function expandSceneDropFolders(paths: string[], directories: string[]) {
+  const scans = await invoke<Array<{ files: Array<{ path: string }>; truncated: boolean; error?: string | null }>>(
+    "list_project_structure_files", { paths: directories, maxEntries: 20000 },
+  );
+  if (scans.some(scan => scan.truncated)) throw new Error("The folder is too large. Drop a smaller subfolder.");
+  const errors = scans.flatMap(scan => scan.error ? [scan.error] : []);
+  if (errors.length) throw new Error(errors.join("; "));
+  const files = [...new Set([...paths, ...scans.flatMap(scan => scan.files.map(file => file.path).filter(isMolstarSceneImportSource))])];
+  if (files.length > 200) throw new Error("Choose up to 200 structures.");
+  if (!files.length) throw new Error("This folder contains no supported structures.");
+  return files;
+}
+
+export async function appendScenePayload(documentId: string, payload: StructureDragPayload, { preserveScene = false }: { preserveScene?: boolean } = {}) {
   const { useMoleculeStore } = await import("../stores/molecule-store");
   const store = useMoleculeStore.getState();
   const document = store.documents.find(candidate => candidate.id === documentId);
   if (!document || document.renderer !== "molstar") throw new Error("The target scene is no longer open.");
-  const scenePaths = structureScenePaths(document, payload);
+  const scenePaths = preserveScene ? null : structureScenePaths(document, payload);
   if (scenePaths) return rebuildStructureScene(document, scenePaths, payload.paths.length);
   const sources = payload.records.map(record => ({
     path: record.path, label: record.path.split('/').pop(), format: record.inputExtension, data: record.text,
   }));
   if (sources.length + payload.paths.length > 200) throw new Error("Choose up to 200 structures.");
   let total = sources.reduce((size, source) => size + new TextEncoder().encode(source.data).byteLength, 0);
-  for (const path of payload.paths) {
+  for (const path of new Set(payload.paths)) {
     if (total >= 24 * 1024 * 1024) throw new Error("Scene imports are limited to 24 MB at a time.");
     const source = await readStructureTextDocument(path, undefined, { maxBytes: 24 * 1024 * 1024 - total });
     total += new TextEncoder().encode(source.content).byteLength;
@@ -83,8 +110,15 @@ export async function appendScenePayload(documentId: string, payload: StructureD
     sources.push({ path, label: path.split('/').pop(), format: pathExtension(path), data: source.content });
   }
   if (total > 24 * 1024 * 1024) throw new Error("Scene imports are limited to 24 MB at a time.");
-  await focusSceneDocument(document, store.setActiveDocument);
+  await focusSceneDocument(document, id => {
+    // A visible side/floating scene already owns its iframe. Do not switch the
+    // user's active tab while this scene's import is waiting in the queue.
+    if (!preserveScene || !activeViewerIframeForDocument(id, "molstar")) store.setActiveDocument(id);
+  });
   const existingPaths = document.dockingRequest
     ? [document.dockingRequest.receptorPath, ...document.dockingRequest.ligandPaths] : [document.path];
-  return requestViewerAction(document.id, { type: "append_scene_files", sources, existingPaths });
+  if (!useMoleculeStore.getState().documents.some(candidate => candidate.id === document.id)) {
+    throw new Error("The target scene is no longer open.");
+  }
+  return requestViewerAction(document.id, { type: "append_scene_files", sources, existingPaths, skipExisting: preserveScene });
 }

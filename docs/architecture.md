@@ -350,6 +350,17 @@ for chemical perception); the native converter check is
 
 ### Detached structure previews
 
-On desktop, **Pop out** for a file opens an independent `workspace-preview-*` native window. It can move between displays and appears across macOS workspaces; it starts compact, above normal windows, with the sidebar closed. Geometry and restoration use the existing workspace-window registry. Mol* viewers export the live scene (including camera and representations) to a bounded 24 MiB MOLJ snapshot in the application cache before opening the window. The original tab remains available. Non-Mol* files use the existing path-based open contract; non-file pages and browser previews retain the embedded pane.
+On desktop, **Pop out** for a file opens an independent `workspace-preview-*` native window. It can move between displays and appears across macOS workspaces; it starts compact, above normal windows, with the original compact 36 px pane header and the viewer. The header provides Close, Minimize, Return to main window and Expand controls with native dragging. Returning transfers the current scene to an existing normal workspace (or creates one if needed) before closing the preview. Workspace tabs, browser navigation, sidebars and guides are not mounted in this window. Files offer **Open → Popout**, and a single molecule selected in Mol* offers **Open in → Popout**. Geometry and restoration use the existing workspace-window registry. Mol* viewers export the live scene (including camera and representations) to a bounded 24 MiB MOLJ snapshot in the application cache before opening the window. Opening another molecule reuses the existing preview webview, with prior documents available from the compact title menu. Selected-molecule popouts persist the validated source directly and prepare it only in the destination, avoiding construction of an unused viewer in the originating window. Transferred scenes retain their canvas presentation and fit the destination viewport while preserving orientation. Preview windows use a transparent borderless native surface without the workspace backdrop. Only the main window consumes a process startup agent session; secondary windows accept explicit session attachments. Frontend status errors persist in a 256 KiB application log with one bounded previous copy and at most 20 bounded recent errors in memory. The original tab remains available. Non-Mol* files use the existing path-based open contract; non-file pages and browser previews retain the embedded pane.
 
 `open_new_workspace_window` accepts optional `presentation` (`workspace` by default, or `preview`) and an optional `scene` object (`title`, `dataBase64`). A scene requires preview presentation and no file paths. Snapshot names and payloads are validated before writing; existing callers that supply only paths retain their behavior.
+
+### Dropping structures into scenes
+
+Molecular files dropped onto a Mol* document append directly to that document,
+without an action picker or switching to a docking document. Each document has
+its own import queue; batches preserve the mounted scene and camera. Repeated
+paths are skipped, and failed batches roll back their new objects. Finder
+folders use the bounded recursive project scanner before importing; incomplete
+or unreadable scans fail rather than silently importing a partial folder.
+Scene drops retain all SDF models. Explicit comparison/docking commands remain
+available for pose paging and structure alignment.

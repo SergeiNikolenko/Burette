@@ -1447,6 +1447,8 @@
   function observeMolstarStoryState(viewer) {
     molstarStoryStateCleanup?.();
     molstarStoryStateCleanup = null;
+    // Ordinary scene snapshots must retain their authored canvas presentation.
+    if (activeMolstarPrepared?.kind !== 'mvs') return;
     const manager = viewer?.plugin?.managers?.snapshot;
     detachMolstarStoryPresentation(manager);
     setMolstarStoryTransition(manager, MOLSTAR_STORY_TRANSITION_MS);
@@ -3676,11 +3678,11 @@
       const direction = Array.isArray(options.direction) && options.direction.length >= 3
         ? options.direction
         : [0.85, -0.38, 0.92];
-      const fitted = fittedMolstarStructureFocus(viewer, camera, direction, up);
+      const fitted = options.mode === 'orthographic' ? null : fittedMolstarStructureFocus(viewer, camera, direction, up);
       const snapshot = fitted || (typeof camera.getFocus === 'function'
         ? camera.getFocus(target, Math.max(0.1, safeRadius * radiusScale), up, direction)
         : null);
-      if (snapshot) snapshot.mode = 'perspective';
+      if (snapshot) snapshot.mode = options.mode || 'perspective';
       canvas3d.requestCameraReset({
         snapshot: snapshot || undefined,
         durationMs: Number.isFinite(Number(options.durationMs)) ? Number(options.durationMs) : 160,
@@ -17911,7 +17913,9 @@ SOFTWARE.
     if (prepared.kind === 'session') {
       activeMolstarPrepared = prepared;
       activeDockingPrepared = null;
-      const snapshot = await viewer.plugin.managers.snapshot.setStateSnapshot(JSON.parse(prepared.data));
+      const session = JSON.parse(prepared.data);
+      prepared.fitSessionCamera = session.burettePreview === true;
+      const snapshot = await viewer.plugin.managers.snapshot.setStateSnapshot(session);
       prepared.hasSessionCamera = Number(snapshot?.camera?.current?.radius) > 0;
       if (!prepared.hasSessionCamera) viewer.plugin.managers.camera.reset();
       installDockingPoseControls(viewer, null);
@@ -23743,6 +23747,7 @@ SOFTWARE.
 
   const MOLSTAR_OPEN_IN_ACTION = 'open-in';
   const MOLSTAR_OPEN_IN_TAB_ACTION = 'open-in:tab';
+  const MOLSTAR_OPEN_IN_POPOUT_ACTION = 'open-in:popout';
   const MOLSTAR_OPEN_IN_GRID_ACTION = 'open-in:grid';
   const MOLSTAR_OPEN_IN_MAX_MOLECULES = 200;
   const MOLSTAR_OPEN_IN_MAX_ATOMS = 20000;
@@ -25440,7 +25445,8 @@ SOFTWARE.
     if (!mobileHost && molstarOpenInMolecules(target).length) {
       actions.push(moleculeMenuNestedAction(MOLSTAR_OPEN_IN_ACTION, 'Open in', [
         [MOLSTAR_OPEN_IN_TAB_ACTION, 'New Tab'],
-        [MOLSTAR_OPEN_IN_GRID_ACTION, 'New Grid']
+        [MOLSTAR_OPEN_IN_GRID_ACTION, 'New Grid'],
+        ...(molstarOpenInMolecules(target).length === 1 ? [[MOLSTAR_OPEN_IN_POPOUT_ACTION, 'Popout']] : [])
       ]));
     } else if (molstarContextDocumentPayload(target)) actions.push(['molstar', 'Open in new tab']);
     // The desktop overlay carries the scene-tree powers into the 3D right click.
@@ -25895,18 +25901,18 @@ SOFTWARE.
         pushMolstarEditUndoSnapshot(undoSnapshot);
         setMolstarStructureDirty(true);
         setStatus(`[web] Deleted ${atomLabel}.`);
-      } else if (action === 'molstar' || action === MOLSTAR_OPEN_IN_TAB_ACTION || action.startsWith(MOLSTAR_OPEN_IN_GRID_ACTION)) {
+      } else if (action === 'molstar' || action === MOLSTAR_OPEN_IN_TAB_ACTION || action === MOLSTAR_OPEN_IN_POPOUT_ACTION || action.startsWith(MOLSTAR_OPEN_IN_GRID_ACTION)) {
         const toGrid = action.startsWith(MOLSTAR_OPEN_IN_GRID_ACTION);
         const records = molstarOpenInMolecules(target).map(molstarMoleculeSdfRecord).filter(Boolean);
         // One molecule bound for a tab keeps the source-text entry when the file has one.
         const contextDocument = (!toGrid && records.length < 2 ? molstarContextDocumentPayload(target) : null)
           || molstarOpenInDocumentPayload(records);
         if (!contextDocument) throw new Error('No molecule-level Mol* context is available for this target.');
-        const gridDocumentId = action.slice(MOLSTAR_OPEN_IN_GRID_ACTION.length + 1);
+        const gridDocumentId = toGrid ? action.slice(MOLSTAR_OPEN_IN_GRID_ACTION.length + 1) : '';
         const posted = postHostMessage({
           type: 'openMolstarContextDocument',
           renderer: 'molstar',
-          destination: toGrid ? 'grid' : 'tab',
+          destination: toGrid ? 'grid' : action === MOLSTAR_OPEN_IN_POPOUT_ACTION ? 'popout' : 'tab',
           ...(gridDocumentId ? { gridDocumentId } : {}),
           contextDocument
         });
@@ -28852,7 +28858,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {
       molstarStructureFocusSerial += 1;
       restoreMolstarCameraSnapshotNow(viewer, savedCamera);
-    } else if (isQuickLookHost() && !hasMolstarContextFocus(config)) {
+    } else if ((isQuickLookHost() || prepared.fitSessionCamera) && !hasMolstarContextFocus(config)) {
       // Quick Look keeps the file's orientation and never animates the camera; it
       // only trades Mol*'s bounding-sphere distance for the atom-fitted one. An MVS
       // scene brings its own camera.
@@ -28860,6 +28866,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       if (cameraState && prepared.kind !== 'mvs') {
         scheduleMolstarStructureFocus(viewer, {
           reason: 'quick-look-frame',
+          mode: prepared.fitSessionCamera ? cameraState.mode : 'perspective',
           durationMs: 0,
           force: true,
           direction: [0, 1, 2].map(axis => cameraState.position[axis] - cameraState.target[axis]),
