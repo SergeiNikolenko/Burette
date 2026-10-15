@@ -133,11 +133,13 @@ export type ChemicalEditorTarget = {
   matchReason: string;
 };
 
+export type FileOpenOptions = { shouldApply?: () => boolean; requireSuccess?: boolean };
+
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
-  openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external" }) => void | Promise<void>;
+  openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external"; shouldApply?: () => boolean }) => void | Promise<void>;
   openTextPaths: (paths: string[]) => void | Promise<void>;
-  openPaths: (paths: string[]) => void | Promise<void>;
+  openPaths: (paths: string[], options?: FileOpenOptions) => void | Promise<void>;
   openStructureRecords: (records: StructureDragPayload["records"], directory?: string) => void | Promise<void>;
   openStructureUrlInMolstar: (url: string) => void | Promise<void>;
   openRecentStructure: (structure: RecentStructure) => void | Promise<void>;
@@ -217,7 +219,7 @@ export type ShellActions = {
   chooseXtbExecutable: () => void | Promise<void>;
   clearXtbExecutableSelection: () => void | Promise<void>;
   installXtb: () => void | Promise<void>;
-  runXtbActiveOperation: (operation: XtbOperation) => void | Promise<void>;
+  runXtbActiveOperation: (operation: XtbOperation, document?: ViewerDocument | null) => void | Promise<void>;
   runXtbJob: (request: XtbRunRequest, options?: { title?: string; inputLabel?: string; openPrimary?: boolean; openOptimizedPoseInCurrentView?: boolean; poseSourceDocument?: ViewerDocument | null }) => void | Promise<void>;
   cancelXtbJob: (jobId: string) => void | Promise<void>;
   runXtbKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;

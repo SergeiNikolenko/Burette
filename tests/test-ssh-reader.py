@@ -83,6 +83,33 @@ class RemoteReader(unittest.TestCase):
                 self.assertNotEqual(response.returncode, 0)
                 self.assertEqual(response.stdout, b'')
 
+    def test_conditional_preview_checks_metadata_and_never_reuses_replaced_file(self):
+        import os
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            path = root / 'mini.pdb'
+            path.write_bytes(b'first')
+            original_stat = path.stat()
+            first = self.request(root, 'preview', path.name)
+            header, data = first.stdout.split(b'\n', 1)
+            metadata = json.loads(header)
+            self.assertEqual((metadata['unchanged'], data), (False, b'first'))
+            same = self.request(root, 'preview', path.name, known=metadata['fingerprint'])
+            header, data = same.stdout.split(b'\n', 1)
+            self.assertEqual((json.loads(header)['unchanged'], data), (True, b''))
+            replacement = root / 'replacement'
+            replacement.write_bytes(b'other')
+            os.utime(replacement, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+            replacement.replace(path)
+            changed = self.request(root, 'preview', path.name, known=metadata['fingerprint'])
+            header, data = changed.stdout.split(b'\n', 1)
+            self.assertEqual((json.loads(header)['unchanged'], data), (False, b'other'))
+            path.unlink()
+            path.symlink_to('/etc/passwd')
+            denied = self.request(root, 'preview', path.name, known=metadata['fingerprint'])
+            self.assertNotEqual(denied.returncode, 0)
+            self.assertEqual(denied.stdout, b'')
+
     def test_directory_bound(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = pathlib.Path(temporary)

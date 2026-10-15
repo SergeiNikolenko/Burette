@@ -563,9 +563,14 @@ try {
   ])].sort();
   const viewerSource = await readFile('PreviewExtension/Web/viewer.js', 'utf8');
   const shellSource = await readFile('apps/desktop/src/hooks/use-agent-session.ts', 'utf8');
+  for (const privateAction of ['workspace_scene_snapshot']) {
+    assert.ok(!cliTypeList('SESSION_VIEWER_ACTION_TYPES').includes(privateAction), `${privateAction} must not expose large snapshots through the public CLI`);
+  }
   assert.deepEqual(
     cliTypeList('SESSION_VIEWER_ACTION_TYPES'),
-    quotedTypes(sourceBody(viewerSource, 'async function executeBuretteAgentAction(', 'async function captureAgentScene(')),
+    // Native window handoff stays outside the public MCP/CLI action contract.
+    quotedTypes(sourceBody(viewerSource, 'async function executeBuretteAgentAction(', 'async function captureAgentScene('))
+      .filter(type => !['workspace_scene_snapshot'].includes(type)),
   );
   assert.deepEqual(
     cliTypeList('SESSION_SHELL_ACTION_TYPES'),

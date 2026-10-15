@@ -73,6 +73,8 @@ contains only documents that describe the active project.
   check paths that avoid full local rebuilds.
 - [Control affordances](control-affordances.md): tooltip and menu-detail rules
   for compact controls across React, Mol*, `xyzrender`, Grid, and Ketcher.
+- [Onboarding](onboarding.md): welcome flow, contextual guide policy, and where
+  and when each guide appears.
 - [Pose playback standardization](pose-playback-standardization.md): current
   single/all playback problem, controller contract, and browser test matrix for
   docking poses, SDF collections, XYZ frames, PDB models, and structure scenes.

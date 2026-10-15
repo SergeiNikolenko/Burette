@@ -1,3 +1,5 @@
+import { useSshFileBatch } from "./use-ssh-file-batch";
+import { Button } from "../ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { useSshProjectMenu } from "./ssh-project-details";
 import { useSshStatus } from "../../lib/ssh-connection-status";
@@ -30,7 +32,9 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
   const [pending, setPending] = useState<Operation | null>(null);
   const [failure, setFailure] = useState<{ operation: Operation; message: string } | null>(null);
   const [lastSuccess, setLastSuccess] = useState<number | null>(null);
-  const [selected, setSelected] = useState("");
+  const [selected, setSelected] = useState(new Set<string>());
+  const [previewing, setPreviewing] = useState(new Set<string>());
+  const selectionAnchor = useRef<string | null>(null);
   const [limits, setLimits] = useState<Record<string, number>>({});
   const [deleting, setDeleting] = useState<{ path: string; fullPath: string } | null>(null);
   const [dropNotice, setDropNotice] = useState<{ path: string; message: string; error: boolean } | null>(null);
@@ -39,6 +43,7 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
   const dragSource = useRef<{ path: string; directory: boolean } | null>(null);
   const projectMenu = useSshProjectMenu(project, connection);
   const enabled = connection?.enabled !== false;
+  const batch = useSshFileBatch(project, actions, enabled);
   const drag = useSidebarStructureDrag({
     actions,
     disabled: !enabled,
@@ -49,6 +54,17 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
   const status = !enabled ? "Disabled" : pending ? (pending.type === "download" ? "Downloading…" : "Connecting…") : failure ? "Connection or file error" : (health ? health.available : !!lastSuccess) ? "Available" : "Connects when needed";
   const hoverCard = useSidebarHoverCard(sshProjectHoverCard({ project, status, available: enabled && !!(health ? health.available : !!lastSuccess) && !failure, failed: !!failure }));
   async function run(operation: Operation, refresh = false) {
+    if (operation.type === "preview") {
+      if (!enabled) return;
+      setPreviewing(previous => new Set([...previous, operation.path]));
+      try {
+        await onOpen([await sshPreview(project, operation.path)]);
+        saveSshProject({ ...project, openedAt: Date.now() });
+        setLastSuccess(Date.now());
+      } catch (error) { setFailure({ operation, message: String(error) }); }
+      finally { setPreviewing(previous => new Set([...previous].filter(path => path !== operation.path))); }
+      return;
+    }
     if (lock.current) {
       const existing = queued.current.find(item => item.operation.type === operation.type && item.operation.path === operation.path && (item.operation.type !== "download" || operation.type !== "download" || item.operation.destination === operation.destination));
       if (existing) existing.refresh ||= refresh;
@@ -82,18 +98,12 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
           }
           return next;
         });
-        setExpanded(previous => {
-          if (!previous.has(operation.path)) return previous;
-          return new Set([...previous, ...(value.expanded ?? [])]);
-        });
+        // Discovery warms listings; only an explicit click expands a folder.
+        // A late scan must not reopen folders the user has just collapsed.
       } else if (operation.type === "download") {
         const saved = await sshDownload(project, operation.path, operation.destination, operation.archive);
         if (!saved) return;
         setDropNotice({ path: operation.path, message: operation.destination === "desktop" ? "Downloaded to Desktop" : "Downloaded", error: false });
-      } else {
-        await onOpen([await sshPreview(project, operation.path)]);
-        setSelected(operation.path);
-        saveSshProject({ ...project, openedAt: Date.now() });
       }
       setLastSuccess(Date.now());
     } catch (error) { setFailure({ operation, message: String(error) }); }
@@ -122,8 +132,9 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
           files = files.slice(0, MAX_DROPPED_REMOTE_FILES);
         }
       }
-      const paths: string[] = [];
-      for (const file of files) paths.push(await sshPreview(project, file));
+      if (!directory && selected.has(path)) files = [...selected];
+      if (files.length > MAX_DROPPED_REMOTE_FILES) throw new Error(`Drag up to ${MAX_DROPPED_REMOTE_FILES} files at a time.`);
+      const paths = await Promise.all(files.map(file => sshPreview(project, file)));
       setLastSuccess(Date.now());
       return {
         paths,
@@ -164,6 +175,44 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
     setExpanded(previous => { const next = new Set(previous); if (opening) next.add(path); else next.delete(path); return next; });
     if (opening) void run({ type: "list", path });
   }
+  function folderOpenItems(path: string): MenuItemSpec[] {
+    return [
+      { kind: "item", id: "open-folder-scene", text: "Open all in one scene", disabled: !enabled, action: () => void batch.open([], "scene", path) },
+      { kind: "item", id: "open-folder-tabs", text: "Open all in separate tabs", disabled: !enabled, action: () => void batch.open([], "tabs", path) },
+      { kind: "checkbox", id: "watch-folder-scene", text: "Watch folder in one scene", checked: batch.watching === path, disabled: !enabled, action: () => batch.watching === path ? batch.stop() : void batch.open([], "scene", path, true) },
+      { kind: "separator" },
+    ];
+  }
+  function fileItems(path: string): MenuItemSpec[] {
+    const paths = selected.has(path) ? [...selected] : [path];
+    return [
+      { kind: "item", id: "open-selected-scene", text: "Open selected in one scene", disabled: !enabled, action: () => void batch.open(paths, "scene") },
+      { kind: "item", id: "open-selected-tabs", text: "Open selected in separate tabs", disabled: !enabled, action: () => void batch.open(paths, "tabs") },
+    ];
+  }
+  function visibleFiles(path = "."): string[] {
+    if (!expanded.has(path)) return [];
+    return (directories.get(path)?.value.entries.slice(0, limits[path] ?? 100) ?? []).flatMap(entry => {
+      const child = path === "." ? entry.name : `${path}/${entry.name}`;
+      return entry.directory ? visibleFiles(child) : [child];
+    });
+  }
+  function selectFile(path: string, event: ReactMouseEvent<HTMLElement>) {
+    if (event.shiftKey) {
+      const visible = visibleFiles();
+      const from = visible.indexOf(selectionAnchor.current ?? path), to = visible.indexOf(path);
+      const range = from < 0 || to < 0 ? [path] : visible.slice(Math.min(from, to), Math.max(from, to) + 1);
+      selectionAnchor.current ??= path;
+      setSelected(previous => new Set([...(event.metaKey || event.ctrlKey ? previous : []), ...range]));
+    } else if (event.metaKey || event.ctrlKey) {
+      selectionAnchor.current = path;
+      setSelected(previous => { const next = new Set(previous); if (next.has(path)) next.delete(path); else next.add(path); return next; });
+    } else {
+      selectionAnchor.current = path;
+      setSelected(new Set([path]));
+      void run({ type: "preview", path });
+    }
+  }
   function children(path: string): ReactNode {
     if (!expanded.has(path)) return null;
     const cached = directories.get(path);
@@ -174,13 +223,16 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
       {directory?.entries.slice(0, limits[path] ?? 100).map(entry => {
         const child = path === "." ? entry.name : `${path}/${entry.name}`;
         const kind = fileKindForPath(entry.name);
-        const fileItems: MenuItemSpec[] = [
-          { kind: "item", id: "open", text: "Open", disabled: !!pending || !enabled, action: () => void run({ type: "preview", path: child }) },
+        const fileMenu: MenuItemSpec[] = [
+          { kind: "item", id: "open", text: "Open", disabled: !enabled, action: () => void run({ type: "preview", path: child }) },
+          ...fileItems(child),
+          { kind: "separator" },
           { kind: "item", id: "download", text: "Download to Desktop", disabled: !!pending || !enabled, action: () => void run({ type: "download", path: child, destination: "desktop" }) },
           ...(isTauriRuntime() ? [{ kind: "item" as const, id: "download-as", text: "Download to…", disabled: !!pending || !enabled, action: () => void run({ type: "download", path: child, destination: "choose" }) }] : []),
           { kind: "item", id: "copy", text: "Copy path", action: () => { copyTextWithSelectionFallback(`${directory!.root.replace(/\/$/, "")}/${child}`); } },
         ];
         const folderItems: MenuItemSpec[] = [
+          ...folderOpenItems(child),
           ...downloadItems(child),
           { kind: "item", id: "refresh", text: "Refresh folder", disabled: !!pending, action: () => { setExpanded(previous => new Set([...previous, child])); void run({ type: "list", path: child }, true); } },
           { kind: "item", id: "collapse", text: "Collapse folder", disabled: !expanded.has(child), action: () => setExpanded(previous => new Set([...previous].filter(path => path !== child && !path.startsWith(`${child}/`)))) },
@@ -199,12 +251,12 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
             </span>
           </div>{dropStatus(child)}{children(child)}
         </div> : <div key={child}>
-          <div className="ssh-file-row" onContextMenu={showMenu(fileItems)}>
-          <button className={`project${selected === child ? " active" : ""}`} role="treeitem" aria-selected={selected === child} data-sidebar-structure-path={`ssh://${project.host}/${project.root}/${child}`} disabled={pending?.type === "preview" || pending?.type === "download"} onMouseDown={event => startDrag(event, child, false)} onClickCapture={drag.onClickCapture} onClick={() => void run({ type: "preview", path: child })}>
+          <div className="ssh-file-row" onContextMenu={showMenu(fileMenu)}>
+          <button className={`project${selected.has(child) ? " active" : ""}`} role="treeitem" aria-selected={selected.has(child)} data-sidebar-structure-path={`ssh://${project.host}/${project.root}/${child}`} disabled={!enabled} onMouseDown={event => startDrag(event, child, false)} onClickCapture={drag.onClickCapture} onClick={event => selectFile(child, event)}>
             <span className="project-icon" data-file-kind={kind} aria-hidden="true"><FileKindIcon kind={kind} /></span><MarqueeName className="project-name">{entry.name}</MarqueeName>
-            {pending?.path === child && <span className="ssh-activity" aria-label="Downloading" />}
+            {previewing.has(child) && <span className="ssh-activity" aria-label="Downloading" />}
           </button>
-          <span className="project-group-actions"><NativeDropdownMenu items={fileItems} trigger={<button className="project-group-menu-button" aria-label={`Options for ${entry.name}`}><DotsHorizontal size={14} /></button>} /></span>
+          <span className="project-group-actions"><NativeDropdownMenu items={fileMenu} trigger={<button className="project-group-menu-button" aria-label={`Options for ${entry.name}`}><DotsHorizontal size={14} /></button>} /></span>
           </div>
           {failure?.operation.path === child && <div className="ssh-tree-error" role="alert">{failure.message}<button onClick={() => void run(failure.operation, true)}>Retry</button></div>}
           {dropStatus(child)}
@@ -219,6 +271,7 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
     </div>;
   }
   const projectItems: MenuItemSpec[] = [
+    ...folderOpenItems("."),
     ...downloadItems("."),
     { kind: "item", id: "refresh", text: "Refresh", disabled: !!pending, action: () => { setExpanded(new Set(["."])); void run({ type: "list", path: "." }, true); } },
     ...projectMenu.items,
@@ -235,6 +288,15 @@ export function RemoteProject({ project, connection, onOpen, actions, state }: {
       </span>
     </div>
     {projectMenu.dialog}
+    {selected.size > 1 && <div className="ssh-tree-status flex items-center gap-2" aria-label="Selected remote files">
+      <span>{selected.size} selected</span><Button size="xs" variant="ghost" onClick={() => void batch.open([...selected], "scene")}>Open together</Button>
+    </div>}
+    {(batch.progress || batch.busy || batch.watching || batch.error) && <div className="ssh-tree-status" aria-live="polite">
+      {batch.busy ? <span>{batch.progress ? `${batch.progress.completed} / ${batch.progress.total} files` : "Reading folder…"}</span> : batch.watching ? <span>Watching {batch.watching === "." ? project.name : batch.watching}</span> : batch.progress ? <span>{batch.progress.opened} opened{batch.progress.cancelled ? " · Cancelled" : ""}</span> : null}
+      {(batch.busy || batch.watching) && <Button size="xs" variant="ghost" onClick={batch.stop}>{batch.watching ? "Stop watching" : "Cancel"}</Button>}
+      {batch.error && <div role="alert">{batch.error}</div>}
+      {!!batch.progress?.failures.length && <details><summary>{batch.progress.failures.length} files could not open</summary>{batch.progress.failures.map(failure => <div key={failure.path}>{failure.path}: {failure.message}</div>)}</details>}
+    </div>}
     {dropStatus(".")}
     {!expanded.has(".") && failure?.operation.path === "." && <div className="ssh-tree-error" role="alert">{failure.message}<button onClick={() => void run(failure.operation, true)}>Retry</button></div>}
     {children(".")}

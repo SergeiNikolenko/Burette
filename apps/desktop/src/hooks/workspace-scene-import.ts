@@ -10,7 +10,12 @@ import { useSettingsStore } from "../stores/settings-store";
 
 export async function focusSceneDocument(document: ViewerDocument, select: (id: string) => void) {
   select(document.id);
+  return waitForSceneDocument(document);
+}
+
+async function waitForSceneDocument(document: ViewerDocument, signal?: AbortSignal) {
   for (let attempt = 0; attempt < 50; attempt++) {
+    signal?.throwIfAborted();
     if (activeViewerIframeForDocument(document.id, document.renderer)?.contentWindow) {
       if (document.renderer !== "molstar") return;
       try {
@@ -90,12 +95,18 @@ export async function expandSceneDropFolders(paths: string[], directories: strin
   return files;
 }
 
-export async function appendScenePayload(documentId: string, payload: StructureDragPayload, { preserveScene = false }: { preserveScene?: boolean } = {}) {
+export async function appendScenePayload(
+  documentId: string,
+  payload: StructureDragPayload,
+  options: { incremental?: boolean; signal?: AbortSignal; preserveScene?: boolean } = {},
+) {
+  const preserveScene = options.preserveScene === true;
   const { useMoleculeStore } = await import("../stores/molecule-store");
   const store = useMoleculeStore.getState();
   const document = store.documents.find(candidate => candidate.id === documentId);
   if (!document || document.renderer !== "molstar") throw new Error("The target scene is no longer open.");
-  const scenePaths = preserveScene ? null : structureScenePaths(document, payload);
+  options.signal?.throwIfAborted();
+  const scenePaths = preserveScene || options.incremental || document.sceneSourcePaths ? null : structureScenePaths(document, payload);
   if (scenePaths) return rebuildStructureScene(document, scenePaths, payload.paths.length);
   const sources = payload.records.map(record => ({
     path: record.path, label: record.path.split('/').pop(), format: record.inputExtension, data: record.text,
@@ -110,15 +121,23 @@ export async function appendScenePayload(documentId: string, payload: StructureD
     sources.push({ path, label: path.split('/').pop(), format: pathExtension(path), data: source.content });
   }
   if (total > 24 * 1024 * 1024) throw new Error("Scene imports are limited to 24 MB at a time.");
-  await focusSceneDocument(document, id => {
-    // A visible side/floating scene already owns its iframe. Do not switch the
+  if (options.incremental) await waitForSceneDocument(document, options.signal);
+  else await focusSceneDocument(document, id => {
+    // A visible floating scene already owns its iframe. Do not switch the
     // user's active tab while this scene's import is waiting in the queue.
     if (!preserveScene || !activeViewerIframeForDocument(id, "molstar")) store.setActiveDocument(id);
   });
-  const existingPaths = document.dockingRequest
-    ? [document.dockingRequest.receptorPath, ...document.dockingRequest.ligandPaths] : [document.path];
-  if (!useMoleculeStore.getState().documents.some(candidate => candidate.id === document.id)) {
-    throw new Error("The target scene is no longer open.");
-  }
-  return requestViewerAction(document.id, { type: "append_scene_files", sources, existingPaths, skipExisting: preserveScene });
+  options.signal?.throwIfAborted();
+  const current = useMoleculeStore.getState().documents.find(candidate => candidate.id === document.id);
+  if (!current) throw new Error("The target scene is no longer open.");
+  const existingPaths = current.sceneSourcePaths ?? (current.dockingRequest
+    ? [current.dockingRequest.receptorPath, ...current.dockingRequest.ligandPaths] : [current.path]);
+  if (!preserveScene && sources.some(source => existingPaths.includes(source.path))) throw new Error("A selected file is already in this scene.");
+  const added = sources.filter(source => !existingPaths.includes(source.path)).map(source => source.path);
+  if (existingPaths.length + added.length > 200) throw new Error("A scene supports up to 200 source files.");
+  const result = await requestViewerAction(document.id, { type: "append_scene_files", sources, existingPaths, skipExisting: preserveScene });
+  useMoleculeStore.setState(state => ({ documents: state.documents.map(candidate => candidate.id === document.id
+    ? { ...candidate, sceneSourcePaths: [...existingPaths, ...added], sceneUnsaved: true }
+    : candidate) }));
+  return result;
 }

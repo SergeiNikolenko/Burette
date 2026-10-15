@@ -1,0 +1,46 @@
+/* Codex education surfaces: a product capture on the Atlas gradient, then short copy. */
+.contextual-guide { display: flex; flex-direction: column; min-width: 0; color: var(--color-text); }
+.contextual-guide-stage {
+  display: grid; place-items: center; gap: 12px; padding: 16px 20px;
+  background: #274bd0 url("/onboarding/guides/atlas-education-gradient.webp") center / cover;
+}
+.contextual-guide-clip { width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 10px; background: #f7f9fc; box-shadow: 0 8px 24px rgb(16 32 96 / 22%); }
+.contextual-guide-media { display: block; width: 100%; height: 100%; object-fit: contain; user-select: none; }
+video.contextual-guide-media { cursor: pointer; }
+.contextual-guide-body { display: flex; flex-direction: column; gap: 8px; padding: 16px 20px 20px; text-align: center; }
+.contextual-guide-title { margin: 0; font-size: 16px; line-height: 22px; font-weight: 600; text-wrap: balance; }
+.contextual-guide-copy { margin: 0; font-size: 13px; line-height: 19px; text-wrap: pretty; }
+.contextual-guide-benefits { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 0; padding: 0; list-style: none; text-align: left; font-size: 13px; line-height: 19px; }
+.contextual-guide-benefits li { position: relative; padding-left: 16px; }
+.contextual-guide-benefits li::before { content: ""; position: absolute; left: 3px; top: 7px; width: 5px; height: 5px; border-radius: 50%; background: var(--color-text-tertiary); }
+.contextual-guide-benefits strong { font-weight: 600; }
+.contextual-guide-actions { display: flex; justify-content: center; margin-top: 8px; }
+.contextual-guide-dots { display: flex; justify-content: center; gap: 2px; margin-top: -2px; }
+.contextual-guide-dot { display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; background: transparent; cursor: pointer; }
+.contextual-guide-dot::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--color-text); opacity: .25; }
+.contextual-guide-dot:hover::before { opacity: .6; }
+.contextual-guide-dot[aria-pressed="true"]::before { opacity: 1; }
+.contextual-guide-dot:focus-visible { outline: 2px solid var(--color-ring, currentColor); outline-offset: 1px; border-radius: 50%; }
+
+/* Announcement: the Codex "new feature" dialog with its soft illustrated header. */
+.contextual-guide-announcement { background: url("/onboarding/guides/atlas-announcement-background.webp") top / 100% auto no-repeat; }
+.contextual-guide-announcement .contextual-guide-stage { padding: 28px 40px 0; background: none; }
+.contextual-guide-announcement .contextual-guide-clip { box-shadow: 0 0 0 .5px rgb(0 0 0 / 10%), 0 10px 30px rgb(64 54 120 / 16%); }
+.contextual-guide-announcement .contextual-guide-body { padding: 20px 40px 28px; }
+.contextual-guide-announcement .contextual-guide-title { font-size: 20px; line-height: 28px; font-weight: 500; }
+.contextual-guide-announcement .contextual-guide-copy { font-size: 14px; line-height: 20px; color: var(--color-text-secondary, var(--color-text)); }
+:where(.dark, [data-theme="dark"]) .contextual-guide-announcement { background-color: var(--color-background-primary); background-blend-mode: soft-light; }
+
+/* Inline: sits inside the control it explains, so it stays compact and left aligned. */
+.contextual-guide-inline { overflow: hidden; border-radius: 12px; border: 1px solid var(--color-border); background: var(--color-background-primary); }
+.contextual-guide-inline .contextual-guide-stage { padding: 10px; gap: 8px; }
+.contextual-guide-inline .contextual-guide-clip { border-radius: 8px; }
+.contextual-guide-inline .contextual-guide-body { padding: 10px 12px 12px; gap: 4px; text-align: left; }
+.contextual-guide-inline .contextual-guide-title { font-size: 13px; line-height: 18px; font-weight: 500; }
+.contextual-guide-inline .contextual-guide-copy { font-size: 12px; line-height: 17px; }
+.contextual-guide-inline .contextual-guide-actions { justify-content: flex-start; margin-top: 6px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .contextual-guide-clip img { animation: contextual-guide-fade 200ms ease-out; }
+}
+@keyframes contextual-guide-fade { from { opacity: 0; } to { opacity: 1; } }

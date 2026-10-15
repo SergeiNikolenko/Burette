@@ -269,6 +269,19 @@
     }
   }
 
+  // One-time contextual guides live in the app shell, which decides eligibility.
+  // The frame only reports the control the user reached, in its own viewport;
+  // Quick Look and the iPhone host have no shell to show them.
+  let sceneComposeGuideTimer = 0;
+  function requestContextualGuide(id, element) {
+    if (!window.parent || window.parent === window || window.webkit?.messageHandlers?.burette) return false;
+    if (isQuickLookHost() || document.body?.classList.contains('burette-mobile-host')) return false;
+    const box = element?.getBoundingClientRect?.();
+    if (!box || !(box.width > 0) || !(box.height > 0)) return false;
+    window.parent.postMessage({ type: 'burette:contextual-guide', id, rect: { left: box.left, top: box.top, width: box.width, height: box.height } }, '*');
+    return true;
+  }
+
   async function reportMolstarCapabilities() {
     if (!window.BuretteAgent?.run) {
       assemblySymmetryPending = false;
@@ -672,8 +685,29 @@
 
   async function executeBuretteAgentAction(action) {
     const type = String(action?.type || '');
+    if (type === 'workspace_scene_snapshot') {
+      if ((activeConfig || window.BuretteConfig || {}).renderer === 'xyzrender-external') {
+        const items = Array.from(document.querySelectorAll('.buret-xyzrender-sheet-item'));
+        if (!items.length || items.length > 200) throw new Error('Wait for the sheet to load.');
+        const sheet = { version: 1, view: externalArtifactViewSnapshot?.(), items: items.map(item => ({
+          ...xyzrenderItemPayload(item, activeConfig || window.BuretteConfig || {}),
+          svg: item.querySelector('.buret-xyzrender-sheet-item-body > svg')?.outerHTML,
+          animation: xyzrenderPopoutAnimation(item),
+          geometry: { left: item.offsetLeft, top: item.offsetTop, width: item.offsetWidth, height: item.offsetHeight, rotation: Number(item.dataset.rotation || 0) },
+          selected: item.classList.contains('selected'), zIndex: item.style.zIndex,
+        })) };
+        if (sheet.items.some(item => !item.svg)) throw new Error('Wait for every structure to finish rendering.');
+        if (new TextEncoder().encode(JSON.stringify(sheet)).length > 24 * 1024 * 1024) throw new Error('The sheet is too large to move.');
+        return { ok: true, result: { sheet } };
+      }
+      const plugin = activeMolstarViewer()?.plugin;
+      if (!plugin) throw new Error('Wait for the scene to load.');
+      const archive = await plugin.managers.snapshot.serialize({ type: 'molx', params: { structureSelection: true, cameraTransition: { name: 'instant', params: {} } } });
+      if (archive.size > 24 * 1024 * 1024) throw new Error('The scene is too large to move.');
+      return { ok: true, result: { dataBase64: bytesToBase64(new Uint8Array(await archive.arrayBuffer())) } };
+    }
     if (type === 'workspace_scene_state') {
-      return { ok: true, result: { ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length) } };
+      return { ok: true, result: { ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length || (document.querySelector('.buret-external-artifact-root .buret-xyzrender-sheet-item-body > svg') && !document.querySelector('[data-buret-popout-animation=loading], [data-buret-popout-animation=failed]'))) } };
     }
     if (type === 'align_scene_files') {
       if (!activeStructureAlignmentControl) throw new Error('This scene does not support structure alignment.');
@@ -691,9 +725,15 @@
     }
     if (type === 'append_scene_files') {
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
-      return window.BuretteSceneFiles.append(activeMolstarViewer(), action, {
+      const appended = await window.BuretteSceneFiles.append(activeMolstarViewer(), action, {
         load: loadMolstarEntry, capture: captureMolstarCameraSnapshot, restore: restoreMolstarCameraSnapshotNow
       });
+      // "In one scene" appends a batch one file at a time; guide once it settles.
+      clearTimeout(sceneComposeGuideTimer);
+      if (appended?.result?.paths?.length > 1) {
+        sceneComposeGuideTimer = setTimeout(() => requestContextualGuide('scene-compose', document.getElementById('buret-scene-tree-toggle')), 1500);
+      }
+      return appended;
     }
     if (type === 'story_observe') {
       return molstarStoryResult('story_observe');
@@ -3163,6 +3203,36 @@
     const configuredPoseCount = Number(config?.trajectoryFrameCount || 0);
     const preparedPoseCount = Number(activeMolstarPrepared?.sdfPoseRecordCount || activeMolstarPrepared?.poseCount || 0);
     return (config?.sdfPosePager === true && configuredPoseCount > 1) || preparedPoseCount > 1;
+  }
+
+  function xyzrenderPopoutAnimation(item) {
+    const content = item.querySelector('.buret-xyzrender-sheet-item-body');
+    // Inspector previews are still editable drafts held by the owning window.
+    // Applying or cancelling them leaves the item's durable GIF or drawing.
+    if (content?.querySelector('.buret-xyzrender-animation-canvas')) throw new Error('Apply or cancel the animation preview before moving this sheet.');
+    const image = content?.querySelector('.buret-xyzrender-animation-image');
+    if (!image) return null;
+    const data = image.getAttribute('src');
+    if (typeof data !== 'string' || data.length > 24000000 || !/^data:image\/(png|gif);base64,[A-Za-z0-9+/=]+$/.test(data)) throw new Error('The animation could not be moved.');
+    if (!image.complete || !image.naturalWidth) throw new Error('Wait for the animation to finish loading.');
+    return data;
+  }
+
+  function restoreXyzrenderPopoutAnimation(item, data) {
+    if (typeof data !== 'string' || data.length > 24000000 || !/^data:image\/(png|gif);base64,[A-Za-z0-9+/=]+$/.test(data)) throw new Error('The saved animation is invalid.');
+    const content = item.querySelector('.buret-xyzrender-sheet-item-body');
+    const image = document.createElement('img');
+    image.className = 'buret-xyzrender-animation-image';
+    image.alt = 'Molecular animation';
+    image.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:inherit;pointer-events:none';
+    image.dataset.buretPopoutAnimation = 'loading';
+    image.addEventListener('load', () => { image.dataset.buretPopoutAnimation = 'ready'; }, { once: true });
+    image.addEventListener('error', () => { image.dataset.buretPopoutAnimation = 'failed'; }, { once: true });
+    content.querySelector('svg')?.style.setProperty('visibility', 'hidden');
+    content.append(image);
+    // The same encoded GIF retains every frame, its timing and transparency.
+    // A new image starts its loop at the beginning; img exposes no seek position.
+    image.src = data;
   }
 
   window.addEventListener('message', event => {
@@ -8213,7 +8283,8 @@ SOFTWARE.
 
   function focusSceneTreeNode(ref) {
     const plugin = activeMolstarViewer()?.plugin;
-    const data = plugin?.state?.data?.cells?.get(ref)?.obj?.data;
+    const state = plugin?.state?.data;
+    const data = state?.cells?.get(ref)?.obj?.data;
     if (Array.isArray(data)) {
       const loci = data.map(selection => selection?.loci).filter(Boolean);
       if (loci.length && typeof plugin?.managers?.camera?.focusLoci === 'function') {
@@ -8221,12 +8292,21 @@ SOFTWARE.
       }
       return;
     }
-    // A Mol* Structure carries its extent on `boundary`, not `boundingSphere`;
-    // representation cells keep theirs one level down on the structure they draw.
-    const sphere = data?.boundary?.sphere || data?.sourceData?.boundary?.sphere;
-    if (!sphere || typeof plugin?.managers?.camera?.focusSphere !== 'function') return;
+    if (!state?.cells || typeof plugin?.managers?.camera?.focusSpheres !== 'function') return;
+    const { children } = sceneTreeChildRefs(state);
+    // File and model rows have no extent of their own. Resolve the structures
+    // beneath that row, without including sibling files or duplicating components.
+    const spheres = targetRef => {
+      const cell = state.cells.get(targetRef);
+      const childRefs = children.get(targetRef) || [];
+      const decorators = childRefs.filter(childRef => isSceneTreeDecorator(state.cells.get(childRef)));
+      if (decorators.length === 1) return spheres(decorators[0]);
+      const target = cell?.obj?.data;
+      const sphere = target?.boundary?.sphere || target?.sourceData?.boundary?.sphere;
+      return sphere ? [sphere] : childRefs.flatMap(spheres);
+    };
     try {
-      plugin.managers.camera.focusSphere(sphere, { durationMs: 250 });
+      plugin.managers.camera.focusSpheres(spheres(ref), sphere => sphere, { durationMs: 250 });
     } catch (error) {
       debug('scene tree focus failed: ' + (error && error.message || String(error)));
     }
@@ -14974,6 +15054,31 @@ SOFTWARE.
       for (const key of ['left', 'top', 'width', 'height']) baseItem.style[key] = `${savedView.item[key]}px`;
       setSheetItemRotation(baseItem, savedView.item.rotation);
     }
+    const restoredSheet = activeConfig?.popoutSheet;
+    if (restoredSheet?.version === 1 && Array.isArray(restoredSheet.items)) {
+      const sheet = ensureXyzrenderSheet(stage);
+      root.querySelectorAll('.buret-xyzrender-sheet-item').forEach(item => item.remove());
+      for (const saved of restoredSheet.items) {
+        const item = addXyzrenderSheetItem(sheet, saved.svg, saved.path, { x: saved.geometry.left, y: saved.geometry.top }, 1, () => scale, saved);
+        for (const key of ['left', 'top', 'width', 'height']) item.style[key] = `${saved.geometry[key]}px`;
+        setSheetItemRotation(item, saved.geometry.rotation);
+        item.style.zIndex = saved.zIndex || '';
+        item.classList.toggle('selected', saved.selected === true);
+        item.dataset.buretXyzrenderPreset = saved.preset;
+        item.dataset.buretXyzrenderControls = JSON.stringify(saved.controls || {});
+        setXyzrenderSheetItemRegions(item, saved.controls?.regions);
+        setXyzrenderSheetItemVdwAtoms(item, saved.controls?.vdwAtoms);
+        if (saved.orientationRef) item.dataset.buretXyzrenderOrientationRef = saved.orientationRef;
+        if (saved.orientationBaseRef) item.dataset.buretXyzrenderOrientationBase = saved.orientationBaseRef;
+        if (saved.angles) item.dataset.buretXyzrenderOrientationAngles = JSON.stringify(saved.angles);
+        if (saved.animation) restoreXyzrenderPopoutAnimation(item, saved.animation);
+      }
+      scale = restoredSheet.view?.scale || 1;
+      translateX = restoredSheet.view?.x || 0;
+      translateY = restoredSheet.view?.y || 0;
+      // A checkpoint is applied once; changing styles must not replay old items.
+      delete activeConfig.popoutSheet;
+    }
     const viewportCleanup = window.BuretteRendererViewState?.observeSheetViewport(root, savedView?.viewport);
     externalArtifactViewSnapshot = () => ({
       scale, x: translateX, y: translateY,
@@ -15130,17 +15235,26 @@ SOFTWARE.
     const lines = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
     const records = [];
     let current = [];
+    const appendRecord = () => {
+      // Some writers add blank separators after $$$$. Keep the three molfile
+      // header lines: Mol* reads the counts on line four, unlike our grid parser.
+      const countsIndex = current.findIndex(line => /V(?:2000|3000)\s*$/.test(line));
+      const separatorLines = countsIndex - 3;
+      if (separatorLines > 0 && current.slice(0, separatorLines).every(line => !line.trim())) {
+        current = current.slice(separatorLines);
+      }
+      const record = current.join('\n').trimEnd();
+      if (record.trim()) records.push(record);
+      current = [];
+    };
     for (const line of lines) {
       if (line.trim() === '$$$$') {
-        const record = current.join('\n').trimEnd();
-        if (record.trim()) records.push(record);
-        current = [];
+        appendRecord();
       } else {
         current.push(line);
       }
     }
-    const tail = current.join('\n').trimEnd();
-    if (tail.trim()) records.push(tail);
+    appendRecord();
     return records;
   }
 
@@ -15904,6 +16018,20 @@ SOFTWARE.
     if (cameraSnapshot) canvas3d.setProps({ camera: { manualReset: true } });
     try {
       state.poseCache ||= new Map();
+      let cached = state.poseCache.get(index);
+      if (!cached || !plugin.state.data.cells.has(cached.raw.ref)) {
+        const normalized = normalizeFormat(entry.format);
+        const payload = normalized === 'cifCore' ? { data: coreCifToPdb(entry.data), format: 'pdb' } : { data: entry.data, format: normalized };
+        const raw = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
+        try {
+          const trajectories = await parseMolstarStructureTrajectories(plugin, raw, payload.format);
+          if (!trajectories.length || trajectories.some(trajectory => !trajectory?.ref)) throw new Error('Mol* could not parse the selected pose.');
+          cached = { raw, trajectories, sourceBytes: (payload.data?.length || 0) * 2 };
+        } catch (error) {
+          await plugin.state.data.build().delete(raw.ref).commit();
+          throw error;
+        }
+      }
       const previous = state.poseCache.get(state.activeIndex);
       if (previous) {
         // Retain parsed trajectories, never inactive structures: full exports and
@@ -15913,13 +16041,6 @@ SOFTWARE.
           for (const child of plugin.state.data.tree.children.get(trajectory.ref) || []) remove.delete(child);
         }
         await remove.commit();
-      }
-      let cached = state.poseCache.get(index);
-      if (!cached || !plugin.state.data.cells.has(cached.raw.ref)) {
-        const normalized = normalizeFormat(entry.format);
-        const payload = normalized === 'cifCore' ? { data: coreCifToPdb(entry.data), format: 'pdb' } : { data: entry.data, format: normalized };
-        const raw = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
-        cached = { raw, trajectories: await parseMolstarStructureTrajectories(plugin, raw, payload.format), sourceBytes: (payload.data?.length || 0) * 2 };
       }
       state.poseCache.delete(index);
       state.poseCache.set(index, cached);
@@ -16499,9 +16620,20 @@ SOFTWARE.
   // representations visible. The scene adopts that style instead of reloading,
   // and visibility is applied again so hidden poses stay hidden.
   async function resyncDockingSceneAfterRestyle(viewer) {
-    const state = activeDockingSceneVisibilityState;
     const prepared = activeMolstarPrepared;
-    if (prepared?.kind !== 'docking' || !prepared.dockingSceneMode) return;
+    if (prepared?.kind !== 'docking') return;
+    if (!prepared.dockingSceneMode) {
+      const state = activeDockingPoseCollectionState;
+      if (!dockingPoseCollectionStateStillLoaded(viewer, state)) return;
+      const style = configuredMolstarStyle(activeConfig);
+      const allMode = activeSdfPoseMode === 'all' && prepared.sdfPoseOverlayAvailable === true;
+      const contextStyle = dockingSceneBackgroundStyle(readSdfCollectionContextStyle(activeConfig), style);
+      state.key = dockingPoseCollectionStateKey(prepared, style, allMode, contextStyle);
+      state.appearanceKey = null;
+      await applyDockingPoseCollectionVisibility(viewer, prepared, state.activeIndex, { focus: false });
+      return;
+    }
+    const state = activeDockingSceneVisibilityState;
     if (!dockingSceneVisibilityStateStillLoaded(viewer, state)) return;
     state.key = dockingSceneStateKey(prepared, configuredMolstarStyle(activeConfig));
     state.poseStyles.fill('');
@@ -16661,8 +16793,8 @@ SOFTWARE.
     } else {
       await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode));
     }
-    if (normalized === 'illustrative') await applyMolstarIllustrativePostprocessing(viewer);
-    else await applyMolstarNonIllustrativePostprocessing(viewer);
+    // Pose replacement changes geometry, not the separately chosen appearance.
+    await applyMolstarAppearance(viewer, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
   }
 
   function sdfCollectionAlphaHelpers(alpha = 1, colorMode = 'gray', minAlpha = 0.04) {
@@ -20315,6 +20447,7 @@ SOFTWARE.
     const animationRow = document.createElement('div');
     animationRow.className = 'buret-docking-pose-animation';
     const hasFileList = prepared.dockingSceneMode || hasTrajectorySegments;
+    const poseCompareGuide = prepared.kind === 'docking' && !prepared.nativeTrajectoryControls && prepared.dockingSceneMode !== 'structureAll';
     root.classList.toggle('buret-docking-poses-frames', !hasFileList);
     const listEntries = prepared.dockingSceneMode ? prepared.poses : trajectorySegments;
     const label = hasFileList ? document.createElement('button') : document.createElement('span');
@@ -20894,6 +21027,8 @@ SOFTWARE.
         }
         if (shouldFocus) scheduleMolstarStructureFocus(viewer, { reason: 'pose-selection', durationMs: 180, force: true });
         notifyDockingPoseChanged(activePose, prepared);
+        // Hovering an open pose list previews poses; only a committed switch counts.
+        if (options.userStep === true && poseCompareGuide && !isFileListOpen()) requestContextualGuide('pose-compare', label);
       } catch (error) {
         try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(previousIndex)); } catch (_) {}
         activePose = previousIndex;
@@ -20976,6 +21111,7 @@ SOFTWARE.
             if (result) {
               align.title = `Superimposed onto the first structure by atom order · ${result.atomCount} atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
               setStatus(`[web] Aligned ${xyzAlignFrames.length} structures onto the first one by atom order (${result.atomCount} atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
+              requestContextualGuide('trajectory', align);
             } else {
               align.title = 'Superimpose every structure onto the first one by atom order';
               setStatus('[web] Restored original structure coordinates.');

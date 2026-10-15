@@ -82,6 +82,7 @@ import { ChemicalSpaceViewControls } from "./chemical-space-view-controls";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import { useChemicalSpaceSetting } from "../hooks/use-chemical-space-setting";
 import { useThemePortalContainer } from "./radix-menu";
+import { requestContextualGuide } from "./onboarding/request";
 
 const ChemicalSpace3D = lazy(() => import("./chemical-space-3d").then((module) => ({
   default: module.ChemicalSpace3D,
@@ -849,6 +850,12 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
     setIndexProbeError(null);
     setIndexProbeAttempt((attempt) => attempt + 1);
   };
+  const controlsRowRef = useRef<HTMLDivElement | null>(null);
+  const mapReady = Boolean(documentId) && result !== null;
+  useEffect(() => {
+    // The card opens under the controls, over the top of the map.
+    if (visible && mapReady) requestContextualGuide("chemical-space", controlsRowRef.current);
+  }, [mapReady, visible]);
 
   if (!documentId) {
     return <ChemicalSpaceEmpty title="No collection open" />;
@@ -1008,7 +1015,6 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
   };
   // Primary controls remain visible in either dock. Only secondary scope
   // and timing details fold away when the panel is narrow.
-  const controlsRowRef = useRef<HTMLDivElement | null>(null);
   const [controlsNarrow, setControlsNarrow] = useState(false);
   useEffect(() => {
     const node = controlsRowRef.current;

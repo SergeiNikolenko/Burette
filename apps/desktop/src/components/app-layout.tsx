@@ -6,6 +6,7 @@ import { NativeWorkspaceMenu, NativeWorkspaceSidebar } from "./native-workspace-
 import { useNativeWorkspacePlacement } from "../hooks/use-native-workspace-placement";
 import { MobileWebDemoLayout } from "./mobile-web-demo-layout";
 import { XyzrenderAnimationDialog } from "./xyzrender-animation-dialog";
+import { useWindowResizeSession } from "./ui/use-window-resize-session";
 import { useGroupPixelGuard } from "./ui/use-group-pixel-guard";
 import { SidebarFileOperations } from "./sidebar/file-operations";
 import { WorkspaceMenus } from "./workspace-menus";
@@ -23,7 +24,7 @@ import { QuickLookPreview } from "./quick-look-preview";
 import { Sidebar } from "./sidebar";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import { FileDropFeedback } from "./file-drop-feedback";
-import { ResizablePanelGroup, ResizablePanel, ResizableHandle, type GroupImperativeHandle, type PanelImperativeHandle } from "./ui/resizable";
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle, type PanelImperativeHandle } from "./ui/resizable";
 import type { ShellActions, ShellViewState } from "./types";
 import type { FileDropPreview } from "../lib/drop-preview";
 import { createDragCommit, type DragCommit } from "../lib/drag-commit";
@@ -35,6 +36,7 @@ import { HostedKetcherViewSwitch } from "./hosted-ketcher-view-switch";
 import { isWebDemoHeroEmbed } from "../lib/web-demo-workspace";
 import { AnnotateToggle, AnnotationLayer } from "./annotation-layer";
 import { isAgentPluginSurface } from "../lib/native-mcp-workspace";
+import { OnboardingHost } from "./onboarding";
 
 // Collection grids may continue behind an overlay inspector; molecular viewers
 // must instead resize to the visible panel so their controls remain reachable.
@@ -218,7 +220,7 @@ function usePanelEdgeVariables(entries: { elementRef: React.RefObject<HTMLDivEle
     if (!shell) return;
     const publish = (element: Element, width: number) => {
       const entry = entriesRef.current.find((candidate) => candidate.elementRef.current === element);
-      if (entry) shell.style.setProperty(entry.property, `${width}px`);
+      if (entry && shell.style.getPropertyValue(entry.property) !== `${width}px`) shell.style.setProperty(entry.property, `${width}px`);
     };
     const observer = new ResizeObserver((records) => {
       for (const record of records) {
@@ -257,14 +259,9 @@ function quantisedViewportWidth() {
   return Math.floor(window.innerWidth / VIEWPORT_WIDTH_STEP) * VIEWPORT_WIDTH_STEP;
 }
 
-function useViewportWidth() {
+function useViewportWidth(shellRef: React.RefObject<HTMLElement | null>) {
   const [width, setWidth] = useState(quantisedViewportWidth);
-  useEffect(() => {
-    const sync = () => setWidth(quantisedViewportWidth());
-    sync();
-    window.addEventListener("resize", sync);
-    return () => window.removeEventListener("resize", sync);
-  }, []);
+  useWindowResizeSession(shellRef, () => setWidth(quantisedViewportWidth()));
   return width;
 }
 
@@ -297,7 +294,13 @@ function WorkspaceAppLayout({
   onDrop: (event: React.DragEvent<HTMLElement>) => void;
   onPaste: (event: React.ClipboardEvent<HTMLElement>) => void;
 }) {
-  const viewportWidth = useViewportWidth();
+  const sidebarElementRef = useRef<HTMLDivElement | null>(null);
+  const rightDockElementRef = useRef<HTMLDivElement | null>(null);
+  const shellRef = usePanelEdgeVariables([
+    { elementRef: sidebarElementRef, property: "--sidebar-edge" },
+    { elementRef: rightDockElementRef, property: "--right-dock-edge" },
+  ]);
+  const viewportWidth = useViewportWidth(shellRef);
   const tauriRuntime = isTauriRuntime();
   const [windowFullscreen, setWindowFullscreen] = useState(false);
   useEffect(() => {
@@ -368,12 +371,6 @@ function WorkspaceAppLayout({
   // to the agent chat, so only these surfaces have it.
   const pluginSurface = isAgentPluginSurface(state.buildInfo.isAgentShell);
   const bottomDockOpen = !settingsMode && !hostedMcpWidget && !pluginSurface && state.bottomDockOpen;
-  const sidebarElementRef = useRef<HTMLDivElement | null>(null);
-  const rightDockElementRef = useRef<HTMLDivElement | null>(null);
-  const shellRef = usePanelEdgeVariables([
-    { elementRef: sidebarElementRef, property: "--sidebar-edge" },
-    { elementRef: rightDockElementRef, property: "--right-dock-edge" },
-  ]);
   // The right dock's tabs share the title row with the trailing controls, so
   // the dock header reserves their measured width.
   const trailingControlsRef = useCallback((element: HTMLDivElement | null) => {
@@ -765,6 +762,7 @@ function WorkspaceAppLayout({
         </ResizablePanelGroup>
         {!hostedMcpWidget && pluginSurface && state.activeTab && state.activeTab.location.kind !== "launcher" ? <AnnotationLayer key={`${state.activeTabId}:${state.activeDocument?.id ?? JSON.stringify(state.activeTab.location)}`} documentTitle={state.activeDocument?.title ?? "Burette"} picksResidues={state.activeDocument?.renderer === "molstar"} /> : null}
       </section>
+      <OnboardingHost state={layoutState} actions={actions} />
       <FileDropFeedback preview={dropPreview} />
     </main></WorkspaceMenus></SidebarFileOperations>
   );

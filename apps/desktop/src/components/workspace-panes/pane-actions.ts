@@ -5,6 +5,9 @@ import { takeClosedTab } from "../../stores/closed-tabs";
 import type { Location } from "../editor-area/page-kinds";
 import { useMoleculeStore, type MoleculeTab, type TabPane } from "../../stores/molecule-store";
 import { useWorkspacePanesStore } from "../../stores/workspace-panes-store";
+import { isTauriRuntime } from "../../lib/tauri";
+import { isNativePopoutTab, nativePopoutReason, popOutNativeScene, returnNativePopout as returnMovedScene } from "./native-scene-window";
+import { toast } from "../ui/toast";
 
 // Moving a screen between the main strip and the floating window. The page
 // itself never remounts (see ViewerArea); these only change where its surface
@@ -51,10 +54,13 @@ export const SCREEN_ENTRIES: { id: string; text: string; location: Location }[] 
   { id: "screen-ketcher", text: "Ketcher", location: { kind: "ketcher" } },
 ];
 
-// "Pop out" and "Move to Main Window" for one screen, shared by the tab context
+// "Pop out", "Move to New Window" and "Move to Main Window" for one screen, shared by the tab context
 // menu and the floating window header so they always agree.
 export function paneMoveItems(tab: MoleculeTab, state: ShellViewState, actions: ShellActions): MenuItemSpec[] {
   const items: MenuItemSpec[] = [];
+  if (isNativePopoutTab(tab.id)) return [{ kind: "item", id: "pane-return-main", text: "Move to Main Window", action: () => {
+    void returnMovedScene().catch(() => toast.add({ title: "Could not return scene", description: "Keep this window open and try again.", type: "error" }));
+  } }];
   if (tab.pane) {
     items.push({ kind: "item", id: "pane-move-main", text: "Move to Main Window", action: () => placeScreen(tab.id, null) });
   }
@@ -64,6 +70,12 @@ export function paneMoveItems(tab: MoleculeTab, state: ShellViewState, actions: 
         if (await openNativePopout(tab, state, actions)) placeScreen(tab.id, null);
       } else placeScreen(tab.id, "floating");
     } });
+  }
+  // Pop out copies the scene into a compact preview; this moves the scene and
+  // its checkpointed state into an independent workspace window instead.
+  if (isTauriRuntime() && !tab.pane) {
+    const reason = nativePopoutReason(tab);
+    items.push({ kind: "item", id: "pane-move-window", text: "Move to New Window", disabled: Boolean(reason), tooltip: reason ?? undefined, action: () => { void popOutNativeScene(tab.id); } });
   }
   return items;
 }

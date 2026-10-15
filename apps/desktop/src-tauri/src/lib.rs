@@ -150,6 +150,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::clipboard::write_clipboard_text,
+            commands::popout_scene::save_popout_scene,
+            commands::popout_scene::save_popout_sheet,
+            commands::popout_scene::relay_popout_handoff,
             compute::commands::compute_capabilities,
             compute::commands::compute_register_inline_source,
             compute::commands::compute_align_grid_poses,

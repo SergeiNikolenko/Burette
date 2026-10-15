@@ -1,104 +1,184 @@
 # Tabs, Screens, And Panes
 
-Burette's workspace follows the Codex window shell (see the atlas entries
-`kit-window-shell`, `kit-tab-strip`, `kit-new-tab-menu`, `kit-hotkey-window`
-and `kit-detached-window`): every piece of work is a **screen**. A screen is
-shown in one **place**, and moving it never reloads it.
+A screen is a `MoleculeTab` whose `location` selects a page kind. The main tab
+strip and the browser floating surface share screen placement state. Native
+detached windows have a separate runtime and receive a saved scene instead of a
+live iframe moved between windows.
 
-## Screens
+## Screens And Placement
 
-A screen is a tab (`MoleculeTab` in `apps/desktop/src/stores/molecule-store.ts`)
-whose `location` picks a page kind from
-`apps/desktop/src/components/editor-area/page-kinds`.
+| Screen | Content |
+| --- | --- |
+| `file` | Molecular viewer, collection, spectrum or illustration sheet |
+| `text-file`, `document` | Source editor, notes, PDF or image |
+| `launcher`, `ketcher` | New tab or molecular sketcher |
+| `jobs`, `chemical-space` | Calculations or collection projection |
+| `pose-review`, `fep-setup`, `fep-network` | Pose and FEP workflows |
+| `settings` | Full-window settings; placed screens step aside |
 
-| Kind | Glyph | Notes |
-| --- | --- | --- |
-| `file`, `text-file`, `document` | file kind glyph from the sidebar | Viewer, grid or text source; kept alive (`keepAlive`) |
-| `launcher` | Plus | Start page ("New Tab") |
-| `ketcher` | Edit | Sketcher |
-| `jobs` | Stopwatch | Calculations list, also a bottom-dock tab |
-| `chemical-space` | Chart | Map of a collection; follows the front collection unless opened for one |
-| `fep-setup`, `fep-network` | Flask | Opened by FEP actions |
-| `pose-review` | Compare | Opened by docking results |
-| `settings` | Settings | Full-window mode, never placed |
+`TabKindIcon` supplies the shared glyph. Optional tab titles label the screen
+without renaming its source file. Titles are trimmed, limited to 200 characters
+and included in session snapshots and closed-tab restoration.
 
-`TabKindIcon` (`editor-area/tab-kind-icon.tsx`) draws the glyph in the tab
-strip and in pane headers.
-
-## Places
-
-| Place | Holds | Where it is drawn |
-| --- | --- | --- |
-| Main window | any number of screens, one in front | tab strip in the title bar row |
-| Floating window | one screen | 16 px rounded window over the workspace, 470 x 640 by default, at least 400 x 400 |
+| Place | Layout and ownership |
+| --- | --- |
+| Main | Multiple screens with one active tab |
+| Browser floating surface | One in-page floating screen; movable, resizable and minimizable |
+| Native preview window | A compact Tauri window holding a copy of a file screen (Pop out) |
+| Native detached window | A separate Tauri workspace window that owns a moved molecular scene or illustration sheet (Move to New Window) |
 
 `MoleculeTab.pane` (`"floating" | undefined`) records the place.
 `activeTabId` always names a main tab; making a placed screen active (sidebar,
-deep link, open actions) brings it back to the main window. Tabs saved by
-older builds in the retired side panel (`pane: "side"`) load into the main
-strip; the right dock covers what the side panel showed.
-
-### No remount
-
-All screens stay children of the one `.page-stack` in `ViewerArea`. A placed
-screen's `.page-surface` is laid out over the floating window with
-`position: fixed` (`workspace-panes/workspace-panes.css`), and the floating
-header positions its own surface. Moving an iframe to another parent would
-reload it and rebuild the Mol* scene.
-
-## Interactions
-
-| Action | Where |
-| --- | --- |
-| Pop Out, Move to Main Window | tab context menu, pane switcher |
-| Switch screen, show a main tab here, open Jobs, Chemical Space, Ketcher | pane switcher (title and chevron) |
-| New screen of any kind | right-click "+" in the tab strip; click "+" is New Tab (Cmd+T) |
-| Open New tab, Jobs, Chemical space, Ketcher in the main strip | sidebar rows under the title (Codex's New chat and Scheduled rows); the row of the front screen is highlighted |
-| Hide or show the right dock | panel button at the end of the title bar, or Opt+Cmd+B |
-| Hide or show the bottom dock | Cmd+J only; the title bar has no button for it |
-| Move, resize, minimize the floating window | drag the header, drag the bottom-right corner, "-" button |
-| Close a screen | Close in any of the menus above, or its tab |
-| Rename tab | tab context menu or pane switcher; changes the label without renaming the source file |
-
-Settings is a full-window mode: the floating window and the docks step aside while it is open and
-come back unchanged.
-
-## Persistence
-
-- Screen places persist with the session (`burette.molecule.session`):
-  `pane` on each tab.
-- Optional tab `title` labels persist in the session and exported session
-  snapshots. Labels are trimmed and limited to 200 characters; older sessions
-  without a label continue to use the page title.
-- Floating window geometry persists in `burette.workspace-panes`: its
-  rectangle and minimized flag.
-- With `restoreSessionOnLaunch` off, tabs and their places start fresh; the
-  geometry is kept as a window preference.
-
-Save scene exports the current Mol* snapshot as `.molj`. After a successful
-native save, the saved file opens and is pinned in the sidebar. Cancellation
-and failure leave the sidebar unchanged. Browser downloads do not return a
-filesystem path, so they cannot be pinned automatically. This action currently
-uses the agent session export transport, whose inline payload limit is 2 MiB.
+deep link, open actions) brings it back to the main strip. Tabs saved by older
+builds in the retired side panel (`pane: "side"`) load into the main strip.
+Settings temporarily hides placed surfaces.
 
 ## Docks
 
 | Dock | Holds | Toggle |
 | --- | --- | --- |
-| Right dock | per-tab tools (Info, Text, Files, Ketcher, Jobs, Chemical space, ...) following the front tab | title bar panel button, Opt+Cmd+B |
-| Bottom dock | shared tools (Jobs, logs) | Cmd+J |
+| Right dock | Per-tab tools (Info, Text, Files, Ketcher, Jobs, Chemical space, ...) following the front tab | title bar panel button, Opt+Cmd+B |
+| Bottom dock | Shared tools (Jobs, logs) | Cmd+J only; the title bar has no button for it |
 
-The right dock is the only panel beside the main column; the separate side
-panel was removed because it duplicated the right dock's tools.
+The right dock is the only panel beside the main column. The separate side
+panel was removed because it duplicated the right dock's tools. Dock tabs,
+selected dock tool, open state and width live in `tab-workspace-store`.
 
-## Stages
+## Placement And Runtime Lifetime
 
-1. Done: screen kinds with glyphs; Jobs and Chemical Space open as tabs; "+"
-   context menu with screen kinds.
-2. Done, then retired: a separate side panel column. The right dock holds
-   the same tools.
-3. Done: floating window with drag, resize, minimize and switcher; places and
-   geometry persist and follow `restoreSessionOnLaunch`.
-4. Next: the atlas tab switching commands (Shift+Cmd+[ and ]) in
-   `lib/keyboard-shortcuts.ts`; close others and reopen closed tab are done.
-5. Next: drag a tab out of the window.
+Within one browser document, `ViewerArea` owns a single `.page-stack`.
+Placement changes the CSS position of an existing `.page-surface`; it does not
+reparent the iframe. The floating surface uses its stored rectangle. Browser
+floating starts at 470 × 640, with a 400 × 400 minimum, and is clamped to the
+viewport.
+
+This placement mechanism does not promise that every page stays mounted
+forever. Inactive main tabs use a bounded warm cache: normally 10 pages,
+reduced to 6 on low-memory devices and 4 under detected heap pressure. Visible
+placed pages and placed keep-alive pages are retained separately. Protected
+unsaved documents are not evicted by this cache. Hidden viewer frames are
+excluded from active-frame operations and can pause their rendering.
+
+### Back And Forward
+
+`TabHistoryPages` retains the current page plus up to two recently visited,
+reachable file pages in an active tab. Inactive tabs retain their current page
+and protected unsaved views. Unvisited history entries do not instantiate a
+viewer just because they exist in Back or Forward.
+
+Dirty grids, unsaved scenes and combined scenes are protected beyond this
+ordinary three-page bound. If navigating a new branch removes one of these
+views from Forward, it is retained in Back in the same tab. Moving it into a
+new tab would recreate its iframe and could lose edits. Surviving page nodes
+keep a stable DOM order to avoid iframe reloads during Back/Forward changes.
+Older clean pages may be recreated when revisited after eviction.
+
+Closing a tab is different from navigating its history: its runtime may unload.
+Reopen closed tab reads file content again and restores the saved label when a
+new matching tab is created; it is not a live viewer undo operation.
+
+## Native Pop Out, Move And Return
+
+In Tauri, Pop out on a file screen copies it into a compact native preview
+window (`workspace-panes/native-popout.ts`): a Mol* scene travels as an
+exported session, other files by path. The main tab stays where it is. The
+preview window's Return button sends the current scene back to the main window
+and closes the preview. In a browser, and for non-file screens, Pop out uses
+the floating placement described above.
+
+Move to New Window (`workspace-panes/native-scene-window.ts`) moves a supported
+Mol* scene or XYZ illustration sheet into an independent workspace window. It
+does not share a WebGL context across windows.
+
+The source becomes inert while a checkpoint is captured. A destination window
+opens that checkpoint and acknowledges a nonempty loaded viewer before the
+source tab is closed. Transfer failure leaves the source scene open. The
+handoff carries the tab label, pin state and original order for return.
+
+- Mol* uses a private `workspace_scene_snapshot` operation to serialize a MOLX
+  archive with assets, selection and camera. The archive limit is 24 MiB.
+- Illustration sheets capture item sources, SVGs, style and orientation,
+  geometry, stacking, selection and viewport in a bounded private snapshot.
+  Native storage keeps a source copy and its checkpoint sidecar together;
+  restore recognizes the application's checkpoint paths, not arbitrary
+  neighboring sidecars. Applied GIFs preserve their encoded frames, timing and
+  transparency, but start playback from the beginning in the new window. An
+  active animation preview must be applied or cancelled before transfer.
+- Unsaved or saving source drafts must be saved before transfer. Trajectory
+  formats, MVS stories and non-scene docking views are not eligible. A live
+  Mol* Story with multiple snapshots is also rejected rather than silently
+  discarding current changes. Mol* and illustration undo stacks are not
+  transferred to the destination runtime.
+
+Move to Main Window, or closing a detached window, captures its latest state
+and returns it to the original window. If the parent no longer exists, a
+durable checkpoint becomes the document source for session restoration. A
+return closes the detached window only when it has no other working tabs.
+Application exit also checkpoints an owned detached scene. Checkpoints remain in
+application data without automatic pruning because history and restored sessions
+may still reference them.
+
+## Actions And File Drag
+
+| Action | Where |
+| --- | --- |
+| Pop out, Move to New Window, Move to Main Window | tab context menu, pane switcher |
+| Switch screen, show a main tab here, open Jobs, Chemical space, Ketcher | pane switcher (title and chevron) |
+| New screen of any kind | right-click "+" in the tab strip; click "+" is New Tab (Cmd+T) |
+| Hide or show the right dock | panel button at the end of the title bar, or Opt+Cmd+B |
+| Hide or show the bottom dock | Cmd+J |
+| Move, resize, minimize the floating window | drag the header, drag the bottom-right corner, "-" button |
+| Rename tab | tab context menu or pane switcher; changes the label without renaming the source file |
+
+Jobs and Chemical space are not permanent sidebar cards.
+
+Keyboard commands are defined in `lib/keyboard-shortcuts.ts`, including
+Back/Forward, sidebar and panel toggles, close others and reopen closed tab.
+Settings → Keyboard shortcuts is the user-facing source for current bindings.
+
+Native drag from a file-backed tab starts an AppKit file drag with filesystem
+URLs. Selected tabs can contribute multiple files; non-file screens keep
+internal reorder behavior without offering plain text to Finder. Generated
+text and sketches are materialized in the normal cache before the drag starts.
+Combined or unsaved molecular scenes use the private snapshot transport to
+produce asset-inclusive `.molx` files, bounded to 24 MiB. Source-editor drafts export their current text. Dirty
+collections require Save first, so the original file is not offered as though
+it contained unsaved table changes. A mounted sketch exports its current editor
+state instead of an older stored draft. Batches are limited to 200 files and
+generated text to 24 MiB. Cancelling a drag must not open or reorder a tab.
+
+Internal tab placement, browser drag payloads and native file drag are separate
+paths; see [Drag and Drop](drag-and-drop.md) for their routing contracts.
+
+## Persistence And Scene Saving
+
+Screen locations, history, labels and placement are part of the molecular
+session. Browser floating geometry uses the window-scoped workspace-panes store;
+per-tab dock layout uses the tab-workspace store.
+Disabling restore-on-launch starts fresh tabs while retaining layout preferences.
+
+Save scene captures the current Mol* state as a `.molx` archive with embedded
+assets, selection and camera. After successful native save,
+the saved file opens and is pinned in the sidebar. Cancellation or failure
+leaves the sidebar unchanged. Browser download has no returned filesystem path,
+so it cannot automatically pin a local file. The private workspace snapshot
+transport used for complete scene archives has a 24 MiB bound; the public agent
+`export_session` transport retains its independent 2 MiB limit.
+
+## Implementation And Validation Boundaries
+
+- Placement and panel content: `components/workspace-panes`, `dock-panel.tsx`,
+  `dock-header.tsx`, `app-layout.tsx` and the two workspace stores.
+- History lifetime: `editor-area/index.tsx`, `tab-history-pages.tsx` and
+  `lib/viewer-frame-visibility.ts`.
+- Native preview: `workspace-panes/native-popout.ts`,
+  `native-preview-layout.tsx` and `open_new_workspace_window`.
+- Native move: `workspace-panes/native-scene-window.ts`, native
+  `commands/popout_scene.rs` and the private viewer snapshot handlers.
+- Native file drag: `editor-area/tab-file-drag.ts`, `editor-tabs.tsx` and
+  `lib/native-file-drag.ts`.
+
+Component and contract tests cover state transitions, history protection,
+serialization and cancellation. Browser checks establish in-page placement;
+actual native window transfer, return, Finder drag and resize require native
+acceptance. Build success alone does not establish those interactions.

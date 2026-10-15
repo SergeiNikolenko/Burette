@@ -8,7 +8,7 @@ const calls: Array<[string, Record<string, unknown>]> = [];
 mock.module("@tauri-apps/api/core", () => ({ invoke: async () => scans }));
 mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => true }));
 mock.module("../apps/desktop/src/stores/settings-store", () => ({ useSettingsStore: { getState: () => ({ preferences: {} }) } }));
-mock.module("../apps/desktop/src/stores/molecule-store", () => ({ useMoleculeStore: { getState: () => ({ documents, setActiveDocument() {} }) } }));
+mock.module("../apps/desktop/src/stores/molecule-store", () => ({ useMoleculeStore: { getState: () => ({ documents, setActiveDocument() {} }), setState() {} } }));
 mock.module("../apps/desktop/src/lib/structure-text", () => ({ readStructureTextDocument: async (path: string) => ({ content: path, truncated: false }) }));
 mock.module("../apps/desktop/src/lib/viewer-bridge", () => ({
   activeViewerIframeForDocument: () => ({ contentWindow: {} }),

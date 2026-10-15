@@ -330,14 +330,14 @@ export function useAppXtbWorkflows({
     }
   }, [addDockDrop, cancelledXtbJobIdsRef, openDockTab, openPaths, openTextDocuments, openXtbOptimizedPoseInCurrentView, pushErrorStatus, pushStatus, setDockActiveTab, setDockOpen, setXtbJobs, setXtbStatus, xtbSettings]);
 
-  const runXtbActiveOperation = useCallback(async (operation: XtbOperation) => {
-    if (!activeDocument) {
+  const runXtbActiveOperation = useCallback(async (operation: XtbOperation, document: ViewerDocument | null = activeDocument) => {
+    if (!document) {
       pushStatus("Open a structure before running xTB.", "error");
       return;
     }
-    const contextDocument = await requestMolstarXtbContextDocument(activeDocument);
-    const contextInputRequest = xtbInputRequestForMolstarContextDocument(contextDocument, activeDocument.sourcePath ?? activeDocument.path);
-    const inputRequest = contextInputRequest ?? xtbInputRequestForDocument(activeDocument);
+    const contextDocument = await requestMolstarXtbContextDocument(document);
+    const contextInputRequest = xtbInputRequestForMolstarContextDocument(contextDocument, document.sourcePath ?? document.path);
+    const inputRequest = contextInputRequest ?? xtbInputRequestForDocument(document);
     if (!inputRequest) {
       pushStatus("This generated structure cannot be used for xTB because its source text is unavailable.", "error");
       return;
@@ -348,10 +348,10 @@ export function useAppXtbWorkflows({
       ...inputRequest,
     }, {
       title: xtbOperationLabel(operation),
-      inputLabel: inputRequest.label ?? activeDocument.title,
+      inputLabel: inputRequest.label ?? document.title,
       openPrimary: operation !== "properties" && !openOptimizedPoseInCurrentView,
       openOptimizedPoseInCurrentView,
-      poseSourceDocument: openOptimizedPoseInCurrentView ? activeDocument : null,
+      poseSourceDocument: openOptimizedPoseInCurrentView ? document : null,
     });
   }, [activeDocument, pushStatus, requestMolstarXtbContextDocument, runXtbJob]);
 

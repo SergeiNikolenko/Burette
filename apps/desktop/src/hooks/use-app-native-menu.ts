@@ -6,6 +6,7 @@ import { getAllWindows, getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
 import type { ShellActions, ShellViewState, StructureViewerAction } from "../components/types";
 import { reopenClosedTab } from "../components/workspace-panes/pane-actions";
+import { checkpointNativePopoutForExit, nativePopoutBusy, returnNativePopout } from "../components/workspace-panes/native-scene-window";
 import { canInspectConformerEnsemble } from "../lib/conformer-ensemble";
 import { isMolstarViewerExtension } from "../lib/docking-documents";
 import { isKetcherImportExtension } from "../lib/drop-actions";
@@ -75,6 +76,7 @@ type UseAppNativeMenuOptions = {
     dirty: boolean;
     gridDirty: boolean;
     sourceDirty: boolean;
+    sceneDirty?: boolean;
     revision: number;
     closeTransitionActive: boolean;
   };
@@ -280,6 +282,8 @@ export function useAppNativeMenu({
     if (closingWindowRef.current || closeRequestInFlightRef.current) return;
     closeRequestInFlightRef.current = true;
     try {
+      if (nativePopoutBusy()) return;
+      if (await returnNativePopout()) return;
       const windowCount = await getAllWindows()
         .then((windows) => windows.length)
         .catch(() => 1);
@@ -295,7 +299,7 @@ export function useAppNativeMenu({
         pendingCount: barrier.pendingCount,
         closeTransitionActive: snapshot.closeTransitionActive || barrier.closeTransitionActive,
         dirty: snapshot.dirty,
-        gridDirty: snapshot.gridDirty,
+        gridDirty: snapshot.gridDirty || snapshot.sceneDirty === true,
         sourceDirty: snapshot.sourceDirty,
         confirm: () => confirmDialog("Discard unsaved changes and close this window?", {
           title: "Unsaved Changes",
@@ -311,7 +315,7 @@ export function useAppNativeMenu({
           );
         },
       });
-      if (decision === "abort") {
+      if (decision === "abort" || nativePopoutBusy()) {
         resumeWindowMutations();
         return;
       }
@@ -333,6 +337,17 @@ export function useAppNativeMenu({
     } finally {
       closeRequestInFlightRef.current = false;
     }
+  }, []);
+
+  useEffect(() => {
+    if (isTauriRuntime()) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!getWindowDocumentDirtySnapshotRef.current().dirty && !nativePopoutBusy()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, []);
 
   // Settings > Keyboard shortcuts: apply overrides on launch and after each edit.
@@ -389,14 +404,15 @@ export function useAppNativeMenu({
     const listener = listen<ExitPreflightRequest>(EXIT_PREFLIGHT_EVENT, ({ payload }) => {
       const barrier = sealWindowMutations();
       const snapshot = getWindowDocumentDirtySnapshotRef.current();
-      void invoke("respond_to_exit_preflight", {
+      void checkpointNativePopoutForExit().then(() => false, () => true).then(checkpointFailed => invoke("respond_to_exit_preflight", {
         requestId: payload.requestId,
         closeTransitionActive: snapshot.closeTransitionActive
+          || checkpointFailed
           || barrier.closeTransitionActive
           || barrier.pendingCount > 0,
         dirty: snapshot.dirty || barrier.pendingCount > 0,
         revision: snapshot.revision,
-      }).catch((error) => {
+      })).catch((error) => {
         console.warn("Native exit preflight response failed", error);
       });
     });

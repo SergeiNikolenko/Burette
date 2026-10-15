@@ -122,7 +122,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
       }} />;
   }
 
-  return <>{(
+  return (
     <RadixDropdownMenu
       align="end"
       side="bottom"
@@ -147,7 +147,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
         </ShortcutTooltip>
       )}
     />
-  )}</>;
+  );
 }
 
 function preferredTargetForDestination(destination: string, targets: ChemicalEditorTarget[]) {
