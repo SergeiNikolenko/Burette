@@ -10,6 +10,7 @@ use std::{
 };
 use tauri::Manager;
 pub(crate) mod download;
+pub(crate) mod remote_jobs;
 
 const WORKER: &str = concat!(
     include_str!("chemistry.py"),
@@ -67,7 +68,6 @@ fn run_conditional(
     known: Option<&str>,
 ) -> Result<Vec<u8>, String> {
     validate(request)?;
-    let _connection = transport::Connection::acquire()?;
     let mut payload =
         serde_json::json!({"operation": operation, "root": request.root, "path": request.path});
     if operation == "list" && request.chemical {
@@ -98,10 +98,32 @@ fn run_conditional(
     if payload.len() > 8192 {
         return Err("Remote path request is too large".into());
     }
+    let limit = if operation == "archive" {
+        512 * 1024 * 1024
+    } else if operation == "preview" {
+        MAX_BYTES + 1024
+    } else if operation == "read" {
+        MAX_BYTES
+    } else {
+        2 * 1024 * 1024
+    };
+    let timeout = Duration::from_secs(if operation == "archive" { 120 } else { 45 });
+    run_worker(&request.host, WORKER, payload.as_bytes(), limit, timeout)
+}
+
+/// Runs a bundled Python worker on `host`, writing `payload` to its stdin.
+fn run_worker(
+    host: &str,
+    worker: &str,
+    payload: &[u8],
+    limit: u64,
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
+    let _connection = transport::Connection::acquire()?;
     // Only the bundled worker is shell-quoted. User paths travel as JSON on stdin.
-    let remote_command = format!("python3 -c '{}'", WORKER.replace('\'', "'\\''"));
+    let remote_command = format!("python3 -c '{}'", worker.replace('\'', "'\\''"));
     let mut child = Command::new("/usr/bin/ssh")
-        .args(transport::multiplex_options(&request.host)?)
+        .args(transport::multiplex_options(host)?)
         .args([
             "-T",
             "-oBatchMode=yes",
@@ -112,7 +134,7 @@ fn run_conditional(
             "-oForwardAgent=no",
             "-oClearAllForwardings=yes",
             "--",
-            &request.host,
+            host,
             &remote_command,
         ])
         .process_group(0)
@@ -124,15 +146,6 @@ fn run_conditional(
     let mut input = child.stdin.take().ok_or("SSH stdin unavailable")?;
     let output = child.stdout.take().ok_or("SSH stdout unavailable")?;
     let errors = child.stderr.take().ok_or("SSH stderr unavailable")?;
-    let limit = if operation == "archive" {
-        512 * 1024 * 1024
-    } else if operation == "preview" {
-        MAX_BYTES + 1024
-    } else if operation == "read" {
-        MAX_BYTES
-    } else {
-        2 * 1024 * 1024
-    };
     let reader = std::thread::spawn(move || {
         let mut bytes = Vec::new();
         output
@@ -144,9 +157,8 @@ fn run_conditional(
         let mut bytes = Vec::new();
         errors.take(8192).read_to_end(&mut bytes).map(|_| bytes)
     });
-    let written = input.write_all(payload.as_bytes());
+    let written = input.write_all(payload);
     drop(input);
-    let timeout = Duration::from_secs(if operation == "archive" { 120 } else { 45 });
     let started = Instant::now();
     let status = loop {
         match child.try_wait() {

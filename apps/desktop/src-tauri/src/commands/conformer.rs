@@ -1,5 +1,6 @@
 mod prism_input;
 
+use crate::commands::ssh::remote_jobs::{self, RemoteJob, RemoteTool};
 use crate::commands::xtb_runtime;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
@@ -72,6 +73,21 @@ pub(crate) struct ConformerRunRequest {
     rmsd_threshold_angstrom: Option<f64>,
     sampling_mode: Option<String>,
     prism_energy_sort: Option<bool>,
+    /// SSH alias to run on instead of this Mac.
+    #[serde(default)]
+    remote_host: Option<String>,
+}
+
+/// What the result needs about the inputs, kept with a remote job across restarts.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ConformerInputs {
+    operation: String,
+    title: String,
+    source_path: String,
+    input_copy: String,
+    prepared_path: String,
+    prepared_source: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -206,6 +222,9 @@ pub(crate) fn cancel_conformer_job(job_id: String) -> Result<(), String> {
         .lock()
         .map_err(|_| "Conformer job cancellation registry is unavailable.".to_string())?
         .insert(job_id.clone());
+    if remote_jobs::cancel(&job_id) {
+        return Ok(());
+    }
     let child = {
         let jobs = running_conformer_jobs()
             .lock()
@@ -241,7 +260,19 @@ fn run_conformer_job_blocking<R: Runtime>(
         job_id: job_id.clone(),
     };
     let operation = conformer_operation(&request)?;
-    let executable = conformer_executable(&operation)?;
+    let remote_host = request
+        .remote_host
+        .clone()
+        .filter(|host| !host.trim().is_empty());
+    let remote_tool = if operation == "prism-prune" {
+        RemoteTool::Prism
+    } else {
+        RemoteTool::Crest
+    };
+    let executable = match &remote_host {
+        Some(host) => PathBuf::from(format!("{host}:{}", remote_tool.executable())),
+        None => conformer_executable(&operation)?,
+    };
     let output_root = conformer_output_root(&app, &request)?;
     let requested_work_dir = request
         .work_dir
@@ -256,7 +287,6 @@ fn run_conformer_job_blocking<R: Runtime>(
     write_conformer_run_metadata(&work_dir, &request, &operation, unix_timestamp_ms())?;
 
     let log_path = work_dir.join(format!("{operation}.log"));
-    let report_path = work_dir.join(format!("{operation}-report.md"));
     let copied_input = conformer_input_path(&request, &work_dir)?;
     let input_text = fs::read_to_string(&copied_input.input_path)
         .map_err(|err| format!("{}: {err}", copied_input.input_path.display()))?;
@@ -307,6 +337,41 @@ fn run_conformer_job_blocking<R: Runtime>(
             &prepared_input.source,
         )
     };
+    let inputs = |prepared: &PreparedInput| ConformerInputs {
+        operation: operation.clone(),
+        title: copied_input.input_title.clone(),
+        source_path: copied_input.source_path.to_string_lossy().to_string(),
+        input_copy: copied_input.input_path.to_string_lossy().to_string(),
+        prepared_path: prepared.path.to_string_lossy().to_string(),
+        prepared_source: prepared.source.clone(),
+    };
+    // A remote run is one attempt; the local recovery chain below needs this Mac's tools.
+    if let Some(host) = remote_host {
+        let args = remote_jobs::stage_args(&args, &work_dir)?;
+        let job = RemoteJob {
+            id: job_id
+                .map(str::to_string)
+                .ok_or("A remote conformer job needs a job id.")?,
+            host,
+            tool: remote_tool,
+            work_dir: work_dir.to_string_lossy().to_string(),
+            log_path: log_path.to_string_lossy().to_string(),
+            command: std::iter::once(executable.to_string_lossy().to_string())
+                .chain(args.iter().cloned())
+                .collect(),
+            context: serde_json::to_value(inputs(&prepared_input)).map_err(|e| e.to_string())?,
+            state: "queued".into(),
+            submitted_at: unix_timestamp_ms(),
+        };
+        // Hosts often carry the same conda CREST build as the local recovery below handles.
+        let retry = (remote_tool == RemoteTool::Crest).then(|| remote_jobs::RemoteRetry {
+            args: args.iter().cloned().chain(["--legacy".to_string()]).collect(),
+            pattern: r"(?im)initial geometry optimization failed|^\s*empty ensemble file|^\s*> 0 of .*structures successfully optimized",
+            label: "CREST retry with the standalone xtb engine (--legacy)",
+        });
+        remote_jobs::submit(&app, &job, &args, request.threads, timeout, retry)?;
+        return finish_remote_conformer_run(&app, &job);
+    }
     let mut status =
         run_logged_executable(&executable, &args, &work_dir, &log_path, timeout, job_id)?;
     let mut log = fs::read_to_string(&log_path).unwrap_or_default();
@@ -459,11 +524,72 @@ fn run_conformer_job_blocking<R: Runtime>(
         recoveries.push("GFN-FF retry after initial geometry optimization failure".into());
     }
 
+    let command = std::iter::once(executable.to_string_lossy().to_string())
+        .chain(args.iter().cloned())
+        .collect();
+    finish_conformer_run(
+        &inputs(&prepared_input),
+        job_id,
+        &work_dir,
+        command,
+        &status,
+        log,
+        recoveries,
+        started.elapsed().as_millis(),
+    )
+}
+
+/// Reattaches to a CREST or PRISM job started on an SSH host before a restart.
+pub(crate) fn resume_remote<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    job: RemoteJob,
+) -> Result<ConformerRunResult, String> {
+    let _job_cleanup = ConformerJobCleanup {
+        job_id: Some(job.id.clone()),
+    };
+    finish_remote_conformer_run(app, &job)
+}
+
+fn finish_remote_conformer_run<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    job: &RemoteJob,
+) -> Result<ConformerRunResult, String> {
+    let inputs: ConformerInputs =
+        serde_json::from_value(job.context.clone()).map_err(|e| e.to_string())?;
+    let outcome = remote_jobs::wait(app, job)?;
+    finish_conformer_run(
+        &inputs,
+        Some(&job.id),
+        Path::new(&job.work_dir),
+        job.command.clone(),
+        &outcome.exit_status(),
+        fs::read_to_string(&job.log_path).unwrap_or_default(),
+        Vec::new(),
+        unix_timestamp_ms().saturating_sub(job.submitted_at),
+    )
+}
+
+/// Collects artifacts and writes the report once the tool has ended, here or on a host.
+#[allow(clippy::too_many_arguments)]
+fn finish_conformer_run(
+    inputs: &ConformerInputs,
+    job_id: Option<&str>,
+    work_dir: &Path,
+    command: Vec<String>,
+    status: &ExitStatus,
+    mut log: String,
+    recoveries: Vec<String>,
+    elapsed_ms: u128,
+) -> Result<ConformerRunResult, String> {
+    let operation = &inputs.operation;
+    let log_path = work_dir.join(format!("{operation}.log"));
+    let report_path = work_dir.join(format!("{operation}-report.md"));
+    let input_text = fs::read_to_string(&inputs.input_copy).unwrap_or_default();
     let cancelled = conformer_job_was_cancelled(job_id);
     let exit_code = if cancelled {
         130
     } else {
-        exit_code_for_status(&status)
+        exit_code_for_status(status)
     };
     if cancelled {
         fs::write(&log_path, "Conformer job cancelled.\n")
@@ -473,42 +599,40 @@ fn run_conformer_job_blocking<R: Runtime>(
     let artifacts = if cancelled {
         Vec::new()
     } else {
-        collect_conformer_artifacts(&work_dir)?
+        collect_conformer_artifacts(work_dir)?
     };
     let recovered_primary_open_path = if exit_code != 0 && exit_code != 124 {
-        primary_conformer_open_path(&operation, &artifacts, true)
+        primary_conformer_open_path(operation, &artifacts, true)
     } else {
         None
     };
-    let primary_open_path = primary_conformer_open_path(&operation, &artifacts, exit_code == 0)
+    let primary_open_path = primary_conformer_open_path(operation, &artifacts, exit_code == 0)
         .or(recovered_primary_open_path);
     // CREST can exit 0 with an empty ensemble; without a result file the run failed.
     let ok = !cancelled && exit_code != 124 && primary_open_path.is_some();
     let result = ConformerRunResult {
         ok,
         operation: operation.clone(),
-        title: copied_input.input_title.clone(),
-        input_path: copied_input.source_path.to_string_lossy().to_string(),
+        title: inputs.title.clone(),
+        input_path: inputs.source_path.clone(),
         work_dir: work_dir.to_string_lossy().to_string(),
         log_path: log_path.to_string_lossy().to_string(),
         report_path: report_path.to_string_lossy().to_string(),
         exit_code,
         error_summary: conformer_error_summary(
-            &operation,
+            operation,
             exit_code,
             &log,
-            &prepared_input.source,
+            &inputs.prepared_source,
             &input_text,
             ok,
             cancelled,
         ),
-        elapsed_ms: started.elapsed().as_millis(),
-        command: std::iter::once(executable.to_string_lossy().to_string())
-            .chain(args.iter().cloned())
-            .collect(),
+        elapsed_ms,
+        command,
         preparation: ConformerPreparation {
-            path: prepared_input.path.to_string_lossy().to_string(),
-            source: prepared_input.source,
+            path: inputs.prepared_path.clone(),
+            source: inputs.prepared_source.clone(),
         },
         recovery: if recoveries.is_empty() {
             None
@@ -1581,6 +1705,7 @@ fn request_clone_without_job(request: &ConformerRunRequest) -> ConformerRunReque
         rmsd_threshold_angstrom: request.rmsd_threshold_angstrom,
         sampling_mode: request.sampling_mode.clone(),
         prism_energy_sort: request.prism_energy_sort,
+        remote_host: request.remote_host.clone(),
     }
 }
 
@@ -1776,6 +1901,7 @@ mod tests {
             rmsd_threshold_angstrom: None,
             sampling_mode: None,
             prism_energy_sort: None,
+            remote_host: None,
         }
     }
 

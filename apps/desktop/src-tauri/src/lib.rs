@@ -299,6 +299,8 @@ pub fn run() {
             commands::ssh::ssh_delete_folder,
             commands::ssh::ssh_preview,
             commands::ssh::download::ssh_download,
+            commands::ssh::remote_jobs::remote_job_list,
+            commands::ssh::remote_jobs::remote_job_resume,
             commands::shell::write_base64_file,
             commands::shell::write_text_file,
             commands::quicklook::reset_quick_look,
