@@ -21,8 +21,19 @@ class PublishingTests(unittest.TestCase):
         (self.root / 'scripts/sparkle-appcast.py').write_text('''
 import os, pathlib, sys
 if os.environ.get('FAIL_SIGNING'): sys.exit(2)
-previous = pathlib.Path(sys.argv[4]).read_text() if len(sys.argv) > 4 else ''
-pathlib.Path(sys.argv[3]).write_text(previous + '+next')
+args = sys.argv[1:]
+deltas = [pathlib.Path(args[i + 1]).name for i, arg in enumerate(args) if arg == '--delta']
+args = [arg for i, arg in enumerate(args) if arg != '--delta' and (i == 0 or args[i - 1] != '--delta')]
+previous = pathlib.Path(args[3]).read_text() if len(args) > 3 else ''
+pathlib.Path(args[2]).write_text(previous + '+next' + ''.join('+' + name for name in deltas))
+''')
+        (self.root / 'scripts/sparkle-deltas.py').write_text('''
+import os, pathlib, sys
+for name in os.environ.get('DELTAS', '').split():
+    patch = pathlib.Path(sys.argv[4]) / name
+    patch.write_text('patch')
+    print(patch, flush=True)
+if os.environ.get('FAIL_DELTAS'): sys.exit(3)
 ''')
         gh = self.root / 'bin/gh'
         gh.write_text('''#!/usr/bin/env python3
@@ -45,6 +56,7 @@ elif command == 'download':
     destination.write_text(state['assets'][name])
 elif command == 'upload':
     path = pathlib.Path(args[3])
+    if path.name == os.environ.get('FAIL_UPLOAD_NAME'): sys.exit(1)
     state['assets'].pop(path.name, None)
     if ((path.name == 'appcast.xml' and os.environ.get('FAIL_UPLOAD')) or
         (path.name == 'appcast.previous.xml' and os.environ.get('FAIL_BACKUP'))):
@@ -92,6 +104,20 @@ state_path.write_text(json.dumps(state))
         self.seed(True, {'appcast.xml': 'stable+beta'})
         self.assertNotEqual(self.run_publisher(FAIL_READ='1').returncode, 0)
         self.assertEqual(self.state(), {'exists': True, 'assets': {'appcast.xml': 'stable+beta'}})
+
+    def test_feed_lists_only_uploaded_deltas(self):
+        self.seed(True, {'appcast.xml': 'feed'})
+        result = self.run_publisher(DELTAS='Burette-2.3.19-from-2.3.18.delta Burette-2.3.19-from-2.3.17.delta',
+                                    FAIL_UPLOAD_NAME='Burette-2.3.19-from-2.3.17.delta')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.state()['assets'], {
+            'Burette-2.3.19-from-2.3.18.delta': 'patch', 'appcast.previous.xml': 'feed',
+            'appcast.xml': 'feed+next+Burette-2.3.19-from-2.3.18.delta'})
+
+    def test_delta_failure_still_publishes_full_update(self):
+        self.seed(True, {'appcast.xml': 'feed'})
+        self.assertEqual(self.run_publisher(FAIL_DELTAS='1').returncode, 0)
+        self.assertEqual(self.state()['assets'], {'appcast.previous.xml': 'feed', 'appcast.xml': 'feed+next'})
 
     def test_listed_asset_download_failure_preserves_feed(self):
         self.seed(True, {'appcast.xml': 'stable+beta'})

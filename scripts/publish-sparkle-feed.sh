@@ -22,7 +22,17 @@ PY
   fi
 fi
 ARGS=("$ROOT/Burette-$VERSION.zip" "$ROOT/build/Burette.app" "$WORK/next.xml")
-[[ ! -f "$WORK/previous.xml" ]] || ARGS+=("$WORK/previous.xml")
+if [[ -f "$WORK/previous.xml" ]]; then
+  ARGS+=("$WORK/previous.xml")
+  # Delta patches from recent releases are optional. A failed build or upload
+  # drops only that patch, and the feed lists only uploaded patches.
+  mkdir "$WORK/deltas"
+  while IFS= read -r patch <&3; do
+    if gh release upload "v$VERSION" "$patch" --repo "$REPO" --clobber; then
+      ARGS+=(--delta "$patch")
+    fi
+  done 3< <(python3 "$ROOT/scripts/sparkle-deltas.py" "$ROOT/build/Burette.app" "$VERSION" "$WORK/previous.xml" "$WORK/deltas" || true)
+fi
 python3 "$ROOT/scripts/sparkle-appcast.py" "${ARGS[@]}"
 if [[ "$EXISTS" == "0" ]]; then
   # If the read failed for another reason, create fails on the existing tag;
