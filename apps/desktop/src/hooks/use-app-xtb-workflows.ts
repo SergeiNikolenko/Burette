@@ -9,6 +9,7 @@ import { directChemistryJobGuardMessage } from "../lib/direct-chemistry-guard";
 import type { DockArea, DockTabKind } from "../lib/dock";
 import { structureExtensionFromPath } from "../lib/file-routing";
 import { molstarContextEntryExtension } from "../lib/molstar-context";
+import { computeHost } from "../lib/remote-jobs";
 import { basename } from "../lib/sidebar-projects";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import { readStructureText } from "../lib/structure-text";
@@ -233,12 +234,14 @@ export function useAppXtbWorkflows({
     }
     const jobId = `xtb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const startedAt = Date.now();
+    const remoteHost = request.remoteHost === undefined ? computeHost() : request.remoteHost;
     const pendingJob: XtbJob = {
       id: jobId,
       title,
       operation: request.operation,
       status: "running",
       inputLabel,
+      host: remoteHost,
       startedAt,
       completedAt: null,
       result: null,
@@ -269,6 +272,7 @@ export function useAppXtbWorkflows({
           : xtbSettings.timeoutSeconds,
         saveRunFiles,
         ...request,
+        remoteHost,
         method,
         jobId,
       });
@@ -343,7 +347,7 @@ export function useAppXtbWorkflows({
     const contextInputRequest = xtbInputRequestForMolstarContextDocument(contextDocument, document.sourcePath ?? document.path);
     // A combined scene has no single input file; its path is a virtual scene id.
     if (!contextInputRequest && document.dockingRequest) {
-      pushStatus("Select one molecule in the scene before running xTB.", "error");
+      pushStatus("Select a molecule in the scene, or choose its file under Compute.", "error");
       return;
     }
     const inputRequest = contextInputRequest ?? xtbInputRequestForDocument(document);

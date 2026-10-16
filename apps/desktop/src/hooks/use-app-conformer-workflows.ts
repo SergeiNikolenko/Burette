@@ -8,7 +8,9 @@ import { conformerOperationLabel } from "../lib/chemistry-settings";
 import { canInspectConformerEnsemble, canUseConformerWorkflow } from "../lib/conformer-ensemble";
 import { directChemistryJobGuardMessage } from "../lib/direct-chemistry-guard";
 import { molstarContextEntryExtension } from "../lib/molstar-context";
-import { parentDirectory } from "../lib/sidebar-projects";
+import { structureExtensionFromPath } from "../lib/file-routing";
+import { basename, parentDirectory } from "../lib/sidebar-projects";
+import { computeHost } from "../lib/remote-jobs";
 import { readStructureText } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
 import { textToBase64 } from "../lib/conformer-generation";
@@ -154,6 +156,7 @@ export function useAppConformerWorkflows({
       rmsdThresholdAngstrom: conformerSettings.rmsdThresholdAngstrom,
       samplingMode: conformerSettings.samplingMode,
       prismEnergySort: conformerSettings.prismEnergySort,
+      remoteHost: request.remoteHost === undefined ? computeHost() : request.remoteHost,
     };
     let preparedRun: ConformerPreparedRun;
     try {
@@ -168,6 +171,7 @@ export function useAppConformerWorkflows({
       operation: request.operation,
       inputTitle: request.title,
       status: "running",
+      host: fullRequest.remoteHost,
       startedAt: Date.now(),
       workDir: preparedRun.workDir,
       logPath: preparedRun.logPath,
@@ -226,9 +230,21 @@ export function useAppConformerWorkflows({
     operation: ConformerOperation,
     document: ViewerDocument | null | undefined = activeDocument,
     selection: StructureViewerAction | null = null,
+    target: { scenePath?: string } = {},
   ) => {
     if (!document) {
       pushStatus("Open a small molecule or conformer ensemble before running CREST/PRISM.", "error");
+      return;
+    }
+    // One source file of a combined scene, picked from the scene Compute menu.
+    if (target.scenePath) {
+      const title = basename(target.scenePath);
+      const extension = structureExtensionFromPath(target.scenePath);
+      if (operation === "prism-prune" ? !canInspectConformerEnsemble(extension) : !canUseConformerWorkflow(extension)) {
+        pushStatus(operation === "prism-prune" ? "PRISM pruning expects an ensemble file such as XYZ or SDF." : "CREST needs a small-molecule file.", "error");
+        return;
+      }
+      await runConformerJob({ operation, path: target.scenePath, title, extension, inputDataBase64: null, outputDirectory: parentDirectory(target.scenePath) });
       return;
     }
     if (operation === "crest-generate" && document.renderer === "grid2d" && !selection) {

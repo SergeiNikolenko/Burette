@@ -45,6 +45,7 @@ type RadixDropdownProps = {
   side?: "top" | "right" | "bottom" | "left";
   sideOffset?: number;
   alignOffset?: number;
+  onOpenChange?: (open: boolean) => void;
 };
 
 export function RadixDropdownMenu({
@@ -55,11 +56,12 @@ export function RadixDropdownMenu({
   side = "bottom",
   sideOffset = 1,
   alignOffset,
+  onOpenChange,
 }: RadixDropdownProps) {
   const container = useThemePortalContainer();
 
   return (
-    <DropdownMenu modal={false}>
+    <DropdownMenu modal={false} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
       <DropdownMenuContent
         className={contentClassName}

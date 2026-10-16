@@ -26,7 +26,7 @@ const STATUS_PHRASES: Record<string, string> = {
 
 const isActive = (job: LifecycleJob) => ACTIVE_STATUSES.has(job.status);
 
-const JOURNAL_FIELDS = ["operation", "inputLabel", "inputTitle", "documentTitle", "query", "progress", "backend", "durableJobId", "workDir", "logPath", "reportPath", "primaryOpenPath", "error"];
+const JOURNAL_FIELDS = ["operation", "host", "inputLabel", "inputTitle", "documentTitle", "query", "progress", "backend", "durableJobId", "workDir", "logPath", "reportPath", "primaryOpenPath", "error"];
 const JOURNAL_RESULT_FIELDS = ["inputPath", "workDir", "primaryOpenPath", "exitCode", "errorSummary", "error"];
 
 function pickFields(source: unknown, fields: string[]) {

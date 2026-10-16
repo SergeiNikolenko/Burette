@@ -148,6 +148,8 @@ export type ConformerRunRequest = {
   rmsdThresholdAngstrom?: number;
   samplingMode?: ConformerSettings["samplingMode"];
   prismEnergySort?: boolean;
+  /** SSH alias to run on instead of this Mac. */
+  remoteHost?: string | null;
 };
 
 export type ConformerPreparedRun = {
@@ -203,6 +205,8 @@ export type ConformerJob = {
   backend?: "nativeMetal" | "referenceCpu" | "rdkitCpu" | null;
   durableJobId?: string | null;
   cancelable?: boolean;
+  /** SSH host the calculation runs on. */
+  host?: string | null;
   completedAt?: number;
   result?: ConformerRunResult | null;
   error?: string | null;
@@ -284,6 +288,8 @@ export type XtbRunRequest = {
   mdSnapshots?: number | null;
   timeoutSeconds?: number | null;
   saveRunFiles?: boolean | null;
+  /** SSH alias to run on instead of this Mac. */
+  remoteHost?: string | null;
 };
 
 export type XtbArtifact = {
@@ -315,6 +321,8 @@ export type XtbJob = {
   operation: XtbOperation;
   status: "queued" | "running" | "success" | "recovered" | "failed" | "cancelled";
   inputLabel: string;
+  /** SSH host the calculation runs on. */
+  host?: string | null;
   startedAt: number;
   completedAt?: number | null;
   result?: XtbRunResult | null;

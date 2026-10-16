@@ -39,6 +39,27 @@ async function liveScenePaths(document: ViewerDocument, recorded: string[]) {
   return recorded;
 }
 
+export type SceneFileState = "available" | "removed" | "deleted";
+
+export function recordedScenePaths(document: ViewerDocument) {
+  return document.sceneSourcePaths ?? (document.dockingRequest
+    ? [document.dockingRequest.receptorPath, ...document.dockingRequest.ligandPaths] : [document.path]);
+}
+
+// Which source files of a scene can still be computed on: removed from the
+// scene tree and deleted from disk files are listed so the user sees why.
+export async function sceneFileStates(document: ViewerDocument) {
+  const recorded = [...new Set(recordedScenePaths(document))];
+  const live = new Set(await liveScenePaths(document, recorded));
+  const onDisk = isTauriRuntime()
+    ? new Set(await invoke<string[]>("existing_paths", { paths: recorded }).catch(() => recorded))
+    : new Set(recorded);
+  return recorded.map(path => ({
+    path,
+    state: (!onDisk.has(path) ? "deleted" : live.has(path) ? "available" : "removed") as SceneFileState,
+  }));
+}
+
 // Structure files join as a real comparison scene, the same one "Open → Together"
 // builds, so the pose picker and alignment (toolbar and right click) cover them.
 // Loading them straight into Mol* would leave both unaware of the new structures.
@@ -144,8 +165,7 @@ export async function appendScenePayload(
   options.signal?.throwIfAborted();
   const current = useMoleculeStore.getState().documents.find(candidate => candidate.id === document.id);
   if (!current) throw new Error("The target scene is no longer open.");
-  const existingPaths = await liveScenePaths(current, current.sceneSourcePaths ?? (current.dockingRequest
-    ? [current.dockingRequest.receptorPath, ...current.dockingRequest.ligandPaths] : [current.path]));
+  const existingPaths = await liveScenePaths(current, recordedScenePaths(current));
   if (!preserveScene && sources.some(source => existingPaths.includes(source.path))) throw new Error("A selected file is already in this scene.");
   const added = sources.filter(source => !existingPaths.includes(source.path)).map(source => source.path);
   if (existingPaths.length + added.length > 200) throw new Error("A scene supports up to 200 source files.");

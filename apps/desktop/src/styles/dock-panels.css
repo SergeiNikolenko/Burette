@@ -97,4 +97,6 @@
 .jobs-panel-meta { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--color-text-tertiary); font-size: 13px; line-height: 16px; }
 .jobs-panel-meta > .jobs-panel-status { font-size: inherit; line-height: inherit; }
 .jobs-panel-source { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jobs-panel-host { flex: none; color: var(--color-text-tertiary); font-size: var(--text-xs); line-height: 16px; white-space: nowrap; }
+.jobs-panel-meta > .jobs-panel-host { font-size: inherit; line-height: inherit; }
 .jobs-panel[data-variant="page"] .jobs-panel-details { padding: 0 12px 12px 38px; }
