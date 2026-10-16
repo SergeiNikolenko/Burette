@@ -200,7 +200,14 @@ export class PerfApp {
     }
   }
 
+  assertUnlocked() {
+    if (frontmostBundleId() === 'com.apple.loginwindow') {
+      throw new Error('The Mac screen is locked. Unlock it before measuring a visible app; locked-screen timings are invalid.');
+    }
+  }
+
   async launch() {
+    this.assertUnlocked();
     if (runningBundlePids(this.bundleId).length) throw new Error(`${this.bundleId} is already running; existing sessions are never taken over.`);
     this.screen = this.placeWindow();
     await this.waitForIdle();
@@ -215,7 +222,12 @@ export class PerfApp {
     let shell = null;
     let restored = this.options.foreground || !previous || previous === this.bundleId;
     const deadline = Date.now() + 60_000;
+    let checkedAt = startedAt;
     while (!shell || Date.now() < shell.at + 1_500) {
+      if (Date.now() - checkedAt >= 1_000) {
+        this.assertUnlocked();
+        checkedAt = Date.now();
+      }
       if (!restored && frontmostBundleId() === this.bundleId) {
         spawnSync('open', ['-b', previous]);
         restored = true;
@@ -244,6 +256,7 @@ export class PerfApp {
   }
 
   act(action, waitMs = 30_000) {
+    this.assertUnlocked();
     const result = spawnSync(process.execPath, [agentCli, 'act', '--session-dir', this.sessionDir, JSON.stringify(action), '--wait-ms', String(waitMs)], { encoding: 'utf8' });
     let parsed = null;
     try {

@@ -255,6 +255,9 @@ proof of a displayed frame. `readyMs` ends at the viewer ready handshake;
 `visibleMs` only describes the iframe becoming visible. Do not interchange them.
 The runner refuses production bundles and existing sessions, and terminates
 only processes launched with its own agent session.
+The runner rejects locked-screen runs because WebKit stops presenting frames.
+Keep the screen unlocked throughout a series; process-scoped `caffeinate -di`
+can prevent idle display sleep without changing persistent system preferences.
 
 ## Performance Budgets
 

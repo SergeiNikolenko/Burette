@@ -131,6 +131,7 @@ async function journeyLaunch(app, options, results) {
     await app.quit();
     const { startedAt, shell } = await app.launch();
     await sleep(8_000);
+    app.assertUnlocked();
     app.trace.sync();
     const lines = app.trace.between(startedAt, startedAt + 15_000);
     const setup = lines.find(line => line.name === 'app:setup');
