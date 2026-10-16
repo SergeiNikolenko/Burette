@@ -509,7 +509,8 @@ impl DescriptorGridJobStateKind {
     }
 }
 
-#[tauri::command]
+// Starts a Python interpreter; `async` keeps the probe off the main thread.
+#[tauri::command(async)]
 pub(crate) fn descriptor_runtime_status() -> DescriptorRuntimeStatus {
     let install = descriptor_install_state()
         .lock()

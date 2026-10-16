@@ -220,9 +220,7 @@ const defaultCapability = JSON.parse(defaultCapabilitySource);
 const computeCapability = JSON.parse(computeCapabilitySource);
 const mainWindowConfig = tauriConfig.app.windows.find((window) => window.label === 'main');
 const tauriHandlerSource = lib.match(/tauri::generate_handler!\[([\s\S]*?)\]/)?.[1] ?? '';
-const registeredTauriCommands = [
-  ...tauriHandlerSource.matchAll(/(?:commands::(?:\w+::)+|compute::commands::)(\w+)/g),
-].map((match) => match[1]);
+const registeredTauriCommands = [...tauriHandlerSource.matchAll(/(?:\w+::)+(\w+)/g)].map((match) => match[1]);
 const allowedViewerCommands = [...tauriPermissionSource.matchAll(/^\s*"([a-z0-9_]+)",?$/gm)].map((match) => match[1]);
 const allowedComputeCommands = [...computePermissionSource.matchAll(/^\s*"([a-z0-9_]+)",?$/gm)].map((match) => match[1]);
 const allowedTauriCommands = [...allowedViewerCommands, ...allowedComputeCommands];
@@ -637,7 +635,21 @@ assert.match(
 );
 assert.match(documentsCommand, /fn looks_like_supported_structure_file/);
 assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_preview_cache/);
-assert.match(runtimeDoctorCommand, /#\[tauri::command\]\s+pub\(crate\) fn external_runtime_doctor/);
+// The doctor and the probes it reuses start Python and external tools, so
+// they must not run inline on the main thread.
+assert.match(runtimeDoctorCommand, /#\[tauri::command\(async\)\]\s+pub\(crate\) fn external_runtime_doctor/);
+for (const [file, command] of [
+  ['commands/rgroups.rs', 'rgroup_runtime_status'],
+  ['commands/xtb.rs', 'xtb_status'],
+  ['commands/conformer.rs', 'conformer_status'],
+  ['commands/descriptors.rs', 'descriptor_runtime_status'],
+]) {
+  assert.match(
+    await source(`apps/desktop/src-tauri/src/${file}`),
+    new RegExp(`#\\[tauri::command\\(async\\)\\]\\s+pub\\(crate\\) fn ${command}\\b`),
+    `${command} must stay off the main thread`,
+  );
+}
 assert.match(runtimeDoctorCommand, /burette\.external-runtime-doctor\.v1/);
 for (const checkId of ['xyzrender', 'descriptors-python', 'rdkit-conformer-python', 'crest', 'prism', 'xtb']) {
   assert.match(runtimeDoctorCommand, new RegExp(`"${checkId}"`));

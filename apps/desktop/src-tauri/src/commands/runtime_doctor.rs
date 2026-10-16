@@ -28,7 +28,8 @@ struct ExternalRuntimeDoctorCheck {
     details: Value,
 }
 
-#[tauri::command]
+// Runs every runtime probe in turn; `async` keeps them off the main thread.
+#[tauri::command(async)]
 pub(crate) fn external_runtime_doctor<R: Runtime>(
     app: tauri::AppHandle<R>,
 ) -> ExternalRuntimeDoctorReport {
