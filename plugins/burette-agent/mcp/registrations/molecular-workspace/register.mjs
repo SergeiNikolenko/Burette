@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
@@ -32,6 +33,9 @@ const OBSERVE_OBJECT_KEY_LIMIT = 100;
 const OBSERVE_OUTPUT_LIMIT = 256 * 1024;
 const OBSERVE_STRING_LIMIT = 4096;
 const OBSERVE_TOTAL_STRING_LIMIT = 64 * 1024;
+// Captures above this size are shown to the model as a smaller JPEG preview.
+const CAPTURE_INLINE_BYTE_LIMIT = 1024 * 1024;
+const CAPTURE_PREVIEW_EDGE = 1280;
 const PUBLIC_CONTRACT = {
   apiVersion: "burette-external-agent/v1",
   tools: [
@@ -41,6 +45,7 @@ const PUBLIC_CONTRACT = {
     "burette.open_ketcher",
     "burette.observe_workspace",
     "burette.control_viewer",
+    "burette.capture_view",
     "burette.control_ketcher",
     "burette.get_mvs_authoring_reference",
     "burette.list_story_templates",
@@ -65,6 +70,7 @@ const PUBLIC_CONTRACT = {
     canOpenWorkspace: true,
     canObserveWorkspace: true,
     canControlMolstar: true,
+    canCaptureView: true,
     canControlKetcher: true,
     canRenderPanels: true,
     canCreateMolViewSpecStory: true,
@@ -358,6 +364,70 @@ export function registerMolecularWorkspace(server) {
         error: actionResult.ok ? null : actionResult.error,
         exitCode: actionResult.exitCode,
       });
+    },
+  );
+
+  registerAppTool(
+    server,
+    "burette.capture_view",
+    {
+      title: "Capture Burette View",
+      description: "Render the active Mol* view of a workspaceSessionId to an image file and return the image so the model can inspect it. Set up the scene with burette.control_viewer first. Works for agent-owned browser shells without a visible window.",
+      inputSchema: {
+        workspaceSessionId: z.string().trim().optional(),
+        viewerSessionId: z.string().trim().optional(),
+        url: z.string().trim().optional(),
+        sessionDir: z.string().trim().optional(),
+        width: z.number().int().min(1).max(8192).optional(),
+        height: z.number().int().min(1).max(8192).optional(),
+        format: z.enum(["png", "jpeg", "webp"]).optional(),
+        quality: z.number().min(0).max(1).optional(),
+        transparent: z.boolean().optional(),
+        autoCrop: z.boolean().optional(),
+        outputPath: z.string().trim().min(1).optional(),
+        overwrite: z.boolean().optional(),
+        waitMs: z.number().int().min(1000).max(60000).optional(),
+      },
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+      _meta: {
+        ui: {
+          visibility: ["model"],
+        },
+      },
+    },
+    async input => {
+      const resolved = resolveWorkspaceSession(input);
+      if (!resolved.ok) return publicContractFailure("burette.capture_view", resolved.error);
+      const locator = workspaceLocatorArgs(resolved.session);
+      if (!locator.ok) return publicContractFailure("burette.capture_view", locator.error);
+      const waitMs = input.waitMs ?? 20000;
+      const captured = await runCapture(locator.args, { ...input, waitMs });
+      const capture = captured.payload?.result || null;
+      if (!captured.ok || !capture?.path) {
+        return publicContractResult("burette.capture_view", {
+          ok: false,
+          session: resolved.session,
+          action: { type: "screenshot" },
+          error: captured.error,
+          exitCode: captured.exitCode,
+        });
+      }
+      const image = await inlineCaptureImage(locator.args, capture, { autoCrop: input.autoCrop, waitMs });
+      const response = await publicContractResult("burette.capture_view", {
+        ok: true,
+        session: resolved.session,
+        result: { ...capture, inlineImage: image.info },
+        action: { type: "screenshot" },
+        applied: true,
+        exitCode: captured.exitCode,
+      });
+      if (image.block) response.content = [...response.content, image.block];
+      return response;
     },
   );
 
@@ -1520,6 +1590,50 @@ async function runWorkspaceAction({ url, sessionDir, action, waitMs }) {
   args.push(JSON.stringify(action));
   args.push("--wait-ms", String(waitMs));
   return await runBuretteAgent(args, { timeoutMs: Math.max(30000, waitMs + 5000) });
+}
+
+async function runCapture(locatorArgs, { width, height, format, quality, transparent, autoCrop, outputPath, overwrite, waitMs }) {
+  const args = ["capture", ...locatorArgs, "--wait-ms", String(waitMs)];
+  if (width !== undefined) args.push("--width", String(width));
+  if (height !== undefined) args.push("--height", String(height));
+  if (format) args.push("--format", format);
+  if (quality !== undefined) args.push("--quality", String(quality));
+  if (transparent) args.push("--transparent");
+  if (autoCrop) args.push("--auto-crop");
+  if (outputPath) args.push("--output", outputPath);
+  if (overwrite) args.push("--overwrite");
+  return await runBuretteAgent(args, { timeoutMs: Math.max(30000, waitMs + 5000) });
+}
+
+// Returns an MCP image block for the capture, re-rendering a bounded JPEG
+// preview next to it when the requested file is too large to inline.
+async function inlineCaptureImage(locatorArgs, capture, { autoCrop, waitMs }) {
+  let source = capture;
+  if (capture.byteCount > CAPTURE_INLINE_BYTE_LIMIT) {
+    if (!(capture.width > 0 && capture.height > 0)) {
+      return { block: null, info: { inlined: false, reason: "The capture is too large to inline and its size is unknown." } };
+    }
+    const scale = Math.min(1, CAPTURE_PREVIEW_EDGE / Math.max(capture.width, capture.height));
+    const preview = await runCapture(locatorArgs, {
+      width: Math.max(1, Math.round(capture.width * scale)),
+      height: Math.max(1, Math.round(capture.height * scale)),
+      format: "jpeg",
+      quality: 0.85,
+      autoCrop,
+      outputPath: capture.path.replace(/(\.[a-z]+)?$/iu, ".preview.jpg"),
+      overwrite: true,
+      waitMs,
+    });
+    source = preview.payload?.result || null;
+    if (!preview.ok || !source?.path || source.byteCount > CAPTURE_INLINE_BYTE_LIMIT) {
+      return { block: null, info: { inlined: false, reason: preview.error?.message || "The preview capture is still too large to inline." } };
+    }
+  }
+  const data = (await readFile(source.path)).toString("base64");
+  return {
+    block: { type: "image", data, mimeType: source.mimeType },
+    info: { inlined: true, preview: source !== capture, path: source.path, mimeType: source.mimeType, byteCount: source.byteCount },
+  };
 }
 
 async function safeStructureSummary(file) {

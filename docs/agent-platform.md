@@ -21,7 +21,7 @@ the same typography when they occupy one header band.
 | Layer | Path | Responsibility |
 | --- | --- | --- |
 | Hosted public plugin | `apps/burette-public-plugin` | Public HTTPS MCP tools for one authorized attachment or public PDB entry, plus the sandboxed Burette workspace. |
-| Repository CLI | `scripts/burette-agent.mjs` | Source-of-truth execution contract for open, observe, act, and render-panel workflows. |
+| Repository CLI | `scripts/burette-agent.mjs` | Source-of-truth execution contract for open, observe, act, capture, and render-panel workflows. |
 | Browser preview server | `scripts/agent-preview.mjs` | Tokenized preview surface for typed browser agent sessions. |
 | Browser shell session | `apps/desktop/vite/browser-dev/agent-session.ts`, `apps/desktop/src/hooks/use-agent-session.ts` | Browser-dev shell observe/action files and event delivery. |
 | Desktop app session | `apps/desktop/src/hooks/use-agent-session.ts`, `apps/desktop/src/lib/ketcher-agent.ts`, Tauri agent session commands | Desktop file-session observe/action bridge for Mol* and the Ketcher chemical editor. |
@@ -74,7 +74,8 @@ result back to the user.
 | Workspace opener | `bun scripts/burette-agent.mjs open` | Opens browser preview, browser agent shell, or desktop app sessions. |
 | Workspace observer | `bun scripts/burette-agent.mjs observe` | Reads typed state from a session directory. |
 | Workspace action | `bun scripts/burette-agent.mjs act` | Sends typed shell or Mol* actions and waits for completion. |
-| Workspace facade tools | `burette.get_context` / `burette.open_workspace` / `burette.observe_workspace` / `burette.control_viewer` / `burette.render_panel` | Short MCP facade over the CLI for external agents, routed by the `external-agent-contract` skill. |
+| Viewer capture | `bun scripts/burette-agent.mjs capture` | Renders the active Mol* view to a PNG/JPEG/WebP file and prints its path, MIME type, size, and dimensions. |
+| Workspace facade tools | `burette.get_context` / `burette.open_workspace` / `burette.observe_workspace` / `burette.control_viewer` / `burette.capture_view` / `burette.render_panel` | Short MCP facade over the CLI for external agents, routed by the `external-agent-contract` skill. |
 | Ketcher surface | `burette.open_ketcher` / `burette.control_ketcher` | Opens and controls the active chemical editor with bounded, revision-checked actions. |
 | MolViewSpec Story | `story-schema` / `story-template-list` / `story-template-create` / `story-create` / `story-validate`; `burette.get_mvs_authoring_reference` / `burette.list_story_templates` / `burette.create_story_from_template` / `burette.create_story` / `burette.validate_story` / `burette.observe_story` / `burette.control_story` | Discovers the version-matched MVS schema, lists reusable scientific scaffolds, authors schema-valid multi-state MVSJ/MVSX, verifies resources, and exposes typed Story state and playback. |
 | Panel renderer | `bun scripts/burette-agent.mjs render-panel` | Opens bounded markdown/table/chart output in a docked panel. |
@@ -139,6 +140,18 @@ browser-dev and native app validation remain separate surfaces.
   report completion or a structured failure.
 - `render-panel` opens bounded markdown, table, or chart artifacts in a dock
   panel through the normal text-document path.
+- `capture` queues a `screenshot` action, waits up to `--wait-ms` (default
+  15000), and writes the image to `--output` or, by default, to
+  `<session>/captures/` (the system temp directory for tokenized previews).
+  It refuses an existing `--output` without `--overwrite`, accepts
+  `--width`/`--height` only together, and replaces the data URI in
+  `actions.json` with the written path. `--auto-crop` trims the background
+  around the scene with Mol*'s 10% padding.
+- `burette.capture_view` wraps `capture` and returns the image as an MCP
+  `image` content block so the model can inspect it. Files above 1 MiB are
+  returned as a JPEG preview (long edge 1280 px) written next to the capture;
+  `result.inlineImage` names the file that was inlined. The capture works in
+  a hidden Browser tab, so an agent-owned shell needs no visible window.
 - Screenshot interpretation must not replace typed `observe`, validation
   output, or CLI/MCP errors.
 - Session `act` rejects action types that neither the shell nor the Mol* viewer
