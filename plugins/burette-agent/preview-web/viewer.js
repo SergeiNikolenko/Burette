@@ -17815,6 +17815,7 @@ SOFTWARE.
           }),
           appearance: appearance => applyMolstarAppearance(viewer, appearance),
           automatic: () => window.molstar.BuretteStory.automatic(viewer.plugin),
+          resolveCamera: camera => window.molstar.BuretteStory.resolveCamera(viewer.plugin, camera),
           camera: camera => window.molstar.BuretteStory.camera(viewer.plugin, camera)
         });
       }

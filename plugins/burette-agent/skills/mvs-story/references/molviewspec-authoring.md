@@ -13,9 +13,13 @@ contract for the Mol* version bundled with Burette.
    `primitive`, `volume_representation`, or `interpolate`.
 3. Follow the returned parent constraints, parameter types, defaults, and
    descriptions exactly.
-4. Validate the complete MVSJ or MVSX with `burette.validate_story`.
+4. Validate a multi-state Story with `burette.validate_story`. It rejects
+   single-state scenes (`kind: "single"`), so they have no preflight check.
 5. Open the result and perform visual QA; schema validity does not prove that a
    selector matches atoms or that a camera communicates the intended evidence.
+   After opening, observe the session and confirm `viewerAgent.ready` with no
+   load error in `viewerAgent.lastMessage`. A failed load leaves a blank pane;
+   fix the file and reopen it in a new session instead of reporting success.
 
 The scene overview reports the installed MolViewSpec version and these node
 families:
