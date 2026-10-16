@@ -85,10 +85,6 @@ families:
 - Use `focus` for component-relative framing and `camera` for a reproducible
   explicit view. Keep the molecular evidence visible after labels and panels
   are added.
-- In a single-state scene opened with `burette.open_viewer`, do not add `focus`
-  nodes. A schema-valid `focus` under a component crashed the bundled Mol*
-  loader (`Cannot read properties of undefined (reading 'forEach')`). Use
-  `camera`, or frame after load with `focus_ligand` or `focus_selection`.
 - Use primitives for explanation, measurement, and spatial context. Do not draw
   an interaction or distance that was not calculated from the loaded model.
 - State contour level, units, sign convention, and source for volume
