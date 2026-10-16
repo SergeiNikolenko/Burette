@@ -17,7 +17,7 @@ PROCESS_NAME="${BURETTE_PROCESS_NAME:-Burette}"
 # The journey runner refuses production bundles and pre-existing app sessions.
 if [[ "${BURETTE_PERF_RUN_JOURNEYS:-0}" == "1" ]]; then
   JOURNEY_ARGS=(--app "${BURETTE_PERF_APP:-${BURETTE_APP_PATH:-$ROOT/build/Burette-${BURETTE_DEV_FLAVOR:-perf}.app}}"
-    --runs "${BURETTE_PERF_RUNS:-10}" --enforce-budgets)
+    --runs "${BURETTE_PERF_RUNS:-10}" --foreground --enforce-budgets)
   [[ -z "${BURETTE_PERF_COMPARE:-}" ]] || JOURNEY_ARGS+=(--compare "$BURETTE_PERF_COMPARE")
   exec node "$ROOT/scripts/perf-journeys.mjs" "${JOURNEY_ARGS[@]}"
 fi

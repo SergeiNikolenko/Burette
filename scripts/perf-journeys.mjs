@@ -12,6 +12,7 @@
 // docs/performance.md for the line format.
 
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { loadavg } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
@@ -43,6 +44,7 @@ function parseArgs(argv) {
     app: process.env.BURETTE_PERF_APP || join(repoRoot, `build/Burette-${process.env.BURETTE_DEV_FLAVOR || 'perf'}.app`),
     runs: 10,
     enforceBudgets: false,
+    foreground: false,
     journeys: ['launch', 'open', 'tab', 'pose', 'trajectory', 'spin'],
     files: null,
     largeDir: process.env.BURETTE_PERF_LARGE_DIR || null,
@@ -70,6 +72,7 @@ function parseArgs(argv) {
     else if (arg === '--idle-seconds') options.idleSeconds = Number(value());
     else if (arg === '--screen') options.screen = value();
     else if (arg === '--enforce-budgets') options.enforceBudgets = true;
+    else if (arg === '--foreground') options.foreground = true;
     else if (arg === '--keep-running') options.keepRunning = true;
     else throw new Error(`Unknown option ${arg}.`);
   }
@@ -122,6 +125,7 @@ async function openAndWait(app, file, timeoutMs = 90_000) {
 async function journeyLaunch(app, options, results) {
   const samples = {};
   const notes = new Set();
+  results.launch = { samples, notes: [] };
   for (let run = 0; run < options.runs; run += 1) {
     console.error(`launch ${run + 1}/${options.runs}`);
     await app.quit();
@@ -154,6 +158,7 @@ async function journeyOpen(app, files, options, results) {
   for (const file of files) {
     const samples = {};
     const notes = new Set();
+    results[`open:${file.key}`] = { file: file.path, samples, notes: [] };
     let renderer = null;
     for (let run = 0; run < options.runs; run += 1) {
       if (run === 0) {
@@ -256,7 +261,7 @@ async function journeySpin(app, file, options, results) {
     const intervals = frameIntervals(app.trace.lines, from, to);
     record(samples, {
       frameP95Ms: percentile(intervals, 0.95),
-      onTimeShare: intervals.length ? intervals.filter(value => value <= 16.7 * 1.25).length / intervals.length : null,
+      onTimeShare: intervals.length ? intervals.filter(value => value <= 16.7).length / intervals.length : null,
       stallMs: mainThread(app.trace.lines, from, to).stallMs,
     });
   }
@@ -271,6 +276,10 @@ async function main() {
     if (!files.some(file => file.key === key)) throw new Error(`Sample ${key} is missing or unknown.`);
   }
   const byKey = key => files.find(file => file.key === key);
+  const fixtureDetails = files.map(file => {
+    const bytes = readFileSync(file.path);
+    return { key: file.key, path: file.path, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
+  });
   const results = {};
   const startedAt = new Date().toISOString();
   const out = options.out ?? join(repoRoot, 'build/reports', `perf-journeys-${startedAt.replace(/[:.]/g, '-')}.json`);
@@ -281,6 +290,8 @@ async function main() {
   const load = loadavg();
   if (load[0] > 4) console.error(`Load average is ${load[0].toFixed(1)}; numbers from a busy Mac are not a baseline.`);
   const journeys = new Set(options.journeys);
+  const skippedJourneys = [];
+  let failure = null;
   try {
     if (journeys.has('launch')) await journeyLaunch(app, options, results);
     if (!app.pids().length) {
@@ -292,7 +303,13 @@ async function main() {
     if (journeys.has('pose') && byKey('poses')) await journeySteps(app, byKey('poses'), 'set_sdf_pose_index', byKey('poses').poses, options, results, 'pose:step');
     if (journeys.has('trajectory') && byKey('xyz')) await journeySteps(app, byKey('xyz'), 'set_structure_pose', byKey('xyz').frames, options, results, 'trajectory:step');
     if (journeys.has('spin') && byKey('cif-large')) await journeySpin(app, byKey('cif-large'), options, results);
+    for (const [journey, key] of [['pose', 'poses'], ['trajectory', 'xyz'], ['spin', 'cif-large']]) {
+      if (journeys.has(journey) && !byKey(key)) skippedJourneys.push({ journey, reason: `Missing sample ${key}` });
+    }
+  } catch (error) {
+    failure = error?.stack || String(error);
   } finally {
+    app.trace.sync();
     if (!options.keepRunning) {
       await app.quit();
       spawnSync('/usr/bin/trash', [app.sessionDir]);
@@ -305,11 +322,16 @@ async function main() {
     app: { path: app.path, bundleId: app.bundleId, version: app.version, executableSha256: app.executableSha256 },
     harnessCommit: spawnSync('git', ['-C', repoRoot, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).stdout.trim(),
     screen: app.screen ?? null,
+    foregroundRequested: options.foreground,
     loadAverage: load,
+    loadAverageEnd: loadavg(),
     runs: options.runs,
     tracePath: app.trace.evidencePath,
     files: files.map(file => file.key),
+    fixtureDetails,
     requestedJourneys: options.journeys,
+    skippedJourneys,
+    failure,
     results,
     summary,
   };
@@ -320,8 +342,10 @@ async function main() {
     if (result.notes?.length) console.log(`${journey}: slowest main-thread work: ${result.notes.slice(0, 8).join(', ')}`);
   }
   console.log(`report: ${out}`);
+  if (failure) console.error(failure);
+  if (skippedJourneys.length) console.error(`Skipped: ${JSON.stringify(skippedJourneys)}`);
   const failures = budgetFailures(summary);
-  let failed = (options.enforceBudgets && failures.length > 0) || Object.values(results).some(result => result.notes?.includes('journey timed out'));
+  let failed = Boolean(failure) || skippedJourneys.length > 0 || (options.enforceBudgets && failures.length > 0) || Object.values(results).some(result => result.notes?.includes('journey timed out'));
   if (failures.length) {
     console.log(`over budget:\n  ${failures.join('\n  ')}`);
   }

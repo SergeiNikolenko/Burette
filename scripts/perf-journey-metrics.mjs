@@ -3,7 +3,7 @@ const BUDGETS = {
   'tab:switch': { visibleMs: 100, blankFrames: 0, loads: 0, stallMs: 100 },
   'pose:step': { stepMs: 100, stallMs: 100 },
   'trajectory:step': { stepMs: 100, stallMs: 100 },
-  'spin:large-cif': { frameP95Ms: 16.7 * 1.25 },
+  'spin:large-cif': { frameP95Ms: 16.7 },
   launch: { stallMs: 100 },
 };
 
@@ -13,10 +13,11 @@ export function percentile(values, fraction) {
   return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(fraction * sorted.length) - 1))];
 }
 
-export function stats(values) {
+export function stats(values, digits = 1) {
   const finite = values.filter(Number.isFinite);
   if (finite.length === 0) return null;
-  const round = value => Math.round(value * 10) / 10;
+  const scale = 10 ** digits;
+  const round = value => Math.round(value * scale) / scale;
   return {
     n: finite.length,
     p50: round(percentile(finite, 0.5)),
@@ -72,7 +73,7 @@ export function record(samples, values) {
 export function summarize(results) {
   const summary = {};
   for (const [journey, result] of Object.entries(results)) {
-    summary[journey] = Object.fromEntries(Object.entries(result.samples).map(([metric, values]) => [metric, stats(values)]));
+    summary[journey] = Object.fromEntries(Object.entries(result.samples).map(([metric, values]) => [metric, stats(values, metric === 'onTimeShare' ? 4 : 1)]));
   }
   return summary;
 }
@@ -80,9 +81,11 @@ export function summarize(results) {
 export function budgetFailures(summary) {
   const failures = [];
   for (const [journey, budget] of Object.entries(BUDGETS)) {
+    if (!summary[journey]) continue;
     for (const [metric, limit] of Object.entries(budget)) {
       const value = summary[journey]?.[metric]?.p95;
-      if (value !== null && value !== undefined && value > limit) failures.push(`${journey} ${metric} p95 ${value} > ${limit}`);
+      if (!Number.isFinite(value)) failures.push(`${journey} ${metric} missing`);
+      else if (value > limit) failures.push(`${journey} ${metric} p95 ${value} > ${limit}`);
     }
   }
   return failures;
@@ -95,12 +98,15 @@ export function compareSummaries(before, after) {
   const regressions = [];
   for (const journey of Object.keys(before)) {
     if (!after[journey]) regressions.push(`${journey} missing from the new report`);
+    else for (const metric of Object.keys(before[journey])) {
+      if (before[journey][metric] && !after[journey][metric]) regressions.push(`${journey} ${metric} missing from the new report`);
+    }
   }
   for (const [journey, metrics] of Object.entries(after)) {
     for (const [metric, now] of Object.entries(metrics)) {
       const then = before[journey]?.[metric];
       if (!now || !then) continue;
-      const noise = Math.max(then.p75 - then.p25, now.p75 - now.p25, Math.abs(then.p50) * 0.05, 0.5);
+      const noise = Math.max(then.p75 - then.p25, now.p75 - now.p25, Math.abs(then.p50) * 0.05, metric === 'onTimeShare' ? 0.005 : 0.5);
       const direction = metric === 'onTimeShare' ? -1 : 1;
       const delta = (now.p50 - then.p50) * direction;
       const verdict = delta < -noise ? 'faster' : delta > noise ? 'slower' : 'same';

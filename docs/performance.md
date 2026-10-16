@@ -230,18 +230,25 @@ node scripts/perf-journeys.mjs --runs 10 --large-dir ~/perf-files \
 
 | Journey | Measures |
 | --- | --- |
-| `launch` | Cold start to the first shell paint, then the main-thread work until the app settles. |
+| `launch` | New process to the first shell rAF mark, then main-thread work until the app settles. OS file caches are not flushed. |
 | `open` | Per sample file, cold and warm: `Rendered` status, `ready`, parsing status messages, iframe loads and main-thread IPC. Status messages are not a count of actual scientific parses. |
 | `tab` | Warm switches between four open files: time to the first visible frame, blank frames, iframe reloads and React commits. |
-| `pose`, `trajectory` | One SDF pose or trajectory frame per action. |
+| `pose`, `trajectory` | Completion of one SDF pose or trajectory setter per agent action; not input-to-presented-frame latency. |
 | `spin` | Frame intervals while the large CIF spins. |
 
 `--large-dir` names a directory with `moses_10k.smi`, `moses_10k.sdf` and
-`4UG0.cif`; journeys without their files are skipped. The script waits until the
+`4UG0.cif`; missing journey fixtures are reported explicitly and fail the run. The script waits until the
 keyboard and mouse have been idle before the app takes focus, hands focus back
-as soon as the window shows, and quits only the build it launched. It prints the
+as soon as the window shows by default. Use `--foreground` for frame measurements
+so the test window retains focus. It quits only the build it launched. It prints the
 journeys over the budgets below, and with `--compare` it exits with status 1
 when a p95 rises beyond run-to-run noise. A timeout always fails. `--enforce-budgets` also fails on absolute budgets. The report records the executable SHA-256 and writes the raw events to `<report>.trace.jsonl`.
+
+Reports include fixture byte counts and SHA-256 hashes, skipped journeys and
+runtime failures. The harness commit identifies the runner, not the app source
+revision. Keep the build source revision alongside each executable hash when
+comparing saved app bundles. A loaded Mac run is exploratory, even with ten
+repetitions; it does not certify the unloaded-Mac performance targets.
 
 `renderedStatusMs` is the viewer progress notification, not an OS screenshot or
 proof of a displayed frame. `readyMs` ends at the viewer ready handshake;
@@ -271,7 +278,7 @@ Use these budgets as guardrails for future changes:
 - A warm tab switch shows its viewer within 100 ms, with no blank frame and no
   iframe reload.
 - A pose or trajectory step takes 100 ms or less.
-- While a large structure spins, the p95 frame interval stays within 21 ms on a
+- While a large structure spins, the p95 frame interval stays within 16.7 ms on a
   60 Hz display.
 
 ## Do Not Regress

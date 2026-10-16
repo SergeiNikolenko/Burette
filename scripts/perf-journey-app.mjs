@@ -205,14 +205,15 @@ export class PerfApp {
     this.screen = this.placeWindow();
     await this.waitForIdle();
     const previous = frontmostBundleId();
+    this.previousBundleId = previous;
     this.trace.sync();
     const startedAt = Date.now();
-    execFileSync('open', ['-n', '-g', '--env', 'BURETTE_PERF_TRACE=1', this.path, '--args', '--burette-agent-session', this.sessionDir]);
+    execFileSync('open', ['-n', ...(this.options.foreground ? [] : ['-g']), '--env', 'BURETTE_PERF_TRACE=1', this.path, '--args', '--burette-agent-session', this.sessionDir]);
     this.owned = true;
     // The app activates itself when its window shows. Hand focus back the
     // moment it does; `open -b` needs no Automation consent.
     let shell = null;
-    let restored = !previous || previous === this.bundleId;
+    let restored = this.options.foreground || !previous || previous === this.bundleId;
     const deadline = Date.now() + 60_000;
     while (!shell || Date.now() < shell.at + 1_500) {
       if (!restored && frontmostBundleId() === this.bundleId) {
@@ -229,6 +230,7 @@ export class PerfApp {
 
   async quit() {
     if (!this.pids().length) return;
+    const restoreFocus = this.options.foreground && frontmostBundleId() === this.bundleId;
     await this.closeAllTabs().catch(() => {});
     for (const pid of this.pids()) {
       spawnSync('osascript', ['-l', 'JavaScript', '-e', `ObjC.import('AppKit'); $.NSRunningApplication.runningApplicationWithProcessIdentifier(${pid}).terminate();`]);
@@ -238,6 +240,7 @@ export class PerfApp {
     for (const pid of this.pids()) process.kill(pid, 'SIGKILL');
     while (this.pids().length) await sleep(100);
     this.owned = false;
+    if (restoreFocus && this.previousBundleId && this.previousBundleId !== this.bundleId) spawnSync('open', ['-b', this.previousBundleId]);
   }
 
   act(action, waitMs = 30_000) {
