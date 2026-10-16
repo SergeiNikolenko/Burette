@@ -17,6 +17,8 @@ const BROWSER_AGENT_SESSION_DIR = "__browser_agent_shell__";
 const MAX_OBSERVED_DOCUMENTS = 128;
 const MAX_OBSERVED_TABS = 128;
 const MAX_OBSERVED_PANELS = 64;
+// Scene captures and large screenshots render offscreen and can outlast the default wait.
+const SLOW_VIEWER_ACTION_TYPES = new Set(["capture_scene", "screenshot", "export_image"]);
 const isBrowserAgentShell = import.meta.env.VITE_BURETTE_AGENT_SHELL === "1";
 
 type KetcherAgentModule = typeof import("../lib/ketcher-agent");
@@ -698,7 +700,7 @@ async function postActionToActiveViewer(
     const timeout = window.setTimeout(() => {
       pendingViewerActions.delete(item.id);
       resolve(agentFailure(String(item.action?.type || ""), "ACTION_TIMEOUT", "The active viewer did not report an action result."));
-    }, item.action?.type === "capture_scene" ? 30000 : 5000);
+    }, SLOW_VIEWER_ACTION_TYPES.has(String(item.action?.type || "")) ? 30000 : 5000);
     pendingViewerActions.set(item.id, (value) => {
       window.clearTimeout(timeout);
       resolve(value);
