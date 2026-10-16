@@ -11,8 +11,11 @@ use tauri::{Manager, Runtime, WebviewWindow};
 /// broke" — clicks, menu commands, shortcuts, opened files, job starts and
 /// outcomes — without a screen recording.
 pub(crate) const ACTION_JOURNAL_NAME: &str = "ActionJournal.jsonl";
-pub(crate) const ACTION_JOURNAL_PREVIOUS_NAME: &str = "ActionJournal.previous.jsonl";
-const ACTION_JOURNAL_LIMIT_BYTES: u64 = 2 * 1024 * 1024;
+// The live file rolls into numbered archives (ActionJournal.1.jsonl is the
+// newest); the oldest is deleted, so the journal never exceeds
+// ACTION_JOURNAL_LIMIT_BYTES * (ACTION_JOURNAL_ARCHIVES + 1) = 50 MB on disk.
+const ACTION_JOURNAL_LIMIT_BYTES: u64 = 10 * 1024 * 1024;
+const ACTION_JOURNAL_ARCHIVES: usize = 4;
 const MAX_ENTRIES_PER_BATCH: usize = 200;
 const MAX_FIELD_CHARS: usize = 512;
 const MAX_DETAIL_CHARS: usize = 2048;
@@ -60,8 +63,7 @@ fn append_entries(
     let path = cache_dir.join(ACTION_JOURNAL_NAME);
     let current = fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0);
     if current > 0 && current + text.len() as u64 > ACTION_JOURNAL_LIMIT_BYTES {
-        fs::rename(&path, cache_dir.join(ACTION_JOURNAL_PREVIOUS_NAME))
-            .map_err(|err| err.to_string())?;
+        rotate(cache_dir)?;
     }
     fs::OpenOptions::new()
         .create(true)
@@ -69,6 +71,33 @@ fn append_entries(
         .open(&path)
         .and_then(|mut file| file.write_all(text.as_bytes()))
         .map_err(|err| format!("{}: {err}", path.display()))
+}
+
+/// File name of the `index`-th archive; 1 is the most recent.
+pub(crate) fn action_journal_archive_name(index: usize) -> String {
+    format!("ActionJournal.{index}.jsonl")
+}
+
+fn rotate(cache_dir: &Path) -> Result<(), String> {
+    let oldest = cache_dir.join(action_journal_archive_name(ACTION_JOURNAL_ARCHIVES));
+    if oldest.exists() {
+        fs::remove_file(&oldest).map_err(|err| format!("{}: {err}", oldest.display()))?;
+    }
+    for index in (1..ACTION_JOURNAL_ARCHIVES).rev() {
+        let from = cache_dir.join(action_journal_archive_name(index));
+        if from.exists() {
+            fs::rename(
+                &from,
+                cache_dir.join(action_journal_archive_name(index + 1)),
+            )
+            .map_err(|err| format!("{}: {err}", from.display()))?;
+        }
+    }
+    fs::rename(
+        cache_dir.join(ACTION_JOURNAL_NAME),
+        cache_dir.join(action_journal_archive_name(1)),
+    )
+    .map_err(|err| err.to_string())
 }
 
 fn journal_line(window_label: &str, entry: ActionJournalEntry) -> String {
@@ -164,17 +193,30 @@ mod tests {
     }
 
     #[test]
-    fn journal_rotates_into_one_previous_file() {
+    fn journal_keeps_a_bounded_number_of_archives() {
         let dir = temp_dir("rotation");
         let path = dir.join(ACTION_JOURNAL_NAME);
-        fs::write(&path, vec![b'x'; ACTION_JOURNAL_LIMIT_BYTES as usize]).unwrap();
-        append_entries(&dir, "main", vec![entry("button", None)]).unwrap();
-        assert_eq!(
-            fs::metadata(dir.join(ACTION_JOURNAL_PREVIOUS_NAME))
-                .unwrap()
-                .len(),
-            ACTION_JOURNAL_LIMIT_BYTES
-        );
+        let full = vec![b'x'; ACTION_JOURNAL_LIMIT_BYTES as usize];
+        for _ in 0..ACTION_JOURNAL_ARCHIVES + 2 {
+            fs::write(&path, &full).unwrap();
+            append_entries(&dir, "main", vec![entry("button", None)]).unwrap();
+        }
+        let mut names: Vec<String> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        let mut expected: Vec<String> = (1..=ACTION_JOURNAL_ARCHIVES)
+            .map(action_journal_archive_name)
+            .chain([ACTION_JOURNAL_NAME.to_string()])
+            .collect();
+        expected.sort();
+        assert_eq!(names, expected);
+        let total: u64 = names
+            .iter()
+            .map(|name| fs::metadata(dir.join(name)).unwrap().len())
+            .sum();
+        assert!(total <= 50 * 1024 * 1024);
         assert_eq!(fs::read_to_string(&path).unwrap().lines().count(), 1);
         fs::remove_dir_all(dir).unwrap();
     }

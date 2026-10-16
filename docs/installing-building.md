@@ -123,8 +123,10 @@ detail?}`. `kind` is `click`, `change`, `shortcut`, `menu`, `file`, `job`,
 including controls inside the Mol* viewer. Field changes record only selects,
 checkboxes, sliders, and numeric inputs, never typed text. Job entries record
 each request and status change with the input paths, run folder, and error. The
-file rolls over to `ActionJournal.previous.jsonl` at 2 MB, and both files are
-included in diagnostics bundles.
+journal is written in the background from every window. At 10 MB the file rolls
+into `ActionJournal.1.jsonl` … `ActionJournal.4.jsonl` and the oldest archive is
+deleted, so the journal never takes more than 50 MB. Diagnostics bundles include
+the live file and the newest archive.
 
 Primary Quick Look logs are under the extension container:
 
