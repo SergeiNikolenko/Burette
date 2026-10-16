@@ -1,5 +1,6 @@
 import { StructureElement } from 'molstar/lib/mol-model/structure.js';
 import { PluginCommands } from 'molstar/lib/mol-plugin/commands.js';
+import { getCellBoundingSphere } from 'molstar/lib/mol-plugin-state/manager/focus-camera/focus-object.js';
 import { installAutomaticStoryPresentation } from './molstar-story-presentation.mjs';
 
 export const BuretteStory = {
@@ -35,6 +36,24 @@ export const BuretteStory = {
         });
       }
     }
+  },
+  // MVS focus nodes target authored components, which Auto replaces. Freeze
+  // them into explicit spheres while those components still exist; a target
+  // whose cell is gone falls back to the whole scene.
+  resolveCamera(plugin, camera) {
+    if (!camera?.focus?.targets) return camera;
+    const targets = camera.focus.targets.flatMap(target => {
+      if (target.targetRef === undefined) return [target];
+      const sphere = plugin.state.data.cells.has(target.targetRef)
+        ? getCellBoundingSphere(plugin, target.targetRef)
+        : undefined;
+      if (!sphere) return [];
+      return [{
+        center: target.center ?? sphere.center,
+        radius: target.radius ?? sphere.radius * (target.radiusFactor ?? 1) + (target.extraRadius ?? 0),
+      }];
+    });
+    return { ...camera, focus: { ...camera.focus, targets } };
   },
   async camera(plugin, camera) {
     const durationMs = camera?.transitionStyle === 'animate' ? camera.transitionDurationInMs : 0;
