@@ -5,6 +5,7 @@ commands.allow = [
   "agent_integration_status",
   "frontend_log",
   "append_action_journal",
+  "append_perf_trace",
   "operate_sidebar_file",
   "start_file_drag",
   "capture_tab_thumbnail",

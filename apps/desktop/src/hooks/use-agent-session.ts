@@ -8,6 +8,7 @@ import type { DockArea } from "../lib/dock";
 import { executeAgentTabAction, type AgentTabActions } from "../lib/agent-tab-actions";
 import { agentGridState, recordAgentGridState } from "../lib/agent-grid-state";
 import { setAgentWorkspacePanel } from "../lib/agent-workspace-panel";
+import { perfNow, tracePerf } from "../lib/perf-trace";
 import type { MoleculeTab } from "../stores/molecule-store";
 import { createSelectionContext } from "../../../burette-public-plugin/lib/hosted-context";
 
@@ -517,6 +518,7 @@ async function pollAgentActions(
   nextAction.status = "dispatched";
   nextAction.dispatchedAt = new Date().toISOString();
   await writeJson(actionsPath, { apiVersion: AGENT_API_VERSION, actions });
+  const startedAt = perfNow();
   const result = await executeDesktopAgentAction(
     nextAction,
     openPaths,
@@ -533,6 +535,11 @@ async function pollAgentActions(
     tabs,
     tabActions,
   );
+  tracePerf("agent:action", {
+    at: startedAt,
+    ms: perfNow() - startedAt,
+    detail: { id: nextAction.id, type: String(nextAction.action?.type || ""), failed: isFailedResult(result) },
+  });
   nextAction.completedAt = new Date().toISOString();
   nextAction.result = result;
   nextAction.status = isFailedResult(result) ? "failed" : "completed";

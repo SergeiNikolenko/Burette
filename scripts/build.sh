@@ -54,6 +54,14 @@ case "$BUILD_MODE" in
 esac
 XCODE_CONFIGURATION="${BURETTE_XCODE_CONFIGURATION:-$DEFAULT_XCODE_CONFIGURATION}"
 
+# Web Inspector for every webview, so Safari's Timelines can profile a
+# packaged performance build. Local dev-flavor builds only.
+TAURI_BUILD_ARGS=()
+if [[ "${BURETTE_TAURI_DEVTOOLS:-0}" == "1" ]]; then
+  [[ "$BUILD_MODE" == "local" && -n "${BURETTE_DEV_FLAVOR:-}" ]] || { echo "error: BURETTE_TAURI_DEVTOOLS requires a local BURETTE_DEV_FLAVOR build." >&2; exit 2; }
+  TAURI_BUILD_ARGS=(-- --features tauri/devtools)
+fi
+
 if [[ "$BUILD_MODE" == "release" ]]; then
   [[ -z "${BURETTE_DEV_FLAVOR:-}" ]] || { echo "error: BURETTE_DEV_FLAVOR is only supported for local builds." >&2; exit 2; }
   if [[ "$ALLOW_ADHOC_RELEASE" != "1" ]]; then
@@ -597,7 +605,7 @@ bun run build:agent-shell
 pushd apps/desktop >/dev/null
 ../../node_modules/.bin/vp build --config vite.config.ts
 popd >/dev/null
-bun run build:tauri
+bun run build:tauri ${TAURI_BUILD_ARGS[@]+"${TAURI_BUILD_ARGS[@]}"}
 cargo build --release --bin burette-core-bridge
 # `tauri build` runs `cargo build --bins`, so burette-compute-service is already
 # built with Tauri's features and MACOSX_DEPLOYMENT_TARGET. A separate cargo
