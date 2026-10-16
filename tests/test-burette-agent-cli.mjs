@@ -615,9 +615,9 @@ try {
   }
   assert.deepEqual(
     cliTypeList('SESSION_VIEWER_ACTION_TYPES'),
-    // Native window handoff stays outside the public MCP/CLI action contract.
+    // Native window handoff and the shell's scene file probe stay outside the public MCP/CLI action contract.
     quotedTypes(sourceBody(viewerSource, 'async function executeBuretteAgentAction(', 'async function captureAgentScene('))
-      .filter(type => !['workspace_scene_snapshot'].includes(type)),
+      .filter(type => !['workspace_scene_snapshot', 'scene_source_paths'].includes(type)),
   );
   assert.deepEqual(
     cliTypeList('SESSION_SHELL_ACTION_TYPES'),
