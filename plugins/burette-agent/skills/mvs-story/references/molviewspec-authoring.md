@@ -13,9 +13,13 @@ contract for the Mol* version bundled with Burette.
    `primitive`, `volume_representation`, or `interpolate`.
 3. Follow the returned parent constraints, parameter types, defaults, and
    descriptions exactly.
-4. Validate the complete MVSJ or MVSX with `burette.validate_story`.
+4. Validate a multi-state Story with `burette.validate_story`. It rejects
+   single-state scenes (`kind: "single"`), so they have no preflight check.
 5. Open the result and perform visual QA; schema validity does not prove that a
    selector matches atoms or that a camera communicates the intended evidence.
+   After opening, observe the session and confirm `viewerAgent.ready` with no
+   load error in `viewerAgent.lastMessage`. A failed load leaves a blank pane;
+   fix the file and reopen it in a new session instead of reporting success.
 
 The scene overview reports the installed MolViewSpec version and these node
 families:
@@ -81,6 +85,10 @@ families:
 - Use `focus` for component-relative framing and `camera` for a reproducible
   explicit view. Keep the molecular evidence visible after labels and panels
   are added.
+- In a single-state scene opened with `burette.open_viewer`, do not add `focus`
+  nodes. A schema-valid `focus` under a component crashed the bundled Mol*
+  loader (`Cannot read properties of undefined (reading 'forEach')`). Use
+  `camera`, or frame after load with `focus_ligand` or `focus_selection`.
 - Use primitives for explanation, measurement, and spatial context. Do not draw
   an interaction or distance that was not calculated from the loaded model.
 - State contour level, units, sign convention, and source for volume
