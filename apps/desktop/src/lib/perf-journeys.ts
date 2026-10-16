@@ -18,7 +18,7 @@ import { perfEventTime, perfNow, tracePerf } from "./perf-trace";
 // - `iframe:mount`, `iframe:load`, `iframe:unmount`: viewer frame lifecycle;
 //   a warm tab switch should produce none of them.
 // - `viewer:status`, `viewer:ready`, `viewer:error`: viewer progress messages,
-//   including one "Parsing structure" status per parse.
+//   including parsing progress (not a count of scientific parses).
 // - `input:*` and `mark:*`: shell input and the app's performance marks.
 
 declare global {

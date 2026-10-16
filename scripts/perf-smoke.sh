@@ -13,6 +13,15 @@ RUN_QUICKLOOK="${BURETTE_PERF_RUN_QUICKLOOK:-1}"
 RUN_GRID_FTS="${BURETTE_PERF_RUN_GRID_FTS:-0}"
 PROCESS_NAME="${BURETTE_PROCESS_NAME:-Burette}"
 
+# Opt in to measured packaged journeys instead of the legacy launch approximation.
+# The journey runner refuses production bundles and pre-existing app sessions.
+if [[ "${BURETTE_PERF_RUN_JOURNEYS:-0}" == "1" ]]; then
+  JOURNEY_ARGS=(--app "${BURETTE_PERF_APP:-${BURETTE_APP_PATH:-$ROOT/build/Burette-${BURETTE_DEV_FLAVOR:-perf}.app}}"
+    --runs "${BURETTE_PERF_RUNS:-10}" --enforce-budgets)
+  [[ -z "${BURETTE_PERF_COMPARE:-}" ]] || JOURNEY_ARGS+=(--compare "$BURETTE_PERF_COMPARE")
+  exec node "$ROOT/scripts/perf-journeys.mjs" "${JOURNEY_ARGS[@]}"
+fi
+
 mkdir -p "$(dirname "$REPORT")"
 
 now_ms() {
@@ -58,7 +67,13 @@ wait_for_first_window() {
 }
 
 quit_app() {
-  osascript -e 'tell application "Burette" to quit' >/dev/null 2>&1 || true
+  # Target the requested bundle, never a different installed app with its name.
+  osascript - "$APP" <<'OSA' >/dev/null 2>&1 || true
+on run argv
+  set appFile to POSIX file (item 1 of argv)
+  tell application appFile to quit
+end run
+OSA
   sleep 1
 }
 

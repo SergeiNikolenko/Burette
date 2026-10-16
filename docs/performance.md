@@ -190,6 +190,65 @@ bounded fixtures and counts accesses/requests without chemistry calculations.
 BURETTE_PERF_RUN_GRID_FTS=1 ./scripts/perf-smoke.sh
 ```
 
+## Journey Trace
+
+A packaged app writes `PerfTrace.jsonl` to its cache directory
+(`~/Library/Caches/<bundle id>/`, next to `BuretteApp.log`) and rolls it into
+`PerfTrace.1.jsonl` at 8 MiB. Every line carries `at`, the Unix time in
+milliseconds when the interval started. The webviews stamp the same clock as
+`performance.timeOrigin + performance.now()`, so one journey reads across the
+shell, the viewer frames and Rust.
+
+By default the app records only IPC handlers that held their thread for 50 ms or
+longer. With `BURETTE_PERF_TRACE=1` in the app environment it records every IPC
+call, samples the main dispatch queue every 50 ms, and the shell loads
+`apps/desktop/src/lib/perf-journeys.ts` to send its journey marks:
+
+| `source` | Lines |
+| --- | --- |
+| `ipc` | One line per command with `name`, `window`, `ms` and `mainThread`. For synchronous commands, `ms` measures the handler itself. For async commands it measures dispatch only, not worker execution. `mainThread` identifies the dispatching thread. |
+| `main-queue` | `main-queue:late` when a block queued on the main queue ran 17 ms or more late. It also catches main-thread work outside IPC, such as window setup, modal panels and menu tracking. |
+| `native` | `app:setup` and `open:request` with the paths Launch Services passed in. |
+| `web` | `frames` (rAF intervals of each second with the React commits, shell DOM mutations and viewer messages by type in it), `document:added`, `tab:switch`, `document:visible`, `document:ready`, `journey:timeout`, `iframe:mount`, `iframe:load`, `iframe:unmount`, `viewer:status`, `viewer:ready`, `viewer:error`, `input:*`, `mark:*`, and `agent:action` for each desktop agent action. |
+
+WebKit has no Long Tasks API, so frame intervals are the frame metric. Viewer
+frames share the WebContent main thread with the shell, so a long shell frame
+is a long viewer frame too. WebKit throttles occluded windows, so measure with
+the window visible.
+
+`scripts/perf-journeys.mjs` drives a perf build through a desktop agent session
+and reduces the trace to p50 and p95 per journey:
+
+```bash
+BURETTE_DEV_FLAVOR=perf BURETTE_TAURI_DEVTOOLS=1 ./scripts/build.sh
+node scripts/perf-journeys.mjs --runs 10 --large-dir ~/perf-files \
+  --out build/reports/perf-journeys-before.json
+# After the change, on the same Mac:
+node scripts/perf-journeys.mjs --runs 10 --large-dir ~/perf-files \
+  --compare build/reports/perf-journeys-before.json
+```
+
+| Journey | Measures |
+| --- | --- |
+| `launch` | Cold start to the first shell paint, then the main-thread work until the app settles. |
+| `open` | Per sample file, cold and warm: `Rendered` status, `ready`, parsing status messages, iframe loads and main-thread IPC. Status messages are not a count of actual scientific parses. |
+| `tab` | Warm switches between four open files: time to the first visible frame, blank frames, iframe reloads and React commits. |
+| `pose`, `trajectory` | One SDF pose or trajectory frame per action. |
+| `spin` | Frame intervals while the large CIF spins. |
+
+`--large-dir` names a directory with `moses_10k.smi`, `moses_10k.sdf` and
+`4UG0.cif`; journeys without their files are skipped. The script waits until the
+keyboard and mouse have been idle before the app takes focus, hands focus back
+as soon as the window shows, and quits only the build it launched. It prints the
+journeys over the budgets below, and with `--compare` it exits with status 1
+when a p95 rises beyond run-to-run noise. A timeout always fails. `--enforce-budgets` also fails on absolute budgets. The report records the executable SHA-256 and writes the raw events to `<report>.trace.jsonl`.
+
+`renderedStatusMs` is the viewer progress notification, not an OS screenshot or
+proof of a displayed frame. `readyMs` ends at the viewer ready handshake;
+`visibleMs` only describes the iframe becoming visible. Do not interchange them.
+The runner refuses production bundles and existing sessions, and terminates
+only processes launched with its own agent session.
+
 ## Performance Budgets
 
 Use these budgets as guardrails for future changes:
@@ -207,6 +266,13 @@ Use these budgets as guardrails for future changes:
 - Quick Look smoke remains separate from desktop launch smoke.
 - Preview runtime changes should preserve `manifest.json` and
   `preview-trace.jsonl` diagnostics.
+- No IPC handler or other main-thread work holds the main thread for 100 ms or
+  longer during launch, a tab switch or a pose step.
+- A warm tab switch shows its viewer within 100 ms, with no blank frame and no
+  iframe reload.
+- A pose or trajectory step takes 100 ms or less.
+- While a large structure spins, the p95 frame interval stays within 21 ms on a
+  60 Hz display.
 
 ## Do Not Regress
 

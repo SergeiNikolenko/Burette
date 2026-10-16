@@ -50,6 +50,7 @@ bun scripts/check-vendor-assets.mjs
 | `BURETTE_DEV_DEFAULT_FILES` | Opens a controlled set of default files in browser-dev. |
 | `BURETTE_AGENT_SHELL_SESSION_DIR` | Points browser-dev shell sessions at the observe/action directory used by the agent CLI. |
 | `BURETTE_APP_PATH` | Points agent or perf commands at a specific installed app bundle. |
+| `BURETTE_TAURI_DEVTOOLS=1` | Builds a local `BURETTE_DEV_FLAVOR` app with the Tauri `devtools` feature, so Safari Web Inspector can attach to its webviews. `scripts/build.sh` refuses it for other builds. |
 | `BURETTE_DESCRIPTOR_RUNTIME_DIR` | Uses a prepared descriptor runtime directory in browser-dev. |
 | `BURETTE_MSBUDDY_RUNTIME_DIR` | Uses a prepared MSBuddy runtime directory in browser-dev. |
 
@@ -116,6 +117,10 @@ tracked files, examples, logs, or diagnostics bundles.
 | `BURETTE_PERF_RUN_QUICKLOOK` | Enables or skips Quick Look performance checks. |
 | `BURETTE_PERF_RUN_GRID_FTS` | Enables or skips grid full-text-search checks. |
 | `BURETTE_PERF_PDB`, `BURETTE_PERF_SDF`, `BURETTE_PERF_QUICKLOOK_FILE` | Sample files used by performance smoke checks. |
+| `BURETTE_PERF_RUN_JOURNEYS=1` | Routes `perf-smoke.sh` to the packaged journey runner with strict budgets; uses `BURETTE_PERF_RUNS` (default 10) and optional `BURETTE_PERF_COMPARE`. |
+| `BURETTE_PERF_TRACE=1` | App environment: records every IPC call, main-queue lateness and the shell's journey marks in `PerfTrace.jsonl`. `scripts/perf-journeys.mjs` sets it on the app it launches. |
+| `BURETTE_PERF_APP` | App bundle for `scripts/perf-journeys.mjs`; defaults to `build/Burette-$BURETTE_DEV_FLAVOR.app`, with flavor `perf`. |
+| `BURETTE_PERF_LARGE_DIR` | Directory with the large journey files (`moses_10k.smi`, `moses_10k.sdf`, `4UG0.cif`) for `scripts/perf-journeys.mjs`. |
 
 These variables are for CI and focused local validation. Do not commit generated
 reports unless a maintainer asks for that artifact.
