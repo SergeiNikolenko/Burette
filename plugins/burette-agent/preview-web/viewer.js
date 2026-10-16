@@ -723,6 +723,11 @@
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
       return { ok: true, result: { text: window.BuretteSceneFiles.sequence(activeMolstarViewer()) } };
     }
+    if (type === 'scene_source_paths') {
+      if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+      const paths = Array.isArray(action.paths) ? action.paths.filter(path => typeof path === 'string').slice(0, 200) : [];
+      return { ok: true, result: { paths: window.BuretteSceneFiles.livePaths(activeMolstarViewer(), paths) } };
+    }
     if (type === 'append_scene_files') {
       if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
       const appended = await window.BuretteSceneFiles.append(activeMolstarViewer(), action, {

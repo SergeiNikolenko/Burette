@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
+import { journalAction } from "./action-journal";
 import { isTauriRuntime } from "./tauri";
 import type {
   ConformerPreparedRun,
@@ -38,6 +39,10 @@ export async function prepareConformerRequest(request: ConformerRunRequest): Pro
 }
 
 export async function runConformerRequest(request: ConformerRunRequest): Promise<ConformerRunResult> {
+  journalAction("job", `conformer:request:${request.operation}`, {
+    target: request.title,
+    detail: { id: request.jobId, path: request.path, workDir: request.workDir, inlineInput: Boolean(request.inputDataBase64) },
+  });
   if (isTauriRuntime()) return invoke<ConformerRunResult>("run_conformer_job", { request });
   return browserDevConformerJson<ConformerRunResult>("/__burette/run-conformer-job", request);
 }
@@ -55,6 +60,10 @@ export async function installXtbRequest(): Promise<XtbStatus> {
 }
 
 export async function runXtbRequest(request: XtbRunRequest): Promise<XtbRunResult> {
+  journalAction("job", `xtb:request:${request.operation}`, {
+    target: request.label ?? undefined,
+    detail: { id: request.jobId, inputPath: request.inputPath, sourcePath: request.sourcePath, inlineInput: Boolean(request.inputText) },
+  });
   if (isTauriRuntime()) return invoke<XtbRunResult>("run_xtb_job", { request });
   return browserDevXtbJson<XtbRunResult>("/__burette/run-xtb-job", {
     method: "POST",

@@ -49,7 +49,11 @@ const EXCHANGE_FD_ENV: &str = "BURETTE_COMPUTE_EXCHANGE_FD";
 const CHILD_EXCHANGE_FD: RawFd = 3;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const KERNEL_REQUEST_TIMEOUT: Duration = Duration::from_secs(300);
-const CONFORMER_KERNEL_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+// A single conformer kernel call that stalls this long is treated as hung. The
+// whole job shares KERNEL_REQUEST_TIMEOUT, because one distanceGeometry stage
+// chains distance, ETK, MMFF and stereo-retry calls and large ensembles need
+// well over 30 seconds in total.
+const CONFORMER_KERNEL_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const GRAPH_INPUT_MAGIC: &[u8; 4] = b"BTG1";
 const GRAPH_OUTPUT_MAGIC: &[u8; 4] = b"BTO1";
 const GRAPH_INPUT_HEADER_BYTES: u64 = 44;
@@ -307,13 +311,14 @@ fn conformer_request_timeout(
 ) -> Result<Duration, String> {
     started_at.retain(|existing_job_id, started| {
         *existing_job_id == job_id
-            || now.saturating_duration_since(*started) < CONFORMER_KERNEL_REQUEST_TIMEOUT
+            || now.saturating_duration_since(*started) < KERNEL_REQUEST_TIMEOUT
     });
     let started = *started_at.entry(job_id).or_insert(now);
-    CONFORMER_KERNEL_REQUEST_TIMEOUT
+    KERNEL_REQUEST_TIMEOUT
         .checked_sub(now.saturating_duration_since(started))
         .filter(|remaining| !remaining.is_zero())
-        .ok_or_else(|| "interactive conformer compute exceeded its 30 second deadline".to_string())
+        .map(|remaining| remaining.min(CONFORMER_KERNEL_REQUEST_TIMEOUT))
+        .ok_or_else(|| "conformer compute exceeded its 5 minute deadline".to_string())
 }
 
 impl ComputeServiceConnection {
@@ -2038,15 +2043,22 @@ mod tests {
             conformer_request_timeout(&mut deadlines, job_id, started).expect("initial deadline"),
             CONFORMER_KERNEL_REQUEST_TIMEOUT
         );
+        // Large ensembles keep running past the per-call stall limit as long
+        // as each call returns, until the shared job budget runs out.
         assert_eq!(
-            conformer_request_timeout(&mut deadlines, job_id, started + Duration::from_secs(12))
-                .expect("remaining deadline"),
-            Duration::from_secs(18)
+            conformer_request_timeout(&mut deadlines, job_id, started + Duration::from_secs(90))
+                .expect("long job keeps its per-call limit"),
+            CONFORMER_KERNEL_REQUEST_TIMEOUT
+        );
+        assert_eq!(
+            conformer_request_timeout(&mut deadlines, job_id, started + Duration::from_secs(280))
+                .expect("remaining job budget"),
+            Duration::from_secs(20)
         );
         assert!(conformer_request_timeout(
             &mut deadlines,
             job_id,
-            started + CONFORMER_KERNEL_REQUEST_TIMEOUT
+            started + KERNEL_REQUEST_TIMEOUT
         )
         .is_err());
     }

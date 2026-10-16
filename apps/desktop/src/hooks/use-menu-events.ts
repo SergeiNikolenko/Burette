@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { journalAction } from "../lib/action-journal";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import { type NativeMenuCommand, MENU_COMMAND_EVENT } from "../lib/native-menu";
 
@@ -24,6 +25,7 @@ export function useMenuEvents(options: UseMenuEventsOptions) {
         .then(async () => {
           const commands = await invoke<NativeMenuCommand[]>("drain_native_menu_commands");
           for (const command of commands) {
+            journalAction("menu", command.command, { target: command.recentPath });
             try {
               await handlersRef.current.handleNativeMenuCommand(command);
             } catch (error) {

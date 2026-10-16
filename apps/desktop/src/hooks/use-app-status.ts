@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 
 import type { StatusKind, StatusNotice } from "../components/types";
 import { toast } from "../components/ui/toast";
+import { journalAction } from "../lib/action-journal";
 import { logFrontendError } from "../lib/frontend-error-log";
 import { trackWebDemoHandledError } from "../lib/web-demo-analytics";
 
@@ -51,6 +52,7 @@ export function useAppStatus() {
     const trimmed = message.trim();
     if (!trimmed) return;
     const normalizedDetails = details.filter(Boolean);
+    journalAction("status", kind, { target: trimmed, detail: normalizedDetails.length > 0 ? normalizedDetails.slice(0, 4) : undefined });
     if (kind === "error") {
       recentErrorsRef.current.push({
         message: trimmed.slice(0, 1024),

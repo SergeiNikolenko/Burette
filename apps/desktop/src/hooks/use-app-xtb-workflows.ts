@@ -9,10 +9,12 @@ import { directChemistryJobGuardMessage } from "../lib/direct-chemistry-guard";
 import type { DockArea, DockTabKind } from "../lib/dock";
 import { structureExtensionFromPath } from "../lib/file-routing";
 import { molstarContextEntryExtension } from "../lib/molstar-context";
+import { computeHost } from "../lib/remote-jobs";
 import { basename } from "../lib/sidebar-projects";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import { readStructureText } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
+import { useMoleculeStore } from "../stores/molecule-store";
 import type {
   ViewerDocument,
   ViewerPreferences,
@@ -140,6 +142,14 @@ export function useAppXtbWorkflows({
     result: XtbRunResult,
   ) => {
     const sourceTitle = sourceDocument?.title ?? (sourcePath ? basename(sourcePath) : "structure");
+    // Jobs run for minutes. If the user has moved to another tab meanwhile,
+    // the result gets its own tab instead of replacing what they are viewing.
+    const show = (document: ViewerDocument) => {
+      const store = useMoleculeStore.getState();
+      if (!sourceDocument || store.activeDocumentId === sourceDocument.id) openDocumentsInActiveTab([document]);
+      else store.addDocuments([document]);
+      rememberRecentStructures([document]);
+    };
     const trajectoryArtifact = result.artifacts.find((artifact) => artifact.title === "xtbopt.log");
     if (trajectoryArtifact) {
       const trajectoryText = await readStructureText(trajectoryArtifact.path);
@@ -165,10 +175,8 @@ export function useAppXtbWorkflows({
               molstarPreferences,
               reloadOptions,
             );
-        const documentWithSource = sourcePath ? { ...document, sourcePath } : document;
-        openDocumentsInActiveTab([documentWithSource]);
-        rememberRecentStructures([documentWithSource]);
-        pushStatus("Opened xTB optimization trajectory in the current 3D view", "success");
+        show(sourcePath ? { ...document, sourcePath } : document);
+        pushStatus("Opened xTB optimization trajectory", "success");
         return;
       }
     }
@@ -186,10 +194,8 @@ export function useAppXtbWorkflows({
         preferences: molstarPreferences,
         reloadOptions: {},
       });
-      const documentWithSource = { ...document, sourcePath };
-      openDocumentsInActiveTab([documentWithSource]);
-      rememberRecentStructures([documentWithSource]);
-      pushStatus("Opened xTB optimized pose in the current 3D view", "success");
+      show({ ...document, sourcePath });
+      pushStatus("Opened xTB optimized pose", "success");
       return;
     }
     const sourceText = await readStructureText(sourcePath);
@@ -211,9 +217,8 @@ export function useAppXtbWorkflows({
       ],
       context: { scope: "xtb-optimization" },
     }, molstarPreferences);
-    openDocumentsInActiveTab([document]);
-    rememberRecentStructures([document]);
-    pushStatus("Opened xTB optimized pose in the current 3D view", "success");
+    show(document);
+    pushStatus("Opened xTB optimized pose", "success");
   }, [openDocumentsInActiveTab, preferences, pushStatus, rememberRecentStructures]);
 
   const runXtbJob = useCallback(async (
@@ -229,12 +234,14 @@ export function useAppXtbWorkflows({
     }
     const jobId = `xtb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const startedAt = Date.now();
+    const remoteHost = request.remoteHost === undefined ? computeHost() : request.remoteHost;
     const pendingJob: XtbJob = {
       id: jobId,
       title,
       operation: request.operation,
       status: "running",
       inputLabel,
+      host: remoteHost,
       startedAt,
       completedAt: null,
       result: null,
@@ -265,6 +272,7 @@ export function useAppXtbWorkflows({
           : xtbSettings.timeoutSeconds,
         saveRunFiles,
         ...request,
+        remoteHost,
         method,
         jobId,
       });
@@ -337,6 +345,11 @@ export function useAppXtbWorkflows({
     }
     const contextDocument = await requestMolstarXtbContextDocument(document);
     const contextInputRequest = xtbInputRequestForMolstarContextDocument(contextDocument, document.sourcePath ?? document.path);
+    // A combined scene has no single input file; its path is a virtual scene id.
+    if (!contextInputRequest && document.dockingRequest) {
+      pushStatus("Select a molecule in the scene, or choose its file under Compute.", "error");
+      return;
+    }
     const inputRequest = contextInputRequest ?? xtbInputRequestForDocument(document);
     if (!inputRequest) {
       pushStatus("This generated structure cannot be used for xTB because its source text is unavailable.", "error");

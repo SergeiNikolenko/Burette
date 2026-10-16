@@ -41,6 +41,7 @@ function write(projects: SshProject[], connections: SshConnection[]) {
 }
 function connectionSnapshot() { snapshot(); return cachedConnections; }
 export function useSshConnections() { return useSyncExternalStore(subscribe, connectionSnapshot); }
+export function isSshConnectionEnabled(host: string) { return connectionSnapshot().some(c => c.host === host && c.enabled); }
 export function saveSshConnection(connection: SshConnection) {
   const previous = connectionSnapshot().find(c => c.host === connection.host);
   write(snapshot(), [...connectionSnapshot().filter(c => c.host !== connection.host), { ...connection, color: connection.color ?? previous?.color ?? randomColor() }]);

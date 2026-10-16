@@ -1,3 +1,4 @@
+use crate::commands::ssh::remote_jobs::{self, RemoteJob, RemoteTool};
 use crate::commands::xtb_runtime::{self, XtbRuntimeSource};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -43,7 +44,7 @@ pub(crate) struct XtbStatus {
     selected_executable_path: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct XtbRunRequest {
     operation: String,
@@ -69,6 +70,9 @@ pub(crate) struct XtbRunRequest {
     md_snapshots: Option<i32>,
     timeout_seconds: Option<u64>,
     save_run_files: Option<bool>,
+    /// SSH alias to run on instead of this Mac.
+    #[serde(default)]
+    remote_host: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -142,6 +146,9 @@ pub(crate) fn cancel_xtb_job(job_id: String) -> Result<(), String> {
         .lock()
         .map_err(|_| "xTB job cancellation registry is unavailable.".to_string())?
         .insert(job_id.clone());
+    if remote_jobs::cancel(&job_id) {
+        return Ok(());
+    }
     let child = {
         let registry = running_xtb_jobs();
         let jobs = registry
@@ -179,24 +186,49 @@ fn run_xtb_job_blocking<R: Runtime>(
     };
     assert_supported_xtb_operation(&request.operation)?;
     let started_at_ms = unix_timestamp_ms();
-    let executable = xtb_runtime::resolve(&app)?.executable_path;
+    let remote_host = request
+        .remote_host
+        .clone()
+        .filter(|host| !host.trim().is_empty());
+    let executable = match &remote_host {
+        Some(host) => PathBuf::from(format!("{host}:xtb")),
+        None => xtb_runtime::resolve(&app)?.executable_path,
+    };
     let work_dir = xtb_work_dir(&app, &request)?;
     write_xtb_run_metadata(&work_dir, &request, started_at_ms)?;
     let log_path = work_dir.join("xtb.log");
-    let report_path = work_dir.join("xtb-report.md");
     let input_path = prepare_xtb_input_with_hydrogens(
         &prepare_xtb_input(&request, &work_dir)?,
         &work_dir,
         "input-with-h",
     )?;
     let command_args = build_xtb_args(&request, &input_path, &work_dir)?;
-    let timeout = Duration::from_secs(
-        request
-            .timeout_seconds
-            .unwrap_or(DEFAULT_XTB_TIMEOUT_SECONDS)
-            .clamp(1, 86_400),
-    );
+    let timeout = xtb_timeout(&request);
     let threads = request.threads.unwrap_or(0);
+
+    if let Some(host) = remote_host {
+        let args = remote_jobs::stage_args(&command_args, &work_dir)?;
+        let mut context = serde_json::to_value(&request).map_err(|err| err.to_string())?;
+        if let Some(fields) = context.as_object_mut() {
+            // The input now lives in the run folder that is uploaded with the job.
+            fields.remove("inputText");
+        }
+        let job = RemoteJob {
+            id: job_id.clone().ok_or("A remote xTB job needs a job id.")?,
+            host,
+            tool: RemoteTool::Xtb,
+            work_dir: work_dir.to_string_lossy().to_string(),
+            log_path: log_path.to_string_lossy().to_string(),
+            command: std::iter::once(executable.to_string_lossy().to_string())
+                .chain(args.iter().cloned())
+                .collect(),
+            context,
+            state: "queued".into(),
+            submitted_at: started_at_ms,
+        };
+        remote_jobs::submit(&app, &job, &args, request.threads, timeout, None)?;
+        return finish_remote_xtb_run(&app, &request, &job);
+    }
 
     let (status, log) = run_xtb_command(
         &executable,
@@ -207,16 +239,82 @@ fn run_xtb_job_blocking<R: Runtime>(
         threads,
         job_id.as_deref(),
     )?;
-    let cancelled = xtb_job_was_cancelled(job_id.as_deref());
+    let command = std::iter::once(executable.to_string_lossy().to_string())
+        .chain(command_args.iter().cloned())
+        .collect();
+    finish_xtb_run(
+        &request,
+        job_id.as_deref(),
+        &work_dir,
+        command,
+        status,
+        &log,
+        started.elapsed().as_millis(),
+    )
+}
+
+/// Reattaches to an xTB job started on an SSH host before the app restarted.
+pub(crate) fn resume_remote<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    job: RemoteJob,
+) -> Result<XtbRunResult, String> {
+    let request: XtbRunRequest =
+        serde_json::from_value(job.context.clone()).map_err(|err| err.to_string())?;
+    let _job_cleanup = XtbJobCleanup {
+        job_id: Some(job.id.clone()),
+    };
+    finish_remote_xtb_run(app, &request, &job)
+}
+
+fn finish_remote_xtb_run<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    request: &XtbRunRequest,
+    job: &RemoteJob,
+) -> Result<XtbRunResult, String> {
+    let outcome = remote_jobs::wait(app, job)?;
+    let log = fs::read_to_string(&job.log_path).unwrap_or_default();
+    finish_xtb_run(
+        request,
+        Some(&job.id),
+        Path::new(&job.work_dir),
+        job.command.clone(),
+        outcome.exit_status(),
+        &log,
+        unix_timestamp_ms().saturating_sub(job.submitted_at),
+    )
+}
+
+fn xtb_timeout(request: &XtbRunRequest) -> Duration {
+    Duration::from_secs(
+        request
+            .timeout_seconds
+            .unwrap_or(DEFAULT_XTB_TIMEOUT_SECONDS)
+            .clamp(1, 86_400),
+    )
+}
+
+/// Collects artifacts and writes the report once xTB has ended, here or on a host.
+fn finish_xtb_run(
+    request: &XtbRunRequest,
+    job_id: Option<&str>,
+    work_dir: &Path,
+    command: Vec<String>,
+    status: ExitStatus,
+    log: &str,
+    elapsed_ms: u128,
+) -> Result<XtbRunResult, String> {
+    let log_path = work_dir.join("xtb.log");
+    let report_path = work_dir.join("xtb-report.md");
+    let cancelled = xtb_job_was_cancelled(job_id);
     let artifacts = if cancelled {
         Vec::new()
     } else {
-        collect_xtb_artifacts(&work_dir)?
+        collect_xtb_artifacts(work_dir)?
     };
     let summary = if cancelled {
         None
     } else {
-        read_xtb_summary(&work_dir)
+        read_xtb_summary(work_dir)
     };
     let primary_open_path = if cancelled {
         None
@@ -231,8 +329,8 @@ fn run_xtb_job_blocking<R: Runtime>(
     } else if status.code() == Some(124) {
         Some(format!(
             "xTB timed out after {} seconds. {}",
-            timeout.as_secs(),
-            truncate_text(&log, 480)
+            xtb_timeout(request).as_secs(),
+            truncate_text(log, 480)
         ))
     } else {
         let recovery_note = if primary_open_path.is_some() {
@@ -244,17 +342,15 @@ fn run_xtb_job_blocking<R: Runtime>(
             "xTB ended {}.{} {}",
             xtb_exit_status_text(status),
             recovery_note,
-            truncate_text(&log, 480)
+            truncate_text(log, 480)
         ))
     };
     let result = XtbRunResult {
         ok,
         operation: request.operation.clone(),
-        command: std::iter::once(executable.to_string_lossy().to_string())
-            .chain(command_args.iter().cloned())
-            .collect(),
+        command,
         work_dir: work_dir.to_string_lossy().to_string(),
-        elapsed_ms: started.elapsed().as_millis(),
+        elapsed_ms,
         exit_code: status.code(),
         log_path: log_path.to_string_lossy().to_string(),
         report_path: report_path.to_string_lossy().to_string(),
@@ -263,7 +359,7 @@ fn run_xtb_job_blocking<R: Runtime>(
         summary,
         error,
     };
-    write_xtb_report(&report_path, &result, &log)?;
+    write_xtb_report(&report_path, &result, log)?;
     Ok(result)
 }
 
@@ -272,17 +368,22 @@ fn xtb_work_dir<R: Runtime>(
     request: &XtbRunRequest,
 ) -> Result<PathBuf, String> {
     if request.save_run_files.unwrap_or(true) {
-        if let Some(source_path) = request
-            .source_path
-            .as_deref()
-            .or(request.input_path.as_deref())
-        {
-            let canonical = PathBuf::from(source_path)
+        // Run folders sit next to the file the structure came from. That file
+        // may have been deleted or be a virtual scene path while the input
+        // itself is still valid, so anchor on the first file that still exists
+        // and otherwise keep the run in the cache instead of refusing it.
+        if let Some(canonical) = [
+            request.source_path.as_deref(),
+            request.input_path.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .find_map(|path| {
+            PathBuf::from(path)
                 .canonicalize()
-                .map_err(|err| format!("{source_path}: {err}"))?;
-            if !canonical.is_file() {
-                return Err(format!("{} is not a file.", canonical.display()));
-            }
+                .ok()
+                .filter(|path| path.is_file())
+        }) {
             let parent = xtb_run_parent_for_source_path(&canonical)?;
             return create_numbered_xtb_run_dir(&parent, &request.operation);
         }
@@ -1730,5 +1831,64 @@ molecular dipole:
 
         fs::remove_dir_all(&work_dir).expect("remove test work dir");
         assert_eq!(status.code(), Some(124));
+    }
+
+    /// Runs every operation the app offers through the same job path as the
+    /// UI, against the installed xtb binary. Needs xtb on this machine:
+    /// `cargo test --lib xtb_operations_smoke -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "runs the real xtb binary"]
+    fn xtb_operations_smoke() {
+        let app = tauri::test::mock_app();
+        let ethanol = "9\nethanol\nC -0.0012 1.5163 0.0000\nC 0.0021 -0.0154 0.0000\nO 1.3446 -0.4790 0.0000\nH 1.3654 -1.4482 0.0000\nH -1.0331 1.8952 0.0000\nH 0.5045 1.8996 0.8889\nH 0.5045 1.8996 -0.8889\nH -0.5064 -0.3987 0.8919\nH -0.5064 -0.3987 -0.8919\n";
+        // Runs land next to their input, so the whole smoke stays in one temp folder.
+        let root = std::env::temp_dir().join(format!("xtb-smoke-{}", unix_timestamp_ms()));
+        fs::create_dir(&root).expect("create smoke dir");
+        let input = root.join("ethanol.xyz");
+        fs::write(&input, ethanol).expect("write input");
+        let mut failures = Vec::new();
+        for operation in [
+            "optimize",
+            "properties",
+            "cube",
+            "hessian",
+            "optimized-hessian",
+            "vip",
+            "vea",
+            "vipea",
+            "vfukui",
+            "vomega",
+            "md",
+            "metadyn",
+        ] {
+            let request: XtbRunRequest = serde_json::from_value(serde_json::json!({
+                "operation": operation,
+                "inputPath": input,
+                "label": "ethanol.xyz",
+                "threads": 4,
+                "mdTimePs": 0.5,
+                "timeoutSeconds": 300,
+            }))
+            .expect("request");
+            let result = run_xtb_job_blocking(app.handle().clone(), request);
+            match &result {
+                Ok(result) => println!(
+                    "{operation}: ok={} {:.1}s primary={:?} error={:?}",
+                    result.ok,
+                    result.elapsed_ms as f64 / 1000.0,
+                    result
+                        .primary_open_path
+                        .as_deref()
+                        .map(|path| Path::new(path).file_name()),
+                    result.error
+                ),
+                Err(error) => println!("{operation}: {error}"),
+            }
+            if !result.as_ref().is_ok_and(|result| result.ok) {
+                failures.push(operation);
+            }
+        }
+        fs::remove_dir_all(&root).expect("remove smoke dir");
+        assert!(failures.is_empty(), "failed operations: {failures:?}");
     }
 }

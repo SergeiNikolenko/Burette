@@ -28,18 +28,53 @@ async function waitForSceneDocument(document: ViewerDocument, signal?: AbortSign
   throw new Error("Open the document and wait for its viewer to load.");
 }
 
+// The recorded file list only grows, but the user can delete structures in the
+// scene tree. Ask the viewer which recorded files are still on screen so a
+// removed file can be added again and a rebuild does not bring it back.
+async function liveScenePaths(document: ViewerDocument, recorded: string[]) {
+  try {
+    const result = await requestViewerAction(document.id, { type: "scene_source_paths", paths: recorded }, 1200);
+    if (Array.isArray(result.paths)) return result.paths.filter((path): path is string => typeof path === "string");
+  } catch { /* A viewer that is not loaded keeps the recorded list. */ }
+  return recorded;
+}
+
+export type SceneFileState = "available" | "removed" | "deleted";
+
+export function recordedScenePaths(document: ViewerDocument) {
+  return document.sceneSourcePaths ?? (document.dockingRequest
+    ? [document.dockingRequest.receptorPath, ...document.dockingRequest.ligandPaths] : [document.path]);
+}
+
+// Which source files of a scene can still be computed on: removed from the
+// scene tree and deleted from disk files are listed so the user sees why.
+export async function sceneFileStates(document: ViewerDocument) {
+  const recorded = [...new Set(recordedScenePaths(document))];
+  const live = new Set(await liveScenePaths(document, recorded));
+  const onDisk = isTauriRuntime()
+    ? new Set(await invoke<string[]>("existing_paths", { paths: recorded }).catch(() => recorded))
+    : new Set(recorded);
+  return recorded.map(path => ({
+    path,
+    state: (!onDisk.has(path) ? "deleted" : live.has(path) ? "available" : "removed") as SceneFileState,
+  }));
+}
+
 // Structure files join as a real comparison scene, the same one "Open → Together"
 // builds, so the pose picker and alignment (toolbar and right click) cover them.
 // Loading them straight into Mol* would leave both unaware of the new structures.
-function structureScenePaths(document: ViewerDocument, payload: StructureDragPayload) {
+async function structureScenePaths(document: ViewerDocument, payload: StructureDragPayload) {
   if (payload.records.length || !payload.paths.length) return null;
   const request = document.dockingRequest;
   if (request ? !request.sceneMode : document.virtual) return null;
-  const existing = request ? [request.receptorPath, ...request.ligandPaths] : [document.path];
+  const recorded = request ? [request.receptorPath, ...request.ligandPaths] : [document.path];
+  if (![...recorded, ...payload.paths].every(isStructureComparisonSource)) return null;
+  let existing = await liveScenePaths(document, recorded);
+  // The rebuild rereads every file, so files deleted from disk drop out too.
+  if (isTauriRuntime() && existing.length) existing = await invoke<string[]>("existing_paths", { paths: existing }).catch(() => existing);
   const paths = [...existing, ...payload.paths];
-  if (!paths.every(isStructureComparisonSource)) return null;
   if (new Set(paths).size !== paths.length) throw new Error("A selected file is already in this scene.");
-  return paths;
+  return paths.length > 1 ? paths : null;
 }
 
 async function rebuildStructureScene(document: ViewerDocument, paths: string[], added: number) {
@@ -106,7 +141,7 @@ export async function appendScenePayload(
   const document = store.documents.find(candidate => candidate.id === documentId);
   if (!document || document.renderer !== "molstar") throw new Error("The target scene is no longer open.");
   options.signal?.throwIfAborted();
-  const scenePaths = preserveScene || options.incremental || document.sceneSourcePaths ? null : structureScenePaths(document, payload);
+  const scenePaths = preserveScene || options.incremental || document.sceneSourcePaths ? null : await structureScenePaths(document, payload);
   if (scenePaths) return rebuildStructureScene(document, scenePaths, payload.paths.length);
   const sources = payload.records.map(record => ({
     path: record.path, label: record.path.split('/').pop(), format: record.inputExtension, data: record.text,
@@ -130,8 +165,7 @@ export async function appendScenePayload(
   options.signal?.throwIfAborted();
   const current = useMoleculeStore.getState().documents.find(candidate => candidate.id === document.id);
   if (!current) throw new Error("The target scene is no longer open.");
-  const existingPaths = current.sceneSourcePaths ?? (current.dockingRequest
-    ? [current.dockingRequest.receptorPath, ...current.dockingRequest.ligandPaths] : [current.path]);
+  const existingPaths = await liveScenePaths(current, recordedScenePaths(current));
   if (!preserveScene && sources.some(source => existingPaths.includes(source.path))) throw new Error("A selected file is already in this scene.");
   const added = sources.filter(source => !existingPaths.includes(source.path)).map(source => source.path);
   if (existingPaths.length + added.length > 200) throw new Error("A scene supports up to 200 source files.");
