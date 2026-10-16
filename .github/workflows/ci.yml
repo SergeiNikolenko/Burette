@@ -26,18 +26,35 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          base=""
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             git fetch --quiet origin "${{ github.base_ref }}"
-            changed="$(git diff --name-only "origin/${{ github.base_ref }}"...HEAD)"
+            base="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"
+            changed="$(git diff --name-only "$base" HEAD)"
           else
             before="${{ github.event.before }}"
             if [[ -z "$before" || "$before" == "0000000000000000000000000000000000000000" ]] \
               || ! git cat-file -e "$before^{commit}" 2>/dev/null; then
               changed="$(git ls-tree -r --name-only HEAD)"
             else
+              base="$before"
               changed="$(git diff --name-only "$before" HEAD)"
             fi
           fi
+
+          base_version=""
+          head_version="$(jq -r .version package.json)"
+          [[ -z "$base" ]] || base_version="$(git show "$base:package.json" | jq -r .version)"
+          # Every PR bumps the release version in package.json, bun.lock, the
+          # Cargo manifests, tauri.conf.json and the Xcode project. A file that
+          # only differs by that version string does not need a native build.
+          version_only() {
+            [[ -n "$base_version" && "$base_version" != "$head_version" ]] || return 1
+            local before after
+            before="$(git show "$base:$1" 2>/dev/null)" || return 1
+            after="$(git show "HEAD:$1" 2>/dev/null)" || return 1
+            [[ "${after//"$head_version"/"$base_version"}" == "$before" ]]
+          }
 
           native=false
           while IFS= read -r path; do
@@ -45,7 +62,7 @@ jobs:
               PreviewExtension/Web/*)
                 ;;
               App/*|PreviewExtension/*|Burette.xcodeproj/*|apps/desktop/src-tauri/*|scripts/build*.sh|scripts/install*.sh|scripts/ci.sh|package.json|bun.lock)
-                native=true
+                version_only "$path" || native=true
                 ;;
             esac
           done <<< "$changed"
