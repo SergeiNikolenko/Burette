@@ -32,6 +32,8 @@ For an explicitly requested Browser/desktop workflow, prefer these short tools b
 - `burette.observe_workspace`: refresh compact model context for a session.
 - `burette.control_viewer`: run one allowlisted viewer action against the
   session and receive refreshed model context.
+- `burette.capture_view`: render the active Mol* view to an image file and
+  receive the image itself for inspection.
 - `burette.control_ketcher`: apply one revision-checked Ketcher action to the
   active chemical editor.
 - `burette.render_panel`: render markdown, table, or chart content into a
@@ -65,12 +67,19 @@ that was opened before this contract existed.
    `workspaceSessionId` and a serializable Burette action such as
    `reset_camera`, `focus_ligand`, `select_residues`, `apply_scene`, or
    `set_molstar_style`.
-6. For chemical editing, call `burette.open_ketcher`, then observe the returned
+6. To see the result, or when the user asks for a picture, frame, or
+   screenshot, call `burette.capture_view` with the same `workspaceSessionId`.
+   Pass `width`/`height` together for an exact frame, `autoCrop: true` to trim
+   empty background, `transparent: true` for alpha, and `outputPath` when the
+   user wants the file in a specific place. Look at the returned image before
+   describing the view, and hand back `result.path`. Do not capture the screen,
+   a Browser tab, or the Mol* canvas through other tools for this.
+7. For chemical editing, call `burette.open_ketcher`, then observe the returned
    `modelContext.activeSurface` and `modelContext.chemicalEditor`. Send
    `burette.control_ketcher` actions with the returned `surfaceId` and
    `structureRevision` as `expectedRevision`. Refresh the observation after
    every mutation; never reuse a revision after a conflict or tab switch.
-7. For adjacent notes or review panels, call `burette.render_panel`.
+8. For adjacent notes or review panels, call `burette.render_panel`.
 
 ## Handoff
 

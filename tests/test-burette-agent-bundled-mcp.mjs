@@ -122,6 +122,7 @@ try {
     "burette.open_workspace",
     "burette.observe_workspace",
     "burette.control_viewer",
+    "burette.capture_view",
     "burette.get_mvs_authoring_reference",
     "burette.list_story_templates",
     "burette.create_story_from_template",

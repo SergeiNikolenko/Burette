@@ -474,6 +474,54 @@ try {
     assert.equal(boundedHistory.actions.length, 128);
     assert.equal(boundedHistory.actions[0].id, 'completed-13');
     assert.equal(boundedHistory.actions.at(-1).status, 'queued');
+
+    // capture queues a screenshot, writes the returned image and drops the data
+    // URI from actions.json once the file exists.
+    const invalidCapture = runCli(['capture', '--session-dir', sessionDir, '--width', '800']);
+    assert.equal(invalidCapture.status, 2);
+    assert.equal(JSON.parse(invalidCapture.stderr).error.code, 'INVALID_ARGS');
+    const pngBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/eL9GtQAAAABJRU5ErkJggg==';
+    const capturePath = resolve(sessionDir, 'view.png');
+    const captureChild = spawn(process.execPath, ['scripts/burette-agent.mjs', 'capture', '--session-dir', sessionDir, '--output', capturePath, '--width', '800', '--height', '600', '--wait-ms', '10000'], {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let captureStdout = '';
+    let captureStderr = '';
+    captureChild.stdout.on('data', chunk => { captureStdout += chunk; });
+    captureChild.stderr.on('data', chunk => { captureStderr += chunk; });
+    const captureExit = new Promise(resolveExit => captureChild.on('exit', resolveExit));
+    let queuedCapture = null;
+    for (let attempt = 0; attempt < 100 && !queuedCapture; attempt += 1) {
+      await new Promise(resolveWait => setTimeout(resolveWait, 50));
+      const current = JSON.parse(await readFile(resolve(sessionDir, 'actions.json'), 'utf8'));
+      queuedCapture = current.actions.find(item => item.action?.type === 'screenshot');
+      if (queuedCapture) {
+        assert.deepEqual(queuedCapture.action.args, { format: 'png', width: 800, height: 600 });
+        Object.assign(queuedCapture, {
+          status: 'completed',
+          completedAt: new Date().toISOString(),
+          result: { ok: true, command: 'screenshot', result: { dataUri: `data:image/png;base64,${pngBase64}`, mimeType: 'image/png', width: 1, height: 1 } },
+        });
+        await writeFile(resolve(sessionDir, 'actions.json'), JSON.stringify(current));
+      }
+    }
+    assert.equal(await captureExit, 0, captureStderr);
+    assert.deepEqual(JSON.parse(captureStdout).result, {
+      path: capturePath,
+      mimeType: 'image/png',
+      byteCount: Buffer.from(pngBase64, 'base64').length,
+      width: 1,
+      height: 1,
+      transparent: false,
+      actionId: queuedCapture.id,
+    });
+    assert.equal((await readFile(capturePath)).toString('base64'), pngBase64);
+    const capturedActions = JSON.parse(await readFile(resolve(sessionDir, 'actions.json'), 'utf8'));
+    assert.deepEqual(capturedActions.actions.find(item => item.id === queuedCapture.id).result.result, { mimeType: 'image/png', width: 1, height: 1, path: capturePath });
+    const existingCapture = runCli(['capture', '--session-dir', sessionDir, '--output', capturePath]);
+    assert.equal(existingCapture.status, 2);
+    assert.equal(JSON.parse(existingCapture.stderr).error.code, 'OUTPUT_EXISTS');
+
   } finally {
     await rm(sessionDir, { recursive: true, force: true });
   }

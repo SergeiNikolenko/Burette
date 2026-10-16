@@ -23,7 +23,9 @@ Use this workflow for scene operations:
 - load a complete MolViewSpec scene payload when the agent already has one;
 - translate user requests into MolViewSpec-informed selectors, components,
   representations, color, opacity, labels, camera, focus, and canvas concepts;
-- export image or screenshot when supported.
+- export an image of the configured scene with `burette.capture_view` or
+  `scripts/burette-agent.mjs capture`, which write the file and let the agent
+  inspect the frame.
 
 For multi-step narratives, tours, presentations, or explanations, route to
 [mvs-story](../mvs-story/SKILL.md). `load_mvs` loads a complete payload, while

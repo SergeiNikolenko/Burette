@@ -664,6 +664,11 @@
           });
         } else if (args.autoCrop != null) {
           helper.behaviors?.cropParams?.next({ ...previousCropParams, auto: args.autoCrop === true });
+          // getImageDataUri only applies the stored crop; Mol* computes the auto
+          // crop while rendering a preview, which its screenshot UI normally does.
+          if (args.autoCrop === true && typeof helper.getPreview === 'function') {
+            await helper.getPreview({ isSynchronous: true, shouldUpdate: false, update: async () => {} }, 640);
+          }
         }
         dataUri = await helper.getImageDataUri();
         size = typeof helper.getSizeAndViewport === 'function' ? helper.getSizeAndViewport().viewport : null;
