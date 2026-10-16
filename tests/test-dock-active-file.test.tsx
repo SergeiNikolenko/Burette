@@ -12,6 +12,7 @@ import type { ShellActions, ShellViewState } from "../apps/desktop/src/component
 import type { ViewerDocument, TextFileDocument } from "../apps/desktop/src/types";
 const { renderToStaticMarkup } = await import("react-dom/server");
 const { DockPanel } = await import("../apps/desktop/src/components/dock-panel");
+const { createRoot } = await import("react-dom/client");
 
 const molecule = (id: string) => ({ id, title: `${id}.sdf`, path: `/${id}.sdf`, extension: "sdf", renderer: "molstar", runtimePath: "<html></html>", byteCount: 10 }) as ViewerDocument;
 const a = molecule("a"), b = molecule("b");
@@ -28,6 +29,57 @@ function render(patch: Partial<ShellViewState> = {}) {
   shell.innerHTML = renderToStaticMarkup(<DockPanel area="right" state={{ ...state, ...patch }} actions={{} as ShellActions} />);
   return shell;
 }
+
+test("closed following docks do no file reads; opening Text loads the current file", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const reads: Array<[string, string]> = [];
+  const internals = {
+    convertFileSrc: (path: string) => path,
+    invoke: async (command: string, args: { path: string }) => {
+      reads.push([command, args.path]);
+      return command === "read_folding_result_bundle"
+        ? { models: [], artifacts: [] }
+        : { path: args.path, content: "structure source", byteCount: 16 };
+    },
+  };
+  const actions = { setStructureDragActive: () => {} } as unknown as ShellActions;
+  Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: internals });
+  const draw = async (open: boolean, activeDocument: ViewerDocument) => {
+    await act(async () => root.render(<>
+      <DockPanel area="right" state={{ ...state, activeDocument, rightDockOpen: open,
+        rightDockActiveTab: open ? "text" : "inspector", rightDockTabs: [{ id: "info", kind: "inspector" }, { id: "text", kind: "text" }],
+      }} actions={actions} />
+      <DockPanel area="bottom" state={{ ...state, activeDocument, bottomDockOpen: open,
+        bottomDockActiveTab: "compare", bottomDockTabs: [{ id: "compare", kind: "compare" }],
+      }} actions={actions} />
+    </>));
+  };
+  try {
+    await draw(false, a);
+    await draw(false, b);
+    expect(reads).toEqual([]);
+    await draw(true, b);
+    expect(reads).toContainEqual(["read_text_file", b.path]);
+    expect(reads).toContainEqual(["read_folding_result_bundle", b.path]);
+    expect(host.textContent).toContain("structure source");
+    const textPanel = host.querySelector(".text-file-stage");
+    expect(textPanel).not.toBeNull();
+    reads.length = 0;
+    await draw(false, b);
+    await draw(false, a);
+    expect(reads).toEqual([]);
+    expect(host.querySelector(".text-file-stage")).toBe(textPanel);
+    await draw(true, b);
+    expect(host.querySelector(".text-file-stage")).toBe(textPanel);
+    expect(reads.filter(([command]) => command === "read_text_file")).toEqual([]);
+  } finally {
+    await act(async () => root.unmount());
+    Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
+    host.remove();
+  }
+});
 
 test("Files follows the active structure, while an explicit pin keeps its read-only preview", () => {
   for (const [patch, expected] of [[{}, "a"], [{ activeDocument: b }, "b"], [{ rightDockDocumentId: "a", activeDocument: b }, "a"]] as const) {
