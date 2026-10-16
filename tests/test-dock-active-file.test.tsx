@@ -1,9 +1,9 @@
-import { expect, test } from "bun:test";
+import { expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
 import React, { act } from "react";
 
 const browser = new Window();
-for (const key of ["window", "document", "navigator", "HTMLElement", "HTMLInputElement", "HTMLFormElement", "Element", "Node", "NodeFilter", "Event", "MouseEvent", "MutationObserver", "ResizeObserver", "getComputedStyle", "localStorage", "DOMRect", "CustomEvent", "KeyboardEvent", "PointerEvent", "FocusEvent", "requestAnimationFrame", "cancelAnimationFrame"] as const) {
+for (const key of ["window", "document", "navigator", "DocumentFragment", "HTMLElement", "HTMLInputElement", "HTMLFormElement", "Element", "Node", "NodeFilter", "Event", "MessageEvent", "MouseEvent", "MutationObserver", "ResizeObserver", "getComputedStyle", "localStorage", "DOMRect", "CustomEvent", "KeyboardEvent", "PointerEvent", "FocusEvent", "requestAnimationFrame", "cancelAnimationFrame", "CSS"] as const) {
   Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
 }
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -166,4 +166,84 @@ test("shared empty panels expose the existing open action without an explanatory
     expect(mount.querySelector("button")).toBeNull();
     expect(mount.querySelector('[data-slot="empty-description"]')?.textContent).toBe("Use Export to view the sketch source.");
   } finally { await act(async () => root.unmount()); mount.remove(); }
+});
+
+test("hiding a chemical-space dock retains its running calculation until the source changes visibly", async () => {
+  const compute = { ...await import("../apps/desktop/src/lib/browser-dev-compute") };
+  const folding = { ...await import("../apps/desktop/src/lib/folding-results") };
+  const cluster = { ...await import("../apps/desktop/src/lib/compute-cluster") };
+  const bridge = { ...await import("../apps/desktop/src/lib/viewer-bridge") };
+  const signals: AbortSignal[] = [];
+  const host = document.createElement("div");
+  const grid = document.createElement("iframe");
+  document.body.append(host, grid);
+  const root = createRoot(host);
+  const gridWindow = grid.contentWindow!;
+  Object.defineProperty(gridWindow, "postMessage", { value: (payload: { body: Record<string, unknown> }) => {
+    const request = payload.body;
+    let body: Record<string, unknown> | undefined;
+    if (request.type === "chemicalSpaceRequestIndexState") {
+      body = { ...request, type: "chemicalSpaceIndexState", recordsIndexed: 2, recordsTotal: 2, indexReady: true };
+    } else if (request.type === "chemicalSpaceRequestColumns") {
+      body = { ...request, type: "chemicalSpaceColumns", columns: [] };
+    } else if (request.type === "chemicalSpaceRequestRecords") {
+      body = { ...request, type: "chemicalSpaceRecords", records: [
+        { sourceRecordId: 0, moleculeContentSha256: "first", format: "smiles", input: "C" },
+        { sourceRecordId: 1, moleculeContentSha256: "second", format: "smiles", input: "CC" },
+      ] };
+    }
+    if (body) queueMicrotask(() => window.dispatchEvent(new MessageEvent("message", {
+      data: { source: "burette-grid", body }, source: gridWindow as unknown as Window,
+    })));
+  } });
+  mock.module("../apps/desktop/src/lib/browser-dev-compute", () => ({ ...compute,
+    runBrowserDevChemicalSpace: async (_records: unknown, _options: unknown, _progress: unknown, signal: AbortSignal) => {
+      signals.push(signal);
+      return new Promise(() => {});
+    },
+  }));
+  mock.module("../apps/desktop/src/lib/folding-results", () => ({ ...folding,
+    readFoldingResultBundle: async () => ({ rootPath: "/fixture", models: [], artifacts: [], warnings: [] }),
+  }));
+  mock.module("../apps/desktop/src/lib/compute-cluster", () => ({ ...cluster,
+    fetchChemicalSpaceModelRuntimeStatus: async () => ({ installed: false }),
+  }));
+  mock.module("../apps/desktop/src/lib/viewer-bridge", () => ({ ...bridge,
+    activeViewerIframeForDocument: () => grid,
+    isKnownViewerMessageSource: (source: MessageEventSource | null) => source === gridWindow,
+  }));
+  const first = { ...a, id: "map-first", extension: "csv", renderer: "grid2d", runtimePath: "first.html" } as ViewerDocument;
+  const second = { ...first, id: "map-second", runtimePath: "second.html" };
+  const actions = { setStructureDragActive: () => {} } as unknown as ShellActions;
+  const draw = (open: boolean, activeDocument = first) => act(async () => root.render(<DockPanel area="bottom" state={{
+    ...state, documents: [first, second], activeDocument, bottomDockOpen: open,
+    bottomDockActiveTab: "chemical-space", bottomDockTabs: [{ id: "map", kind: "chemical-space" }],
+  }} actions={actions} />));
+  const waitForStarts = async (count: number) => {
+    for (let attempt = 0; signals.length < count && attempt < 50; attempt++) {
+      await act(async () => { await new Promise(done => setTimeout(done, 10)); });
+    }
+    expect(signals.length).toBe(count);
+  };
+  try {
+    await draw(false);
+    expect(signals).toEqual([]);
+    await draw(true);
+    await waitForStarts(1);
+    await draw(false);
+    await draw(true);
+    expect(signals.map(signal => signal.aborted)).toEqual([false]);
+    await draw(false, second);
+    expect(signals.map(signal => signal.aborted)).toEqual([false]);
+    await draw(true, second);
+    await waitForStarts(2);
+    expect(signals.map(signal => signal.aborted)).toEqual([true, false]);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove(); grid.remove();
+    mock.module("../apps/desktop/src/lib/browser-dev-compute", () => compute);
+    mock.module("../apps/desktop/src/lib/folding-results", () => folding);
+    mock.module("../apps/desktop/src/lib/compute-cluster", () => cluster);
+    mock.module("../apps/desktop/src/lib/viewer-bridge", () => bridge);
+  }
 });
