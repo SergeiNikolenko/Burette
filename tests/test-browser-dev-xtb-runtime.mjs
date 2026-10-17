@@ -29,72 +29,86 @@ if (childMode) {
 
   const runtime = await import("../apps/desktop/vite/browser-dev/xtb-runtime.ts");
   const installer = runtime.browserDevManagedInstallerName();
-  const resolution = await runtime.installBrowserDevManagedXtb();
-  console.log(JSON.stringify({ installer, resolution, runtimeRoot: runtime.browserDevXtbRuntimeRoot() }));
+  try {
+    const resolution = process.env.BURETTE_XTB_TEST_RESOLVE === "1"
+      ? runtime.resolveBrowserDevXtb() : await runtime.installBrowserDevManagedXtb();
+    console.log(JSON.stringify({ installer, resolution, runtimeRoot: runtime.browserDevXtbRuntimeRoot() }));
+  } catch (error) {
+    console.log(JSON.stringify({ installer, error: error.message }));
+  }
 } else {
   const root = await mkdtemp(join(tmpdir(), "burette-browser-xtb-"));
   const conda = join(root, "miniconda3", "bin", "conda");
   const argumentsLog = join(root, "conda-arguments.txt");
   await mkdir(dirname(conda), { recursive: true });
   await writeFile(conda, `#!/bin/sh
-set -eu
 printf '%s\\n' "$@" > "$BURETTE_XTB_TEST_ARGUMENTS_LOG"
-prefix=''
-while [ "$#" -gt 0 ]; do
-  if [ "$1" = '--prefix' ]; then
-    shift
-    prefix="$1"
-  fi
-  shift
-done
-test -n "$prefix"
-mkdir -p "$prefix/bin"
-printf '%s\\n' '#!/bin/sh' "echo 'xTB version 6.7.1'" > "$prefix/bin/xtb"
-chmod +x "$prefix/bin/xtb"
+exit 99
 `, "utf8");
   await chmod(conda, 0o755);
 
   try {
-    const child = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        BURETTE_XTB_TEST_ARGUMENTS_LOG: argumentsLog,
-        BURETTE_XTB_TEST_CHILD: "1",
-        CONDA_EXE: conda,
-        HOME: root,
-        PATH: "/usr/bin:/bin",
-      },
-    });
-    assert.equal(child.status, 0, child.stderr || child.stdout || "browser-dev xTB child failed");
-    const output = JSON.parse(child.stdout.trim().split("\n").at(-1));
-    const runtimeRoot = join(root, "Library", "Application Support", "Burette", "browser-dev", "runtimes", "xtb");
+    function runChild(extra = {}) {
+      const child = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          BURETTE_XTB_TEST_ARGUMENTS_LOG: argumentsLog,
+          BURETTE_XTB_TEST_CHILD: "1",
+          CONDA_EXE: conda,
+          CONDA_PREFIX: join(root, "miniconda3"),
+          BURETTE_XTB_EXECUTABLE: "",
+          HOME: root,
+          PATH: "/usr/bin:/bin",
+          ...extra,
+        },
+      });
+      assert.equal(child.status, 0, child.stderr || child.stdout || "browser-dev xTB child failed");
+      return JSON.parse(child.stdout.trim().split("\n").at(-1));
+    }
+    const rejected = runChild();
+    assert.equal(rejected.installer, null);
+    assert.match(rejected.error, /requires Pixi/);
+    assert.equal(realFs.existsSync(argumentsLog), false, "unlocked Conda must not execute");
 
-    assert.equal(output.installer, "conda");
+    const existing = join(root, "miniconda3", "bin", "xtb");
+    await writeFile(existing, "#!/bin/sh\necho 'xTB version 6.7.1'\n");
+    await chmod(existing, 0o755);
+    const discovered = runChild({ BURETTE_XTB_TEST_RESOLVE: "1" });
+    assert.equal(discovered.resolution.source, "conda");
+    assert.equal(discovered.resolution.executablePath, await realpath(existing));
+
+    const pixi = join(root, ".pixi", "bin", "pixi");
+    await mkdir(dirname(pixi), { recursive: true });
+    await writeFile(pixi, `#!/bin/sh
+set -eu
+printf '%s\\n' "$@" > "$BURETTE_XTB_TEST_ARGUMENTS_LOG"
+test "$1" = install
+test "$2" = --locked
+test "$3" = --manifest-path
+staging="$(dirname "$4")"
+test -s "$staging/pixi.lock"
+prefix="$staging/.pixi/envs/default"
+mkdir -p "$prefix/bin"
+printf '%s\\n' '#!/bin/sh' "echo 'xTB version 6.7.1'" > "$prefix/bin/xtb"
+chmod +x "$prefix/bin/xtb"
+`, "utf8");
+    await chmod(pixi, 0o755);
+    const output = runChild();
+    const runtimeRoot = join(root, "Library", "Application Support", "Burette", "browser-dev", "runtimes", "xtb");
+    assert.equal(output.installer, "pixi");
     assert.equal(output.runtimeRoot, runtimeRoot);
     assert.equal(output.resolution.source, "managed");
     assert.equal(output.resolution.selectedExecutablePath, null);
-    assert.equal(
-      await realpath(join(runtimeRoot, "current", ".pixi", "envs", "default", "bin", "xtb")),
-      output.resolution.executablePath,
-    );
+    assert.equal(await realpath(join(runtimeRoot, "current", ".pixi", "envs", "default", "bin", "xtb")), output.resolution.executablePath);
     assert.equal((await lstat(join(runtimeRoot, "current"))).isSymbolicLink(), true);
-
     const argumentsUsed = (await readFile(argumentsLog, "utf8")).trim().split("\n");
-    assert.deepEqual(argumentsUsed.slice(0, 6), [
-      "create",
-      "--yes",
-      "--no-default-packages",
-      "--override-channels",
-      "--channel",
-      "conda-forge",
-    ]);
-    assert.equal(argumentsUsed[6], "--prefix");
-    assert.match(argumentsUsed[7], /\/staging-[^/]+\/\.pixi\/envs\/default$/u);
-    assert.equal(argumentsUsed[8], "xtb=6.7.*");
+    assert.deepEqual(argumentsUsed.slice(0, 3), ["install", "--locked", "--manifest-path"]);
+    assert.equal(await readFile(join(dirname(argumentsUsed[3]), "pixi.lock"), "utf8"),
+      await readFile(new URL("../config/xtb/pixi.lock", import.meta.url), "utf8"));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 
-  console.log("Browser-dev xTB Conda runtime tests passed");
+  console.log("Browser-dev xTB locked installation and existing Conda discovery tests passed");
 }

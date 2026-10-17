@@ -17,7 +17,6 @@ const XTB_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const MANAGED_INSTALL_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const COMMAND_CAPTURE_BYTES: usize = 2 * 1024 * 1024;
 const INACTIVE_RUNTIME_RETENTION: Duration = Duration::from_secs(48 * 60 * 60);
-const XTB_CONDA_SPEC: &str = "xtb=6.7.*";
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -41,21 +40,6 @@ pub(crate) struct XtbRuntimeResolution {
 #[serde(rename_all = "camelCase")]
 struct XtbRuntimeConfig {
     selected_executable_path: Option<PathBuf>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum ManagedXtbInstaller {
-    Pixi(PathBuf),
-    Conda(PathBuf),
-}
-
-impl ManagedXtbInstaller {
-    fn name(&self) -> &'static str {
-        match self {
-            Self::Pixi(_) => "pixi",
-            Self::Conda(_) => "conda",
-        }
-    }
 }
 
 pub(crate) fn resolve<R: Runtime>(
@@ -108,15 +92,15 @@ pub(crate) fn install_managed<R: Runtime>(
         clear_selection_if_unchanged(&root, &config_before)?;
         return resolve_from_root(&root);
     }
-    let installer = resolve_managed_installer().ok_or_else(|| {
-        "Managed xTB installation requires Pixi or Conda. Install either package manager, or choose an existing xTB executable in Settings.".to_string()
+    let installer = resolve_pixi().ok_or_else(|| {
+        "Managed xTB installation requires Pixi to install the bundled lockfile. Install Pixi, or choose an existing xTB executable in Settings.".to_string()
     })?;
     fs::create_dir_all(&root)
         .map_err(|error| format!("Could not create {}: {error}", root.display()))?;
     let staging = root.join(format!("staging-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&staging)
         .map_err(|error| format!("Could not create {}: {error}", staging.display()))?;
-    let install_result = install_into_staging(&installer, &staging)
+    let install_result = install_with_pixi(&installer, &staging)
         .and_then(|_| promote_staged_runtime(&root, &staging));
     if install_result.is_err() {
         fs::remove_dir_all(&staging).ok();
@@ -127,7 +111,7 @@ pub(crate) fn install_managed<R: Runtime>(
 }
 
 pub(crate) fn managed_installer_name() -> Option<String> {
-    resolve_managed_installer().map(|installer| installer.name().to_string())
+    resolve_pixi().map(|_| "pixi".to_string())
 }
 
 fn clear_selection_if_unchanged(
@@ -340,50 +324,10 @@ fn resolve_pixi() -> Option<PathBuf> {
     first_absolute_executable(candidates)
 }
 
-fn resolve_conda() -> Option<PathBuf> {
-    let mut candidates = Vec::new();
-    if let Some(conda_exe) = std::env::var_os("CONDA_EXE") {
-        candidates.push(PathBuf::from(conda_exe));
-    }
-    if let Some(home) = std::env::var_os("HOME") {
-        let home = PathBuf::from(home);
-        for directory in ["miniconda3", "miniforge3", "mambaforge", "anaconda3"] {
-            candidates.push(home.join(directory).join("bin/conda"));
-            candidates.push(home.join(directory).join("bin/mamba"));
-        }
-    }
-    if let Some(path) = std::env::var_os("PATH") {
-        for directory in std::env::split_paths(&path) {
-            candidates.push(directory.join("conda"));
-            candidates.push(directory.join("mamba"));
-        }
-    }
-    candidates.extend([
-        PathBuf::from("/opt/homebrew/bin/conda"),
-        PathBuf::from("/opt/homebrew/bin/mamba"),
-        PathBuf::from("/usr/local/bin/conda"),
-        PathBuf::from("/usr/local/bin/mamba"),
-    ]);
-    first_absolute_executable(candidates)
-}
-
 fn first_absolute_executable(candidates: Vec<PathBuf>) -> Option<PathBuf> {
     candidates
         .into_iter()
         .find(|path| path.is_absolute() && is_executable_file(path))
-}
-
-fn resolve_managed_installer() -> Option<ManagedXtbInstaller> {
-    resolve_pixi()
-        .map(ManagedXtbInstaller::Pixi)
-        .or_else(|| resolve_conda().map(ManagedXtbInstaller::Conda))
-}
-
-fn install_into_staging(installer: &ManagedXtbInstaller, staging: &Path) -> Result<(), String> {
-    match installer {
-        ManagedXtbInstaller::Pixi(pixi) => install_with_pixi(pixi, staging),
-        ManagedXtbInstaller::Conda(conda) => install_with_conda(conda, staging),
-    }
 }
 
 fn install_with_pixi(pixi: &Path, staging: &Path) -> Result<(), String> {
@@ -413,46 +357,6 @@ fn install_with_pixi(pixi: &Path, staging: &Path) -> Result<(), String> {
     let executable = staging.join(".pixi/envs/default/bin/xtb");
     validate_xtb(&executable).map_err(|error| {
         format!("Pixi completed, but the managed xTB runtime failed validation: {error}")
-    })?;
-    Ok(())
-}
-
-fn install_with_conda(conda: &Path, staging: &Path) -> Result<(), String> {
-    let environment = staging.join(".pixi/envs/default");
-    fs::create_dir_all(
-        environment
-            .parent()
-            .ok_or_else(|| "The managed xTB environment has no parent directory.".to_string())?,
-    )
-    .map_err(|error| format!("Could not create the managed xTB environment directory: {error}"))?;
-    let mut command = Command::new(conda);
-    command
-        .args([
-            "create",
-            "--yes",
-            "--no-default-packages",
-            "--override-channels",
-        ])
-        .args(["--channel", "conda-forge", "--prefix"])
-        .arg(&environment)
-        .arg(XTB_CONDA_SPEC);
-    let (status, stdout, stderr) = run_bounded_command(
-        command,
-        MANAGED_INSTALL_TIMEOUT,
-        COMMAND_CAPTURE_BYTES,
-        "Conda",
-    )?;
-    if !status.success() {
-        let stderr = String::from_utf8_lossy(&stderr);
-        let stdout = String::from_utf8_lossy(&stdout);
-        return Err(format!(
-            "Managed xTB installation failed: {}",
-            truncate_output(&format!("{stderr}\n{stdout}"), 1200)
-        ));
-    }
-    let executable = environment.join("bin/xtb");
-    validate_xtb(&executable).map_err(|error| {
-        format!("Conda completed, but the managed xTB runtime failed validation: {error}")
     })?;
     Ok(())
 }
@@ -652,27 +556,24 @@ mod tests {
         fs::set_permissions(path, permissions).expect("set permissions");
     }
 
-    fn make_fake_conda(path: &Path) {
+    fn make_fake_pixi(path: &Path) {
         fs::create_dir_all(path.parent().expect("parent")).expect("create parent");
         fs::write(
             path,
             r#"#!/bin/sh
 set -eu
-prefix=''
-while [ "$#" -gt 0 ]; do
-  if [ "$1" = '--prefix' ]; then
-    shift
-    prefix="$1"
-  fi
-  shift
-done
-test -n "$prefix"
+test "$1" = install
+test "$2" = --locked
+test "$3" = --manifest-path
+staging="$(dirname "$4")"
+test -s "$staging/pixi.lock"
+prefix="$staging/.pixi/envs/default"
 mkdir -p "$prefix/bin"
 printf '%s\n' '#!/bin/sh' "echo 'xTB version 6.7.1'" > "$prefix/bin/xtb"
 chmod +x "$prefix/bin/xtb"
 "#,
         )
-        .expect("write fake conda");
+        .expect("write fake pixi");
         let mut permissions = fs::metadata(path).expect("metadata").permissions();
         permissions.set_mode(0o755);
         fs::set_permissions(path, permissions).expect("set permissions");
@@ -755,14 +656,22 @@ chmod +x "$prefix/bin/xtb"
     }
 
     #[test]
-    fn conda_fallback_installs_into_the_managed_runtime() {
+    fn pixi_installs_the_bundled_locked_runtime() {
         let root = fixture_root();
-        let conda = root.join("miniconda3/bin/conda");
+        let pixi = root.join("bin/pixi");
         let staging = root.join("staging");
-        make_fake_conda(&conda);
+        make_fake_pixi(&pixi);
         fs::create_dir_all(&staging).expect("create staging");
 
-        install_with_conda(&conda, &staging).expect("install managed xTB with Conda");
+        install_with_pixi(&pixi, &staging).expect("install managed xTB with Pixi");
+        assert_eq!(
+            fs::read_to_string(staging.join("pixi.lock")).unwrap(),
+            PIXI_LOCK
+        );
+        assert_eq!(
+            fs::read_to_string(staging.join("pixi.toml")).unwrap(),
+            PIXI_MANIFEST
+        );
 
         assert_eq!(
             validate_xtb(&staging.join(".pixi/envs/default/bin/xtb"))
