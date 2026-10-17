@@ -572,8 +572,12 @@ bun scripts/check-js-syntax.mjs \
   PreviewExtension/Web/burette-agent.js \
   PreviewExtension/Web/grid-ui.js \
   PreviewExtension/Web/grid-viewer.js >/dev/null
-clean_detritus "$ROOT"
-rm -f /tmp/Burette.log "${TMPDIR:-/tmp}/Burette.log" 2>/dev/null || true
+if [[ -z "${BURETTE_DEV_FLAVOR:-}" ]]; then
+  clean_detritus "$ROOT"
+  rm -f /tmp/Burette.log "${TMPDIR:-/tmp}/Burette.log" 2>/dev/null || true
+fi
+# Development builds sanitize their isolated copy below, preserving source
+# metadata, saved baseline bundles, and logs belonging to the installed app.
 
 bun "$ROOT/scripts/stage-native-widget.mjs"
 rsync -a --delete \

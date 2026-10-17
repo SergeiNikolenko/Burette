@@ -254,7 +254,8 @@ const range = count => Array.from({ length: count }, (_, index) => index + 1);
     trace.sync();
     assert.deepEqual(sequences(trace.lines), range(1200));
     assert.equal(trace.lines.filter(line => line.name === "legacy").length, 2);
-    assert.deepEqual(trace.diagnostics, { droppedEntries: 8, failedBatches: 1, duplicateEntries: 400, malformedLines: 0, rotationGaps: 0 });
+    assert.deepEqual(trace.diagnostics, { droppedEntries: 8, failedBatches: 1, duplicateEntries: 400, malformedLines: 0, rotationGaps: 0,
+      sequenceGaps: 0, readerOverflows: 0, oversizedLines: 0, integrityErrors: 0 });
     appendFileSync(path, JSON.stringify({ ...diagnostic, detail: { totalDroppedEntries: 10, totalFailedBatches: 2 } }) + "\n");
     trace.sync();
     assert.equal(trace.diagnostics.droppedEntries, 10);
@@ -297,10 +298,91 @@ const range = count => Array.from({ length: count }, (_, index) => index + 1);
       return fd;
     }, readSync: (fd, buffer, offset, length, position) => readSync(fd, buffer, offset, Math.min(length, 17), position) }));
     const raced = new RaceTrace(path);
+    raced.captureFrom = 0;
     raced.sync();
     raced.sync();
     assert.deepEqual(raced.lines.map(line => line.seq), [1204, 1205]);
     assert.equal(raced.diagnostics.malformedLines, 0);
+
+    const createReader = limits => {
+      const reader = new Trace(path, limits);
+      reader.captureFrom = 100;
+      return reader;
+    };
+    const mark = (seq, fields = {}) => ({ ...lines[0], seq, ...fields });
+    const feed = (reader, ...marks) => reader.consume(marks.map(line => JSON.stringify(line)).join('\n') + '\n');
+    {
+      const reader = createReader();
+      feed(reader, mark(1, { at: 99 }), mark(10));
+      assert.equal(reader.lines.length, 1, 'excluded producer prefix is not retained');
+      assert.equal(reader.diagnostics.sequenceGaps, 0, 'the first captured sequence may follow an excluded prefix');
+      assert.throws(() => feed(reader, mark(12)), /missing internal producer sequence/);
+      assert.equal(reader.diagnostics.sequenceGaps, 1, '10→12 accounts for exactly one missing mark');
+      assert.equal(reader.diagnostics.integrityErrors, 1);
+      assert.throws(() => reader.sync(), /missing internal producer sequence/, 'integrity errors remain sticky');
+      assert.throws(() => reader.between(0, 1000), /integrity failure/);
+      assert.equal(reader.diagnostics.integrityErrors, 1);
+    }
+    for (const torn of [true, false]) {
+      const reader = createReader({ lineBytes: 128 });
+      if (torn) {
+        reader.consume('x'.repeat(100));
+        assert.equal(reader.partialBytes, 100);
+        assert.throws(() => reader.consume('x'.repeat(100)), /line exceeds/);
+      } else assert.throws(() => reader.consume('x'.repeat(200) + '\n'), /line exceeds/);
+      assert.equal(reader.partialBytes, 0);
+      assert.equal(reader.partial, '');
+      assert.equal(reader.diagnostics.oversizedLines, 1);
+      assert.throws(() => reader.consume('\n'), /line exceeds/);
+    }
+    {
+      const reader = createReader({ retainedLines: 2 });
+      feed(reader, mark(1), mark(2));
+      assert.throws(() => feed(reader, mark(3)), /retained event\/byte capacity/);
+      assert.equal(reader.lines.length, 2, 'retention does not silently evict earlier measured events');
+      assert.equal(reader.diagnostics.readerOverflows, 1);
+    }
+    {
+      const bytes = Buffer.byteLength(JSON.stringify(mark(1)));
+      const reader = createReader({ retainedBytes: bytes * 2 });
+      feed(reader, mark(1), mark(2));
+      assert.equal(reader.retainedBytes, bytes * 2);
+      assert.throws(() => feed(reader, mark(3)), /retained event\/byte capacity/);
+      assert.ok(reader.retainedBytes <= reader.limits.retainedBytes);
+    }
+    {
+      const reader = createReader({ retainedLines: 2 });
+      feed(reader, mark(1), mark(2));
+      reader.forget(101);
+      assert.deepEqual([reader.lines.length, reader.lineSizes.length, reader.retainedBytes], [0, 0, 0]);
+      feed(reader, mark(3, { at: 101 }));
+      assert.equal(reader.lines.length, 1);
+      assert.equal(reader.sequences.size, 1, 'explicit forgetting keeps replay protection');
+      assert.equal(reader.diagnostics.sequenceGaps, 0);
+    }
+    {
+      const reader = createReader({ streams: 2 });
+      for (let index = 0; index < 1000; index++) feed(reader, mark(1, { at: 99, stream: String(index) }));
+      assert.deepEqual([reader.lines.length, reader.sequences.size, reader.transportTotals.size, reader.streamKeys.size], [0, 0, 0, 0], 'priming old history allocates no retained events or producer maps');
+      feed(reader, mark(1, { stream: 'a' }), mark(1, { stream: 'b' }));
+      feed(reader, { ...diagnostic, stream: 'a' });
+      assert.equal(reader.streamKeys.size, 2, 'sequence and transport share one producer capacity');
+      assert.throws(() => feed(reader, { ...diagnostic, stream: 'c' }), /stream capacity/);
+      assert.equal(reader.streamKeys.size, 2);
+      assert.equal(reader.transportTotals.size, 1);
+    }
+    {
+      const reader = createReader({ streams: 1 });
+      feed(reader, { ...diagnostic, source: 'ipc', stream: 'a' });
+      assert.throws(() => feed(reader, { ...diagnostic, source: 'ipc', stream: 'b' }), /stream capacity/);
+      assert.equal(reader.transportTotals.size, 1, 'noncanonical transport source cannot bypass the producer-map bound');
+    }
+    {
+      const reader = createReader({ streamKeyBytes: 32 });
+      assert.throws(() => feed(reader, mark(1, { stream: 's'.repeat(40) })), /producer key/);
+      assert.equal(reader.streamKeys.size, 0);
+      assert.throws(() => new Trace(path, { retainedLines: Infinity }), /Invalid trace reader bound/);
+    }
   } finally {
     rmSync(dir, { recursive: true });
   }
