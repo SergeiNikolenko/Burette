@@ -22,6 +22,13 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 import { PerfApp } from './perf-journey-app.mjs';
 import { percentile, frameIntervals, mainThread, record, summarize, budgetFailures, compareSummaries, printSummary } from './perf-journey-metrics.mjs';
 const sleep = ms => new Promise(done => setTimeout(done, ms));
+const revisionResult = spawnSync('jj', ['log', '--ignore-working-copy', '-r', '@', '--no-graph', '-T', 'commit_id'], {
+  cwd: repoRoot, encoding: 'utf8', timeout: 10000, maxBuffer: 4096,
+});
+const harnessRevision = revisionResult.status === 0 && /^[a-f0-9]{40,64}$/.test(revisionResult.stdout.trim())
+  ? revisionResult.stdout.trim() : null;
+const harnessFiles = ['scripts/perf-journeys.mjs', 'scripts/perf-journey-app.mjs', 'scripts/perf-journey-metrics.mjs']
+  .map(path => ({ path, sha256: createHash('sha256').update(readFileSync(join(repoRoot, path))).digest('hex') }));
 
 function samplePaths(largeDir) {
   const sample = path => join(repoRoot, path);
@@ -293,6 +300,7 @@ async function main() {
   const journeys = new Set(options.journeys);
   const skippedJourneys = [];
   let failure = null;
+  let sessionPreserved = true;
   try {
     if (journeys.has('launch')) await journeyLaunch(app, options, results);
     if (!app.pids().length) {
@@ -310,24 +318,46 @@ async function main() {
   } catch (error) {
     failure = error?.stack || String(error);
   } finally {
-    app.trace.sync();
+    try { app.trace.sync(); } catch (error) { failure ??= `Trace sync failed: ${error?.stack || error}`; }
     if (!options.keepRunning) {
-      await app.quit();
-      spawnSync('/usr/bin/trash', [app.sessionDir]);
+      try { await app.quit(); } catch (error) { failure ??= `Owned shutdown failed: ${error?.stack || error}`; }
+      const quit = app.quitDiagnostics;
+      if (quit?.cleanupFailure || quit?.finalSyncFailure || quit?.traceDrain?.status !== 'confirmed') {
+        failure ??= `Owned cleanup/trace drain unconfirmed: ${JSON.stringify(quit)}`;
+      }
     }
+    const diagnostics = app.trace.diagnostics;
+    const invalidTrace = new Set(Object.entries(diagnostics).filter(([, value]) => value !== 0).map(([key]) => key));
+    for (const key of ['droppedEntries', 'failedBatches', 'duplicateEntries', 'malformedLines', 'rotationGaps']) {
+      if (diagnostics[key] !== 0) invalidTrace.add(key);
+    }
+    if (invalidTrace.size) failure ??= `Trace integrity failed: ${[...invalidTrace].join(', ')}`;
+    if (!options.keepRunning && !failure && !skippedJourneys.length) {
+      const trashed = spawnSync('/usr/bin/trash', [app.sessionDir]);
+      if (trashed.error || trashed.status !== 0) failure = `Session cleanup failed: ${String(trashed.error || trashed.stderr || trashed.status).slice(0, 800)}`;
+      else sessionPreserved = false;
+    }
+    if (sessionPreserved) console.error(`Preserving session evidence: ${app.sessionDir}`);
   }
   const summary = summarize(results);
   const report = {
     startedAt,
     finishedAt: new Date().toISOString(),
     app: { path: app.path, bundleId: app.bundleId, version: app.version, executableSha256: app.executableSha256 },
-    harnessCommit: spawnSync('git', ['-C', repoRoot, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).stdout.trim(),
+    harnessCommit: harnessRevision,
+    harnessRevisionMethod: harnessRevision ? 'jj' : 'unavailable',
+    harnessFiles,
+    shutdownRequested: !options.keepRunning,
+    quitDiagnostics: options.keepRunning ? null : app.quitDiagnostics ?? null,
+    sessionDir: app.sessionDir,
+    sessionPreserved,
     screen: app.screen ?? null,
     foregroundRequested: options.foreground,
     loadAverage: load,
     loadAverageEnd: loadavg(),
     runs: options.runs,
     tracePath: app.trace.evidencePath,
+    traceDiagnostics: app.trace.diagnostics,
     files: files.map(file => file.key),
     fixtureDetails,
     requestedJourneys: options.journeys,
