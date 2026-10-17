@@ -469,7 +469,7 @@ assert.match(previewRuntimeViewer, /window\.BuretteReceiveNativeRuntimeFile\(bod
 assert.match(startupSource, /arg == "--burette-launch-mode"/);
 assert.match(startupSource, /file_args_from_argv/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn pick_open_targets/);
-assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn classify_open_paths/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) async fn classify_open_paths/);
 assert.match(
   documentsCommand,
   /#\[tauri::command\]\s+pub\(crate\) async fn open_documents[\s\S]*?spawn_blocking/,

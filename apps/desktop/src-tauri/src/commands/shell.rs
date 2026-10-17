@@ -111,11 +111,15 @@ pub(crate) fn reveal_path(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub(crate) fn existing_paths(paths: Vec<String>) -> Vec<String> {
-    paths
-        .into_iter()
-        .filter(|path| PathBuf::from(path).exists())
-        .collect()
+pub(crate) async fn existing_paths(paths: Vec<String>) -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        paths
+            .into_iter()
+            .filter(|path| PathBuf::from(path).exists())
+            .collect()
+    })
+    .await
+    .map_err(|error| format!("Checking saved document paths failed: {error}"))
 }
 
 #[tauri::command]

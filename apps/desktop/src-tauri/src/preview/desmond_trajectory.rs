@@ -1,39 +1,32 @@
 //! Plays a Desmond `-out.cms` + `_trj/` pair in Mol* without Schrödinger.
 //!
-//! Mol* has no DTR reader, so the pair is converted once into a PDB topology
-//! (the CMS full system) and a DCD holding an evenly spaced subset of frames,
-//! both cached beside the other derived runtimes. The DCD is sized to stay under
-//! the structure payload limit, so a long run keeps every atom and water and
-//! trades frame density instead.
+//! Mol* receives the CMS topology and one decoded original frame at a time.
+//! Frame locations are persisted as fixed-size disk records; only the requested
+//! frame and its source time/cell are decoded. No temporal subsampling occurs.
 //!
 //! A DTR frame file holds consecutive frames. Each frame starts with a
 //! big-endian header, followed by label metadata, then the values themselves in
 //! the writer's native byte order: single values packed in a scalar block, arrays
 //! in a field block padded to eight bytes.
 
-use std::fs::{self, File};
-use std::io::{Read, Seek, SeekFrom, Write};
-use std::path::{Path, PathBuf};
-use std::time::UNIX_EPOCH;
-use tauri::{Manager, Runtime};
-
-use super::runtime_utils::stable_id;
 use super::text_xyz::desmond_topology_from_cms;
+use super::trajectory::IndexedFrame;
+use serde::{Deserialize, Serialize};
+use std::fs::{self, File};
+use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
 
 const FRAME_MAGIC: u32 = 0x4445_534D; // "DESM"
 const FRAME_HEADER_BYTES: usize = 96;
 /// Keeps the DCD comfortably inside the 75 MiB structure payload limit.
+#[cfg(test)]
 const DCD_BYTE_BUDGET: usize = 64 * 1024 * 1024;
 /// Standard AKMA -> ps conversion, also used by MDAnalysis and VMD.
 const CHARMM_TIME_UNIT_PS: f64 = 0.048_888_21;
+const FRAME_BYTE_LIMIT: u64 = 64 * 1024 * 1024;
+const PARTICLE_LIMIT: usize = 5_000_000;
 
-/// Paths of the cached topology and trajectory for a Desmond pair.
-pub(crate) struct DesmondTrajectoryFiles {
-    pub(crate) topology: PathBuf,
-    pub(crate) trajectory: PathBuf,
-}
-
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 struct FrameLocation {
     file: usize,
     offset: u64,
@@ -43,56 +36,154 @@ struct FrameLocation {
 struct DecodedFrame {
     time_ps: Option<f64>,
     positions: Vec<f32>,
+    cell: Option<[f64; 9]>,
 }
 
-pub(crate) fn desmond_trajectory_files<R: Runtime>(
-    app: &tauri::AppHandle<R>,
-    cms: &Path,
-    trj_dir: &Path,
-) -> Result<DesmondTrajectoryFiles, String> {
-    let frame_files = dtr_frame_files(trj_dir)?;
-    // The viewer labels the model after the topology file, so the cached pair
-    // keeps the CMS stem and the cache key names their directory instead.
-    let directory = app
-        .path()
-        .app_cache_dir()
-        .map_err(|err| err.to_string())?
-        .join("desmond-trajectory")
-        .join(cache_key(cms, &frame_files)?);
-    fs::create_dir_all(&directory).map_err(|err| err.to_string())?;
-    let stem = cms
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .unwrap_or("desmond");
-    let files = DesmondTrajectoryFiles {
-        topology: directory.join(format!("{stem}.pdb")),
-        trajectory: directory.join(format!("{stem}.dcd")),
-    };
-    if files.topology.is_file() && cached_dcd_complete(&files.trajectory) {
-        return Ok(files);
+#[derive(Debug, Serialize, Deserialize)]
+pub(super) struct DesmondIndex {
+    cms: PathBuf,
+    files: Vec<PathBuf>,
+    locations: Vec<FrameLocation>,
+    components: Vec<(usize, usize)>,
+    pub(super) atom_count: usize,
+    particle_count: usize,
+}
+
+impl DesmondIndex {
+    pub(super) fn open(cms: &Path, trj_dir: &Path) -> Result<(Self, Vec<u8>), String> {
+        if fs::metadata(cms).map_err(|e| e.to_string())?.len() > FRAME_BYTE_LIMIT {
+            return Err("Desmond topology exceeds its byte limit.".into());
+        }
+        let topology = desmond_topology_from_cms(&fs::read(cms).map_err(|e| e.to_string())?)
+            .ok_or("Desmond topology has no full-system atom table.")?;
+        let atom_count = topology.components.iter().map(|(atoms, _)| atoms).sum();
+        let particle_count = topology
+            .components
+            .iter()
+            .map(|(atoms, pseudo)| atoms + pseudo)
+            .sum();
+        if particle_count == 0 || particle_count > PARTICLE_LIMIT {
+            return Err("Desmond particle count exceeds its limit or is invalid.".into());
+        }
+        let files = dtr_frame_files(trj_dir)?;
+        let locations = locate_frames(&files)?;
+        Ok((
+            Self {
+                cms: cms.to_path_buf(),
+                files,
+                locations,
+                components: topology.components,
+                atom_count,
+                particle_count,
+            },
+            topology.pdb,
+        ))
     }
 
-    let topology = desmond_topology_from_cms(&fs::read(cms).map_err(|err| err.to_string())?)
-        .ok_or_else(|| format!("{} has no Desmond full-system atom table.", cms.display()))?;
-    let atom_count = topology.components.iter().map(|(atoms, _)| atoms).sum();
-    let particle_count = topology
-        .components
-        .iter()
-        .map(|(atoms, pseudo)| atoms + pseudo)
-        .sum();
-    let dcd = dcd_from_frames(
-        &frame_files,
-        &topology.components,
-        atom_count,
-        particle_count,
-    )?;
-    // Publish complete files atomically; concurrent readers never see a partial
-    // coordinate payload. The DCD is the last completion marker.
-    atomic_cache_write(&files.topology, &topology.pdb)?;
-    atomic_cache_write(&files.trajectory, &dcd)?;
-    Ok(files)
+    pub(super) fn source_paths(&self) -> Vec<PathBuf> {
+        std::iter::once(self.cms.clone())
+            .chain(self.files.iter().cloned())
+            .collect()
+    }
+
+    pub(super) fn frame_count(&self) -> usize {
+        self.locations.len()
+    }
+
+    pub(super) fn write_locations(&self, path: &Path) -> Result<(), String> {
+        let mut writer = BufWriter::new(File::create(path).map_err(|e| e.to_string())?);
+        for location in &self.locations {
+            for value in [location.file as u64, location.offset, location.size] {
+                writer
+                    .write_all(&value.to_le_bytes())
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        writer.flush().map_err(|e| e.to_string())?;
+        writer.get_ref().sync_all().map_err(|e| e.to_string())
+    }
+
+    pub(super) fn detach_locations(&mut self) {
+        self.locations = Vec::new();
+    }
+
+    pub(super) fn frame_from_index(
+        &self,
+        path: &Path,
+        index: usize,
+    ) -> Result<IndexedFrame, String> {
+        let mut file = File::open(path).map_err(|e| e.to_string())?;
+        let length = file.metadata().map_err(|e| e.to_string())?.len();
+        let offset = (index as u64)
+            .checked_mul(24)
+            .ok_or("Desmond index offset overflow.")?;
+        if !length.is_multiple_of(24) || offset >= length {
+            return Err("Desmond frame index is out of range or truncated.".into());
+        }
+        let mut bytes = [0; 24];
+        file.seek(SeekFrom::Start(offset))
+            .and_then(|_| file.read_exact(&mut bytes))
+            .map_err(|e| e.to_string())?;
+        let file = usize::try_from(u64::from_le_bytes(bytes[..8].try_into().unwrap()))
+            .map_err(|e| e.to_string())?;
+        self.decode_location(FrameLocation {
+            file,
+            offset: u64::from_le_bytes(bytes[8..16].try_into().unwrap()),
+            size: u64::from_le_bytes(bytes[16..].try_into().unwrap()),
+        })
+    }
+
+    pub(super) fn frame(&self, index: usize) -> Result<IndexedFrame, String> {
+        let location = *self
+            .locations
+            .get(index)
+            .ok_or("Desmond frame index is out of range.")?;
+        self.decode_location(location)
+    }
+
+    fn decode_location(&self, location: FrameLocation) -> Result<IndexedFrame, String> {
+        if self.particle_count == 0
+            || self.particle_count > PARTICLE_LIMIT
+            || self.atom_count == 0
+            || location.size > FRAME_BYTE_LIMIT
+        {
+            return Err("Desmond frame exceeds its byte or particle limit.".into());
+        }
+        let totals =
+            self.components
+                .iter()
+                .try_fold((0usize, 0usize), |(atoms, particles), (a, p)| {
+                    Some((
+                        atoms.checked_add(*a)?,
+                        particles.checked_add(*a)?.checked_add(*p)?,
+                    ))
+                });
+        if totals != Some((self.atom_count, self.particle_count)) {
+            return Err("Invalid cached Desmond component counts.".into());
+        }
+        let path = self
+            .files
+            .get(location.file)
+            .ok_or("Invalid Desmond frame file index.")?;
+        let mut file = File::open(path).map_err(|e| e.to_string())?;
+        let mut bytes = vec![0; location.size as usize];
+        file.seek(SeekFrom::Start(location.offset))
+            .and_then(|_| file.read_exact(&mut bytes))
+            .map_err(|e| format!("Desmond frame changed or is truncated: {e}"))?;
+        let frame = decode_frame(&bytes)?;
+        if frame.positions.len() != self.particle_count * 3 {
+            return Err("Desmond frame particle count disagrees with its topology.".into());
+        }
+        let (time, cell) = (frame.time_ps, frame.cell);
+        Ok((
+            write_dcd(&[frame], &self.components, self.atom_count),
+            time,
+            cell,
+        ))
+    }
 }
 
+#[cfg(test)]
 fn atomic_cache_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let temporary = path.with_extension(format!("{}.tmp", uuid::Uuid::new_v4()));
     let result = (|| -> std::io::Result<()> {
@@ -110,6 +201,7 @@ fn atomic_cache_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     result.map_err(|error| error.to_string())
 }
 
+#[cfg(test)]
 fn cached_dcd_complete(path: &Path) -> bool {
     let Ok(mut file) = File::open(path) else {
         return false;
@@ -165,30 +257,6 @@ fn dtr_frame_files(trj_dir: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(files.into_iter().map(|(_, path)| path).collect())
 }
 
-fn cache_key(cms: &Path, frame_files: &[PathBuf]) -> Result<String, String> {
-    // Invalidate old time units and same-chain overflow residue collisions.
-    let mut stamp = String::from("standard-dcd-time-component-residues-v4;");
-    for path in std::iter::once(cms).chain(frame_files.iter().map(PathBuf::as_path)) {
-        let metadata = fs::metadata(path).map_err(|err| err.to_string())?;
-        let modified = metadata
-            .modified()
-            .ok()
-            .and_then(|time| time.duration_since(UNIX_EPOCH).ok())
-            .map(|since| since.as_nanos())
-            .unwrap_or_default();
-        stamp.push_str(&format!(
-            "{}:{}:{modified};",
-            path.display(),
-            metadata.len()
-        ));
-    }
-    Ok(format!(
-        "{}-{}",
-        stable_id(cms),
-        stable_id(Path::new(&stamp))
-    ))
-}
-
 fn be_u32(bytes: &[u8], offset: usize) -> Option<u32> {
     Some(u32::from_be_bytes(
         bytes.get(offset..offset + 4)?.try_into().ok()?,
@@ -203,17 +271,24 @@ fn locate_frames(frame_files: &[PathBuf]) -> Result<Vec<FrameLocation>, String> 
         let length = file.metadata().map_err(|err| err.to_string())?.len();
         let mut offset = 0u64;
         let mut header = [0u8; FRAME_HEADER_BYTES];
-        while offset + FRAME_HEADER_BYTES as u64 <= length {
+        while offset < length {
+            if length - offset < FRAME_HEADER_BYTES as u64 {
+                return Err("Truncated trailing Desmond frame header.".into());
+            }
             file.seek(SeekFrom::Start(offset))
                 .and_then(|_| file.read_exact(&mut header))
                 .map_err(|err| err.to_string())?;
             if be_u32(&header, 0) != Some(FRAME_MAGIC) {
-                break;
+                return Err("Malformed trailing Desmond frame header.".into());
             }
             let size = u64::from(be_u32(&header, 8).unwrap_or(0))
                 | (u64::from(be_u32(&header, 12).unwrap_or(0)) << 32);
-            if size < FRAME_HEADER_BYTES as u64 || offset + size > length {
-                break;
+            if size < FRAME_HEADER_BYTES as u64 || size > FRAME_BYTE_LIMIT || size > length - offset
+            {
+                return Err("Desmond frame is truncated or exceeds its byte limit.".into());
+            }
+            if frames.len() >= 1_000_000 {
+                return Err("Desmond frame index exceeds its entry limit.".into());
             }
             frames.push(FrameLocation {
                 file: file_index,
@@ -233,12 +308,43 @@ fn decode_frame(bytes: &[u8]) -> Result<DecodedFrame, String> {
     let malformed = || "Malformed Desmond trajectory frame.".to_string();
     let header = |offset| be_u32(bytes, offset).map(|value| value as usize);
     let header_size = header(16).ok_or_else(malformed)?;
+    let frame_size = u64::from(be_u32(bytes, 8).ok_or_else(malformed)?)
+        | (u64::from(be_u32(bytes, 12).ok_or_else(malformed)?) << 32);
+    if be_u32(bytes, 0) != Some(FRAME_MAGIC)
+        || frame_size != bytes.len() as u64
+        || frame_size > FRAME_BYTE_LIMIT
+        || header_size < FRAME_HEADER_BYTES
+    {
+        return Err(malformed());
+    }
     // The writer stores 0x12345678 in its own byte order, which fixes the order
     // of every value after the header.
     let little_endian = bytes.get(24..28).ok_or_else(malformed)? == [0x78, 0x56, 0x34, 0x12];
+    if !little_endian && bytes.get(24..28) != Some(&[0x12, 0x34, 0x56, 0x78]) {
+        return Err(malformed());
+    }
     let label_count = header(52).ok_or_else(malformed)?;
     let [meta_size, type_size, label_size, scalar_size] =
         [56, 60, 64, 68].map(|offset| header(offset).unwrap_or(0));
+    if label_count > 4096
+        || meta_size < label_count * 16
+        || type_size > 64 * 1024
+        || label_size > 256 * 1024
+    {
+        return Err(malformed());
+    }
+    let type_start = header_size.checked_add(meta_size).ok_or_else(malformed)?;
+    let label_start = type_start.checked_add(type_size).ok_or_else(malformed)?;
+    let scalar_start = label_start.checked_add(label_size).ok_or_else(malformed)?;
+    let scalar_end = scalar_start
+        .checked_add(scalar_size)
+        .ok_or_else(malformed)?;
+    let field_end = scalar_end
+        .checked_add(header(72).ok_or_else(malformed)?)
+        .ok_or_else(malformed)?;
+    if field_end > bytes.len() {
+        return Err(malformed());
+    }
     let names = |start: usize, size: usize| -> Vec<String> {
         bytes
             .get(start..start + size)
@@ -247,12 +353,13 @@ fn decode_frame(bytes: &[u8]) -> Result<DecodedFrame, String> {
             .map(|name| String::from_utf8_lossy(name).into_owned())
             .collect()
     };
-    let type_names = names(header_size + meta_size, type_size);
-    let labels = names(header_size + meta_size + type_size, label_size);
-    let mut scalar = header_size + meta_size + type_size + label_size;
-    let mut field = scalar + scalar_size;
+    let type_names = names(type_start, type_size);
+    let labels = names(label_start, label_size);
+    let mut scalar = scalar_start;
+    let mut field = scalar_end;
     let mut time_ps = None;
     let mut positions = None;
+    let mut cell = None;
     for index in 0..label_count {
         let meta = header_size + index * 16;
         let type_name = type_names
@@ -261,19 +368,61 @@ fn decode_frame(bytes: &[u8]) -> Result<DecodedFrame, String> {
             .unwrap_or_default();
         let element_size = be_u32(bytes, meta + 4).ok_or_else(malformed)? as usize;
         let count = be_u32(bytes, meta + 8).ok_or_else(malformed)? as usize;
-        let byte_count = element_size * count;
+        if element_size == 0 || element_size > 16 {
+            return Err(malformed());
+        }
+        let byte_count = element_size.checked_mul(count).ok_or_else(malformed)?;
         let start = if count <= 1 {
-            scalar = scalar.next_multiple_of(element_size.max(1));
+            scalar = scalar
+                .checked_next_multiple_of(element_size)
+                .ok_or_else(malformed)?;
             let start = scalar;
-            scalar += byte_count;
+            scalar = scalar
+                .checked_add(byte_count)
+                .filter(|end| *end <= scalar_end)
+                .ok_or_else(malformed)?;
             start
         } else {
             let start = field;
-            field += byte_count.next_multiple_of(8);
+            field = field
+                .checked_add(
+                    byte_count
+                        .checked_next_multiple_of(8)
+                        .ok_or_else(malformed)?,
+                )
+                .filter(|end| *end <= field_end)
+                .ok_or_else(malformed)?;
             start
         };
         let value = bytes.get(start..start + byte_count).ok_or_else(malformed)?;
         match (labels.get(index).map(String::as_str), type_name) {
+            (Some("BOX" | "UNITCELL"), "double" | "float") if count == 9 => {
+                let width = if type_name == "double" { 8 } else { 4 };
+                if element_size != width {
+                    return Err(malformed());
+                }
+                let mut basis = [0.0; 9];
+                for (i, coordinate) in basis.iter_mut().enumerate() {
+                    let raw = &value[i * width..(i + 1) * width];
+                    *coordinate = if width == 8 {
+                        if little_endian {
+                            f64::from_le_bytes(raw.try_into().unwrap())
+                        } else {
+                            f64::from_be_bytes(raw.try_into().unwrap())
+                        }
+                    } else {
+                        f64::from(if little_endian {
+                            f32::from_le_bytes(raw.try_into().unwrap())
+                        } else {
+                            f32::from_be_bytes(raw.try_into().unwrap())
+                        })
+                    };
+                }
+                if basis.iter().any(|value| !value.is_finite()) {
+                    return Err(malformed());
+                }
+                cell = Some(basis);
+            }
             (Some("CHEMICAL_TIME"), "double") if count == 1 => {
                 let raw: [u8; 8] = value.try_into().map_err(|_| malformed())?;
                 time_ps = Some(if little_endian {
@@ -281,8 +430,13 @@ fn decode_frame(bytes: &[u8]) -> Result<DecodedFrame, String> {
                 } else {
                     f64::from_be_bytes(raw)
                 });
+                if !time_ps.is_some_and(f64::is_finite) {
+                    return Err(malformed());
+                }
             }
-            (Some("POSITION"), "float") => {
+            (Some("POSITION"), "float")
+                if element_size == 4 && count <= PARTICLE_LIMIT * 3 && count.is_multiple_of(3) =>
+            {
                 positions = Some(
                     value
                         .as_chunks::<4>()
@@ -298,7 +452,9 @@ fn decode_frame(bytes: &[u8]) -> Result<DecodedFrame, String> {
                         .collect(),
                 );
             }
-            (Some("POSITION"), "double") => {
+            (Some("POSITION"), "double")
+                if element_size == 8 && count <= PARTICLE_LIMIT * 3 && count.is_multiple_of(3) =>
+            {
                 positions = Some(
                     value
                         .as_chunks::<8>()
@@ -319,12 +475,14 @@ fn decode_frame(bytes: &[u8]) -> Result<DecodedFrame, String> {
     }
     Ok(DecodedFrame {
         time_ps,
+        cell,
         positions: positions
             .ok_or_else(|| "Desmond trajectory frame has no POSITION field.".to_string())?,
     })
 }
 
 /// Evenly spaced frame indices that always include the first and last frame.
+#[cfg(test)]
 fn sampled_frame_indices(frame_count: usize, limit: usize) -> Vec<usize> {
     if frame_count <= limit {
         return (0..frame_count).collect();
@@ -339,6 +497,7 @@ fn sampled_frame_indices(frame_count: usize, limit: usize) -> Vec<usize> {
     indices
 }
 
+#[cfg(test)]
 fn dcd_from_frames(
     frame_files: &[PathBuf],
     components: &[(usize, usize)],
@@ -436,15 +595,28 @@ mod tests {
 
     /// One frame laid out the way Desmond writes `WRAPPED_V_2` frames.
     fn dtr_frame(time: f64, positions: &[f32]) -> Vec<u8> {
-        let labels = ["CHEMICAL_TIME", "FORMAT", "NACTIVE", "POSITION"];
+        dtr_frame_with_box(time, positions, None)
+    }
+
+    fn dtr_frame_with_box(time: f64, positions: &[f32], cell: Option<[f64; 9]>) -> Vec<u8> {
+        let mut labels = vec!["CHEMICAL_TIME", "FORMAT", "NACTIVE", "POSITION"];
         let types = "double\0char\0int32_t\0float\0";
-        let label_block = labels.join("\0") + "\0";
-        let meta: [(u32, u32, u32); 4] = [
+        let mut meta: Vec<(u32, u32, u32)> = vec![
             (0, 8, 1),
             (1, 1, 11),
             (2, 4, 1),
             (3, 4, positions.len() as u32),
         ];
+        if cell.is_some() {
+            labels.push("BOX");
+            meta.push((0, 8, 9));
+        }
+        let mut label_block = (labels.join("\0") + "\0").into_bytes();
+        while !(FRAME_HEADER_BYTES + meta.len() * 16 + types.len() + label_block.len())
+            .is_multiple_of(8)
+        {
+            label_block.push(0);
+        }
         let mut scalars = time.to_le_bytes().to_vec();
         scalars.extend_from_slice(&((positions.len() / 3) as i32).to_le_bytes());
         scalars.resize(16, 0);
@@ -454,6 +626,11 @@ mod tests {
             fields.extend_from_slice(&value.to_le_bytes());
         }
         fields.resize(fields.len().next_multiple_of(8), 0);
+        if let Some(cell) = cell {
+            for value in cell {
+                fields.extend_from_slice(&value.to_le_bytes());
+            }
+        }
 
         let body = meta.len() * 16 + types.len() + label_block.len() + scalars.len() + fields.len();
         let size = (FRAME_HEADER_BYTES + body) as u32;
@@ -479,7 +656,7 @@ mod tests {
             }
         }
         frame.extend_from_slice(types.as_bytes());
-        frame.extend_from_slice(label_block.as_bytes());
+        frame.extend_from_slice(&label_block);
         frame.extend_from_slice(&scalars);
         frame.extend_from_slice(&fields);
         frame
@@ -490,6 +667,65 @@ mod tests {
         let frame = decode_frame(&dtr_frame(12.5, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0])).unwrap();
         assert_eq!(frame.time_ps, Some(12.5));
         assert_eq!(frame.positions, vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    }
+
+    #[test]
+    fn original_last_frame_preserves_time_box_and_drops_pseudo_particles() {
+        let root =
+            std::env::temp_dir().join(format!("burette-dtr-direct-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("frame000000000");
+        let basis = [10.0, 0.0, 0.0, 1.0, 11.0, 0.0, 0.0, 2.0, 12.0];
+        let mut bytes = dtr_frame(0.0, &[0.0; 9]);
+        bytes.extend(dtr_frame_with_box(
+            123.5,
+            &[1.0, 2.0, 3.0, 99.0, 99.0, 99.0, 4.0, 5.0, 6.0],
+            Some(basis),
+        ));
+        fs::write(&path, &bytes).unwrap();
+        let mut index = DesmondIndex {
+            cms: root.join("topology.cms"),
+            files: vec![path.clone()],
+            locations: locate_frames(std::slice::from_ref(&path)).unwrap(),
+            components: vec![(1, 1), (1, 0)],
+            atom_count: 2,
+            particle_count: 3,
+        };
+        assert_eq!(index.frame_count(), 2);
+        let (dcd, time, cell) = index.frame(1).unwrap();
+        let locations_path = root.join("locations.bin");
+        index.write_locations(&locations_path).unwrap();
+        index.detach_locations();
+        assert_eq!(
+            index.frame_from_index(&locations_path, 1).unwrap(),
+            (dcd.clone(), time, cell)
+        );
+        assert!(index.frame_from_index(&locations_path, 2).is_err());
+        assert_eq!((time, cell), (Some(123.5), Some(basis)));
+        let xs: Vec<f32> = dcd[200..208]
+            .chunks_exact(4)
+            .map(|v| f32::from_le_bytes(v.try_into().unwrap()))
+            .collect();
+        assert_eq!(xs, vec![1.0, 4.0]);
+        fs::write(&path, &bytes[..bytes.len() - 1]).unwrap();
+        assert!(index.frame_from_index(&locations_path, 1).is_err());
+        assert!(locate_frames(std::slice::from_ref(&path)).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_trailing_garbage_and_oversized_frames() {
+        let root =
+            std::env::temp_dir().join(format!("burette-dtr-invalid-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("frame000000000");
+        let mut bytes = dtr_frame(0.0, &[0.0; 3]);
+        bytes.push(0);
+        fs::write(&path, &bytes).unwrap();
+        assert!(locate_frames(std::slice::from_ref(&path)).is_err());
+        bytes[8..12].copy_from_slice(&((FRAME_BYTE_LIMIT + 1) as u32).to_be_bytes());
+        assert!(decode_frame(&bytes).is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

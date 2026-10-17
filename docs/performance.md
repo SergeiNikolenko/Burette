@@ -19,6 +19,40 @@ Do not make normal app launch hidden to improve cold-start numbers. Registration
 or maintenance launches can opt into `BURETTE_LAUNCH_MODE=register`, but user
 launch, file-open launch, app reopen, and menu activation must show the app.
 
+## Bulk document admission
+
+The desktop open hook publishes the first ordinary molecular document before
+processing the remaining paths in sequential batches of at most 32. Combined
+pose/grid requests remain atomic. Files whose immediate format fallback is
+required, and explicit reloads, keep eager validation. Native path classification
+runs on a blocking worker; no filesystem preflight runs in that command's main
+thread handler.
+
+The optional `open_documents.deferRuntime` input admits file identities and source
+ownership without reading structure contents or generating runtime assets. Such
+documents have `runtimeDeferred: true` and an empty `runtimePath`; consumers must
+not load that path into an iframe. The shell retains admission renderer overrides
+in `runtimeDeferredPreferences`. Mounted viewer frames use a shared serial
+preparation queue and the ordinary eager `open_documents` command, replacing the
+same document identity when ready. Queued viewers that have been unmounted are
+skipped. Results for closed/replaced documents release their provisional claims
+and are not installed. Failed preparations expose an explicit retry.
+
+Subsequent batches preserve active selection in the store mutation itself, so
+they neither mount unseen scenes nor generate temporary navigation events.
+Saved-session restoration prioritizes the selected file before routing the tail;
+unhydrated saved tabs remain in their saved order. Opening source editing awaits
+the real runtime before capturing its base preview. Cancellation is checked before
+each batch and after each native result; an already-running native parse still
+finishes before its discarded result can be released.
+
+Combined virtual grids receive a fresh result path and document ID for each
+operation. Their visible title and scientific source data are unchanged. Preparing
+another combination cannot replace an adopted collection's registry entry or
+edited rows. Cancellation releases only unadopted virtual grid result IDs through
+the existing batched grid close command; adopted collections use ordinary document
+teardown and are excluded from abandoned-result cleanup.
+
 ## Asset Profiles
 
 The profile manifest lives at `config/web-runtime-profiles.json`. It is the
@@ -211,6 +245,24 @@ call, samples the main dispatch queue every 50 ms, and the shell loads
 | `native` | `app:setup` and `open:request` with the paths Launch Services passed in. |
 | `web` | `frames` (rAF intervals of each second with the React commits, shell DOM mutations and viewer messages by type in it), `document:added`, `tab:switch`, `document:visible`, `document:ready`, `journey:timeout`, `iframe:mount`, `iframe:load`, `iframe:unmount`, `viewer:status`, `viewer:ready`, `viewer:error`, `input:*`, `mark:*`, and `agent:action` for each desktop agent action. |
 
+Web marks carry a monotonically increasing `seq` and a `stream` identifying the
+page's time origin; combine them with `window` to identify an event. The transport
+keeps at most 2,000 unacknowledged marks, including the in-flight batch, and sends
+serialized batches of at most 400. Native rejects an oversized batch in full
+instead of silently truncating it. Failed requests retain their marks and retry
+after one second. Overflow rejects newer marks and advances their sequence
+numbers; `trace:transport` diagnostics report dropped marks and failed requests.
+Their `totalDroppedEntries` and `totalFailedBatches` are cumulative per stream,
+so replayed diagnostics must not be summed twice. These aggregate diagnostics
+have no event sequence. A lost acknowledgement can
+replay already accepted marks, so reducers must deduplicate `(window, stream,
+seq)` before counting events. Page-hide flushing is best effort: closing the
+webview or terminating the app can interrupt IPC, and the writer retains only
+the live file and one archive. The benchmark reader drains a matching archive
+on rotation and reports `rotationGaps` if an unread inode is no longer available.
+Retain both files and allow drains to settle
+before ending a measurement; this trace is not a durable event journal.
+
 WebKit has no Long Tasks API, so frame intervals are the frame metric. Viewer
 frames share the WebContent main thread with the shell, so a long shell frame
 is a long viewer frame too. WebKit throttles occluded windows, so measure with
@@ -220,6 +272,8 @@ the window visible.
 and reduces the trace to p50 and p95 per journey:
 
 ```bash
+mkdir -p build
+nice -n 19 swiftc scripts/perf-host.swift -o build/perf-host
 BURETTE_DEV_FLAVOR=perf BURETTE_TAURI_DEVTOOLS=1 ./scripts/build.sh
 node scripts/perf-journeys.mjs --runs 10 --large-dir ~/perf-files \
   --out build/reports/perf-journeys-before.json
@@ -227,6 +281,29 @@ node scripts/perf-journeys.mjs --runs 10 --large-dir ~/perf-files \
 node scripts/perf-journeys.mjs --runs 10 --large-dir ~/perf-files \
   --compare build/reports/perf-journeys-before.json
 ```
+
+The native Swift helper inventories displays and app processes without
+AppleScript. Compile it before running a journey or scalability benchmark.
+The visibility timing is a native WKWebView rAF/iframe observation, not proof
+of an OS-presented molecular frame.
+
+`scripts/perf-scalability.mjs` also records explicit switch-action intervals,
+requires 24 matching visibility journeys, and reconciles document-add marks
+with independently observed totals at 1/10/100/1,000 documents. Its `integrity`
+record fails on missing marks, incomplete switches, trace errors or legacy
+unsequenced instrumentation; zero legacy error counters do not prove no loss.
+Keep timing budgets separate from this measurement-integrity result.
+
+For repeated admission/ready latencies without memory sampling, use
+`node scripts/perf-scalability-repeat.mjs --app <dev.app> --out <fresh.json>
+--runs 10 --fixtures build/perf-scale-fixtures`. Each repetition owns a fresh
+process/session, opens 1/10/100/1,000 incremental documents and emits a
+`<report>.run-NN.json.ready` rendezvous for CUA File > Close All Tabs. The next
+launch requires an independently observed empty workspace. Per-run traces and
+hashes are retained. `observed` p50/p95 includes exploratory/legacy samples;
+`validated` includes only complete runs with sequenced, conserved traces.
+The required ready endpoint matches the first new requested path and document
+identity, rather than accepting an already-ready previous active viewer.
 
 | Journey | Measures |
 | --- | --- |

@@ -1878,7 +1878,6 @@
   const resizeState = {
     viewer: null,
     frame: 0,
-    timer: 0,
     // Container size the last resize was performed for. The window event and the
     // container observer both report the same change, a beat apart, so without
     // this the viewer redrew about twice per resize step.
@@ -1916,41 +1915,43 @@
     return true;
   }
 
-  function scheduleViewerResize(viewer, delayMs = 80) {
+  function scheduleViewerResize(viewer) {
     if (!viewer) return;
     if (!viewerCanvasIsVisible(viewer)) return;
     resizeState.viewer = viewer;
     if (resizeState.frame) return;
     resizeState.frame = requestAnimationFrame(() => {
       resizeState.frame = 0;
-      clearTimeout(resizeState.timer);
-      resizeState.timer = setTimeout(() => {
-        const target = resizeState.viewer;
-        if (!target) return;
-        if (!viewerCanvasIsVisible(target)) return;
-        const size = viewerContainerSize(target);
-        if (target === resizeState.appliedViewer && size && size === resizeState.appliedSize) return;
-        resizeState.appliedViewer = target;
-        resizeState.appliedSize = size;
-        let handled = false;
-        try {
-          if (typeof target.handleResize === 'function') {
-            target.handleResize();
-            handled = true;
-          }
-        } catch (_) {}
-        if (!handled) {
-          try { target.plugin?.layout?.events?.updated?.next?.(); } catch (_) {}
+      // Read the latest bounds once per paint, even during a continuous drag.
+      // A trailing timer starves until release and leaves the camera off-center.
+      const target = resizeState.viewer;
+      if (!target) return;
+      if (!viewerCanvasIsVisible(target)) return;
+      const size = viewerContainerSize(target);
+      if (target === resizeState.appliedViewer && size && size === resizeState.appliedSize) return;
+      resizeState.appliedViewer = target;
+      resizeState.appliedSize = size;
+      let handled = false;
+      try {
+        // Mol*'s Viewer.handleResize broadcasts a layout/UI update and queues
+        // another frame. PluginContext handles only canvas geometry and asks
+        // Canvas3D for a resize; it does not rebuild structures or reset camera.
+        if (typeof target.plugin?.handleResize === 'function') {
+          target.plugin.handleResize();
+          handled = true;
+        } else if (typeof target.handleResize === 'function') {
+          target.handleResize();
+          handled = true;
         }
-      }, delayMs);
+      } catch (_) {}
+      if (!handled) {
+        try { target.plugin?.layout?.events?.updated?.next?.(); } catch (_) {}
+      }
     });
   }
 
-  // Mol* commits a layout change a frame or two after the toggle, so a resize on a
-  // fixed delay measures the container it had *before* the change and is thrown
-  // away; the canvas then catches up on Mol*'s own schedule, well after the panels
-  // have moved. Watching the container fires exactly when it has settled, which is
-  // both earlier and correct, and costs one resize instead of two.
+  // Mol* can commit a layout change after the toggle. Observe its actual bounds
+  // so both the moving viewport and its final size reach the same frame scheduler.
   let viewerResizeObserver = null;
   function installViewerResizeObserver(viewer) {
     const container = viewer?.plugin?.canvas3dContext?.canvas?.parentElement;
@@ -1967,7 +1968,7 @@
       // a window resize reaches the viewer through this observer, the window
       // handler and the host's BuretteHandleResize at once, which measured at
       // roughly 2.5 handleResize calls per resize step.
-      scheduleViewerResize(viewer, 40);
+      scheduleViewerResize(viewer);
     });
     observer.observe(container);
     viewerResizeObserver = { observer, container };
@@ -2520,7 +2521,7 @@
     applyBackgroundMode();
     applyViewerBackground(viewer);
     updateThemeButton();
-    scheduleViewerResize(viewer, 40);
+    scheduleViewerResize(viewer);
     scheduleVisibleMolstarPresetPreviewRefresh();
   }
 
@@ -3344,7 +3345,7 @@
     if (body.type === 'viewerVisibilityChanged') {
       hostViewerVisible = body.visible !== false;
       activeTrajectoryPlaybackControl?.visibilityChanged?.();
-      if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer, 0);
+      if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer);
       return;
     }
     if (body.type === 'workspaceHistoryCommand') {
@@ -6637,7 +6638,7 @@
     if (persist || collapsed) toolbar.dataset.defaultPosition = '1';
     repositionToolbar(toolbar);
     updateFloatingLayoutOffsets();
-    scheduleViewerResize(viewer, 40);
+    scheduleViewerResize(viewer);
   }
 
   function activateToolbarGrip(toolbar, viewer) {
@@ -6650,7 +6651,7 @@
         toolbar.dataset.defaultPosition = '1';
         repositionToolbar(toolbar);
         updateFloatingLayoutOffsets();
-        scheduleViewerResize(viewer, 40);
+        scheduleViewerResize(viewer);
       }
       return;
     }
@@ -9903,7 +9904,7 @@ SOFTWARE.
       onExpand() { toggleLayoutRegion('sequence', activeMolstarViewer()); },
       onResize() {
         updateViewportCornerLayout();
-        scheduleViewerResize(activeMolstarViewer(), 40);
+        scheduleViewerResize(activeMolstarViewer());
       },
       onCommit(height) {
         try { window.localStorage.setItem('buret.sequence.height', String(height)); } catch (_) {}
@@ -11622,6 +11623,49 @@ SOFTWARE.
     });
   }
 
+  function requestTrajectoryFrameFromNative(frameIndex, segmentIndex, signal, validateOnly = false) {
+    installNativeRuntimeFileBridge();
+    return new Promise((resolve, reject) => {
+      const requestToken = 'trajectory-frame-' + Math.random().toString(36).slice(2);
+      let settled = false;
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        window.removeEventListener('BuretteNativeRuntimeFileReady', onReady);
+        signal?.removeEventListener('abort', onAbort);
+        fn(value);
+      };
+      const onAbort = () => finish(reject, new DOMException('Trajectory request cancelled', 'AbortError'));
+      const onReady = event => {
+        const payload = event.detail || {};
+        if (payload.requestToken !== requestToken) return;
+        if (payload.error) finish(reject, new Error(String(payload.error)));
+        else if (payload.valid === true) finish(resolve, { valid: true });
+        else finish(resolve, { bytes: base64ToBytes(payload.base64), timePs: payload.timePs, cellBasis: payload.cellBasis });
+      };
+      const timeout = setTimeout(() => finish(reject, new Error('Timed out reading trajectory frame.')), 15000);
+      window.addEventListener('BuretteNativeRuntimeFileReady', onReady);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) { onAbort(); return; }
+      try { window.__mqlPost('requestTrajectoryFrame', 'requestTrajectoryFrame', { requestToken, frameIndex, segmentIndex, validateOnly }); }
+      catch (error) { finish(reject, error); }
+    });
+  }
+
+  // Undo and MOLX restore recreate transforms after disposing the original
+  // tree. Reopen only the identical source in this native runtime; the native
+  // reader still checks its source revision before returning any coordinates.
+  function requestIndexedTrajectoryFrameFromNative(indexKey, segmentIndex, frameIndex, signal, validateOnly) {
+    const config = activeConfig || window.BuretteConfig || {};
+    const source = config.docking?.ligands?.[segmentIndex]?.indexedTrajectory;
+    if (!source || source.indexKey !== indexKey) {
+      return Promise.reject(new Error('Trajectory source is no longer open. Reopen the trajectory.'));
+    }
+    return requestTrajectoryFrameFromNative(frameIndex, segmentIndex, signal, validateOnly);
+  }
+  window.BuretteReadIndexedTrajectoryFrame = requestIndexedTrajectoryFrameFromNative;
+
   function loadArrayBufferViaXHR(url) {
     return new Promise((resolve, reject) => {
       const request = new XMLHttpRequest();
@@ -12717,7 +12761,9 @@ SOFTWARE.
         data,
         format,
         label: source.label || `Ligand ${ligandIndex + 1}`,
-        sourcePath: source.path || ''
+        sourcePath: source.path || '',
+        indexedTrajectory: source.indexedTrajectory || null,
+        segmentIndex: ligandIndex
       });
       poses.push({
         data,
@@ -13008,6 +13054,7 @@ SOFTWARE.
   }
 
   async function startExternalArtifact(config) {
+    const restoredView = window.BuretteRendererViewState?.restoreFromHost(config.documentId, postHostMessage);
     disposeExternalArtifactInteractions();
     const artifact = config.externalArtifact;
     const inlineSvg = artifact?.inlineSvg || (artifact?.inlineSvgBase64 ? base64ToText(artifact.inlineSvgBase64) : '');
@@ -13028,6 +13075,7 @@ SOFTWARE.
         <a class="buret-xyz-badge" href="https://github.com/aligfellow/xyzrender" target="_blank" rel="noopener noreferrer" title="xyzrender — project and authors"><strong>xyzrender ↗</strong><span>SVG${preset}${elapsed}</span></a>
       </div>`;
     const root = container.querySelector('.buret-external-artifact-root');
+    await restoredView;
     if (root) installExternalArtifactInteractions(root);
     initStaticRendererToolbar();
     setStatus(`[web] Rendered ${config.label || 'structure'} with external xyzrender`);
@@ -18204,6 +18252,14 @@ SOFTWARE.
   }
 
   async function loadDockingTrajectoryPair(viewer, pair, options = {}) {
+    if (pair.coordinateEntry.indexedTrajectory) {
+      const indexed = window.molstar?.BuretteIndexedTrajectory;
+      if (!indexed) throw new Error('File-backed trajectory support is unavailable in this runtime.');
+      const segmentIndex = pair.coordinateEntry.segmentIndex;
+      await indexed.load(viewer, pair, options, (frame, signal, validateOnly) => requestTrajectoryFrameFromNative(frame, segmentIndex, signal, validateOnly));
+      if (pair.synthetic) await applyMolstarUniformRepresentation(viewer, molstarDerivedTopologyRepresentation());
+      return !!options.representationPreset;
+    }
     if (typeof viewer.loadTrajectory !== 'function') {
       throw new Error('Mol* trajectory pairing is unavailable in this viewer runtime.');
     }
@@ -28820,7 +28876,7 @@ SOFTWARE.
       if (width === lastWidth && height === lastHeight) return;
       lastWidth = width;
       lastHeight = height;
-      scheduleViewerResize(viewer, 20);
+      scheduleViewerResize(viewer);
     });
     observer.observe(app);
     return () => observer.disconnect();
@@ -28871,6 +28927,7 @@ SOFTWARE.
   }
 
   async function startMolstar(config, cb) {
+    const restoredView = window.BuretteRendererViewState?.restoreFromHost(config.documentId, postHostMessage);
     disposeActiveMolstarViewer();
     activeSdfPoseMode = readSdfPoseMode(config);
     activeSdfCollectionLayout = readSdfCollectionLayout(config);
@@ -28913,7 +28970,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       debug('BuretteAgent attach failed: ' + (error && error.message || String(error)));
     }
     activeViewer = viewer;
-    window.BuretteHandleResize = () => scheduleViewerResize(viewer, 60);
+    window.BuretteHandleResize = () => scheduleViewerResize(viewer);
     molstarContainerResizeCleanup = installMolstarContainerResizeObserver(viewer);
     applyViewerUIScale(viewer);
     initViewerKeyboardShortcuts(viewer);
@@ -28966,7 +29023,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     trackMolstarOrientation(viewer, config);
 
     if (molstarWindowResizeHandler) window.removeEventListener('resize', molstarWindowResizeHandler);
-    molstarWindowResizeHandler = () => scheduleViewerResize(viewer, 100);
+    molstarWindowResizeHandler = () => scheduleViewerResize(viewer);
     window.addEventListener('resize', molstarWindowResizeHandler);
     await waitForAnimationFrame();
     applyLayoutState(viewer);
@@ -28995,6 +29052,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       if (window.BuretteNativeFirstFrame) throw error;
     }
     if (window.BuretteViewerDisposed) return;
+    await restoredView;
     const savedCamera = window.BuretteRendererViewState?.read(config.documentId, config.rendererViewState).camera;
     if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {
       molstarStructureFocusSerial += 1;

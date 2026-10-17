@@ -365,6 +365,7 @@ fn open_database_collection<R: Runtime>(
             include_single_sdf: true,
             ..GridParseOptions::default()
         },
+        None,
     )?
     .ok_or_else(|| "The database answer could not be read as a collection".to_string())?;
     Ok(ViewerDocument::virtual_structure(

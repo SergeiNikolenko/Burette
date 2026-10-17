@@ -1,14 +1,19 @@
 use base64::Engine;
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::fs;
+use std::io::{BufRead, BufReader, Read};
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime};
 use tauri::{Manager, Runtime};
 
 use super::formats::{normalize_renderer_mode, FormatInfo};
 use super::runtime::{ViewerPreferences, ViewerReloadOptions};
-use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs, stable_id};
+use super::runtime_utils::{
+    asset_url, create_runtime_dir, escape_html, prune_runtime_dirs, stable_id,
+};
 use super::text_xyz::{converted_data_from_text, xyz_data_from_text};
 use super::trace::{runtime_manifest, write_bytes_atomic, write_json_atomic};
 use super::xyz::{xyz_frame, XyzPayload};
@@ -42,6 +47,7 @@ pub(crate) struct DockingRuntimeSource {
     /// True when this model was derived from the trajectory itself rather than
     /// read from a topology the user supplied.
     pub(crate) synthetic: bool,
+    pub(crate) indexed_trajectory: Option<super::trajectory::IndexedTrajectory>,
 }
 
 pub(crate) fn create_runtime<R: Runtime>(
@@ -62,7 +68,7 @@ pub(crate) fn create_runtime<R: Runtime>(
     let assets = base.join("assets");
     let runtime = base.join(uuid::Uuid::new_v4().to_string());
     fs::create_dir_all(&assets).map_err(|err| err.to_string())?;
-    fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
+    create_runtime_dir(&base, &runtime)?;
     prune_runtime_dirs(&base);
 
     let label = file_path
@@ -424,7 +430,7 @@ pub(crate) fn create_combined_sdf_pose_runtime<R: Runtime>(
     let assets = base.join("assets");
     let runtime = base.join(uuid::Uuid::new_v4().to_string());
     fs::create_dir_all(&assets).map_err(|err| err.to_string())?;
-    fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
+    create_runtime_dir(&base, &runtime)?;
     copy_web_assets(app, &assets, AssetProfile::Molstar)?;
     prune_runtime_dirs(&base);
 
@@ -566,7 +572,7 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
     let assets = base.join("assets");
     let runtime = base.join(uuid::Uuid::new_v4().to_string());
     fs::create_dir_all(&assets).map_err(|err| err.to_string())?;
-    fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
+    create_runtime_dir(&base, &runtime)?;
     copy_web_assets(app, &assets, AssetProfile::Molstar)?;
     prune_runtime_dirs(&base);
 
@@ -588,7 +594,8 @@ pub(crate) fn create_docking_runtime<R: Runtime>(
             "format": source.format,
             "binary": source.binary,
             "byteCount": source.byte_count,
-            "synthetic": source.synthetic
+            "synthetic": source.synthetic,
+            "indexedTrajectory": source.indexed_trajectory
         })
     };
     let sdf_grid_path = ligands
@@ -993,6 +1000,50 @@ mod tests {
     }
 
     #[test]
+    fn cached_profile_repairs_deleted_files_and_changed_wasm_script() {
+        let base =
+            std::env::temp_dir().join(format!("burette-profile-cache-{}", uuid::Uuid::new_v4()));
+        let source = base.join("source");
+        let assets = base.join("assets");
+        fs::create_dir_all(source.join("rdkit")).unwrap();
+        for name in AssetProfile::Grid.files() {
+            fs::write(source.join(name), name).unwrap();
+        }
+        fs::write(
+            source.join("rdkit/RDKit_minimal.wasm"),
+            b"small wasm fixture",
+        )
+        .unwrap();
+        super::copy_profile_assets(&source, &assets, AssetProfile::Grid).unwrap();
+        let wasm_data = assets.join("rdkit-wasm-data.js");
+        let expected = fs::read(&wasm_data).unwrap();
+        let modified = fs::metadata(&wasm_data).unwrap().modified().unwrap();
+        for _ in 0..1000 {
+            super::copy_profile_assets(&source, &assets, AssetProfile::Grid).unwrap();
+        }
+        assert_eq!(
+            fs::metadata(&wasm_data).unwrap().modified().unwrap(),
+            modified
+        );
+
+        fs::write(&wasm_data, "// stale").unwrap();
+        super::copy_profile_assets(&source, &assets, AssetProfile::Grid).unwrap();
+        assert_eq!(fs::read(&wasm_data).unwrap(), expected);
+        fs::remove_file(assets.join("grid-viewer.js")).unwrap();
+        fs::remove_file(assets.join("rdkit/RDKit_minimal.wasm")).unwrap();
+        super::copy_profile_assets(&source, &assets, AssetProfile::Grid).unwrap();
+        assert_eq!(
+            fs::read(assets.join("grid-viewer.js")).unwrap(),
+            b"grid-viewer.js"
+        );
+        assert_eq!(
+            fs::read(assets.join("rdkit/RDKit_minimal.wasm")).unwrap(),
+            b"small wasm fixture"
+        );
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
     fn skips_embedded_preview_data_script_for_large_payloads() {
         assert!(super::should_embed_preview_data_script(1024));
         assert!(!super::should_embed_preview_data_script(
@@ -1167,7 +1218,7 @@ mod tests {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub(crate) enum AssetProfile {
     Molstar,
     Mesoscale,
@@ -1249,6 +1300,65 @@ pub(crate) fn copy_web_assets<R: Runtime>(
     profile: AssetProfile,
 ) -> Result<(), String> {
     let source = bundled_web_dir(app)?;
+    copy_profile_assets(&source, assets, profile)
+}
+
+#[derive(Eq, PartialEq)]
+struct AssetStamp {
+    source: Option<(u64, SystemTime)>,
+    destination: Option<(u64, SystemTime)>,
+    rdkit: Option<(u64, SystemTime)>,
+    wasm_source: Option<(u64, SystemTime)>,
+    wasm_data: Option<(u64, SystemTime)>,
+}
+
+impl AssetStamp {
+    fn read(source: &Path, assets: &Path, profile: AssetProfile) -> Self {
+        fn metadata(path: &Path) -> Option<(u64, SystemTime)> {
+            let metadata = fs::metadata(path).ok()?;
+            Some((metadata.len(), metadata.modified().ok()?))
+        }
+        Self {
+            source: metadata(source),
+            destination: metadata(assets),
+            rdkit: profile
+                .copies_rdkit()
+                .then(|| metadata(&assets.join("rdkit")))
+                .flatten(),
+            wasm_source: profile
+                .copies_rdkit()
+                .then(|| metadata(&source.join("rdkit/RDKit_minimal.wasm")))
+                .flatten(),
+            wasm_data: profile
+                .copies_rdkit()
+                .then(|| metadata(&assets.join("rdkit-wasm-data.js")))
+                .flatten(),
+        }
+    }
+}
+
+struct AssetValidation {
+    stamp: AssetStamp,
+    checked: Instant,
+}
+
+fn copy_profile_assets(source: &Path, assets: &Path, profile: AssetProfile) -> Result<(), String> {
+    type AssetKey = (PathBuf, PathBuf, AssetProfile);
+    static VALIDATED: OnceLock<Mutex<HashMap<AssetKey, AssetValidation>>> = OnceLock::new();
+    let mut validated = VALIDATED
+        .get_or_init(Mutex::default)
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let key = (source.to_path_buf(), assets.to_path_buf(), profile);
+    let stamp = AssetStamp::read(source, assets, profile);
+    // Packaged sources are immutable for the process lifetime. Constant-size
+    // sentinels catch cache deletion and WASM-script corruption immediately;
+    // periodic full validation also repairs in-place edits during development.
+    if validated.get(&key).is_some_and(|entry| {
+        entry.stamp == stamp && entry.checked.elapsed() < Duration::from_secs(60)
+    }) {
+        return Ok(());
+    }
     fs::create_dir_all(assets).map_err(|err| err.to_string())?;
     for name in profile.files() {
         copy_file_if_needed(&source.join(name), &assets.join(name), name)?;
@@ -1263,6 +1373,13 @@ pub(crate) fn copy_web_assets<R: Runtime>(
             )?;
         }
     }
+    validated.insert(
+        key,
+        AssetValidation {
+            stamp: AssetStamp::read(source, assets, profile),
+            checked: Instant::now(),
+        },
+    );
     Ok(())
 }
 
@@ -1278,9 +1395,9 @@ fn write_rdkit_wasm_data_if_needed(source: &Path, destination: &Path) -> Result<
         "// sha256:{}",
         base64::engine::general_purpose::STANDARD.encode(Sha256::digest(&bytes))
     );
-    let destination_is_current = fs::read_to_string(destination)
+    let destination_is_current = fs::File::open(destination)
         .ok()
-        .and_then(|contents| contents.lines().next().map(str::to_string))
+        .and_then(|file| BufReader::new(file.take(256)).lines().next()?.ok())
         .is_some_and(|line| line == fingerprint);
     if destination_is_current {
         return Ok(());
@@ -1338,7 +1455,6 @@ fn copy_dir_if_needed(source: &Path, destination: &Path) -> Result<(), String> {
 
 fn copy_file_if_needed(source: &Path, destination: &Path, label: &str) -> Result<(), String> {
     if destination_matches_source(source, destination)? {
-        eprintln!("Burette asset skipped: {label}");
         return Ok(());
     }
     if let Some(parent) = destination.parent() {

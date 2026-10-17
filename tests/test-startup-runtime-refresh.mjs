@@ -14,7 +14,7 @@ function startup(initialDocuments = []) {
   const options = {
     documents: initialDocuments, tabs: [], activeDocument: initialDocuments[0], activeTabId: null,
     openDocuments: paths => refreshed.push(paths),
-    openPaths: async paths => opened.push(paths),
+    openPaths: async (paths, request) => opened.push({ paths, request }),
     setActiveTab() {}, pushErrorStatus(error) { throw error; },
   };
   const hook = new Function("dependencies", `
@@ -60,7 +60,7 @@ await Promise.resolve();
 restoredLaunch.render({ documents, activeDocument: documents[1] });
 assert.deepEqual(
   { opened: restoredLaunch.opened, refreshed: restoredLaunch.refreshed },
-  { opened: [["/a.pdb", "/b.pdb"]], refreshed: [] },
+  { opened: [{ paths: ["/a.pdb", "/b.pdb"], request: { preferredPath: "/b.pdb", preserveActiveTab: true } }], refreshed: [] },
   "restoring saved tabs creates each runtime once",
 );
 

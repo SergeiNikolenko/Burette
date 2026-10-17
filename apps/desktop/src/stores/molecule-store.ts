@@ -1,7 +1,7 @@
 import { moveTabHistory } from "../lib/tab-navigation";
 import { rememberClosedTab } from "./closed-tabs";
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
+import { createJSONStorage, persist, type PersistStorage } from "zustand/middleware";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -36,6 +36,7 @@ import {
   type GlobalRecentStructuresSnapshot,
 } from "../lib/global-recent-structures";
 import { isTauriRuntime } from "../lib/tauri";
+import { clearNativeRecentStructures } from "../lib/clear-recent-structures";
 import { workspaceStorageKey } from "../lib/window-scope";
 import { useSettingsStore } from "./settings-store";
 
@@ -72,11 +73,11 @@ type MoleculeState = {
   activeDocumentId: string | null;
   recentStructures: RecentStructure[];
   setDocuments: (documents: ViewerDocument[]) => void;
-  addDocuments: (documents: ViewerDocument[]) => void;
+  addDocuments: (documents: ViewerDocument[], options?: { preserveActiveTab?: boolean }) => void;
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   replaceDocument: (documentId: string, replacement: ViewerDocument) => void;
   openDocumentsInActiveTab: (documents: ViewerDocument[], options?: { backLocation?: Location }) => void;
-  addTextDocuments: (documents: TextFileDocument[]) => void;
+  addTextDocuments: (documents: TextFileDocument[], options?: { preserveActiveTab?: boolean }) => void;
   addBackgroundTextDocuments: (documents: TextFileDocument[]) => void;
   openTextDocumentsInActiveTab: (documents: TextFileDocument[], options?: { backLocation?: Location }) => void;
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
@@ -106,6 +107,7 @@ type MoleculeState = {
   togglePinnedTab: (id: string) => void;
   renameTab: (id: string, title: string) => void;
   closeTab: (id: string) => void;
+  closeTabs: (ids: string[]) => void;
   closeDocument: (id: string) => void;
   closeActiveDocument: () => void;
   closeAllDocuments: () => void;
@@ -340,6 +342,64 @@ function persistedTabs(tabs: MoleculeTab[]) {
   ));
 }
 
+// Focus changes only write a small pointer. Session mutations still commit
+// synchronously, so a quit immediately after an edit cannot lose that edit.
+function moleculeSessionStorage(): PersistStorage<PersistedMoleculeState> | undefined {
+  let storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
+  try {
+    storage = window.BuretteMcpWorkspace?.storage ?? localStorage;
+  } catch {
+    return undefined;
+  }
+  const json = createJSONStorage<PersistedMoleculeState>(() => storage)!;
+  let previous: PersistedMoleculeState | undefined;
+  return {
+    getItem: (name) => {
+      const stored = json.getItem(name);
+      // Both supported session stores are synchronous localStorage adapters.
+      if (!stored || stored instanceof Promise) return stored;
+      const active = storage.getItem(`${name}.active`);
+      if (active !== null) {
+        try { stored.state.activeTabId = JSON.parse(active); } catch { /* Legacy pointer. */ }
+      }
+      previous = undefined;
+      return stored;
+    },
+    setItem: (name, value) => {
+      if (previous?.tabs !== value.state.tabs || previous?.recentStructures !== value.state.recentStructures) {
+        json.setItem(name, value);
+      }
+      if (!previous || previous.activeTabId !== value.state.activeTabId) {
+        storage.setItem(`${name}.active`, JSON.stringify(value.state.activeTabId));
+      }
+      previous = value.state;
+    },
+    removeItem: (name) => {
+      previous = undefined;
+      json.removeItem(name);
+      storage.removeItem(`${name}.active`);
+    },
+  };
+}
+
+let persistedTabSource: MoleculeTab[] | undefined;
+let persistedTabSnapshot: MoleculeTab[] = [];
+let persistedRecentSource: RecentStructure[] | undefined;
+let persistedRecentSnapshot: RecentStructure[] = [];
+
+function sessionToPersist(state: MoleculeState): PersistedMoleculeState {
+  if (shouldIgnorePersistedSession()) return devFilesPersistedSession(state.recentStructures);
+  if (persistedTabSource !== state.tabs) {
+    persistedTabSource = state.tabs;
+    persistedTabSnapshot = persistedTabs(collapseDuplicateKetcherTabs(state.tabs, state.activeTabId));
+  }
+  if (persistedRecentSource !== state.recentStructures) {
+    persistedRecentSource = state.recentStructures;
+    persistedRecentSnapshot = state.recentStructures.filter(isPersistentRecentStructure);
+  }
+  return { documents: [], tabs: persistedTabSnapshot, activeTabId: state.activeTabId, recentStructures: persistedRecentSnapshot };
+}
+
 function documentForLocation(location: Location, documents: ViewerDocument[]) {
   if (location.kind === "fep-network") return null;
   if (location.kind === "fep-setup" || location.kind === "pose-review") {
@@ -361,6 +421,27 @@ function activeDocumentIdFrom(tabs: MoleculeTab[], activeTabId: string | null, d
   const tab = tabs.find((candidate) => candidate.id === activeTabId);
   const document = tab ? documentForLocation(tab.location, documents) : null;
   return document?.id ?? null;
+}
+
+function tabDocumentPaths(tabs: MoleculeTab[]) {
+  return new Set(tabs.flatMap(tab => [...tab.back, tab.location, ...tab.forward].flatMap(location => {
+    if (location.kind === "file" || location.kind === "text-file") return [location.path];
+    if (location.kind === "fep-setup" || location.kind === "pose-review") return [location.dockingPath];
+    return [];
+  })));
+}
+
+function stateAfterClosingTabs(state: MoleculeState, wanted: Set<string>, additionalPaths: string[] = []) {
+  const closing = state.tabs.filter(tab => wanted.has(tab.id));
+  const tabs = ensureTabs(state.tabs.filter(tab => !wanted.has(tab.id)));
+  const retained = tabDocumentPaths(tabs);
+  const removed = tabDocumentPaths(closing);
+  for (const path of additionalPaths) removed.add(path);
+  const keep = (document: { path: string }) => !removed.has(document.path) || retained.has(document.path);
+  const documents = state.documents.filter(keep);
+  const textDocuments = state.textDocuments.filter(keep);
+  const activeTabId = activeTabIdOrFirst(tabs, wanted.has(state.activeTabId ?? "") ? null : state.activeTabId);
+  return { documents, textDocuments, tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents) };
 }
 
 function settingsReturnTabId(state: MoleculeState) {
@@ -535,15 +616,14 @@ export const useMoleculeStore = create<MoleculeState>()(
           const activeTabId = tabs[0]?.id ?? null;
           return { documents, textDocuments: [], tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents) };
         }),
-      addDocuments: (incoming) =>
+      addDocuments: (incoming, options = {}) =>
         set((state) => {
           const byPath = new Map(state.documents.map((document) => [document.path, document]));
           for (const document of incoming) byPath.set(document.path, document);
           const documents = Array.from(byPath.values());
           const tabs = state.tabs
             .filter(retainedOnOpen)
-            .map(cloneTab)
-            .filter((tab) => tab.location.kind !== "file" || byPath.has(tab.location.path));
+            .map(cloneTab);
           const tabByPath = new Map<string, MoleculeTab>();
           for (const tab of tabs) {
             if (tab.location.kind === "file") tabByPath.set(tab.location.path, tab);
@@ -564,7 +644,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           }
 
           const nextTabs = ensureTabs(tabs);
-          let activeTabId = openedTabId ?? state.activeTabId;
+          let activeTabId = options.preserveActiveTab ? state.activeTabId : openedTabId ?? state.activeTabId;
           activeTabId = activeTabIdOrFirst(nextTabs, activeTabId);
           return { documents, tabs: nextTabs, activeTabId, activeDocumentId: activeDocumentIdFrom(nextTabs, activeTabId, documents) };
         }),
@@ -611,8 +691,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           const active = state.tabs.find((tab) => tab.id === state.activeTabId && !tab.pinned);
           let tabs = state.tabs
             .filter(retainedOnOpen)
-            .map(cloneTab)
-            .filter((tab) => tab.location.kind !== "file" || byPath.has(tab.location.path));
+            .map(cloneTab);
 
           const firstDocument = incoming[0];
           const nextLocation = fileLocation(firstDocument);
@@ -651,15 +730,14 @@ export const useMoleculeStore = create<MoleculeState>()(
           const activeTabId = activeTabIdOrFirst(nextTabs, targetTab.id);
           return { documents, tabs: nextTabs, activeTabId, activeDocumentId: activeDocumentIdFrom(nextTabs, activeTabId, documents) };
         }),
-      addTextDocuments: (incoming) =>
+      addTextDocuments: (incoming, options = {}) =>
         set((state) => {
           const byPath = new Map(state.textDocuments.map((document) => [document.path, document]));
           for (const document of incoming) byPath.set(document.path, document);
           const textDocuments = Array.from(byPath.values());
           const tabs = state.tabs
             .filter(retainedOnOpen)
-            .map(cloneTab)
-            .filter((tab) => tab.location.kind !== "text-file" || byPath.has(tab.location.path));
+            .map(cloneTab);
           const tabByPath = new Map<string, MoleculeTab>();
           for (const tab of tabs) {
             if (tab.location.kind === "text-file") tabByPath.set(tab.location.path, tab);
@@ -680,7 +758,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           }
 
           const nextTabs = ensureTabs(tabs);
-          let activeTabId = openedTabId ?? state.activeTabId;
+          let activeTabId = options.preserveActiveTab ? state.activeTabId : openedTabId ?? state.activeTabId;
           activeTabId = activeTabIdOrFirst(nextTabs, activeTabId);
           return { textDocuments, tabs: nextTabs, activeTabId, activeDocumentId: activeDocumentIdFrom(nextTabs, activeTabId, state.documents) };
         }),
@@ -700,8 +778,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           const active = state.tabs.find((tab) => tab.id === state.activeTabId && !tab.pinned);
           let tabs = state.tabs
             .filter(retainedOnOpen)
-            .map(cloneTab)
-            .filter((tab) => tab.location.kind !== "text-file" || byPath.has(tab.location.path));
+            .map(cloneTab);
 
           const firstDocument = incoming[0];
           const nextLocation = textFileLocation(firstDocument);
@@ -773,7 +850,7 @@ export const useMoleculeStore = create<MoleculeState>()(
         saveGlobalRecentStructures([]);
         set({ recentStructures: [] });
         if (isTauriRuntime()) {
-          reconcileRecentStructures(invoke("clear_recent_documents"));
+          void clearNativeRecentStructures(applyRecentStructuresSnapshot);
         }
       },
       openNewTab: () =>
@@ -1028,47 +1105,30 @@ export const useMoleculeStore = create<MoleculeState>()(
         set((state) => {
           const closing = state.tabs.find((tab) => tab.id === id);
           rememberClosedTab(closing);
-          let documents = state.documents;
-          let textDocuments = state.textDocuments;
-          if (closing && closing.location.kind === "file") {
-            const path = closing.location.path;
-            documents = state.documents.filter((document) => document.path !== path);
-          }
-          if (closing && closing.location.kind === "text-file") {
-            const path = closing.location.path;
-            textDocuments = state.textDocuments.filter((document) => document.path !== path);
-          }
-          const tabs = ensureTabs(state.tabs.filter((tab) => tab.id !== id));
-          const activeTabId = activeTabIdOrFirst(tabs, state.activeTabId === id ? null : state.activeTabId);
-          return { documents, textDocuments, tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents) };
+          return stateAfterClosingTabs(state, new Set([id]));
         }),
       closeDocument: (id) =>
         set((state) => {
           const document = state.documents.find((candidate) => candidate.id === id);
           if (!document) return state;
-          const documents = state.documents.filter((candidate) => candidate.id !== id);
-          const tabs = ensureTabs(state.tabs.filter((tab) => tab.location.kind !== "file" || tab.location.path !== document.path));
-          const activeTabId = activeTabIdOrFirst(tabs, state.activeTabId);
-          return { documents, tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents) };
+          const wanted = new Set(state.tabs.filter(tab => tab.location.kind === "file" && tab.location.path === document.path).map(tab => tab.id));
+          return stateAfterClosingTabs(state, wanted, [document.path]);
         }),
+      closeTabs: (ids) => set((state) => {
+        const wanted = new Set(ids);
+        for (const tab of state.tabs) {
+          if (!wanted.has(tab.id)) continue;
+          rememberClosedTab(tab);
+        }
+        return stateAfterClosingTabs(state, wanted);
+      }),
       closeActiveDocument: () =>
         set((state) => {
           if (!state.activeTabId) return state;
           const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
           if (!activeTab) return state;
           rememberClosedTab(activeTab);
-          let documents = state.documents;
-          let textDocuments = state.textDocuments;
-          const location = activeTab.location;
-          if (location.kind === "file") {
-            documents = state.documents.filter((document) => document.path !== location.path);
-          }
-          if (location.kind === "text-file") {
-            textDocuments = state.textDocuments.filter((document) => document.path !== location.path);
-          }
-          const tabs = ensureTabs(state.tabs.filter((tab) => tab.id !== activeTab.id));
-          const activeTabId = activeTabIdOrFirst(tabs, null);
-          return { documents, textDocuments, tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents) };
+          return stateAfterClosingTabs(state, new Set([activeTab.id]));
         }),
       closeAllDocuments: () => {
         const tab = createLauncherTab();
@@ -1120,15 +1180,8 @@ export const useMoleculeStore = create<MoleculeState>()(
     }),
     {
       name: workspaceStorageKey("burette.molecule.session"),
-      storage: createJSONStorage(() => window.BuretteMcpWorkspace?.storage ?? localStorage),
-      partialize: (state) => shouldIgnorePersistedSession()
-        ? devFilesPersistedSession(state.recentStructures)
-        : ({
-            documents: [],
-            tabs: persistedTabs(collapseDuplicateKetcherTabs(state.tabs, state.activeTabId)),
-            activeTabId: state.activeTabId,
-            recentStructures: state.recentStructures.filter(isPersistentRecentStructure),
-          }),
+      storage: moleculeSessionStorage(),
+      partialize: sessionToPersist,
       merge: (persisted, current) => {
         const stored = persisted as Partial<PersistedMoleculeState> | undefined;
         if (shouldIgnorePersistedSession()) {

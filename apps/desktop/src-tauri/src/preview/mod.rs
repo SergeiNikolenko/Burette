@@ -27,6 +27,8 @@ mod snapshot_fs;
 pub(crate) mod synthetic_topology;
 pub(crate) mod text_xyz;
 pub(crate) mod trace;
+pub(crate) mod trajectory;
+mod trajectory_dcd;
 pub(crate) mod xyz;
 pub(crate) mod xyzrender;
 mod xyzrender_pool;

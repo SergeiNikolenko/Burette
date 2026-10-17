@@ -28,6 +28,7 @@ import {
 } from "../lib/file-routing";
 import { journalAction } from "../lib/action-journal";
 import { markPerformanceOnce } from "../lib/performance";
+import { tracePerf } from "../lib/perf-trace";
 import { fetchRemoteStructure } from "../lib/remote-structure";
 import { currentDocumentRegistryRevision } from "../lib/native-menu";
 import { abortOpenDocumentClaims } from "../lib/open-document-claims";
@@ -62,8 +63,8 @@ type UseAppFileOpenOptions = {
   addProjectRoot: (path: string) => void;
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   addBackgroundTextDocuments: (documents: TextFileDocument[]) => void;
-  addDocuments: (documents: ViewerDocument[]) => void;
-  addTextDocuments: (documents: TextFileDocument[]) => void;
+  addDocuments: (documents: ViewerDocument[], options?: { preserveActiveTab?: boolean }) => void;
+  addTextDocuments: (documents: TextFileDocument[], options?: { preserveActiveTab?: boolean }) => void;
   closeDocument: (id: string) => void;
   detectContentSpectrumPaths: (paths: string[]) => Promise<Set<string>>;
   expandStructureBundles: (paths: string[]) => Promise<string[]>;
@@ -176,10 +177,11 @@ export function useAppFileOpen({
       paths: string[],
       reloadOptions?: ViewerReloadOptions,
       preferencesOverride?: Partial<ViewerPreferences>,
-      options: { replace?: boolean; inActiveTab?: boolean; mode?: OpenDocumentsMode; deferErrorStatus?: boolean; preserveActiveTab?: boolean; shouldApply?: () => boolean } = {},
+      options: { replace?: boolean; inActiveTab?: boolean; mode?: OpenDocumentsMode; deferErrorStatus?: boolean; preserveActiveTab?: boolean; reuseExisting?: boolean; shouldApply?: () => boolean } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return;
+      if (options.shouldApply?.() === false) return null;
       const graphmlPaths = cleanPaths.filter(isFepGraphmlPath);
       const structurePaths = cleanPaths.filter((path) => !isFepGraphmlPath(path));
       if (graphmlPaths.length > 0) {
@@ -206,37 +208,82 @@ export function useAppFileOpen({
       };
       pushStatus("Opening structures...");
       try {
-        const result = isTauriRuntime()
-          ? await invoke<OpenDocumentsResult>("open_documents", {
-              paths: structurePaths,
-              preferences: effectivePreferences,
-              reloadOptions,
-              mode: options.mode,
-              openStateRevision: currentDocumentRegistryRevision(),
-            })
-          : await openBrowserDevDocuments(structurePaths, effectivePreferences, reloadOptions);
-        if (options.shouldApply && !options.shouldApply()) {
-          await abortOpenDocumentClaims(result.documents);
-          return null;
+        const result: OpenDocumentsResult = { documents: [], errors: [] };
+        const admittedPaths = new Set<string>();
+        const mayContinue = () => options.shouldApply?.() !== false
+          && (admittedPaths.size === 0 || useMoleculeStore.getState().documents.some((document) => admittedPaths.has(document.path)));
+        // Combined scenes must reach the native reader as one request. Ordinary
+        // opens publish the first document immediately, then bounded batches.
+        const combined = options.mode === "combinePoses" || options.mode === "combineGrid";
+        for (let offset = 0; offset < structurePaths.length;) {
+          if (!mayContinue()) return null;
+          const batchPaths = structurePaths.slice(offset, offset + (combined ? structurePaths.length : offset === 0 ? 1 : 32));
+          offset += batchPaths.length;
+          const deferRuntime = !combined && offset > 1 && !reloadOptions && !options.deferErrorStatus;
+          const retainedByPath = new Map(deferRuntime || options.reuseExisting
+            ? useMoleculeStore.getState().documents.map((document) => [document.path, document] as const)
+            : []);
+          const pathsToOpen = batchPaths.filter((path) => !retainedByPath.has(path));
+          let batch: OpenDocumentsResult;
+          try {
+            batch = pathsToOpen.length === 0 ? { documents: [], errors: [] } : isTauriRuntime()
+              ? await invoke<OpenDocumentsResult>("open_documents", {
+                  paths: pathsToOpen,
+                  preferences: effectivePreferences,
+                  reloadOptions,
+                  mode: options.mode,
+                  deferRuntime,
+                  openStateRevision: currentDocumentRegistryRevision(),
+                })
+              : await openBrowserDevDocuments(pathsToOpen, effectivePreferences, reloadOptions);
+            batch.documents = batch.documents.map((document) => document.runtimeDeferred
+              ? { ...document, runtimeDeferredPreferences: { ...preferencesOverride, rendererMode: effectivePreferences.rendererMode } }
+              : document);
+            if (retainedByPath.size > 0) {
+              const openedByPath = new Map(batch.documents.map((document) => [document.path, document]));
+              batch.documents = batchPaths.flatMap((path) => {
+                const document = retainedByPath.get(path) ?? openedByPath.get(path);
+                return document ? [document] : [];
+              });
+            }
+          } catch (error) {
+            // An entirely invalid batch rejects rather than returning errors.
+            // Keep later files reachable without swallowing a single-file menu.
+            if (structurePaths.length === 1 || combined) throw error;
+            result.errors.push(String(error));
+            continue;
+          }
+          if (!mayContinue()) {
+            await abortOpenDocumentClaims(batch.documents);
+            return null;
+          }
+          result.errors.push(...batch.errors);
+          if (batch.documents.length === 0) continue;
+          const previousActiveTabId = useMoleculeStore.getState().activeTabId;
+          try {
+            if (result.documents.length === 0 && options.replace) setDocuments(batch.documents);
+            else if (result.documents.length === 0 && options.inActiveTab) openDocumentsInActiveTab(batch.documents);
+            else addDocuments(batch.documents, { preserveActiveTab: options.preserveActiveTab || result.documents.length > 0 });
+          } catch (error) {
+            void abortOpenDocumentClaims(batch.documents).catch((abortError) => {
+              console.warn("Open document claim abort failed", abortError);
+            });
+            throw error;
+          }
+          if (result.documents.length === 0 && !options.replace && !options.inActiveTab && !options.preserveActiveTab && batch.documents[0]) {
+            setActiveDocument(batch.documents[0].id);
+          }
+          if (options.preserveActiveTab && (options.replace || options.inActiveTab) && previousActiveTabId) {
+            useMoleculeStore.getState().setActiveTab(previousActiveTabId);
+          }
+          markPerformanceOnce("app:first-document-opened");
+          result.documents.push(...batch.documents);
+          for (const document of batch.documents) admittedPaths.add(document.path);
+          tracePerf("open:batch", { detail: { total: structurePaths.length, processed: offset, admitted: result.documents.length } });
+          // Yield so the selected viewer can mount and input/cancellation can run.
+          if (offset < structurePaths.length) await new Promise<void>((resolve) => setTimeout(resolve, 0));
         }
-        const previousActiveTabId = useMoleculeStore.getState().activeTabId;
-        try {
-          if (options.replace) setDocuments(result.documents);
-          else if (options.inActiveTab) openDocumentsInActiveTab(result.documents);
-          else addDocuments(result.documents);
-        } catch (error) {
-          void abortOpenDocumentClaims(result.documents).catch((abortError) => {
-            console.warn("Open document claim abort failed", abortError);
-          });
-          throw error;
-        }
-        if (!options.replace && !options.inActiveTab && result.documents[0]) {
-          setActiveDocument(result.documents[0].id);
-        }
-        if (options.preserveActiveTab && previousActiveTabId) {
-          useMoleculeStore.getState().setActiveTab(previousActiveTabId);
-        }
-        if (result.documents.length > 0) markPerformanceOnce("app:first-document-opened");
+        tracePerf("open:complete", { detail: { total: structurePaths.length, admitted: result.documents.length } });
         rememberRecentStructures(result.documents);
         const openedText = "Opened " + result.documents.length + " structure" + (result.documents.length === 1 ? "" : "s");
         // deferErrorStatus: the caller falls back to another opener for anything
@@ -265,7 +312,7 @@ export function useAppFileOpen({
   const openTextDocuments = useCallback(
     async (
       paths: string[],
-      options: { inActiveTab?: boolean; background?: boolean; shouldApply?: () => boolean } = {},
+      options: { inActiveTab?: boolean; background?: boolean; shouldApply?: () => boolean; preserveActiveTab?: boolean } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return null;
@@ -281,7 +328,7 @@ export function useAppFileOpen({
         try {
           if (options.background) addBackgroundTextDocuments(result.documents);
           else if (options.inActiveTab) openTextDocumentsInActiveTab(result.documents);
-          else addTextDocuments(result.documents);
+          else addTextDocuments(result.documents, { preserveActiveTab: options.preserveActiveTab });
         } catch (error) {
           void abortOpenDocumentClaims(result.documents).catch((abortError) => {
             console.warn("Open document claim abort failed", abortError);
@@ -306,7 +353,7 @@ export function useAppFileOpen({
   const openSpectrumDocuments = useCallback(
     async (
       paths: string[],
-      options: { inActiveTab?: boolean; background?: boolean; shouldApply?: () => boolean } = {},
+      options: { inActiveTab?: boolean; background?: boolean; shouldApply?: () => boolean; preserveActiveTab?: boolean } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return null;
@@ -323,14 +370,14 @@ export function useAppFileOpen({
         try {
           if (options.background) addBackgroundDocuments(documents);
           else if (options.inActiveTab) openDocumentsInActiveTab(documents);
-          else addDocuments(documents);
+          else addDocuments(documents, { preserveActiveTab: options.preserveActiveTab });
         } catch (error) {
           void abortOpenDocumentClaims(result.documents).catch((abortError) => {
             console.warn("Open document claim abort failed", abortError);
           });
           throw error;
         }
-        if (!options.background && !options.inActiveTab && documents[0]) {
+        if (!options.background && !options.inActiveTab && !options.preserveActiveTab && documents[0]) {
           setActiveDocument(documents[0].id);
           setDockDocument("right", documents[0].id);
           setDockActiveTab("right", "inspector");
@@ -354,7 +401,7 @@ export function useAppFileOpen({
     [addBackgroundDocuments, addDocuments, openDockTab, openDocumentsInActiveTab, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDockActiveTab, setDockDocument, setDockOpen],
   );
 
-  const openPaths = useCallback(async (paths: string[], options: FileOpenOptions = {}) => {
+  const openPathBatch = useCallback(async (paths: string[], options: FileOpenOptions = {}) => {
     const mayApply = () => options.shouldApply?.() !== false;
     if (!mayApply()) return;
     let openedAny = false;
@@ -383,6 +430,9 @@ export function useAppFileOpen({
         if (options.requireSuccess) throw error;
         return;
       }
+    }
+    if (options.preferredPath) {
+      filePaths = filePaths.slice().sort((a, b) => a === options.preferredPath ? -1 : b === options.preferredPath ? 1 : 0);
     }
     const cleanPaths = await expandStructureBundles(filePaths);
     if (!mayApply()) return;
@@ -443,7 +493,7 @@ export function useAppFileOpen({
 
     if (structurePaths.length > 0) {
       // Normal file opening follows format support; Open As passes an explicit renderer.
-      const result = await openDocuments(structurePaths, undefined, { rendererMode: "auto" }, options);
+      const result = await openDocuments(structurePaths, undefined, { rendererMode: "auto" }, { ...options, reuseExisting: true });
       if (!mayApply()) return;
       openedAny ||= Boolean(result?.documents.length);
       preferredStructureDocumentId = result?.documents[0]?.id ?? preferredStructureDocumentId;
@@ -451,7 +501,7 @@ export function useAppFileOpen({
 
     const openedStructureAndTextPaths = new Set<string>();
     if (structureAndTextPaths.length > 0) {
-      const result = await openDocuments(structureAndTextPaths, undefined, { rendererMode: "auto" }, { ...options, deferErrorStatus: true });
+      const result = await openDocuments(structureAndTextPaths, undefined, { rendererMode: "auto" }, { ...options, reuseExisting: true, deferErrorStatus: true });
       if (!mayApply()) return;
       const openedDocuments = result?.documents ?? [];
       for (const document of openedDocuments) {
@@ -491,11 +541,21 @@ export function useAppFileOpen({
       if (!mayApply()) return;
       openedAny ||= Boolean(result?.documents.length);
     }
-    if (preferredStructureDocumentId) {
+    if (preferredStructureDocumentId && !options.preserveActiveTab) {
       setActiveDocument(preferredStructureDocumentId);
     }
     if (options.requireSuccess && !openedAny) throw new Error("The file could not be opened. Check its format and contents.");
   }, [addProjectRoot, closeDocument, detectContentSpectrumPaths, expandStructureBundles, openDocuments, openDocumentTab, openSpectrumDocuments, openTextDocuments, pushErrorStatus, pushStatus, setActiveDocument]);
+
+  const openPaths = useCallback(async (paths: string[], options: FileOpenOptions = {}) => {
+    // Restore the selected file before classification/routing of the tail,
+    // including when it is text or a spectrum rather than a molecular file.
+    if (options.preferredPath && paths.includes(options.preferredPath)) {
+      await openPathBatch([options.preferredPath], options);
+      paths = paths.filter((path) => path !== options.preferredPath);
+    }
+    if (paths.length > 0) await openPathBatch(paths, options);
+  }, [openPathBatch]);
 
   const openStructureRecordDocuments = useCallback(async (records: StructureDragRecord[]) => {
     const cleanRecords = records.filter((record) => record.text.trim().length > 0);

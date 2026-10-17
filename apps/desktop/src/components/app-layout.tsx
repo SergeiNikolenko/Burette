@@ -112,9 +112,7 @@ function useInitialSize(sizePx: number) {
 // flex transition on `[data-panels-animating] > [data-panel]` must apply only
 // then: react-resizable-panels rewrites flex-grow every frame during drags and
 // window resizes, and a standing transition would rubber-band both. The viewer
-// iframes are pinned for the same window: this layout effect runs before the
-// collapse/expand sync (hook order), so the frames are measured at their
-// pre-toggle size and reflow once when the slide has finished.
+// frames follow the slide while their pointer guard stays held until it finishes.
 function usePanelToggleAnimation(open: boolean, shellRef: React.RefObject<HTMLElement | null>) {
   const [animating, setAnimating] = useState(false);
   const mounted = useRef(false);
@@ -137,7 +135,7 @@ function usePanelToggleAnimation(open: boolean, shellRef: React.RefObject<HTMLEl
           if (cancelled) return;
           setAnimating(false);
           // Nested groups correct their pixel sizes in ResizeObserver + rAF.
-          // Keep the viewer pinned until those final corrections have painted.
+          // Keep pointer ownership until those final corrections have painted.
           frame = requestAnimationFrame(() => {
             frame = requestAnimationFrame(() => release?.());
           });
@@ -154,7 +152,7 @@ function usePanelToggleAnimation(open: boolean, shellRef: React.RefObject<HTMLEl
 }
 
 // A pointer drag on a separator, from pointerdown on the handle to the pointer
-// being released anywhere. While it lasts the viewer iframes stay pinned and
+// being released anywhere. While it lasts the viewer iframes ignore pointers and
 // the per-frame sizes reported by onLayoutChanged are parked in the panel's
 // DragCommit instead of hitting the store: setDockSize clones the workspace
 // and the persist middleware serialises every workspace to localStorage, which

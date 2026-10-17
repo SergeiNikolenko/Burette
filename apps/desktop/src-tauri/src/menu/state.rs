@@ -98,6 +98,8 @@ struct ProvisionalOpenClaim {
     window_label: String,
     path: PathBuf,
     baseline_revision: u64,
+    source_registration_epoch: Option<u64>,
+    runtime_path: Option<PathBuf>,
 }
 
 struct SaveAsReservation {
@@ -186,6 +188,8 @@ impl OpenDocumentRegistry {
                 window_label: window_label.to_string(),
                 path,
                 baseline_revision,
+                source_registration_epoch: None,
+                runtime_path: None,
             },
         );
         Ok(Some(claim_id))
@@ -196,6 +200,59 @@ impl OpenDocumentRegistry {
         window_label: &str,
         claim_id: &str,
     ) -> Result<bool, String> {
+        self.abort_open_claim_with_cleanup(window_label, claim_id, |_, _, _| Ok(()))
+    }
+
+    pub(crate) fn bind_open_claim_source_epoch(
+        &self,
+        window_label: &str,
+        claim_id: &str,
+        epoch: u64,
+    ) -> Result<(), String> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "open document registry lock is poisoned".to_string())?;
+        let claim = state
+            .provisional_open_claims
+            .get_mut(claim_id)
+            .ok_or("The open document claim no longer exists.")?;
+        if claim.window_label != window_label {
+            return Err("The open document claim belongs to another window.".into());
+        }
+        claim.source_registration_epoch = Some(epoch);
+        Ok(())
+    }
+
+    pub(crate) fn bind_open_claim_runtime_path(
+        &self,
+        window_label: &str,
+        claim_id: &str,
+        runtime_path: Option<&Path>,
+    ) -> Result<(), String> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "open document registry lock is poisoned".to_string())?;
+        // A newer menu snapshot can already have adopted this path.
+        let Some(claim) = state.provisional_open_claims.get_mut(claim_id) else {
+            return Ok(());
+        };
+        if claim.window_label != window_label {
+            return Err("The open document claim belongs to another window.".into());
+        }
+        claim.runtime_path = runtime_path.map(Path::to_path_buf);
+        Ok(())
+    }
+
+    // Keep the ownership check and cleanup under one lock. A concurrent reopen
+    // must reserve its provisional claim before stale cleanup can remove a source.
+    pub(crate) fn abort_open_claim_with_cleanup(
+        &self,
+        window_label: &str,
+        claim_id: &str,
+        cleanup: impl FnOnce(&Path, Option<u64>, Option<&Path>) -> Result<(), String>,
+    ) -> Result<bool, String> {
         let mut state = self
             .state
             .lock()
@@ -205,6 +262,21 @@ impl OpenDocumentRegistry {
         };
         if claim.window_label != window_label {
             return Err("The open document claim belongs to another window.".into());
+        }
+        let path = &claim.path;
+        let owned = state
+            .paths_by_window
+            .get(window_label)
+            .is_some_and(|snapshot| snapshot.paths.contains(path))
+            || state.provisional_open_claims.iter().any(|(id, other)| {
+                id != claim_id && other.window_label == window_label && other.path == *path
+            });
+        if !owned && (claim.source_registration_epoch.is_some() || claim.runtime_path.is_some()) {
+            cleanup(
+                path,
+                claim.source_registration_epoch,
+                claim.runtime_path.as_deref(),
+            )?;
         }
         state.provisional_open_claims.remove(claim_id);
         Ok(true)
@@ -545,6 +617,11 @@ pub(super) fn sync_native_menu<R: Runtime>(
         sync_recent_documents(&app, documents)?;
     }
 
+    // Dynamic Recent and Undo/Redo items must be replaced before this per-sync
+    // snapshot; no item handle is retained across menu updates.
+    sync_edit_history(&app, &state)?;
+    let app = MenuItems::snapshot(&app)?;
+
     set_enabled(&app, "file.save", state.can_save)?;
     set_enabled(&app, "file.save-as", state.can_save_as)?;
     set_enabled(&app, "file.reveal-active", state.has_active_file)?;
@@ -590,7 +667,6 @@ pub(super) fn sync_native_menu<R: Runtime>(
     set_enabled(&app, "file.reopen-closed-tab", true)?;
     set_enabled(&app, "file.close-window", true)?;
 
-    sync_edit_history(&app, &state)?;
     set_enabled(&app, "edit.find", true)?;
 
     set_enabled(&app, "view.navigate-back", true)?;
@@ -1264,12 +1340,66 @@ fn normalize_whitespace(value: &str) -> String {
     value.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// Resolves current menu items. App handles perform a fresh lookup for isolated
+/// operations; a sync-local snapshot reuses handles only until that sync ends.
+trait MenuLookup<R: Runtime> {
+    fn menu_item(&self, id: &str) -> Result<MenuItemKind<R>, String>;
+}
+
+impl<R: Runtime> MenuLookup<R> for tauri::AppHandle<R> {
+    fn menu_item(&self, id: &str) -> Result<MenuItemKind<R>, String> {
+        find_app_menu_item(self, id)
+    }
+}
+
+struct MenuItems<R: Runtime>(HashMap<String, MenuItemKind<R>>);
+
+impl<R: Runtime> MenuItems<R> {
+    fn snapshot(app: &tauri::AppHandle<R>) -> Result<Self, String> {
+        let menu = app.menu().ok_or("application menu is not configured")?;
+        let mut indexed = HashMap::new();
+        Self::collect(
+            menu.items().map_err(|error| error.to_string())?,
+            &mut indexed,
+        )?;
+        Ok(Self(indexed))
+    }
+
+    fn collect(
+        items: Vec<MenuItemKind<R>>,
+        indexed: &mut HashMap<String, MenuItemKind<R>>,
+    ) -> Result<(), String> {
+        for item in items {
+            let children = item
+                .as_submenu()
+                .map(|menu| menu.items())
+                .transpose()
+                .map_err(|error| error.to_string())?;
+            // Preserve the original depth-first lookup's first-match behavior.
+            indexed.entry(item.id().0.clone()).or_insert(item);
+            if let Some(children) = children {
+                Self::collect(children, indexed)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+impl<R: Runtime> MenuLookup<R> for MenuItems<R> {
+    fn menu_item(&self, id: &str) -> Result<MenuItemKind<R>, String> {
+        self.0
+            .get(id)
+            .cloned()
+            .ok_or_else(|| format!("native menu item {id} is missing"))
+    }
+}
+
 fn set_enabled<R: Runtime>(
-    app: &tauri::AppHandle<R>,
+    app: &impl MenuLookup<R>,
     id: &str,
     enabled: bool,
 ) -> Result<(), String> {
-    match find_app_menu_item(app, id)? {
+    match app.menu_item(id)? {
         MenuItemKind::MenuItem(item) => item.set_enabled(enabled),
         MenuItemKind::Submenu(item) => item.set_enabled(enabled),
         MenuItemKind::Check(item) => item.set_enabled(enabled),
@@ -1280,12 +1410,12 @@ fn set_enabled<R: Runtime>(
 }
 
 fn set_text<R: Runtime>(
-    app: &tauri::AppHandle<R>,
+    app: &impl MenuLookup<R>,
     id: &str,
     text: impl AsRef<str>,
 ) -> Result<(), String> {
     let text = text.as_ref();
-    match find_app_menu_item(app, id)? {
+    match app.menu_item(id)? {
         MenuItemKind::MenuItem(item) => item.set_text(text),
         MenuItemKind::Submenu(item) => item.set_text(text),
         MenuItemKind::Check(item) => item.set_text(text),
@@ -1296,11 +1426,11 @@ fn set_text<R: Runtime>(
 }
 
 fn set_checked<R: Runtime>(
-    app: &tauri::AppHandle<R>,
+    app: &impl MenuLookup<R>,
     id: &str,
     checked: bool,
 ) -> Result<(), String> {
-    let item = find_app_menu_item(app, id)?;
+    let item = app.menu_item(id)?;
     item.as_check_menuitem()
         .ok_or_else(|| format!("{id} is not a check menu item"))?
         .set_checked(checked)
@@ -1414,6 +1544,54 @@ mod tests {
             "openDocumentPaths": ["/tmp/molecules.sdf"],
             "recentDocuments": null
         })
+    }
+
+    #[test]
+    fn cancelled_source_claim_cleanup_waits_for_the_last_owner() {
+        let registry = OpenDocumentRegistry::default();
+        let sources = crate::commands::source_editing::OpenedSourceRegistry::default();
+        let path = Path::new("/tmp/cancelled-source-claim.sdf");
+        let document_id = crate::preview::runtime_utils::stable_id(path);
+        let first = registry
+            .begin_provisional_open("main", path, 0)
+            .unwrap()
+            .unwrap();
+        let epoch = sources.registration_epoch(&document_id, "main").unwrap();
+        registry
+            .bind_open_claim_source_epoch("main", &first, epoch)
+            .unwrap();
+        assert!(sources
+            .register_if_epoch(
+                document_id.clone(),
+                "main".into(),
+                path.into(),
+                "structure",
+                epoch
+            )
+            .unwrap());
+        let second = registry
+            .begin_provisional_open("main", path, 0)
+            .unwrap()
+            .unwrap();
+        registry
+            .bind_open_claim_source_epoch("main", &second, epoch)
+            .unwrap();
+        let abort = |claim: &str| {
+            registry.abort_open_claim_with_cleanup("main", claim, |_, epoch, _| {
+                sources.unregister_if_epoch(&document_id, "main", epoch.unwrap())
+            })
+        };
+        assert!(abort(&first).unwrap());
+        assert_eq!(
+            sources.registration_epoch(&document_id, "main").unwrap(),
+            epoch
+        );
+        assert!(abort(&second).unwrap());
+        let replacement_epoch = sources.registration_epoch(&document_id, "main").unwrap();
+        assert_ne!(replacement_epoch, epoch);
+        assert!(!sources
+            .register_if_epoch(document_id, "main".into(), path.into(), "structure", epoch)
+            .unwrap());
     }
 
     #[test]

@@ -488,4 +488,88 @@ await useMoleculeStore.persist.rehydrate();
     "a side panel screen from an older session loads into the main strip");
 }
 
+// Progressive restoration admits one runtime at a time; unloaded tabs still
+// belong to the saved session and must survive either opening entry point.
+for (const open of ["addDocuments", "openDocumentsInActiveTab"]) {
+  resetStore();
+  const unloaded = Array.from({ length: 1000 }, (_, index) => ({
+    id: `restored-${index}`,
+    location: { kind: "file", documentId: `old-${index}`, path: `/tmp/restore-${index}.pdb` },
+    back: [], forward: [],
+  }));
+  useMoleculeStore.setState({ tabs: unloaded, activeTabId: unloaded[0].id });
+  useMoleculeStore.getState()[open]([document("hydrated", "/tmp/restore-0.pdb")]);
+  assert.equal(useMoleculeStore.getState().tabs.length, 1000, open);
+  assert.equal(useMoleculeStore.getState().tabs.find(tab => tab.id === "restored-999").location.path, "/tmp/restore-999.pdb");
+}
+
+const focusedBeforeAdmission = useMoleculeStore.getState().activeTabId;
+const admissionStates = [];
+const stopAdmission = useMoleculeStore.subscribe(state => admissionStates.push(state.activeTabId));
+useMoleculeStore.getState().addDocuments([document("another-runtime", "/tmp/restore-999.pdb")], { preserveActiveTab: true });
+stopAdmission();
+assert.deepEqual(admissionStates, [focusedBeforeAdmission], "background admission never publishes a phantom selected tab");
+
+// A large close publishes one state and one durable session, retaining all
+// unrelated tabs and documents.
+resetStore();
+useMoleculeStore.getState().addDocuments(Array.from({ length: 1000 }, (_, index) => document(`bulk-${index}`, `/tmp/bulk-${index}.pdb`)));
+const retainedTab = useMoleculeStore.getState().tabs[0];
+let closeNotifications = 0;
+const unsubscribeClose = useMoleculeStore.subscribe(() => closeNotifications++);
+useMoleculeStore.getState().closeTabs(useMoleculeStore.getState().tabs.slice(1).map(tab => tab.id));
+unsubscribeClose();
+assert.deepEqual([closeNotifications, useMoleculeStore.getState().tabs.length, useMoleculeStore.getState().documents.length], [1, 1, 1]);
+assert.equal(useMoleculeStore.getState().tabs[0].id, retainedTab.id);
+
+for (const reference of ["current", "back", "forward"]) {
+  for (const close of ["closeTab", "closeTabs", "closeActiveDocument", "closeDocument"]) {
+    if (reference === "current" && close === "closeDocument") continue;
+    resetStore();
+    const shared = document("shared", "/tmp/shared.pdb");
+    const other = document("other", "/tmp/other.pdb");
+    const sharedLocation = { kind: "file", documentId: shared.id, path: shared.path };
+    const otherLocation = { kind: "file", documentId: other.id, path: other.path };
+    useMoleculeStore.setState({ documents: [shared, other], activeDocumentId: shared.id, activeTabId: "closing", tabs: [
+      { id: "closing", location: sharedLocation, back: [], forward: [] },
+      { id: "retained", location: reference === "current" ? sharedLocation : otherLocation,
+        back: reference === "back" ? [sharedLocation] : [], forward: reference === "forward" ? [sharedLocation] : [] },
+    ] });
+    useMoleculeStore.getState()[close](close === "closeTabs" ? ["closing"] : close === "closeDocument" ? shared.id : "closing");
+    assert.ok(useMoleculeStore.getState().documents.some(document => document.id === shared.id), `${close} preserves ${reference} source`);
+    if (reference !== "current") {
+      useMoleculeStore.getState().setActiveTab("retained");
+      useMoleculeStore.getState().navigateTabHistory("retained", reference === "back" ? -1 : 1);
+      assert.equal(useMoleculeStore.getState().activeDocumentId, shared.id);
+    }
+  }
+}
+
+resetStore();
+const text = { id: "text-shared", path: "/tmp/shared.log", title: "shared.log", content: "log", extension: "log", byteCount: 3 };
+const textLocation = { kind: "text-file", documentId: text.id, path: text.path };
+useMoleculeStore.setState({ textDocuments: [text], tabs: [
+  { id: "text-closing", location: textLocation, back: [], forward: [] },
+  { id: "text-retained", location: { kind: "launcher" }, back: [textLocation], forward: [] },
+], activeTabId: "text-closing" });
+useMoleculeStore.getState().closeTabs(["text-closing"]);
+assert.equal(useMoleculeStore.getState().textDocuments[0].id, text.id);
+
+// Focus only writes the pointer; the large session remains durable immediately
+// after a mutation and hydration reads the latest pointer without a timer.
+resetStore();
+useMoleculeStore.getState().addDocuments([document("focus-first", "/tmp/focus-first.pdb"), document("focus-other", "/tmp/focus-other.pdb")]);
+const durableSession = storage.get(sessionKey);
+const setItem = localStorage.setItem;
+const writes = [];
+localStorage.setItem = (key, value) => { writes.push([key, value]); setItem(key, value); };
+for (let i = 0; i < 100; i++) useMoleculeStore.getState().setActiveTab(useMoleculeStore.getState().tabs[i % 2].id);
+localStorage.setItem = setItem;
+assert.equal(storage.get(sessionKey), durableSession);
+assert.equal(writes.filter(([key]) => key === sessionKey).length, 0);
+assert.ok(writes.every(([key, value]) => key === `${sessionKey}.active` && value.length < 100));
+const expectedActive = useMoleculeStore.getState().activeTabId;
+await useMoleculeStore.persist.rehydrate();
+assert.equal(useMoleculeStore.getState().activeTabId, expectedActive);
+
 console.log("tab close navigation checks passed");

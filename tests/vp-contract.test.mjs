@@ -1,8 +1,29 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { execPath } from "node:process";
+
+const isolatedNode = script => promisify(execFile)(execPath, [fileURLToPath(new URL(script, import.meta.url))]);
 
 const contractScripts = {
+  "test-clear-recent-structures.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-clear-recent-structures.mjs", import.meta.url))]),
+  "test-perf-app-cleanup.mjs": () => isolatedNode("./test-perf-app-cleanup.mjs"),
+  "test-perf-core-cleanup.mjs": () => isolatedNode("./test-perf-core-cleanup.mjs"),
+  "test-perf-campaign-cleanup.mjs": () => isolatedNode("./test-perf-campaign-cleanup.mjs"),
+  "test-perf-scalability-repeat-metrics.mjs": () => isolatedNode("./test-perf-scalability-repeat-metrics.mjs"),
+  "test-open-document-claims.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-open-document-claims.mjs", import.meta.url))]),
+  "test-perf-trajectory-proof.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-perf-trajectory-proof.mjs", import.meta.url))]),
+  "test-indexed-trajectory.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-indexed-trajectory.mjs", import.meta.url))]),
+  "test-perf-scalability-metrics.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-perf-scalability-metrics.mjs", import.meta.url))]),
+  "test-perf-memory.mjs": () => promisify(execFile)(process.execPath, ["--test", fileURLToPath(new URL("./test-perf-memory.mjs", import.meta.url))]),
+  "test-editor-tabs-window.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-editor-tabs-window.test.tsx", import.meta.url))]),
+  "test-source-close-acknowledgement.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-source-close-acknowledgement.mjs", import.meta.url))]),
+  "test-document-close-shell-actions.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-document-close-shell-actions.mjs", import.meta.url))]),
+  "test-text-file-viewer-contract.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-text-file-viewer-contract.mjs", import.meta.url))]),
+  "test-source-editing-window-lifecycle.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-source-editing-window-lifecycle.mjs", import.meta.url))]),
+  "test-deferred-viewer-runtime.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-deferred-viewer-runtime.test.tsx", import.meta.url))]),
+  "test-perf-trace.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-perf-trace.mjs", import.meta.url))]),
+  "test-runtime-teardown-batching.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-runtime-teardown-batching.mjs", import.meta.url))]),
   "test-scene-save.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-scene-save.test.tsx", import.meta.url))]),
   "test-scene-file-batch.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-scene-file-batch.test.ts", import.meta.url))]),
   "test-file-open-cancellation.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-file-open-cancellation.test.tsx", import.meta.url))]),
@@ -45,6 +66,7 @@ const contractScripts = {
   "test-button-interactions.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-button-interactions.test.tsx", import.meta.url))]),
   "test-selection-controls.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-selection-controls.test.tsx", import.meta.url))]),
   "test-shell-performance.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-shell-performance.test.tsx", import.meta.url))]),
+  "test-viewer-resize-contract.mjs": () => import("./test-viewer-resize-contract.mjs"),
   "test-grid-preview-resize.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-grid-preview-resize.test.tsx", import.meta.url))]),
   "test-background-performance.test.tsx": () => promisify(execFile)("bun", ["test", "--define", "import.meta.env.DEV:true", "--define", 'import.meta.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT:"/generated"', fileURLToPath(new URL("./test-background-performance.test.tsx", import.meta.url))]),
   "test-startup-runtime-refresh.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-startup-runtime-refresh.mjs", import.meta.url))]),

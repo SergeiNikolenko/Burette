@@ -11,48 +11,28 @@ import { isTauriRuntime } from "../../lib/tauri";
 import { isHostedMcpWidget } from "../../lib/hosted-mcp-widget";
 import { isWebDemoHeroEmbed } from "../../lib/web-demo-workspace";
 import { useViewerPreferences } from "../../hooks/use-settings";
+import { useDeferredViewerRuntime } from "../../hooks/use-deferred-viewer-runtime";
+import { FileViewerLoadingState } from "../ui/file-viewer-state";
+import { ViewerErrorState } from "../ui/viewer-error";
 import { viewerAppearanceMessage } from "../../lib/theme";
 import {
   isGridDocumentCloseTransitionActive,
   replayPendingGridCloseTransitionRequests,
 } from "../../lib/window-mutation-barrier";
 
-// Molecular viewer iframes, frozen at the pixel size they had when the shell
-// started a layout gesture. `.viewer-iframe` is sized 100% x 100%, so a panel
-// drag re-laid the iframe out on every frame and Mol* inside redrew each time;
-// pinning the frame for the duration of the gesture (measured earlier: ~30 to
-// ~50 fps on a dock drag) leaves one reflow for the release. The pin is
-// reference counted because a drag can overlap a toggle animation, and the
-// shell carries `data-resizing` while any pin is held so the CSS can drop
-// pointer events on the frames (an iframe under the pointer would otherwise
-// swallow the drag).
+// Guard pointer ownership, not viewport geometry. Freezing an iframe's pixel
+// size leaves its toolbar and camera centered in the old, now-clipped viewport.
+// Frames must follow the panels live; each renderer coalesces its resize work.
+// Keep the guard reference counted because a drag can overlap a toggle or a
+// window resize. An iframe under the pointer must not swallow that gesture.
 const framePins = new WeakMap<HTMLElement, { depth: number; restore: () => void }>();
 
 export function pinViewerFrames(root: HTMLElement): () => void {
   let pin = framePins.get(root);
   if (!pin) {
-    // Read every box before writing any size: interleaved reads and writes
-    // force layout once per document when many tabs are mounted.
-    // Grid chrome must follow the exposed panel during the gesture. Its costly
-    // virtual-window measurement settles separately inside the grid runtime.
-    const frames = Array.from(root.querySelectorAll<HTMLIFrameElement>('iframe.viewer-iframe:not([data-renderer="grid2d"])'), frame => ({
-      frame, rect: frame.getBoundingClientRect(),
-      width: frame.style.getPropertyValue("width"), widthPriority: frame.style.getPropertyPriority("width"),
-      height: frame.style.getPropertyValue("height"), heightPriority: frame.style.getPropertyPriority("height"),
-    })).filter(({ rect }) => rect.width > 0 && rect.height > 0);
     const resizing = root.getAttribute("data-resizing");
-    for (const { frame, rect } of frames) {
-      frame.style.width = `${rect.width}px`;
-      frame.style.height = `${rect.height}px`;
-    }
     root.setAttribute("data-resizing", "true");
     pin = { depth: 0, restore: () => {
-      for (const { frame, width, widthPriority, height, heightPriority } of frames) {
-        if (width) frame.style.setProperty("width", width, widthPriority);
-        else frame.style.removeProperty("width");
-        if (height) frame.style.setProperty("height", height, heightPriority);
-        else frame.style.removeProperty("height");
-      }
       if (resizing === null) root.removeAttribute("data-resizing");
       else root.setAttribute("data-resizing", resizing);
     } };
@@ -98,6 +78,7 @@ export function ViewerFrame({
   const tauriRuntime = isTauriRuntime();
   const heroEmbed = isWebDemoHeroEmbed();
   const preferences = useViewerPreferences();
+  const deferred = useDeferredViewerRuntime(document, preferences);
   const sandbox = viewerFrameSandbox();
   const closeTransitionActive = document.renderer === "grid2d"
     && isGridDocumentCloseTransitionActive(document.id);
@@ -195,6 +176,12 @@ export function ViewerFrame({
       <iframe key={`${slot}:${runtime.runtimeKey}`} {...commonProps} srcDoc={runtimePath} />
     );
   };
+
+  if (document.runtimeDeferred) {
+    return deferred.error
+      ? <ViewerErrorState error={deferred.error} retry="always" onRetry={deferred.retry} bare variant="document" />
+      : <FileViewerLoadingState title="Opening structure…" />;
+  }
 
   if (!sourcePreview) {
     const commonProps = {

@@ -22,7 +22,7 @@ const observerBlock = viewer.slice(
 assert.ok(observerBlock.length > 0, "installViewerResizeObserver must exist");
 assert.match(
   observerBlock,
-  /scheduleViewerResize\(viewer, 40\);/u,
+  /scheduleViewerResize\(viewer\);/u,
   "the container observer must schedule through scheduleViewerResize",
 );
 assert.doesNotMatch(
@@ -58,7 +58,7 @@ assert.match(
 assert.match(
   viewer,
   /if \(!viewerCanvasIsVisible\(target\)\) return;/u,
-  "a queued resize must be cancelled if its tab becomes hidden before the timer fires",
+  "a queued resize must be cancelled if its tab becomes hidden before the frame runs",
 );
 assert.match(
   viewer,
@@ -79,57 +79,81 @@ assert.match(filePage, /postViewerVisibility\(stagingIframeRef\.current, false\)
 assert.match(filePage, /sourceSession\?\.sourcePreview\?\.activeSlot/u);
 assert.match(filePage, /stagingIframeRef=\{stagingIframeRef\}/u);
 
-// Exercise the scheduler itself: a hidden tab queues no work, becoming visible
-// schedules one resize even when its geometry matches the last observed size,
-// and repeated notifications at that size are deduplicated.
+// Exercise the production scheduler, not just its call-site strings. Host,
+// window and observer notifications must follow a continuous gesture before
+// release, coalesce within a frame, and apply the last geometry in that frame.
 const schedulerBlock = viewer.slice(
   viewer.indexOf("const resizeState = {"),
-  viewer.indexOf("// Mol* commits a layout change"),
+  viewer.indexOf("  let viewerResizeObserver = null;"),
 );
 const animationFrames = [];
-const timers = [];
 const schedulerHarness = new Function(
-  "requestAnimationFrame",
-  "setTimeout",
-  "clearTimeout",
-  "getComputedStyle",
+  "requestAnimationFrame", "setTimeout", "getComputedStyle",
   `${schedulerBlock}
    return {
      scheduleViewerResize,
      setHostVisible(value) { hostViewerVisible = value; },
    };`,
 )(
-  (callback) => {
-    animationFrames.push(callback);
-    return animationFrames.length;
-  },
-  (callback) => {
-    timers.push(callback);
-    return timers.length;
-  },
-  () => {},
+  callback => { animationFrames.push(callback); return animationFrames.length; },
+  () => { throw new Error("viewport geometry must not wait for a trailing timer"); },
   () => ({ display: "block", visibility: "visible" }),
 );
-let resizeCount = 0;
-const container = {
-  parentElement: null,
-  getBoundingClientRect: () => ({ width: 800, height: 600 }),
+const tick = () => {
+  const pending = animationFrames.splice(0);
+  pending.forEach(callback => callback());
 };
+let bounds = { width: 800, height: 600 };
+const applied = [];
+let layoutBroadcasts = 0;
+const container = { parentElement: null, getBoundingClientRect: () => bounds };
 const fakeViewer = {
-  handleResize: () => { resizeCount += 1; },
-  plugin: { canvas3dContext: { canvas: { parentElement: container } } },
+  handleResize: () => { layoutBroadcasts++; },
+  plugin: {
+    canvas3dContext: { canvas: { parentElement: container } },
+    // The PluginContext path applies geometry without a layout broadcast.
+    handleResize: () => { applied.push({ ...bounds }); },
+    layout: { events: { updated: { next: () => { layoutBroadcasts++; } } } },
+  },
 };
 schedulerHarness.setHostVisible(false);
-schedulerHarness.scheduleViewerResize(fakeViewer, 0);
+schedulerHarness.scheduleViewerResize(fakeViewer);
 assert.equal(animationFrames.length, 0, "a hidden tab must not enqueue resize work");
 schedulerHarness.setHostVisible(true);
-schedulerHarness.scheduleViewerResize(fakeViewer, 0);
-animationFrames.shift()();
-timers.shift()();
-assert.equal(resizeCount, 1, "reactivating a hidden tab must resize it once");
-schedulerHarness.scheduleViewerResize(fakeViewer, 0);
-animationFrames.shift()();
-timers.shift()();
-assert.equal(resizeCount, 1, "unchanged visible geometry must be deduplicated");
+for (let frame = 0; frame < 60; frame++) {
+  const before = applied.length;
+  // The notifications see successive widths, as can happen with nested panes.
+  bounds = { width: 800 - frame * 6, height: 600 };
+  schedulerHarness.scheduleViewerResize(fakeViewer);
+  bounds = { width: bounds.width - 2, height: 600 - frame };
+  schedulerHarness.scheduleViewerResize(fakeViewer);
+  schedulerHarness.scheduleViewerResize(fakeViewer);
+  assert.equal(animationFrames.length, 1, "duplicate channels share one pending frame");
+  assert.equal(applied.length, before, "resize is batched, not synchronous per event");
+  tick();
+  assert.equal(applied.length, before + 1, "each drag frame updates before release");
+  assert.deepEqual(applied.at(-1), bounds, "apply the latest viewport, not first event bounds");
+}
+assert.equal(layoutBroadcasts, 0, "geometry changes must not fan out through the Mol* UI layout");
+schedulerHarness.scheduleViewerResize(fakeViewer);
+tick();
+assert.equal(applied.length, 60, "unchanged visible geometry is deduplicated");
+bounds = { width: 400, height: 500 };
+schedulerHarness.scheduleViewerResize(fakeViewer);
+schedulerHarness.setHostVisible(false);
+tick();
+assert.equal(applied.length, 60, "hiding a tab cancels queued work");
+schedulerHarness.setHostVisible(true);
+schedulerHarness.scheduleViewerResize(fakeViewer);
+tick();
+assert.deepEqual(applied.at(-1), bounds, "reactivation catches up to current geometry");
+let fallbackResizes = 0;
+const adapter = {
+  handleResize: () => { fallbackResizes++; },
+  plugin: { canvas3dContext: fakeViewer.plugin.canvas3dContext },
+};
+schedulerHarness.scheduleViewerResize(adapter);
+tick();
+assert.equal(fallbackResizes, 1, "a new viewer at the same size still resizes through its adapter");
 
-console.log("viewer resize contract OK");
+console.log("viewer resize contract OK: 60 continuous frames, coalesced geometry and hidden-tab guards");

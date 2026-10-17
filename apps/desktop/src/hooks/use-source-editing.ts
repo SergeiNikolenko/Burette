@@ -7,6 +7,7 @@ import type { SourcePreviewCandidate, SourcePreviewIdentity } from "../lib/sourc
 import { openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
+import { prepareDeferredViewerRuntime } from "./use-deferred-viewer-runtime";
 import type { ViewerDocument, ViewerPreferences } from "../types";
 import { classifySourceShape, sourceDraftValidationError, sourceNotEditableMessage } from "../lib/source-editing/policy";
 
@@ -97,6 +98,8 @@ export function useSourceEditingController({
   const adaptersRef = useRef(new Map<string, SourcePreviewAdapter>());
   const timersRef = useRef(new Map<string, number>());
   const savingPathsRef = useRef(new Set<string>());
+  const closingDocumentIdsRef = useRef(new Set<string>());
+  const openingSourceTokensRef = useRef(new Map<string, symbol>());
   const stagingWindowsRef = useRef(new Map<WindowProxy, { path: string; identity: SourcePreviewIdentity }>());
   const dirtySnapshotRef = useRef({ signature: "", revision: 0 });
 
@@ -128,6 +131,7 @@ export function useSourceEditingController({
   }, [commitSessions]);
 
   const beginEditing = useCallback(async (document: ViewerDocument) => {
+    if (closingDocumentIdsRef.current.has(document.id)) return;
     const existing = sessionsRef.current[document.path];
     if (existing) {
       setDockOpen("right", true);
@@ -139,8 +143,12 @@ export function useSourceEditingController({
       pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source");
       return;
     }
-
+    if (openingSourceTokensRef.current.has(document.id)) return;
+    const token = Symbol();
+    openingSourceTokensRef.current.set(document.id, token);
     try {
+      document = await prepareDeferredViewerRuntime(document, preferences);
+      if (openingSourceTokensRef.current.get(document.id) !== token) return;
       const sessionId = randomId();
       let content: string;
       let handleId: string | null = null;
@@ -150,6 +158,10 @@ export function useSourceEditingController({
         const opened = await invoke<NativeOpenResult>("open_source_edit_session", {
           request: { documentId: document.id, sessionId },
         });
+        if (openingSourceTokensRef.current.get(document.id) !== token) {
+          await invoke("close_source_edit_session", { request: { handleId: opened.handleId } }).catch(() => {});
+          return;
+        }
         content = opened.content;
         handleId = opened.handleId;
         expectedRevision = opened.revision;
@@ -169,6 +181,7 @@ export function useSourceEditingController({
         previewMode = new TextEncoder().encode(content).byteLength <= LIVE_PREVIEW_LIMIT ? "live" : "manual";
       }
 
+      if (openingSourceTokensRef.current.get(document.id) !== token) return;
       const adapter = new SourcePreviewAdapter({
         activeRuntime: { runtimeKey: `source:${document.id}:base`, runtimePath: document.runtimePath },
         onChange: (sourcePreview) => updateSession(document.path, (session) => ({ ...session, sourcePreview })),
@@ -212,8 +225,10 @@ export function useSourceEditingController({
         ? sourceNotEditableMessage("unsupported_shape")
         : parsed?.message;
       pushErrorStatus(message ? new Error(message) : error, "Edit source");
+    } finally {
+      if (openingSourceTokensRef.current.get(document.id) === token) openingSourceTokensRef.current.delete(document.id);
     }
-  }, [clearStagingWindows, commitSessions, pushErrorStatus, setDockActiveTab, setDockOpen, updateSession]);
+  }, [clearStagingWindows, commitSessions, preferences, pushErrorStatus, setDockActiveTab, setDockOpen, updateSession]);
 
   const preparePreview = useCallback(async (document: ViewerDocument, content?: string, revision?: number) => {
     const session = sessionsRef.current[document.path];
@@ -265,7 +280,7 @@ export function useSourceEditingController({
 
   const updateDraft = useCallback((document: ViewerDocument, content: string) => {
     const session = sessionsRef.current[document.path];
-    if (!session) return;
+    if (!session || closingDocumentIdsRef.current.has(document.id)) return;
     const adapter = adaptersRef.current.get(document.path);
     const snapshot = adapter?.getSnapshot();
     const staged = snapshot?.slots[snapshot.activeSlot === "primary" ? "secondary" : "primary"];
@@ -343,6 +358,7 @@ export function useSourceEditingController({
   }, [updateSession]);
 
   const save = useCallback(async (document: ViewerDocument) => {
+    if (closingDocumentIdsRef.current.has(document.id)) return;
     const session = sessionsRef.current[document.path];
     if (!session?.dirty || !session.handleId || !session.expectedRevision || savingPathsRef.current.has(document.path)) return;
     savingPathsRef.current.add(document.path);
@@ -440,7 +456,7 @@ export function useSourceEditingController({
         path: session.path,
         revision: session.revision,
         dirty: session.dirty,
-        saving: session.saving || savingPathsRef.current.has(session.path),
+        saving: session.saving || savingPathsRef.current.has(session.path) || closingDocumentIdsRef.current.has(session.documentId),
       }))
       .filter((session) => session.dirty || session.saving)
       .sort((left, right) => left.path.localeCompare(right.path));
@@ -460,7 +476,7 @@ export function useSourceEditingController({
 
   const confirmCloseWindow = useCallback(async () => {
     const savingCount = Object.values(sessionsRef.current).filter(
-      (session) => session.saving || savingPathsRef.current.has(session.path),
+      (session) => session.saving || savingPathsRef.current.has(session.path) || closingDocumentIdsRef.current.has(session.documentId),
     ).length;
     if (savingCount > 0) {
       const text = savingCount === 1
@@ -502,39 +518,61 @@ export function useSourceEditingController({
     for (const adapter of adaptersRef.current.values()) adapter.dispose();
   }, []);
 
-  const closeDocuments = useCallback((documentIds: string[]) => {
-    const targets = Object.values(sessionsRef.current).filter((session) => documentIds.includes(session.documentId));
-    if (targets.some((session) => savingPathsRef.current.has(session.path))) {
-      window.alert("This source is still being saved. Wait for it to finish before closing the document.");
+  const closeDocuments = useCallback(async (documentIds: string[]) => {
+    const wanted = new Set(documentIds);
+    if (!wanted.size) return true;
+    if (documentIds.some(id => closingDocumentIdsRef.current.has(id))) return false;
+    const targets = Object.values(sessionsRef.current).filter((session) => wanted.has(session.documentId));
+    if (targets.some((session) => session.saving || savingPathsRef.current.has(session.path))) {
+      const text = "This source is still being saved. Wait for it to finish before closing the document.";
+      try {
+        if (isTauriRuntime()) await messageDialog(text, { title: "Save in Progress", kind: "info" });
+        else window.alert(text);
+      } catch (error) {
+        pushErrorStatus(error, "Close source");
+      }
       return false;
     }
-    const dirtyCount = targets.filter((session) => session.dirty).length;
-    if (dirtyCount > 0 && !window.confirm(
-      dirtyCount === 1
-        ? "Discard the unsaved source edit and close this document?"
-        : `Discard unsaved source edits in ${dirtyCount} documents and close them?`,
-    )) return false;
-    for (const session of targets) {
-      const timer = timersRef.current.get(session.path);
-      if (timer !== undefined) window.clearTimeout(timer);
-      timersRef.current.delete(session.path);
-      adaptersRef.current.get(session.path)?.dispose();
-      adaptersRef.current.delete(session.path);
-      clearStagingWindows(session.path);
-      if (session.handleId) {
-        void invoke("close_source_edit_session", { request: { handleId: session.handleId } }).catch(() => {});
+    // The asynchronous native prompt is part of the close transition. Keep its
+    // draft stable and reject overlapping saves/closes until Cancel or release.
+    for (const id of wanted) closingDocumentIdsRef.current.add(id);
+    try {
+      const dirtyCount = targets.filter((session) => session.dirty).length;
+      if (dirtyCount > 0) {
+        const text = dirtyCount === 1
+          ? "Discard the unsaved source edit and close this document?"
+          : `Discard unsaved source edits in ${dirtyCount} documents and close them?`;
+        const confirmed = isTauriRuntime()
+          ? await confirmDialog(text, { title: "Unsaved Source Changes", kind: "warning", okLabel: "Discard", cancelLabel: "Cancel" })
+          : window.confirm(text);
+        if (!confirmed) return false;
       }
-    }
-    if (isTauriRuntime()) {
-      for (const documentId of documentIds) {
-        void invoke("close_opened_source_document", { request: { documentId } }).catch(() => {});
+      for (const id of wanted) openingSourceTokensRef.current.delete(id);
+      if (isTauriRuntime()) {
+        await invoke("close_opened_source_documents", { documentIds: [...wanted] });
       }
+      for (const session of targets) {
+        const timer = timersRef.current.get(session.path);
+        if (timer !== undefined) window.clearTimeout(timer);
+        timersRef.current.delete(session.path);
+        adaptersRef.current.get(session.path)?.dispose();
+        adaptersRef.current.delete(session.path);
+        clearStagingWindows(session.path);
+        if (session.handleId && !isTauriRuntime()) {
+          void invoke("close_source_edit_session", { request: { handleId: session.handleId } }).catch(() => {});
+        }
+      }
+      commitSessions((current) => Object.fromEntries(
+        Object.entries(current).filter(([, session]) => !wanted.has(session.documentId)),
+      ));
+      return true;
+    } catch (error) {
+      pushErrorStatus(error, "Close source");
+      return false;
+    } finally {
+      for (const id of wanted) closingDocumentIdsRef.current.delete(id);
     }
-    commitSessions((current) => Object.fromEntries(
-      Object.entries(current).filter(([, session]) => !documentIds.includes(session.documentId)),
-    ));
-    return true;
-  }, [clearStagingWindows, commitSessions]);
+  }, [clearStagingWindows, commitSessions, pushErrorStatus]);
 
   return useMemo(() => ({
     sessionForDocument: (document: ViewerDocument | null) => document ? sessions[document.path] ?? null : null,

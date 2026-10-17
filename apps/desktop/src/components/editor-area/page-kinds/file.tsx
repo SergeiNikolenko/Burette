@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { findIndexedDocument } from "../document-index";
 import type { ViewerDocument } from "../../../types";
 import { hasStructureDrag, readStructureDragPayload } from "../../../lib/structure-drag";
 import type { StructureDragPayload } from "../../../lib/structure-drag";
@@ -22,26 +23,18 @@ export type FileLocation = { kind: "file"; documentId?: string; path: string };
 export const fileKind = definePageKind<"file", FileLocation>({
   kind: "file",
   title: (location, state) => {
-    const document = findDocument(location, state.documents);
+    const document = findIndexedDocument(state.documents, location);
     return document?.title ?? "Structure";
   },
   description: "Open structure",
   Component: ({ location, state, actions, isActive }) => {
-    const document = findDocument(location, state.documents);
+    const document = findIndexedDocument(state.documents, location);
     return document ? <ViewerSurface document={document} actions={actions} preferences={state.preferences} isActive={isActive} /> : null;
   },
   keepAlive: true,
   fromPayload: (data) => (typeof data.path === "string" ? { kind: "file", documentId: typeof data.documentId === "string" ? data.documentId : undefined, path: data.path } : null),
   serialize: (location) => ({ documentId: location.documentId, path: location.path }),
 });
-
-function findDocument(location: FileLocation, documents: ViewerDocument[]) {
-  return (
-    documents.find((document) => document.id === location.documentId) ??
-    documents.find((document) => document.path === location.path) ??
-    null
-  );
-}
 
 function ViewerSurface({
   document,

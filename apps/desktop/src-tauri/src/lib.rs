@@ -153,7 +153,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(perf_trace::timed::<tauri::Wry, _>(
-            tauri::generate_handler![
+            commands::recent_documents::ordered(tauri::generate_handler![
                 commands::clipboard::write_clipboard_text,
                 commands::popout_scene::save_popout_scene,
                 commands::popout_scene::save_popout_sheet,
@@ -246,6 +246,7 @@ pub fn run() {
                 commands::source_editing::reconcile_source_commit,
                 commands::source_editing::close_source_edit_session,
                 commands::source_editing::close_opened_source_document,
+                commands::source_editing::close_opened_source_documents,
                 commands::conformer::conformer_status,
                 commands::conformer::prepare_conformer_job,
                 commands::conformer::run_conformer_job,
@@ -287,6 +288,7 @@ pub fn run() {
                 commands::shell::frontend_log,
                 commands::action_journal::append_action_journal,
                 perf_trace::append_perf_trace,
+                preview::trajectory::read_indexed_trajectory_frame,
                 commands::shell::open_external_url,
                 commands::shell::existing_paths,
                 commands::shell::watch_project_roots,
@@ -318,7 +320,7 @@ pub fn run() {
                 commands::xtb::install_xtb,
                 commands::xtb::run_xtb_job,
                 commands::xtb::cancel_xtb_job,
-            ],
+            ]),
         ))
         .build(tauri::generate_context!())
         .expect("error while building Burette Tauri application");
