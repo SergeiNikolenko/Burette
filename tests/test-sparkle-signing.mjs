@@ -43,8 +43,10 @@ try {
   fs.copyFileSync(path.join(root, 'scripts/sparkle-appcast.py'), fixtureScript);
   fs.writeFileSync(fixtureKey, key + '\n');
   fs.symlinkSync(signer, fixtureSigner);
-  const args = [fixtureScript, archive, app, path.join(temporary, 'appcast.xml'), '--delta', patch];
-  const environment = { ...process.env, BURETTE_SPARKLE_PRIVATE_KEY: seed.toString('base64') };
+  const dmg = path.join(temporary, 'Burette-2.3.19.dmg');
+  fs.writeFileSync(dmg, 'DMG fixture');
+  const args = [fixtureScript, archive, app, path.join(temporary, 'appcast.xml'), '--delta', patch, '--asset', dmg];
+  const environment = { ...process.env, PYTHONOPTIMIZE: '1', BURETTE_SPARKLE_PRIVATE_KEY: seed.toString('base64') };
   const feed = spawnSync('python3', args, { env: environment, encoding: 'utf8' });
   assert.equal(feed.status, 0, feed.stderr);
   const appcast = fs.readFileSync(args[3], 'utf8');
@@ -52,6 +54,8 @@ try {
   assert.ok(crypto.verify(null, data, publicKey,
     Buffer.from(fs.readFileSync(archive + '.ed25519', 'utf8').trim(), 'base64')),
     'Installer sidecar authenticates the same final archive as Sparkle');
+  assert.ok(crypto.verify(null, fs.readFileSync(dmg), publicKey,
+    Buffer.from(fs.readFileSync(dmg + '.ed25519', 'utf8').trim(), 'base64')));
   const patchSignature = appcast.match(/sparkle:deltaFrom="2\.3\.18"[^>]*sparkle:edSignature="([^"]+)"/)?.[1];
   assert.ok(patchSignature && crypto.verify(null, patchData, publicKey, Buffer.from(patchSignature, 'base64')),
     'Delta patches carry their own verifiable signature');

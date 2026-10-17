@@ -162,7 +162,8 @@ Use the repository release script:
 ./scripts/release.sh
 ```
 
-Developer ID signing and Apple notarization are required by default:
+Every distribution requires the existing Sparkle signing key and the pinned public key.
+Apple Developer ID signing and notarization are optional; configure them together:
 
 ```bash
 export BURETTE_CODESIGN_IDENTITY="Developer ID Application: Example, Inc. (TEAMID)"
@@ -181,15 +182,12 @@ export BURETTE_NOTARY_KEYCHAIN_PROFILE="BuretteNotary"
 ./scripts/release.sh
 ```
 
-Missing Developer ID or notarization credentials stop the release. Explicit local
-development packaging may opt into ad-hoc signing; this is never enabled by the
-public Release workflow:
-
-```bash
-BURETTE_RELEASE_ALLOW_ADHOC=1 ./scripts/release.sh
-```
-
-These development packages do not pass Gatekeeper's identified/notarized checks.
+With no Apple credentials, the release helper and workflow produce ad-hoc signed
+app bundles. The ZIP and DMG must still carry Ed25519 signatures from the pinned
+Sparkle key before distribution. These builds are not Apple-notarized and do not
+pass Gatekeeper's identified-developer checks. Partial Apple configuration fails
+instead of silently changing signing mode. Set `BURETTE_RELEASE_ALLOW_ADHOC=0`
+locally to require Developer ID signing and notarization.
 
 For CI and pull-request validation, run the release dry run. It checks the
 release script prerequisites and JavaScript syntax but does not build, sign,
@@ -204,8 +202,9 @@ Release builds are explicit: `scripts/release.sh` sets
 `BURETTE_BUILD_MODE=release` and uses the Xcode Release configuration. With
 Developer ID credentials it enables the notarized path: hardened runtime,
 Developer ID signing, Apple notarytool submission, stapling, and then zip/dmg
-packaging. Missing credentials fail closed. Only an explicit local
-`BURETTE_RELEASE_ALLOW_ADHOC=1` produces development ad-hoc zip/dmg artifacts.
+packaging. Without Apple credentials it uses ad-hoc codesigning. Missing or
+mismatched Sparkle credentials stop distribution in either mode. Local output
+archives use the same `Burette-<version>` names as the public release.
 
 ## Artifact Requirements
 
@@ -355,7 +354,8 @@ confirmation prompts for previously unclaimed file extensions.
 
 The private npm helper requires a detached `.zip.ed25519` signature before
 unpacking an archive. `sparkle-appcast.py` writes this sidecar using the existing
-Sparkle signing key; release CI uploads it beside the ZIP. Both signing and
+Sparkle signing key; release CI uploads it beside the ZIP. The manual DMG also
+receives a detached signature under the same key. Both signing and
 installation pin `packages/burette/bin/release-signing-key.txt`. Key rotation
 therefore requires a reviewed source update. The helper then checks the signed
 app's bundle ID and version before replacing or registering an installation.

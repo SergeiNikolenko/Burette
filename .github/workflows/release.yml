@@ -103,8 +103,12 @@ jobs:
           if [[ -n "${MACOS_CERTIFICATE_P12_BASE64:-}" && -n "${MACOS_CERTIFICATE_PASSWORD:-}" && -n "${MACOS_KEYCHAIN_PASSWORD:-}" && -n "${BURETTE_CODESIGN_IDENTITY:-}" && -n "${APPLE_TEAM_ID:-}" && -n "${APPLE_ID:-}" && -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
             echo "developer_id=true" >> "$GITHUB_OUTPUT"
             echo "allow_adhoc=false" >> "$GITHUB_OUTPUT"
+          elif [[ -z "${MACOS_CERTIFICATE_P12_BASE64:-}${MACOS_CERTIFICATE_PASSWORD:-}${MACOS_KEYCHAIN_PASSWORD:-}${BURETTE_CODESIGN_IDENTITY:-}${APPLE_TEAM_ID:-}${APPLE_ID:-}${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
+            echo "developer_id=false" >> "$GITHUB_OUTPUT"
+            echo "allow_adhoc=true" >> "$GITHUB_OUTPUT"
+            echo "Apple signing is not configured; distribution requires the pinned Sparkle signature."
           else
-            echo "::error::Releases require Developer ID signing and Apple notarization credentials."
+            echo "::error::Apple signing is partially configured; complete or remove the Apple credentials."
             exit 1
           fi
           if [[ -n "${BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" && -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
@@ -136,7 +140,7 @@ jobs:
         env:
           BURETTE_BUILD_MODE: release
           BURETTE_SPARKLE_PUBLIC_KEY: ${{ vars.BURETTE_SPARKLE_PUBLIC_KEY }}
-          BURETTE_RELEASE_ALLOW_ADHOC: "0"
+          BURETTE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.allow_adhoc == 'true' && '1' || '0' }}
           BURETTE_CODESIGN_IDENTITY: ${{ secrets.BURETTE_CODESIGN_IDENTITY }}
           BURETTE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
           BURETTE_XCODE_CONFIGURATION: Release
@@ -160,7 +164,7 @@ jobs:
 
       - name: Validate release signing
         env:
-          BURETTE_RELEASE_ALLOW_ADHOC: "0"
+          BURETTE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.allow_adhoc == 'true' && '1' || '0' }}
         run: ./scripts/check-release-signature.sh build/Burette.app
 
       - name: Package app
@@ -179,9 +183,7 @@ jobs:
           if [[ -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" && -n "${BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" ]]; then
             bun scripts/sign-update-manifest.mjs "Burette-${{ steps.version.outputs.version }}.zip" .
           fi
-          if [[ -n "${BURETTE_SPARKLE_PRIVATE_KEY:-}" ]]; then
-            python3 scripts/sparkle-appcast.py "Burette-${{ steps.version.outputs.version }}.zip" build/Burette.app build/sparkle/release-appcast.xml
-          fi
+          python3 scripts/sparkle-appcast.py "Burette-${{ steps.version.outputs.version }}.zip" build/Burette.app build/sparkle/release-appcast.xml --asset "Burette-${{ steps.version.outputs.version }}.dmg"
 
       - name: Create GitHub release
         env:
@@ -191,6 +193,7 @@ jobs:
             "Burette-${{ steps.version.outputs.version }}.zip"
             "Burette-${{ steps.version.outputs.version }}.zip.ed25519"
             "Burette-${{ steps.version.outputs.version }}.dmg"
+            "Burette-${{ steps.version.outputs.version }}.dmg.ed25519"
           )
           if [[ -f "Burette-${{ steps.version.outputs.version }}.zip.sha256" ]]; then
             assets+=("Burette-${{ steps.version.outputs.version }}.zip.sha256")
@@ -216,7 +219,6 @@ jobs:
             --generate-notes
 
       - name: Publish Sparkle feed
-        if: vars.BURETTE_SPARKLE_PUBLIC_KEY != ''
         env:
           GH_TOKEN: ${{ github.token }}
           BURETTE_SPARKLE_PRIVATE_KEY: ${{ secrets.BURETTE_SPARKLE_PRIVATE_KEY }}

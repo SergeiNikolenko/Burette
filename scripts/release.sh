@@ -11,11 +11,9 @@ ROOT="$(cd -P "$(dirname "$SCRIPT")/.." >/dev/null 2>&1 && pwd -P)"
 cd "$ROOT"
 
 APP="$ROOT/build/Burette.app"
-ZIP="$ROOT/build/release/Burette.zip"
-DMG="$ROOT/build/release/Burette.dmg"
 NOTARIZATION_ZIP="$ROOT/build/release/Burette-notarization.zip"
 DRY_RUN=0
-ALLOW_ADHOC="${BURETTE_RELEASE_ALLOW_ADHOC:-0}"
+ALLOW_ADHOC="${BURETTE_RELEASE_ALLOW_ADHOC:-auto}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -32,7 +30,13 @@ require_tool() { command -v "$1" >/dev/null 2>&1 || { echo "error: $1 is require
 require_asset() { local p="$1"; [[ -s "$p" ]] || { echo "error: missing vendored web asset: $p" >&2; echo "Run: bun install --frozen-lockfile --ignore-scripts && bun run vendor:molstar && bun run vendor:rdkit" >&2; exit 1; }; }
 resolve_signing_mode() {
   case "$ALLOW_ADHOC" in
-    auto) ALLOW_ADHOC=0 ;;
+    auto)
+      if [[ -z "${BURETTE_CODESIGN_IDENTITY:-}${BURETTE_DEVELOPMENT_TEAM:-}${BURETTE_NOTARY_KEYCHAIN_PROFILE:-}${APPLE_ID:-}${APPLE_TEAM_ID:-}${APPLE_APP_SPECIFIC_PASSWORD:-}" ]]; then
+        ALLOW_ADHOC=1
+      else
+        ALLOW_ADHOC=0
+      fi
+      ;;
     0|1) ;;
     *) echo "error: BURETTE_RELEASE_ALLOW_ADHOC must be 0 or 1 when set." >&2; exit 2 ;;
   esac
@@ -106,8 +110,8 @@ if [[ "$DRY_RUN" == "1" ]]; then
   echo "  BURETTE_CODESIGN_IDENTITY='Developer ID Application: ...'"
   echo "  BURETTE_DEVELOPMENT_TEAM=<Apple team id>"
   echo "  BURETTE_NOTARY_KEYCHAIN_PROFILE or APPLE_ID + APPLE_TEAM_ID + APPLE_APP_SPECIFIC_PASSWORD"
-  echo "Missing Developer ID credentials stop the release."
-  echo "BURETTE_RELEASE_ALLOW_ADHOC=1 is only for explicit local development packages."
+  echo "Without Apple credentials, releases use ad-hoc codesigning and mandatory Sparkle authentication."
+  echo "BURETTE_RELEASE_ALLOW_ADHOC=0 requires Developer ID signing and notarization."
   exit 0
 fi
 
@@ -123,6 +127,9 @@ export BURETTE_RELEASE_ALLOW_ADHOC="$ALLOW_ADHOC"
 export BURETTE_BUILD_MODE=release
 export BURETTE_XCODE_CONFIGURATION="${BURETTE_XCODE_CONFIGURATION:-Release}"
 "$ROOT/scripts/build.sh"
+VERSION="$(bun --eval "console.log(require('./package.json').version)")"
+ZIP="$ROOT/build/release/Burette-${VERSION}.zip"
+DMG="$ROOT/build/release/Burette-${VERSION}.dmg"
 mkdir -p "$(dirname "$ZIP")"
 [[ -d "$APP" ]] || { echo "error: exported app is missing: $APP" >&2; exit 1; }
 if [[ "$ALLOW_ADHOC" == "1" ]]; then
@@ -132,14 +139,12 @@ else
   "$ROOT/scripts/check-release-signature.sh" "$APP"
 fi
 
-rm -f "$ZIP" "$ZIP.sha256" "$DMG" "$DMG.sha256"
+rm -f "$ZIP" "$ZIP.sha256" "$ZIP.ed25519" "$DMG" "$DMG.sha256" "$DMG.ed25519"
 ditto -c -k --keepParent "$APP" "$ZIP"
 "$ROOT/scripts/create-dmg.sh" "$APP" "$DMG"
 write_digest "$ZIP"
 write_digest "$DMG"
-if [[ -n "${BURETTE_SPARKLE_PUBLIC_KEY:-}" ]]; then
-  python3 "$ROOT/scripts/sparkle-appcast.py" "$ZIP" "$APP" "$(dirname "$ZIP")/appcast.xml"
-fi
+python3 "$ROOT/scripts/sparkle-appcast.py" "$ZIP" "$APP" "$(dirname "$ZIP")/appcast.xml" --asset "$DMG"
 if [[ -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
   bun "$ROOT/scripts/sign-update-manifest.mjs" "$ZIP" "$(dirname "$ZIP")"
 fi
@@ -152,6 +157,7 @@ if [[ -f "$ZIP.ed25519" ]]; then
 fi
 echo "Release dmg: $DMG"
 echo "Release dmg digest: $DMG.sha256"
+echo "Release dmg publisher signature: $DMG.ed25519"
 if [[ -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
   echo "Release manifest: $ZIP.manifest.json"
   echo "Release manifest signature: $ZIP.manifest.json.sig"
