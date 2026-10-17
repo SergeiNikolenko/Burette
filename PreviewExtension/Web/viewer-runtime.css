@@ -5209,7 +5209,7 @@ body:has(#buret-toolbar[data-active-renderer="xyzrender-external"]) #buret-scene
 html[data-burette-header-band] #app { top: var(--burette-header-band-height, 50px); bottom: 0; height: auto; }
 /* Mol*'s expanded layout is fixed to the window rather than to #app. */
 html[data-burette-header-band] .msp-plugin-content.msp-layout-expanded { top: var(--burette-header-band-height, 50px) !important; }
-html[data-burette-header-band] .buret-viewport-corner { top: 8px !important; left: 10px !important; }
+html[data-burette-header-band] .buret-viewport-corner { top: 8px !important; left: var(--burette-header-band-corner-left, 10px) !important; }
 html[data-burette-header-band] .buret-corner-toggle { width: 34px; height: 34px; }
 html[data-burette-header-band] #buret-toolbar {
   top: var(--burette-header-band-toolbar-top, 8px) !important; left: auto !important; right: var(--burette-header-band-right, 12px) !important;

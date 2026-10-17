@@ -32,7 +32,7 @@ export function WorkspaceFileHeader({ activeFile, rootPath, bandDocumentId = nul
   // annotation tool, an address field with the file path, Open and panels.
   return (
     <header ref={headerRef} className="workspace-file-header" aria-label="Current file" data-band={bandDocumentId ? "" : undefined}>
-      {navigation}
+      {navigation ? <div className="workspace-file-navigation">{navigation}</div> : null}
       <AnnotateToggle className="workspace-file-pill" />
       <div className="workspace-file-path workspace-file-pill">
         <div className="workspace-file-breadcrumb" aria-label={fileActionsAvailable ? activeFile.path : activeFile.label} title={fileActionsAvailable ? activeFile.path : "Unsaved structure"}>

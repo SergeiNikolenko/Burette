@@ -22,6 +22,9 @@ export function useWorkspaceHeaderBand(header: RefObject<HTMLElement | null>, do
       const frameRect = frame.getBoundingClientRect();
       const rootRect = root.getBoundingClientRect();
       const doc = frame.contentDocument;
+      const navigationWidth = root.querySelector(".workspace-file-navigation")?.getBoundingClientRect().width ?? 0;
+      const cornerLeft = Math.max(10, rootRect.left + 10 + (navigationWidth ? navigationWidth + 8 : 0) - frameRect.left);
+      viewer.style.setProperty("--burette-header-band-corner-left", `${cornerLeft}px`);
       const corner = doc?.getElementById("buret-viewport-corner")?.getBoundingClientRect();
       root.style.setProperty("--band-leading", `${Math.max(10, Math.ceil(frameRect.left - rootRect.left + (corner?.right ?? 0) + 8))}px`);
       // The toolbar's right edge follows the slot, whose width follows the
@@ -83,6 +86,7 @@ export function useWorkspaceHeaderBand(header: RefObject<HTMLElement | null>, do
       frame.contentDocument?.documentElement.style.removeProperty("--burette-header-band-width");
       frame.contentDocument?.documentElement.style.removeProperty("--burette-header-band-height");
       frame.contentDocument?.documentElement.style.removeProperty("--burette-header-band-toolbar-top");
+      frame.contentDocument?.documentElement.style.removeProperty("--burette-header-band-corner-left");
       root.style.removeProperty("--band-controls");
       root.style.removeProperty("--band-leading");
       root.style.removeProperty("--band-slot-margin");
