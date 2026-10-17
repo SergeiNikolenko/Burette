@@ -334,7 +334,7 @@ function WorkspaceAppLayout({
     };
   }, [tauriRuntime]);
   const placement = useNativeWorkspacePlacement();
-  const [nativeNavigationOpen, setNativeNavigationOpen] = useState(true);
+  const [nativeNavigationOpen, setNativeNavigationOpen] = useState(false);
   const nativeExpanded = placement?.mode === "fullscreen" && viewportWidth >= 760;
   const hostedMcpWidget = isHostedMcpWidget();
   const heroEmbed = isWebDemoHeroEmbed();

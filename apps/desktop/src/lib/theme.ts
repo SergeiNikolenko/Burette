@@ -69,7 +69,9 @@ export function readThemeTokens(preferences: ViewerPreferences, mode: ThemeMode)
 }
 
 export function resolveAppearanceTheme(preferences: ViewerPreferences, mode: ThemeMode): CodexTheme {
-  return codexThemeFromTokens(readThemeTokens(preferences, mode), mode);
+  const theme = codexThemeFromTokens(readThemeTokens(preferences, mode), mode);
+  const native = typeof window !== "undefined" && window.BuretteMcpWorkspace;
+  return native ? { ...theme, surface: native.backgrounds?.[mode] ?? (mode === "dark" ? "#101010" : "#ffffff") } : theme;
 }
 
 // The viewer frames derive their chrome from these colours, so they get the
