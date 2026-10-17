@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rename, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rename, rm, stat } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { pipeline } from 'node:stream/promises';
+import { Transform } from 'node:stream';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { MAX_ARCHIVE_BYTES, verifyReleaseArchive } from './release-signature.mjs';
 
 const OWNER = 'SergeiNikolenko';
 const REPO = 'Burette';
@@ -61,40 +63,56 @@ async function install({ system, channel }) {
   const installScope = system ? 'system-wide' : 'current-user';
   const release = await fetchLatestRelease(channel);
   const asset = findZipAsset(release);
-  const workDir = path.join(tmpdir(), `burette-${process.pid}`);
+  const version = release.tag_name.replace(/^v/, '');
+  if (!/^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(version)
+      || asset.name !== `Burette-${version}.zip`) throw new Error('Invalid release archive identity.');
+  const expectedUrl = `https://github.com/${OWNER}/${REPO}/releases/download/v${version}/${asset.name}`;
+  if (asset.browser_download_url !== expectedUrl) throw new Error('Invalid release archive URL.');
+  const workDir = await mkdtemp(path.join(tmpdir(), 'burette-install-'));
   const zipPath = path.join(workDir, asset.name);
   const extractDir = path.join(workDir, 'extract');
 
-  logStep(`Installing ${release.tag_name} from the ${channel} channel.`);
-  logStep(`Install scope: ${installScope} (${installDir}).`);
-  await mkdir(extractDir, { recursive: true });
-  logStep(`Downloading ${asset.name}.`);
-  await download(asset.browser_download_url, zipPath);
-  logStep(asset.digest ? 'Verifying release checksum.' : 'No GitHub checksum was provided; skipping checksum verification.');
-  await verifyDigest(zipPath, asset.digest);
-
-  logStep('Unpacking release archive.');
-  run('/usr/bin/ditto', ['-x', '-k', zipPath, extractDir], 'Failed to unzip Burette release.');
-  await mkdir(installDir, { recursive: true });
-
-  const sourceApp = path.join(extractDir, APP_NAME);
-  await ensureExists(sourceApp, `Release archive does not contain ${APP_NAME}.`);
-  const targetApp = path.join(installDir, APP_NAME);
   try {
-    logStep(`Replacing ${targetApp}.`);
-    await replaceInstalledApp({ sourceApp, targetApp });
-  } catch (error) {
-    fail(`Failed to install Burette.app. The previous app was preserved when possible. ${error?.message || String(error)}`);
-  }
-  logStep('Registering LaunchServices and Quick Look.');
-  registerInstalledApp(targetApp);
-  await rm(workDir, { recursive: true, force: true });
+    logStep(`Installing ${release.tag_name} from the ${channel} channel.`);
+    logStep(`Install scope: ${installScope} (${installDir}).`);
+    await mkdir(extractDir, { recursive: true });
+    logStep(`Downloading ${asset.name}.`);
+    await download(asset.browser_download_url, zipPath);
+    const signaturePath = path.join(workDir, 'release.ed25519');
+    await download(`${expectedUrl}.ed25519`, signaturePath, 128);
+    await verifyReleaseArchive(zipPath, await readFile(signaturePath, 'utf8'));
+    logStep('Verified publisher signature.');
+    await verifyDigest(zipPath, asset.digest);
 
-  console.log(`Installed ${APP_NAME} ${release.tag_name} to ${targetApp}`);
-  console.log('Next steps:');
-  console.log('  1. Open Burette once so macOS registers the Quick Look extension.');
-  console.log('  2. Select a supported molecule file in Finder and press Space.');
-  console.log('  3. Run `burette doctor` if Finder previews do not appear.');
+    logStep('Unpacking release archive.');
+    run('/usr/bin/ditto', ['-x', '-k', zipPath, extractDir], 'Failed to unzip Burette release.');
+    await mkdir(installDir, { recursive: true });
+
+    const sourceApp = path.join(extractDir, APP_NAME);
+    await ensureExists(sourceApp, `Release archive does not contain ${APP_NAME}.`);
+    const plist = path.join(sourceApp, 'Contents', 'Info.plist');
+    for (const [field, expected] of [['CFBundleIdentifier', 'com.local.BuretteV10'], ['CFBundleShortVersionString', version]]) {
+      const result = spawnSync('/usr/libexec/PlistBuddy', ['-c', `Print :${field}`, plist], { encoding: 'utf8' });
+      if (result.status !== 0 || result.stdout.trim() !== expected) throw new Error('Signed app does not match the selected release.');
+    }
+    const targetApp = path.join(installDir, APP_NAME);
+    try {
+      logStep(`Replacing ${targetApp}.`);
+      await replaceInstalledApp({ sourceApp, targetApp });
+    } catch (error) {
+      fail(`Failed to install Burette.app. The previous app was preserved when possible. ${error?.message || String(error)}`);
+    }
+    logStep('Registering LaunchServices and Quick Look.');
+    registerInstalledApp(targetApp);
+
+    console.log(`Installed ${APP_NAME} ${release.tag_name} to ${targetApp}`);
+    console.log('Next steps:');
+    console.log('  1. Open Burette once so macOS registers the Quick Look extension.');
+    console.log('  2. Select a supported molecule file in Finder and press Space.');
+    console.log('  3. Run `burette doctor` if Finder previews do not appear.');
+  } finally {
+    await rm(workDir, { recursive: true, force: true });
+  }
 }
 
 function registerInstalledApp(targetApp) {
@@ -180,16 +198,21 @@ export function findZipAsset(release, required = true) {
   return asset || null;
 }
 
-async function download(url, targetPath) {
+async function download(url, targetPath, maxBytes = MAX_ARCHIVE_BYTES) {
   const response = await fetch(url, {
     headers: {
       'User-Agent': 'burette-cli-installer',
     },
   });
   if (!response.ok || !response.body) {
-    fail(`Could not download Burette release: HTTP ${response.status}`);
+    throw new Error(`Could not download Burette release: HTTP ${response.status}`);
   }
-  await pipeline(response.body, createWriteStream(targetPath));
+  let received = 0;
+  const limit = new Transform({ transform(chunk, encoding, callback) {
+    received += chunk.length;
+    callback(received > maxBytes ? new Error('Release download exceeds its size limit.') : null, chunk);
+  } });
+  await pipeline(response.body, limit, createWriteStream(targetPath, { flags: 'wx', mode: 0o600 }));
 }
 
 async function verifyDigest(filePath, digest) {

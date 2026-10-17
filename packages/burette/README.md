@@ -8,8 +8,13 @@ Repository contributors can run it from the repository root with
 `bun packages/burette/bin/burette.mjs <command>`.
 
 The command downloads the latest stable `Burette-<version>.zip`,
-verifies the GitHub release asset SHA-256 digest when GitHub provides one, and
+requires its `.ed25519` signature under the pinned Sparkle publisher key before
+unpacking, checks the bundle identity/version, and
 installs `Burette.app` into `~/Applications` by default.
+
+Unsigned historical releases fail closed. A checksum alone is insufficient.
+Archives are limited to 1 GiB; the signing key can change only through a reviewed
+installer source update. Apple Team ID is not used for this archive check.
 
 Use `install --system` to install into `/Applications` for all users;
 without it, the installer uses the current user's `~/Applications` folder.

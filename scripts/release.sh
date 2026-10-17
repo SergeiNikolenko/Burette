@@ -147,6 +147,9 @@ fi
 echo "Release app: $APP"
 echo "Release zip: $ZIP"
 echo "Release digest: $ZIP.sha256"
+if [[ -f "$ZIP.ed25519" ]]; then
+  echo "Release publisher signature: $ZIP.ed25519"
+fi
 echo "Release dmg: $DMG"
 echo "Release dmg digest: $DMG.sha256"
 if [[ -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then

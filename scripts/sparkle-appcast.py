@@ -93,7 +93,10 @@ def main():
                             input=bytes.fromhex('302e020100300506032b657004220420') + seed,
                             check=True, capture_output=True).stdout[-32:]
     assert base64.b64encode(public).decode() == info['SUPublicEDKey'], 'Signing key does not match the key embedded in the app'
+    installer_key = (Path(__file__).resolve().parents[1] / 'packages/burette/bin/release-signing-key.txt').read_text().strip()
+    assert base64.b64encode(public).decode() == installer_key, 'Signing key does not match the pinned installer key'
     signature = sign(archive, key)
+    archive.with_name(archive.name + '.ed25519').write_text(signature + '\n')
     prefix = f"Burette-{info['CFBundleShortVersionString']}-from-"
     deltas = []
     for patch in patches:

@@ -331,8 +331,8 @@ unscoped `burette` name on npm belongs to an unrelated project. GitHub Releases
 and the Homebrew tap are the public installation channels.
 
 The internal installer helper installs to `~/Applications` by default and to
-`/Applications` only with `--system`. It prints each install step, verifies the
-GitHub `sha256:<digest>` asset checksum when release metadata provides one,
+`/Applications` only with `--system`. It prints each install step, requires the
+publisher's `.ed25519` signature and checks any GitHub `sha256:<digest>` checksum,
 stages replacement through `Burette.app.updating`, and restores the previous app
 bundle if replacement fails. Its `doctor` command checks the installed app, embedded
 Quick Look extension, `qlmanage`, and the app version.
@@ -350,3 +350,14 @@ handlers. Existing associations remain untouched; Launch Services maintenance
 only cleans up owned obsolete update bundles. Explicit Quick Look repair in
 Settings remains the opt-in registration path. This prevents repeated Finder
 confirmation prompts for previously unclaimed file extensions.
+
+### Internal installer publisher authentication
+
+The private npm helper requires a detached `.zip.ed25519` signature before
+unpacking an archive. `sparkle-appcast.py` writes this sidecar using the existing
+Sparkle signing key; release CI uploads it beside the ZIP. Both signing and
+installation pin `packages/burette/bin/release-signing-key.txt`. Key rotation
+therefore requires a reviewed source update. The helper then checks the signed
+app's bundle ID and version before replacing or registering an installation.
+Unsigned historical archives are rejected. This authenticates the archive
+without an Apple Team ID; it does not provide notarization or change Gatekeeper.

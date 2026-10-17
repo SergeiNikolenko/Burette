@@ -189,6 +189,7 @@ jobs:
         run: |
           assets=(
             "Burette-${{ steps.version.outputs.version }}.zip"
+            "Burette-${{ steps.version.outputs.version }}.zip.ed25519"
             "Burette-${{ steps.version.outputs.version }}.dmg"
           )
           if [[ -f "Burette-${{ steps.version.outputs.version }}.zip.sha256" ]]; then
