@@ -93,6 +93,12 @@ export function traceIntegrity(protocol, diagnostics) {
   for (const key of ['droppedEntries', 'failedBatches', 'malformedLines', 'rotationGaps']) {
     if (!Number.isSafeInteger(diagnostics?.[key]) || diagnostics[key] !== 0) failures.push(`trace ${key}: ${diagnostics?.[key] ?? 'unknown'}`);
   }
+  // Historical reports predate reader accounting. Absence preserves their old
+  // contract, but does not establish that replay/gap/bounds checks ran.
+  for (const key of ['duplicateEntries', 'sequenceGaps', 'readerOverflows', 'oversizedLines', 'integrityErrors']) {
+    if (diagnostics && Object.hasOwn(diagnostics, key)
+      && (!Number.isSafeInteger(diagnostics[key]) || diagnostics[key] !== 0)) failures.push(`trace ${key}: ${diagnostics[key] ?? 'unknown'}`);
+  }
   if (protocol !== 'sequenced') failures.push('legacy trace has no sequence/drop accounting; zero diagnostics do not establish conservation');
   return failures;
 }

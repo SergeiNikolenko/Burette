@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { reduceScaleSwitches, scaleFocusScene, scaleIntegrity } from '../scripts/perf-scalability-metrics.mjs';
+import { reduceScaleSwitches, scaleFocusScene, scaleIntegrity, traceIntegrity } from '../scripts/perf-scalability-metrics.mjs';
 
 const actions = Array.from({ length: 24 }, (_, index) => ({ startedAt: 1000 + index * 100, documentId: String(index) }));
 const lines = actions.map(action => ({ at: action.startedAt + 10, name: 'document:visible', ms: 25,
@@ -27,6 +27,15 @@ assert.equal(scaleIntegrity(legacy).documents[3].missing, 501, 'zero diagnostics
 assert.ok(scaleIntegrity(legacy).failures.some(message => message.includes('no sequence')));
 assert.equal(scaleIntegrity({ ...report, switches: reduction.switches.slice(0, 6) }).status, 'fail');
 assert.equal(scaleIntegrity({ ...report, traceDiagnostics: { ...report.traceDiagnostics, rotationGaps: 1 } }).status, 'fail');
+assert.deepEqual(traceIntegrity('sequenced', report.traceDiagnostics), [], 'historical absence retains compatibility, not proof that newer checks ran');
+for (const key of ['duplicateEntries', 'sequenceGaps', 'readerOverflows', 'oversizedLines', 'integrityErrors']) {
+  assert.deepEqual(traceIntegrity('sequenced', { ...report.traceDiagnostics, [key]: 0 }), []);
+  for (const value of [1, -1, 0.5, NaN, Infinity, '0', null, undefined]) {
+    const diagnostics = { ...report.traceDiagnostics, [key]: value };
+    assert.ok(traceIntegrity('sequenced', diagnostics).some(message => message.includes(key)), `${key}=${String(value)} must reject`);
+    assert.equal(scaleIntegrity({ ...report, traceDiagnostics: diagnostics }).status, 'fail');
+  }
+}
 for (const quitDiagnostics of [null, { cleanupFailure: 'refused', traceDrain: { status: 'confirmed' } },
   { cleanupFailure: null, traceDrain: { status: 'timeout' } }]) {
   assert.equal(scaleIntegrity({ ...report, switchMetricDefinitions: {}, quitDiagnostics }).status, 'fail');
