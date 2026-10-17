@@ -11,6 +11,10 @@ The source of truth for runtime theme defaults is:
 - `apps/desktop/src/lib/codex-theme.ts`
 - `apps/desktop/src/styles/codex-tokens.css`
 
+For interaction behavior, progress, recovery, and workflow acceptance, also follow
+[Interaction Principles](interaction-principles.md). Those are requirements for
+future changes, not a claim that every existing surface already complies.
+
 ## Current Reality
 
 The desktop shell follows the Codex InterfaceAtlas tokens and primitives while
