@@ -18,14 +18,16 @@ bundle verification must preserve the user's installed app and documents.
 Hosted macOS CI remains an additional gate, not evidence of local native
 update acceptance.
 
-The Release workflow (`.github/workflows/release.yml`) runs on:
+The Release workflow (`.github/workflows/release.yml`) runs through manual
+`workflow_dispatch` on protected `main`. Merge the version bump and verify checks,
+then dispatch the workflow **before creating the tag**. The workflow derives and
+publishes the tag from `package.json` and refuses an already existing tag.
+Tag pushes and merged PRs do not start releases.
 
-- a pushed tag matching `v*` (the tag must equal `v<package.json version>`), or
-- a manual `workflow_dispatch`, which derives the tag from the current
-  `package.json` version and fails if that tag already exists.
+Configure the protected release environment and secret scope described in
+[Release security](release-security.md) before enabling publication. Workflow
+source checks alone do not restrict historical or attacker-modified workflows.
 
-Merged PRs do not create releases by themselves; a maintainer cuts a release
-by bumping the version and pushing the tag (or dispatching the workflow).
 Version bumps still happen per PR: the Native Bundle Build PR check runs
 `scripts/check-release-version.mjs`, which requires any PR that touches
 native build scope to advance the version past the last release.
@@ -160,8 +162,7 @@ Use the repository release script:
 ./scripts/release.sh
 ```
 
-Developer ID signing and Apple notarization are used when the credentials are
-available:
+Developer ID signing and Apple notarization are required by default:
 
 ```bash
 export BURETTE_CODESIGN_IDENTITY="Developer ID Application: Example, Inc. (TEAMID)"
@@ -180,19 +181,15 @@ export BURETTE_NOTARY_KEYCHAIN_PROFILE="BuretteNotary"
 ./scripts/release.sh
 ```
 
-When Developer ID credentials are unavailable, the release script automatically
-falls back to an ad-hoc signed build and skips notarization. This mode can also
-be selected explicitly:
+Missing Developer ID or notarization credentials stop the release. Explicit local
+development packaging may opt into ad-hoc signing; this is never enabled by the
+public Release workflow:
 
 ```bash
-export BURETTE_RELEASE_ALLOW_ADHOC=1
-./scripts/release.sh
+BURETTE_RELEASE_ALLOW_ADHOC=1 ./scripts/release.sh
 ```
 
-Set `BURETTE_RELEASE_ALLOW_ADHOC=0` to make missing Developer ID or
-notarization credentials a hard error. Ad-hoc releases pass the repository's
-integrity checks, but macOS Gatekeeper does not treat them as identified and
-notarized software; users may need to approve the app manually.
+These development packages do not pass Gatekeeper's identified/notarized checks.
 
 For CI and pull-request validation, run the release dry run. It checks the
 release script prerequisites and JavaScript syntax but does not build, sign,
@@ -207,9 +204,8 @@ Release builds are explicit: `scripts/release.sh` sets
 `BURETTE_BUILD_MODE=release` and uses the Xcode Release configuration. With
 Developer ID credentials it enables the notarized path: hardened runtime,
 Developer ID signing, Apple notarytool submission, stapling, and then zip/dmg
-packaging. Without the complete credential set, or with
-`BURETTE_RELEASE_ALLOW_ADHOC=1`, it produces ad-hoc zip/dmg artifacts and skips
-notarization.
+packaging. Missing credentials fail closed. Only an explicit local
+`BURETTE_RELEASE_ALLOW_ADHOC=1` produces development ad-hoc zip/dmg artifacts.
 
 ## Artifact Requirements
 
@@ -294,7 +290,7 @@ blocked because the app is not Apple-signed/notarized and the project does not
 meet the default tap notability threshold yet.
 
 Stable GitHub releases update the external Homebrew tap automatically.
-Configure the `HOMEBREW_TAP_TOKEN` repository secret with write access to
+Configure the `HOMEBREW_TAP_TOKEN` protected release environment secret with write access to
 `SergeiNikolenko/homebrew-burette`. When the token is missing, the workflow
 emits a warning and skips the Homebrew cask update; the app release is still
 built and published. After the GitHub release is created, the

@@ -2,9 +2,6 @@ name: Release
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: write
@@ -16,6 +13,8 @@ concurrency:
 jobs:
   release:
     name: Build and Publish Release
+    if: github.ref == 'refs/heads/main'
+    environment: release
     runs-on: macos-latest
     env:
       CARGO_TARGET_DIR: ${{ github.workspace }}/../burette-native-target
@@ -24,6 +23,8 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Setup Burette toolchain
         uses: ./.github/actions/setup-burette-toolchain
@@ -103,9 +104,8 @@ jobs:
             echo "developer_id=true" >> "$GITHUB_OUTPUT"
             echo "allow_adhoc=false" >> "$GITHUB_OUTPUT"
           else
-            echo "developer_id=false" >> "$GITHUB_OUTPUT"
-            echo "allow_adhoc=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::Developer ID signing credentials are unavailable; publishing an ad-hoc signed release without notarization."
+            echo "::error::Releases require Developer ID signing and Apple notarization credentials."
+            exit 1
           fi
           if [[ -n "${BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX:-}" && -n "${BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM:-}" ]]; then
             echo "signed_manifest=true" >> "$GITHUB_OUTPUT"
@@ -136,7 +136,7 @@ jobs:
         env:
           BURETTE_BUILD_MODE: release
           BURETTE_SPARKLE_PUBLIC_KEY: ${{ vars.BURETTE_SPARKLE_PUBLIC_KEY }}
-          BURETTE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.allow_adhoc == 'true' && '1' || '0' }}
+          BURETTE_RELEASE_ALLOW_ADHOC: "0"
           BURETTE_CODESIGN_IDENTITY: ${{ secrets.BURETTE_CODESIGN_IDENTITY }}
           BURETTE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
           BURETTE_XCODE_CONFIGURATION: Release
@@ -160,7 +160,7 @@ jobs:
 
       - name: Validate release signing
         env:
-          BURETTE_RELEASE_ALLOW_ADHOC: ${{ steps.capabilities.outputs.allow_adhoc == 'true' && '1' || '0' }}
+          BURETTE_RELEASE_ALLOW_ADHOC: "0"
         run: ./scripts/check-release-signature.sh build/Burette.app
 
       - name: Package app

@@ -24,8 +24,8 @@ try {
   for (const tool of ['bun', 'ditto', 'hdiutil', 'shasum', 'xcrun']) write(`bin/${tool}`, '#!/bin/sh\nexit 0\n', true);
   write('scripts/build.sh', '#!/bin/sh\necho "build-mode=$BURETTE_BUILD_MODE;adhoc=$BURETTE_RELEASE_ALLOW_ADHOC"\nexit 77\n', true);
   for (const [mode, expectedStatus, expectedOutput] of [
-    [undefined, 77, 'build-mode=release;adhoc=1'],
-    ['auto', 77, 'build-mode=release;adhoc=1'],
+    [undefined, 1, 'BURETTE_CODESIGN_IDENTITY must be a Developer ID Application identity'],
+    ['auto', 1, 'BURETTE_CODESIGN_IDENTITY must be a Developer ID Application identity'],
     ['1', 77, 'build-mode=release;adhoc=1'],
     ['0', 1, 'BURETTE_CODESIGN_IDENTITY must be a Developer ID Application identity'],
   ]) {
@@ -47,7 +47,7 @@ try {
 
   for (const keys of [{}, { BURETTE_SPARKLE_PUBLIC_KEY: 'fixture' }]) {
     const result = spawnSync('bash', ['scripts/release.sh'], { cwd: temporary, encoding: 'utf8',
-      env: { ...cleanEnv, PATH: `${temporary}/bin:${process.env.PATH}`, ...keys } });
+      env: { ...cleanEnv, PATH: `${temporary}/bin:${process.env.PATH}`, BURETTE_RELEASE_ALLOW_ADHOC: '1', ...keys } });
     assert.equal(result.status, 1);
     assert.match(result.stderr, /Sparkle .*key is required/);
     assert.ok(!result.stdout.includes('build-mode='));
