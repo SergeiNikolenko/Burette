@@ -11,11 +11,11 @@ import ts from "typescript-compiler-api";
 const source = readFileSync(new URL("../apps/desktop/src/lib/perf-trace.ts", import.meta.url), "utf8")
   .replace(/^import .*;\n/m, "")
   .replace(/^export /gm, "");
-const load = new Function("invoke", "window", "performance", ts.transpileModule(source, {
+const load = new Function("invoke", "window", "performance", "globalThis", ts.transpileModule(source, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
 }).outputText + "\nreturn { tracePerf, flush };");
 
-function harness(send = async () => {}, enabled = true) {
+function harness(send = async () => {}, enabled = true, { globals = globalThis, state = {} } = {}) {
   const timers = new Map();
   const batches = [];
   let timer = 0;
@@ -37,11 +37,11 @@ function harness(send = async () => {}, enabled = true) {
     peakOutstanding = Math.max(peakOutstanding, outstanding);
     try { await send(received); }
     finally { outstanding -= 1; }
-  }, {
+  }, Object.assign(state, {
     __BURETTE_PERF_TRACE__: enabled,
     setTimeout(fn) { timers.set(++timer, fn); return timer; },
     clearTimeout(id) { timers.delete(id); },
-  }, { timeOrigin: 12345, now: () => 67 });
+  }), { timeOrigin: 12345, now: () => 67 }, globals);
   return { ...api, timers, batches, peak: () => peakOutstanding };
 }
 
@@ -77,6 +77,29 @@ const range = count => Array.from({ length: count }, (_, index) => index + 1);
   assert.equal(first.batches[0][0].seq, 1);
   assert.equal(reloaded.batches[0][0].seq, 1);
   assert.notEqual(first.batches[0][0].stream, reloaded.batches[0][0].stream);
+}
+
+{
+  const disabled = harness(undefined, false, {
+    globals: Object.defineProperty({}, "crypto", { get() { throw new Error("disabled tracing read crypto"); } }),
+  });
+  burst(disabled, 1);
+  await disabled.flush();
+  assert.equal(disabled.batches.length, 0);
+
+  // Older WebKit/insecure contexts may expose neither crypto nor randomUUID.
+  for (const globals of [{}, { crypto: {} }, { crypto: { randomUUID: () => "same-nonce" } }]) {
+    const state = {};
+    const first = harness(undefined, true, { globals, state });
+    const reloaded = harness(undefined, true, { globals, state });
+    burst(first, 1);
+    burst(reloaded, 1);
+    await first.flush();
+    await reloaded.flush();
+    assert.equal(first.batches[0][0].seq, 1);
+    assert.equal(reloaded.batches[0][0].seq, 1);
+    assert.notEqual(first.batches[0][0].stream, reloaded.batches[0][0].stream);
+  }
 }
 
 {

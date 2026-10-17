@@ -9,6 +9,7 @@ import { invoke } from "@tauri-apps/api/core";
 declare global {
   interface Window {
     __BURETTE_PERF_TRACE__?: boolean;
+    __BURETTE_PERF_TRACE_GENERATION__?: number;
   }
 }
 
@@ -107,9 +108,16 @@ let lastDroppedSequence = 0;
 let failedBatches = 0;
 let totalDroppedEntries = 0;
 let totalFailedBatches = 0;
-const stream = `${performance.timeOrigin}:${crypto.randomUUID()}`;
-
 export const perfTraceEnabled = typeof window !== "undefined" && window.__BURETTE_PERF_TRACE__ === true;
+const stream = perfTraceEnabled ? createStream() : "";
+
+function createStream() {
+  // Keep module/HMR generations distinct even without secure-context UUIDs.
+  const generation = (window.__BURETTE_PERF_TRACE_GENERATION__ ?? 0) + 1;
+  window.__BURETTE_PERF_TRACE_GENERATION__ = generation;
+  const nonce = globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  return `${performance.timeOrigin}:${generation}:${nonce}`;
+}
 
 export function perfNow() {
   const at = performance.timeOrigin + performance.now();
