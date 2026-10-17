@@ -451,11 +451,8 @@ function WorkspaceAppLayout({
     const observer = new ResizeObserver(() => post());
     const shell = shellRef.current;
     const post = () => {
-      // While a gesture holds the frames pinned, every cover change would make
-      // the grid re-measure and rebuild its cards on the shared main thread
-      // (the drag then lagged the pointer by up to a second). The cover is sent
-      // once when the pin lifts instead.
-      if (shell?.hasAttribute("data-resizing")) return;
+      // Keep the toolbar inside the exposed strip throughout the gesture.
+      // The grid defers costly virtual-window measurement until resize settles.
       const iframe = activeViewerIframeForDocument(activeGridId, "grid2d");
       const win = iframe?.contentWindow ?? null;
       if (!iframe || !win) return;

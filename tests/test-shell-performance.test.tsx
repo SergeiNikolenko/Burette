@@ -55,6 +55,19 @@ test("frame pinning batches layout reads, preserves styles and isolates shell ro
   ]);
 });
 
+test("grid frames resize live while molecular frames stay pinned through nested gestures", () => {
+  const shell = document.createElement("div");
+  shell.innerHTML = '<iframe class="viewer-iframe" data-renderer="grid2d"></iframe><iframe class="viewer-iframe" data-renderer="molstar"></iframe>';
+  const [grid, molecule] = [...shell.querySelectorAll("iframe")];
+  for (const frame of [grid, molecule]) frame.getBoundingClientRect = () => ({ width: 500, height: 300 }) as DOMRect;
+  const first = pinViewerFrames(shell), second = pinViewerFrames(shell);
+  expect([grid.style.width, grid.style.height, molecule.style.width, molecule.style.height]).toEqual(["", "", "500px", "300px"]);
+  first();
+  expect(molecule.style.width).toBe("500px");
+  second();
+  expect([grid.style.width, molecule.style.width, shell.hasAttribute("data-resizing")]).toEqual(["", "", false]);
+});
+
 test("500 inactive file names do not measure layout or allocate resize observers", async () => {
   const original = globalThis.ResizeObserver;
   let observes = 0, disconnects = 0, reads = 0;

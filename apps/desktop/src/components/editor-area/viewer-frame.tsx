@@ -17,7 +17,7 @@ import {
   replayPendingGridCloseTransitionRequests,
 } from "../../lib/window-mutation-barrier";
 
-// Every mounted viewer iframe, frozen at the pixel size it had when the shell
+// Molecular viewer iframes, frozen at the pixel size they had when the shell
 // started a layout gesture. `.viewer-iframe` is sized 100% x 100%, so a panel
 // drag re-laid the iframe out on every frame and Mol* inside redrew each time;
 // pinning the frame for the duration of the gesture (measured earlier: ~30 to
@@ -33,7 +33,9 @@ export function pinViewerFrames(root: HTMLElement): () => void {
   if (!pin) {
     // Read every box before writing any size: interleaved reads and writes
     // force layout once per document when many tabs are mounted.
-    const frames = Array.from(root.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe"), frame => ({
+    // Grid chrome must follow the exposed panel during the gesture. Its costly
+    // virtual-window measurement settles separately inside the grid runtime.
+    const frames = Array.from(root.querySelectorAll<HTMLIFrameElement>('iframe.viewer-iframe:not([data-renderer="grid2d"])'), frame => ({
       frame, rect: frame.getBoundingClientRect(),
       width: frame.style.getPropertyValue("width"), widthPriority: frame.style.getPropertyPriority("width"),
       height: frame.style.getPropertyValue("height"), heightPriority: frame.style.getPropertyPriority("height"),

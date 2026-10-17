@@ -9,6 +9,34 @@ function body(name) {
   return source.slice(start, end);
 }
 const frames = [];
+
+{
+  const pending = new Map();
+  const calls = [];
+  let nextTimer = 0;
+  const resizing = { resizeTimer: 0 };
+  const win = {
+    addEventListener() {}, removeEventListener() {},
+    setTimeout(callback) { pending.set(++nextTimer, callback); return nextTimer; },
+    clearTimeout(id) { pending.delete(id); },
+  };
+  const init = new Function('state', 'window', 'document', 'handleGridScroll',
+    'updateVirtualGridMetrics', 'scheduleVirtualWindowRender', 'updateGridRailActive',
+    'updateTableHeaderStick', 'maybeLoadMore', `${body('initInfiniteLoading')} return initInfiniteLoading;`)(
+    resizing, win, { getElementById: () => ({}) }, () => {},
+    ...['measure', 'render', 'rail', 'header', 'load'].map(name => () => calls.push(name)),
+  );
+  init({});
+  for (let i = 0; i < 60; i++) resizing.resizeHandler();
+  assert.deepEqual(calls, [], 'a continuous drag must not rebuild virtual rows');
+  assert.equal(pending.size, 1, 'only the latest viewport is measured after settling');
+  const callback = [...pending.values()][0]; pending.clear(); callback();
+  assert.deepEqual(calls, ['measure', 'render', 'rail', 'header', 'load']);
+  resizing.resizeHandler();
+  init({});
+  assert.equal(pending.size, 0, 'reinitializing the grid cancels the stale resize pass');
+}
+
 let measurements = 0;
 let rendered = [];
 const state = {
