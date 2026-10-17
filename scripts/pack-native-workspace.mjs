@@ -10,13 +10,13 @@ const viteRequire = createRequire(require.resolve('vite-plus/package.json'));
 const testRequire = createRequire(viteRequire.resolve('vitest/package.json'));
 const { init, parse } = await import(testRequire.resolve('es-module-lexer'));
 await init;
-const types = { '.js': 'text/javascript', '.css': 'text/css', '.wasm': 'application/wasm', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf' };
+const types = { '.js': 'text/javascript', '.css': 'text/css', '.wasm': 'application/wasm', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.avif': 'image/avif', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf' };
 
 export function rewriteWorkspaceModule(code, path) {
   const dependencies = [];
   const resources = [];
   code = code.replace(/new URL\((["'`])([^"'`]+)\1,\s*(?:import\.meta\.url|self\.location\.href)\)/gu, (original, _quote, name) => {
-    if (!/\.(?:js|wasm|png|svg|woff2?)$/u.test(name) || name.includes(':')) return original;
+    if (!/\.(?:js|wasm|png|svg|webp|jpe?g|gif|avif|woff2?)$/u.test(name) || name.includes(':')) return original;
     const target = posix.normalize(posix.join(posix.dirname(path), name));
     if (!target.startsWith('shell/')) return original;
     resources.push(target);
@@ -75,6 +75,15 @@ export async function packNativeWorkspace({ shellRoot, runtimeRoot, outputRoot, 
             },
           );
           bytes = Buffer.from(css);
+          // The offline loader resolves every CSS URL before applying styles.
+          // Missing images therefore prevent the entire workspace from opening.
+          for (const match of css.matchAll(/url\(\s*["']?([^\s"')]+)["']?\s*\)/gu)) {
+            const reference = match[1];
+            if (reference.startsWith('data:') || reference.startsWith('#')) continue;
+            const url = new URL(reference, `https://burette.invalid/${path}`);
+            if (url.origin !== 'https://burette.invalid') throw new Error(`External workspace CSS resource: ${reference}`);
+            resources.push(url.pathname.slice(1));
+          }
         }
         if (path.startsWith('shell/') && item.name.endsWith('.js')) {
           const result = rewriteWorkspaceModule(bytes.toString('utf8'), path);

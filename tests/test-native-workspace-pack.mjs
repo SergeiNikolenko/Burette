@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 
-test('SDK CSS references the packaged KaTeX font without requiring network access', async () => {
+test('shell CSS images and SDK fonts are packaged and missing resources fail the build', async () => {
   const root = await mkdtemp(join(tmpdir(), 'burette-font-pack-'));
   try {
     const shellRoot = join(root, 'shell'), runtimeRoot = join(root, 'runtime'), outputRoot = join(root, 'out');
@@ -14,7 +14,10 @@ test('SDK CSS references the packaged KaTeX font without requiring network acces
     await writeFile(join(shellRoot, 'index.html'), '<script type="module" src="./index.js"></script><link rel="stylesheet" href="./assets/style.css">');
     await writeFile(join(shellRoot, 'index.js'), 'export const ready = true;');
     await writeFile(join(shellRoot, 'assets/KaTeX_Main-Regular-fixture.woff2'), 'font fixture');
-    await writeFile(join(shellRoot, 'assets/style.css'), '@font-face{src:url("https://cdn.openai.com/common/fonts/katex/KaTeX_Main-Regular.woff2")}');
+    await mkdir(join(shellRoot, 'onboarding/guides'), { recursive: true });
+    await writeFile(join(shellRoot, 'onboarding/guides/atlas-education-gradient.webp'), 'image fixture');
+    const background = '.welcome{background:url(../onboarding/guides/atlas-education-gradient.webp)}';
+    await writeFile(join(shellRoot, 'assets/style.css'), '@font-face{src:url("https://cdn.openai.com/common/fonts/katex/KaTeX_Main-Regular.woff2")}' + background);
     for (const name of ['molstar.css', 'viewer-runtime.css', 'viewer-shell.js', 'viewer-bootstrap.js', 'native-viewer-menus.js', 'sequence-panel.js', 'molecule-preview-interactions.js', 'renderer-view-state.js', 'color-picker.js', 'scene-file-actions.js', 'viewer.js', 'burette-agent.js', 'trajectory-smoothing.js', 'molstar-preset-preview-controller.js', 'superposition-panel.js', 'grid-viewer.js', 'grid-ui.js', 'grid.css', 'rdkit/RDKit_minimal.wasm', 'openchemlib/openchemlib.js']) {
       await writeFile(join(runtimeRoot, name), 'fixture');
     }
@@ -22,8 +25,14 @@ test('SDK CSS references the packaged KaTeX font without requiring network acces
     const manifest = await packNativeWorkspace({ shellRoot, runtimeRoot, outputRoot, molstar: 'fixture' });
     const entry = manifest.assets['shell/assets/style.css'];
     const css = gunzipSync(await readFile(join(outputRoot, `${entry.sha256}.gz`))).toString();
-    assert.equal(css, '@font-face{src:url("./KaTeX_Main-Regular-fixture.woff2")}');
+    assert.equal(css, '@font-face{src:url("./KaTeX_Main-Regular-fixture.woff2")}' + background);
     assert.ok(manifest.assets['shell/assets/KaTeX_Main-Regular-fixture.woff2']);
+    const image = manifest.assets['shell/onboarding/guides/atlas-education-gradient.webp'];
+    assert.equal(image.mimeType, 'image/webp');
+    assert.equal(gunzipSync(await readFile(join(outputRoot, `${image.sha256}.gz`))).toString(), 'image fixture');
+    assert.deepEqual(entry.resources, ['shell/assets/KaTeX_Main-Regular-fixture.woff2', 'shell/onboarding/guides/atlas-education-gradient.webp']);
+    await rm(join(shellRoot, 'onboarding/guides/atlas-education-gradient.webp'));
+    await assert.rejects(packNativeWorkspace({ shellRoot, runtimeRoot, outputRoot, molstar: 'fixture' }), /Missing resource shell\/onboarding\/guides\/atlas-education-gradient.webp/);
     await rm(join(shellRoot, 'assets/KaTeX_Main-Regular-fixture.woff2'));
     await assert.rejects(packNativeWorkspace({ shellRoot, runtimeRoot, outputRoot, molstar: 'fixture' }), /Expected one packaged SDK font/);
   } finally { await rm(root, { recursive: true, force: true }); }
