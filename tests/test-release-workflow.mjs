@@ -1,12 +1,12 @@
 #!/usr/bin/env bun
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, cpSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, realpathSync, readFileSync, writeFileSync, cpSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
-const temporary = mkdtempSync(path.join(os.tmpdir(), 'burette-release-test-'));
+const temporary = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'burette-release-test-')));
 function write(relative, content, executable = false) {
   const target = path.join(temporary, relative);
   mkdirSync(path.dirname(target), { recursive: true });

@@ -62,8 +62,8 @@ assert.match(
   /prepare_bundled_python_for_signing "\$TAURI_BUILT_APP\/Contents\/Resources\/xyzrender-python"/,
 );
 
-assert.doesNotMatch(releaseWorkflow, /echo "allow_adhoc=true"/);
-assert.match(releaseWorkflow, /Releases require Developer ID signing and Apple notarization credentials/);
+assert.match(releaseWorkflow, /echo "allow_adhoc=true"/);
+assert.match(releaseWorkflow, /Apple signing is partially configured/);
 assert.match(releaseWorkflow, /environment: release/);
 assert.match(releaseWorkflow, /if: github.ref == 'refs\/heads\/main'/);
 assert.doesNotMatch(releaseWorkflow, /tags:/);
