@@ -12,7 +12,15 @@ export async function startNativeWorkspace(app, initialResult) {
   const status = document.getElementById('status');
   const root = document.getElementById('root');
   root.inert = true;
+  const backgrounds = { light: '#ffffff', dark: '#101010' };
+  function syncHostBackground(context = {}) {
+    const theme = context.theme || document.documentElement.dataset.theme || 'light';
+    const color = context.styles?.variables?.['--color-background-primary'];
+    if ((theme === 'light' || theme === 'dark') && /^#[0-9a-f]{6}$/iu.test(color || '')) backgrounds[theme] = color;
+    document.documentElement.style.setProperty('--burette-host-background', backgrounds[theme] || backgrounds.light);
+  }
   document.documentElement.dataset.theme = app.getHostContext()?.theme || 'light';
+  syncHostBackground(app.getHostContext());
   const placement = createWorkspacePlacement(app, status);
   let session, assets, transport, checkpoint;
   let started = false;
@@ -227,7 +235,7 @@ export async function startNativeWorkspace(app, initialResult) {
       });
       window.BuretteMcpWorkspace = { ...assets, placement, sessionId: session.sessionId, get closed() { return lifetime.closed; },
         firstFrame(documentId) { if (!lifetime.closed) { paintedDocuments.add(documentId); reveal(); } },
-        theme: app.getHostContext()?.theme || 'light',
+        theme: app.getHostContext()?.theme || 'light', backgrounds,
         initialPaths: !checkpoint.restored && ['auto', 'xyzrender'].includes(descriptor.view) ? descriptor.documents.map(item => item.path) : [],
         initialRenderer: descriptor.view === 'xyzrender' ? 'xyzrender-external' : undefined,
         restore: checkpoint.restored, storage: checkpoint.storage, authorizedPaths: descriptor.documents.map(item => item.path),
@@ -259,6 +267,7 @@ export async function startNativeWorkspace(app, initialResult) {
   }
   app.onhostcontextchanged = context => {
     if (lifetime.closed) return;
+    syncHostBackground(context);
     placement.update(context);
     const link = context['openai/deepLink']?.url;
     if (link && link !== deepLink) {

@@ -40,8 +40,12 @@ function startPreview(installTooltipLayout) {
   document.head.appendChild(themeStyle);
   const disposeTooltipLayout = installTooltipLayout();
   const syncTheme = () => {
-    if (window.BuretteConfig) window.BuretteConfig.theme = bridge.theme;
-    window.postMessage({ source: 'burette-host', body: { type: 'setViewerTheme', value: bridge.theme } }, '*');
+    const themeTokens = { ...window.BuretteConfig?.themeTokens };
+    for (const mode of ['light', 'dark']) if (bridge.backgrounds?.[mode]) {
+      themeTokens[mode] = { ...themeTokens[mode], background: bridge.backgrounds[mode] };
+    }
+    if (window.BuretteConfig) { window.BuretteConfig.theme = bridge.theme; window.BuretteConfig.themeTokens = themeTokens; }
+    window.postMessage({ source: 'burette-host', body: { type: 'setViewerTheme', value: bridge.theme, themeTokens } }, '*');
   };
   window.parent.addEventListener('burette-host-theme', syncTheme);
   const scripts = [...document.querySelectorAll('script[data-burette-script]')];

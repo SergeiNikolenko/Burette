@@ -90,7 +90,7 @@ test('spinner is retained across loading stages and failure offers an accessible
     assert.equal(status.querySelector('.workspace-loading-spinner'), spinner);
     assert.equal(status.textContent, 'Opening molecular structure...');
     document.documentElement.dataset.theme = 'dark';
-    assert.equal(dom.getComputedStyle(document.body).backgroundColor, '#000');
+    assert.equal(dom.getComputedStyle(document.body).backgroundColor, '#101010');
     assert.equal(dom.getComputedStyle(document.getElementById('root')).opacity, '0');
     status.hidden = true;
     fail(status, 'Fixture render failure');

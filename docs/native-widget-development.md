@@ -37,6 +37,12 @@ are not visual or performance acceptance.
 
 ## File-header acceptance
 
+The workspace navigation starts closed. Its toggle occupies the leftmost header
+slot, before the molecular scene tree. Native shell and preview backgrounds use
+the host's background token, with the Codex light/dark surfaces as fallbacks.
+Open With uses the retained, named session snapshot if an update removed the
+original plugin example. Discover and launch applications against that same file.
+
 `WorkspaceFileHeader` is shared React UI, not a copy of host-owned Codex chrome.
 Its primary Open button follows the shared `openInDefaultDestination` preference;
 the adjacent chevron opens discovered applications and a `Default for Open`

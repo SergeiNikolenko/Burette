@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { localFileAction } from './local-file-actions.mjs';
+import { mcpFileActionPath } from './mcp-app-file-actions.mjs';
 import { renderNativeWorkspaceXyz } from './native-workspace-xyzrender.mjs';
 import { readMcpAppAsset } from './mcp-app-assets.mjs';
 import { snapshotMcpDocuments, appendMcpDocuments } from './mcp-app-documents.mjs';
@@ -195,8 +196,9 @@ export async function runMcpAppOperation(input, { assetRoot } = {}) {
   if (input.fileAction) {
     const document = session.documents?.find(item => item.id === input.fileAction.documentId);
     if (!document?.path) throw new Error('Document is not authorized for this workspace.');
-    return localFileAction({ ...input.fileAction, path: document.path }, {
-      authorize: path => path === document.path,
+    const filePath = await mcpFileActionPath(sessionDir, session, document);
+    return localFileAction({ ...input.fileAction, path: filePath }, {
+      authorize: path => path === filePath,
     });
   }
   if (input.xyzrender) {

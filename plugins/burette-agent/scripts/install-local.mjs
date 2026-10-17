@@ -32,6 +32,7 @@ const requiredBundleFiles = [
   'assets/native-workspace/manifest.json',
   'scripts/mcp-app-assets.mjs',
   'scripts/mcp-app-session.mjs',
+  'scripts/mcp-app-file-actions.mjs',
   'scripts/mcp-app-action-log.mjs',
   'scripts/mcp-app-open.mjs',
   'scripts/local-file-actions.mjs',

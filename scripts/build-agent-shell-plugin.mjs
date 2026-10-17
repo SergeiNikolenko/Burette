@@ -33,6 +33,7 @@ const runtimeScripts = [
   'mcp-app-capture.mjs',
   'mcp-app-checkpoint.mjs',
   'mcp-app-documents.mjs',
+  'mcp-app-file-actions.mjs',
   'mcp-app-assets.mjs',
   'local-file-actions.mjs',
   'mvs-story.mjs',

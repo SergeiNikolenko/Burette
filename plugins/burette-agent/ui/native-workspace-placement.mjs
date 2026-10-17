@@ -4,11 +4,12 @@ import { workspaceContentHeight } from './native-workspace-sizing.mjs';
 export function createWorkspacePlacement(app, status) {
   const style = document.createElement('style');
   style.textContent = `
-    body{display:flex;flex-direction:column;background:#fff;color:#202124}
-    html[data-theme="dark"] body{background:#000;color:#eee}
+    body{display:flex;flex-direction:column;background:var(--burette-host-background,#fff);color:#202124}
+    html[data-theme="dark"] body{background:var(--burette-host-background,#101010);color:#eee}
     #root{position:relative;display:flex;flex-direction:column;flex:1;min-height:0;height:auto;box-sizing:border-box}
     #root .app-shell{width:100%;flex:1;min-height:0;height:auto}
     #root .app-shell .workbench{border-left:0;border-radius:0;box-shadow:none}
+    #root :is(.app-shell,.workbench){background:var(--burette-host-background,#fff)}
     body>[data-workspace-placement-host]{position:fixed;right:12px;bottom:12px;z-index:101;pointer-events:auto}
     .workspace-placement-trigger[data-slot="button"]{background:#0a0a0a;color:#fafafa;border:1px solid #333;border-radius:6px;height:30px;min-height:30px;padding:4px 10px;gap:4px;font:14px/1.35 system-ui}
     .workspace-placement-trigger:hover,.workspace-placement-trigger[data-state="open"]{background:#171717;color:#fff}
