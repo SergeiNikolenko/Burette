@@ -116,6 +116,10 @@ pub(crate) struct PerfTraceEntry {
     at: f64,
     name: String,
     #[serde(default)]
+    seq: Option<u64>,
+    #[serde(default)]
+    stream: Option<String>,
+    #[serde(default)]
     ms: Option<f64>,
     #[serde(default)]
     detail: Option<Value>,
@@ -126,16 +130,34 @@ pub(crate) struct PerfTraceEntry {
 pub(crate) fn append_perf_trace<R: Runtime>(
     window: WebviewWindow<R>,
     entries: Vec<PerfTraceEntry>,
-) {
+) -> Result<(), String> {
     let Some(trace) = TRACE.get().filter(|trace| trace.verbose) else {
-        return;
+        return Ok(());
     };
-    for entry in entries.into_iter().take(MAX_ENTRIES_PER_BATCH) {
-        trace.send(web_line(window.label(), entry));
-    }
+    trace.append_web_entries(window.label(), entries)
 }
 
 impl PerfTrace {
+    fn append_web_entries(
+        &self,
+        window_label: &str,
+        entries: Vec<PerfTraceEntry>,
+    ) -> Result<(), String> {
+        // Reject the whole request: acknowledging a truncated batch made large
+        // opens look like missing document lifecycle events.
+        if entries.len() > MAX_ENTRIES_PER_BATCH {
+            return Err(format!(
+                "Performance trace batch exceeds {MAX_ENTRIES_PER_BATCH} entries"
+            ));
+        }
+        for entry in entries {
+            self.lines
+                .send(web_line(window_label, entry).to_string() + "\n")
+                .map_err(|_| "Performance trace writer is unavailable".to_string())?;
+        }
+        Ok(())
+    }
+
     fn send(&self, line: Value) {
         let _ = self.lines.send(line.to_string() + "\n");
     }
@@ -149,6 +171,12 @@ fn web_line(window_label: &str, entry: PerfTraceEntry) -> Value {
         "window": bounded(window_label, MAX_NAME_CHARS),
     });
     let object = line.as_object_mut().expect("trace line is an object");
+    if let Some(seq) = entry.seq {
+        object.insert("seq".into(), seq.into());
+    }
+    if let Some(stream) = entry.stream {
+        object.insert("stream".into(), bounded(&stream, MAX_NAME_CHARS).into());
+    }
     if let Some(ms) = entry.ms.filter(|ms| ms.is_finite()) {
         object.insert("ms".into(), ms.into());
     }
@@ -257,12 +285,16 @@ mod tests {
             PerfTraceEntry {
                 at: 1_760_000_000_123.456,
                 name: format!("tab:visible\n{}", "x".repeat(200)),
+                seq: Some(1001),
+                stream: Some("window-session".into()),
                 ms: Some(f64::NAN),
                 detail: Some(Value::String("y".repeat(5000))),
             },
         );
         assert_eq!(line["at"], json!(1_760_000_000_123.456));
         assert_eq!(line["source"], "web");
+        assert_eq!(line["seq"], 1001);
+        assert_eq!(line["stream"], "window-session");
         assert_eq!(
             line["name"].as_str().unwrap().chars().count(),
             MAX_NAME_CHARS
@@ -270,6 +302,50 @@ mod tests {
         assert!(!line["name"].as_str().unwrap().contains('\n'));
         assert!(line.get("ms").is_none());
         assert_eq!(line["detail"], json!({ "truncated": true }));
+    }
+
+    #[test]
+    fn legacy_entries_remain_valid_without_sequence_metadata() {
+        let entry = serde_json::from_value(json!({ "at": 123.0, "name": "legacy" })).unwrap();
+        assert_eq!(
+            web_line("main", entry),
+            json!({ "at": 123.0, "source": "web", "name": "legacy", "window": "main" })
+        );
+    }
+
+    #[test]
+    fn batches_preserve_bursts_and_reject_oversize_without_partial_writes() {
+        let (lines, receiver) = mpsc::channel();
+        let trace = PerfTrace {
+            lines,
+            verbose: true,
+        };
+        let entry = |seq| {
+            serde_json::from_value(json!({
+                "at": 123.0, "name": "document:added", "seq": seq, "stream": "test",
+            }))
+            .unwrap()
+        };
+        assert!(trace
+            .append_web_entries("main", (1..=401).map(entry).collect())
+            .is_err());
+        assert!(receiver.try_recv().is_err());
+        for start in [1, 401, 801] {
+            trace
+                .append_web_entries("main", (start..start + 400).map(entry).collect())
+                .unwrap();
+        }
+        let received: Vec<_> = receiver
+            .try_iter()
+            .map(|line| {
+                serde_json::from_str::<Value>(&line).unwrap()["seq"]
+                    .as_u64()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(received, (1..=1200).collect::<Vec<u64>>());
+        drop(receiver);
+        assert!(trace.append_web_entries("main", vec![entry(1201)]).is_err());
     }
 
     #[test]
