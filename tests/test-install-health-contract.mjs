@@ -76,8 +76,8 @@ for (const [input, defaultValue] of [
 assert.match(toolchainAction, /uses: oven-sh\/setup-bun@v2/);
 assert.match(toolchainAction, /if: inputs\.install-dependencies == 'true'/);
 assert.match(toolchainAction, /if: inputs\.install-xyzrender == 'true'/);
-assert.match(toolchainAction, /python3 -m pip install --user --break-system-packages uv/);
-assert.match(toolchainAction, /uv" tool install xyzrender/);
+assert.match(toolchainAction, /BURETTE_BUILD_LOCKED_XYZRENDER=1/);
+assert.doesNotMatch(toolchainAction, /pip install.*uv|tool install xyzrender/);
 
 for (const [label, workflow] of [
   ["ci", ciWorkflow],

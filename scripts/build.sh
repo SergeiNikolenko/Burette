@@ -36,14 +36,27 @@ SIGN_IDENTITY="${BURETTE_CODESIGN_IDENTITY:--}"
 DEVELOPMENT_TEAM="${BURETTE_DEVELOPMENT_TEAM:-}"
 ALLOW_ADHOC_RELEASE="${BURETTE_RELEASE_ALLOW_ADHOC:-0}"
 APP_METADATA_PLIST="$ROOT/apps/desktop/src-tauri/AppMetadata.plist"
-LOCAL_XYZRENDER_ENV="$HOME/.local/share/uv/tools/xyzrender"
-LOCAL_XYZRENDER_PYTHON_HOME="$(sed -n 's/^home = //p' "$LOCAL_XYZRENDER_ENV/pyvenv.cfg" 2>/dev/null | head -n 1 || true)"
+LOCAL_XYZRENDER_ENV="${BURETTE_XYZRENDER_ENV:-$HOME/.local/share/uv/tools/xyzrender}"
 LOCAL_XYZRENDER_PYTHON_ROOT=""
+OWNED_XYZRENDER_SOURCE=""
 # Retain the full source runtime only when diagnosing upstream packaging.
 KEEP_FULL_XYZRENDER_RUNTIME="${BURETTE_KEEP_FULL_XYZRENDER_RUNTIME:-0}"
-if [[ -n "$LOCAL_XYZRENDER_PYTHON_HOME" ]]; then
-  LOCAL_XYZRENDER_PYTHON_ROOT="$(cd -P "$LOCAL_XYZRENDER_PYTHON_HOME/.." && pwd -P)"
-fi
+cleanup_xyzrender_source() {
+  if [[ -n "$OWNED_XYZRENDER_SOURCE" ]]; then
+    python3 -c 'import shutil,sys; shutil.rmtree(sys.argv[1])' "$OWNED_XYZRENDER_SOURCE"
+  fi
+}
+cleanup_build() {
+  local status=$?
+  cleanup_xyzrender_source || true
+  if [[ "$status" -ne 0 && "${BURETTE_KEEP_FAILED_BUILD:-0}" == "1" ]]; then
+    echo "Preserving failed isolated build tree: $SAFE_ROOT" >&2
+  else
+    rm -rf "$SAFE_ROOT" 2>/dev/null || true
+  fi
+  return "$status"
+}
+trap cleanup_build EXIT
 VITE_BURETTE_BUILD_IDENTIFIER="$APP_ID"
 VITE_BURETTE_BUILD_FLAVOR=""
 VITE_BURETTE_BUILD_CHANNEL="dev"
@@ -83,15 +96,6 @@ export VITE_BURETTE_BUILD_IDENTIFIER
 export VITE_BURETTE_BUILD_FLAVOR
 export VITE_BURETTE_BUILD_CHANNEL
 
-cleanup_safe_root() {
-  local status=$?
-  if [[ "$status" -ne 0 && "${BURETTE_KEEP_FAILED_BUILD:-0}" == "1" ]]; then
-    echo "Preserving failed isolated build tree: $SAFE_ROOT" >&2
-    return
-  fi
-  rm -rf "$SAFE_ROOT" 2>/dev/null || true
-}
-trap cleanup_safe_root EXIT
 
 cat <<HDR
 Burette v10 build
@@ -178,7 +182,7 @@ require_xyzrender_runtime_for_release() {
   [[ "$BUILD_MODE" != "release" ]] && return 0
   [[ -d "$LOCAL_XYZRENDER_ENV" ]] || {
     echo "error: release builds require bundled xyzrender runtime source: $LOCAL_XYZRENDER_ENV" >&2
-    echo "Install it before release builds with: uv tool install --with rdkit xyzrender" >&2
+    echo "Run scripts/prepare-xyzrender-runtime.py to prepare the locked renderer." >&2
     exit 1
   }
 }
@@ -192,9 +196,8 @@ ensure_xyzrender_rdkit() {
   if PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 "$python" -c 'from rdkit import Chem' >/dev/null 2>&1; then
     return 0
   fi
-  require_tool uv "Install uv to add RDKit to the bundled xyzrender runtime."
-  uv pip install --python "$python" rdkit
-  PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 "$python" -c 'from rdkit import Chem'
+  echo "error: selected xyzrender environment has no RDKit; use scripts/prepare-xyzrender-runtime.py." >&2
+  exit 1
 }
 relocate_bundled_python_runtime() {
   local python_root="$1"
@@ -534,7 +537,17 @@ case "$ROOT" in *"/.Trash/"*|*"/Library/Mobile Documents/.Trash/"*)
   exit 1;;
 esac
 
-# Validate/provision the offline Python tools before starting native builds.
+# Public releases always rebuild the renderer from authenticated, locked artifacts.
+# Native CI uses the same preparation while retaining its isolated dev namespace.
+if [[ "$BUILD_MODE" == "release" || "${BURETTE_BUILD_LOCKED_XYZRENDER:-0}" == "1" ]]; then
+  LOCAL_XYZRENDER_ENV="$(python3 "$ROOT/scripts/prepare-xyzrender-runtime.py")"
+  OWNED_XYZRENDER_SOURCE="$(dirname "$LOCAL_XYZRENDER_ENV")"
+fi
+export BURETTE_XYZRENDER_ENV="$LOCAL_XYZRENDER_ENV"
+LOCAL_XYZRENDER_PYTHON_HOME="$(sed -n 's/^home = //p' "$LOCAL_XYZRENDER_ENV/pyvenv.cfg" 2>/dev/null | head -n 1 || true)"
+if [[ -n "$LOCAL_XYZRENDER_PYTHON_HOME" ]]; then
+  LOCAL_XYZRENDER_PYTHON_ROOT="$(cd -P "$LOCAL_XYZRENDER_PYTHON_HOME/.." && pwd -P)"
+fi
 require_xyzrender_runtime_for_release
 ensure_xyzrender_rdkit
 

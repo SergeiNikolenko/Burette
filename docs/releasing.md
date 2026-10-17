@@ -361,3 +361,25 @@ therefore requires a reviewed source update. The helper then checks the signed
 app's bundle ID and version before replacing or registering an installation.
 Unsigned historical archives are rejected. This authenticates the archive
 without an Apple Team ID; it does not provide notarization or change Gatekeeper.
+
+### Locked renderer runtime
+
+Every release and CI native build prepares a fresh macOS arm64 environment with
+`scripts/prepare-xyzrender-runtime.py`. `config/xyzrender/bootstrap.json` pins
+CPython 3.13.13 and uv 0.11.7 distribution URLs and SHA-256 digests obtained from
+their upstream release assets. Downloads are verified before extraction or execution.
+The complete `requirements.txt` pins xyzrender 0.3.8, RDKit 2026.9.1 and transitive
+wheels with hashes; installation disables source builds, automatic Python downloads
+and ambient pip/uv configuration. Resolution/installation targets macOS 12.0.
+The Quick Look launcher receives the same absolute environment path as the app build.
+
+To update dependencies, review the intended versions and regenerate the lock with:
+
+```bash
+MACOSX_DEPLOYMENT_TARGET=12.0 uv pip compile --no-config --default-index https://pypi.org/simple --python-version 3.13.13 --python-platform aarch64-apple-darwin --generate-hashes --only-binary :all: config/xyzrender/requirements.in -o config/xyzrender/requirements.txt
+```
+
+Review changed wheels/bootstrap digests and run the native build plus renderer and
+Quick Look acceptance. Lock/helper changes trigger native CI. Local development
+may use its existing tool environment or `BURETTE_XYZRENDER_ENV`; release mode
+always prepares the locked environment and removes its temporary source on exit.

@@ -19,6 +19,8 @@ const registry = JSON.parse(source("config/preview-formats.json"));
 // than only matching the build script's source.
 execFileSync("python3", [fileURLToPath(new URL("./test-deduplicate-web-resources.py", import.meta.url))], { stdio: "inherit" });
 
+execFileSync("python3", [fileURLToPath(new URL("./test-prepare-xyzrender-runtime.py", import.meta.url))], { stdio: "inherit" });
+
 assert.match(buildScript, /relocate_bundled_python_runtime/);
 assert.match(buildScript, /install_name_tool/);
 assert.match(buildScript, /assert_no_external_python_dependencies/);

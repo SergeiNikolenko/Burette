@@ -61,7 +61,7 @@ jobs:
             case "$path" in
               PreviewExtension/Web/*)
                 ;;
-              App/*|PreviewExtension/*|Burette.xcodeproj/*|apps/desktop/src-tauri/*|scripts/build*.sh|scripts/install*.sh|scripts/ci.sh|package.json|bun.lock)
+              config/xyzrender/*|scripts/prepare-xyzrender-runtime.py|scripts/bundle-quicklook-xyzrender-launcher.sh|.github/actions/setup-burette-toolchain/*|App/*|PreviewExtension/*|Burette.xcodeproj/*|apps/desktop/src-tauri/*|scripts/build*.sh|scripts/install*.sh|scripts/ci.sh|package.json|bun.lock)
                 version_only "$path" || native=true
                 ;;
             esac

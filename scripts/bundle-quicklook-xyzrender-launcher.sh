@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LOCAL_XYZRENDER_ENV="${HOME}/.local/share/uv/tools/xyzrender"
+LOCAL_XYZRENDER_ENV="${BURETTE_XYZRENDER_ENV:-${HOME}/.local/share/uv/tools/xyzrender}"
 PYVENV_CFG="${LOCAL_XYZRENDER_ENV}/pyvenv.cfg"
 
 if [[ -z "${CODESIGNING_FOLDER_PATH:-}" ]]; then
