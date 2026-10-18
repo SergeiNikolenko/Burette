@@ -171,3 +171,13 @@ data when they are not needed for the fix.
 Do not put exploit details, credentials, or private sample data into a public
 issue or pull request. Coordinate privately with a maintainer and provide a
 minimal reproduction that avoids sensitive molecular data where possible.
+
+## Collection editing limits
+
+Eager merge, append and create operations share two edit slots. Merge accepts at
+most 64 source paths and 75 MiB total input; all eager collection edits bound
+actual input reads and output growth to 75 MiB, with a 256 KiB CSV/TSV header
+limit. Rejected append operations preserve the target. Failed merged preview
+opening removes only the newly generated source directory. Successful generated
+sources remain available for the viewer and Save As. Ordinary large collection
+opening and file-backed Save As keep their existing streaming behavior.

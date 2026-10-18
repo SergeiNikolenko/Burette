@@ -1,3 +1,5 @@
+pub mod collection_merge;
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::OnceLock;

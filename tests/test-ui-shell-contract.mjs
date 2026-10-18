@@ -1043,7 +1043,7 @@ assert.match(browserDevStartup, /return \[\];\s*}\s*export function browserDevFo
 assert.match(browserDevStartup, /export function splitDevFiles\(rawFiles: string\)/);
 assert.doesNotMatch(app, /fetch\("\/__burette\/dev-files", \{ cache: "no-store" \}\)/);
 assert.match(buretteAgentCli, /function browserDevFsAllowRoots\(initialFile, extraFiles = \[\]\)/);
-assert.match(buretteAgentCli, /const browserDevGeneratedFilesRoot = process\.env\.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT/);
+assert.match(buretteAgentCli, /const browserDevGeneratedFilesRoot = browserGeneratedFilesRoot\(\)/);
 assert.match(buretteAgentCli, /const explicitRoots = \(process\.env\.BURETTE_DEV_FS_ALLOW \?\? ""\)\.split\(delimiter\)\.filter\(Boolean\);/);
 assert.match(buretteAgentCli, /return Array\.from\(new Set\(\[\.\.\.roots, browserDevGeneratedFilesRoot\]\)\);/);
 assert.match(buretteAgentCli, /BURETTE_DEV_FS_ALLOW: browserDevFsAllowRoots\(initialFile, sceneFiles \?\? \[\]\)\.join\(delimiter\)/);

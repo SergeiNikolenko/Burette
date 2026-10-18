@@ -37,6 +37,11 @@ use crate::preview::text_xyz::xyz_data_from_text;
 use crate::preview::xyzrender::{
     create_xyzrender_artifact, create_xyzrender_card_batch_artifacts, XyzrenderCardBatchRequest,
 };
+use burette_core::collection_merge::{
+    collection_family, merge_collection_files, merge_collection_text,
+    parse_delimited_collection_cells, parse_delimited_collection_header, read_bounded,
+    with_generated_output, CollectionFamily, MergeSlot, MAX_MERGE_BYTES,
+};
 
 const XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
 const FETCHED_PDB_MAX_BYTES: usize = 75 * 1024 * 1024;
@@ -1754,6 +1759,7 @@ pub(crate) fn open_merged_collection<R: Runtime>(
     request: MergedCollectionRequest,
     preferences: ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
+    let _slot = MergeSlot::acquire()?;
     let (extension, text) = merge_collection_files(&request.paths)?;
     let output_directory = app
         .path()
@@ -1762,11 +1768,10 @@ pub(crate) fn open_merged_collection<R: Runtime>(
         .join("viewer")
         .join("merged")
         .join(uuid::Uuid::new_v4().to_string());
-    fs::create_dir_all(&output_directory).map_err(|err| err.to_string())?;
-    let output_path = output_directory.join(format!("merged-collection.{extension}"));
-    fs::write(&output_path, text).map_err(|err| format!("{}: {err}", output_path.display()))?;
-    open_document_for_window(&app, window.label(), output_path, &preferences, None)
-        .map(|document| document.into_virtual())
+    with_generated_output(&output_directory, &extension, &text, |output_path| {
+        open_document_for_window(&app, window.label(), output_path, &preferences, None)
+            .map(|document| document.into_virtual())
+    })
 }
 
 #[tauri::command]
@@ -1778,6 +1783,10 @@ pub(crate) fn append_to_molecule_collection<R: Runtime>(
     preferences: ViewerPreferences,
     open_state_revision: u64,
 ) -> Result<ViewerDocument, String> {
+    let _slot = MergeSlot::acquire()?;
+    if request.text.len() > MAX_MERGE_BYTES {
+        return Err("Collection edit exceeds the 75 MiB input limit".into());
+    }
     let target_path = PathBuf::from(&request.target_path)
         .canonicalize()
         .map_err(|err| format!("{}: {err}", request.target_path))?;
@@ -1818,8 +1827,10 @@ pub(crate) fn append_to_molecule_collection<R: Runtime>(
         open_state_revision,
         CollectionWriteTarget::ExistingOrNew,
         || {
-            let existing = fs::read_to_string(&target_path)
-                .map_err(|err| format!("{}: {err}", target_path.display()))?;
+            let remaining = MAX_MERGE_BYTES
+                .checked_sub(request.text.len())
+                .ok_or("Collection append exceeds the 75 MiB edit limit")?;
+            let existing = read_bounded(&target_path, remaining)?;
             let merged =
                 merge_collection_text(target_family, &[existing.as_str(), request.text.as_str()])?;
             if merged.trim().is_empty() {
@@ -1845,6 +1856,10 @@ pub(crate) fn create_molecule_collection<R: Runtime>(
     preferences: ViewerPreferences,
     open_state_revision: u64,
 ) -> Result<ViewerDocument, String> {
+    let _slot = MergeSlot::acquire()?;
+    if request.text.len() > MAX_MERGE_BYTES {
+        return Err("Collection edit exceeds the 75 MiB input limit".into());
+    }
     let requested_output_path = PathBuf::from(&request.output_path);
     if requested_output_path.as_os_str().is_empty() {
         return Err("Missing collection output path".to_string());
@@ -2514,224 +2529,6 @@ fn expand_open_targets(path: PathBuf) -> Result<Vec<PathBuf>, String> {
     let mut scan = ProjectStructureScan::following_symlinks(PROJECT_STRUCTURE_SCAN_LIMITS);
     scan.collect(&canonical, &supported_extensions)?;
     Ok(scan.into_paths())
-}
-
-fn merge_collection_files(paths: &[String]) -> Result<(String, String), String> {
-    let mut seen = HashSet::new();
-    let mut sources: Vec<(CollectionFamily, String)> = Vec::new();
-    for path in paths {
-        let canonical = PathBuf::from(path)
-            .canonicalize()
-            .map_err(|err| format!("{path}: {err}"))?;
-        if !seen.insert(canonical.clone()) {
-            continue;
-        }
-        let metadata =
-            fs::metadata(&canonical).map_err(|err| format!("{}: {err}", canonical.display()))?;
-        if !metadata.is_file() {
-            return Err(format!("{} is not a file", canonical.display()));
-        }
-        let extension = structure_path_extension(&canonical);
-        let family = collection_family(&extension).ok_or_else(|| {
-            format!(
-                "{} is not a supported molecule collection",
-                canonical.display()
-            )
-        })?;
-        let text = fs::read_to_string(&canonical)
-            .map_err(|err| format!("{}: {err}", canonical.display()))?;
-        sources.push((family, text));
-    }
-    if sources.len() < 2 {
-        return Err("Drop at least two molecule collections to merge them".to_string());
-    }
-    let family = sources[0].0;
-    if sources
-        .iter()
-        .any(|(next_family, _)| *next_family != family)
-    {
-        return Err(
-            "Collection merge supports one format family at a time: SDF, SMILES, CSV, or TSV"
-                .to_string(),
-        );
-    }
-    let texts: Vec<&str> = sources.iter().map(|(_, text)| text.as_str()).collect();
-    let text = merge_collection_text(family, &texts)?;
-    if text.trim().is_empty() {
-        return Err("Merged collection is empty".to_string());
-    }
-    Ok((family.default_extension().to_string(), text))
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CollectionFamily {
-    Sdf,
-    Smiles,
-    Csv,
-    Tsv,
-}
-
-impl CollectionFamily {
-    fn default_extension(self) -> &'static str {
-        match self {
-            Self::Sdf => "sdf",
-            Self::Smiles => "smi",
-            Self::Csv => "csv",
-            Self::Tsv => "tsv",
-        }
-    }
-}
-
-fn collection_family(extension: &str) -> Option<CollectionFamily> {
-    match extension {
-        "sd" | "sdf" => Some(CollectionFamily::Sdf),
-        "smi" | "smiles" => Some(CollectionFamily::Smiles),
-        "csv" => Some(CollectionFamily::Csv),
-        "tsv" => Some(CollectionFamily::Tsv),
-        _ => None,
-    }
-}
-
-fn merge_collection_text(family: CollectionFamily, texts: &[&str]) -> Result<String, String> {
-    match family {
-        CollectionFamily::Sdf => {
-            let mut records = Vec::new();
-            for (index, text) in texts.iter().enumerate() {
-                let source_records = split_sdf_collection_records(text);
-                if source_records.is_empty() {
-                    return Err(format!(
-                        "SDF collection source {} does not contain any records",
-                        index + 1
-                    ));
-                }
-                records.extend(source_records);
-            }
-            Ok(format!(
-                "{}\n",
-                records
-                    .iter()
-                    .map(|record| format!("{record}\n$$$$"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            ))
-        }
-        CollectionFamily::Smiles => {
-            let mut lines = Vec::new();
-            for (index, text) in texts.iter().enumerate() {
-                let source_lines = text
-                    .lines()
-                    .map(str::trim)
-                    .filter(|line| !line.is_empty())
-                    .collect::<Vec<_>>();
-                if !source_lines.iter().any(|line| !line.starts_with('#')) {
-                    return Err(format!(
-                        "SMILES collection source {} does not contain any molecule records",
-                        index + 1
-                    ));
-                }
-                lines.extend(source_lines);
-            }
-            Ok(format!("{}\n", lines.join("\n")))
-        }
-        CollectionFamily::Csv => merge_delimited_collection_text(texts, ',', "CSV"),
-        CollectionFamily::Tsv => merge_delimited_collection_text(texts, '\t', "TSV"),
-    }
-}
-
-fn split_sdf_collection_records(text: &str) -> Vec<String> {
-    let mut records = Vec::new();
-    let mut lines = Vec::new();
-    let finish = |lines: &mut Vec<&str>, records: &mut Vec<String>| {
-        let record = lines.join("\n").trim().to_string();
-        lines.clear();
-        if !record.is_empty() {
-            records.push(record);
-        }
-    };
-    for line in text.lines() {
-        if line.trim() == "$$$$" {
-            finish(&mut lines, &mut records);
-        } else {
-            lines.push(line);
-        }
-    }
-    finish(&mut lines, &mut records);
-    records
-}
-
-fn merge_delimited_collection_text(
-    texts: &[&str],
-    separator: char,
-    label: &str,
-) -> Result<String, String> {
-    let mut expected_header: Option<Vec<String>> = None;
-    let mut output_lines = Vec::new();
-    for (index, text) in texts.iter().enumerate() {
-        let file_lines = text.lines().collect::<Vec<_>>();
-        let Some(header_index) = file_lines.iter().position(|line| !line.trim().is_empty()) else {
-            return Err(format!("{label} collection source {} is empty", index + 1));
-        };
-        let header_line = file_lines[header_index].trim_start_matches('\u{feff}');
-        let header = parse_delimited_collection_header(header_line, separator);
-        if header.is_empty() || header.iter().all(String::is_empty) {
-            return Err(format!(
-                "{label} collection source {} has an empty header",
-                index + 1
-            ));
-        }
-        if expected_header
-            .as_ref()
-            .is_some_and(|expected| expected != &header)
-        {
-            return Err(format!(
-                "{label} collection headers must use the same columns in the same order"
-            ));
-        }
-        expected_header.get_or_insert(header);
-        let mut data_lines = file_lines[(header_index + 1)..].to_vec();
-        while data_lines.last().is_some_and(|line| line.trim().is_empty()) {
-            data_lines.pop();
-        }
-        if !data_lines.iter().any(|line| !line.trim().is_empty()) {
-            return Err(format!(
-                "{label} collection source {} does not contain any data rows",
-                index + 1
-            ));
-        }
-        if index == 0 {
-            output_lines.push(header_line);
-        }
-        output_lines.extend(data_lines);
-    }
-    Ok(format!("{}\n", output_lines.join("\n")))
-}
-
-fn parse_delimited_collection_header(line: &str, separator: char) -> Vec<String> {
-    parse_delimited_collection_cells(line, separator)
-        .into_iter()
-        .map(|cell| cell.trim().to_lowercase())
-        .collect()
-}
-
-fn parse_delimited_collection_cells(line: &str, separator: char) -> Vec<String> {
-    let mut cells = Vec::new();
-    let mut current = String::new();
-    let mut quoted = false;
-    let mut chars = line.chars().peekable();
-    while let Some(character) = chars.next() {
-        if character == '"' && chars.peek() == Some(&'"') {
-            current.push('"');
-            chars.next();
-        } else if character == '"' {
-            quoted = !quoted;
-        } else if character == separator && !quoted {
-            cells.push(std::mem::take(&mut current));
-        } else {
-            current.push(character);
-        }
-    }
-    cells.push(current);
-    cells
 }
 
 fn replace_delimited_collection_cell_text(
