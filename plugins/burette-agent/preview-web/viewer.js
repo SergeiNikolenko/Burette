@@ -1882,7 +1882,8 @@
     // container observer both report the same change, a beat apart, so without
     // this the viewer redrew about twice per resize step.
     appliedSize: '',
-    appliedViewer: null
+    appliedViewer: null,
+    hasDrawn: null
   };
   let hostViewerVisible = true;
 
@@ -1931,6 +1932,17 @@
       if (target === resizeState.appliedViewer && size && size === resizeState.appliedSize) return;
       resizeState.appliedViewer = target;
       resizeState.appliedSize = size;
+      const startedAt = performance.now();
+      const interaction = window.molstar?.BuretteResizeInteraction;
+      // The first layout is initialization. Subsequent geometry changes are
+      // live interaction and must not allocate Retina multisample targets per pixel.
+      if (resizeState.hasDrawn === target) interaction?.touch(target, (stats, restoreStartedAt) => {
+        if (viewerCanvasIsVisible(target)) {
+          target.plugin?.handleResize?.();
+          target.plugin?.canvas3d?.draw?.({ force: true, isSynchronous: true });
+        }
+        window.parent?.postMessage({ source: 'burette-viewer', body: { type: 'resizeStats', ...stats, restoreMs: performance.now() - restoreStartedAt } }, '*');
+      });
       let handled = false;
       try {
         // Mol*'s Viewer.handleResize broadcasts a layout/UI update and queues
@@ -1952,6 +1964,8 @@
       if (!handled) {
         try { target.plugin?.layout?.events?.updated?.next?.(); } catch (_) {}
       }
+      resizeState.hasDrawn = target;
+      interaction?.record(target, performance.now() - startedAt);
     });
   }
 
@@ -28922,6 +28936,7 @@ SOFTWARE.
     clearMolstarEditUndoHistory();
     resetXyzFrameOverlayState(activeViewer);
     const viewer = activeViewer || window.BuretteViewer || window.BuretteViewer;
+    window.molstar?.BuretteResizeInteraction?.dispose(viewer);
     try { viewer?.plugin?.dispose?.(); } catch (_) {}
     if (molstarContainerResizeCleanup) {
       molstarContainerResizeCleanup();
