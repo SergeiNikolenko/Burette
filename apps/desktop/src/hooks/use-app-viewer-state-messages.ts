@@ -178,7 +178,9 @@ export function useAppViewerStateMessages({
     }
 
     if (sourceName === "burette-viewer" && body?.type === "molstarEditHistoryChanged") {
-      window.dispatchEvent(new CustomEvent("burette:molstar-edit-history-changed", { detail: body }));
+      window.dispatchEvent(new CustomEvent("burette:molstar-edit-history-changed", {
+        detail: { ...body, frameSource: eventSource },
+      }));
       return true;
     }
 

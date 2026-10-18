@@ -6,7 +6,7 @@ import type { ViewerDocument } from "../apps/desktop/src/types";
 import type { MoleculeTab } from "../apps/desktop/src/stores/molecule-store";
 import type { ShellViewState, ShellActions } from "../apps/desktop/src/components/types";
 const browser = new Window();
-for (const key of ["window", "document", "navigator", "HTMLElement", "Node", "Event"] as const) Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
+for (const key of ["window", "document", "navigator", "HTMLElement", "Node", "Event", "CustomEvent"] as const) Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true, localStorage: browser.localStorage });
 const { createRoot } = await import("react-dom/client");
 let mounted = 0, disposed = 0;
@@ -14,11 +14,13 @@ mock.module("../apps/desktop/src/components/editor-area/tab-router", () => ({
   TabMemoryRouter: ({ children }: { children: React.ReactNode }) => children,
   TabPageRoutes: ({ location, isActive }: { location: Location; isActive: boolean }) => {
     useEffect(() => { mounted++; return () => { disposed++; }; }, []);
-    return <iframe data-path={"path" in location ? location.path : location.kind} data-playing={String(isActive)} />;
+    return <iframe className="viewer-iframe" data-document-id={"documentId" in location ? location.documentId : undefined}
+      data-path={"path" in location ? location.path : location.kind} data-playing={String(isActive)} />;
   },
 }));
 const { TabHistoryPages } = await import("../apps/desktop/src/components/editor-area/tab-history-pages");
 const { useSceneEditProtection } = await import("../apps/desktop/src/components/editor-area/use-scene-edit-protection");
+const { useAppViewerStateMessages } = await import("../apps/desktop/src/hooks/use-app-viewer-state-messages");
 
 test("Back/Forward retains visited iframe and camera state, pauses hidden pages, bounds history and protects dirty grids", async () => {
   const container = document.createElement("div"); document.body.append(container);
@@ -90,16 +92,79 @@ test("presentation edits protect path-only history even when its shared budget i
   }
   try {
     await act(async () => root.render(<Workspace />));
-    const original = container.querySelector("iframe");
-    await act(async () => window.dispatchEvent(new browser.CustomEvent("burette:molstar-edit-history-changed", { detail: { documentId: "a", canUndo: true, canRedo: false } })));
+    const original = container.querySelector("iframe")!;
+    // Legacy path-only locations still have a document-backed frame identity.
+    original.dataset.documentId = "a";
+    const changed = (canUndo: boolean, canRedo: boolean) => window.dispatchEvent(new CustomEvent(
+      "burette:molstar-edit-history-changed", { detail: { documentId: "a", canUndo, canRedo, frameSource: original.contentWindow } },
+    ));
+    await act(async () => changed(true, false));
     tab = { ...tab, location: b, back: [a] };
     await act(async () => root.render(<Workspace />));
     expect(container.querySelector('[data-path="/legacy-a.pdb"]')).toBe(original);
     // Undoing to the original coordinates still leaves redo state to preserve.
-    await act(async () => window.dispatchEvent(new browser.CustomEvent("burette:molstar-edit-history-changed", { detail: { documentId: "a", canUndo: false, canRedo: true } })));
+    await act(async () => changed(false, true));
     expect(container.querySelector('[data-path="/legacy-a.pdb"]')).toBe(original);
-    await act(async () => window.dispatchEvent(new browser.CustomEvent("burette:molstar-edit-history-changed", { detail: { documentId: "a", canUndo: false, canRedo: false } })));
+    await act(async () => changed(false, false));
     expect(container.querySelector('[data-path="/legacy-a.pdb"]')).toBeNull();
+  } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+test("clean duplicate startup cannot evict edited history and detached copies release only their own protection", async () => {
+  const container = document.createElement("div"); document.body.append(container);
+  const root = createRoot(container);
+  const a: Location = { kind: "file", path: "/copies-a.pdb", documentId: "a" };
+  const b: Location = { kind: "file", path: "/copies-b.pdb", documentId: "b" };
+  const documents = [{ id: "a", path: a.path }, { id: "b", path: b.path }] as ViewerDocument[];
+  const state = { documents, dirtyGridDocuments: new Set() } as unknown as ShellViewState;
+  let tab: MoleculeTab = { id: "original", location: a, back: [], forward: [] };
+  let showOriginal = true, showDuplicate = false;
+  let protectedIds: ReadonlySet<string> = new Set();
+  let handleMessage!: ReturnType<typeof useAppViewerStateMessages>["handleViewerStateMessage"];
+  const noop = () => {};
+  function Workspace() {
+    protectedIds = useSceneEditProtection(documents);
+    ({ handleViewerStateMessage: handleMessage } = useAppViewerStateMessages({
+      documents, activeDocument: null, addDocuments: noop, updateDirtyGridDocument: noop,
+      openCommandPalette: noop, openDockTab: noop, toggleDockTab: noop, setPreference: noop,
+      setViewerLigandSelections: noop, setStructureOverlayModes: noop, setStructureStories: noop,
+      toggleSidebar: noop, toggleDock: noop,
+    }));
+    return <>
+      {showOriginal ? <section data-copy="original"><TabHistoryPages tab={tab} state={state} actions={{} as ShellActions}
+        isActive={!showDuplicate} retainedHistoryKeys={new Set()} protectedDocumentIds={protectedIds} /></section> : null}
+      {showDuplicate ? <section data-copy="duplicate"><TabHistoryPages tab={{ id: "duplicate", location: a, back: [], forward: [] }}
+        state={state} actions={{} as ShellActions} isActive protectedDocumentIds={protectedIds} /></section> : null}
+    </>;
+  }
+  const render = () => act(async () => { root.render(<Workspace />); await new Promise(resolve => setTimeout(resolve, 0)); });
+  const changed = (frame: HTMLIFrameElement, canUndo: boolean, canRedo = false) => act(async () => {
+    handleMessage("burette-viewer", { type: "molstarEditHistoryChanged", documentId: "a", canUndo, canRedo }, frame.contentWindow);
+  });
+  const frame = (copy: string, path = a.path) => container.querySelector<HTMLIFrameElement>(`[data-copy="${copy}"] [data-path="${path}"]`);
+  try {
+    await render();
+    const original = frame("original")!;
+    original.dataset.unsaved = "measurement and representation edit";
+    await changed(original, true);
+    tab = { ...tab, location: b, back: [a] }; showDuplicate = true;
+    await render();
+    const duplicate = frame("duplicate")!;
+    await changed(duplicate, false);
+    expect(frame("original")).toBe(original);
+    expect(original.dataset.unsaved).toBe("measurement and representation edit");
+
+    await changed(duplicate, true);
+    await changed(original, false);
+    expect(protectedIds.has("a")).toBe(true);
+    await changed(original, true);
+    showOriginal = false;
+    await render();
+    expect(protectedIds.has("a")).toBe(true);
+    expect(frame("duplicate")).toBe(duplicate);
+    showDuplicate = false;
+    await render();
+    expect(protectedIds.has("a")).toBe(false);
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
 
