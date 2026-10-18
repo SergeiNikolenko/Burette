@@ -43,6 +43,12 @@ collisions with generated IDs, before constructing lookup dictionaries. GraphML
 and edge-list star layouts sort leaves once and index them by ID, preserving
 node order and coordinates without a per-node linear search through all leaves.
 
+The RDKit grid drawing cache retains at most 2,000 entries and 32 MiB of
+UTF-16 key and SVG string payload; individual entries above 2 MiB are not
+cached. Molecule and reaction drawings share this budget. Oversized drawings
+still reach waiting cards in full. These limits cover retained cache strings,
+not transient RDKit computation, visible DOM content, or separate renderer caches.
+
 Updater cleanup is limited to staged `.app` bundles below Burette's current and
 legacy `Library/Application Support/.../Updates` directories. It must not scan
 or remove applications from the user's home folders, Trash, backups, or
