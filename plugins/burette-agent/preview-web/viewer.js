@@ -1938,6 +1938,11 @@
         // Canvas3D for a resize; it does not rebuild structures or reset camera.
         if (typeof target.plugin?.handleResize === 'function') {
           target.plugin.handleResize();
+          // Updating canvas.width/height clears the buffer. Draw before this
+          // callback returns so WebKit cannot present that empty buffer between
+          // our geometry update and Mol*'s next animation tick. Do not tick or
+          // resume the loop: that would advance playback or add another loop.
+          target.plugin.canvas3d?.draw?.({ force: true, isSynchronous: true });
           handled = true;
         } else if (typeof target.handleResize === 'function') {
           target.handleResize();
@@ -11623,7 +11628,7 @@ SOFTWARE.
     });
   }
 
-  function requestTrajectoryFrameFromNative(frameIndex, segmentIndex, signal, validateOnly = false) {
+  function requestTrajectoryFrameFromNative(frameIndex, segmentIndex, signal, validateOnly = false, restoredTrajectory) {
     installNativeRuntimeFileBridge();
     return new Promise((resolve, reject) => {
       const requestToken = 'trajectory-frame-' + Math.random().toString(36).slice(2);
@@ -11648,21 +11653,24 @@ SOFTWARE.
       window.addEventListener('BuretteNativeRuntimeFileReady', onReady);
       signal?.addEventListener('abort', onAbort, { once: true });
       if (signal?.aborted) { onAbort(); return; }
-      try { window.__mqlPost('requestTrajectoryFrame', 'requestTrajectoryFrame', { requestToken, frameIndex, segmentIndex, validateOnly }); }
+      try { window.__mqlPost('requestTrajectoryFrame', 'requestTrajectoryFrame', { requestToken, frameIndex, segmentIndex, validateOnly, restoredTrajectory }); }
       catch (error) { finish(reject, error); }
     });
   }
 
   // Undo and MOLX restore recreate transforms after disposing the original
-  // tree. Reopen only the identical source in this native runtime; the native
-  // reader still checks its source revision before returning any coordinates.
-  function requestIndexedTrajectoryFrameFromNative(indexKey, segmentIndex, frameIndex, signal, validateOnly) {
+  // tree. Scene documents may restore a durable source binding; native checks
+  // its saved revision and rebuilds missing indexes before returning coordinates.
+  function requestIndexedTrajectoryFrameFromNative(indexKey, segmentIndex, frameIndex, signal, validateOnly, descriptor) {
     const config = activeConfig || window.BuretteConfig || {};
     const source = config.docking?.ligands?.[segmentIndex]?.indexedTrajectory;
-    if (!source || source.indexKey !== indexKey) {
+    if (source && source.indexKey !== indexKey) {
       return Promise.reject(new Error('Trajectory source is no longer open. Reopen the trajectory.'));
     }
-    return requestTrajectoryFrameFromNative(frameIndex, segmentIndex, signal, validateOnly);
+    if (!source && (!['molx', 'molj'].includes(config.format) || descriptor?.indexKey !== indexKey || !descriptor.source)) {
+      return Promise.reject(new Error('Trajectory source is no longer open. Reopen the trajectory.'));
+    }
+    return requestTrajectoryFrameFromNative(frameIndex, segmentIndex, signal, validateOnly, source ? undefined : descriptor);
   }
   window.BuretteReadIndexedTrajectoryFrame = requestIndexedTrajectoryFrameFromNative;
 
@@ -12487,6 +12495,10 @@ SOFTWARE.
 
   function readTrajectoryControlIndex(config, prepared, poseCount) {
     if (prepared?.kind === 'docking') return readDockingPoseIndex(config, poseCount);
+    if (prepared?.kind === 'session' && prepared.nativeTrajectoryControls === true) {
+      const value = Number(readNativeTrajectoryPosition(poseCount)?.index ?? prepared.activePose ?? 0);
+      return Math.max(0, Math.min(poseCount - 1, Number.isFinite(value) ? Math.trunc(value) : 0));
+    }
     if (prepared?.sdfPoseMode === 'single' && prepared?.nativeTrajectoryControls === true) {
       const value = Number(prepared?.activePose || 0);
       return Math.max(0, Math.min(poseCount - 1, Number.isFinite(value) ? Math.trunc(value) : 0));
@@ -12862,7 +12874,7 @@ SOFTWARE.
     if (sceneEntries.length > 1) {
       return prepareStagedStructureScene(config, sceneEntries);
     }
-    if (normalized === 'molj') {
+    if (normalized === 'molj' || normalized === 'molx') {
       return { kind: 'session', format: normalized, data: rawStructureData(config), label: config.label };
     }
     if (isMolViewSpecFormat(normalized)) {
@@ -18098,12 +18110,25 @@ SOFTWARE.
     if (prepared.kind === 'session') {
       activeMolstarPrepared = prepared;
       activeDockingPrepared = null;
-      const session = JSON.parse(prepared.data);
-      prepared.fitSessionCamera = session.burettePreview === true;
-      const snapshot = await viewer.plugin.managers.snapshot.setStateSnapshot(session);
+      let snapshot;
+      if (prepared.format === 'molx') {
+        const manager = viewer.plugin.managers.snapshot;
+        await manager.open(new File([prepared.data], 'scene.molx'));
+        snapshot = manager.getEntry(manager.state.current)?.snapshot;
+      } else {
+        const session = JSON.parse(prepared.data);
+        prepared.fitSessionCamera = session.burettePreview === true;
+        snapshot = await viewer.plugin.managers.snapshot.setStateSnapshot(session);
+      }
       prepared.hasSessionCamera = Number(snapshot?.camera?.current?.radius) > 0;
       if (!prepared.hasSessionCamera) viewer.plugin.managers.camera.reset();
-      installDockingPoseControls(viewer, null);
+      const trajectory = nativeTrajectoryModelTransform();
+      const position = trajectory?.frameCount > 1 ? readNativeTrajectoryPosition(trajectory.frameCount) : null;
+      prepared.poseCount = position?.total || 0;
+      prepared.activePose = position?.index || 0;
+      prepared.nativeTrajectoryControls = Boolean(position);
+      prepared.controlLabel = 'Frame';
+      installDockingPoseControls(viewer, position ? prepared : null);
       return;
     }
     cancelScheduledMolstarWaterRepresentation();
@@ -20479,7 +20504,8 @@ SOFTWARE.
       return;
     }
     if (prepared.poseCount <= 1) return;
-    const playbackRestore = pendingTrajectoryPlaybackRestore;
+    const restoredSession = prepared.kind === 'session' && prepared.nativeTrajectoryControls === true;
+    const playbackRestore = restoredSession ? null : pendingTrajectoryPlaybackRestore;
     pendingTrajectoryPlaybackRestore = null;
     let activePose = playbackRestore
       ? Math.max(0, Math.min(prepared.poseCount - 1, playbackRestore.frameIndex))
@@ -21495,7 +21521,7 @@ SOFTWARE.
           notifyDockingPoseChanged(activePose, prepared);
         })
       : null;
-    if (prepared.nativeTrajectoryControls && initialPose > 0) {
+    if (prepared.nativeTrajectoryControls && initialPose > 0 && !restoredSession) {
       void setPose(initialPose).finally(() => {
         if (!playbackRestore?.playing || activeStructurePoseSetter !== setPose) return;
         setLoopActive(true);
