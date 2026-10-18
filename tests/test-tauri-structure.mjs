@@ -703,8 +703,8 @@ assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_external_
 assert.match(shellCommand, /externalArtifact/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn reveal_path/);
 assert.match(shellCommand, /tauri_plugin_opener::reveal_item_in_dir/);
-assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn write_base64_file/);
-assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn write_text_file/);
+assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) async fn write_base64_file/);
+assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) async fn write_text_file/);
 assert.match(quickLookCommand, /#\[tauri::command\]\s+pub\(crate\) fn reset_quick_look/);
 assert.match(updaterCommand, /#\[tauri::command\]\s+pub\(crate\) async fn install_update/);
 assert.match(updaterCommand, /format_download_detail\(0, request\.size, 0\.0\)/);

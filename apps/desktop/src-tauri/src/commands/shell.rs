@@ -17,6 +17,10 @@ use crate::windows;
 
 const APP_LOG_NAME: &str = "BuretteApp.log";
 const PROJECT_FILES_CHANGED_EVENT: &str = "project-files-changed";
+// These commands previously serialized writes on the native event loop. Keep
+// writes serialized without making the event loop wait on file-provider I/O.
+static FILE_WRITE_LOCK: tauri::async_runtime::Mutex<()> =
+    tauri::async_runtime::Mutex::const_new(());
 
 #[derive(Default)]
 pub(crate) struct ProjectRootWatcher {
@@ -420,33 +424,48 @@ fn normalize_runtime_relative_path(path: &str) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub(crate) fn write_text_file(request: WriteTextFileRequest) -> Result<String, String> {
-    let output_path = PathBuf::from(request.output_path);
-    if let Some(parent) = output_path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
-    }
-    fs::write(&output_path, request.contents)
-        .map_err(|err| format!("{}: {err}", output_path.display()))?;
-    Ok(output_path.to_string_lossy().to_string())
+pub(crate) async fn write_text_file(request: WriteTextFileRequest) -> Result<String, String> {
+    let _write_guard = FILE_WRITE_LOCK.lock().await;
+    // Saves and session-state writes may wait on disk or a file provider.
+    // Keep that wait outside the native event loop.
+    tauri::async_runtime::spawn_blocking(move || {
+        let output_path = PathBuf::from(request.output_path);
+        if let Some(parent) = output_path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
+        }
+        fs::write(&output_path, request.contents)
+            .map_err(|err| format!("{}: {err}", output_path.display()))?;
+        Ok(output_path.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|error| format!("Writing file failed: {error}"))?
 }
 
 #[tauri::command]
-pub(crate) fn write_base64_file(request: WriteBase64FileRequest) -> Result<String, String> {
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(request.contents_base64)
-        .map_err(|err| format!("Could not decode file contents: {err}"))?;
-    let output_path = PathBuf::from(request.output_path);
-    if let Some(parent) = output_path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
-    }
-    fs::write(&output_path, bytes).map_err(|err| format!("{}: {err}", output_path.display()))?;
-    Ok(output_path.to_string_lossy().to_string())
+pub(crate) async fn write_base64_file(request: WriteBase64FileRequest) -> Result<String, String> {
+    let _write_guard = FILE_WRITE_LOCK.lock().await;
+    // Saves and session-state writes may wait on disk or a file provider.
+    // Keep that wait outside the native event loop.
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(request.contents_base64)
+            .map_err(|err| format!("Could not decode file contents: {err}"))?;
+        let output_path = PathBuf::from(request.output_path);
+        if let Some(parent) = output_path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
+        }
+        fs::write(&output_path, bytes)
+            .map_err(|err| format!("{}: {err}", output_path.display()))?;
+        Ok(output_path.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|error| format!("Writing file failed: {error}"))?
 }
 
 #[tauri::command]
@@ -975,21 +994,55 @@ mod tests {
         let text_path = root.join("nested").join("note.txt");
         let binary_path = root.join("binary").join("payload.bin");
 
-        let written_text = write_text_file(WriteTextFileRequest {
+        let written_text = tauri::async_runtime::block_on(write_text_file(WriteTextFileRequest {
             output_path: text_path.to_string_lossy().to_string(),
             contents: "hello\n".to_string(),
-        })
+        }))
         .expect("text file should be written");
-        let written_binary = write_base64_file(WriteBase64FileRequest {
-            output_path: binary_path.to_string_lossy().to_string(),
-            contents_base64: base64::engine::general_purpose::STANDARD.encode([0, 1, 2, 255]),
-        })
-        .expect("base64 file should be written");
+        let written_binary =
+            tauri::async_runtime::block_on(write_base64_file(WriteBase64FileRequest {
+                output_path: binary_path.to_string_lossy().to_string(),
+                contents_base64: base64::engine::general_purpose::STANDARD.encode([0, 1, 2, 255]),
+            }))
+            .expect("base64 file should be written");
 
         assert_eq!(written_text, text_path.to_string_lossy());
         assert_eq!(written_binary, binary_path.to_string_lossy());
         assert_eq!(fs::read_to_string(&text_path).unwrap(), "hello\n");
         assert_eq!(fs::read(&binary_path).unwrap(), [0, 1, 2, 255]);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn write_file_commands_preserve_errors_and_allow_a_following_write() {
+        let root = temp_dir("write-errors");
+        let output = root.join("nested").join("note.txt");
+        tauri::async_runtime::block_on(async {
+            let invalid = write_base64_file(WriteBase64FileRequest {
+                output_path: output.to_string_lossy().to_string(),
+                contents_base64: "!invalid!".to_string(),
+            })
+            .await
+            .unwrap_err();
+            assert!(invalid.starts_with("Could not decode file contents:"));
+            assert!(!root.exists());
+            for contents in ["before", "after"] {
+                write_text_file(WriteTextFileRequest {
+                    output_path: output.to_string_lossy().to_string(),
+                    contents: contents.to_string(),
+                })
+                .await
+                .unwrap();
+            }
+            let invalid = write_text_file(WriteTextFileRequest {
+                output_path: root.to_string_lossy().to_string(),
+                contents: "cannot replace a directory".to_string(),
+            })
+            .await
+            .unwrap_err();
+            assert!(invalid.starts_with(&format!("{}:", root.display())));
+        });
+        assert_eq!(fs::read_to_string(output).unwrap(), "after");
         let _ = fs::remove_dir_all(root);
     }
 

@@ -19,6 +19,15 @@ Do not make normal app launch hidden to improve cold-start numbers. Registration
 or maintenance launches can opt into `BURETTE_LAUNCH_MODE=register`, but user
 launch, file-open launch, app reopen, and menu activation must show the app.
 
+## Desktop file writes
+
+`write_text_file` and `write_base64_file` await a blocking worker for directory
+creation, decoding and disk writes. A shared asynchronous lock serializes these
+commands without blocking the native event loop; this also prevents concurrent
+writes from interleaving file contents. Callers still await completion before
+reporting a saved path. Request fields, returned paths and ordinary file/decode
+errors retain their existing shapes.
+
 ## Bulk document admission
 
 The desktop open hook publishes the first ordinary molecular document before
