@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { patchMolstarResizeDraw } from "../scripts/molstar-resize-draw.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const [viewer, filePage, viewerFrame] = await Promise.all([
@@ -106,13 +107,24 @@ const tick = () => {
 let bounds = { width: 800, height: 600 };
 const applied = [];
 let layoutBroadcasts = 0;
+let painted = null;
+let draws = 0;
 const container = { parentElement: null, getBoundingClientRect: () => bounds };
 const fakeViewer = {
   handleResize: () => { layoutBroadcasts++; },
   plugin: {
     canvas3dContext: { canvas: { parentElement: container } },
     // The PluginContext path applies geometry without a layout broadcast.
-    handleResize: () => { applied.push({ ...bounds }); },
+    handleResize: () => { painted = null; applied.push({ ...bounds }); },
+    canvas3d: {
+      draw: options => {
+        assert.deepEqual(options, { force: true, isSynchronous: true });
+        painted = { ...bounds };
+        draws++;
+      },
+      tick: () => { throw new Error("resizing must not advance animation time"); },
+      resume: () => { throw new Error("resizing must not start another animation loop"); },
+    },
     layout: { events: { updated: { next: () => { layoutBroadcasts++; } } } },
   },
 };
@@ -133,16 +145,19 @@ for (let frame = 0; frame < 60; frame++) {
   tick();
   assert.equal(applied.length, before + 1, "each drag frame updates before release");
   assert.deepEqual(applied.at(-1), bounds, "apply the latest viewport, not first event bounds");
+  assert.deepEqual(painted, bounds, "the resized buffer must be painted before returning to WebKit");
 }
 assert.equal(layoutBroadcasts, 0, "geometry changes must not fan out through the Mol* UI layout");
 schedulerHarness.scheduleViewerResize(fakeViewer);
 tick();
 assert.equal(applied.length, 60, "unchanged visible geometry is deduplicated");
+assert.equal(draws, 60, "unchanged geometry must not force another scene draw");
 bounds = { width: 400, height: 500 };
 schedulerHarness.scheduleViewerResize(fakeViewer);
 schedulerHarness.setHostVisible(false);
 tick();
 assert.equal(applied.length, 60, "hiding a tab cancels queued work");
+assert.equal(draws, 60, "hidden viewers must not draw");
 schedulerHarness.setHostVisible(true);
 schedulerHarness.scheduleViewerResize(fakeViewer);
 tick();
@@ -155,5 +170,10 @@ const adapter = {
 schedulerHarness.scheduleViewerResize(adapter);
 tick();
 assert.equal(fallbackResizes, 1, "a new viewer at the same size still resizes through its adapter");
+
+const canvasSource = await readFile(join(repoRoot, "node_modules/molstar/lib/mol-canvas3d/canvas3d.js"), "utf8");
+const patched = patchMolstarResizeDraw(canvasSource);
+assert.equal(patched.replace("            requestDraw,\n            draw,\n            tick,", "            requestDraw,\n            tick,"), canvasSource);
+assert.throws(() => patchMolstarResizeDraw(patched), /Canvas3D changed/u, "an upstream change must fail closed");
 
 console.log("viewer resize contract OK: 60 continuous frames, coalesced geometry and hidden-tab guards");

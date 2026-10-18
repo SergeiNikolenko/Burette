@@ -1938,6 +1938,11 @@
         // Canvas3D for a resize; it does not rebuild structures or reset camera.
         if (typeof target.plugin?.handleResize === 'function') {
           target.plugin.handleResize();
+          // Updating canvas.width/height clears the buffer. Draw before this
+          // callback returns so WebKit cannot present that empty buffer between
+          // our geometry update and Mol*'s next animation tick. Do not tick or
+          // resume the loop: that would advance playback or add another loop.
+          target.plugin.canvas3d?.draw?.({ force: true, isSynchronous: true });
           handled = true;
         } else if (typeof target.handleResize === 'function') {
           target.handleResize();
