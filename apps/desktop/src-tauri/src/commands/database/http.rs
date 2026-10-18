@@ -6,8 +6,10 @@
 //! place means the SSRF guard, the timeout and the response ceiling are applied to
 //! every provider rather than remembered per provider.
 
-use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Command;
+use std::time::{Duration, Instant};
+
+use burette_core::bounded_process::{self, Limits};
 
 use crate::commands::documents::{public_fetch_addresses, reject_private_fetch_target};
 
@@ -169,29 +171,16 @@ fn run_curl(
         command.args(["--config", "-"]);
     }
     command.arg(target.as_str());
-    command.stdin(if config.is_some() {
-        Stdio::piped()
-    } else {
-        Stdio::null()
-    });
-    command.stdout(Stdio::piped());
-    command.stderr(Stdio::piped());
-
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("Could not start curl: {error}"))?;
-    if let Some(config) = config {
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| "curl did not accept its configuration".to_string())?;
-        stdin
-            .write_all(config.as_bytes())
-            .map_err(|error| format!("Could not configure curl: {error}"))?;
-    }
-    let output = child
-        .wait_with_output()
-        .map_err(|error| format!("curl failed: {error}"))?;
+    let output = bounded_process::run(
+        &mut command,
+        config.as_deref().unwrap_or("").as_bytes(),
+        Limits {
+            stdout_bytes: request.max_bytes.min(MAX_RESPONSE_BYTES) as usize,
+            stderr_bytes: 64 * 1024,
+            deadline: Instant::now() + Duration::from_secs(u64::from(request.timeout_seconds)),
+        },
+    )
+    .map_err(|error| format!("Database request failed: {error}"))?;
     let (message, redirect) = split_curl_stderr(&String::from_utf8_lossy(&output.stderr));
     if !output.status.success() {
         return Err(if message.is_empty() {

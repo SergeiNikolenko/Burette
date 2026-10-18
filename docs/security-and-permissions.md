@@ -36,6 +36,16 @@ legacy `Library/Application Support/.../Updates` directories. It must not scan
 or remove applications from the user's home folders, Trash, backups, or
 development worktrees.
 
+## Native HTTP Downloads
+
+Native database and remote-structure HTTP downloads bound curl stdout while it
+is read, including chunked responses on curl versions that do not enforce
+`--max-filesize` for unknown lengths. The existing caller limit is retained
+(at most 48 MiB); diagnostics are limited to 64 KiB. Overflow and IO failures
+discard partial data, kill the process group and reap the child. Concurrent
+stdin/stdout/stderr handling keeps the per-hop deadline effective even when a
+pipe blocks. DNS and aggregate redirect-chain deadlines are separate controls.
+
 ## Compute Data Root
 
 The native Compute Layer stores its coordinator database, immutable molecular
