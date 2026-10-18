@@ -1097,22 +1097,30 @@ fn normalize_pdb_id(input: &str) -> Result<String, String> {
 fn fetch_pdb_structure_blocking(pdb_id: &str) -> Result<FetchStructureResult, String> {
     let url = format!("https://files.rcsb.org/download/{pdb_id}.pdb");
     let max_filesize = FETCHED_PDB_MAX_BYTES.to_string();
-    let output = Command::new("/usr/bin/curl")
-        .args([
-            "--fail",
-            "--location",
-            "--silent",
-            "--show-error",
-            "--max-time",
-            "120",
-            "--max-filesize",
-            &max_filesize,
-            "--user-agent",
-            "Burette/1.0",
-            &url,
-        ])
-        .output()
-        .map_err(|error| format!("Failed to start curl for {url}: {error}"))?;
+    let mut command = Command::new("/usr/bin/curl");
+    command.args([
+        "--fail",
+        "--location",
+        "--silent",
+        "--show-error",
+        "--max-time",
+        "120",
+        "--max-filesize",
+        &max_filesize,
+        "--user-agent",
+        "Burette/1.0",
+        &url,
+    ]);
+    let output = burette_core::bounded_process::run(
+        &mut command,
+        &[],
+        burette_core::bounded_process::Limits {
+            stdout_bytes: FETCHED_PDB_MAX_BYTES,
+            stderr_bytes: 64 * 1024,
+            deadline: Instant::now() + Duration::from_secs(120),
+        },
+    )
+    .map_err(|error| format!("Failed to download {url}: {error}"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(if stderr.is_empty() {

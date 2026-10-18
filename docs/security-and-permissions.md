@@ -50,6 +50,16 @@ An OS lookup cannot be cancelled and retains its slot until it actually exits.
 Every hop rejects non-public addresses and pins the complete validated answer
 (at most 64 addresses) into curl while retaining the original TLS hostname.
 
+The fixed RCSB PDB downloader also supervises curl pipes, retaining its separate
+75 MiB stdout limit and 120-second deadline, with at most 64 KiB of diagnostics.
+The PDB command accepts a validated four-character ID, not an arbitrary URL.
+Browser structure downloads count received bytes during streaming and abort
+transport on overflow or timeout: 10 MiB / 30 seconds for arbitrary structure
+URLs and 75 MiB / 120 seconds for RCSB PDB. The deadline covers headers and body;
+decoded UTF-8 replacement expansion is bounded too. No partial structure is
+returned. Browser CORS rules remain applicable; these transport bounds do not
+grant the browser native access to local files or private networks.
+
 ## Compute Data Root
 
 The native Compute Layer stores its coordinator database, immutable molecular

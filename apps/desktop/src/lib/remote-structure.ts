@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { pathExtension, structureExtensions } from "./file-routing";
 import { isTauriRuntime } from "./tauri";
+import { fetchStructureText } from "./structure-download";
 
 const MAX_REMOTE_STRUCTURE_BYTES = 10 * 1024 * 1024;
 
@@ -26,11 +27,10 @@ export async function fetchRemoteStructure(url: string): Promise<RemoteStructure
   if (isTauriRuntime()) {
     return invoke<RemoteStructureResult>("fetch_remote_structure", { request: { url: parsed.toString() } });
   }
-  const response = await fetch(parsed.toString(), { cache: "no-store" });
-  if (!response.ok) throw new Error(`Fetch failed with HTTP ${response.status}`);
-  const text = await response.text();
-  const byteCount = new TextEncoder().encode(text).length;
-  if (byteCount > MAX_REMOTE_STRUCTURE_BYTES) throw new Error("Fetched structure is too large");
+  const { text, byteCount } = await fetchStructureText(parsed.toString(), {
+    cache: "no-store", maxBytes: MAX_REMOTE_STRUCTURE_BYTES, timeoutMs: 30_000,
+    httpError: (response) => `Fetch failed with HTTP ${response.status}`,
+  });
   if (!text.trim()) throw new Error("Fetched structure is empty");
   return { url: parsed.toString(), title, extension, text, byteCount };
 }

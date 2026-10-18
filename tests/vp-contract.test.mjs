@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-structure-download.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-structure-download.test.ts", import.meta.url))]),
   "test-hosted-structure-fetch.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-hosted-structure-fetch.test.ts", import.meta.url))]),
   "test-database-menu-contract.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-database-menu-contract.mjs", import.meta.url))]),
   "test-burette-agent-cli.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-burette-agent-cli.mjs", import.meta.url))], { timeout: 120_000, maxBuffer: 8 * 1024 * 1024 }),
