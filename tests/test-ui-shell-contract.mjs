@@ -5653,7 +5653,7 @@ assert.match(previewViewer, /\.buret-xyzrender-sheet-rotate-handle \{[^}]*width:
 assert.match(previewViewer, /\.buret-xyzrender-resize-n,\s*\.buret-xyzrender-resize-s \{[^}]*width: 84px;[^}]*height: 30px;/);
 assert.match(previewViewer, /\.buret-xyzrender-resize-ne,\s*\.buret-xyzrender-resize-nw,\s*\.buret-xyzrender-resize-se,\s*\.buret-xyzrender-resize-sw \{[^}]*width: 38px;[^}]*height: 38px;/);
 assert.match(previewViewer, /if \(region === 'left'\) layoutState\.left = layoutState\.left === 'full' \? 'hidden' : 'full'/);
-assert.match(previewViewer, /await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default', presetOptions\)/);
+assert.match(previewViewer, /await loadMolstarEntry\(viewer, \{ \.\.\.prepared, loadPreset: 'default' \}, presetOptions\)/);
 assert.doesNotMatch(previewViewer, /typeParams: \{ sizeFactor: 0\.16, ignoreLight: true \}/);
 assert.match(previewViewer, /const style = configuredMolstarStyle\(activeConfig\)/);
 assert.match(previewViewer, /function isMolstarWaterComponent\(component\)/);
@@ -6816,8 +6816,8 @@ assert.match(previewViewer, /function dockingPoseCollectionStateKey\(prepared, s
 assert.match(previewViewer, /async function applyDockingPoseCollectionVisibilityNow\(viewer, prepared, activePose = 0, options = \{\}\)/);
 assert.match(previewViewer, /const allMode = activeSdfPoseMode === 'all' && prepared\.sdfPoseOverlayAvailable === true/);
 assert.match(previewViewer, /backgroundStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\)/);
-assert.match(previewViewer, /async function loadMolstarEntry\(viewer, entry, presetOptions = undefined\)/);
-assert.match(previewViewer, /applyPreset\(trajectory, entry\.loadPreset \|\| 'default', presetOptions\)/);
+assert.match(previewViewer, /async function loadMolstarEntry\(viewer, entry, presetOptions = undefined, appendOwner = undefined\)/);
+assert.match(previewViewer, /await window\.BuretteSceneFiles\.loadModels\(viewer, \{ \.\.\.entry, \.\.\.payload \}, parseMolstarStructureTrajectories, presetOptions, appendOwner\)/);
 assert.match(previewViewer, /async function loadMolstarEntryWithStructureRefs\(viewer, entry, presetOptions = undefined\)/);
 assert.match(previewViewer, /await loadMolstarEntry\(viewer, entry, presetOptions\)/);
 assert.match(previewViewer, /const before = molstarStructureCellRefs\(viewer\);\s*await loadMolstarEntry\(viewer, entry, presetOptions\);/);
