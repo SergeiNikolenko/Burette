@@ -1384,6 +1384,7 @@ function viewerHtml(
   <script src="${viewerAsset("sequence-panel.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("native-viewer-menus.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("scene-file-actions.js")}?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("svg-sanitizer.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("viewer.js")}?v=${runtimeAssetVersion}"></script>
 </body>
 </html>`);

@@ -10,6 +10,11 @@
       "version": "5.11.0",
       "integrity": "sha512-Jv2oHkKoCpzrhqLmGlknepm0pfRsoTDebsGRkvXpbUFb6p+JIAkhLyM3uqV2twC6VR83ZbXtdswOtouPhozpuQ=="
     },
+    "dompurify": {
+      "packageName": "dompurify",
+      "version": "3.4.16",
+      "integrity": "sha512-sqo+pNp3qRhCIpbgRi1y8Tgk27Bo2Ry7w0dC1NBeNTdZChWjz9Xb/KOoZbRP/R6pQZ80Qw8YhXw13hWWBbMRnQ=="
+    },
     "@rdkit/rdkit": {
       "packageName": "@rdkit/rdkit",
       "version": "2026.3.6",
@@ -27,6 +32,12 @@
     }
   },
   "assets": [
+    {
+      "path": "PreviewExtension/Web/svg-sanitizer.js",
+      "package": "dompurify",
+      "bytes": 32714,
+      "sha256": "sha256-+to6zM1ZQ6bl58xTlObRMTOqEXQUyeSFqoLLDIyEtSA="
+    },
     {
       "path": "PreviewExtension/Web/molstar.js",
       "package": "molstar",
@@ -111,6 +122,7 @@
       "sequence-panel.js",
       "native-viewer-menus.js",
       "scene-file-actions.js",
+      "svg-sanitizer.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -149,6 +161,7 @@
       "sequence-panel.js",
       "native-viewer-menus.js",
       "scene-file-actions.js",
+      "svg-sanitizer.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -178,6 +191,7 @@
       "xyzrender-3d-editor.js",
       "color-picker.js",
       "sequence-panel.js",
+      "svg-sanitizer.js",
       "viewer.js"
     ]
   },

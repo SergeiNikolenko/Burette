@@ -3,7 +3,7 @@ import bootstrapUrl from "../preview-grid/molecule-preview-bootstrap.js?url&no-i
 import { logFrontendError } from "../lib/frontend-error-log";
 
 // Use the same packaged renderer, presets and menu as the main viewport.
-const assets = import.meta.glob<string>("../../../../PreviewExtension/Web/{molstar.js,molstar.css,viewer.js,viewer-shell.js,viewer-runtime.css,renderer-view-state.js,molstar-preset-preview-controller.js,color-picker.js,sequence-panel.js,native-viewer-menus.js,scene-file-actions.js}", { eager: true, query: "?url", import: "default" });
+const assets = import.meta.glob<string>("../../../../PreviewExtension/Web/{molstar.js,molstar.css,svg-sanitizer.js,viewer.js,viewer-shell.js,viewer-runtime.css,renderer-view-state.js,molstar-preset-preview-controller.js,color-picker.js,sequence-panel.js,native-viewer-menus.js,scene-file-actions.js}", { eager: true, query: "?url", import: "default" });
 const asset = (name: string) => new URL(assets[`../../../../PreviewExtension/Web/${name}`], window.location.href).href;
 
 export default function GridMolecule3D({ molblock, theme, height, onOpen }: { molblock: string; theme: string; height: number; onOpen: () => void }) {
@@ -21,7 +21,7 @@ export default function GridMolecule3D({ molblock, theme, height, onOpen }: { mo
       molstarPreset: "automatic", molstarStyle: "illustrative", xyzrenderAvailable: false, sdfGrid: false,
       defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" } };
     const data = btoa(Array.from(new TextEncoder().encode(initialMolblock), byte => String.fromCharCode(byte)).join(""));
-    const scripts = ["molstar.js", "viewer-shell.js", "renderer-view-state.js", "molstar-preset-preview-controller.js", "color-picker.js", "sequence-panel.js", "native-viewer-menus.js", "scene-file-actions.js", "viewer.js"];
+    const scripts = ["molstar.js", "viewer-shell.js", "renderer-view-state.js", "molstar-preset-preview-controller.js", "color-picker.js", "sequence-panel.js", "native-viewer-menus.js", "scene-file-actions.js", "svg-sanitizer.js", "viewer.js"];
     return { channel, html: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html{color-scheme:${theme === "dark" ? "dark" : "light"};background:${theme === "dark" ? "#111111" : "#ffffff"}}</style>
       <link rel="stylesheet" href="${asset("molstar.css")}"><link rel="stylesheet" href="${asset("viewer-runtime.css")}">
       <style>html,body,#app{margin:0;width:100%;height:100%;overflow:hidden}#status,.msp-toast-container,.msp-highlight-toast-wrapper{display:none!important}

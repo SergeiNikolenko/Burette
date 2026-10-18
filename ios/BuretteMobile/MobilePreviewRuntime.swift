@@ -721,6 +721,11 @@ struct MobilePreviewRuntime {
         if !fileManager.fileExists(atPath: assetsDirectory.path) {
             try fileManager.copyItem(at: webDirectory, to: assetsDirectory)
         }
+        // Refresh the paired security boundary when an older app populated this cache.
+        for name in ["svg-sanitizer.js", "viewer.js"] {
+            let current = try Data(contentsOf: webDirectory.appendingPathComponent(name))
+            try current.write(to: assetsDirectory.appendingPathComponent(name), options: [.atomic])
+        }
 
         let runtimeDirectory = previewsDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try fileManager.createDirectory(at: runtimeDirectory, withIntermediateDirectories: true)
@@ -945,6 +950,7 @@ struct MobilePreviewRuntime {
           <script src="../assets/molstar.js"></script>
           <script src="preview-config.js"></script>
           <script src="../assets/burette-agent.js"></script>
+          <script src="../assets/svg-sanitizer.js"></script>
           <script src="../assets/viewer.js"></script>
         </body>
         </html>

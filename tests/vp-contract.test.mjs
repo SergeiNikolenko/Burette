@@ -3,6 +3,10 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-packaged-plugin-mirror.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-packaged-plugin-mirror.mjs", import.meta.url))]),
+  "test-viewer-bridge-message-contract.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-viewer-bridge-message-contract.mjs", import.meta.url))]),
+  "test-xyzrender-sheet-editing.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-xyzrender-sheet-editing.mjs", import.meta.url))]),
+  "test-svg-artwork-safety.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-svg-artwork-safety.mjs", import.meta.url))]),
   "test-model-runtime-install.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-model-runtime-install.mjs", import.meta.url))]),
   "test-model-assets.py": () => promisify(execFile)("python3", [fileURLToPath(new URL("./test-model-assets.py", import.meta.url))]),
   "test-cluster-workflow-contract.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-cluster-workflow-contract.mjs", import.meta.url))]),

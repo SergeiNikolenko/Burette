@@ -76,6 +76,7 @@ const RUNTIME_ASSET_PATHS = new Set([
   'molstar.css',
   'molstar.js',
   'burette-agent.js',
+  'svg-sanitizer.js',
   'viewer.js',
   'grid-viewer.js',
   'grid-ui.js',

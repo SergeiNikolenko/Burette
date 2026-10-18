@@ -1407,6 +1407,7 @@ fn viewer_html(
     let molecule_preview_interactions_js =
         asset_url(&assets.join("molecule-preview-interactions.js"));
     let renderer_view_state_js = asset_url(&assets.join("renderer-view-state.js"));
+    let sanitizer_js = asset_url(&assets.join("svg-sanitizer.js"));
     let viewer_js = asset_url(&assets.join("viewer.js"));
     let molstar_css = asset_url(&assets.join("molstar.css"));
     let molstar_js = asset_url(&assets.join("molstar.js"));
@@ -1461,6 +1462,7 @@ fn viewer_html(
   <script src="{sequence_panel_js}"></script>
   <script src="{molecule_preview_interactions_js}"></script>
   <script src="{renderer_view_state_js}"></script>
+  <script src="{sanitizer_js}"></script>
   <script src="{viewer_js}"></script>
 </body>
 </html>"#

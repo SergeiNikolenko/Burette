@@ -19,12 +19,14 @@ const requestedProfiles = process.argv
 
 const packageSpecs = [
   { name: 'molstar' },
+  { name: 'dompurify' },
   { name: '@rdkit/rdkit' },
   { name: 'rdkit-compute', packageName: '@rdkit/rdkit' },
   { name: 'openchemlib' },
 ];
 
 const assetSpecs = [
+  { path: 'PreviewExtension/Web/svg-sanitizer.js', package: 'dompurify' },
   { path: 'PreviewExtension/Web/molstar.js', package: 'molstar' },
   { path: 'PreviewExtension/Web/molstar.css', package: 'molstar' },
   { path: 'PreviewExtension/Web/mesoscale.js', package: 'molstar' },

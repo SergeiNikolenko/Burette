@@ -18,6 +18,7 @@
       "sequence-panel.js",
       "native-viewer-menus.js",
       "scene-file-actions.js",
+      "svg-sanitizer.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -56,6 +57,7 @@
       "sequence-panel.js",
       "native-viewer-menus.js",
       "scene-file-actions.js",
+      "svg-sanitizer.js",
       "viewer.js",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -85,6 +87,7 @@
       "xyzrender-3d-editor.js",
       "color-picker.js",
       "sequence-panel.js",
+      "svg-sanitizer.js",
       "viewer.js"
     ]
   },

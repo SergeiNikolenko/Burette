@@ -22,6 +22,7 @@ const runtimeScripts = [
   'mvs-story-templates.mjs',
 ];
 const requiredPreviewAssets = [
+  'svg-sanitizer.js',
   'viewer.js',
   'viewer-bootstrap.js',
   'viewer-shell.js',
