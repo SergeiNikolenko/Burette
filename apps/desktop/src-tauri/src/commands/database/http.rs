@@ -9,7 +9,7 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-use crate::commands::documents::reject_private_fetch_target;
+use crate::commands::documents::{public_fetch_addresses, reject_private_fetch_target};
 
 /// Providers answer with tables and small SDF files; anything larger is a sign the
 /// query was too broad, and the grid would not enjoy it either.
@@ -98,10 +98,10 @@ pub(crate) fn fetch(request: &DatabaseRequest) -> Result<Vec<u8>, String> {
     let origin = validate_request_url(&request.url)?;
     let mut target = origin.clone();
     for _ in 0..=MAX_REDIRECTS {
-        // Only the originally requested host is trusted with the credentials and
+        // Only the originally requested origin is trusted with the credentials and
         // the body; a redirect elsewhere is replayed as a bare GET, which is what
         // curl itself does for 301/302/303 and for `Authorization` across hosts.
-        let trusted = target.host_str() == origin.host_str();
+        let trusted = target.origin() == origin.origin();
         let (body, redirect) = run_curl(request, &target, trusted)?;
         let Some(redirect) = redirect else {
             return Ok(body);
@@ -120,7 +120,13 @@ fn run_curl(
 ) -> Result<(Vec<u8>, Option<String>), String> {
     let max_filesize = request.max_bytes.to_string();
     let timeout = request.timeout_seconds.to_string();
+    let addresses = public_fetch_addresses(target)?;
     let mut command = Command::new("/usr/bin/curl");
+    // No ambient curlrc/proxy may replace the validated destination.
+    command.args(["--disable", "--noproxy", "*"]);
+    if let Some(pin) = curl_address_pin(target, &addresses) {
+        command.args(["--resolve", &pin]);
+    }
     command.args([
         "--fail",
         // SMILES in a path segment carries [C@H] and friends; without --globoff
@@ -200,6 +206,25 @@ fn run_curl(
     Ok((output.stdout, redirect))
 }
 
+fn curl_address_pin(target: &url::Url, addresses: &[std::net::IpAddr]) -> Option<String> {
+    if !matches!(target.host(), Some(url::Host::Domain(_))) {
+        return None;
+    }
+    let values = addresses
+        .iter()
+        .map(|ip| match ip {
+            std::net::IpAddr::V4(_) => ip.to_string(),
+            std::net::IpAddr::V6(_) => format!("[{ip}]"),
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    Some(format!(
+        "{}:{}:{values}",
+        target.host_str()?,
+        target.port_or_known_default()?
+    ))
+}
+
 /// Separates curl's diagnostics from the redirect target `--write-out` appended.
 fn split_curl_stderr(stderr: &str) -> (String, Option<String>) {
     let mut message = String::new();
@@ -263,7 +288,7 @@ mod tests {
 
     #[test]
     fn only_http_and_https_urls_reach_the_network() {
-        assert!(validate_request_url("https://www.ebi.ac.uk/chembl/api/data/status.json").is_ok());
+        assert!(validate_request_url("https://8.8.8.8/status.json").is_ok());
         assert_eq!(
             validate_request_url("file:///etc/passwd").unwrap_err(),
             "Database requests support only http and https URLs"
@@ -282,12 +307,46 @@ mod tests {
             "http://169.254.169.254/latest/meta-data/",
             "http://[::1]/query",
             "http://0.0.0.0/query",
+            "http://127.1/query",
+            "http://2130706433/query",
+            "http://[::ffff:127.0.0.1]/query",
+            "http://[::ffff:10.0.0.1]/query",
+            "http://[fc00::1]/query",
+            "http://[fe80::1]/query",
+            "http://[2002:7f00:1::]/query",
+            "http://[2001::1]/query",
+            "http://[3fff::1]/query",
+            "http://100.64.0.1/query",
+            "http://198.18.0.1/query",
+            "http://224.0.0.1/query",
         ] {
             assert!(
                 validate_request_url(url).is_err(),
                 "{url} must not be reachable from a database provider"
             );
         }
+    }
+
+    #[test]
+    fn resolved_addresses_are_pinned_without_losing_the_tls_hostname() {
+        let url = url::Url::parse("https://example.org:8443/structure.sdf").unwrap();
+        let addresses = [
+            "8.8.8.8".parse().unwrap(),
+            "2606:4700:4700::1111".parse().unwrap(),
+        ];
+        assert_eq!(
+            curl_address_pin(&url, &addresses).unwrap(),
+            "example.org:8443:8.8.8.8,[2606:4700:4700::1111]"
+        );
+        assert_eq!(
+            curl_address_pin(&url::Url::parse("https://8.8.8.8/").unwrap(), &addresses),
+            None
+        );
+        assert_eq!(
+            public_fetch_addresses(&url::Url::parse("https://[2606:4700:4700::1111]/").unwrap())
+                .unwrap(),
+            vec![addresses[1]]
+        );
     }
 
     #[test]

@@ -139,6 +139,25 @@ try {
   assert.equal(await read.text(), 'HEADER ALLOWED');
   const listing = await fetch(`${base}/__burette/dev-files?${new URLSearchParams({ root: allowed })}`, { headers });
   assert.deepEqual((await listing.json()).files, [join(allowed, 'ordinary.pdb')]);
+  // Workspace bytes are data even when their filename is an active web type.
+  for (const extension of ['html', 'htm', 'js', 'mjs', 'svg', 'xml', 'css', 'pdb']) {
+    const file = join(allowed, `untrusted.${extension}`);
+    const contents = '<script>globalThis.workspaceExecuted = true</script>';
+    await writeFile(file, contents);
+    for (const method of ['GET', 'HEAD']) {
+      const response = await fetch(`${base}/@fs${file}`, { method, headers });
+      assert.equal(response.status, 200);
+      assert.equal(response.headers.get('content-type'), 'text/plain; charset=utf-8');
+      assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+      assert.equal(response.headers.get('content-security-policy'), "default-src 'none'; sandbox");
+      assert.equal(response.headers.get('cache-control'), 'private, no-store');
+      assert.equal(await response.text(), method === 'HEAD' ? '' : contents);
+    }
+  }
+  const runtimeAlias = await fetch(`${base}/@fs/workspace/PreviewExtension/Web/sequence-panel.js`, { headers });
+  assert.equal(runtimeAlias.status, 200);
+  assert.match(runtimeAlias.headers.get('content-type'), /^text\/javascript/);
+  assert.match(await runtimeAlias.text(), /BuretteSequencePanel/);
   const pairFor = path => fetch(
     `${base}/__burette/trajectory-pair?${new URLSearchParams({ path })}`, { headers },
   );

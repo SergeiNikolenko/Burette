@@ -1025,10 +1025,10 @@ async function handleFsStatic(res, method, cleanPath) {
     sendJson(res, 404, { error: 'Not found' });
     return;
   }
-  await sendStaticFile(res, method, filePath, false, info);
+  await sendStaticFile(res, method, filePath, true, info, true);
 }
 
-async function sendStaticFile(res, method, filePath, noCache, knownInfo = null) {
+async function sendStaticFile(res, method, filePath, noCache, knownInfo = null, workspaceData = false) {
   const info = knownInfo ?? await stat(filePath);
   if (!info.isFile()) {
     sendJson(res, 404, { error: 'Not found' });
@@ -1036,9 +1036,15 @@ async function sendStaticFile(res, method, filePath, noCache, knownInfo = null) 
   }
   const bytes = await readAllowedFile(filePath);
   res.statusCode = 200;
-  res.setHeader('Content-Type', STATIC_MIME_TYPES.get(extname(filePath).toLowerCase()) || 'application/octet-stream');
+  const extension = extname(filePath).toLowerCase();
+  const inertImage = ['.png', '.jpg', '.jpeg', '.webp', '.ico'].includes(extension);
+  res.setHeader('Content-Type', workspaceData && !inertImage
+    ? 'text/plain; charset=utf-8'
+    : STATIC_MIME_TYPES.get(extension) || 'application/octet-stream');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (workspaceData) res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
   res.setHeader('Content-Length', String(bytes.length));
-  res.setHeader('Cache-Control', noCache ? 'no-cache' : 'public, max-age=31536000, immutable');
+  res.setHeader('Cache-Control', workspaceData ? 'private, no-store' : noCache ? 'no-cache' : 'public, max-age=31536000, immutable');
   res.end(method === 'HEAD' ? undefined : bytes);
 }
 

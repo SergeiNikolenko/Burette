@@ -1,5 +1,5 @@
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createGeneratedOutputDirectory } from "../../scripts/generated-files-root.mjs";
 import path from "node:path";
 
 const MAX_COMPONENT_BYTES = 16 * 1024 * 1024;
@@ -29,10 +29,7 @@ export async function extractStructureComponentFile({
   if (records.length === 0) {
     throw new Error("No atoms matched the requested component.");
   }
-  const outputDir = path.join(tmpdir(), "burette-agent-components");
-  await mkdir(outputDir, { recursive: true });
   const outputTitle = safeFileName(title || componentTitle({ component, chain, compId, seq, element }));
-  const outputPath = path.join(outputDir, `${outputTitle}.pdb`);
   const contents = [
     `REMARK Extracted by Burette agent from ${sourcePath}`,
     `REMARK Component ${componentTitle({ component, chain, compId, seq, element })}`,
@@ -40,7 +37,7 @@ export async function extractStructureComponentFile({
     "END",
     "",
   ].join("\n");
-  await writeFile(outputPath, contents, "utf8");
+  const outputPath = await writeComponentFile(outputTitle, contents);
   return {
     outputPath,
     sourcePath,
@@ -107,16 +104,13 @@ export async function editStructureFragmentFile({
     outputLines.push(...replacementLines);
   }
 
-  const outputDir = path.join(tmpdir(), "burette-agent-components");
-  await mkdir(outputDir, { recursive: true });
   const outputTitle = safeFileName(title || `${operation}-${componentTitle({ component, chain, compId, seq, element }) || "fragment"}`);
-  const outputPath = path.join(outputDir, `${outputTitle}.pdb`);
   const header = [
     `REMARK Derived by Burette agent from ${sourcePath}`,
     `REMARK Operation ${operation}`,
     `REMARK Fragment ${componentTitle({ component, chain, compId, seq, element })}`,
   ];
-  await writeFile(outputPath, `${[...header, ...outputLines].join("\n").replace(/\n*$/u, "")}\n`, "utf8");
+  const outputPath = await writeComponentFile(outputTitle, `${[...header, ...outputLines].join("\n").replace(/\n*$/u, "")}\n`);
   return {
     operation,
     outputPath,
@@ -216,4 +210,18 @@ function normalizeElement(value) {
 function numericOrString(value) {
   const parsed = Number.parseInt(String(value), 10);
   return Number.isFinite(parsed) && String(parsed) === String(value).trim() ? parsed : String(value);
+}
+
+async function writeComponentFile(title, contents) {
+  // Browser workspaces already authorize this generated root. Each result gets
+  // a private directory, preserving independent files with the same title.
+  const directory = await createGeneratedOutputDirectory("component-");
+  const outputPath = path.join(directory, `${title}.pdb`);
+  try {
+    await writeFile(outputPath, contents, { encoding: "utf8", flag: "wx", mode: 0o600 });
+    return outputPath;
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true });
+    throw error;
+  }
 }

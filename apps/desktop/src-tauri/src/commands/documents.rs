@@ -1656,36 +1656,11 @@ pub(crate) fn fetch_remote_structure(
     reject_private_fetch_target(&parsed)?;
     let title = remote_structure_title(&parsed);
     let extension = remote_structure_extension(&title)?;
-    let max_size = KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE.to_string();
-    let output = Command::new("/usr/bin/curl")
-        .args([
-            "--fail",
-            "--location",
-            "--silent",
-            "--show-error",
-            "--max-time",
-            "30",
-            "--max-filesize",
-            &max_size,
-            "--header",
-            "User-Agent: Burette/1.0",
-        ])
-        .arg(parsed.as_str())
-        .output()
-        .map_err(|err| format!("Could not start curl: {err}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            format!("curl failed with status {}", output.status)
-        } else {
-            stderr
-        });
-    }
-    if output.stdout.len() as u64 > KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE {
-        return Err("Fetched structure is too large".to_string());
-    }
-    let text = String::from_utf8(output.stdout)
-        .map_err(|_| "Fetched structure is not valid UTF-8 text".to_string())?;
+    let text = super::database::http::fetch_text(
+        &super::database::http::DatabaseRequest::get(parsed.as_str())
+            .with_timeout(30)
+            .with_max_bytes(KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE),
+    )?;
     if text.trim().is_empty() {
         return Err("Fetched structure is empty".to_string());
     }
@@ -2430,61 +2405,63 @@ fn remote_structure_extension(title: &str) -> Result<String, String> {
 // its target through this guard, so no provider URL - or redirect - can be aimed
 // at a service on the machine or the local network.
 pub(crate) fn reject_private_fetch_target(url: &url::Url) -> Result<(), String> {
-    let host = url
-        .host_str()
-        .ok_or_else(|| "Remote structure URL must include a host".to_string())?;
-    // An IPv6 literal arrives inside brackets ("[::1]"), which no IP parser
-    // accepts. Left as it was, ::1 and every other literal address failed both the
-    // parse and the name lookup below and sailed past the guard into curl, which
-    // understands the bracket form perfectly well.
-    let normalized_host = host
-        .trim()
+    public_fetch_addresses(url).map(|_| ())
+}
+
+pub(crate) fn public_fetch_addresses(url: &url::Url) -> Result<Vec<IpAddr>, String> {
+    let host = url.host_str().ok_or("Remote URL must include a host")?;
+    let normalized = host
         .trim_end_matches('.')
         .trim_start_matches('[')
-        .trim_end_matches(']')
-        .to_lowercase();
-    if normalized_host == "localhost" {
-        return Err("Localhost URLs are not supported for remote structure fetch".to_string());
+        .trim_end_matches(']');
+    let addresses = if let Ok(ip) = normalized.parse::<IpAddr>() {
+        vec![ip]
+    } else {
+        (normalized, url.port_or_known_default().unwrap_or(443))
+            .to_socket_addrs()
+            .map_err(|_| "Could not resolve remote host".to_string())?
+            .map(|address| address.ip())
+            .collect::<Vec<_>>()
+    };
+    if addresses.is_empty() {
+        return Err("Remote host has no addresses".into());
     }
-    if let Ok(ip) = normalized_host.parse::<IpAddr>() {
-        reject_private_ip(ip)?;
-        return Ok(());
+    for address in &addresses {
+        reject_private_ip(*address)?;
     }
-    let port = url.port_or_known_default().unwrap_or(443);
-    if let Ok(addresses) = (host, port).to_socket_addrs() {
-        for address in addresses {
-            reject_private_ip(address.ip())?;
-        }
-    }
-    Ok(())
+    Ok(addresses)
 }
 
 fn reject_private_ip(ip: IpAddr) -> Result<(), String> {
-    match ip {
-        IpAddr::V4(value)
-            if value.is_private()
-                || value.is_loopback()
-                || value.is_link_local()
-                || value.is_unspecified()
-                || value.is_broadcast() =>
-        {
-            Err(
-                "Local and private network URLs are not supported for remote structure fetch"
-                    .to_string(),
-            )
+    let public = match ip {
+        IpAddr::V4(value) => {
+            let [a, b, c, _] = value.octets();
+            !value.is_private()
+                && !value.is_loopback()
+                && !value.is_link_local()
+                && a != 0
+                && a < 224
+                && !(a == 100 && (64..=127).contains(&b))
+                && !(a == 192 && b == 0 && (c == 0 || c == 2))
+                && !(a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100)))
+                && !(a == 203 && b == 0 && c == 113)
         }
-        IpAddr::V6(value)
-            if value.is_loopback()
-                || value.is_unspecified()
-                || value.is_unique_local()
-                || value.is_unicast_link_local() =>
-        {
-            Err(
-                "Local and private network URLs are not supported for remote structure fetch"
-                    .to_string(),
-            )
+        IpAddr::V6(value) => {
+            if let Some(mapped) = value.to_ipv4_mapped() {
+                return reject_private_ip(IpAddr::V4(mapped));
+            }
+            let segments = value.segments();
+            // Global unicast only; excludes local, multicast and translation prefixes.
+            segments[0] & 0xe000 == 0x2000
+                && segments[0] != 0x2002
+                && segments[0] != 0x3fff
+                && !(segments[0] == 0x2001 && (segments[1] < 0x0200 || segments[1] == 0x0db8))
         }
-        _ => Ok(()),
+    };
+    if public {
+        Ok(())
+    } else {
+        Err("Local and non-public network URLs are not supported for remote fetch".into())
     }
 }
 

@@ -15,6 +15,7 @@ const runtimeScripts = [
   'agent-preview.mjs',
   'agent-shell-server.mjs',
   'model-runtime-path.mjs',
+  'generated-files-root.mjs',
   'burette-agent.mjs',
   'burette-deep-links.mjs',
   'dev-namespace.mjs',
