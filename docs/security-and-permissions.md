@@ -43,8 +43,12 @@ is read, including chunked responses on curl versions that do not enforce
 `--max-filesize` for unknown lengths. The existing caller limit is retained
 (at most 48 MiB); diagnostics are limited to 64 KiB. Overflow and IO failures
 discard partial data, kill the process group and reap the child. Concurrent
-stdin/stdout/stderr handling keeps the per-hop deadline effective even when a
-pipe blocks. DNS and aggregate redirect-chain deadlines are separate controls.
+stdin/stdout/stderr handling keeps one request deadline effective across DNS,
+all redirect hops and blocked pipes. DNS allows at most four active OS lookups
+process-wide, without a queue; callers stop waiting at the request deadline.
+An OS lookup cannot be cancelled and retains its slot until it actually exits.
+Every hop rejects non-public addresses and pins the complete validated answer
+(at most 64 addresses) into curl while retaining the original TLS hostname.
 
 ## Compute Data Root
 

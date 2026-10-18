@@ -97,6 +97,7 @@ const REDIRECT_MARKER: &str = "burette-redirect:";
 /// scheme, so a public endpoint answering `302 http://169.254.169.254/` would
 /// otherwise walk straight past the allow-list.
 pub(crate) fn fetch(request: &DatabaseRequest) -> Result<Vec<u8>, String> {
+    let deadline = Instant::now() + Duration::from_secs(u64::from(request.timeout_seconds));
     let origin = validate_request_url(&request.url)?;
     let mut target = origin.clone();
     for _ in 0..=MAX_REDIRECTS {
@@ -104,7 +105,7 @@ pub(crate) fn fetch(request: &DatabaseRequest) -> Result<Vec<u8>, String> {
         // the body; a redirect elsewhere is replayed as a bare GET, which is what
         // curl itself does for 301/302/303 and for `Authorization` across hosts.
         let trusted = target.origin() == origin.origin();
-        let (body, redirect) = run_curl(request, &target, trusted)?;
+        let (body, redirect) = run_curl(request, &target, trusted, deadline)?;
         let Some(redirect) = redirect else {
             return Ok(body);
         };
@@ -119,10 +120,16 @@ fn run_curl(
     request: &DatabaseRequest,
     target: &url::Url,
     trusted: bool,
+    deadline: Instant,
 ) -> Result<(Vec<u8>, Option<String>), String> {
     let max_filesize = request.max_bytes.to_string();
-    let timeout = request.timeout_seconds.to_string();
-    let addresses = public_fetch_addresses(target)?;
+    let addresses = public_fetch_addresses(target, deadline)?;
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return Err("Database request deadline expired".into());
+    }
+    // curl treats zero as unlimited. The pipe supervisor uses the exact deadline.
+    let timeout = format!("{:.3}", remaining.as_secs_f64().max(0.001));
     let mut command = Command::new("/usr/bin/curl");
     // No ambient curlrc/proxy may replace the validated destination.
     command.args(["--disable", "--noproxy", "*"]);
@@ -177,7 +184,7 @@ fn run_curl(
         Limits {
             stdout_bytes: request.max_bytes.min(MAX_RESPONSE_BYTES) as usize,
             stderr_bytes: 64 * 1024,
-            deadline: Instant::now() + Duration::from_secs(u64::from(request.timeout_seconds)),
+            deadline,
         },
     )
     .map_err(|error| format!("Database request failed: {error}"))?;
@@ -276,6 +283,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn expired_chain_deadline_cannot_be_restarted_by_a_hop() {
+        let request = DatabaseRequest::get("https://8.8.8.8/").with_timeout(180);
+        let target = validate_request_url(&request.url).unwrap();
+        // The hop must honor time already consumed by DNS and earlier redirects,
+        // even though the original request has a much larger timeout configured.
+        assert!(run_curl(&request, &target, true, Instant::now())
+            .unwrap_err()
+            .contains("deadline expired"));
+        assert!(
+            fetch(&DatabaseRequest::get("https://dns-must-not-run.invalid/").with_timeout(0))
+                .unwrap_err()
+                .contains("deadline expired")
+        );
+    }
+
+    #[test]
     fn only_http_and_https_urls_reach_the_network() {
         assert!(validate_request_url("https://8.8.8.8/status.json").is_ok());
         assert_eq!(
@@ -332,8 +355,11 @@ mod tests {
             None
         );
         assert_eq!(
-            public_fetch_addresses(&url::Url::parse("https://[2606:4700:4700::1111]/").unwrap())
-                .unwrap(),
+            public_fetch_addresses(
+                &url::Url::parse("https://[2606:4700:4700::1111]/").unwrap(),
+                Instant::now() + Duration::from_secs(1)
+            )
+            .unwrap(),
             vec![addresses[1]]
         );
     }

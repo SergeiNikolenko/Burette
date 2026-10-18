@@ -1,4 +1,5 @@
 pub mod bounded_process;
+pub mod bounded_resolver;
 pub mod collection_merge;
 pub mod molj;
 

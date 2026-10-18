@@ -6,7 +6,7 @@ use std::env;
 use std::ffi::CString;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
-use std::net::{IpAddr, ToSocketAddrs};
+use std::net::IpAddr;
 #[cfg(target_os = "macos")]
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -2416,14 +2416,33 @@ fn remote_structure_extension(title: &str) -> Result<String, String> {
     Ok(extension)
 }
 
-// Shared with the Database commands: every outbound request in the app resolves
-// its target through this guard, so no provider URL - or redirect - can be aimed
-// at a service on the machine or the local network.
+// Syntactic preflight only. DNS is resolved, validated and pinned under the
+// shared request deadline immediately before each native HTTP hop.
 pub(crate) fn reject_private_fetch_target(url: &url::Url) -> Result<(), String> {
-    public_fetch_addresses(url).map(|_| ())
+    let host = url.host_str().ok_or("Remote URL must include a host")?;
+    let normalized = host
+        .trim_end_matches('.')
+        .trim_start_matches('[')
+        .trim_end_matches(']');
+    if normalized.eq_ignore_ascii_case("localhost")
+        || normalized.to_ascii_lowercase().ends_with(".localhost")
+    {
+        return Err("Local and non-public network URLs are not supported for remote fetch".into());
+    }
+    if let Ok(ip) = normalized.parse::<IpAddr>() {
+        reject_private_ip(ip)?;
+    }
+    Ok(())
 }
 
-pub(crate) fn public_fetch_addresses(url: &url::Url) -> Result<Vec<IpAddr>, String> {
+pub(crate) fn public_fetch_addresses(
+    url: &url::Url,
+    deadline: Instant,
+) -> Result<Vec<IpAddr>, String> {
+    if Instant::now() >= deadline {
+        return Err("Remote request deadline expired".into());
+    }
+    reject_private_fetch_target(url)?;
     let host = url.host_str().ok_or("Remote URL must include a host")?;
     let normalized = host
         .trim_end_matches('.')
@@ -2432,11 +2451,12 @@ pub(crate) fn public_fetch_addresses(url: &url::Url) -> Result<Vec<IpAddr>, Stri
     let addresses = if let Ok(ip) = normalized.parse::<IpAddr>() {
         vec![ip]
     } else {
-        (normalized, url.port_or_known_default().unwrap_or(443))
-            .to_socket_addrs()
-            .map_err(|_| "Could not resolve remote host".to_string())?
-            .map(|address| address.ip())
-            .collect::<Vec<_>>()
+        burette_core::bounded_resolver::resolve(
+            normalized,
+            url.port_or_known_default().unwrap_or(443),
+            deadline,
+        )
+        .map_err(|error| format!("Could not resolve remote host: {error}"))?
     };
     if addresses.is_empty() {
         return Err("Remote host has no addresses".into());
