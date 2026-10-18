@@ -1473,10 +1473,10 @@ assert.match(appLayout, /const compactLeadingChrome = !tauriRuntime \|\| windowF
 assert.match(appLayout, /const chromeLeadingInset = compactLeadingChrome\s*\?\s*"112px"\s*:\s*viewportWidth <= 520\s*\?\s*"calc\(82px \/ var\(--window-zoom, 1\) \+ 40px\)"\s*:\s*"calc\(92px \/ var\(--window-zoom, 1\) \+ 100px\)"/);
 assert.match(appLayout, /"--chrome-leading-inset": chromeLeadingInset/);
 assert.doesNotMatch(appLayout, /tabChromeLeft/);
-assert.match(appLayout, /function usePanelEdgeVariables/);
+assert.match(appLayout, /import \{ usePanelEdgeVariables \} from "\.\/ui\/use-panel-edge-variables"/);
 assert.match(appLayout, /\{ elementRef: sidebarElementRef, property: "--sidebar-edge" \}/);
 assert.match(appLayout, /\{ elementRef: rightDockElementRef, property: "--right-dock-edge" \}/);
-assert.match(appLayout, /shell\.style\.setProperty\(entry\.property, `\$\{width\}px`\)/);
+
 assert.match(appLayout, /<header className="topbar">/);
 assert.match(appLayout, /const rightDockOpen = !settingsMode && !hostedMcpWidget && state\.rightDockOpen/);
 assert.match(appLayout, /const pluginSurface = isAgentPluginSurface\(state\.buildInfo\.isAgentShell\);/);

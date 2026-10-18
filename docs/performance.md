@@ -34,6 +34,12 @@ Fixed panel sizes use react-resizable-panels' built-in `preserve-pixel-size`
 behavior (4.14). Do not add a second ResizeObserver/rAF resize correction to
 nested groups: it competes with the requested layout during the gesture.
 
+Measured panel-edge properties belong on the topbar and window drag region,
+their only consumers. Publishing them on the app root makes every gesture
+invalidate inherited style across the workspace. The observer uses its delivered
+bounds, and cached bounds restore chrome after returning from Settings without
+forcing a layout read.
+
 Mol* keeps viewport geometry live. While bounds change, it uses CSS-pixel
 rendering without multisampling, then restores the original resolution and
 multisampling after 140 ms without a size change. Camera, coordinates, trajectory

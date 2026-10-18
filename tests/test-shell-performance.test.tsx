@@ -12,7 +12,45 @@ const { createRoot } = await import("react-dom/client");
 const { pinViewerFrames } = await import("../apps/desktop/src/components/editor-area/viewer-frame");
 const { MarqueeName } = await import("../apps/desktop/src/components/marquee-name");
 const { useXyzrenderPlayback } = await import("../apps/desktop/src/hooks/use-xyzrender-playback");
+const { usePanelEdgeVariables } = await import("../apps/desktop/src/components/ui/use-panel-edge-variables");
 const { postToXyzrenderViewer, requestViewerAction, requestGridView } = await import("../apps/desktop/src/lib/viewer-bridge");
+
+test("live panel edges update only chrome and survive its settings round trip without layout reads", async () => {
+  const original = globalThis.ResizeObserver;
+  let deliver: ResizeObserverCallback;
+  let disconnected = false;
+  const observed: Element[] = [];
+  globalThis.ResizeObserver = class {
+    constructor(callback: ResizeObserverCallback) { deliver = callback; }
+    observe(element: Element) { observed.push(element); }
+    disconnect() { disconnected = true; }
+  } as unknown as typeof ResizeObserver;
+  const mount = document.createElement("div"); document.body.append(mount);
+  const root = createRoot(mount);
+  function Shell({ chrome = true }) {
+    const sidebar = React.useRef<HTMLDivElement>(null), dock = React.useRef<HTMLDivElement>(null);
+    const shell = usePanelEdgeVariables([
+      { elementRef: sidebar, property: "--sidebar-edge" },
+      { elementRef: dock, property: "--right-dock-edge" },
+    ]);
+    return <main ref={shell}>{chrome && <><header className="topbar" /><div className="drag-region" /></>}
+      <div ref={sidebar} /><div ref={dock} /><section className="workspace" /></main>;
+  }
+  try {
+    await act(async () => root.render(<Shell />));
+    for (const element of observed) element.getBoundingClientRect = () => { throw new Error("must use observer sizes"); };
+    await act(async () => deliver!(observed.map((target, i) => ({ target, borderBoxSize: [{ inlineSize: i ? 310 : 280 }] })) as ResizeObserverEntry[], {} as ResizeObserver));
+    const styles = () => [...mount.querySelectorAll("main, .topbar, .drag-region, .workspace")].map(el => el.getAttribute("style"));
+    const expected = [null, "--sidebar-edge: 280px; --right-dock-edge: 310px;", "--right-dock-edge: 310px;", null];
+    expect(styles()).toEqual(expected);
+    await act(async () => root.render(<Shell chrome={false} />));
+    await act(async () => root.render(<Shell />));
+    expect(styles()).toEqual(expected);
+  } finally {
+    await act(async () => root.unmount()); mount.remove(); globalThis.ResizeObserver = original;
+  }
+  expect(disconnected).toBe(true);
+});
 
 test("warm residency preserves visited views without valid heap telemetry and bounds measured pressure", () => {
   const source = readFileSync(new URL("../apps/desktop/src/components/editor-area/index.tsx", import.meta.url), "utf8");
