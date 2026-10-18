@@ -50,6 +50,9 @@ The hosted plugin is a separate runtime boundary from the local desktop bridge:
   placed only in result `_meta` for the sandboxed Burette workspace.
 - Downloads are capped at 3 MiB and 200,000 lines, redirects are revalidated,
   and HTTPS connections are pinned to DNS addresses already checked as public.
+- The 15-second download deadline spans DNS, redirects and body reading. Rejected
+  oversized responses close their sockets immediately. System DNS work may finish
+  after the caller times out, but cannot start a late HTTP request.
 - Attachments are processed in memory and are not written to Burette
   application storage.
 
