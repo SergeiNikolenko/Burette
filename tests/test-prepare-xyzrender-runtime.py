@@ -90,6 +90,43 @@ class RuntimePreparationTests(unittest.TestCase):
                 safe = Path(result.stdout.strip())
                 self.assertEqual(safe.exists(), status != 0 and keep == '1')
 
+    def test_quicklook_bundles_standalone_python_rpath_library(self):
+        runtime = self.root / 'python'
+        (runtime / 'bin').mkdir(parents=True)
+        (runtime / 'lib').mkdir()
+        python = runtime / 'bin/python3'
+        python.write_bytes(b'python fixture')
+        python.chmod(0o700)
+        library = runtime / 'lib/libpython3.13.dylib'
+        library.write_bytes(b'library fixture')
+        venv = self.root / 'venv'
+        venv.mkdir()
+        (venv / 'pyvenv.cfg').write_text(f'home = {runtime}/bin\n')
+        commands = self.root / 'commands'
+        commands.mkdir()
+        for name, body in {
+            'otool': 'printf "%s\\n" "@rpath/libpython3.13.dylib (compatibility version 3.13.0)"',
+            'ditto': 'cp "$3" "$4"',
+            'install_name_tool': 'printf "%s\\n" "$@" > "$TEST_LINK_ARGS"',
+        }.items():
+            executable = commands / name
+            executable.write_text('#!/bin/sh\n' + body + '\n')
+            executable.chmod(0o700)
+        bundle = self.root / 'Preview.appex'
+        args = self.root / 'link-args'
+        env = {**os.environ, 'PATH': str(commands) + os.pathsep + os.environ['PATH'],
+               'BURETTE_XYZRENDER_ENV': str(venv), 'CODESIGNING_FOLDER_PATH': str(bundle),
+               'CODE_SIGNING_ALLOWED': 'NO', 'TEST_LINK_ARGS': str(args)}
+        script = Path(__file__).resolve().parents[1] / 'scripts/bundle-quicklook-xyzrender-launcher.sh'
+        subprocess.run(['bash', str(script)], env=env, check=True)
+        self.assertEqual((bundle / 'Contents/lib/libpython3.13.dylib').read_bytes(), library.read_bytes())
+        self.assertEqual((bundle / 'Contents/Resources/xyzrender-python3').read_bytes(), python.read_bytes())
+        self.assertIn('@executable_path/../lib/libpython3.13.dylib', args.read_text())
+        library.unlink()
+        result = subprocess.run(['bash', str(script)], env=env, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn(b'could not resolve xyzrender Python shared library', result.stderr)
+
     def test_failed_wheel_install_is_not_returned_or_retained(self):
         def run(command, **kwargs):
             if 'sync' in command:
