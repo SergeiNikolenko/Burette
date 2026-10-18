@@ -149,3 +149,13 @@ plugins/burette-agent/browser-shell-dist/assets/viewer-DEy_k-ZM.js
 plugins/burette-agent/browser-shell-dist/assets/wasm-BnjxR4X6.js
 plugins/burette-agent/preview-web/grid-ui.js
 plugins/burette-agent/preview-web/native-viewer-menus.js
+
+# Official browser-shell rebuild for spreadsheet-safe derived exports.
+plugins/burette-agent/browser-shell-dist/assets/molstar-BeRqnyag.js
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-DHhpmcr9.js
+plugins/burette-agent/browser-shell-dist/assets/dist-DVUgk34j.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-BWM4ri1J.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-BcVEWSjc.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-p3BlfA5h.js
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-BAdaZcS5.js
+plugins/burette-agent/browser-shell-dist/assets/index-4bUcvoys.css

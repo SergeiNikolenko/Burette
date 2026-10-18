@@ -7850,7 +7850,7 @@ assert.match(gridViewer, /'the row split', 'collection'\)/);
 assert.match(gridViewer, /'the row merge', 'collection'\)/);
 assert.match(gridViewer, /function gridSaveAsSnapshot\(rows, cfg\)/);
 assert.match(gridViewer, /function serializeSdfRows\(rows\)/);
-assert.match(gridViewer, /function serializeDelimitedRows\(rows, separator\)/);
+assert.match(gridViewer, /function serializeDelimitedRows\(rows, separator, spreadsheet = false\)/);
 assert.match(gridViewer, /function applyVirtualGridEdits\(rows\)/);
 assert.match(gridViewer, /state\.rowPatches\.set\(index/);
 assert.match(gridViewer, /Unsaved changes\. Use Save to overwrite the source file, Save As to write a new file, or Undo to revert the last edit\./);
