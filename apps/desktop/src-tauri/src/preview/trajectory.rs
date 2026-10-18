@@ -73,6 +73,29 @@ struct Manifest {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+enum TrajectorySource {
+    File { path: PathBuf },
+    Desmond { cms: PathBuf, trj: PathBuf },
+}
+
+impl TrajectorySource {
+    fn validate(&self) -> Result<(), String> {
+        let paths: Vec<&Path> = match self {
+            Self::File { path } => vec![path],
+            Self::Desmond { cms, trj } => vec![cms, trj],
+        };
+        if paths
+            .iter()
+            .any(|path| !path.is_absolute() || path.as_os_str().len() > 4096)
+        {
+            return Err("Invalid saved trajectory source path.".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct IndexedTrajectory {
     version: u32,
@@ -83,6 +106,8 @@ pub(crate) struct IndexedTrajectory {
     pub(crate) source_byte_count: u64,
     pub(crate) first_time_ps: Option<f64>,
     pub(crate) first_cell_basis: Option<[f64; 9]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    source: Option<TrajectorySource>,
 }
 
 fn index_directory<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<PathBuf, String> {
@@ -173,6 +198,7 @@ pub(crate) fn prepare<R: Runtime>(
             source_byte_count: revision.bytes,
             first_time_ps: time,
             first_cell_basis: cell,
+            source: Some(TrajectorySource::File { path: source }),
         },
         bytes,
     ))
@@ -241,6 +267,10 @@ pub(crate) fn prepare_desmond<R: Runtime>(
             source_byte_count,
             first_time_ps: time,
             first_cell_basis: cell,
+            source: Some(TrajectorySource::Desmond {
+                cms: cms.canonicalize().map_err(|error| error.to_string())?,
+                trj: trj.canonicalize().map_err(|error| error.to_string())?,
+            }),
         },
         first,
     ))
@@ -317,6 +347,7 @@ pub(crate) async fn read_indexed_trajectory_frame<R: Runtime>(
     frame_index: usize,
     segment_index: usize,
     validate_only: Option<bool>,
+    restored_trajectory: Option<IndexedTrajectory>,
 ) -> Result<Value, String> {
     static SLOTS: OnceLock<[tauri::async_runtime::Mutex<()>; 2]> = OnceLock::new();
     static NEXT: AtomicUsize = AtomicUsize::new(0);
@@ -338,13 +369,39 @@ pub(crate) async fn read_indexed_trajectory_frame<R: Runtime>(
         let config = String::from_utf8(read_bounded(&config_path, 2 * 1024 * 1024)?).map_err(|error| error.to_string())?;
         let config: Value = serde_json::from_str(config.trim().strip_prefix("window.BuretteConfig = ").and_then(|value| value.strip_suffix(';')).ok_or("Invalid runtime config.")?)
             .map_err(|error| error.to_string())?;
-        let descriptor: IndexedTrajectory = serde_json::from_value(config["docking"]["ligands"][segment_index]["indexedTrajectory"].clone()).map_err(|error| error.to_string())?;
+        let configured = &config["docking"]["ligands"][segment_index]["indexedTrajectory"];
+        let descriptor: IndexedTrajectory = if !configured.is_null() {
+            serde_json::from_value(configured.clone()).map_err(|error| error.to_string())?
+        } else {
+            // A saved scene retains a bounded, revision-bound source reference,
+            // never a temporary runtime URL or an inline complete trajectory.
+            if !matches!(config["format"].as_str(), Some("molx" | "molj")) {
+                return Err("Saved trajectories can only restore in a scene document.".into());
+            }
+            let descriptor = restored_trajectory.ok_or("Saved trajectory source is missing.")?;
+            let source = descriptor.source.as_ref().ok_or("Reopen the original trajectory and save this scene again.")?;
+            source.validate()?;
+            descriptor
+        };
         if descriptor.version != 1 || descriptor.index_key.is_empty() || descriptor.index_key.len() > 16 || !descriptor.index_key.bytes().all(|byte| byte.is_ascii_hexdigit()) {
             return Err("Invalid trajectory descriptor.".into());
         }
         let directory = index_directory(&app)?;
+        let metadata_path = directory.join(format!("{}.json", descriptor.index_key));
+        if !metadata_path.is_file() {
+            // Reconstruct a cleared cache from the original files, but publish
+            // no coordinates if their full revision changed since saving.
+            let rebuilt = match descriptor.source.as_ref().ok_or("Trajectory index is missing; reopen the original trajectory.")? {
+                TrajectorySource::File { path } => prepare(&app, path)?.0,
+                TrajectorySource::Desmond { cms, trj } => prepare_desmond(&app, cms, trj)?.1,
+            };
+            validate_restored_descriptor(&descriptor, &rebuilt)?;
+        }
         let metadata = read_bounded(&directory.join(format!("{}.json", descriptor.index_key)), 32 * 1024 * 1024)?;
         let manifest: Manifest = serde_json::from_slice(&metadata).map_err(|error| error.to_string())?;
+        if manifest.frame_count != descriptor.frame_count || manifest.atom_count != descriptor.atom_count || manifest.format != descriptor.format {
+            return Err("Saved trajectory descriptor disagrees with its source.".into());
+        }
         if validate_only == Some(true) {
             if frame_index >= manifest.frame_count { return Err("Trajectory frame is out of range.".into()); }
             validate_revision(&manifest)?;
@@ -353,6 +410,23 @@ pub(crate) async fn read_indexed_trajectory_frame<R: Runtime>(
         let (bytes, time, cell) = read_frame(&directory, &descriptor.index_key, &manifest, frame_index)?;
         Ok(json!({"base64": base64::engine::general_purpose::STANDARD.encode(bytes), "timePs": time, "cellBasis": cell, "frameIndex": frame_index}))
     }).await.map_err(|error| format!("Trajectory reader worker failed: {error}"))?
+}
+
+fn validate_restored_descriptor(
+    saved: &IndexedTrajectory,
+    current: &IndexedTrajectory,
+) -> Result<(), String> {
+    if saved.index_key != current.index_key
+        || saved.frame_count != current.frame_count
+        || saved.atom_count != current.atom_count
+        || saved.format != current.format
+    {
+        return Err(
+            "Trajectory source changed since this scene was saved; reopen the original trajectory."
+                .into(),
+        );
+    }
+    Ok(())
 }
 
 fn read_slice(file: &mut File, offset: u64, length: u64) -> Result<Vec<u8>, String> {
@@ -502,6 +576,50 @@ fn index_xdr(path: &Path, output: &Path, format: &str) -> Result<(usize, usize),
 mod tests {
     use super::*;
 
+    #[test]
+    fn saved_source_binding_is_bounded_and_requires_an_unchanged_revision() {
+        let descriptor = |key: &str| IndexedTrajectory {
+            version: 1,
+            index_key: key.into(),
+            frame_count: 1_000_000,
+            atom_count: 2,
+            format: "xtc".into(),
+            source_byte_count: 100_000_000,
+            first_time_ps: Some(0.0),
+            first_cell_basis: None,
+            source: Some(TrajectorySource::File {
+                path: PathBuf::from("/data/run.xtc"),
+            }),
+        };
+        let saved: IndexedTrajectory =
+            serde_json::from_slice(&serde_json::to_vec(&descriptor("1234")).unwrap()).unwrap();
+        saved.source.as_ref().unwrap().validate().unwrap();
+        validate_restored_descriptor(&saved, &descriptor("1234")).unwrap();
+        assert!(validate_restored_descriptor(&saved, &descriptor("5678")).is_err());
+        let mutations: [fn(&mut IndexedTrajectory); 3] = [
+            |value: &mut IndexedTrajectory| value.frame_count -= 1,
+            |value: &mut IndexedTrajectory| value.atom_count += 1,
+            |value: &mut IndexedTrajectory| value.format = "dcd".into(),
+        ];
+        for mutate in mutations {
+            let mut changed = descriptor("1234");
+            mutate(&mut changed);
+            assert!(validate_restored_descriptor(&saved, &changed).is_err());
+        }
+        for path in [
+            PathBuf::from("relative.xtc"),
+            PathBuf::from(format!("/{}", "x".repeat(4096))),
+        ] {
+            assert!(TrajectorySource::File { path }.validate().is_err());
+        }
+        assert!(TrajectorySource::Desmond {
+            cms: PathBuf::from("/data/run-out.cms"),
+            trj: PathBuf::from("relative_trj"),
+        }
+        .validate()
+        .is_err());
+    }
+
     fn temp_directory() -> PathBuf {
         let path = std::env::temp_dir().join(format!("burette-indexed-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&path).unwrap();
@@ -522,6 +640,71 @@ mod tests {
             frame.extend_from_slice(&value.to_be_bytes());
         }
         frame
+    }
+
+    #[test]
+    fn saved_scene_restores_full_trajectory_after_cache_clear_and_rejects_source_edits() {
+        let app = tauri::test::mock_app();
+        let source_directory = temp_directory();
+        let source = source_directory.join("original.xtc");
+        let frames = [
+            xtc_frame(0.0, 1.0),
+            xtc_frame(2.5, 3.0),
+            xtc_frame(8.0, 4.0),
+        ];
+        fs::write(&source, frames.concat()).unwrap();
+        let (saved, _) = prepare(app.handle(), &source).unwrap();
+        let saved: IndexedTrajectory =
+            serde_json::from_slice(&serde_json::to_vec(&saved).unwrap()).unwrap();
+        let cache = index_directory(app.handle()).unwrap();
+        let runtime = app
+            .path()
+            .app_cache_dir()
+            .unwrap()
+            .join("viewer")
+            .join(uuid::Uuid::new_v4().to_string());
+        fs::create_dir_all(&runtime).unwrap();
+        fs::write(runtime.join("index.html"), "").unwrap();
+        fs::write(
+            runtime.join("preview-config.js"),
+            "window.BuretteConfig = {\"format\":\"molx\"};",
+        )
+        .unwrap();
+        for suffix in ["json", "idx"] {
+            fs::remove_file(cache.join(format!("{}.{suffix}", saved.index_key))).unwrap();
+        }
+        let read = |descriptor: IndexedTrajectory| {
+            tauri::async_runtime::block_on(read_indexed_trajectory_frame(
+                app.handle().clone(),
+                runtime.join("index.html").to_string_lossy().into(),
+                2,
+                0,
+                None,
+                Some(descriptor),
+            ))
+        };
+        let restored = read(saved.clone()).unwrap();
+        assert_eq!(
+            restored,
+            json!({
+                "base64": base64::engine::general_purpose::STANDARD.encode(&frames[2]),
+                "timePs": 8.0, "cellBasis": null, "frameIndex": 2,
+            })
+        );
+        fs::write(&source, [frames.concat(), xtc_frame(10.0, 5.0)].concat()).unwrap();
+        assert!(read(saved.clone()).unwrap_err().contains("changed"));
+        for suffix in ["json", "idx"] {
+            fs::remove_file(cache.join(format!("{}.{suffix}", saved.index_key))).unwrap();
+        }
+        assert!(read(saved)
+            .unwrap_err()
+            .contains("changed since this scene was saved"));
+        let (changed, _) = prepare(app.handle(), &source).unwrap();
+        for suffix in ["json", "idx"] {
+            fs::remove_file(cache.join(format!("{}.{suffix}", changed.index_key))).unwrap();
+        }
+        fs::remove_dir_all(runtime).unwrap();
+        fs::remove_dir_all(source_directory).unwrap();
     }
 
     #[test]

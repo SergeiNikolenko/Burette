@@ -1,11 +1,17 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { Window } from 'happy-dom';
 import { Task } from 'molstar/lib/mol-task/index.js';
 import { Coordinates, Time } from 'molstar/lib/mol-model/structure/coordinates.js';
 import { Cell } from 'molstar/lib/mol-math/geometry/spacegroup/cell.js';
 import { Vec3 } from 'molstar/lib/mol-math/linear-algebra.js';
 import { parseXtc } from 'molstar/lib/mol-io/reader/xtc/parser.js';
+import { StateTransformer } from 'molstar/lib/mol-state/transformer.js';
+import '../scripts/molstar-indexed-trajectory.js';
+
+assert.equal(StateTransformer.get('ms-plugin.burette-indexed-trajectory').id, 'ms-plugin.burette-indexed-trajectory',
+  'the ordinary viewer entry registers the saved transform when its bundle loads');
 
 // Exercise the real adapter's private decoder/cache with actual Mol* coordinate
 // types. Model construction is isolated so the tests need no WebGL context.
@@ -253,7 +259,133 @@ const restoredAgain = await apply({ ...descriptor, segmentIndex: 0 });
 IndexedTrajectory.dispose({ b: restoredAgain });
 assert.equal(readers.has(plugin), false, 'repeated valid restores remain disposable');
 
+// A new scene runtime has no docking configuration. Its serialized descriptor
+// must retain the bounded source binding and request the original full run.
+const savedDescriptor = JSON.parse(JSON.stringify({ ...descriptor, frameCount: 1_000_000, source: { kind: 'file', path: '/data/original.dcd' } }));
+context.activeConfig = { format: 'molx' };
+let restoredRequest;
+context.requestTrajectoryFrameFromNative = async (index, segment, _signal, validateOnly, restoredTrajectory) => {
+  assert.equal(segment, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(restoredTrajectory)), savedDescriptor);
+  restoredRequest = restoredTrajectory;
+  if (revisionChanged) throw new Error('Trajectory source changed since this scene was saved');
+  return validateOnly ? { valid: true } : { bytes: dcdFrame(index), timePs: index * 2.5 };
+};
+const newScene = await apply(savedDescriptor);
+assert.equal(newScene.data.frameCount, 1_000_000);
+assert.equal((await newScene.data.getFrameAtIndex(999_999).run()).frame.x[0], 999_999);
+assert.equal(restoredRequest.source.path, '/data/original.dcd');
+IndexedTrajectory.dispose({ b: newScene });
+assert.equal(readers.has(plugin), false);
+revisionChanged = true;
+await assert.rejects(apply(savedDescriptor), /source changed since this scene was saved/);
+assert.equal(readers.has(plugin), false);
+revisionChanged = false;
+context.activeConfig = { format: 'molj' };
+const jsonScene = await apply(savedDescriptor);
+IndexedTrajectory.dispose({ b: jsonScene });
+context.activeConfig = { format: 'pdb' };
+await assert.rejects(apply(savedDescriptor), /source is no longer open/);
+context.activeConfig = { format: 'molx' };
+await assert.rejects(apply(descriptor), /source is no longer open/);
+
 const failedPlugin = { builders: { data: { rawData: async () => { throw new Error('model failed'); } } } };
 await assert.rejects(BuretteIndexedTrajectory.load({ plugin: failedPlugin }, { coordinateEntry: { indexedTrajectory: descriptor, data: dcdFrame() }, modelEntry: {} }, {}, () => {}), /model failed/);
 assert.equal(readers.has(failedPlugin), false, 'failed attachment releases its initial bytes and callback');
-console.log('Indexed trajectory: DCD/TRR/compressed XTC decoding, byte/frame cache bounds, eviction, overlap, cancellation, revision guards, reader disposal and same-source snapshot restore passed');
+
+// Ordinary archives use Mol*'s full archive loader so embedded assets survive;
+// binary ZIP bytes must never pass through the JSON-only MOLJ loader.
+const prepareStart = viewerSource.indexOf('  function structureDataForMolstar(');
+const prepareEnd = viewerSource.indexOf('    if (isMolViewSpecFormat(normalized))', prepareStart);
+const loadStart = viewerSource.indexOf('  async function loadPreparedStructure(');
+const loadEnd = viewerSource.indexOf('    cancelScheduledMolstarWaterRepresentation();', loadStart);
+const archiveBytes = new Uint8Array([80, 75, 3, 4]);
+const archiveContext = vm.createContext({ File, Uint8Array,
+  normalizeFormat: value => value, structureSceneEntriesFromConfig: () => [], rawStructureData: () => archiveBytes,
+  activeMolstarPrepared: null, activeDockingPrepared: null, installDockingPoseControls: () => {},
+  nativeTrajectoryModelTransform: () => null,
+});
+vm.runInContext(`${viewerSource.slice(prepareStart, prepareEnd)}}\n${viewerSource.slice(loadStart, loadEnd)}}\nglobalThis.prepare = structureDataForMolstar; globalThis.load = loadPreparedStructure;`, archiveContext);
+const preparedArchive = archiveContext.prepare({ format: 'molx', label: 'saved scene' });
+assert.equal(preparedArchive.kind, 'session');
+let loadedArchive;
+await archiveContext.load({ plugin: { managers: {
+  snapshot: { open: async file => { loadedArchive = file; }, state: { current: 'saved' },
+    getEntry: id => { assert.equal(id, 'saved'); return { snapshot: { camera: { current: { radius: 5 } } } }; },
+    setStateSnapshot: () => assert.fail('MOLX must load its archive assets') },
+  camera: { reset: () => assert.fail('The saved scene camera must survive') },
+} } }, preparedArchive);
+assert.equal(loadedArchive.name, 'scene.molx');
+assert.deepEqual(new Uint8Array(await loadedArchive.arrayBuffer()), archiveBytes);
+assert.equal(preparedArchive.hasSessionCamera, true);
+
+// Run the real frame-control installer against a restored indexed trajectory.
+// An authored nonzero modelIndex must beat stale per-document storage/playback;
+// subsequent agent and slider seeks must still read the requested source frame.
+const controlsWindow = new Window();
+const controlsDocument = controlsWindow.document;
+const playable = await apply(savedDescriptor);
+const authoredModel = await playable.data.getFrameAtIndex(7).run();
+let shownModel = authoredModel;
+const modelCell = { transform: { ref: 'model', parent: 'trajectory', params: { modelIndex: 7 }, transformer: { id: 'ms-plugin.model-from-trajectory' } } };
+const changedListeners = new Set(), modelWrites = [];
+const controlsViewer = { plugin: {
+  state: {
+    data: { cells: new Map([['trajectory', { obj: { data: playable.data } }], ['model', modelCell]]),
+      events: { changed: { subscribe: fn => { changedListeners.add(fn); return { unsubscribe: () => changedListeners.delete(fn) }; } } } },
+    updateTransform: async (_state, ref, params) => {
+      assert.equal(ref, 'model');
+      shownModel = await playable.data.getFrameAtIndex(params.modelIndex).run();
+      modelCell.transform.params = params;
+      modelWrites.push(params.modelIndex);
+      changedListeners.forEach(fn => fn());
+    },
+  },
+  managers: { structure: { hierarchy: { selection: { structures: [{ model: { cell: modelCell } }] } } },
+    snapshot: { open: async () => {}, state: { current: 'saved' }, getEntry: () => ({ snapshot: { camera: { current: { radius: 5 } } } }) },
+    camera: { reset: () => assert.fail('Installing restored frame controls must preserve the camera') } },
+} };
+controlsWindow.sessionStorage.setItem('burette.trajectoryControl.saved_scene', '42');
+const controlContext = vm.createContext({
+  window: controlsWindow, document: controlsDocument, File, console, sessionStorage: controlsWindow.sessionStorage,
+  activeViewer: controlsViewer, activeConfig: { documentId: 'saved_scene', activeModel: 0 }, activeMolstarPrepared: null, activeDockingPrepared: null,
+  activeStructureAlignmentControl: null, activeStructurePoseSetter: null, activeSdfCollectionPoseSetter: null, activeTrajectoryPlaybackControl: null,
+  dockingPoseKeydownDisposer: null, dockingPoseControlsDisposer: null, pendingTrajectoryPlaybackRestore: { frameIndex: 40, playing: true, fps: 50 },
+  activeSdfPoseMode: 'single', trajectorySmoothingState: null, molstarStructureFocusSerial: 0, hostViewerVisible: true,
+  structureOverlayAvailable: () => false, structureOverlayToggleAvailable: () => false, structureSceneStoryAvailable: () => false,
+  sceneTreeIconElement: () => controlsDocument.createElement('span'), APP_ICON_DATA: {}, formatTrajectoryFps: String, readTrajectoryLoopFps: () => 20,
+  postHostMessage: () => {}, updateViewportAnimateState: () => {}, xyzSingleFrameSceneActive: () => false,
+  trajectoryPoseLabel: (prepared, label, index) => `${label} ${index + 1} / ${prepared.poseCount}`,
+  restoreDockingPoseControlsPosition: () => {}, installDockingPoseInteractionIsolation: () => {}, installDockingPoseHoverSuppression: () => {}, initDockingPoseControlsDrag: () => {},
+  clearMolstarTrajectoryHover: () => {}, afterNativeTrajectoryPaint: () => Promise.resolve(), readNativeTrajectoryPositionFromDom: () => null,
+});
+const controlFunctions = ['nativeTrajectoryFrameCount', 'nativeTrajectoryModelTransform', 'readNativeTrajectoryPosition', 'readTrajectoryControlIndex',
+  'trajectoryControlStorageKey', 'setNativeTrajectoryPoseDirect', 'setNativeTrajectoryPose', 'installNativeTrajectoryPoseSync', 'notifyDockingPoseChanged', 'installDockingPoseControls'];
+const extractedControls = controlFunctions.map(name => {
+  const fn = viewerSource.match(new RegExp(`\\n  (?:async )?function ${name}\\([\\s\\S]*?\\n  \\}`, 'u'))?.[0];
+  assert.ok(fn, name);
+  return fn;
+}).join('\n');
+vm.runInContext(`${extractedControls}\n${viewerSource.slice(loadStart, loadEnd)}}\nglobalThis.load = loadPreparedStructure;`, controlContext);
+const restoredControls = { kind: 'session', format: 'molx', data: archiveBytes };
+await controlContext.load(controlsViewer, restoredControls);
+assert.deepEqual([restoredControls.poseCount, restoredControls.activePose, restoredControls.nativeTrajectoryControls, restoredControls.controlLabel], [1_000_000, 7, true, 'Frame']);
+assert.deepEqual(modelWrites, [], 'installing controls must not rewrite the authored frame');
+assert.equal(controlContext.pendingTrajectoryPlaybackRestore, null);
+assert.equal(typeof controlContext.activeStructurePoseSetter, 'function');
+const frameSlider = controlsDocument.querySelector('.buret-docking-pose-slider');
+assert.equal(frameSlider.value, '8');
+assert.equal(frameSlider.max, '1000000');
+await controlContext.activeStructurePoseSetter(999_999);
+assert.equal(shownModel.frame.x[0], 999_999);
+assert.equal(frameSlider.value, '1000000');
+frameSlider.value = '10';
+frameSlider.dispatchEvent(new controlsWindow.Event('change'));
+await until(() => modelCell.transform.params.modelIndex === 9);
+assert.equal(shownModel.frame.x[0], 9);
+assert.equal(controlContext.readTrajectoryControlIndex(controlContext.activeConfig, restoredControls, restoredControls.poseCount), 9);
+controlContext.dockingPoseControlsDisposer();
+controlContext.dockingPoseKeydownDisposer();
+IndexedTrajectory.dispose({ b: playable });
+await controlsWindow.happyDOM.abort();
+console.log('Indexed trajectory: DCD/TRR/compressed XTC decoding, cache bounds, cancellation, revision guards, disposal and same/new-runtime snapshot restoration passed');

@@ -223,7 +223,7 @@ const IndexedTrajectory = PluginStateTransform.BuiltIn({
       // source before the previous transform is disposed.
       const reader = previous?.indexKey === indexKey
         ? { ...previous }
-        : { indexKey, request: (index, signal, validateOnly) => restore(indexKey, segmentIndex, index, signal, validateOnly) };
+        : { indexKey, request: (index, signal, validateOnly) => restore(indexKey, segmentIndex, index, signal, validateOnly, params.descriptor) };
       readers.set(plugin, reader);
       try {
         const initialPayload = reader.firstBytes

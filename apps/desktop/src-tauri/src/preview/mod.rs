@@ -19,6 +19,7 @@ pub(crate) mod runtime;
 pub(crate) mod runtime_grid;
 pub(crate) mod runtime_utils;
 pub(crate) mod runtime_viewer;
+mod session_archive;
 #[allow(
     dead_code,
     reason = "snapshot filesystem capabilities are owned by the staged Grid snapshot boundary"

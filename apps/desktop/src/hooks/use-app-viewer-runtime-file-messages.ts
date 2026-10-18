@@ -55,11 +55,17 @@ export function useAppViewerRuntimeFileMessages({
             !Number.isSafeInteger(body.segmentIndex) || Number(body.segmentIndex) < 0) {
             throw new Error("Invalid trajectory frame request.");
           }
+          if (body.restoredTrajectory !== undefined &&
+            (!body.restoredTrajectory || typeof body.restoredTrajectory !== "object" ||
+              Array.isArray(body.restoredTrajectory) || JSON.stringify(body.restoredTrajectory).length > 16_384)) {
+            throw new Error("Invalid saved trajectory descriptor.");
+          }
           const payload = await invoke<Record<string, unknown>>("read_indexed_trajectory_frame", {
             runtimePath: document.runtimePath,
             frameIndex: body.frameIndex,
             segmentIndex: body.segmentIndex,
             validateOnly: body.validateOnly === true,
+            restoredTrajectory: body.restoredTrajectory,
           });
           reply({ ...payload, requestToken: body.requestToken });
           return;

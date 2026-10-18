@@ -846,7 +846,21 @@ mod tests {
                 ),
                 expected
             );
+            let json = session.to_string();
+            let archive = crate::preview::session_archive::tests::archive(&[
+                ("assets/first", b"asset", false),
+                ("state.json", json.as_bytes(), true),
+            ]);
+            assert_eq!(
+                super::is_mesoscale_document(Path::new("scene.molx"), "molx", &archive),
+                expected
+            );
         }
+        assert!(super::is_mesoscale_document(
+            Path::new("broken.molx"),
+            "molx",
+            b"broken"
+        ));
     }
 
     #[test]
@@ -1656,7 +1670,11 @@ fn is_mesoscale_document(file_path: &Path, extension: &str, data: &[u8]) -> bool
                 })
             });
     }
-    if matches!(extension, "molx" | "mesozip") {
+    if extension == "molx" {
+        return super::session_archive::molx_state(data)
+            .is_none_or(|state| is_mesoscale_document(file_path, "molj", &state));
+    }
+    if extension == "mesozip" {
         return true;
     }
     let name = file_path
