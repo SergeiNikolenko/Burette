@@ -31,6 +31,18 @@ with a selection-copy fallback.
 Do not add recursive directory ingestion, broad home-directory reads, or hidden
 network fetches without an explicit design and validation plan.
 
+Native directory expansion confines every resolved descendant to the selected
+canonical directory, including file and directory symlinks. Internal aliases
+retain their displayed paths; an explicitly selected symlink file or directory
+still grants its resolved target. Existing traversal limits and cycle detection
+remain in effect. Canonical checks do not provide descriptor-level isolation
+against a malicious process replacing paths concurrently as the same user.
+
+Quick Look GraphML parsing rejects duplicate effective node IDs, including
+collisions with generated IDs, before constructing lookup dictionaries. GraphML
+and edge-list star layouts sort leaves once and index them by ID, preserving
+node order and coordinates without a per-node linear search through all leaves.
+
 Updater cleanup is limited to staged `.app` bundles below Burette's current and
 legacy `Library/Application Support/.../Updates` directories. It must not scan
 or remove applications from the user's home folders, Trash, backups, or

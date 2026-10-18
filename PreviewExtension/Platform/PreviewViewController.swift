@@ -1938,8 +1938,12 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         }
 
         let nodeCount = max(nodeElements.count, 1)
+        var nodeIDs = Set<String>()
         let nodes = try nodeElements.enumerated().map { index, element in
             let id = element.attribute(forName: "id")?.stringValue ?? "mol\(index)"
+            guard nodeIDs.insert(id).inserted else {
+                throw PreviewError.unsupportedStructureFile("GraphML contains duplicate node ID: \(id)")
+            }
             guard let text = graphMLDataText(in: element, key: moldictKey) else {
                 throw PreviewError.unsupportedStructureFile("GraphML node \(id) is missing moldict data")
             }
@@ -2054,6 +2058,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         let leaves = graph.nodes
             .filter { $0.id != center.id }
             .sorted { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
+        let leafIndices = Dictionary(uniqueKeysWithValues: leaves.enumerated().map { ($0.element.id, $0.offset) })
         let compactSlots: [(x: Double, y: Double)] = [
             (25, 20),
             (75, 20),
@@ -2064,7 +2069,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             if node.id == center.id {
                 return graphMLNode(node, x: 50, y: 50)
             }
-            let index = leaves.firstIndex { $0.id == node.id } ?? 0
+            let index = leafIndices[node.id] ?? 0
             if leaves.count <= compactSlots.count {
                 let slot = compactSlots[index]
                 return graphMLNode(node, x: slot.x, y: slot.y)

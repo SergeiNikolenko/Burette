@@ -2791,7 +2791,7 @@ impl ProjectStructureScan {
             .canonicalize()
             .map_err(|err| format!("{}: {err}", directory.display()))?;
         if let Some(root) = &self.root_boundary {
-            if !self.follow_symlinks && !canonical_directory.starts_with(root) {
+            if !canonical_directory.starts_with(root) {
                 return Ok(());
             }
         } else {
@@ -2839,10 +2839,9 @@ impl ProjectStructureScan {
                 let Ok(canonical_target) = path.canonicalize() else {
                     continue;
                 };
-                // Restored project roots may follow aliases only while their
-                // canonical target remains inside the selected root. Explicit
-                // directory opens preserve the historical external-alias behavior.
-                if !self.follow_symlinks && !self.is_within_root(&canonical_target) {
+                // Alias spelling may be preserved, but selecting a directory
+                // never grants access to targets outside that directory.
+                if !self.is_within_root(&canonical_target) {
                     continue;
                 }
                 let Ok(target_metadata) = fs::metadata(&canonical_target) else {
@@ -2888,11 +2887,13 @@ impl ProjectStructureScan {
             if metadata.is_file()
                 && looks_like_supported_structure_file(&path, supported_extensions)
             {
-                if self.follow_symlinks {
-                    self.collected.insert(path);
-                } else if let Ok(canonical_file) = path.canonicalize() {
+                if let Ok(canonical_file) = path.canonicalize() {
                     if self.is_within_root(&canonical_file) {
-                        self.collected.insert(canonical_file);
+                        self.collected.insert(if self.follow_symlinks {
+                            path
+                        } else {
+                            canonical_file
+                        });
                     }
                 }
             }
@@ -4232,6 +4233,56 @@ mod tests {
         fs::remove_file(alias).unwrap();
         fs::remove_file(real).unwrap();
         fs::remove_dir(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_directory_open_confines_nested_aliases_but_preserves_explicit_selection() {
+        let root =
+            std::env::temp_dir().join(format!("burette-open-boundary-{}", uuid::Uuid::new_v4()));
+        let selected = root.join("selected");
+        let outside = root.join("selected-other");
+        let internal = selected.join("library");
+        fs::create_dir_all(&internal).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(internal.join("inside.pdb"), "HEADER INSIDE\n").unwrap();
+        fs::write(outside.join("outside.pdb"), "HEADER OUTSIDE\n").unwrap();
+        symlink(&outside, selected.join("outside-dir")).unwrap();
+        symlink(
+            outside.join("outside.pdb"),
+            selected.join("outside-file.pdb"),
+        )
+        .unwrap();
+        symlink(&internal, selected.join("alias-dir")).unwrap();
+        let root_alias = root.join("selected-alias");
+        symlink(&selected, &root_alias).unwrap();
+
+        let files = expand_open_targets(selected.clone()).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            files[0],
+            selected
+                .canonicalize()
+                .unwrap()
+                .join("alias-dir/inside.pdb")
+        );
+        assert_eq!(expand_open_targets(root_alias).unwrap(), files);
+        assert_eq!(
+            expand_open_targets(selected.join("outside-file.pdb")).unwrap(),
+            vec![outside.canonicalize().unwrap().join("outside.pdb")]
+        );
+        assert_eq!(
+            expand_open_targets(selected.join("outside-dir")).unwrap(),
+            vec![outside.canonicalize().unwrap().join("outside.pdb")]
+        );
+        let mut scan =
+            ProjectStructureScan::following_symlinks(super::PROJECT_STRUCTURE_SCAN_LIMITS);
+        let supported = supported_open_target_extensions().unwrap();
+        scan.collect(&selected.canonicalize().unwrap(), &supported)
+            .unwrap();
+        scan.collect(&outside, &supported).unwrap();
+        assert_eq!(scan.into_paths(), files);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(unix)]
