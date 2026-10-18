@@ -37,13 +37,24 @@ impl Resolver {
         if Instant::now() >= deadline {
             return Err(timeout());
         }
-        self.0
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |active| {
-                (active < MAX_LOOKUPS).then_some(active + 1)
-            })
-            .map_err(|_| {
-                io::Error::new(io::ErrorKind::WouldBlock, "DNS lookup capacity is busy")
-            })?;
+        let mut active = self.0.load(Ordering::Acquire);
+        loop {
+            if active >= MAX_LOOKUPS {
+                return Err(io::Error::new(
+                    io::ErrorKind::WouldBlock,
+                    "DNS lookup capacity is busy",
+                ));
+            }
+            match self.0.compare_exchange_weak(
+                active,
+                active + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(current) => active = current,
+            }
+        }
         let permit = Permit(Arc::clone(&self.0));
         let (sender, receiver) = mpsc::sync_channel(1);
         std::thread::Builder::new()
