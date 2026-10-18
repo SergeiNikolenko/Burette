@@ -57,6 +57,19 @@ limit while inflating. Other browser gzip structure previews retain their 75 MiB
 limit, now enforced during decompression. Oversized compressed previews fail with
 an error; source files are preserved and no partial scientific model is returned.
 
+Scene append and the shared Mol* model loader admit at most 200 materialized
+models including existing hidden or restored models. SDF all-models loads count
+record boundaries before parsing; parsed trajectory frame counts are checked
+before any model preset is applied. Multi-block CIF loads allow at most 200
+coordinate trajectories and charge one model per default-preset trajectory.
+Single-model animation remains supported without charging every unused frame.
+Overflow rejects the load without truncating source records or changing the
+preset. Failed appends remove their new state and preserve the camera; deleting
+models releases capacity. Concurrent model loads through this boundary refuse
+while the current load is active. Snapshot/MVS imports, atom counts, symmetry
+copies and representation multiplicity have separate resource behavior; these
+limits do not establish a universal scene-memory quota.
+
 Updater cleanup is limited to staged `.app` bundles below Burette's current and
 legacy `Library/Application Support/.../Updates` directories. It must not scan
 or remove applications from the user's home folders, Trash, backups, or

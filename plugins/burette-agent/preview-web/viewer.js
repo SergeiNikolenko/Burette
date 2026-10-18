@@ -18015,6 +18015,8 @@ SOFTWARE.
     ));
     // Retain Mol*'s single-block CCD handling when no coordinate block is present.
     if (indices.length === 0) indices.push(0);
+    if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+    window.BuretteSceneFiles.checkTrajectoryCount(indices.length);
     const trajectories = [];
     for (const blockIndex of indices) {
       const trajectory = await plugin.state.data.build().to(cif)
@@ -18122,48 +18124,37 @@ SOFTWARE.
       await applyXyzFrameOverlayVisibilityNow(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount || prepared.xyzFrameCount));
       return;
     }
-    if (prepared.loadPreset === 'all-models') {
-      const plugin = viewer.plugin;
-      const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
-      for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
-        await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', {
-          useDefaultIfSingleModel: activeConfig?.hostedMcpWidgetBootstrap !== true
-        });
-      }
+    if (prepared.loadPreset === 'all-models' || prepared.loadPreset === 'preset-trajectory-all-models') {
+      await loadMolstarEntry(viewer, prepared, {
+        useDefaultIfSingleModel: activeConfig?.hostedMcpWidgetBootstrap !== true
+      });
       if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
       await applyMolstarWaterLineRepresentation(viewer);
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
-    const plugin = viewer.plugin;
     if (activeConfig?.hostedMcpWidgetBootstrap !== true && prepared.format !== 'mmcif' && prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
       await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
-    const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
-    for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
-      // Hosted counts and author-residue selectors describe the supplied
-      // coordinates, not automatically generated biological-assembly copies.
-      const presetOptions = activeConfig?.hostedMcpWidgetBootstrap === true
-        ? { structure: { name: 'model', params: {} } } : undefined;
-      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', presetOptions);
-    }
+    // Hosted counts and author-residue selectors describe the supplied
+    // coordinates, not automatically generated biological-assembly copies.
+    const presetOptions = activeConfig?.hostedMcpWidgetBootstrap === true
+      ? { structure: { name: 'model', params: {} } } : undefined;
+    await loadMolstarEntry(viewer, { ...prepared, loadPreset: 'default' }, presetOptions);
     if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
     await applyMolstarWaterLineRepresentation(viewer);
     installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
   }
 
-  async function loadMolstarEntry(viewer, entry, presetOptions = undefined) {
-    const plugin = viewer.plugin;
+  async function loadMolstarEntry(viewer, entry, presetOptions = undefined, appendOwner = undefined) {
     const normalized = normalizeFormat(entry.format);
     const payload = normalized === 'cifCore'
       ? { data: coreCifToPdb(entry.data), format: 'pdb' }
       : { data: entry.data, format: normalized };
-    const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
-    for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, payload.format)) {
-      await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', presetOptions);
-    }
+    if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+    await window.BuretteSceneFiles.loadModels(viewer, { ...entry, ...payload }, parseMolstarStructureTrajectories, presetOptions, appendOwner);
   }
 
   async function loadMolstarEntryWithStructureRefs(viewer, entry, presetOptions = undefined) {
