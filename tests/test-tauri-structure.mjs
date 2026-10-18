@@ -932,6 +932,7 @@ assert.deepEqual(vendorAssetsLock.assets.map((asset) => asset.path).toSorted(), 
   'PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm',
   'PreviewExtension/Web/rdkit/RDKit_minimal.js',
   'PreviewExtension/Web/rdkit/RDKit_minimal.wasm',
+  'PreviewExtension/Web/svg-sanitizer.js',
 ]);
 for (const asset of vendorAssetsLock.assets) {
   assert.match(asset.sha256, /^sha256-/);

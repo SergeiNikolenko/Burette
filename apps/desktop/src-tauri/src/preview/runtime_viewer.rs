@@ -1202,6 +1202,7 @@ impl AssetProfile {
                 "native-viewer-menus.js",
                 "scene-file-actions.js",
                 "sequence-panel.js",
+                "svg-sanitizer.js",
                 "viewer.js",
             ],
             Self::Mesoscale => &["mesoscale.js", "mesoscale.css"],
@@ -1225,6 +1226,7 @@ impl AssetProfile {
                 "native-viewer-menus.js",
                 "scene-file-actions.js",
                 "sequence-panel.js",
+                "svg-sanitizer.js",
                 "viewer.js",
             ],
         }
