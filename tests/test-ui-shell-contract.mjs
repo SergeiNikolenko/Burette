@@ -4953,7 +4953,7 @@ assert.match(browserDevDocuments, /failed to fetch collection data from \$\{url\
 assert.match(browserDevDocuments, /hasImplicitAtomIndex \|\|= headerLine\.toLowerCase\(\)\.includes\("first column is atom index"\)/);
 assert.match(browserDevDocuments, /const rowOffset = hasImplicitAtomIndex \? 1 : 0/);
 assert.match(browserDevDocuments, /\/__burette\/read-file\?path=\$\{encodeURIComponent\(path\)\}/);
-assert.match(browserDevDocuments, /new DecompressionStream\("gzip"\)/);
+assert.match(browserDevDocuments, /inflateStructureBytes\(bytes, 64 \* 1024 \* 1024\)/);
 assert.match(browserDevDocuments, /sourceExtension: extension/);
 assert.match(browserDevDocuments, /molstarAvailable: !format\.externalOnly \|\| externalMolstarAvailable/);
 assert.match(browserDevDocuments, /\{ value: "flat", label: "Flat" \}/);

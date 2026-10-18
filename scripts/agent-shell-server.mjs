@@ -1170,7 +1170,7 @@ function textFileReadLimit(value) {
 }
 
 function readableTextBytes(bytes, extension) {
-  if (extension === 'maegz') return gunzipSync(bytes);
+  if (extension === 'maegz') return gunzipSync(bytes, { maxOutputLength: 64 * 1024 * 1024 });
   return bytes;
 }
 

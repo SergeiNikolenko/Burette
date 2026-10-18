@@ -1,4 +1,4 @@
-use flate2::read::GzDecoder;
+use flate2::read::MultiGzDecoder;
 use serde::Deserialize;
 use std::io::Read;
 
@@ -106,7 +106,7 @@ fn pdb_data_from_text(data: &[u8], extension: &str, label: &str) -> Option<Vec<u
 }
 
 fn lammps_dump_xyz_data_from_text(data: &[u8], label: &str) -> Option<Vec<u8>> {
-    let decoded = decode_structure_text(data, "lammpstrj")?;
+    let decoded = decode_structure_text(data, "lammpstrj").ok()?;
     let text = decoded.replace("\r\n", "\n").replace('\r', "\n");
     let lines: Vec<&str> = text.lines().collect();
     let frames = parse_lammps_dump_frames(&lines);
@@ -133,7 +133,7 @@ fn lammps_dump_xyz_data_from_text(data: &[u8], label: &str) -> Option<Vec<u8>> {
 }
 
 fn atoms_from_text(data: &[u8], extension: &str) -> Option<Vec<Atom>> {
-    let decoded = decode_structure_text(data, extension)?;
+    let decoded = decode_structure_text(data, extension).ok()?;
     let text = decoded.replace("\r\n", "\n").replace('\r', "\n");
     let lines: Vec<&str> = text.lines().collect();
     match extension {
@@ -615,14 +615,24 @@ fn pharmacophore_residue_name(name: &str) -> &'static str {
 const MAESTRO_PREVIEW_ATOM_LIMIT: usize = 3_000;
 const MAESTRO_PDB_PREVIEW_ATOM_LIMIT: usize = 99_999;
 
-fn decode_structure_text(data: &[u8], extension: &str) -> Option<String> {
+pub(crate) const MAESTRO_INFLATED_PREVIEW_LIMIT: usize = 64 * 1024 * 1024;
+
+pub(crate) fn decode_structure_text(data: &[u8], extension: &str) -> Result<String, String> {
     if extension == "maegz" {
-        let mut decoder = GzDecoder::new(data);
-        let mut text = String::new();
-        decoder.read_to_string(&mut text).ok()?;
-        return Some(text);
+        // Read one overflow byte, bounding allocation before text parsing. All
+        // gzip members share the budget; a small first member cannot hide a bomb.
+        let mut decoder = MultiGzDecoder::new(data).take(MAESTRO_INFLATED_PREVIEW_LIMIT as u64 + 1);
+        let mut decoded = Vec::new();
+        decoder
+            .read_to_end(&mut decoded)
+            .map_err(|err| format!("Cannot decompress Maestro preview: {err}"))?;
+        if decoded.len() > MAESTRO_INFLATED_PREVIEW_LIMIT {
+            return Err("Maestro preview exceeds the 64 MiB decompressed limit".to_string());
+        }
+        return String::from_utf8(decoded)
+            .map_err(|err| format!("Maestro preview is not UTF-8: {err}"));
     }
-    Some(String::from_utf8_lossy(data).into_owned())
+    Ok(String::from_utf8_lossy(data).into_owned())
 }
 
 fn parse_cube_atoms(lines: &[&str]) -> Option<Vec<Atom>> {
@@ -1518,7 +1528,7 @@ fn parse_maestro_atoms(lines: &[&str], atom_limit: usize) -> Option<Vec<Atom>> {
 }
 
 fn maestro_pdb_data_from_text(data: &[u8], extension: &str) -> Option<ConvertedStructureData> {
-    let decoded = decode_structure_text(data, extension)?;
+    let decoded = decode_structure_text(data, extension).ok()?;
     let text = decoded.replace("\r\n", "\n").replace('\r', "\n");
     let lines: Vec<&str> = text.lines().collect();
     let blocks = parse_maestro_pdb_blocks(&lines, MAESTRO_PDB_PREVIEW_ATOM_LIMIT)?;
@@ -1601,7 +1611,7 @@ fn maestro_pdb_data_from_text(data: &[u8], extension: &str) -> Option<ConvertedS
 /// overflow residue numbers use a separate unused chain. Wrapping inside the
 /// same chain merges distinct waters in Mol* even when the atoms stay in order.
 pub(crate) fn desmond_topology_from_cms(data: &[u8]) -> Option<DesmondTopology> {
-    let decoded = decode_structure_text(data, "cms")?;
+    let decoded = decode_structure_text(data, "cms").ok()?;
     let text = decoded.replace("\r\n", "\n").replace('\r', "\n");
     let lines: Vec<&str> = text.lines().collect();
     let blocks = parse_maestro_pdb_blocks(&lines, MAESTRO_PDB_PREVIEW_ATOM_LIMIT)?;
@@ -1705,7 +1715,7 @@ fn maestro_ct_particle_counts(lines: &[&str]) -> Vec<(String, usize, usize)> {
 }
 
 fn gro_pdb_data_from_text(data: &[u8], label: &str) -> Option<ConvertedStructureData> {
-    let decoded = decode_structure_text(data, "gro")?;
+    let decoded = decode_structure_text(data, "gro").ok()?;
     let text = decoded.replace("\r\n", "\n").replace('\r', "\n");
     let lines: Vec<&str> = text.lines().collect();
     let atoms = parse_gro_pdb_atoms(&lines)?;
@@ -2777,7 +2787,10 @@ const ATOMIC_SYMBOLS: [&str; 86] = [
 
 #[cfg(test)]
 mod tests {
-    use super::{converted_data_from_text, xyz_data_from_text};
+    use super::{
+        converted_data_from_text, decode_structure_text, xyz_data_from_text,
+        MAESTRO_INFLATED_PREVIEW_LIMIT,
+    };
     use flate2::{write::GzEncoder, Compression};
     use std::io::Write;
 
@@ -3676,5 +3689,56 @@ f_m_ct {
         assert_eq!(converted.extension, "pdb");
         let pdb = String::from_utf8(converted.data).unwrap();
         assert!(pdb.contains(" HIP A 129"));
+    }
+
+    #[test]
+    fn maestro_gzip_bounds_all_members_before_parsing() {
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+        let block = [b' '; 64 * 1024];
+        for _ in 0..MAESTRO_INFLATED_PREVIEW_LIMIT / block.len() {
+            encoder.write_all(&block).unwrap();
+        }
+        let exact = encoder.finish().unwrap();
+        assert_eq!(
+            decode_structure_text(&exact, "maegz").unwrap().len(),
+            MAESTRO_INFLATED_PREVIEW_LIMIT
+        );
+        let mut extra = GzEncoder::new(Vec::new(), Compression::fast());
+        extra.write_all(b"x").unwrap();
+        let mut overflow = exact;
+        overflow.extend(extra.finish().unwrap());
+        assert!(decode_structure_text(&overflow, "maegz")
+            .unwrap_err()
+            .contains("64 MiB"));
+        assert!(xyz_data_from_text(&overflow, "maegz", "bomb.mae.gz").is_none());
+        assert!(converted_data_from_text(&overflow, "maegz", "bomb.mae.gz").is_none());
+    }
+
+    #[test]
+    fn maestro_gzip_preserves_members_and_rejects_corruption() {
+        let data = include_bytes!("../../../../../tests/fixtures/real-systembuilder-mini.cms");
+        let mut members = Vec::new();
+        for part in data.chunks(data.len() / 2) {
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+            encoder.write_all(part).unwrap();
+            members.extend(encoder.finish().unwrap());
+        }
+        assert_eq!(
+            decode_structure_text(&members, "maegz").unwrap().as_bytes(),
+            data
+        );
+        assert_eq!(
+            converted_data_from_text(&members, "maegz", "demo"),
+            converted_data_from_text(data, "mae", "demo")
+        );
+        let truncated = &members[..members.len() - 1];
+        assert!(decode_structure_text(truncated, "maegz").is_err());
+        let crc_index = members.len() - 8;
+        members[crc_index] ^= 1;
+        assert!(decode_structure_text(&members, "maegz").is_err());
+        assert!(decode_structure_text(b"not gzip", "maegz").is_err());
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+        encoder.write_all(&[0xff]).unwrap();
+        assert!(decode_structure_text(&encoder.finish().unwrap(), "maegz").is_err());
     }
 }

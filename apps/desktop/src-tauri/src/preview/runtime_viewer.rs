@@ -9,7 +9,7 @@ use tauri::{Manager, Runtime};
 use super::formats::{normalize_renderer_mode, FormatInfo};
 use super::runtime::{ViewerPreferences, ViewerReloadOptions};
 use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs, stable_id};
-use super::text_xyz::{converted_data_from_text, xyz_data_from_text};
+use super::text_xyz::{converted_data_from_text, decode_structure_text, xyz_data_from_text};
 use super::trace::{runtime_manifest, write_bytes_atomic, write_json_atomic};
 use super::xyz::{xyz_frame, XyzPayload};
 use super::xyzrender::{
@@ -69,8 +69,19 @@ pub(crate) fn create_runtime<R: Runtime>(
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("structure");
-    let source_xyz_data = xyz_data_from_text(data, extension, label);
-    let converted_molstar_data = converted_data_from_text(data, extension, label);
+    let maestro_text = (extension == "maegz")
+        .then(|| decode_structure_text(data, extension))
+        .transpose()?;
+    let (conversion_data, conversion_extension) = maestro_text
+        .as_ref()
+        .map(|text| (text.as_bytes(), "mae"))
+        .unwrap_or((data, extension));
+    let source_xyz_data = xyz_data_from_text(conversion_data, conversion_extension, label);
+    let converted_molstar_data =
+        converted_data_from_text(conversion_data, conversion_extension, label);
+    if extension == "maegz" && source_xyz_data.is_none() && converted_molstar_data.is_none() {
+        return Err("Maestro gzip file contains no supported preview coordinates".to_string());
+    }
     let external_molstar_data = if format.external_only
         || should_use_converted_molstar_data(format, &converted_molstar_data)
     {

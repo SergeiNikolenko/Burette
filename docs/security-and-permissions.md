@@ -49,6 +49,14 @@ cached. Molecule and reaction drawings share this budget. Oversized drawings
 still reach waiting cards in full. These limits cover retained cache strings,
 not transient RDKit computation, visible DOM content, or separate renderer caches.
 
+Maestro gzip previews enforce a 64 MiB decompressed byte limit before parsing,
+including all gzip members. Overflow or corrupt native gzip input is rejected;
+it does not fall through to an external renderer with the original compressed
+file. Browser previews and the agent/server text routes enforce the same Maestro
+limit while inflating. Other browser gzip structure previews retain their 75 MiB
+limit, now enforced during decompression. Oversized compressed previews fail with
+an error; source files are preserved and no partial scientific model is returned.
+
 Updater cleanup is limited to staged `.app` bundles below Burette's current and
 legacy `Library/Application Support/.../Updates` directories. It must not scan
 or remove applications from the user's home folders, Trash, backups, or

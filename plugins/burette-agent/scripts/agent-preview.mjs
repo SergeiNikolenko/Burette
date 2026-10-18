@@ -117,7 +117,7 @@ function preparePreviewPayload(file, bytes) {
     return { bytes, format: 'text', binary: looksBinary(bytes), textPreview: true };
   }
   if (!isMaestroPreviewFile(file)) return { bytes, format: inferFormat(file), binary: isBinaryFormat(file) };
-  const maestroBytes = /\.mae(?:\.gz|gz)$/iu.test(basename(file)) ? gunzipSync(bytes) : bytes;
+  const maestroBytes = /\.mae(?:\.gz|gz)$/iu.test(basename(file)) ? gunzipSync(bytes, { maxOutputLength: 64 * 1024 * 1024 }) : bytes;
   const converted = maestroPdbDataFromText(maestroBytes.toString('utf8'));
   if (!converted) return { bytes, format: inferFormat(file), binary: isBinaryFormat(file) };
   return {

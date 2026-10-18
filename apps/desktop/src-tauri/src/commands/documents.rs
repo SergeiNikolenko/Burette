@@ -33,7 +33,7 @@ use crate::preview::runtime::{
 };
 use crate::preview::runtime_grid::create_grid_runtime_with_options;
 use crate::preview::runtime_viewer::create_combined_sdf_pose_runtime;
-use crate::preview::text_xyz::xyz_data_from_text;
+use crate::preview::text_xyz::{decode_structure_text, xyz_data_from_text};
 use crate::preview::xyzrender::{
     create_xyzrender_artifact, create_xyzrender_card_batch_artifacts, XyzrenderCardBatchRequest,
 };
@@ -2314,7 +2314,18 @@ fn render_xyzrender_sheet_item_blocking(
     let converted_xyz = if direct_smiles.is_some() || matches!(extension.as_str(), "cub" | "cube") {
         None
     } else {
-        xyz_data_from_text(&data, &extension, &label)
+        let maestro_text = (extension == "maegz")
+            .then(|| decode_structure_text(&data, &extension))
+            .transpose()?;
+        let (conversion_data, conversion_extension) = maestro_text
+            .as_ref()
+            .map(|text| (text.as_bytes(), "mae"))
+            .unwrap_or((&data, &extension));
+        let converted = xyz_data_from_text(conversion_data, conversion_extension, &label);
+        if extension == "maegz" && converted.is_none() {
+            return Err("Maestro gzip file contains no supported preview coordinates".to_string());
+        }
+        converted
     };
     let artifact = create_xyzrender_artifact(
         &input_path,
@@ -2349,6 +2360,11 @@ fn normalize_inline_structure_extension(
     if matches!(extension.as_str(), "smi" | "smiles") {
         return Ok("smi".to_string());
     }
+    let extension = if extension == "mae.gz" {
+        "maegz".to_string()
+    } else {
+        extension
+    };
     format_for_extension(&extension)?;
     Ok(extension)
 }
@@ -3485,6 +3501,39 @@ mod tests {
         fs::remove_file(pdb).unwrap();
         fs::remove_dir(nested).unwrap();
         fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_corrupt_maestro_sheet_inputs_before_renderer_fallback() {
+        let root =
+            std::env::temp_dir().join(format!("burette-sheet-gzip-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("corrupt.mae.gz");
+        fs::write(&path, b"not gzip").unwrap();
+        for (inline, extension) in [(false, "maegz"), (true, "maegz"), (true, " .MAE.GZ ")] {
+            let request = super::XyzrenderSheetRenderRequest {
+                path: path.to_string_lossy().to_string(),
+                preset: None,
+                controls: None,
+                input_data_base64: inline.then(|| {
+                    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, b"not gzip")
+                }),
+                input_extension: Some(extension.to_string()),
+                orientation_ref: None,
+                cache_scope: None,
+            };
+            let error = super::render_xyzrender_sheet_item_blocking(
+                root.join(format!("output-{inline}")),
+                None,
+                request,
+            )
+            .unwrap_err();
+            assert!(
+                error.contains("Cannot decompress Maestro preview"),
+                "{error}"
+            );
+        }
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
