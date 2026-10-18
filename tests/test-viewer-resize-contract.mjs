@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { patchMolstarResizeDraw } from "../scripts/molstar-resize-draw.mjs";
+import { BuretteResizeInteraction } from "../scripts/molstar-resize-interaction.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const [viewer, filePage, viewerFrame] = await Promise.all([
@@ -88,14 +89,15 @@ const schedulerBlock = viewer.slice(
   viewer.indexOf("  let viewerResizeObserver = null;"),
 );
 const animationFrames = [];
-const schedulerHarness = new Function(
+const makeScheduler = new Function(
   "requestAnimationFrame", "setTimeout", "getComputedStyle", "window",
   `${schedulerBlock}
    return {
      scheduleViewerResize,
      setHostVisible(value) { hostViewerVisible = value; },
    };`,
-)(
+);
+const schedulerHarness = makeScheduler(
   callback => { animationFrames.push(callback); return animationFrames.length; },
   () => { throw new Error("viewport geometry must not wait for a trailing timer"); },
   () => ({ display: "block", visibility: "visible" }),
@@ -171,6 +173,51 @@ const adapter = {
 schedulerHarness.scheduleViewerResize(adapter);
 tick();
 assert.equal(fallbackResizes, 1, "a new viewer at the same size still resizes through its adapter");
+
+// With the real interaction controller, only CSS presentation follows the live
+// bounds; native GL targets resize once, and the cleared buffer is painted in
+// that same callback. Internal Mol* resize paths cannot bypass the controller.
+const originalSetTimeout = globalThis.setTimeout, originalClearTimeout = globalThis.clearTimeout;
+const settled = new Map();
+let timerId = 0;
+globalThis.setTimeout = callback => { settled.set(++timerId, callback); return timerId; };
+globalThis.clearTimeout = id => settled.delete(id);
+try {
+  const messages = [];
+  const live = makeScheduler(
+    callback => { animationFrames.push(callback); return animationFrames.length; },
+    () => { throw Error("scheduler does not own settling timers"); },
+    () => ({ display: "block", visibility: "visible" }),
+    { molstar: { BuretteResizeInteraction }, parent: { postMessage: value => messages.push(value) } },
+  );
+  Object.assign(fakeViewer.plugin.canvas3dContext.canvas, { width: 1600, height: 1200, style: { width: '800px', height: '600px' } });
+  const start = applied.length;
+  live.scheduleViewerResize(fakeViewer); tick();
+  for (let i = 0; i < 60; i++) {
+    bounds = { width: 500 + i * 2, height: 400 + i };
+    live.scheduleViewerResize(fakeViewer); tick();
+    fakeViewer.plugin.handleResize();
+    assert.equal(applied.length, start + 1, "GL targets stay intact throughout the gesture");
+  }
+  [...settled.values()].forEach(callback => callback()); settled.clear();
+  assert.equal(applied.length, start + 2);
+  assert.deepEqual(painted, bounds, "the final resize must draw atomically");
+  assert.equal(messages.at(-1).body.frames, 60);
+  bounds = { width: 700, height: 500 };
+  live.scheduleViewerResize(fakeViewer); tick();
+  live.setHostVisible(false);
+  [...settled.values()].forEach(callback => callback()); settled.clear();
+  assert.equal(applied.length, start + 2, "settling a hidden viewer does not draw");
+  live.setHostVisible(true);
+  live.scheduleViewerResize(fakeViewer); tick();
+  assert.equal(settled.size, 1, "reactivation at the same bounds must still catch up");
+  [...settled.values()].forEach(callback => callback()); settled.clear();
+  assert.deepEqual(painted, bounds);
+} finally {
+  BuretteResizeInteraction.dispose(fakeViewer);
+  globalThis.setTimeout = originalSetTimeout;
+  globalThis.clearTimeout = originalClearTimeout;
+}
 
 const canvasSource = await readFile(join(repoRoot, "node_modules/molstar/lib/mol-canvas3d/canvas3d.js"), "utf8");
 const patched = patchMolstarResizeDraw(canvasSource);

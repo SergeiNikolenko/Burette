@@ -1923,8 +1923,8 @@
     if (resizeState.frame) return;
     resizeState.frame = requestAnimationFrame(() => {
       resizeState.frame = 0;
-      // Read the latest bounds once per paint, even during a continuous drag.
-      // A trailing timer starves until release and leaves the camera off-center.
+      // The iframe and chrome follow bounds every frame. The renderer may keep
+      // its drawing buffer and let the compositor scale it until bounds settle.
       const target = resizeState.viewer;
       if (!target) return;
       if (!viewerCanvasIsVisible(target)) return;
@@ -1934,15 +1934,22 @@
       resizeState.appliedSize = size;
       const startedAt = performance.now();
       const interaction = window.molstar?.BuretteResizeInteraction;
-      // The first layout is initialization. Subsequent geometry changes are
-      // live interaction and must not allocate Retina multisample targets per pixel.
-      if (resizeState.hasDrawn === target) interaction?.touch(target, (stats, restoreStartedAt) => {
+      // Initialization draws immediately. Live layout reuses the existing GL
+      // buffer; resizing its targets per pixel stalls even at CSS resolution.
+      const deferred = resizeState.hasDrawn === target && interaction?.touch(target, (stats, restoreStartedAt) => {
         if (viewerCanvasIsVisible(target)) {
           target.plugin?.handleResize?.();
           target.plugin?.canvas3d?.draw?.({ force: true, isSynchronous: true });
+        } else if (resizeState.appliedViewer === target) {
+          // A hidden tab must catch up when it becomes visible again.
+          resizeState.appliedSize = '';
         }
         window.parent?.postMessage({ source: 'burette-viewer', body: { type: 'resizeStats', ...stats, restoreMs: performance.now() - restoreStartedAt } }, '*');
       });
+      if (deferred) {
+        interaction.record(target, performance.now() - startedAt);
+        return;
+      }
       let handled = false;
       try {
         // Mol*'s Viewer.handleResize broadcasts a layout/UI update and queues

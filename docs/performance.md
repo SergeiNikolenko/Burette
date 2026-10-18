@@ -40,14 +40,17 @@ invalidate inherited style across the workspace. The observer uses its delivered
 bounds, and cached bounds restore chrome after returning from Settings without
 forcing a layout read.
 
-Mol* keeps viewport geometry live. While bounds change, it uses CSS-pixel
-rendering without multisampling, then restores the original resolution and
-multisampling after 140 ms without a size change. Camera, coordinates, trajectory
-position and animation clocks are untouched. Each canvas resize and draw stay
-in the same callback. Disposal cancels the pending quality restoration.
+Mol* keeps the iframe and chrome geometry live while the compositor presents
+its existing drawing buffer. Canvas CSS preserves the old projection's vertical
+scale and center without stretching molecules. Resizing/reallocating GL targets
+is deferred until 200 ms without a bounds change; the final resize and full-quality
+draw run atomically. The plugin's own input/layout resize paths share this deferral.
+No quality preferences, coordinates, camera, trajectory position or animation
+clocks are changed. Disposal cancels deferral and restores styles and the method.
+A hidden tab skips the final draw and catches up when reactivated.
 
-Opt-in journey tracing records `viewer:resize`: up to the last 120 draw costs,
-p95/max milliseconds, and the full-quality restoration cost. These CPU submission
+Opt-in journey tracing records `viewer:resize`: up to the last 120 scheduling
+costs, p95/max milliseconds, and the final resize/draw cost. These CPU submission
 costs are separate from the shell's actual rAF intervals; they do not measure GPU
 completion or prove that every presented frame met its deadline.
 
