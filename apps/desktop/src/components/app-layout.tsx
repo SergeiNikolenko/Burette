@@ -7,7 +7,6 @@ import { useNativeWorkspacePlacement } from "../hooks/use-native-workspace-place
 import { MobileWebDemoLayout } from "./mobile-web-demo-layout";
 import { XyzrenderAnimationDialog } from "./xyzrender-animation-dialog";
 import { useWindowResizeSession } from "./ui/use-window-resize-session";
-import { useGroupPixelGuard } from "./ui/use-group-pixel-guard";
 import { SidebarFileOperations } from "./sidebar/file-operations";
 import { WorkspaceMenus } from "./workspace-menus";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
@@ -403,12 +402,6 @@ function WorkspaceAppLayout({
   rightDockOpenRef.current = rightDockOpen;
   const bottomDockOpenRef = useRef(bottomDockOpen);
   bottomDockOpenRef.current = bottomDockOpen;
-  const sidebarWidthRef = useRef(sidebarWidth);
-  sidebarWidthRef.current = sidebarWidth;
-  const rightDockWidthRef = useRef(rightDockWidth);
-  rightDockWidthRef.current = rightDockWidth;
-  const bottomDockHeightRef = useRef(state.bottomDockHeight);
-  bottomDockHeightRef.current = state.bottomDockHeight;
   // The sidebar store only exposes a toggle; wrap it as an idempotent setter so
   // drag-to-collapse can sync the flag without double-toggling.
   const sidebarOpenRef = useRef(sidebarVisible);
@@ -421,15 +414,11 @@ function WorkspaceAppLayout({
     },
     [onToggleSidebar],
   );
-  const workspaceGroupRef = useGroupPixelGuard([
-    { panelRef: sidebarPanelRef, openRef: sidebarOpenRef, sizePxRef: sidebarWidthRef },
-  ]);
-  const workbenchGroupRef = useGroupPixelGuard([
-    { panelRef: rightDockPanelRef, openRef: rightDockOpenRef, sizePxRef: rightDockWidthRef },
-  ]);
-  const workbenchMainGroupRef = useGroupPixelGuard([
-    { panelRef: bottomDockPanelRef, openRef: bottomDockOpenRef, sizePxRef: bottomDockHeightRef },
-  ]);
+  // 4.14 preserves fixed pixel sizes from the requested (unclamped) layout.
+  // A second rAF correction would resize nested groups again after every move.
+  const workspaceGroupRef = useRef<HTMLDivElement | null>(null);
+  const workbenchGroupRef = useRef<HTMLDivElement | null>(null);
+  const workbenchMainGroupRef = useRef<HTMLDivElement | null>(null);
   // Sizes reported while a separator is being dragged are committed once, on
   // release; anything else (keyboard resizes) commits as it comes. The drag
   // frames themselves need no store round-trip: the panel library lays the

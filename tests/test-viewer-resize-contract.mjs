@@ -89,7 +89,7 @@ const schedulerBlock = viewer.slice(
 );
 const animationFrames = [];
 const schedulerHarness = new Function(
-  "requestAnimationFrame", "setTimeout", "getComputedStyle",
+  "requestAnimationFrame", "setTimeout", "getComputedStyle", "window",
   `${schedulerBlock}
    return {
      scheduleViewerResize,
@@ -99,6 +99,7 @@ const schedulerHarness = new Function(
   callback => { animationFrames.push(callback); return animationFrames.length; },
   () => { throw new Error("viewport geometry must not wait for a trailing timer"); },
   () => ({ display: "block", visibility: "visible" }),
+  {},
 );
 const tick = () => {
   const pending = animationFrames.splice(0);

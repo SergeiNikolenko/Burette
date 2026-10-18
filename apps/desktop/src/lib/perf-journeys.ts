@@ -27,7 +27,7 @@ declare global {
   }
 }
 
-type ViewerMessage = { source?: unknown; body?: { type?: unknown; message?: unknown; documentId?: unknown } | null };
+type ViewerMessage = { source?: unknown; body?: { type?: unknown; message?: unknown; documentId?: unknown; frames?: unknown; p95Ms?: unknown; maxMs?: unknown; restoreMs?: unknown } | null };
 
 type Journey = {
   kind: "open" | "tab";
@@ -202,6 +202,11 @@ function watchViewerMessages() {
     if (!data || typeof data.source !== "string" || !VIEWER_SOURCES.has(data.source)) return;
     const type = typeof data.body?.type === "string" ? data.body.type.slice(0, 48) : "";
     viewerMessages[type] = (viewerMessages[type] ?? 0) + 1;
+    if (type === "resizeStats") {
+      const bounded = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.min(value, 60_000) : null;
+      tracePerf("viewer:resize", { detail: { frames: bounded(data.body?.frames), p95Ms: bounded(data.body?.p95Ms), maxMs: bounded(data.body?.maxMs), restoreMs: bounded(data.body?.restoreMs) } });
+      return;
+    }
     if (!TRACED_VIEWER_MESSAGES.has(type)) return;
     const documentId = typeof data.body?.documentId === "string" ? data.body.documentId : null;
     const message = typeof data.body?.message === "string" ? data.body.message.slice(0, 80) : null;

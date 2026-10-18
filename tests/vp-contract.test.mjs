@@ -67,6 +67,7 @@ const contractScripts = {
   "test-selection-controls.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-selection-controls.test.tsx", import.meta.url))]),
   "test-shell-performance.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-shell-performance.test.tsx", import.meta.url))]),
   "test-viewer-resize-contract.mjs": () => import("./test-viewer-resize-contract.mjs"),
+  "test-molstar-resize-interaction.mjs": () => isolatedNode("./test-molstar-resize-interaction.mjs"),
   "test-grid-preview-resize.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-grid-preview-resize.test.tsx", import.meta.url))]),
   "test-background-performance.test.tsx": () => promisify(execFile)("bun", ["test", "--define", "import.meta.env.DEV:true", "--define", 'import.meta.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT:"/generated"', fileURLToPath(new URL("./test-background-performance.test.tsx", import.meta.url))]),
   "test-startup-runtime-refresh.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-startup-runtime-refresh.mjs", import.meta.url))]),

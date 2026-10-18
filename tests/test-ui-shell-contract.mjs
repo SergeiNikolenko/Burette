@@ -2377,25 +2377,15 @@ assert.doesNotMatch(appLayout, /\[data-separator=/);
 assert.match(appLayout, /if \(!settingsMode\) setSidebarOpen\(isPanelOpen\(panel, px\)\);/);
 assert.match(appLayout, /if \(open !== rightDockOpenRef\.current\) actions\.setDockOpen\("right", open\);/);
 assert.match(appLayout, /if \(open !== bottomDockOpenRef\.current\) actions\.setDockOpen\("bottom", open\);/);
-const groupPixelGuard = await source("apps/desktop/src/components/ui/use-group-pixel-guard.ts");
-// The other half: a panel the group collapsed under pressure keeps its open
-// flag, so the pixel guard has to expand it again once the room is back.
-assert.match(groupPixelGuard, /if \(panel\.isCollapsed\(\)\) panel\.expand\(\);/);
+// Fixed-pixel group resizing belongs to react-resizable-panels 4.14. A second
+// ResizeObserver/rAF correction must not fight that layout while dragging.
+assert.doesNotMatch(appLayout, /useGroupPixelGuard/);
 assert.doesNotMatch(appLayout, /animatingRef/);
-// groupResizeBehavior="preserve-pixel-size" is inert in react-resizable-panels
-// 4.12.2, so fixed panels re-assert their stored pixel size when the group's
-// container resizes — deferred to the next frame because a resize() inside the
-// ResizeObserver callback races the library's own observer and converts px→%
-// through a stale cached group size.
-assert.match(appLayout, /import \{ useGroupPixelGuard \}/);
-assert.match(groupPixelGuard, /frame = requestAnimationFrame\(correct\)/);
-assert.match(groupPixelGuard, /panel\.resize\(`\$\{want\}px`\)/);
 // Sizes reported while a separator is dragged are parked in a DragCommit and
 // written once on release: setDockSize clones the workspace and the persist
 // middleware serialised every workspace to localStorage per drag frame. Open
 // flags still commit as they change. For the same gesture (and the toggle
-// slide) the shell carries data-resizing and every viewer iframe is pinned to
-// its pixel size so Mol* reflows once instead of once per frame.
+// slide) the shell carries data-resizing and viewer iframes keep live geometry while their pointer guard is held.
 assert.match(appLayout, /function useResizeDragSession/);
 assert.match(appLayout, /function useDragCommittedSize/);
 assert.match(appLayout, /const sidebarResize = useDragCommittedSize\(onSidebarWidthChange\);/);

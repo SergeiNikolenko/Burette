@@ -28,6 +28,23 @@ writes from interleaving file contents. Callers still await completion before
 reporting a saved path. Request fields, returned paths and ordinary file/decode
 errors retain their existing shapes.
 
+## Live panel resizing
+
+Fixed panel sizes use react-resizable-panels' built-in `preserve-pixel-size`
+behavior (4.14). Do not add a second ResizeObserver/rAF resize correction to
+nested groups: it competes with the requested layout during the gesture.
+
+Mol* keeps viewport geometry live. While bounds change, it uses CSS-pixel
+rendering without multisampling, then restores the original resolution and
+multisampling after 140 ms without a size change. Camera, coordinates, trajectory
+position and animation clocks are untouched. Each canvas resize and draw stay
+in the same callback. Disposal cancels the pending quality restoration.
+
+Opt-in journey tracing records `viewer:resize`: up to the last 120 draw costs,
+p95/max milliseconds, and the full-quality restoration cost. These CPU submission
+costs are separate from the shell's actual rAF intervals; they do not measure GPU
+completion or prove that every presented frame met its deadline.
+
 ## Bulk document admission
 
 The desktop open hook publishes the first ordinary molecular document before
