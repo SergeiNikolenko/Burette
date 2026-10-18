@@ -158,6 +158,12 @@ try {
   assert.equal(runtimeAlias.status, 200);
   assert.match(runtimeAlias.headers.get('content-type'), /^text\/javascript/);
   assert.match(await runtimeAlias.text(), /BuretteSequencePanel/);
+  for (const [asset, mime] of [['rdkit/RDKit_minimal.wasm', 'application/wasm'], ['rdkit/RDKit_minimal.js', 'text/javascript'], ['openchemlib/openchemlib.js', 'text/javascript']]) {
+    const response = await fetch(`${base}/@fs/workspace/PreviewExtension/Web/${asset}`, { headers });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type').split(';')[0], mime);
+    assert.equal((await response.arrayBuffer()).byteLength > 0, true);
+  }
   const pairFor = path => fetch(
     `${base}/__burette/trajectory-pair?${new URLSearchParams({ path })}`, { headers },
   );

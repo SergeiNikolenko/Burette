@@ -85,7 +85,6 @@ const RUNTIME_ASSET_PATHS = new Set([
   'rdkit/RDKit_minimal.js',
   'rdkit/RDKit_minimal.wasm',
 ]);
-const RUNTIME_ASSET_NAMES = new Set([...RUNTIME_ASSET_PATHS].filter((path) => !path.includes('/')));
 const APP_ICONS = {
   'default-app': resolve(scriptDir, '..', 'apps', 'desktop', 'src-tauri', 'icons', 'icon.png'),
   finder: '/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns',
@@ -1058,9 +1057,11 @@ function runtimeAssetRootCandidates() {
 }
 
 function findRuntimeAssetPath(cleanPath) {
-  if (!cleanPath.includes('/PreviewExtension/Web/')) return null;
-  const assetName = basename(cleanPath);
-  if (!RUNTIME_ASSET_NAMES.has(assetName)) return null;
+  const marker = '/PreviewExtension/Web/';
+  const index = cleanPath.lastIndexOf(marker);
+  if (index < 0) return null;
+  const assetName = cleanPath.slice(index + marker.length);
+  if (!RUNTIME_ASSET_PATHS.has(assetName)) return null;
   for (const root of runtimeAssetRoots) {
     const candidate = resolve(root, assetName);
     if (isWithin(candidate, root) && existsSync(candidate)) return candidate;
