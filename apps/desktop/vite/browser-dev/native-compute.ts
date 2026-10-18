@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import type { ViteDevServer } from "vite";
 
 import { readJsonBody, sendJson, sendJsonError } from "./http";
-import { resolveModelPython } from "../../../../compute/models/runtime-path.mjs";
+import { resolveModelPython } from "../../../../scripts/model-runtime-path.mjs";
 
 const REQUEST_LIMIT_BYTES = 12 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;

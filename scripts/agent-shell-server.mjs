@@ -8,7 +8,7 @@ import { homedir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveModelPython } from '../compute/models/runtime-path.mjs';
+import { resolveModelPython } from './model-runtime-path.mjs';
 
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;

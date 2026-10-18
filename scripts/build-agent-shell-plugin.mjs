@@ -14,6 +14,7 @@ const runtimeScripts = [
   'amber_nc_preview_extract.py',
   'agent-preview.mjs',
   'agent-shell-server.mjs',
+  'model-runtime-path.mjs',
   'burette-agent.mjs',
   'burette-deep-links.mjs',
   'dev-namespace.mjs',

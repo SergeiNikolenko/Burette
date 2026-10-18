@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { resolveModelPython } from "../compute/models/runtime-path.mjs";
+import { resolveModelPython } from "../scripts/model-runtime-path.mjs";
 import { registerBrowserDevModelRuntimeRoutes } from "../apps/desktop/vite/browser-dev/model-runtime.ts";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");

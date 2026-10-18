@@ -8,7 +8,7 @@ import { randomUUID } from "node:crypto";
 import type { ViteDevServer } from "vite";
 
 import { sendJson } from "./http";
-import { resolveModelPython } from "../../../../compute/models/runtime-path.mjs";
+import { resolveModelPython } from "../../../../scripts/model-runtime-path.mjs";
 
 // Browser dev mirrors the desktop app's managed model runtime: same install
 // location, same uv steps, same status shape, so the panel renders one install
