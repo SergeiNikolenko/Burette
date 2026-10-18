@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     fs::{self, File, OpenOptions},
     io::{BufRead, BufReader, Read, Write},
     os::unix::fs::{DirBuilderExt, OpenOptionsExt},
@@ -572,6 +573,8 @@ fn write_csv_row(writer: &mut impl Write, values: &[&str]) -> ComputeResult<()> 
 }
 
 fn write_csv_cell(writer: &mut impl Write, value: &str) -> ComputeResult<()> {
+    let protected = spreadsheet_csv_value(value);
+    let value = protected.as_ref();
     let quote = value.contains([',', '"', '\n', '\r']);
     if quote {
         writer.write_all(b"\"")?;
@@ -588,6 +591,61 @@ fn write_csv_cell(writer: &mut impl Write, value: &str) -> ComputeResult<()> {
         writer.write_all(b"\"")?;
     }
     Ok(())
+}
+
+fn spreadsheet_csv_value(value: &str) -> Cow<'_, str> {
+    let significant = value
+        .trim_start_matches(|ch: char| ch.is_whitespace() || ch.is_control() || ch == '\u{feff}');
+    if !significant.starts_with(['=', '+', '-', '@', '＝', '＋', '－', '＠']) {
+        return Cow::Borrowed(value);
+    }
+    let number = significant
+        .trim_end_matches(|ch: char| ch.is_whitespace() || ch.is_control() || ch == '\u{feff}');
+    if !number.is_empty()
+        && number
+            .bytes()
+            .all(|ch| ch.is_ascii_digit() || b"+-.eE".contains(&ch))
+        && number.parse::<f64>().is_ok()
+    {
+        return Cow::Borrowed(value);
+    }
+    Cow::Owned(format!("'{value}"))
+}
+
+#[cfg(test)]
+mod spreadsheet_tests {
+    use super::*;
+
+    #[test]
+    fn protects_exported_formulas_and_preserves_numeric_data() {
+        for value in [
+            "=1+1",
+            " +SUM(1,2)",
+            "\t@SUM(1)",
+            "\u{feff}=1",
+            "－1+2",
+            "-1+2",
+        ] {
+            assert_eq!(spreadsheet_csv_value(value), format!("'{value}"));
+        }
+        for value in [
+            "-12",
+            "-.5",
+            "-1.2e-9",
+            "+2.5",
+            "-0",
+            "CCO",
+            "'already text",
+        ] {
+            assert_eq!(spreadsheet_csv_value(value), value);
+        }
+        let mut csv = Vec::new();
+        write_csv_row(&mut csv, &["=SUM(1,2)", "-1.2e-9", "line\r\n\"quoted\""]).unwrap();
+        assert_eq!(
+            String::from_utf8(csv).unwrap(),
+            "\"'=SUM(1,2)\",-1.2e-9,\"line\r\n\"\"quoted\"\"\"\n"
+        );
+    }
 }
 
 fn checked_increment(value: u64, label: &str) -> ComputeResult<u64> {

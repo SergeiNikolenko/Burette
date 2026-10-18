@@ -9226,7 +9226,7 @@
   async function exportCSV(cfg) {
     const rows = await collectExportRows(cfg);
     if (!rows) return;
-    download(serializeDelimitedRows(rows, ','), baseName(cfg.label) + '.csv', 'text/csv');
+    download(serializeDelimitedRows(rows, ',', true), baseName(cfg.label) + '.csv', 'text/csv');
   }
 
   async function saveGridAs(cfg) {
@@ -9357,7 +9357,7 @@
     }).join('\n') + '\n';
   }
 
-  function serializeDelimitedRows(rows, separator) {
+  function serializeDelimitedRows(rows, separator, spreadsheet = false) {
     rows = withSarProperties(rows);
     const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
     const data = [
@@ -9371,7 +9371,17 @@
         ...props.map(prop => (row.props || {})[prop] ?? '')
       ])
     ];
-    return data.map(row => row.map(value => gridDelimitedCell(value, separator)).join(separator)).join('\n') + '\n';
+    return data.map(row => row.map(value => gridDelimitedCell(
+      spreadsheet ? spreadsheetCell(String(value ?? '')) : value, separator
+    )).join(separator)).join('\n') + '\n';
+  }
+
+  function spreadsheetCell(value) {
+    const significant = value.replace(/^[\s\u0000-\u001f\u007f-\u009f]*/u, '');
+    if (!/^[=+\-@＝＋－＠]/u.test(significant)) return value;
+    const number = significant.replace(/[\s\u0000-\u001f\u007f-\u009f]*$/u, '');
+    if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(number)) return value;
+    return "'" + value;
   }
 
   function gridDelimitedCell(value, separator) {

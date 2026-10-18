@@ -3,6 +3,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const contractScripts = {
+  "test-spreadsheet-export.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-spreadsheet-export.mjs", import.meta.url))]),
   "test-structure-inflate.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-structure-inflate.test.ts", import.meta.url))]),
   "test-grid-card-scheduling.mjs": () => import("./test-grid-card-scheduling.mjs"),
   "test-structure-download.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-structure-download.test.ts", import.meta.url))]),

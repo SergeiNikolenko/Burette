@@ -249,3 +249,10 @@ MolJ runtime classification validates the complete JSON using bounded nesting
 and no heap allocation. It preserves ordinary/Mesoscale routing, escaped keys,
 last duplicate values, and the existing malformed-session fallback without
 building a second document tree.
+
+Spreadsheet exports protect formula-like text with a leading apostrophe before
+CSV quoting. This covers grid Export CSV, CSV/TSV Export table, XLSX Export sheet
+and representative CSV bundles, including headers and leading controls/Unicode
+whitespace. Signed decimal/scientific numbers retain their original text.
+Save, Save As, original downloads, imported collections and SDF/SMILES output
+preserve scientific values; export protection never rewrites the source rows.
