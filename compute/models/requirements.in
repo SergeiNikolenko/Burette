@@ -1,0 +1,11 @@
+# Uni-Mol 0.1.6 requires NumPy >=2.0,<2.3; 2.2.6 is the latest compatible release.
+numpy==2.2.6
+rdkit==2026.3.6
+torch==2.14.0
+transformers==5.17.0
+unimol-tools==0.1.6
+# Preserve Uni-Mol's current Hydra/OmegaConf API; do not resolve old wheel-only fallbacks.
+hydra-core==1.3.2
+omegaconf==2.3.0
+setuptools==84.0.0
+wheel==0.46.3

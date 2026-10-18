@@ -22,6 +22,9 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const WORKER_SCRIPT: &str =
     include_str!("../../../../../compute/models/chemical_space_representations.py");
+const MODEL_ASSETS: &str = include_str!("../../../../../compute/models/model_assets.py");
+const BOOTSTRAP_REQUIREMENTS: &str =
+    include_str!("../../../../../compute/models/requirements-bootstrap.txt");
 const REQUIREMENTS: &str = include_str!("../../../../../compute/models/requirements.txt");
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(45 * 60);
 const VALIDATE_TIMEOUT: Duration = Duration::from_secs(3 * 60);
@@ -359,13 +362,11 @@ fn resolve_model_python() -> Option<(PathBuf, &'static str)> {
         }
     }
     let root = model_runtime_dir().ok()?;
-    for name in ["python3", "python"] {
-        let candidate = root.join("bin").join(name);
-        if candidate.is_file() {
-            return Some((candidate, "managed"));
-        }
-    }
-    None
+    resolve_managed_model_python(&root).map(|python| (python, "managed"))
+}
+
+fn resolve_managed_model_python(root: &Path) -> Option<PathBuf> {
+    stamped_runtime_is_current(root).then(|| root.join("bin/python3"))
 }
 
 fn model_runtime_dir() -> Result<PathBuf, String> {
@@ -448,6 +449,8 @@ fn stamped_runtime_is_current(root: &Path) -> bool {
         return false;
     };
     value.get("requirements").and_then(Value::as_str) == Some(REQUIREMENTS)
+        && value.get("bootstrapRequirements").and_then(Value::as_str)
+            == Some(BOOTSTRAP_REQUIREMENTS)
         && root.join("bin/python3").is_file()
 }
 
@@ -455,7 +458,7 @@ fn install_into_staging(uv: &Path, staging: &Path) -> Result<(), String> {
     set_install_line("Creating the Python 3.12 environment…");
     run_install_step(
         Command::new(uv)
-            .args(["venv", "--python", "3.12"])
+            .args(["venv", "--python", "3.12", "--no-config"])
             .arg(staging),
         "uv venv",
         INSTALL_TIMEOUT,
@@ -468,14 +471,48 @@ fn install_into_staging(uv: &Path, staging: &Path) -> Result<(), String> {
     let requirements_path = staging.join("requirements.txt");
     fs::write(&requirements_path, REQUIREMENTS)
         .map_err(|error| format!("Could not write the pinned requirements: {error}"))?;
+    let bootstrap_path = staging.join("requirements-bootstrap.txt");
+    fs::write(&bootstrap_path, BOOTSTRAP_REQUIREMENTS)
+        .map_err(|error| format!("Could not write build-tool lock: {error}"))?;
+    run_install_step(
+        Command::new(uv)
+            .args([
+                "pip",
+                "install",
+                "--no-deps",
+                "--require-hashes",
+                "--only-binary=:all:",
+                "--no-cache",
+                "--no-config",
+                "--default-index",
+                "https://pypi.org/simple",
+                "--python",
+            ])
+            .arg(&python)
+            .arg("-r")
+            .arg(&bootstrap_path),
+        "uv build-tool install",
+        INSTALL_TIMEOUT,
+    )?;
     set_install_line("Downloading PyTorch, Transformers, and RDKit…");
     run_install_step(
         Command::new(uv)
-            .args(["pip", "install", "--python"])
+            .args([
+                "pip",
+                "sync",
+                "--no-binary=antlr4-python3-runtime",
+                "--no-build-isolation",
+                "--require-hashes",
+                "--only-binary=:all:",
+                "--no-cache",
+                "--no-config",
+                "--default-index",
+                "https://pypi.org/simple",
+                "--python",
+            ])
             .arg(&python)
-            .arg("-r")
             .arg(&requirements_path),
-        "uv pip install",
+        "uv pip sync",
         INSTALL_TIMEOUT,
     )?;
     ensure_not_cancelled()?;
@@ -483,6 +520,7 @@ fn install_into_staging(uv: &Path, staging: &Path) -> Result<(), String> {
     validate_runtime_imports(&python)?;
     let stamp = json!({
         "requirements": REQUIREMENTS,
+        "bootstrapRequirements": BOOTSTRAP_REQUIREMENTS,
         "validatedAtMs": SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_millis() as u64)
@@ -581,6 +619,16 @@ fn ensure_not_cancelled() -> Result<(), String> {
 /// so the panel can show live progress, honouring cancellation and a deadline.
 fn run_install_step(command: &mut Command, label: &str, timeout: Duration) -> Result<(), String> {
     ensure_not_cancelled()?;
+    for (key, _) in env::vars_os() {
+        let name = key.to_string_lossy();
+        if name.starts_with("UV_")
+            || name.starts_with("PIP_")
+            || name.starts_with("PYTHON")
+            || name == "VIRTUAL_ENV"
+        {
+            command.env_remove(key);
+        }
+    }
     let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -837,6 +885,14 @@ fn write_worker_script() -> Result<PathBuf, String> {
         .ok_or_else(|| "The model runtime directory has no parent.".to_string())?;
     fs::create_dir_all(parent)
         .map_err(|error| format!("Could not create {}: {error}", parent.display()))?;
+    let assets_temporary = parent.join(format!(
+        "model_assets.{}.tmp",
+        uuid::Uuid::new_v4().simple()
+    ));
+    fs::write(&assets_temporary, MODEL_ASSETS)
+        .map_err(|error| format!("Could not write model asset policy: {error}"))?;
+    fs::rename(&assets_temporary, parent.join("model_assets.py"))
+        .map_err(|error| format!("Could not replace model asset policy: {error}"))?;
     let path = parent.join("chemical-space-worker.py");
     let temporary = parent.join(format!(
         "chemical-space-worker.{}.tmp",
@@ -881,13 +937,22 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("model-stamp-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(dir.join("bin")).expect("create runtime dir");
         fs::write(dir.join("bin/python3"), "").expect("write python placeholder");
-        assert!(!stamped_runtime_is_current(&dir));
+        assert!(resolve_managed_model_python(&dir).is_none());
         fs::write(
             dir.join(STAMP_FILE),
-            serde_json::to_string(&json!({ "requirements": REQUIREMENTS })).expect("stamp"),
+            r#"{"requirements":"previous unhashed lock"}"#,
+        )
+        .expect("write legacy stamp");
+        assert!(resolve_managed_model_python(&dir).is_none());
+        fs::write(
+            dir.join(STAMP_FILE),
+            serde_json::to_string(&json!({ "requirements": REQUIREMENTS, "bootstrapRequirements": BOOTSTRAP_REQUIREMENTS })).expect("stamp"),
         )
         .expect("write stamp");
-        assert!(stamped_runtime_is_current(&dir));
+        assert_eq!(
+            resolve_managed_model_python(&dir),
+            Some(dir.join("bin/python3"))
+        );
         fs::remove_dir_all(&dir).ok();
     }
 

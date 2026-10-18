@@ -8,6 +8,7 @@ import { homedir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveModelPython } from '../compute/models/runtime-path.mjs';
 
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
@@ -334,12 +335,7 @@ async function handleChemicalSpaceRepresentation(req, res, method) {
 }
 
 function molecularRepresentationPython() {
-  const repoRoot = resolve(scriptDir, '..');
-  return [
-    String(process.env.BURETTE_CHEMICAL_SPACE_MODEL_PYTHON || '').trim(),
-    resolve(homedir(), 'Library', 'Application Support', 'Burette', 'model-python', 'bin', 'python'),
-    resolve(repoRoot, '.venv-chemical-space', 'bin', 'python'),
-  ].filter(Boolean).find((candidate) => existsSync(candidate)) || null;
+  return resolveModelPython(resolve(scriptDir, '..'))?.path || null;
 }
 
 async function handleAgentSession(req, res, method, url) {

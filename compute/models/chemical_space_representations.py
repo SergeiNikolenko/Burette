@@ -11,7 +11,11 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from model_assets import verified_snapshot
+
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "0"
+os.environ["TORCH_FORCE_WEIGHTS_ONLY_LOAD"] = "1"
+os.environ.pop("TORCH_FORCE_NO_WEIGHTS_ONLY_LOAD", None)
 os.environ.setdefault("OMP_NUM_THREADS", "2")
 os.environ.setdefault("MKL_NUM_THREADS", "2")
 os.environ.setdefault("OPENBLAS_NUM_THREADS", "2")
@@ -128,23 +132,22 @@ def normalize_records(raw_records: Any) -> tuple[list[ValidRecord], int]:
     return valid, failed
 
 
-def transformer_embeddings(engine: str, smiles: list[str], device):
+def transformer_embeddings(engine: str, smiles: list[str], device, snapshot):
     import torch
     import torch.nn.functional as functional
     from transformers import AutoModel, AutoTokenizer
 
-    spec = MODEL_SPECS[engine]
     trust_remote_code = engine == "molformer"
     shared = {
-        "revision": spec["revision"],
+        "local_files_only": True,
         "trust_remote_code": trust_remote_code,
     }
-    tokenizer = AutoTokenizer.from_pretrained(spec["model_id"], **shared)
-    model_options = {**shared}
+    tokenizer = AutoTokenizer.from_pretrained(snapshot, local_files_only=True, trust_remote_code=False)
+    model_options = {**shared, "weights_only": True, "use_safetensors": trust_remote_code}
     if trust_remote_code:
         model_options["deterministic_eval"] = True
     emit_progress("loading", 0, len(smiles), 10)
-    model = AutoModel.from_pretrained(spec["model_id"], **model_options).eval().to(device)
+    model = AutoModel.from_pretrained(snapshot, **model_options).eval().to(device)
     batch_size = 16 if trust_remote_code else 32
     outputs = []
     observed_devices: set[str] = set()
@@ -175,7 +178,7 @@ def transformer_embeddings(engine: str, smiles: list[str], device):
     return torch.cat(outputs, dim=0)
 
 
-def unimol_embeddings(engine: str, smiles: list[str], device):
+def unimol_embeddings(engine: str, smiles: list[str], device, snapshot):
     import numpy as np
     import torch
     import torch.nn.functional as functional
@@ -198,11 +201,14 @@ def unimol_embeddings(engine: str, smiles: list[str], device):
         "use_gpu": "all",
         "save_path": None,
         "max_atoms": 256,
+        "pretrained_dict_path": str(snapshot / "mol.dict.txt"),
     }
     model = (
-        UniMolV2Model(output_dim=1, model_size="84m")
+        UniMolV2Model(output_dim=1, model_size="84m", pretrained_model_path=str(snapshot / "modelzoo/84M/checkpoint.pt"))
         if model_name == "unimolv2"
-        else UniMolModel(output_dim=1, data_type="molecule", remove_hs=False)
+        else UniMolModel(output_dim=1, data_type="molecule", remove_hs=False,
+                         pretrained_model_path=str(snapshot / "mol_pre_all_h_220816.pt"),
+                         pretrained_dict_path=str(snapshot / "mol.dict.txt"))
     ).eval().to(device)
     outputs = []
     for start in range(0, len(smiles), 64):
@@ -296,10 +302,11 @@ def represent(request: dict[str, Any]) -> dict[str, Any]:
     device = require_mps()
     started = time.perf_counter()
     smiles = [record.smiles for record in records]
-    if engine in {"chemberta", "molformer"}:
-        embeddings = transformer_embeddings(engine, smiles, device)
-    else:
-        embeddings = unimol_embeddings(engine, smiles, device)
+    with verified_snapshot(engine) as snapshot:
+        if engine in {"chemberta", "molformer"}:
+            embeddings = transformer_embeddings(engine, smiles, device, snapshot)
+        else:
+            embeddings = unimol_embeddings(engine, smiles, device, snapshot)
     import torch
 
     torch.mps.synchronize()

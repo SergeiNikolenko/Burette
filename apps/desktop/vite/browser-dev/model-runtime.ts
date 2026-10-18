@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import type { ViteDevServer } from "vite";
 
 import { sendJson } from "./http";
+import { resolveModelPython } from "../../../../compute/models/runtime-path.mjs";
 
 // Browser dev mirrors the desktop app's managed model runtime: same install
 // location, same uv steps, same status shape, so the panel renders one install
@@ -54,18 +55,6 @@ function modelRuntimeDir() {
   const configured = process.env.BURETTE_CHEMICAL_SPACE_MODEL_RUNTIME_DIR?.trim();
   if (configured) return configured;
   return join(homedir(), "Library", "Application Support", "Burette", "model-python");
-}
-
-function resolveModelPython(repoRoot: string): { path: string; source: string } | null {
-  const configured = process.env.BURETTE_CHEMICAL_SPACE_MODEL_PYTHON?.trim();
-  if (configured && existsSync(configured)) return { path: configured, source: "override" };
-  for (const name of ["python3", "python"]) {
-    const candidate = join(modelRuntimeDir(), "bin", name);
-    if (existsSync(candidate)) return { path: candidate, source: "managed" };
-  }
-  const devVenv = join(repoRoot, ".venv-chemical-space", "bin", "python");
-  if (existsSync(devVenv)) return { path: devVenv, source: "dev" };
-  return null;
 }
 
 function resolveUv(): string | null {
@@ -143,23 +132,29 @@ async function runInstall(repoRoot: string) {
     join(repoRoot, "compute", "models", "requirements.txt"),
     "utf8",
   );
-  if (await stampMatches(root, requirements)) return;
+  const bootstrapRequirements = await readFile(join(repoRoot, "compute", "models", "requirements-bootstrap.txt"), "utf8");
+  if (await stampMatches(root, requirements, bootstrapRequirements)) return;
   const staging = join(parent, `model-python.staging-${randomUUID()}`);
   try {
     install.line = "Creating the Python 3.12 environment…";
-    await runStep(uv, ["venv", "--python", "3.12", staging]);
+    await runStep(uv, ["venv", "--python", "3.12", "--no-config", staging]);
     ensureNotCancelled();
     const python = join(staging, "bin", "python3");
     const requirementsPath = join(staging, "requirements.txt");
     await writeFile(requirementsPath, requirements, "utf8");
+    const bootstrapPath = join(staging, "requirements-bootstrap.txt");
+    await writeFile(bootstrapPath, bootstrapRequirements, "utf8");
+    await runStep(uv, ["pip", "install", "--no-deps", "--require-hashes", "--only-binary=:all:",
+      "--no-cache", "--no-config", "--default-index", "https://pypi.org/simple",
+      "--python", python, "-r", bootstrapPath]);
     install.line = "Downloading PyTorch, Transformers, and RDKit…";
-    await runStep(uv, ["pip", "install", "--python", python, "-r", requirementsPath]);
+    await runStep(uv, ["pip", "sync", "--no-binary=antlr4-python3-runtime", "--no-build-isolation", "--require-hashes", "--only-binary=:all:", "--no-cache", "--no-config", "--default-index", "https://pypi.org/simple", "--python", python, requirementsPath]);
     ensureNotCancelled();
     install.line = "Validating the installed runtime…";
     await runStep(python, ["-c", "import numpy, rdkit, torch, transformers; print('imports ok')"]);
     await writeFile(
       join(staging, STAMP_FILE),
-      `${JSON.stringify({ requirements, validatedAtMs: Date.now() }, null, 2)}\n`,
+      `${JSON.stringify({ requirements, bootstrapRequirements, validatedAtMs: Date.now() }, null, 2)}\n`,
       "utf8",
     );
     await promoteStaging(root, staging);
@@ -169,12 +164,13 @@ async function runInstall(repoRoot: string) {
   }
 }
 
-async function stampMatches(root: string, requirements: string) {
+async function stampMatches(root: string, requirements: string, bootstrapRequirements: string) {
   try {
     const stamp = JSON.parse(await readFile(join(root, STAMP_FILE), "utf8")) as {
       requirements?: unknown;
+      bootstrapRequirements?: unknown;
     };
-    return stamp.requirements === requirements && existsSync(join(root, "bin", "python3"));
+    return stamp.requirements === requirements && stamp.bootstrapRequirements === bootstrapRequirements && existsSync(join(root, "bin", "python3"));
   } catch {
     return false;
   }
@@ -203,7 +199,10 @@ function ensureNotCancelled() {
 
 function runStep(command: string, args: string[]) {
   return new Promise<void>((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
+      !key.startsWith("UV_") && !key.startsWith("PIP_") && !key.startsWith("PYTHON") && key !== "VIRTUAL_ENV",
+    ));
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env });
     install.child = child;
     let tail = "";
     const consume = (chunk: Buffer) => {
