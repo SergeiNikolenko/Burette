@@ -181,3 +181,8 @@ limit. Rejected append operations preserve the target. Failed merged preview
 opening removes only the newly generated source directory. Successful generated
 sources remain available for the viewer and Save As. Ordinary large collection
 opening and file-backed Save As keep their existing streaming behavior.
+
+MolJ runtime classification validates the complete JSON using bounded nesting
+and no heap allocation. It preserves ordinary/Mesoscale routing, escaped keys,
+last duplicate values, and the existing malformed-session fallback without
+building a second document tree.

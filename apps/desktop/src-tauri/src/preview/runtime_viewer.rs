@@ -1527,22 +1527,7 @@ fn mesoscale_viewer_html(
 fn is_mesoscale_document(file_path: &Path, extension: &str, data: &[u8]) -> bool {
     if extension == "molj" {
         // Ordinary Mol* sessions and Mesoscale sessions share the same extension.
-        return serde_json::from_slice::<serde_json::Value>(data)
-            .ok()
-            .and_then(|session| session.get("entries").and_then(|v| v.as_array()).cloned())
-            .is_none_or(|entries| {
-                entries.iter().any(|entry| {
-                    entry
-                        .pointer("/snapshot/data/tree/transforms")
-                        .and_then(|v| v.as_array())
-                        .is_some_and(|transforms| {
-                            transforms.iter().any(|transform| {
-                                transform.get("transformer").and_then(|v| v.as_str())
-                                    == Some("ms-plugin.mesoscale-state")
-                            })
-                        })
-                })
-            });
+        return burette_core::molj::is_mesoscale_molj(data);
     }
     if matches!(extension, "molx" | "mesozip") {
         return true;

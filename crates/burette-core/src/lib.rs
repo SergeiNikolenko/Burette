@@ -1,4 +1,5 @@
 pub mod collection_merge;
+pub mod molj;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
