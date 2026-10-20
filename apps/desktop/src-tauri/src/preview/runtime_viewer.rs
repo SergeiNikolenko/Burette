@@ -1208,6 +1208,7 @@ mod tests {
         for lazy in [
             "native-viewer-menus.js",
             "scene-file-actions.js",
+            "sdf-collection-scene.js",
             "molstar.js",
             "rdkit/RDKit_minimal.js",
             "rdkit-wasm-data.js",
@@ -1544,6 +1545,7 @@ fn viewer_html(
         asset_url(&assets.join("molstar-preset-preview-controller.js"));
     let native_menus_js = asset_url(&assets.join("native-viewer-menus.js"));
     let scene_files_js = asset_url(&assets.join("scene-file-actions.js"));
+    let sdf_collection_js = asset_url(&assets.join("sdf-collection-scene.js"));
     let superposition_panel_js = asset_url(&assets.join("superposition-panel.js"));
     let color_picker_js = asset_url(&assets.join("color-picker.js"));
     let sequence_panel_js = asset_url(&assets.join("sequence-panel.js"));
@@ -1583,6 +1585,7 @@ fn viewer_html(
     window.BurettePreviewDataScriptURL = {data_js:?};
     window.BuretteDataURL = {data_bin_js:?};
     window.BuretteSceneFilesURL = {scene_files_js:?};
+    window.BuretteSdfCollectionURL = {sdf_collection_js:?};
     window.BuretteMolstarURL = {molstar_js:?};
     window.BuretteRDKitJSURL = {rdkit_js:?};
     window.BuretteRDKitWasmURL = {rdkit_wasm:?};
