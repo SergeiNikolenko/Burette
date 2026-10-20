@@ -2187,7 +2187,11 @@
     if (currentXyzrenderPreset(cfg) === next) return;
     state.xyzrenderPreset = next;
     resetXyzrenderCardObserver();
-    state.xyzrenderCardCache.clear();
+    // Preset is part of the cache key; keep finished images for switching back.
+    // Failed renders can be retried by returning to the preset.
+    for (const [key, cached] of state.xyzrenderCardCache) {
+      if (cached.error) state.xyzrenderCardCache.delete(key);
+    }
     resetCardRenderQueues();
     refreshGridControls(cfg);
     applyGridPreferences(cfg);
@@ -3859,6 +3863,7 @@
   }
 
   function takeXyzrenderCardBatchJobs() {
+    sortXyzrenderCardQueue();
     const visible = [];
     const deferred = [];
     for (const job of state.xyzrenderCardQueue) {
@@ -8536,7 +8541,7 @@
   }
 
   function cardRenderPriority(target) {
-    if (!target || typeof target.getBoundingClientRect !== 'function') return Number.MAX_SAFE_INTEGER;
+    if (!target || target.isConnected === false || typeof target.getBoundingClientRect !== 'function') return Number.MAX_SAFE_INTEGER;
     const rect = target.getBoundingClientRect();
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
     if (!Number.isFinite(rect.top) || !Number.isFinite(rect.bottom)) return Number.MAX_SAFE_INTEGER;
@@ -8720,9 +8725,15 @@
 
   function enqueueXyzrenderCard(row, cfg, record, key, target) {
     const cached = state.xyzrenderCardCache.get(key);
-    if (cached?.html || cached?.error) return;
+    // A render may finish after this placeholder was mounted but before its
+    // observer runs. Consume that result instead of leaving an empty tile.
+    if (cached?.html || cached?.error) {
+      updateXyzrenderCard(key, drawXyzrenderCard(row, cfg));
+      return;
+    }
     if (cached?.pending) {
       cached.target = target || cached.target;
+      cached.job.target = cached.target;
       return;
     }
     const job = { row, cfg, record, key, target, seq: state.xyzrenderCardSeq++ };
@@ -8801,7 +8812,14 @@
       }, XYZRENDER_CARD_BATCH_TIMEOUT_MS);
       const results = Array.isArray(payload?.items) ? payload.items : [];
       const byId = new Map(results.map(item => [String(item?.id || ''), item]));
+      let frameStartedAt = nowMs();
       for (const job of jobs) {
+        // SVG sanitization and DOM insertion share the UI thread with scrolling.
+        // Yield between expensive cards, including when the native cache is hot.
+        if (nowMs() - frameStartedAt >= RDKIT_CARD_FRAME_BUDGET_MS) {
+          await new Promise(resolve => window.setTimeout(resolve, 0));
+          frameStartedAt = nowMs();
+        }
         const item = byId.get(job.key);
         if (!item) {
           markXyzrenderCardError(job, 'xyzrender batch returned no result');
