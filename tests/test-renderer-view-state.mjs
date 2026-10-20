@@ -36,6 +36,17 @@ const copy = value => JSON.parse(JSON.stringify(value));
 const camera = { position: [12, -4, 27], target: [1, 2, 3], up: [0, 1, 0], radius: 9, fov: 0.7, mode: 'perspective' };
 const xyz = { scale: 1.7, x: 42, y: -31, item: { left: 210, top: 180, width: 300, height: 250, rotation: 35 } };
 const first = runtime();
+// Transfer short-side framing once; retain an intentional close-up rather than
+// fitting scene bounds. Legacy files do not carry an inferred viewport.
+for (const mode of ['perspective', 'orthographic']) {
+  const authored = { ...camera, mode, clipFar: true };
+  const moved = first.transferCamera(authored, { width: 1200, height: 800 }, { width: 400, height: 800 });
+  assert.deepEqual(copy(moved), { ...authored, position: [23, -10, 51] });
+  assert.deepEqual(copy(first.transferCamera(moved, { width: 400, height: 800 }, { width: 1200, height: 800 })), authored);
+  assert.equal(first.transferCamera(authored, null, { width: 400, height: 800 }), authored);
+  assert.equal(first.transferCamera(authored, { width: 1200, height: 800 }, { width: 0, height: 800 }), authored);
+  assert.deepEqual(copy(first.transferCamera(authored, { width: 1200, height: 800 }, { width: 900, height: 800 })), authored);
+}
 first.save('molecule-a', { camera });
 first.save('molecule-a', { xyz });
 first.save('molecule-b', { camera: { ...camera, target: [20, 30, 40] } });

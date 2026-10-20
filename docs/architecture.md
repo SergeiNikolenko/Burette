@@ -69,6 +69,23 @@ protected view remains in the same tab and is restored to Back history so its
 original editor stays reachable. Hidden history views receive the existing visibility signal to pause
 trajectory playback; stable DOM order avoids iframe reloads during navigation.
 
+Explicitly opening a live Mol* document in a Files dock captures its camera and
+source viewport before mounting the destination. The private host message
+`captureRendererViewState` receives `rendererViewStateCaptured` from the exact
+source iframe, matched by request and document IDs, with a one-second timeout.
+`rendererViewStateResponse` can then carry the captured `viewState` and optional
+`sourceViewport`. The destination scales camera distance once by the ratio of
+the viewports' short-side fit factors, preserving target, orientation and zoom
+relative to a fitted view. It does not fit scene bounds or infer viewport sizes
+for authored MOLJ/MOLX files. Without a live source, normal restoration applies.
+
+`lib/dock-camera-transfer.ts` retains at most 64 transient pane/document views,
+each bounded to 8 KiB and viewport dimensions of 1–32768 pixels. Subsequent
+camera checkpoints consume the transfer dimensions and stay independent of the
+source tab. Resizing, Files/Info remounts, and opening an already mounted Files
+view do not repeat the transfer. File formats and ordinary file selection are
+unchanged; native popout scene transfer remains a separate workflow.
+
 
 The desktop shell is a compact molecule workspace:
 

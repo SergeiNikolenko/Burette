@@ -6,6 +6,7 @@ import type { DockTabKind } from "../lib/dock";
 import { updateHostedMcpSelectionContext } from "../lib/hosted-mcp-widget";
 import { structureStoryFromViewerMessage, type StructureStory } from "../lib/structure-story";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
+import { dockCameraRestore } from "../lib/dock-camera-transfer";
 import { postMessageToViewerSource } from "../lib/viewer-bridge";
 
 type ViewerStateMessageBody = Record<string, unknown> | null | undefined;
@@ -80,9 +81,11 @@ export function useAppViewerStateMessages({
     if (sourceName === "burette-viewer" && body?.type === "rendererViewStateRequest") {
       const document = documents.find(document => document.id === body.documentId);
       if (document && typeof body.requestId === "string" && body.requestId.length <= 128) {
+        const dockView = dockCameraRestore(eventSource, document.id);
         postMessageToViewerSource(eventSource, { source: "burette-host", body: {
           type: "rendererViewStateResponse", documentId: document.id, requestId: body.requestId,
-          viewState: rendererViewReloadOptions(document.path).rendererViewState,
+          viewState: dockView?.viewState ?? rendererViewReloadOptions(document.path).rendererViewState,
+          sourceViewport: dockView?.sourceViewport,
         } });
       }
       return true;

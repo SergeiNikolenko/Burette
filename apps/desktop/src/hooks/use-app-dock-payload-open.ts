@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
+import { prepareDockCameraTransfer } from "../lib/dock-camera-transfer";
 import { invoke } from "@tauri-apps/api/core";
 
 import type { StatusKind } from "../components/types";
@@ -99,7 +100,11 @@ export function useAppDockPayloadOpen({
       ? { existingDocumentId: null, unopenedPaths: cleanPaths }
       : resolveDockDropPaths(cleanPaths, documents, textDocuments);
     const dockPreferences = input.rendererMode ? { ...preferences, rendererMode: input.rendererMode } : preferences;
-    if (existingDocumentId) setDockDocument(input.area, existingDocumentId);
+    if (existingDocumentId) {
+      const source = documents.find(document => document.id === existingDocumentId);
+      if (input.tabKind === "files" && source) await prepareDockCameraTransfer(input.area, source);
+      setDockDocument(input.area, existingDocumentId);
+    }
     if (unopenedPaths.length === 0 && cleanRecords.length === 0) {
       addDockDrop(input);
       pushStatus(`Opened existing document in ${input.area === "right" ? "right dock" : "bottom dock"}`);
