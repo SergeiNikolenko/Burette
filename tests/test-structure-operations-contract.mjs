@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 
 const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const viewer = source("PreviewExtension/Web/viewer.js");
@@ -201,8 +202,50 @@ assert.match(viewer, /if \(sceneUndoSnapshot && !actionFailed\) pushMolstarEditU
 // Measurements land after the last pick, not when the menu item is chosen.
 assert.match(fn("beginMolstarMeasurement"), /captureMolstarSceneUndoSnapshot\(`\$\{spec\.noun\} measurement`\)[\s\S]*pushMolstarEditUndoSnapshot\(undoSnapshot\)/);
 assert.match(viewer, /const SCENE_TREE_MEASUREMENT_PARAM_KEYS = new Set/);
-assert.match(fn("sceneTreeMeasurementTargets"), /sceneTreeSubtreeRefs\(state, ref\)/);
+assert.match(fn("sceneTreeMeasurementTargets"), /sceneTreeSubtreeRefs\(state, ref, children\)/);
 assert.match(fn("sceneTreeMeasurementTargets"), /\['Distance', 'Angle', 'Dihedral', 'Label'\]/);
+// A shared child index must preserve the inspector's subtree boundaries and
+// measurement filtering. Standalone actions must see a fresh state snapshot.
+const measurementContext = { SCENE_TREE_MEASUREMENT_PARAM_KEYS: new Set(['textColor', 'customText']) };
+runInNewContext(['sceneTreeChildRefs', 'sceneTreeSubtreeRefs', 'sceneTreeMeasurementTargets'].map(fn).join('\n'), measurementContext);
+const cell = (parent, label, params = {}) => ({ transform: { parent, params }, obj: { label } });
+const cells = new Map([
+  ['root', cell('root', 'Root')],
+  ['group', cell('root', 'Measurements')],
+  ['distance', cell('group', 'Distance', { textColor: 1 })],
+  ['nested', cell('group', 'Nested')],
+  ['angle', cell('nested', 'Angle', { textColor: 2 })],
+  ['dihedral', cell('nested', 'Dihedral', { customText: 'angle' })],
+  ['unrelated', cell('group', 'Ball & Stick', { textColor: 3 })],
+  ['empty', cell('group', 'Distance')],
+  ['outside', cell('root', 'Label', { customText: 'outside' })],
+]);
+let childIndexScans = 0;
+const forEachCell = cells.forEach.bind(cells);
+cells.forEach = (...args) => { childIndexScans++; return forEachCell(...args); };
+const treeState = { cells };
+const treeViewer = { plugin: { state: { data: treeState } } };
+const childIndex = measurementContext.sceneTreeChildRefs(treeState).children;
+const targets = (ref, children) => Array.from(measurementContext.sceneTreeMeasurementTargets(treeViewer, ref, children));
+for (const [ref, expected] of [
+  ['group', ['dihedral', 'angle', 'distance']],
+  ['nested', ['dihedral', 'angle']],
+  ['distance', ['distance']],
+  ['outside', ['outside']],
+  ['unrelated', []], ['missing', []],
+]) {
+  assert.deepEqual(targets(ref, childIndex), expected.map(ref => cells.get(ref)));
+}
+assert.equal(childIndexScans, 1, 'one index serves every row in the snapshot');
+assert.deepEqual(targets('group'), targets('group', childIndex));
+assert.equal(childIndexScans, 2, 'a standalone inspector gets its own index');
+cells.set('new-label', cell('nested', 'Label', { customText: 'new' }));
+cells.delete('angle');
+assert.deepEqual(targets('group'), ['new-label', 'dihedral', 'distance'].map(ref => cells.get(ref)));
+assert.deepEqual(targets('missing'), []);
+assert.deepEqual(Array.from(measurementContext.sceneTreeMeasurementTargets(null, 'group')), []);
+assert.match(fn('sceneTreeNodes'), /sceneTreeMeasurementTargets\(viewer, nodeRef, children\)/);
+
 assert.match(fn("applySceneTreeMeasurementParam"), /update\.to\(targetRef\)\.update\(old => \(\{ \.\.\.old, \[entry\.key\]: value \}\)\)/);
 assert.match(fn("sceneTreeMeasurementMenu"), /'geometry-color'[\s\S]*'line-size'[\s\S]*sceneTreeMeasurementText\(menu, targets\)[\s\S]*'text-color'[\s\S]*'text-size'/);
 assert.match(fn("sceneTreeMeasurementText"), /const field = 'custom-text'/);
