@@ -1000,6 +1000,12 @@ mod tests {
         assert!(assets.join("molstar.css").is_file());
         assert!(assets.join("viewer.js").is_file());
         assert!(assets.join("sequence-panel.js").is_file());
+        let helper = "sdf-collection-scene.js";
+        let source = super::bundled_web_dir(app.handle()).expect("bundled web assets");
+        assert_eq!(
+            fs::read(assets.join(helper)).expect("collection helper should copy"),
+            fs::read(source.join(helper)).expect("collection helper source")
+        );
         assert!(!assets.join("grid-viewer.js").exists());
         assert!(!assets.join("grid.css").exists());
         assert!(assets.join("rdkit").join("RDKit_minimal.js").is_file());
@@ -1278,6 +1284,7 @@ impl AssetProfile {
                 "color-picker.js",
                 "native-viewer-menus.js",
                 "scene-file-actions.js",
+                "sdf-collection-scene.js",
                 "sequence-panel.js",
                 "svg-sanitizer.js",
                 "viewer.js",
