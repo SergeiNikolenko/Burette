@@ -3,9 +3,11 @@
   'use strict';
   const storageKey = 'burette.renderer-views.v1';
   let memory = {};
+  // Files checkpoints belong to the host's workspace/pane, never the shared tab cache.
+  const paneLocal = window.name === 'burette-read-only';
   function readAll() {
     try {
-      const text = window.sessionStorage.getItem(storageKey);
+      const text = paneLocal ? null : window.sessionStorage.getItem(storageKey);
       if (text && text.length < 256000) memory = JSON.parse(text);
     } catch (_) {}
     return memory && typeof memory === 'object' && !Array.isArray(memory) ? memory : {};
@@ -96,7 +98,7 @@
     };
     for (const key of Object.keys(values).slice(0, -32)) delete values[key];
     memory = values;
-    try { window.sessionStorage.setItem(storageKey, JSON.stringify(values)); } catch (_) {}
+    try { if (!paneLocal) window.sessionStorage.setItem(storageKey, JSON.stringify(values)); } catch (_) {}
   }
   // The sandboxed iframe's sessionStorage is only a small best-effort cache.
   // The shell owns durable per-document records and replies only to this frame.

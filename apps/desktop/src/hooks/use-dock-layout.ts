@@ -1,8 +1,14 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
+import { retainDockCameraWorkspaces } from "../lib/dock-camera-transfer";
 import { useMoleculeStore } from "../stores/molecule-store";
 import { defaultTabWorkspace, useTabWorkspaceStore } from "../stores/tab-workspace-store";
 
 export function useDockLayout(activeTabId: string | null) {
+  useEffect(() => {
+    const retain = () => retainDockCameraWorkspaces(useMoleculeStore.getState().tabs.map(tab => tab.id));
+    retain();
+    return useMoleculeStore.subscribe((state, previous) => { if (state.tabs !== previous.tabs) retain(); });
+  }, []);
   const workspace = useTabWorkspaceStore((state) => activeTabId ? state.workspaces[activeTabId] : undefined);
   const fallback = useMemo(defaultTabWorkspace, []);
   const current = workspace ?? fallback;
@@ -16,6 +22,17 @@ export function useDockLayout(activeTabId: string | null) {
   const setDockToolAction = useTabWorkspaceStore((state) => state.setDockTool);
   const addDockDropAction = useTabWorkspaceStore((state) => state.addDockDrop);
   const currentTabId = useCallback(() => useMoleculeStore.getState().activeTabId ?? activeTabId, [activeTabId]);
+  // Bind asynchronous opens to their originating workspace, including camera capture.
+  const captureDockTarget = useCallback(() => {
+    const workspaceId = activeTabId;
+    const alive = () => workspaceId && useMoleculeStore.getState().tabs.some(tab => tab.id === workspaceId);
+    return {
+      workspaceId,
+      setDockDocument: (area: Parameters<typeof setDockDocumentAction>[1], id: string | null) => { if (alive()) setDockDocumentAction(workspaceId!, area, id); },
+      setDockTool: (area: Parameters<typeof setDockToolAction>[1], tool: Parameters<typeof setDockToolAction>[2]) => { if (alive()) setDockToolAction(workspaceId!, area, tool); },
+      addDockDrop: (input: Parameters<typeof addDockDropAction>[1]) => { if (alive()) addDockDropAction(workspaceId!, input); },
+    };
+  }, [activeTabId, setDockDocumentAction, setDockToolAction, addDockDropAction]);
   const toggleDock = useCallback((area: Parameters<typeof toggleDockAction>[1]) => {
     const tabId = currentTabId();
     if (tabId) toggleDockAction(tabId, area);
@@ -54,6 +71,7 @@ export function useDockLayout(activeTabId: string | null) {
   }, [addDockDropAction, currentTabId]);
 
   return {
+    captureDockTarget,
     rightDockOpen: current.right.open,
     rightDockWidth: current.right.size,
     rightDockTabs: current.right.tabs,

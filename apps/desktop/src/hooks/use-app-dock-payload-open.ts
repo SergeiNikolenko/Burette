@@ -1,3 +1,4 @@
+import type { useDockLayout } from "./use-dock-layout";
 import { useCallback } from "react";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
 import { prepareDockCameraTransfer } from "../lib/dock-camera-transfer";
@@ -6,7 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { StatusKind } from "../components/types";
 import { openBrowserDevDocuments } from "../lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "../lib/browser-dev-text-files";
-import { DOCK_TAB_LABELS, dockTabLoadsDroppedDocument, resolveDockDropPaths, type DockArea, type DockDropInput, type DockToolKind } from "../lib/dock";
+import { DOCK_TAB_LABELS, dockTabLoadsDroppedDocument, resolveDockDropPaths, type DockArea, type DockDropInput } from "../lib/dock";
 import {
   documentFallbackExtensions,
   isDocumentMediaPath,
@@ -40,7 +41,7 @@ type UseAppDockPayloadOpenOptions = {
   preferences: ViewerPreferences;
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   addBackgroundTextDocuments: (documents: TextFileDocument[]) => void;
-  addDockDrop: (input: DockDropInput) => void;
+  captureDockTarget: ReturnType<typeof useDockLayout>["captureDockTarget"];
   detectContentSpectrumPaths: (paths: string[]) => Promise<Set<string>>;
   documents: ViewerDocument[];
   openDocumentTab: (path: string) => void;
@@ -48,8 +49,6 @@ type UseAppDockPayloadOpenOptions = {
   pushErrorStatus: PushErrorStatus;
   pushStatus: PushStatus;
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
-  setDockDocument: (area: DockArea, documentId: string | null) => void;
-  setDockTool: (area: DockArea, tool: DockToolKind | null) => void;
   textDocuments: TextFileDocument[];
 };
 
@@ -61,7 +60,7 @@ export function useAppDockPayloadOpen({
   preferences,
   addBackgroundDocuments,
   addBackgroundTextDocuments,
-  addDockDrop,
+  captureDockTarget,
   detectContentSpectrumPaths,
   documents,
   openDocumentTab,
@@ -69,11 +68,10 @@ export function useAppDockPayloadOpen({
   pushErrorStatus,
   pushStatus,
   rememberRecentStructures,
-  setDockDocument,
-  setDockTool,
   textDocuments,
 }: UseAppDockPayloadOpenOptions) {
   return useCallback(async (input: DockDropInput) => {
+    const { workspaceId, addDockDrop, setDockDocument, setDockTool } = captureDockTarget();
     const ketcherItem = input.payload.items?.find((item) => item.kind === "ketcher") ?? null;
     const itemPaths = (input.payload.items ?? [])
       .map((item) => item.path)
@@ -102,7 +100,7 @@ export function useAppDockPayloadOpen({
     const dockPreferences = input.rendererMode ? { ...preferences, rendererMode: input.rendererMode } : preferences;
     if (existingDocumentId) {
       const source = documents.find(document => document.id === existingDocumentId);
-      if (input.tabKind === "files" && source) await prepareDockCameraTransfer(input.area, source);
+      if (input.tabKind === "files" && source) await prepareDockCameraTransfer(input.area, source, workspaceId);
       setDockDocument(input.area, existingDocumentId);
     }
     if (unopenedPaths.length === 0 && cleanRecords.length === 0) {
@@ -308,7 +306,7 @@ export function useAppDockPayloadOpen({
   }, [
     addBackgroundDocuments,
     addBackgroundTextDocuments,
-    addDockDrop,
+    captureDockTarget,
     detectContentSpectrumPaths,
     documents,
     openDocumentTab,
@@ -317,8 +315,6 @@ export function useAppDockPayloadOpen({
     pushErrorStatus,
     pushStatus,
     rememberRecentStructures,
-    setDockDocument,
-    setDockTool,
     textDocuments,
   ]);
 }

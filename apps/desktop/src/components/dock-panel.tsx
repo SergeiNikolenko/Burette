@@ -228,6 +228,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
       ref={panel}
       className="dock-panel"
       data-area={area}
+      data-workspace-id={contentState?.activeTab?.id}
       data-active-tab={activeTab.kind}
       data-open={open ? "true" : "false"}
       data-drop-active={dropActive || undefined}
@@ -250,6 +251,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
           onAdd={showAddMenu} onHide={() => actions.setDockOpen(area, false)} />
         <div className="dock-panel-body" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${activeTab.kind}`} tabIndex={0}>
         {contentState && <DockPanelContent
+          key={contentState.activeTab?.id}
           area={area}
           activeTabKind={contentKind}
           state={contentState}

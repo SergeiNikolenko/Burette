@@ -27,8 +27,8 @@ assert.equal(host.read('/oversized'), null);
 const source = readFileSync(new URL('../PreviewExtension/Web/renderer-view-state.js', import.meta.url), 'utf8');
 let stored = null;
 const storage = { getItem: () => stored, setItem: (_, value) => { stored = value; } };
-function runtime() {
-  const context = vm.createContext({ window: { sessionStorage: storage } });
+function runtime(name) {
+  const context = vm.createContext({ window: { sessionStorage: storage, name } });
   vm.runInContext(source, context);
   return context.window.BuretteRendererViewState;
 }
@@ -48,6 +48,12 @@ for (const mode of ['perspective', 'orthographic']) {
   assert.deepEqual(copy(first.transferCamera(authored, { width: 1200, height: 800 }, { width: 900, height: 800 })), authored);
 }
 first.save('molecule-a', { camera });
+const paneA = runtime('burette-read-only'), paneB = runtime('burette-read-only');
+assert.deepEqual(copy(paneA.read('molecule-a')), {}, 'a new pane does not inherit the shared document cache');
+paneA.save('molecule-a', { camera: { ...camera, position: [50, 60, 70] } });
+assert.deepEqual(copy(paneB.read('molecule-a')), {}, 'two panes keep independent frame-local caches');
+assert.deepEqual(copy(first.read('molecule-a').camera), camera, 'pane checkpoints never overwrite the source cache');
+
 first.save('molecule-a', { xyz });
 first.save('molecule-b', { camera: { ...camera, target: [20, 30, 40] } });
 assert.deepEqual(copy(runtime().read('molecule-a')), { camera, xyz }, 'A fresh renderer iframe recovers both presentations');

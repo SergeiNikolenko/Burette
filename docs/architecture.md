@@ -79,8 +79,15 @@ the viewports' short-side fit factors, preserving target, orientation and zoom
 relative to a fitted view. It does not fit scene bounds or infer viewport sizes
 for authored MOLJ/MOLX files. Without a live source, normal restoration applies.
 
-`lib/dock-camera-transfer.ts` retains at most 64 transient pane/document views,
-each bounded to 8 KiB and viewport dimensions of 1–32768 pixels. Subsequent
+`lib/dock-camera-transfer.ts` retains at most 64 transient workspace/area/document
+views, each bounded to 8192 characters and positive viewport dimensions up to
+32768 pixels. Documents are window-global, while workspace identity is the
+owning main tab ID. `captureDockTarget()` binds that ID and its setters before
+any await; a delayed camera reply cannot open the result in the newly active
+workspace. Closed workspace IDs are pruned and late replies cannot recreate
+those checkpoints or panels. `.dock-panel[data-workspace-id]` and a content key
+bind each iframe to its actual workspace. Read-only iframe caches stay local
+and never write the shared document sessionStorage cache. Subsequent
 camera checkpoints consume the transfer dimensions and stay independent of the
 source tab. Resizing, Files/Info remounts, and opening an already mounted Files
 view do not repeat the transfer. File formats and ordinary file selection are

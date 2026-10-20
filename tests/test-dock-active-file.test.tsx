@@ -247,3 +247,30 @@ test("hiding a chemical-space dock retains its running calculation until the sou
     mock.module("../apps/desktop/src/lib/viewer-bridge", () => bridge);
   }
 });
+
+test("the same document in two workspace panels has separate iframe ownership", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const actions = { setStructureDragActive() {} } as unknown as ShellActions;
+  const draw = async (workspaceId: string, open = true) => act(async () => root.render(<DockPanel area="right" state={{
+    ...state, activeTab: { ...state.activeTab!, id: workspaceId }, rightDockOpen: open, rightDockDocumentId: open ? a.id : null,
+  }} actions={actions} />));
+  try {
+    await draw("workspace-a");
+    const sourceA = host.querySelector("iframe")!;
+    expect(sourceA.closest<HTMLElement>(".dock-panel")?.dataset.workspaceId).toBe("workspace-a");
+    await draw("workspace-b", false);
+    expect(host.querySelector("iframe")).toBe(sourceA);
+    expect(sourceA.closest<HTMLElement>(".dock-panel")?.dataset.workspaceId).toBe("workspace-a");
+    await draw("workspace-b");
+    const sourceB = host.querySelector("iframe")!;
+    expect(sourceB.dataset.documentId).toBe(sourceA.dataset.documentId);
+    expect(sourceB).not.toBe(sourceA);
+    expect(sourceA.isConnected).toBe(false);
+    expect(sourceB.closest<HTMLElement>(".dock-panel")?.dataset.workspaceId).toBe("workspace-b");
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});
