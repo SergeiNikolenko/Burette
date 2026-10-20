@@ -760,16 +760,17 @@ assert.match(ciScript, /bun run test:update/);
 assert.match(ciWorkflow, /uses: \.\/\.github\/actions\/setup-burette-toolchain/);
 assert.match(ciWorkflow, /install-xyzrender: "true"/);
 assert.match(toolchainAction, /Install xyzrender runtime/);
-assert.match(toolchainAction, /python3 -m pip install --user --break-system-packages uv/);
-assert.match(toolchainAction, /"\$\(python3 -m site --user-base\)\/bin\/uv" tool install xyzrender/);
+assert.match(toolchainAction, /BURETTE_BUILD_LOCKED_XYZRENDER=1/);
+assert.doesNotMatch(toolchainAction, /pip install.*uv|tool install xyzrender/);
 assert.match(releaseWorkflow, /BURETTE_UPDATE_MANIFEST_PUBLIC_KEY_HEX/);
 assert.match(releaseWorkflow, /BURETTE_UPDATE_MANIFEST_PRIVATE_KEY_PEM/);
 assert.match(releaseWorkflow, /BURETTE_BUILD_MODE: release/);
 assert.match(releaseWorkflow, /uses: \.\/\.github\/actions\/setup-burette-toolchain/);
 assert.match(releaseWorkflow, /install-xyzrender: "true"/);
+assert.match(releaseWorkflow, /allow_adhoc=false/);
 assert.match(releaseWorkflow, /allow_adhoc=true/);
-assert.match(releaseWorkflow, /publishing an ad-hoc signed release without notarization/);
-assert.doesNotMatch(releaseWorkflow, /Stable releases require Developer ID signing and Apple notarization credentials/);
+assert.doesNotMatch(releaseWorkflow, /publishing an ad-hoc signed release without notarization/);
+assert.match(releaseWorkflow, /Apple signing is partially configured/);
 assert.match(releaseWorkflow, /BURETTE_RELEASE_ALLOW_ADHOC/);
 assert.match(releaseWorkflow, /scripts\/create-dmg\.sh release\/Burette\.app/);
 assert.match(releaseWorkflow, /zip\.manifest\.json/);
@@ -780,8 +781,8 @@ assert.match(releaseScript, /sign-update-manifest\.mjs/);
 assert.match(releaseScript, /--dry-run/);
 assert.match(releaseScript, /BURETTE_BUILD_MODE=release/);
 assert.match(releaseScript, /BURETTE_RELEASE_ALLOW_ADHOC:-auto/);
-assert.match(releaseScript, /developer_id_credentials_available/);
-assert.match(releaseScript, /building an ad-hoc signed release without notarization/);
+
+assert.match(releaseScript, /mandatory Sparkle authentication/);
 assert.match(releaseScript, /notarytool submit/);
 assert.match(releaseScript, /stapler staple/);
 assert.match(releaseScript, /scripts\/create-dmg\.sh" "\$APP" "\$DMG"/);
@@ -943,6 +944,7 @@ assert.deepEqual(vendorAssetsLock.assets.map((asset) => asset.path).toSorted(), 
   'PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm',
   'PreviewExtension/Web/rdkit/RDKit_minimal.js',
   'PreviewExtension/Web/rdkit/RDKit_minimal.wasm',
+  'PreviewExtension/Web/svg-sanitizer.js',
 ]);
 for (const asset of vendorAssetsLock.assets) {
   assert.match(asset.sha256, /^sha256-/);
@@ -1037,7 +1039,7 @@ assert.doesNotMatch(installLocalScript, /broadPublicTypes/);
 assert.match(installLocalScript, /let contentTypes = documentTypes\.flatMap/);
 assert.match(installLocalScript, /for contentType in Set\(contentTypes\)/);
 assert.match(installLocalScript, /Contents\/Resources\/ViewerWeb/);
-assert.match(buildScript, /LOCAL_XYZRENDER_ENV="\$HOME\/\.local\/share\/uv\/tools\/xyzrender"/);
+assert.match(buildScript, /LOCAL_XYZRENDER_ENV="\$\{BURETTE_XYZRENDER_ENV:-\$HOME\/\.local\/share\/uv\/tools\/xyzrender\}"/);
 assert.match(buildScript, /bun run build:agent-shell/);
 assert.match(updaterCommand, /sync_burette_codex_plugin\(\)/);
 assert.match(updaterCommand, /Contents\/Resources\/plugins\/burette-agent/);

@@ -5535,7 +5535,7 @@
     const selectedAtoms = xyzrenderAtomSetFromSelector(
       xyzrenderAtomSelectorForElements(item, selectedBefore),
     );
-    body.innerHTML = svg;
+    body.innerHTML = window.BuretteSanitizeArtwork(svg);
     cleanupXyzrenderSelectionSet();
     if (selectedAtoms.size > 0) {
       for (const element of xyzrenderSelectableElements(item)) {
@@ -13167,7 +13167,7 @@ SOFTWARE.
     const restoredView = window.BuretteRendererViewState?.restoreFromHost(config.documentId, postHostMessage);
     disposeExternalArtifactInteractions();
     const artifact = config.externalArtifact;
-    const inlineSvg = artifact?.inlineSvg || (artifact?.inlineSvgBase64 ? base64ToText(artifact.inlineSvgBase64) : '');
+    let inlineSvg = artifact?.inlineSvg || (artifact?.inlineSvgBase64 ? base64ToText(artifact.inlineSvgBase64) : '');
     if (!artifact || (!artifact.path && !inlineSvg)) {
       throw new Error('External xyzrender renderer was selected, but no externalArtifact payload was provided.');
     }
@@ -13176,9 +13176,12 @@ SOFTWARE.
     const container = document.getElementById('app');
     const preset = artifact.preset ? ` · ${escapeHTML(artifact.preset)}` : '';
     const elapsed = Number.isFinite(Number(artifact.elapsedMs)) ? ` · ${Number(artifact.elapsedMs)} ms` : '';
-    const content = inlineSvg
-      ? `<div class="buret-external-artifact-stage">${externalArtifactSheetHTML(externalArtifactBaseItemHTML(inlineSvg, config.label || 'xyzrender artifact'))}</div>`
-      : `<div class="buret-external-artifact-stage">${externalArtifactSheetHTML(externalArtifactObjectHTML(artifact.path, config.label || 'xyzrender artifact'))}</div>`;
+    if (!inlineSvg) {
+      const response = await fetch(safeRelativeArtifactPath(artifact.path));
+      if (!response.ok) throw new Error(`Could not read xyzrender SVG: HTTP ${response.status}`);
+      inlineSvg = await response.text();
+    }
+    const content = `<div class="buret-external-artifact-stage">${externalArtifactSheetHTML(externalArtifactBaseItemHTML(inlineSvg, config.label || 'xyzrender artifact'))}</div>`;
     container.innerHTML = `
       <div class="buret-external-artifact-root">
         ${content}
@@ -13224,7 +13227,7 @@ SOFTWARE.
     return `
       <div class="buret-xyzrender-sheet-item buret-xyzrender-sheet-item-large buret-xyzrender-sheet-item-base" aria-label="${safeLabel}">
         <div class="buret-xyzrender-sheet-item-background"></div>
-        <div class="buret-xyzrender-sheet-item-body">${content}</div>
+        <div class="buret-xyzrender-sheet-item-body">${window.BuretteSanitizeArtwork(content)}</div>
         ${rotatableArtifactControlsHTML()}
       </div>`;
   }
@@ -13257,13 +13260,6 @@ SOFTWARE.
         <span class="buret-xyzrender-rotate-handle-dot"></span>
         <span class="buret-xyzrender-rotate-handle-degree">0°</span>
       </div>`;
-  }
-
-  function externalArtifactObjectHTML(path, label) {
-    return externalArtifactBaseItemHTML(
-      `<object class="buret-external-artifact-object" data="${safeRelativeArtifactPath(path)}" type="image/svg+xml" aria-label="${escapeHTML(label || 'xyzrender artifact')}"></object>`,
-      label
-    );
   }
 
   function sheetItemExportLabel(item) {
@@ -14470,7 +14466,7 @@ SOFTWARE.
     const fallbackY = rect.height / scale * (0.42 + (Math.floor((serial - 1) / 4) % 4) * 0.06);
     item.style.left = `${Number.isFinite(point?.x) ? point.x : fallbackX}px`;
     item.style.top = `${Number.isFinite(point?.y) ? point.y : fallbackY}px`;
-    item.innerHTML = `<div class="buret-xyzrender-sheet-item-background"></div><div class="buret-xyzrender-sheet-item-body">${svg}</div>${rotatableArtifactControlsHTML()}<div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
+    item.innerHTML = `<div class="buret-xyzrender-sheet-item-background"></div><div class="buret-xyzrender-sheet-item-body">${window.BuretteSanitizeArtwork(svg)}</div>${rotatableArtifactControlsHTML()}<div class="buret-xyzrender-sheet-item-label">${escapeHTML(path.split('/').pop() || path)}</div>`;
     sheet.appendChild(item);
     if (!point) layoutAddedXyzrenderSheetItems(sheet, scale);
     else item.dataset.buretSheetPositioned = 'true';
@@ -18207,6 +18203,8 @@ SOFTWARE.
     ));
     // Retain Mol*'s single-block CCD handling when no coordinate block is present.
     if (indices.length === 0) indices.push(0);
+    if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+    window.BuretteSceneFiles.checkTrajectoryCount(indices.length);
     const trajectories = [];
     for (const blockIndex of indices) {
       const trajectory = await plugin.state.data.build().to(cif)
@@ -18327,48 +18325,37 @@ SOFTWARE.
       await applyXyzFrameOverlayVisibilityNow(viewer, prepared, readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount || prepared.xyzFrameCount));
       return;
     }
-    if (prepared.loadPreset === 'all-models') {
-      const plugin = viewer.plugin;
-      const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
-      for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
-        await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'all-models', {
-          useDefaultIfSingleModel: activeConfig?.hostedMcpWidgetBootstrap !== true
-        });
-      }
+    if (prepared.loadPreset === 'all-models' || prepared.loadPreset === 'preset-trajectory-all-models') {
+      await loadMolstarEntry(viewer, prepared, {
+        useDefaultIfSingleModel: activeConfig?.hostedMcpWidgetBootstrap !== true
+      });
       if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
       await applyMolstarWaterLineRepresentation(viewer);
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
-    const plugin = viewer.plugin;
     if (activeConfig?.hostedMcpWidgetBootstrap !== true && prepared.format !== 'mmcif' && prepared.keepDefaultMolstarStyle === true && typeof viewer.loadStructureFromData === 'function') {
       await viewer.loadStructureFromData(prepared.data, prepared.format, { dataLabel: prepared.label });
       installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
       return;
     }
-    const data = await plugin.builders.data.rawData({ data: prepared.data, label: prepared.label });
-    for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, prepared.format)) {
-      // Hosted counts and author-residue selectors describe the supplied
-      // coordinates, not automatically generated biological-assembly copies.
-      const presetOptions = activeConfig?.hostedMcpWidgetBootstrap === true
-        ? { structure: { name: 'model', params: {} } } : undefined;
-      await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', presetOptions);
-    }
+    // Hosted counts and author-residue selectors describe the supplied
+    // coordinates, not automatically generated biological-assembly copies.
+    const presetOptions = activeConfig?.hostedMcpWidgetBootstrap === true
+      ? { structure: { name: 'model', params: {} } } : undefined;
+    await loadMolstarEntry(viewer, { ...prepared, loadPreset: 'default' }, presetOptions);
     if (prepared.keepDefaultMolstarStyle !== true) await applyMolstarStyle(viewer, prepared.molstarStyleOverride || configuredMolstarStyle(activeConfig));
     await applyMolstarWaterLineRepresentation(viewer);
     installDockingPoseControls(viewer, trajectoryControlsForPrepared(prepared));
   }
 
-  async function loadMolstarEntry(viewer, entry, presetOptions = undefined) {
-    const plugin = viewer.plugin;
+  async function loadMolstarEntry(viewer, entry, presetOptions = undefined, appendOwner = undefined) {
     const normalized = normalizeFormat(entry.format);
     const payload = normalized === 'cifCore'
       ? { data: coreCifToPdb(entry.data), format: 'pdb' }
       : { data: entry.data, format: normalized };
-    const data = await plugin.builders.data.rawData({ data: payload.data, label: entry.label });
-    for (const trajectory of await parseMolstarStructureTrajectories(plugin, data, payload.format)) {
-      await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', presetOptions);
-    }
+    if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+    await window.BuretteSceneFiles.loadModels(viewer, { ...entry, ...payload }, parseMolstarStructureTrajectories, presetOptions, appendOwner);
   }
 
   async function loadMolstarEntryWithStructureRefs(viewer, entry, presetOptions = undefined) {
@@ -22805,7 +22792,7 @@ SOFTWARE.
     if (!snapshot) return;
     const body = snapshot.item?.querySelector?.('.buret-xyzrender-sheet-item-body');
     if (body && typeof snapshot.bodyHtml === 'string') {
-      body.innerHTML = snapshot.bodyHtml;
+      body.innerHTML = window.BuretteSanitizeArtwork(snapshot.bodyHtml);
       restoreNullableAttribute(snapshot.item, 'data-buret-xyzrender-regions', snapshot.regions);
       restoreNullableAttribute(snapshot.item, 'data-buret-xyzrender-preset', snapshot.preset);
       body.querySelectorAll('[data-buret-xyzrender-selected="true"]').forEach(element => {

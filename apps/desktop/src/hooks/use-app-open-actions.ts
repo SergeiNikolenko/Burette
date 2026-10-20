@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { StructureDragRecord } from "../lib/structure-drag";
 import { normalizePdbId, rcsbPdbDownloadUrl } from "../lib/structure-fetch";
 import { isTauriRuntime } from "../lib/tauri";
+import { fetchStructureText } from "../lib/structure-download";
 import type { RecentStructure } from "../types";
 import { pickWebDemoFiles } from "../lib/web-demo-workspace";
 
@@ -90,12 +91,11 @@ export function useAppOpenActions({
   };
 }
 
-async function fetchBrowserDevPdbStructure(pdbId: string): Promise<FetchStructureResult> {
-  const response = await fetch(rcsbPdbDownloadUrl(pdbId));
-  if (!response.ok) {
-    throw new Error(`RCSB PDB returned ${response.status} ${response.statusText}`);
-  }
-  const text = await response.text();
+export async function fetchBrowserDevPdbStructure(pdbId: string): Promise<FetchStructureResult> {
+  const { text } = await fetchStructureText(rcsbPdbDownloadUrl(pdbId), {
+    maxBytes: 75 * 1024 * 1024, timeoutMs: 120_000,
+    httpError: (response) => `RCSB PDB returned ${response.status} ${response.statusText}`,
+  });
   if (!text.trim()) throw new Error("RCSB PDB returned an empty structure");
   return {
     title: `${pdbId}.pdb`,

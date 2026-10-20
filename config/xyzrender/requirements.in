@@ -1,0 +1,3 @@
+# Versions observed together in successful native CI (2026-10-17).
+xyzrender==0.3.8
+rdkit==2026.9.1

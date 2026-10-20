@@ -33,6 +33,7 @@ const VIEWER_FILES = [
   "native-viewer-menus.js",
   "scene-file-actions.js",
   "renderer-view-state.js",
+  "svg-sanitizer.js",
   "viewer.js",
 ];
 

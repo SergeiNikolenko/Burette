@@ -18,7 +18,58 @@ const orientationParser = source.slice(source.indexOf("    private static func n
 const navigationFailures = source.slice(source.indexOf("func webView(_ webView: WKWebView, didFail navigation:"), source.indexOf("    func webViewWebContentProcessDidTerminate("));
 const timeout = source.slice(source.indexOf("private func scheduleRenderTimeout("), source.indexOf("    private func finishPreviewIfNeeded("));
 const handler = source.slice(source.indexOf("fileprivate final class WeakPreviewScriptMessageHandler:"), source.indexOf("final class PreviewViewController:"));
+const graphTypes = source.slice(source.indexOf("    private struct FepGraphMLPreview {"), source.indexOf("    private static let defaultRenderTimeoutSeconds"));
+const graphFunctions = source.slice(source.indexOf("    private static func fepGraphMLPreview("), source.indexOf("    private static func fepGraphMLInlineHTML("));
+const decodeText = source.slice(source.indexOf("    private static func decodeText("), source.indexOf("    private static func textArtifactPreviewContent("));
 assert.ok(parser && timeout, "native regression entrypoints must exist");
+assert.ok(graphTypes && graphFunctions && decodeText, "production GraphML helpers must exist");
+
+const graphChecks = String.raw`
+    static func checkGraphML() throws {
+        func node(_ id: String?) -> String {
+            let attribute = id.map { " id=\"\($0)\"" } ?? ""
+            return "<node\(attribute)><data key=\"mol\">{\"atoms\":[],\"bonds\":[]}</data></node>"
+        }
+        func xml(_ nodes: String) -> Data {
+            Data(("<graphml><key id=\"mol\" for=\"node\" attr.name=\"moldict\"/>"
+                + "<graph edgedefault=\"undirected\">" + nodes + "</graph></graphml>").utf8)
+        }
+        for malformed in [node("same") + node("same"), node("mol1") + node(nil), node(nil) + node("mol0")] {
+            do {
+                _ = try fepGraphMLPreview(from: xml(malformed))
+                assertionFailure("Duplicate effective node IDs must throw before dictionary construction")
+            } catch PreviewError.unsupportedStructureFile(let message) {
+                assert(message.contains("duplicate node ID"), message)
+            }
+        }
+        let valid = try fepGraphMLPreview(from: xml(node("explicit") + node(nil)))
+        assert(valid.nodes.map { $0.id } == ["explicit", "mol1"])
+        let repeated = try fepEdgeListPreview(from: "a:b\na:b\nb:c\n")
+        assert(repeated.nodes.map { $0.id } == ["a", "b", "c"])
+        assert(repeated.edges.count == 3, "Repeated edges retain their original meaning")
+
+        let names = ["node20", "center", "node10", "node2"]
+        let nodes = names.map { FepGraphMLNode(id: $0, label: $0, atoms: 0, heavyAtoms: 0,
+            bonds: 0, dockingScore: nil, molblock: "", x: 0, y: 0) }
+        let edges = names.filter { $0 != "center" }.map { FepGraphMLEdge(source: "center", target: $0, score: nil) }
+        let compact = layoutFepGraphMLPreview(FepGraphMLPreview(nodes: nodes, edges: edges))
+        assert(compact.nodes.map { $0.id } == names, "Layout must retain input node order")
+        let byID = Dictionary(uniqueKeysWithValues: compact.nodes.map { ($0.id, $0) })
+        assert(byID["center"]!.x == 50 && byID["center"]!.y == 50)
+        assert(byID["node2"]!.x == 25 && byID["node2"]!.y == 20)
+        assert(byID["node10"]!.x == 75 && byID["node10"]!.y == 20)
+        assert(byID["node20"]!.x == 75 && byID["node20"]!.y == 80)
+
+        // This input is below the existing 25 MiB limit. The harness deadline
+        // also bounds layout: a per-node scan of all leaves cannot finish it.
+        let starText = (1...100_000).map { "hub:node\($0)" }.joined(separator: "\n")
+        assert(starText.utf8.count < 25 * 1024 * 1024)
+        let star = try fepEdgeListPreview(from: starText)
+        assert(star.nodes.count == 100_001 && star.edges.count == 100_000)
+        assert(star.nodes[0].x == 50 && star.nodes[0].y == 50)
+        assert(star.nodes.allSatisfy { $0.x.isFinite && $0.y.isFinite })
+    }
+`;
 
 // Execute the production parser and timeout method without building the app or
 // importing AppKit/WebKit. Stubs observe timeout effects on the active request.
@@ -44,7 +95,17 @@ assert(recipient?.received == 1)
 recipient = nil
 assert(observedRecipient == nil, "WebKit's retained handler must not retain its owner")
 retainedHandler.userContentController(WKUserContentController(), didReceive: WKScriptMessage())
-enum PreviewError: Error { case webRenderTimedOut }
+enum PreviewError: Error {
+    case webRenderTimedOut
+    case unsupportedStructureFile(String)
+    case emptyStructureFile(String)
+}
+struct GraphHarness {
+    ${graphTypes}
+    ${graphFunctions}
+    ${decodeText}
+    ${graphChecks}
+}
 final class PreviewHarness {
     struct Atom { let symbol: String; let x: Double; let y: Double; let z: Double }
     static func fields(_ line: String) -> [String] { line.split(whereSeparator: \\.isWhitespace).map(String.init) }
@@ -116,6 +177,7 @@ final class PreviewHarness {
 PreviewHarness.checkParser()
 PreviewHarness().checkTimeout()
 PreviewHarness().checkNavigationFailures()
+try GraphHarness.checkGraphML()
 `;
 const directory = await mkdtemp(path.join(tmpdir(), "burette-native-regression-"));
 try {
@@ -132,4 +194,4 @@ assert.match(prepare, /renderTimeoutWorkItem\?\.cancel\(\)\s*renderTimeoutWorkIt
 assert.ok(prepare.indexOf("renderTimeoutWorkItem?.cancel()") < prepare.indexOf("webView.stopLoading()"));
 assert.match(source, /userContentController\.add\(WeakPreviewScriptMessageHandler\(delegate: self\), name: "burette"\)/);
 assert.doesNotMatch(source, /userContentController\.add\(self, name: "burette"\)/);
-console.log("Quick Look native parsers, stale navigation, timeout, and handler ownership regressions passed.");
+console.log("Quick Look native parsers, GraphML identities/star layout, stale navigation, timeout, and handler ownership regressions passed.");

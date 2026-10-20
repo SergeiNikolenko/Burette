@@ -357,7 +357,7 @@ checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
 
 [[package]]
 name = "burette"
-version = "2026.10.22"
+version = "2026.10.23"
 dependencies = [
  "base64 0.23.1",
  "burette-core",
@@ -384,6 +384,7 @@ dependencies = [
 name = "burette-core"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "serde",
  "serde_json",
 ]

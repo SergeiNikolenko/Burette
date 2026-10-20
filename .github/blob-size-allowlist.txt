@@ -165,6 +165,25 @@ plugins/burette-agent/browser-shell-dist/assets/molecule-store-DXD4Vr5t.js
 plugins/burette-agent/browser-shell-dist/assets/molstar-CT4y9u88.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-CudoY1L_.js
 
-# Docking menu and current-main generated shell.
+# Official browser-shell rebuild for spreadsheet-safe derived exports.
+plugins/burette-agent/browser-shell-dist/assets/molstar-BeRqnyag.js
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-DHhpmcr9.js
+plugins/burette-agent/browser-shell-dist/assets/dist-DVUgk34j.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-BWM4ri1J.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-BcVEWSjc.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-p3BlfA5h.js
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-BAdaZcS5.js
+plugins/burette-agent/browser-shell-dist/assets/index-4bUcvoys.css
+
+# Reviewed generated shell after security and native responsiveness integration.
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-DrVSxW1g.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-BYUSNe5H.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-DY4otyY0.js
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-CYzCmhqK.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-DLkh2cnD.js
+
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-BzyPYDB8.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-Bu-H-WOM.js
+
+# Reviewed generated shell after final main integration.
+plugins/burette-agent/browser-shell-dist/assets/viewer-qrnc7pxo.js

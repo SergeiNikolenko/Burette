@@ -6,7 +6,7 @@ use std::env;
 use std::ffi::CString;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
-use std::net::{IpAddr, ToSocketAddrs};
+use std::net::IpAddr;
 #[cfg(target_os = "macos")]
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -35,9 +35,14 @@ use crate::preview::runtime::{
 };
 use crate::preview::runtime_grid::create_grid_runtime_with_options;
 use crate::preview::runtime_viewer::create_combined_sdf_pose_runtime;
-use crate::preview::text_xyz::xyz_data_from_text;
+use crate::preview::text_xyz::{decode_structure_text, xyz_data_from_text};
 use crate::preview::xyzrender::{
     create_xyzrender_artifact, create_xyzrender_card_batch_artifacts, XyzrenderCardBatchRequest,
+};
+use burette_core::collection_merge::{
+    collection_family, merge_collection_files, merge_collection_text,
+    parse_delimited_collection_cells, parse_delimited_collection_header, read_bounded,
+    with_generated_output, CollectionFamily, MergeSlot, MAX_MERGE_BYTES,
 };
 
 const XYZRENDER_SHEET_MAX_STRUCTURE_FILE_SIZE: u64 = 75 * 1024 * 1024;
@@ -1210,22 +1215,30 @@ fn normalize_pdb_id(input: &str) -> Result<String, String> {
 fn fetch_pdb_structure_blocking(pdb_id: &str) -> Result<FetchStructureResult, String> {
     let url = format!("https://files.rcsb.org/download/{pdb_id}.pdb");
     let max_filesize = FETCHED_PDB_MAX_BYTES.to_string();
-    let output = Command::new("/usr/bin/curl")
-        .args([
-            "--fail",
-            "--location",
-            "--silent",
-            "--show-error",
-            "--max-time",
-            "120",
-            "--max-filesize",
-            &max_filesize,
-            "--user-agent",
-            "Burette/1.0",
-            &url,
-        ])
-        .output()
-        .map_err(|error| format!("Failed to start curl for {url}: {error}"))?;
+    let mut command = Command::new("/usr/bin/curl");
+    command.args([
+        "--fail",
+        "--location",
+        "--silent",
+        "--show-error",
+        "--max-time",
+        "120",
+        "--max-filesize",
+        &max_filesize,
+        "--user-agent",
+        "Burette/1.0",
+        &url,
+    ]);
+    let output = burette_core::bounded_process::run(
+        &mut command,
+        &[],
+        burette_core::bounded_process::Limits {
+            stdout_bytes: FETCHED_PDB_MAX_BYTES,
+            stderr_bytes: 64 * 1024,
+            deadline: Instant::now() + Duration::from_secs(120),
+        },
+    )
+    .map_err(|error| format!("Failed to download {url}: {error}"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(if stderr.is_empty() {
@@ -1774,36 +1787,11 @@ pub(crate) fn fetch_remote_structure(
     reject_private_fetch_target(&parsed)?;
     let title = remote_structure_title(&parsed);
     let extension = remote_structure_extension(&title)?;
-    let max_size = KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE.to_string();
-    let output = Command::new("/usr/bin/curl")
-        .args([
-            "--fail",
-            "--location",
-            "--silent",
-            "--show-error",
-            "--max-time",
-            "30",
-            "--max-filesize",
-            &max_size,
-            "--header",
-            "User-Agent: Burette/1.0",
-        ])
-        .arg(parsed.as_str())
-        .output()
-        .map_err(|err| format!("Could not start curl: {err}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            format!("curl failed with status {}", output.status)
-        } else {
-            stderr
-        });
-    }
-    if output.stdout.len() as u64 > KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE {
-        return Err("Fetched structure is too large".to_string());
-    }
-    let text = String::from_utf8(output.stdout)
-        .map_err(|_| "Fetched structure is not valid UTF-8 text".to_string())?;
+    let text = super::database::http::fetch_text(
+        &super::database::http::DatabaseRequest::get(parsed.as_str())
+            .with_timeout(30)
+            .with_max_bytes(KETCHER_IMPORT_MAX_STRUCTURE_FILE_SIZE),
+    )?;
     if text.trim().is_empty() {
         return Err("Fetched structure is empty".to_string());
     }
@@ -1897,6 +1885,7 @@ pub(crate) fn open_merged_collection<R: Runtime>(
     request: MergedCollectionRequest,
     preferences: ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
+    let _slot = MergeSlot::acquire()?;
     let (extension, text) = merge_collection_files(&request.paths)?;
     let output_directory = app
         .path()
@@ -1905,11 +1894,10 @@ pub(crate) fn open_merged_collection<R: Runtime>(
         .join("viewer")
         .join("merged")
         .join(uuid::Uuid::new_v4().to_string());
-    fs::create_dir_all(&output_directory).map_err(|err| err.to_string())?;
-    let output_path = output_directory.join(format!("merged-collection.{extension}"));
-    fs::write(&output_path, text).map_err(|err| format!("{}: {err}", output_path.display()))?;
-    open_document_for_window(&app, window.label(), output_path, &preferences, None)
-        .map(|document| document.into_virtual())
+    with_generated_output(&output_directory, &extension, &text, |output_path| {
+        open_document_for_window(&app, window.label(), output_path, &preferences, None)
+            .map(|document| document.into_virtual())
+    })
 }
 
 #[tauri::command]
@@ -1921,6 +1909,10 @@ pub(crate) fn append_to_molecule_collection<R: Runtime>(
     preferences: ViewerPreferences,
     open_state_revision: u64,
 ) -> Result<ViewerDocument, String> {
+    let _slot = MergeSlot::acquire()?;
+    if request.text.len() > MAX_MERGE_BYTES {
+        return Err("Collection edit exceeds the 75 MiB input limit".into());
+    }
     let target_path = PathBuf::from(&request.target_path)
         .canonicalize()
         .map_err(|err| format!("{}: {err}", request.target_path))?;
@@ -1961,8 +1953,10 @@ pub(crate) fn append_to_molecule_collection<R: Runtime>(
         open_state_revision,
         CollectionWriteTarget::ExistingOrNew,
         || {
-            let existing = fs::read_to_string(&target_path)
-                .map_err(|err| format!("{}: {err}", target_path.display()))?;
+            let remaining = MAX_MERGE_BYTES
+                .checked_sub(request.text.len())
+                .ok_or("Collection append exceeds the 75 MiB edit limit")?;
+            let existing = read_bounded(&target_path, remaining)?;
             let merged =
                 merge_collection_text(target_family, &[existing.as_str(), request.text.as_str()])?;
             if merged.trim().is_empty() {
@@ -1988,6 +1982,10 @@ pub(crate) fn create_molecule_collection<R: Runtime>(
     preferences: ViewerPreferences,
     open_state_revision: u64,
 ) -> Result<ViewerDocument, String> {
+    let _slot = MergeSlot::acquire()?;
+    if request.text.len() > MAX_MERGE_BYTES {
+        return Err("Collection edit exceeds the 75 MiB input limit".into());
+    }
     let requested_output_path = PathBuf::from(&request.output_path);
     if requested_output_path.as_os_str().is_empty() {
         return Err("Missing collection output path".to_string());
@@ -2487,7 +2485,18 @@ fn render_xyzrender_sheet_item_blocking(
     let converted_xyz = if direct_smiles.is_some() || matches!(extension.as_str(), "cub" | "cube") {
         None
     } else {
-        xyz_data_from_text(&data, &extension, &label)
+        let maestro_text = (extension == "maegz")
+            .then(|| decode_structure_text(&data, &extension))
+            .transpose()?;
+        let (conversion_data, conversion_extension) = maestro_text
+            .as_ref()
+            .map(|text| (text.as_bytes(), "mae"))
+            .unwrap_or((&data, &extension));
+        let converted = xyz_data_from_text(conversion_data, conversion_extension, &label);
+        if extension == "maegz" && converted.is_none() {
+            return Err("Maestro gzip file contains no supported preview coordinates".to_string());
+        }
+        converted
     };
     let artifact = create_xyzrender_artifact(
         &input_path,
@@ -2522,6 +2531,11 @@ fn normalize_inline_structure_extension(
     if matches!(extension.as_str(), "smi" | "smiles") {
         return Ok("smi".to_string());
     }
+    let extension = if extension == "mae.gz" {
+        "maegz".to_string()
+    } else {
+        extension
+    };
     format_for_extension(&extension)?;
     Ok(extension)
 }
@@ -2597,65 +2611,87 @@ fn remote_structure_extension(title: &str) -> Result<String, String> {
     Ok(extension)
 }
 
-// Shared with the Database commands: every outbound request in the app resolves
-// its target through this guard, so no provider URL - or redirect - can be aimed
-// at a service on the machine or the local network.
+// Syntactic preflight only. DNS is resolved, validated and pinned under the
+// shared request deadline immediately before each native HTTP hop.
 pub(crate) fn reject_private_fetch_target(url: &url::Url) -> Result<(), String> {
-    let host = url
-        .host_str()
-        .ok_or_else(|| "Remote structure URL must include a host".to_string())?;
-    // An IPv6 literal arrives inside brackets ("[::1]"), which no IP parser
-    // accepts. Left as it was, ::1 and every other literal address failed both the
-    // parse and the name lookup below and sailed past the guard into curl, which
-    // understands the bracket form perfectly well.
-    let normalized_host = host
-        .trim()
+    let host = url.host_str().ok_or("Remote URL must include a host")?;
+    let normalized = host
         .trim_end_matches('.')
         .trim_start_matches('[')
-        .trim_end_matches(']')
-        .to_lowercase();
-    if normalized_host == "localhost" {
-        return Err("Localhost URLs are not supported for remote structure fetch".to_string());
+        .trim_end_matches(']');
+    if normalized.eq_ignore_ascii_case("localhost")
+        || normalized.to_ascii_lowercase().ends_with(".localhost")
+    {
+        return Err("Local and non-public network URLs are not supported for remote fetch".into());
     }
-    if let Ok(ip) = normalized_host.parse::<IpAddr>() {
+    if let Ok(ip) = normalized.parse::<IpAddr>() {
         reject_private_ip(ip)?;
-        return Ok(());
-    }
-    let port = url.port_or_known_default().unwrap_or(443);
-    if let Ok(addresses) = (host, port).to_socket_addrs() {
-        for address in addresses {
-            reject_private_ip(address.ip())?;
-        }
     }
     Ok(())
 }
 
+pub(crate) fn public_fetch_addresses(
+    url: &url::Url,
+    deadline: Instant,
+) -> Result<Vec<IpAddr>, String> {
+    if Instant::now() >= deadline {
+        return Err("Remote request deadline expired".into());
+    }
+    reject_private_fetch_target(url)?;
+    let host = url.host_str().ok_or("Remote URL must include a host")?;
+    let normalized = host
+        .trim_end_matches('.')
+        .trim_start_matches('[')
+        .trim_end_matches(']');
+    let addresses = if let Ok(ip) = normalized.parse::<IpAddr>() {
+        vec![ip]
+    } else {
+        burette_core::bounded_resolver::resolve(
+            normalized,
+            url.port_or_known_default().unwrap_or(443),
+            deadline,
+        )
+        .map_err(|error| format!("Could not resolve remote host: {error}"))?
+    };
+    if addresses.is_empty() {
+        return Err("Remote host has no addresses".into());
+    }
+    for address in &addresses {
+        reject_private_ip(*address)?;
+    }
+    Ok(addresses)
+}
+
 fn reject_private_ip(ip: IpAddr) -> Result<(), String> {
-    match ip {
-        IpAddr::V4(value)
-            if value.is_private()
-                || value.is_loopback()
-                || value.is_link_local()
-                || value.is_unspecified()
-                || value.is_broadcast() =>
-        {
-            Err(
-                "Local and private network URLs are not supported for remote structure fetch"
-                    .to_string(),
-            )
+    let public = match ip {
+        IpAddr::V4(value) => {
+            let [a, b, c, _] = value.octets();
+            !value.is_private()
+                && !value.is_loopback()
+                && !value.is_link_local()
+                && a != 0
+                && a < 224
+                && !(a == 100 && (64..=127).contains(&b))
+                && !(a == 192 && b == 0 && (c == 0 || c == 2))
+                && !(a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100)))
+                && !(a == 203 && b == 0 && c == 113)
         }
-        IpAddr::V6(value)
-            if value.is_loopback()
-                || value.is_unspecified()
-                || value.is_unique_local()
-                || value.is_unicast_link_local() =>
-        {
-            Err(
-                "Local and private network URLs are not supported for remote structure fetch"
-                    .to_string(),
-            )
+        IpAddr::V6(value) => {
+            if let Some(mapped) = value.to_ipv4_mapped() {
+                return reject_private_ip(IpAddr::V4(mapped));
+            }
+            let segments = value.segments();
+            // Global unicast only; excludes local, multicast and translation prefixes.
+            segments[0] & 0xe000 == 0x2000
+                && segments[0] != 0x2002
+                && segments[0] != 0x3fff
+                && !(segments[0] == 0x2001 && (segments[1] < 0x0200 || segments[1] == 0x0db8))
         }
-        _ => Ok(()),
+    };
+    if public {
+        Ok(())
+    } else {
+        Err("Local and non-public network URLs are not supported for remote fetch".into())
     }
 }
 
@@ -2708,224 +2744,6 @@ fn expand_open_targets(path: PathBuf) -> Result<Vec<PathBuf>, String> {
     let mut scan = ProjectStructureScan::following_symlinks(PROJECT_STRUCTURE_SCAN_LIMITS);
     scan.collect(&canonical, &supported_extensions)?;
     Ok(scan.into_paths())
-}
-
-fn merge_collection_files(paths: &[String]) -> Result<(String, String), String> {
-    let mut seen = HashSet::new();
-    let mut sources: Vec<(CollectionFamily, String)> = Vec::new();
-    for path in paths {
-        let canonical = PathBuf::from(path)
-            .canonicalize()
-            .map_err(|err| format!("{path}: {err}"))?;
-        if !seen.insert(canonical.clone()) {
-            continue;
-        }
-        let metadata =
-            fs::metadata(&canonical).map_err(|err| format!("{}: {err}", canonical.display()))?;
-        if !metadata.is_file() {
-            return Err(format!("{} is not a file", canonical.display()));
-        }
-        let extension = structure_path_extension(&canonical);
-        let family = collection_family(&extension).ok_or_else(|| {
-            format!(
-                "{} is not a supported molecule collection",
-                canonical.display()
-            )
-        })?;
-        let text = fs::read_to_string(&canonical)
-            .map_err(|err| format!("{}: {err}", canonical.display()))?;
-        sources.push((family, text));
-    }
-    if sources.len() < 2 {
-        return Err("Drop at least two molecule collections to merge them".to_string());
-    }
-    let family = sources[0].0;
-    if sources
-        .iter()
-        .any(|(next_family, _)| *next_family != family)
-    {
-        return Err(
-            "Collection merge supports one format family at a time: SDF, SMILES, CSV, or TSV"
-                .to_string(),
-        );
-    }
-    let texts: Vec<&str> = sources.iter().map(|(_, text)| text.as_str()).collect();
-    let text = merge_collection_text(family, &texts)?;
-    if text.trim().is_empty() {
-        return Err("Merged collection is empty".to_string());
-    }
-    Ok((family.default_extension().to_string(), text))
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum CollectionFamily {
-    Sdf,
-    Smiles,
-    Csv,
-    Tsv,
-}
-
-impl CollectionFamily {
-    fn default_extension(self) -> &'static str {
-        match self {
-            Self::Sdf => "sdf",
-            Self::Smiles => "smi",
-            Self::Csv => "csv",
-            Self::Tsv => "tsv",
-        }
-    }
-}
-
-fn collection_family(extension: &str) -> Option<CollectionFamily> {
-    match extension {
-        "sd" | "sdf" => Some(CollectionFamily::Sdf),
-        "smi" | "smiles" => Some(CollectionFamily::Smiles),
-        "csv" => Some(CollectionFamily::Csv),
-        "tsv" => Some(CollectionFamily::Tsv),
-        _ => None,
-    }
-}
-
-fn merge_collection_text(family: CollectionFamily, texts: &[&str]) -> Result<String, String> {
-    match family {
-        CollectionFamily::Sdf => {
-            let mut records = Vec::new();
-            for (index, text) in texts.iter().enumerate() {
-                let source_records = split_sdf_collection_records(text);
-                if source_records.is_empty() {
-                    return Err(format!(
-                        "SDF collection source {} does not contain any records",
-                        index + 1
-                    ));
-                }
-                records.extend(source_records);
-            }
-            Ok(format!(
-                "{}\n",
-                records
-                    .iter()
-                    .map(|record| format!("{record}\n$$$$"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            ))
-        }
-        CollectionFamily::Smiles => {
-            let mut lines = Vec::new();
-            for (index, text) in texts.iter().enumerate() {
-                let source_lines = text
-                    .lines()
-                    .map(str::trim)
-                    .filter(|line| !line.is_empty())
-                    .collect::<Vec<_>>();
-                if !source_lines.iter().any(|line| !line.starts_with('#')) {
-                    return Err(format!(
-                        "SMILES collection source {} does not contain any molecule records",
-                        index + 1
-                    ));
-                }
-                lines.extend(source_lines);
-            }
-            Ok(format!("{}\n", lines.join("\n")))
-        }
-        CollectionFamily::Csv => merge_delimited_collection_text(texts, ',', "CSV"),
-        CollectionFamily::Tsv => merge_delimited_collection_text(texts, '\t', "TSV"),
-    }
-}
-
-fn split_sdf_collection_records(text: &str) -> Vec<String> {
-    let mut records = Vec::new();
-    let mut lines = Vec::new();
-    let finish = |lines: &mut Vec<&str>, records: &mut Vec<String>| {
-        let record = lines.join("\n").trim().to_string();
-        lines.clear();
-        if !record.is_empty() {
-            records.push(record);
-        }
-    };
-    for line in text.lines() {
-        if line.trim() == "$$$$" {
-            finish(&mut lines, &mut records);
-        } else {
-            lines.push(line);
-        }
-    }
-    finish(&mut lines, &mut records);
-    records
-}
-
-fn merge_delimited_collection_text(
-    texts: &[&str],
-    separator: char,
-    label: &str,
-) -> Result<String, String> {
-    let mut expected_header: Option<Vec<String>> = None;
-    let mut output_lines = Vec::new();
-    for (index, text) in texts.iter().enumerate() {
-        let file_lines = text.lines().collect::<Vec<_>>();
-        let Some(header_index) = file_lines.iter().position(|line| !line.trim().is_empty()) else {
-            return Err(format!("{label} collection source {} is empty", index + 1));
-        };
-        let header_line = file_lines[header_index].trim_start_matches('\u{feff}');
-        let header = parse_delimited_collection_header(header_line, separator);
-        if header.is_empty() || header.iter().all(String::is_empty) {
-            return Err(format!(
-                "{label} collection source {} has an empty header",
-                index + 1
-            ));
-        }
-        if expected_header
-            .as_ref()
-            .is_some_and(|expected| expected != &header)
-        {
-            return Err(format!(
-                "{label} collection headers must use the same columns in the same order"
-            ));
-        }
-        expected_header.get_or_insert(header);
-        let mut data_lines = file_lines[(header_index + 1)..].to_vec();
-        while data_lines.last().is_some_and(|line| line.trim().is_empty()) {
-            data_lines.pop();
-        }
-        if !data_lines.iter().any(|line| !line.trim().is_empty()) {
-            return Err(format!(
-                "{label} collection source {} does not contain any data rows",
-                index + 1
-            ));
-        }
-        if index == 0 {
-            output_lines.push(header_line);
-        }
-        output_lines.extend(data_lines);
-    }
-    Ok(format!("{}\n", output_lines.join("\n")))
-}
-
-fn parse_delimited_collection_header(line: &str, separator: char) -> Vec<String> {
-    parse_delimited_collection_cells(line, separator)
-        .into_iter()
-        .map(|cell| cell.trim().to_lowercase())
-        .collect()
-}
-
-fn parse_delimited_collection_cells(line: &str, separator: char) -> Vec<String> {
-    let mut cells = Vec::new();
-    let mut current = String::new();
-    let mut quoted = false;
-    let mut chars = line.chars().peekable();
-    while let Some(character) = chars.next() {
-        if character == '"' && chars.peek() == Some(&'"') {
-            current.push('"');
-            chars.next();
-        } else if character == '"' {
-            quoted = !quoted;
-        } else if character == separator && !quoted {
-            cells.push(std::mem::take(&mut current));
-        } else {
-            current.push(character);
-        }
-    }
-    cells.push(current);
-    cells
 }
 
 fn replace_delimited_collection_cell_text(
@@ -3160,7 +2978,7 @@ impl ProjectStructureScan {
             .canonicalize()
             .map_err(|err| format!("{}: {err}", directory.display()))?;
         if let Some(root) = &self.root_boundary {
-            if !self.follow_symlinks && !canonical_directory.starts_with(root) {
+            if !canonical_directory.starts_with(root) {
                 return Ok(());
             }
         } else {
@@ -3208,10 +3026,9 @@ impl ProjectStructureScan {
                 let Ok(canonical_target) = path.canonicalize() else {
                     continue;
                 };
-                // Restored project roots may follow aliases only while their
-                // canonical target remains inside the selected root. Explicit
-                // directory opens preserve the historical external-alias behavior.
-                if !self.follow_symlinks && !self.is_within_root(&canonical_target) {
+                // Alias spelling may be preserved, but selecting a directory
+                // never grants access to targets outside that directory.
+                if !self.is_within_root(&canonical_target) {
                     continue;
                 }
                 let Ok(target_metadata) = fs::metadata(&canonical_target) else {
@@ -3257,11 +3074,13 @@ impl ProjectStructureScan {
             if metadata.is_file()
                 && looks_like_supported_structure_file(&path, supported_extensions)
             {
-                if self.follow_symlinks {
-                    self.collected.insert(path);
-                } else if let Ok(canonical_file) = path.canonicalize() {
+                if let Ok(canonical_file) = path.canonicalize() {
                     if self.is_within_root(&canonical_file) {
-                        self.collected.insert(canonical_file);
+                        self.collected.insert(if self.follow_symlinks {
+                            path
+                        } else {
+                            canonical_file
+                        });
                     }
                 }
             }
@@ -4002,6 +3821,39 @@ mod tests {
         fs::remove_file(pdb).unwrap();
         fs::remove_dir(nested).unwrap();
         fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_corrupt_maestro_sheet_inputs_before_renderer_fallback() {
+        let root =
+            std::env::temp_dir().join(format!("burette-sheet-gzip-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("corrupt.mae.gz");
+        fs::write(&path, b"not gzip").unwrap();
+        for (inline, extension) in [(false, "maegz"), (true, "maegz"), (true, " .MAE.GZ ")] {
+            let request = super::XyzrenderSheetRenderRequest {
+                path: path.to_string_lossy().to_string(),
+                preset: None,
+                controls: None,
+                input_data_base64: inline.then(|| {
+                    base64::Engine::encode(&base64::engine::general_purpose::STANDARD, b"not gzip")
+                }),
+                input_extension: Some(extension.to_string()),
+                orientation_ref: None,
+                cache_scope: None,
+            };
+            let error = super::render_xyzrender_sheet_item_blocking(
+                root.join(format!("output-{inline}")),
+                None,
+                request,
+            )
+            .unwrap_err();
+            assert!(
+                error.contains("Cannot decompress Maestro preview"),
+                "{error}"
+            );
+        }
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -4808,6 +4660,56 @@ mod tests {
         fs::remove_file(alias).unwrap();
         fs::remove_file(real).unwrap();
         fs::remove_dir(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_directory_open_confines_nested_aliases_but_preserves_explicit_selection() {
+        let root =
+            std::env::temp_dir().join(format!("burette-open-boundary-{}", uuid::Uuid::new_v4()));
+        let selected = root.join("selected");
+        let outside = root.join("selected-other");
+        let internal = selected.join("library");
+        fs::create_dir_all(&internal).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(internal.join("inside.pdb"), "HEADER INSIDE\n").unwrap();
+        fs::write(outside.join("outside.pdb"), "HEADER OUTSIDE\n").unwrap();
+        symlink(&outside, selected.join("outside-dir")).unwrap();
+        symlink(
+            outside.join("outside.pdb"),
+            selected.join("outside-file.pdb"),
+        )
+        .unwrap();
+        symlink(&internal, selected.join("alias-dir")).unwrap();
+        let root_alias = root.join("selected-alias");
+        symlink(&selected, &root_alias).unwrap();
+
+        let files = expand_open_targets(selected.clone()).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(
+            files[0],
+            selected
+                .canonicalize()
+                .unwrap()
+                .join("alias-dir/inside.pdb")
+        );
+        assert_eq!(expand_open_targets(root_alias).unwrap(), files);
+        assert_eq!(
+            expand_open_targets(selected.join("outside-file.pdb")).unwrap(),
+            vec![outside.canonicalize().unwrap().join("outside.pdb")]
+        );
+        assert_eq!(
+            expand_open_targets(selected.join("outside-dir")).unwrap(),
+            vec![outside.canonicalize().unwrap().join("outside.pdb")]
+        );
+        let mut scan =
+            ProjectStructureScan::following_symlinks(super::PROJECT_STRUCTURE_SCAN_LIMITS);
+        let supported = supported_open_target_extensions().unwrap();
+        scan.collect(&selected.canonicalize().unwrap(), &supported)
+            .unwrap();
+        scan.collect(&outside, &supported).unwrap();
+        assert_eq!(scan.into_paths(), files);
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[cfg(unix)]

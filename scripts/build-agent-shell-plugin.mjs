@@ -14,6 +14,8 @@ const runtimeScripts = [
   'amber_nc_preview_extract.py',
   'agent-preview.mjs',
   'agent-shell-server.mjs',
+  'model-runtime-path.mjs',
+  'generated-files-root.mjs',
   'burette-agent.mjs',
   'burette-deep-links.mjs',
   'dev-namespace.mjs',
@@ -21,6 +23,7 @@ const runtimeScripts = [
   'mvs-story-templates.mjs',
 ];
 const requiredPreviewAssets = [
+  'svg-sanitizer.js',
   'viewer.js',
   'viewer-bootstrap.js',
   'viewer-shell.js',

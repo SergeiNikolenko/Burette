@@ -116,8 +116,9 @@ assert.doesNotMatch(http, /Bearer [A-Za-z0-9._-]{16,}/, 'no credential may be ha
 assert.doesNotMatch(http, /"--location"/, 'curl must not follow redirects itself');
 assert.match(http, /const MAX_REDIRECTS/);
 assert.match(http, /target = validate_request_url\(&redirect\)\?/, 'every hop passes the guard');
-// A hop off the original host is replayed without the credentials or the body.
-assert.match(http, /let trusted = target\.host_str\(\) == origin\.host_str\(\)/);
+// A hop to another origin (including another scheme or port on the same host)
+// is replayed without the credentials or the body.
+assert.match(http, /let trusted = target\.origin\(\) == origin\.origin\(\)/);
 assert.match(http, /if trusted \{/);
 
 // Retrieve From URL is the one entry point where the address is the user's, so

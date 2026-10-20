@@ -5,7 +5,7 @@ const path = "apps/desktop/src/hooks/use-app-open-actions.ts";
 const original = process.argv[2]
   ? execFileSync("git", ["show", `${process.argv[2]}:${path}`], { encoding: "utf8" })
   : readFileSync(path, "utf8");
-const source = new Bun.Transpiler({ loader: "ts" }).transformSync(original.replace(/^import .*;\n/gm, "").replace("export function", "function"));
+const source = new Bun.Transpiler({ loader: "ts" }).transformSync(original.replace(/^import .*;\n/gm, "").replace(/^export (?=(?:async )?function\b)/gm, ""));
 const hook = new Function("useCallback", "isTauriRuntime", "isWebDemoWorkspace", "pickWebDemoFiles", "open", "previewFormatRegistry", source + "\nreturn useAppOpenActions;")(
   fn => fn, () => false, () => false, async () => ({ paths: ["/OpenedFiles/a.sdf"] }),
   () => { throw new Error("Native dialog invoked in browser"); }, { documentTypes: { extensions: [] } },

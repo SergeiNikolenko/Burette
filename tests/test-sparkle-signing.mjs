@@ -33,17 +33,37 @@ try {
   const patchData = Buffer.from('Burette delta patch fixture');
   const patch = path.join(temporary, 'Burette-2.3.19-from-2.3.18.delta');
   fs.writeFileSync(patch, patchData);
-  const args = [path.join(root, 'scripts/sparkle-appcast.py'), archive, app, path.join(temporary, 'appcast.xml'), '--delta', patch];
-  const environment = { ...process.env, BURETTE_SPARKLE_PRIVATE_KEY: seed.toString('base64') };
+  // Exercise the unchanged signing script in a fixture checkout whose trust
+  // root is the ephemeral key. Never rewrite the production pinned key.
+  const fixtureRoot = path.join(temporary, 'checkout');
+  const fixtureScript = path.join(fixtureRoot, 'scripts/sparkle-appcast.py');
+  const fixtureKey = path.join(fixtureRoot, 'packages/burette/bin/release-signing-key.txt');
+  const fixtureSigner = path.join(fixtureRoot, 'build/sparkle/2.10.0/bin/sign_update');
+  for (const file of [fixtureScript, fixtureKey, fixtureSigner]) fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.copyFileSync(path.join(root, 'scripts/sparkle-appcast.py'), fixtureScript);
+  fs.writeFileSync(fixtureKey, key + '\n');
+  fs.symlinkSync(signer, fixtureSigner);
+  const dmg = path.join(temporary, 'Burette-2.3.19.dmg');
+  fs.writeFileSync(dmg, 'DMG fixture');
+  const args = [fixtureScript, archive, app, path.join(temporary, 'appcast.xml'), '--delta', patch, '--asset', dmg];
+  const environment = { ...process.env, PYTHONOPTIMIZE: '1', BURETTE_SPARKLE_PRIVATE_KEY: seed.toString('base64') };
   const feed = spawnSync('python3', args, { env: environment, encoding: 'utf8' });
   assert.equal(feed.status, 0, feed.stderr);
   const appcast = fs.readFileSync(args[3], 'utf8');
   assert.ok(appcast.includes(result.stdout.trim()));
+  assert.ok(crypto.verify(null, data, publicKey,
+    Buffer.from(fs.readFileSync(archive + '.ed25519', 'utf8').trim(), 'base64')),
+    'Installer sidecar authenticates the same final archive as Sparkle');
+  assert.ok(crypto.verify(null, fs.readFileSync(dmg), publicKey,
+    Buffer.from(fs.readFileSync(dmg + '.ed25519', 'utf8').trim(), 'base64')));
   const patchSignature = appcast.match(/sparkle:deltaFrom="2\.3\.18"[^>]*sparkle:edSignature="([^"]+)"/)?.[1];
   assert.ok(patchSignature && crypto.verify(null, patchData, publicKey, Buffer.from(patchSignature, 'base64')),
     'Delta patches carry their own verifiable signature');
   const wrongKey = spawnSync('python3', args, { env: { ...environment, BURETTE_SPARKLE_PRIVATE_KEY: crypto.randomBytes(32).toString('base64') }, encoding: 'utf8' });
   assert.notEqual(wrongKey.status, 0, 'A key mismatch must fail before publication');
+  fs.writeFileSync(fixtureKey, crypto.randomBytes(32).toString('base64'));
+  const wrongInstallerKey = spawnSync('python3', args, { env: environment, encoding: 'utf8' });
+  assert.notEqual(wrongInstallerKey.status, 0, 'Installer trust-root mismatch must fail before publication');
   console.log('Sparkle signing, tamper rejection, appcast generation and key-pair validation passed');
 } finally {
   fs.rmSync(temporary, { recursive: true, force: true });

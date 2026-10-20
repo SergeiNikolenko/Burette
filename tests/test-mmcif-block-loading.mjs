@@ -13,7 +13,9 @@ Object.assign(globalThis, { window, document: window.document });
 const source = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
 const helper = source.match(/\n  async function parseMolstarStructureTrajectories\([\s\S]*?\n  \}/u)?.[0];
 assert.ok(helper);
-const parse = new Function('window', `${helper}; return parseMolstarStructureTrajectories;`)({ molstar: { lib: { plugin: { StateTransforms } } } });
+const sceneWindow = { molstar: { lib: { plugin: { StateTransforms } } } };
+vm.runInNewContext(readFileSync(new URL('../PreviewExtension/Web/scene-file-actions.js', import.meta.url), 'utf8'), { window: sceneWindow, TextEncoder });
+const parse = new Function('window', `${helper}; return parseMolstarStructureTrajectories;`)(sceneWindow);
 const fields = ['group_PDB', 'id', 'type_symbol', 'label_atom_id', 'label_alt_id', 'label_comp_id', 'label_asym_id', 'label_entity_id', 'label_seq_id', 'pdbx_PDB_ins_code', 'Cartn_x', 'Cartn_y', 'Cartn_z', 'occupancy', 'B_iso_or_equiv', 'pdbx_formal_charge', 'auth_asym_id', 'pdbx_PDB_model_num'];
 const block = (name, rows) => `data_${name}\nloop_\n${fields.map(name => `_atom_site.${name}`).join('\n')}\n${rows}\n#\n`;
 const protein = block('protein', [1, 2].flatMap(model => [

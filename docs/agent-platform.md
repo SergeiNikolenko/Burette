@@ -50,6 +50,9 @@ The hosted plugin is a separate runtime boundary from the local desktop bridge:
   placed only in result `_meta` for the sandboxed Burette workspace.
 - Downloads are capped at 3 MiB and 200,000 lines, redirects are revalidated,
   and HTTPS connections are pinned to DNS addresses already checked as public.
+- The 15-second download deadline spans DNS, redirects and body reading. Rejected
+  oversized responses close their sockets immediately. System DNS work may finish
+  after the caller times out, but cannot start a late HTTP request.
 - Attachments are processed in memory and are not written to Burette
   application storage.
 
@@ -540,3 +543,12 @@ registry remain separate. Browser and iOS runtimes do not register this protocol
 Focused checks: `bun tests/test-burette-deep-links.mjs` and
 `cargo test --lib deep_links` from `apps/desktop/src-tauri`; packaged validation
 must additionally open a link with the app closed and running.
+
+### Derived component files
+
+Agent component extraction and fragment editing write each result into a private
+random directory below `BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT` (by default
+`~/Desktop/Burette Generated Files`). Files are created exclusively with owner-only
+permissions. This root is already included in browser workspace file grants, so
+subsequent results can open as tabs without authorizing arbitrary temporary files.
+The generated root must be owned by the current user and not writable by others.

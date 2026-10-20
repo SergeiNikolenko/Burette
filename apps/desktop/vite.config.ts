@@ -3699,7 +3699,7 @@ function textFileReadLimit(value: string | null) {
 }
 
 function readableTextBytes(bytes: Buffer, extension: string) {
-  if (extension === "maegz") return gunzipSync(bytes);
+  if (extension === "maegz") return gunzipSync(bytes, { maxOutputLength: 64 * 1024 * 1024 });
   return bytes;
 }
 

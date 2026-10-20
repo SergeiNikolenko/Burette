@@ -83,6 +83,8 @@
   // Above the row count of a typical SDF, so a re-windowed grid redraws from
   // cache instead of queueing RDKit layout again for every card.
   const RDKIT_SVG_CACHE_LIMIT = 2000;
+  const RDKIT_SVG_CACHE_BYTES = 32 * 1024 * 1024;
+  const RDKIT_SVG_ENTRY_BYTES = 2 * 1024 * 1024;
   const XYZRENDER_CARD_CACHE_LIMIT = 1500;
   const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
   let activeStructureDrag = false;
@@ -158,7 +160,7 @@
     editingText: false,
     textFocusListenersInstalled: false,
     textFocusUpdateTimer: 0,
-    svgCache: new Map(),
+    svgCache: createRdkitSvgCache(),
     rdkitCardQueue: [],
     rdkitCardRendering: false,
     rdkitCardPending: new Map(),
@@ -8151,6 +8153,36 @@
     return `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|H:${state.hydrogenDisplay}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}`;
   }
 
+  function createRdkitSvgCache() {
+    let retainedBytes = 0;
+    // UTF-16 key + value payload is conservative for JS strings. Entry/object
+    // overhead is additionally bounded by the unchanged entry-count limit.
+    const bytes = (key, html) => 2 * (key.length + html.length);
+    return new class extends Map {
+      get retainedBytes() { return retainedBytes; }
+      set(key, html) {
+        this.delete(key);
+        const size = bytes(key, html);
+        if (size > RDKIT_SVG_ENTRY_BYTES || size > RDKIT_SVG_CACHE_BYTES) return this;
+        while (this.size >= RDKIT_SVG_CACHE_LIMIT || retainedBytes + size > RDKIT_SVG_CACHE_BYTES) {
+          this.delete(this.keys().next().value);
+        }
+        super.set(key, html);
+        retainedBytes += size;
+        return this;
+      }
+      delete(key) {
+        if (!super.has(key)) return false;
+        retainedBytes -= bytes(key, super.get(key));
+        return super.delete(key);
+      }
+      clear() {
+        super.clear();
+        retainedBytes = 0;
+      }
+    }();
+  }
+
   function drawRdkitPlaceholder(row) {
     const key = rdkitCardKey(row);
     if (state.svgCache.has(key)) {
@@ -8215,7 +8247,6 @@
       try { rxn?.delete?.(); } catch (_) {}
     }
     state.svgCache.set(key, html);
-    while (state.svgCache.size > RDKIT_SVG_CACHE_LIMIT) state.svgCache.delete(state.svgCache.keys().next().value);
     return html;
   }
 
@@ -8277,7 +8308,6 @@
       try { mol?.delete?.(); } catch {}
     }
     state.svgCache.set(key, html);
-    while (state.svgCache.size > RDKIT_SVG_CACHE_LIMIT) state.svgCache.delete(state.svgCache.keys().next().value);
     return html;
   }
 
@@ -9258,7 +9288,7 @@
   async function exportCSV(cfg) {
     const rows = await collectExportRows(cfg);
     if (!rows) return;
-    download(serializeDelimitedRows(rows, ','), baseName(cfg.label) + '.csv', 'text/csv');
+    download(serializeDelimitedRows(rows, ',', true), baseName(cfg.label) + '.csv', 'text/csv');
   }
 
   async function saveGridAs(cfg) {
@@ -9389,7 +9419,7 @@
     }).join('\n') + '\n';
   }
 
-  function serializeDelimitedRows(rows, separator) {
+  function serializeDelimitedRows(rows, separator, spreadsheet = false) {
     rows = withSarProperties(rows);
     const props = [...new Set(rows.flatMap(row => Object.keys(row.props || {})))];
     const data = [
@@ -9403,7 +9433,17 @@
         ...props.map(prop => (row.props || {})[prop] ?? '')
       ])
     ];
-    return data.map(row => row.map(value => gridDelimitedCell(value, separator)).join(separator)).join('\n') + '\n';
+    return data.map(row => row.map(value => gridDelimitedCell(
+      spreadsheet ? spreadsheetCell(String(value ?? '')) : value, separator
+    )).join(separator)).join('\n') + '\n';
+  }
+
+  function spreadsheetCell(value) {
+    const significant = value.replace(/^[\s\u0000-\u001f\u007f-\u009f]*/u, '');
+    if (!/^[=+\-@＝＋－＠]/u.test(significant)) return value;
+    const number = significant.replace(/[\s\u0000-\u001f\u007f-\u009f]*$/u, '');
+    if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(number)) return value;
+    return "'" + value;
   }
 
   function gridDelimitedCell(value, separator) {

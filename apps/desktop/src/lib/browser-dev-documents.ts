@@ -1,3 +1,4 @@
+import { inflateStructureBytes } from "./structure-inflate";
 import { demoLibraryUrl } from "./web-demo-library";
 import { standaloneDemoSnapshot } from "./web-demo-scenes";
 import { collectionExtension, mergeCollectionSources, parseReactionCollectionRecords, parseSdfCollectionRecords } from "./collection-documents";
@@ -1384,6 +1385,7 @@ function viewerHtml(
   <script src="${viewerAsset("sequence-panel.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("native-viewer-menus.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("scene-file-actions.js")}?v=${runtimeAssetVersion}"></script>
+  <script src="${viewerAsset("svg-sanitizer.js")}?v=${runtimeAssetVersion}"></script>
   <script src="${viewerAsset("viewer.js")}?v=${runtimeAssetVersion}"></script>
 </body>
 </html>`);
@@ -2222,10 +2224,7 @@ function decodeUtf8(bytes: Uint8Array) {
 // browser's DecompressionStream reads single-member gzip only.
 async function inflateCompressedStructure(path: string, bytes: Uint8Array) {
   if (!COMPRESSED_STRUCTURE_NAME.test(fileTitle(path)) || bytes[0] !== 0x1f || bytes[1] !== 0x8b) return bytes;
-  const stream = new Blob([new Uint8Array(bytes).buffer]).stream().pipeThrough(new DecompressionStream("gzip"));
-  const inflated = new Uint8Array(await new Response(stream).arrayBuffer());
-  if (inflated.length > MAX_STRUCTURE_FILE_SIZE) throw new Error(`${path} is larger than the 75 MB preview limit once decompressed`);
-  return inflated;
+  return inflateStructureBytes(bytes, MAX_STRUCTURE_FILE_SIZE);
 }
 
 async function decodeStructureText(bytes: Uint8Array, extension: string) {
@@ -2233,9 +2232,7 @@ async function decodeStructureText(bytes: Uint8Array, extension: string) {
   if (typeof DecompressionStream !== "function") {
     throw new Error("This browser cannot decompress Maestro gzip files");
   }
-  const gzipBytes = new Uint8Array(bytes);
-  const stream = new Blob([gzipBytes.buffer]).stream().pipeThrough(new DecompressionStream("gzip"));
-  return await new Response(stream).text();
+  return decodeUtf8(await inflateStructureBytes(bytes, 64 * 1024 * 1024));
 }
 
 function browserDevSourceByteCount(response: Response, fallback: number) {

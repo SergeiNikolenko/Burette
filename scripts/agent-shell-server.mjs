@@ -8,6 +8,7 @@ import { homedir } from 'node:os';
 import { gunzipSync } from 'node:zlib';
 import { basename, dirname, extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveModelPython } from './model-runtime-path.mjs';
 
 const TEXT_FILE_READ_LIMIT = 12 * 1024 * 1024;
 const DEV_FILE_SIZE_LIMIT = 75 * 1024 * 1024;
@@ -75,6 +76,7 @@ const RUNTIME_ASSET_PATHS = new Set([
   'molstar.css',
   'molstar.js',
   'burette-agent.js',
+  'svg-sanitizer.js',
   'viewer.js',
   'grid-viewer.js',
   'grid-ui.js',
@@ -83,7 +85,6 @@ const RUNTIME_ASSET_PATHS = new Set([
   'rdkit/RDKit_minimal.js',
   'rdkit/RDKit_minimal.wasm',
 ]);
-const RUNTIME_ASSET_NAMES = new Set([...RUNTIME_ASSET_PATHS].filter((path) => !path.includes('/')));
 const APP_ICONS = {
   'default-app': resolve(scriptDir, '..', 'apps', 'desktop', 'src-tauri', 'icons', 'icon.png'),
   finder: '/System/Library/CoreServices/CoreTypes.bundle/Contents/Resources/FinderIcon.icns',
@@ -334,12 +335,7 @@ async function handleChemicalSpaceRepresentation(req, res, method) {
 }
 
 function molecularRepresentationPython() {
-  const repoRoot = resolve(scriptDir, '..');
-  return [
-    String(process.env.BURETTE_CHEMICAL_SPACE_MODEL_PYTHON || '').trim(),
-    resolve(homedir(), 'Library', 'Application Support', 'Burette', 'model-python', 'bin', 'python'),
-    resolve(repoRoot, '.venv-chemical-space', 'bin', 'python'),
-  ].filter(Boolean).find((candidate) => existsSync(candidate)) || null;
+  return resolveModelPython(resolve(scriptDir, '..'))?.path || null;
 }
 
 async function handleAgentSession(req, res, method, url) {
@@ -1028,10 +1024,10 @@ async function handleFsStatic(res, method, cleanPath) {
     sendJson(res, 404, { error: 'Not found' });
     return;
   }
-  await sendStaticFile(res, method, filePath, false, info);
+  await sendStaticFile(res, method, filePath, true, info, true);
 }
 
-async function sendStaticFile(res, method, filePath, noCache, knownInfo = null) {
+async function sendStaticFile(res, method, filePath, noCache, knownInfo = null, workspaceData = false) {
   const info = knownInfo ?? await stat(filePath);
   if (!info.isFile()) {
     sendJson(res, 404, { error: 'Not found' });
@@ -1039,9 +1035,15 @@ async function sendStaticFile(res, method, filePath, noCache, knownInfo = null) 
   }
   const bytes = await readAllowedFile(filePath);
   res.statusCode = 200;
-  res.setHeader('Content-Type', STATIC_MIME_TYPES.get(extname(filePath).toLowerCase()) || 'application/octet-stream');
+  const extension = extname(filePath).toLowerCase();
+  const inertImage = ['.png', '.jpg', '.jpeg', '.webp', '.ico'].includes(extension);
+  res.setHeader('Content-Type', workspaceData && !inertImage
+    ? 'text/plain; charset=utf-8'
+    : STATIC_MIME_TYPES.get(extension) || 'application/octet-stream');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (workspaceData) res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
   res.setHeader('Content-Length', String(bytes.length));
-  res.setHeader('Cache-Control', noCache ? 'no-cache' : 'public, max-age=31536000, immutable');
+  res.setHeader('Cache-Control', workspaceData ? 'private, no-store' : noCache ? 'no-cache' : 'public, max-age=31536000, immutable');
   res.end(method === 'HEAD' ? undefined : bytes);
 }
 
@@ -1055,9 +1057,11 @@ function runtimeAssetRootCandidates() {
 }
 
 function findRuntimeAssetPath(cleanPath) {
-  if (!cleanPath.includes('/PreviewExtension/Web/')) return null;
-  const assetName = basename(cleanPath);
-  if (!RUNTIME_ASSET_NAMES.has(assetName)) return null;
+  const marker = '/PreviewExtension/Web/';
+  const index = cleanPath.lastIndexOf(marker);
+  if (index < 0) return null;
+  const assetName = cleanPath.slice(index + marker.length);
+  if (!RUNTIME_ASSET_PATHS.has(assetName)) return null;
   for (const root of runtimeAssetRoots) {
     const candidate = resolve(root, assetName);
     if (isWithin(candidate, root) && existsSync(candidate)) return candidate;
@@ -1166,7 +1170,7 @@ function textFileReadLimit(value) {
 }
 
 function readableTextBytes(bytes, extension) {
-  if (extension === 'maegz') return gunzipSync(bytes);
+  if (extension === 'maegz') return gunzipSync(bytes, { maxOutputLength: 64 * 1024 * 1024 });
   return bytes;
 }
 

@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
+import base64
 import importlib.util
+import os
+import plistlib
+import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
@@ -17,6 +24,40 @@ def feed(version, previous=None, arm64=False):
 
 
 class AppcastTests(unittest.TestCase):
+    def test_optimized_signer_still_rejects_wrong_publisher(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            script = root / 'scripts/sparkle-appcast.py'
+            script.parent.mkdir()
+            shutil.copyfile(appcast.__file__, script)
+            pinned = root / 'packages/burette/bin/release-signing-key.txt'
+            pinned.parent.mkdir(parents=True)
+            seed = bytes(range(32))
+            public = subprocess.run(
+                ['openssl', 'pkey', '-inform', 'DER', '-pubout', '-outform', 'DER'],
+                input=bytes.fromhex('302e020100300506032b657004220420') + seed,
+                check=True, capture_output=True).stdout[-32:]
+            key = base64.b64encode(public).decode()
+            info = dict(CFBundleIdentifier='com.local.BuretteV10', CFBundleShortVersionString='2.3.19',
+                        SUPublicEDKey=key)
+            app = root / 'Burette.app'
+            (app / 'Contents').mkdir(parents=True)
+            archive = root / 'Burette-2.3.19.zip'
+            archive.write_bytes(b'fixture')
+            for embedded, installer, message in [
+                ('wrong', key, 'embedded in the app'), (key, 'wrong', 'pinned installer key')
+            ]:
+                info['SUPublicEDKey'] = embedded
+                (app / 'Contents/Info.plist').write_bytes(plistlib.dumps(info))
+                pinned.write_text(installer)
+                result = subprocess.run(
+                    [sys.executable, '-O', str(script), str(archive), str(app), str(root / 'feed.xml')],
+                    env={**os.environ, 'BURETTE_SPARKLE_PRIVATE_KEY': base64.b64encode(seed).decode()},
+                    capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+                self.assertFalse(archive.with_suffix('.zip.ed25519').exists())
+
     def test_calendar_release_preserves_legacy_feed_and_download_identity(self):
         result = feed('2026.9.1', feed('2.3.22'))
         items = ET.fromstring(result).findall('channel/item')

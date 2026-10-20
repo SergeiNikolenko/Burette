@@ -14,7 +14,7 @@ use super::runtime::{ViewerPreferences, ViewerReloadOptions};
 use super::runtime_utils::{
     asset_url, create_runtime_dir, escape_html, prune_runtime_dirs, stable_id,
 };
-use super::text_xyz::{converted_data_from_text, xyz_data_from_text};
+use super::text_xyz::{converted_data_from_text, decode_structure_text, xyz_data_from_text};
 use super::trace::{runtime_manifest, write_bytes_atomic, write_json_atomic};
 use super::xyz::{xyz_frame, XyzPayload};
 use super::xyzrender::{
@@ -75,8 +75,19 @@ pub(crate) fn create_runtime<R: Runtime>(
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("structure");
-    let source_xyz_data = xyz_data_from_text(data, extension, label);
-    let converted_molstar_data = converted_data_from_text(data, extension, label);
+    let maestro_text = (extension == "maegz")
+        .then(|| decode_structure_text(data, extension))
+        .transpose()?;
+    let (conversion_data, conversion_extension) = maestro_text
+        .as_ref()
+        .map(|text| (text.as_bytes(), "mae"))
+        .unwrap_or((data, extension));
+    let source_xyz_data = xyz_data_from_text(conversion_data, conversion_extension, label);
+    let converted_molstar_data =
+        converted_data_from_text(conversion_data, conversion_extension, label);
+    if extension == "maegz" && source_xyz_data.is_none() && converted_molstar_data.is_none() {
+        return Err("Maestro gzip file contains no supported preview coordinates".to_string());
+    }
     let external_molstar_data = if format.external_only
         || should_use_converted_molstar_data(format, &converted_molstar_data)
     {
@@ -1267,6 +1278,7 @@ impl AssetProfile {
                 "native-viewer-menus.js",
                 "scene-file-actions.js",
                 "sequence-panel.js",
+                "svg-sanitizer.js",
                 "viewer.js",
             ],
             Self::Mesoscale => &["mesoscale.js", "mesoscale.css"],
@@ -1290,6 +1302,7 @@ impl AssetProfile {
                 "native-viewer-menus.js",
                 "scene-file-actions.js",
                 "sequence-panel.js",
+                "svg-sanitizer.js",
                 "viewer.js",
             ],
         }
@@ -1537,6 +1550,7 @@ fn viewer_html(
     let molecule_preview_interactions_js =
         asset_url(&assets.join("molecule-preview-interactions.js"));
     let renderer_view_state_js = asset_url(&assets.join("renderer-view-state.js"));
+    let sanitizer_js = asset_url(&assets.join("svg-sanitizer.js"));
     let viewer_js = asset_url(&assets.join("viewer.js"));
     let molstar_css = asset_url(&assets.join("molstar.css"));
     let molstar_js = asset_url(&assets.join("molstar.js"));
@@ -1591,6 +1605,7 @@ fn viewer_html(
   <script src="{sequence_panel_js}"></script>
   <script src="{molecule_preview_interactions_js}"></script>
   <script src="{renderer_view_state_js}"></script>
+  <script src="{sanitizer_js}"></script>
   <script src="{viewer_js}"></script>
 </body>
 </html>"#
@@ -1653,22 +1668,7 @@ fn mesoscale_viewer_html(
 fn is_mesoscale_document(file_path: &Path, extension: &str, data: &[u8]) -> bool {
     if extension == "molj" {
         // Ordinary Mol* sessions and Mesoscale sessions share the same extension.
-        return serde_json::from_slice::<serde_json::Value>(data)
-            .ok()
-            .and_then(|session| session.get("entries").and_then(|v| v.as_array()).cloned())
-            .is_none_or(|entries| {
-                entries.iter().any(|entry| {
-                    entry
-                        .pointer("/snapshot/data/tree/transforms")
-                        .and_then(|v| v.as_array())
-                        .is_some_and(|transforms| {
-                            transforms.iter().any(|transform| {
-                                transform.get("transformer").and_then(|v| v.as_str())
-                                    == Some("ms-plugin.mesoscale-state")
-                            })
-                        })
-                })
-            });
+        return burette_core::molj::is_mesoscale_molj(data);
     }
     if extension == "molx" {
         return super::session_archive::molx_state(data)

@@ -129,3 +129,41 @@ describe("hosted Ketcher widget contract", () => {
     expect(html).not.toContain("contentRef");
   });
 });
+
+ test("bounds replay bytes while preserving the latest idempotent response", () => {
+  const created = createHostedKetcherSurface({ format: "smiles", content: "C".repeat(60_000) });
+  expect(created.ok).toBe(true);
+  if (!created.ok) return;
+  const { surface } = created;
+  for (let index = 0; index < 40; index++) {
+    const request = action(surface.surfaceId, `large-${index}`, 1, {
+      command: "get_structure", formats: ["smiles"], delivery: "inline",
+    });
+    const result = executeHostedKetcherAction(request);
+    expect(result.ok).toBe(true);
+    expect(surface.actionResultBytes).toBeLessThanOrEqual(1024 * 1024);
+    expect(executeHostedKetcherAction(request)).toEqual(result);
+  }
+  expect(surface.actionResults.size).toBeLessThan(40);
+  for (const entry of surface.actionResults.values()) expect(entry.hash).toMatch(/^[a-f0-9]{64}$/);
+ });
+
+
+test("replays maximum JSON-escaped MOL payloads and dual exports", () => {
+  const created = createHostedKetcherSurface();
+  if (!created.ok) throw new Error("surface creation failed");
+  const surfaceId = created.surface.surfaceId;
+  const set = action(surfaceId, "escaped-set", 0, {
+    command: "set_structure", format: "mol", content: "\u0001".repeat(65536),
+  });
+  const result = executeHostedKetcherAction(set);
+  expect(result.ok).toBe(true);
+  expect(executeHostedKetcherAction(set)).toEqual(result);
+  const get = action(surfaceId, "escaped-export", 1, {
+    command: "get_structure", formats: ["mol", "sdf"], delivery: "inline",
+  });
+  const exported = executeHostedKetcherAction(get);
+  expect(exported.ok).toBe(true);
+  expect(executeHostedKetcherAction(get)).toEqual(exported);
+  expect(created.surface.actionResultBytes).toBeLessThanOrEqual(1024 * 1024);
+});

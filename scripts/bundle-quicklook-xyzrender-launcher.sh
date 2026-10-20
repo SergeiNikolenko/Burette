@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LOCAL_XYZRENDER_ENV="${HOME}/.local/share/uv/tools/xyzrender"
+LOCAL_XYZRENDER_ENV="${BURETTE_XYZRENDER_ENV:-${HOME}/.local/share/uv/tools/xyzrender}"
 PYVENV_CFG="${LOCAL_XYZRENDER_ENV}/pyvenv.cfg"
 
 if [[ -z "${CODESIGNING_FOLDER_PATH:-}" ]]; then
@@ -42,6 +42,13 @@ resolve_linked_python_library() {
       local base_dir
       base_dir="$(cd -P "$(dirname "$PYTHON_EXE")/$(dirname "$relative")" && pwd -P)"
       printf '%s/%s\n' "$base_dir" "$(basename "$relative")"
+      ;;
+    @rpath/libpython3*.dylib)
+      # The pinned standalone Python uses @rpath with
+      # LC_RPATH=@executable_path/../lib (its private runtime library).
+      local candidate="$PYTHON_ROOT/lib/${linked_path#@rpath/}"
+      [[ -f "$candidate" ]] || return 1
+      printf '%s\n' "$candidate"
       ;;
     /*)
       printf '%s\n' "$linked_path"

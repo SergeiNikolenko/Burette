@@ -15,7 +15,7 @@ Use this page when you want to build the app from the repository.
 | Rust toolchain | Required for the Tauri crate and the workspace crates (`crates/burette-core`, `crates/burette-compute-core`, `crates/burette-compute-metal`, `crates/burette-compute-protocol`, `crates/burette-mdsmooth`). |
 | `xyzrender` | Optional external renderer for XYZ, CUBE, quantum input, MAE, CMS, and other external-renderer formats. |
 | Python + `uv` | Optional runtime installation path for descriptor, RDKit, and MSBuddy workflows. |
-| xTB | Optional semiempirical runtime; the app can install a managed Conda environment pinned by `config/xtb/pixi.toml`, or use an existing local `xtb`. |
+| xTB | Optional semiempirical runtime; managed installation requires Pixi and uses the bundled `config/xtb/pixi.lock`; existing local or Conda `xtb` executables remain selectable and discoverable. |
 | VESTA | Optional handoff target for selected crystal and volumetric formats. |
 
 Run the local doctor first when setting up a checkout:

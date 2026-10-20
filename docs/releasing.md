@@ -18,14 +18,16 @@ bundle verification must preserve the user's installed app and documents.
 Hosted macOS CI remains an additional gate, not evidence of local native
 update acceptance.
 
-The Release workflow (`.github/workflows/release.yml`) runs on:
+The Release workflow (`.github/workflows/release.yml`) runs through manual
+`workflow_dispatch` on protected `main`. Merge the version bump and verify checks,
+then dispatch the workflow **before creating the tag**. The workflow derives and
+publishes the tag from `package.json` and refuses an already existing tag.
+Tag pushes and merged PRs do not start releases.
 
-- a pushed tag matching `v*` (the tag must equal `v<package.json version>`), or
-- a manual `workflow_dispatch`, which derives the tag from the current
-  `package.json` version and fails if that tag already exists.
+Configure the protected release environment and secret scope described in
+[Release security](release-security.md) before enabling publication. Workflow
+source checks alone do not restrict historical or attacker-modified workflows.
 
-Merged PRs do not create releases by themselves; a maintainer cuts a release
-by bumping the version and pushing the tag (or dispatching the workflow).
 Version bumps still happen per PR: the Native Bundle Build PR check runs
 `scripts/check-release-version.mjs`, which requires any PR that touches
 native build scope to advance the version past the last release.
@@ -160,8 +162,8 @@ Use the repository release script:
 ./scripts/release.sh
 ```
 
-Developer ID signing and Apple notarization are used when the credentials are
-available:
+Every distribution requires the existing Sparkle signing key and the pinned public key.
+Apple Developer ID signing and notarization are optional; configure them together:
 
 ```bash
 export BURETTE_CODESIGN_IDENTITY="Developer ID Application: Example, Inc. (TEAMID)"
@@ -180,19 +182,12 @@ export BURETTE_NOTARY_KEYCHAIN_PROFILE="BuretteNotary"
 ./scripts/release.sh
 ```
 
-When Developer ID credentials are unavailable, the release script automatically
-falls back to an ad-hoc signed build and skips notarization. This mode can also
-be selected explicitly:
-
-```bash
-export BURETTE_RELEASE_ALLOW_ADHOC=1
-./scripts/release.sh
-```
-
-Set `BURETTE_RELEASE_ALLOW_ADHOC=0` to make missing Developer ID or
-notarization credentials a hard error. Ad-hoc releases pass the repository's
-integrity checks, but macOS Gatekeeper does not treat them as identified and
-notarized software; users may need to approve the app manually.
+With no Apple credentials, the release helper and workflow produce ad-hoc signed
+app bundles. The ZIP and DMG must still carry Ed25519 signatures from the pinned
+Sparkle key before distribution. These builds are not Apple-notarized and do not
+pass Gatekeeper's identified-developer checks. Partial Apple configuration fails
+instead of silently changing signing mode. Set `BURETTE_RELEASE_ALLOW_ADHOC=0`
+locally to require Developer ID signing and notarization.
 
 For CI and pull-request validation, run the release dry run. It checks the
 release script prerequisites and JavaScript syntax but does not build, sign,
@@ -207,9 +202,9 @@ Release builds are explicit: `scripts/release.sh` sets
 `BURETTE_BUILD_MODE=release` and uses the Xcode Release configuration. With
 Developer ID credentials it enables the notarized path: hardened runtime,
 Developer ID signing, Apple notarytool submission, stapling, and then zip/dmg
-packaging. Without the complete credential set, or with
-`BURETTE_RELEASE_ALLOW_ADHOC=1`, it produces ad-hoc zip/dmg artifacts and skips
-notarization.
+packaging. Without Apple credentials it uses ad-hoc codesigning. Missing or
+mismatched Sparkle credentials stop distribution in either mode. Local output
+archives use the same `Burette-<version>` names as the public release.
 
 ## Artifact Requirements
 
@@ -294,7 +289,7 @@ blocked because the app is not Apple-signed/notarized and the project does not
 meet the default tap notability threshold yet.
 
 Stable GitHub releases update the external Homebrew tap automatically.
-Configure the `HOMEBREW_TAP_TOKEN` repository secret with write access to
+Configure the `HOMEBREW_TAP_TOKEN` protected release environment secret with write access to
 `SergeiNikolenko/homebrew-burette`. When the token is missing, the workflow
 emits a warning and skips the Homebrew cask update; the app release is still
 built and published. After the GitHub release is created, the
@@ -335,8 +330,8 @@ unscoped `burette` name on npm belongs to an unrelated project. GitHub Releases
 and the Homebrew tap are the public installation channels.
 
 The internal installer helper installs to `~/Applications` by default and to
-`/Applications` only with `--system`. It prints each install step, verifies the
-GitHub `sha256:<digest>` asset checksum when release metadata provides one,
+`/Applications` only with `--system`. It prints each install step, requires the
+publisher's `.ed25519` signature and checks any GitHub `sha256:<digest>` checksum,
 stages replacement through `Burette.app.updating`, and restores the previous app
 bundle if replacement fails. Its `doctor` command checks the installed app, embedded
 Quick Look extension, `qlmanage`, and the app version.
@@ -354,3 +349,37 @@ handlers. Existing associations remain untouched; Launch Services maintenance
 only cleans up owned obsolete update bundles. Explicit Quick Look repair in
 Settings remains the opt-in registration path. This prevents repeated Finder
 confirmation prompts for previously unclaimed file extensions.
+
+### Internal installer publisher authentication
+
+The private npm helper requires a detached `.zip.ed25519` signature before
+unpacking an archive. `sparkle-appcast.py` writes this sidecar using the existing
+Sparkle signing key; release CI uploads it beside the ZIP. The manual DMG also
+receives a detached signature under the same key. Both signing and
+installation pin `packages/burette/bin/release-signing-key.txt`. Key rotation
+therefore requires a reviewed source update. The helper then checks the signed
+app's bundle ID and version before replacing or registering an installation.
+Unsigned historical archives are rejected. This authenticates the archive
+without an Apple Team ID; it does not provide notarization or change Gatekeeper.
+
+### Locked renderer runtime
+
+Every release and CI native build prepares a fresh macOS arm64 environment with
+`scripts/prepare-xyzrender-runtime.py`. `config/xyzrender/bootstrap.json` pins
+CPython 3.13.13 and uv 0.11.7 distribution URLs and SHA-256 digests obtained from
+their upstream release assets. Downloads are verified before extraction or execution.
+The complete `requirements.txt` pins xyzrender 0.3.8, RDKit 2026.9.1 and transitive
+wheels with hashes; installation disables source builds, automatic Python downloads
+and ambient pip/uv configuration. Resolution/installation targets macOS 12.0.
+The Quick Look launcher receives the same absolute environment path as the app build.
+
+To update dependencies, review the intended versions and regenerate the lock with:
+
+```bash
+MACOSX_DEPLOYMENT_TARGET=12.0 uv pip compile --no-config --default-index https://pypi.org/simple --python-version 3.13.13 --python-platform aarch64-apple-darwin --generate-hashes --only-binary :all: config/xyzrender/requirements.in -o config/xyzrender/requirements.txt
+```
+
+Review changed wheels/bootstrap digests and run the native build plus renderer and
+Quick Look acceptance. Lock/helper changes trigger native CI. Local development
+may use its existing tool environment or `BURETTE_XYZRENDER_ENV`; release mode
+always prepares the locked environment and removes its temporary source on exit.

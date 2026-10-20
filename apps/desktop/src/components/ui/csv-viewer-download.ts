@@ -5,6 +5,7 @@ import {
 } from "@/lib/csv";
 import type { ViewerDownloadAction } from "@/lib/viewer-download-actions";
 import type { ViewerResource } from "@/lib/viewer-resource";
+import { spreadsheetCell } from "@/lib/spreadsheet-csv";
 
 export function escapeDelimitedField(value: string, delimiter: string): string {
   const text = value ?? "";
@@ -26,14 +27,14 @@ export function serializeCsvTable({
     normalizeCsvDelimiter(dialect.delimiter) ?? dialect.delimiter;
   const lines = [
     columns
-      .map((value) => escapeDelimitedField(value, delimiter))
+      .map((value) => escapeDelimitedField(spreadsheetCell(value), delimiter))
       .join(delimiter),
   ];
   for (const sourceRow of sourceRows) {
     const row = fitExportRow(sourceRow, columns.length);
     lines.push(
       row
-        .map((value) => escapeDelimitedField(value, delimiter))
+        .map((value) => escapeDelimitedField(spreadsheetCell(value), delimiter))
         .join(delimiter),
     );
   }
