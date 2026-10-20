@@ -7660,10 +7660,10 @@ SOFTWARE.
     'dashLength', 'color', 'arcScale', 'sectorOpacity', 'borderWidth'
   ]);
 
-  function sceneTreeMeasurementTargets(viewer, ref) {
+  function sceneTreeMeasurementTargets(viewer, ref, children) {
     const state = viewer?.plugin?.state?.data;
     if (!state?.cells?.has(ref)) return [];
-    return sceneTreeSubtreeRefs(state, ref)
+    return sceneTreeSubtreeRefs(state, ref, children)
       .map(targetRef => state.cells.get(targetRef))
       .filter(cell => {
         const params = cell?.transform?.params;
@@ -7879,7 +7879,7 @@ SOFTWARE.
           const nodeRef = chain[chain.length - 1];
           const nodeCell = state.cells.get(nodeRef) || cell;
           const components = colorTargets.get(nodeRef) || null;
-          const measurementEditable = sceneTreeMeasurementTargets(viewer, nodeRef).length > 0;
+          const measurementEditable = sceneTreeMeasurementTargets(viewer, nodeRef, children).length > 0;
           const rawLabel = String(cell.obj.label || 'Node');
           const display = sceneTreeRowLabel(cell, rawLabel);
           const label = display.label;
@@ -8060,6 +8060,9 @@ SOFTWARE.
     if (sceneTreeRenderHandle) return;
     sceneTreeRenderHandle = window.setTimeout(() => {
       sceneTreeRenderHandle = 0;
+      // Surface tasks yield inside a state commit. The isUpdating subscription
+      // schedules the completed tree; avoid rebuilding its intermediate states.
+      if (activeMolstarViewer()?.plugin?.behaviors?.state?.isUpdating?.value) return;
       renderSceneTree();
       reportMolstarCompositionVisibility();
     }, 0);
@@ -8225,8 +8228,7 @@ SOFTWARE.
 
   // Mol* hides a cell by walking its subtree, so a representation stays hidden
   // while its component is hidden and comes back with it.
-  function sceneTreeSubtreeRefs(state, ref) {
-    const { children } = sceneTreeChildRefs(state);
+  function sceneTreeSubtreeRefs(state, ref, children = sceneTreeChildRefs(state).children) {
     const refs = [];
     const stack = [ref];
     while (stack.length) {

@@ -191,3 +191,44 @@ assert.deepEqual(readPreferences({ documentId: 'two' }), ['match', 'colored', 0.
 preferences.setSdfCollectionContextColor('colored');
 assert.equal(preferences.readXyzFrameContextColor(preferences.activeConfig), 'colored');
 console.log('Native storage failures preserve complete background choices with document isolation');
+
+// Surface tasks yield within state commits. Render only a completed snapshot,
+// and reuse its child index when resolving editable measurement descendants.
+const scheduled = [];
+const updateState = { value: true };
+let renders = 0, reports = 0;
+const treeContext = {
+  sceneTreeRenderHandle: 0,
+  window: { setTimeout: fn => { scheduled.push(fn); return scheduled.length; } },
+  activeMolstarViewer: () => ({ plugin: { behaviors: { state: { isUpdating: updateState } } } }),
+  renderSceneTree: () => renders++, reportMolstarCompositionVisibility: () => reports++,
+};
+runInNewContext(extract('scheduleSceneTreeRender'), treeContext);
+treeContext.scheduleSceneTreeRender();
+treeContext.scheduleSceneTreeRender();
+assert.equal(scheduled.length, 1);
+scheduled.shift()();
+assert.deepEqual([renders, reports], [0, 0]);
+updateState.value = false;
+treeContext.scheduleSceneTreeRender();
+scheduled.shift()();
+assert.deepEqual([renders, reports], [1, 1]);
+const cells = new Map([
+  ['root', { transform: { parent: 'root' } }],
+  ['structure', { transform: { parent: 'root' } }],
+  ['measurement', { transform: { parent: 'structure', params: { textColor: 1 } }, obj: { label: 'Distance' } }],
+]);
+let scans = 0;
+const forEach = cells.forEach.bind(cells);
+cells.forEach = (...args) => { scans++; return forEach(...args); };
+const measurementContext = { SCENE_TREE_MEASUREMENT_PARAM_KEYS: new Set(['textColor']) };
+runInNewContext(['sceneTreeChildRefs', 'sceneTreeSubtreeRefs', 'sceneTreeMeasurementTargets'].map(extract).join(''), measurementContext);
+const treeState = { cells };
+const treeViewer = { plugin: { state: { data: treeState } } };
+const childIndex = measurementContext.sceneTreeChildRefs(treeState).children;
+for (const ref of ['root', 'structure', 'measurement']) {
+  assert.equal(measurementContext.sceneTreeMeasurementTargets(treeViewer, ref, childIndex)[0], cells.get('measurement'));
+}
+assert.equal(scans, 1);
+assert.equal(measurementContext.sceneTreeMeasurementTargets(treeViewer, 'structure')[0], cells.get('measurement'));
+assert.equal(scans, 2); // Independent inspector actions build a fresh index.
