@@ -1,6 +1,7 @@
 import { expect, mock, test } from "bun:test";
 import { Window } from "happy-dom";
 import React, { act } from "react";
+import type { ViewerDocument, TextFileDocument } from "../apps/desktop/src/types";
 const browser = new Window();
 for (const key of ["window", "document", "navigator", "HTMLElement", "Node", "Event", "MutationObserver", "getComputedStyle", "localStorage"] as const)
   Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
@@ -60,6 +61,56 @@ test("mixed files stay in the requested panel, and slow opens retain their origi
     expect(getTabWorkspace("workspace-a").right.documentId).toBe("/slow.pdb");
     expect(getTabWorkspace("workspace-b").right.documentId).toBeNull();
   } finally { delay = false; await act(async () => root.unmount()); host.remove(); Reflect.deleteProperty(window, "__TAURI_INTERNALS__"); }
+});
+
+test.each(["right", "bottom"] as const)("%s panel preserves text fallback and reuses registered files", async area => {
+  const structures: ViewerDocument[] = [], texts: TextFileDocument[] = [], statuses: unknown[][] = [];
+  const backend = mock(async (command: string, args: { paths: string[] }) => {
+    if (command === "read_text_file") return { content: "smiles,name\nCCO,ethanol", byteCount: 23 };
+    if (command === "open_documents") {
+      const path = args.paths[0];
+      if (path.endsWith("throw.nw")) throw new Error("Unsupported structure");
+      return path.endsWith("broken.csv")
+        ? { documents: [{ id: path, path, renderer: "not-renderable" }], errors: ["Invalid molecule"] }
+        : { documents: [{ id: path, path, renderer: "molstar" }], errors: [] };
+    }
+    if (command === "open_text_files") return { documents: args.paths.map(path => ({ id: `text:${path}`, path, title: path, content: "source" })), errors: [] };
+    throw new Error(command);
+  });
+  Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: { invoke: backend } });
+  useTabWorkspaceStore.setState({ workspaces: {} });
+  let open!: ReturnType<typeof useAppDockPayloadOpen>;
+  function Fixture() {
+    const dock = useDockLayout("text-workspace");
+    open = useAppDockPayloadOpen({ ...dock, preferences: {} as never, documents: structures, textDocuments: texts,
+      addBackgroundDocuments: docs => structures.push(...docs), addBackgroundTextDocuments: docs => texts.push(...docs),
+      detectContentSpectrumPaths: async () => new Set(), openStructureRecordDocuments: async () => ({ opened: [], errors: [] }),
+      pushErrorStatus: error => { throw error; }, pushStatus: (...args) => statuses.push(args), rememberRecentStructures: () => {} });
+    return null;
+  }
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const send = async (paths: string[]) => act(async () => open({ area, tabKind: "files", payload: { paths, records: [] } }));
+  try {
+    await act(async () => root.render(<Fixture />));
+    await send(["/run.log", "/artifact.unknown", "/README"]);
+    expect(backend.mock.calls.map(([command, args]) => [command, args.paths])).toEqual([
+      ["open_text_files", ["/run.log", "/artifact.unknown", "/README"]],
+    ]);
+    expect(getTabWorkspace("text-workspace")[area].documentId).toBe("text:/run.log");
+    await send(["/both.nw", "/throw.nw", "/broken.csv"]);
+    expect(structures.map(doc => doc.path)).toEqual(["/both.nw"]);
+    expect(texts.map(doc => doc.path)).toEqual(["/run.log", "/artifact.unknown", "/README", "/both.nw", "/throw.nw", "/broken.csv"]);
+    expect(getTabWorkspace("text-workspace")[area].documentId).toBe("/both.nw");
+    expect(statuses.some(status => status[1] === "error")).toBe(false);
+    const count = backend.mock.calls.length;
+    for (const [path, id] of [["/both.nw", "/both.nw"], ["/throw.nw", "text:/throw.nw"], ["/broken.csv", "text:/broken.csv"]]) {
+      await send([path]);
+      expect(getTabWorkspace("text-workspace")[area].documentId).toBe(id);
+    }
+    expect(backend.mock.calls.length).toBe(count);
+    const other = area === "right" ? "bottom" : "right";
+    expect(getTabWorkspace("text-workspace")[other].documentId).toBeNull();
+  } finally { await act(async () => root.unmount()); host.remove(); Reflect.deleteProperty(window, "__TAURI_INTERNALS__"); }
 });
 
 test("hidden Mol* panels stop the render loop and visible panels resume it", async () => {
