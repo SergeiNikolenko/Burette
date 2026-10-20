@@ -85,7 +85,7 @@
     "@hugeicons/react": "^1.1.10",
     "@lezer/highlight": "^1.2.4",
     "@lezer/markdown": "^1.7.2",
-    "@prosemark/core": "^0.0.9",
+    "@prosemark/core": "^0.0.11",
     "@radix-ui/react-context-menu": "^2.3.7",
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-dropdown-menu": "^2.1.24",
