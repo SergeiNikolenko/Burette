@@ -185,5 +185,5 @@ plugins/burette-agent/browser-shell-dist/assets/viewer-DLkh2cnD.js
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-BzyPYDB8.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-Bu-H-WOM.js
 
-# Reviewed generated shell after final main integration.
-plugins/burette-agent/browser-shell-dist/assets/viewer-qrnc7pxo.js
+# Reviewed generated shell with shared 2D/3D hydrogen visibility.
+plugins/burette-agent/browser-shell-dist/assets/viewer-QN3kosDi.js
