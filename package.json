@@ -103,7 +103,7 @@
     "molstar": "5.11.0",
     "openchemlib": "9.25.0",
     "plotly.js-basic-dist-min": "^4.1.1",
-    "radix-ui": "^1.6.7",
+    "radix-ui": "^1.8.1",
     "rdkit-compute": "npm:@rdkit/rdkit@2025.3.4-1.0.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
