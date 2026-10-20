@@ -6323,6 +6323,59 @@
     return props;
   }
 
+  function renameGridRow(row, value, cfg) {
+    if (state.closeTransitionActive || state.saveAsPending || !capabilities(cfg).editing) return false;
+    const name = String(value ?? '').trim();
+    if (!name || name.length > 160 || /[\r\n\u0000]/u.test(name)) return false;
+    const current = state.rows.find(candidate => Number(candidate.index) === Number(row.index));
+    if (!current || current.name === name) return false;
+    const props = { ...current.props };
+    // Name takes precedence over the molfile title when an SDF is reopened.
+    // Keep identifiers (ID, compound_id, etc.) independent of the display name.
+    for (const key of Object.keys(props)) {
+      if (key.toLowerCase() === 'name') props[key] = name;
+    }
+    const molblock = current.molblock
+      ? String(current.molblock).replace(/^[^\r\n]*/u, () => name)
+      : current.molblock;
+    pushUndoSnapshot('Rename Molecule');
+    return replaceGridRow(current, { ...current, name, props, molblock }, cfg, { undo: false });
+  }
+
+  function beginGridRowRename(row, cfg) {
+    if (state.closeTransitionActive || state.saveAsPending || !capabilities(cfg).editing) return;
+    const rowElement = root.querySelector(`[data-index="${Number(row.index)}"]`);
+    const target = rowElement?.querySelector('td[data-column="name"], .buret-card-body h2')
+      || rowElement?.querySelector('td[data-column]');
+    if (!target || target.querySelector('input')) return;
+    const previous = [...target.childNodes];
+    const input = document.createElement('input');
+    input.className = 'buret-grid-name-input';
+    input.setAttribute('aria-label', 'Compound name');
+    input.maxLength = 160;
+    input.value = row.name || '';
+    target.replaceChildren(input);
+    let finished = false;
+    const finish = (commit, restoreFocus = false) => {
+      if (finished) return;
+      finished = true;
+      target.replaceChildren(...previous);
+      if (commit) renameGridRow(row, input.value, cfg);
+      if (restoreFocus) rowElement.focus({ preventScroll: true });
+    };
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('keydown', event => {
+      event.stopPropagation();
+      if (event.isComposing) return;
+      if (event.key === 'Enter' || event.key === 'Escape') {
+        event.preventDefault();
+        finish(event.key === 'Enter', true);
+      }
+    });
+    input.focus();
+    input.select();
+  }
+
   function replaceGridRow(row, patch, cfg, options = {}) {
     if (state.closeTransitionActive || state.saveAsPending) return false;
     if (!capabilities(cfg).editing) return false;
@@ -6894,6 +6947,10 @@
     if (event instanceof MouseEvent && event.button !== 0) return;
     event.preventDefault();
     hideMoleculeContextMenu();
+    if (capabilities(cfg).editing && event.target?.closest?.('td[data-column="name"], .buret-card-body h2')) {
+      beginGridRowRename(row, cfg);
+      return;
+    }
     showMoleculeDetail(row, cfg);
     setStatus(`[grid] Opened ${row.name || `Molecule ${Number(row.index) + 1}`}.`);
   }
@@ -7635,7 +7692,10 @@
   function moleculeContextMenuAction(action, row) {
     const cfg = config();
     const label = row.name || `Molecule ${Number(row.index) + 1}`;
-    if (action === 'open') {
+    if (action === 'rename') {
+      hideMoleculeContextMenu();
+      beginGridRowRename(row, cfg);
+    } else if (action === 'open') {
       hideMoleculeContextMenu();
       showMoleculeDetail(row, cfg);
       setStatus(`[grid] Opened ${label}.`);
@@ -7682,6 +7742,7 @@
       ['open', 'Preview molecule'],
       ['molstar', 'Open in 3D'],
       ...(editing ? [
+        ['rename', 'Rename…'],
         ['ketcher', 'Edit in Ketcher'],
         ['duplicate', 'Duplicate'],
         ['remove', 'Delete from collection']

@@ -1,8 +1,8 @@
 import { useEffect, useRef, type RefObject } from "react";
-import { pinViewerFrames } from "../editor-area/viewer-frame";
+import { beginViewerLayoutGesture } from "../editor-area/viewer-frame";
 
-// A native window resize is a layout gesture too. Keep WebGL iframe viewports
-// fixed while the window moves, then commit bounds and release after the panel
+// A native window resize is a layout gesture too. Hold WebGL canvases while
+// iframe viewports follow the window, then commit bounds and release after panel
 // observers have settled. No React or persistence update runs per resize event.
 export function useWindowResizeSession(shellRef: RefObject<HTMLElement | null>, commit: () => void) {
   const commitRef = useRef(commit);
@@ -16,7 +16,7 @@ export function useWindowResizeSession(shellRef: RefObject<HTMLElement | null>, 
       release = undefined;
     };
     const resize = () => {
-      if (!release && shellRef.current) release = pinViewerFrames(shellRef.current);
+      if (!release && shellRef.current) release = beginViewerLayoutGesture(shellRef.current);
       window.clearTimeout(timer);
       cancelAnimationFrame(frame);
       timer = window.setTimeout(() => {

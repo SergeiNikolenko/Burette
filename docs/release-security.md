@@ -3,9 +3,12 @@
 Start Release with workflow_dispatch on protected main after merging and checking
 the release version. Tag pushes no longer execute the privileged release workflow.
 The workflow checks out the triggering main SHA and creates the version tag during
-publication. Missing Developer ID or notarization credentials stop publication.
-Local release.sh also fails closed by default; an explicit
-BURETTE_RELEASE_ALLOW_ADHOC=1 remains available for local development packages.
+publication. Sparkle signing credentials are mandatory for published archives.
+Apple Developer ID and notarization credentials are optional: when all are absent,
+the workflow permits ad-hoc signing; partial Apple credential configuration fails.
+Local release.sh follows the same automatic policy unless
+BURETTE_RELEASE_ALLOW_ADHOC explicitly overrides it. Ad-hoc packages are not
+Developer ID signed or notarized.
 
 Before enabling releases, configure the GitHub environment `release` to accept
 only the main branch (no tags), with required reviewers. Move all Apple signing,

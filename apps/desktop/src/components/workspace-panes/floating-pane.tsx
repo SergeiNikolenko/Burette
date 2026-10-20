@@ -8,7 +8,7 @@ import {
   useWorkspacePanesStore,
   type FloatingPaneRect,
 } from "../../stores/workspace-panes-store";
-import { pinViewerFrames } from "../editor-area/viewer-frame";
+import { beginViewerLayoutGesture } from "../editor-area/viewer-frame";
 import { ShortcutTooltip } from "../shortcut-tooltip";
 import { ToolbarButton } from "../ui/toolbar-button";
 import { Expand, Minus } from "../ui/app-icons";
@@ -61,7 +61,7 @@ export function FloatingPaneHeader({ tab, state, actions, minimized }: {
   }, [minimized, stored]);
 
   // Moves (or, from the corner grip, resizes) the window with the pointer.
-  // Viewer frames are pinned for the gesture so Mol* does not redraw per frame.
+  // Viewer canvases are held for the gesture so Mol* does not redraw per frame.
   const track = (event: ReactPointerEvent<HTMLElement>, mode: "move" | "resize") => {
     if (event.button !== 0) return;
     const surface = headerRef.current?.parentElement;
@@ -71,7 +71,7 @@ export function FloatingPaneHeader({ tab, state, actions, minimized }: {
     const target = event.currentTarget;
     target.setPointerCapture(event.pointerId);
     const start = { x: event.clientX, y: event.clientY, rect: rectRef.current };
-    const release = pinViewerFrames(shell);
+    const release = beginViewerLayoutGesture(shell);
     const onMove = (move: PointerEvent) => {
       const dx = move.clientX - start.x;
       const dy = move.clientY - start.y;
