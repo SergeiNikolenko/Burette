@@ -32,12 +32,13 @@ export class TelemetryStore {
   constructor(private db: Database, private now = () => Date.now()) {
     db.exec(`
       PRAGMA journal_mode = WAL;
+      PRAGMA secure_delete = ON;
       CREATE TABLE IF NOT EXISTS consent (
         id TEXT PRIMARY KEY, version TEXT NOT NULL, received INTEGER NOT NULL
       );
       CREATE TABLE IF NOT EXISTS revoked (id TEXT PRIMARY KEY, until INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS batches (
-        id TEXT NOT NULL, batch TEXT NOT NULL, received INTEGER NOT NULL,
+        id TEXT NOT NULL, batch TEXT NOT NULL, received INTEGER NOT NULL, units INTEGER NOT NULL,
         PRIMARY KEY (id, batch)
       );
       CREATE TABLE IF NOT EXISTS events (
@@ -62,6 +63,7 @@ export class TelemetryStore {
       this.db.run("DELETE FROM revoked WHERE until <= ?", [now]);
       this.db.run("DELETE FROM consent WHERE id NOT IN (SELECT DISTINCT id FROM events)");
     })();
+    this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
   }
 
   ingest(batch: Batch): "accepted" | "revoked" | "limited" {
@@ -71,12 +73,16 @@ export class TelemetryStore {
     return this.db.transaction(() => {
       if (this.db.query("SELECT 1 FROM revoked WHERE id = ? AND until > ?").get(id, now)) return "revoked";
       if (this.db.query("SELECT 1 FROM batches WHERE id = ? AND batch = ?").get(id, batch.batchId)) return "accepted";
-      const total = this.db.query<{ n: number }, [string, string]>(
-        "SELECT coalesce(sum(count), 0) AS n FROM events WHERE id = ? AND day = ?",
-      ).get(id, day)!.n;
+      const total = this.db.query<{ n: number }, [string, number]>(
+        "SELECT coalesce(sum(units), 0) AS n FROM batches WHERE id = ? AND received >= ?",
+      ).get(id, Date.parse(day))!.n;
       if (total + batch.events.length > 1000) return "limited";
+      const versions = this.db.query<{ version: string; arch: string }, [string, string]>(
+        "SELECT DISTINCT version, arch FROM events WHERE id = ? AND day = ?",
+      ).all(id, day);
+      if (versions.length >= 4 && !versions.some(row => row.version === batch.appVersion && row.arch === batch.architecture)) return "limited";
       this.db.run("INSERT OR IGNORE INTO consent VALUES (?, ?, ?)", [id, batch.consentVersion, now]);
-      this.db.run("INSERT INTO batches VALUES (?, ?, ?)", [id, batch.batchId, now]);
+      this.db.run("INSERT INTO batches VALUES (?, ?, ?, ?)", [id, batch.batchId, now, batch.events.length]);
       for (const event of batch.events) {
         this.db.run(`INSERT INTO events VALUES (?, ?, ?, ?, ?, ?, 1)
           ON CONFLICT DO UPDATE SET count = CASE WHEN excluded.kind = 'active' THEN 1 ELSE count + 1 END`,
@@ -95,6 +101,7 @@ export class TelemetryStore {
       // A late in-flight request cannot recreate data after erasure.
       this.db.run("INSERT OR REPLACE INTO revoked VALUES (?, ?)", [id, this.now() + RETENTION_DAYS * DAY]);
     })();
+    this.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
   }
 
   export(installationId: string) {
@@ -115,7 +122,7 @@ export class TelemetryStore {
       featuresAndErrors: this.db.query(`SELECT kind, value, sum(count) AS events, count(DISTINCT id) AS installations
         FROM events WHERE kind != 'active' GROUP BY kind, value ORDER BY kind, value`).all(),
       versions: this.db.query(`SELECT version, arch, count(DISTINCT id) AS installations
-        FROM events GROUP BY version, arch ORDER BY version`).all(),
+        FROM events GROUP BY version, arch ORDER BY max(day) DESC, version DESC LIMIT 100`).all(),
     };
   }
 }

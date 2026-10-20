@@ -82,4 +82,16 @@ describe("optional statistics receiver", () => {
     expect((await handle(request("/events", { ...batch(), consentVersion: undefined }))).status).toBe(400);
     db.close();
   });
+
+  test("bounds active-only batches and version cardinality independently of aggregate counts", () => {
+    const db = new Database(":memory:");
+    const store = new TelemetryStore(db);
+    const first = batchSchema.parse({ ...batch(), events: Array(50).fill({ kind: "active", value: "day" }) });
+    for (let i = 0; i < 20; i++) expect(store.ingest({ ...first, batchId: crypto.randomUUID() })).toBe("accepted");
+    expect(store.ingest({ ...first, batchId: crypto.randomUUID() })).toBe("limited");
+    const second = batchSchema.parse(batch());
+    for (let i = 0; i < 4; i++) expect(store.ingest({ ...second, batchId: crypto.randomUUID(), appVersion: `2026.10.${i}` })).toBe("accepted");
+    expect(store.ingest({ ...second, batchId: crypto.randomUUID(), appVersion: "2026.10.99" })).toBe("limited");
+    db.close();
+  });
 });

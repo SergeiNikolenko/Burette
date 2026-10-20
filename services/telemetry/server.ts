@@ -47,7 +47,7 @@ export function telemetryHandler(store: TelemetryStore, adminToken: string) {
     if (!["/events", "/erase", "/export"].includes(path) || request.method !== "POST") return json({ error: "not_found" }, 404);
     // Bound public ingestion without retaining IPs, user agents or other metadata.
     if (Date.now() - windowStart >= 60_000) { windowStart = Date.now(); requests = 0; }
-    if (path === "/events" && ++requests > 1200) return json({ error: "rate_limit" }, 429);
+    if (++requests > 1200) return json({ error: "rate_limit" }, 429);
     try {
       const data = await body(request);
       store.prune();
