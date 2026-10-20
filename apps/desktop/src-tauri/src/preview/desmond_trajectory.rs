@@ -703,8 +703,10 @@ mod tests {
         assert!(index.frame_from_index(&locations_path, 2).is_err());
         assert_eq!((time, cell), (Some(123.5), Some(basis)));
         let xs: Vec<f32> = dcd[200..208]
-            .chunks_exact(4)
-            .map(|v| f32::from_le_bytes(v.try_into().unwrap()))
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|v| f32::from_le_bytes(*v))
             .collect();
         assert_eq!(xs, vec![1.0, 4.0]);
         fs::write(&path, &bytes[..bytes.len() - 1]).unwrap();

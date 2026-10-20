@@ -142,8 +142,10 @@ mod tests {
                         assert_eq!(f64::from_le_bytes(cell[..8].try_into().unwrap()), 12.0);
                         for (axis, values) in axes.iter().enumerate() {
                             let values: Vec<f32> = values
-                                .chunks_exact(4)
-                                .map(|v| f32::from_le_bytes(v.try_into().unwrap()))
+                                .as_chunks::<4>()
+                                .0
+                                .iter()
+                                .map(|v| f32::from_le_bytes(*v))
                                 .collect();
                             assert_eq!(
                                 values,
@@ -297,7 +299,7 @@ impl DcdIndex {
         if fixed_count > 0 {
             let indices = record(&mut file, little, (atom_count - fixed_count) * 4)?;
             let mut seen = vec![false; atom_count];
-            for bytes in indices.chunks_exact(4) {
+            for bytes in indices.as_chunks::<4>().0 {
                 let index = word(bytes, little) as usize;
                 if index == 0 || index > atom_count || seen[index - 1] {
                     return Err("DCD free-atom indices are invalid or duplicated.".into());
