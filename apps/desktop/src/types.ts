@@ -148,6 +148,8 @@ export type ConformerRunRequest = {
   rmsdThresholdAngstrom?: number;
   samplingMode?: ConformerSettings["samplingMode"];
   prismEnergySort?: boolean;
+  /** SSH alias to run on instead of this Mac. */
+  remoteHost?: string | null;
 };
 
 export type ConformerPreparedRun = {
@@ -203,6 +205,8 @@ export type ConformerJob = {
   backend?: "nativeMetal" | "referenceCpu" | "rdkitCpu" | null;
   durableJobId?: string | null;
   cancelable?: boolean;
+  /** SSH host the calculation runs on. */
+  host?: string | null;
   completedAt?: number;
   result?: ConformerRunResult | null;
   error?: string | null;
@@ -284,6 +288,8 @@ export type XtbRunRequest = {
   mdSnapshots?: number | null;
   timeoutSeconds?: number | null;
   saveRunFiles?: boolean | null;
+  /** SSH alias to run on instead of this Mac. */
+  remoteHost?: string | null;
 };
 
 export type XtbArtifact = {
@@ -315,6 +321,8 @@ export type XtbJob = {
   operation: XtbOperation;
   status: "queued" | "running" | "success" | "recovered" | "failed" | "cancelled";
   inputLabel: string;
+  /** SSH host the calculation runs on. */
+  host?: string | null;
   startedAt: number;
   completedAt?: number | null;
   result?: XtbRunResult | null;
@@ -446,6 +454,9 @@ export type ViewerDocument = {
   virtual?: boolean;
   openClaimId?: string;
   sourcePath?: string | null;
+  /** Sources in an incrementally assembled scene; bounded to 200 paths. */
+  sceneSourcePaths?: string[];
+  sceneUnsaved?: boolean;
   dockingRequest?: DockingDocumentRequest;
   mergedCollection?: MergedCollectionDocument;
   xyzrenderControls?: XyzrenderControls | null;
@@ -498,4 +509,24 @@ export type ViewerPreferences = {
   themeDarkEditorFont: string;
   themeDarkTranslucent: number;
   themeDarkContrast: number;
+  interfaceScale: number;
+  restoreSessionOnLaunch: boolean;
+  notifyOnJobCompletion: boolean;
+  preventSleepDuringJobs: boolean;
+  computeBackend: "auto" | "metal" | "cpu";
+  jobHistoryRetentionDays: number;
+  pythonPath: string;
+  uvPath: string;
+  screenshotResolution: "viewport" | "hd" | "full-hd" | "ultra-hd" | "8k-ultra-hd";
+  screenshotFormat: "png" | "jpeg" | "webp";
+  screenshotTransparent: boolean;
+  gridViewMode: "cards" | "table";
+  gridCardRenderer: "rdkit" | "xyzrender";
+  gridCardSize: number;
+  hydrogenDisplay: "none" | "all";
+  quickLookGridSdf: boolean;
+  quickLookGridSmiles: boolean;
+  quickLookGridCsv: boolean;
+  quickLookGridTsv: boolean;
+  shortcutOverrides: Record<string, string>;
 };

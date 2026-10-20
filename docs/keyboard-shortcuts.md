@@ -8,9 +8,10 @@ a subset in the webview handler
 `apps/desktop/src/hooks/use-keyboard-shortcuts.ts`; rows marked
 "(desktop app)" have no webview handler, and shortcuts missing from the
 handler (for example Cmd+Shift+W) fall back to normal browser behavior in
-browser-dev. The in-app list under Help > Keyboard Shortcuts is a third
-inventory (`apps/desktop/src/components/settings-panel/keyboard-shortcuts-section.tsx`);
-keep all three aligned when changing shortcuts.
+browser-dev. The shared registry `apps/desktop/src/lib/keyboard-shortcuts.ts`
+feeds Settings > Keyboard shortcuts, where users rebind menu and webview
+shortcuts; the app applies overrides to the native menu at runtime. Keep the
+registry, the menu, and this page aligned when changing shortcuts.
 
 ## Global
 
@@ -38,7 +39,10 @@ or the hosted MCP widget is open.
 | Cmd+- | Zoom out window content (desktop app) |
 | Cmd+0 | Reset window content to actual size (desktop app) |
 | Cmd+, | Open Settings |
+| Cmd+/ | Show the keyboard shortcuts |
 | Cmd+W | Close the active tab |
+| Cmd+Option+W | Close the other tabs |
+| Cmd+Shift+T | Reopen the most recently closed tab |
 | Cmd+Shift+W | Close the active window |
 | Cmd+Q | Quit Burette (runs the exit preflight; desktop app) |
 | Control+Tab | Select the next tab |

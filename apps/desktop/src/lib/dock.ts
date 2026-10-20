@@ -78,7 +78,7 @@ export type DockFileEntriesInput = {
 
 export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   scene: "Scene",
-  xyzrender: "xyzr",
+  xyzrender: "Style",
   files: "Files",
   spectrum: "Spectrum",
   text: "Text",
@@ -91,7 +91,7 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   diagnostics: "Diagnostics",
   review: "Review",
   compare: "Compare",
-  "chemical-space": "Chemical Space",
+  "chemical-space": "Chemical space",
 };
 
 // Structure Basket, Compare and Review render and accept drops, but no catalog

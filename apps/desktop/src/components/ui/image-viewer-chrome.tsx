@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { logicalFrameSize } from "@/lib/image-geometry";
 import { cn } from "@/lib/utils";
-import { Skeleton } from "@/components/ui/retab-skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ViewerControlsSkeleton } from "@/components/ui/viewer-controls";
 
 export function ImageViewerFallback({

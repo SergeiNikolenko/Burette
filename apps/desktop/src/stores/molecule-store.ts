@@ -1,3 +1,5 @@
+import { moveTabHistory } from "../lib/tab-navigation";
+import { rememberClosedTab } from "./closed-tabs";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { invoke } from "@tauri-apps/api/core";
@@ -35,9 +37,16 @@ import {
 } from "../lib/global-recent-structures";
 import { isTauriRuntime } from "../lib/tauri";
 import { workspaceStorageKey } from "../lib/window-scope";
+import { useSettingsStore } from "./settings-store";
+
+// Where a screen is shown when it is not in the main tab strip: the floating
+// window. A tab without a pane lives in the main strip.
+export type TabPane = "floating";
 
 export type MoleculeTab = {
+  title?: string;
   pinned?: boolean;
+  pane?: TabPane;
   id: string;
   location: Location;
   back: Location[];
@@ -45,7 +54,9 @@ export type MoleculeTab = {
 };
 
 export type SessionTab = {
+  title?: string;
   pinned?: boolean;
+  pane?: TabPane;
   id?: string;
   location: SerializedLocation;
   back: SerializedLocation[];
@@ -83,12 +94,17 @@ type MoleculeState = {
   openSettingsTab: (section?: AppSettingsSectionId) => void;
   openSettingsSection: (section: AppSettingsSectionId) => void;
   activateLastNonSettingsTab: () => void;
+  navigateTabLocation: (tabId: string, location: Location, mode: "push" | "replace") => void;
+  navigateTabHistory: (tabId: string, delta: number) => void;
   navigateBack: () => void;
   navigateForward: () => void;
   setActiveTab: (id: string) => void;
   setActiveDocument: (id: string) => void;
   moveTab: (id: string, toIndex: number) => void;
+  placeTab: (id: string, pane: TabPane | null) => void;
+  openScreenTab: (location: Location, pane?: TabPane | null) => void;
   togglePinnedTab: (id: string) => void;
+  renameTab: (id: string, title: string) => void;
   closeTab: (id: string) => void;
   closeDocument: (id: string) => void;
   closeActiveDocument: () => void;
@@ -210,17 +226,33 @@ export function createPoseReviewTab(location: PoseReviewLocation, id = createTab
 }
 
 function cloneTab(tab: MoleculeTab): MoleculeTab {
-  return { ...tab, back: [...tab.back], forward: [...tab.forward] };
+  const { title, ...rest } = tab;
+  return { ...rest, ...tabTitle(title), back: [...tab.back], forward: [...tab.forward] };
 }
 
+function tabTitle(value: unknown): { title?: string } {
+  const title = typeof value === "string" ? value.trim().slice(0, 200) : "";
+  return title ? { title } : {};
+}
+
+// Copies what a JSON round trip would, but shares strings: history snapshots
+// are taken on every tracked action and documents can carry megabytes of text.
 function cloneJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+  if (typeof value === "number") return (Number.isFinite(value) ? value : null) as T;
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map((item) => (item === undefined ? null : cloneJson(item))) as T;
+  const copy: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (item !== undefined && typeof item !== "function") copy[key] = cloneJson(item);
+  }
+  return copy as T;
 }
 
 function sameLocation(left: Location, right: Location) {
   if (left.kind !== right.kind) return false;
   if (left.kind === "file" && right.kind === "file") return left.path === right.path;
   if (left.kind === "text-file" && right.kind === "text-file") return left.path === right.path;
+  if (left.kind === "chemical-space" && right.kind === "chemical-space") return left.collectionPath === right.collectionPath;
   return true;
 }
 
@@ -336,10 +368,52 @@ function settingsReturnTabId(state: MoleculeState) {
   return active && active.location.kind !== "settings" ? active.id : state.settingsReturnTabId;
 }
 
+// A tab shown in the main strip: Settings is a separate full-window mode and
+// a placed tab lives in the floating window.
+export function isMainTab(tab: MoleculeTab) {
+  return tab.location.kind !== "settings" && !tab.pane;
+}
+
+// Keyboard tab navigation follows the visible strip and leaves parked screens in place.
+export function adjacentMainTabId(tabs: MoleculeTab[], activeTabId: string | null, offset: -1 | 1) {
+  const mainTabs = tabs.filter(isMainTab);
+  if (mainTabs.length === 0) return null;
+  const index = mainTabs.findIndex((tab) => tab.id === activeTabId);
+  if (index < 0) return mainTabs[offset === 1 ? 0 : mainTabs.length - 1].id;
+  return mainTabs[(index + offset + mainTabs.length) % mainTabs.length].id;
+}
+
 function activeTabIdOrFirst(tabs: MoleculeTab[], activeTabId: string | null) {
+  // An explicitly requested placed tab is kept: the store moves it back to
+  // the strip right after (see the subscription at the end of this module).
   if (activeTabId && tabs.some((tab) => tab.id === activeTabId)) return activeTabId;
   // Settings is hidden from the tab strip and is only selected explicitly.
-  return tabs.find((tab) => tab.location.kind !== "settings")?.id ?? null;
+  return tabs.find(isMainTab)?.id ?? null;
+}
+
+// Opening a document replaces the start page, but a start page parked in the
+// floating window is a screen the user placed there.
+function retainedOnOpen(tab: MoleculeTab) {
+  return tab.location.kind !== "launcher" || Boolean(tab.pane);
+}
+
+function withPane(tab: MoleculeTab, pane: TabPane | null): MoleculeTab {
+  if (pane) return { ...tab, pane };
+  const { pane: _previous, ...rest } = tab;
+  return rest;
+}
+
+// The main tab that takes over when the active one leaves the strip: the next
+// one to its right, else the one to its left.
+function neighborMainTabId(tabs: MoleculeTab[], id: string) {
+  const strip = tabs.filter((tab) => isMainTab(tab) || tab.id === id);
+  const index = strip.findIndex((tab) => tab.id === id);
+  return strip[index + 1]?.id ?? strip[index - 1]?.id ?? null;
+}
+
+function isTabPane(value: unknown): value is TabPane {
+  // Tabs saved in the retired side panel ("side") load into the main strip.
+  return value === "floating";
 }
 
 function moveTabToIndex(tabs: MoleculeTab[], id: string, toIndex: number) {
@@ -358,8 +432,9 @@ function moveTabToIndex(tabs: MoleculeTab[], id: string, toIndex: number) {
 
 function ensureTabs(tabs: MoleculeTab[]) {
   const next = [...tabs];
-  // A retained Settings page does not count as an open workspace tab.
-  if (!next.some((tab) => tab.location.kind !== "settings")
+  // A retained Settings page does not count as an open workspace tab, and
+  // neither does a placed one: the main strip always shows at least one tab.
+  if (!next.some(isMainTab)
     && !(typeof window !== "undefined" && window.BuretteMcpWorkspace)) {
     next.push(createLauncherTab());
   }
@@ -381,7 +456,9 @@ function serializeTab(tab: MoleculeTab): SessionTab | null {
   if (!location) return null;
   return {
     id: tab.id,
+    ...tabTitle(tab.title),
     ...(tab.pinned ? { pinned: true } : {}),
+    ...(tab.pane ? { pane: tab.pane } : {}),
     location,
     back: tab.back.map(serializeLocation).filter((location): location is SerializedLocation => location !== null),
     forward: tab.forward.map(serializeLocation).filter((location): location is SerializedLocation => location !== null),
@@ -393,7 +470,9 @@ function hydrateTab(tab: SessionTab, id = tab.id ?? createTabId()): MoleculeTab 
   if (!location) return null;
   return {
     id,
+    ...tabTitle(tab.title),
     ...(tab.pinned ? { pinned: true } : {}),
+    ...(isTabPane(tab.pane) ? { pane: tab.pane } : {}),
     location,
     back: tab.back.map(deserializeLocation).filter((location): location is Location => location !== null),
     forward: tab.forward.map(deserializeLocation).filter((location): location is Location => location !== null),
@@ -442,7 +521,7 @@ export function getMoleculeStoreSnapshot(): MoleculeStoreSnapshot {
 
 export const useMoleculeStore = create<MoleculeState>()(
   persist<MoleculeState, [], [], PersistedMoleculeState>(
-    (set) => ({
+    (set, get) => ({
       settingsReturnTabId: null,
       documents: [],
       textDocuments: [],
@@ -462,7 +541,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           for (const document of incoming) byPath.set(document.path, document);
           const documents = Array.from(byPath.values());
           const tabs = state.tabs
-            .filter((tab) => tab.location.kind !== "launcher")
+            .filter(retainedOnOpen)
             .map(cloneTab)
             .filter((tab) => tab.location.kind !== "file" || byPath.has(tab.location.path));
           const tabByPath = new Map<string, MoleculeTab>();
@@ -531,7 +610,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           const documents = Array.from(byPath.values());
           const active = state.tabs.find((tab) => tab.id === state.activeTabId && !tab.pinned);
           let tabs = state.tabs
-            .filter((tab) => tab.location.kind !== "launcher")
+            .filter(retainedOnOpen)
             .map(cloneTab)
             .filter((tab) => tab.location.kind !== "file" || byPath.has(tab.location.path));
 
@@ -578,7 +657,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           for (const document of incoming) byPath.set(document.path, document);
           const textDocuments = Array.from(byPath.values());
           const tabs = state.tabs
-            .filter((tab) => tab.location.kind !== "launcher")
+            .filter(retainedOnOpen)
             .map(cloneTab)
             .filter((tab) => tab.location.kind !== "text-file" || byPath.has(tab.location.path));
           const tabByPath = new Map<string, MoleculeTab>();
@@ -620,7 +699,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           const textDocuments = Array.from(byPath.values());
           const active = state.tabs.find((tab) => tab.id === state.activeTabId && !tab.pinned);
           let tabs = state.tabs
-            .filter((tab) => tab.location.kind !== "launcher")
+            .filter(retainedOnOpen)
             .map(cloneTab)
             .filter((tab) => tab.location.kind !== "text-file" || byPath.has(tab.location.path));
 
@@ -711,7 +790,7 @@ export const useMoleculeStore = create<MoleculeState>()(
             return { tabs, activeTabId: existing.id, activeDocumentId: null };
           }
           const tab = createFepNetworkTab(location);
-          const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
+          const tabs = [...state.tabs.filter(retainedOnOpen), tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
         }),
       openFepSetupTab: (location) =>
@@ -730,7 +809,7 @@ export const useMoleculeStore = create<MoleculeState>()(
             };
           }
           const tab = createFepSetupTab(location);
-          const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
+          const tabs = [...state.tabs.filter(retainedOnOpen), tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: activeDocumentIdFrom(tabs, tab.id, state.documents) };
         }),
       openDocumentTab: (path) => {
@@ -738,7 +817,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           const existing = state.tabs.find((tab) => tab.location.kind === "document" && tab.location.path === path);
           if (existing) return { activeTabId: existing.id, activeDocumentId: null };
           const tab = createDocumentTab({ kind: "document", path });
-          const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
+          const tabs = [...state.tabs.filter(retainedOnOpen), tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
         });
         if (isTemporaryDocumentPath(path)) return;
@@ -767,6 +846,9 @@ export const useMoleculeStore = create<MoleculeState>()(
           if (existing) {
             const existingLocation = existing.location as KetcherLocation;
             const nextLocation: KetcherLocation = { ...existingLocation, ...location, kind: "ketcher" };
+            if ("draftMolfile" in location && !("draftKet" in location)) {
+              delete nextLocation.draftKet;
+            }
             if (!("importRequest" in location)) {
               delete nextLocation.importRequest;
               delete nextLocation.importRequestId;
@@ -796,7 +878,7 @@ export const useMoleculeStore = create<MoleculeState>()(
             };
           }
           const tab = createPoseReviewTab(location);
-          const tabs = [...state.tabs.filter((candidate) => candidate.location.kind !== "launcher"), tab];
+          const tabs = [...state.tabs.filter(retainedOnOpen), tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: activeDocumentIdFrom(tabs, tab.id, state.documents) };
         }),
       openSettingsTab: (section = DEFAULT_SETTINGS_SECTION) =>
@@ -827,8 +909,8 @@ export const useMoleculeStore = create<MoleculeState>()(
         }),
       activateLastNonSettingsTab: () =>
         set((state) => {
-          const target = state.tabs.find((tab) => tab.id === state.settingsReturnTabId && tab.location.kind !== "settings")
-            ?? [...state.tabs].reverse().find((tab) => tab.location.kind !== "settings");
+          const target = state.tabs.find((tab) => tab.id === state.settingsReturnTabId && isMainTab(tab))
+            ?? [...state.tabs].reverse().find(isMainTab);
           if (target) {
             return { activeTabId: target.id, activeDocumentId: activeDocumentIdFrom(state.tabs, target.id, state.documents) };
           }
@@ -836,30 +918,34 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tabs = [...state.tabs, tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
         }),
-      navigateBack: () =>
+      navigateTabLocation: (tabId, location, mode) =>
         set((state) => {
-          const active = state.tabs.find((tab) => tab.id === state.activeTabId);
-          if (!active || active.back.length === 0) return state;
-          const previous = active.back[active.back.length - 1];
-          const tabs = state.tabs.map((tab) =>
-            tab.id === active.id
-              ? { ...tab, location: previous, back: active.back.slice(0, -1), forward: [active.location, ...active.forward] }
-              : tab,
-          );
+          if (!state.tabs.some(tab => tab.id === tabId)) return state;
+          const tabs = state.tabs.map(tab => tab.id !== tabId ? tab : {
+            ...tab,
+            location,
+            back: mode === "push" ? [...tab.back, tab.location] : tab.back,
+            forward: mode === "push" ? [] : tab.forward,
+          });
           return { tabs, activeDocumentId: activeDocumentIdFrom(tabs, state.activeTabId, state.documents) };
         }),
-      navigateForward: () =>
+      navigateTabHistory: (tabId, delta) =>
         set((state) => {
-          const active = state.tabs.find((tab) => tab.id === state.activeTabId);
-          if (!active || active.forward.length === 0) return state;
-          const next = active.forward[0];
-          const tabs = state.tabs.map((tab) =>
-            tab.id === active.id
-              ? { ...tab, location: next, back: [...active.back, active.location], forward: active.forward.slice(1) }
-              : tab,
-          );
+          const active = state.tabs.find(tab => tab.id === tabId);
+          if (!active) return state;
+          const moved = moveTabHistory(active, delta);
+          if (moved === active) return state;
+          const tabs = state.tabs.map(tab => tab.id === tabId ? moved : tab);
           return { tabs, activeDocumentId: activeDocumentIdFrom(tabs, state.activeTabId, state.documents) };
         }),
+      navigateBack: () => {
+        const { activeTabId, navigateTabHistory } = useMoleculeStore.getState();
+        if (activeTabId) navigateTabHistory(activeTabId, -1);
+      },
+      navigateForward: () => {
+        const { activeTabId, navigateTabHistory } = useMoleculeStore.getState();
+        if (activeTabId) navigateTabHistory(activeTabId, 1);
+      },
       setActiveTab: (id) =>
         set((state) => {
           const activeTabId = activeTabIdOrFirst(state.tabs, id);
@@ -902,9 +988,46 @@ export const useMoleculeStore = create<MoleculeState>()(
           const tabs = moveTabToIndex(state.tabs, id, toIndex);
           return tabs === state.tabs ? state : { tabs };
         }),
+      placeTab: (id, pane) =>
+        set((state) => {
+          const target = state.tabs.find((tab) => tab.id === id);
+          if (!target || target.location.kind === "settings") return state;
+          if ((target.pane ?? null) === pane) {
+            return pane === null ? { activeTabId: id, activeDocumentId: activeDocumentIdFrom(state.tabs, id, state.documents) } : state;
+          }
+          const successor = state.activeTabId === id ? neighborMainTabId(state.tabs, id) : state.activeTabId;
+          // One floating window: the screen it showed returns to the strip.
+          const tabs = ensureTabs(state.tabs.map((tab) => (
+            tab.id === id ? withPane(tab, pane)
+              : pane === "floating" && tab.pane === "floating" ? withPane(tab, null)
+                : tab
+          )));
+          const activeTabId = activeTabIdOrFirst(tabs, pane === null ? id : successor);
+          return {
+            tabs,
+            activeTabId,
+            activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, state.documents),
+          };
+        }),
+      // Opens a screen that is not a file (Jobs, Chemical Space...) or brings
+      // the open one forward, optionally straight into a secondary pane.
+      openScreenTab: (location, pane = null) => {
+        const existing = get().tabs.find((tab) => tab.location.kind !== "settings" && sameLocation(tab.location, location));
+        const tab = existing ?? { id: createTabId(), location, back: [], forward: [] };
+        if (!existing) set((state) => ({ tabs: [...(pane ? state.tabs : state.tabs.filter(retainedOnOpen)), tab] }));
+        get().placeTab(tab.id, pane);
+      },
+      renameTab: (id, title) => set((state) => ({
+        tabs: state.tabs.map((tab) => {
+          if (tab.id !== id) return tab;
+          const { title: _previous, ...rest } = tab;
+          return { ...rest, ...tabTitle(title) };
+        }),
+      })),
       closeTab: (id) =>
         set((state) => {
           const closing = state.tabs.find((tab) => tab.id === id);
+          rememberClosedTab(closing);
           let documents = state.documents;
           let textDocuments = state.textDocuments;
           if (closing && closing.location.kind === "file") {
@@ -933,6 +1056,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           if (!state.activeTabId) return state;
           const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId);
           if (!activeTab) return state;
+          rememberClosedTab(activeTab);
           let documents = state.documents;
           let textDocuments = state.textDocuments;
           const location = activeTab.location;
@@ -1014,18 +1138,23 @@ export const useMoleculeStore = create<MoleculeState>()(
           };
         }
         const documents = current.documents;
-        const storedTabs = (stored?.tabs ?? current.tabs).filter((tab) => (
+        // "Restore windows and tabs on launch": when it is off, every launch
+        // starts from a fresh start page instead of the saved strip and panes.
+        const restoreTabs = Boolean(window.BuretteMcpWorkspace)
+          || useSettingsStore.getState().preferences.restoreSessionOnLaunch !== false;
+        const storedTabs = ((restoreTabs ? stored?.tabs : undefined) ?? current.tabs).filter((tab) => (
           tab.location.kind !== "settings" &&
           (
             (tab.location.kind !== "file" && tab.location.kind !== "text-file") ||
             !isTemporaryDocumentPath(tab.location.path)
           )
         ));
+        const storedActiveTabId = restoreTabs ? stored?.activeTabId : undefined;
         const tabs = collapseDuplicateKetcherTabs(
-          dedupeTabIds(ensureTabs(storedTabs.map(cloneTab))),
-          stored?.activeTabId ?? current.activeTabId,
+          dedupeTabIds(ensureTabs(storedTabs.map((tab) => withPane(cloneTab(tab), isTabPane(tab.pane) ? tab.pane : null)))),
+          storedActiveTabId ?? current.activeTabId,
         );
-        const activeTabId = activeTabIdOrFirst(tabs, stored?.activeTabId ?? current.activeTabId);
+        const activeTabId = activeTabIdOrFirst(tabs, storedActiveTabId ?? current.activeTabId);
         return {
           ...current,
           documents,
@@ -1038,6 +1167,16 @@ export const useMoleculeStore = create<MoleculeState>()(
     },
   ),
 );
+
+// Opening or selecting a screen that is parked in the floating window (from
+// the sidebar, a menu, a deep link...) brings it back to the main strip: every
+// action that activates a tab goes through here, so the rule needs no copy in
+// each of them.
+useMoleculeStore.subscribe((state) => {
+  const active = state.tabs.find((tab) => tab.id === state.activeTabId);
+  if (!active?.pane) return;
+  useMoleculeStore.setState({ tabs: state.tabs.map((tab) => (tab.id === active.id ? withPane(tab, null) : tab)) });
+});
 
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   if (isTauriRuntime()) {

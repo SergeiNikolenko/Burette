@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import React from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 
 const source = readFileSync("PreviewExtension/Web/grid-viewer.js", "utf8");
 const ui = readFileSync("apps/desktop/src/preview-grid/grid-ui.tsx", "utf8");
@@ -87,23 +85,10 @@ assert.deepEqual(pages.map(page => ({ query: page.query, offset: page.offset }))
 state.selected.clear(); state.totalRows = 2;
 assert.deepEqual(await exports.collectExportRows({}), state.all, "unselected remote export collects the full filtered view");
 
-const sectionStart = ui.indexOf("function FileSection(");
-const sectionEnd = ui.indexOf("\n// Shared", sectionStart);
-const compiled = new Bun.Transpiler({ loader: "tsx", tsconfig: JSON.stringify({ compilerOptions: { jsx: "react" } }) }).transformSync(ui.slice(sectionStart, sectionEnd));
-const FileSection = new Function("React", compiled + "\nreturn FileSection;")(React);
-for (const enabled of [false, true]) {
-  const html = renderToStaticMarkup(React.createElement(FileSection, {
-    exportEnabled: true, saveEnabled: enabled, undoEnabled: enabled, saveAsEnabled: true,
-    exportScopeLabel: "2 selected rows", exportPending: false, onRun() {},
-  }));
-  assert.match(html, /id="save-grid"/);
-  assert.match(html, /id="undo-grid-edit"/);
-  assert.equal(/id="save-grid"[^>]*disabled/.test(html), !enabled);
-  assert.equal(/id="undo-grid-edit"[^>]*disabled/.test(html), !enabled);
-  assert.match(html, /Export 2 selected rows as CSV/);
-}
+// File menu presentation is exercised through the mounted Radix menu in
+// test-grid-selection-toolbar.mjs, rather than slicing a private JSX function.
 assert.match(ui, /<FileSection \{\.\.\.props\}/, "file actions remain available");
 assert.match(ui, /props.clusterEnabled \? <ComputeSection \{\.\.\.props\}/, "compute actions require a native collection bridge");
 assert.doesNotMatch(ui, /ToggleGroupItem/, "the single search input replaces the Text/Structure mode toggle");
-assert.match(ui, /"Search or SMARTS"/);
+assert.match(ui, /"Search or SMARTS…"/);
 console.log("Grid search, export scope and stable file actions passed.");

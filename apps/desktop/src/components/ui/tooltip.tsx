@@ -3,15 +3,21 @@ import { Tooltip as TooltipPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
 import { useAppShellPortalContainer } from "@/components/ui/portal-container"
+// Styles are shared by the shell stylesheet and standalone Grid's embed.
 
 function TooltipProvider({
-  delayDuration = 0,
+  delayDuration = 150,
+  // Hints are never interactive. A hoverable hint waits for the pointer to
+  // leave its grace area, and a pointer that moves on into a viewer iframe
+  // sends no further events here, so the hint would stay up.
+  disableHoverableContent = true,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
   return (
     <TooltipPrimitive.Provider
       data-slot="tooltip-provider"
       delayDuration={delayDuration}
+      disableHoverableContent={disableHoverableContent}
       {...props}
     />
   )
@@ -24,19 +30,45 @@ function Tooltip({
 }
 
 function TooltipTrigger({
+  onFocus,
+  onPointerMove,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+  // With asChild the child keeps its own data-slot ("button", "toolbar-button"),
+  // which its styles key on; data-tooltip-trigger marks every trigger either way.
+  return <TooltipPrimitive.Trigger data-tooltip-trigger="" {...(props.asChild ? {} : { "data-slot": "tooltip-trigger" })} {...props}
+    onFocus={event => {
+      // React bubbles portal events through the trigger's logical children.
+      // Focusing a Select option must not reopen its parent field's tooltip.
+      if (!event.currentTarget.contains(event.target as Node)) event.preventDefault()
+      onFocus?.(event)
+    }}
+    onPointerMove={event => {
+      if (!event.currentTarget.contains(event.target as Node)) event.preventDefault()
+      onPointerMove?.(event)
+    }}
+  />
 }
 
 function TooltipContent({
   className,
-  sideOffset = 0,
+  variant = "sdk",
+  sideOffset = variant === "floating" ? 2 : 5,
+  compact = false,
+  clickable = false,
+  gutterSize = "md",
+  maxWidth = 300,
+  style,
   children,
-  showArrow = true,
+  showArrow = false,
   container: portalContainer,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Content> & {
+  variant?: "sdk" | "floating"
+  compact?: boolean
+  clickable?: boolean
+  gutterSize?: "sm" | "md" | "lg"
+  maxWidth?: number
   showArrow?: boolean
   container?: HTMLElement | null
 }) {
@@ -48,15 +80,24 @@ function TooltipContent({
       <TooltipPrimitive.Content
         data-slot="tooltip-content"
         sideOffset={sideOffset}
+        data-compact={compact}
+        data-clickable={clickable}
+        data-gutter-size={gutterSize}
+        style={{ "--tooltip-max-width": `${maxWidth}px`, ...style } as React.CSSProperties}
         className={cn(
-          "z-50 inline-flex w-fit max-w-xs origin-(--radix-tooltip-content-transform-origin) items-center gap-1.5 rounded-md border border-[var(--line-strong)] bg-[var(--menu-surface)] px-3 py-1.5 text-xs text-[var(--text-primary)] shadow-md has-data-[slot=kbd]:pr-1.5 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 **:data-[slot=kbd]:relative **:data-[slot=kbd]:isolate **:data-[slot=kbd]:z-50 **:data-[slot=kbd]:rounded-sm data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "atlas-tooltip-positioned",
+          // Atlas FloatingTooltip (RT) is the app-chrome variant, distinct from
+          // the SDK's Tooltip compact surface. Keep its original utility tokens.
+          variant === "floating"
+            ? "atlas-floating-tooltip"
+            : "atlas-tooltip",
           className
         )}
         {...props}
       >
         {children}
         {showArrow ? (
-          <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-[var(--menu-surface)] fill-[var(--menu-surface)]" />
+          <TooltipPrimitive.Arrow className={compact ? "fill-(--tooltip-compact-background-color)" : "fill-(--tooltip-background-color)"} />
         ) : null}
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>

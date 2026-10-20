@@ -1,3 +1,5 @@
+import { ShortcutTooltip } from "./shortcut-tooltip";
+
 type ChemicalSpaceGroupLegendProps = {
   /** Sizes of the coloured groups, biggest first; index i wears colors[i]. */
   sizes: number[];
@@ -32,16 +34,16 @@ export function ChemicalSpaceGroupLegend({
       <div className="text-muted-foreground">Molecules per group. Click one to select it.</div>
       <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
         {sizes.map((size, rank) => (
-          <button
-            key={rank}
-            type="button"
-            className="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left tabular-nums hover:bg-accent"
-            title={`Select the ${size} molecules of group ${rank + 1} in Grid`}
-            onClick={() => onSelectGroup(rank)}
-          >
-            <span className="size-2 shrink-0 rounded-full" style={{ background: colors[rank] }} />
-            <span className="text-foreground">{size}</span>
-          </button>
+          <ShortcutTooltip key={rank} label={`Select group ${rank + 1}`}>
+            <button
+              type="button"
+              className="flex min-w-0 items-center gap-1.5 rounded px-1 py-0.5 text-left tabular-nums hover:bg-accent"
+              onClick={() => onSelectGroup(rank)}
+            >
+              <span className="size-2 shrink-0 rounded-full" style={{ background: colors[rank] }} />
+              <span className="text-foreground">{size}</span>
+            </button>
+          </ShortcutTooltip>
         ))}
       </div>
       {otherCount > 0 ? (

@@ -4,6 +4,8 @@ import { GRID_DESCRIPTOR_JOB_EVENT } from "../hooks/use-app-descriptors";
 import type { GridDescriptorJobStatus } from "../lib/descriptors";
 import type { ShellActions, ShellViewState } from "./types";
 import { ShortcutTooltip } from "./shortcut-tooltip";
+import { Spinner } from "./ui/spinner";
+import { ToolbarButton } from "./ui/toolbar-button";
 
 // Corner activity spinner: visible whenever any background computation is
 // running (derived columns, conformers, xTB, grid descriptor runs), so a run
@@ -51,18 +53,19 @@ export function ActivityIndicator({ state, actions }: { state: ShellViewState; a
     ? `Running: ${runningLabels[0]}`
     : `Running ${runningLabels.length} jobs`;
   return (
-    <button
-      type="button"
-      className="chrome-button activity-indicator"
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={() => actions.openDockTab("bottom", "jobs")}
-      aria-label={label}
-    >
-      <span className="activity-indicator-spinner" aria-hidden="true" />
-      {runningLabels.length > 1 ? (
-        <span className="activity-indicator-count">{runningLabels.length}</span>
-      ) : null}
-      <ShortcutTooltip label={label} />
-    </button>
+    <ShortcutTooltip label={label}>
+      <ToolbarButton
+        type="button"
+        className="activity-indicator"
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => actions.openDockTab("bottom", "jobs")}
+        aria-label={label}
+      >
+        <Spinner aria-hidden="true" className="[&_svg]:size-full" />
+        {runningLabels.length > 1 ? (
+          <span className="activity-indicator-count">{runningLabels.length}</span>
+        ) : null}
+      </ToolbarButton>
+    </ShortcutTooltip>
   );
 }

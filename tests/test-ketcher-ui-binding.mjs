@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript-compiler-api";
+import { runInNewContext } from "node:vm";
 import { ketcherUiPlugin } from "../apps/desktop/vite/ketcher-ui.ts";
 
 const path = new URL("../apps/desktop/node_modules/ketcher-react/dist/index.js", import.meta.url).pathname;
@@ -79,8 +80,39 @@ console.log("Ketcher toolbar menus: mode, clipboard, macro controllers and conte
 const toolStart = patched.indexOf('var ToolbarMultiToolItem =');
 const toolEnd = patched.indexOf('var ToolbarGroupItem =', toolStart);
 const tool = patched.slice(toolStart, toolEnd);
-assert.ok(tool.includes('onAction: onAction,\n      name: iconName'), 'primary tool click selects its tool');
-assert.ok(tool.includes('onAction: onAction\n      })'), 'choosing an option retains the original action dispatcher');
+assert.match(tool, /primary: jsx\(ActionButton, \{ className, name: iconName,[\s\S]*?action: configWithNonViewOnlyActionsDisabled\[currentId\][\s\S]*?indigoVerification, onAction,/u, 'primary button retains current action and dispatcher');
+assert.ok(tool.includes('onSelect: function() { if (action?.action) onAction(action.action); }'), 'option dispatches the original Redux action');
+assert.ok(tool.includes('if (next) onOpenOptions(); else onOpen(id, true);'), 'expand and close retain upstream open state');
+assert.ok(tool.includes('hidden: state.hidden || !iconName') && tool.includes('disabled: state.disabled || indigoVerification && disableableButtons.includes(iconName)'), 'upstream availability remains enforced');
 assert.throws(() => plugin.transform(original.replace('function ToolbarMultiToolItem(props)', 'function ToolbarMultiToolItem(changed)'), path), /contract changed: ToolbarMultiToolItem/);
-assert.ok(tool.includes('jsx(__buretteKetcherToolExpand, { onClick: onOpenOptions, disabled: isDisabled, expanded: isOpen })'), 'independent dropdown keeps open and disabled state');
-console.log('Ketcher tool groups: separate primary and dropdown actions passed');
+console.log('Ketcher tool groups: primary action, options, availability and dropdown controller passed');
+
+const libraryDeclaration = source.statements.flatMap(statement => ts.isVariableStatement(statement)
+  ? [...statement.declarationList.declarations] : []).find(node => node.name.getText(source) === 'TemplateTable');
+const selections = [];
+const attaches = [];
+const tmpl = { struct: { name: 'test' }, props: { group: 'User Templates' } };
+const jsx = (type, props) => ({ type, props });
+const TemplateTable = runInNewContext(`(${libraryDeclaration.initializer.getText(source)})`, {
+  jsx, jsxs: jsx, classes$7: {}, greekify: value => value, getTemplateTitle: () => 'Test',
+  tmplName: () => 'Test', __buretteKetcherLibraryPreview: 'preview', StructRender: 'renderer',
+  _objectSpread$9: Object.assign, isFunctionalGroupTemplate: () => false,
+  isSaltOrSolventTemplate: () => false, Icon: 'icon', createKeyDownHandler: fn => fn,
+});
+const tile = TemplateTable({ templates: [tmpl], onSelect: value => selections.push(value),
+  onAttach: value => attaches.push(value), onDelete() {} }).props.children[0];
+assert.equal(tile.type, 'div');
+assert.equal(tile.props.role, 'button');
+assert.equal(tile.props.tabIndex, 0);
+const target = {};
+for (const key of ['Enter', ' ']) tile.props.onKeyDown({ key, target, currentTarget: target, preventDefault() {} });
+assert.deepEqual(selections, [tmpl, tmpl]);
+tile.props.onKeyDown({ key: 'Enter', target: {}, currentTarget: target });
+assert.equal(selections.length, 2, 'inner button keyboard events do not select the template');
+const edit = tile.props.children.find(child => child?.props?.['data-testid'] === 'edit-template-button');
+assert.equal(edit.props['aria-label'], 'Edit template');
+edit.props.onClick({ stopPropagation() {} });
+assert.deepEqual(attaches, [tmpl]);
+assert.equal(selections.length, 2);
+assert.equal(tile.props.children.find(child => child?.props?.['data-testid'] === 'delete-template-button').props['aria-label'], 'Delete template');
+console.log('Ketcher library: independent keyboard selection and template actions passed');

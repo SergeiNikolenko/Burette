@@ -46,9 +46,6 @@ for (const expected of [
   "Dynamics",
   "sdf",
   "xyz",
-  "minimal.xtc",
-  "multi.sdf",
-  "trajectory.xyz",
 ]) {
   assert.match(html, new RegExp(escapeRegExp(expected)));
 }
@@ -60,6 +57,23 @@ const expandedDemoHtml = renderProjectGroup({
   expandFoldersByDefault: true,
 });
 assert.doesNotMatch(expandedDemoHtml, /data-expanded="false"/);
+for (const file of ["minimal.xtc", "multi.sdf", "trajectory.xyz"]) {
+  assert.ok(!html.includes(file), `closed folder must not mount ${file}`);
+  assert.ok(expandedDemoHtml.includes(file), `expanded folder must include ${file}`);
+}
+
+// Collapsed shells preserve animation geometry without mounting file actions.
+// Expanded branches remain keyboard accessible.
+assert.match(html, /class="project-group-children-shell" data-expanded="true" aria-hidden="false">/);
+assert.match(html, /class="project-folder-children-shell" data-expanded="false" aria-hidden="true" inert="">/);
+assert.doesNotMatch(expandedDemoHtml, / inert=/);
+const collapsedProjectHtml = renderProjectGroup({
+  project,
+  state: { ...state, expandedProjectIds: [] },
+  actions,
+});
+assert.match(collapsedProjectHtml, /class="project-group-children-shell" data-expanded="false" aria-hidden="true" inert="">/);
+assert.doesNotMatch(collapsedProjectHtml, /mini\.pdb/);
 
 const crowdedFolderProject = {
   ...project,
@@ -79,6 +93,7 @@ const crowdedHtml = renderProjectGroup({
   project: crowdedFolderProject,
   state: crowdedState,
   actions,
+  expandFoldersByDefault: true,
 });
 
 assert.match(crowdedHtml, /results/);
@@ -87,25 +102,27 @@ assert.match(crowdedHtml, /Show 2 more files in results/);
 assert.match(crowdedHtml, /class="project-show-more"[^>]*aria-expanded="false"/);
 assert.match(crowdedHtml, /pose-5\.sdf/);
 
-// The rows past the limit are still rendered, but only inside the collapsed
-// tail shell: "Show more" animates that shell open (grid-template-rows 0fr ->
-// 1fr) instead of splicing the rows in, so the tail has to exist in the DOM
-// while hidden from both assistive tech and the tab order.
+// The empty shell remains for the animation; hidden file components do not.
 const [leadingHtml, tailHtml] = crowdedHtml.split('<div class="project-tail-shell"');
 assert.ok(tailHtml, "the overflow rows need a project-tail-shell wrapper");
 assert.doesNotMatch(leadingHtml, /pose-6\.sdf/);
-assert.match(tailHtml, /^ data-expanded="false" aria-hidden="true" inert=""><div class="project-tail">/);
-assert.match(tailHtml, /pose-6\.sdf/);
-assert.match(tailHtml, /pose-7\.sdf/);
+assert.match(tailHtml, /^ data-expanded="false" aria-hidden="true" inert=""><\/div>/);
+assert.doesNotMatch(tailHtml, /pose-6\.sdf|pose-7\.sdf/);
 assert.doesNotMatch(tailHtml, /pose-5\.sdf/);
 assert.equal(crowdedHtml.split("project-tail-shell").length, 2, "only the crowded folder gets a tail shell");
 
 // A file row is identified by the scientific role of its contents, not by one
 // shared document glyph, so the fixture's four files must land on three kinds.
 for (const kind of ["protein", "trajectory", "molecule"]) {
-  assert.match(html, new RegExp(`data-file-kind="${kind}"`));
+  assert.match(expandedDemoHtml, new RegExp(`data-file-kind="${kind}"`));
 }
 assert.doesNotMatch(html, /data-file-kind="default"/);
+
+const largeProject = { ...project, items: Array.from({ length: 1000 }, (_, i) =>
+  structure(`/fixtures/BurettePreviewSamples/${i}.pdb`, `${i}.pdb`, `${i}.pdb`)) };
+const countRows = markup => (markup.match(/data-sidebar-structure-path=/g) ?? []).length;
+assert.equal(countRows(renderProjectGroup({ project: largeProject, state: { ...state, expandedProjectIds: [] }, actions })), 0);
+assert.equal(countRows(renderProjectGroup({ project: largeProject, state, actions })), 5);
 
 // Anything that can reach a sidebar row must resolve to a real kind, or it
 // silently falls back to the blank page glyph. The registry is not the only

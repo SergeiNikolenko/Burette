@@ -3,7 +3,9 @@ import type { ViewerDocument } from "../types";
 import { isTauriRuntime } from "../lib/tauri";
 import { useBatchFileOperations } from "./batch-file-operations";
 import { useGridWorkspaceMenu } from "../hooks/use-grid-workspace-menu";
-import { createContext, useContext, useEffect, useState, type ReactNode, type MouseEvent } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { useFileSelection, type FileSelectionModifiers } from "./sidebar/use-file-selection";
+import { useLocalFileBatch } from "../hooks/use-local-file-batch";
 import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState } from "./types";
 import type { SidebarProject } from "../lib/sidebar-projects";
@@ -19,20 +21,22 @@ type Menus = {
   files: (paths: string[]) => Promise<MenuItemSpec[]>;
   folder: (project: SidebarProject, path: string, root: boolean, rename: () => void) => MenuItemSpec[];
   selected: Set<string>;
-  select: (path: string, event: MouseEvent) => boolean;
+  select: (path: string, event: FileSelectionModifiers) => boolean;
   folders: Record<string, string[]>;
+  batch: Pick<ReturnType<typeof useLocalFileBatch>, "progress" | "cancel"> | null;
 };
-const Context = createContext<Menus>({ scene: () => [], files: async () => [], folder: () => [], selected: new Set(), select: () => false, folders: {} });
+const Context = createContext<Menus>({ scene: () => [], files: async () => [], folder: () => [], selected: new Set(), select: () => false, folders: {}, batch: null });
 export const useWorkspaceMenus = () => useContext(Context);
 
 export function WorkspaceMenus({ state, actions, children }: { state: ShellViewState; actions: ShellActions; children: ReactNode }) {
   const diskMenu = useSidebarFileMenus();
   const batchFiles = useBatchFileOperations(actions, state);
   const workflows = useWorkspaceFileActions(state, actions);
+  const localBatch = useLocalFileBatch(state, actions);
   useGridWorkspaceMenu(state, actions, workflows);
   const [batch, setBatch] = useState<{ path: string; mode: string } | null>(null);
   const [renamingScene, setRenamingScene] = useState<ViewerDocument | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const { selected, select } = useFileSelection();
   const [folders, setFolders] = useState<Record<string, string[]>>({});
   const [revision, setRevision] = useState(0);
   const refresh = () => { setRevision(value => value + 1); window.dispatchEvent(new Event("burette-project-refresh")); };
@@ -55,7 +59,7 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
   };
   const files = async (paths: string[]) => {
     const menu = workspaceFileMenu(paths, state, actions, workflows,
-      paths.length === 1 ? diskMenu(paths[0]) : batchFiles.items(paths), run);
+      paths.length === 1 ? diskMenu(paths[0]) : batchFiles.items(paths), run, localBatch.open);
     if (isTauriRuntime() && paths.length === 1) {
       try {
         const targets = await actions.listChemicalEditorTargets(paths[0]);
@@ -76,45 +80,41 @@ export function WorkspaceMenus({ state, actions, children }: { state: ShellViewS
     const compatible = paths.length > 1 && scenePaths.length === paths.length;
     const openFolder = (mode: string) => () => setBatch({ path, mode });
     const pinned = state.sidebarProjects.some(project => project.rootPath === path && project.isPinned);
-    return menuSections(
-      submenu("folder-open", "Open", [
-        item("open-folder", "In Tabs…", openFolder("tabs")),
-        ...(isTauriRuntime() ? [item("open-window", "In New Window…", openFolder("window"))] : []),
-        ...(scenePaths.length > 1 && scenePaths.length <= 200 ? [item("open-together", "In One Scene",
-          () => actions.openDockingDocument(scenePaths[0], scenePaths.slice(1), { sceneMode: "structureAll" }))] : []),
+    // Codex groups a row menu by intent (open/create, edit the row, remove) and
+    // separates only the groups, never single commands.
+    return menuSections([
+      ...(path ? [item("open-all-scene", "Open all in one scene", () => localBatch.openFolder(path))] : []),
+      ...submenu("folder-open", "Open", [
+        item("open-folder", "In tabs…", openFolder("tabs")),
+        ...(isTauriRuntime() ? [item("open-window", "In new window…", openFolder("window"))] : []),
+        ...(path ? [item("open-together", "In one scene…", openFolder("together"))] : []),
         ...(compatible ? [
           ...(paths.every(path => fileCapabilities(path).protein) ? [item("open-aligned", "Aligned…", openFolder("aligned"))] : []),
-          ...(paths.every(path => fileCapabilities(path).poses) ? [item("open-poses", "As Poses…", openFolder("poses"))] : [])] : []),
-        ...submenu("add-scene", "Add to Scene", workflows.sceneTargets(paths).map((target, index) => item(`add-scene-${index}`, target.title, openFolder(`scene:${target.id}`)))),
+          ...(paths.every(path => fileCapabilities(path).poses) ? [item("open-poses", "As poses…", openFolder("poses"))] : [])] : []),
+        ...submenu("add-scene", "Add to scene", workflows.sceneTargets(paths).map((target, index) => item(`add-scene-${index}`, target.title, openFolder(`scene:${target.id}`)))),
         item("folder-finder", "Finder", () => actions.revealPath(path, "folder"))
       ], "arrow.up.forward"),
-      [root ? item("rename-project", "Rename Label…", rename) : disk.find(entry => "id" in entry && entry.id === "rename-folder")].filter((entry): entry is MenuItemSpec => Boolean(entry)),
-      [item("pin-folder", pinned ? "Unpin" : "Pin", () => actions.togglePinnedProjectRoot(path))],
-      submenu("folder-new", "New", [...disk.filter(entry => "id" in entry && entry.id === "new-folder"), item("new-molecule", "Molecule", actions.openKetcher)]),
-      submenu("folder-copy", "Copy", [item("copy-folder-name", "Name", () => workflows.copyNames([path])), item("copy-folder-path", "Path", () => actions.copyPath(path, "folder"))]),
-      [item("refresh-folder", "Refresh", refresh)],
-      root ? [item("remove-project", "Remove from Sidebar", () => actions.removeProjectRoot(path))]
-        : disk.filter(entry => "id" in entry && entry.id === "trash-folder"),
+      ...submenu("folder-new", "New", [...disk.filter(entry => "id" in entry && entry.id === "new-folder"), item("new-molecule", "Molecule", actions.openKetcher)]),
+    ], [
+      ...disk.filter(entry => "id" in entry && entry.id === "rename-folder"),
+      ...(root ? [item("rename-project", "Rename sidebar label…", rename)] : []),
+      item("pin-folder", pinned ? "Unpin" : "Pin", () => actions.togglePinnedProjectRoot(path)),
+      ...submenu("folder-copy", "Copy", [item("copy-folder-name", "Name", () => workflows.copyNames([path])), item("copy-folder-path", "Path", () => actions.copyPath(path, "folder"))]),
+      item("refresh-folder", "Refresh", refresh),
+      ...(localBatch.watching.includes(path) ? [item("stop-watching-folder", "Stop watching", () => localBatch.stopWatching(path))] : []),
+    ],
+      [...(root ? [item("remove-project", "Remove from sidebar", () => actions.removeProjectRoot(path))] : []),
+        ...disk.filter(entry => "id" in entry && entry.id === "trash-folder")],
     );
   };
-  const scene: Menus["scene"] = document => workflows.isCombinedScene(document) ? [
+  const scene: Menus["scene"] = document => document.renderer === "molstar" ? [
     menuItem("rename-scene", "Rename…", () => setRenamingScene(document)),
-    menuItem("save-scene", "Save Scene…", run(() => workflows.saveScene(document))),
+    menuItem("save-scene", "Save scene…", run(() => workflows.saveScene(document))),
     // The whole scene, with everything added to it, joins the target; the target can then join another scene.
-    ...submenu("merge-scene", "Add to Scene", workflows.mergeTargets(document).map((target, index) =>
+    ...submenu("merge-scene", "Add to scene", workflows.mergeTargets(document).map((target, index) =>
       menuItem(`merge-scene-${index}`, target.title, run(() => workflows.mergeScene(document, target))))),
   ] : [];
-  const select: Menus["select"] = (path, event) => {
-    if (event.metaKey || event.ctrlKey) { setSelected(current => { const next = new Set(current); if (next.has(path)) next.delete(path); else next.add(path); return next; }); return true; }
-    if (event.shiftKey && selected.size) {
-      const visible = Array.from(document.querySelectorAll<HTMLElement>('[data-sidebar-structure-path]')).filter(element => element.getClientRects().length > 0).map(element => element.dataset.sidebarStructurePath!);
-      const anchor = visible.indexOf(Array.from(selected).at(-1)!); const end = visible.indexOf(path);
-      if (anchor >= 0 && end >= 0) setSelected(new Set(visible.slice(Math.min(anchor, end), Math.max(anchor, end) + 1)));
-      return true;
-    }
-    setSelected(new Set([path])); return false;
-  };
-  return <Context.Provider value={{ scene, files, folder, selected, select, folders }}>{children}{batchFiles.dialog}<SceneNameDialog document={renamingScene} onClose={() => setRenamingScene(null)} />
-    <FolderOpenDialog path={batch?.path ?? null} initialMode={batch?.mode ?? "tabs"} workflows={workflows} state={state} actions={actions} onClose={() => setBatch(null)} />
+  return <Context.Provider value={{ scene, files, folder, selected, select, folders, batch: localBatch }}>{children}{batchFiles.dialog}<SceneNameDialog document={renamingScene} onClose={() => setRenamingScene(null)} />
+    <FolderOpenDialog path={batch?.path ?? null} initialMode={batch?.mode ?? "tabs"} workflows={workflows} state={state} actions={actions} openBatch={localBatch.open} cancelBatch={localBatch.cancel} progress={localBatch.progress} onClose={() => setBatch(null)} />
   </Context.Provider>;
 }

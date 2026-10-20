@@ -31,6 +31,8 @@ def process_request(request):
     leaf = parts[-1] if parts else '.'
     path = os.path.join(root, *parts)
     try:
+        if request['operation'] == 'archive':
+            return download_archive(parent, leaf)
         if request['operation'] == 'delete-folder':
             if not parts:
                 raise ValueError('The project root cannot be deleted')
@@ -74,20 +76,28 @@ def process_request(request):
                 os.close(directory)
             entries.sort(key=lambda e: (not e['directory'], e['name'].lower()))
             return json.dumps(dict(root=root, path=os.path.relpath(path, root), entries=entries, truncated=truncated)).encode()
-        if request['operation'] == 'read':
+        if request['operation'] in ('read', 'preview'):
             descriptor = os.open(leaf, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=parent)
             with os.fdopen(descriptor, 'rb') as source:
                 before = os.fstat(source.fileno())
                 if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_BYTES:
                     raise ValueError('Preview requires a regular file up to 64 MiB')
+                fingerprint = ':'.join(str(value) for value in (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns))
+                if request['operation'] == 'preview' and request.get('known') == fingerprint:
+                    return json.dumps(dict(fingerprint=fingerprint, unchanged=True)).encode() + b'\n'
                 data = source.read(MAX_BYTES + 1)
                 after = os.fstat(source.fileno())
-                if len(data) > MAX_BYTES or (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+                if len(data) > MAX_BYTES or (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_size, after.st_mtime_ns, after.st_ctime_ns):
                     raise ValueError('File changed during download; try again')
+                if request['operation'] == 'preview':
+                    return json.dumps(dict(fingerprint=fingerprint, unchanged=False)).encode() + b'\n' + data
                 return data
         raise ValueError('Unsupported operation')
     finally:
         os.close(parent)
+
+if 'download_archive' not in globals():
+    from archive import download_archive
 
 if 'chemistry_tree' not in globals():
     import chemistry

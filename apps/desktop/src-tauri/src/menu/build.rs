@@ -120,9 +120,13 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         .build(app)?;
     let close_other_tabs = MenuItemBuilder::with_id("file.close-other-tabs", "Close Other Tabs")
         .enabled(false)
+        .accelerator("CmdOrCtrl+Alt+W")
         .build(app)?;
     let close_all_tabs = MenuItemBuilder::with_id("file.close-all-tabs", "Close All Tabs")
         .enabled(false)
+        .build(app)?;
+    let reopen_closed_tab = MenuItemBuilder::with_id("file.reopen-closed-tab", "Reopen Closed Tab")
+        .accelerator("CmdOrCtrl+Shift+T")
         .build(app)?;
     let close_window = MenuItemBuilder::with_id("file.close-window", "Close Window")
         .accelerator("CmdOrCtrl+Shift+W")
@@ -149,6 +153,7 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &close_tab,
             &close_other_tabs,
             &close_all_tabs,
+            &reopen_closed_tab,
             &close_window,
         ])
         .build()?;
@@ -219,8 +224,17 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
     let zoom_out = MenuItemBuilder::with_id("view.zoom-out", "Zoom Out")
         .accelerator("CmdOrCtrl+-")
         .build(app)?;
+    let navigate_back = MenuItemBuilder::with_id("view.navigate-back", "Back")
+        .accelerator("CmdOrCtrl+[")
+        .build(app)?;
+    let navigate_forward = MenuItemBuilder::with_id("view.navigate-forward", "Forward")
+        .accelerator("CmdOrCtrl+]")
+        .build(app)?;
     let view_menu = SubmenuBuilder::new(app, "View")
         .items(&[
+            &navigate_back,
+            &navigate_forward,
+            &PredefinedMenuItem::separator(app)?,
             &show_sidebar,
             &show_inspector,
             &show_bottom_panel,
@@ -566,8 +580,9 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         .build()?;
 
     let github = MenuItemBuilder::with_id("help.open", "Burette Help").build(app)?;
-    let shortcuts =
-        MenuItemBuilder::with_id("help.keyboard-shortcuts", "Keyboard Shortcuts").build(app)?;
+    let shortcuts = MenuItemBuilder::with_id("help.keyboard-shortcuts", "Keyboard Shortcuts")
+        .accelerator("CmdOrCtrl+/")
+        .build(app)?;
     let whats_new = MenuItemBuilder::with_id("help.whats-new", "What’s New").build(app)?;
     let report_issue =
         MenuItemBuilder::with_id("help.report-issue", "Report an Issue…").build(app)?;

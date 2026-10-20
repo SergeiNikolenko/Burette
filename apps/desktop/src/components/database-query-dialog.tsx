@@ -1,14 +1,14 @@
-import { useEffect, useState } from "react";
-import { Dialog } from "radix-ui";
+import { useEffect, useRef, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/dialog";
+import { Textarea } from "./ui/textarea";
+import { Spinner } from "./ui/spinner";
 
 import { databaseProviderDescriptor } from "../lib/database";
 import type { DatabaseQueryDraft } from "../hooks/use-app-database";
-import { CloseIcon } from "./close-icon";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { NativeSelect } from "./ui/native-select";
-import { useAppShellPortalContainer } from "./ui/portal-container";
 import { ScrubNumberField } from "./ui/scrub-number-input";
 
 /**
@@ -24,17 +24,25 @@ export function DatabaseQueryDialog({
   onDismiss: () => void;
   onSubmit: (draft: DatabaseQueryDraft) => void | Promise<void>;
 }) {
-  const portalContainer = useAppShellPortalContainer();
   const [draft, setDraft] = useState<DatabaseQueryDraft | null>(query);
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const pending = useRef(false);
+  const generation = useRef(0);
 
   // The menu can reopen the dialog for another provider while it is on screen,
   // and each provider starts from its own defaults.
   useEffect(() => {
-    setDraft(query);
+    generation.current += 1;
+    pending.current = false;
+    setDraft(query); setBusy(false); setError("");
+    return () => { generation.current += 1; };
   }, [query]);
 
   const descriptor = draft ? databaseProviderDescriptor(draft.provider) : null;
   const update = (patch: Partial<DatabaseQueryDraft>) => {
+    setError("");
     setDraft((previous) => (previous ? { ...previous, ...patch } : previous));
   };
   const submitDisabled = Boolean(draft && descriptor && (
@@ -44,54 +52,48 @@ export function DatabaseQueryDialog({
   ));
 
   return (
-    <Dialog.Root
-      open={draft !== null}
-      onOpenChange={(open) => {
-        if (!open) onDismiss();
-      }}
-    >
-      <Dialog.Portal container={portalContainer}>
-        <Dialog.Overlay className="radix-dialog-overlay" />
-        <Dialog.Content className="radix-dialog database-query-dialog" aria-describedby="database-query-description">
-          <div className="radix-dialog-header">
-            <Dialog.Title>{descriptor?.title ?? "Database"}</Dialog.Title>
-            <Dialog.Close asChild>
-              <button type="button" className="radix-dialog-close" aria-label="Close database search">
-                <CloseIcon size={14} />
-              </button>
-            </Dialog.Close>
-          </div>
+    <Dialog open={query !== null} onOpenChange={open => { if (!open && !pending.current) onDismiss(); }}>
+      <DialogContent variant="form" size="default" className="min-w-0 overscroll-contain" showCloseButton={!busy}
+        onEscapeKeyDown={event => { if (pending.current) event.preventDefault(); }}
+        onInteractOutside={event => { if (pending.current) event.preventDefault(); }}>
+        <DialogHeader>
+          <DialogTitle>{descriptor?.title ?? "Database"}</DialogTitle>
+          <DialogDescription className="sr-only">{descriptor?.description}</DialogDescription>
+        </DialogHeader>
           {draft && descriptor ? (
             <form
-              className="radix-dialog-body database-query-form"
+              className="flex min-w-0 flex-col gap-4"
               onSubmit={(event) => {
                 event.preventDefault();
-                if (submitDisabled) return;
-                void onSubmit(draft);
+                if (submitDisabled || pending.current) return;
+                const token = generation.current;
+                pending.current = true; setBusy(true); setError("");
+                void Promise.resolve().then(() => onSubmit(draft)).catch(() => {
+                  if (generation.current === token) setError("Could not start this search. Try again.");
+                }).finally(() => {
+                  if (generation.current === token) { pending.current = false; setBusy(false); }
+                });
               }}
             >
-              <p id="database-query-description">{descriptor.description}</p>
+              <fieldset disabled={busy} className="flex max-h-[min(60dvh,520px)] min-w-0 flex-col gap-4 overflow-y-auto overscroll-contain">
+              {descriptor.delivery === "records" && <p className="text-xs text-(--color-text-secondary)">Matches are added to the open collection.</p>}
               {descriptor.needsStructure ? (
-                <div className="database-query-field">
-                  <Label htmlFor="database-query-structure">Query structure (SMILES)</Label>
-                  <Input
-                    id="database-query-structure"
+                <div className="flex min-w-0 flex-col gap-2">
+                  <Label className="text-xs font-normal" htmlFor="database-query-structure">Query structure (SMILES)</Label>
+                  <Input variant="field"
+                    id="database-query-structure" autoComplete="off" name="structure"
                     value={draft.structure}
-                    autoFocus
                     spellCheck={false}
                     placeholder="CC(=O)Oc1ccccc1C(=O)O"
                     onChange={(event) => update({ structure: event.target.value })}
                   />
-                  <span className="database-query-hint">
-                    Draw a fragment in Ketcher and use its Database menu to fill this in.
-                  </span>
                 </div>
               ) : null}
               {descriptor.supportsSearchMode ? (
-                <div className="database-query-field">
-                  <Label htmlFor="database-query-mode">Search</Label>
-                  <NativeSelect
-                    id="database-query-mode"
+                <div className="flex min-w-0 flex-col gap-2">
+                  <Label className="text-xs font-normal" htmlFor="database-query-mode">Search</Label>
+                  <NativeSelect className="w-full"
+                    id="database-query-mode" name="mode"
                     value={draft.searchMode}
                     onChange={(event) => update({ searchMode: event.target.value as DatabaseQueryDraft["searchMode"] })}
                   >
@@ -103,9 +105,9 @@ export function DatabaseQueryDialog({
               ) : null}
               {draft.searchMode === "similarity" || !descriptor.supportsSearchMode ? (
                 descriptor.needsStructure ? (
-                  <div className="database-query-field">
-                    <Label htmlFor="database-query-threshold">Minimum similarity (%)</Label>
-                    <ScrubNumberField
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <Label className="text-xs font-normal" htmlFor="database-query-threshold">Minimum similarity (%)</Label>
+                    <ScrubNumberField disabled={busy}
                       id="database-query-threshold"
                       aria-label="Minimum similarity (%)"
                       className="w-full"
@@ -118,36 +120,36 @@ export function DatabaseQueryDialog({
                 ) : null
               ) : null}
               {descriptor.needsApiKey ? (
-                <div className="database-query-field">
-                  <Label htmlFor="database-query-api-key">ChemSpace API key</Label>
-                  <Input
-                    id="database-query-api-key"
+                <div className="flex min-w-0 flex-col gap-2">
+                  <Label className="text-xs font-normal" htmlFor="database-query-api-key">ChemSpace API key</Label>
+                  <Input variant="field"
+                    id="database-query-api-key" name="api-key"
                     type="password"
                     value={draft.apiKey}
                     autoComplete="off"
                     onChange={(event) => update({ apiKey: event.target.value })}
                   />
-                  <span className="database-query-hint">
-                    Your own key from ChemSpace. Saved to your login keychain; leave empty to use the one already saved.
+                  <span className="text-xs text-(--color-text-secondary)">
+                    Stored in your login keychain. Leave empty to use the saved key.
                   </span>
                 </div>
               ) : null}
               {descriptor.needsCatalogueFilters ? (
                 <>
-                  <div className="database-query-field">
-                    <Label htmlFor="database-query-catalogue-providers">Suppliers</Label>
-                    <Input
-                      id="database-query-catalogue-providers"
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <Label className="text-xs font-normal" htmlFor="database-query-catalogue-providers">Suppliers</Label>
+                    <Input variant="field"
+                      id="database-query-catalogue-providers" autoComplete="off" name="catalogue-providers"
                       value={draft.catalogueProviders}
                       spellCheck={false}
                       placeholder="Enamine (default), any, or Enamine,Mcule"
                       onChange={(event) => update({ catalogueProviders: event.target.value })}
                     />
                   </div>
-                  <div className="database-query-field">
-                    <Label htmlFor="database-query-min-amount">Minimum amount in stock (g)</Label>
-                    <Input
-                      id="database-query-min-amount"
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <Label className="text-xs font-normal" htmlFor="database-query-min-amount">Minimum amount in stock (g)</Label>
+                    <Input variant="field"
+                      id="database-query-min-amount" autoComplete="off" name="min-amount"
                       type="number"
                       min={0}
                       step="0.1"
@@ -156,10 +158,10 @@ export function DatabaseQueryDialog({
                       onChange={(event) => update({ minAmount: event.target.value })}
                     />
                   </div>
-                  <div className="database-query-field">
-                    <Label htmlFor="database-query-max-price">Maximum price (EUR)</Label>
-                    <Input
-                      id="database-query-max-price"
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <Label className="text-xs font-normal" htmlFor="database-query-max-price">Maximum price (EUR)</Label>
+                    <Input variant="field"
+                      id="database-query-max-price" autoComplete="off" name="max-price"
                       type="number"
                       min={0}
                       value={draft.maxPrice}
@@ -170,27 +172,26 @@ export function DatabaseQueryDialog({
                 </>
               ) : null}
               {descriptor.needsUrl ? (
-                <div className="database-query-field">
-                  <Label htmlFor="database-query-url">Document URL</Label>
-                  <Input
-                    id="database-query-url"
+                <div className="flex min-w-0 flex-col gap-2">
+                  <Label className="text-xs font-normal" htmlFor="database-query-url">Document URL</Label>
+                  <Input variant="field"
+                    id="database-query-url" autoComplete="off" name="url"
                     value={draft.url}
-                    autoFocus
                     spellCheck={false}
                     placeholder="https://example.org/compounds.sdf.gz"
                     onChange={(event) => update({ url: event.target.value })}
                   />
-                  <span className="database-query-hint">
+                  <span className="text-xs text-(--color-text-secondary)">
                     CSV, TSV, SMILES and SDF, plain or gzipped. Addresses on the local network are refused.
                   </span>
                 </div>
               ) : null}
               {descriptor.needsSql ? (
                 <>
-                  <div className="database-query-field">
-                    <Label htmlFor="database-query-engine">Database</Label>
-                    <NativeSelect
-                      id="database-query-engine"
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <Label className="text-xs font-normal" htmlFor="database-query-engine">Database</Label>
+                    <NativeSelect className="w-full"
+                      id="database-query-engine" name="engine"
                       value={draft.sqlEngine}
                       onChange={(event) => update({ sqlEngine: event.target.value as DatabaseQueryDraft["sqlEngine"] })}
                     >
@@ -198,15 +199,14 @@ export function DatabaseQueryDialog({
                       <option value="sqlite">SQLite</option>
                     </NativeSelect>
                   </div>
-                  <div className="database-query-field">
-                    <Label htmlFor="database-query-connection">
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <Label className="text-xs font-normal" htmlFor="database-query-connection">
                       {draft.sqlEngine === "postgres" ? "Connection URL" : "Database file"}
                     </Label>
-                    <Input
-                      id="database-query-connection"
+                    <Input variant="field"
+                      id="database-query-connection" autoComplete="off" name="connection"
                       value={draft.sqlConnection}
-                      autoFocus
-                      spellCheck={false}
+                        spellCheck={false}
                       placeholder={draft.sqlEngine === "postgres"
                         ? "postgres://user@host:5432/database"
                         : "/path/to/compounds.db"}
@@ -214,49 +214,48 @@ export function DatabaseQueryDialog({
                     />
                   </div>
                   {draft.sqlEngine === "postgres" ? (
-                    <div className="database-query-field">
-                      <Label htmlFor="database-query-password">Password</Label>
-                      <Input
-                        id="database-query-password"
+                    <div className="flex min-w-0 flex-col gap-2">
+                      <Label className="text-xs font-normal" htmlFor="database-query-password">Password</Label>
+                      <Input variant="field"
+                        id="database-query-password" name="password"
                         type="password"
                         value={draft.sqlPassword}
                         autoComplete="off"
                         onChange={(event) => update({ sqlPassword: event.target.value })}
                       />
-                      <span className="database-query-hint">
-                        Saved to your login keychain, not to Burette's settings. Leave empty to use the one already saved.
+                      <span className="text-xs text-(--color-text-secondary)">
+                        Stored in your login keychain, not in settings. Leave empty to use the saved password.
                       </span>
                     </div>
                   ) : null}
-                  <div className="database-query-field">
-                    <Label htmlFor="database-query-statement">Query</Label>
-                    <textarea
-                      id="database-query-statement"
-                      className="database-query-statement"
+                  <div className="flex min-w-0 flex-col gap-2">
+                    <Label className="text-xs font-normal" htmlFor="database-query-statement">Query</Label>
+                    <Textarea
+                      id="database-query-statement" autoComplete="off" name="statement"
+                      className="max-h-48 resize-y font-mono"
                       value={draft.sqlStatement}
                       rows={4}
                       spellCheck={false}
                       placeholder="SELECT id, smiles, activity FROM compounds"
                       onChange={(event) => update({ sqlStatement: event.target.value })}
                     />
-                    <span className="database-query-hint">
+                    <span className="text-xs text-(--color-text-secondary)">
                       One SELECT or WITH statement. The connection is opened read-only.
                     </span>
                   </div>
                 </>
               ) : null}
               {descriptor.hasBrowserFallback ? (
-                <p className="database-query-hint">
+                <p className="text-xs text-(--color-text-secondary)">
                   If the service is unavailable or rate limiting, the same search opens in your browser.
                 </p>
               ) : null}
               {descriptor.textLabel !== null ? (
-                <div className="database-query-field">
-                  <Label htmlFor="database-query-text">{descriptor.textLabel}</Label>
-                  <Input
-                    id="database-query-text"
+                <div className="flex min-w-0 flex-col gap-2">
+                  <Label className="text-xs font-normal" htmlFor="database-query-text">{descriptor.textLabel}</Label>
+                  <Input variant="field"
+                    id="database-query-text" autoComplete="off" name="text"
                     value={draft.text}
-                    autoFocus={!descriptor.needsStructure}
                     spellCheck={false}
                     placeholder={descriptor.textPlaceholder}
                     onChange={(event) => update({ text: event.target.value })}
@@ -264,10 +263,10 @@ export function DatabaseQueryDialog({
                 </div>
               ) : null}
               {descriptor.fields.length > 0 ? (
-                <div className="database-query-field">
-                  <Label htmlFor="database-query-field">Match against</Label>
-                  <NativeSelect
-                    id="database-query-field"
+                <div className="flex min-w-0 flex-col gap-2">
+                  <Label className="text-xs font-normal" htmlFor="database-query-field">Match against</Label>
+                  <NativeSelect className="w-full"
+                    id="database-query-field" name="field"
                     value={draft.field}
                     onChange={(event) => update({ field: event.target.value })}
                   >
@@ -277,9 +276,9 @@ export function DatabaseQueryDialog({
                   </NativeSelect>
                 </div>
               ) : null}
-              <div className="database-query-field">
-                <Label htmlFor="database-query-max">Maximum rows</Label>
-                <ScrubNumberField
+              <div className="flex min-w-0 flex-col gap-2">
+                <Label className="text-xs font-normal" htmlFor="database-query-max">Maximum rows</Label>
+                <ScrubNumberField disabled={busy}
                   id="database-query-max"
                   aria-label="Maximum rows"
                   className="w-full"
@@ -289,14 +288,16 @@ export function DatabaseQueryDialog({
                   onValueChange={(maxRecords) => update({ maxRecords })}
                 />
               </div>
-              <div className="database-query-actions">
-                <Button type="button" variant="secondary" size="sm" onClick={onDismiss}>Cancel</Button>
-                <Button type="submit" size="sm" disabled={submitDisabled}>Search</Button>
-              </div>
+              </fieldset>
+              {error && <p className="text-sm text-(--color-text-danger)" role="alert">{error}</p>}
+              <DialogFooter className="gap-2">
+                {busy && <span className="mr-auto flex items-center gap-2 text-xs text-(--color-text-secondary)" role="status"><Spinner className="size-3" aria-hidden />Starting…</span>}
+                <Button type="button" variant="secondary" disabled={busy} onClick={onDismiss}>Cancel</Button>
+                <Button type="submit" disabled={submitDisabled || busy}>Search</Button>
+              </DialogFooter>
             </form>
           ) : null}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -587,11 +587,14 @@ pub(super) fn sync_native_menu<R: Runtime>(
         state.has_active_tab && state.tab_count > 1,
     )?;
     set_enabled(&app, "file.close-all-tabs", state.closable_tab_count > 0)?;
+    set_enabled(&app, "file.reopen-closed-tab", true)?;
     set_enabled(&app, "file.close-window", true)?;
 
     sync_edit_history(&app, &state)?;
     set_enabled(&app, "edit.find", true)?;
 
+    set_enabled(&app, "view.navigate-back", true)?;
+    set_enabled(&app, "view.navigate-forward", true)?;
     set_enabled(&app, "view.toggle-sidebar", true)?;
     set_enabled(&app, "view.toggle-inspector", true)?;
     set_enabled(&app, "view.toggle-bottom-panel", true)?;
@@ -877,8 +880,11 @@ pub(super) fn reset_native_menu_for_no_windows<R: Runtime>(
         "file.close-tab",
         "file.close-other-tabs",
         "file.close-all-tabs",
+        "file.reopen-closed-tab",
         "file.close-window",
         "edit.find",
+        "view.navigate-back",
+        "view.navigate-forward",
         "view.toggle-sidebar",
         "view.toggle-inspector",
         "view.toggle-bottom-panel",

@@ -10,5 +10,7 @@ pre-commit:
 
 pre-push:
   commands:
-    ci-fast:
-      run: bun run ci:fast
+    # Hosted CI runs ci:fast for every PR; running it here too took about
+    # eight minutes of this Mac per push. Only the instant version check stays.
+    release-version:
+      run: bun run check:release

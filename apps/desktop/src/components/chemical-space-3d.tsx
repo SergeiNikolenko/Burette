@@ -166,8 +166,6 @@ export function ChemicalSpace3D({
     const primaryColor = semanticColor(host, "text-primary", "#af52de");
     const foregroundColor = semanticColor(host, "text-foreground", "#f5f5f7");
     const pointColor = semanticColor(host, "text-foreground", "#f5f5f7");
-    const pointTexture = circleTexture();
-    const selectionTexture = circleTexture(true);
     const densityScale = adaptivePointScale(sourceRecordIds.length);
     const pointOpacity = adaptivePointOpacity(sourceRecordIds.length);
     let displayedIndices = representativePointIndices(
@@ -230,25 +228,20 @@ export function ChemicalSpace3D({
       "color",
       new THREE.Float32BufferAttribute(clusterColorValues(clusterIdsRef.current), 3),
     );
-    const points = new THREE.Points(geometry, new THREE.PointsMaterial({
+    const points = new THREE.Points(geometry, diskPointsMaterial({
       color: 0xffffff,
       vertexColors: true,
-      map: pointTexture,
-      alphaTest: 0.15,
       opacity: pointOpacity,
       size: BASE_POINT_SIZE * pointScale * densityScale,
-      sizeAttenuation: true,
-      transparent: true,
     }));
     scene.add(points);
 
-    const selectedPoints = overlayPoints(foregroundColor, selectionTexture, BASE_POINT_SIZE * pointScale * densityScale * 1.8);
+    const selectedPoints = overlayPoints(foregroundColor, "ring", BASE_POINT_SIZE * pointScale * densityScale * 1.8);
     // Hover follows the same perspective and density scaling as the cloud.
     // Brightness and a halo distinguish it without a fixed screen-space size.
-    const hoverHalo = overlayPoints(primaryColor, pointTexture, BASE_POINT_SIZE * pointScale * densityScale * 2.6);
-    const hoveredPoints = overlayPoints(foregroundColor, pointTexture, BASE_POINT_SIZE * pointScale * densityScale * 1.6);
+    const hoverHalo = overlayPoints(primaryColor, "disk", BASE_POINT_SIZE * pointScale * densityScale * 2.6);
+    const hoveredPoints = overlayPoints(foregroundColor, "disk", BASE_POINT_SIZE * pointScale * densityScale * 1.6);
     for (const marker of [hoverHalo, hoveredPoints]) {
-      marker.material.sizeAttenuation = true;
       marker.material.depthTest = false;
       marker.material.depthWrite = false;
       marker.material.toneMapped = false;
@@ -695,8 +688,6 @@ export function ChemicalSpace3D({
       disposeMaterial(grid.material);
       axes.geometry.dispose();
       disposeMaterial(axes.material);
-      pointTexture.dispose();
-      selectionTexture.dispose();
       renderer.dispose();
       renderer.domElement.remove();
     };
@@ -853,18 +844,36 @@ export function ChemicalSpace3D({
   );
 }
 
-function overlayPoints(color: THREE.Color, texture: THREE.Texture, size: number) {
+function overlayPoints(color: THREE.Color, shape: PointShape, size: number) {
   return new THREE.Points(
     new THREE.BufferGeometry(),
-    new THREE.PointsMaterial({
-      color,
-      map: texture,
-      alphaTest: 0.15,
-      size,
-      sizeAttenuation: true,
-      transparent: true,
-    }),
+    diskPointsMaterial({ color, size }, shape),
   );
+}
+
+type PointShape = "disk" | "ring";
+
+// Sprites are shaded as analytic disks whose rim is one screen pixel wide at
+// any size. A bitmap sprite went soft and speckled once zoom magnified it.
+function diskPointsMaterial(parameters: THREE.PointsMaterialParameters, shape: PointShape = "disk") {
+  const material = new THREE.PointsMaterial({
+    alphaTest: 0.02,
+    sizeAttenuation: true,
+    transparent: true,
+    ...parameters,
+  });
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      "#include <map_particle_fragment>",
+      `float pointRadius = length(gl_PointCoord - 0.5) * 2.0;
+      float pointRim = max(fwidth(pointRadius), 1e-4);
+      float pointCoverage = 1.0 - smoothstep(0.9 - pointRim, 0.9, pointRadius);
+      ${shape === "ring" ? "pointCoverage *= smoothstep(0.62, 0.62 + pointRim, pointRadius);" : ""}
+      diffuseColor.a *= pointCoverage;`,
+    );
+  };
+  material.customProgramCacheKey = () => `chemical-space-${shape}`;
+  return material;
 }
 
 function addProjectedCandidate(
@@ -934,31 +943,6 @@ function semanticColor(host: HTMLElement, className: string, fallback: string) {
   context.fillRect(0, 0, 1, 1);
   const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
   return new THREE.Color(red / 255, green / 255, blue / 255);
-}
-
-function circleTexture(ring = false) {
-  const canvas = document.createElement("canvas");
-  canvas.width = 64;
-  canvas.height = 64;
-  const context = canvas.getContext("2d");
-  if (context) {
-    const gradient = context.createRadialGradient(32, 32, 4, 32, 32, 30);
-    gradient.addColorStop(0, "rgba(255,255,255,1)");
-    gradient.addColorStop(0.72, "rgba(255,255,255,1)");
-    gradient.addColorStop(1, "rgba(255,255,255,0)");
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, 64, 64);
-    if (ring) {
-      context.globalCompositeOperation = "destination-out";
-      context.beginPath();
-      context.arc(32, 32, 21, 0, Math.PI * 2);
-      context.fillStyle = "#fff";
-      context.fill();
-    }
-  }
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
 }
 
 function localCanvasPoint(event: ReactPointerEvent<HTMLCanvasElement>) {

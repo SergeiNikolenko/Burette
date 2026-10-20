@@ -2,6 +2,8 @@ import { useCallback, useRef, useState } from "react";
 
 import type { StatusKind, StatusNotice } from "../components/types";
 import { toast } from "../components/ui/toast";
+import { journalAction } from "../lib/action-journal";
+import { logFrontendError } from "../lib/frontend-error-log";
 import { trackWebDemoHandledError } from "../lib/web-demo-analytics";
 
 export type RecentStatusError = {
@@ -43,20 +45,22 @@ export function useAppStatus() {
   const [statusDetails, setStatusDetails] = useState<StatusDetailsRequest | null>(null);
   const recentErrorsRef = useRef<RecentStatusError[]>([]);
 
-  // Error toasts fade out on their own (Base UI pauses the timer while hovered)
+  // Error toasts fade out on their own (sonner pauses the timer while hovered)
   // and keep the full text behind Details. The returned callback closes this
   // toast, so a caller can withdraw an error once a later attempt superseded it.
   const pushStatus = useCallback((message: string, kind: StatusKind = "info", details: string[] = []) => {
     const trimmed = message.trim();
     if (!trimmed) return;
     const normalizedDetails = details.filter(Boolean);
+    journalAction("status", kind, { target: trimmed, detail: normalizedDetails.length > 0 ? normalizedDetails.slice(0, 4) : undefined });
     if (kind === "error") {
       recentErrorsRef.current.push({
-        message: trimmed,
-        details: normalizedDetails,
+        message: trimmed.slice(0, 1024),
+        details: normalizedDetails.slice(0, 8).map(detail => detail.slice(0, 1024)),
         timestampMs: Date.now(),
       });
       recentErrorsRef.current = recentErrorsRef.current.slice(-20);
+      logFrontendError("status-error", [trimmed, ...normalizedDetails.slice(0, 8)].join("\n").slice(0, 4096));
     }
     setStatus({ kind, message: trimmed });
     if (kind !== "error") return;

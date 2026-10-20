@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
-import { Dialog } from "radix-ui";
+import { Input } from "./ui/input";
+import { useEffect, useId, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/dialog";
+import { Button } from "./ui/button";
 
 import type { GridColumnChoice } from "./types";
-import { useAppShellPortalContainer } from "./ui/portal-container";
 import { NativeSelect, NativeSelectOption } from "./ui/native-select";
-import { CloseIcon } from "./close-icon";
 
 export type BinsColumnRequest = {
   documentId: string;
@@ -25,7 +25,7 @@ export function BinsColumnDialog({
   onDismiss: () => void;
   onRun: (documentId: string, column: { id: string; label: string }, binWidth: number) => void;
 }) {
-  const portalContainer = useAppShellPortalContainer();
+  const problemId = useId();
   const columns = request?.columns ?? [];
   const [columnId, setColumnId] = useState("");
   const [width, setWidth] = useState("1");
@@ -48,62 +48,35 @@ export function BinsColumnDialog({
   const ready = Boolean(request) && Boolean(column) && width.trim() !== "" && !problem;
 
   return (
-    <Dialog.Root open={request !== null} onOpenChange={(open) => { if (!open) onDismiss(); }}>
-      <Dialog.Portal container={portalContainer}>
-        <Dialog.Overlay className="radix-dialog-overlay" />
-        <Dialog.Content className="radix-dialog calculated-column-dialog" aria-describedby="bins-column-body">
-          <div className="radix-dialog-header">
-            <Dialog.Title>Bins From Numbers</Dialog.Title>
-            <Dialog.Close asChild>
-              <button type="button" className="radix-dialog-close" aria-label="Close bins">
-                <CloseIcon size={14} />
-              </button>
-            </Dialog.Close>
-          </div>
-          <div id="bins-column-body" className="radix-dialog-body">
-            <label className="calculated-column-field">
-              <span>Column</span>
-              <NativeSelect size="sm" value={columnId} onChange={(event) => setColumnId(event.target.value)}>
-                {columns.map((candidate) => (
-                  <NativeSelectOption key={candidate.id} value={candidate.id}>{candidate.label}</NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </label>
-            <label className="calculated-column-field">
-              <span>Bin width</span>
-              <input
-                type="text"
-                value={width}
-                inputMode="decimal"
-                onChange={(event) => setWidth(event.target.value)}
-              />
-            </label>
-            {problem ? <div className="calculated-column-problem">{problem}</div> : null}
-            <p className="calculated-column-note">
-              Example: width 1 groups 7.3 into [7, 8).
-            </p>
-          </div>
-          <div className="radix-dialog-footer calculate-properties-footer">
-            <div className="calculate-properties-actions">
-              <Dialog.Close asChild>
-                <button type="button" className="dock-action">Cancel</button>
-              </Dialog.Close>
-              <button
-                type="button"
-                className="dock-action calculate-properties-run"
-                disabled={!ready}
-                onClick={() => {
-                  if (!request || !column || !ready) return;
-                  onRun(request.documentId, { id: column.id, label: column.label }, parsedWidth);
-                  onDismiss();
-                }}
-              >
-                Add Column
-              </button>
-            </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Dialog open={request !== null} onOpenChange={open => { if (!open) onDismiss(); }}>
+      <DialogContent variant="form" size="compact">
+        <form className="flex min-w-0 flex-col gap-4" onSubmit={event => {
+          event.preventDefault();
+          if (!request || !column || !ready) return;
+          onRun(request.documentId, { id: column.id, label: column.label }, parsedWidth);
+          onDismiss();
+        }}>
+          <DialogHeader>
+            <DialogTitle>Bins from numbers</DialogTitle>
+            <DialogDescription className="sr-only">Group numeric values into equal-width intervals.</DialogDescription>
+          </DialogHeader>
+          <label className="flex min-w-0 flex-col gap-2 text-xs"><span>Column</span>
+            <NativeSelect name="column" className="w-full" value={columnId} onChange={event => setColumnId(event.target.value)}>
+              {columns.map(candidate => <NativeSelectOption key={candidate.id} value={candidate.id}>{candidate.label}</NativeSelectOption>)}
+            </NativeSelect>
+          </label>
+          <label className="flex flex-col gap-2 text-xs"><span>Bin width</span>
+            <Input variant="field" name="width" autoComplete="off" spellCheck={false} value={width} inputMode="decimal"
+              aria-invalid={Boolean(problem)} aria-describedby={problem ? problemId : undefined}
+              onChange={event => setWidth(event.target.value)} />
+          </label>
+          {problem && <p id={problemId} className="break-words text-sm text-(--color-text-danger)" role="alert">{problem}</p>}
+          <DialogFooter>
+            <Button type="button" variant="secondary" onClick={onDismiss}>Cancel</Button>
+            <Button type="submit" disabled={!ready}>Add column</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

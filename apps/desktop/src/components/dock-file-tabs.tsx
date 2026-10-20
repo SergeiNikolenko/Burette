@@ -5,6 +5,8 @@ import { fileCapabilities, menuItem } from "./workspace-menu-items";
 import { showNativeContextMenu } from "./native-context-menu";
 import { FileBlank, Atom } from "./ui/app-icons";
 import { Button } from "./ui/button";
+import { ShortcutTooltip } from "./shortcut-tooltip";
+import { requestContextualGuide } from "./onboarding/request";
 
 export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, actions, state }: {
   area: DockArea;
@@ -28,18 +30,22 @@ export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, 
         event.preventDefault();
         event.stopPropagation();
         const capabilities = fileCapabilities(entry.path);
+        const tab = event.currentTarget.closest(".dock-tab-shell") ?? event.currentTarget;
         const renderer = (rendererMode: "auto" | "molstar" | "xyzrender-external") => {
           onTextView(entry.key, false);
           return actions.openDockPayload({ area, tabKind: "files", payload, rendererMode });
         };
         const items = [
-          ...(capabilities.text ? [menuItem("dock-file-text", "Text", () => { select(); onTextView(entry.key, true); })] : []),
+          ...(capabilities.text ? [menuItem("dock-file-text", "Text", () => {
+            select(); onTextView(entry.key, true);
+            if (entry.kind === "document") requestContextualGuide("source-dock", tab);
+          })] : []),
           menuItem("dock-file-preview", "Preview", () => {
             if (entry.kind === "text-document") return renderer("auto");
             select(); onTextView(entry.key, false);
           }),
-          ...(capabilities.scene || capabilities.xyzrender ? [menuItem("open-3d", "Mol*", () => renderer("molstar"))] : []),
-          ...(capabilities.xyzrender ? [menuItem("open-xyzrender", "xyzrender", () => renderer("xyzrender-external"))] : []),
+          ...(capabilities.scene || capabilities.xyzrender ? [menuItem("open-3d", "Interactive 3D", () => renderer("molstar"))] : []),
+          ...(capabilities.xyzrender ? [menuItem("open-xyzrender", "3D render", () => renderer("xyzrender-external"))] : []),
         ];
         void showNativeContextMenu(items, { x: event.clientX, y: event.clientY });
       };
@@ -64,7 +70,9 @@ function DockFileTab({ active, payload, state, actions, menu, entry, text, selec
     {entry.kind !== "tool" && <Button variant="ghost" size="icon-2xs" aria-label={`View options for ${entry.title}`} onClick={menu}>
       {text ? <FileBlank aria-hidden="true" /> : <Atom aria-hidden="true" />}
     </Button>}
-    <Button variant="ghost" size="sm" className="dock-file-tab" role="tab" aria-selected={active}
-      draggable {...drag} title={entry.kind === "tool" ? entry.title : entry.path} onClick={select}>{entry.title}</Button>
+    <ShortcutTooltip label={entry.kind === "tool" ? entry.title : entry.path}>
+      <Button variant="ghost" size="sm" className="dock-file-tab" role="tab" aria-selected={active}
+        draggable {...drag} onClick={select}>{entry.title}</Button>
+    </ShortcutTooltip>
   </div>;
 }

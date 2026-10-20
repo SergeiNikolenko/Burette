@@ -1,4 +1,5 @@
 import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 
 import type { StructureViewerAction } from "../components/types";
 import { readBrowserDevVirtualTextDocument, type openBrowserDevMolstarContextDocument } from "../lib/browser-dev-documents";
@@ -7,7 +8,9 @@ import { conformerOperationLabel } from "../lib/chemistry-settings";
 import { canInspectConformerEnsemble, canUseConformerWorkflow } from "../lib/conformer-ensemble";
 import { directChemistryJobGuardMessage } from "../lib/direct-chemistry-guard";
 import { molstarContextEntryExtension } from "../lib/molstar-context";
-import { parentDirectory } from "../lib/sidebar-projects";
+import { structureExtensionFromPath } from "../lib/file-routing";
+import { basename, parentDirectory } from "../lib/sidebar-projects";
+import { computeHost } from "../lib/remote-jobs";
 import { readStructureText } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
 import { textToBase64 } from "../lib/conformer-generation";
@@ -45,6 +48,15 @@ type UseAppConformerWorkflowsOptions = {
   setConformerJobs: Dispatch<SetStateAction<ConformerJob[]>>;
   setConformerStatus: Dispatch<SetStateAction<ConformerStatus | null>>;
 };
+
+// A document remembers the file it was opened from. When that file has since
+// been deleted, run on the document's own copy instead of failing on the
+// stale source path.
+async function liveSourcePath(document: ViewerDocument) {
+  if (!document.sourcePath || document.sourcePath === document.path || !isTauriRuntime()) return document.sourcePath ?? document.path;
+  const existing = await invoke<string[]>("existing_paths", { paths: [document.sourcePath] }).catch(() => [document.sourcePath!]);
+  return existing.length ? document.sourcePath : document.path;
+}
 
 function conformerOutputDirectory(document: ViewerDocument) {
   const sourcePath = document.sourcePath?.trim() || (!document.virtual ? document.path : "");
@@ -144,6 +156,7 @@ export function useAppConformerWorkflows({
       rmsdThresholdAngstrom: conformerSettings.rmsdThresholdAngstrom,
       samplingMode: conformerSettings.samplingMode,
       prismEnergySort: conformerSettings.prismEnergySort,
+      remoteHost: request.remoteHost === undefined ? computeHost() : request.remoteHost,
     };
     let preparedRun: ConformerPreparedRun;
     try {
@@ -158,6 +171,7 @@ export function useAppConformerWorkflows({
       operation: request.operation,
       inputTitle: request.title,
       status: "running",
+      host: fullRequest.remoteHost,
       startedAt: Date.now(),
       workDir: preparedRun.workDir,
       logPath: preparedRun.logPath,
@@ -216,13 +230,25 @@ export function useAppConformerWorkflows({
     operation: ConformerOperation,
     document: ViewerDocument | null | undefined = activeDocument,
     selection: StructureViewerAction | null = null,
+    target: { scenePath?: string } = {},
   ) => {
     if (!document) {
       pushStatus("Open a small molecule or conformer ensemble before running CREST/PRISM.", "error");
       return;
     }
+    // One source file of a combined scene, picked from the scene Compute menu.
+    if (target.scenePath) {
+      const title = basename(target.scenePath);
+      const extension = structureExtensionFromPath(target.scenePath);
+      if (operation === "prism-prune" ? !canInspectConformerEnsemble(extension) : !canUseConformerWorkflow(extension)) {
+        pushStatus(operation === "prism-prune" ? "PRISM pruning expects an ensemble file such as XYZ or SDF." : "CREST needs a small-molecule file.", "error");
+        return;
+      }
+      await runConformerJob({ operation, path: target.scenePath, title, extension, inputDataBase64: null, outputDirectory: parentDirectory(target.scenePath) });
+      return;
+    }
     if (operation === "crest-generate" && document.renderer === "grid2d" && !selection) {
-      pushStatus("Open a specific molecule from the collection in Mol* before running CREST.", "error");
+      pushStatus("Open one molecule from the collection before running CREST.", "error");
       return;
     }
     let selectedInput: SelectedConformerInput | null = null;
@@ -262,13 +288,14 @@ export function useAppConformerWorkflows({
       pushStatus(guardMessage, "error");
       return;
     }
+    const path = await liveSourcePath(document);
     await runConformerJob({
       operation,
-      path: document.sourcePath ?? document.path,
+      path,
       title: selectedInput?.title ?? document.title,
       extension: selectedInput?.extension ?? document.extension,
       inputDataBase64: inputText === null ? null : textToBase64(inputText),
-      outputDirectory: conformerOutputDirectory(document),
+      outputDirectory: path === document.sourcePath ? conformerOutputDirectory(document) : null,
     });
   }, [activeDocument, pushErrorStatus, pushStatus, requestMolstarXtbContextDocument, runConformerJob]);
 

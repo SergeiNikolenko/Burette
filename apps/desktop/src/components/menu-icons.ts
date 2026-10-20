@@ -17,6 +17,7 @@ const aliases: Record<string, keyof typeof iconData> = {
 };
 const names: Record<string, string> = {
   'file-open': 'ArrowUpRight', 'folder-open': 'FolderOpen', 'row-open': 'ArrowUpRight',
+  'open-all-scene': 'Cube', 'stop-watching-folder': 'CloseBold',
   'file-edit': 'Edit', 'row-edit': 'Edit', 'file-copy': 'Copy', 'folder-copy': 'Copy', 'row-copy': 'Copy',
   'file-export': 'Download', 'row-export': 'Download', 'row-select': 'SelectText', 'row-search': 'Search',
   'folder-new': 'Plus', 'close-tabs': 'CloseBold', 'open-tabs': 'Plus', 'open-window': 'ExternalLink',
@@ -24,9 +25,9 @@ const names: Record<string, string> = {
   'open-together': 'Cube', 'open-poses': 'CompareArrows', 'open-aligned': 'CompareArrows', 'open-table': 'TableFilled',
   'open-cards': 'Grid', 'open-text': 'Text', 'open-finder': 'FolderDocumentsFinder', 'folder-finder': 'FolderDocumentsFinder',
   'open-external': 'ExternalLink', 'open-default-app': 'ExternalLink', 'open-folder': 'FolderOpen',
-  'rename-scene': 'Edit', 'rename-file': 'Edit', 'rename-folder': 'Edit', 'rename-project': 'Edit', 'edit-ketcher': 'Edit',
+  'rename-scene': 'Edit', 'rename-tab': 'Edit', 'rename-file': 'Edit', 'rename-folder': 'Edit', 'rename-project': 'Edit', 'edit-ketcher': 'Edit',
   'duplicate-file': 'Copy', 'copy-names': 'Text', 'copy-paths': 'Link', 'copy-folder-name': 'Text', 'copy-folder-path': 'Link',
-  'save-file-copy': 'Download', 'save-scene': 'Download', 'export-table': 'Download', 'trash-file': 'Trash', 'trash-folder': 'Trash',
+  'download': 'Download', 'download-as': 'Download', 'save-file-copy': 'Download', 'save-scene': 'Download', 'export-table': 'Download', 'trash-file': 'Trash', 'trash-folder': 'Trash',
   'new-folder': 'FolderPlus', 'new-molecule': 'Plus', 'refresh-folder': 'ArrowRotateCw', 'remove-project': 'CloseBold',
   'show-tab-in-sidebar': 'Sidebar', 'open-files': 'FolderOpen', 'add-project': 'FolderPlus',
   'recent-files': 'ArrowRotateCw', 'expand-all-projects': 'Plus', 'collapse-all-projects': 'CloseBold',

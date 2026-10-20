@@ -1,3 +1,4 @@
+import { applyRenderingDefaults, settleRenderingDefaults } from "./ketcher/rendering-defaults";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import type { Ketcher, Struct } from "ketcher-core";
 import { installKetcherBrowserRequire, installKetcherRaphaelBrowserModules } from "../lib/ketcher-browser-require";
@@ -106,25 +107,32 @@ function installRaphaelBrowserModules(eveModule: EveModule, raphaelModule: Rapha
 }
 
 function suppressFilledKetcherSelectionPaths(root: HTMLElement) {
+  // Ketcher replaces its SVG when settings change and drops the canvas marker.
+  // Restore the scoped theme/export adapter on the new renderer, including wedges.
+  const canvas = root.querySelector<SVGSVGElement>('[class*="StructEditor-module_intermediateCanvas"] > svg');
+  if (canvas && canvas.dataset.testid !== "canvas") canvas.dataset.testid = "canvas";
+  // Most bonds have no fill. Check the resolved paint before requesting SVG
+  // geometry; the raw fill attribute alone is unsafe because CSS can override it.
+  const blackPaths = Array.from(root.querySelectorAll<SVGPathElement>('[data-testid="canvas"] path'))
+    .filter((path) => getComputedStyle(path).fill === "rgb(0, 0, 0)");
+  if (!blackPaths.length) return;
   const rootRect = root.getBoundingClientRect();
   const minWidth = rootRect.width * 0.45;
   const minHeight = rootRect.height * 0.45;
 
-  for (const path of root.querySelectorAll<SVGPathElement>("svg path")) {
-    const style = getComputedStyle(path);
-    if (style.fill !== "rgb(0, 0, 0)") continue;
-
-    let box: DOMRect  ;
+  const filledSelections: SVGPathElement[] = [];
+  for (const path of blackPaths) {
+    let box: DOMRect;
     try {
       box = path.getBBox();
     } catch {
       continue;
     }
 
-    if (box.width >= minWidth && box.height >= minHeight) {
-      path.style.setProperty("fill", "transparent", "important");
-    }
+    if (box.width >= minWidth && box.height >= minHeight) filledSelections.push(path);
   }
+  // Read all geometry before writing styles, avoiding repeated layout invalidation.
+  for (const path of filledSelections) path.style.setProperty("fill", "transparent", "important");
 }
 
 function createKetcherEditorApi(
@@ -392,6 +400,7 @@ function applyAgentHighlights(root: HTMLElement | null, indexes: number[]) {
 
 type KetcherRuntime = {
   Editor: KetcherReactModule["Editor"];
+  getOptionsWithConvertedUnits: KetcherCoreModule["getOptionsWithConvertedUnits"];
   getSvgFromDrawnStructures: KetcherCoreModule["getSvgFromDrawnStructures"];
   MolSerializer: KetcherCoreModule["MolSerializer"];
   StandaloneStructServiceProvider: KetcherStandaloneModule["StandaloneStructServiceProvider"];
@@ -415,6 +424,7 @@ export function loadKetcherRuntime(): Promise<KetcherRuntime> {
       import("ketcher-standalone/dist/binaryWasm"),
     ])).then(([reactModule, coreModule, standaloneModule]) => ({
     Editor: reactModule.Editor,
+    getOptionsWithConvertedUnits: coreModule.getOptionsWithConvertedUnits,
     getSvgFromDrawnStructures: coreModule.getSvgFromDrawnStructures,
     MolSerializer: coreModule.MolSerializer,
     StandaloneStructServiceProvider: standaloneModule.StandaloneStructServiceProvider,
@@ -438,6 +448,8 @@ export function KetcherEditor({
   onLoadError?: (error: Error) => void;
 }) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const initialization = useRef<AbortController | null>(null);
+  useEffect(() => () => initialization.current?.abort(), []);
   const [runtime, setRuntime] = useState<KetcherRuntime | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
 
@@ -472,9 +484,22 @@ export function KetcherEditor({
     if (!runtime) return;
     // Keep the React editor API typed against the shared, version-aligned Ketcher core contract.
     const compatibleInstance = instance as unknown as Ketcher;
-    onReady(createKetcherEditorApi(compatibleInstance, runtime.MolSerializer, runtime.getSvgFromDrawnStructures, runtime.ZoomTool, rootRef.current));
-    onStatus("Ready");
-  }, [onReady, onStatus, runtime]);
+    initialization.current?.abort();
+    const controller = new AbortController();
+    initialization.current = controller;
+    void settleRenderingDefaults(compatibleInstance, () => applyRenderingDefaults(compatibleInstance, runtime.getOptionsWithConvertedUnits), controller.signal).then(() => {
+      if (controller.signal.aborted || !rootRef.current?.isConnected) return;
+      suppressFilledKetcherSelectionPaths(rootRef.current);
+      onReady(createKetcherEditorApi(compatibleInstance, runtime.MolSerializer, runtime.getSvgFromDrawnStructures, runtime.ZoomTool, rootRef.current));
+      onStatus("Ready");
+    }).catch((error: unknown) => {
+      if (controller.signal.aborted) return;
+      const normalized = error instanceof Error ? error : new Error(String(error));
+      setLoadError(normalized);
+      onLoadError?.(normalized);
+      onStatus("Ketcher failed to load");
+    });
+  }, [onReady, onStatus, onLoadError, runtime]);
 
   const handleError = useCallback((message: string) => {
     onStatus(message);
@@ -491,14 +516,21 @@ export function KetcherEditor({
       event.stopPropagation();
       onOpenFile();
     };
-    const suppress = () => suppressFilledKetcherSelectionPaths(root);
+    let suppressionFrame = 0;
+    const suppress = () => {
+      if (suppressionFrame) return;
+      suppressionFrame = requestAnimationFrame(() => {
+        suppressionFrame = 0;
+        suppressFilledKetcherSelectionPaths(root);
+      });
+    };
     suppress();
     root.addEventListener("click", interceptFileOpen, true);
 
     const observer = new MutationObserver(suppress);
     observer.observe(root, {
       attributes: true,
-      attributeFilter: ["d", "fill", "style", "stroke", "stroke-dasharray"],
+      attributeFilter: ["d", "fill", "style"],
       childList: true,
       subtree: true,
     });
@@ -510,6 +542,7 @@ export function KetcherEditor({
       root.removeEventListener("click", interceptFileOpen, true);
       observer.disconnect();
       resizeObserver.disconnect();
+      cancelAnimationFrame(suppressionFrame);
     };
   }, [onOpenFile, runtime]);
 

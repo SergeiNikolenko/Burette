@@ -9,11 +9,13 @@ import { parseFepNetworkText, type FepNetworkData, type FepNetworkEdge, type Fep
 import { loadRDKitModule } from "../../../lib/rdkit-module";
 import { isTauriRuntime } from "../../../lib/tauri";
 import { showNativeContextMenu } from "../../native-context-menu";
+import { requestContextualGuide } from "../../onboarding/request";
 import type { ShellActions } from "../../types";
 import { ArrowRotateCcw } from "../../ui/app-icons";
 import { Button } from "../../ui/button";
 import { ToggleGroup, ToggleGroupItem } from "../../ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../ui/tooltip";
+import { ShortcutTooltip } from "../../shortcut-tooltip";
 import { ViewerFrame } from "../viewer-frame";
 import { definePageKind } from "./types";
 
@@ -87,6 +89,7 @@ function FepNetworkPreview({ actions, location, preferences }: { actions: ShellA
   const [dataError, setDataError] = useState(false);
   const [rdkit, setRdkit] = useState<RDKitModule | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
+  const viewSwitchRef = useRef<HTMLDivElement>(null);
   const [highlightMode, setHighlightMode] = useState<HighlightMode>("off");
   const [showHydrogens, setShowHydrogens] = useState(false);
   const [structureDocument, setStructureDocument] = useState<ViewerDocument | null>(null);
@@ -412,6 +415,7 @@ function FepNetworkPreview({ actions, location, preferences }: { actions: ShellA
         kind: "item",
         id: "delete-node",
         text: "Delete from network",
+        variant: "destructive",
         action: () => setHiddenNodes((current) => new Set([...current, node.id])),
       },
     ], { x: event.clientX, y: event.clientY });
@@ -483,8 +487,13 @@ function FepNetworkPreview({ actions, location, preferences }: { actions: ShellA
             size="sm"
             spacing={0}
             aria-label="View"
+            ref={viewSwitchRef}
             value={viewMode}
-            onValueChange={(value) => { if (value === "graph" || value === "grid" || value === "structure") setViewMode(value); }}
+            onValueChange={(value) => {
+              if (value !== "graph" && value !== "grid" && value !== "structure") return;
+              setViewMode(value);
+              requestContextualGuide("fep-network", viewSwitchRef.current);
+            }}
           >
             <ToggleGroupItem value="graph">Graph</ToggleGroupItem>
             <ToggleGroupItem value="grid">Grid</ToggleGroupItem>
@@ -583,20 +592,20 @@ function FepNetworkPreview({ actions, location, preferences }: { actions: ShellA
                   })}
                 </svg>
                 {edgeLayouts.map(({ key, label, visual }) => label ? (
-                  <button
-                    type="button"
-                    key={`${key}:label`}
-                    className="fep-network-edge-label"
-                    aria-pressed={key === selectedEdgeKey}
-                    data-active={key === activeEdgeKey ? "true" : undefined}
-                    data-dimmed={activeEdgeKey && key !== activeEdgeKey ? "true" : undefined}
-                    style={{ left: label.x, top: label.y }}
-                    title={visual.title}
-                    {...edgeHandlers(key)}
-                  >
-                    <span>{visual.metric}</span>
-                    {visual.label}
-                  </button>
+                  <ShortcutTooltip key={`${key}:label`} label={visual.title}>
+                    <button
+                      type="button"
+                      className="fep-network-edge-label"
+                      aria-pressed={key === selectedEdgeKey}
+                      data-active={key === activeEdgeKey ? "true" : undefined}
+                      data-dimmed={activeEdgeKey && key !== activeEdgeKey ? "true" : undefined}
+                      style={{ left: label.x, top: label.y }}
+                      {...edgeHandlers(key)}
+                    >
+                      <span>{visual.metric}</span>
+                      {visual.label}
+                    </button>
+                  </ShortcutTooltip>
                 ) : null)}
                 {visibleNodes.map((node) => {
                   const position = positions[node.id];
@@ -677,7 +686,9 @@ function HydrogensToggle({ shown, onChange }: { shown: boolean; onChange: (shown
       value={shown ? "shown" : ""}
       onValueChange={(value) => onChange(value === "shown")}
     >
-      <ToggleGroupItem value="shown" aria-label="Show hydrogens" title="Show hydrogens">H</ToggleGroupItem>
+      <ShortcutTooltip label="Show hydrogens">
+        <ToggleGroupItem value="shown" aria-label="Show hydrogens">H</ToggleGroupItem>
+      </ShortcutTooltip>
     </ToggleGroup>
   );
 }

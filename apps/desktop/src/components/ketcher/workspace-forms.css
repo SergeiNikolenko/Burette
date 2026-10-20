@@ -1,0 +1,85 @@
+/* Ketcher forms in the Atlas style. Fields are 32px (shadcn h-8); selects match inputs. */
+.ketcher-ui-dialog input[data-slot="input"] {height:32px;}
+.ketcher-ui-dialog-body:is([class*="Settings-module"],[class*="Analyse-module"],[class*="Save-module"],[class*="sgroup-module"],[class*="Bond-module"],[class*="enhancedStereo-module"]) [data-slot="select-trigger"] {height:32px;}
+.ketcher-ui-dialog-body:not([class*="Atom-module"]) [class*="form-module_dataError"] [class*="form-module_inputWrapper"] {display:block;}
+.ketcher-ui-dialog-body:not([class*="Atom-module"]) [class*="form-module_dataError"] [class*="form-module_inputWrapper"]::after {right:10px;top:50%;transform:translateY(-50%);line-height:0;pointer-events:none;}
+.ketcher-ui-dialog-body:not([class*="Atom-module"]) [class*="form-module_dataError"] [class*="form-module_inputWrapper"] > input {padding-right:28px;}
+.ketcher-ui-dialog-body:not([class*="Atom-module"]) [class*="form-module_dataError"] [class*="form-module_inputWrapper"]:not(:has(> input[data-slot="input"]))::after {content:none;}
+
+/* Settings: a selected nav item, one control column and value+unit rows on the same grid. */
+.ketcher-ui-dialog:has(.ketcher-settings-layout) {width:min(656px,calc(100vw - 24px));}
+.ketcher-ui-dialog .ketcher-settings-layout {--kf-control:180px;--kf-unit:84px;width:100%;grid-template-columns:160px minmax(0,1fr);gap:16px;}
+.ketcher-settings-nav button {color:var(--muted-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.ketcher-settings-nav button:hover {color:var(--foreground);background:color-mix(in oklab,var(--muted) 50%,transparent);}
+.ketcher-settings-nav button[aria-selected="true"] {background:var(--muted);color:var(--foreground);font-weight:400;}
+.ketcher-settings-groups fieldset > label {grid-template-columns:minmax(0,1fr) var(--kf-control);min-height:40px;}
+.ketcher-settings-groups fieldset > :is(label,div) + :is(label,div) {border-top:1px solid var(--border);}
+.ketcher-settings-groups fieldset > label > [class*="form-module_inputWrapper"] {width:100%;min-width:0;}
+.ketcher-settings-groups fieldset > label > [class*="form-module_inputWrapper"] > :is(input[data-slot="input"],.ketcher-numeric-slot,[data-slot="select-trigger"]),
+.ketcher-settings-groups .ketcher-numeric-slot [class*="form-module_inputWithExtraLabel"] {width:100%!important;min-width:0;}
+.ketcher-settings-groups input.ketcher-numeric-control {width:100%!important;}
+.ketcher-settings-groups [data-slot="select-value"] {display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.ketcher-settings-groups fieldset > label:has(> [class*="form-module_extraLabel"]) {grid-template-columns:minmax(0,1fr) calc(var(--kf-control) - var(--kf-unit) - 6px) var(--kf-unit);column-gap:6px;}
+.ketcher-settings-groups fieldset > label:has(> [class*="form-module_extraLabel"]) > :first-child {padding-right:6px;}
+.ketcher-settings-groups fieldset > label > [class*="form-module_extraLabel"] {display:block;margin:0;color:var(--muted-foreground);white-space:nowrap;}
+.ketcher-settings-groups [class*="measure-input-module_measureInput"] {display:grid;grid-template-columns:minmax(0,1fr) var(--kf-control);column-gap:12px;min-height:40px;padding:4px 0;font-size:inherit;line-height:inherit;color:inherit;}
+.ketcher-settings-groups [class*="measure-input-module_measureInput"] > div {display:flex;gap:6px;width:100%;min-width:0;}
+.ketcher-settings-groups [class*="measure-input-module_measureInput"] .ketcher-numeric-slot {flex:1;width:auto;min-width:0;}
+.ketcher-settings-groups [class*="measure-input-module_measureInput"] input[data-slot="input"] {width:100%;height:32px;margin:0;}
+.ketcher-settings-groups [class*="measure-input-module_measureInput"] [data-slot="select-trigger"] {flex:none;width:var(--kf-unit);min-width:0;height:32px;margin:0;}
+
+/* Calculated Values: full-width read-only fields, a fixed decimal-places column. */
+.ketcher-ui-dialog-body[class*="Analyse-module_analyse"] > ul {display:flex;flex-direction:column;gap:12px;margin:0;padding:0;}
+.ketcher-ui-dialog-body[class*="Analyse-module_analyse"] [class*="Analyse-module_contentWrapper"] {display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:12px;margin:0;}
+.ketcher-ui-dialog-body[class*="Analyse-module_analyse"] [class*="Analyse-module_contentWrapper"] > :only-child {grid-column:1/-1;}
+.ketcher-ui-dialog-body[class*="Analyse-module_analyse"] :is([class*="Analyse-module_inputWrapper"],[class*="Analyse-module_selectWrapper"]) {display:flex;flex-direction:column;gap:6px;width:auto!important;min-width:0;margin:0;}
+.ketcher-ui-dialog-body[class*="Analyse-module_analyse"] [class*="Analyse-module_contentWrapper"] label {margin:0;}
+.ketcher-ui-dialog-body[class*="Analyse-module_analyse"] [class*="Analyse-module_inputWrapper"] :is(input,textarea,[class*="FormulaInput-module"]) {box-sizing:border-box;width:100%!important;margin:0;border:1px solid var(--border);border-radius:var(--radius-lg);font-size:14px;}
+.ketcher-ui-dialog-body[class*="Analyse-module_analyse"] [class*="Analyse-module_inputWrapper"] :is(input,[class*="FormulaInput-module"]) {display:block;height:32px!important;padding:0 10px!important;line-height:30px;}
+.ketcher-ui-dialog-body[class*="Analyse-module_analyse"] [class*="FormulaInput-module"] sub {line-height:0;}
+.ketcher-ui-dialog-body[class*="Analyse-module_analyse"] [class*="Analyse-module_inputWrapper"] textarea {height:88px;padding:6px 10px;letter-spacing:normal;}
+.ketcher-ui-dialog-body[class*="Analyse-module_analyse"] [class*="Analyse-module_select"] {width:100%!important;height:32px!important;margin:0!important;}
+
+/* Structure Check: settings flush with the title, padded results, one-line timestamp. */
+.ketcher-ui-dialog [class*="Check-module_dialog_body"] form {padding-top:0;}
+.ketcher-ui-dialog-body [class*="Check-module_wrapper"] [class*="Check-module_settings"] {width:168px;min-width:168px;margin-left:0;}
+.ketcher-ui-dialog [class*="Check-module_settings"] fieldset {font-size:inherit;line-height:20px;}
+.ketcher-ui-dialog [class*="Check-module_settings"] label {gap:8px;}
+.ketcher-ui-dialog [class*="Check-module_checkInfo"] {min-width:0;}
+.ketcher-ui-dialog [class*="Check-module_checkInfo"] > span {display:block;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted-foreground);}
+.ketcher-ui-dialog [class*="Check-module_warningsContainer"] fieldset > div {margin:10px 12px!important;}
+
+/* Save Structure: scrollable unwrapped preview. */
+.ketcher-ui-dialog-body [class*="Save-module_previewArea"] {white-space:pre;overflow-wrap:normal;}
+
+/* Open structure: the paste area fits the dialog with a full border. */
+.ketcher-ui-dialog-body[class*="Open-module_open"] {box-shadow:none;}
+.ketcher-ui-dialog-body[class*="Open-module_open"] [class*="Open-module_textareaEditor"]:is(*,:hover) {display:block;box-sizing:border-box;width:100%;min-width:0;border:1px solid var(--input);border-radius:var(--radius-lg);background:transparent;color:var(--foreground);resize:vertical;}
+.ketcher-ui-dialog-body[class*="Open-module_open"] [class*="Open-module_textareaEditor"]:focus-visible {border-color:var(--ring);outline:none;}
+
+/* S-Group: form flush with the title, grouped radios. */
+.ketcher-ui-dialog-body[class*="sgroup-module"] {width:100%;}
+.ketcher-ui-dialog-body[class*="sgroup-module"] form {margin:0;}
+.ketcher-ui-dialog-body[class*="sgroup-module"] fieldset fieldset {justify-content:flex-start;gap:20px;margin-top:16px;}
+.ketcher-ui-dialog-body[class*="sgroup-module"] fieldset fieldset li {list-style:none;}
+.ketcher-ui-dialog-body[class*="sgroup-module"] fieldset fieldset label {gap:8px;align-items:center;}
+.ketcher-ui-dialog-body[class*="sgroup-module"] fieldset fieldset label > span {margin-right:0!important;}
+
+/* Bond Properties. */
+.ketcher-ui-dialog [class*="Bond-module_customQueryWrapper"] label {gap:8px;}
+
+/* Enhanced Stereochemistry: compact radio rows and a native group select. */
+.ketcher-ui-dialog-body[class*="enhancedStereo-module"] {width:100%;}
+.ketcher-ui-dialog-body[class*="enhancedStereo-module"] fieldset {gap:4px;margin:0;padding:0;}
+.ketcher-ui-dialog-body[class*="enhancedStereo-module"] fieldset > label {display:flex;align-items:center;gap:8px;min-height:32px;margin:0;}
+.ketcher-ui-dialog-body[class*="enhancedStereo-module"] input[type="radio"] {appearance:none;flex:none;width:16px;height:16px;margin:0;padding:0;border:1px solid var(--input);border-radius:50%;background:transparent;box-shadow:none;cursor:pointer;}
+.ketcher-ui-dialog-body[class*="enhancedStereo-module"] input[type="radio"]:checked {border:5px solid var(--foreground);background:var(--background);}
+.ketcher-ui-dialog-body[class*="enhancedStereo-module"] input[type="radio"]:disabled {opacity:.5;cursor:default;}
+.ketcher-ui-dialog-body[class*="enhancedStereo-module"] input[type="radio"]:focus-visible {outline:2px solid var(--ring);outline-offset:2px;}
+.ketcher-ui-dialog-body[class*="enhancedStereo-module"] [class*="enhancedStereo-module_labelGroupSelect"] {margin:0;}
+.ketcher-ui-dialog-body[class*="enhancedStereo-module"] select {height:32px;min-width:56px;padding:0 8px;border:1px solid var(--input);border-radius:var(--radius-lg);background:transparent;color:var(--foreground);font:inherit;}
+.ketcher-ui-dialog-body[class*="enhancedStereo-module"] select:focus-visible {border-color:var(--ring);outline:none;}
+
+@media (max-width:560px) {
+  .ketcher-ui-dialog .ketcher-settings-layout {--kf-control:128px;--kf-unit:64px;grid-template-columns:minmax(0,1fr);}
+}

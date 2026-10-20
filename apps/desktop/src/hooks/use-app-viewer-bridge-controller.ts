@@ -21,6 +21,7 @@ import { useAppXyzrenderSheetMessages } from "./use-app-xyzrender-sheet-messages
 import { openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { writeClipboardText } from "../lib/clipboard";
 import { postMessageToViewerSource, isKnownViewerMessageSource } from "../lib/viewer-bridge";
+import type { StructureDragPayload } from "../lib/structure-drag";
 import type { GridFilterModel } from "../components/types";
 import type { StructureOverlayMode, ViewerLigandSelection } from "../components/types";
 import type { ConformerGenerationMode, MolstarStylePreference } from "../lib/conformer-generation";
@@ -98,6 +99,7 @@ type UseAppViewerBridgeControllerOptions = {
   activeDocument: ViewerDocument | null;
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   addDocuments: (documents: ViewerDocument[]) => void;
+  appendGridRecords: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
   calculateGridDescriptors: (documentId: string, options?: { rowIndexes?: number[] }) => void;
   deleteDuplicateGridRows: (documentId: string) => void;
   updateGridFilterModel: (documentId: string, model: GridFilterModel, source: MessageEventSource | null) => void;
@@ -148,6 +150,7 @@ export function useAppViewerBridgeController({
   updateGridFilterModel,
   addBackgroundDocuments,
   addDocuments,
+  appendGridRecords,
   calculateGridDescriptors,
   deleteDuplicateGridRows,
   closeGridRuntime,
@@ -258,6 +261,7 @@ export function useAppViewerBridgeController({
   const { handleMolstarContextMessage } = useAppMolstarContextMessages({
     activeDocument,
     addDocuments,
+    appendGridRecords,
     documents,
     openDockingDocument,
     openDocuments,
@@ -273,6 +277,7 @@ export function useAppViewerBridgeController({
     pushStatus,
   });
   const { handleXyzrenderSheetMessage } = useAppXyzrenderSheetMessages({
+    documents,
     postMessageToViewerSource,
   });
   const { handleViewerRuntimeMessage, markViewerFirstRenderMessage } = useAppViewerRuntimeMessages({

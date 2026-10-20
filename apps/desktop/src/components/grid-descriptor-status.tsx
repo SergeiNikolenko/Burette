@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Item, ItemContent, ItemDescription, ItemTitle } from "./ui/item";
+import { Progress } from "./ui/progress";
+import { Spinner } from "./ui/spinner";
 import { GRID_DESCRIPTOR_JOB_EVENT } from "../hooks/use-app-descriptors";
 import type { GridDescriptorJobStatus } from "../lib/descriptors";
 
@@ -42,55 +43,30 @@ export function GridDescriptorStatus({ documentId }: { documentId: string }) {
     return () => window.clearTimeout(timer);
   }, [job]);
 
-  if (!job) return null;
+  if (!job || job.documentId !== documentId || job.status === "idle") return null;
 
   const total = job.totalRows || 0;
   const done = Math.min(job.processedRows || 0, total);
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
 
-  // A run of its own card sat between the composition and the engines, so a
-  // descriptor pass pushed the tools down and then vanished. It reads as a
-  // tool row inside Tools instead, where the other running work already is.
-  if (job.running) {
-    return (
-      <Item variant="outline" size="xs" role="listitem" className="grid-descriptor-status" data-state="running">
-        <ItemContent className="min-w-0">
-          <ItemTitle>
-            RDKit
-            <span className="text-xs font-normal text-muted-foreground">descriptors</span>
-          </ItemTitle>
-          <ItemDescription>
-            {total > 0 ? `Calculating · ${done.toLocaleString()} of ${total.toLocaleString()}` : "Calculating descriptors"}
-          </ItemDescription>
-          {/* An all-molecules run reports no total up front. A full bar would read
-              as finished, so that case sweeps as indeterminate instead. */}
-          {total > 0 ? (
-            <div className="grid-descriptor-progress" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-              <span style={{ width: `${pct}%` }} />
-            </div>
-          ) : (
-            <div className="grid-descriptor-progress indeterminate" aria-hidden><span /></div>
-          )}
-        </ItemContent>
-      </Item>
-    );
-  }
-
-  const failed = job.status === "failed";
   const added = job.summary?.descriptorIdCount ?? 0;
+  const outcome = job.running ? "Calculating…"
+    : job.status === "failed" ? "Failed"
+    : job.status === "cancelled" ? "Cancelled"
+    : job.failedRows > 0 ? "Completed with errors" : "Completed";
+  const count = job.running && total > 0 ? `${done.toLocaleString()} of ${total.toLocaleString()}`
+    : !job.running && job.status === "completed" && job.failedRows > 0 ? `${job.failedRows.toLocaleString()} failed`
+    : !job.running && job.status === "completed" && added > 0 ? `${added.toLocaleString()} ${added === 1 ? "column" : "columns"} added` : null;
   return (
-    <Item variant="outline" size="xs" role="listitem" className="grid-descriptor-status" data-state={failed ? "missing" : "ready"}>
-      <ItemContent className="min-w-0">
-        <ItemTitle>
-          RDKit
-          <span className="text-xs font-normal text-muted-foreground">descriptors</span>
-        </ItemTitle>
-        <ItemDescription>
-          {failed
-            ? job.message || "Descriptor run failed"
-            : added > 0 ? `Added ${added.toLocaleString()} ${added === 1 ? "column" : "columns"}` : "Descriptors calculated"}
-        </ItemDescription>
-      </ItemContent>
-    </Item>
+    <div className="grid min-w-0 gap-2 px-2 py-1 text-sm" data-state={job.status}>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <span className="text-(--color-text)">Molecular properties</span>
+        <span role="status" className={`flex items-center gap-1 text-xs ${job.status === "failed" ? "text-(--color-text-danger)" : "text-(--color-text-secondary)"}`}>
+          {job.running ? <Spinner aria-hidden className="size-3" /> : null}{outcome}
+        </span>
+      </div>
+      {count ? <span className="text-xs text-(--color-text-secondary) tabular-nums">{count}</span> : null}
+      {job.running ? <Progress aria-label="Molecular properties" value={total > 0 ? pct : null} /> : null}
+    </div>
   );
 }

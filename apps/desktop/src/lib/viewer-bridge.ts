@@ -1,3 +1,5 @@
+import { isViewerFrameVisible } from "./viewer-frame-visibility";
+
 export type ActiveViewerIframeForDocument = (documentId: string, renderer?: string) => HTMLIFrameElement | null;
 export type KnownViewerMessageSource = (source: MessageEventSource | null, documentId?: string) => boolean;
 export type PostMessageToViewerSource = (source: MessageEventSource | null, payload: unknown) => void;
@@ -30,9 +32,7 @@ export function postMessageToViewerSource(source: MessageEventSource | null, pay
     ? payload.body.documentId
     : null;
   if (!documentId) return;
-  const selector = `.viewer-iframe[data-document-id="${CSS.escape(documentId)}"]`;
-  const iframe = document.querySelector<HTMLIFrameElement>(`${selector}:not([data-read-only="true"])`)
-    ?? document.querySelector<HTMLIFrameElement>(selector);
+  const iframe = activeViewerIframeForDocument(documentId);
   iframe?.contentWindow?.postMessage(payload, "*");
 }
 
@@ -49,21 +49,29 @@ export function postGridCommand(documentId: string, command: string, rowIndex?: 
 export function activeViewerIframeForDocument(documentId: string, renderer?: string) {
   const escapedId = CSS.escape(documentId);
   const rendererSelector = renderer ? `[data-renderer="${CSS.escape(renderer)}"]` : "";
-  return document.querySelector<HTMLIFrameElement>(
-    `.page-surface[data-active="true"] .viewer-iframe[data-document-id="${escapedId}"]${rendererSelector}:not([data-read-only="true"])`,
-  ) ?? document.querySelector<HTMLIFrameElement>(
-    `.viewer-iframe[data-document-id="${escapedId}"]${rendererSelector}:not([data-read-only="true"])`,
-  ) ?? document.querySelector<HTMLIFrameElement>(
-    `.page-surface[data-active="true"] .viewer-iframe[data-document-id="${escapedId}"]${rendererSelector}`,
-  ) ?? document.querySelector<HTMLIFrameElement>(
+  const frames = Array.from(document.querySelectorAll<HTMLIFrameElement>(
     `.viewer-iframe[data-document-id="${escapedId}"]${rendererSelector}`,
-  );
+  ));
+  const visible = frames.filter(isViewerFrameVisible);
+  const editable = (frame: HTMLIFrameElement) => frame.dataset.readOnly !== "true";
+  const active = (frame: HTMLIFrameElement) => Boolean(frame.closest('.page-surface[data-active]:not([data-active="false"])'));
+  // A visible pane can show the same document as a hidden history entry in the
+  // main tab. Prefer that live scene before falling back to warm runtimes.
+  return visible.find(frame => active(frame) && editable(frame))
+    ?? visible.find(editable)
+    ?? visible.find(active)
+    ?? visible[0]
+    ?? frames.find(editable)
+    ?? frames[0]
+    ?? null;
 }
 
 // xyzrender sheet items are addressed per viewer: another tab can show the
 // same file, and broadcasting would edit or animate its copies as well.
 export function postToXyzrenderViewer(documentId: string | undefined, body: Record<string, unknown>) {
   const owner = documentId ? activeViewerIframeForDocument(documentId) : null;
+  // A closed target is not permission to animate every remaining document.
+  if (documentId && !owner) return;
   const frames = owner ? [owner] : Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe"));
   for (const frame of frames) frame.contentWindow?.postMessage({ source: "burette-host", body }, "*");
 }
@@ -71,7 +79,7 @@ export function postToXyzrenderViewer(documentId: string | undefined, body: Reco
 // Request/ack transport for workspace commands that must finish before the next
 // operation. Both the frame and request id are checked, including hidden tabs.
 export async function requestViewerAction(documentId: string, action: Record<string, unknown>, timeoutMs = 60000) {
-  const frame = activeViewerIframeForDocument(documentId, "molstar");
+  const frame = activeViewerIframeForDocument(documentId);
   if (!frame?.contentWindow || frame.dataset.readOnly === "true") throw new Error("Open the scene and wait for it to load.");
   const source = frame.contentWindow;
   const id = `workspace-${crypto.randomUUID()}`;
@@ -86,7 +94,11 @@ export async function requestViewerAction(documentId: string, action: Record<str
     };
     const timer = window.setTimeout(() => { finish(); reject(new Error("The scene did not respond. Check it before retrying.")); }, timeoutMs);
     window.addEventListener("message", receive);
-    source.postMessage({ source: "burette-agent-host", body: { type: "agent-action", id, action } }, "*");
+    try {
+      source.postMessage({ source: "burette-agent-host", body: { type: "agent-action", id, action } }, "*");
+    } catch (error) {
+      finish(); reject(error);
+    }
   });
 }
 
@@ -97,14 +109,21 @@ export function requestGridView(documentId: string, mode: "table" | "cards") {
   return new Promise<void>((resolve, reject) => {
     const cleanup = () => { window.clearInterval(interval); window.clearTimeout(timeout); window.removeEventListener('message', receive); };
     const receive = (event: MessageEvent) => {
-      const frame = activeViewerIframeForDocument(documentId, "grid2d");
       const body = event.data?.body;
-      if (event.source !== frame?.contentWindow || event.data?.source !== 'burette-grid' || body?.type !== 'gridMenuCommandResult' || body.requestId !== requestId) return;
+      if (event.data?.source !== 'burette-grid' || body?.type !== 'gridMenuCommandResult' || body.requestId !== requestId) return;
+      const frame = activeViewerIframeForDocument(documentId, "grid2d");
+      if (!frame?.contentWindow || event.source !== frame.contentWindow) return;
       cleanup(); resolve();
     };
-    const send = () => activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
-      source: 'burette-grid-host', body: { type: 'gridMenuCommand', command: `view.grid-${mode}`, requestId },
-    }, '*');
+    const send = () => {
+      try {
+        activeViewerIframeForDocument(documentId, "grid2d")?.contentWindow?.postMessage({
+          source: 'burette-grid-host', body: { type: 'gridMenuCommand', command: `view.grid-${mode}`, requestId },
+        }, '*');
+      } catch (error) {
+        cleanup(); reject(error);
+      }
+    };
     const interval = window.setInterval(send, 250);
     const timeout = window.setTimeout(() => { cleanup(); reject(new Error('The table did not finish loading.')); }, 15000);
     window.addEventListener('message', receive); send();

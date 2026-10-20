@@ -50,6 +50,26 @@ where needed so agents do not need to remember nested Tauri commands.
 
 ## Desktop Shell
 
+Page rendering uses React Router with a memory navigator per mounted tab
+(`components/editor-area/tab-router.tsx`). The registered page kinds supply
+routes; settings use `/settings/:section`. Scientific document identities live
+in route state, not in the browser URL. No browser history or server rewrite is
+required in Tauri, browser-dev, or an embedded workspace.
+
+The existing molecule store owns each tab's serializable back/current/forward
+history. The router navigator and native Back/Forward actions share that cursor
+rather than maintaining two independent histories. Session restoration and
+workspace undo therefore keep the same payload shape. Tab keep-alive limits,
+dirty-view retention, and file-opening guards remain in their existing owners.
+Within a visible tab, `tab-history-pages.tsx` retains the last three visited file
+views so Back/Forward reuses the iframe and camera rather than rebuilding it.
+Inactive tabs retain only their current view, with unsaved grids and assembled
+scenes protected from eviction. When branching discards Forward entries, a
+protected view remains in the same tab and is restored to Back history so its
+original editor stays reachable. Hidden history views receive the existing visibility signal to pause
+trajectory playback; stable DOM order avoids iframe reloads during navigation.
+
+
 The desktop shell is a compact molecule workspace:
 
 - sidebar for project folders and nested structures
@@ -154,6 +174,12 @@ offer commands rather than a fabricated single value for mixed components.
 Normal app launch remains a visible full-window launch. Registration-only
 maintenance may opt into `BURETTE_LAUNCH_MODE=register`; file-open, Dock, and menu
 paths still show the full app. See [Launch modes](launch-modes.md).
+
+Panel, floating-pane and native window resize gestures send `hostLayoutGesture`
+to mounted viewer frames. Frames reflow with the shell so controls remain on
+their edges; Mol* holds canvas allocation until the gesture finishes. Overlapping
+gestures are counted per shell root, including detached panes, and release after
+panel transitions and final layout corrections settle.
 
 ## Preview Runtime
 
@@ -279,8 +305,19 @@ menu. Trajectory pairing retains its separate document workflow. Combined scenes
 Add to Scene skips files the target already holds, and a combined scene's tab
 menu adds the whole scene, including files and records added to it earlier, to
 another open scene, so scenes can be chained.
-SSH requests wait for the shared native worker rather than treating contention
-as a connection failure; refreshing a remote project keeps its cached tree visible.
+SSH allows three native requests at a time and reuses OpenSSH connections through
+an app-private 0700 control-socket directory with a 60-second idle lifetime.
+Strict known-host checking, batch authentication, and disabled forwarding remain
+in force; the user's SSH configuration and credentials are never changed.
+Browser-dev keeps its existing sequential per-host worker, admits three requests
+at a time, and queues up to 200 more for at most 45 seconds each. Disconnected
+requests leave the queue before acquiring a worker. Both transports revalidate remote device/inode,
+size, modification and change timestamps before reusing a preview. Changed files
+get immutable new local paths; open previews are never deleted to make room.
+Cache admission preserves the 256-file / 512-MiB bounds, with a 64-MiB file limit.
+The internal preview response is a bounded JSON header followed by raw bytes;
+remote paths still travel only as JSON on stdin. Refreshing a remote project
+keeps its cached tree visible.
 
 ### Native conformers in Mol* collections
 
@@ -317,3 +354,39 @@ a separate operation and is hidden when the collection cannot be aligned.
 The initial Mol* canvas stays hidden until its background is configured. Paint
 waits use a timer fallback because WKWebView can suspend animation callbacks for
 hidden canvases; startup must not depend on revealing the canvas first.
+
+## PDB transfer to Ketcher
+
+The molecule preview and extracted PDB residues retain their original atom
+records and filtered CONECT records. Ketcher import uses local Open Babel
+(`obabel -ipdb -osdf`) through `prepare_ketcher_pdb` on desktop or the
+browser-dev `prepare-ketcher-pdb` route. It validates atom identity and 3D
+coordinates before loading the resulting MOL block. Existing SDF chemistry
+is imported directly. Coordinate-only PDB chemistry is inferred, not an
+authoritative replacement for a ligand's original SDF.
+
+This conversion requires an installed Open Babel executable. Hosted surfaces
+without the local converter reject PDB editor imports with an actionable error
+instead of silently replacing bond orders with single bonds. The focused
+integration check is `bun tests/test-ketcher-pdb-import.mjs` (Open Babel needed
+for chemical perception); the native converter check is
+`cargo test --lib ketcher_pdb -- --include-ignored` from the Tauri crate.
+
+### Detached structure previews
+
+On desktop, **Pop out** for a file opens an independent `workspace-preview-*` native window. It can move between displays and appears across macOS workspaces; it starts compact, above normal windows, with the original compact 36 px pane header and the viewer. The header provides Close, Minimize, Return to main window and Expand controls with native dragging. Returning transfers the current scene to an existing normal workspace (or creates one if needed) before closing the preview. Workspace tabs, browser navigation, sidebars and guides are not mounted in this window. Files offer **Open → Popout**, and a single molecule selected in Mol* offers **Open in → Popout**. Geometry and restoration use the existing workspace-window registry. Mol* viewers export the live scene (including camera and representations) to a bounded 24 MiB MOLJ snapshot in the application cache before opening the window. Opening another molecule reuses the existing preview webview, with prior documents available from the compact title menu. Selected-molecule popouts persist the validated source directly and prepare it only in the destination, avoiding construction of an unused viewer in the originating window. Transferred scenes retain their canvas presentation and fit the destination viewport while preserving orientation. Preview windows use a transparent borderless native surface without the workspace backdrop. The title text is a native drag region, with the document menu restricted to its arrow. Preview windows with valid UUIDs participate in desktop compute ownership. Only the main window consumes a process startup agent session; secondary windows accept explicit session attachments. Frontend status errors persist in a 256 KiB application log with one bounded previous copy and at most 20 bounded recent errors in memory. The original tab remains available. Non-Mol* files use the existing path-based open contract; non-file pages and browser previews retain the embedded pane.
+
+`open_new_workspace_window` accepts optional `presentation` (`workspace` by default, or `preview`) and an optional `scene` object (`title`, `dataBase64`). A scene requires preview presentation and no file paths. Snapshot names and payloads are validated before writing; existing callers that supply only paths retain their behavior.
+
+### Dropping structures into scenes
+
+Molecular files dropped onto a Mol* document append directly to that document,
+without an action picker or switching to a docking document. Each document has
+its own import queue; batches preserve the mounted scene and camera. Repeated
+paths are skipped, and failed batches roll back their new objects. Finder
+folders use the bounded recursive project scanner before importing; incomplete
+or unreadable scans fail rather than silently importing a partial folder.
+Scene drops retain all SDF models. Explicit comparison/docking commands remain
+available for pose paging and structure alignment.
+
+The grid inspector boots its 3D iframe from an external packaged script and inert JSON, preserving the desktop content security policy. Its first nonempty molecule initializes the viewer; later rows reuse it. Card viewport cover is recalculated when either the iframe, workbench or dock changes size.

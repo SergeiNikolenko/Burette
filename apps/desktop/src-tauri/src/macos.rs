@@ -21,7 +21,7 @@ static TERMINATION_PENDING: AtomicBool = AtomicBool::new(false);
 
 /// Logical inset of the close/minimize/zoom buttons inside the overlay title bar.
 /// Shared by the window builder and the manual re-layout below so both agree.
-pub(crate) const TRAFFIC_LIGHT_INSET: LogicalPosition<f64> = LogicalPosition { x: 20.0, y: 29.0 };
+pub(crate) const TRAFFIC_LIGHT_INSET: LogicalPosition<f64> = LogicalPosition { x: 20.0, y: 24.0 };
 
 /// Re-applies the traffic light inset tao computes inside its `drawRect:`.
 ///

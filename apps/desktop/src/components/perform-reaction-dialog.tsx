@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { Dialog } from "radix-ui";
-
-import { useAppShellPortalContainer } from "./ui/portal-container";
-import { CloseIcon } from "./close-icon";
+import { Input } from "./ui/input";
+import { useEffect, useId, useMemo, useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/dialog";
+import { Button } from "./ui/button";
+import { Textarea } from "./ui/textarea";
 
 export type PerformReactionRequest = {
   documentId: string;
@@ -63,7 +63,7 @@ export function PerformReactionDialog({
   onDismiss: () => void;
   onRun: (documentId: string, label: string, smarts: string, coReactants: string[]) => void;
 }) {
-  const portalContainer = useAppShellPortalContainer();
+  const problemId = useId();
   const [label, setLabel] = useState("Product");
   const [smarts, setSmarts] = useState("");
   const [coReactants, setCoReactants] = useState("");
@@ -81,104 +81,89 @@ export function PerformReactionDialog({
   const reactantCount = useMemo(() => countReactants(smarts), [smarts]);
   const problem = useMemo(() => {
     if (!smarts.trim()) return null;
-    if (smarts.split(">").length !== 3) return "A reaction reads reactants>agents>products.";
+    if (smarts.split(">").length !== 3) return { field: "reaction", message: "A reaction reads reactants>agents>products." };
     if (reactantCount > 1 && parsedCoReactants.length !== reactantCount - 1) {
-      return `This reaction takes ${reactantCount} reactants, so it needs ${reactantCount - 1} co-reactant${reactantCount === 2 ? "" : "s"} beside each row's structure.`;
+      return { field: "coReactants", message: `This reaction takes ${reactantCount} reactants, so it needs ${reactantCount - 1} co-reactant${reactantCount === 2 ? "" : "s"} beside each row's structure.` };
     }
     return null;
   }, [parsedCoReactants.length, reactantCount, smarts]);
   const ready = Boolean(request) && label.trim().length > 0 && smarts.trim().length > 0 && !problem;
 
   return (
-    <Dialog.Root open={request !== null} onOpenChange={(open) => { if (!open) onDismiss(); }}>
-      <Dialog.Portal container={portalContainer}>
-        <Dialog.Overlay className="radix-dialog-overlay" />
-        <Dialog.Content className="radix-dialog calculated-column-dialog" aria-describedby="perform-reaction-body">
-          <div className="radix-dialog-header">
-            <Dialog.Title>Perform Reaction</Dialog.Title>
-            <Dialog.Close asChild>
-              <button type="button" className="radix-dialog-close" aria-label="Close perform reaction">
-                <CloseIcon size={14} />
-              </button>
-            </Dialog.Close>
-          </div>
-          <div id="perform-reaction-body" className="radix-dialog-body">
-            <label className="calculated-column-field">
-              <span>New column name</span>
-              <input
-                type="text"
-                value={label}
-                maxLength={80}
-                placeholder="Product"
-                onChange={(event) => setLabel(event.target.value)}
-              />
-            </label>
-            <label className="calculated-column-field">
-              <span>Reaction SMARTS</span>
-              <textarea
-                value={smarts}
-                rows={3}
-                spellCheck={false}
-                placeholder="[C:1](=[O:2])[OH].[N:3]>>[C:1](=[O:2])[N:3]"
-                onChange={(event) => setSmarts(event.target.value)}
-              />
-            </label>
-            <label className="calculated-column-field">
-              <span>Co-reactants</span>
-              <input
-                type="text"
-                value={coReactants}
-                spellCheck={false}
-                placeholder="NCC"
-                onChange={(event) => setCoReactants(event.target.value)}
-              />
-            </label>
-            {problem ? <div className="calculated-column-problem">{problem}</div> : null}
-            <div className="calculated-column-help">
-              <div className="calculated-column-help-title">Reactions</div>
-              <div className="calculated-column-chips">
-                {REACTION_PRESETS.map((preset) => (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    className="calculated-column-chip"
-                    onClick={() => {
-                      setSmarts(preset.smarts);
-                      setCoReactants(preset.coReactants);
-                      setLabel(preset.label);
-                    }}
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-              <p className="calculated-column-note">
-                Each row's structure is the first reactant; the co-reactants supply the rest.
-                A row the reaction does not fit keeps the reason in its cell.
-              </p>
+    <Dialog open={request !== null} onOpenChange={(open) => { if (!open) onDismiss(); }}>
+      <DialogContent variant="form" size="default" className="overscroll-contain">
+        <form className="flex min-w-0 flex-col gap-4" onSubmit={event => {
+          event.preventDefault();
+          if (!request || !ready) return;
+          onRun(request.documentId, label.trim(), smarts.trim(), parsedCoReactants);
+          onDismiss();
+        }}>
+          <DialogHeader>
+            <DialogTitle>Perform reaction</DialogTitle>
+            <DialogDescription className="sr-only">Add reaction products to {request?.documentTitle}.</DialogDescription>
+          </DialogHeader>
+          <label className="flex flex-col gap-2 text-xs">
+            <span>New column name</span>
+            <Input variant="field" name="label" autoComplete="off"
+              type="text"
+              value={label}
+              maxLength={80}
+              placeholder="Product"
+              onChange={(event) => setLabel(event.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-2 text-xs">
+            <span>Reaction SMARTS</span>
+            <Textarea name="reaction" autoComplete="off" className="max-h-48 resize-y font-mono"
+              aria-invalid={problem?.field === "reaction"} aria-describedby={problem?.field === "reaction" ? problemId : undefined}
+              value={smarts}
+              rows={3}
+              spellCheck={false}
+              placeholder="[C:1](=[O:2])[OH].[N:3]>>[C:1](=[O:2])[N:3]"
+              onChange={(event) => setSmarts(event.target.value)}
+            />
+          </label>
+          <label className="flex flex-col gap-2 text-xs">
+            <span>Co-reactants</span>
+            <Input variant="field" name="coReactants" autoComplete="off"
+              aria-invalid={problem?.field === "coReactants"} aria-describedby={problem?.field === "coReactants" ? problemId : undefined}
+              type="text"
+              value={coReactants}
+              spellCheck={false}
+              placeholder="NCC"
+              onChange={(event) => setCoReactants(event.target.value)}
+            />
+          </label>
+          {problem && <p id={problemId} className="break-words text-sm text-(--color-text-danger)" role="alert">{problem.message}</p>}
+          <fieldset className="min-w-0">
+            <legend className="mb-2 text-xs">Reactions</legend>
+            <div className="flex flex-wrap gap-1">
+              {REACTION_PRESETS.map((preset) => (
+                <Button
+                  key={preset.id}
+                  type="button"
+                  variant="secondary" size="xs"
+                  onClick={() => {
+                    setSmarts(preset.smarts);
+                    setCoReactants(preset.coReactants);
+                    setLabel(preset.label);
+                  }}
+                >
+                  {preset.label}
+                </Button>
+              ))}
             </div>
-          </div>
-          <div className="radix-dialog-footer calculate-properties-footer">
-            <div className="calculate-properties-actions">
-              <Dialog.Close asChild>
-                <button type="button" className="dock-action">Cancel</button>
-              </Dialog.Close>
-              <button
-                type="button"
-                className="dock-action calculate-properties-run"
-                disabled={!ready}
-                onClick={() => {
-                  if (!request || !ready) return;
-                  onRun(request.documentId, label.trim(), smarts.trim(), parsedCoReactants);
-                  onDismiss();
-                }}
-              >
-                Add Column
-              </button>
-            </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+          </fieldset>
+          <p className="text-xs text-(--color-text-secondary)">
+            Each row's structure is the first reactant; the co-reactants supply the rest.
+            A row the reaction does not fit keeps the reason in its cell.
+          </p>
+          <DialogFooter className="gap-2">
+            <Button type="button" variant="secondary" onClick={onDismiss}>Cancel</Button>
+            <Button type="submit" disabled={!ready}>Add column</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

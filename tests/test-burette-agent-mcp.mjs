@@ -198,6 +198,13 @@ async function installMockAgentCli(pluginRoot) {
       "  if (action.type === 'story_observe' || action.type === 'story_control') { ok({ ok: true, action: { id: 'act-story', type: action.type, status: 'completed', result: { ok: true, command: action.type, result: storyState } }, argv: args }); process.exit(0); }",
       "  if (action.type === 'synthetic_nested_failure') { ok({ ok: true, action: { id: 'act-mock', type: action.type, status: 'failed', result: { ok: false, error: { code: 'NESTED_FAILURE', message: 'synthetic nested failure' } } } }); process.exit(0); }",
       "  ok({ ok: true, action: { id: 'act-mock', type: action.type, status: 'queued', payload: action }, argv: args });",
+      "} else if (command === 'capture') {",
+      "  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/eL9GtQAAAABJRU5ErkJggg==', 'base64');",
+      "  const jpeg = parsed.options.format === 'jpeg';",
+      "  const output = parsed.options.output;",
+      "  const bytes = !jpeg && output.includes('large') ? Buffer.concat([png, Buffer.alloc(1100000)]) : png;",
+      "  writeFileSync(output, bytes);",
+      "  ok({ path: output, mimeType: jpeg ? 'image/jpeg' : 'image/png', byteCount: bytes.length, width: Number(parsed.options.width || 1600), height: Number(parsed.options.height || 1000), transparent: false, actionId: 'act-capture', argv: args });",
       "} else {",
       "  console.error(JSON.stringify({ ok: false, error: { code: 'UNKNOWN_COMMAND', message: `Unknown command: ${command}` } }));",
       "  process.exit(2);",
@@ -213,6 +220,7 @@ async function testMcpRegistrations(tempRoot) {
   assert.deepEqual([...server.resources.keys()].sort(), []);
   assert.deepEqual([...server.tools.keys()].sort(), [
     "act_molstar_scene",
+    "burette.capture_view",
     "burette.control_ketcher",
     "burette.control_story",
     "burette.control_viewer",
@@ -687,6 +695,34 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
   assert.equal(publicNestedFailure.isError, true);
   assert.equal(publicNestedFailure.structuredContent.error.code, "NESTED_FAILURE");
 
+  const capturePath = path.join(tempRoot, "capture.png");
+  const publicCapture = await server.tools.get("burette.capture_view").handler({
+    workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
+    width: 800,
+    height: 600,
+    outputPath: capturePath,
+  });
+  coveredTools.add("burette.capture_view");
+  assert.equal(publicCapture.structuredContent.ok, true);
+  assert.deepEqual(publicCapture.structuredContent.result.argv.slice(2), ["--wait-ms", "20000", "--width", "800", "--height", "600", "--output", capturePath]);
+  assert.deepEqual(publicCapture.content.at(-1), { type: "image", data: (await readFile(capturePath)).toString("base64"), mimeType: "image/png" });
+  assert.equal(publicCapture.structuredContent.result.inlineImage.preview, false);
+
+  // Captures over the inline limit are shown through a bounded JPEG preview.
+  const largeCapture = await server.tools.get("burette.capture_view").handler({
+    workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
+    outputPath: path.join(tempRoot, "large-capture.png"),
+  });
+  assert.equal(largeCapture.structuredContent.result.byteCount > 1024 * 1024, true);
+  assert.deepEqual(largeCapture.structuredContent.result.inlineImage, {
+    inlined: true,
+    preview: true,
+    path: path.join(tempRoot, "large-capture.preview.jpg"),
+    mimeType: "image/jpeg",
+    byteCount: 70,
+  });
+  assert.equal(largeCapture.content.at(-1).mimeType, "image/jpeg");
+
   const publicPanel = await server.tools.get("burette.render_panel").handler({
     workspaceSessionId: publicOpened.structuredContent.workspaceSessionId,
     kind: "markdown",
@@ -946,6 +982,7 @@ async function testMockedWorkspaceToolScenarios(tempRoot) {
 
   assert.deepEqual([...coveredTools].sort(), [
     "act_molstar_scene",
+    "burette.capture_view",
     "burette.control_ketcher",
     "burette.control_story",
     "burette.control_viewer",

@@ -30,11 +30,18 @@ try {
   const key = publicKey.export({ type: 'spki', format: 'der' }).subarray(-32).toString('base64');
   const makePlist = spawnSync('python3', ['-c', 'import plistlib,sys; plistlib.dump(dict(CFBundleIdentifier="com.local.BuretteV10", CFBundleShortVersionString="2.3.19", CFBundleVersion="2.3.19", CFBundleExecutable="burette", LSMinimumSystemVersion="12.0", SUPublicEDKey=sys.argv[2]),open(sys.argv[1],"wb"))', path.join(app, 'Contents/Info.plist'), key]);
   assert.equal(makePlist.status, 0);
-  const args = [path.join(root, 'scripts/sparkle-appcast.py'), archive, app, path.join(temporary, 'appcast.xml')];
+  const patchData = Buffer.from('Burette delta patch fixture');
+  const patch = path.join(temporary, 'Burette-2.3.19-from-2.3.18.delta');
+  fs.writeFileSync(patch, patchData);
+  const args = [path.join(root, 'scripts/sparkle-appcast.py'), archive, app, path.join(temporary, 'appcast.xml'), '--delta', patch];
   const environment = { ...process.env, BURETTE_SPARKLE_PRIVATE_KEY: seed.toString('base64') };
   const feed = spawnSync('python3', args, { env: environment, encoding: 'utf8' });
   assert.equal(feed.status, 0, feed.stderr);
-  assert.ok(fs.readFileSync(args[3], 'utf8').includes(result.stdout.trim()));
+  const appcast = fs.readFileSync(args[3], 'utf8');
+  assert.ok(appcast.includes(result.stdout.trim()));
+  const patchSignature = appcast.match(/sparkle:deltaFrom="2\.3\.18"[^>]*sparkle:edSignature="([^"]+)"/)?.[1];
+  assert.ok(patchSignature && crypto.verify(null, patchData, publicKey, Buffer.from(patchSignature, 'base64')),
+    'Delta patches carry their own verifiable signature');
   const wrongKey = spawnSync('python3', args, { env: { ...environment, BURETTE_SPARKLE_PRIVATE_KEY: crypto.randomBytes(32).toString('base64') }, encoding: 'utf8' });
   assert.notEqual(wrongKey.status, 0, 'A key mismatch must fail before publication');
   console.log('Sparkle signing, tamper rejection, appcast generation and key-pair validation passed');

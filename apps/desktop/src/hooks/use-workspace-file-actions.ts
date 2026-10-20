@@ -19,7 +19,7 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     const extra = added.current.get(document.id);
     return {
       paths: Array.from(new Set([
-        ...(document.dockingRequest ? [document.dockingRequest.receptorPath, ...document.dockingRequest.ligandPaths] : [document.path]),
+        ...(document.sceneSourcePaths ?? (document.dockingRequest ? [document.dockingRequest.receptorPath, ...document.dockingRequest.ligandPaths] : [document.path])),
         ...(extra?.paths ?? []),
       ])),
       records: extra?.records ?? [],
@@ -30,13 +30,14 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     return Array.from(new Set([...sources.paths, ...sources.records.map(record => record.path)]));
   };
   // A scene accepts a selection while at least one of its files is new; files already there are skipped.
+  // The scene on screen is the likeliest target, so it leads the list.
   const sceneTargets = (paths: string[]) => !paths.length || !paths.every(path => fileCapabilities(path).scene) ? [] : state.documents.filter(document => {
     const existing = scenePaths(document);
     const fresh = paths.filter(path => !existing.includes(path)).length;
     return document.renderer === "molstar"
       && state.tabs.some(tab => tab.location.kind === "file" && tab.location.documentId === document.id)
       && fresh > 0 && existing.length + fresh <= 200;
-  }).slice(0, 60);
+  }).sort((left, right) => Number(right.id === state.activeDocumentId) - Number(left.id === state.activeDocumentId)).slice(0, 60);
   const focusViewer = (document: ViewerDocument) => focusSceneDocument(document, actions.selectDocument);
   const append = async (document: ViewerDocument, payload: StructureDragPayload) => {
     await appendScenePayload(document.id, payload);
@@ -67,10 +68,25 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
   };
   const saveScene = async (document: ViewerDocument) => {
     await focusViewer(document);
-    const result = await requestViewerAction(document.id, { type: "export_session", args: { type: "molj", maxBytes: 24 * 1024 * 1024 } });
+    const result = await requestViewerAction(document.id, { type: "workspace_scene_snapshot" });
     if (typeof result.dataBase64 !== "string") throw new Error("The scene did not return a session file.");
-    const bytes = Uint8Array.from(atob(result.dataBase64), c => c.charCodeAt(0));
-    await actions.saveKetcherExportFile({ title: document.title.replace(/\.[^.]+$/, '') + '.molj', extension: "molj", text: new TextDecoder().decode(bytes) });
+    const tab = state.tabs.find(tab => tab.location.kind === "file" && tab.location.documentId === document.id);
+    const name = (tab?.title ?? document.title).replace(/\.[^.]+$/, '') + '.molx';
+    if (!isTauriRuntime()) {
+      const bytes = Uint8Array.from(atob(result.dataBase64), character => character.charCodeAt(0));
+      const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
+      const link = window.document.createElement("a"); link.href = url; link.download = name; link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return;
+    }
+    const outputPath = await save({ title: "Save Scene", defaultPath: name, filters: [{ name: "Molecular Scene", extensions: ["molx"] }] });
+    if (!outputPath) return;
+    const path = await invoke<string>("write_base64_file", { request: { outputPath, contentsBase64: result.dataBase64 } });
+    const { useMoleculeStore } = await import("../stores/molecule-store");
+    useMoleculeStore.setState(current => ({ documents: current.documents.map(candidate => candidate.id === document.id && JSON.stringify(candidate.sceneSourcePaths) === JSON.stringify(document.sceneSourcePaths) ? { ...candidate, sceneUnsaved: false } : candidate) }));
+    await actions.openPaths([path]);
+    if (!state.pinnedStructurePaths.includes(path)) actions.togglePinnedStructure(path);
+    window.dispatchEvent(new Event("burette-folder-contents-changed"));
   };
   const openRecordScene = async (records: StructureDragRecord[], mode: "all" | "single") => {
     if (records.length < 2 || records.length > 200 || !records.every(record => ['sdf', 'mol'].includes(record.inputExtension))) throw new Error("Choose 2–200 MOL or SDF records.");

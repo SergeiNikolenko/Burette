@@ -1,4 +1,4 @@
-import { appendScenePayload } from "./workspace-scene-import";
+import { appendSceneDrop, expandSceneDropFolders } from "./workspace-scene-import";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -12,7 +12,7 @@ import { buildFileDropPreview } from "../lib/drop-preview";
 import type { DropPreviewTarget, FileDropPreview } from "../lib/drop-preview";
 import { describeDropTargetElement } from "../lib/drop-target";
 import { requestMoveIntoFolder } from "../lib/move-into-folder";
-import { nativeFileDragPayload } from "../lib/native-file-drag";
+import { nativeFileDragPayload, nativeFileDragTabId } from "../lib/native-file-drag";
 import { parentDirectory } from "../lib/sidebar-projects";
 import { TAB_DRAG_MIME, hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
@@ -250,7 +250,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
 
   const executeDropAction = useCallback((action: DropAction, payload: StructureDragPayload) => {
     if (action.kind === "append-scene-files") {
-      void appendScenePayload(action.targetDocumentId, action.payload).catch(error => pushStatus(`Add to scene failed: ${String(error)}`, "error"));
+      void appendSceneDrop(action.targetDocumentId, action.payload).catch(error => pushStatus(`Add to scene failed: ${String(error)}`, "error"));
       return;
     }
     if (action.kind === "merge-collection") {
@@ -400,7 +400,9 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
     }
     try {
       const classified = await invoke<ClassifiedOpenPaths>("classify_open_paths", { paths: payload.paths });
-      if (classified.directories.length > 0) {
+      const sceneDrop = target.kind === "active-viewer" && target.renderer === "molstar";
+      if (sceneDrop && classified.errors.length) throw new Error(classified.errors.join("; "));
+      if (classified.directories.length > 0 && !sceneDrop) {
         addProjectRoots?.(classified.directories);
       }
       if (target.kind === "sidebar") {
@@ -414,7 +416,9 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
       }
       const nextPayload: StructureDragPayload = {
         ...payload,
-        paths: classified.files,
+        paths: sceneDrop && classified.directories.length
+          ? await expandSceneDropFolders(classified.files, classified.directories)
+          : classified.files,
       };
       if (nextPayload.paths.length > 0 || nextPayload.records.length > 0) {
         runDropAction(nextPayload, target, { kind: "finder" });
@@ -432,13 +436,13 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         window.dispatchEvent(new Event("burette-native-drag-end"));
         return;
       }
-      if (event.type === "enter" && !event.paths.length) nativeTabDragRef.current = browserTabDragRef.current;
+      if (event.type === "enter") nativeTabDragRef.current = event.paths.length ? nativeFileDragTabId(event.paths) : browserTabDragRef.current;
       if (event.type === "enter" || event.type === "over") {
         const element = elementFromTauriDropPosition(event.position);
         window.dispatchEvent(new CustomEvent("burette-native-drag-hover", {
           detail: {
             tabId: element?.closest<HTMLElement>(".tab-shell")?.dataset.tabId ?? null,
-            sourceTabId: event.type === "enter" && event.paths.length ? null : nativeTabDragRef.current,
+            sourceTabId: nativeTabDragRef.current,
             x: tauriDropPoint(event.position)?.x,
           },
         }));
@@ -446,7 +450,6 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         window.dispatchEvent(new Event("burette-native-drag-end"));
       }
       if (event.type === "enter") {
-        if (event.paths.length) nativeTabDragRef.current = null;
         nativeDragPayloadRef.current = event.paths.length
           ? nativeFileDragPayload(event.paths) ?? { paths: event.paths, records: [] }
           : browserDragPayloadRef.current ?? { paths: [], records: [] };
@@ -478,6 +481,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         nativeTabDragRef.current = null;
         browserTabDragRef.current = null;
         if (tabId && element?.closest(".tab-strip")) {
+          if (event.paths.length) nativeFileDragPayload(event.paths, { consume: true });
           nativeDragPayloadRef.current = null;
           browserDragPayloadRef.current = null;
           hideDropFeedback();
@@ -650,18 +654,19 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
           };
       payload.point = point;
       const target = event.target instanceof Element ? event.target : null;
+      const dropTarget = dropTargetForElement(target);
       if (payload.paths.length > 0 || payload.records.length > 0 || (payload.items?.length ?? 0) > 0) {
         if (fileDrop) {
-          void runFinderDropAction(payload, dropTargetForElement(target));
+          void runFinderDropAction(payload, dropTarget);
         } else {
-          runDropAction(payload, dropTargetForElement(target), { kind: "unknown" });
+          runDropAction(payload, dropTarget, { kind: "unknown" });
         }
       } else if (fileDrop && !isTauriRuntime() && event.dataTransfer.files.length > 0) {
         const files = Array.from(event.dataTransfer.files);
         void structureDragPayloadFromBrowserFiles(files).then((result) => {
           const nextPayload: StructureDragPayload = { ...result.payload, point };
           if (nextPayload.records.length > 0) {
-            runDropAction(nextPayload, dropTargetForElement(target), { kind: "finder" });
+            runDropAction(nextPayload, dropTarget, { kind: "finder" });
           }
           if (result.errors.length > 0) pushStatus(result.errors.join("; "), "error");
         }).catch((error) => {

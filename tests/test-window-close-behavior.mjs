@@ -119,6 +119,7 @@ mock.module("@tauri-apps/api/core", () => ({
   },
 }));
 mock.module("@tauri-apps/api/window", () => ({
+  Window: class { static async getByLabel() { return null; } },
   getAllWindows: async () => Array.from({ length: windowCount }, () => ({})),
   getCurrentWindow: () => ({
     onCloseRequested: async (callback) => { onClose = callback; return () => {}; },
@@ -141,7 +142,7 @@ const root = createRoot(host);
 const state = { tabs: [], documents: [], textDocuments: [], recentStructures: [] };
 function Harness() {
   useAppNativeMenu({ state, actions: {}, openDocuments: async () => {},
-    getWindowDocumentDirtySnapshot: () => ({ dirty: true, gridDirty: true, sourceDirty: false, revision: 1, closeTransitionActive: false }),
+    getWindowDocumentDirtySnapshot: () => ({ dirty: true, gridDirty: false, sourceDirty: false, sceneDirty: true, revision: 1, closeTransitionActive: false }),
     confirmSourceCloseWindow: async () => true, windowDocumentDirty: true,
     sourceSaveEnabled: false, saveActiveSource: async () => {},
   });

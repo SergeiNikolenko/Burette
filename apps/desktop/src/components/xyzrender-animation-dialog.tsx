@@ -6,7 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collap
 import { XyzrenderOrientationPanel } from "./xyzrender-orientation-panel";
 import { Switch } from "./ui/switch";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "./ui/button";
 import { Field, FieldGroup, FieldLabel, FieldDescription } from "./ui/field";
@@ -19,6 +19,7 @@ import { Input } from "./ui/input";
 import { decodeAnimation, encodeAnimation, type AnimationFrames } from "../lib/xyzrender-animation";
 import { postToXyzrenderViewer } from "../lib/viewer-bridge";
 import { gifBytesToBase64, renderAnimationGifDataUrl } from "../lib/xyzrender-batch-animation";
+import { requestContextualGuide } from "./onboarding/request";
 
 export type AnimationSource = {
   itemId?: string;
@@ -56,6 +57,13 @@ const axisFor = (source: AnimationSource, axis: string) => !isCrystalSource(sour
 
 type AnimationSettings = { mode: Mode; selectedAxis: string; amplitude: number; rotate: boolean; rebuildBonds: boolean; noise: number; anchor: string; forward: boolean; fps: number; size: number; frames: number };
 
+type MotionInput = Omit<AnimationSource, "label" | "previewSvg"> & { orientation?: number[] };
+// Fields that change when the static drawing for already animated angles arrives.
+const orientationFields = new Set<string>(["label", "previewSvg", "orientationRef", "orientationBaseRef", "angles"]);
+const sameMotionSource = (a: AnimationSource, b: AnimationSource) => [...new Set([...Object.keys(a), ...Object.keys(b)])]
+  .every(key => orientationFields.has(key) || a[key as keyof AnimationSource] === b[key as keyof AnimationSource]);
+const sameAngles = (a: number[] | undefined, b: number[]) => !!a && a.length === b.length && a.every((angle, index) => angle === b[index]);
+
 export function XyzrenderAnimationDialog() {
   const [reserve] = useState(createAnimationBudget);
   const settings = useRef(new Map<string, AnimationSettings>());
@@ -64,6 +72,9 @@ export function XyzrenderAnimationDialog() {
     if (settings.current.size > 32) settings.current.delete(settings.current.keys().next().value!);
   }, []);
   const [source, setSource] = useState<AnimationSource | null>(null);
+  // Angles typed or scrubbed in the orientation panel, before xyzrender has
+  // drawn them; the motion preview re-renders from these immediately.
+  const [editedAngles, setEditedAngles] = useState<{ key: string; angles: number[] } | null>(null);
   const [selection, setSelection] = useState<{ documentId?: string; items: AnimationSource[] }>({ items: [] });
   const [animationSources, setAnimationSources] = useState<AnimationSource[]>([]);
   const retainedSources = useRef(animationSources);
@@ -84,7 +95,7 @@ export function XyzrenderAnimationDialog() {
   }, [source, prepare]);
   const [target, setTarget] = useState<HTMLElement | null>(null);
   useEffect(() => {
-    const open = (event: Event) => { setSource((event as CustomEvent<AnimationSource>).detail); window.setTimeout(() => { const node = document.getElementById("xyzrender-editor-controls"); setTarget(node); node?.scrollIntoView({ block: "nearest" }); }, 50); };
+    const open = (event: Event) => { setSource((event as CustomEvent<AnimationSource>).detail); setEditedAngles(null); window.setTimeout(() => { const node = document.getElementById("xyzrender-editor-controls"); setTarget(node); node?.scrollIntoView({ block: "nearest" }); if (node) requestContextualGuide("xyz-editor", document.querySelector(".xyzrender-editor-launch") ?? node); }, 50); };
     window.addEventListener("burette:xyzrender-animation", open);
     const style = (event: Event) => {
       const detail = (event as CustomEvent<AnimationSource>).detail;
@@ -112,20 +123,22 @@ export function XyzrenderAnimationDialog() {
   }, []);
   return source && target ? createPortal(<section className="xyzrender-motion-controls flex flex-col gap-3 border-b border-border py-3">
     <div className="flex items-start gap-2">
-      <div className="min-w-0 flex-1"><XyzrenderOrientationPanel key={`${source.documentId || source.path}:${source.itemId || ""}`} source={source} onPrepared={prepare} /></div>
-      <Button variant="ghost" size="icon-sm" aria-label="Close orientation and animation" onClick={() => setSource(null)}><X /></Button>
+      <div className="min-w-0 flex-1"><XyzrenderOrientationPanel key={`${source.documentId || source.path}:${source.itemId || ""}`} source={source} onPrepared={prepare}
+        onAnglesChange={angles => setEditedAngles({ key: source.itemId || source.path, angles })} /></div>
+      <Button variant="ghost" size="icon-sm" aria-label="Close orientation and animation" onClick={() => { setSource(null); setEditedAngles(null); }}><X /></Button>
     </div>
     {animationSources.map(item => {
-      const visible = (item.itemId || item.path) === (source.itemId || source.path);
-      return <div key={item.itemId || item.path} hidden={!visible}>
-        <AnimationContent reserve={reserve} source={item} visible={visible} suspended={false} initial={settings.current.get(item.itemId || item.path)} remember={remember}
+      const key = item.itemId || item.path;
+      const visible = key === (source.itemId || source.path);
+      return <div key={key} hidden={!visible}>
+        <AnimationContent reserve={reserve} source={item} angles={editedAngles?.key === key ? editedAngles.angles : undefined} visible={visible} suspended={false} initial={settings.current.get(item.itemId || item.path)} remember={remember}
           selection={visible && selection.documentId === item.documentId ? selection.items : []} />
       </div>;
     })}
   </section>, target) : null;
 }
 
-function AnimationContent({ source, reserve, suspended, visible, initial, remember, selection }: { source: AnimationSource; reserve: (key: string, pixels: number) => boolean; suspended: boolean; visible: boolean; initial?: AnimationSettings; remember: (key: string, settings: AnimationSettings) => void; selection: AnimationSource[] }) {
+function AnimationContent({ source, angles, reserve, suspended, visible, initial, remember, selection }: { source: AnimationSource; angles?: number[]; reserve: (key: string, pixels: number) => boolean; suspended: boolean; visible: boolean; initial?: AnimationSettings; remember: (key: string, settings: AnimationSettings) => void; selection: AnimationSource[] }) {
   // xyzrender refuses GIF output for the 2D skeletal drawing.
   const animatable = source.preset !== "skeletal";
   // Rendering is expensive, so it starts only on an explicit request.
@@ -170,9 +183,23 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
   useEffect(() => { setBatch(current => current?.finished ? null : current); }, [selectionKey]);
   const animatableSelection = selection.filter(item => item.preset !== "skeletal");
   const [frame, setFrame] = useXyzrenderPlayback(animation, playing, fps, range, source.itemId, source.documentId, suspended || !live || !animatable, visible);
+  // Edited angles render from the base orientation as soon as they change, so
+  // a playing preview turns around the new orientation without stopping. The
+  // static drawing for the same angles only swaps orientationRef afterwards
+  // and must not restart the render.
+  const motionRequest = useRef<{ source: AnimationSource; angles?: number[]; input: MotionInput } | null>(null);
+  const motionInput = useMemo(() => {
+    const previous = motionRequest.current;
+    const currentAngles = angles ?? source.angles;
+    if (previous && currentAngles && sameAngles(previous.angles, currentAngles) && sameMotionSource(previous.source, source)) return previous.input;
+    const { label: _label, previewSvg: _preview, ...input } = source;
+    const next: MotionInput = angles ? { ...input, orientationRef: source.orientationBaseRef || source.orientationRef, orientation: angles } : input;
+    motionRequest.current = { source, angles: currentAngles, input: next };
+    return next;
+  }, [source, angles]);
   useEffect(() => {
     if (!requested || !animatable) return;
-    const reservationKey = source.itemId || source.path;
+    const reservationKey = motionInput.itemId || motionInput.path;
     if (!reserve(reservationKey, size * size * frames)) {
       setError("Animation memory is full. Reduce the image size or remove another animated structure.");
       setBusy(false);
@@ -186,14 +213,13 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
     setBusy(true); setError(""); setUnavailable(""); setSaved(null);
     const render = async () => {
       try {
-        const { label: _label, previewSvg: _preview, ...input } = source;
         // Keep every motion frame from the first pass; refine only spatial resolution.
         // Trajectories retain their source frames, so do not render them twice.
         const passes = mode === "trajectory" || size <= DRAFT_THRESHOLD ? [size] : [256, size];
         let previewCount = animation?.frames.length || 0;
         for (const resolution of passes) {
           const draft = resolution !== size;
-          const response = await renderXyzrender({ ...input, animation: { mode, axis, size: resolution, frames, fps: 10, amplitude, rotate, rebuildBonds, noise, anchor, forward } }, controller.signal);
+          const response = await renderXyzrender({ ...motionInput, animation: { mode, axis, size: resolution, frames, fps: 10, amplitude, rotate, rebuildBonds, noise, anchor, forward } }, controller.signal);
           const payload = await response.json();
           if (!response.ok && (payload.code === 'animation_unavailable' || (mode === 'vibration' && /vibrat|frequen|normal.mode|imaginary/i.test(payload.error || '')))) {
             if (!disposed) {
@@ -229,9 +255,10 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
         if (!disposed) { reserve(reservationKey, retainedPixels); setBusy(false); }
       }
     };
-    const debounce = window.setTimeout(() => void render(), 350);
-    return () => { window.clearTimeout(debounce); disposed = true; controller.abort(); window.clearTimeout(timeout); reserve(reservationKey, 0); };
-  }, [requested, animatable, source, mode, axis, size, frames, amplitude, rotate, rebuildBonds, noise, anchor, forward, retry, reserve]);
+    // Coalesce edits made within one frame; nothing waits on a timer.
+    const scheduled = requestAnimationFrame(() => void render());
+    return () => { cancelAnimationFrame(scheduled); disposed = true; controller.abort(); window.clearTimeout(timeout); reserve(reservationKey, 0); };
+  }, [requested, animatable, motionInput, mode, axis, size, frames, amplitude, rotate, rebuildBonds, noise, anchor, forward, retry, reserve]);
   const position = (index: number) => mode === "rotation"
     ? `${Math.round(index * 360 / (animation?.frames.length || frames))}°`
     : `Frame ${index + 1}`;
@@ -306,7 +333,7 @@ function AnimationContent({ source, reserve, suspended, visible, initial, rememb
     {batchRunning && batch && <Progress aria-label="Animating selected structures" value={batch.done * 100 / Math.max(1, batch.total)} />}
     <div className="flex flex-wrap items-center gap-2">
       <Button variant="outline" disabled={busy || saving || batchRunning || !animatableSelection.length} onClick={() => void applyToSelection()}>Apply to {selection.length} selected</Button>
-      {batchRunning && <Button variant="ghost" onClick={() => batchController.current?.abort()}>Cancel</Button>}
+      {batchRunning && <Button variant="secondary" onClick={() => batchController.current?.abort()}>Cancel</Button>}
     </div>
   </div>;
   if (!animatable) return <div className="flex flex-col gap-2 py-2">

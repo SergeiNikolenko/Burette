@@ -1,0 +1,57 @@
+/* Atlas Menu utility anatomy, shared by the shell and standalone viewers. */
+@layer components {
+  .atlas-menu-content {
+    -webkit-app-region: no-drag;
+    box-sizing: border-box;
+    z-index: 50;
+    margin: 1px;
+    display: flex;
+    flex-direction: column;
+    user-select: none;
+    max-height: min(var(--radix-dropdown-menu-content-available-height, 100dvh), calc(100dvh - 16px));
+    max-width: min(var(--radix-dropdown-menu-content-available-width, 100vw), calc(100vw - 16px));
+    transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+    overflow: hidden auto;
+    overscroll-behavior: contain;
+    border-radius: var(--radius-2xl);
+    background: color-mix(in srgb, var(--color-surface-elevated-secondary) 90%, transparent);
+    padding: var(--app-menu-gutter, var(--menu-gutter));
+    color: var(--color-text);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 0 0 var(--dropdown-overlay-ring-width) var(--color-border-overlay), var(--shadow-dropdown-overlay);
+  }
+  .atlas-menu-item {
+    position: relative;
+    box-sizing: border-box;
+    display: flex;
+    cursor: default;
+    align-items: center;
+    gap: 6px;
+    border-radius: var(--radius-xl);
+    padding: 5px 8px;
+    font-size: var(--menu-font-size);
+    line-height: var(--menu-line-height);
+    outline: none;
+    user-select: none;
+  }
+  .atlas-menu-item:focus { background: var(--color-background-primary-ghost-hover); }
+  .atlas-menu-item[data-disabled] { pointer-events: none; opacity: .5; }
+  .atlas-menu-item[data-inset], .atlas-menu-label[data-inset] { padding-left: 28px; }
+  .atlas-menu-item svg { pointer-events: none; flex-shrink: 0; }
+  .atlas-menu-item svg:not([class*="size-"]) { width: 16px; height: 16px; }
+  .atlas-menu-item[data-variant="destructive"] { color: var(--color-destructive, var(--color-text-danger)); }
+  .atlas-menu-item[data-variant="destructive"]:focus {
+    background: color-mix(in srgb, var(--color-destructive, var(--color-text-danger)) 10%, transparent);
+  }
+  .app-shell[data-effective-theme="dark"] .atlas-menu-item[data-variant="destructive"]:focus {
+    background: color-mix(in srgb, var(--color-destructive, var(--color-text-danger)) 20%, transparent);
+  }
+  .atlas-menu-item[data-variant="destructive"] > svg { color: inherit; }
+  .atlas-menu-label {
+    padding: 4px 8px;
+    font-size: var(--menu-font-size);
+    line-height: var(--menu-line-height);
+    color: var(--color-text-tertiary);
+  }
+  .atlas-menu-separator { margin: 4px 8px; height: 1px; flex-shrink: 0; background: var(--color-border); }
+}

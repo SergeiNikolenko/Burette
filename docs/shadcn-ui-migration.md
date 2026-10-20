@@ -2,20 +2,56 @@
 
 ## Objective
 
-Move the ordinary React interface in `apps/desktop` onto a shared shadcn/ui
-component layer without changing Burette into a generic dashboard. The target
-keeps the current compact macOS-oriented chrome, system typography, dynamic
-light/dark themes, 10 px control radius, and existing semantic CSS variables.
-shadcn/ui is used as source-owned primitives and composition guidance, not as a
-new product skin.
+Move the ordinary React interface in `apps/desktop` onto shared, source-owned
+components styled from Codex InterfaceAtlas. Preserve Tauri, the classic
+edge-to-edge sidebar and background, dynamic light/dark themes, and the existing
+scientific workflows. Component radii and spacing come from the corresponding
+Atlas variant, not a single global radius or a generic dashboard template.
 
-The migration uses the Radix base because Burette already depends on Radix
-Dialog, Dropdown Menu, and Context Menu. Two deliberate, scoped exceptions
-exist alongside it: the status toast layer is built on Base UI
-(`@base-ui/react/toast` in `apps/desktop/src/components/ui/toast.tsx`), and
-animated components come from the `animate-ui` registry
-(`apps/desktop/src/components/animate-ui/`). Do not add further primitive
-stacks beyond these.
+The shared controls use Radix with source-owned Atlas styles; the current visual
+direction is documented in `design-system.md`. Notifications use Sonner through
+`apps/desktop/src/components/ui/toast.tsx`, not Base UI Toast. Base UI remains
+scoped to `ui/scroll-area.tsx`. Existing animated components live in
+`apps/desktop/src/components/animate-ui/`. Do not add another primitive stack.
+
+Toast cards use Atlas spacing, typography and content-sized width, constrained
+to the notification stack and viewport. They deliberately keep neutral surfaces
+in both themes: errors color the title, not the entire card. The colorful solid
+Atlas variants are not the product default.
+
+Inline alerts follow the same neutral-surface rule. Their padding, type scale,
+border and radius match the default Atlas Alert; a destructive title uses the
+danger text token, while explanatory text and icons remain neutral. Actions
+stay in the layout below the message rather than overlapping it in an absolute
+position. Inspector notices must not override these styles with accent-tinted
+backgrounds or a separate small text scale.
+
+The command palette uses the extracted Atlas command-menu CSS with `cmdk`
+and the shared Radix portal/overlay. Placement, viewport limits, rows and search
+spacing are owned by that module, not by generic form-dialog styles. Burette's
+command inventory and ranking remain in `command-palette/index.tsx`.
+
+Modal forms opened programmatically restore the element focused before opening,
+even without a Radix `DialogTrigger`. Explicit close-focus handlers take priority;
+non-modal dialogs retain Radix's outside-interaction behavior. Detached openers
+are not focused. This contract is covered by the overlay interaction tests.
+
+Viewer and scene-tree menu requests use the same bounded model for browser
+Atlas menus and native Tauri menus. The browser popup resolves only when closed,
+so live numeric edits commit through the viewer's existing undo transaction.
+Browser selects apply while the popup remains open; native choices still wait
+until NSMenu releases tracking.
+Embedded controls in a submenu retain the flyout when the pointer moves directly
+from its trigger into the portalled content. These transitions are covered for
+both context and dropdown menus, including a nested Select and focus restoration.
+
+The viewer's Animate popover mounts the shared React `SegmentedControl` and
+`Slider` through `preview-controls/viewer-animation-controls.tsx`. Its callbacks
+retain the viewer's motion parameters and coalesced wiggle writes; closing the
+popover unmounts the root. The controls bundle embeds their source-owned styles
+with the theme tokens so the standalone WKWebView needs no shell stylesheet.
+`test-viewer-animation-controls.test.tsx` exercises the actual viewer builder,
+keyboard updates, dependent controls, scene readback and teardown.
 
 ## Inspected Baseline (historical)
 
@@ -30,7 +66,7 @@ of its "current implementation" entries no longer exist (for example
 | Dialogs and confirmations | Radix Dialog markup in `notification-popup.tsx` and `settings-panel/setting-control.tsx`; Ketcher export dialogs | Shared `Dialog` and `AlertDialog` compositions with `.app-shell` portal ownership |
 | Menus | `radix-menu.tsx`, `native-context-menu.ts`, editor and project menus | Shared `DropdownMenu` and `ContextMenu` wrappers while preserving the native-menu selection boundary |
 | Command palette | `command-palette/index.tsx` using `cmdk` and Radix Dialog directly | Shared `Command` inside `Dialog`, retaining current actions, keyboard navigation, and query contract |
-| Notifications and status | `notification-popup.tsx`, local status rows, custom error/status panels | Base UI toast layer (`ui/toast.tsx`, shipped — replaced the popup), `Alert`, `Badge`, `Progress`, and `Spinner` where their interaction model matches |
+| Notifications and status | `notification-popup.tsx`, local status rows, custom error/status panels | Shared Sonner toast adapter (`ui/toast.tsx`), `Alert`, `Badge`, `Progress`, and `Spinner` where their interaction model matches |
 | Shell chrome | `app-layout.tsx`, `sidebar/**`, `dock-panel.tsx`, `editor-area/editor-tabs.tsx` | Shared buttons, input groups, tabs, tooltips, popovers, separators, scroll areas, and collapsibles without changing layout or drag regions |
 | Inspectors and tools | `structure-info-panel.tsx`, `descriptor-panel.tsx`, `folding-results-panel.tsx`, `spectrum-viewer.tsx` | Feature components composed from shared fields, controls, cards, badges, progress, empty, and loading states |
 | Welcome and failure states | `welcome/**`, `error-boundary.tsx`, dock and folding empty/loading states | Shared `Empty`, `Alert`, `Skeleton`, `Spinner`, and `Button` compositions |
@@ -86,26 +122,27 @@ Only components required by a migration stage are installed. React Hook Form,
 TanStack Table, and other high-level form or table frameworks are out of scope
 unless a later measured requirement justifies them.
 
-## Migration Stages
+## Atlas Migration Acceptance
 
-1. **Foundation** — *shipped.* The Radix-based shadcn source layer, Tailwind
-   v4, aliases, semantic token bridge, and `cn()` are in place (see Foundation
-   above).
-2. **Settings and forms** — *shipped.* Settings, preference controls, and
-   confirmation flows compose shadcn `Field`/`AlertDialog`/`Button`/`Card`
-   primitives (`settings-panel/setting-control.tsx`).
-3. **Dialogs, menus, notifications, and command** — *substantially shipped.*
-   Notification presentation moved to the Base UI toast layer with a
-   standalone details dialog; Radix menu wrappers and the command palette keep
-   their `.app-shell` portals and native-menu fallback.
-4. **Shell and inspectors** — *in progress.* The Inspector (Info dock) is
-   rebuilt as a section list; remaining dock/toolbar chrome migrates
-   incrementally. Specialized editor-tab behavior remains feature-owned.
-5. **States and small data views** — migrate welcome, error, empty, loading,
-   progress, status, badges, and small tables.
-6. **Completion sweep** — migrate remaining ordinary controls, remove only CSS
-   proven dead by the completed replacements, and document deliberate
-   exclusions.
+The historical shadcn foundation above is not acceptance of the Atlas migration.
+The following four stages remain the delivery scope. Local commits, source
+presence and individual green tests do not mean a stage has been released.
+
+| Stage | Current implementation | Evidence required for acceptance |
+| --- | --- | --- |
+| Theme tokens | `styles/codex-tokens.css`, `styles/interface-tokens.css`, `lib/theme.ts`; classic sidebar/background retained | Light/dark source comparison, custom appearance controls, portal inheritance; `test-appearance-theme.test.tsx` covers resolved preferences, not pixel fidelity |
+| Primitives and icons | Shared `ui/**`; source CSS extraction through `scripts/sync-atlas-primitives.mjs`; reviewed `config/icons/apps-sdk.json` and generated adapters | Compare every used Button, Menu, Switch, Checkbox, RadioGroup, Tooltip, Toast, Input, Dialog, Popover and LoadingIndicator variant with its Atlas story; exercise focus, keyboard, disabled, nested-overlay and async states. Preserve the scientific-glyph exceptions in `design-system.md` |
+| Shell screens | Shared controls in sidebar, tabs, docks, settings, welcome, dialogs, command palette, inspectors and document controls | Whole-screen light/dark and narrow-window checks with real documents; no cropped primitive-only substitute. Verify file actions, tab keep-alive, Back/Forward, menus, docking and empty/error states |
+| Frontend infrastructure | Vite/Rolldown with React Compiler preset; `editor-area/tab-router.tsx`; TanStack Query in `use-chemical-editor-targets.ts`; Sonner and existing rendering dependencies | Compiled application check, navigation/session-restore contracts, query deduplication and stale-result isolation. Query coverage currently concerns editor discovery only; do not describe it as an app-wide data-layer migration |
+
+The browser fixtures are `dev/codex-theme.html` for side-by-side theme scopes
+and `dev/forms.html` for production forms with in-memory outcomes. They support
+component inspection; they do not replace real shell/document acceptance.
+
+The focused route, theme, editor-query, settings-sidebar, dock-header, welcome,
+inspector-tool, grid-filter and Ketcher-save interaction tests are registered with
+`tests/vp-contract.test.mjs`. Other tests existing on disk are not implicitly
+covered by that runner: register or invoke the specific checks needed by a stage.
 
 Each stage is committed independently. Non-mechanical changes should remain
 below roughly 500 changed lines and must be split before approaching 800 lines.
@@ -114,8 +151,13 @@ below roughly 500 changed lines and must be split before approaching 800 lines.
 
 Every stage must pass the smallest checks for its changed surface:
 
-- `bun run typecheck` and `bun run build` from `apps/desktop` when TypeScript or
-  build configuration changes.
+- `vp run typecheck` for TypeScript changes. `vp build` checks the root frontend
+  configuration; use `vp build --config apps/desktop/vite.config.ts` to also
+  validate desktop asset inlining, preload filtering and chunk boundaries.
+  `vp preview` checks shell-only rendering, not molecular runtime loading.
+  Use the compiled browser-shell recipe in `tools/testing-surfaces.md` for
+  real-document verification; neither check proves Tauri IPC or packaged
+  native acceptance. Follow `vite-plus.md` for the toolchain.
 - Focused UI contract tests for changed shell or component behavior.
 - Browser-dev verification in light and dark themes.
 - Keyboard focus, disabled, hover, error, loading, and empty states relevant to
@@ -132,3 +174,9 @@ have a documented feature-specific reason not to; semantic tokens own their
 visual states; duplicate live CSS is removed; protected runtime contracts still
 pass; and the browser surface is verified in both themes and representative
 interaction states.
+
+The requested Atlas delivery additionally requires a flavored macOS development
+build with the migrated screens verified in that build. A successful browser
+preview or frontend compilation alone is not that deliverable. Do not create a
+pull request for this migration; retain the approved classic sidebar/background
+and Tauri host while adopting Atlas modules and controls.

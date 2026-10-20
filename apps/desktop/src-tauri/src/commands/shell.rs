@@ -5,12 +5,13 @@ use serde_json::json;
 use serde_json::Value;
 use std::collections::{BTreeSet, HashMap};
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager, Runtime, State, WebviewWindow};
 
+use crate::commands::action_journal::{action_journal_archive_name, ACTION_JOURNAL_NAME};
 use crate::preview::trace::PREVIEW_TRACE_FILE;
 use crate::windows;
 
@@ -73,12 +74,12 @@ pub(crate) fn frontend_log<R: Runtime>(
         _ => "info".to_string(),
     };
     let mut event = event.replace(char::is_whitespace, "-");
-    event.truncate(64);
+    event = event.chars().take(64).collect();
     if event.is_empty() {
         event = "frontend".to_string();
     }
     let mut message = message;
-    message.truncate(4096);
+    message = message.chars().take(1024).collect();
     eprintln!("[frontend:{level}] {event}: {message}");
     let dir = app.path().app_cache_dir().map_err(|err| err.to_string())?;
     append_app_log(&dir, &level, "frontend", "none", &event, 0, &message)
@@ -194,12 +195,25 @@ fn changed_project_roots(
         .collect()
 }
 
+#[derive(Default, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum WorkspaceOpenTarget {
+    #[default]
+    NewWindow,
+    MainWindow,
+}
+
 #[tauri::command]
 pub(crate) fn open_new_workspace_window<R: Runtime>(
     app: tauri::AppHandle<R>,
+    window: WebviewWindow<R>,
+    target: Option<WorkspaceOpenTarget>,
     paths: Option<Vec<String>>,
+    presentation: Option<windows::WindowPresentation>,
+    scene: Option<PreviewScene>,
+    structure: Option<super::documents::TextStructureRequest>,
 ) -> Result<String, String> {
-    let paths = paths.unwrap_or_default();
+    let mut paths = paths.unwrap_or_default();
     if paths.len() > 200
         || paths
             .iter()
@@ -207,9 +221,107 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
     {
         return Err("Choose at most 200 absolute file paths".into());
     }
-    let label = windows::open_new_workspace_window(&app)?;
+    let presentation = presentation.unwrap_or_default();
+    let target = target.unwrap_or_default();
+    if target == WorkspaceOpenTarget::MainWindow
+        && (!window.label().starts_with("workspace-preview-")
+            || presentation != windows::WindowPresentation::Workspace)
+    {
+        return Err("Only a preview can return to the main workspace".into());
+    }
+    if let Some(structure) = structure {
+        if presentation != windows::WindowPresentation::Preview
+            || !paths.is_empty()
+            || scene.is_some()
+        {
+            return Err(
+                "Choose either a structure, a scene or files for the preview window".into(),
+            );
+        }
+        paths.push(
+            super::documents::write_text_structure(&app, structure)?
+                .to_string_lossy()
+                .into_owned(),
+        );
+    }
+    if let Some(scene) = scene {
+        if (presentation != windows::WindowPresentation::Preview
+            && target != WorkspaceOpenTarget::MainWindow)
+            || !paths.is_empty()
+        {
+            return Err("Choose either a scene or files for the preview window".into());
+        }
+        let bytes = scene.decode()?;
+        let directory = app
+            .path()
+            .app_cache_dir()
+            .map_err(|error| error.to_string())?
+            .join("viewer")
+            .join("popouts")
+            .join(uuid::Uuid::new_v4().to_string());
+        fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+        let path = directory.join(format!("{}.molj", scene.title));
+        fs::write(&path, bytes).map_err(|error| error.to_string())?;
+        paths.push(path.to_string_lossy().into_owned());
+    }
+    let label = if target == WorkspaceOpenTarget::MainWindow {
+        let existing = app
+            .webview_windows()
+            .into_values()
+            .filter(|candidate| !candidate.label().starts_with("workspace-preview-"))
+            .min_by_key(|candidate| {
+                (
+                    candidate.label() != windows::MAIN_WINDOW_LABEL,
+                    candidate.label().to_string(),
+                )
+            });
+        match existing {
+            Some(existing) => {
+                windows::focus_or_create_workspace_window(&app, Some(existing.label()))?
+                    .label()
+                    .to_string()
+            }
+            None => {
+                windows::open_new_workspace_window(&app, windows::WindowPresentation::Workspace)?
+            }
+        }
+    } else {
+        windows::open_new_workspace_window(&app, presentation)?
+    };
     crate::startup::signal_open_documents_for_window(&app, &label, paths);
     Ok(label)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PreviewScene {
+    title: String,
+    data_base64: String,
+}
+
+impl PreviewScene {
+    fn decode(&self) -> Result<Vec<u8>, String> {
+        if self.title.is_empty()
+            || self.title.len() > 200
+            || self
+                .title
+                .chars()
+                .any(|c| c.is_control() || matches!(c, '/' | '\\' | ':'))
+            || self.data_base64.len() > 32 * 1024 * 1024
+        {
+            return Err("The preview scene is invalid or exceeds 24 MiB".into());
+        }
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(&self.data_base64)
+            .map_err(|_| "The preview scene is invalid")?;
+        let mut value: Value =
+            serde_json::from_slice(&bytes).map_err(|_| "The preview scene is invalid")?;
+        if !value.is_object() || bytes.len() > 24 * 1024 * 1024 {
+            return Err("The preview scene is invalid or exceeds 24 MiB".into());
+        }
+        value["burettePreview"] = Value::Bool(true);
+        serde_json::to_vec(&value).map_err(|err| err.to_string())
+    }
 }
 
 /// Close the calling workspace window. With other windows still open the window
@@ -352,6 +464,14 @@ pub(crate) fn export_diagnostics_bundle<R: Runtime>(
 
     let app_log_path = cache_dir.join(APP_LOG_NAME);
     copy_redacted_or_create_empty(&app_log_path, &output_dir.join("app-log.txt"))?;
+    // The live journal and the newest archive cover the recent session
+    // without copying the whole 50 MB history into the bundle.
+    for name in [
+        action_journal_archive_name(1),
+        ACTION_JOURNAL_NAME.to_string(),
+    ] {
+        copy_redacted_if_exists(&cache_dir.join(&name), &output_dir.join(&name))?;
+    }
     let preview_trace_copied = copy_redacted_or_create_empty(
         &cache_dir.join(PREVIEW_TRACE_FILE),
         &output_dir.join(PREVIEW_TRACE_FILE),
@@ -409,6 +529,8 @@ fn append_app_log(
     elapsed_ms: u128,
     message: &str,
 ) -> Result<(), String> {
+    static LOG_LOCK: Mutex<()> = Mutex::new(());
+    let _guard = LOG_LOCK.lock().map_err(|err| err.to_string())?;
     fs::create_dir_all(cache_dir).map_err(|err| err.to_string())?;
     let sanitized_message = message.replace(['\n', '\r'], " ");
     let line = format!(
@@ -421,10 +543,26 @@ fn append_app_log(
         elapsed_ms,
         sanitized_message
     );
+    let path = cache_dir.join(APP_LOG_NAME);
+    if fs::metadata(&path).map(|meta| meta.len()).unwrap_or(0) + line.len() as u64 > 256 * 1024 {
+        let mut previous = fs::File::open(&path).map_err(|err| err.to_string())?;
+        let length = previous.metadata().map_err(|err| err.to_string())?.len();
+        previous
+            .seek(SeekFrom::Start(length.saturating_sub(256 * 1024)))
+            .map_err(|err| err.to_string())?;
+        let mut tail = Vec::new();
+        previous
+            .take(256 * 1024)
+            .read_to_end(&mut tail)
+            .map_err(|err| err.to_string())?;
+        fs::write(cache_dir.join("BuretteApp.previous.log"), tail)
+            .map_err(|err| err.to_string())?;
+        fs::write(&path, []).map_err(|err| err.to_string())?;
+    }
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(cache_dir.join(APP_LOG_NAME))
+        .open(path)
         .map_err(|err| err.to_string())?;
     file.write_all(line.as_bytes())
         .map_err(|err| err.to_string())
@@ -682,6 +820,58 @@ mod tests {
     use base64::Engine;
     use std::fs;
     use std::path::PathBuf;
+
+    #[test]
+    fn app_log_rotates_with_one_bounded_previous_copy() {
+        let dir = temp_dir("bounded-log");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join(super::APP_LOG_NAME), vec![b'x'; 1024 * 1024]).unwrap();
+        for marker in ["first error", "second error"] {
+            super::append_app_log(&dir, "error", "frontend", "none", "status", 0, marker).unwrap();
+            assert!(fs::metadata(dir.join(super::APP_LOG_NAME)).unwrap().len() < 256 * 1024);
+            assert!(
+                fs::metadata(dir.join("BuretteApp.previous.log"))
+                    .unwrap()
+                    .len()
+                    <= 256 * 1024
+            );
+            assert!(fs::read_to_string(dir.join(super::APP_LOG_NAME))
+                .unwrap()
+                .contains(marker));
+            fs::write(dir.join(super::APP_LOG_NAME), vec![b'x'; 256 * 1024]).unwrap();
+        }
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 2);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn preview_scene_rejects_unsafe_names_and_invalid_session_data() {
+        let valid = base64::engine::general_purpose::STANDARD.encode(br#"{"entries":[]}"#);
+        let scene = super::PreviewScene {
+            title: "HEM".into(),
+            data_base64: valid.clone(),
+        };
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&scene.decode().unwrap()).unwrap(),
+            serde_json::json!({"entries": [], "burettePreview": true})
+        );
+        for title in ["../outside", "folder\\name", "bad\nname", ""] {
+            assert!(super::PreviewScene {
+                title: title.into(),
+                data_base64: valid.clone()
+            }
+            .decode()
+            .is_err());
+        }
+        for data in ["invalid", "W10="] {
+            assert!(super::PreviewScene {
+                title: "HEM".into(),
+                data_base64: data.into()
+            }
+            .decode()
+            .is_err());
+        }
+    }
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!(

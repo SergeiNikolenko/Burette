@@ -3,9 +3,9 @@
 import * as React from "react";
 
 import {
-  ensureCodePrismLanguage,
-  tokenizeCodeLine as tokenizePrismCodeLine,
-} from "./code-viewer-syntax-prism";
+  ensureCodeLanguage,
+  tokenizeCodeLine as tokenizeSyntaxCodeLine,
+} from "./code-viewer-syntax-shiki";
 import { shouldTokenizeCodeLine } from "./code-viewer-syntax-protocol";
 import { markdownCodeTokensToHtml } from "./markdown-greenfield-code-highlight-html";
 import {
@@ -247,7 +247,7 @@ function createMarkdownCodeLineHtmlRequests({
   sourceLines: readonly string[];
   start: number;
 }) {
-  const languageId = prismLanguageForMarkdownCode(language);
+  const languageId = syntaxLanguageForMarkdownCode(language);
   if (!languageId) return [];
 
   const requests: MarkdownCodeLineHtmlRequest[] = [];
@@ -410,14 +410,14 @@ async function highlightMarkdownCodeLinesOnMainThread(
   const firstRequest = requests[0];
   if (!firstRequest) return;
   try {
-    await ensureCodePrismLanguage(firstRequest.languageId);
+    await ensureCodeLanguage(firstRequest.languageId);
     resolveMarkdownCodeLineHtmlRequests(
       requests.map((request) => ({
         html: shouldTokenizeCodeLine(request.line)
           ? markdownCodeTokensToHtml({
               highlightPattern: request.highlightPattern,
               line: request.line,
-              tokens: tokenizePrismCodeLine(request.languageId, request.line),
+              tokens: tokenizeSyntaxCodeLine(request.languageId, request.line),
             })
           : null,
         index: request.index,
@@ -535,7 +535,7 @@ function markdownCodeLineHtmlKey({
   ].join("\0");
 }
 
-function prismLanguageForMarkdownCode(language: string) {
+function syntaxLanguageForMarkdownCode(language: string) {
   const aliases: Record<string, string> = {
     dockerfile: "dockerfile",
     js: "javascript",

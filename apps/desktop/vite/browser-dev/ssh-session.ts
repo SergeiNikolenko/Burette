@@ -23,8 +23,8 @@ export class SshSession {
     this.child.on("close", () => this.close(new Error(this.errors.trim() || "SSH connection closed. Try again.")));
   }
   get busy() { return this.queued > 0; }
-  run(payload: string, limit: number, signal: AbortSignal): Promise<Buffer> {
-    if (this.queued >= 2) return Promise.reject(new Error("SSH connection is busy. Try again when loading finishes."));
+  run(payload: string, limit: number, signal: AbortSignal, timeoutMs = 45000): Promise<Buffer> {
+    if (this.queued >= 3) return Promise.reject(new Error("SSH connection is busy. Try again when loading finishes."));
     this.queued++;
     if (this.idle) clearTimeout(this.idle);
     const result = this.tail.catch(() => {}).then(() => new Promise<Buffer>((resolve, reject) => {
@@ -37,7 +37,7 @@ export class SshSession {
       };
       this.pending = {
         resolve: data => finish(undefined, data), reject: error => finish(error), limit,
-        timer: setTimeout(() => this.close(new Error("SSH request timed out after 45 seconds")), 45000),
+        timer: setTimeout(() => this.close(new Error("SSH request timed out")), timeoutMs),
       };
       this.child.stdin.write(payload + "\n");
     })).finally(() => {

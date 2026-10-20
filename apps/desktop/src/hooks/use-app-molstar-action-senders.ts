@@ -21,10 +21,10 @@ export function useAppMolstarActionSenders({
   pushStatus,
 }: UseAppMolstarActionSendersOptions) {
   const selectTextStructure = useCallback((textDocument: TextFileDocument, selection: TextStructureSelection) => {
-    const targetDocument = documents.find((document) => document.path === textDocument.path) ??
-      (activeDocument?.path === textDocument.path ? activeDocument : null);
-    if (!targetDocument || targetDocument.renderer !== "molstar") return;
-    const iframe = activeViewerIframeForDocument(targetDocument.id);
+    // A rendered document can also have an interactive copy in a dock. Resolve
+    // the actual interactive frame, not the main document's chosen renderer.
+    const candidates = [activeDocument, ...documents].filter((document) => document?.path === textDocument.path);
+    const iframe = candidates.map(document => document && activeViewerIframeForDocument(document.id, "molstar")).find(Boolean);
     if (!iframe?.contentWindow) return;
     iframe.contentWindow.postMessage({
       source: "burette-agent-host",
@@ -43,8 +43,24 @@ export function useAppMolstarActionSenders({
   }, [activeDocument, activeViewerIframeForDocument, documents]);
 
   const runStructureViewerAction = useCallback((document: ViewerDocument, action: StructureViewerAction) => {
+    // A collection shows its molecules as cards: a composition row selects and
+    // reveals the card rather than asking for a structure viewer.
+    if (document.renderer === "grid2d" && (action.type === "set_sdf_molecule" || action.type === "clear_selection")) {
+      const index = action.type === "set_sdf_molecule" ? action.index : null;
+      activeViewerIframeForDocument(document.id, "grid2d")?.contentWindow?.postMessage({
+        source: "burette-grid-host",
+        body: {
+          type: "chemicalSpaceSelectionChanged",
+          documentId: document.id,
+          sourceRecordIds: index === null ? [] : [index],
+          filterToSelection: false,
+          focusSourceRecordId: index,
+        },
+      }, "*");
+      return;
+    }
     if (document.renderer !== "molstar") {
-      pushStatus(`${action.label} needs a Mol* viewer`, "error");
+      pushStatus(`${action.label} needs a 3D view`, "error");
       return;
     }
     const iframe = activeViewerIframeForDocument(document.id);

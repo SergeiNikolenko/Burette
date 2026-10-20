@@ -66,10 +66,66 @@ test("Recent files open by path, report failures, and keep Ketcher available", a
     const file = container.querySelector<HTMLButtonElement>('button[title="/samples/a b.pdb"]')!;
     await act(async () => file.click());
     expect(opened).toEqual(["/open?path=%2Fsamples%2Fa%20b.pdb"]);
-    expect(container.querySelector('[role="alert"]')?.textContent).toBe("File no longer exists");
+    expect(container.querySelector('[role="alert"]')?.textContent).toBe("Could not open this file. Try again.");
     expect(file.disabled).toBe(false);
     await act(async () => container.querySelector<HTMLButtonElement>(".native-home-ketcher")!.click());
     expect(opened.at(-1)).toBe("ketcher");
     expect(container.querySelector("input")).toBeNull();
   } finally { await act(async () => root.unmount()); container.remove(); }
+});
+
+type Home = React.ComponentProps<typeof NativeWorkspaceHome>["home"];
+async function homeFixture(run: (mount: HTMLDivElement, render: (home: Home) => Promise<void>) => Promise<void>) {
+  const mount = document.createElement("div"); document.body.append(mount); const root = createRoot(mount);
+  try { await run(mount, home => act(async () => root.render(<NativeWorkspaceHome actions={{ openKetcher: () => {} } as ShellActions} home={home} />))); }
+  finally { await act(async () => root.unmount()); mount.remove(); }
+}
+const recentFile = (label: string) => ({ path: `/samples/${label}`, label, format: "pdb", openedAt: "invalid timestamp" });
+const homeStub = (patch: Partial<Home>): Home => ({ recent: async () => [], open: async () => {}, search: async () => [], ask: async () => {}, ...patch });
+const namedButton = (mount: Element, name: string) => Array.from(mount.querySelectorAll("button")).find(el => el.textContent === name)!;
+
+test("recent-file loading can retry without exposing raw errors or breaking on missing timestamps", async () => {
+  await homeFixture(async (mount, render) => {
+    let calls = 0;
+    const home = homeStub({ recent: async () => { if (++calls === 1) throw new Error("Host internal /private/path"); return [recentFile("a.pdb")]; } });
+    await render(home);
+    expect(mount.querySelector('[role="alert"]')?.textContent).toBe("Could not load recent files.");
+    expect(mount.textContent).not.toMatch(/Host internal|private/);
+    await act(async () => namedButton(mount, "Retry").click());
+    expect(calls).toBe(2); expect(mount.textContent).toContain("a.pdb");
+    expect(mount.querySelector('[role="alert"]')).toBeNull();
+    expect(mount.textContent).not.toMatch(/NaN|Invalid|ago/);
+    await render(homeStub({})); expect(mount.textContent).toContain("No recent files");
+  });
+});
+
+test("changing the host clears old rows and ignores late history responses", async () => {
+  await homeFixture(async (mount, render) => {
+    let finish!: (files: ReturnType<typeof recentFile>[]) => void;
+    await render(homeStub({ recent: () => new Promise(resolve => { finish = resolve; }) }));
+    expect(mount.querySelector('[aria-busy="true"]')).not.toBeNull();
+    await render(homeStub({ recent: async () => [recentFile("current.pdb")] }));
+    await act(async () => finish([recentFile("stale.pdb")]));
+    expect(mount.textContent).toContain("current.pdb"); expect(mount.textContent).not.toContain("stale.pdb");
+    await render(homeStub({ recent: () => new Promise(() => {}) }));
+    expect(mount.textContent).not.toContain("current.pdb");
+    expect(mount.querySelector('[role="status"]')?.textContent).toBe("Loading recent files…");
+  });
+});
+
+test("repeated clicks open once; old failures cannot overwrite a new host's pending open", async () => {
+  await homeFixture(async (mount, render) => {
+    const calls: string[] = []; let reject!: (error: Error) => void; let finish!: () => void;
+    await render(homeStub({ recent: async () => [recentFile("old.pdb")], open: link => { calls.push(link); return new Promise((_resolve, fail) => { reject = fail; }); } }));
+    const old = mount.querySelector<HTMLButtonElement>('[aria-label="Open old.pdb"]')!;
+    await act(async () => { old.click(); old.click(); });
+    expect(calls).toEqual(["/open?path=%2Fsamples%2Fold.pdb"]);
+    expect(old.disabled).toBe(true);
+    await render(homeStub({ recent: async () => [recentFile("new.pdb")], open: () => new Promise(resolve => { finish = resolve; }) }));
+    const current = mount.querySelector<HTMLButtonElement>('[aria-label="Open new.pdb"]')!;
+    await act(async () => current.click());
+    await act(async () => reject(new Error("Old failure")));
+    expect(mount.querySelector('[role="alert"]')).toBeNull(); expect(current.disabled).toBe(true);
+    await act(async () => finish()); expect(current.disabled).toBe(false);
+  });
 });

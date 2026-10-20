@@ -13,7 +13,8 @@ import type { AnimationSource } from './xyzrender-animation-dialog';
 import { postToXyzrenderViewer } from '../lib/viewer-bridge';
 
 type RenderedOrientation = { svg: string; orientationRef: string; baseOrientationRef: string };
-function MolecularOrientationPanel({ source, onPrepared }: { source: AnimationSource; onPrepared: (source: AnimationSource) => void }) {
+type OrientationPanelProps = { source: AnimationSource; onPrepared: (source: AnimationSource) => void; onAnglesChange?: (angles: number[]) => void };
+function MolecularOrientationPanel({ source, onPrepared, onAnglesChange }: OrientationPanelProps) {
   const [angles, setAngles] = useState(source.angles || [0, 0, 0]);
   const [result, setResult] = useState<RenderedOrientation | null>(null);
   const [busy, setBusy] = useState(false);
@@ -31,7 +32,15 @@ function MolecularOrientationPanel({ source, onPrepared }: { source: AnimationSo
   // Opening the editor or selecting an item must not redraw it; only an
   // angle the user changed re-renders and replaces the item's artwork.
   const edited = useRef(false);
-  const editAngles = (next: (current: number[]) => number[]) => { edited.current = true; setAngles(next); };
+  // The running animation re-renders from the edited angles at once instead of
+  // waiting for this static drawing.
+  const editAngles = (next: (current: number[]) => number[]) => {
+    edited.current = true;
+    const value = next(latestAngles.current);
+    latestAngles.current = value;
+    setAngles(value);
+    onAnglesChange?.(value);
+  };
   const requestRender = useRef<() => void>(() => {});
   useEffect(() => {
     let disposed = false;
@@ -98,7 +107,7 @@ function MolecularOrientationPanel({ source, onPrepared }: { source: AnimationSo
   </div>;
 }
 
-export function XyzrenderOrientationPanel(props: { source: AnimationSource; onPrepared: (source: AnimationSource) => void }) {
+export function XyzrenderOrientationPanel(props: OrientationPanelProps) {
   const extension = (props.source.inputExtension || props.source.path.split('.').pop() || '').toLowerCase().replace(/^\./, '');
   if (extension === 'cif') return <p className="text-sm text-muted-foreground">Orientation editing for CIF is unavailable. Use Animation to rotate the crystal.</p>;
   return <MolecularOrientationPanel {...props} />;

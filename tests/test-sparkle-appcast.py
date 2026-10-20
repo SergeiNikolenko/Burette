@@ -39,6 +39,28 @@ class AppcastTests(unittest.TestCase):
         self.assertEqual(item.findtext('s:hardwareRequirements', namespaces=NS), 'arm64')
         self.assertIsNone(item.find('s:channel', NS))
 
+    def test_deltas_point_at_the_release_assets(self):
+        item = ET.fromstring(appcast.make_feed(
+            {'CFBundleShortVersionString': '2026.10.14', 'CFBundleVersion': '2026.10.14', 'LSMinimumSystemVersion': '12.0'},
+            'Burette-2026.10.14.zip', 42, 'zip-signature',
+            deltas=[('2026.10.13', 'Burette-2026.10.14-from-2026.10.13.delta', 7, 'delta-signature')])).find('channel/item')
+        self.assertEqual([patch.attrib for patch in item.find('s:deltas', NS)], [{
+            'url': 'https://github.com/SergeiNikolenko/Burette/releases/download/v2026.10.14/Burette-2026.10.14-from-2026.10.13.delta',
+            f'{{{appcast.NS}}}deltaFrom': '2026.10.13', 'length': '7', 'type': 'application/octet-stream',
+            f'{{{appcast.NS}}}edSignature': 'delta-signature',
+        }])
+        self.assertIsNone(ET.fromstring(feed('2026.10.14')).find('channel/item/s:deltas', NS))
+
+    def test_delta_sources_take_the_newest_other_builds(self):
+        spec = importlib.util.spec_from_file_location('deltas', Path(__file__).resolve().parents[1] / 'scripts/sparkle-deltas.py')
+        deltas = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(deltas)
+        previous = None
+        for index in range(8):
+            previous = feed(f'2026.10.{index}', previous)
+        self.assertEqual(deltas.delta_sources(feed('2026.10.7', previous), '2026.10.7'), [
+            (f'2026.10.{index}', f'v2026.10.{index}', f'Burette-2026.10.{index}.zip') for index in (6, 5, 4, 3, 2)])
+
     def test_beta_releases_do_not_remove_the_last_stable_release(self):
         result = feed('2.3.19')
         for index in range(25):

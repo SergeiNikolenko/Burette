@@ -112,18 +112,40 @@ await act(async () => {
   dialog.focus();
   dialog.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
 });
-assert.deepEqual(accepted, { charge: 2 }, "Enter on the focused dialog confirms as upstream does");
-await act(async () => root.render(React.createElement(KetcherSettingsAccordion, {
-  tabs: [{ key: "general", label: "General", content: React.createElement("input", { defaultValue: "draft" }) },
-    { key: "other", label: "Other", content: React.createElement("input", { defaultValue: "hidden value" }) }],
+assert.equal(accepted, null, "Enter on the dialog surface must not accidentally confirm");
+await act(async () => document.querySelector('[role="dialog"] input').dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+assert.deepEqual(accepted, { charge: 2 }, "Enter in a text input confirms");
+accepted = null;
+await act(async () => root.render(React.createElement(KetcherDialog, {
+  title: "Settings", buttons: ["Cancel", "OK"], valid: () => true,
+  params: { onOk() { accepted = true; }, onCancel() {} },
+}, React.createElement(KetcherSettingsAccordion, {
+  tabs: [{ key: "general", label: "General", content: React.createElement("input", { defaultValue: "draft" }) }],
   changedGroups: new Set(),
+}))));
+for (const control of document.querySelectorAll('[role="dialog"] summary, [role="dialog"] button')) {
+  await act(async () => control.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+  assert.equal(accepted, null, "Enter on interactive controls must not confirm the dialog via its keyboard shortcut");
+}
+const settingsTabs = [{ key: "general", label: "General", content: React.createElement("input", { defaultValue: "draft" }) },
+  { key: "other", label: "Other", content: React.createElement("input", { defaultValue: "hidden value" }) }];
+const renderSettings = (changedGroups = new Set()) => act(async () => root.render(React.createElement(KetcherSettingsAccordion, {
+  tabs: settingsTabs, changedGroups,
 })));
+await renderSettings();
 assert.equal(host.querySelectorAll("input").length, 2, "collapsed settings remain mounted for upstream form registration");
+const sections = [...host.querySelectorAll('[role="tabpanel"]')];
+assert.deepEqual(sections.map(section => section.hidden), [false, true]);
 const draft = host.querySelector("input");
 draft.value = "unsaved edit";
-await act(async () => host.querySelector('[data-testid="General-accordion"]').click());
-await act(async () => host.querySelector('[data-testid="General-accordion"]').click());
-assert.equal(host.querySelector("input").value, "unsaved edit", "collapsing settings must preserve edited field state");
+await act(async () => host.querySelector('[data-testid="Other-accordion"]').click());
+await renderSettings(new Set(["General"]));
+assert.deepEqual(sections.map(section => section.hidden), [true, false], "modified indicators preserve active settings tab");
+assert.ok(host.querySelector('[data-testid="General-accordion"] [aria-label="Modified"]'));
+await act(async () => host.querySelector('[data-testid="Other-accordion"]').dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
+assert.deepEqual(sections.map(section => section.hidden), [false, true], "keyboard navigation activates the first settings group");
+assert.equal(host.querySelector("input"), draft, "navigation retains registered inputs");
+assert.equal(host.querySelector("input").value, "unsaved edit", "hidden settings preserve edited field state");
 const fullscreen = document.createElement("div");
 document.body.append(fullscreen);
 Object.defineProperty(document, "fullscreenElement", { configurable: true, value: fullscreen });

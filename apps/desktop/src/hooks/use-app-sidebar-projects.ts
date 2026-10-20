@@ -20,6 +20,7 @@ const browserDevSampleFiles = [
 ] as const;
 
 const browserDevGeneratedProjectScanMs = 2500;
+const noRecentStructures: RecentStructure[] = [];
 const projectScanRootBatchSize = 16;
 const projectScanSessionEntryBudget = 20_000;
 const projectFilesystemRefreshDelayMs = 250;
@@ -144,7 +145,7 @@ export function useAppSidebarProjects({
     const samples = browserDevSampleProjectStructures(browserDevHasExplicitWorkspace);
     return samples.length > 0 ? [...projectStructures, ...samples] : projectStructures;
   }, [browserDevHasExplicitWorkspace, projectStructures, webDemoRevision]);
-  const sidebarRecentStructures = browserDevExplicitFolders.length > 0 ? [] : recentStructures;
+  const sidebarRecentStructures = browserDevExplicitFolders.length > 0 ? noRecentStructures : recentStructures;
   const projectRootsToScan = useMemo(() => {
     if (sidebarQuery.trim()) return projectRoots;
     return projectRoots.filter((root) => expandedProjectIds.includes(`project:${root}`));
@@ -242,6 +243,8 @@ export function useAppSidebarProjects({
         return undefined;
       }
       let cancelled = false;
+      const controller = new AbortController();
+      let refreshTimer: number | undefined;
       let reportedError = false;
       let reportedTruncation = false;
       lastGeneratedFilesSignatureRef.current = "";
@@ -253,7 +256,8 @@ export function useAppSidebarProjects({
       };
       const refresh = async () => {
         try {
-          const scan = await scanBrowserDevFolders(roots);
+          const scan = await scanBrowserDevFolders(roots, controller.signal);
+          if (cancelled) return;
           applyFiles(scan.files.sort((left, right) => left.localeCompare(right)));
           if (scan.truncated && !reportedTruncation) {
             reportedTruncation = true;
@@ -265,20 +269,23 @@ export function useAppSidebarProjects({
           }
         } catch (error) {
           if (cancelled) return;
-          applyFiles([]);
+          // Keep the last good index through a transient scan error.
           if (!reportedError) {
             reportedError = true;
             pushErrorStatus(error, "Browser project scan failed");
           }
+        } finally {
+          // Slow scans must not overlap or race an older index over a new one.
+          if (!cancelled && browserDevGeneratedRoot) {
+            refreshTimer = window.setTimeout(() => void refresh(), browserDevGeneratedProjectScanMs);
+          }
         }
       };
       void refresh();
-      const interval = browserDevGeneratedRoot
-        ? window.setInterval(() => void refresh(), browserDevGeneratedProjectScanMs)
-        : null;
       return () => {
         cancelled = true;
-        if (interval !== null) window.clearInterval(interval);
+        controller.abort();
+        window.clearTimeout(refreshTimer);
       };
     }
     if (projectRoots.length === 0) {

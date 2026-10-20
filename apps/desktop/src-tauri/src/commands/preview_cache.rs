@@ -15,6 +15,45 @@ pub(crate) fn clear_preview_cache<R: Runtime>(app: tauri::AppHandle<R>) -> Resul
     clear_preview_cache_dir(&base)
 }
 
+/// Bytes that `clear_preview_cache` would free.
+#[tauri::command]
+pub(crate) fn preview_cache_size<R: Runtime>(app: tauri::AppHandle<R>) -> Result<u64, String> {
+    let base = app
+        .path()
+        .app_cache_dir()
+        .map_err(|err| err.to_string())?
+        .join(VIEWER_CACHE_DIR);
+    Ok(preview_cache_dir_size(&base))
+}
+
+fn preview_cache_dir_size(base: &Path) -> u64 {
+    let Ok(entries) = fs::read_dir(base) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .filter(|entry| entry.file_name() != PRESERVED_VIEWER_CACHE_ENTRY)
+        .map(|entry| path_size(&entry.path()))
+        .sum()
+}
+
+fn path_size(path: &Path) -> u64 {
+    let Ok(metadata) = fs::symlink_metadata(path) else {
+        return 0;
+    };
+    if !metadata.is_dir() {
+        return metadata.len();
+    }
+    fs::read_dir(path)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|entry| path_size(&entry.path()))
+                .sum()
+        })
+        .unwrap_or(0)
+}
+
 fn clear_preview_cache_dir(base: &Path) -> Result<(), String> {
     if !base.exists() {
         return Ok(());

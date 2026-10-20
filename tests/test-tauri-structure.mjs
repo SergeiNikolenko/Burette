@@ -375,6 +375,7 @@ for (const commandPath of [
   'commands::runtime_doctor::external_runtime_doctor',
   'commands::shell::export_diagnostics_bundle',
   'commands::shell::open_logs_folder',
+  'commands::action_journal::append_action_journal',
   'commands::shell::open_external_url',
   'commands::shell::existing_paths',
   'commands::shell::open_new_workspace_window',
@@ -475,6 +476,11 @@ assert.match(
   documentsCommand,
   /#\[tauri::command\]\s+pub\(crate\) async fn open_documents[\s\S]*?spawn_blocking/,
   'native document loading must not block the WebKit UI thread',
+);
+assert.match(
+  documentsCommand,
+  /#\[tauri::command\]\s+pub\(crate\) async fn open_docking_document[\s\S]*?spawn_blocking\(move \|\| \{\s*open_docking_document_runtime\(&app, request, &preferences\)/,
+  'multi-structure loading and macOS file consent must not block the WebKit UI thread',
 );
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn open_delimited_grid_document/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_structure_text/);
@@ -1010,7 +1016,7 @@ assert.match(quickLookPreviewController, /<script src="\.\.\/assets\/rdkit\/RDKi
 assert.match(quickLookPreviewController, /rdkit\.get_mol\(String\(entry\.molblock \|\| ''\)\)/);
 assert.match(quickLookPreviewController, /mol\.set_new_coords\?\.\(\)/);
 assert.match(quickLookPreviewController, /rdkitImages: rdkitImages/);
-assert.match(quickLookPreviewController, /score: " \+ String\(format: "%\.3f", \$0\)/);
+assert.match(quickLookPreviewController, /<span>Score<\/span>\\\(String\(format: "%\.2f", score\)\)/);
 assert.match(quickLookPreviewController, /shouldUseTextArtifactPreview\(url: URL, fileExtension: String, previewPlan: BurettePreviewPlan\?\)/);
 assert.match(quickLookPreviewController, /private static func isPreferredTextArtifact\(url: URL\) -> Bool \{[\s\S]*url\.lastPathComponent\.lowercased\(\) == "log\.lammps"/);
 assert.match(quickLookPreviewController, /detected\.previewMode=text-artifact/);
@@ -1144,7 +1150,8 @@ assert.match(windowsSource, /pub\(crate\) const MAIN_WINDOW_LABEL: &str = "main"
 assert.match(windowsSource, /pub\(crate\) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-"/);
 assert.match(windowsSource, /pub\(crate\) fn focus_or_create_workspace_window/);
 assert.match(windowsSource, /create_workspace_window\(app, MAIN_WINDOW_LABEL\.to_string\(\)\)/);
-assert.match(windowsSource, /let label = next_workspace_label\(app\);\s*let window = create_workspace_window\(app, label\.clone\(\)\)\?/);
+assert.match(windowsSource, /WindowPresentation::Workspace => next_workspace_label\(app\)/);
+assert.match(windowsSource, /let window = create_workspace_window\(app, label\.clone\(\)\)\?/);
 assert.match(windowsSource, /WebviewWindowBuilder::new\(app, &label, url\)/);
 assert.match(windowsSource, /index\.html\?buretteWindow=\{label\}/);
 assert.match(windowsSource, /\.transparent\(true\)\s*\.background_color\(Color\(0, 0, 0, 0\)\)/);
@@ -1192,11 +1199,14 @@ assertSourceIncludesAll(nativeMenuSource, [
   'file.close-tab',
   'file.close-other-tabs',
   'file.close-all-tabs',
+  'file.reopen-closed-tab',
   'file.close-window',
   'edit.menu',
   'edit.undo-grid',
   'edit.redo-grid',
   'edit.find',
+  'view.navigate-back',
+  'view.navigate-forward',
   'view.toggle-sidebar',
   'view.toggle-inspector',
   'view.toggle-bottom-panel',
@@ -1277,6 +1287,7 @@ assertSourceIncludesAll(menuEvents, [
   'file.open-clipboard',
   'file.close-other-tabs',
   'file.close-all-tabs',
+  'file.reopen-closed-tab',
   'edit.undo-grid',
   'edit.redo-grid',
   'edit.find',
@@ -1345,6 +1356,18 @@ for (const [id, accelerator] of [
   assertMenuItemAccelerator(nativeMenuSource, id, accelerator);
 }
 assert.match(menuEvents, /crate::zoom::handle_menu_command/);
+// Settings > Keyboard shortcuts: every customizable menu row in the shared
+// registry names a real menu item and repeats its build-time default, and the
+// runtime override command is registered and permitted.
+const shortcutRegistrySource = await source('apps/desktop/src/lib/keyboard-shortcuts.ts');
+const registryMenuShortcuts = [...shortcutRegistrySource.matchAll(/\{ id: "([^"]+)",[^\n]*scope: "menu", defaultAccelerator: "([^"]+)" \}/g)];
+assert.ok(registryMenuShortcuts.length >= 20, 'shortcut registry must list the native menu accelerators');
+for (const [, id, accelerator] of registryMenuShortcuts) {
+  assertMenuItemAccelerator(nativeMenuSource, id, accelerator.replaceAll('\\\\', '\\'));
+}
+assert.match(menu, /pub\(crate\) fn set_menu_accelerators/);
+assert.match(lib, /menu::set_menu_accelerators,/);
+assert.match(await source('apps/desktop/src-tauri/permissions/burette.toml'), /"set_menu_accelerators"/);
 assert.doesNotMatch(nativeMenuSource, /accelerator\("CmdOrCtrl\+Shift\+N"\)/);
 assert.match(nativeMenuSource, /accelerator\("CmdOrCtrl\+P"\)/);
 assert.doesNotMatch(nativeMenuSource, /accelerator\("CmdOrCtrl\+U"\)/);
@@ -1641,7 +1664,7 @@ assert.match(gridViewerJS, /state\.cardRenderer = 'rdkit';\n\s+store\(CARD_RENDE
 // The renderer switch is a native select the viewer syncs by id, not a
 // segmented control with data attributes.
 assert.match(gridUiTSX, /id="card-renderer"/);
-assert.match(gridUiTSX, /<option value="xyzrender">xyzrender<\/option>/);
+assert.match(gridUiTSX, /<option value="xyzrender">3D renders<\/option>/);
 assert.match(gridUiTSX, /id="xyzrender-preset"/);
 assert.match(quickLookPreviewController, /<script src="preview-config\.js"><\/script>/);
 assert.match(quickLookPreviewController, /gridRuntimeCSP/);

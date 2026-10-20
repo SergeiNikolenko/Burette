@@ -5,11 +5,13 @@ export type SettingsSectionId =
   | "structure"
   | "updates"
   | "workspace"
+  | "jobs"
+  | "xtb"
   | "connections"
   | "agent"
   | "maintenance";
 
-export type AppSettingsSectionId = SettingsSectionId | "xtb";
+export type AppSettingsSectionId = SettingsSectionId;
 
 export type SettingsNavItem = {
   id: SettingsSectionId;
@@ -31,7 +33,7 @@ export const settingsNavGroups: SettingsNavGroup[] = [
       { id: "general", label: "General", description: "Workspace defaults and open documents" },
       { id: "appearance", label: "Appearance", description: "Theme, colors, and shell presentation" },
       { id: "keyboard", label: "Keyboard shortcuts", description: "Global app shortcuts and navigation keys" },
-      { id: "structure", label: "Structure rendering", description: "Mol* and renderer defaults" },
+      { id: "structure", label: "Structure rendering", description: "Renderer defaults" },
       { id: "updates", label: "Updates", description: "Release checks and install channel" },
     ],
   },
@@ -39,6 +41,13 @@ export const settingsNavGroups: SettingsNavGroup[] = [
     title: "Workspace",
     items: [
       { id: "workspace", label: "Files and projects", description: "Recent structures and project folders" },
+    ],
+  },
+  {
+    title: "Compute",
+    items: [
+      { id: "jobs", label: "Jobs", description: "Notifications, sleep, compute backend, history, and tool paths" },
+      { id: "xtb", label: "xTB", description: "xTB runtime and calculation defaults" },
     ],
   },
   {
@@ -51,7 +60,7 @@ export const settingsNavGroups: SettingsNavGroup[] = [
   {
     title: "System",
     items: [
-      { id: "maintenance", label: "Maintenance", description: "Quick Look, logs, diagnostics, and cache" },
+      { id: "maintenance", label: "Maintenance", description: "Quick Look, logs, diagnostics, cache, and panel layout" },
     ],
   },
 ];
@@ -61,14 +70,12 @@ const settingsSectionIds = new Set<SettingsSectionId>(
 );
 
 export function normalizeSettingsSection(value: unknown): AppSettingsSectionId {
-  if (value === "xtb") return "xtb";
   return typeof value === "string" && settingsSectionIds.has(value as SettingsSectionId)
     ? value as SettingsSectionId
     : DEFAULT_SETTINGS_SECTION;
 }
 
 export function settingsSectionLabel(section: AppSettingsSectionId) {
-  if (section === "xtb") return "xTB";
   for (const group of settingsNavGroups) {
     const item = group.items.find((candidate) => candidate.id === section);
     if (item) return item.label;

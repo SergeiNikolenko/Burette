@@ -30,7 +30,7 @@ const gridMenu = xtbStructureMenuItems(actions, {
 
 assert.deepEqual(gridMenu.map((item) => item.text), ["Open xTB Jobs", "xTB Settings"]);
 assert.doesNotMatch(JSON.stringify(gridMenu), /Grid Properties|grid-properties/u);
-assert.match(xtbWorkflow, /Open a specific molecule from the collection in Mol\* before running xTB Properties/);
+assert.match(xtbWorkflow, /Open one molecule from the collection before running xTB Properties/);
 
 assert.doesNotMatch(chemistryTypes, /grid-properties/u);
 assert.doesNotMatch(chemistryTypes, /\| "dock"/u);

@@ -1,9 +1,12 @@
+import { adjacentMainTabId } from "../stores/molecule-store";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getAllWindows, getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
 import type { ShellActions, ShellViewState, StructureViewerAction } from "../components/types";
+import { reopenClosedTab } from "../components/workspace-panes/pane-actions";
+import { checkpointNativePopoutForExit, nativePopoutBusy, returnNativePopout } from "../components/workspace-panes/native-scene-window";
 import { canInspectConformerEnsemble } from "../lib/conformer-ensemble";
 import { isMolstarViewerExtension } from "../lib/docking-documents";
 import { isKetcherImportExtension } from "../lib/drop-actions";
@@ -22,6 +25,8 @@ import {
   nativeOpenDocumentPaths,
 } from "../lib/native-menu-paths";
 import type { DerivedColumnKind } from "../lib/derived-columns";
+import { nativeMenuAccelerators } from "../lib/keyboard-shortcuts";
+import { useSettingsStore } from "../stores/settings-store";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 import { postGridCommand } from "../lib/viewer-bridge";
 import { decideWindowClose } from "../lib/window-close";
@@ -71,6 +76,7 @@ type UseAppNativeMenuOptions = {
     dirty: boolean;
     gridDirty: boolean;
     sourceDirty: boolean;
+    sceneDirty?: boolean;
     revision: number;
     closeTransitionActive: boolean;
   };
@@ -276,6 +282,8 @@ export function useAppNativeMenu({
     if (closingWindowRef.current || closeRequestInFlightRef.current) return;
     closeRequestInFlightRef.current = true;
     try {
+      if (nativePopoutBusy()) return;
+      if (await returnNativePopout()) return;
       const windowCount = await getAllWindows()
         .then((windows) => windows.length)
         .catch(() => 1);
@@ -291,7 +299,7 @@ export function useAppNativeMenu({
         pendingCount: barrier.pendingCount,
         closeTransitionActive: snapshot.closeTransitionActive || barrier.closeTransitionActive,
         dirty: snapshot.dirty,
-        gridDirty: snapshot.gridDirty,
+        gridDirty: snapshot.gridDirty || snapshot.sceneDirty === true,
         sourceDirty: snapshot.sourceDirty,
         confirm: () => confirmDialog("Discard unsaved changes and close this window?", {
           title: "Unsaved Changes",
@@ -307,7 +315,7 @@ export function useAppNativeMenu({
           );
         },
       });
-      if (decision === "abort") {
+      if (decision === "abort" || nativePopoutBusy()) {
         resumeWindowMutations();
         return;
       }
@@ -330,6 +338,26 @@ export function useAppNativeMenu({
       closeRequestInFlightRef.current = false;
     }
   }, []);
+
+  useEffect(() => {
+    if (isTauriRuntime()) return;
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!getWindowDocumentDirtySnapshotRef.current().dirty && !nativePopoutBusy()) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, []);
+
+  // Settings > Keyboard shortcuts: apply overrides on launch and after each edit.
+  const shortcutOverrides = useSettingsStore((store) => store.preferences.shortcutOverrides);
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    void invoke("set_menu_accelerators", { accelerators: nativeMenuAccelerators(shortcutOverrides) }).catch((error) => {
+      console.warn("Native menu shortcut sync failed", error);
+    });
+  }, [shortcutOverrides]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -376,14 +404,15 @@ export function useAppNativeMenu({
     const listener = listen<ExitPreflightRequest>(EXIT_PREFLIGHT_EVENT, ({ payload }) => {
       const barrier = sealWindowMutations();
       const snapshot = getWindowDocumentDirtySnapshotRef.current();
-      void invoke("respond_to_exit_preflight", {
+      void checkpointNativePopoutForExit().then(() => false, () => true).then(checkpointFailed => invoke("respond_to_exit_preflight", {
         requestId: payload.requestId,
         closeTransitionActive: snapshot.closeTransitionActive
+          || checkpointFailed
           || barrier.closeTransitionActive
           || barrier.pendingCount > 0,
         dirty: snapshot.dirty || barrier.pendingCount > 0,
         revision: snapshot.revision,
-      }).catch((error) => {
+      })).catch((error) => {
         console.warn("Native exit preflight response failed", error);
       });
     });
@@ -419,11 +448,8 @@ export function useAppNativeMenu({
       if (activeDocument?.renderer === "grid2d") postGridMenuCommand(activeDocument.id, command);
     };
     const selectAdjacentTab = (offset: -1 | 1) => {
-      if (state.tabs.length === 0) return;
-      const activeIndex = state.tabs.findIndex((tab) => tab.id === state.activeTabId);
-      const currentIndex = activeIndex >= 0 ? activeIndex : 0;
-      const nextIndex = (currentIndex + offset + state.tabs.length) % state.tabs.length;
-      actions.selectTab(state.tabs[nextIndex].id);
+      const nextId = adjacentMainTabId(state.tabs, state.activeTabId, offset);
+      if (nextId) actions.selectTab(nextId);
     };
 
     if (command.startsWith("analyze.") && canOpenCollectionAnalysis && activeDocument) {
@@ -629,6 +655,9 @@ export function useAppNativeMenu({
       case "file.close-all-tabs":
         await actions.clearAllDocuments();
         return;
+      case "file.reopen-closed-tab":
+        await reopenClosedTab(actions);
+        return;
       case "file.close-window":
         await closeCurrentWindow();
         return;
@@ -641,6 +670,8 @@ export function useAppNativeMenu({
       case "database.search-google-patents": actions.openDatabaseQuery("patents"); return;
       case "database.retrieve-url": actions.openDatabaseQuery("url"); return;
       case "database.retrieve-sql": actions.openDatabaseQuery("sql"); return;
+      case "view.navigate-back": actions.navigateBack(); return;
+      case "view.navigate-forward": actions.navigateForward(); return;
       case "view.toggle-sidebar": actions.toggleSidebar(); return;
       case "view.toggle-inspector": actions.toggleDock("right"); return;
       case "view.toggle-bottom-panel": actions.toggleDock("bottom"); return;

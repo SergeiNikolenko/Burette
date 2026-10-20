@@ -1,0 +1,25 @@
+/* Codex KeyboardShortcutsSettings: search + "Reset all to defaults" share one row;
+   each command row ends in the HotkeySetter group (value, edit, clear, reset). */
+/* Codex places the search 52px below the title (this margin collapses with the
+   heading's) and the list 28px below it. */
+.keyboard-shortcuts-controls { display: flex; align-items: center; gap: 8px; margin: 52px 0 28px; }
+.keyboard-shortcuts-controls .keyboard-shortcuts-search { flex: 1; min-width: 0; margin: 0; }
+.keyboard-shortcuts-reset-all { flex: 0 0 auto; }
+.keyboard-shortcuts-keystroke-search { flex-shrink: 0; color: var(--color-text-tertiary); }
+.keyboard-shortcuts-keystroke-search[aria-pressed="true"] { background: var(--color-background-primary-ghost-hover); color: var(--color-text); }
+
+.keyboard-shortcut-setter { display: flex; align-items: center; width: 384px; max-width: 100%; min-height: 32px; }
+.keyboard-shortcut-setter[data-capturing] { flex-direction: column; align-items: flex-start; justify-content: center; gap: 4px; }
+.keyboard-shortcut-value { display: flex; flex: 1; min-width: 0; align-items: center; gap: 4px; }
+.keyboard-shortcut-keys { display: flex; min-height: 32px; align-items: center; gap: 4px; color: var(--color-text-secondary); font-size: var(--text-sm); line-height: 1.42857143; cursor: var(--cursor-interaction, default); }
+.keyboard-shortcut-keys .keyboard-shortcuts-key { pointer-events: auto; height: auto; min-height: 0; padding: 4px 8px; border: 0; border-radius: 10px; box-shadow: none; background: color-mix(in srgb, currentColor 10%, transparent); color: currentColor; font-family: var(--font-sans, inherit); font-size: var(--text-xs, 12px); line-height: 1; }
+.keyboard-shortcut-unassigned { color: var(--color-text-secondary); }
+.keyboard-shortcut-actions { display: flex; flex: 0 0 auto; align-items: center; justify-content: flex-end; gap: 4px; margin-inline-start: 8px; }
+.keyboard-shortcut-capture-row { display: flex; align-items: center; gap: 8px; }
+.keyboard-shortcut-capture { width: 144px; max-width: 100%; cursor: default; caret-color: transparent; }
+.keyboard-shortcut-problem { font-size: var(--text-xs); line-height: 16px; color: var(--color-text-warning, var(--color-text-secondary)); }
+.keyboard-shortcut-problem[data-kind="invalid"] { color: var(--color-text-danger); }
+
+@container settings-panel (max-width: 520px) {
+  .keyboard-shortcut-setter { width: 100%; }
+}

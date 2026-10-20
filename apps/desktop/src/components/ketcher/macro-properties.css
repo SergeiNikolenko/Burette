@@ -1,0 +1,40 @@
+/* Ketcher 3.18 property results: keep chemistry, units and editing handlers;
+   replace the fixed-height nested cards with a content-sized inspector. */
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] {
+  height:auto;max-height:40vh;overflow:auto;padding:8px;
+  display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;
+  font:400 13px/20px var(--font-sans);
+}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .eifx56c29 {display:none;}
+/* With no selection upstream leaves the formula header empty. Collapse the
+   entire grid cell so the canvas recovers the space; calculation stays on. */
+.ketcher-editor-shell .e1pv9pa3:has([data-testid="macromolecule-properties-window"] > .eifx56c26:empty) {display:none;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .eifx56c26 {height:auto;min-height:32px;padding:0;flex-wrap:wrap;gap:8px;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] :is(.eifx56c25,.eifx56c23) {font-size:13px;font-weight:500;padding:0;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .eifx56c24 {height:auto;gap:8px;border-color:var(--border);padding-left:8px;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .eifx56c22 {display:contents;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] [role="tabpanel"] {grid-column:1/-1;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] :is([role="tabpanel"],.e1rrs7vg0,[class*="TabPanel-module_tabPanelBox"]) {height:auto;min-height:0;background:transparent;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .eifx56c21 {padding:0;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .MuiTabs-root {min-height:28px;align-self:center;padding:0;border:0;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .MuiTabs-flexContainer {justify-content:flex-start;gap:4px;padding:0;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .MuiTab-root {min-width:0;min-height:28px;height:28px;padding:4px 12px;border:0;border-radius:var(--radius-md);font:500 13px/20px var(--font-sans);}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] :is(.MuiTabs-indicator,.MuiTouchRipple-root,.e1rrs7vg1) {display:none;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .MuiTab-root:focus-visible {outline:2px solid var(--ring);outline-offset:-2px;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] :is(.eifx56c14,.eifx56c17) {height:auto;min-height:0;flex-wrap:wrap;justify-content:flex-start;gap:8px;padding:0;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .eifx56c12 {flex-wrap:wrap;gap:6px;}
+/* Upstream marks unavailable scientific inputs on their owning row. */
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .eifx56c12[disabled] {display:none;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] :is(.eifx56c14,.eifx56c17) > div:empty {display:none;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .eifx56c3 {height:auto;min-height:0;display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .eifx56c2 {flex:none;box-sizing:border-box;width:auto;min-width:64px;height:28px;gap:16px;padding:4px 8px;border:1px solid var(--border);background:var(--muted);}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .eifx56c2[disabled] {display:none;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .MuiInputBase-root {min-height:28px;background:var(--background);color:var(--foreground);font:inherit;border-radius:var(--radius-md);}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .MuiSelect-select {padding:4px 28px 4px 8px;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .MuiSelect-icon {width:16px;height:16px;right:6px;top:calc(50% - 8px);}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .MuiSelect-icon path {fill:currentColor;}
+.ketcher-editor-shell [data-testid="macromolecule-properties-window"] .MuiOutlinedInput-notchedOutline {border-color:var(--input);}
+
+@container macro-properties (max-width: 440px) {
+  .ketcher-editor-shell [data-testid="macromolecule-properties-window"] {grid-template-columns:minmax(0,1fr);}
+}

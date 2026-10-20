@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { Dialog } from "radix-ui";
 import { invoke } from "@tauri-apps/api/core";
+import { desktopDir, join } from "@tauri-apps/api/path";
 import { save } from "@tauri-apps/plugin-dialog";
 import { isTauriRuntime } from "../../lib/tauri";
 import { basename } from "../../lib/sidebar-projects";
@@ -9,23 +9,16 @@ import { useMoleculeStore } from "../../stores/molecule-store";
 import { useShellStore } from "../../stores/shell-store";
 import type { MenuItemSpec } from "../menu-types";
 import type { ShellActions, ShellViewState } from "../types";
-import { useAppShellPortalContainer } from "../ui/portal-container";
-import { CloseIcon } from "../close-icon";
+import { FileOperationDialog, type FileOperationRequest as Request } from "../file-operation-dialogs";
 
-type Request =
-  | { operation: "rename" | "renameFolder" | "createFolder"; path: string; name: string }
-  | { operation: "duplicate" | "trash" | "trashFolder"; path: string }
-  | { operation: "saveCopy" | "moveInto"; path: string; destination: string };
 type FileMenus = (path: string, kind?: "file" | "folder" | "project") => MenuItemSpec[];
 const FileOperationsContext = createContext<FileMenus>(() => []);
-const labels = { rename: "Rename File", duplicate: "Duplicate File", trash: "Move to Trash", saveCopy: "Save File Copy", renameFolder: "Rename Folder", createFolder: "New Folder", trashFolder: "Move Folder to Trash", moveInto: "Move to Folder" };
 
 export function useSidebarFileMenus() { return useContext(FileOperationsContext); }
 
 export function SidebarFileOperations({ state, actions, children }: {
   state: ShellViewState; actions: ShellActions; children: ReactNode;
 }) {
-  const portalContainer = useAppShellPortalContainer();
   const [request, setRequest] = useState<Request | null>(null);
   const [name, setName] = useState("");
   const [error, setError] = useState("");
@@ -54,7 +47,9 @@ export function SidebarFileOperations({ state, actions, children }: {
           return false;
         }
       }
-      const output = await invoke<string | null>("operate_sidebar_file", { request: next });
+      const output = isTauriRuntime()
+        ? await invoke<string | null>("operate_sidebar_file", { request: next })
+        : await browserFileOperation(next);
       committed = true;
       if (changesSource) {
         const store = useMoleculeStore.getState();
@@ -92,7 +87,8 @@ export function SidebarFileOperations({ state, actions, children }: {
     } catch (cause) {
       // Trash and Duplicate run without a dialog, so a failure opens one to report it.
       setRequest(next);
-      setError(String(cause));
+      console.error("File operation failed", cause);
+      setError("Could not complete this file operation. Try again.");
       if (!committed && changesSource && wasOpen.length) await actions.openPaths(wasOpen.flatMap(tab => "path" in tab.location ? [tab.location.path] : []));
       return false;
     } finally {
@@ -116,16 +112,17 @@ export function SidebarFileOperations({ state, actions, children }: {
   }, []);
 
   const choose = (next: Request) => {
+    if (running.current) return;
     setError("");
     setName("name" in next ? next.name : "");
     setRequest(next);
   };
   const menus: FileMenus = (path, kind = "file") => {
-    if (!isTauriRuntime()) return [];
+    if ((!isTauriRuntime() && !state.buildInfo.isBrowserDev) || !path.startsWith("/")) return [];
     if (kind !== "file") return [
-      ...(kind === "folder" ? [{ kind: "item" as const, id: "rename-folder", text: "Rename…", action: () => choose({ operation: "renameFolder", path, name: basename(path) }) }] : []),
+      { kind: "item", id: "rename-folder", text: "Rename folder…", action: () => choose({ operation: "renameFolder", path, name: basename(path) }) },
       { kind: "item", id: "new-folder", text: "Folder…", action: () => choose({ operation: "createFolder", path, name: "Untitled Folder" }) },
-      ...(kind === "folder" ? [{ kind: "item" as const, id: "trash-folder", text: "Move to Trash", action: () => { void run({ operation: "trashFolder", path }); } }] : []),
+      { kind: "item", id: "trash-folder", text: "Move to Trash", variant: "destructive", action: () => { void run({ operation: "trashFolder", path }); } },
     ];
     const document = state.documents.find(document => document.path === path);
     const dirty = Boolean(document && state.dirtyGridDocuments.has(document.id));
@@ -133,55 +130,40 @@ export function SidebarFileOperations({ state, actions, children }: {
       { kind: "item", id: "rename-file", text: "Rename…", action: () => choose({ operation: "rename", path, name: basename(path) }) },
       { kind: "item", id: "duplicate-file", text: "Duplicate", disabled: dirty,
         action: () => { void run({ operation: "duplicate", path }); } },
-      { kind: "item", id: "save-file-copy", text: "Save File Copy As…", disabled: dirty, action: async () => {
+      ...(isTauriRuntime() ? [{ kind: "item" as const, id: "save-file-copy", text: "Save file copy as…", disabled: dirty, action: async () => {
         try {
-          const destination = await save({ title: "Save File Copy", defaultPath: path });
+          const defaultPath = path.split("/").includes("ssh-previews") ? await join(await desktopDir(), basename(path)) : path;
+          const destination = await save({ title: "Save File Copy", defaultPath });
           if (destination) await run({ operation: "saveCopy", path, destination });
         } catch (cause) {
           choose({ operation: "saveCopy", path, destination: "" });
-          setError(String(cause));
+          console.error("Save file dialog failed", cause);
+          setError("Could not choose a destination. Try again.");
         }
-      } },
+      } }] : []),
       { kind: "separator" },
       // Like Finder, Move to Trash needs no confirmation: the item stays recoverable in Trash.
-      { kind: "item", id: "trash-file", text: "Move to Trash", action: () => { void run({ operation: "trash", path }); } },
+      { kind: "item", id: "trash-file", text: "Move to trash", variant: "destructive", action: () => { void run({ operation: "trash", path }); } },
     ];
   };
-  const renaming = request?.operation === "rename" || request?.operation === "renameFolder";
-  const needsName = request !== null && "name" in request;
-  const invalidName = needsName && (!name.trim() || name !== name.trim() || /[/\\\0:]/.test(name) || name === "." || name === "..");
-
-  const dismiss = () => { if (!busy) { setRequest(null); } };
+  const dismiss = () => { if (!running.current) setRequest(null); };
   return <FileOperationsContext.Provider value={menus}>
     {children}
-    <Dialog.Root open={request !== null} onOpenChange={open => { if (!open) dismiss(); }}>
-      <Dialog.Portal container={portalContainer}>
-        <Dialog.Overlay className="radix-dialog-overlay" />
-        <Dialog.Content className={`radix-dialog file-operation-dialog${renaming ? " file-operation-dialog-rename" : ""}`} onEscapeKeyDown={event => { if (busy) event.preventDefault(); }}>
-          <form onSubmit={event => {
-            event.preventDefault();
-            if (request && !invalidName && !busy) void run(needsName ? { ...request, name } as Request : request);
-          }}>
-            <div className="radix-dialog-header"><Dialog.Title>{request ? labels[request.operation] : "File"}</Dialog.Title>
-              <Dialog.Close asChild><button type="button" className="radix-dialog-close" aria-label="Close file operation" disabled={busy}><CloseIcon size={14} /></button></Dialog.Close></div>
-            <div className="radix-dialog-body">
-              <Dialog.Description className={renaming ? "sr-only" : "radix-dialog-subline"}>{(request?.operation === "trash" || request?.operation === "trashFolder")
-                ? `“${basename(request.path)}” can be restored from Trash.`
-                : request?.path}</Dialog.Description>
-              {needsName ? <label className="calculated-column-field"><span className={renaming ? "sr-only" : undefined}>Name</span><input aria-label="File or folder name"
-                value={name} onChange={event => setName(event.target.value)} onFocus={event => event.target.select()} disabled={busy} /></label> : null}
-              {invalidName ? <p role="alert">Enter a name without path separators.</p> : null}
-              {error ? <p role="alert">{error}</p> : null}
-            </div>
-            <div className="radix-dialog-actions">
-              <button type="button" className="dock-action" disabled={busy} onClick={dismiss}>Cancel</button>
-              {request ? <button type="submit" className="dock-action calculate-properties-run" disabled={busy || Boolean(invalidName)}>
-                {busy ? "Working…" : renaming ? "Save" : request ? labels[request.operation] : "Apply"}
-              </button> : null}
-            </div>
-          </form>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <FileOperationDialog request={request} name={name} onNameChange={setName} error={error} busy={busy} onDismiss={dismiss}
+      onRun={next => {
+        if (next.operation === "saveCopy" && !next.destination) {
+          const item = menus(next.path).find(item => item.kind === "item" && item.id === "save-file-copy");
+          if (item?.kind === "item") void item.action?.();
+        } else void run(next);
+      }} />
   </FileOperationsContext.Provider>;
+}
+
+async function browserFileOperation(request: Request): Promise<string | null> {
+  const response = await fetch("/__burette/sidebar-file-operation", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error ?? "File operation failed.");
+  return result.path;
 }

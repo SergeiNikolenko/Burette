@@ -209,3 +209,57 @@ export function xtbOperationLabel(operation: XtbOperation) {
       return "xTB Metadynamics";
   }
 }
+
+export const XTB_SOLVENT_OPTIONS = [
+  "none",
+  "water",
+  "acetone",
+  "acetonitrile",
+  "aniline",
+  "benzaldehyde",
+  "benzene",
+  "ch2cl2",
+  "chcl3",
+  "cs2",
+  "dioxane",
+  "dmf",
+  "dmso",
+  "ether",
+  "ethylacetate",
+  "furane",
+  "hexane",
+  "methanol",
+  "nitromethane",
+  "octanol",
+  "phenol",
+  "toluene",
+  "thf",
+];
+
+// Only the tokens whose spelling is not already the chemical name.
+export const XTB_SOLVENT_LABELS: Record<string, string> = {
+  none: "Gas phase",
+  ch2cl2: "Dichloromethane",
+  chcl3: "Chloroform",
+  cs2: "Carbon disulfide",
+  dmf: "DMF",
+  dmso: "DMSO",
+  ether: "Diethyl ether",
+  ethylacetate: "Ethyl acetate",
+  furane: "Furan",
+  nitromethane: "Nitromethane",
+  thf: "THF",
+  ...Object.fromEntries(["water", "acetone", "acetonitrile", "aniline", "benzaldehyde", "benzene", "dioxane", "hexane", "methanol", "octanol", "phenol", "toluene"]
+    .map((solvent) => [solvent, solvent.charAt(0).toUpperCase() + solvent.slice(1)])),
+};
+
+// Engine tokens are what the executable wants; these are what a reader wants.
+export const XTB_METHOD_LABELS: Record<string, string> = {
+  gfn2: "GFN2", gfn1: "GFN1", gfn0: "GFN0", gfnff: "GFN-FF",
+};
+export const XTB_OPT_LEVEL_LABELS: Record<string, string> = {
+  loose: "Loose", normal: "Normal", tight: "Tight", verytight: "Very tight",
+};
+export const XTB_SOLVATION_LABELS: Record<string, string> = {
+  none: "None", alpb: "ALPB", gbsa: "GBSA", cosmo: "COSMO", cpcmx: "CPCM-X",
+};

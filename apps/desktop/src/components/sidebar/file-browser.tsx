@@ -1,5 +1,7 @@
 import { useProjectOrganization } from "./project-organization";
-import { Plus } from "../ui/app-icons";
+import { Plus, ChevronRight, DotsHorizontal, X } from "../ui/app-icons";
+import { Button } from "../ui/button";
+import { FolderExpandCollapseIcon } from "./folder-expand-collapse-icon";
 import { SshProjectDialog } from "../ssh/ssh-project-dialog";
 import { SshProjects } from "../ssh/ssh-projects";
 import { useSshProjects } from "../../lib/ssh-projects";
@@ -7,11 +9,11 @@ import { sidebarCreationItems } from "./context-actions";
 import { showNativeContextMenu } from "../native-context-menu";
 import { SidebarTooltip } from "./sidebar-tooltip";
 import { useDropHighlightReset } from "../../hooks/use-drop-highlight-reset";
-import { useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useMemo, useState, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Search as Search01Icon } from "@/components/ui/app-icon-data";
 import { AnimatedOrbitIcon } from "../ui/animated-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { filterSidebarProjects } from "../../lib/sidebar-projects";
+import { filterSidebarProjects, sortSidebarProjects } from "../../lib/sidebar-projects";
 import { hasStructureDrag, readStructureDragPayload } from "../../lib/structure-drag";
 import { isWebDemoWorkspace, webDemoProjectRoot } from "../../lib/web-demo-workspace";
 import { runShellDropActionChoices, shellDropActionChoices } from "../drop-action-executor";
@@ -21,14 +23,17 @@ import { useShellStore } from "../../stores/shell-store";
 import { useWorkspaceHistoryStore } from "../../stores/workspace-history-store";
 import type { ShellActions, ShellViewState } from "../types";
 import { ProjectGroup, ProjectItem } from "./file-tree-node";
+import { SCREEN_ENTRIES, openScreen } from "../workspace-panes/pane-actions";
+import { TabKindIcon } from "../editor-area/tab-kind-icon";
 import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
+import { useWorkspaceMenus } from "../workspace-menus";
 
 const SIDEBAR_TREE_ROW_SELECTOR = ".project-group-row, .project-folder-row, [data-sidebar-structure-path]";
 
 // DOM-based tree keyboard navigation: move focus across visible rows with the
 // arrow keys, expand/collapse the focused folder with Right/Left, and jump with
 // Home/End. Rows inside a collapsed subtree ([data-expanded="false"]) are skipped.
-function handleSidebarTreeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+function handleSidebarTreeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>, select: ReturnType<typeof useWorkspaceMenus>["select"]) {
   if (!["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
   const rows = Array.from(
     event.currentTarget.querySelectorAll<HTMLElement>(SIDEBAR_TREE_ROW_SELECTOR),
@@ -72,6 +77,8 @@ function handleSidebarTreeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
   if (nextRow && nextRow !== active) {
     event.preventDefault();
     nextRow.focus();
+    const path = nextRow.dataset.sidebarStructurePath;
+    if (event.shiftKey && path) select(path, { ...event, currentTarget: nextRow });
   }
 }
 
@@ -82,6 +89,7 @@ export function FileBrowser({
   state: ShellViewState;
   actions: ShellActions;
 }) {
+  const menus = useWorkspaceMenus();
   const [sshDialogOpen, setSshDialogOpen] = useState(false);
   const sshProjects = useSshProjects();
   const hiddenProjectRoots = useShellStore((store) => store.hiddenProjectRoots);
@@ -92,8 +100,14 @@ export function FileBrowser({
   const hideProjectPreviews = state.buildInfo.isAgentShell && !state.workspacePath;
   const sidebarQuery = state.sidebarQuery.trim();
   const hasSidebarQuery = sidebarQuery.length > 0;
-  const visibleProjects = hideProjectPreviews ? [] : filterSidebarProjects(state.sidebarProjects, state.sidebarQuery).sort((a, b) => organization.sort === "priority" ? Number(b.isPinned) - Number(a.isPinned) : organization.sort === "recent" ? Math.max(0, ...b.items.map(i => i.openedAt ?? 0)) - Math.max(0, ...a.items.map(i => i.openedAt ?? 0)) : 0);
-  const pinnedItems = visibleProjects.flatMap((project) => project.items.filter((item) => item.isPinned));
+  const visibleProjects = useMemo(() => hideProjectPreviews ? [] : sortSidebarProjects(
+    filterSidebarProjects(state.sidebarProjects, state.sidebarQuery), organization.sort,
+  ), [hideProjectPreviews, state.sidebarProjects, state.sidebarQuery, organization.sort]);
+  const pinnedItems = useMemo(() => visibleProjects.flatMap((project) => project.items.filter((item) => item.isPinned)), [visibleProjects]);
+  const pinnedProjects = visibleProjects.filter((project) => project.isPinned);
+  const recentProjects = visibleProjects.filter((project) => !project.isPinned);
+  const hasPinned = pinnedProjects.length > 0 || pinnedItems.length > 0
+    || (!hideProjectPreviews && sshProjects.some((project) => project.pinned && `${project.name} ${project.host} ${project.root}`.toLowerCase().includes(sidebarQuery.toLowerCase())));
   const pinnedExpanded = pinnedOpen || hasSidebarQuery;
   const projectsExpanded = state.projectsOpen || hasSidebarQuery;
   const visibleProjectIds = visibleProjects.map((project) => project.id);
@@ -162,14 +176,28 @@ export function FileBrowser({
             aria-label="Search commands and structures"
             aria-haspopup="dialog"
           >
-            <HugeiconsIcon icon={Search01Icon} size={16} color="currentColor" strokeWidth={2} />
+            <HugeiconsIcon icon={Search01Icon} size={16} strokeWidth={2} />
           </button>
         </SidebarTooltip>
       </div>
+      {menus.batch?.progress && <div className="flex items-center gap-2 px-3 py-1" role="status" aria-live="polite">
+        <span className="min-w-0 flex-1 truncate text-sm tabular-nums">Opening {menus.batch.progress.completed} of {menus.batch.progress.total}…</span>
+        <Button variant="ghost" size="icon-xs" aria-label="Cancel opening files" onClick={menus.batch.cancel}><X size={14} aria-hidden="true" /></Button>
+      </div>}
+      {/* Keep secondary screens in the new-tab menu and pane switchers. */}
+      {SCREEN_ENTRIES.filter(entry => entry.location.kind === "launcher").map(entry => {
+        const current = !state.activeTab?.pane && state.activeTab?.location.kind === entry.location.kind;
+        return <button key={entry.id} type="button" className="sidebar-tool-row" aria-current={current ? "page" : undefined}
+          onClick={() => openScreen(entry.location)}>
+          <span className="sidebar-tool-icon" aria-hidden="true"><TabKindIcon location={entry.location} state={state} /></span>
+          <span className="sidebar-tool-label">{entry.text}</span>
+        </button>;
+      })}
       <SidebarTooltip label="Open Ketcher">
         <button
           type="button"
           className="sidebar-tool-row"
+          aria-current={!state.activeTab?.pane && state.activeTab?.location.kind === "ketcher" ? "page" : undefined}
           data-file-drop-zone="ketcher"
           draggable
           onMouseDown={ketcherDrag.onMouseDown}
@@ -189,10 +217,10 @@ export function FileBrowser({
           <span className="sidebar-tool-label">Ketcher</span>
         </button>
       </SidebarTooltip>
-      {pinnedItems.length > 0 && (
-        <section className="sidebar-section pinned-section" aria-label="Pinned structures">
+      {hasPinned && (
+        <section className="sidebar-section pinned-section" aria-label="Pinned">
           <div className="sidebar-section-header">
-            <SidebarTooltip label={pinnedExpanded ? "Collapse pinned structures" : "Expand pinned structures"}>
+            <SidebarTooltip label={pinnedExpanded ? "Collapse pinned" : "Expand pinned"}>
               <button
                 type="button"
                 className="sidebar-section-title-button"
@@ -202,16 +230,21 @@ export function FileBrowser({
               >
                 <span>Pinned</span>
                 <span className={pinnedExpanded ? "sidebar-section-chevron expanded" : "sidebar-section-chevron"} aria-hidden="true">
-                  <ChevronIcon />
+                  <ChevronRight size={14} aria-hidden />
                 </span>
               </button>
             </SidebarTooltip>
           </div>
           {pinnedExpanded && (
-            <div className="pinned-structures" role="list" id="sidebar-pinned-tree">
+            <div className="project-tree pinned-structures" role="tree" aria-multiselectable="true" id="sidebar-pinned-tree" onKeyDown={event => handleSidebarTreeKeyDown(event, menus.select)}>
+              {pinnedProjects.map((project) => (
+                <ProjectGroup key={project.id} project={project} state={state} actions={actions}
+                  expandFoldersByDefault={isWebDemoWorkspace() && project.rootPath === webDemoProjectRoot()} />
+              ))}
               {pinnedItems.map((item) => (
                 <ProjectItem key={`pinned:${item.key}`} item={item} state={state} actions={actions} nested={false} />
               ))}
+              <SshProjects actions={actions} state={state} query={sidebarQuery} organization={organization.organization} sort={organization.sort} section="pinned" />
             </div>
           )}
         </section>
@@ -228,7 +261,7 @@ export function FileBrowser({
           >
             <span>Projects</span>
             <span className={projectsExpanded ? "sidebar-section-chevron expanded" : "sidebar-section-chevron"} aria-hidden="true">
-              <ChevronIcon />
+              <ChevronRight size={14} aria-hidden />
             </span>
           </button>
 
@@ -238,7 +271,7 @@ export function FileBrowser({
             aria-label={allVisibleProjectsExpanded ? "Collapse all project folders" : "Expand all project folders"}
             onClick={toggleAllProjectFolders}
           >
-            <ExpandCollapseIcon collapsed={allVisibleProjectsExpanded} />
+            <FolderExpandCollapseIcon collapse={allVisibleProjectsExpanded} />
           </button>
           <NativeDropdownMenu
             items={[
@@ -247,7 +280,7 @@ export function FileBrowser({
               {
                 kind: "item",
                 id: "add-project-folder",
-                text: "Add Project Folder...",
+                text: "Add project folder…",
                 action: () => {
                   void actions.chooseWorkspace();
                 },
@@ -257,7 +290,7 @@ export function FileBrowser({
                 ? {
                     kind: "item",
                     id: "show-hidden-files",
-                    text: "Show Hidden Files",
+                    text: "Show hidden files",
                     action: () => {
                       // One history entry, so Cmd+Z hides them again in one step.
                       const history = useWorkspaceHistoryStore.getState();
@@ -269,7 +302,7 @@ export function FileBrowser({
                 : {
                     kind: "item",
                     id: "hide-all-files",
-                    text: "Hide All Files",
+                    text: "Hide all files",
                     disabled: state.sidebarProjects.length === 0,
                     action: () => {
                       // Group the per-project removals so one Cmd+Z restores them all.
@@ -284,7 +317,7 @@ export function FileBrowser({
               {
                 kind: "item",
                 id: "close-all-tabs",
-                text: "Close All Tabs",
+                text: "Close all tabs",
                 action: actions.clearAllDocuments,
               },
             ]}
@@ -294,7 +327,7 @@ export function FileBrowser({
                 className="sidebar-section-menu-button"
                 aria-label="Project options"
               >
-                <MoreIcon />
+                <DotsHorizontal size={16} aria-hidden />
               </button>
             )}
           />
@@ -306,9 +339,9 @@ export function FileBrowser({
               {hasSidebarQuery ? "No matching projects or structures" : "No project structures yet"}
             </div>
           ) : (
-            <div className="project-tree" role="tree" id="sidebar-projects-tree" onKeyDown={handleSidebarTreeKeyDown}>
-              {organization.organization === "connection" && visibleProjects.length > 0 && <div className="ssh-project-section-title">This computer</div>}
-              {visibleProjects.map((project) => (
+            <div className="project-tree" role="tree" aria-multiselectable="true" id="sidebar-projects-tree" onKeyDown={event => handleSidebarTreeKeyDown(event, menus.select)}>
+              {organization.organization === "connection" && recentProjects.length > 0 && <div className="ssh-project-section-title">This computer</div>}
+              {recentProjects.map((project) => (
                 <ProjectGroup
                   key={project.id}
                   project={project}
@@ -317,7 +350,7 @@ export function FileBrowser({
                   expandFoldersByDefault={isWebDemoWorkspace() && project.rootPath === webDemoProjectRoot()}
                 />
               ))}
-              <SshProjects actions={actions} state={state} query={sidebarQuery} organization={organization.organization} sort={organization.sort} />
+              <SshProjects actions={actions} state={state} query={sidebarQuery} organization={organization.organization} sort={organization.sort} section="recent" />
             </div>
           )
         )}
@@ -325,41 +358,5 @@ export function FileBrowser({
       )}
       {sshDialogOpen && <SshProjectDialog open onOpenChange={setSshDialogOpen} onLocal={actions.chooseWorkspace} />}
     </ScrollFade>
-  );
-}
-
-function ExpandCollapseIcon({ collapsed }: { collapsed: boolean }) {
-  return collapsed ? (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M3.5 3.5L6.9 6.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M6.9 4.7V6.9H4.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M12.5 12.5L9.1 9.1" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M9.1 11.3V9.1H11.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ) : (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M6.9 6.9L3.5 3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M3.5 5.7V3.5H5.7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M9.1 9.1L12.5 12.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M12.5 10.3V12.5H10.3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function ChevronIcon() {
-  return (
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-      <path d="M3.5 2L6.5 5L3.5 8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function MoreIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <circle cx="4" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="8" cy="8" r="1.2" fill="currentColor" />
-      <circle cx="12" cy="8" r="1.2" fill="currentColor" />
-    </svg>
   );
 }

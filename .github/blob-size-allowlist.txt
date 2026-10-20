@@ -121,3 +121,31 @@ plugins/burette-agent/browser-shell-dist/assets/molstar-B7BC_Jy4.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-CtZdJnTM.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-kixYkB-1.js
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-C-RITij7.js
+
+# Reviewed packaged runtime rebuilt for 2026.10.1 scene/shell responsiveness.
+plugins/burette-agent/browser-shell-dist/assets/dist-BJxoZHnw.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-DEjxfZRv.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-BudWj4Vg.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-BaKJqiW9.js
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-Bjn0_yxY.js
+
+# Reviewed generated workspace, syntax workers and shared React viewer controls
+# for 2026.10.2; exact paths keep new oversized assets subject to review.
+PreviewExtension/Web/grid-ui.js
+PreviewExtension/Web/native-viewer-menus.js
+plugins/burette-agent/browser-shell-dist/assets/Miew.module-DAEFDz7-.js
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-CHKWdUdZ.js
+plugins/burette-agent/browser-shell-dist/assets/code-viewer-syntax.worker-TYsdnh1J.js
+plugins/burette-agent/browser-shell-dist/assets/dist-DJYlLa16.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-CclVZaGp.js
+plugins/burette-agent/browser-shell-dist/assets/index-BFWBKSJu.css
+plugins/burette-agent/browser-shell-dist/assets/index.modern-BsH_I9Tq.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-code-highlight.worker-68ZxMVXb.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-PtH0EgUY.js
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-COOn5J7Z.js
+plugins/burette-agent/browser-shell-dist/assets/native-viewer-menus-B9M0qmlJ.js
+plugins/burette-agent/browser-shell-dist/assets/ruby-Di5fYh6S.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-DEy_k-ZM.js
+plugins/burette-agent/browser-shell-dist/assets/wasm-BnjxR4X6.js
+plugins/burette-agent/preview-web/grid-ui.js
+plugins/burette-agent/preview-web/native-viewer-menus.js

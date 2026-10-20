@@ -15,11 +15,12 @@ test('changing a preset updates the shared hint without restoring a second nativ
   const update = runInNewContext(source.slice(start, end) + '\nupdateMolstarPresetControl', {
     window, document, activeConfig: {}, molstarPresetOption: () => ({ value: 'spacefill', label: 'Spacefill by Element' }),
     populateMolstarPresetMenu() {}, updateMolstarAppearanceControl() {}, configuredMolstarAppearance() {},
+    setTooltipLabel() {},
   });
   update(document.getElementById('buret-toolbar'), 'spacefill');
   const button = document.querySelector('button');
   assert.equal(button.textContent, 'Style: Spacefill by Element');
-  assert.equal(button.dataset.buretHint, 'Mol* preset: Spacefill by Element');
+  assert.equal(button.dataset.buretHint, 'Style: Spacefill by Element');
   assert.equal(button.hasAttribute('title'), false);
   await window.happyDOM.close();
 });
@@ -32,18 +33,34 @@ test('shared toolbar and rail show explanatory hints on pointer and keyboard foc
   const window = new Window();
   const { document } = window;
   document.body.innerHTML = '<div id="buret-toolbar"><button aria-label="Edit"><span class="buret-tooltip">Edit molecule in Ketcher</span></button></div><div class="buret-viewport-rail"><button aria-label="Save a screenshot"></button></div><button class="buret-corner-toggle" title="Scene tree (⌘T)"><span class="buret-tooltip">Scene tree (⌘T)</span></button>';
-  runInNewContext(source.slice(start, end), { window, document });
+  const css = await readFile(new URL('../PreviewExtension/Web/viewer-runtime.css', import.meta.url), 'utf8');
+  const stylesheet = document.createElement('style');
+  stylesheet.textContent = css;
+  document.head.append(stylesheet);
+  runInNewContext(source.slice(start, end), { window, document, MutationObserver: window.MutationObserver });
   const [edit, camera] = document.querySelectorAll('button');
+  edit.setAttribute('aria-describedby', 'existing-description');
   edit.dispatchEvent(new window.Event('pointerover', { bubbles: true }));
   const hint = document.querySelector('.buret-molstar-tooltip');
   assert.equal(hint.textContent, 'Edit molecule in Ketcher');
   assert.equal(hint.getAttribute('aria-hidden'), 'false');
+  assert.deepEqual([window.getComputedStyle(hint).opacity, window.getComputedStyle(hint).visibility], ['1', 'visible']);
+  assert.equal(edit.getAttribute('aria-describedby'), `existing-description ${hint.id}`);
   edit.dispatchEvent(new window.Event('pointerout', { bubbles: true }));
   assert.equal(hint.getAttribute('aria-hidden'), 'true');
+  assert.deepEqual([window.getComputedStyle(hint).opacity, window.getComputedStyle(hint).visibility], ['0', 'hidden']);
+  assert.equal(edit.getAttribute('aria-describedby'), 'existing-description');
   camera.dispatchEvent(new window.Event('focusin', { bubbles: true }));
   assert.equal(hint.textContent, 'Save a screenshot');
   assert.ok(hint.classList.contains('visible'));
+  assert.deepEqual([window.getComputedStyle(hint).opacity, window.getComputedStyle(hint).visibility], ['1', 'visible']);
   camera.dispatchEvent(new window.Event('focusout', { bubbles: true }));
+  assert.equal(hint.classList.contains('visible'), false);
+  assert.equal(camera.hasAttribute('aria-describedby'), false);
+  // React controls own a Radix tooltip: the legacy event bridge must not show
+  // a second bubble over their portalled description.
+  camera.dataset.tooltipTrigger = '';
+  camera.dispatchEvent(new window.Event('focusin', { bubbles: true }));
   assert.equal(hint.classList.contains('visible'), false);
   const tree = document.querySelector('.buret-corner-toggle');
   tree.dispatchEvent(new window.Event('pointerover', { bubbles: true }));
@@ -52,7 +69,12 @@ test('shared toolbar and rail show explanatory hints on pointer and keyboard foc
   assert.equal(document.querySelectorAll('.buret-molstar-tooltip').length, 1);
   tree.dispatchEvent(new window.Event('pointerdown', { bubbles: true }));
   assert.equal(hint.classList.contains('visible'), false);
-  const css = await readFile(new URL('../PreviewExtension/Web/viewer-runtime.css', import.meta.url), 'utf8');
+  // A controller relabelling the clicked control must not bring the native
+  // tooltip back while the pointer still rests on it.
+  tree.setAttribute('title', 'Hide scene tree');
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(tree.hasAttribute('title'), false);
+  assert.equal(tree.dataset.buretHint, 'Hide scene tree');
   assert.match(css, /\.buret-control-tooltips :is\([^)]*\.buret-corner-toggle\) \.buret-tooltip \{ display: none; \}/);
   window.happyDOM.abort();
 });

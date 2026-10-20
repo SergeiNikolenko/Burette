@@ -1,0 +1,3 @@
+/* Atlas ColorPalette utility anatomy, without requiring Tailwind in the viewer. */
+.atlas-color-palette { display: flex; align-items: center; justify-content: space-between; gap: 4px; user-select: none; }
+.atlas-color-palette-swatch { display: block; width: 24px; height: 24px; border-radius: 50%; }

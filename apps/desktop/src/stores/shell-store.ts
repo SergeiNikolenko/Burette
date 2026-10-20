@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
-import { workspaceStorageKey } from "../lib/window-scope";
+import { isNativePreviewWindow, workspaceStorageKey } from "../lib/window-scope";
 
 type ShellState = {
   sidebarOpen: boolean;
@@ -85,7 +85,7 @@ function persistentExpandedProjectIds(projectIds: string[], projectRoots: string
 }
 
 function normalizeSidebarWidth(width: number) {
-  return Math.max(220, Math.min(420, Math.round(width)));
+  return Math.max(240, Math.min(520, Math.round(width)));
 }
 
 function cloneJson<T>(value: T): T {
@@ -110,8 +110,8 @@ export function getShellStoreSnapshot(): ShellStoreSnapshot {
 export const useShellStore = create<ShellState>()(
   persist<ShellState, [], [], PersistedShellState>(
     (set) => ({
-      sidebarOpen: true,
-      sidebarWidth: 240,
+      sidebarOpen: !isNativePreviewWindow(),
+      sidebarWidth: 340,
       projectsOpen: true,
       projectRoots: [],
       pinnedProjectRoots: [],
@@ -270,7 +270,7 @@ export const useShellStore = create<ShellState>()(
           .filter((root) => !projectRoots.includes(root));
         return {
           ...current,
-          sidebarOpen: stored?.sidebarOpen ?? current.sidebarOpen,
+          sidebarOpen: isNativePreviewWindow() ? false : stored?.sidebarOpen ?? current.sidebarOpen,
           sidebarWidth: normalizeSidebarWidth(stored?.sidebarWidth ?? current.sidebarWidth),
           projectsOpen: stored?.projectsOpen ?? current.projectsOpen,
           projectRoots,

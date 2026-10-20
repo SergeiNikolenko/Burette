@@ -11,7 +11,7 @@ const controls: Record<string, AppIconType> = {
 // Keep chemistry glyphs and non-icon children (including shortcut labels) intact.
 export function controlIcons(children: ReactNode): ReactNode {
   return Children.map(children, (child) => {
-    if (!isValidElement<{ name?: string }>(child)) return child;
+    if (!isValidElement<{ name?: string; onClick?: unknown }>(child) || child.props.onClick) return child;
     const Icon = child.props.name ? controls[child.props.name] : undefined;
     return Icon ? <Icon className="ketcher-control-icon" size={20} aria-hidden="true" /> : child;
   });

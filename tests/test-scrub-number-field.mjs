@@ -19,6 +19,10 @@ for (const [name, value] of Object.entries({
   Element: window.Element,
   HTMLElement: window.HTMLElement,
   HTMLInputElement: window.HTMLInputElement,
+  HTMLFormElement: window.HTMLFormElement,
+  HTMLSelectElement: window.HTMLSelectElement,
+  DocumentFragment: window.DocumentFragment,
+  MutationObserver: window.MutationObserver,
   CustomEvent: window.CustomEvent,
   DOMRect: window.DOMRect,
   Event: window.Event,
@@ -216,6 +220,13 @@ await act(async () => {
       action(next) {
         menuChanges.push(next);
       },
+    }, {
+      kind: "select", id: "type", label: "Type", value: "cartoon", options: ["cartoon", "surface"],
+      action: value => menuChanges.push(value),
+    }, {
+      kind: "text", id: "name", label: "Name", value: "Ligand", action: value => menuChanges.push(value),
+    }, {
+      kind: "text", id: "source", label: "Source", value: "mini.pdb", disabled: true,
     }],
     trigger: React.createElement("button", { type: "button", "aria-label": "Open parameters" }, "Open"),
   }));
@@ -236,6 +247,27 @@ const openMenu = () => document.querySelector('[role="menu"][data-state="open"]'
 const menuSpinbutton = () => document.querySelector('[role="spinbutton"][aria-label="Iterations"]');
 assert.ok(openMenu(), "the real Radix dropdown opens");
 assert.ok(menuSpinbutton(), "the number item renders inside the open menu");
+assert.equal(document.querySelector('[aria-label="Source"]').disabled, true);
+const nameInput = document.querySelector('input[aria-label="Name"]');
+await act(async () => {
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(nameInput, "Ligand A");
+  nameInput.dispatchEvent(new window.Event("input", { bubbles: true }));
+});
+assert.equal(menuChanges.at(-1), "Ligand A");
+assert.equal(nameInput.value, "Ligand A");
+assert.ok(openMenu(), "typing in a shared input keeps the parent menu open");
+const selectTrigger = document.querySelector('[role="combobox"][aria-label="Type"]');
+assert.ok(selectTrigger, "browser select is an in-page shared picker, not a system popup");
+await act(async () => selectTrigger.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, key: "Enter" })));
+assert.ok(document.querySelector('[role="listbox"]'));
+const surface = Array.from(document.querySelectorAll('[role="option"]')).find(option => option.textContent.includes("surface"));
+await act(async () => {
+  surface.focus();
+  surface.dispatchEvent(new window.KeyboardEvent("keydown", { bubbles: true, key: "Enter" }));
+});
+assert.equal(menuChanges.at(-1), "surface");
+assert.match(selectTrigger.textContent, /surface/);
+assert.ok(openMenu(), "choosing an option keeps the parameter menu open");
 const implicitLabel = menuSpinbutton().closest("label");
 assert.equal(implicitLabel?.control, menuSpinbutton(), "the implicit label resolves to the visible control");
 

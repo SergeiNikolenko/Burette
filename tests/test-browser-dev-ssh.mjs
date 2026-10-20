@@ -1,6 +1,66 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { registerBrowserDevSshRoutes } from '../apps/desktop/vite/browser-dev/ssh.ts';
+import { SshPreviewCache } from '../apps/desktop/vite/browser-dev/ssh-preview-cache.ts';
+import { SshRequestQueue } from '../apps/desktop/vite/browser-dev/ssh-request-queue.ts';
+import { saveSshDownload } from '../apps/desktop/vite/browser-dev/ssh-download.ts';
+import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const queue = new SshRequestQueue();
+let running = 0, maximum = 0;
+const started = [];
+const results = await Promise.all(Array.from({ length: 10 }, async (_, index) => {
+  const release = await queue.acquire(new AbortController().signal);
+  running++; maximum = Math.max(maximum, running); started.push(index);
+  try { await new Promise(resolve => setTimeout(resolve, 1)); return `preview-${index}`; }
+  finally { running--; release(); release(); }
+}));
+assert.equal(maximum, 3, 'ten quick requests use at most three active channels');
+assert.deepEqual(started, Array.from({ length: 10 }, (_, index) => index), 'waiting requests keep their order');
+assert.deepEqual(results, Array.from({ length: 10 }, (_, index) => `preview-${index}`));
+const leases = await Promise.all(Array.from({ length: 3 }, () => queue.acquire(new AbortController().signal)));
+const cancelled = new AbortController();
+const waitingCancelled = assert.rejects(queue.acquire(cancelled.signal), /cancelled/);
+cancelled.abort(); await waitingCancelled;
+const waiting = Array.from({ length: 200 }, () => assert.rejects(queue.acquire(new AbortController().signal), /server closed/));
+await assert.rejects(queue.acquire(new AbortController().signal), /Too many/);
+queue.close();
+await Promise.all(waiting);
+leases.forEach(release => release());
+await assert.rejects(queue.acquire(new AbortController().signal), /server closed/);
+
+const cacheRoot = await mkdtemp(join(tmpdir(), 'burette-ssh-cache-test-'));
+try {
+  const cache = new SshPreviewCache(async () => cacheRoot);
+  const response = (fingerprint, data, unchanged = false) => Buffer.concat([Buffer.from(JSON.stringify({ fingerprint, unchanged }) + '\n'), Buffer.from(data)]);
+  const original = await cache.store('file', 'nested/mini.pdb', response('first', 'ATOM'));
+  assert.equal(await cache.known('file'), 'first');
+  assert.equal(await cache.store('file', 'nested/mini.pdb', response('first', '', true)), original);
+  const updated = await cache.store('file', 'nested/mini.pdb', response('second', 'NEW ATOM'));
+  assert.notEqual(original, updated);
+  assert.equal(await readFile(original, 'utf8'), 'ATOM', 'old versions remain readable');
+  await writeFile(updated, 'changed');
+  assert.equal(await cache.known('file'), undefined, 'changed local copies must be downloaded again');
+  await assert.rejects(cache.store('file', 'mini.pdb', response('second', '', true)), /cache changed/);
+  await assert.rejects(cache.store('file', 'mini.pdb', response('second', 'extra', true)), /Invalid/);
+  await Promise.all(Array.from({ length: 254 }, (_, i) => cache.store('key' + i, 'mini.pdb', response(String(i), ''))));
+  const last = await Promise.allSettled([cache.store('over1', 'mini.pdb', response('over1', '')), cache.store('over2', 'mini.pdb', response('over2', ''))]);
+  assert.deepEqual(last.map(item => item.status), ['rejected', 'rejected'], 'parallel admission cannot cross the 256-file bound');
+} finally { await rm(cacheRoot, { recursive: true, force: true }); }
+
+const downloadFolder = await mkdtemp(join(tmpdir(), 'burette-ssh-download-test-'));
+try {
+  await writeFile(join(downloadFolder, 'mini.pdb'), 'existing');
+  await symlink(join(downloadFolder, 'mini.pdb'), join(downloadFolder, 'mini (1).pdb'));
+  const bytes = Buffer.from([0, 255, 13, 10]);
+  const paths = await Promise.all([saveSshDownload(downloadFolder, 'nested/mini.pdb', bytes), saveSshDownload(downloadFolder, 'mini.pdb', bytes)]);
+  assert.deepEqual(paths.sort(), [join(downloadFolder, 'mini (2).pdb'), join(downloadFolder, 'mini (3).pdb')]);
+  for (const path of paths) assert.deepEqual(await readFile(path), bytes);
+  assert.equal(await readFile(join(downloadFolder, 'mini.pdb'), 'utf8'), 'existing');
+  assert.equal((await readdir(downloadFolder)).length, 4);
+} finally { await rm(downloadFolder, { recursive: true, force: true }); }
 
 let handler;
 const server = createServer((req, res) => handler(req, res));
@@ -21,6 +81,8 @@ try {
   assert.equal((await post('/list', { host: 'research', root: 'x'.repeat(9000), path: '.' })).status, 413);
   assert.equal((await post('/delete-folder', { host: '-oProxyCommand=evil', root: '~', path: 'folder' })).status, 400);
   assert.equal((await post('/delete-folder', {}, { Origin: 'http://attacker.example' })).status, 403);
+  assert.equal((await post('/download', { host: '-oProxyCommand=evil', root: '~', path: 'mini.pdb' })).status, 400);
+  assert.equal((await post('/download', {}, { Origin: 'http://attacker.example' })).status, 403);
   assert.equal((await post('/other', {})).status, 404);
   const hosts = await post('/hosts', {});
   assert.equal(hosts.status, 200);

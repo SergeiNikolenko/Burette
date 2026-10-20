@@ -1,7 +1,6 @@
-import { Orbit } from "lucide-react";
-import { ArrowLeft, Search, SettingsCog as Settings } from "@/components/ui/app-icons";
+import { ArrowLeft, Orbit, Search, SettingsCog as Settings } from "@/components/ui/app-icons";
 
-// Shared Apps SDK glyphs and the scientific Lucide Orbit keep the existing
+// Shared Apps SDK and Codex atlas glyphs keep the existing
 // CSS micro-animations in styles.css, inspired by Animate UI.
 // Hover behavior belongs to the control, not to the glyph family.
 

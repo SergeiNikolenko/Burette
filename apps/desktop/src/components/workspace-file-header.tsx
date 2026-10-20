@@ -49,33 +49,37 @@ export function WorkspaceFileHeader({ activeFile, rootPath, bandDocumentId = nul
             <span>{segments.at(-1) || activeFile.label}</span>
           </span>
         </div>
-        {fileActionsAvailable ? <button type="button" className="workspace-file-icon-button" aria-label="Copy file path"
-          onClick={() => void actions.copyPath(activeFile.path, "file")}>
-          <Copy size={16} aria-hidden />
-          <ShortcutTooltip label="Copy file path" />
-        </button> : <span className="workspace-file-unsaved">Unsaved</span>}
+        {fileActionsAvailable ? <ShortcutTooltip label="Copy file path">
+          <button type="button" className="workspace-file-icon-button" aria-label="Copy file path"
+            onClick={() => void actions.copyPath(activeFile.path, "file")}>
+            <Copy size={16} aria-hidden />
+          </button>
+        </ShortcutTooltip> : <span className="workspace-file-unsaved">Unsaved</span>}
       </div>
       {bandDocumentId ? <div className="workspace-file-band-slot" aria-hidden /> : null}
       {fileActionsAvailable ? <div className="workspace-file-open workspace-file-pill">
-        <button type="button" className="workspace-file-open-primary" aria-label={openLabel}
-          onClick={onOpen ?? (() => void actions.openPathWithDefaultApp(activeFile.path))}>
-          {defaultApplicationIconUrl ? <img src={defaultApplicationIconUrl} alt="" /> : null}
-          Open
-          <ShortcutTooltip label={openLabel} />
-        </button>
+        <ShortcutTooltip label={openLabel}>
+          <button type="button" className="workspace-file-open-primary" aria-label={openLabel}
+            onClick={onOpen ?? (() => void actions.openPathWithDefaultApp(activeFile.path))}>
+            {defaultApplicationIconUrl ? <img src={defaultApplicationIconUrl} alt="" /> : null}
+            Open
+          </button>
+        </ShortcutTooltip>
         <RadixDropdownMenu align="end" sideOffset={6} contentClassName="open-editor-menu-content workspace-file-menu"
           items={items} trigger={(
-            <button type="button" className="workspace-file-open-menu" aria-label="Open in another application">
-              <ChevronDown size={16} aria-hidden />
-              <ShortcutTooltip label="Open in another application" />
-            </button>
+            <ShortcutTooltip label="Open in another application">
+              <button type="button" className="workspace-file-open-menu" aria-label="Open in another application">
+                <ChevronDown size={16} aria-hidden />
+              </button>
+            </ShortcutTooltip>
           )} />
       </div> : null}
-      <button type="button" className="workspace-file-icon-button workspace-file-pill" aria-label="Toggle right panel" aria-pressed={rightDockOpen}
-        onClick={() => actions.toggleDock("right")}>
-        <SidebarRight size={18} aria-hidden />
-        <ShortcutTooltip label={rightDockOpen ? "Hide right panel" : "Show right panel"} />
-      </button>
+      <ShortcutTooltip label={rightDockOpen ? "Hide right panel" : "Show right panel"}>
+        <button type="button" className="workspace-file-icon-button workspace-file-pill" aria-label="Toggle right panel" aria-pressed={rightDockOpen}
+          onClick={() => actions.toggleDock("right")}>
+          <SidebarRight size={18} aria-hidden />
+        </button>
+      </ShortcutTooltip>
     </header>
   );
 }

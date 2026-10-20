@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { settingsNavGroups, type SettingsSectionId } from "../../lib/settings-sections";
-import { SidebarGlobe, Atom, Agent as Bot, FolderOpen, Keyboard, ColorTheme as Palette, Reload as RefreshCw, SettingsSlider as SlidersHorizontal, SettingsWrench as Wrench, type AppIconType as LucideIcon } from "@/components/ui/app-icons";
+import { SidebarGlobe, Atom, Flask, Stopwatch, Agent as Bot, FolderOpen, Keyboard, Sun, Reload as RefreshCw, SettingsCog, SettingsWrench as Wrench, type AppIconType as LucideIcon } from "@/components/ui/app-icons";
 import { Button } from "@/components/ui/button";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { SearchInput } from "@/components/ui/search-input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { AnimatedBackIcon, AnimatedSearchIcon } from "../ui/animated-icons";
+import { AnimatedBackIcon } from "../ui/animated-icons";
 import type { ShellActions, ShellViewState } from "../types";
 
 export function SettingsSidebar({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
@@ -25,23 +25,14 @@ export function SettingsSidebar({ state, actions }: { state: ShellViewState; act
   }, [normalizedQuery]);
 
   return (
-    <div className="settings-sidebar">
+    <nav className="settings-sidebar" aria-label="Settings">
       <div className="settings-sidebar-spacer" data-tauri-drag-region />
       <Button type="button" variant="ghost" className="settings-back-button" onClick={actions.backToApp}>
         <AnimatedBackIcon />
         <span>Back to app</span>
       </Button>
-      <InputGroup className="settings-search">
-        <InputGroupAddon>
-          <AnimatedSearchIcon />
-        </InputGroupAddon>
-        <InputGroupInput
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search settings..."
-          aria-label="Search settings"
-        />
-      </InputGroup>
+      <SearchInput className="settings-search h-9 border-0 bg-(--color-background-primary-ghost-hover) px-3" name="settingsSearch" value={query} onValueChange={setQuery}
+        placeholder="Search" aria-label="Search settings" clearLabel="Clear settings search" />
       <ScrollArea className="settings-nav-scroll">
         {visibleGroups.map((group) => (
           <section className="settings-nav-group" key={group.title} aria-label={group.title}>
@@ -59,9 +50,9 @@ export function SettingsSidebar({ state, actions }: { state: ShellViewState; act
             </div>
           </section>
         ))}
-        {visibleGroups.length === 0 ? <div className="settings-nav-empty">No matching settings</div> : null}
+        {visibleGroups.length === 0 ? <div role="status" className="settings-nav-empty">No matching settings</div> : null}
       </ScrollArea>
-    </div>
+    </nav>
   );
 }
 
@@ -94,18 +85,20 @@ function SettingsNavButton({
 }
 
 const SETTINGS_SECTION_ICONS: Record<SettingsSectionId, LucideIcon> = {
-  general: SlidersHorizontal,
-  appearance: Palette,
+  general: SettingsCog,
+  appearance: Sun,
   keyboard: Keyboard,
   structure: Atom,
   updates: RefreshCw,
   workspace: FolderOpen,
+  jobs: Stopwatch,
+  xtb: Flask,
   agent: Bot,
   connections: SidebarGlobe,
   maintenance: Wrench,
 };
 
 function SettingsItemIcon({ id }: { id: SettingsSectionId }) {
-  const Icon = SETTINGS_SECTION_ICONS[id] ?? SlidersHorizontal;
-  return <Icon size={17} strokeWidth={1.6} aria-hidden />;
+  const Icon = SETTINGS_SECTION_ICONS[id] ?? SettingsCog;
+  return <Icon size={16} aria-hidden />;
 }

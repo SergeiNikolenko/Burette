@@ -1381,6 +1381,15 @@ pub(crate) fn conformer_python_runtime_status() -> ConformerPythonRuntimeStatus 
 
 fn conformer_python_candidates() -> Vec<PythonCommand> {
     let mut candidates = Vec::new();
+    if let Some(python) = super::app_preferences::python_override() {
+        let python = python.to_string_lossy().to_string();
+        candidates.push(PythonCommand {
+            label: python.clone(),
+            command: python,
+            args: Vec::new(),
+            envs: Vec::new(),
+        });
+    }
     if let Ok(value) = env::var("BURETTE_RDKIT_PYTHON") {
         let value = value.trim();
         if !value.is_empty() {
@@ -1696,6 +1705,23 @@ fn open_text_structure_for_window_label<R: Runtime>(
     preferences: ViewerPreferences,
     reload_options: Option<ViewerReloadOptions>,
 ) -> Result<ViewerDocument, String> {
+    let output_path = write_text_structure(app, request)?;
+    open_document_for_window(
+        app,
+        window_label,
+        output_path,
+        &preferences,
+        reload_options.as_ref(),
+    )
+    .map(|document| document.into_virtual())
+}
+
+// Persist the bounded source without constructing a viewer in the caller's window.
+// A detached preview constructs its runtime once, in the destination window.
+pub(crate) fn write_text_structure<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    request: TextStructureRequest,
+) -> Result<PathBuf, String> {
     let extension = request
         .extension
         .trim()
@@ -1728,23 +1754,22 @@ fn open_text_structure_for_window_label<R: Runtime>(
         output_directory.join(safe_text_structure_file_name(&request.title, &extension));
     fs::write(&output_path, request.text)
         .map_err(|err| format!("{}: {err}", output_path.display()))?;
-    open_document_for_window(
-        app,
-        window_label,
-        output_path,
-        &preferences,
-        reload_options.as_ref(),
-    )
-    .map(|document| document.into_virtual())
+    Ok(output_path)
 }
 
 #[tauri::command]
-pub(crate) fn open_docking_document<R: Runtime>(
+pub(crate) async fn open_docking_document<R: Runtime>(
     app: tauri::AppHandle<R>,
     request: DockingDocumentRequest,
     preferences: ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
-    open_docking_document_runtime(&app, request, &preferences)
+    // File access may wait for macOS consent or remote storage. Keep the
+    // window's event loop free while preparing every structure in the scene.
+    tauri::async_runtime::spawn_blocking(move || {
+        open_docking_document_runtime(&app, request, &preferences)
+    })
+    .await
+    .map_err(|err| format!("Docking scene preparation task failed: {err}"))?
 }
 
 #[tauri::command]
@@ -3207,6 +3232,12 @@ fn sync_viewer_preferences_macos(preferences: &ViewerPreferences) -> Result<(), 
             NO
         };
         let _: () = msg_send![defaults, setBool: transparent_value forKey: transparent_key];
+        // Quick Look reads these per format before choosing the molecule grid.
+        for (key, enabled) in preferences.viewer_defaults.quick_look_grid_support() {
+            let key = autoreleased_nsstring(key)?;
+            let value = if enabled { YES } else { NO };
+            let _: () = msg_send![defaults, setBool: value forKey: key];
+        }
         let _: () = msg_send![defaults, synchronize];
     }
 
@@ -3345,6 +3376,7 @@ mod tests {
             theme_dark_editor_font: "-apple-system-body".to_string(),
             theme_dark_translucent: 20.0,
             theme_dark_contrast: 16.0,
+            viewer_defaults: Default::default(),
         }
     }
 

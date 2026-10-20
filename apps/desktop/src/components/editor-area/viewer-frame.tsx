@@ -10,25 +10,17 @@ import type {
 import { isTauriRuntime } from "../../lib/tauri";
 import { isHostedMcpWidget } from "../../lib/hosted-mcp-widget";
 import { isWebDemoHeroEmbed } from "../../lib/web-demo-workspace";
+import { useViewerPreferences } from "../../hooks/use-settings";
+import { viewerAppearanceMessage } from "../../lib/theme";
 import {
   isGridDocumentCloseTransitionActive,
   replayPendingGridCloseTransitionRequests,
 } from "../../lib/window-mutation-barrier";
 
-// A layout gesture: a separator drag, or a panel sliding open or closed.
-// `.viewer-iframe` is sized 100% x 100%, so the frames follow the panel on
-// every frame and the viewer's own chrome stays on its edges. What must not
-// happen per frame is Mol* reallocating its render targets (measured: ~30 fps
-// on a dock drag, ~50 with the canvas held), so each viewer is told to hold
-// its canvas and resize it once at the end. Freezing the whole iframe instead
-// slid the stale frame along with the panel edge: the toolbar and rail were
-// clipped, the scene drifted off centre, and everything snapped on release.
-// The gesture is reference counted because a drag can overlap a toggle slide,
-// and the shell carries `data-resizing` meanwhile so the CSS can drop pointer
-// events on the frames (an iframe under the pointer would otherwise swallow
-// the drag).
-let layoutGestureDepth = 0;
-let layoutGestureRoot: HTMLElement | null = null;
+// Frames follow the shell during panel and window gestures; only Mol* holds
+// its canvas until the final size. Keep overlapping gestures scoped per shell
+// so detached panes release independently and preserve prior resize state.
+const layoutGestures = new WeakMap<HTMLElement, { depth: number; resizing: string | null }>();
 
 function postLayoutGesture(root: HTMLElement, active: boolean) {
   for (const frame of root.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe")) {
@@ -37,21 +29,24 @@ function postLayoutGesture(root: HTMLElement, active: boolean) {
 }
 
 export function beginViewerLayoutGesture(root: HTMLElement): () => void {
-  if (layoutGestureDepth++ === 0) {
-    layoutGestureRoot = root;
+  let gesture = layoutGestures.get(root);
+  if (!gesture) {
+    gesture = { depth: 0, resizing: root.getAttribute("data-resizing") };
+    layoutGestures.set(root, gesture);
     root.setAttribute("data-resizing", "true");
     postLayoutGesture(root, true);
   }
+  gesture.depth++;
   let ended = false;
   return () => {
     if (ended) return;
     ended = true;
-    if (--layoutGestureDepth > 0) return;
-    // Posted to the frames mounted now: one that appeared mid-gesture never
-    // held its canvas, and releasing it is a no-op.
-    if (layoutGestureRoot) postLayoutGesture(layoutGestureRoot, false);
-    layoutGestureRoot?.removeAttribute("data-resizing");
-    layoutGestureRoot = null;
+    if (--gesture.depth > 0) return;
+    // Include frames mounted mid-gesture; releasing an unheld canvas is safe.
+    postLayoutGesture(root, false);
+    if (gesture.resizing === null) root.removeAttribute("data-resizing");
+    else root.setAttribute("data-resizing", gesture.resizing);
+    layoutGestures.delete(root);
   };
 }
 
@@ -83,6 +78,7 @@ export function ViewerFrame({
 }) {
   const tauriRuntime = isTauriRuntime();
   const heroEmbed = isWebDemoHeroEmbed();
+  const preferences = useViewerPreferences();
   const sandbox = viewerFrameSandbox();
   const closeTransitionActive = document.renderer === "grid2d"
     && isGridDocumentCloseTransitionActive(document.id);
@@ -115,6 +111,13 @@ export function ViewerFrame({
     active: boolean,
     identity?: SourcePreviewIdentity,
   ) => {
+    // The runtime bakes the theme of the moment it was built, and live theme
+    // changes only reach frames mounted at that time. A frame mounted later (the
+    // dock remounts after Settings) has to be told the current theme.
+    event.currentTarget.contentWindow?.postMessage({
+      source: "burette-host",
+      body: viewerAppearanceMessage(preferences),
+    }, "*");
     onViewerLoad?.(event.currentTarget, active);
     if (document.renderer === "grid2d") {
       if (readOnly) {
@@ -155,9 +158,7 @@ export function ViewerFrame({
       "data-source-preview-role": active ? "active" : "staging",
       "data-source-preview-request-id": identity?.requestId,
       "data-source-preview-revision": identity?.revision,
-      onLoad: document.renderer === "grid2d" || onViewerLoad || (!active && identity)
-        ? (event: SyntheticEvent<HTMLIFrameElement>) => handleFrameLoad(event, active, identity)
-        : undefined,
+      onLoad: (event: SyntheticEvent<HTMLIFrameElement>) => handleFrameLoad(event, active, identity),
       style: active ? undefined : {
         position: "absolute" as const,
         inset: 0,
@@ -190,9 +191,7 @@ export function ViewerFrame({
       "data-renderer": document.renderer,
       "data-read-only": readOnly ? "true" : undefined,
       name: readOnly ? "burette-read-only" : "burette-editable",
-      onLoad: document.renderer === "grid2d" || onViewerLoad
-        ? (event: SyntheticEvent<HTMLIFrameElement>) => handleFrameLoad(event, true)
-        : undefined,
+      onLoad: (event: SyntheticEvent<HTMLIFrameElement>) => handleFrameLoad(event, true),
     };
     const runtimePath = runtimePathForFrame(document.runtimePath);
     return tauriRuntime ? (

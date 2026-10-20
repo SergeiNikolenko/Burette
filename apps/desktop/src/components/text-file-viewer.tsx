@@ -17,9 +17,11 @@ import type { MarkdownOpenPaths } from "./text-file-viewer/markdown-link-navigat
 import { hasStructureTextHighlighting, structureTextHighlighting, textNumberHighlighting } from "./text-file-viewer/structure-text-highlighting";
 import { Button } from "./ui/button";
 import { Search } from "./ui/app-icons";
+import { ShortcutTooltip } from "./shortcut-tooltip";
 import { createTextSearchPanel, toggleTextSearch } from "./text-file-viewer/text-search-panel";
 import { registerTextFind } from "../lib/text-find";
 import { classifySourceEditEligibility, classifySourceShape, sourceNotEditableMessage } from "../lib/source-editing/policy";
+import { requestContextualGuide } from "./onboarding/request";
 
 const AGENT_SHELL_BUILD = import.meta.env.VITE_BURETTE_AGENT_SHELL === "1";
 
@@ -57,6 +59,8 @@ export function TextFileViewer({
   const syncingContentRef = useRef(false);
   const lastStructureSelectionKeyRef = useRef<string | null>(null);
   const lineDragStartRef = useRef<{ from: number; to: number } | null>(null);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const editRequestedRef = useRef(false);
   const languageCompartment = useMemo(() => new Compartment(), [document.id]);
   const markdownDocument = isMarkdown(document);
   const maestroDocument = isMaestroText(document);
@@ -294,10 +298,17 @@ export function TextFileViewer({
     };
   }, [document, languageCompartment, nonEditorDocument]);
 
+  // Explain editing once the session the user asked for has actually opened.
+  useEffect(() => {
+    if (!editable || !editRequestedRef.current) return;
+    editRequestedRef.current = false;
+    requestContextualGuide("source-edit", toolbarRef.current);
+  }, [editable]);
+
   return (
     <div className="text-file-stage">
       <div className="min-w-0">
-      <div className="text-file-toolbar">
+      <div className="text-file-toolbar" ref={toolbarRef}>
         <div className="text-file-title">
           <span title={document.title}>{document.title}</span>
           {document.truncated && <span className="text-file-badge">Truncated</span>}
@@ -310,27 +321,43 @@ export function TextFileViewer({
             </span>
           )}
           {!nonEditorDocument && (
-            <Button type="button" variant="ghost" size="icon-xs" aria-label="Find in text" title="Find in text (⌘F)" onClick={() => { if (viewRef.current) toggleTextSearch(viewRef.current); }}>
-              <Search />
-            </Button>
+            <ShortcutTooltip label="Find in text" shortcut="⌘F">
+              <Button type="button" variant="ghost" size="icon-xs" aria-label="Find in text" onClick={() => { if (viewRef.current) toggleTextSearch(viewRef.current); }}>
+                <Search />
+              </Button>
+            </ShortcutTooltip>
           )}
           {sourceEditing?.onBeginEditing && !sourceEditing.editable && (
-            <Button type="button" variant="secondary" size="xs" disabled={Boolean(editDisabledReason)} title={editDisabledReason ?? undefined} onClick={sourceEditing.onBeginEditing}>Edit Source</Button>
+            editDisabledReason ? (
+              <ShortcutTooltip label={editDisabledReason}>
+                <span className="inline-flex">
+                  <Button type="button" variant="secondary" size="toolbar" disabled onClick={sourceEditing.onBeginEditing}>Edit source</Button>
+                </span>
+              </ShortcutTooltip>
+            ) : (
+              <Button type="button" variant="secondary" size="toolbar" onClick={() => { editRequestedRef.current = true; sourceEditing.onBeginEditing?.(); }}>Edit source</Button>
+            )
           )}
           {sourceEditing?.showApplyPreview && sourceEditing.editable && (
             <Button type="button" variant="secondary" size="xs" onClick={() => void sourceEditing.onApplyPreview?.()}>Apply Preview</Button>
           )}
           {sourceEditing?.editable && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="xs"
-              disabled={sourceEditing.saving || Boolean(sourceEditing.saveDisabledReason) || !sourceEditing.dirty}
-              title={sourceEditing.saveDisabledReason ?? "Save source (Command-S)"}
-              onClick={() => void sourceEditing.onSave?.()}
+            <ShortcutTooltip
+              label={sourceEditing.saveDisabledReason ?? "Save source"}
+              shortcut={sourceEditing.saveDisabledReason ? undefined : "⌘S"}
             >
-              Save
-            </Button>
+              <span className="inline-flex">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="xs"
+                  disabled={sourceEditing.saving || Boolean(sourceEditing.saveDisabledReason) || !sourceEditing.dirty}
+                  onClick={() => void sourceEditing.onSave?.()}
+                >
+                  Save
+                </Button>
+              </span>
+            </ShortcutTooltip>
           )}
         </div>
       </div>

@@ -640,7 +640,6 @@ export function MarkdownGreenfieldContent({
           scrollTop on its own, jerking the viewport while the reader scrolls. */}
       <ScrollArea
         className="bg-background min-h-0 flex-1"
-        orientation="vertical"
         viewportClassName="bg-background [overflow-anchor:none]"
         viewportRef={viewportRef}
         viewportProps={{

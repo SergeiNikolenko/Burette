@@ -97,7 +97,7 @@ export function CommandPalette({
       ? [{
           id: `fetch-structure-url:${queryUrl}`,
           group: "Suggested",
-          label: "Fetch URL in Mol*",
+          label: "Open structure from URL",
           description: queryUrl,
           run: () => actions.openStructureUrlInMolstar(queryUrl),
         }, ...items]
@@ -145,7 +145,6 @@ export function CommandPalette({
       }}
       title="Command Palette"
       description="Search commands and structures."
-      className="top-[12%] w-[min(560px,90vw)] sm:max-w-[min(560px,90vw)] rounded-2xl!"
     >
       <Command
         label="Command Palette"
@@ -175,21 +174,20 @@ export function CommandPalette({
             if (command) runItem(command);
           }
         }}
-        className="p-1 rounded-2xl!"
       >
         <CommandInput
           value={query}
           variant="plain"
           onValueChange={onQueryChange}
-          placeholder="Search structures and commands…"
+          placeholder="Search structures or run a command"
           aria-label="Search commands and open structures"
         />
-        <CommandList ref={listRef} className="max-h-[min(560px,64vh)] p-1">
+        <CommandList ref={listRef}>
           {visibleItems.length === 0 ? (
             <CommandEmpty>No results found.</CommandEmpty>
           ) : (
             visibleGroups.map((group) => (
-              <CommandGroup key={group.heading} heading={group.heading} className="p-0">
+              <CommandGroup key={group.heading} heading={group.heading}>
                 {group.items.map((item) => {
                   const Icon = item.icon ?? ArrowRight;
                   return (
@@ -198,13 +196,12 @@ export function CommandPalette({
                     value={item.id}
                     onSelect={() => runItem(item)}
                     title={item.description}
-                    className="min-h-8 gap-3 px-3 py-1.5"
                   >
                     <Icon aria-hidden="true" />
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     <CommandShortcut className="flex min-w-0 items-center gap-2 tracking-normal">
                       {item.detail ? <span className="max-w-32 truncate">{item.detail}</span> : null}
-                      {item.shortcut ? <Kbd>{item.shortcut}</Kbd> : null}
+                      {item.shortcut ? <Kbd className="h-auto py-0.5 leading-none text-current opacity-80">{item.shortcut}</Kbd> : null}
                     </CommandShortcut>
                   </CommandItem>
                   );

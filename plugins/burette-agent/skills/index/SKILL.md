@@ -56,12 +56,14 @@ interpretation.
 For external agent workflows, prefer the short MCP facade first:
 `burette.get_context`, `burette.open_workspace`,
 `burette.open_ketcher`, `burette.observe_workspace`, `burette.control_viewer`,
-`burette.control_ketcher`, `burette.render_panel`, `burette.create_story`,
+`burette.capture_view`, `burette.control_ketcher`, `burette.render_panel`, `burette.create_story`,
 `burette.validate_story`, `burette.observe_story`, and
 `burette.control_story`. These tools return a
 stable `workspaceSessionId` and
 compact `modelContext`; the advanced Burette tools remain available for
 docking, fragments, reports, trajectories, and lower-level scene operations.
+Route requests to see, photograph, or export frames of a configured scene to
+`burette.capture_view`.
 
 For Browser work, distinguish two local surfaces:
 

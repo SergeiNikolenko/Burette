@@ -2,6 +2,7 @@ import DOMPurify from "dompurify";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { loadDerivedEngines } from "../lib/derived-columns";
+import { DARK_STRUCTURE_PALETTE } from "../lib/structure-palette";
 import { describePropValue } from "../lib/grid-value-stats.mjs";
 import { writeClipboardText } from "../lib/clipboard";
 import { postGridCommand } from "../lib/viewer-bridge";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { scaffoldStatusLine, useSelectionScaffold } from "./grid-selection-scaffold";
 import { showNativeContextMenu } from "./native-context-menu";
+import { ShortcutTooltip } from "./shortcut-tooltip";
 import type { GridFilterColumn, GridFilterModel } from "./types";
 import type { HoveredGridRow } from "../types";
 
@@ -66,22 +68,14 @@ const SVG_CACHE_LIMIT = 200;
 // instead of being letterboxed inside it. Sizes round to this step so dragging
 // the handle re-renders a handful of times rather than once per pixel.
 const SVG_SIZE_STEP = 8;
+// A dock drag resizes the well every frame. The current SVG scales with the
+// well meanwhile, and RDKit redraws once the size has held still this long:
+// a 2x redraw per size step ran on the main thread and stalled the drag.
+const SVG_RESIZE_SETTLE_MS = 160;
 
 function roundedSize(value: number, minimum: number): number {
   return Math.max(minimum, Math.round(value / SVG_SIZE_STEP) * SVG_SIZE_STEP);
 }
-
-// RDKit draws the carbon skeleton in black, which is invisible on the dark
-// theme - the heteroatom labels showed and the molecule did not. Carbon takes
-// the app's own ink colour instead, and nitrogen and oxygen are lightened just
-// enough to stay legible against a dark surface. The light theme keeps RDKit's
-// own palette, which is what it was designed for.
-const DARK_STRUCTURE_PALETTE = {
-  "1": [0.87, 0.87, 0.87],
-  "6": [0.87, 0.87, 0.87],
-  "7": [0.45, 0.62, 1],
-  "8": [1, 0.45, 0.45],
-};
 
 function effectiveTheme(): string {
   return document.querySelector(".app-shell")?.getAttribute("data-effective-theme") ?? "light";
@@ -156,6 +150,7 @@ export function GridHoverMoleculeCard({
   // for at these numbers so it fills the box at any drag height.
   const [wellSize, setWellSize] = useState<{ width: number; height: number } | null>(null);
   const wellObserverRef = useRef<ResizeObserver | null>(null);
+  const wellSettleTimerRef = useRef<number | undefined>(undefined);
   const wellNodeRef = useRef<HTMLDivElement | null>(null);
   const renderTokenRef = useRef(0);
   const lastRowRef = useRef<HoveredGridRow | null>(null);
@@ -210,6 +205,7 @@ export function GridHoverMoleculeCard({
   // list would run before the well exists and never attach.
   const attachWell = useCallback((node: HTMLDivElement | null) => {
     wellObserverRef.current?.disconnect();
+    window.clearTimeout(wellSettleTimerRef.current);
     wellNodeRef.current = node;
     if (!node) {
       wellObserverRef.current = null;
@@ -226,7 +222,11 @@ export function GridHoverMoleculeCard({
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
       if (!rect || rect.width === 0 || rect.height === 0) return;
-      setWellSize({ width: roundedSize(rect.width, 120), height: roundedSize(rect.height, 80) });
+      const next = { width: roundedSize(rect.width, 120), height: roundedSize(rect.height, 80) };
+      window.clearTimeout(wellSettleTimerRef.current);
+      wellSettleTimerRef.current = window.setTimeout(() => {
+        setWellSize((current) => current?.width === next.width && current.height === next.height ? current : next);
+      }, SVG_RESIZE_SETTLE_MS);
     });
     observer.observe(node);
     wellObserverRef.current = observer;
@@ -410,7 +410,7 @@ export function GridHoverMoleculeCard({
         style={{ height: previewHeight }}
         role="button"
         tabIndex={0}
-        title={`Edit ${label} in Ketcher`}
+        aria-label={`Edit ${label}`}
         onClick={editInKetcher}
         onContextMenu={showDrawingMenu}
         onKeyDown={(event) => {
@@ -439,7 +439,6 @@ export function GridHoverMoleculeCard({
         aria-valuenow={previewHeight}
         aria-valuemax={PREVIEW_MAX_HEIGHT}
         aria-valuetext={`${Math.round(previewHeight)} pixels`}
-        title="Drag to resize preview · Double-click to reset"
         onPointerDown={onPreviewResizeStart}
         onPointerMove={onPreviewResizeMove}
         onPointerUp={onPreviewResizeEnd}
@@ -467,17 +466,19 @@ export function GridHoverMoleculeCard({
                 Show all
               </button>
             ) : null}
-            <button
-              type="button"
-              className="grid-hover-molecule-props-toggle"
-              aria-expanded={propsOpen}
-              onClick={() => setPropsSectionOpen(!propsOpen)}
-              title={propsOpen ? "Hide data" : "Show data"}
-            >
-              <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true" style={{ transform: propsOpen ? "rotate(180deg)" : undefined }}>
-                <path d="M1.5 6.5 5 3l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
+            <ShortcutTooltip label={propsOpen ? "Hide data" : "Show data"}>
+              <button
+                type="button"
+                className="grid-hover-molecule-props-toggle"
+                aria-expanded={propsOpen}
+                aria-label={propsOpen ? "Hide data" : "Show data"}
+                onClick={() => setPropsSectionOpen(!propsOpen)}
+              >
+                <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true" style={{ transform: propsOpen ? "rotate(180deg)" : undefined }}>
+                  <path d="M1.5 6.5 5 3l3.5 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </ShortcutTooltip>
           </div>
           {propsOpen ? (
             <>
@@ -485,33 +486,33 @@ export function GridHoverMoleculeCard({
                 {visibleProps.map(({ entry, column }) => {
                   const described = describePropValue(entry.value, column);
                   return (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      key={entry.label}
-                      className="dock-metric grid-hover-molecule-prop"
-                      data-tone={described.tone === "plain" ? undefined : described.tone}
-                      title={described.detail ? `${entry.label}: ${entry.value}\n${described.detail}` : `${entry.label}: ${entry.value}`}
-                      aria-label={`Open ${entry.label} filter`}
-                      onClick={() => onInspectProperty?.(column.id)}
-                    >
-                      <span>{entry.label}</span>
-                      <strong>
-                        {formatPropValue(entry.value)}
-                        {described.tone === "outlier-high" || described.tone === "outlier-low" ? (
-                          <span className="grid-hover-molecule-prop-mark" aria-hidden="true">
-                            {described.tone === "outlier-high" ? "\u25B2" : "\u25BC"}
-                          </span>
-                        ) : null}
-                      </strong>
+                    <ShortcutTooltip key={entry.label} label={`${entry.label}: ${entry.value}`}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="dock-metric grid-hover-molecule-prop"
+                        data-tone={described.tone === "plain" ? undefined : described.tone}
+                        aria-label={`Open ${entry.label} filter`}
+                        onClick={() => onInspectProperty?.(column.id)}
+                      >
+                        <span>{entry.label}</span>
+                        <strong>
+                          {formatPropValue(entry.value)}
+                          {described.tone === "outlier-high" || described.tone === "outlier-low" ? (
+                            <span className="grid-hover-molecule-prop-mark" aria-hidden="true">
+                              {described.tone === "outlier-high" ? "\u25B2" : "\u25BC"}
+                            </span>
+                          ) : null}
+                        </strong>
 
-                      {described.position === null ? null : (
-                        <span className="grid-hover-molecule-prop-track" aria-hidden="true">
-                          <span style={{ left: `${(described.position * 100).toFixed(1)}%` }} />
-                        </span>
-                      )}
-                    </Button>
+                        {described.position === null ? null : (
+                          <span className="grid-hover-molecule-prop-track" aria-hidden="true">
+                            <span style={{ left: `${(described.position * 100).toFixed(1)}%` }} />
+                          </span>
+                        )}
+                      </Button>
+                    </ShortcutTooltip>
                   );
                 })}
               </div>
@@ -525,7 +526,6 @@ export function GridHoverMoleculeCard({
                 aria-valuenow={propsHeight}
                 aria-valuemax={Math.max(propsHeight, propsNodeRef.current?.scrollHeight ?? propsHeight)}
                 aria-valuetext={`${Math.round(propsHeight)} pixels`}
-                title="Drag to resize data · Double-click to reset"
                 onPointerDown={onPropsResizeStart}
                 onPointerMove={onPropsResizeMove}
                 onPointerUp={onPropsResizeEnd}

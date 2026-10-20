@@ -113,7 +113,7 @@ export function installMesoscalePanelResizeHandles({ root, onResize, onReservati
     handle.dataset.axis = axis;
     handle.tabIndex = 0;
     handle.setAttribute("role", "separator");
-    handle.setAttribute("aria-label", axis === "bottom" ? "Resize Mol* panels" : axis === "split" ? "Resize Mol* panel split" : `Resize Mol* ${axis} panel`);
+    handle.setAttribute("aria-label", axis === "bottom" ? "Resize panels" : axis === "split" ? "Resize panel split" : `Resize ${axis} panel`);
     handle.setAttribute("aria-orientation", axis === "bottom" ? "horizontal" : "vertical");
     handle.setAttribute("aria-valuemin", String(axis === "bottom" ? BOTTOM_MIN : SIDE_MIN));
     const grip = document.createElement("span");

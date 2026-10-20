@@ -64,6 +64,7 @@ bun scripts/burette-agent.mjs scene focus-ligand --session-dir /tmp/burette-agen
 bun scripts/burette-agent.mjs action --session-dir /tmp/burette-agent-session --action-file action.json
 bun scripts/burette-agent.mjs act --session-dir /tmp/burette-agent-session '{"type":"apply_scene","components":[{"selector":"protein","label":"Protein","highlight":true},{"selector":{"chain":"A","range":[45,58]},"label":"Active loop","select":true,"focus":true}]}'
 bun scripts/burette-agent.mjs render-panel --session-dir /tmp/burette-agent-session --kind markdown --file notes.md
+bun scripts/burette-agent.mjs capture --session-dir /tmp/burette-agent-session --output view.png --width 1600 --height 1000 --auto-crop
 bun scripts/burette-agent.mjs story-create --spec story.json --output story.mvsx --asset protein.cif=/path/protein.cif
 bun scripts/burette-agent.mjs story-validate --file story.mvsx
 bun scripts/burette-agent.mjs story-template-list
@@ -91,6 +92,7 @@ burette.open_workspace
 burette.open_ketcher
 burette.observe_workspace
 burette.control_viewer
+burette.capture_view
 burette.control_ketcher
 burette.get_mvs_authoring_reference
 burette.list_story_templates

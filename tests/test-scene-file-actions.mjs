@@ -35,6 +35,21 @@ await window.BuretteSceneFiles.append(viewer, { sources: [source('/new.pdb')] },
 assert.ok(cells.has('/new.pdb'), 'failed imports must not poison duplicate detection');
 console.log('Scene file imports preserve existing objects and camera, reject duplicates, and roll back partial imports');
 
+// Deleting a structure in the scene tree frees its file: it can be added again
+// and the host no longer counts it when the scene is rebuilt.
+const ROOT = '-=root=-';
+const liveCells = new Map([[ROOT, { transform: { parent: ROOT } }], ['p', { transform: { parent: ROOT }, obj: { label: 'protein.pdb' } }]]);
+const liveViewer = { plugin: { state: { data: { tree: { root: { ref: ROOT } }, cells: liveCells } } } };
+const liveContext = { ...context, load: async (_, item) => { liveCells.set(item.path, { transform: { parent: ROOT }, obj: { label: item.path.split('/').pop() } }); } };
+await window.BuretteSceneFiles.append(liveViewer, { sources: [source('/run/ligand.pdb')], existingPaths: ['/run/protein.pdb'] }, liveContext);
+await assert.rejects(window.BuretteSceneFiles.append(liveViewer, { sources: [source('/run/ligand.pdb')] }, liveContext), /already in this scene/);
+liveCells.delete('/run/ligand.pdb');
+assert.deepEqual(window.BuretteSceneFiles.livePaths(liveViewer, ['/run/protein.pdb', '/run/ligand.pdb']), ['/run/protein.pdb']);
+assert.equal((await window.BuretteSceneFiles.append(liveViewer, { sources: [source('/run/ligand.pdb')] }, liveContext)).result.added, 1);
+for (const ref of [...liveCells.keys()]) if (ref !== ROOT) liveCells.delete(ref);
+assert.equal(window.BuretteSceneFiles.livePaths(liveViewer, ["/run/protein.pdb", "/run/ligand.pdb"]).length, 0);
+console.log('Structures deleted in the scene tree can be imported again');
+
 // Grid records use names for display, but names cannot identify rows or sources.
 const gridSource = readFileSync('PreviewExtension/Web/grid-viewer.js', 'utf8');
 function gridFunction(name) {
@@ -62,3 +77,22 @@ console.log('Same-name grid poses import separately with stable source-scoped id
 
 await window.BuretteSceneFiles.append(viewer, { sources: [{ path: '/poses.sdf', format: 'sdf', data: 'poses' }] }, context);
 assert.equal(loaded.at(-1).loadPreset, 'all-models', 'append must retain every ligand in an SDF collection');
+
+// Re-dropping a folder only appends new files, without failing the whole batch.
+const freshDrop = await window.BuretteSceneFiles.append(viewer, {
+  sources: [source('/protein.pdb'), source('/new-from-folder.pdb'), source('/new-from-folder.pdb')],
+  skipExisting: true,
+}, context);
+assert.equal(freshDrop.result.added, 1);
+const repeatedDrop = await window.BuretteSceneFiles.append(viewer, {
+  sources: [source('/new-from-folder.pdb')], skipExisting: true,
+}, context);
+assert.equal(repeatedDrop.result.added, 0);
+assert.equal(cells.get('protein').style, 'cartoon');
+assert.equal(restored, camera);
+const otherCells = new Map([['root', { transform: { parent: 'root' } }]]);
+const otherViewer = { plugin: { state: { data: { cells: otherCells } } } };
+const otherContext = { ...context, load: async (_, item) => otherCells.set(item.path, { transform: { parent: 'root' } }) };
+assert.equal((await window.BuretteSceneFiles.append(otherViewer, {
+  sources: [source('/new-from-folder.pdb')], skipExisting: true,
+}, otherContext)).result.added, 1, 'duplicate tracking belongs to each scene');

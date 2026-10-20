@@ -1,0 +1,93 @@
+/* Codex sidebar thread hover card content; the surface is shared with the tab
+   hover card in tab-hover-preview.css. */
+.sidebar-hover-card-frame {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: min(20rem, calc(100vw - 16px));
+  min-width: 14rem;
+  padding: 6px var(--padding-row-x);
+}
+
+.sidebar-hover-card-header {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 2px;
+}
+
+.sidebar-hover-card-heading {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.sidebar-hover-card-title {
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--text-base);
+  font-weight: 500;
+  line-height: 20px;
+  overflow-wrap: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.sidebar-hover-card-title-icon {
+  display: flex;
+  height: 20px;
+  flex-shrink: 0;
+  align-items: center;
+  color: var(--color-codex-description);
+}
+
+.sidebar-hover-card-time {
+  flex-shrink: 0;
+  color: var(--color-codex-description);
+  font-size: var(--text-xs);
+  line-height: 20px;
+}
+
+.sidebar-hover-card-row {
+  display: flex;
+  height: 20px;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  line-height: 20px;
+}
+
+.sidebar-hover-card-icon {
+  display: flex;
+  width: 16px;
+  height: 20px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-codex-description);
+}
+
+.sidebar-hover-card-icon > svg,
+.sidebar-hover-card-title-icon > svg {
+  width: var(--control-icon-size-xs);
+  height: var(--control-icon-size-xs);
+}
+
+.sidebar-hover-card-icon > .ssh-connection-dot {
+  margin: 0;
+}
+
+.sidebar-hover-card-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--color-text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

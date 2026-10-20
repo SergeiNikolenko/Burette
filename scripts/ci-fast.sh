@@ -21,6 +21,9 @@ bun install --frozen-lockfile --ignore-scripts
 
 if [[ "$SCOPE" == "all" || "$SCOPE" == "js" ]]; then
   bun run check:js
+  # The native bundle build is skipped for version-only native diffs, so the
+  # release version gate also runs here.
+  bun run check:release
   bun run check:vendor-assets
   bun run check:formats
   bun run typecheck
@@ -28,6 +31,7 @@ if [[ "$SCOPE" == "all" || "$SCOPE" == "js" ]]; then
   bun run test:agent
   bun run test:update
   bun run test:ui
+  bun run test:responsiveness
   bun run test:tauri-structure
   bun run test:compute-metal
   plutil -lint apps/desktop/src-tauri/AppMetadata.plist apps/desktop/src-tauri/Info.plist PreviewExtension/Info.plist PreviewExtension/BurettePreview.entitlements

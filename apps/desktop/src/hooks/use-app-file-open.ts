@@ -1,3 +1,4 @@
+import { isNativePreviewWindow } from "../lib/window-scope";
 import { useCallback } from "react";
 import { saveStructureRecordsInFolder } from "./save-structure-records";
 import { useMoleculeStore } from "../stores/molecule-store";
@@ -5,7 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import { showNativeContextMenu } from "../components/native-context-menu";
 import type { FepNetworkLocation } from "../components/editor-area/page-kinds/fep-network";
-import type { StatusKind } from "../components/types";
+import type { FileOpenOptions, StatusKind } from "../components/types";
 import { openBrowserDevDocuments, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "../lib/browser-dev-text-files";
 import type { DockArea, DockTabKind } from "../lib/dock";
@@ -25,6 +26,7 @@ import {
   summarizeErrors,
   type GridDelimitedColumnChoice,
 } from "../lib/file-routing";
+import { journalAction } from "../lib/action-journal";
 import { markPerformanceOnce } from "../lib/performance";
 import { fetchRemoteStructure } from "../lib/remote-structure";
 import { currentDocumentRegistryRevision } from "../lib/native-menu";
@@ -184,6 +186,7 @@ export function useAppFileOpen({
         try {
           for (const path of graphmlPaths) {
             const graphmlText = await readStructureText(path);
+            if (options.shouldApply && !options.shouldApply()) return null;
             openFepNetworkTab({ kind: "fep-network", title: basename(path), graphmlText });
           }
           pushStatus(`Opened ${graphmlPaths.length} FEP network${graphmlPaths.length === 1 ? "" : "s"}`);
@@ -196,7 +199,11 @@ export function useAppFileOpen({
         }
       }
       if (structurePaths.length === 0) return;
-      const effectivePreferences = preferencesOverride ? { ...preferences, ...preferencesOverride } : preferences;
+      const effectivePreferences = {
+        ...preferences,
+        ...(isNativePreviewWindow() ? { rendererMode: "molstar" as const } : {}),
+        ...preferencesOverride,
+      };
       pushStatus("Opening structures...");
       try {
         const result = isTauriRuntime()
@@ -247,7 +254,8 @@ export function useAppFileOpen({
             .catch((menuError) => pushErrorStatus(menuError, "Structure column menu failed"));
           return null;
         }
-        if (!options.deferErrorStatus) pushErrorStatus(error);
+        // The raw error (with its path) stays in Details; the toast names the file.
+        if (!options.deferErrorStatus) pushErrorStatus(error, cleanPaths.length === 1 ? `Couldn’t open ${basename(cleanPaths[0])}` : "Couldn’t open files");
         return null;
       }
     },
@@ -257,7 +265,7 @@ export function useAppFileOpen({
   const openTextDocuments = useCallback(
     async (
       paths: string[],
-      options: { inActiveTab?: boolean; background?: boolean } = {},
+      options: { inActiveTab?: boolean; background?: boolean; shouldApply?: () => boolean } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return null;
@@ -269,6 +277,7 @@ export function useAppFileOpen({
               openStateRevision: currentDocumentRegistryRevision(),
             })
           : await openBrowserDevTextFiles(cleanPaths);
+        if (options.shouldApply && !options.shouldApply()) { await abortOpenDocumentClaims(result.documents); return null; }
         try {
           if (options.background) addBackgroundTextDocuments(result.documents);
           else if (options.inActiveTab) openTextDocumentsInActiveTab(result.documents);
@@ -297,7 +306,7 @@ export function useAppFileOpen({
   const openSpectrumDocuments = useCallback(
     async (
       paths: string[],
-      options: { inActiveTab?: boolean; background?: boolean } = {},
+      options: { inActiveTab?: boolean; background?: boolean; shouldApply?: () => boolean } = {},
     ) => {
       const cleanPaths = Array.from(new Set(paths.filter(Boolean)));
       if (!cleanPaths.length) return null;
@@ -309,6 +318,7 @@ export function useAppFileOpen({
               openStateRevision: currentDocumentRegistryRevision(),
             })
           : await openBrowserDevTextFiles(cleanPaths);
+        if (options.shouldApply && !options.shouldApply()) { await abortOpenDocumentClaims(result.documents); return null; }
         const documents = result.documents.map(spectrumDocumentFromText);
         try {
           if (options.background) addBackgroundDocuments(documents);
@@ -344,13 +354,19 @@ export function useAppFileOpen({
     [addBackgroundDocuments, addDocuments, openDockTab, openDocumentsInActiveTab, pushErrorStatus, pushStatus, rememberRecentStructures, setActiveDocument, setDockActiveTab, setDockDocument, setDockOpen],
   );
 
-  const openPaths = useCallback(async (paths: string[]) => {
+  const openPaths = useCallback(async (paths: string[], options: FileOpenOptions = {}) => {
+    const mayApply = () => options.shouldApply?.() !== false;
+    if (!mayApply()) return;
+    let openedAny = false;
     const requestedPaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
     if (!requestedPaths.length) return;
+    journalAction("file", "open", { detail: { paths: requestedPaths.slice(0, 20), count: requestedPaths.length } });
     let filePaths = requestedPaths;
     if (isTauriRuntime()) {
       try {
         const classified = await invoke<ClassifiedOpenPaths>("classify_open_paths", { paths: requestedPaths });
+        if (!mayApply()) return;
+        if (options.requireSuccess && classified.errors.length) throw new Error(summarizeErrors(classified.errors));
         for (const directory of classified.directories) addProjectRoot(directory);
         if (classified.directories.length > 0) {
           pushStatus(
@@ -364,11 +380,16 @@ export function useAppFileOpen({
         filePaths = classified.files;
       } catch (error) {
         pushErrorStatus(error, "Open path classification failed");
+        if (options.requireSuccess) throw error;
         return;
       }
     }
     const cleanPaths = await expandStructureBundles(filePaths);
-    if (!cleanPaths.length) return;
+    if (!mayApply()) return;
+    if (!cleanPaths.length) {
+      if (options.requireSuccess) throw new Error("No files could be opened.");
+      return;
+    }
 
     const structurePaths: string[] = [];
     const spectrumPaths: string[] = [];
@@ -408,24 +429,30 @@ export function useAppFileOpen({
       }
     }
 
+    if (!mayApply()) return;
     for (const path of documentPaths) {
-      openDocumentTab(path);
+      openDocumentTab(path); openedAny = true;
     }
 
     if (spectrumPaths.length > 0) {
-      const result = await openSpectrumDocuments(spectrumPaths);
+      const result = await openSpectrumDocuments(spectrumPaths, options);
+      if (!mayApply()) return;
+      openedAny ||= Boolean(result?.documents.length);
       preferredStructureDocumentId = result?.documents[0]?.id ?? preferredStructureDocumentId;
     }
 
     if (structurePaths.length > 0) {
       // Normal file opening follows format support; Open As passes an explicit renderer.
-      const result = await openDocuments(structurePaths, undefined, { rendererMode: "auto" });
+      const result = await openDocuments(structurePaths, undefined, { rendererMode: "auto" }, options);
+      if (!mayApply()) return;
+      openedAny ||= Boolean(result?.documents.length);
       preferredStructureDocumentId = result?.documents[0]?.id ?? preferredStructureDocumentId;
     }
 
     const openedStructureAndTextPaths = new Set<string>();
     if (structureAndTextPaths.length > 0) {
-      const result = await openDocuments(structureAndTextPaths, undefined, { rendererMode: "auto" }, { deferErrorStatus: true });
+      const result = await openDocuments(structureAndTextPaths, undefined, { rendererMode: "auto" }, { ...options, deferErrorStatus: true });
+      if (!mayApply()) return;
       const openedDocuments = result?.documents ?? [];
       for (const document of openedDocuments) {
         if (document.renderer === NOT_RENDERABLE_RENDERER) {
@@ -435,32 +462,39 @@ export function useAppFileOpen({
           });
         } else {
           openedStructureAndTextPaths.add(document.path);
+          openedAny = true;
           preferredStructureDocumentId = preferredStructureDocumentId ?? document.id;
         }
       }
     }
 
     if (textPaths.length > 0) {
-      await openTextDocuments(textPaths);
+      const result = await openTextDocuments(textPaths, options);
+      if (!mayApply()) return;
+      openedAny ||= Boolean(result?.documents.length);
     }
 
     const backgroundTextPaths = structureAndTextPaths.filter((path) => openedStructureAndTextPaths.has(path));
     if (backgroundTextPaths.length > 0) {
-      await openTextDocuments(backgroundTextPaths, { background: true });
+      await openTextDocuments(backgroundTextPaths, { ...options, background: true });
+      if (!mayApply()) return;
     }
 
     const unopenedStructureAndTextPaths = structureAndTextPaths.filter((path) => !openedStructureAndTextPaths.has(path));
     const fallbackDocumentPaths = unopenedStructureAndTextPaths.filter((path) => documentFallbackExtensions.has(pathExtension(path)));
     for (const path of fallbackDocumentPaths) {
-      openDocumentTab(path);
+      openDocumentTab(path); openedAny = true;
     }
     const fallbackTextPaths = unopenedStructureAndTextPaths.filter((path) => !documentFallbackExtensions.has(pathExtension(path)));
     if (fallbackTextPaths.length > 0) {
-      await openTextDocuments(fallbackTextPaths);
+      const result = await openTextDocuments(fallbackTextPaths, options);
+      if (!mayApply()) return;
+      openedAny ||= Boolean(result?.documents.length);
     }
     if (preferredStructureDocumentId) {
       setActiveDocument(preferredStructureDocumentId);
     }
+    if (options.requireSuccess && !openedAny) throw new Error("The file could not be opened. Check its format and contents.");
   }, [addProjectRoot, closeDocument, detectContentSpectrumPaths, expandStructureBundles, openDocuments, openDocumentTab, openSpectrumDocuments, openTextDocuments, pushErrorStatus, pushStatus, setActiveDocument]);
 
   const openStructureRecordDocuments = useCallback(async (records: StructureDragRecord[]) => {
@@ -537,7 +571,7 @@ export function useAppFileOpen({
       addDocuments([document]);
       rememberRecentStructures([document]);
       setActiveDocument(document.id);
-      pushStatus(`Fetched ${remote.title} in Mol*`, "success");
+      pushStatus(`Opened ${remote.title}`, "success");
     } catch (error) {
       pushErrorStatus(error, "Fetch structure failed");
     }

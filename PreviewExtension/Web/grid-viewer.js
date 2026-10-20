@@ -64,6 +64,9 @@
   const GRID_WINDOW_OVERSCAN_ROWS = 4;
   const GRID_MAX_WINDOW_ROWS = 18;
   const GRID_MIN_ESTIMATED_ROW_HEIGHT = 190;
+  // An auto-width trailing cell takes the width the fixed columns leave, so the
+  // table spans the pane like its totals bar without stretching any column.
+  const TABLE_FILL_CELL = '<td class="buret-grid-table-fill" aria-hidden="true"></td>';
   const GRID_EDIT_HISTORY_LIMIT = 50;
   const GRID_RAIL_ITEM_SIZE = 10;
   const GRID_RAIL_PILL_WIDTH = 12;
@@ -77,7 +80,9 @@
   const TABLE_COLUMN_MIN_WIDTH = 64;
   const TABLE_COLUMN_MAX_WIDTH = 640;
   const TABLE_COLUMN_OVERSCAN_PX = 360;
-  const RDKIT_SVG_CACHE_LIMIT = 220;
+  // Above the row count of a typical SDF, so a re-windowed grid redraws from
+  // cache instead of queueing RDKit layout again for every card.
+  const RDKIT_SVG_CACHE_LIMIT = 2000;
   const XYZRENDER_CARD_CACHE_LIMIT = 1500;
   const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
   let activeStructureDrag = false;
@@ -199,6 +204,7 @@
     loadObserver: null,
     scrollHandler: null,
     resizeHandler: null,
+    resizeFrame: 0,
     virtualFrame: 0,
     lastPerfMetricAt: 0,
     windowStart: 0,
@@ -245,6 +251,16 @@
         window.parent?.postMessage({ source: 'burette-grid', body }, '*');
         window.webkit?.messageHandlers?.burette?.postMessage(body);
       }
+    } catch (_) {}
+  }
+
+  // One-time contextual guides live in the app shell, which places the card by
+  // this frame-relative rect and drops repeats once the guide has been shown.
+  function requestContextualGuide(id, element, cfg) {
+    if (cfg?.appViewer !== true || window.parent === window || !element) return;
+    const { left, top, width, height } = element.getBoundingClientRect();
+    try {
+      window.parent.postMessage({ type: 'burette:contextual-guide', id, rect: { left, top, width, height } }, '*');
     } catch (_) {}
   }
 
@@ -654,10 +670,20 @@
       // Applied in place like the structure viewer: the config already carries
       // the token sets for both themes, so a theme change never reopens the grid.
       if (body.type === 'setViewerTheme') {
+        if (event.source !== window.parent) return;
         const cfg = safeConfig();
         if (!cfg) return;
+        if (body.themeTokens && typeof body.themeTokens === 'object') cfg.themeTokens = body.themeTokens;
+        if (body.canvasBackground !== undefined) {
+          cfg.canvasBackground = normalizeCanvasBackground(body.canvasBackground);
+          cfg.transparentBackground = cfg.canvasBackground === 'transparent';
+        }
         cfg.theme = body.value === 'light' || body.value === 'dark' ? body.value : 'auto';
         applyTheme(cfg);
+        return;
+      }
+      if (Object.hasOwn(GRID_APP_DEFAULT_MESSAGES, body.type)) {
+        setGridAppDefault(GRID_APP_DEFAULT_MESSAGES[body.type], body.value);
         return;
       }
       if (body.type === 'gridSetColumnFilter') {
@@ -1713,6 +1739,74 @@
     try { window.localStorage?.removeItem(key); } catch (_) {}
   }
 
+  // App Settings own the starting view, card drawing, card size and hydrogens
+  // (cfg.viewerDefaults). A toolbar change still persists, but only against the
+  // app default it was made under: once Settings change that default, the old
+  // override is dropped so every grid follows the new setting.
+  const GRID_APP_DEFAULTS = {
+    gridViewMode: { key: GRID_VIEW_MODE_STORAGE_KEY, normalize: value => (value === 'table' ? 'table' : 'cards') },
+    gridCardRenderer: { key: CARD_RENDERER_STORAGE_KEY, normalize: value => (value === 'xyzrender' ? 'xyzrender' : 'rdkit') },
+    gridCardSize: {
+      key: CARD_MIN_STORAGE_KEY,
+      normalize: value => (Number(value) > 0 ? clampInteger(value, MIN_CARD_MIN, MAX_CARD_MIN, DEFAULT_CARD_MIN) : null)
+    },
+    hydrogenDisplay: { key: HYDROGEN_DISPLAY_STORAGE_KEY, normalize: value => (HYDROGEN_DISPLAY_MODES.includes(value) ? value : 'none') }
+  };
+  const GRID_APP_DEFAULT_MESSAGES = {
+    setGridViewModeDefault: 'gridViewMode',
+    setGridCardRendererDefault: 'gridCardRenderer',
+    setGridCardSizeDefault: 'gridCardSize',
+    setGridHydrogenDisplayDefault: 'hydrogenDisplay'
+  };
+
+  // Returns true when no toolbar override survives, so the app default applies.
+  function adoptGridAppDefault(key, value) {
+    const stampKey = `${key}.appDefault`;
+    const stamp = value == null ? 'auto' : String(value);
+    try {
+      const previous = window.localStorage?.getItem(stampKey);
+      // The first stamp keeps an override made before Settings owned the default.
+      if (previous != null && previous !== stamp) window.localStorage?.removeItem(key);
+      if (previous !== stamp) window.localStorage?.setItem(stampKey, stamp);
+      return window.localStorage?.getItem(key) == null;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  function applyGridAppDefaults(cfg) {
+    const defaults = cfg?.viewerDefaults;
+    if (!defaults || typeof defaults !== 'object') return;
+    const fields = { gridViewMode: 'viewMode', gridCardRenderer: 'cardRenderer', gridCardSize: 'cardMin', hydrogenDisplay: 'hydrogenDisplay' };
+    for (const [name, { key, normalize }] of Object.entries(GRID_APP_DEFAULTS)) {
+      const value = normalize(defaults[name]);
+      if (adoptGridAppDefault(key, value)) state[fields[name]] = value;
+    }
+  }
+
+  // Settings changed while this grid is open: adopt the new default in place.
+  function setGridAppDefault(name, rawValue) {
+    const cfg = safeConfig();
+    const entry = GRID_APP_DEFAULTS[name];
+    if (!cfg || !entry) return;
+    const value = entry.normalize(rawValue);
+    cfg.viewerDefaults = { ...(cfg.viewerDefaults || {}), [name]: rawValue };
+    adoptGridAppDefault(entry.key, value);
+    if (name === 'gridViewMode') {
+      setGridViewMode(value, cfg);
+      normalizeGridViewMode(cfg);
+    } else if (name === 'gridCardRenderer') {
+      setCardRenderer(value, cfg);
+    } else if (name === 'hydrogenDisplay') {
+      setHydrogenDisplay(value, cfg);
+    } else if (state.cardMin !== value) {
+      state.cardMin = value;
+      applyGridPreferences(cfg);
+    }
+    // The setters persist their value; drop it again so it stays the default.
+    removeStored(entry.key);
+  }
+
   function applyTheme(cfg) {
     const theme = resolveTheme(cfg.theme);
     const canvasBackground = resolveCanvasBackground(theme, cfg.canvasBackground);
@@ -1724,15 +1818,18 @@
     document.body.classList.toggle('burette-transparent-background', transparent);
     document.body.classList.toggle('burette-opaque-background', !transparent);
     applyThemeTokens(cfg, theme);
-    document.documentElement.style.setProperty('--buret-grid-canvas-background', canvasBackgroundCSS(canvasBackground));
+    const themed = window.BuretteGridUI.themeColors(cfg.themeTokens?.[theme], theme).background;
+    const background = normalizeCanvasBackground(cfg.canvasBackground) === 'auto' ? themed : canvasBackgroundCSS(canvasBackground);
+    document.documentElement.style.backgroundColor = background;
+    document.documentElement.style.setProperty('--buret-grid-canvas-background', background);
+    window.dispatchEvent(new Event('burette-grid-theme-changed'));
   }
 
   function applyThemeTokens(cfg, theme) {
     const tokens = cfg.themeTokens && cfg.themeTokens[theme];
     if (!tokens || typeof tokens !== 'object') return;
-    const accent = typeof tokens.accent === 'string' ? tokens.accent : '#AF52DE';
-    const background = typeof tokens.background === 'string' ? tokens.background : (theme === 'light' ? '#FFFFFF' : '#111111');
-    const foreground = typeof tokens.foreground === 'string' ? tokens.foreground : (theme === 'light' ? '#0D0D0D' : '#FCFCFC');
+    // Resolve legacy and missing colors the way the Codex surfaces do.
+    const { accent, background, foreground } = window.BuretteGridUI.themeColors(tokens, theme);
     const uiFont = typeof tokens.uiFont === 'string' ? tokens.uiFont : '';
     const opacity = 1 - (clampThemeNumber(tokens.translucent, theme === 'light' ? 10 : 20) / 100) * 0.95;
     const contrast = 0.2 + (clampThemeNumber(tokens.contrast, theme === 'light' ? 20 : 16) / 100) * 0.8;
@@ -1867,6 +1964,7 @@
       selectedInput3d: selectedRowsHaveInput3dCoordinates(),
       ...gridEditState(),
       sortOptions: propertyOptionList(cfg),
+      searchQuery: state.query,
       onSearchInput(value) {
         scheduleSearch(value || '', cfg);
       },
@@ -1878,13 +1976,6 @@
       onShowProperties() {
         state.showProperties = !state.showProperties;
         applyGridPreferences(cfg);
-      },
-      onClearSmarts() {
-        setUnifiedSearchQuery('', cfg);
-        const input = document.getElementById('search');
-        if (input) input.value = '';
-        refresh(cfg);
-        input?.focus();
       },
       onSelectAll() { selectAllRows(cfg); },
       onClearSelection() { clearSelection(cfg); },
@@ -1898,7 +1989,10 @@
       onUndoGridEdit() { undoLastGridEdit(cfg); },
       onExportSmiles() { exportSmiles(cfg); },
       onExportCSV() { exportCSV(cfg); },
-      onViewModeChange(value) { setGridViewMode(value, cfg); },
+      onViewModeChange(value) {
+        setGridViewMode(value, cfg);
+        requestContextualGuide('grid', document.querySelector('[aria-label="Grid view mode"]'), cfg);
+      },
       onToggleTableColumns() { toggleTableColumnPanel(cfg); },
       onToggleTableFilters() { toggleTableFilters(cfg); },
       onSetCardRenderer(value) { setCardRenderer(value, cfg); },
@@ -1931,6 +2025,7 @@
         store(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, state.rdkitUseInputCoords ? 'true' : 'false');
         state.svgCache.clear();
         render(cfg);
+        post('chemicalSpaceMoleculePreviewsStale', '', {});
       }
     });
     const sortControl = document.getElementById('sort');
@@ -3136,15 +3231,20 @@
   }
 
   function scheduleSearch(value, cfg) {
-    const wasPending = Boolean(state.searchTimer);
     clearTimeout(state.searchTimer);
     setUnifiedSearchQuery(value, cfg);
     // Obsolete page/SMARTS requests must stop applying while the user types,
     // rather than remaining valid until the debounce expires.
     state.token += 1;
     state.dataToken += 1;
-    state.searchTimer = setTimeout(() => refresh(cfg), 120);
-    if (!wasPending) refreshGridControls(cfg);
+    state.searchTimer = setTimeout(async () => {
+      await refresh(cfg);
+      // Anchored under the whole toolbar so the card never covers the query.
+      if (state.smarts.trim() && state.smartsMatches.size) {
+        requestContextualGuide('smarts-search', document.getElementById('grid-controls'), cfg);
+      }
+    }, 120);
+    refreshGridControls(cfg);
   }
 
   function normalizedSearchText(row) {
@@ -3453,12 +3553,20 @@
     state.scrollHandler = () => handleGridScroll(cfg);
     window.addEventListener('scroll', state.scrollHandler, { passive: true });
     if (state.resizeHandler) window.removeEventListener('resize', state.resizeHandler);
+    if (state.resizeFrame) window.cancelAnimationFrame(state.resizeFrame);
+    state.resizeFrame = 0;
+    // Each pass forces layout and walks every card, so resize events and host
+    // cover pushes are coalesced into one pass per frame.
     state.resizeHandler = () => {
-      updateVirtualGridMetrics();
-      scheduleVirtualWindowRender(cfg);
-      updateGridRailActive();
-      updateTableHeaderStick();
-      maybeLoadMore(cfg);
+      if (state.resizeFrame) return;
+      state.resizeFrame = window.requestAnimationFrame(() => {
+        state.resizeFrame = 0;
+        updateVirtualGridMetrics();
+        scheduleVirtualWindowRender(cfg);
+        updateGridRailActive();
+        updateTableHeaderStick();
+        maybeLoadMore(cfg);
+      });
     };
     window.addEventListener('resize', state.resizeHandler, { passive: true });
   }
@@ -4067,7 +4175,15 @@
     const viewportTop = Math.max(0, scrollTop() - gridTop);
     const viewportBottom = viewportTop + viewportHeight();
     const rowHeight = estimatedRowStride();
-    const firstGridRow = Math.max(0, Math.floor(viewportTop / rowHeight) - GRID_WINDOW_OVERSCAN_ROWS);
+    // A wider pane packs the rows into fewer grid rows while the scroll offset
+    // still points into the old, taller layout. Clamping keeps the last screen
+    // of cards in the window; otherwise it lands past the end, renders nothing,
+    // and the top spacer holds the page height so the scroll never clamps back.
+    const tailGridRows = Math.ceil(viewportHeight() / rowHeight) + GRID_WINDOW_OVERSCAN_ROWS;
+    const firstGridRow = Math.min(
+      Math.max(0, totalGridRows - tailGridRows),
+      Math.max(0, Math.floor(viewportTop / rowHeight) - GRID_WINDOW_OVERSCAN_ROWS)
+    );
     const lastGridRow = Math.min(
       totalGridRows,
       Math.ceil(viewportBottom / rowHeight) + GRID_WINDOW_OVERSCAN_ROWS
@@ -4154,10 +4270,8 @@
         ? `Indexing ${included.toLocaleString()}${state.recordsTotalHint ? ` / ${state.recordsTotalHint.toLocaleString()}` : ''} ${effectiveMolecularGrid(cfg) ? 'molecules' : 'rows'}`
         : '';
     }
-    const clearSMARTS = document.getElementById('clear-smarts');
-    if (clearSMARTS) clearSMARTS.hidden = !state.query.trim();
     const searchInput = document.getElementById('search');
-    if (searchInput) searchInput.classList.toggle('invalid', !!state.smartsError);
+    if (searchInput) searchInput.setAttribute('aria-invalid', String(!!state.smartsError));
     syncGridClusterControls();
     syncRdkitCoordinatesControl();
     syncGridEditControls();
@@ -4247,7 +4361,9 @@
     const ticks = root.querySelector('[data-buret-grid-rail-ticks]');
     if (!rail || !ticks) return;
     const rows = state.rows || [];
-    rail.hidden = gridRailTotalRows() < 2;
+    // Nothing to navigate when every molecule already fits on screen.
+    const contentHeight = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+    rail.hidden = gridRailTotalRows() < 2 || (!hasMoreRows() && contentHeight <= viewportHeight() + 1);
     if (rail.hidden) return;
     const railRows = gridRailRows(rows).filter(({ row }) => !row || cardViewRows([row]).length > 0);
     ticks.innerHTML = railRows.map(({ row, position }, markerIndex) => {
@@ -4947,13 +5063,13 @@
       ${state.tableColumnPanelOpen ? tableColumnPanelHTML(catalog, allColumns) : ''}
       <table class="buret-grid-table">
         <thead>
-          <tr>${tableHeaderCellsHTML(columnWindow, searchColumns)}</tr>
+          <tr>${tableHeaderCellsHTML(columnWindow, searchColumns)}${TABLE_FILL_CELL.replaceAll('td', 'th')}</tr>
           ${''/* Filters live in the rail beside the table, not in this header. */}
         </thead>
         <tbody>
-          ${range.topHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan}" style="height:${Math.max(0, Math.round(range.topHeight))}px"></td></tr>` : ''}
+          ${range.topHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan + 1}" style="height:${Math.max(0, Math.round(range.topHeight))}px"></td></tr>` : ''}
           ${rows.map(row => tableRowHTML(row, columns, cfg)).join('')}
-          ${range.bottomHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan}" style="height:${Math.max(0, Math.round(range.bottomHeight))}px"></td></tr>` : ''}
+          ${range.bottomHeight > 0 ? `<tr class="buret-grid-table-spacer" aria-hidden="true"><td colspan="${columnSpan + 1}" style="height:${Math.max(0, Math.round(range.bottomHeight))}px"></td></tr>` : ''}
         </tbody>
       </table>
       ${tableTotalsHTML(state.rows, columnWindow)}`;
@@ -5371,7 +5487,7 @@
           const searchMatch = tableColumnMatchesSearch(row, column) || (column.id === 'molecule' && rowSearchMatch);
           const searchClass = searchMatch ? ' class="buret-grid-table-search-match"' : '';
           return `<td data-column="${escapeHTML(column.id)}"${tableNumericAttr(column)}${searchClass}${tableColumnWidthStyle(column)}>${tableCellHTML(row, column, cfg)}</td>`;
-        }).join('')}
+        }).join('')}${TABLE_FILL_CELL}
       </tr>`;
   }
 
@@ -6205,6 +6321,59 @@
     return props;
   }
 
+  function renameGridRow(row, value, cfg) {
+    if (state.closeTransitionActive || state.saveAsPending || !capabilities(cfg).editing) return false;
+    const name = String(value ?? '').trim();
+    if (!name || name.length > 160 || /[\r\n\u0000]/u.test(name)) return false;
+    const current = state.rows.find(candidate => Number(candidate.index) === Number(row.index));
+    if (!current || current.name === name) return false;
+    const props = { ...current.props };
+    // Name takes precedence over the molfile title when an SDF is reopened.
+    // Keep identifiers (ID, compound_id, etc.) independent of the display name.
+    for (const key of Object.keys(props)) {
+      if (key.toLowerCase() === 'name') props[key] = name;
+    }
+    const molblock = current.molblock
+      ? String(current.molblock).replace(/^[^\r\n]*/u, () => name)
+      : current.molblock;
+    pushUndoSnapshot('Rename Molecule');
+    return replaceGridRow(current, { ...current, name, props, molblock }, cfg, { undo: false });
+  }
+
+  function beginGridRowRename(row, cfg) {
+    if (state.closeTransitionActive || state.saveAsPending || !capabilities(cfg).editing) return;
+    const rowElement = root.querySelector(`[data-index="${Number(row.index)}"]`);
+    const target = rowElement?.querySelector('td[data-column="name"], .buret-card-body h2')
+      || rowElement?.querySelector('td[data-column]');
+    if (!target || target.querySelector('input')) return;
+    const previous = [...target.childNodes];
+    const input = document.createElement('input');
+    input.className = 'buret-grid-name-input';
+    input.setAttribute('aria-label', 'Compound name');
+    input.maxLength = 160;
+    input.value = row.name || '';
+    target.replaceChildren(input);
+    let finished = false;
+    const finish = (commit, restoreFocus = false) => {
+      if (finished) return;
+      finished = true;
+      target.replaceChildren(...previous);
+      if (commit) renameGridRow(row, input.value, cfg);
+      if (restoreFocus) rowElement.focus({ preventScroll: true });
+    };
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('keydown', event => {
+      event.stopPropagation();
+      if (event.isComposing) return;
+      if (event.key === 'Enter' || event.key === 'Escape') {
+        event.preventDefault();
+        finish(event.key === 'Enter', true);
+      }
+    });
+    input.focus();
+    input.select();
+  }
+
   function replaceGridRow(row, patch, cfg, options = {}) {
     if (state.closeTransitionActive || state.saveAsPending) return false;
     if (!capabilities(cfg).editing) return false;
@@ -6534,7 +6703,14 @@
         let molecule = null;
         try {
           molecule = rdkit.get_mol(input);
-          if (molecule) svg = molecule.get_svg(240, 160);
+          if (molecule) {
+            // The map's hover card draws the molecule the way its grid card does.
+            applyHydrogenDisplay(molecule, null);
+            if (!(state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock))) {
+              try { molecule.set_new_coords?.(); } catch (_) {}
+            }
+            svg = molecule.get_svg(240, 160);
+          }
         } finally {
           molecule?.delete?.();
         }
@@ -6769,6 +6945,10 @@
     if (event instanceof MouseEvent && event.button !== 0) return;
     event.preventDefault();
     hideMoleculeContextMenu();
+    if (capabilities(cfg).editing && event.target?.closest?.('td[data-column="name"], .buret-card-body h2')) {
+      beginGridRowRename(row, cfg);
+      return;
+    }
     showMoleculeDetail(row, cfg);
     setStatus(`[grid] Opened ${row.name || `Molecule ${Number(row.index) + 1}`}.`);
   }
@@ -7510,7 +7690,10 @@
   function moleculeContextMenuAction(action, row) {
     const cfg = config();
     const label = row.name || `Molecule ${Number(row.index) + 1}`;
-    if (action === 'open') {
+    if (action === 'rename') {
+      hideMoleculeContextMenu();
+      beginGridRowRename(row, cfg);
+    } else if (action === 'open') {
       hideMoleculeContextMenu();
       showMoleculeDetail(row, cfg);
       setStatus(`[grid] Opened ${label}.`);
@@ -7555,8 +7738,9 @@
     const editing = capabilities(cfg).editing;
     const actions = [
       ['open', 'Preview molecule'],
-      ['molstar', 'Open in Mol*'],
+      ['molstar', 'Open in 3D'],
       ...(editing ? [
+        ['rename', 'Rename…'],
         ['ketcher', 'Edit in Ketcher'],
         ['duplicate', 'Duplicate'],
         ['remove', 'Delete from collection']
@@ -8649,6 +8833,15 @@
   function prepareXyzrenderCardSVG(svg) {
     let html = sanitizeSVG(String(svg || ''));
     html = stripSVGClipping(html);
+    // The card surface supplies the theme. Remove only the renderer's full-
+    // canvas white rectangle, not white atoms, gradients or molecular geometry.
+    const doc = new DOMParser().parseFromString(html, 'image/svg+xml');
+    if (!doc.querySelector('parsererror')) {
+      for (const rect of doc.documentElement.querySelectorAll(':scope > rect[width="100%"][height="100%"]')) {
+        if (/^(#fff(?:fff)?|white)$/i.test(rect.getAttribute('fill') || '')) rect.remove();
+      }
+      html = new XMLSerializer().serializeToString(doc.documentElement);
+    }
     html = markSVGForFitting(html, 'data-buret-xyzrender-svg');
     return html;
   }
@@ -9383,6 +9576,7 @@
       applyTheme(cfg);
       installThemeListener(cfg);
       installHostMessageListener();
+      applyGridAppDefaults(cfg);
       normalizeCardRenderer(cfg);
       normalizeGridViewMode(cfg);
       buildUI(cfg);

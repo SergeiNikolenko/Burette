@@ -31,18 +31,72 @@
 .dock-jobs-toolbar { padding-inline: 4px; }
 .dock-jobs-toolbar > span { font-size: 12px; line-height: 18px; font-weight: 500; }
 
-/* One chronological list for all calculation engines. */
+/* Atlas task-row geometry; task actions remain separate keyboard targets. */
 .jobs-panel { min-width: 0; }
-.jobs-panel-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 6px; color: var(--text-muted); font-size: 12px; }
-.jobs-panel-list { list-style: none; margin: 0; padding: 0; }
-.jobs-panel-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 10px; min-width: 0; padding: 6px 2px; border-top: 1px solid var(--line-subtler); }
-.jobs-panel-heading { display: inline-flex; width: calc(100% - 16px); vertical-align: middle; align-items: center; gap: 10px; min-width: 0; }
-.jobs-panel-heading strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 500; color: var(--text-primary); }
-.jobs-panel-status { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; color: var(--text-muted); font-size: 11px; }
-.jobs-panel-row[data-status="failed"] .jobs-panel-status { color: var(--status-danger); }
-.jobs-panel-row[data-status="recovered"] .jobs-panel-status { color: var(--text-secondary); }
-.jobs-panel-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.jobs-panel-summary { margin: 4px 0; overflow-wrap: anywhere; color: var(--text-muted); font-size: 12px; line-height: 18px; }
-.jobs-panel-details { min-width: 0; color: var(--text-secondary); font-size: 12px; }
-.jobs-panel-details summary { min-height: 28px; line-height: 28px; cursor: pointer; }
-.jobs-panel-details pre { margin: 6px 0; padding: 8px; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface-hover); border-radius: 6px; font: inherit; }
+.jobs-panel-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 8px 8px; color: var(--color-text-secondary); font-size: var(--text-sm); }
+.jobs-panel-list { display: grid; gap: 2px; list-style: none; margin: 0; padding: 0; }
+.jobs-panel-row { min-width: 0; }
+.jobs-panel-row-header { display: flex; align-items: center; gap: 4px; min-width: 0; border-radius: 12.5px; padding-right: 4px; }
+.jobs-panel-row-header:hover,
+.jobs-panel-row-header:focus-within { background: var(--color-background-primary-ghost-hover); }
+.jobs-panel-toggle {
+  display: flex; flex: 1; min-width: 0; height: 29px; padding: 5px 8px;
+  justify-content: flex-start; gap: 8px; border: 0; border-radius: 12.5px;
+  color: var(--color-text); font-size: var(--text-sm); line-height: 18.5714px;
+}
+.jobs-panel-toggle:hover,
+.jobs-panel-toggle[aria-expanded="true"] { background: transparent; }
+/* The row header owns the hover fill; the ghost button's own layer would nest a second one. */
+.jobs-panel-toggle::before { display: none; }
+.jobs-panel-toggle strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; font-weight: inherit; }
+.jobs-panel-toggle:focus-visible { outline: 2px solid var(--color-ring); outline-offset: -2px; box-shadow: none; }
+.jobs-panel-chevron { color: var(--color-text-tertiary); transition: transform 150ms ease-out; }
+.jobs-panel-toggle[aria-expanded="true"] .jobs-panel-chevron { transform: rotate(90deg); }
+.jobs-panel-status { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; color: var(--color-text-tertiary); font-size: var(--text-xs); line-height: 16px; }
+.jobs-panel-row[data-status="failed"] .jobs-panel-status { color: var(--color-text-danger); }
+.jobs-panel-row[data-status="success"] .jobs-panel-status { color: var(--color-text-success); }
+.jobs-panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; flex-shrink: 0; }
+.jobs-panel-actions:empty { display: none; }
+.jobs-panel-details { padding: 4px 8px 8px 28px; color: var(--color-text-secondary); font-size: var(--text-sm); line-height: 18.5714px; overflow-wrap: anywhere; }
+.jobs-panel-details p { margin: 0 0 4px; }
+/* Atlas EmptyState sits in the middle of the whole dock pane. */
+.dock-content:has(> .jobs-panel > .jobs-panel-empty) { align-content: stretch; }
+.jobs-panel:has(> .jobs-panel-empty),
+.jobs-panel-empty { display: grid; place-items: center; }
+@media (prefers-reduced-motion: reduce) { .jobs-panel-chevron { transition: none; } }
+
+/* Jobs screen: the Codex list page (Scheduled tasks) — centred column, page
+   title, search, filter toggles and 64px two-line rows with inset dividers. */
+.jobs-panel[data-variant="page"] {
+  display: flex; flex-direction: column; place-items: stretch; box-sizing: border-box;
+  width: 100%; max-width: 768px; min-height: 100%; margin: 0 auto; padding: 20px;
+}
+.jobs-page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 0 8px; }
+.jobs-page-header h1 { margin: 0; color: var(--color-text); font-size: 28px; line-height: 33.6px; font-weight: 500; }
+.jobs-page-search { margin: 20px 0 8px; }
+.jobs-page-filters { display: inline-flex; gap: 2px; padding: 0 12px 8px; }
+.jobs-page-filters > [aria-pressed="true"] { background: var(--color-background-segmented-selected); color: var(--color-text); }
+.jobs-page-filters > [aria-pressed="true"]:hover { background: var(--color-background-segmented-selected-hover); }
+.jobs-panel[data-variant="page"] > .jobs-panel-empty { flex: 1; }
+.jobs-panel[data-variant="page"] .jobs-panel-list { gap: 0; }
+.jobs-panel[data-variant="page"] .jobs-panel-row-header { position: relative; gap: 8px; padding-right: 12px; }
+.jobs-panel[data-variant="page"] .jobs-panel-row-header::after {
+  content: ""; position: absolute; inset-inline: 12px; bottom: 0; height: 1px;
+  background: var(--color-border-subtle); pointer-events: none;
+}
+.jobs-panel[data-variant="page"] :is(.jobs-panel-row:last-child, .jobs-panel-row:has(+ .jobs-panel-row > .jobs-panel-row-header:hover)) > .jobs-panel-row-header::after,
+.jobs-panel[data-variant="page"] .jobs-panel-row-header:is(:hover, :focus-within)::after { display: none; }
+.jobs-panel[data-variant="page"] .jobs-panel-toggle {
+  height: auto; min-height: 40px; padding: 12px; align-items: flex-start;
+  font-size: var(--text-base); line-height: 24px;
+}
+.jobs-panel-icon { display: flex; align-items: center; justify-content: center; flex-shrink: 0; height: 24px; color: var(--color-text-tertiary); }
+.jobs-panel-icon > svg { width: 18px; height: 18px; }
+.jobs-panel-text { display: grid; flex: 1; min-width: 0; text-align: start; }
+.jobs-panel-text > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text); font-weight: 400; }
+.jobs-panel-meta { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--color-text-tertiary); font-size: 13px; line-height: 16px; }
+.jobs-panel-meta > .jobs-panel-status { font-size: inherit; line-height: inherit; }
+.jobs-panel-source { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jobs-panel-host { flex: none; color: var(--color-text-tertiary); font-size: var(--text-xs); line-height: 16px; white-space: nowrap; }
+.jobs-panel-meta > .jobs-panel-host { font-size: inherit; line-height: inherit; }
+.jobs-panel[data-variant="page"] .jobs-panel-details { padding: 0 12px 12px 38px; }

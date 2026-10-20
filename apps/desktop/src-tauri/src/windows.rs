@@ -10,6 +10,14 @@ use crate::window_state::WindowStateRegistry;
 pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
 pub(crate) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-";
 
+#[derive(Clone, Copy, Default, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum WindowPresentation {
+    #[default]
+    Workspace,
+    Preview,
+}
+
 const DEFAULT_WORKSPACE_WINDOW_WIDTH: f64 = 1180.0;
 const DEFAULT_WORKSPACE_WINDOW_HEIGHT: f64 = 760.0;
 const MIN_WORKSPACE_WINDOW_WIDTH: f64 = 390.0;
@@ -81,6 +89,7 @@ pub(crate) fn focus_or_create_workspace_window<R: Runtime>(
 
 pub(crate) fn open_new_workspace_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    presentation: WindowPresentation,
 ) -> Result<String, String> {
     if crate::menu::exit_transition_is_active(app) {
         return Err(
@@ -88,7 +97,23 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
         );
     }
     show_workspace_application(app)?;
-    let label = next_workspace_label(app);
+    // The popout is a reusable molecule inspector. Reusing its live webview
+    // avoids booting another complete application for every picked molecule.
+    if presentation == WindowPresentation::Preview {
+        if let Some(window) = app
+            .webview_windows()
+            .values()
+            .find(|window| window.label().starts_with("workspace-preview-"))
+        {
+            let label = window.label().to_string();
+            focus_or_create_workspace_window(app, Some(&label))?;
+            return Ok(label);
+        }
+    }
+    let label = match presentation {
+        WindowPresentation::Workspace => next_workspace_label(app),
+        WindowPresentation::Preview => format!("workspace-preview-{}", uuid::Uuid::new_v4()),
+    };
     let window = create_workspace_window(app, label.clone())?;
     if crate::menu::exit_transition_is_active(app) {
         let _ = window.destroy();
@@ -166,32 +191,50 @@ fn create_workspace_window<R: Runtime>(
     label: String,
 ) -> Result<WebviewWindow<R>, String> {
     let url = WebviewUrl::App(format!("index.html?buretteWindow={label}").into());
+    let preview = label.starts_with("workspace-preview-");
     let builder = WebviewWindowBuilder::new(app, &label, url)
         .title("Burette")
         .inner_size(
-            DEFAULT_WORKSPACE_WINDOW_WIDTH,
-            DEFAULT_WORKSPACE_WINDOW_HEIGHT,
+            if preview {
+                540.0
+            } else {
+                DEFAULT_WORKSPACE_WINDOW_WIDTH
+            },
+            if preview {
+                680.0
+            } else {
+                DEFAULT_WORKSPACE_WINDOW_HEIGHT
+            },
         )
         .min_inner_size(MIN_WORKSPACE_WINDOW_WIDTH, MIN_WORKSPACE_WINDOW_HEIGHT)
-        .decorations(true)
+        .decorations(!preview)
         .visible(false)
         .focused(false)
         .prevent_overflow();
+    let builder = if preview {
+        builder.always_on_top(true).visible_on_all_workspaces(true)
+    } else {
+        builder
+    };
     let builder = builder
         .transparent(true)
         .background_color(Color(0, 0, 0, 0));
     #[cfg(target_os = "macos")]
-    let builder = builder
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .hidden_title(true)
-        .traffic_light_position(crate::macos::TRAFFIC_LIGHT_INSET)
-        .effects(
-            EffectsBuilder::new()
-                .effect(Effect::HudWindow)
-                .state(EffectState::Active)
-                .build(),
-        )
-        .shadow(true);
+    let builder = if preview {
+        builder.shadow(true)
+    } else {
+        builder
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .hidden_title(true)
+            .traffic_light_position(crate::macos::TRAFFIC_LIGHT_INSET)
+            .effects(
+                EffectsBuilder::new()
+                    .effect(Effect::HudWindow)
+                    .state(EffectState::Active)
+                    .build(),
+            )
+            .shadow(true)
+    };
     let window = builder.build().map_err(|error| error.to_string())?;
     if crate::menu::exit_transition_is_active(app) {
         let _ = window.destroy();
@@ -204,7 +247,9 @@ fn create_workspace_window<R: Runtime>(
     registry.apply_geometry(&window);
     attach_window_cleanup(app, &window);
     #[cfg(target_os = "macos")]
-    crate::macos::keep_traffic_lights_inset(&window);
+    if !preview {
+        crate::macos::keep_traffic_lights_inset(&window);
+    }
     crate::zoom::apply_current_zoom(&window);
     Ok(window)
 }
@@ -233,6 +278,7 @@ pub(crate) fn attach_window_cleanup<R: Runtime>(
             reposition_traffic_lights(&event_window);
         }
         if matches!(event, tauri::WindowEvent::Destroyed) {
+            crate::commands::job_host::window_destroyed(&label);
             let _ = app
                 .state::<GridRuntimeRegistry>()
                 .unregister_prefix(&runtime_document_prefix(&label));
@@ -246,6 +292,9 @@ pub(crate) fn attach_window_cleanup<R: Runtime>(
 }
 
 fn reposition_traffic_lights<R: Runtime>(window: &WebviewWindow<R>) {
+    if window.label().starts_with("workspace-preview-") {
+        return;
+    }
     #[cfg(target_os = "macos")]
     crate::macos::reposition_traffic_lights(window);
     #[cfg(not(target_os = "macos"))]

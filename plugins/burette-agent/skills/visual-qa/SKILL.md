@@ -7,6 +7,14 @@ description: "Use when visually verifying Burette Browser preview or desktop app
 
 Use Browser and Computer as verification surfaces.
 
+## Viewer capture
+
+For the central Mol* canvas, start with `burette.capture_view` (CLI:
+`scripts/burette-agent.mjs capture --session-dir <session> --output <file>`).
+It renders the active viewer through Mol* itself, returns the image to the
+model, and works while the Browser tab is hidden. Use Browser or Computer
+screenshots for shell chrome, docks, menus, and other UI around the canvas.
+
 ## Browser
 
 Use Browser for:
@@ -66,6 +74,6 @@ non-rendered central canvas fails QA even if the file name and molecular counts
 are correct elsewhere in the app.
 
 If the central canvas is blank after typed readiness passes, run exactly one
-`reset_camera` action, observe again, and take another screenshot. If it is
+`reset_camera` action, observe again, and capture the view again. If it is
 still blank, report the visualization as failed with the typed state and visual
 evidence; do not claim success and do not loop on camera resets.

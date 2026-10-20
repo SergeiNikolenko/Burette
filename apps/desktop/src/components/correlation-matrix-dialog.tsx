@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { Dialog } from "radix-ui";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "./ui/dialog";
+import { Spinner } from "./ui/spinner";
 
 import { correlationMatrix, type CorrelationMatrixResult } from "../lib/correlation-matrix.mjs";
 import type { GridColumnChoice } from "./types";
-import { useAppShellPortalContainer } from "./ui/portal-container";
-import { CloseIcon } from "./close-icon";
 
 export type CorrelationMatrixRequest = {
   documentId: string;
@@ -72,14 +71,14 @@ export function CorrelationMatrixDialog({
   request: CorrelationMatrixRequest | null;
   onDismiss: () => void;
 }) {
-  const portalContainer = useAppShellPortalContainer();
   const [result, setResult] = useState<CorrelationMatrixResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    setResult(null);
+    setLoading(false);
     if (!request) {
-      setResult(null);
       setError(null);
       return undefined;
     }
@@ -101,7 +100,10 @@ export function CorrelationMatrixDialog({
         }
         if (!cancelled) setResult(correlationMatrix(columns));
       } catch (caught) {
-        if (!cancelled) setError(caught instanceof Error ? caught.message : String(caught));
+        if (!cancelled) {
+          console.error("[Correlation matrix]", caught);
+          setError("Could not read this collection. Reopen the matrix to try again.");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -110,60 +112,48 @@ export function CorrelationMatrixDialog({
   }, [request]);
 
   return (
-    <Dialog.Root open={request !== null} onOpenChange={(open) => { if (!open) onDismiss(); }}>
-      <Dialog.Portal container={portalContainer}>
-        <Dialog.Overlay className="radix-dialog-overlay" />
-        <Dialog.Content className="radix-dialog correlation-matrix-dialog" aria-describedby="correlation-matrix-body">
-          <div className="radix-dialog-header">
-            <Dialog.Title>Correlation Matrix</Dialog.Title>
-            <Dialog.Close asChild>
-              <button type="button" className="radix-dialog-close" aria-label="Close correlation matrix">
-                <CloseIcon size={14} />
-              </button>
-            </Dialog.Close>
-          </div>
-          <div id="correlation-matrix-body" className="radix-dialog-body">
-            <p className="correlation-matrix-target">
-              Pearson correlation between the numeric columns of <strong>{request?.documentTitle}</strong>.
-              Each pair uses the rows where both columns carry a value.
-            </p>
-            {error ? <div className="correlation-matrix-message">{error}</div> : null}
-            {loading && !result ? <div className="correlation-matrix-message">Reading columns…</div> : null}
-            {result && !error ? (
-              <div className="correlation-matrix-scroll">
-                <table className="correlation-matrix-table">
-                  <thead>
-                    <tr>
-                      <th scope="col" />
-                      {result.labels.map((label) => (
-                        <th key={label} scope="col" title={label}>{label}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.labels.map((rowLabel, row) => (
-                      <tr key={rowLabel}>
-                        <th scope="row" title={rowLabel}>{rowLabel}</th>
-                        {result.matrix[row].map((value, column) => (
-                          <td
-                            key={`${rowLabel}:${result.labels[column]}`}
-                            style={cellStyle(value)}
-                            title={value === null
-                              ? `${rowLabel} vs ${result.labels[column]}: too few shared rows`
-                              : `${rowLabel} vs ${result.labels[column]}: r = ${value.toFixed(3)} over ${result.counts[row][column].toLocaleString()} rows`}
-                          >
-                            {value === null ? "–" : value.toFixed(2)}
-                          </td>
-                        ))}
-                      </tr>
+    <Dialog open={request !== null} onOpenChange={open => { if (!open) onDismiss(); }}>
+      <DialogContent variant="form" size="xwide" className="min-w-0 overscroll-contain">
+        <DialogHeader>
+          <DialogTitle>Correlation matrix</DialogTitle>
+          <DialogDescription className="sr-only">Pearson correlations for {request?.documentTitle}.</DialogDescription>
+        </DialogHeader>
+        {error && <p className="py-5 text-sm text-(--color-text-secondary)" role="alert">{error}</p>}
+        {loading && <div className="flex items-center justify-center gap-2 py-5 text-sm text-(--color-text-secondary)" role="status"><Spinner className="size-4" aria-hidden />Reading columns…</div>}
+        {result && !error ? (
+          <div className="correlation-matrix-scroll">
+            <table className="correlation-matrix-table" aria-label="Pearson correlation coefficients">
+              <thead>
+                <tr>
+                  <th scope="col" />
+                  {result.labels.map((label, index) => (
+                    <th key={result.ids[index]} scope="col" title={label}>{label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {result.labels.map((rowLabel, row) => (
+                  <tr key={result.ids[row]}>
+                    <th scope="row" title={rowLabel}>{rowLabel}</th>
+                    {result.matrix[row].map((value, column) => (
+                      <td
+                        key={result.ids[column]}
+                        style={cellStyle(value)}
+                        title={value === null
+                          ? `${rowLabel} vs ${result.labels[column]}: correlation unavailable`
+                          : `${rowLabel} vs ${result.labels[column]}: r = ${value.toFixed(3)} over ${result.counts[row][column].toLocaleString()} rows`}
+                      >
+                        {value === null ? "" : value.toFixed(2)}
+                      </td>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        ) : null}
+        {result && !error && <p className="text-xs text-(--color-text-secondary)">Each pair uses rows with values in both columns.</p>}
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -24,7 +24,7 @@ const gridFileActionsHook = read("apps/desktop/src/hooks/use-app-grid-file-actio
 
 // The dock renders the shared ViewerFrame with the default class, so every
 // selector-based lookup in the host sees the dock frame next to the tab frame.
-assert.match(dockPanel, /<ViewerFrame document=\{dockDocument\} readOnly \/>/);
+assert.match(dockPanel, /<ViewerFrame document=\{effectiveDockDocument\} readOnly \/>/);
 assert.match(filePageKind, /<ViewerFrame\s+document=\{document\}/);
 assert.match(viewerFrame, /className = "viewer-iframe",/);
 assert.match(viewerFrame, /"data-document-id": document\.id,\s*"data-renderer": document\.renderer,\s*"data-read-only": readOnly \? "true" : undefined,\s*name: readOnly \? "burette-read-only" : "burette-editable",/);
@@ -43,9 +43,10 @@ assert.doesNotMatch(viewerBridgeMessages, /isReadOnlyViewerMessageSource/);
 assert.doesNotMatch(viewerBridgeMessages, /page-surface/);
 assert.match(viewerBridge, /querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-document-id\]"\)/);
 assert.match(viewerBridge, /querySelectorAll<HTMLIFrameElement>\("\.viewer-iframe\[data-read-only=\\"true\\"\]"\)/);
-// Host -> viewer lookups prefer the editable tab frame and fall back to the
-// dock frame when the document lives only there.
-assert.match(viewerBridge, /`\.viewer-iframe\[data-document-id="\$\{escapedId\}"\]\$\{rendererSelector\}:not\(\[data-read-only="true"\]\)`,\s*\) \?\? document\.querySelector<HTMLIFrameElement>\(\s*`\.page-surface\[data-active="true"\] \.viewer-iframe\[data-document-id="\$\{escapedId\}"\]\$\{rendererSelector\}`,\s*\) \?\? document\.querySelector<HTMLIFrameElement>\(\s*`\.viewer-iframe\[data-document-id="\$\{escapedId\}"\]\$\{rendererSelector\}`,/);
+// Visible current pages and panes win over retained history copies; the
+// duplicate-document behavior is covered by test-viewer-frame-routing.test.ts.
+assert.match(viewerBridge, /const visible = frames\.filter\(isViewerFrameVisible\)/);
+assert.match(viewerBridge, /const iframe = activeViewerIframeForDocument\(documentId\)/);
 
 // The grid's native molecule menu is served for the dock frame too; read-only
 // only removes the entries that write back into the collection.
@@ -55,7 +56,7 @@ assert.match(gridWorkspaceMenuHook, /const readOnly = isReadOnlyViewerMessageSou
 assert.match(gridWorkspaceMenuHook, /const READ_ONLY_HIDDEN_ENTRIES = new Set\(\["ketcher", "duplicate", "remove"\]\);/);
 assert.match(gridWorkspaceMenuHook, /if \(readOnly && READ_ONLY_HIDDEN_ENTRIES\.has\(id\)\) return \[\];/);
 assert.match(gridWorkspaceMenuHook, /querySelectorAll<HTMLIFrameElement>\('\.viewer-iframe\[data-renderer="grid2d"\]'\)/);
-assert.match(gridWorkspaceMenuHook, /const opening = \[\s*\.\.\.take\("open", "Preview"\),\s*\.\.\.take\("molstar", "Mol\*"\),\s*\.\.\.take\("ketcher", "Ketcher"\),\s*\];/);
+assert.match(gridWorkspaceMenuHook, /const opening = \[\s*\.\.\.take\("open", "Preview"\),\s*\.\.\.take\("molstar", "Interactive 3D"\),\s*\.\.\.take\("ketcher", "Ketcher"\),\s*\];/);
 assert.match(gridWorkspaceMenuHook, /submenu\("row-edit", "Edit", \[\.\.\.take\("duplicate", "Duplicate"\)\]\)/);
 for (const id of ["open", "molstar", "copy", "copy-smiles", "copy-name", "export", "select-row", "pubchem-identity", "filter-cell"]) {
   assert.match(gridWorkspaceMenuHook, new RegExp(`take\\("${id}", `), `${id} stays available in a read-only frame`);

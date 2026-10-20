@@ -1,3 +1,4 @@
+import { isNativePreviewWindow } from "../lib/window-scope";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 
@@ -35,10 +36,12 @@ import { joinColumnValues } from "../lib/merge-columns.mjs";
 import { readStructureText } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
 import { activeViewerIframeForDocument } from "../lib/viewer-bridge";
+import { useJobLifecycle } from "./use-job-lifecycle";
 import type { DerivedColumnJob, ViewerDocument } from "../types";
 
 const DERIVED_SOURCE_BATCH = 200;
 const DERIVED_JOB_HISTORY_LIMIT = 20;
+const derivedColumnJobTitle = (job: DerivedColumnJob) => job.columnLabel;
 const DERIVED_STORE_BATCH = 2_000;
 const GRID_RECORDS_TIMEOUT_MS = 15_000;
 // A reference set is meant to be a series, not a screening library: past this
@@ -301,20 +304,25 @@ type UseAppDerivedColumnsOptions = {
 // in the host webview - the same code path a future browser toolbar would use.
 export function useAppDerivedColumns({ documents, pushStatus }: UseAppDerivedColumnsOptions) {
   const [derivedColumnJobs, setDerivedColumnJobs] = useState<DerivedColumnJob[]>([]);
+  useJobLifecycle("columns", derivedColumnJobs, setDerivedColumnJobs, derivedColumnJobTitle);
   const [rgroupRuntimeAvailable, setRgroupRuntimeAvailable] = useState(false);
   const runningKeysRef = useRef(new Set<string>());
+
+  // A molecule popout must not start a Python/RDKit probe for grid tools.
+  // Probe only if a collection is actually opened there.
+  const needsRgroupProbe = !isNativePreviewWindow() || documents.some(document => document.renderer === "grid2d");
 
   // Asked once at startup so Decompose R-Groups can be disabled before it is
   // clicked rather than after: the probe launches a Python interpreter, which
   // is far too slow to do while a menu is opening.
   useEffect(() => {
-    if (!isTauriRuntime()) return;
+    if (!isTauriRuntime() || !needsRgroupProbe) return;
     let cancelled = false;
     void rgroupRuntimeStatus()
       .then((status) => { if (!cancelled) setRgroupRuntimeAvailable(status.available); })
       .catch(() => { if (!cancelled) setRgroupRuntimeAvailable(false); });
     return () => { cancelled = true; };
-  }, []);
+  }, [needsRgroupProbe]);
 
   const clearDerivedColumnJobs = useCallback(() => {
     setDerivedColumnJobs((previous) => previous.filter((job) => job.status === "running"));

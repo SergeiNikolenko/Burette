@@ -4,11 +4,13 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import { ErrorBoundary } from "./components/error-boundary";
+import { installActionJournal } from "./lib/action-journal";
 import { installFrontendErrorLog } from "./lib/frontend-error-log";
 import { installKetcherBrowserRequire } from "./lib/ketcher-browser-require";
 import { markPerformanceOnce } from "./lib/performance";
 import { initializeWebDemoAnalytics } from "./lib/web-demo-analytics";
 import "./styles.css";
+import "./styles/codex-tokens.css";
 import "./styles/interface-tokens.css";
 import "./styles/inspector-panel.css";
 import "./styles/dock-panels.css";
@@ -18,6 +20,7 @@ const NativeWorkspacePlacementControl = React.lazy(() => import("./components/na
   .then(module => ({ default: module.NativeWorkspacePlacementControl })));
 
 installFrontendErrorLog();
+installActionJournal();
 installKetcherBrowserRequire();
 
 function Root() {

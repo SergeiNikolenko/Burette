@@ -73,6 +73,32 @@ Stop the returned `processId` when the Browser check is complete.
 Use this surface for normal app UI work: sidebar, tabs, docks, command palette,
 agent session actions, file opening, and browser-dev endpoint behavior.
 
+## Compiled Browser Shell
+
+`vp preview` serves the frontend bundle only. A default desktop bundle retains
+Vite `/@fs/` viewer asset paths when used outside Tauri, so opening a molecular
+file there is not a valid compiled-viewer check. Use the existing prebuilt shell
+transport, which serves the reviewed runtime assets and authorized local files:
+
+```bash
+BURETTE_AGENT_SHELL_OUT_DIR=/tmp/burette-browser-check \
+VITE_BURETTE_AGENT_SHELL=1 \
+VITE_BURETTE_WEB_ASSETS_BASE=/__burette/runtime/ \
+VITE_BURETTE_BUILD_IDENTIFIER=browser-agent-shell \
+vp build --config apps/desktop/vite.config.ts
+
+BURETTE_AGENT_SHELL_DIST_DIR=/tmp/burette-browser-check \
+bun scripts/burette-agent.mjs open --mode browser-agent-shell --no-launch samples/mini.pdb
+```
+
+Verify `runtime: prebuilt-static` in the CLI result, then open its private URL in
+the in-app Browser. Keep the reported process/session handles for observation
+and cleanup. This checks the browser-agent shell build, not native Tauri IPC or
+the packaged app. Its agent-specific layout is not proof of desktop chrome
+parity; retain a separate desktop/browser-dev comparison.
+The returned `devFiles` URL deliberately reopens its explicit file list on
+reload. Do not use that reload to claim normal workspace-session restoration.
+
 ## Dev Server: Manual Foreground
 
 Use a foreground server when you need direct log visibility or a custom URL such
@@ -212,3 +238,13 @@ vp run ready
 
 `vp run ready` is the broadest local pre-merge command. Use focused commands
 first while developing so failures stay attributable.
+
+## Inspector 3D Updates In WebKit
+
+`bun tests/test-inspector-webkit.mjs` runs a focused macOS check in an offscreen
+WKWebView with the desktop custom URL scheme and the production inspector
+component. It switches water → caffeine → water and asserts the live structure
+atom counts. It does not build or open Burette, create windows, or alter saved
+sessions. Use this alongside `bun tests/test-inspector-molstar-runtime.mjs` and
+`bun tests/test-grid-preview-bootstrap.mjs` when changing the inspector's iframe
+transport; browser-only checks do not cover WebKit's message source identity.

@@ -1,6 +1,7 @@
 //! Read-only SSH previews using the user's OpenSSH configuration and agent.
 use serde::{Deserialize, Serialize};
-use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
+mod preview_cache;
+mod transport;
 use std::os::unix::process::CommandExt;
 use std::{
     io::{Read, Write},
@@ -8,10 +9,13 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::Manager;
-static REQUEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub(crate) mod download;
+pub(crate) mod remote_jobs;
 
 const WORKER: &str = concat!(
     include_str!("chemistry.py"),
+    "\n",
+    include_str!("archive.py"),
     "\n",
     include_str!("reader.py")
 );
@@ -25,6 +29,8 @@ pub(crate) struct Request {
     path: String,
     #[serde(default)]
     chemical: bool,
+    #[serde(default)]
+    archive: bool,
 }
 
 #[derive(Serialize)]
@@ -53,10 +59,15 @@ fn validate(request: &Request) -> Result<(), String> {
 }
 
 fn run(request: &Request, operation: &str) -> Result<Vec<u8>, String> {
+    run_conditional(request, operation, None)
+}
+
+fn run_conditional(
+    request: &Request,
+    operation: &str,
+    known: Option<&str>,
+) -> Result<Vec<u8>, String> {
     validate(request)?;
-    let _guard = REQUEST_LOCK
-        .lock()
-        .map_err(|_| "SSH request queue is unavailable")?;
     let mut payload =
         serde_json::json!({"operation": operation, "root": request.root, "path": request.path});
     if operation == "list" && request.chemical {
@@ -80,13 +91,39 @@ fn run(request: &Request, operation: &str) -> Result<Vec<u8>, String> {
         payload["operation"] = "discover".into();
         payload["extensions"] = extensions.into();
     }
+    if let Some(fingerprint) = known {
+        payload["known"] = fingerprint.into();
+    }
     let payload = payload.to_string();
     if payload.len() > 8192 {
         return Err("Remote path request is too large".into());
     }
+    let limit = if operation == "archive" {
+        512 * 1024 * 1024
+    } else if operation == "preview" {
+        MAX_BYTES + 1024
+    } else if operation == "read" {
+        MAX_BYTES
+    } else {
+        2 * 1024 * 1024
+    };
+    let timeout = Duration::from_secs(if operation == "archive" { 120 } else { 45 });
+    run_worker(&request.host, WORKER, payload.as_bytes(), limit, timeout)
+}
+
+/// Runs a bundled Python worker on `host`, writing `payload` to its stdin.
+fn run_worker(
+    host: &str,
+    worker: &str,
+    payload: &[u8],
+    limit: u64,
+    timeout: Duration,
+) -> Result<Vec<u8>, String> {
+    let _connection = transport::Connection::acquire()?;
     // Only the bundled worker is shell-quoted. User paths travel as JSON on stdin.
-    let remote_command = format!("python3 -c '{}'", WORKER.replace('\'', "'\\''"));
+    let remote_command = format!("python3 -c '{}'", worker.replace('\'', "'\\''"));
     let mut child = Command::new("/usr/bin/ssh")
+        .args(transport::multiplex_options(host)?)
         .args([
             "-T",
             "-oBatchMode=yes",
@@ -97,7 +134,7 @@ fn run(request: &Request, operation: &str) -> Result<Vec<u8>, String> {
             "-oForwardAgent=no",
             "-oClearAllForwardings=yes",
             "--",
-            &request.host,
+            host,
             &remote_command,
         ])
         .process_group(0)
@@ -109,11 +146,6 @@ fn run(request: &Request, operation: &str) -> Result<Vec<u8>, String> {
     let mut input = child.stdin.take().ok_or("SSH stdin unavailable")?;
     let output = child.stdout.take().ok_or("SSH stdout unavailable")?;
     let errors = child.stderr.take().ok_or("SSH stderr unavailable")?;
-    let limit = if operation == "read" {
-        MAX_BYTES
-    } else {
-        2 * 1024 * 1024
-    };
     let reader = std::thread::spawn(move || {
         let mut bytes = Vec::new();
         output
@@ -125,13 +157,13 @@ fn run(request: &Request, operation: &str) -> Result<Vec<u8>, String> {
         let mut bytes = Vec::new();
         errors.take(8192).read_to_end(&mut bytes).map(|_| bytes)
     });
-    let written = input.write_all(payload.as_bytes());
+    let written = input.write_all(payload);
     drop(input);
     let started = Instant::now();
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break Ok(status),
-            Ok(None) if started.elapsed() < Duration::from_secs(45) && written.is_ok() => {
+            Ok(None) if started.elapsed() < timeout && written.is_ok() => {
                 std::thread::sleep(Duration::from_millis(25))
             }
             other => {
@@ -195,6 +227,7 @@ pub(crate) async fn ssh_hosts() -> Result<Vec<Host>, String> {
                     root: String::new(),
                     path: String::new(),
                     chemical: false,
+                    archive: false,
                 })
                 .is_ok()
             {
@@ -236,46 +269,9 @@ pub(crate) async fn ssh_preview(app: tauri::AppHandle, request: Request) -> Resu
         .app_cache_dir()
         .map_err(|e| e.to_string())?
         .join("ssh-previews");
-    tauri::async_runtime::spawn_blocking(move || {
-        let bytes = run(&request, "read")?;
-        let name = std::path::Path::new(&request.path)
-            .file_name()
-            .ok_or("Choose a file")?;
-        let directory = cache.join(uuid::Uuid::new_v4().to_string());
-        let mut count = 0;
-        let mut total = 0_u64;
-        if let Ok(entries) = std::fs::read_dir(&cache) {
-            for entry in entries.take(257).flatten() {
-                count += 1;
-                if let Ok(files) = std::fs::read_dir(entry.path()) {
-                    for file in files.take(2).flatten() {
-                        total += file.metadata().map(|m| m.len()).unwrap_or(0);
-                    }
-                }
-            }
-        }
-        if count >= 256 || total.saturating_add(bytes.len() as u64) > 512 * 1024 * 1024 {
-            return Err(
-                "SSH preview cache is full. Clear Preview cache in Settings → Maintenance.".into(),
-            );
-        }
-        std::fs::DirBuilder::new()
-            .recursive(true)
-            .mode(0o700)
-            .create(&directory)
-            .map_err(|e| e.to_string())?;
-        let path = directory.join(name);
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&path)
-            .map_err(|e| e.to_string())?;
-        file.write_all(&bytes).map_err(|e| e.to_string())?;
-        Ok(path.to_string_lossy().into_owned())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || preview_cache::preview(&cache, &request))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]
@@ -294,6 +290,7 @@ mod tests {
                 root: "~".into(),
                 path: ".".into(),
                 chemical: false,
+                archive: false,
             };
             assert!(run(&request, "list").is_err());
         }
@@ -302,7 +299,8 @@ mod tests {
                 host: host.into(),
                 root: "~/My structures".into(),
                 path: "ligand's molecule.sdf".into(),
-                chemical: false
+                chemical: false,
+                archive: false
             })
             .is_ok());
         }
@@ -315,6 +313,7 @@ mod tests {
             root: std::env::var("BURETTE_SSH_TEST_ROOT").expect("test root"),
             path: ".".into(),
             chemical: false,
+            archive: false,
         };
         let start = std::sync::Arc::new(std::sync::Barrier::new(2));
         let workers: Vec<_> = (0..2)
@@ -344,6 +343,7 @@ mod tests {
             root,
             path: ".".into(),
             chemical: false,
+            archive: false,
         };
         let listing: serde_json::Value =
             serde_json::from_slice(&run(&request, "list").expect("remote listing")).unwrap();

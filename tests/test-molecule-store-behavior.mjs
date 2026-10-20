@@ -27,7 +27,27 @@ globalThis.window = {
   },
 };
 
-const { getMoleculeSessionSnapshot, useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store.ts");
+const { getMoleculeSessionSnapshot, isMainTab, useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store.ts");
+
+// User labels belong to tabs, not files, and survive both session export and
+// the persisted-store reload used on app launch.
+useMoleculeStore.getState().openScreenTab({ kind: "jobs" });
+const titledId = useMoleculeStore.getState().activeTabId;
+useMoleculeStore.getState().renameTab(titledId, "  Long calculation  ");
+useMoleculeStore.getState().placeTab(titledId, "floating");
+const titledSnapshot = getMoleculeSessionSnapshot(useMoleculeStore.getState());
+useMoleculeStore.getState().restoreSession(titledSnapshot.tabs, titledSnapshot.activeIndex);
+assert.equal(useMoleculeStore.getState().tabs.find(tab => tab.id === titledId)?.title, "Long calculation");
+const persistedLabel = new Map(storage);
+useMoleculeStore.getState().renameTab(titledId, "Changed");
+for (const [key, value] of persistedLabel) storage.set(key, value);
+await useMoleculeStore.persist.rehydrate();
+assert.deepEqual(useMoleculeStore.getState().tabs.filter(tab => tab.id === titledId).map(tab => ({ title: tab.title, pane: tab.pane })),
+  [{ title: "Long calculation", pane: "floating" }]);
+useMoleculeStore.getState().renameTab(titledId, "x".repeat(300));
+assert.equal(useMoleculeStore.getState().tabs.find(tab => tab.id === titledId)?.title.length, 200);
+useMoleculeStore.getState().renameTab(titledId, " ");
+assert.equal(useMoleculeStore.getState().tabs.find(tab => tab.id === titledId)?.title, undefined);
 
 function document(id, path, title = path.split("/").at(-1) ?? id, renderer = "molstar") {
   return {
@@ -432,5 +452,40 @@ useMoleculeStore.getState().closeActiveDocument();
 assert.deepEqual({ tabs: useMoleculeStore.getState().tabs, activeTabId: useMoleculeStore.getState().activeTabId },
   { tabs: [], activeTabId: null }, "embedded workspaces retain their empty state without a launcher");
 delete window.BuretteMcpWorkspace;
+
+
+// A screen placed in the floating window leaves the strip but stays a tab;
+// the active tab is always a main one.
+resetStore();
+useMoleculeStore.getState().addDocuments([document("main", "/data/main.pdb"), document("other", "/data/other.pdb")]);
+const otherTabId = useMoleculeStore.getState().activeTabId;
+useMoleculeStore.getState().placeTab(otherTabId, "floating");
+{
+  const state = useMoleculeStore.getState();
+  assert.equal(state.tabs.find((tab) => tab.id === otherTabId).pane, "floating");
+  assert.notEqual(state.activeTabId, otherTabId, "popping out the active tab selects a neighbouring main tab");
+  assert.equal(state.tabs.find((tab) => tab.id === state.activeTabId).pane, undefined);
+}
+const mainTabId = useMoleculeStore.getState().activeTabId;
+useMoleculeStore.getState().placeTab(mainTabId, "floating");
+assert.deepEqual(useMoleculeStore.getState().tabs.filter((tab) => tab.pane === "floating").map((tab) => tab.id), [mainTabId],
+  "the floating window holds one screen; the previous one returns to the strip");
+useMoleculeStore.getState().setActiveTab(mainTabId);
+assert.equal(useMoleculeStore.getState().tabs.find((tab) => tab.id === mainTabId).pane, undefined,
+  "activating a placed screen moves it back to the main window");
+
+const sessionKey = useMoleculeStore.persist.getOptions().name;
+// Screens saved in the retired side panel come back in the main strip.
+const legacySession = JSON.parse(storage.get(sessionKey));
+legacySession.state.tabs.push({ id: "legacy-side", pane: "side", location: { kind: "jobs" }, back: [], forward: [] });
+legacySession.state.sidePaneTabId = "legacy-side";
+resetStore();
+storage.set(sessionKey, JSON.stringify(legacySession));
+await useMoleculeStore.persist.rehydrate();
+{
+  const jobs = useMoleculeStore.getState().tabs.find((tab) => tab.location.kind === "jobs");
+  assert.deepEqual({ restored: Boolean(jobs), main: Boolean(jobs && isMainTab(jobs)) }, { restored: true, main: true },
+    "a side panel screen from an older session loads into the main strip");
+}
 
 console.log("tab close navigation checks passed");

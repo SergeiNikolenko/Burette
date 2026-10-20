@@ -1,9 +1,9 @@
+import { Checkbox } from "./ui/checkbox";
 import { useEffect, useState } from "react";
-import { Dialog } from "radix-ui";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/dialog";
+import { Button } from "./ui/button";
 
 import type { GridColumnChoice } from "./types";
-import { useAppShellPortalContainer } from "./ui/portal-container";
-import { CloseIcon } from "./close-icon";
 
 export type DeleteColumnsRequest = {
   documentId: string;
@@ -23,7 +23,6 @@ export function DeleteColumnsDialog({
   onDismiss: () => void;
   onRun: (documentId: string, columnKeys: string[]) => void;
 }) {
-  const portalContainer = useAppShellPortalContainer();
   const columns = request?.columns ?? [];
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -42,61 +41,31 @@ export function DeleteColumnsDialog({
   };
 
   return (
-    <Dialog.Root open={request !== null} onOpenChange={(open) => { if (!open) onDismiss(); }}>
-      <Dialog.Portal container={portalContainer}>
-        <Dialog.Overlay className="radix-dialog-overlay" />
-        <Dialog.Content className="radix-dialog calculated-column-dialog" aria-describedby="delete-columns-body">
-          <div className="radix-dialog-header">
-            <Dialog.Title>Delete Columns</Dialog.Title>
-            <Dialog.Close asChild>
-              <button type="button" className="radix-dialog-close" aria-label="Close delete columns">
-                <CloseIcon size={14} />
-              </button>
-            </Dialog.Close>
-          </div>
-          <div id="delete-columns-body" className="radix-dialog-body">
-            <div className="calculate-properties-groups" role="group" aria-label="Columns to delete">
-              {columns.map((candidate) => (
-                <label key={candidate.id} className="calculate-properties-option">
-                  <input
-                    type="checkbox"
-                    checked={selected.has(candidate.id)}
-                    onChange={() => toggle(candidate.id)}
-                  />
-                  <span>{candidate.label}</span>
-                </label>
-              ))}
-            </div>
-            <p className="calculated-column-note">
-              Removes selected columns from the table and saved file.
-            </p>
-          </div>
-          <div className="radix-dialog-footer calculate-properties-footer">
-            <span className="calculate-properties-count">
-              {selected.size > 0
-                ? `${selected.size.toLocaleString()} column${selected.size === 1 ? "" : "s"} selected`
-                : "Nothing selected"}
-            </span>
-            <div className="calculate-properties-actions">
-              <Dialog.Close asChild>
-                <button type="button" className="dock-action">Cancel</button>
-              </Dialog.Close>
-              <button
-                type="button"
-                className="dock-action calculate-properties-run"
-                disabled={selected.size === 0}
-                onClick={() => {
-                  if (!request || selected.size === 0) return;
-                  onRun(request.documentId, [...selected]);
-                  onDismiss();
-                }}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Dialog open={request !== null} onOpenChange={open => { if (!open) onDismiss(); }}>
+      <DialogContent variant="form" size="compact">
+        <DialogHeader>
+          <DialogTitle>Delete columns</DialogTitle>
+          <DialogDescription className="sr-only">Choose columns to remove from the table.</DialogDescription>
+        </DialogHeader>
+        <div className="max-h-60 overflow-y-auto overscroll-contain rounded-2xl border border-(--color-border) px-5 py-4" role="group" aria-label="Columns to delete">
+          {columns.map(candidate => (
+            <label key={candidate.id} className="flex min-w-0 items-center gap-2 py-1 text-sm [content-visibility:auto] [contain-intrinsic-size:auto_28px]">
+              <Checkbox checked={selected.has(candidate.id)} onCheckedChange={() => toggle(candidate.id)} />
+              <span className="min-w-0 break-words">{candidate.label}</span>
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-(--color-text-secondary)">The file on disk changes only when you save.</p>
+        <DialogFooter className="gap-2">
+          <span className="mr-auto text-xs text-(--color-text-secondary)" role="status">{selected.size.toLocaleString()} selected</span>
+          <Button type="button" variant="ghost" onClick={onDismiss}>Cancel</Button>
+          <Button type="button" variant="destructive" disabled={selected.size === 0} onClick={() => {
+            if (!request || selected.size === 0) return;
+            onRun(request.documentId, [...selected]);
+            onDismiss();
+          }}>Delete</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

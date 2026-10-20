@@ -27,11 +27,14 @@ const FORWARDED_COMMANDS: &[&str] = &[
     "file.export-preview-svg",
     "file.close-tab",
     "file.close-other-tabs",
+    "file.reopen-closed-tab",
     "file.close-all-tabs",
     "file.close-window",
     "edit.undo-grid",
     "edit.redo-grid",
     "edit.find",
+    "view.navigate-back",
+    "view.navigate-forward",
     "view.toggle-sidebar",
     "view.toggle-inspector",
     "view.toggle-bottom-panel",
@@ -194,7 +197,7 @@ pub(crate) fn handle_event<R: Runtime>(app: &tauri::AppHandle<R>, id: &str) {
     }
 
     if id == "file.new-window" {
-        let _ = crate::windows::open_new_workspace_window(app);
+        let _ = crate::windows::open_new_workspace_window(app, Default::default());
         return;
     }
 

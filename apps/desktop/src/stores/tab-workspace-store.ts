@@ -259,6 +259,9 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
           open: true,
           documentId,
           tool: null,
+          tabs: workspace[area].tabs.some((tab) => tab.kind === "files")
+            ? workspace[area].tabs
+            : [...workspace[area].tabs, createDockTab("files")],
           activeTab: "files",
         },
       }))),
@@ -269,6 +272,9 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
           open: true,
           documentId: null,
           tool,
+          tabs: workspace[area].tabs.some((tab) => tab.kind === "files")
+            ? workspace[area].tabs
+            : [...workspace[area].tabs, createDockTab("files")],
           activeTab: "files",
         },
       }))),

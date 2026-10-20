@@ -110,6 +110,24 @@ The desktop app can also export a diagnostics bundle from Settings >
 Maintenance > Diagnostics or from the command palette. Diagnostics bundles are local files and
 should not include raw molecule contents or credentials.
 
+Every desktop window also appends what the user did to an action journal, so a
+failure can be replayed step by step:
+
+```text
+~/Library/Caches/com.local.BuretteV10/ActionJournal.jsonl
+```
+
+Each line is one JSON object `{at, window, kind, action, target?, scope?,
+detail?}`. `kind` is `click`, `change`, `shortcut`, `menu`, `file`, `job`,
+`status`, or `session`. Clicks record the control label and its dialog, menu, or panel,
+including controls inside the Mol* viewer. Field changes record only selects,
+checkboxes, sliders, and numeric inputs, never typed text. Job entries record
+each request and status change with the input paths, run folder, and error. The
+journal is written in the background from every window. At 10 MB the file rolls
+into `ActionJournal.1.jsonl` … `ActionJournal.4.jsonl` and the oldest archive is
+deleted, so the journal never takes more than 50 MB. Diagnostics bundles include
+the live file and the newest archive.
+
 Primary Quick Look logs are under the extension container:
 
 ```text

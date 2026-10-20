@@ -1,0 +1,23 @@
+/* The standalone viewer has no Tailwind utilities. These are ToolbarButton's
+ * shared utility values; Button owns its geometry, hover, pressed and focus. */
+.buret-viewport-rail .buret-rail-button,
+.buret-main-toolbar-button {
+  flex: 0 0 auto;
+  justify-content: center;
+  --button-ring-offset: 0px;
+  --button-text-color: var(--color-text-tertiary);
+  --button-text-color-hover: var(--color-text-tertiary);
+}
+/* The rail's glyphs read at full strength over the structure, as they always did. */
+.buret-viewport-rail .buret-rail-button {
+  --button-text-color: var(--buret-toolbar-color);
+  --button-text-color-hover: var(--buret-toolbar-color);
+}
+.buret-viewport-rail .buret-rail-button[data-selected],
+.buret-main-toolbar-button[data-selected] {
+  --button-text-color: var(--color-text-primary-ghost);
+  --button-text-color-hover: var(--color-text-primary-ghost);
+}
+.buret-rail-button svg { pointer-events: none; flex-shrink: 0; }
+.buret-main-toolbar-button .buret-molstar-preset-chevron svg { width: 12px; height: 12px; }
+.buret-viewport-tooltip, .buret-molstar-tooltip { font-family: var(--font-sans); }

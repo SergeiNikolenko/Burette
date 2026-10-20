@@ -188,13 +188,14 @@ const molstarStubs = {
   MOLECULE_MENU_GROUPS: [
     { id: 'view', title: 'View', direct: true, hideTitle: true },
     { id: 'color', title: 'Colour', breakBefore: true },
+    { id: 'danger', direct: true, destructive: true, hideTitle: true, breakBefore: true },
   ],
   MOLECULE_MENU_GROUP_ICONS: {},
   MOLECULE_MENU_GROUP_TITLES: {},
   VIEWPORT_GRANULARITIES: [['residue', 'Residue'], ['chain', 'Chain']],
   molstarContextMenuActions: () => [['focus', 'Focus in current view'], ['represent:menu', 'Representation & colour…'],
-    ['colour:red', 'Red'], ['extract:chain', 'Extract Chain A as PDB']],
-  moleculeContextActionGroup: name => /^(?:colour|extract):/.test(name) ? 'color' : 'view',
+    ['colour:red', 'Red'], ['extract:chain', 'Extract Chain A as PDB'], ['delete:residue', 'Delete residue']],
+  moleculeContextActionGroup: name => name.startsWith('delete:') ? 'danger' : /^(?:colour|extract):/.test(name) ? 'color' : 'view',
   moleculeMenuSectionEntries: (grouped, section) => grouped.get(section.id) || [],
   moleculeMenuActionChildren: () => [],
   molstarContextChainLabel: () => 'Chain A',
@@ -253,8 +254,11 @@ assert.deepEqual({ type: first.message.type, clientX: first.message.clientX, cli
   { type: 'molstarContextMenu', clientX: 10, clientY: 20 });
 assert.deepEqual(first.items.map(item => item.id || item.kind), [
   'molstar-menu-label-0', 'molstar-menu:picking-level', 'separator', 'molstar-menu:focus', 'molstar-menu:represent:menu',
-  'separator', 'molstar-menu:section:color',
+  'separator', 'molstar-menu:section:color', 'separator', 'molstar-menu:delete:residue',
 ]);
+assert.equal(byId(first.items, 'delete:residue').variant, 'destructive');
+assert.equal(byId(first.items, 'focus').variant, undefined);
+assert.equal(byId(first.items, 'section:color').items[1].variant, undefined, 'array index must not be treated as destructive state');
 assert.equal(first.items[0].text, 'ALA 12');
 // Short native titles keep the NSMenu narrow; submenu rows drop the prefix their parent names.
 assert.deepEqual([byId(first.items, 'focus').text, byId(first.items, 'represent:menu').text,
@@ -343,7 +347,7 @@ assert.equal(molstarMenu.showDesktopNativeMolstarContextMenu({ clientX: 0, clien
 
 // The host drops malformed rows and never lets the frame spoof shared ids or oversized payloads.
 const parsed = molstarContextMenuItems([
-  { kind: 'item', id: 'remove', text: 'Remove', icon: 'javascript:alert(1)' },
+  { kind: 'item', id: 'remove', text: 'Remove', icon: 'javascript:alert(1)', variant: 'arbitrary-css-class' },
   { kind: 'item', id: 'x'.repeat(161), text: 'Too long' },
   { kind: 'submenu', id: 'empty', text: 'Empty', items: [{ kind: 'mystery' }] },
   { kind: 'number', id: 'bad', label: 'Bad', value: 1, min: 5, max: 5 },
@@ -371,4 +375,14 @@ const [levelOne] = molstarContextMenuItems([{ kind: 'submenu', id: 'one', text: 
 const [secondChoice, levelThree] = levelOne.items[0].items;
 assert.equal(secondChoice.kind, 'select');
 assert.deepEqual(levelThree.items.map(item => item.id), ['molstar-menu:leaf'], 'a third-level choice would nest past AppKit');
+// Open grids join the viewer's "Open in" submenu, and picking one answers with its document id.
+const openInSent = [];
+const [openIn] = molstarContextMenuItems([{ kind: 'submenu', id: 'open-in', text: 'Open in', items: [
+  { kind: 'item', id: 'open-in:tab', text: 'New Tab' }, { kind: 'item', id: 'open-in:grid', text: 'New Grid' },
+  { kind: 'item', id: 'open-in:popout', text: 'Popout' },
+] }], id => openInSent.push(id), [{ id: 'doc-1', title: 'ligands.sdf' }]);
+assert.deepEqual(openIn.items.map(item => item.text ?? item.kind), ['New Tab', 'New Grid', 'Popout', 'separator', 'Add to Grid', 'ligands.sdf']);
+openIn.items.at(-1).action();
+openIn.items[2].action();
+assert.deepEqual(openInSent, ['open-in:grid:doc-1', 'open-in:popout']);
 console.log('Mol* native context menu protocol passed');
