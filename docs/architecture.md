@@ -175,6 +175,12 @@ Normal app launch remains a visible full-window launch. Registration-only
 maintenance may opt into `BURETTE_LAUNCH_MODE=register`; file-open, Dock, and menu
 paths still show the full app. See [Launch modes](launch-modes.md).
 
+Panel, floating-pane and native window resize gestures send `hostLayoutGesture`
+to mounted viewer frames. Frames reflow with the shell so controls remain on
+their edges; Mol* holds canvas allocation until the gesture finishes. Overlapping
+gestures are counted per shell root, including detached panes, and release after
+panel transitions and final layout corrections settle.
+
 ## Preview Runtime
 
 The Tauri preview service prepares runtime artifacts for the desktop app. The
