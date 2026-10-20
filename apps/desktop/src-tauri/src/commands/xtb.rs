@@ -102,7 +102,8 @@ pub(crate) struct XtbRunResult {
     error: Option<String>,
 }
 
-#[tauri::command]
+// Runs xtb --version; `async` keeps the probe off the main thread.
+#[tauri::command(async)]
 pub(crate) fn xtb_status<R: Runtime>(app: tauri::AppHandle<R>) -> XtbStatus {
     xtb_status_from_environment(&app)
 }

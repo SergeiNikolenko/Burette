@@ -133,7 +133,7 @@ export type ChemicalEditorTarget = {
   matchReason: string;
 };
 
-export type FileOpenOptions = { shouldApply?: () => boolean; requireSuccess?: boolean };
+export type FileOpenOptions = { shouldApply?: () => boolean; requireSuccess?: boolean; preferredPath?: string; preserveActiveTab?: boolean };
 
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;

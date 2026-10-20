@@ -31,6 +31,7 @@ runtime boundaries.
 | Preview format registry check | `scripts/check-preview-format-registry.mjs` | Changing formats, UTIs, or preview routing. | `config/preview-formats.json` and metadata files. | Pass/fail registry validation. |
 | Vendor asset check | `scripts/check-vendor-assets.mjs` | Changing Mol*, RDKit, or vendored runtime assets. | Vendored asset tree. | Pass/fail freshness result. |
 | Performance smoke | `scripts/perf-smoke.sh` | Checking non-GUI and Quick Look performance budgets. | App path and perf env flags. | Text report under `build/reports`. |
+| Journey benchmark | `scripts/perf-journeys.mjs` | Measuring launch, open, tab switch, pose steps and spin on a packaged perf build before and after a change. | `BURETTE_DEV_FLAVOR=perf` build, `--runs`, `--large-dir`, `--compare`. | JSON report under `build/reports` and a p50/p95 table. |
 | Release version check | `scripts/check-release-version.mjs` | Release or versioning changes. | Git state and package version. | Pass/fail release readiness. |
 
 See `scripts/README.md` for command groups and local usage notes.

@@ -8,6 +8,7 @@ import { installActionJournal } from "./lib/action-journal";
 import { installFrontendErrorLog } from "./lib/frontend-error-log";
 import { installKetcherBrowserRequire } from "./lib/ketcher-browser-require";
 import { markPerformanceOnce } from "./lib/performance";
+import { installPerfTrace } from "./lib/perf-trace";
 import { initializeWebDemoAnalytics } from "./lib/web-demo-analytics";
 import "./styles.css";
 import "./styles/codex-tokens.css";
@@ -21,6 +22,7 @@ const NativeWorkspacePlacementControl = React.lazy(() => import("./components/na
 
 installFrontendErrorLog();
 installActionJournal();
+installPerfTrace();
 installKetcherBrowserRequire();
 
 function Root() {

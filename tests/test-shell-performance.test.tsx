@@ -12,7 +12,71 @@ const { createRoot } = await import("react-dom/client");
 const { beginViewerLayoutGesture } = await import("../apps/desktop/src/components/editor-area/viewer-frame");
 const { MarqueeName } = await import("../apps/desktop/src/components/marquee-name");
 const { useXyzrenderPlayback } = await import("../apps/desktop/src/hooks/use-xyzrender-playback");
+const { usePanelEdgeVariables } = await import("../apps/desktop/src/components/ui/use-panel-edge-variables");
 const { postToXyzrenderViewer, requestViewerAction, requestGridView } = await import("../apps/desktop/src/lib/viewer-bridge");
+
+test("live panel edges update only chrome and survive its settings round trip without layout reads", async () => {
+  const original = globalThis.ResizeObserver;
+  let deliver: ResizeObserverCallback;
+  let disconnected = false;
+  const observed: Element[] = [];
+  globalThis.ResizeObserver = class {
+    constructor(callback: ResizeObserverCallback) { deliver = callback; }
+    observe(element: Element) { observed.push(element); }
+    disconnect() { disconnected = true; }
+  } as unknown as typeof ResizeObserver;
+  const mount = document.createElement("div"); document.body.append(mount);
+  const root = createRoot(mount);
+  function Shell({ chrome = true }) {
+    const sidebar = React.useRef<HTMLDivElement>(null), dock = React.useRef<HTMLDivElement>(null);
+    const shell = usePanelEdgeVariables([
+      { elementRef: sidebar, property: "--sidebar-edge" },
+      { elementRef: dock, property: "--right-dock-edge" },
+    ]);
+    return <main ref={shell}>{chrome && <><header className="topbar" /><div className="drag-region" /></>}
+      <div ref={sidebar} /><div ref={dock} /><section className="workspace" /></main>;
+  }
+  try {
+    await act(async () => root.render(<Shell />));
+    for (const element of observed) element.getBoundingClientRect = () => { throw new Error("must use observer sizes"); };
+    await act(async () => deliver!(observed.map((target, i) => ({ target, borderBoxSize: [{ inlineSize: i ? 310 : 280 }] })) as ResizeObserverEntry[], {} as ResizeObserver));
+    const styles = () => [...mount.querySelectorAll("main, .topbar, .drag-region, .workspace")].map(el => el.getAttribute("style"));
+    const expected = [null, "--sidebar-edge: 280px; --right-dock-edge: 310px;", "--right-dock-edge: 310px;", null];
+    expect(styles()).toEqual(expected);
+    await act(async () => root.render(<Shell chrome={false} />));
+    await act(async () => root.render(<Shell />));
+    expect(styles()).toEqual(expected);
+  } finally {
+    await act(async () => root.unmount()); mount.remove(); globalThis.ResizeObserver = original;
+  }
+  expect(disconnected).toBe(true);
+});
+
+test("warm residency preserves visited views without valid heap telemetry and bounds measured pressure", () => {
+  const source = readFileSync(new URL("../apps/desktop/src/components/editor-area/index.tsx", import.meta.url), "utf8");
+  const constants = source.slice(source.indexOf("const DEFAULT_WARM_PAGE_LIMIT"), source.indexOf("export function ViewerArea"));
+  const helper = source.slice(source.indexOf("function mountedWarmPageLimit("), source.indexOf("function sameStringArray("));
+  const js = new Bun.Transpiler({ loader: "tsx" }).transformSync(`${constants}\n${helper}`);
+  const evaluate = new Function("window", "navigator", "performance", `${js}; return mountedWarmPageLimit();`);
+  const limit = (memory?: { usedJSHeapSize?: unknown; jsHeapSizeLimit?: unknown }, deviceMemory = 8) =>
+    evaluate({}, { deviceMemory }, memory ? { memory } : {});
+  const valid = { usedJSHeapSize: 100 * 1024 * 1024, jsHeapSizeLimit: 2 * 1024 ** 3 };
+  expect([
+    evaluate({}, undefined, undefined), limit(), limit({}), limit({ usedJSHeapSize: 100 }),
+    limit({ ...valid, usedJSHeapSize: NaN }), limit({ ...valid, usedJSHeapSize: Infinity }),
+    limit({ ...valid, usedJSHeapSize: -1 }), limit({ ...valid, jsHeapSizeLimit: 0 }),
+    limit({ ...valid, jsHeapSizeLimit: NaN }), limit({ ...valid, jsHeapSizeLimit: Infinity }),
+    limit(undefined, 4),
+  ]).toEqual([...Array(10).fill(10), 6]);
+  expect([undefined, 0, NaN, Infinity, -1].map(jsHeapSizeLimit =>
+    limit({ usedJSHeapSize: 768 * 1024 ** 2, jsHeapSizeLimit }),
+  )).toEqual(Array(5).fill(4));
+  expect([
+    limit(valid), limit(valid, 4), limit({ ...valid, usedJSHeapSize: 768 * 1024 * 1024 }),
+    limit({ usedJSHeapSize: 70, jsHeapSizeLimit: 100 }), limit({ usedJSHeapSize: 69, jsHeapSizeLimit: 100 }),
+    limit({ usedJSHeapSize: 0, jsHeapSizeLimit: 100 }), evaluate({ BuretteMcpWorkspace: {} }, undefined, undefined),
+  ]).toEqual([10, 6, 4, 4, 10, 10, Infinity]);
+});
 
 test("folder indexing marks draggable ancestors once and walks wide/deep trees without spread or recursive copies", () => {
   // Test private data algorithms without adding production exports for tests.

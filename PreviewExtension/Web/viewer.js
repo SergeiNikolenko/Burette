@@ -1878,21 +1878,18 @@
   const resizeState = {
     viewer: null,
     frame: 0,
-    timer: 0,
     // Container size the last resize was performed for. The window event and the
     // container observer both report the same change, a beat apart, so without
     // this the viewer redrew about twice per resize step.
     appliedSize: '',
-    appliedViewer: null
+    appliedViewer: null,
+    hasDrawn: null
   };
   let hostViewerVisible = true;
-  // The host is dragging a panel edge or sliding a panel open or closed. The
-  // iframe follows the panel every frame so the viewer chrome stays on its
-  // edges, but Mol* reallocating its render targets per frame is what made
-  // those gestures stutter. The canvas keeps its pixels for the duration,
-  // centred by `buret-host-layout-gesture` in viewer-runtime.css so the scene
-  // sits where it will land, and resizes once when the gesture ends.
+  // Explicit host gestures keep the shared buffer hold alive even when the
+  // pointer pauses; observer-only layout changes settle after geometry quiets.
   let hostLayoutGestureActive = false;
+  const hostLayoutGestureViewers = new Set();
 
   function viewerContainerSize(viewer) {
     const container = viewer?.plugin?.canvas3dContext?.canvas?.parentElement;
@@ -1923,58 +1920,73 @@
     return true;
   }
 
-  function scheduleViewerResize(viewer, delayMs = 80) {
+  function deferViewerResize(target) {
+    if (target && hostLayoutGestureActive) hostLayoutGestureViewers.add(target);
+    return window.molstar?.BuretteResizeInteraction?.touch(target, (stats, restoreStartedAt) => {
+      if (viewerCanvasIsVisible(target)) {
+        target.plugin?.handleResize?.();
+        target.plugin?.canvas3d?.draw?.({ force: true, isSynchronous: true });
+      } else if (resizeState.appliedViewer === target) {
+        // A hidden tab must catch up when it becomes visible again.
+        resizeState.appliedSize = '';
+      }
+      window.parent?.postMessage({ source: 'burette-viewer', body: { type: 'resizeStats', ...stats, restoreMs: performance.now() - restoreStartedAt } }, '*');
+    }, hostLayoutGestureActive);
+  }
+
+  function scheduleViewerResize(viewer) {
     if (!viewer) return;
-    if (hostLayoutGestureActive) return;
     if (!viewerCanvasIsVisible(viewer)) return;
     resizeState.viewer = viewer;
     if (resizeState.frame) return;
     resizeState.frame = requestAnimationFrame(() => {
       resizeState.frame = 0;
-      clearTimeout(resizeState.timer);
-      resizeState.timer = setTimeout(() => {
-        const target = resizeState.viewer;
-        if (!target) return;
-        // A resize queued just before the gesture began must not record its
-        // size as applied: the resize that ends the gesture would be skipped.
-        if (hostLayoutGestureActive) return;
-        if (!viewerCanvasIsVisible(target)) return;
-        const size = viewerContainerSize(target);
-        if (target === resizeState.appliedViewer && size && size === resizeState.appliedSize) return;
-        resizeState.appliedViewer = target;
-        resizeState.appliedSize = size;
-        let handled = false;
-        try {
-          if (typeof target.handleResize === 'function') {
-            target.handleResize();
-            handled = true;
-          }
-        } catch (_) {}
-        if (!handled) {
-          try { target.plugin?.layout?.events?.updated?.next?.(); } catch (_) {}
+      // The iframe and chrome follow bounds every frame. The renderer may keep
+      // its drawing buffer and let the compositor scale it until bounds settle.
+      const target = resizeState.viewer;
+      if (!target) return;
+      if (!viewerCanvasIsVisible(target)) return;
+      const size = viewerContainerSize(target);
+      if (target === resizeState.appliedViewer && size && size === resizeState.appliedSize) return;
+      resizeState.appliedViewer = target;
+      resizeState.appliedSize = size;
+      const startedAt = performance.now();
+      const interaction = window.molstar?.BuretteResizeInteraction;
+      // Initialization draws immediately. Live layout reuses the existing GL
+      // buffer; resizing its targets per pixel stalls even at CSS resolution.
+      const deferred = (resizeState.hasDrawn === target || hostLayoutGestureActive) && deferViewerResize(target);
+      if (deferred) {
+        interaction.record(target, performance.now() - startedAt);
+        return;
+      }
+      let handled = false;
+      try {
+        // Mol*'s Viewer.handleResize broadcasts a layout/UI update and queues
+        // another frame. PluginContext handles only canvas geometry and asks
+        // Canvas3D for a resize; it does not rebuild structures or reset camera.
+        if (typeof target.plugin?.handleResize === 'function') {
+          target.plugin.handleResize();
+          // Updating canvas.width/height clears the buffer. Draw before this
+          // callback returns so WebKit cannot present that empty buffer between
+          // our geometry update and Mol*'s next animation tick. Do not tick or
+          // resume the loop: that would advance playback or add another loop.
+          target.plugin.canvas3d?.draw?.({ force: true, isSynchronous: true });
+          handled = true;
+        } else if (typeof target.handleResize === 'function') {
+          target.handleResize();
+          handled = true;
         }
-      }, delayMs);
+      } catch (_) {}
+      if (!handled) {
+        try { target.plugin?.layout?.events?.updated?.next?.(); } catch (_) {}
+      }
+      resizeState.hasDrawn = target;
+      interaction?.record(target, performance.now() - startedAt);
     });
   }
 
-  // Mol* resizes from its own window listener and layout events as well as
-  // through scheduleViewerResize, and every one of those paths ends in
-  // plugin.handleResize, so holding that one method holds them all.
-  function holdMolstarResizeDuringHostLayoutGesture(viewer) {
-    const plugin = viewer?.plugin;
-    if (!plugin || plugin.buretteUngatedHandleResize) return;
-    const handleResize = plugin.handleResize;
-    plugin.buretteUngatedHandleResize = handleResize;
-    plugin.handleResize = () => {
-      if (!hostLayoutGestureActive) handleResize();
-    };
-  }
-
-  // Mol* commits a layout change a frame or two after the toggle, so a resize on a
-  // fixed delay measures the container it had *before* the change and is thrown
-  // away; the canvas then catches up on Mol*'s own schedule, well after the panels
-  // have moved. Watching the container fires exactly when it has settled, which is
-  // both earlier and correct, and costs one resize instead of two.
+  // Mol* can commit a layout change after the toggle. Observe its actual bounds
+  // so both the moving viewport and its final size reach the same frame scheduler.
   let viewerResizeObserver = null;
   function installViewerResizeObserver(viewer) {
     const container = viewer?.plugin?.canvas3dContext?.canvas?.parentElement;
@@ -1991,7 +2003,7 @@
       // a window resize reaches the viewer through this observer, the window
       // handler and the host's BuretteHandleResize at once, which measured at
       // roughly 2.5 handleResize calls per resize step.
-      scheduleViewerResize(viewer, 40);
+      scheduleViewerResize(viewer);
     });
     observer.observe(container);
     viewerResizeObserver = { observer, container };
@@ -2546,7 +2558,7 @@
     applyBackgroundMode();
     applyViewerBackground(viewer);
     updateThemeButton();
-    scheduleViewerResize(viewer, 40);
+    scheduleViewerResize(viewer);
     scheduleVisibleMolstarPresetPreviewRefresh();
   }
 
@@ -3370,14 +3382,20 @@
     if (body.type === 'viewerVisibilityChanged') {
       hostViewerVisible = body.visible !== false;
       activeTrajectoryPlaybackControl?.visibilityChanged?.();
-      if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer, 0);
+      if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer);
       return;
     }
     if (event.source === window.parent && body.type === 'hostLayoutGesture') {
       hostLayoutGestureActive = body.active === true;
-      document.documentElement.classList.toggle('buret-host-layout-gesture', hostLayoutGestureActive);
-      if (hostLayoutGestureActive) holdMolstarResizeDuringHostLayoutGesture(activeViewer);
-      else if (activeViewer) scheduleViewerResize(activeViewer, 0);
+      if (hostLayoutGestureActive) deferViewerResize(activeViewer);
+      else {
+        // A load or tab activation can replace activeViewer while a gesture is
+        // held. Release every owner, including a now-hidden previous viewer.
+        for (const viewer of hostLayoutGestureViewers) window.molstar?.BuretteResizeInteraction?.release(viewer);
+        hostLayoutGestureViewers.clear();
+        resizeState.appliedSize = '';
+        if (activeViewer) scheduleViewerResize(activeViewer);
+      }
       return;
     }
     if (body.type === 'workspaceHistoryCommand') {
@@ -6670,7 +6688,7 @@
     if (persist || collapsed) toolbar.dataset.defaultPosition = '1';
     repositionToolbar(toolbar);
     updateFloatingLayoutOffsets();
-    scheduleViewerResize(viewer, 40);
+    scheduleViewerResize(viewer);
   }
 
   function activateToolbarGrip(toolbar, viewer) {
@@ -6683,7 +6701,7 @@
         toolbar.dataset.defaultPosition = '1';
         repositionToolbar(toolbar);
         updateFloatingLayoutOffsets();
-        scheduleViewerResize(viewer, 40);
+        scheduleViewerResize(viewer);
       }
       return;
     }
@@ -9936,7 +9954,7 @@ SOFTWARE.
       onExpand() { toggleLayoutRegion('sequence', activeMolstarViewer()); },
       onResize() {
         updateViewportCornerLayout();
-        scheduleViewerResize(activeMolstarViewer(), 40);
+        scheduleViewerResize(activeMolstarViewer());
       },
       onCommit(height) {
         try { window.localStorage.setItem('buret.sequence.height', String(height)); } catch (_) {}
@@ -11655,6 +11673,52 @@ SOFTWARE.
     });
   }
 
+  function requestTrajectoryFrameFromNative(frameIndex, segmentIndex, signal, validateOnly = false, restoredTrajectory) {
+    installNativeRuntimeFileBridge();
+    return new Promise((resolve, reject) => {
+      const requestToken = 'trajectory-frame-' + Math.random().toString(36).slice(2);
+      let settled = false;
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        window.removeEventListener('BuretteNativeRuntimeFileReady', onReady);
+        signal?.removeEventListener('abort', onAbort);
+        fn(value);
+      };
+      const onAbort = () => finish(reject, new DOMException('Trajectory request cancelled', 'AbortError'));
+      const onReady = event => {
+        const payload = event.detail || {};
+        if (payload.requestToken !== requestToken) return;
+        if (payload.error) finish(reject, new Error(String(payload.error)));
+        else if (payload.valid === true) finish(resolve, { valid: true });
+        else finish(resolve, { bytes: base64ToBytes(payload.base64), timePs: payload.timePs, cellBasis: payload.cellBasis });
+      };
+      const timeout = setTimeout(() => finish(reject, new Error('Timed out reading trajectory frame.')), 15000);
+      window.addEventListener('BuretteNativeRuntimeFileReady', onReady);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) { onAbort(); return; }
+      try { window.__mqlPost('requestTrajectoryFrame', 'requestTrajectoryFrame', { requestToken, frameIndex, segmentIndex, validateOnly, restoredTrajectory }); }
+      catch (error) { finish(reject, error); }
+    });
+  }
+
+  // Undo and MOLX restore recreate transforms after disposing the original
+  // tree. Scene documents may restore a durable source binding; native checks
+  // its saved revision and rebuilds missing indexes before returning coordinates.
+  function requestIndexedTrajectoryFrameFromNative(indexKey, segmentIndex, frameIndex, signal, validateOnly, descriptor) {
+    const config = activeConfig || window.BuretteConfig || {};
+    const source = config.docking?.ligands?.[segmentIndex]?.indexedTrajectory;
+    if (source && source.indexKey !== indexKey) {
+      return Promise.reject(new Error('Trajectory source is no longer open. Reopen the trajectory.'));
+    }
+    if (!source && (!['molx', 'molj'].includes(config.format) || descriptor?.indexKey !== indexKey || !descriptor.source)) {
+      return Promise.reject(new Error('Trajectory source is no longer open. Reopen the trajectory.'));
+    }
+    return requestTrajectoryFrameFromNative(frameIndex, segmentIndex, signal, validateOnly, source ? undefined : descriptor);
+  }
+  window.BuretteReadIndexedTrajectoryFrame = requestIndexedTrajectoryFrameFromNative;
+
   function loadArrayBufferViaXHR(url) {
     return new Promise((resolve, reject) => {
       const request = new XMLHttpRequest();
@@ -12476,6 +12540,10 @@ SOFTWARE.
 
   function readTrajectoryControlIndex(config, prepared, poseCount) {
     if (prepared?.kind === 'docking') return readDockingPoseIndex(config, poseCount);
+    if (prepared?.kind === 'session' && prepared.nativeTrajectoryControls === true) {
+      const value = Number(readNativeTrajectoryPosition(poseCount)?.index ?? prepared.activePose ?? 0);
+      return Math.max(0, Math.min(poseCount - 1, Number.isFinite(value) ? Math.trunc(value) : 0));
+    }
     if (prepared?.sdfPoseMode === 'single' && prepared?.nativeTrajectoryControls === true) {
       const value = Number(prepared?.activePose || 0);
       return Math.max(0, Math.min(poseCount - 1, Number.isFinite(value) ? Math.trunc(value) : 0));
@@ -12753,7 +12821,9 @@ SOFTWARE.
         data,
         format,
         label: source.label || `Ligand ${ligandIndex + 1}`,
-        sourcePath: source.path || ''
+        sourcePath: source.path || '',
+        indexedTrajectory: source.indexedTrajectory || null,
+        segmentIndex: ligandIndex
       });
       poses.push({
         data,
@@ -12902,7 +12972,7 @@ SOFTWARE.
     if (sceneEntries.length > 1) {
       return prepareStagedStructureScene(config, sceneEntries);
     }
-    if (normalized === 'molj') {
+    if (normalized === 'molj' || normalized === 'molx') {
       return { kind: 'session', format: normalized, data: rawStructureData(config), label: config.label };
     }
     if (isMolViewSpecFormat(normalized)) {
@@ -13094,6 +13164,7 @@ SOFTWARE.
   }
 
   async function startExternalArtifact(config) {
+    const restoredView = window.BuretteRendererViewState?.restoreFromHost(config.documentId, postHostMessage);
     disposeExternalArtifactInteractions();
     const artifact = config.externalArtifact;
     const inlineSvg = artifact?.inlineSvg || (artifact?.inlineSvgBase64 ? base64ToText(artifact.inlineSvgBase64) : '');
@@ -13114,6 +13185,7 @@ SOFTWARE.
         <a class="buret-xyz-badge" href="https://github.com/aligfellow/xyzrender" target="_blank" rel="noopener noreferrer" title="xyzrender — project and authors"><strong>xyzrender ↗</strong><span>SVG${preset}${elapsed}</span></a>
       </div>`;
     const root = container.querySelector('.buret-external-artifact-root');
+    await restoredView;
     if (root) installExternalArtifactInteractions(root);
     initStaticRendererToolbar();
     setStatus(`[web] Rendered ${config.label || 'structure'} with external xyzrender`);
@@ -18166,12 +18238,25 @@ SOFTWARE.
     if (prepared.kind === 'session') {
       activeMolstarPrepared = prepared;
       activeDockingPrepared = null;
-      const session = JSON.parse(prepared.data);
-      prepared.fitSessionCamera = session.burettePreview === true;
-      const snapshot = await viewer.plugin.managers.snapshot.setStateSnapshot(session);
+      let snapshot;
+      if (prepared.format === 'molx') {
+        const manager = viewer.plugin.managers.snapshot;
+        await manager.open(new File([prepared.data], 'scene.molx'));
+        snapshot = manager.getEntry(manager.state.current)?.snapshot;
+      } else {
+        const session = JSON.parse(prepared.data);
+        prepared.fitSessionCamera = session.burettePreview === true;
+        snapshot = await viewer.plugin.managers.snapshot.setStateSnapshot(session);
+      }
       prepared.hasSessionCamera = Number(snapshot?.camera?.current?.radius) > 0;
       if (!prepared.hasSessionCamera) viewer.plugin.managers.camera.reset();
-      installDockingPoseControls(viewer, null);
+      const trajectory = nativeTrajectoryModelTransform();
+      const position = trajectory?.frameCount > 1 ? readNativeTrajectoryPosition(trajectory.frameCount) : null;
+      prepared.poseCount = position?.total || 0;
+      prepared.activePose = position?.index || 0;
+      prepared.nativeTrajectoryControls = Boolean(position);
+      prepared.controlLabel = 'Frame';
+      installDockingPoseControls(viewer, position ? prepared : null);
       return;
     }
     cancelScheduledMolstarWaterRepresentation();
@@ -18321,6 +18406,14 @@ SOFTWARE.
   }
 
   async function loadDockingTrajectoryPair(viewer, pair, options = {}) {
+    if (pair.coordinateEntry.indexedTrajectory) {
+      const indexed = window.molstar?.BuretteIndexedTrajectory;
+      if (!indexed) throw new Error('File-backed trajectory support is unavailable in this runtime.');
+      const segmentIndex = pair.coordinateEntry.segmentIndex;
+      await indexed.load(viewer, pair, options, (frame, signal, validateOnly) => requestTrajectoryFrameFromNative(frame, segmentIndex, signal, validateOnly));
+      if (pair.synthetic) await applyMolstarUniformRepresentation(viewer, molstarDerivedTopologyRepresentation());
+      return !!options.representationPreset;
+    }
     if (typeof viewer.loadTrajectory !== 'function') {
       throw new Error('Mol* trajectory pairing is unavailable in this viewer runtime.');
     }
@@ -20549,7 +20642,8 @@ SOFTWARE.
       return;
     }
     if (prepared.poseCount <= 1) return;
-    const playbackRestore = pendingTrajectoryPlaybackRestore;
+    const restoredSession = prepared.kind === 'session' && prepared.nativeTrajectoryControls === true;
+    const playbackRestore = restoredSession ? null : pendingTrajectoryPlaybackRestore;
     pendingTrajectoryPlaybackRestore = null;
     let activePose = playbackRestore
       ? Math.max(0, Math.min(prepared.poseCount - 1, playbackRestore.frameIndex))
@@ -20635,7 +20729,20 @@ SOFTWARE.
         section.setAttribute('aria-label', group.label);
         const heading = document.createElement('div');
         heading.className = 'buret-docking-pose-group-label';
-        heading.title = group.label;
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'buret-docking-pose-group-toggle';
+        toggle.setAttribute('aria-expanded', 'true');
+        toggle.setAttribute('aria-label', group.label);
+        const chevron = sceneTreeIconElement(APP_ICON_DATA.ChevronRight);
+        chevron.classList.add('buret-docking-pose-group-chevron');
+        const poses = document.createElement('div');
+        poses.id = `buret-docking-pose-group-${group.startFrame}`;
+        toggle.setAttribute('aria-controls', poses.id);
+        toggle.addEventListener('click', () => {
+          poses.hidden = !poses.hidden;
+          toggle.setAttribute('aria-expanded', poses.hidden ? 'false' : 'true');
+        });
         const name = document.createElement('span');
         name.className = 'buret-docking-pose-file-name';
         name.textContent = group.label;
@@ -20646,8 +20753,9 @@ SOFTWARE.
           heading.classList.add('buret-docking-pose-pin-heading');
           heading.append(pinButton(group.poses.map((_, offset) => group.startFrame + offset), group.label));
         }
-        heading.append(name, count);
-        section.append(heading);
+        toggle.append(chevron, name, count);
+        heading.append(toggle);
+        section.append(heading, poses);
         group.poses.forEach((pose, offset) => {
           const button = document.createElement('button');
           button.type = 'button';
@@ -20670,9 +20778,9 @@ SOFTWARE.
             const row = document.createElement('div');
             row.className = 'buret-docking-pose-pin-row';
             row.append(pinButton([group.startFrame + offset], `${group.label} · ${pose.label}`), button);
-            section.append(row);
+            poses.append(row);
           } else {
-            section.append(button);
+            poses.append(button);
           }
         });
         fileList.append(section);
@@ -21658,7 +21766,7 @@ SOFTWARE.
           notifyDockingPoseChanged(activePose, prepared);
         })
       : null;
-    if (prepared.nativeTrajectoryControls && initialPose > 0) {
+    if (prepared.nativeTrajectoryControls && initialPose > 0 && !restoredSession) {
       void setPose(initialPose).finally(() => {
         if (!playbackRestore?.playing || activeStructurePoseSetter !== setPose) return;
         setLoopActive(true);
@@ -29039,7 +29147,7 @@ SOFTWARE.
       if (width === lastWidth && height === lastHeight) return;
       lastWidth = width;
       lastHeight = height;
-      scheduleViewerResize(viewer, 20);
+      scheduleViewerResize(viewer);
     });
     observer.observe(app);
     return () => observer.disconnect();
@@ -29059,6 +29167,7 @@ SOFTWARE.
     clearMolstarEditUndoHistory();
     resetXyzFrameOverlayState(activeViewer);
     const viewer = activeViewer || window.BuretteViewer || window.BuretteViewer;
+    window.molstar?.BuretteResizeInteraction?.dispose(viewer);
     try { viewer?.plugin?.dispose?.(); } catch (_) {}
     if (molstarContainerResizeCleanup) {
       molstarContainerResizeCleanup();
@@ -29090,6 +29199,7 @@ SOFTWARE.
   }
 
   async function startMolstar(config, cb) {
+    const restoredView = window.BuretteRendererViewState?.restoreFromHost(config.documentId, postHostMessage);
     disposeActiveMolstarViewer();
     activeSdfPoseMode = readSdfPoseMode(config);
     activeSdfCollectionLayout = readSdfCollectionLayout(config);
@@ -29132,7 +29242,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       debug('BuretteAgent attach failed: ' + (error && error.message || String(error)));
     }
     activeViewer = viewer;
-    window.BuretteHandleResize = () => scheduleViewerResize(viewer, 60);
+    window.BuretteHandleResize = () => scheduleViewerResize(viewer);
     molstarContainerResizeCleanup = installMolstarContainerResizeObserver(viewer);
     applyViewerUIScale(viewer);
     initViewerKeyboardShortcuts(viewer);
@@ -29185,7 +29295,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
     trackMolstarOrientation(viewer, config);
 
     if (molstarWindowResizeHandler) window.removeEventListener('resize', molstarWindowResizeHandler);
-    molstarWindowResizeHandler = () => scheduleViewerResize(viewer, 100);
+    molstarWindowResizeHandler = () => scheduleViewerResize(viewer);
     window.addEventListener('resize', molstarWindowResizeHandler);
     await waitForAnimationFrame();
     applyLayoutState(viewer);
@@ -29214,6 +29324,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       if (window.BuretteNativeFirstFrame) throw error;
     }
     if (window.BuretteViewerDisposed) return;
+    await restoredView;
     const savedCamera = window.BuretteRendererViewState?.read(config.documentId, config.rendererViewState).camera;
     if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {
       molstarStructureFocusSerial += 1;

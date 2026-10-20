@@ -5,8 +5,13 @@ import { svgToPngBase64 } from "../lib/preview-image-export";
 import { basename } from "../lib/sidebar-projects";
 import { isTauriRuntime } from "../lib/tauri";
 import type { ViewerDocument } from "../types";
+import { useMoleculeStore } from "../stores/molecule-store";
+import previewFormats from "../../../../config/preview-formats.json";
 
 const GRID_PERF_REPORT_PATH = String(import.meta.env.BURETTE_GRID_PERF_REPORT_PATH || "");
+const gridSourceExtensions = new Set(previewFormats.formats
+  .filter(format => format.grid?.enabled)
+  .flatMap(format => format.extensions));
 
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
@@ -23,10 +28,32 @@ export function useAppHostRuntimeOperations({
   pushStatus,
 }: UseAppHostRuntimeOperationsOptions) {
   const gridPerfMetricsRef = useRef<string[]>([]);
+  const closingGridIdsRef = useRef(new Set<string>());
+  const documentsRef = useRef<ViewerDocument[]>([]);
+  const documentIndexRef = useRef(new Map<string, ViewerDocument>());
 
   const closeGridRuntime = useCallback((documentId: string | null | undefined) => {
     if (!documentId || !isTauriRuntime()) return;
-    void invoke("grid_close_runtime", { documentId }).catch(() => {});
+    const documents = useMoleculeStore.getState().documents;
+    if (documentsRef.current !== documents) {
+      documentsRef.current = documents;
+      documentIndexRef.current = new Map(documents.map(document => [document.id, document]));
+    }
+    const document = documentIndexRef.current.get(documentId);
+    // Inline compute sources use their own IDs and explicit lease cleanup.
+    // Grid-capable sources may retain an older grid runtime after switching
+    // renderer. Only skip documents whose format cannot own such a runtime.
+    if (document && document.renderer !== "grid2d" && document.viewerProfile !== "grid"
+      && !gridSourceExtensions.has(document.extension.toLowerCase())) return;
+    const pending = closingGridIdsRef.current;
+    const scheduled = pending.size > 0;
+    pending.add(documentId);
+    if (scheduled) return;
+    queueMicrotask(() => {
+      const documentIds = [...pending];
+      pending.clear();
+      void invoke("grid_close_runtime", { documentIds }).catch(() => {});
+    });
   }, []);
 
   const readActiveExternalPreviewSvg = useCallback(async () => {

@@ -29,7 +29,7 @@ export type SourceEditingContextValue = {
   applyPreview: (document: ViewerDocument) => void | Promise<void>;
   save: (document: ViewerDocument) => void | Promise<void>;
   stagingLoaded: (document: ViewerDocument, identity: SourcePreviewIdentity, frame: HTMLIFrameElement) => void;
-  closeDocuments: (documentIds: string[]) => boolean;
+  closeDocuments: (documentIds: string[]) => Promise<boolean>;
   confirmCloseWindow: () => Promise<boolean>;
   getWindowDirtySnapshot: () => SourceEditingWindowDirtySnapshot;
   hasUnsavedOrSavingSessions: boolean;

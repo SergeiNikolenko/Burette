@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
+import { Window } from 'happy-dom';
 
 const source = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
 const extract = name => source.match(new RegExp(`\\n  (?:async )?function ${name}\\([\\s\\S]*?\\n  \\}`, 'u'))[0];
@@ -215,3 +216,47 @@ assert.equal(await controller.restoreAfterSceneReload(sceneViewer, { ...prepared
 assert.equal(alignmentCommits, 0);
 assert.equal(await controller.restoreAfterSceneReload(sceneViewer, prepared), true);
 assert.equal(alignmentCommits, 1);
+
+
+// Collapsing a file only hides its rows: indices, scores and independent pins
+// must survive reopening the group and the surrounding menu.
+{
+  const window = new Window();
+  const document = window.document;
+  const fileList = document.createElement('div');
+  const fileButtons = [], fileTargets = [], pins = [];
+  const poseGroups = [
+    { label: 'gnina.sdf', startFrame: 0, frameCount: 2, poses: [{ label: 'Pose 1', score: { value: -8.1, tag: 'Affinity' } }, { label: 'Pose 2' }] },
+    { label: 'crystal.sdf', startFrame: 2, frameCount: 1, poses: [{ label: 'Pose 1' }] },
+  ];
+  const start = source.indexOf('    if (fileList && hasPoseGroups) {');
+  const end = source.indexOf('    } else if (fileList) {', start);
+  assert.ok(start > 0 && end > start);
+  runInNewContext(source.slice(start, end) + '}', {
+    document, fileList, hasPoseGroups: true, canPinPoses: true, poseGroups, fileButtons, fileTargets,
+    sceneTreeIconElement: () => document.createElement('span'), APP_ICON_DATA: {},
+    pinButton: indices => {
+      const pin = document.createElement('button');
+      pin.className = 'buret-docking-pose-pin';
+      pin.onclick = () => pins.push([...indices]);
+      return pin;
+    },
+  });
+  document.body.append(fileList);
+  const toggles = [...fileList.querySelectorAll('.buret-docking-pose-group-toggle')];
+  const rows = toggles.map(toggle => document.getElementById(toggle.getAttribute('aria-controls')));
+  assert.deepEqual(fileTargets, [0, 1, 2]);
+  assert.equal(fileButtons[0].textContent, 'Pose 1-8.10');
+  toggles[0].click();
+  assert.deepEqual(rows.map(row => row.hidden), [true, false]);
+  assert.equal(toggles[0].getAttribute('aria-expanded'), 'false');
+  fileList.querySelector('.buret-docking-pose-group-label .buret-docking-pose-pin').click();
+  assert.deepEqual(pins, [[0, 1]]);
+  assert.equal(rows[0].hidden, true, 'pinning a collapsed file must not toggle its disclosure');
+  toggles[0].click();
+  assert.deepEqual(rows.map(row => row.hidden), [false, false]);
+  assert.equal(toggles[0].getAttribute('aria-expanded'), 'true');
+  assert.deepEqual([...rows[0].querySelectorAll('[role="option"]')], fileButtons.slice(0, 2), 'expand reuses the original pose controls');
+  await window.happyDOM.close();
+}
+console.log('Docking file disclosure preserves pose indices, scores and independent pins');

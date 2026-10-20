@@ -101,6 +101,12 @@ impl Drop for RegisteredGridRuntime {
     }
 }
 
+pub(crate) enum GridRuntimeRelease {
+    Absent,
+    Released,
+    Replaced,
+}
+
 /// Pins the exact Grid runtime selected for snapshot materialization.
 ///
 /// Removing or replacing the registry entry cancels ingestion immediately, but
@@ -512,6 +518,30 @@ impl GridRuntimeRegistry {
             entry.cancel_token.store(true, Ordering::Relaxed);
         }
         Ok(())
+    }
+
+    pub(crate) fn unregister_if_runtime_directory(
+        &self,
+        document_id: &str,
+        runtime_directory: &Path,
+    ) -> Result<GridRuntimeRelease, String> {
+        let entry = {
+            let mut entries = self
+                .entries
+                .lock()
+                .map_err(|_| "grid runtime registry is poisoned")?;
+            match entries.get(document_id) {
+                Some(runtime) if runtime.database_path.parent() != Some(runtime_directory) => {
+                    return Ok(GridRuntimeRelease::Replaced)
+                }
+                Some(_) => entries.remove(document_id),
+                None => return Ok(GridRuntimeRelease::Absent),
+            }
+        };
+        if let Some(entry) = entry {
+            entry.cancel_token.store(true, Ordering::Relaxed);
+        }
+        Ok(GridRuntimeRelease::Released)
     }
 
     pub(crate) fn unregister_prefix(&self, document_id_prefix: &str) -> Result<(), String> {

@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 use tauri::Runtime;
 
-use super::desmond_trajectory::desmond_trajectory_files;
 use super::formats::{
     format_for_extension, normalize_renderer_mode, preview_plan_for_extension, resolve_renderer,
     structure_path_extension,
@@ -574,6 +573,8 @@ pub(crate) struct ViewerDocument {
     extension: String,
     renderer: String,
     runtime_path: String,
+    #[serde(skip_serializing_if = "is_false")]
+    runtime_deferred: bool,
     byte_count: u64,
     viewer_profile: String,
     #[serde(rename = "virtual", skip_serializing_if = "is_false")]
@@ -585,8 +586,48 @@ pub(crate) struct ViewerDocument {
 }
 
 impl ViewerDocument {
+    /// Admission records source identity without parsing it or building assets.
+    /// The mounted viewer prepares it through the ordinary open command.
+    pub(crate) fn deferred_file(
+        path: PathBuf,
+        preferences: &ViewerPreferences,
+    ) -> Result<Self, String> {
+        let canonical = path
+            .canonicalize()
+            .map_err(|error| format!("{}: {error}", path.display()))?;
+        let metadata = fs::metadata(&canonical).map_err(|error| error.to_string())?;
+        if !metadata.is_file() {
+            return Err(format!("{} is not a file", canonical.display()));
+        }
+        let extension = structure_path_extension(&canonical);
+        let plan = preview_plan_for_extension(&extension, &preferences.renderer_mode)?;
+        Ok(Self {
+            id: stable_id(&canonical),
+            path: canonical.to_string_lossy().to_string(),
+            title: file_title(&canonical),
+            extension,
+            viewer_profile: if plan.renderer == "grid2d" {
+                "grid"
+            } else {
+                "structure"
+            }
+            .to_string(),
+            renderer: plan.renderer,
+            runtime_path: String::new(),
+            runtime_deferred: true,
+            byte_count: metadata.len(),
+            is_virtual: false,
+            docking_request: None,
+            open_claim_id: None,
+        })
+    }
+
     pub(crate) fn file_path(&self) -> Option<&Path> {
         (!self.is_virtual).then(|| Path::new(&self.path))
+    }
+
+    pub(crate) fn runtime_path(&self) -> Option<&Path> {
+        (!self.runtime_path.is_empty()).then(|| Path::new(&self.runtime_path))
     }
 
     pub(crate) fn set_open_claim_id(&mut self, claim_id: String) {
@@ -613,6 +654,7 @@ impl ViewerDocument {
             extension,
             renderer,
             runtime_path,
+            runtime_deferred: false,
             byte_count,
             viewer_profile: "structure".to_string(),
             is_virtual: true,
@@ -633,13 +675,32 @@ pub(crate) fn open_document_for_window<R: Runtime>(
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
 ) -> Result<ViewerDocument, String> {
-    open_document_with_grid_options(
+    open_document_for_window_with_source_epoch(
+        app,
+        window_label,
+        path,
+        preferences,
+        reload_options,
+        None,
+    )
+}
+
+pub(crate) fn open_document_for_window_with_source_epoch<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    window_label: &str,
+    path: PathBuf,
+    preferences: &ViewerPreferences,
+    reload_options: Option<&ViewerReloadOptions>,
+    source_epoch: Option<&crate::commands::source_editing::SourceRegistrationEpoch>,
+) -> Result<ViewerDocument, String> {
+    open_document_with_grid_options_guarded(
         app,
         window_label,
         path,
         preferences,
         reload_options,
         &GridParseOptions::default(),
+        source_epoch,
     )
 }
 
@@ -666,6 +727,26 @@ pub(crate) fn open_document_with_grid_options<R: Runtime>(
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
     grid_options: &GridParseOptions,
+) -> Result<ViewerDocument, String> {
+    open_document_with_grid_options_guarded(
+        app,
+        window_label,
+        path,
+        preferences,
+        reload_options,
+        grid_options,
+        None,
+    )
+}
+
+fn open_document_with_grid_options_guarded<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    window_label: &str,
+    path: PathBuf,
+    preferences: &ViewerPreferences,
+    reload_options: Option<&ViewerReloadOptions>,
+    grid_options: &GridParseOptions,
+    source_epoch: Option<&crate::commands::source_editing::SourceRegistrationEpoch>,
 ) -> Result<ViewerDocument, String> {
     let started = SystemTime::now();
     let trace_document_id = stable_id(&path);
@@ -694,6 +775,7 @@ pub(crate) fn open_document_with_grid_options<R: Runtime>(
         preferences,
         reload_options,
         grid_options,
+        source_epoch,
     );
     match &result {
         Ok(document) => {
@@ -742,6 +824,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
     preferences: &ViewerPreferences,
     reload_options: Option<&ViewerReloadOptions>,
     grid_options: &GridParseOptions,
+    source_epoch: Option<&crate::commands::source_editing::SourceRegistrationEpoch>,
 ) -> Result<ViewerDocument, String> {
     let canonical = path
         .canonicalize()
@@ -769,7 +852,10 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         && reload_options.is_some()
         && (requested_renderer == "molstar" || requested_renderer == "xyzrender-external");
     let desktop_limit = preferences.desktop_preview_limit_bytes();
-    if metadata.len() > desktop_limit && ((!is_sdf && !streamed_table) || should_use_viewer_for_sdf)
+    let indexed_coordinates = matches!(extension.as_str(), "dcd" | "xtc" | "trr");
+    if metadata.len() > desktop_limit
+        && !indexed_coordinates
+        && ((!is_sdf && !streamed_table) || should_use_viewer_for_sdf)
     {
         return Err(format!(
             "{} is larger than the {} MiB desktop preview limit",
@@ -818,6 +904,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
             metadata.len(),
             preferences,
             grid_options,
+            source_epoch,
         )? {
             return Ok(ViewerDocument {
                 id: document_id.clone(),
@@ -826,6 +913,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
                 extension,
                 renderer: "grid2d".to_string(),
                 runtime_path: runtime_path.to_string_lossy().to_string(),
+                runtime_deferred: false,
                 byte_count: metadata.len(),
                 viewer_profile: "grid".to_string(),
                 is_virtual: false,
@@ -903,6 +991,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
             metadata.len(),
             preferences,
             grid_options,
+            source_epoch,
         )? {
             return Ok(ViewerDocument {
                 id: document_id.clone(),
@@ -911,6 +1000,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
                 extension,
                 renderer: "grid2d".to_string(),
                 runtime_path: runtime_path.to_string_lossy().to_string(),
+                runtime_deferred: false,
                 byte_count: metadata.len(),
                 viewer_profile: "grid".to_string(),
                 is_virtual: false,
@@ -993,6 +1083,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
         extension,
         renderer: runtime.renderer,
         runtime_path: runtime.path.to_string_lossy().to_string(),
+        runtime_deferred: false,
         byte_count: metadata.len(),
         viewer_profile: runtime.viewer_profile,
         is_virtual: false,
@@ -1035,28 +1126,42 @@ fn open_desmond_trajectory_document<R: Runtime>(
         return None;
     };
     Some(
-        desmond_trajectory_files(app, &cms, &trj_dir).and_then(|files| {
-            open_md_trajectory_document(
-                app,
-                StructureFileBundle {
-                    kind: StructureBundleKind::Md,
-                    // Opening `clickme.dtr` shows the run under its CMS name.
-                    primary_path: bundle.primary_path.clone(),
-                    input_path: bundle.primary_path.clone(),
-                    attachments: vec![
-                        StructureAttachment {
-                            role: StructureAttachmentRole::Topology,
-                            path: files.topology,
-                        },
-                        StructureAttachment {
-                            role: StructureAttachmentRole::Trajectory,
-                            path: files.trajectory,
-                        },
-                    ],
-                },
-                preferences,
-            )
-        }),
+        super::trajectory::prepare_desmond(app, &cms, &trj_dir).and_then(
+            |(topology, indexed, first_frame)| {
+                let source = DockingRuntimeSource {
+                    path: cms.to_string_lossy().to_string(),
+                    label: file_title(&cms),
+                    extension: "dtr".into(),
+                    format: "dcd".into(),
+                    binary: true,
+                    byte_count: indexed.source_byte_count as usize,
+                    data: first_frame,
+                    synthetic: false,
+                    indexed_trajectory: Some(indexed),
+                };
+                open_md_trajectory_with_source(
+                    app,
+                    StructureFileBundle {
+                        kind: StructureBundleKind::Md,
+                        // Opening `clickme.dtr` shows the run under its CMS name.
+                        primary_path: bundle.primary_path.clone(),
+                        input_path: bundle.primary_path.clone(),
+                        attachments: vec![
+                            StructureAttachment {
+                                role: StructureAttachmentRole::Topology,
+                                path: topology,
+                            },
+                            StructureAttachment {
+                                role: StructureAttachmentRole::Trajectory,
+                                path: trj_dir,
+                            },
+                        ],
+                    },
+                    preferences,
+                    Some(source),
+                )
+            },
+        ),
     )
 }
 
@@ -1069,6 +1174,20 @@ fn resolve_structure_file_bundle(path: &Path, extension: &str) -> StructureFileB
             input_path: path.to_path_buf(),
             attachments: Vec::new(),
         })
+}
+
+pub(crate) fn document_identity_path(path: &Path) -> PathBuf {
+    // A Desmond pointer opens under its CMS identity. Resolve it before source
+    // reservations and provisional claims, not only after trajectory conversion.
+    if structure_path_extension(path) == "dtr" {
+        if let Some(bundle) = resolve_desmond_file_bundle(path, "dtr") {
+            return bundle
+                .primary_path
+                .canonicalize()
+                .unwrap_or(bundle.primary_path);
+        }
+    }
+    path.to_path_buf()
 }
 
 pub(crate) fn companion_paths_for_open_path(path: &Path, extension: &str) -> Vec<PathBuf> {
@@ -1298,6 +1417,15 @@ fn open_md_trajectory_document<R: Runtime>(
     bundle: StructureFileBundle,
     preferences: &ViewerPreferences,
 ) -> Result<ViewerDocument, String> {
+    open_md_trajectory_with_source(app, bundle, preferences, None)
+}
+
+fn open_md_trajectory_with_source<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    bundle: StructureFileBundle,
+    preferences: &ViewerPreferences,
+    prepared_source: Option<DockingRuntimeSource>,
+) -> Result<ViewerDocument, String> {
     let topology_path = bundle
         .attachments
         .iter()
@@ -1312,7 +1440,10 @@ fn open_md_trajectory_document<R: Runtime>(
         .ok_or_else(|| "MD trajectory bundle is missing its coordinates.".to_string())?;
     let mut topology_source = read_docking_source(&topology_path.to_string_lossy())?;
     topology_source.synthetic = bundle.kind == StructureBundleKind::MdSynthetic;
-    let trajectory_source = read_docking_source(&trajectory_path.to_string_lossy())?;
+    let trajectory_source = match prepared_source {
+        Some(source) => source,
+        None => read_trajectory_source(app, &trajectory_path.to_string_lossy())?,
+    };
     let document_id = stable_id(&bundle.input_path);
     let title = file_title(&bundle.input_path);
     let extension = structure_path_extension(&bundle.input_path);
@@ -1341,6 +1472,7 @@ fn open_md_trajectory_document<R: Runtime>(
         extension,
         renderer: runtime.renderer,
         runtime_path: runtime.path.to_string_lossy().to_string(),
+        runtime_deferred: false,
         byte_count,
         viewer_profile: runtime.viewer_profile,
         is_virtual: false,
@@ -1412,7 +1544,13 @@ pub(crate) fn open_docking_document<R: Runtime>(
     let ligands = request
         .ligand_paths
         .iter()
-        .map(|path| read_docking_source(path))
+        .map(|path| {
+            if request.scene_mode.is_none() && request.ligand_paths.len() == 1 {
+                read_trajectory_source(app, path)
+            } else {
+                read_docking_source(path)
+            }
+        })
         .collect::<Result<Vec<_>, _>>()?;
     if ligands.is_empty() {
         return Err("Choose at least one ligand or pose file for docking view".to_string());
@@ -1483,6 +1621,7 @@ pub(crate) fn open_docking_document<R: Runtime>(
         extension: "docking".to_string(),
         renderer: runtime.renderer,
         runtime_path: runtime.path.to_string_lossy().to_string(),
+        runtime_deferred: false,
         byte_count,
         viewer_profile: runtime.viewer_profile,
         is_virtual: true,
@@ -1555,6 +1694,7 @@ fn read_docking_source(path: &str) -> Result<DockingRuntimeSource, String> {
             data: converted.data,
             byte_count: metadata.len() as usize,
             synthetic: false,
+            indexed_trajectory: None,
         });
     }
     Ok(DockingRuntimeSource {
@@ -1566,6 +1706,58 @@ fn read_docking_source(path: &str) -> Result<DockingRuntimeSource, String> {
         data,
         byte_count: metadata.len() as usize,
         synthetic: false,
+        indexed_trajectory: None,
+    })
+}
+
+fn read_trajectory_source<R: Runtime>(
+    app: &tauri::AppHandle<R>,
+    path: &str,
+) -> Result<DockingRuntimeSource, String> {
+    let canonical = PathBuf::from(path)
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let extension = structure_path_extension(&canonical);
+    if let Some(bundle) = resolve_desmond_file_bundle(&canonical, &extension) {
+        let cms = bundle
+            .attachments
+            .iter()
+            .find(|item| item.role == StructureAttachmentRole::Topology)
+            .ok_or("Desmond topology is missing.")?;
+        let trj = bundle
+            .attachments
+            .iter()
+            .find(|item| item.role == StructureAttachmentRole::Trajectory)
+            .ok_or("Desmond trajectory is missing.")?;
+        let (_, indexed, data) = super::trajectory::prepare_desmond(app, &cms.path, &trj.path)?;
+        return Ok(DockingRuntimeSource {
+            path: canonical.to_string_lossy().to_string(),
+            label: file_title(&canonical),
+            extension: "dtr".into(),
+            format: "dcd".into(),
+            binary: true,
+            byte_count: indexed.source_byte_count as usize,
+            data,
+            synthetic: false,
+            indexed_trajectory: Some(indexed),
+        });
+    }
+    if !matches!(extension.as_str(), "dcd" | "xtc" | "trr") {
+        return read_docking_source(path);
+    }
+    let (indexed, first_frame) = super::trajectory::prepare(app, &canonical)?;
+    Ok(DockingRuntimeSource {
+        path: canonical.to_string_lossy().to_string(),
+        label: file_title(&canonical),
+        extension: extension.clone(),
+        format: extension,
+        binary: true,
+        data: first_frame,
+        byte_count: fs::metadata(&canonical)
+            .map_err(|error| error.to_string())?
+            .len() as usize,
+        synthetic: false,
+        indexed_trajectory: Some(indexed),
     })
 }
 
@@ -1627,6 +1819,32 @@ mod document_open_tests {
             std::env::set_var("HOME", &home);
             home
         })
+    }
+
+    #[test]
+    fn deferred_admission_preserves_identity_without_reading_or_building_a_runtime() {
+        let root = std::env::temp_dir().join(format!("burette-deferred-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&root).unwrap();
+        let path = root.join("large.pdb");
+        fs::File::create(&path)
+            .unwrap()
+            .set_len(100 * 1024 * 1024)
+            .unwrap();
+        let document =
+            super::ViewerDocument::deferred_file(path.clone(), &viewer_preferences()).unwrap();
+        let json = serde_json::to_value(&document).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "id": super::stable_id(&path.canonicalize().unwrap()),
+                "path": path.canonicalize().unwrap().to_string_lossy(),
+                "title": "large.pdb", "extension": "pdb", "renderer": "molstar",
+                "runtimePath": "", "runtimeDeferred": true,
+                "byteCount": 100 * 1024 * 1024, "viewerProfile": "structure",
+            })
+        );
+        fs::remove_file(path).unwrap();
+        fs::remove_dir(root).unwrap();
     }
 
     fn viewer_preferences() -> ViewerPreferences {
@@ -1787,6 +2005,35 @@ mod document_open_tests {
         directory
     }
 
+    fn trajectory_fixture(format: &str) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        let mut int = |value: i32| bytes.extend_from_slice(&value.to_be_bytes());
+        if format == "xtc" {
+            for value in [1995, 1, 0, 0] {
+                int(value);
+            }
+            for value in [1.0f32, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0] {
+                bytes.extend_from_slice(&value.to_be_bytes());
+            }
+            bytes.extend_from_slice(&1i32.to_be_bytes());
+            bytes.extend_from_slice(&[0; 12]);
+        } else {
+            for value in [1993, 13, 12] {
+                int(value);
+            }
+            bytes.extend_from_slice(b"GMX_trn_file");
+            for value in [0i32, 0, 36, 0, 0, 0, 0, 12, 0, 0, 1, 0, 0] {
+                bytes.extend_from_slice(&value.to_be_bytes());
+            }
+            bytes.extend_from_slice(&[0; 8]);
+            for value in [1.0f32, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0] {
+                bytes.extend_from_slice(&value.to_be_bytes());
+            }
+            bytes.extend_from_slice(&[0; 12]);
+        }
+        bytes
+    }
+
     #[test]
     fn standalone_psf_topology_is_not_treated_as_renderable_coordinates() {
         let app = mock_app_with_grid_registry();
@@ -1806,9 +2053,7 @@ mod document_open_tests {
     fn standalone_xtc_opens_with_a_derived_topology() {
         let app = mock_app_with_grid_registry();
         let preferences = viewer_preferences();
-        let mut header = 1995i32.to_be_bytes().to_vec();
-        header.extend_from_slice(&1i32.to_be_bytes());
-        let path = create_temp_file("xtc", &header);
+        let path = create_temp_file("xtc", &trajectory_fixture("xtc"));
 
         let document = open_document(app.handle(), path.clone(), &preferences, None)
             .expect("standalone XTC should open against a derived topology");
@@ -1834,8 +2079,7 @@ mod document_open_tests {
         let directory = create_temp_directory();
         let trajectory = directory.join("production.xtc");
         let topology = directory.join("production.pdb");
-        fs::write(&trajectory, [0x0f, 0x00, 0x00, 0x01, b'X', b'T', b'C'])
-            .expect("XTC fixture should be written");
+        fs::write(&trajectory, trajectory_fixture("xtc")).expect("XTC fixture should be written");
         fs::write(
             &topology,
             b"ATOM      1  CA  ALA A   1       0.000   0.000   0.000  1.00 20.00           C\nEND\n",
@@ -1901,8 +2145,7 @@ mod document_open_tests {
         let directory = create_temp_directory();
         let trajectory = directory.join("nvt.xtc");
         let topology = directory.join("topology.pdb");
-        fs::write(&trajectory, [0x0f, 0x00, 0x00, 0x01, b'X', b'T', b'C'])
-            .expect("XTC fixture should be written");
+        fs::write(&trajectory, trajectory_fixture("xtc")).expect("XTC fixture should be written");
         fs::write(
             &topology,
             b"ATOM      1  CA  ALA A   1       0.000   0.000   0.000  1.00 20.00           C\nEND\n",
@@ -1960,6 +2203,76 @@ mod document_open_tests {
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
         }
+    }
+
+    #[test]
+    fn combined_grids_own_independent_runtimes_and_cancel_without_replacing_an_adopted_grid() {
+        let app = mock_app_with_grid_registry();
+        let directory = create_temp_directory();
+        let first_path = directory.join("first.sdf");
+        let second_path = directory.join("second.sdf");
+        let first_source = b"First\n  Burette\n\nM  END\n>  <ID>\nfirst\n\n$$$$\n";
+        let second_source = b"Second\n  Burette\n\nM  END\n>  <ID>\nsecond\n\n$$$$\n";
+        fs::write(&first_path, first_source).unwrap();
+        fs::write(&second_path, second_source).unwrap();
+        let open_combined = || {
+            open_documents_for_window_label(
+                app.handle(),
+                crate::windows::MAIN_WINDOW_LABEL,
+                vec![
+                    first_path.to_string_lossy().to_string(),
+                    second_path.to_string_lossy().to_string(),
+                ],
+                viewer_preferences(),
+                None,
+                Some(crate::commands::documents::OpenDocumentsMode::CombineGrid),
+            )
+            .unwrap()
+            .documents
+            .remove(0)
+        };
+        let adopted = open_combined();
+        let registry = app.state::<GridRuntimeRegistry>();
+        let adopted_id =
+            crate::windows::runtime_document_id(crate::windows::MAIN_WINDOW_LABEL, &adopted.id);
+        let query = crate::preview::grid_store::GridQuery {
+            query: String::new(),
+            sort: "index".to_string(),
+            column_filters: Vec::new(),
+            descriptor_filters: Vec::new(),
+            analysis_filters: Vec::new(),
+            descriptor_sort: None,
+            offset: 0,
+            limit: 96,
+        };
+        let before =
+            serde_json::to_value(registry.fetch_page(&adopted_id, &query).unwrap()).unwrap();
+        let cancelled = open_combined();
+        assert_ne!(cancelled.id, adopted.id);
+        assert_ne!(cancelled.path, adopted.path);
+        assert_eq!(cancelled.title, adopted.title);
+        assert!(cancelled.is_virtual && adopted.is_virtual);
+        let cancelled_id =
+            crate::windows::runtime_document_id(crate::windows::MAIN_WINDOW_LABEL, &cancelled.id);
+        assert_eq!(
+            registry
+                .fetch_page(&cancelled_id, &query)
+                .unwrap()
+                .total_rows,
+            2
+        );
+        registry.unregister(&cancelled_id).unwrap();
+        assert!(registry.fetch_page(&cancelled_id, &query).is_err());
+        assert_eq!(
+            serde_json::to_value(registry.fetch_page(&adopted_id, &query).unwrap()).unwrap(),
+            before
+        );
+        assert_eq!(fs::read(&first_path).unwrap(), first_source);
+        assert_eq!(fs::read(&second_path).unwrap(), second_source);
+        registry.unregister(&adopted_id).unwrap();
+        remove_runtime_artifacts(&adopted.runtime_path);
+        remove_runtime_artifacts(&cancelled.runtime_path);
+        let _ = fs::remove_dir_all(directory);
     }
 
     #[test]
@@ -2056,7 +2369,7 @@ mod document_open_tests {
             b"Protein\n1\n    1MET      N    1   0.000   0.000   0.000\n   1.00000   1.00000   1.00000\n",
         )
         .expect("GRO companion should be written");
-        fs::write(&trr, b"\0TRR").expect("TRR fixture should be written");
+        fs::write(&trr, trajectory_fixture("trr")).expect("TRR fixture should be written");
 
         let document = open_docking_document(
             app.handle(),
