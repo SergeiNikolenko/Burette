@@ -4398,7 +4398,7 @@ assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfMolstarDocument
 assert.match(appSdfViewerMessagesHook, /pushErrorStatus\("Select one or more molecules before opening Molstar\.", "Molstar view failed"\)/);
 assert.match(appSdfViewerMessagesHook, /invoke<ViewerDocument>\("open_text_structure"/);
 assert.match(appSdfViewerMessagesHook, /rendererMode: "molstar" as const/);
-assert.match(appSdfViewerMessagesHook, /void openDockingDocument\(receptorDocument\.path, \[document\.path\]\)/);
+assert.match(appSdfViewerMessagesHook, /void openDockingDocument\(receptorDocument\.path, \[document\.path\], \{\s*moleculeSource: document\.moleculeSource,/);
 assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening selected molecules in Molstar docking view\.\.\."\)/);
 assert.match(appSdfViewerMessagesHook, /pushStatus\("Opened selected molecules in Molstar"\)/);
 assert.match(appSdfViewerMessagesHook, /openDocumentsInActiveTab\(\[document\]\)/);
@@ -8291,7 +8291,7 @@ assert.match(gridViewer, /const molblock = typeof mol\.get_molblock === 'functio
 assert.match(gridViewer, /return sdfRecordFromMolblock\(molblock\)/);
 assert.match(gridViewer, /const text = String\(record\.text \|\| ''\)\.trimEnd\(\);[\s\S]*?if \(!text\.trim\(\)\) return null;/);
 assert.match(gridViewer, /const molblock = String\(row\?\.molblock \|\| ''\)\.trimEnd\(\);[\s\S]*?if \(molblock\.trim\(\)\) \{/);
-assert.match(gridViewer, /function requestSingleMolstarDocument\(row, cfg, openTarget = 'new-tab'\)/);
+assert.match(gridViewer, /function requestSingleMolstarDocument\(row, cfg, openTarget = 'new-tab', navigation = null\)/);
 assert.match(gridViewer, /openTarget,/);
 assert.match(gridViewer, /data-buret-detail-action="molstar">Open in new tab/);
 assert.match(gridViewer, /data-buret-detail-action="ketcher">Edit in Ketcher/);
