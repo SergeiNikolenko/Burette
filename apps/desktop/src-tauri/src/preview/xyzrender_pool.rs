@@ -29,6 +29,7 @@ pub(super) struct XyzrenderCardJob {
     pub(super) output_path: PathBuf,
     pub(super) config: String,
     pub(super) canvas_size: Option<f64>,
+    pub(super) display_hydrogens: Option<&'static str>,
 }
 
 pub(super) struct XyzrenderCardOutcome {
@@ -49,6 +50,8 @@ struct WorkerRequest<'a> {
     config: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     canvas_size: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display_hydrogens: Option<&'a str>,
 }
 
 #[derive(Deserialize)]
@@ -297,6 +300,7 @@ impl Worker {
             output_path: job.output_path.display().to_string(),
             config: &job.config,
             canvas_size: job.canvas_size,
+            display_hydrogens: job.display_hydrogens,
         };
         let payload = serde_json::to_string(&request).map_err(|err| {
             WorkerFailure::Job(format!("Could not encode xyzrender card request: {err}"))
@@ -471,6 +475,11 @@ def draw(request):
     canvas_size = request.get("canvasSize")
     if canvas_size:
         kwargs["canvas_size"] = canvas_size
+    hydrogens = request.get("displayHydrogens")
+    if hydrogens == "none":
+        kwargs["no_hy"] = True
+    elif hydrogens == "all":
+        kwargs["hy"] = True
     svg = render(mol, **kwargs)
     with open(request["outputPath"], "w", encoding="utf-8") as handle:
         handle.write(str(svg))

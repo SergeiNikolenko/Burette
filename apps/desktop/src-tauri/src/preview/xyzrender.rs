@@ -377,6 +377,9 @@ pub(crate) fn create_xyzrender_card_batch_artifacts(
                 .controls
                 .as_ref()
                 .and_then(|controls| finite_positive(controls.canvas_size)),
+            display_hydrogens: miss.request.controls.as_ref().and_then(|controls| {
+                normalized_display_hydrogens(controls.display_hydrogens.as_deref())
+            }),
         })
         .collect();
     let outcomes = render_cards(&launch, jobs);

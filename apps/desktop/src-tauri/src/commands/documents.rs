@@ -2337,15 +2337,29 @@ fn render_xyzrender_sheet_items_blocking(
 
 /// Routes a grid card to the pooled xyzrender workers when the card only needs
 /// an inline structure and a preset, which is every card the grid renders for a
-/// collection. Cards with per-card controls still need the CLI argument surface.
+/// collection. Hydrogen visibility is supported by the pool; other per-card
+/// controls still need the CLI argument surface.
 fn prepare_xyzrender_card_batch_request(
     item: &XyzrenderSheetRenderBatchItemRequest,
     output_directory: &Path,
     cache_directory: Option<PathBuf>,
 ) -> Option<Result<XyzrenderCardBatchRequest, String>> {
     let request = &item.request;
-    if request.controls.is_some() {
+    if request.orientation_ref.is_some() {
         return None;
+    }
+    if let Some(controls) = request.controls.as_ref() {
+        // Grid cards always supply displayHydrogens, including the default
+        // "none". Reject only controls the worker cannot apply, so ordinary
+        // cards do not fall back to one cold CLI process per molecule.
+        let values = serde_json::to_value(controls).ok()?;
+        if values
+            .as_object()?
+            .iter()
+            .any(|(key, value)| key != "displayHydrogens" && !value.is_null())
+        {
+            return None;
+        }
     }
     if matches!(request.preset.as_deref(), Some("custom")) {
         return None;
@@ -3821,6 +3835,58 @@ mod tests {
         fs::remove_file(pdb).unwrap();
         fs::remove_dir(nested).unwrap();
         fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn grid_card_hydrogen_controls_use_pool_without_dropping_other_controls() {
+        use super::{prepare_xyzrender_card_batch_request, XyzrenderSheetRenderBatchItemRequest};
+        let root = std::env::temp_dir().join(format!("burette-card-pool-{}", uuid::Uuid::new_v4()));
+        let cases = [
+            (serde_json::Value::Null, true),
+            (serde_json::json!({ "displayHydrogens": "none" }), true),
+            (serde_json::json!({ "displayHydrogens": "auto" }), true),
+            (serde_json::json!({ "displayHydrogens": "all" }), true),
+            (
+                serde_json::json!({ "displayHydrogens": "all", "atomScale": 0.8 }),
+                false,
+            ),
+            (serde_json::json!({ "transparentBackground": false }), false),
+        ];
+        for (controls, pooled) in cases {
+            let item: XyzrenderSheetRenderBatchItemRequest =
+                serde_json::from_value(serde_json::json!({
+                    "id": "card", "path": "collection.smi", "preset": "default",
+                    "controls": controls, "inputDataBase64": "Q0MK", "inputExtension": "smi",
+                    "cacheScope": "grid-card"
+                }))
+                .unwrap();
+            let prepared = prepare_xyzrender_card_batch_request(&item, &root, None);
+            assert_eq!(prepared.is_some(), pooled);
+            if let Some(prepared) = prepared {
+                let prepared = prepared.unwrap();
+                assert_eq!(prepared.direct_smiles.as_deref(), Some("CC"));
+                assert_eq!(
+                    serde_json::to_value(prepared.controls).unwrap(),
+                    serde_json::to_value(&item.request.controls).unwrap(),
+                );
+            }
+        }
+        for extra in [
+            serde_json::json!({"preset": "custom"}),
+            serde_json::json!({"orientationRef": "reference"}),
+        ] {
+            let mut input = serde_json::json!({
+                "id": "card", "path": "collection.smi", "controls": {"displayHydrogens": "none"},
+                "inputDataBase64": "Q0MK", "inputExtension": "smi"
+            });
+            input
+                .as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            let item = serde_json::from_value(input).unwrap();
+            assert!(prepare_xyzrender_card_batch_request(&item, &root, None).is_none());
+        }
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

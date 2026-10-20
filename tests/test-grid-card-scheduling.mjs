@@ -215,3 +215,73 @@ console.log('Grid card scheduling: priority, frame budget, in-flight deduplicati
   assert.doesNotMatch(cell({}, { id: 'prop:RGroup_Status', get: () => 'Matched' }, {}), /drawing/);
   assert.doesNotMatch(cell({}, { id: 'prop:RGroup_R1', get: () => '' }, {}), /drawing/);
 }
+
+// A virtual-window rebuild can mount a placeholder while its previous request
+// is completing. The observer must attach the ready image, not enqueue it again.
+state.xyzrenderCardCache = new Map();
+state.xyzrenderCardQueue = [];
+state.xyzrenderCardSeq = 0;
+let pumps = 0;
+const updates = [];
+const enqueue = new Function('state', 'pumpXyzrenderCardQueue', 'updateXyzrenderCard', 'drawXyzrenderCard', `${body('enqueueXyzrenderCard')} return enqueueXyzrenderCard;`)(
+  state, () => pumps++, (key, html) => updates.push([key, html]), row => state.xyzrenderCardCache.get(row.key).html || '<div>Failed molecule</div>',
+);
+const oldTarget = { isConnected: false };
+const newTarget = { isConnected: true };
+const row = { key: 'racing' };
+enqueue(row, {}, {}, row.key, oldTarget);
+enqueue(row, {}, {}, row.key, newTarget);
+assert.equal(pumps, 1, 'remount does not duplicate an in-flight render');
+assert.equal(state.xyzrenderCardQueue[0].target, newTarget, 'priority follows the mounted target');
+state.xyzrenderCardCache.set(row.key, { html: '<img alt="Molecule"/>' });
+enqueue(row, {}, {}, row.key, newTarget);
+assert.deepEqual(updates, [['racing', '<img alt="Molecule"/>']], 'late observer consumes a finished image');
+state.xyzrenderCardCache.set(row.key, { error: 'render failed' });
+enqueue(row, {}, {}, row.key, newTarget);
+assert.deepEqual(updates.at(-1), ['racing', '<div>Failed molecule</div>'], 'late observer also resolves failed placeholders');
+assert.equal(pumps, 1, 'ready images and failures never restart work');
+
+const priority = new Function('window', 'document', `${body('cardRenderPriority')} return cardRenderPriority;`)(
+  { innerHeight: 600 }, {},
+);
+const targetAt = (top, bottom, isConnected = true) => ({ isConnected, getBoundingClientRect: () => ({ top, bottom }) });
+assert.equal(priority(targetAt(0, 0, false)), Number.MAX_SAFE_INTEGER, 'detached nodes are not visible');
+state.xyzrenderCardQueue = [
+  { key: 'distant', target: targetAt(1200, 1300), seq: 0 },
+  { key: 'nearby', target: targetAt(700, 800), seq: 1 },
+  { key: 'visible', target: targetAt(50, 150), seq: 2 },
+];
+const takeBatch = new Function('state', 'cardRenderPriority', `const XYZRENDER_CARD_BATCH_SIZE = 12; ${body('sortXyzrenderCardQueue')} ${body('takeXyzrenderCardBatchJobs')} return takeXyzrenderCardBatchJobs;`)(state, priority);
+assert.deepEqual(takeBatch().map(job => job.key), ['visible']);
+assert.deepEqual(takeBatch().map(job => job.key), ['nearby', 'distant'], 'prefetch stays closest-first after scrolling');
+
+state.xyzrenderPreset = 'default';
+state.xyzrenderCardCache = new Map([['default', { html: '<svg/>' }], ['failed', { error: 'Timeout' }]]);
+state.cardRenderer = 'xyzrender';
+const preset = new Function('state', 'normalizeXyzrenderPreset', 'currentXyzrenderPreset', 'resetXyzrenderCardObserver', 'resetCardRenderQueues', 'refreshGridControls', 'applyGridPreferences', 'render', `${body('setXyzrenderPreset')}
+return setXyzrenderPreset;`)(
+  state, value => value, () => state.xyzrenderPreset, () => {}, () => {}, () => {}, () => {}, () => {},
+);
+preset('flat', {});
+preset('default', {});
+assert.equal(state.xyzrenderCardCache.get('default').html, '<svg/>', 'returning to a preset retains ready images');
+assert.equal(state.xyzrenderCardCache.has('failed'), false, 'returning to a preset allows failed renders to retry');
+
+// Exercise the real batch consumer with deliberately expensive SVG processing.
+// Its promise remains pending at each yield, allowing input before all 12 cards.
+const asyncBody = source.slice(source.indexOf('  async function requestXyzrenderCardBatch('), source.indexOf('\n  function markXyzrenderCardError('));
+const batchUpdates = [];
+let clock = 0;
+let yields = 0;
+const jobs = Array.from({ length: 12 }, (_, i) => ({ key: `batch-${i}`, row: { index: i }, cfg: {}, record: {} }));
+const consumeBatch = new Function('state', 'hostRequest', 'currentXyzrenderPreset', 'xyzrenderCardControls', 'textToBase64', 'xyzrenderCardInputText', 'prepareXyzrenderCardSVG', 'svgDataImageHTML', 'evictXyzrenderCardCache', 'updateXyzrenderCard', 'emitGridPerfMetric', 'xyzrenderCardBatchConcurrency', 'markXyzrenderCardError', 'nowMs', 'window', `
+  const XYZRENDER_CARD_BATCH_TIMEOUT_MS = 60000, RDKIT_CARD_FRAME_BUDGET_MS = 8;
+  ${asyncBody}
+  return requestXyzrenderCardBatch;
+`)(state, async () => ({ items: jobs.map(job => ({ id: job.key, svg: '<svg/>' })) }), () => 'default', () => ({}), x => x, () => '', svg => { clock += 9; return svg; }, svg => svg, () => {}, key => batchUpdates.push(key), () => {}, () => 1, (_job, error) => assert.fail(error), () => clock, {
+  setTimeout(resolve) { yields++; assert.ok(batchUpdates.length > 0 && batchUpdates.length < jobs.length); setTimeout(resolve, 0); },
+});
+await consumeBatch(jobs);
+assert.equal(yields, 11, 'each expensive card yields before processing the next');
+assert.deepEqual(batchUpdates, jobs.map(job => job.key));
+console.log('3D cards: late cache delivery, remount priority, preset reuse and UI-thread yields passed.');
