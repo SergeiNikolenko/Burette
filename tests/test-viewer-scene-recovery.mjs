@@ -166,19 +166,20 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
     configuredMolstarStyle: config => config.molstarStyle,
     dockingSceneBackgroundStyle: value => value, readSdfCollectionContextStyle: () => 'match',
     readSdfCollectionContextOpacity: () => 0.2, readSdfCollectionContextColor: () => 'gray',
-    dockingPoseCollectionStateKey: (_prepared, style) => style,
+    xyzFrameOverlayRawSignature: () => '',
     dockingPoseCollectionStateStillLoaded: () => true,
+    dockingPinnedPoseIndices: () => new Set(), syncDockingPinnedPoseVisibility() {},
     molstarStructuresByRefs: () => [], applySdfCollectionMolstarStyle: async () => {},
     document: { querySelector: () => null }, updateStructureOverlayToggleButton() {},
     applyMolstarWaterLineRepresentation: async () => {},
     switchCachedPoseLayer: async (_viewer, target, index) => { target.activeIndex = index; target.activeRefs = [`ligand-${index + 1}`]; },
   };
-  runInNewContext(extract('resyncDockingSceneAfterRestyle') + extract('applyDockingPoseCollectionVisibilityNow'), context);
+  runInNewContext(extract('dockingPoseCollectionStateKey') + extract('resyncDockingSceneAfterRestyle') + extract('applyDockingPoseCollectionVisibilityNow'), context);
   context.applyDockingPoseCollectionVisibility = context.applyDockingPoseCollectionVisibilityNow;
   await context.resyncDockingSceneAfterRestyle(poseViewer);
   await context.applyDockingPoseCollectionVisibilityNow(poseViewer, docking, 1, { focus: false });
   assert.deepEqual({ key: state.key, receptor: state.receptorRefs, active: state.activeRefs, index: state.activeIndex }, {
-    key: 'ball-and-stick', receptor: ['receptor'], active: ['ligand-2'], index: 1,
+    key: context.dockingPoseCollectionStateKey(docking, 'ball-and-stick', false, 'match', 1), receptor: ['receptor'], active: ['ligand-2'], index: 1,
   });
 }
 

@@ -9,6 +9,7 @@ import { useRef } from "react";
 import { requestGridView, requestViewerAction } from "../lib/viewer-bridge";
 import { writeClipboardText } from "../lib/clipboard";
 import { fileCapabilities } from "../components/workspace-menu-items";
+import { togetherDockingRequest } from "../lib/docking-documents";
 import type { ShellActions, ShellViewState } from "../components/types";
 import type { ViewerDocument } from "../types";
 
@@ -108,6 +109,10 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     await validatePoseFiles(paths);
     await actions.openDockingDocument(paths[0], paths.slice(1), { sceneMode: "structurePoses" });
   };
+  const openTogether = async (paths: string[]) => {
+    const request = togetherDockingRequest(paths);
+    await actions.openDockingDocument(request.receptorPath, request.ligandPaths, { sceneMode: request.sceneMode });
+  };
   const openAligned = async (paths: string[]) => {
     const document = await actions.openDockingDocument(paths[0], paths.slice(1), { sceneMode: "structureAll" });
     if (!document) throw new Error("Could not open the combined scene.");
@@ -139,5 +144,5 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     }
   };
   const copyNames = (paths: string[]) => writeClipboardText(paths.map(path => path.split('/').pop() || path).join('\n'));
-  return { isCombinedScene: (document: ViewerDocument) => scenePaths(document).length > 1, sceneTargets, addToScene, addRecordsToScene, mergeTargets, mergeScene, gridView, saveScene, copyNames, focusViewer, openRecordScene, openPoses, openAligned, exportStructure, copySequence, exportImage };
+  return { isCombinedScene: (document: ViewerDocument) => scenePaths(document).length > 1, sceneTargets, addToScene, addRecordsToScene, mergeTargets, mergeScene, gridView, saveScene, copyNames, focusViewer, openRecordScene, openTogether, openPoses, openAligned, exportStructure, copySequence, exportImage };
 }

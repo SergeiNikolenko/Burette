@@ -293,6 +293,13 @@ collection requires a new calculation. Failed writes preserve the previous run.
 See [Scaffold and R-group analysis](sar-analysis.md) for chemistry semantics,
 limits, result columns, and focused verification.
 
+### Opening docking folders
+
+Opening a fresh local selection containing one protein and ligand files together
+creates a docking run, with poses grouped by source file. Comparison sets and
+watched folders retain the incremental scene batch flow. Cancelling a pending
+docking open prevents the prepared document from entering the workspace.
+
 ### Adding files to an open scene
 
 Dropping structures or collection records onto a Mol* document appends them to

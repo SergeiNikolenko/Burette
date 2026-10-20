@@ -71,8 +71,9 @@ export function useAppDockingWorkflows({
   const openDockingDocument = useCallback(async (
     targetPath: string,
     droppedPaths: string[],
-    options: { activePose?: number | null; sceneMode?: DockingSceneMode | null } = {},
+    options: { activePose?: number | null; sceneMode?: DockingSceneMode | null; shouldApply?: () => boolean } = {},
   ) => {
+    if (options.shouldApply?.() === false) return null;
     const existingDockingRequest = documents.find((document) => document.path === targetPath || document.id === targetPath)?.dockingRequest;
     const request = dockingRequestForDrop(targetPath, droppedPaths, existingDockingRequest);
     if (!request) return null;
@@ -92,6 +93,7 @@ export function useAppDockingWorkflows({
             ...options,
             sceneMode: request.sceneMode,
           });
+      if (options.shouldApply?.() === false) return null;
       addDocuments([document]);
       rememberRecentStructures([document]);
       setStructureDragActive(false);
@@ -102,6 +104,7 @@ export function useAppDockingWorkflows({
           : `Opened docking view with ${request.ligandPaths.length} ligand${request.ligandPaths.length === 1 ? "" : "s"}`);
       return document;
     } catch (error) {
+      if (options.shouldApply?.() === false) return null;
       setStructureDragActive(false);
       pushErrorStatus(error, isTrajectory ? "Trajectory failed" : "Docking view failed");
       return null;
