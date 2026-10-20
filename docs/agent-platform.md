@@ -481,6 +481,13 @@ Distance, angle and dihedral picking temporarily use atom granularity and clear
 prior selection. Completion or Escape restores the previous selection and picking
 level.
 
+The Mol* toolbar and ligand 2D preview share the **H** display toggle within
+one viewer document. It hides or shows existing explicit hydrogens and retains
+the choice across pose changes. Only representation parameters and disposable
+RDKit depiction copies change; source structures, Copy SMILES and save/edit
+inputs remain unchanged. This display choice is not a chemistry edit or a global
+preference.
+
 The ligand 2D preview keeps a square drawing area. Mouse-wheel zoom stays inside
 the drawing and does not move the 3D camera. Its lasso uses RDKit atom locations
 and retained source coordinates to select the same atoms in Mol*, without

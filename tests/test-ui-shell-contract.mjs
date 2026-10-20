@@ -6449,7 +6449,7 @@ assert.doesNotMatch(previewViewer, /sourceFormat !== 'xyz'/);
 assert.match(previewViewer, /if \(normalizeFormat\(entry\?\.format\) !== 'sdf'\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
 assert.match(previewViewer, /const image = molstarPreviewSvgCache\.get\(key\) \|\| ''/);
 assert.match(previewViewer, /function molstarPreviewParseMolblock2D\(data\)/);
-assert.match(previewViewer, /function molstarMoleculePreviewFallbackSVG\(entry\)/);
+assert.match(previewViewer, /function molstarMoleculePreviewFallbackSVG\(entry, showHydrogens = molstarShowHydrogens\)/);
 assert.match(previewViewer, /data-buret-rdkit-svg="fallback"/);
 assert.match(previewViewer, /const molblock = splitSdfRecords\(String\(entry\.data \|\| ''\)\)\[0\] \|\| String\(entry\.data \|\| ''\);\s*mol = rdkit\.get_mol\(molblock\);/);
 assert.match(previewViewer, /normalizeFormat\(target\.sourceEntry\?\.format\) === 'sdf'[\s\S]*?return target\.sourceEntry;/);

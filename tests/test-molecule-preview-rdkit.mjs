@@ -20,8 +20,8 @@ const window = {
     return 'blob:packaged-rdkit';
   },
 };
-const api = runInNewContext(`${loader}\n${draw}\n({ init: molstarPreviewInitRDKit, draw: molstarMoleculePreviewRDKitSVG })`, {
-  window, Uint8Array, molstarPreviewRdkit: null, molstarPreviewRdkitPromise: null,
+const api = runInNewContext(`${loader}\n${draw}\n({ init: molstarPreviewInitRDKit, draw: molstarMoleculePreviewRDKitSVG, showHydrogens(value) { molstarShowHydrogens = value; } })`, {
+  window, Uint8Array, molstarShowHydrogens: true, molstarPreviewRdkit: null, molstarPreviewRdkitPromise: null,
   molstarPreviewSvgCache: new Map(), MOLSTAR_PREVIEW_RDKIT_SVG_SIZE: 400,
   runtimeURL: (name, fallback) => window[name] || fallback,
   withTimeout: async promise => promise,
@@ -53,3 +53,27 @@ assert.match(svg, /<svg/);
 assert.match(svg, /class='bond-/);
 assert.doesNotMatch(svg, /data-buret-rdkit-svg="fallback"/);
 console.log('Native lazy asset resolution, shared initialization and real NAD RDKit 2D depiction passed');
+
+// Depiction-only H removal must retain the heavy atoms' original 3D positions
+// for lasso selection, and must not change the structure consumed by copy/save.
+const ethanol = a.get_mol('CCO');
+ethanol.add_hs_in_place();
+const entry = Object.freeze({ format: 'sdf', data: ethanol.get_molblock() });
+const originalSmiles = ethanol.get_smiles();
+const original = JSON.parse(ethanol.get_json()).molecules[0];
+ethanol.delete();
+const shown = await api.draw(entry);
+api.showHydrogens(false);
+const hidden = await api.draw(entry);
+api.showHydrogens(true);
+const restored = await api.draw(entry);
+const positions = drawing => [...drawing.matchAll(/data-source-position='([^']*)'/g)].map(match => match[1]);
+assert.equal(positions(shown).length, 9);
+assert.equal(positions(hidden).length, 3);
+assert.deepEqual(positions(hidden), positions(shown).slice(0, 3));
+assert.equal(restored, shown);
+const exported = a.get_mol(entry.data);
+assert.equal(exported.get_smiles(), originalSmiles);
+assert.equal(JSON.parse(exported.get_json()).molecules[0].atoms.length, original.atoms.length);
+exported.delete();
+console.log('Hydrogen depiction toggle, source atom mapping and unchanged export input passed');
