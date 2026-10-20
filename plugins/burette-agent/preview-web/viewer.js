@@ -3382,6 +3382,12 @@
     if (body.type === 'viewerVisibilityChanged') {
       hostViewerVisible = body.visible !== false;
       activeTrajectoryPlaybackControl?.visibilityChanged?.();
+      // Retained file panels keep their camera, but must not tick a hidden
+      // WebGL scene (including spin/rock animations).
+      const loop = activeViewer?.plugin?.animationLoop;
+      if (hostViewerVisible) {
+        if (loop && !loop.isAnimating) loop.start();
+      } else loop?.stop({ noDraw: true });
       if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer);
       return;
     }
@@ -29365,6 +29371,8 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       molstarStructureFocusSerial += 1;
       await applyHostedMcpActions();
     }
+    // A panel can be hidden while its initial structure is still loading.
+    if (!hostViewerVisible) viewer.plugin.animationLoop.stop({ noDraw: true });
   }
 
   async function start() {

@@ -25,9 +25,9 @@ export function workspaceFileMenu(paths: string[], state: ShellViewState, action
   };
   const opening = [
     command("open-tabs", single ? "New tab" : "In separate tabs", () => openBatch(paths, "tabs")),
-    command("open-right", "Right panel", () => actions.openDockPayload({ area: "right", tabKind: "files", payload: {
+    ...(["right", "bottom"] as const).map(area => command(`open-${area}`, area === "right" ? "Right panel" : "Bottom panel", () => actions.openDockPayload({ area, tabKind: "files", payload: {
       paths, records: [], items: paths.map(path => ({ kind: "file", path, title: path.split('/').pop() || path })),
-    } })),
+    } }))),
     ...(isTauriRuntime() && local ? [command("open-window", "New window", () => actions.openNewWindow(paths))] : []),
     ...(isTauriRuntime() && local && single && caps[0].scene ? [command("open-popout", "Popout", () => invoke("open_new_workspace_window", { paths, presentation: "preview" }))] : []),
     ...(!single && caps.every(cap => cap.scene) ? [

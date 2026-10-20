@@ -60,9 +60,10 @@ assert.match(fileOpen, /} else if \(isDocumentViewerPath\(path, extension\)\) \{
 assert.match(fileOpen, /fitsRetabTextViewer\(path\)/);
 assert.match(fileOpen, /RETAB_TEXT_VIEWER_MAX_BYTES/);
 // The dock keeps its editable CodeMirror surface for text and code, so only
-// media formats leave the dock for a document tab.
+// media formats use a path-backed selection in the requested dock.
 assert.match(dockOpen, /} else if \(isDocumentMediaPath\(path, extension\)\) \{\s*documentPaths\.push\(path\);/);
-assert.match(dockOpen, /&& !isDocumentMediaPath\(path, extension\)/);
+assert.match(dockOpen, /dockMediaId\(documentPaths\[0\]\)/);
+assert.doesNotMatch(dockOpen, /openDocumentTab/);
 assert.doesNotMatch(dockOpen, /isDocumentViewerPath/);
 
 // Read-only text, code and log viewing routes to the Retab viewer in the main area.

@@ -16,6 +16,13 @@ export function useDockLayout(activeTabId: string | null) {
   const setDockToolAction = useTabWorkspaceStore((state) => state.setDockTool);
   const addDockDropAction = useTabWorkspaceStore((state) => state.addDockDrop);
   const currentTabId = useCallback(() => useMoleculeStore.getState().activeTabId ?? activeTabId, [activeTabId]);
+  // Capture the originating panel before file preparation starts; the general
+  // shell actions still resolve the current tab after synchronous navigation.
+  const captureDockTarget = useCallback(() => ({
+    setDockDocument: (area: Parameters<typeof setDockDocumentAction>[1], id: string | null) => { if (activeTabId) setDockDocumentAction(activeTabId, area, id); },
+    setDockTool: (area: Parameters<typeof setDockToolAction>[1], tool: Parameters<typeof setDockToolAction>[2]) => { if (activeTabId) setDockToolAction(activeTabId, area, tool); },
+    addDockDrop: (input: Parameters<typeof addDockDropAction>[1]) => { if (activeTabId) addDockDropAction(activeTabId, input); },
+  }), [activeTabId, setDockDocumentAction, setDockToolAction, addDockDropAction]);
   const toggleDock = useCallback((area: Parameters<typeof toggleDockAction>[1]) => {
     const tabId = currentTabId();
     if (tabId) toggleDockAction(tabId, area);
@@ -54,6 +61,7 @@ export function useDockLayout(activeTabId: string | null) {
   }, [addDockDropAction, currentTabId]);
 
   return {
+    captureDockTarget,
     rightDockOpen: current.right.open,
     rightDockWidth: current.right.size,
     rightDockTabs: current.right.tabs,

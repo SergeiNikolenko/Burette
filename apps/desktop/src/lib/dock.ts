@@ -1,3 +1,5 @@
+import { isDocumentMediaPath, documentFallbackExtensions, pathExtension } from "./file-routing";
+import { basename } from "./sidebar-projects";
 import type { StructureDragPayload } from "./structure-drag";
 import type { TextFileDocument, ViewerDocument } from "../types";
 
@@ -43,7 +45,13 @@ export type DockDropInput = {
   payload: StructureDragPayload;
 };
 
+// Path-backed previews have no molecular registry record. Keep their identity in
+// the existing dock selection without manufacturing a ViewerDocument.
+export function dockMediaId(path: string) { return `media:${path}`; }
+export function dockMediaPath(id: string | null) { return id?.startsWith("media:") ? id.slice(6) : null; }
+
 export type DockFileEntry =
+  | { key: string; kind: "media"; documentId: string; title: string; detail: string; path: string }
   | {
       key: string;
       kind: "document";
@@ -235,6 +243,10 @@ export function dockFileEntries({
   };
   const pushPath = (path: string | undefined | null) => {
     if (!path) return;
+    if (!documentsByPath.has(path) && !textDocumentsByPath.has(path) && (isDocumentMediaPath(path) || documentFallbackExtensions.has(pathExtension(path)))) {
+      pushEntry({ key: dockMediaId(path), kind: "media", documentId: dockMediaId(path), title: basename(path), detail: "", path });
+      return;
+    }
     const document = documentsByPath.get(path);
     if (document) {
       pushEntry({
@@ -277,6 +289,7 @@ export function dockFileEntries({
     }
   }
 
+  pushPath(dockMediaPath(activeDocumentId));
   const activeDocument = activeDocumentId ? documentsById.get(activeDocumentId) : null;
   if (activeDocument) {
     pushEntry({

@@ -1,9 +1,13 @@
+import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { isTauriRuntime } from "../lib/tauri";
+import { pickWebDemoFiles } from "../lib/web-demo-workspace";
 import type { DockArea, DockFileEntry } from "../lib/dock";
 import { useSidebarStructureDrag } from "./sidebar/use-sidebar-structure-drag";
 import type { ShellActions, ShellViewState } from "./types";
 import { fileCapabilities, menuItem } from "./workspace-menu-items";
 import { showNativeContextMenu } from "./native-context-menu";
-import { FileBlank, Atom } from "./ui/app-icons";
+import { FileBlank, Atom, Plus } from "./ui/app-icons";
 import { Button } from "./ui/button";
 import { ShortcutTooltip } from "./shortcut-tooltip";
 import { requestContextualGuide } from "./onboarding/request";
@@ -17,7 +21,16 @@ export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, 
   actions: ShellActions;
   state: ShellViewState;
 }) {
-  if (!entries.length) return null;
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState(false);
+  const choose = async () => {
+    setOpening(true); setError(false);
+    try {
+      const paths = isTauriRuntime() ? await invoke<string[]>("pick_open_targets") : (await pickWebDemoFiles())?.paths ?? [];
+      if (paths.length) await actions.openDockPayload({ area, tabKind: "files", payload: { paths, records: [] } });
+    } catch { setError(true); }
+    finally { setOpening(false); }
+  };
   return <div className="dock-file-tabs" role="tablist" aria-label={`${area} dock files`}>
     {entries.map((entry) => {
       const active = entry.key === activeKey;
@@ -35,8 +48,11 @@ export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, 
           onTextView(entry.key, false);
           return actions.openDockPayload({ area, tabKind: "files", payload, rendererMode });
         };
+        const destination = area === "right" ? "bottom" : "right";
         const items = [
-          ...(capabilities.text ? [menuItem("dock-file-text", "Text", () => {
+          menuItem("dock-file-other-panel", destination === "right" ? "Open in right panel" : "Open in bottom panel", () => actions.openDockPayload({ area: destination, tabKind: "files", payload })),
+          menuItem("dock-file-main", "Open in main area", () => actions.openPaths([entry.path])),
+          ...(entry.kind !== "media" && capabilities.text ? [menuItem("dock-file-text", "Text", () => {
             select(); onTextView(entry.key, true);
             if (entry.kind === "document") requestContextualGuide("source-dock", tab);
           })] : []),
@@ -52,6 +68,10 @@ export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, 
       return <DockFileTab key={entry.key} active={active} payload={payload} state={state} actions={actions} menu={menu}
         entry={entry} text={text} select={select} />;
     })}
+    <ShortcutTooltip label={`Open file in ${area} panel`}>
+      <Button variant="ghost" size="icon-sm" aria-label={`Open file in ${area} panel`} disabled={opening} onClick={() => void choose()}><Plus aria-hidden="true" /></Button>
+    </ShortcutTooltip>
+    {error && <Button variant="ghost" size="sm" onClick={() => void choose()}>Retry opening file</Button>}
   </div>;
 }
 
@@ -68,7 +88,7 @@ function DockFileTab({ active, payload, state, actions, menu, entry, text, selec
   const drag = useSidebarStructureDrag({ state, actions, getPayload: () => payload });
   return <div className="dock-tab-shell" data-active={active || undefined} onContextMenu={menu}>
     {entry.kind !== "tool" && <Button variant="ghost" size="icon-2xs" aria-label={`View options for ${entry.title}`} onClick={menu}>
-      {text ? <FileBlank aria-hidden="true" /> : <Atom aria-hidden="true" />}
+      {text || entry.kind === "media" ? <FileBlank aria-hidden="true" /> : <Atom aria-hidden="true" />}
     </Button>}
     <ShortcutTooltip label={entry.kind === "tool" ? entry.title : entry.path}>
       <Button variant="ghost" size="sm" className="dock-file-tab" role="tab" aria-selected={active}

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import type { DockTab } from "../lib/dock";
+import { dockMediaPath, type DockTab } from "../lib/dock";
 import type { ViewerDocument } from "../types";
 
 type UseAppSpectrumDockLifecycleOptions = {
@@ -42,6 +42,7 @@ export function useAppSpectrumDockLifecycle({
     // only a bottom-dock id that matches neither store is stale.
     if (
       bottomDockDocumentId
+      && !dockMediaPath(bottomDockDocumentId)
       && !documents.some((document) => document.id === bottomDockDocumentId)
       && !textDocuments.some((document) => document.id === bottomDockDocumentId)
     ) {

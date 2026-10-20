@@ -11,13 +11,14 @@ import { ChevronDown, FileBlank, Warning } from "./ui/app-icons";
 import { XyzrenderProperties } from "./xyzrender-properties";
 import { StoryMarkdown } from "./story-markdown";
 import { DockHeader } from "./dock-header";
+import { DockFileViews } from "./dock-file-views";
 import { DockFileTabs } from "./dock-file-tabs";
 import { requestContextualGuide } from "./onboarding/request";
 import { useDropHighlightReset } from "../hooks/use-drop-highlight-reset";
 import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { join, resourceDir } from "@tauri-apps/api/path";
-import { DOCK_TAB_LABELS, createDockTab, dockFileEntries, dockTabCatalog, type DockArea, type DockFileEntry, type DockTabKind } from "../lib/dock";
+import { DOCK_TAB_LABELS, dockMediaId, dockMediaPath, createDockTab, dockFileEntries, dockTabCatalog, type DockArea, type DockFileEntry, type DockTabKind } from "../lib/dock";
 import { hasStructureDrag, readStructureDragPayload, writeStructureDragPayload } from "../lib/structure-drag";
 import type { StructureDragPayload } from "../lib/structure-drag";
 import type { StructureStory } from "../lib/structure-story";
@@ -150,12 +151,15 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     [area === "right" ? "rightDockOpen" : "bottomDockOpen"]: open,
   }), [area, contentSource, open]);
   const fileSelection = dockFileDocuments(state, area);
-  const filesTabDragPayload = dockFilesDragPayload(fileSelection.document, fileSelection.textDocument, dockTool);
+  const mediaPath = dockMediaPath(dockDocumentId) ?? (!dockDocumentId && !dockTool && state.activeTab?.location.kind === "document" ? state.activeTab.location.path : null);
+  const filesTabDragPayload = mediaPath ? { paths: [mediaPath], records: [] } : dockFilesDragPayload(fileSelection.document, fileSelection.textDocument, dockTool);
   const filesTabDrag = useSidebarStructureDrag({ state, actions, disabled: readOnly, getPayload: () => filesTabDragPayload });
   const dockDrops = useMemo(
     () => contentState?.dockDroppedStructures.filter((item) => item.area === area && item.tabKind === contentKind) ?? [],
     [contentKind, area, contentState],
   );
+  const filesVisited = useRef(false);
+  if (contentKind === "files" && contentState) filesVisited.current = true;
   const autoOpenedXyzrenderDocumentId = useRef<string | null>(null);
   // Point at the Text tab once it exists; the add menu creates it on this action.
   const showDockTab = (kind: DockTabKind, open: () => void) => {
@@ -249,12 +253,13 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
           onSelect={kind => showDockTab(kind, () => actions.setDockActiveTab(area, kind))} onClose={id => actions.closeDockTab(area, id)}
           onAdd={showAddMenu} onHide={() => actions.setDockOpen(area, false)} />
         <div className="dock-panel-body" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${activeTab.kind}`} tabIndex={0}>
-        {contentState && <DockPanelContent
-          area={area}
-          activeTabKind={contentKind}
-          state={contentState}
-          actions={actions}
-          dockDrops={dockDrops}
+        {contentState && filesVisited.current && <div className="dock-files-view" hidden={contentKind !== "files"}
+          inert={contentKind !== "files"} style={contentKind === "files" ? undefined : { display: "none" }}>
+          <DockPanelContent area={area} activeTabKind="files" state={contentState} actions={actions} filesVisible={open && contentKind === "files"}
+            dockDrops={contentState.dockDroppedStructures.filter(item => item.area === area && item.tabKind === "files")} />
+        </div>}
+        {contentState && contentKind !== "files" && <DockPanelContent
+          area={area} activeTabKind={contentKind} state={contentState} actions={actions} dockDrops={dockDrops}
         />}
         </div>
       </div>
@@ -263,12 +268,14 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
 }
 
 function DockPanelContent({
+  filesVisible = true,
   area,
   activeTabKind,
   state,
   actions,
   dockDrops,
 }: {
+  filesVisible?: boolean;
   area: DockArea;
   activeTabKind: DockTabKind;
   state: ShellViewState;
@@ -287,16 +294,17 @@ function DockPanelContent({
   const chemicalSpaceDocument = resolveChemicalSpaceDocument(state, dockDocument);
   const activeTextDocument = activeTextDocumentFromState(state);
   const { document: effectiveDockDocument, textDocument: effectiveDockTextDocument } = dockFileDocuments(state, area);
+  const mediaPath = dockMediaPath(dockDocumentId) ?? (!dockDocumentId && !dockTool && state.activeTab?.location.kind === "document" ? state.activeTab.location.path : null);
   const fileEntries = activeTabKind === "files"
     ? dockFileEntries({
         dockDrops,
         documents: state.documents,
         textDocuments: state.textDocuments,
-        activeDocumentId: dockDocumentId ?? effectiveDockDocument?.id ?? effectiveDockTextDocument?.id ?? null,
+        activeDocumentId: (mediaPath ? dockMediaId(mediaPath) : dockDocumentId) ?? effectiveDockDocument?.id ?? effectiveDockTextDocument?.id ?? null,
         activeTool: dockTool,
       })
     : [];
-  const activeFileEntryKey = activeDockFileEntryKey(effectiveDockDocument, effectiveDockTextDocument, dockTool);
+  const activeFileEntryKey = mediaPath ? dockMediaId(mediaPath) : activeDockFileEntryKey(effectiveDockDocument, effectiveDockTextDocument, dockTool);
   if (activeTabKind === "scene") {
     return isMesoscaleViewerDocument(dockStructureDocument)
       ? <MesoscaleScenePanel document={dockStructureDocument} />
@@ -335,41 +343,17 @@ function DockPanelContent({
       />
     );
     if (dockTool === "ketcher") return <KetcherDockTool area={area} state={state} fileTabs={fileTabs} actions={actions} />;
-    if (activeFileEntryKey && textViews[activeFileEntryKey]) {
-      return <div className="dock-files-view">{fileTabs}<div className="dock-viewer">
-        <SingleDocumentTextPanel activeDocument={effectiveDockDocument} activeTextDocument={effectiveDockTextDocument}
-          textDocuments={state.textDocuments} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />
-      </div></div>;
-    }
-    if (effectiveDockDocument) {
-      return (
-        <div className="dock-files-view">
-          {fileTabs}
-          <div className="dock-viewer">
-            {effectiveDockDocument.renderer === "spectrum"
-              ? <SpectrumViewer document={effectiveDockDocument} embedded />
-              : <ViewerFrame document={effectiveDockDocument} readOnly />}
-          </div>
-        </div>
-      );
-    }
-    if (effectiveDockTextDocument) {
-      return (
-        <div className="dock-files-view">
-          {fileTabs}
-          <div className="dock-viewer">
-            <TextFileViewer document={effectiveDockTextDocument} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />
-          </div>
-        </div>
-      );
-    }
-    return (
-      <DockEmptyState
-        title="No file selected"
-        action={{ label: "Open file", run: () => void actions.chooseFiles() }}
-      />
-    );
+    return <div className="dock-files-view">
+      {fileTabs}
+      <DockFileViews visible={filesVisible} entries={fileEntries} activeKey={activeFileEntryKey} textViews={textViews} state={state} actions={actions}
+        renderText={entry => <SingleDocumentTextPanel
+          activeDocument={entry.kind === "document" ? state.documents.find(doc => doc.id === entry.documentId) ?? null : null}
+          activeTextDocument={entry.kind === "text-document" ? state.textDocuments.find(doc => doc.id === entry.documentId) ?? null : null}
+          textDocuments={state.textDocuments} openPaths={actions.openPaths} onStructureSelection={actions.selectTextStructure} />} />
+      {!activeFileEntryKey && <DockEmptyState title="No file selected" />}
+    </div>;
   }
+
   if (activeTabKind === "text") {
     if (area === "right" && activePageKind === "ketcher") {
       return (

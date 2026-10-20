@@ -1,3 +1,4 @@
+import { isDocumentMediaPath, documentViewerExtensions } from "./file-routing";
 import { demoLibraryFiles } from "./web-demo-library";
 import { standaloneDemoScenes } from "./web-demo-scenes";
 import kras from "../../../../samples/structures/proteins/7rpz.pdb?raw";
@@ -35,6 +36,8 @@ const WEB_DEMO_ROOT = "/BuretteDemo";
 const WEB_DEMO_ENABLED = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
 const MAX_FILE_BYTES = 3 * 1024 * 1024;
 const listeners = new Set<() => void>();
+const binaryFiles = new Map<string, File>();
+export function readBrowserPickedFile(path: string) { return binaryFiles.get(path) ?? null; }
 const files = new Map<string, SidebarProjectStructure>();
 let standaloneInitialized = false;
 
@@ -149,7 +152,11 @@ export async function pickWebDemoFiles(options: { directory?: boolean } = {}) {
     const relativePath = options.directory ? file.webkitRelativePath : file.name;
     const path = `${root}/${relativePath.split("/").slice(options.directory ? 1 : 0).map(cleanSegment).join("/")}`;
     if (!path || path.endsWith("/")) continue;
-    registerText(path, await file.text(), file.size);
+    if (isDocumentMediaPath(path)) {
+      if (!binaryFiles.has(path) && binaryFiles.size >= 32) throw new Error("Too many open documents");
+      binaryFiles.set(path, file);
+      registerFile(path, file.size);
+    } else registerText(path, await file.text(), file.size);
     paths.push(path);
   }
   emitChange();
@@ -158,6 +165,10 @@ export async function pickWebDemoFiles(options: { directory?: boolean } = {}) {
 
 function registerText(path: string, text: string, byteCount = new TextEncoder().encode(text).length) {
   writeBrowserDevVirtualTextDocument(path, text);
+  registerFile(path, byteCount);
+}
+
+function registerFile(path: string, byteCount: number) {
   const title = path.split("/").filter(Boolean).pop() || path;
   const extension = title.includes(".") ? title.split(".").pop()?.toLowerCase() || "" : "";
   files.set(path, {
@@ -176,7 +187,8 @@ function selectFiles(directory: boolean) {
     input.type = "file";
     input.multiple = true;
     if (directory) input.setAttribute("webkitdirectory", "");
-    input.accept = ".pdb,.ent,.pdbqt,.pqr,.cif,.mmcif,.mcif,.sdf,.sd,.mol,.mol2,.xyz,.gro,.txt,.md,.log,.out,.json";
+    input.accept = [".pdb,.ent,.pdbqt,.pqr,.cif,.mmcif,.mcif,.sdf,.sd,.mol,.mol2,.xyz,.gro,.txt,.md,.log,.out,.json,.csv,.tsv", ...Array.from(documentViewerExtensions, extension => `.${extension}`)].join(",");
+    input.addEventListener("cancel", () => resolve([]), { once: true });
     input.addEventListener("change", () => resolve(Array.from(input.files ?? [])), { once: true });
     input.click();
   });
