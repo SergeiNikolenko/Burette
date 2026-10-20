@@ -131,7 +131,7 @@
     "babel-plugin-react-compiler": "^1.0.0",
     "happy-dom": "^20.14.5",
     "jsdom": "30.1.3",
-    "lefthook": "^2.1.14",
+    "lefthook": "^2.2.2",
     "sass": "1.105.0",
     "shadcn": "^4.21.0",
     "tailwindcss": "^4.3.3",
