@@ -85,5 +85,26 @@
     memory = values;
     try { window.sessionStorage.setItem(storageKey, JSON.stringify(values)); } catch (_) {}
   }
-  window.BuretteRendererViewState = { read, save, observeSheetViewport };
+  // The sandboxed iframe's sessionStorage is only a small best-effort cache.
+  // The shell owns durable per-document records and replies only to this frame.
+  function restoreFromHost(id, send) {
+    if (!id || window.parent === window || typeof window.addEventListener !== 'function') return Promise.resolve();
+    const requestId = `view-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    return new Promise(resolve => {
+      const finish = () => { clearTimeout(timer); window.removeEventListener('message', receive); resolve(); };
+      const receive = event => {
+        const body = event.data?.source === 'burette-host' ? event.data.body : null;
+        if (event.source !== window.parent || body?.type !== 'rendererViewStateResponse'
+          || body.documentId !== id || body.requestId !== requestId) return;
+        if (typeof body.viewState === 'string' && body.viewState.length <= 8192) {
+          try { save(id, JSON.parse(body.viewState)); } catch (_) {}
+        }
+        finish();
+      };
+      const timer = setTimeout(finish, 1000);
+      window.addEventListener('message', receive);
+      if (!send({ type: 'rendererViewStateRequest', documentId: id, requestId })) finish();
+    });
+  }
+  window.BuretteRendererViewState = { read, save, observeSheetViewport, restoreFromHost };
 })();

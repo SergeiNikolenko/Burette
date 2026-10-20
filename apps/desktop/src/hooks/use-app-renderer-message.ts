@@ -44,7 +44,10 @@ export function useAppRendererMessage({
   const handleRendererMessage = useCallback((body: RendererMessageBody) => {
     if (body?.type === "rendererViewStateChanged") {
       const document = documents.find((item) => item.id === body.documentId);
-      if (document) rememberRendererViewState(document.path, body.viewState);
+      if (document) {
+        const persisted = rememberRendererViewState(document.path, body.viewState);
+        window.dispatchEvent(new CustomEvent("burette:renderer-view-checkpoint", { detail: { documentId: document.id, persisted } }));
+      }
       return true;
     }
     if (body?.type !== "setRenderer") return false;

@@ -1,6 +1,28 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { createRendererViewCheckpointStore } from '../apps/desktop/src/lib/renderer-view-state.ts';
+
+const checkpoints = new Map();
+let failWrite = false, failReadback = false;
+const durable = () => ({
+  getItem: key => failReadback ? null : checkpoints.get(key) ?? null,
+  setItem: (key, value) => { if (failWrite) throw new Error('quota'); checkpoints.set(key, value); },
+});
+const host = createRendererViewCheckpointStore(durable);
+for (let index = 0; index < 1000; index++) assert.equal(host.save(`/source-${index}.pdb`, { camera: { position: [index, 2, 3] } }), true);
+const freshHost = createRendererViewCheckpointStore(durable);
+for (let index = 0; index < 1000; index++) assert.deepEqual(JSON.parse(freshHost.read(`/source-${index}.pdb`).value).camera.position, [index, 2, 3]);
+assert.equal(host.save('/source-0.pdb', { camera: { position: [99, 2, 3] } }), true);
+assert.equal(host.read('/source-0.pdb').revision, 2, 'each document has an independent checkpoint generation');
+failWrite = true;
+assert.equal(host.save('/source-0.pdb', { camera: { position: [100, 2, 3] } }), false);
+assert.deepEqual(JSON.parse(host.read('/source-0.pdb').value).camera.position, [100, 2, 3], 'a quota failure retains the live in-memory view');
+failWrite = false; failReadback = true;
+assert.equal(host.save('/source-1.pdb', { xyz: { scale: 2, x: 1, y: 3 } }), false, 'missing readback cannot authorize eviction');
+failReadback = false;
+assert.equal(host.save('/oversized', { camera: 'a'.repeat(9000) }), false);
+assert.equal(host.read('/oversized'), null);
 
 const source = readFileSync(new URL('../PreviewExtension/Web/renderer-view-state.js', import.meta.url), 'utf8');
 let stored = null;
@@ -28,6 +50,32 @@ assert.equal(Object.keys(JSON.parse(stored)).length, 32, 'Session history stays 
 stored = '{broken';
 assert.doesNotThrow(() => runtime().read('file-0'));
 console.log('Renderer view state: iframe reload, camera/2D round trip, isolation and bounded storage passed');
+
+const parent = {};
+const listeners = new Set();
+const hostContext = vm.createContext({
+  setTimeout, clearTimeout,
+  window: { sessionStorage: storage, parent,
+    addEventListener: (_, listener) => listeners.add(listener),
+    removeEventListener: (_, listener) => listeners.delete(listener),
+  },
+});
+vm.runInContext(source, hostContext);
+const hostView = { xyz: { scale: 2, x: 3, y: 4 } };
+await hostContext.window.BuretteRendererViewState.restoreFromHost('cold-source', request => {
+  for (const listener of listeners) {
+    const body = { ...request, type: 'rendererViewStateResponse', viewState: JSON.stringify(hostView) };
+    listener({ source: {}, data: { source: 'burette-host', body } });
+    assert.deepEqual(copy(hostContext.window.BuretteRendererViewState.read('cold-source')), {}, 'unrelated windows cannot inject a view');
+    listener({ source: parent, data: { source: 'burette-host', body: { ...body, requestId: 'stale-request' } } });
+    assert.deepEqual(copy(hostContext.window.BuretteRendererViewState.read('cold-source')), {}, 'a stale generation cannot satisfy restore');
+    listener({ source: parent, data: { source: 'burette-host', body } });
+  }
+  return true;
+});
+assert.deepEqual(copy(hostContext.window.BuretteRendererViewState.read('cold-source').xyz), hostView.xyz);
+assert.equal(listeners.size, 0, 'the restore listener is released after its matching response');
+console.log('Durable 1,000-document view checkpoints, revision/readback failure and authenticated remount restore passed');
 
 let resize, disconnected = false;
 const viewContext = vm.createContext({ window: { sessionStorage: storage }, ResizeObserver: class {
@@ -62,11 +110,11 @@ restoredStop();
 const viewerSource = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
 const branch = viewerSource.slice(viewerSource.indexOf("    if (event.source === window.parent && body.type === 'openXyzrenderEditor')"), viewerSource.indexOf("    if (event.source === window.parent && body.type === 'applyXyzrenderAnimationFrame')"));
 let opened = 0;
-const parent = {};
-const editorContext = vm.createContext({ window: { parent }, activeConfig: { documentId: 'methane' }, openXyzrender3DEditor: () => { opened++; } });
+const editorParent = {};
+const editorContext = vm.createContext({ window: { parent: editorParent }, activeConfig: { documentId: 'methane' }, openXyzrender3DEditor: () => { opened++; } });
 for (const [documentId, expected] of [['protein', 0], ['methane', 1], [undefined, 1]]) {
   editorContext.body = { type: 'openXyzrenderEditor', documentId };
-  editorContext.event = { source: parent };
+  editorContext.event = { source: editorParent };
   vm.runInContext(`(() => { ${branch} })()`, editorContext);
   assert.equal(opened, expected);
 }

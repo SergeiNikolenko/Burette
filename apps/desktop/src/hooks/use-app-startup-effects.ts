@@ -12,10 +12,11 @@ import { isTauriRuntime } from "../lib/tauri";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
 import { useMoleculeStore, type MoleculeTab } from "../stores/molecule-store";
 import type { DockingSceneMode, ViewerDocument } from "../types";
+import type { FileOpenOptions } from "../components/types";
 import { isWebDemoWorkspace, webDemoProjectRoot } from "../lib/web-demo-workspace";
 
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
-type OpenPaths = (paths: string[]) => unknown | Promise<unknown>;
+type OpenPaths = (paths: string[], options?: FileOpenOptions) => unknown | Promise<unknown>;
 type OpenDocuments = (paths: string[]) => unknown | Promise<unknown>;
 type OpenDockingDocument = (
   receptorPath: string,
@@ -56,7 +57,6 @@ export function useAppStartupEffects({
   openDocuments,
   openPaths,
   pushErrorStatus,
-  setActiveTab,
   setExpandedProjectIds,
   setWorkspacePath,
   tabs,
@@ -137,18 +137,18 @@ export function useAppStartupEffects({
     if (paths.length === 0) return;
     openedPersistedTabsRef.current = true;
     const restoreTabId = activeTabId;
+    const restoreLocation = tabs.find((tab) => tab.id === restoreTabId)?.location;
+    const preferredPath = restoreLocation?.kind === "file" || restoreLocation?.kind === "text-file"
+      ? restoreLocation.path : undefined;
     const existing = window.BuretteMcpWorkspace
       ? Promise.resolve(paths.filter(path => window.BuretteMcpWorkspace?.authorizedPaths?.includes(path)))
       : invoke<string[]>("existing_paths", { paths });
     void existing.then(async (existingPaths) => {
       useMoleculeStore.getState().pruneMissingFileTabs(paths, existingPaths);
       if (existingPaths.length === 0) return;
-      await openPaths(existingPaths);
-      if (restoreTabId && useMoleculeStore.getState().tabs.some((tab) => tab.id === restoreTabId)) {
-        setActiveTab(restoreTabId);
-      }
+      await openPaths(existingPaths, { preferredPath, preserveActiveTab: true });
     }).catch((error) => pushErrorStatus(error, "Restore saved tabs failed"));
-  }, [activeTabId, documents.length, openPaths, pushErrorStatus, setActiveTab, tabs]);
+  }, [activeTabId, documents.length, openPaths, pushErrorStatus, tabs]);
 
   useEffect(() => {
     if (isTauriRuntime()) return;

@@ -4,7 +4,6 @@ import { flushSync } from 'react-dom';
 import { Select, SelectTrigger, SelectContent, SelectItem } from '../components/ui/select';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle, type PanelImperativeHandle } from '../components/ui/resizable';
 
-import { useGroupPixelGuard } from '../components/ui/use-group-pixel-guard';
 
 export function sequenceOptionLabel(label: string, role: string) {
   if (role !== 'View') return label;
@@ -66,7 +65,7 @@ function SequenceResize({ initialHeight, onResize, onCollapse, onExpand, onCommi
   const readyRef = useRef(false);
   const openingRef = useRef(false);
   const sizePxRef = useRef(initialHeight);
-  const elementRef = useGroupPixelGuard([{ panelRef, openRef, sizePxRef }]);
+  const elementRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     // The first render has a provisional content ceiling. Restore the saved
     // height once the actual rows have been measured.

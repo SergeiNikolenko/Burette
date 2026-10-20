@@ -2485,8 +2485,7 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
 }
 .buret-actionbar .ab-actions-menu { margin-left: auto; }
 
-/* Keep controls in one scrollable row in a narrow dock, not a tall tower. The
-   end padding lets the last control scroll clear of the edge fade. */
+/* Keep every action reachable when a dock leaves only a narrow grid strip. */
 
 @container grid-controls (max-width: 420px) {
   #grid-controls .buret-toolbar-row-main {
@@ -2496,24 +2495,17 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
 @container grid-controls (max-width: 640px) {
   #grid-controls .buret-toolbar-row-view {
     gap: 4px;
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    padding-block: 3px;
-    padding-inline-end: 24px;
-    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+    flex-wrap: wrap;
+    overflow: visible;
   }
   #grid-controls .buret-toolbar-row-view > * { flex-shrink: 0; }
-  /* The row scrolls, so the segmented track keeps its width instead of being
-     capped to the visible strip by its own max-width. */
-  #grid-controls .buret-toolbar-row-view > .atlas-segmented-control { max-width: none; }
   #grid-controls .ab-menu-wrap {
     margin-left: 0;
   }
   #grid-controls .buret-selection-actions {
     order: 0;
     flex-basis: auto;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
   }
   #grid-controls .buret-selection-count {
     min-width: 0;

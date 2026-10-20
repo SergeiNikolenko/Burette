@@ -219,6 +219,11 @@ fn create_workspace_window<R: Runtime>(
     let builder = builder
         .transparent(true)
         .background_color(Color(0, 0, 0, 0));
+    let builder = if crate::perf_trace::verbose() {
+        builder.initialization_script("window.__BURETTE_PERF_TRACE__ = true;")
+    } else {
+        builder
+    };
     #[cfg(target_os = "macos")]
     let builder = if preview {
         builder.shadow(true)

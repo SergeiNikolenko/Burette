@@ -5,15 +5,6 @@
 .msp-plugin .msp-logo { display: none !important; }
 #app.buret-molstar-initializing .msp-plugin,
 #app.buret-inspector-updating .msp-plugin canvas { visibility: hidden; }
-/* While the host drags or slides a panel the canvas keeps the pixel size it had
-   (viewer.js holds Mol*'s resize) and rides the centre of the viewport, which
-   is where the scene ends up once the canvas is resized on release. */
-html.buret-host-layout-gesture .msp-plugin .msp-viewport canvas {
-  position: relative;
-  left: 50%;
-  top: 50%;
-  translate: -50% -50%;
-}
 /* Until the first frame the page paints nothing of its own, so the host surface
    shows through instead of the black default shell and half-mounted chrome. */
 html.buret-viewer-booting,
@@ -75,7 +66,7 @@ body :is(.buret-button,.buret-rail-button):not(.atlas-button) { border-radius:10
 body :is(.buret-button,.buret-rail-button):not(.atlas-button) svg { width:16px; height:16px; }
 body:is(.buret-theme-light,.buret-theme-dark) :is(
   .buret-tree-menu,.buret-viewport-menu:not(.atlas-menu-content, .atlas-popover-surface),
-  .buret-xyzrender-popover,.buret-docking-pose-files,.buret-story-hover-card
+  .buret-xyzrender-popover,.buret-story-hover-card
 ) {
   border:1px solid var(--buret-toolbar-border);
   border-radius:18px; background:var(--buret-toolbar-background);
@@ -2850,18 +2841,30 @@ body.burette-mobile-host .buret-docking-poses button {
 }
 .buret-docking-pose-group-label {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 6px;
-  padding: 4px 6px 2px;
+  gap: 4px;
+  padding: 2px 4px;
   font-weight: 600;
 }
+.buret-docking-poses .buret-docking-pose-group-toggle {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 0 4px;
+  text-align: left;
+  font-weight: 600;
+}
+.buret-docking-pose-group-chevron { width: 12px; height: 12px; }
+.buret-docking-pose-group-toggle[aria-expanded="true"] .buret-docking-pose-group-chevron { transform: rotate(90deg); }
 .buret-docking-poses .buret-docking-pose-group-pose {
   grid-template-columns: minmax(0, 1fr) auto;
   padding-left: 14px;
 }
 .buret-docking-pose-group-label.buret-docking-pose-pin-heading {
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  grid-template-columns: 20px minmax(0, 1fr);
   padding-left: 2px;
 }
 .buret-docking-pose-pin-row {

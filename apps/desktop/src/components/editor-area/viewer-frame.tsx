@@ -11,6 +11,9 @@ import { isTauriRuntime } from "../../lib/tauri";
 import { isHostedMcpWidget } from "../../lib/hosted-mcp-widget";
 import { isWebDemoHeroEmbed } from "../../lib/web-demo-workspace";
 import { useViewerPreferences } from "../../hooks/use-settings";
+import { useDeferredViewerRuntime } from "../../hooks/use-deferred-viewer-runtime";
+import { FileViewerLoadingState } from "../ui/file-viewer-state";
+import { ViewerErrorState } from "../ui/viewer-error";
 import { viewerAppearanceMessage } from "../../lib/theme";
 import {
   isGridDocumentCloseTransitionActive,
@@ -79,6 +82,7 @@ export function ViewerFrame({
   const tauriRuntime = isTauriRuntime();
   const heroEmbed = isWebDemoHeroEmbed();
   const preferences = useViewerPreferences();
+  const deferred = useDeferredViewerRuntime(document, preferences);
   const sandbox = viewerFrameSandbox();
   const closeTransitionActive = document.renderer === "grid2d"
     && isGridDocumentCloseTransitionActive(document.id);
@@ -176,6 +180,12 @@ export function ViewerFrame({
       <iframe key={`${slot}:${runtime.runtimeKey}`} {...commonProps} srcDoc={runtimePath} />
     );
   };
+
+  if (document.runtimeDeferred) {
+    return deferred.error
+      ? <ViewerErrorState error={deferred.error} retry="always" onRetry={deferred.retry} bare variant="document" />
+      : <FileViewerLoadingState title="Opening structure…" />;
+  }
 
   if (!sourcePreview) {
     const commonProps = {

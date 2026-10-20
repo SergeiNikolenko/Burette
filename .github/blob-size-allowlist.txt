@@ -149,3 +149,22 @@ plugins/burette-agent/browser-shell-dist/assets/viewer-DEy_k-ZM.js
 plugins/burette-agent/browser-shell-dist/assets/wasm-BnjxR4X6.js
 plugins/burette-agent/preview-web/grid-ui.js
 plugins/burette-agent/preview-web/native-viewer-menus.js
+
+# Reviewed runtime bundles regenerated for native workspace performance.
+plugins/burette-agent/browser-shell-dist/assets/molstar-BQsJBDKI.js
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-DA3xLFJ5.js
+plugins/burette-agent/browser-shell-dist/assets/dist-DzQHgUn8.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-B9KunlNY.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-BrtFQr4F.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-oDLTWabD.js
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-zvsDmrsm.js
+plugins/burette-agent/browser-shell-dist/assets/index-v3gL5Nm7.css
+
+# Regenerated shell after current panel gestures and compound rename integration.
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-DXD4Vr5t.js
+plugins/burette-agent/browser-shell-dist/assets/molstar-CT4y9u88.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-CudoY1L_.js
+
+# Docking menu and current-main generated shell.
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-BzyPYDB8.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-Bu-H-WOM.js
