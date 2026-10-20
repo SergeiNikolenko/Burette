@@ -144,6 +144,7 @@ test("point navigation is single-record; lasso and empty selections never switch
   const end = source.indexOf("              }}", start);
   const code = source.slice(start, end).split("=> {")[1];
   for (const [tool, ids, expected] of [["navigate", [2], [2]], ["navigate", [], []],
+    ["navigate", [9, 2, 41], []],
     ["lasso", [2], []], ["lasso", [9, 2, 41], []]] as const) {
     const focused: number[] = [], announced: unknown[] = [], selected: number[][] = [];
     new Function("sourceRecordIds", "tool", "GRID_SELECTION_BRIDGE_LIMIT", "setSelected", "postToGrid", "focusMolecule", code)(
