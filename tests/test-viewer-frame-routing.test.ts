@@ -158,6 +158,7 @@ test.each(["reply", "disconnected", "timeout", "closed"])("delayed existing-docu
     panel.dataset.workspaceId = "B";
     expect(dockCameraRestore(dock, doc.id)).toEqual({ viewState: JSON.stringify(bView) });
     await act(async () => useMoleculeStore.setState({ tabs: [] }));
+    expect(rememberDockCamera(dock, doc.id, bView)).toBe(true);
     expect(dockCameraRestore(dock, doc.id)).toBeUndefined();
   } finally {
     await act(async () => root.unmount());

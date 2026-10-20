@@ -26,7 +26,7 @@ function paneKey(source: MessageEventSource | null, id: string) {
     .find(frame => frame.contentWindow === source && frame.dataset.documentId === id);
   const panel = frame?.closest<HTMLElement>(".dock-panel");
   const area = panel?.dataset.area, workspaceId = panel?.dataset.workspaceId;
-  return workspaceId && workspaces.has(workspaceId) && (area === "right" || area === "bottom")
+  return workspaceId && (area === "right" || area === "bottom")
     ? { pane: key(workspaceId, area, id), workspaceId } : null;
 }
 
@@ -40,12 +40,14 @@ function boundedView(value: unknown) {
 
 export function dockCameraRestore(source: MessageEventSource | null, id: string) {
   const pane = paneKey(source, id);
-  return pane ? views.get(pane.pane)?.view : undefined;
+  return pane && workspaces.has(pane.workspaceId) ? views.get(pane.pane)?.view : undefined;
 }
 
 export function rememberDockCamera(source: MessageEventSource | null, id: string, value: unknown) {
   const pane = paneKey(source, id);
   if (!pane) return false;
+  // Hidden content can outlive its closed workspace; swallow its late checkpoint.
+  if (!workspaces.has(pane.workspaceId)) return true;
   const viewState = boundedView(value);
   if (viewState) remember(pane.pane, pane.workspaceId, { viewState });
   return true;
