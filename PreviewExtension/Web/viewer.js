@@ -16291,7 +16291,7 @@ SOFTWARE.
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
   }
 
-  function dockingPoseCollectionStateKey(prepared, style, allMode, contextStyle, contextOpacity, contextColor) {
+  function dockingPoseCollectionStateKey(prepared, style, allMode, contextStyle, activeIndex = 0) {
     const receptor = prepared?.receptorEntry || {};
     const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
     const firstPose = poses[0] || {};
@@ -16307,6 +16307,8 @@ SOFTWARE.
       style,
       allMode ? 'all' : 'single',
       contextStyle,
+      allMode ? (prepared.poseGroups || []).find(group => activeIndex >= group.startFrame && activeIndex <= group.endFrame)?.startFrame ?? '' : '',
+      [...dockingPinnedPoseIndices(prepared)].filter(index => index < poses.length).sort((a, b) => a - b).join(','),
     ].join('|');
   }
 
@@ -16363,7 +16365,7 @@ SOFTWARE.
     const resolvedContextStyle = dockingSceneBackgroundStyle(contextStyle, style);
     const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
     const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
-    const stateKey = `${dockingPoseCollectionStateKey(prepared, style, allMode, resolvedContextStyle, contextOpacity, contextColor)}|${allGroup ? allGroup.startFrame : ''}|${pinnedIndices.join(',')}`;
+    const stateKey = dockingPoseCollectionStateKey(prepared, style, allMode, resolvedContextStyle, activeIndex);
     let state = activeDockingPoseCollectionState;
     if (!state || state.key !== stateKey || !dockingPoseCollectionStateStillLoaded(viewer, state)) {
       resetXyzFrameOverlayState(viewer);
@@ -16744,7 +16746,7 @@ SOFTWARE.
       const style = configuredMolstarStyle(activeConfig);
       const allMode = activeSdfPoseMode === 'all' && prepared.sdfPoseOverlayAvailable === true;
       const contextStyle = dockingSceneBackgroundStyle(readSdfCollectionContextStyle(activeConfig), style);
-      state.key = dockingPoseCollectionStateKey(prepared, style, allMode, contextStyle);
+      state.key = dockingPoseCollectionStateKey(prepared, style, allMode, contextStyle, state.activeIndex);
       state.appearanceKey = null;
       await applyDockingPoseCollectionVisibility(viewer, prepared, state.activeIndex, { focus: false });
       return;
