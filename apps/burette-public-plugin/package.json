@@ -21,7 +21,7 @@
     "next": "16.3.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "zod": "4.6.5",
+    "zod": "4.6.7",
     "@modelcontextprotocol/server": "^2.1.0",
     "@modelcontextprotocol/core": "^2.1.0"
   },
