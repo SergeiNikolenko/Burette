@@ -2613,3 +2613,21 @@ td:hover .buret-cell-marquee > span { transform: translateX(calc(-1 * var(--marq
 @layer base {
   button.atlas-menu-item { border: 0; background: transparent; color: inherit; font-family: inherit; font-weight: inherit; text-align: left; }
 }
+.buret-grid-name-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--buret-input-border);
+  border-radius: 4px;
+  background: var(--buret-input);
+  color: var(--buret-text);
+  font: inherit;
+  outline: 2px solid var(--buret-ring);
+  outline-offset: -1px;
+}
+
+body.buret-hide-properties .buret-card-body:has(.buret-grid-name-input) {
+  display: block;
+}
+

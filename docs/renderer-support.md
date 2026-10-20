@@ -96,6 +96,13 @@ locally with the bundled OpenChemLib runtime; ordinary table properties remain
 available for search, sorting, and inspection. CSV/TSV files without molecule
 columns still open as generic delimited data tables in the same grid surface.
 
+In editable collections, double-click a compound's name in the table or on its
+card, or choose **Rename…** from its context menu. Enter or leaving the field
+applies the name; Escape cancels. Use **Save** to write the collection, or
+**Save As** to create a copy. For SDF, renaming updates the molfile title and
+the Name property while preserving structures, identifiers, and other data.
+Renaming participates in the collection's Undo/Redo history.
+
 Mass-spectrometry formats (MS, MAGMA, MGF, MSP, MZML, MZXML) open in the
 dedicated spectrum viewer.
 
