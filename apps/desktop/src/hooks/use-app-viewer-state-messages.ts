@@ -5,6 +5,8 @@ import type { ViewerDocument, ViewerPreferences } from "../types";
 import type { DockTabKind } from "../lib/dock";
 import { updateHostedMcpSelectionContext } from "../lib/hosted-mcp-widget";
 import { structureStoryFromViewerMessage, type StructureStory } from "../lib/structure-story";
+import { rendererViewReloadOptions } from "../lib/renderer-view-state";
+import { postMessageToViewerSource } from "../lib/viewer-bridge";
 
 type ViewerStateMessageBody = Record<string, unknown> | null | undefined;
 type SetViewerLigandSelections = (
@@ -75,6 +77,16 @@ export function useAppViewerStateMessages({
   toggleDock,
 }: UseAppViewerStateMessagesOptions) {
   const handleViewerStateMessage = useCallback((sourceName: unknown, body: ViewerStateMessageBody, eventSource: MessageEventSource | null) => {
+    if (sourceName === "burette-viewer" && body?.type === "rendererViewStateRequest") {
+      const document = documents.find(document => document.id === body.documentId);
+      if (document && typeof body.requestId === "string" && body.requestId.length <= 128) {
+        postMessageToViewerSource(eventSource, { source: "burette-host", body: {
+          type: "rendererViewStateResponse", documentId: document.id, requestId: body.requestId,
+          viewState: rendererViewReloadOptions(document.path).rendererViewState,
+        } });
+      }
+      return true;
+    }
     if (sourceName === "burette-viewer" && body?.type === "toggleRightDock" && window.BuretteMcpWorkspace
       && activeDocument && activeViewerIframeForDocument(activeDocument.id, "molstar")?.contentWindow === eventSource) {
       toggleDock("right");
@@ -166,7 +178,9 @@ export function useAppViewerStateMessages({
     }
 
     if (sourceName === "burette-viewer" && body?.type === "molstarEditHistoryChanged") {
-      window.dispatchEvent(new CustomEvent("burette:molstar-edit-history-changed", { detail: body }));
+      window.dispatchEvent(new CustomEvent("burette:molstar-edit-history-changed", {
+        detail: { ...body, frameSource: eventSource },
+      }));
       return true;
     }
 

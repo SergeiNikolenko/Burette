@@ -61,12 +61,12 @@ const cleanup = new Function(...Object.keys(env), `${effect}; return run();`)(..
 assert(observed.includes(iframe), 'iframe resizing must invalidate the dock cover');
 frameRight = 700; resized();
 assert.deepEqual(covers, [400, 100]);
-// A pinned drag must not push a cover per frame; the release sends the last one.
+// Molecular frames remain pinned, but grid chrome follows the visible strip.
 pinned = true;
 frameRight = 800; resized();
 frameRight = 900; resized();
-assert.deepEqual(covers, [400, 100]);
+assert.deepEqual(covers, [400, 100, 200, 300]);
 pinned = false; unpinned();
-assert.deepEqual(covers, [400, 100, 300]);
+assert.deepEqual(covers, [400, 100, 200, 300, 300]);
 cleanup();
 console.log('Grid layout: iframe resize recalculates available card width.');

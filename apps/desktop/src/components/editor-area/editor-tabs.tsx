@@ -1,6 +1,8 @@
+import { findIndexedDocument } from "./document-index";
+import { useTabWindow } from "./use-tab-window";
 import { useWorkspaceMenus } from "../workspace-menus";
 import { menuSections, submenu } from "../workspace-menu-items";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ShellActions, ShellViewState } from "../types";
 import type { MenuItemSpec } from "../menu-types";
 import { ScrollFade } from "../scroll-fade";
@@ -51,7 +53,7 @@ export function EditorTabs({
   const nativeDragGenerationRef = useRef(0);
   const suppressDragClickRef = useRef(false);
   // A screen moved to the floating window leaves the strip.
-  const visibleTabs = state.tabs.filter(isMainTab);
+  const visibleTabs = useMemo(() => state.tabs.filter(isMainTab), [state.tabs]);
   const activeTabIndex = visibleTabs.findIndex((tab) => tab.id === state.activeTabId);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(() => new Set());
@@ -61,7 +63,9 @@ export function EditorTabs({
   const mouseDragRef = useRef<{ tabId: string; startX: number; startY: number; active: boolean } | null>(null);
   const removeMouseDragListenersRef = useRef<(() => void) | null>(null);
   const dragActivationRef = useRef<{ tabId: string; timeout: number } | null>(null);
-  const tabShellRefs = useRef(new Map<string, HTMLDivElement>());
+  const tabWindow = useTabWindow(visibleTabs, state.activeTabId, draggingTabId);
+  const tabShellRefs = tabWindow.shells;
+  const pendingFocusRef = useRef<string | null>(null);
   const previousTabRectsRef = useRef<Map<string, DOMRect> | null>(null);
   const latestTabsRef = useRef(visibleTabs);
   latestTabsRef.current = visibleTabs;
@@ -96,9 +100,8 @@ export function EditorTabs({
 
   const measureTabRects = useCallback(() => {
     const rects = new Map<string, DOMRect>();
-    for (const tab of latestTabsRef.current) {
-      const element = tabShellRefs.current.get(tab.id);
-      if (element) rects.set(tab.id, element.getBoundingClientRect());
+    for (const [id, element] of tabShellRefs.current) {
+      rects.set(id, element.getBoundingClientRect());
     }
     return rects;
   }, []);
@@ -107,11 +110,11 @@ export function EditorTabs({
     const previousRects = previousTabRectsRef.current;
     if (!previousRects) return;
     previousTabRectsRef.current = null;
-    for (const tab of visibleTabs) {
-      if (tab.id === draggingTabId) continue;
-      const element = tabShellRefs.current.get(tab.id);
-      const previousRect = previousRects.get(tab.id);
-      if (!element || !previousRect) continue;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    for (const [id, element] of tabShellRefs.current) {
+      if (id === draggingTabId) continue;
+      const previousRect = previousRects.get(id);
+      if (!previousRect) continue;
       const nextRect = element.getBoundingClientRect();
       const deltaX = previousRect.left - nextRect.left;
       if (Math.abs(deltaX) < 0.5) continue;
@@ -239,9 +242,7 @@ export function EditorTabs({
     const tab = latestTabsRef.current.find((candidate) => candidate.id === tabId);
     const fileLocation = tab?.location.kind === "file" ? tab.location : null;
     if (!fileLocation) return null;
-    const document = state.documents.find((candidate) => (
-      candidate.id === fileLocation.documentId || candidate.path === fileLocation.path
-    ));
+    const document = findIndexedDocument(state.documents, fileLocation, "first");
     return {
       kind: "active-viewer",
       documentId: document?.id ?? fileLocation.documentId,
@@ -252,12 +253,10 @@ export function EditorTabs({
   }, [state.documents]);
 
   const tabIdFromPoint = useCallback((clientX: number, clientY: number, excludedTabId: string | null = null) => {
-    for (const tab of latestTabsRef.current) {
-      if (tab.id === excludedTabId) continue;
-      const element = tabShellRefs.current.get(tab.id);
-      if (!element) continue;
+    for (const [id, element] of tabShellRefs.current) {
+      if (id === excludedTabId) continue;
       const rect = element.getBoundingClientRect();
-      if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) return tab.id;
+      if (clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom) return id;
     }
     return null;
   }, []);
@@ -308,8 +307,8 @@ export function EditorTabs({
     const orderedTabs = latestTabsRef.current;
     if (orderedTabs.length < 2) return;
     const otherTabs = orderedTabs.filter((tab) => tab.id !== tabId);
-    let targetIndex = otherTabs.length;
-    for (let index = 0; index < otherTabs.length; index += 1) {
+    let targetIndex = tabWindow.reorderIndex(tabId, pointerX) ?? otherTabs.length;
+    for (let index = 0; !tabWindow.windowed && index < otherTabs.length; index += 1) {
       const element = tabShellRefs.current.get(otherTabs[index].id);
       if (!element) continue;
       const rect = element.getBoundingClientRect();
@@ -327,7 +326,7 @@ export function EditorTabs({
       : stateTabsWithoutDragged.length;
     previousTabRectsRef.current = measureTabRects();
     actions.moveTab(tabId, stateTargetIndex);
-  }, [actions, measureTabRects, state.tabs]);
+  }, [actions, measureTabRects, state.tabs, tabWindow.reorderIndex, tabWindow.windowed]);
 
   const clearDragActivation = useCallback(() => {
     const activation = dragActivationRef.current;
@@ -360,9 +359,19 @@ export function EditorTabs({
   }, [actions, clearDragActivation, state.activeTabId]);
 
   const selectAndFocusTab = useCallback((tabId: string) => {
+    pendingFocusRef.current = tabId;
+    tabWindow.reveal(tabId);
     actions.selectTab(tabId);
-    tabShellRefs.current.get(tabId)?.querySelector<HTMLButtonElement>('[role="tab"]')?.focus();
-  }, [actions]);
+  }, [actions, tabWindow.reveal]);
+
+  useLayoutEffect(() => {
+    const id = pendingFocusRef.current;
+    const button = id ? tabShellRefs.current.get(id)?.querySelector<HTMLButtonElement>('[role="tab"]') : null;
+    if (button) {
+      button.focus({ preventScroll: true });
+      pendingFocusRef.current = null;
+    }
+  });
 
   const stopTabDrag = useCallback(() => {
     nativeDragGenerationRef.current += 1;
@@ -532,6 +541,10 @@ export function EditorTabs({
       <TabNameDialog tab={renamingTab} defaultName={renamingTab ? pageKind(renamingTab.location).title(renamingTab.location, state) : ""} onClose={() => setRenamingTabId(null)} />
       <ScrollFade
         axis="horizontal"
+        ref={tabWindow.viewportRef}
+        onScroll={tabWindow.syncViewport}
+        onFocusCapture={tabWindow.onFocus}
+        onBlurCapture={tabWindow.onBlur}
         className="tab-scroll-region"
         role="tablist"
         aria-label="Open structures"
@@ -539,7 +552,9 @@ export function EditorTabs({
         onDrop={readOnly ? undefined : handleEmptyTabStripDrop}
         onKeyDown={handleTabListKeyDown}
       >
-        {visibleTabs.map((tab, index) => {
+        <div style={tabWindow.windowed ? { position: "relative", width: tabWindow.totalWidth, height: 28, flex: "0 0 auto" } : { display: "contents" }}>
+        {tabWindow.indices.map((index) => {
+          const tab = visibleTabs[index];
           const kind = pageKind(tab.location);
           const title = tab.title ?? kind.title(tab.location, state);
           const active = index === activeTabIndex;
@@ -553,10 +568,10 @@ export function EditorTabs({
             path: tabPath ?? undefined,
           };
           const tabDocument = fileLocation
-            ? state.documents.find((document) => document.id === fileLocation.documentId || document.path === fileLocation.path) ?? null
+            ? findIndexedDocument(state.documents, fileLocation, "first")
             : null;
           const textDocument = textFileLocation
-            ? state.textDocuments.find((document) => document.id === textFileLocation.documentId || document.path === textFileLocation.path) ?? null
+            ? findIndexedDocument(state.textDocuments, textFileLocation, "first")
             : null;
           const dirty = Boolean(tabDocument && state.dirtyGridDocuments?.has(tabDocument.id));
           const isDragging = draggingTabId === tab.id;
@@ -652,6 +667,7 @@ export function EditorTabs({
               key={tab.id}
               ref={(node) => setTabShellRef(tab.id, node)}
               className="tab-shell"
+              style={tabWindow.windowed ? { position: "absolute", left: tabWindow.offsets[index], top: 0, maxWidth: tabWindow.viewportWidth || undefined } : undefined}
               data-tab-id={tab.id}
               data-active={active || undefined}
               data-selected={selected || undefined}
@@ -680,6 +696,8 @@ export function EditorTabs({
                 draggable={!readOnly}
                 tabIndex={active ? 0 : -1}
                 aria-selected={active}
+                aria-posinset={index + 1}
+                aria-setsize={visibleTabs.length}
                 aria-label={dirty ? `${title}, Unsaved changes` : title}
                 className={active ? "tab active" : "tab"}
                 aria-grabbed={isDragging || undefined}
@@ -792,6 +810,7 @@ export function EditorTabs({
             </div>
           );
         })}
+        </div>
       </ScrollFade>
       {!readOnly ? <ShortcutTooltip label="New tab" shortcut="⌘T">
         <ToolbarButton type="button" className="new-tab" onMouseDown={(event) => event.preventDefault()} onClick={actions.openNewTab} onContextMenu={(event) => showNewTabMenu(event, actions)} aria-label="New tab">

@@ -3,9 +3,67 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Emitter, Manager, Runtime, State};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
+
+type UpdateResult = Result<RecentDocumentsSnapshot, String>;
+struct UpdateJob {
+    run: Box<dyn FnOnce() -> UpdateResult + Send>,
+    response: tauri::async_runtime::Sender<UpdateResult>,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "operation", rename_all_fields = "camelCase")]
+enum RecentUpdate {
+    #[serde(rename = "initialize_recent_documents")]
+    Initialize {
+        documents: Vec<RecentDocument>,
+        revision: u64,
+    },
+    #[serde(rename = "merge_recent_documents")]
+    Merge { documents: Vec<RecentDocument> },
+    #[serde(rename = "prune_recent_documents")]
+    Prune {
+        checked_documents: Vec<RecentDocumentCheck>,
+        existing_paths: Vec<String>,
+    },
+    #[serde(rename = "clear_recent_documents")]
+    Clear,
+}
+
+impl RecentUpdate {
+    fn validate(&self) -> Result<(), String> {
+        match self {
+            Self::Initialize { documents, .. } | Self::Merge { documents } => {
+                validate_documents(documents)
+            }
+            Self::Prune {
+                checked_documents,
+                existing_paths,
+            } => {
+                validate_document_checks(checked_documents)?;
+                validate_paths("existingPaths", existing_paths)
+            }
+            Self::Clear => Ok(()),
+        }
+    }
+
+    fn apply(self, registry: &RecentDocumentsRegistry, path: &Path) -> UpdateResult {
+        match self {
+            Self::Initialize {
+                documents,
+                revision,
+            } => registry.initialize(documents, revision, Some(path)),
+            Self::Merge { documents } => registry.merge(documents, Some(path)),
+            Self::Prune {
+                checked_documents,
+                existing_paths,
+            } => registry.prune(checked_documents, existing_paths, Some(path)),
+            Self::Clear => registry.clear(Some(path)),
+        }
+    }
+}
 
 const MAX_RECENT_DOCUMENTS: usize = 100;
 const MAX_PATH_CHARS: usize = 4_096;
@@ -62,9 +120,79 @@ impl Default for RecentDocumentsState {
 #[derive(Default)]
 pub(crate) struct RecentDocumentsRegistry {
     state: Mutex<RecentDocumentsState>,
+    updates: OnceLock<tauri::async_runtime::Sender<UpdateJob>>,
+    sealed: Arc<Mutex<bool>>,
+}
+
+pub(crate) struct RecentUpdatesPause {
+    sealed: Arc<Mutex<bool>>,
+    keep_paused: bool,
+}
+
+impl RecentUpdatesPause {
+    pub(crate) fn keep_paused(mut self) {
+        self.keep_paused = true;
+    }
+}
+
+impl Drop for RecentUpdatesPause {
+    fn drop(&mut self) {
+        if !self.keep_paused {
+            if let Ok(mut sealed) = self.sealed.lock() {
+                *sealed = false;
+            }
+        }
+    }
 }
 
 impl RecentDocumentsRegistry {
+    fn enqueue(
+        &self,
+        run: impl FnOnce() -> UpdateResult + Send + 'static,
+    ) -> Result<tauri::async_runtime::Receiver<UpdateResult>, String> {
+        // This short coordination lock never covers disk work or queue waits.
+        // Sealing and admission must be atomic relative to the quit barrier.
+        let sealed = self.sealed.lock().map_err(|error| error.to_string())?;
+        if *sealed {
+            return Err("Recent documents are paused while the app is closing".into());
+        }
+        let updates = self.updates.get_or_init(|| {
+            let (sender, mut receiver) = tauri::async_runtime::channel::<UpdateJob>(64);
+            tauri::async_runtime::spawn(async move {
+                while let Some(job) = receiver.recv().await {
+                    let result = tauri::async_runtime::spawn_blocking(job.run)
+                        .await
+                        .map_err(|error| format!("Recent documents worker failed: {error}"))
+                        .and_then(|result| result);
+                    // Sending one result never waits for its future to be polled.
+                    // Canceling that future must not cancel an accepted mutation.
+                    let _ = job.response.send(result).await;
+                }
+            });
+            sender
+        });
+        let (response, receiver) = tauri::async_runtime::channel(1);
+        updates
+            .try_send(UpdateJob {
+                run: Box::new(run),
+                response,
+            })
+            .map_err(|_| "Recent documents update queue is full or unavailable".to_string())?;
+        Ok(receiver)
+    }
+
+    fn pause_updates(&self) -> Result<RecentUpdatesPause, String> {
+        let mut sealed = self.sealed.lock().map_err(|error| error.to_string())?;
+        if *sealed {
+            return Err("Recent documents are already paused for exit".into());
+        }
+        *sealed = true;
+        Ok(RecentUpdatesPause {
+            sealed: Arc::clone(&self.sealed),
+            keep_paused: false,
+        })
+    }
+
     fn initialize(
         &self,
         documents: Vec<RecentDocument>,
@@ -142,52 +270,160 @@ impl RecentDocumentsRegistry {
 }
 
 #[tauri::command]
-pub(crate) fn initialize_recent_documents<R: Runtime>(
+pub(crate) async fn initialize_recent_documents<R: Runtime>(
     app: AppHandle<R>,
-    registry: State<'_, RecentDocumentsRegistry>,
     documents: Vec<RecentDocument>,
     revision: u64,
 ) -> Result<RecentDocumentsSnapshot, String> {
-    let storage_path = recent_documents_path(&app)?;
-    let snapshot = registry.initialize(documents, revision, Some(&storage_path))?;
-    publish_snapshot(&app, &snapshot);
-    Ok(snapshot)
+    update_recent_documents(
+        app,
+        RecentUpdate::Initialize {
+            documents,
+            revision,
+        },
+    )
+    .await
 }
 
 #[tauri::command]
-pub(crate) fn merge_recent_documents<R: Runtime>(
+pub(crate) async fn merge_recent_documents<R: Runtime>(
     app: AppHandle<R>,
-    registry: State<'_, RecentDocumentsRegistry>,
     documents: Vec<RecentDocument>,
 ) -> Result<RecentDocumentsSnapshot, String> {
-    let storage_path = recent_documents_path(&app)?;
-    let snapshot = registry.merge(documents, Some(&storage_path))?;
-    publish_snapshot(&app, &snapshot);
-    Ok(snapshot)
+    update_recent_documents(app, RecentUpdate::Merge { documents }).await
 }
 
 #[tauri::command]
-pub(crate) fn prune_recent_documents<R: Runtime>(
+pub(crate) async fn prune_recent_documents<R: Runtime>(
     app: AppHandle<R>,
-    registry: State<'_, RecentDocumentsRegistry>,
     checked_documents: Vec<RecentDocumentCheck>,
     existing_paths: Vec<String>,
 ) -> Result<RecentDocumentsSnapshot, String> {
-    let storage_path = recent_documents_path(&app)?;
-    let snapshot = registry.prune(checked_documents, existing_paths, Some(&storage_path))?;
-    publish_snapshot(&app, &snapshot);
-    Ok(snapshot)
+    update_recent_documents(
+        app,
+        RecentUpdate::Prune {
+            checked_documents,
+            existing_paths,
+        },
+    )
+    .await
 }
 
 #[tauri::command]
-pub(crate) fn clear_recent_documents<R: Runtime>(
+pub(crate) async fn clear_recent_documents<R: Runtime>(
     app: AppHandle<R>,
-    registry: State<'_, RecentDocumentsRegistry>,
 ) -> Result<RecentDocumentsSnapshot, String> {
-    let storage_path = recent_documents_path(&app)?;
-    let snapshot = registry.clear(Some(&storage_path))?;
-    publish_snapshot(&app, &snapshot);
-    Ok(snapshot)
+    update_recent_documents(app, RecentUpdate::Clear).await
+}
+
+fn enqueue_recent_update<R: Runtime>(
+    app: AppHandle<R>,
+    update: RecentUpdate,
+) -> Result<tauri::async_runtime::Receiver<UpdateResult>, String> {
+    update.validate()?;
+    let worker_app = app.clone();
+    let registry = app.state::<RecentDocumentsRegistry>();
+    registry.enqueue(move || {
+        let storage_path = recent_documents_path(&worker_app)?;
+        let snapshot = update.apply(
+            &worker_app.state::<RecentDocumentsRegistry>(),
+            &storage_path,
+        )?;
+        publish_snapshot(&worker_app, &snapshot);
+        Ok(snapshot)
+    })
+}
+
+async fn update_recent_documents<R: Runtime>(
+    app: AppHandle<R>,
+    update: RecentUpdate,
+) -> UpdateResult {
+    enqueue_recent_update(app, update)?
+        .recv()
+        .await
+        .ok_or_else(|| "Recent documents worker stopped".to_string())?
+}
+
+/// Seal dispatch and flush every accepted mutation before authorizing exit.
+/// Dropping the pause reopens admission when a quit/restart is canceled.
+pub(crate) async fn pause_and_drain<R: Runtime>(
+    app: &AppHandle<R>,
+) -> Result<RecentUpdatesPause, String> {
+    let registry = app.state::<RecentDocumentsRegistry>();
+    let pause = registry.pause_updates()?;
+    let Some(updates) = registry.updates.get().cloned() else {
+        return Ok(pause);
+    };
+    let worker_app = app.clone();
+    let (response, mut receiver) = tauri::async_runtime::channel(1);
+    // A full queue delays this barrier asynchronously, never the AppKit thread.
+    updates
+        .send(UpdateJob {
+            run: Box::new(move || {
+                let registry = worker_app.state::<RecentDocumentsRegistry>();
+                let path = recent_documents_path(&worker_app)?;
+                let mut state = registry.lock()?;
+                load_persisted_state(&mut state, Some(&path))?;
+                persist_state(&state, Some(&path))
+            }),
+            response,
+        })
+        .await
+        .map_err(|_| "Recent documents worker stopped before exit".to_string())?;
+    receiver
+        .recv()
+        .await
+        .ok_or_else(|| "Recent documents worker stopped before exit".to_string())??;
+    Ok(pause)
+}
+
+/// Tauri polls async command bodies on spawned tasks. Reserve mutation order at
+/// synchronous IPC dispatch, before those tasks (or their response futures) run.
+/// The Webview dispatcher has already checked ACL before invoking this wrapper.
+pub(crate) fn ordered<R, F>(
+    handler: F,
+) -> impl Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static
+where
+    R: Runtime,
+    F: Fn(tauri::ipc::Invoke<R>) -> bool + Send + Sync + 'static,
+{
+    move |invoke| {
+        let command = invoke.message.command();
+        if !matches!(
+            command,
+            "initialize_recent_documents"
+                | "merge_recent_documents"
+                | "prune_recent_documents"
+                | "clear_recent_documents"
+        ) {
+            return handler(invoke);
+        }
+        let response = (|| {
+            let tauri::ipc::InvokeBody::Json(serde_json::Value::Object(payload)) =
+                invoke.message.payload()
+            else {
+                return Err("Recent documents arguments must be a JSON object".to_string());
+            };
+            let mut payload = payload.clone();
+            payload.insert("operation".into(), command.into());
+            let update = serde_json::from_value(serde_json::Value::Object(payload))
+                .map_err(|error| format!("Invalid recent documents arguments: {error}"))?;
+            enqueue_recent_update(invoke.message.webview_ref().app_handle().clone(), update)
+        })();
+        match response {
+            Ok(mut response) => invoke.resolver.respond_async(async move {
+                response
+                    .recv()
+                    .await
+                    .ok_or_else(|| {
+                        tauri::ipc::InvokeError::from("Recent documents worker stopped")
+                    })?
+                    .map_err(tauri::ipc::InvokeError::from)
+            }),
+            Err(error) => invoke.resolver.reject(error),
+        }
+        true
+    }
 }
 
 fn recent_documents_path<R: Runtime>(app: &AppHandle<R>) -> Result<PathBuf, String> {
@@ -431,6 +667,19 @@ mod tests {
             .collect()
     }
 
+    fn mock_recent_app() -> tauri::App<tauri::test::MockRuntime> {
+        let mut context = tauri::test::mock_context(tauri::test::noop_assets());
+        context.config_mut().identifier = format!(
+            "com.local.BuretteRecentQueueTest.{}",
+            uuid::Uuid::new_v4().simple()
+        );
+        tauri::test::mock_builder()
+            .manage(RecentDocumentsRegistry::default())
+            .invoke_handler(ordered(|_| false))
+            .build(context)
+            .unwrap()
+    }
+
     #[test]
     fn startup_snapshots_merge_until_the_first_mutation() {
         let registry = RecentDocumentsRegistry::default();
@@ -496,6 +745,327 @@ mod tests {
             paths(&current),
             vec!["/tmp/window-b.sdf", "/tmp/window-a.sdf"]
         );
+    }
+
+    #[test]
+    fn concurrent_persisted_merges_keep_disk_at_the_latest_revision() {
+        let directory = std::env::temp_dir().join(format!(
+            "burette-recent-concurrent-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let storage_path = directory.join(RECENT_DOCUMENTS_FILE);
+        let registry = Arc::new(RecentDocumentsRegistry::default());
+        let barrier = Arc::new(Barrier::new(3));
+        let workers: Vec<_> = ["/tmp/window-a.sdf", "/tmp/window-b.sdf"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, path)| {
+                let registry = Arc::clone(&registry);
+                let barrier = Arc::clone(&barrier);
+                let storage_path = storage_path.clone();
+                thread::spawn(move || {
+                    barrier.wait();
+                    registry
+                        .merge(vec![document(path, index as u64)], Some(&storage_path))
+                        .unwrap()
+                })
+            })
+            .collect();
+        barrier.wait();
+        let revisions: Vec<_> = workers
+            .into_iter()
+            .map(|worker| worker.join().unwrap().revision)
+            .collect();
+        assert_ne!(revisions[0], revisions[1]);
+        let expected = snapshot(&registry.lock().unwrap());
+        let restored = RecentDocumentsRegistry::default()
+            .initialize(Vec::new(), 0, Some(&storage_path))
+            .unwrap();
+        assert_eq!(restored, expected);
+        assert_eq!(paths(&restored), ["/tmp/window-b.sdf", "/tmp/window-a.sdf"]);
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn dispatch_order_survives_reversed_response_polls_and_cancelled_merge_response() {
+        use std::future::Future;
+        use std::sync::mpsc;
+        use std::task::{Context, Waker};
+        use std::time::Duration;
+
+        let directory =
+            std::env::temp_dir().join(format!("burette-recent-queue-{}", uuid::Uuid::new_v4()));
+        let storage_path = directory.join(RECENT_DOCUMENTS_FILE);
+        let registry = Arc::new(RecentDocumentsRegistry::default());
+        let (started, worker_started) = mpsc::channel();
+        let (release, worker_release) = mpsc::channel();
+
+        // These are synchronous dispatch admissions, not async command bodies.
+        let merge_registry = Arc::clone(&registry);
+        let merge_path = storage_path.clone();
+        let merge_response = registry
+            .enqueue(move || {
+                started.send(()).unwrap();
+                worker_release.recv_timeout(Duration::from_secs(5)).unwrap();
+                merge_registry.merge(
+                    vec![document("/tmp/older-merge.sdf", 10)],
+                    Some(&merge_path),
+                )
+            })
+            .unwrap();
+        worker_started.recv_timeout(Duration::from_secs(5)).unwrap();
+        let clear_registry = Arc::clone(&registry);
+        let clear_path = storage_path.clone();
+        let mut clear_response = registry
+            .enqueue(move || clear_registry.clear(Some(&clear_path)))
+            .unwrap();
+        let initialize_registry = Arc::clone(&registry);
+        let initialize_path = storage_path.clone();
+        let mut initialize_response = registry
+            .enqueue(move || {
+                initialize_registry.initialize(
+                    vec![document("/tmp/stale-startup.sdf", 1)],
+                    90,
+                    Some(&initialize_path),
+                )
+            })
+            .unwrap();
+
+        tauri::async_runtime::block_on(async {
+            // Deliberately first-poll responses in reverse dispatch order.
+            // None of these polls schedules or reorders its accepted mutation.
+            let mut initialize = Box::pin(initialize_response.recv());
+            let mut clear = Box::pin(clear_response.recv());
+            let mut context = Context::from_waker(Waker::noop());
+            assert!(initialize.as_mut().poll(&mut context).is_pending());
+            assert!(clear.as_mut().poll(&mut context).is_pending());
+            drop(merge_response);
+            release.send(()).unwrap();
+            let initialized = initialize.await.unwrap().unwrap();
+            let cleared = clear.await.unwrap().unwrap();
+            assert_eq!(initialized, cleared);
+            assert_eq!((cleared.revision, &cleared.documents), (2, &Vec::new()));
+            let restored = RecentDocumentsRegistry::default()
+                .initialize(Vec::new(), 0, Some(&storage_path))
+                .unwrap();
+            assert_eq!(restored, cleared);
+        });
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn ordered_ipc_wrapper_parses_camel_case_and_preserves_dispatch_order() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let app = mock_recent_app();
+        let window = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap();
+        let webview: &tauri::Webview<tauri::test::MockRuntime> = window.as_ref();
+        let storage_path = recent_documents_path(app.handle()).unwrap();
+        let (release, blocked) = mpsc::channel();
+        let blocker = app
+            .state::<RecentDocumentsRegistry>()
+            .enqueue(move || {
+                blocked.recv_timeout(Duration::from_secs(5)).unwrap();
+                Ok(RecentDocumentsSnapshot {
+                    revision: 0,
+                    documents: Vec::new(),
+                })
+            })
+            .unwrap();
+        let (responses, received) = mpsc::channel();
+        for (command, body) in [
+            (
+                "initialize_recent_documents",
+                serde_json::json!({"documents": [], "revision": 20}),
+            ),
+            (
+                "merge_recent_documents",
+                serde_json::json!({"documents": [{
+                    "path": "/tmp/queued-source.sdf", "title": "queued-source.sdf", "extension": "sdf",
+                    "renderer": "grid2d", "byteCount": 42, "openedAt": 30
+                }]}),
+            ),
+            (
+                "prune_recent_documents",
+                serde_json::json!({
+                    "checkedDocuments": [{"path": "/tmp/queued-source.sdf", "openedAt": 30}],
+                    "existingPaths": ["/tmp/queued-source.sdf"]
+                }),
+            ),
+            ("clear_recent_documents", serde_json::json!({})),
+        ] {
+            let responses = responses.clone();
+            webview.clone().on_message(
+                tauri::webview::InvokeRequest {
+                    cmd: command.into(),
+                    callback: tauri::ipc::CallbackFn(0),
+                    error: tauri::ipc::CallbackFn(1),
+                    url: "tauri://localhost".parse().unwrap(),
+                    body: body.into(),
+                    headers: Default::default(),
+                    invoke_key: tauri::test::INVOKE_KEY.into(),
+                },
+                Box::new(move |_, _, response, _, _| {
+                    responses.send((command, response)).unwrap();
+                }),
+            );
+        }
+        drop(blocker);
+        release.send(()).unwrap();
+        let mut snapshots = HashMap::new();
+        for _ in 0..4 {
+            let (command, response) = received.recv_timeout(Duration::from_secs(5)).unwrap();
+            let tauri::ipc::InvokeResponse::Ok(response) = response else {
+                panic!("Recent documents IPC failed")
+            };
+            snapshots.insert(
+                command,
+                response.deserialize::<RecentDocumentsSnapshot>().unwrap(),
+            );
+        }
+        assert_eq!(snapshots["initialize_recent_documents"].revision, 21);
+        assert_eq!(
+            paths(&snapshots["merge_recent_documents"]),
+            ["/tmp/queued-source.sdf"]
+        );
+        assert_eq!(
+            paths(&snapshots["prune_recent_documents"]),
+            ["/tmp/queued-source.sdf"]
+        );
+        let cleared = &snapshots["clear_recent_documents"];
+        assert_eq!((cleared.revision, &cleared.documents), (24, &Vec::new()));
+        assert_eq!(
+            RecentDocumentsRegistry::default()
+                .initialize(Vec::new(), 0, Some(&storage_path))
+                .unwrap(),
+            *cleared
+        );
+        let _ = fs::remove_dir_all(storage_path.parent().unwrap());
+    }
+
+    #[test]
+    fn quit_drain_waits_for_accepted_updates_and_reopens_after_cancel() {
+        use std::future::Future;
+        use std::sync::mpsc;
+        use std::task::{Context, Waker};
+        use std::time::Duration;
+
+        let app = mock_recent_app();
+        let path = recent_documents_path(app.handle()).unwrap();
+        let previous = RecentDocumentsSnapshot {
+            revision: 7,
+            documents: vec![document("/tmp/previous.sdf", 1)],
+        };
+        persist_snapshot(&path, &previous).unwrap();
+        tauri::async_runtime::block_on(async {
+            // Quitting before startup initialization must not overwrite history.
+            drop(pause_and_drain(app.handle()).await.unwrap());
+            assert_eq!(
+                serde_json::from_slice::<RecentDocumentsSnapshot>(&fs::read(&path).unwrap())
+                    .unwrap(),
+                previous
+            );
+            let (release, blocked) = mpsc::channel();
+            let worker_app = app.handle().clone();
+            let worker_path = path.clone();
+            let accepted = app
+                .state::<RecentDocumentsRegistry>()
+                .enqueue(move || {
+                    blocked.recv_timeout(Duration::from_secs(5)).unwrap();
+                    worker_app
+                        .state::<RecentDocumentsRegistry>()
+                        .merge(vec![document("/tmp/accepted.sdf", 2)], Some(&worker_path))
+                })
+                .unwrap();
+            let mut drain = Box::pin(pause_and_drain(app.handle()));
+            assert!(drain
+                .as_mut()
+                .poll(&mut Context::from_waker(Waker::noop()))
+                .is_pending());
+            assert!(enqueue_recent_update(app.handle().clone(), RecentUpdate::Clear).is_err());
+            release.send(()).unwrap();
+            let pause = drain.await.unwrap();
+            drop(accepted);
+            let persisted: RecentDocumentsSnapshot =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            assert_eq!(
+                paths(&persisted),
+                ["/tmp/accepted.sdf", "/tmp/previous.sdf"]
+            );
+            drop(pause);
+            assert!(
+                update_recent_documents(app.handle().clone(), RecentUpdate::Clear)
+                    .await
+                    .unwrap()
+                    .documents
+                    .is_empty()
+            );
+        });
+        let _ = fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    #[test]
+    fn a_full_queue_rejects_clear_explicitly_and_allows_retry_after_drain() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let app = mock_recent_app();
+        let (started, worker_started) = mpsc::channel();
+        let (release, blocked) = mpsc::channel();
+        let worker_app = app.handle().clone();
+        let accepted = app
+            .state::<RecentDocumentsRegistry>()
+            .enqueue(move || {
+                started.send(()).unwrap();
+                blocked.recv_timeout(Duration::from_secs(5)).unwrap();
+                let path = recent_documents_path(&worker_app)?;
+                worker_app
+                    .state::<RecentDocumentsRegistry>()
+                    .merge(vec![document("/tmp/accepted.sdf", 2)], Some(&path))
+            })
+            .unwrap();
+        worker_started.recv_timeout(Duration::from_secs(5)).unwrap();
+        let mut last = None;
+        for _ in 0..64 {
+            last = Some(
+                app.state::<RecentDocumentsRegistry>()
+                    .enqueue(|| {
+                        Ok(RecentDocumentsSnapshot {
+                            revision: 0,
+                            documents: Vec::new(),
+                        })
+                    })
+                    .unwrap(),
+            );
+        }
+        assert!(
+            enqueue_recent_update(app.handle().clone(), RecentUpdate::Clear)
+                .unwrap_err()
+                .contains("queue is full")
+        );
+        release.send(()).unwrap();
+        tauri::async_runtime::block_on(async {
+            last.unwrap().recv().await.unwrap().unwrap();
+            drop(accepted);
+            assert!(
+                update_recent_documents(app.handle().clone(), RecentUpdate::Clear)
+                    .await
+                    .unwrap()
+                    .documents
+                    .is_empty()
+            );
+        });
+        let path = recent_documents_path(app.handle()).unwrap();
+        assert!(
+            serde_json::from_slice::<RecentDocumentsSnapshot>(&fs::read(&path).unwrap())
+                .unwrap()
+                .documents
+                .is_empty()
+        );
+        let _ = fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[test]

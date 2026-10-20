@@ -1,3 +1,4 @@
+use crate::commands::source_editing::{OpenedSourceRegistry, SourceRegistrationEpoch};
 use serde_json::json;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -9,7 +10,7 @@ use super::grid_store::{
     cleanup_grid_runtime_async, GridParseOptions, GridStoreHandle,
 };
 use super::runtime::ViewerPreferences;
-use super::runtime_utils::{asset_url, escape_html, prune_runtime_dirs};
+use super::runtime_utils::{asset_url, create_runtime_dir, escape_html, prune_runtime_dirs};
 use super::runtime_viewer::{copy_web_assets, AssetProfile};
 use super::trace::{runtime_manifest, write_bytes_atomic, write_json_atomic};
 
@@ -78,6 +79,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     source_byte_count: u64,
     preferences: &ViewerPreferences,
     options: &GridParseOptions,
+    source_epoch: Option<&SourceRegistrationEpoch>,
 ) -> Result<Option<PathBuf>, String> {
     if !grid_can_preview(extension) {
         return Ok(None);
@@ -91,7 +93,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     let assets = base.join("assets");
     let runtime = base.join(uuid::Uuid::new_v4().to_string());
     fs::create_dir_all(&assets).map_err(|err| err.to_string())?;
-    fs::create_dir_all(&runtime).map_err(|err| err.to_string())?;
+    create_runtime_dir(&base, &runtime)?;
     copy_web_assets(app, &assets, AssetProfile::Grid)?;
     prune_runtime_dirs(&base);
     let grid_options = GridParseOptions {
@@ -172,15 +174,27 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
             AssetProfile::Grid.name(),
         ),
     )?;
-    let grid_store = pending_store.take();
-    app.state::<super::grid_store::GridRuntimeRegistry>()
-        .register(
-            registry_document_id,
-            grid_store.database_path,
-            collection.format,
-            grid_store.cancel_token,
-            grid_store.ingest_worker,
-        )?;
+    let mut register = || {
+        let grid_store = pending_store.take();
+        app.state::<super::grid_store::GridRuntimeRegistry>()
+            .register(
+                registry_document_id,
+                grid_store.database_path,
+                collection.format,
+                grid_store.cancel_token,
+                grid_store.ingest_worker,
+            )
+    };
+    if let Some(source_epoch) = source_epoch {
+        if !app
+            .state::<OpenedSourceRegistry>()
+            .with_registration_epoch(source_epoch, register)?
+        {
+            return Err("The document was closed while opening.".to_string());
+        }
+    } else {
+        register()?;
+    }
     Ok(Some(runtime.join("index.html")))
 }
 

@@ -91,7 +91,8 @@ struct FileEntry {
     byte_count: u64,
 }
 
-#[tauri::command]
+// Scans directories and reads scientific artifacts; keep it off AppKit.
+#[tauri::command(async)]
 pub(crate) fn read_folding_result_bundle(path: String) -> Result<FoldingResultBundle, String> {
     read_folding_result_bundle_impl(PathBuf::from(path))
 }

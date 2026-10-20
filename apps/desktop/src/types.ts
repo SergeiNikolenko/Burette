@@ -450,6 +450,9 @@ export type ViewerDocument = {
   renderer: string;
   viewerProfile?: "structure" | "mesoscale" | "grid" | "spectrum";
   runtimePath: string;
+  /** Admitted source; native runtime is prepared when a viewer mounts. */
+  runtimeDeferred?: boolean;
+  runtimeDeferredPreferences?: Partial<ViewerPreferences>;
   byteCount: number;
   virtual?: boolean;
   openClaimId?: string;

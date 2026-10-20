@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -25,10 +25,126 @@ struct OpenedSource {
 
 #[derive(Default)]
 pub(crate) struct OpenedSourceRegistry {
-    entries: Mutex<HashMap<(String, String), OpenedSource>>,
+    entries: Mutex<OpenedSourceEntries>,
+}
+
+#[derive(Default)]
+struct OpenedSourceEntries {
+    sources: HashMap<(String, String), OpenedSource>,
+    registration_epochs: HashMap<(String, String), u64>,
+    next_epoch: u64,
+}
+
+#[derive(Clone)]
+pub(crate) struct SourceRegistrationEpoch {
+    pub(crate) document_id: String,
+    pub(crate) owner: String,
+    pub(crate) epoch: u64,
 }
 
 impl OpenedSourceRegistry {
+    // Keep this critical section limited to publishing already-built state.
+    // Reading files, parsing and waiting for workers must happen beforehand.
+    pub(crate) fn with_registration_epoch(
+        &self,
+        registration: &SourceRegistrationEpoch,
+        commit: impl FnOnce() -> Result<(), String>,
+    ) -> Result<bool, String> {
+        let entries = self.entries.lock().map_err(|_| {
+            source_error("source_read_failed", "The source registry is unavailable.")
+        })?;
+        if entries
+            .registration_epochs
+            .get(&(registration.owner.clone(), registration.document_id.clone()))
+            != Some(&registration.epoch)
+        {
+            return Ok(false);
+        }
+        commit()?;
+        Ok(true)
+    }
+
+    pub(crate) fn registration_epoch(&self, document_id: &str, owner: &str) -> Result<u64, String> {
+        let mut entries = self.entries.lock().map_err(|_| {
+            source_error("source_read_failed", "The source registry is unavailable.")
+        })?;
+        let key = (owner.to_string(), document_id.to_string());
+        if let Some(epoch) = entries.registration_epochs.get(&key) {
+            return Ok(*epoch);
+        }
+        let epoch = entries.next_epoch.checked_add(1).ok_or_else(|| {
+            source_error(
+                "source_read_failed",
+                "The source registry generation is exhausted.",
+            )
+        })?;
+        entries.next_epoch = epoch;
+        entries.registration_epochs.insert(key, epoch);
+        Ok(epoch)
+    }
+
+    pub(crate) fn register_if_epoch(
+        &self,
+        document_id: String,
+        owner_window_label: String,
+        canonical_path: PathBuf,
+        source_kind: &str,
+        epoch: u64,
+    ) -> Result<bool, String> {
+        let mut entries = self.entries.lock().map_err(|_| {
+            source_error("source_read_failed", "The source registry is unavailable.")
+        })?;
+        let key = (owner_window_label.clone(), document_id);
+        if entries.registration_epochs.get(&key) != Some(&epoch) {
+            return Ok(false);
+        }
+        entries.sources.insert(
+            key,
+            OpenedSource {
+                owner_window_label,
+                canonical_path,
+                source_kind: source_kind.to_string(),
+            },
+        );
+        Ok(true)
+    }
+
+    pub(crate) fn discard_registration_epoch(
+        &self,
+        document_id: &str,
+        owner: &str,
+        epoch: u64,
+    ) -> Result<(), String> {
+        let mut entries = self.entries.lock().map_err(|_| {
+            source_error("source_read_failed", "The source registry is unavailable.")
+        })?;
+        let key = (owner.to_string(), document_id.to_string());
+        if entries.registration_epochs.get(&key) == Some(&epoch)
+            && !entries.sources.contains_key(&key)
+        {
+            entries.registration_epochs.remove(&key);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn unregister_if_epoch(
+        &self,
+        document_id: &str,
+        owner: &str,
+        epoch: u64,
+    ) -> Result<(), String> {
+        let mut entries = self.entries.lock().map_err(|_| {
+            source_error("source_read_failed", "The source registry is unavailable.")
+        })?;
+        let key = (owner.to_string(), document_id.to_string());
+        if entries.registration_epochs.get(&key) == Some(&epoch) {
+            entries.sources.remove(&key);
+            entries.registration_epochs.remove(&key);
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
     pub(crate) fn register(
         &self,
         document_id: String,
@@ -36,17 +152,14 @@ impl OpenedSourceRegistry {
         canonical_path: PathBuf,
         source_kind: &str,
     ) -> Result<(), String> {
-        let mut entries = self.entries.lock().map_err(|_| {
-            source_error("source_read_failed", "The source registry is unavailable.")
-        })?;
-        entries.insert(
-            (owner_window_label.clone(), document_id),
-            OpenedSource {
-                owner_window_label,
-                canonical_path,
-                source_kind: source_kind.to_string(),
-            },
-        );
+        let epoch = self.registration_epoch(&document_id, &owner_window_label)?;
+        self.register_if_epoch(
+            document_id,
+            owner_window_label,
+            canonical_path,
+            source_kind,
+            epoch,
+        )?;
         Ok(())
     }
 
@@ -54,7 +167,12 @@ impl OpenedSourceRegistry {
         let mut entries = self.entries.lock().map_err(|_| {
             source_error("source_read_failed", "The source registry is unavailable.")
         })?;
-        entries.retain(|(owner, _), _| owner != window_label);
+        entries
+            .sources
+            .retain(|(owner, _), _| owner != window_label);
+        entries
+            .registration_epochs
+            .retain(|(owner, _), _| owner != window_label);
         Ok(())
     }
 }
@@ -217,6 +335,7 @@ pub(crate) fn open_source_edit_session<R: Runtime>(
             source_error("source_read_failed", "The source registry is unavailable.")
         })?;
         entries
+            .sources
             .get(&(window.label().to_string(), request.document_id.clone()))
             .cloned()
     }
@@ -492,20 +611,72 @@ pub(crate) fn close_opened_source_document<R: Runtime>(
             source_error("source_read_failed", "The source registry is unavailable.")
         })?;
         let key = (window.label().to_string(), request.document_id.clone());
-        let is_owned = entries.contains_key(&key);
+        let is_owned = entries.sources.contains_key(&key);
+        entries.registration_epochs.remove(&key);
         if !is_owned {
             return Err(source_error(
                 "source_document_not_open",
                 "The source document is not open in this window.",
             ));
         }
-        entries.remove(&key);
+        entries.sources.remove(&key);
     }
     edit_sessions.unregister_document(window.label(), &request.document_id)?;
     Ok(CloseOpenedSourceDocumentResponse {
         document_id: request.document_id,
         released: true,
     })
+}
+
+#[tauri::command]
+pub(crate) fn close_opened_source_documents<R: Runtime>(
+    window: tauri::WebviewWindow<R>,
+    opened_sources: State<'_, OpenedSourceRegistry>,
+    edit_sessions: State<'_, SourceEditRegistry>,
+    document_ids: Vec<String>,
+) -> Result<(), String> {
+    release_opened_documents(
+        &opened_sources,
+        &edit_sessions,
+        window.label(),
+        document_ids,
+    )
+}
+
+fn release_opened_documents(
+    opened_sources: &OpenedSourceRegistry,
+    edit_sessions: &SourceEditRegistry,
+    owner: &str,
+    document_ids: Vec<String>,
+) -> Result<(), String> {
+    let wanted: HashSet<String> = document_ids.into_iter().collect();
+    let mut sessions = edit_sessions
+        .entries
+        .lock()
+        .map_err(|_| invalid_handle_error())?;
+    // An uncertain write must remain recoverable even if a stale UI attempts
+    // to release its document. Validate the entire batch before changing it.
+    for session in sessions.values() {
+        if session.owner_window_label == owner && wanted.contains(&session.document_id) {
+            if let Some(pending) = &session.pending_commit {
+                return Err(commit_uncertain_error(pending));
+            }
+        }
+    }
+    let mut sources = opened_sources
+        .entries
+        .lock()
+        .map_err(|_| source_error("source_read_failed", "The source registry is unavailable."))?;
+    sources
+        .sources
+        .retain(|(window, id), _| window != owner || !wanted.contains(id));
+    sources
+        .registration_epochs
+        .retain(|(window, id), _| window != owner || !wanted.contains(id));
+    sessions.retain(|_, session| {
+        session.owner_window_label != owner || !wanted.contains(&session.document_id)
+    });
+    Ok(())
 }
 
 fn session_for_window<'a>(
@@ -1049,10 +1220,280 @@ mod tests {
         registry
             .register("doc".into(), "workspace".into(), path, "structure")
             .unwrap();
-        assert_eq!(registry.entries.lock().unwrap().len(), 2);
+        assert_eq!(registry.entries.lock().unwrap().sources.len(), 2);
         registry.unregister_window("main").unwrap();
         let entries = registry.entries.lock().unwrap();
-        assert_eq!(entries.len(), 1);
-        assert!(entries.contains_key(&("workspace".into(), "doc".into())));
+        assert_eq!(entries.sources.len(), 1);
+        assert!(entries
+            .sources
+            .contains_key(&("workspace".into(), "doc".into())));
+    }
+
+    #[test]
+    fn batch_close_preserves_other_windows_and_pending_commits() {
+        let sources = OpenedSourceRegistry::default();
+        let sessions = SourceEditRegistry::default();
+        let session = EditSession {
+            owner_window_label: "main".into(),
+            canonical_path: PathBuf::from("/unused/source.pdb"),
+            document_id: "doc".into(),
+            session_id: "edit".into(),
+            base_revision: FileRevision {
+                modified_at: 0,
+                byte_count: 0,
+                content_hash: "base".into(),
+            },
+            last_conflict_revision: None,
+            pending_commit: Some(PendingCommit {
+                intended_content_hash: "changed".into(),
+                pending_stage: "replace",
+            }),
+        };
+        sessions
+            .entries
+            .lock()
+            .unwrap()
+            .insert("handle".into(), session);
+        for owner in ["main", "other"] {
+            sources
+                .register(
+                    "doc".into(),
+                    owner.into(),
+                    PathBuf::from("/unused/source.pdb"),
+                    "structure",
+                )
+                .unwrap();
+        }
+        assert!(release_opened_documents(&sources, &sessions, "main", vec!["doc".into()]).is_err());
+        assert_eq!(sources.entries.lock().unwrap().sources.len(), 2);
+        assert_eq!(sessions.entries.lock().unwrap().len(), 1);
+        sessions
+            .entries
+            .lock()
+            .unwrap()
+            .get_mut("handle")
+            .unwrap()
+            .pending_commit = None;
+        release_opened_documents(
+            &sources,
+            &sessions,
+            "main",
+            vec!["doc".into(), "already-closed".into()],
+        )
+        .unwrap();
+        assert!(sessions.entries.lock().unwrap().is_empty());
+        let remaining = sources.entries.lock().unwrap();
+        assert_eq!(remaining.sources.len(), 1);
+        assert!(remaining
+            .sources
+            .contains_key(&("other".into(), "doc".into())));
+    }
+
+    #[test]
+    fn closing_desmond_cms_invalidates_pointer_preparation() {
+        let root =
+            std::env::temp_dir().join(format!("burette-desmond-source-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(root.join("run_trj")).unwrap();
+        fs::write(root.join("run-out.cms"), b"cms").unwrap();
+        let pointer = root.join("run_trj/clickme.dtr");
+        fs::write(&pointer, b"").unwrap();
+        let effective = crate::preview::runtime::document_identity_path(&pointer);
+        assert_eq!(effective, root.join("run-out.cms").canonicalize().unwrap());
+        let id = crate::preview::runtime_utils::stable_id(&effective);
+        let sources = OpenedSourceRegistry::default();
+        let edits = SourceEditRegistry::default();
+        let stale = sources.registration_epoch(&id, "main").unwrap();
+        release_opened_documents(&sources, &edits, "main", vec![id.clone()]).unwrap();
+        assert!(!sources
+            .register_if_epoch(
+                id.clone(),
+                "main".into(),
+                effective.clone(),
+                "structure",
+                stale
+            )
+            .unwrap());
+        let current = sources.registration_epoch(&id, "main").unwrap();
+        assert!(sources
+            .register_if_epoch(
+                id.clone(),
+                "main".into(),
+                effective.clone(),
+                "structure",
+                current
+            )
+            .unwrap());
+        sources.unregister_if_epoch(&id, "main", stale).unwrap();
+        assert_eq!(
+            sources.entries.lock().unwrap().sources[&("main".into(), id)].canonical_path,
+            effective
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn closed_source_preparation_cannot_overwrite_a_reopened_incarnation() {
+        let sources = OpenedSourceRegistry::default();
+        let edits = SourceEditRegistry::default();
+        let stale = sources.registration_epoch("doc", "main").unwrap();
+        release_opened_documents(&sources, &edits, "main", vec!["doc".into()]).unwrap();
+        assert!(!sources
+            .register_if_epoch(
+                "doc".into(),
+                "main".into(),
+                PathBuf::from("/old"),
+                "structure",
+                stale
+            )
+            .unwrap());
+        let current = sources.registration_epoch("doc", "main").unwrap();
+        assert_ne!(current, stale);
+        sources
+            .discard_registration_epoch("doc", "main", stale)
+            .unwrap();
+        assert!(sources
+            .register_if_epoch(
+                "doc".into(),
+                "main".into(),
+                PathBuf::from("/new"),
+                "structure",
+                current
+            )
+            .unwrap());
+        assert!(!sources
+            .register_if_epoch(
+                "doc".into(),
+                "main".into(),
+                PathBuf::from("/old"),
+                "structure",
+                stale
+            )
+            .unwrap());
+        sources.unregister_if_epoch("doc", "main", stale).unwrap();
+        assert_eq!(
+            sources
+                .entries
+                .lock()
+                .unwrap()
+                .sources
+                .get(&("main".into(), "doc".into()))
+                .unwrap()
+                .canonical_path,
+            PathBuf::from("/new")
+        );
+        sources.unregister_window("main").unwrap();
+        assert!(!sources
+            .register_if_epoch(
+                "doc".into(),
+                "main".into(),
+                PathBuf::from("/late"),
+                "structure",
+                current
+            )
+            .unwrap());
+        let entries = sources.entries.lock().unwrap();
+        assert!(entries.sources.is_empty());
+        assert!(entries.registration_epochs.is_empty());
+    }
+
+    #[test]
+    fn failed_source_preparation_releases_only_its_own_empty_reservation() {
+        let sources = OpenedSourceRegistry::default();
+        let epoch = sources.registration_epoch("doc", "main").unwrap();
+        sources
+            .discard_registration_epoch("doc", "main", epoch)
+            .unwrap();
+        assert!(sources
+            .entries
+            .lock()
+            .unwrap()
+            .registration_epochs
+            .is_empty());
+        let current = sources.registration_epoch("doc", "main").unwrap();
+        assert!(sources
+            .register_if_epoch(
+                "doc".into(),
+                "main".into(),
+                PathBuf::from("/new"),
+                "structure",
+                current
+            )
+            .unwrap());
+        sources
+            .discard_registration_epoch("doc", "main", current)
+            .unwrap();
+        assert_eq!(sources.entries.lock().unwrap().sources.len(), 1);
+        assert_eq!(sources.entries.lock().unwrap().registration_epochs.len(), 1);
+        sources.unregister_if_epoch("doc", "main", current).unwrap();
+        assert!(sources.entries.lock().unwrap().sources.is_empty());
+        assert!(sources
+            .entries
+            .lock()
+            .unwrap()
+            .registration_epochs
+            .is_empty());
+    }
+
+    #[test]
+    fn stale_grid_commit_cannot_replace_or_cancel_a_new_runtime() {
+        use crate::preview::grid_store::{build_grid_store, GridRuntimeRegistry};
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::Arc;
+
+        let sources = OpenedSourceRegistry::default();
+        let edits = SourceEditRegistry::default();
+        let grids = GridRuntimeRegistry::default();
+        let stale = SourceRegistrationEpoch {
+            document_id: "doc".into(),
+            owner: "main".into(),
+            epoch: sources.registration_epoch("doc", "main").unwrap(),
+        };
+        release_opened_documents(&sources, &edits, "main", vec!["doc".into()]).unwrap();
+        let current = SourceRegistrationEpoch {
+            epoch: sources.registration_epoch("doc", "main").unwrap(),
+            ..stale.clone()
+        };
+        let runtime_dir = temp_path("grid");
+        fs::create_dir_all(&runtime_dir).unwrap();
+        let handle = build_grid_store(&runtime_dir, "smi", b"CC Ethane\n")
+            .unwrap()
+            .unwrap();
+        let current_cancel = handle.cancel_token.clone();
+        assert!(sources
+            .with_registration_epoch(&current, || grids.register(
+                "main:doc",
+                handle.database_path,
+                handle.summary.format,
+                handle.cancel_token,
+                handle.ingest_worker,
+            ))
+            .unwrap());
+        let lease = grids.acquire_snapshot_lease("main:doc").unwrap();
+        let database_path = lease.database_path_for_freeze().to_path_buf();
+        let stale_cancel = Arc::new(AtomicBool::new(false));
+        assert!(!sources
+            .with_registration_epoch(&stale, || grids.register(
+                "main:doc",
+                temp_path("stale-grid").join("molecules.sqlite"),
+                "smiles",
+                stale_cancel,
+                None,
+            ))
+            .unwrap());
+        assert!(!current_cancel.load(Ordering::Relaxed));
+        assert_eq!(
+            grids
+                .acquire_snapshot_lease("main:doc")
+                .unwrap()
+                .database_path_for_freeze(),
+            database_path
+        );
+        grids.unregister("main:doc").unwrap();
+        assert!(current_cancel.load(Ordering::Relaxed));
+        assert!(
+            database_path.is_file(),
+            "the pre-existing compute lease survives cancellation"
+        );
+        drop(lease);
     }
 }

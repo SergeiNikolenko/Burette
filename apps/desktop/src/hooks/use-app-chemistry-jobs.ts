@@ -208,23 +208,6 @@ export function useAppChemistryJobs({
     }
   }, [conformerJobs, pushErrorStatus, pushStatus]);
 
-  useEffect(() => {
-    let cancelled = false;
-    void requestXtbStatus()
-      .then((status) => {
-        if (!cancelled) setXtbStatus(status);
-      })
-      .catch(() => {});
-    void requestConformerStatus()
-      .then((status) => {
-        if (!cancelled) setConformerStatus(status);
-      })
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   return {
     cancelConformerJob,
     cancelXtbJob,

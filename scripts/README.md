@@ -78,6 +78,7 @@ changing CLI, MCP, or skill behavior.
 | `bun scripts/check-vendor-assets.mjs` | Vendored runtime asset checks. |
 | `python3 scripts/check-blob-size.py --base <sha> --head <sha> --max-bytes 512000 --allowlist .github/blob-size-allowlist.txt` | GitHub blob-size policy checks for accidental large files. |
 | `./scripts/perf-smoke.sh` | Non-GUI/Quick Look performance smoke reporting. |
+| `node scripts/perf-journeys.mjs` | Journey benchmark for a perf build: p50/p95 per user journey from `PerfTrace.jsonl`, budgets, and `--compare` against an earlier report. |
 | `node scripts/benchmark-chemical-space.mjs --input <csv> --runtime-root <ComputeMetal>` | Reproducible RDKit Morgan plus native Metal chemical-space benchmark. |
 
 ## Internal Helpers

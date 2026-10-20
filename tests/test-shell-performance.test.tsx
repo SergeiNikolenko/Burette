@@ -12,7 +12,71 @@ const { createRoot } = await import("react-dom/client");
 const { pinViewerFrames } = await import("../apps/desktop/src/components/editor-area/viewer-frame");
 const { MarqueeName } = await import("../apps/desktop/src/components/marquee-name");
 const { useXyzrenderPlayback } = await import("../apps/desktop/src/hooks/use-xyzrender-playback");
+const { usePanelEdgeVariables } = await import("../apps/desktop/src/components/ui/use-panel-edge-variables");
 const { postToXyzrenderViewer, requestViewerAction, requestGridView } = await import("../apps/desktop/src/lib/viewer-bridge");
+
+test("live panel edges update only chrome and survive its settings round trip without layout reads", async () => {
+  const original = globalThis.ResizeObserver;
+  let deliver: ResizeObserverCallback;
+  let disconnected = false;
+  const observed: Element[] = [];
+  globalThis.ResizeObserver = class {
+    constructor(callback: ResizeObserverCallback) { deliver = callback; }
+    observe(element: Element) { observed.push(element); }
+    disconnect() { disconnected = true; }
+  } as unknown as typeof ResizeObserver;
+  const mount = document.createElement("div"); document.body.append(mount);
+  const root = createRoot(mount);
+  function Shell({ chrome = true }) {
+    const sidebar = React.useRef<HTMLDivElement>(null), dock = React.useRef<HTMLDivElement>(null);
+    const shell = usePanelEdgeVariables([
+      { elementRef: sidebar, property: "--sidebar-edge" },
+      { elementRef: dock, property: "--right-dock-edge" },
+    ]);
+    return <main ref={shell}>{chrome && <><header className="topbar" /><div className="drag-region" /></>}
+      <div ref={sidebar} /><div ref={dock} /><section className="workspace" /></main>;
+  }
+  try {
+    await act(async () => root.render(<Shell />));
+    for (const element of observed) element.getBoundingClientRect = () => { throw new Error("must use observer sizes"); };
+    await act(async () => deliver!(observed.map((target, i) => ({ target, borderBoxSize: [{ inlineSize: i ? 310 : 280 }] })) as ResizeObserverEntry[], {} as ResizeObserver));
+    const styles = () => [...mount.querySelectorAll("main, .topbar, .drag-region, .workspace")].map(el => el.getAttribute("style"));
+    const expected = [null, "--sidebar-edge: 280px; --right-dock-edge: 310px;", "--right-dock-edge: 310px;", null];
+    expect(styles()).toEqual(expected);
+    await act(async () => root.render(<Shell chrome={false} />));
+    await act(async () => root.render(<Shell />));
+    expect(styles()).toEqual(expected);
+  } finally {
+    await act(async () => root.unmount()); mount.remove(); globalThis.ResizeObserver = original;
+  }
+  expect(disconnected).toBe(true);
+});
+
+test("warm residency preserves visited views without valid heap telemetry and bounds measured pressure", () => {
+  const source = readFileSync(new URL("../apps/desktop/src/components/editor-area/index.tsx", import.meta.url), "utf8");
+  const constants = source.slice(source.indexOf("const DEFAULT_WARM_PAGE_LIMIT"), source.indexOf("export function ViewerArea"));
+  const helper = source.slice(source.indexOf("function mountedWarmPageLimit("), source.indexOf("function sameStringArray("));
+  const js = new Bun.Transpiler({ loader: "tsx" }).transformSync(`${constants}\n${helper}`);
+  const evaluate = new Function("window", "navigator", "performance", `${js}; return mountedWarmPageLimit();`);
+  const limit = (memory?: { usedJSHeapSize?: unknown; jsHeapSizeLimit?: unknown }, deviceMemory = 8) =>
+    evaluate({}, { deviceMemory }, memory ? { memory } : {});
+  const valid = { usedJSHeapSize: 100 * 1024 * 1024, jsHeapSizeLimit: 2 * 1024 ** 3 };
+  expect([
+    evaluate({}, undefined, undefined), limit(), limit({}), limit({ usedJSHeapSize: 100 }),
+    limit({ ...valid, usedJSHeapSize: NaN }), limit({ ...valid, usedJSHeapSize: Infinity }),
+    limit({ ...valid, usedJSHeapSize: -1 }), limit({ ...valid, jsHeapSizeLimit: 0 }),
+    limit({ ...valid, jsHeapSizeLimit: NaN }), limit({ ...valid, jsHeapSizeLimit: Infinity }),
+    limit(undefined, 4),
+  ]).toEqual([...Array(10).fill(10), 6]);
+  expect([undefined, 0, NaN, Infinity, -1].map(jsHeapSizeLimit =>
+    limit({ usedJSHeapSize: 768 * 1024 ** 2, jsHeapSizeLimit }),
+  )).toEqual(Array(5).fill(4));
+  expect([
+    limit(valid), limit(valid, 4), limit({ ...valid, usedJSHeapSize: 768 * 1024 * 1024 }),
+    limit({ usedJSHeapSize: 70, jsHeapSizeLimit: 100 }), limit({ usedJSHeapSize: 69, jsHeapSizeLimit: 100 }),
+    limit({ usedJSHeapSize: 0, jsHeapSizeLimit: 100 }), evaluate({ BuretteMcpWorkspace: {} }, undefined, undefined),
+  ]).toEqual([10, 6, 4, 4, 10, 10, Infinity]);
+});
 
 test("folder indexing marks draggable ancestors once and walks wide/deep trees without spread or recursive copies", () => {
   // Test private data algorithms without adding production exports for tests.
@@ -30,29 +94,31 @@ test("folder indexing marks draggable ancestors once and walks wide/deep trees w
   expect(collectProjectFolderPaths([deep]).length).toBe(12_001);
 });
 
-test("frame pinning batches layout reads, preserves styles and isolates shell roots", () => {
+test("resize guards preserve live iframe sizing, nested ownership and shell isolation without layout reads", () => {
   const first = document.createElement("div"), second = document.createElement("div");
-  first.innerHTML = '<iframe class="viewer-iframe"></iframe>'.repeat(3);
-  second.innerHTML = '<iframe class="viewer-iframe"></iframe>';
+  first.innerHTML = '<iframe class="viewer-iframe" data-renderer="grid2d"></iframe><iframe class="viewer-iframe" data-renderer="molstar"></iframe>';
   const frames = [...first.querySelectorAll("iframe")];
-  for (const frame of frames) frame.style.setProperty("width", "75%", "important");
-  frames.forEach((frame, index) => { frame.getBoundingClientRect = () => {
-    expect(frames.map(f => f.style.width)).toEqual(["75%", "75%", "75%"]);
-    return { width: index === 2 ? 0 : 500, height: 300 } as DOMRect;
-  }; });
-  const other = second.querySelector("iframe")!;
-  other.getBoundingClientRect = () => ({ width: 100, height: 100 }) as DOMRect;
+  for (const frame of frames) {
+    frame.style.setProperty("width", "100%", "important");
+    frame.style.height = "100%";
+    frame.getBoundingClientRect = () => { throw new Error("guard must not measure or freeze viewports"); };
+  }
+  second.setAttribute("data-resizing", "existing");
   const release = pinViewerFrames(first), nested = pinViewerFrames(first), independent = pinViewerFrames(second);
-  expect(frames.map(f => f.style.width)).toEqual(["500px", "500px", "75%"]);
+  const styles = () => frames.map(frame => [frame.style.width, frame.style.getPropertyPriority("width"), frame.style.height]);
+  expect(styles()).toEqual([["100%", "important", "100%"], ["100%", "important", "100%"]]);
   release(); release();
   expect(first.hasAttribute("data-resizing")).toBe(true);
   independent();
-  expect(second.hasAttribute("data-resizing")).toBe(false);
+  expect(second.getAttribute("data-resizing")).toBe("existing");
   expect(first.hasAttribute("data-resizing")).toBe(true);
+  // Layout changes made while a nested gesture is held must not be overwritten
+  // with a stale snapshot on release.
+  frames[1].style.width = "80%";
   nested();
-  expect(frames.map(f => [f.style.width, f.style.getPropertyPriority("width"), f.style.height])).toEqual([
-    ["75%", "important", ""], ["75%", "important", ""], ["75%", "important", ""],
-  ]);
+  expect([first.hasAttribute("data-resizing"), styles()]).toEqual([false, [
+    ["100%", "important", "100%"], ["80%", "", "100%"],
+  ]]);
 });
 
 test("500 inactive file names do not measure layout or allocate resize observers", async () => {
@@ -180,7 +246,7 @@ test("viewer transport releases timers/listeners on clone errors and ignores unr
   } finally { viewer.remove(); clearTimeout.mockRestore(); clearInterval.mockRestore(); remove.mockRestore(); }
 });
 
-test("window resize batches iframe layout and React bounds until settling, and releases on unmount", async () => {
+test("window resize keeps iframe geometry live while batching React bounds, and releases on unmount", async () => {
   const { useWindowResizeSession } = await import("../apps/desktop/src/components/ui/use-window-resize-session");
   const frames = new Map<number, FrameRequestCallback>();
   const timers = new Map<number, () => void>();
@@ -201,11 +267,11 @@ test("window resize batches iframe layout and React bounds until settling, and r
   try {
     await act(async () => root.render(<Fixture />));
     for (let i = 0; i < 200; i++) window.dispatchEvent(new browser.Event("resize"));
-    expect([measures, commits, timers.size, iframe.style.width]).toEqual([1, 0, 1, "500px"]);
+    expect([measures, commits, timers.size, iframe.style.width]).toEqual([0, 0, 1, ""]);
     await act(async () => { const pending = [...timers.values()]; timers.clear(); pending.forEach(callback => callback()); });
     expect(commits).toBe(1);
-    tick(); expect(iframe.style.width).toBe("500px");
-    tick(); expect(iframe.style.width).toBe("");
+    tick(); expect(shell.hasAttribute("data-resizing")).toBe(true);
+    tick(); expect(shell.hasAttribute("data-resizing")).toBe(false);
     expect(shell.querySelector("iframe")).toBe(iframe);
     window.dispatchEvent(new browser.Event("resize"));
     await act(async () => root.unmount());

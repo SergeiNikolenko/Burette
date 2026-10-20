@@ -19,17 +19,19 @@ use tauri::{Manager, Runtime};
 #[cfg(not(target_os = "macos"))]
 use tauri_plugin_dialog::DialogExt;
 
-use crate::commands::source_editing::OpenedSourceRegistry;
+use crate::commands::source_editing::{OpenedSourceRegistry, SourceRegistrationEpoch};
 use crate::menu::OpenDocumentRegistry;
 use crate::preview::formats::{
     format_for_extension, preview_plan_for_extension, structure_path_extension,
     supported_structure_extensions,
 };
-use crate::preview::grid_store::GridParseOptions;
+use crate::preview::grid_store::{GridParseOptions, GridRuntimeRegistry, GridRuntimeRelease};
 use crate::preview::runtime::{
-    companion_paths_for_open_path, open_docking_document as open_docking_document_runtime,
-    open_document_for_window, open_document_with_grid_options, DockingDocumentRequest,
-    OpenDocumentsResult, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XyzrenderControls,
+    companion_paths_for_open_path, document_identity_path,
+    open_docking_document as open_docking_document_runtime, open_document_for_window,
+    open_document_for_window_with_source_epoch, open_document_with_grid_options,
+    DockingDocumentRequest, OpenDocumentsResult, ViewerDocument, ViewerPreferences,
+    ViewerReloadOptions, XyzrenderControls,
 };
 use crate::preview::runtime_grid::create_grid_runtime_with_options;
 use crate::preview::runtime_viewer::create_combined_sdf_pose_runtime;
@@ -300,7 +302,13 @@ pub(crate) fn pick_open_targets<R: Runtime>(
 }
 
 #[tauri::command]
-pub(crate) fn classify_open_paths(paths: Vec<String>) -> ClassifiedOpenPaths {
+pub(crate) async fn classify_open_paths(paths: Vec<String>) -> Result<ClassifiedOpenPaths, String> {
+    tauri::async_runtime::spawn_blocking(move || classify_open_paths_blocking(paths))
+        .await
+        .map_err(|error| format!("Path classification task failed: {error}"))
+}
+
+fn classify_open_paths_blocking(paths: Vec<String>) -> ClassifiedOpenPaths {
     let mut files = BTreeSet::new();
     let mut directories = BTreeSet::new();
     let mut errors = Vec::new();
@@ -342,6 +350,7 @@ pub(crate) async fn open_documents<R: Runtime>(
     preferences: ViewerPreferences,
     reload_options: Option<ViewerReloadOptions>,
     mode: Option<OpenDocumentsMode>,
+    defer_runtime: Option<bool>,
     open_state_revision: u64,
 ) -> Result<OpenDocumentsResult, String> {
     let window_label = window.label().to_string();
@@ -392,37 +401,74 @@ pub(crate) async fn open_documents<R: Runtime>(
         let mut documents = Vec::new();
         let (document_paths, mut errors) = expand_open_document_paths(paths);
         for path in document_paths {
-            let source_path = path.canonicalize().ok();
+            let opened_sources = app.state::<OpenedSourceRegistry>();
+            let source_registration = path.canonicalize().ok().map(|source_path| {
+                let document_id = crate::preview::runtime_utils::stable_id(&source_path);
+                (source_path, document_id)
+            });
             let claimed_path = path.clone();
             match open_with_provisional_claim(
                 &registry,
                 &window_label,
                 &claimed_path,
                 open_state_revision,
-                || {
-                    open_document_for_window(
-                        &app,
-                        &window_label,
-                        path,
-                        &preferences,
-                        reload_options.as_ref(),
-                    )
-                },
-            ) {
-                Ok(document) => {
-                    if let Some(source_path) = source_path {
-                        let document_id = crate::preview::runtime_utils::stable_id(&source_path);
-                        if let Err(error) = app.state::<OpenedSourceRegistry>().register(
-                            document_id,
-                            window_label.clone(),
-                            source_path,
-                            "structure",
-                        ) {
-                            errors.push(error);
+                Some(&opened_sources),
+                |source_epoch| {
+                    let result = (|| {
+                        let source_guard = source_registration.as_ref().zip(source_epoch).map(
+                            |((_, document_id), epoch)| SourceRegistrationEpoch {
+                                document_id: document_id.clone(),
+                                owner: window_label.clone(),
+                                epoch,
+                            },
+                        );
+                        // Desmond pointer files normalize to their CMS identity;
+                        // let that existing bundle opener resolve them atomically.
+                        let deferred = (defer_runtime.unwrap_or(false)
+                            && structure_path_extension(&path) != "dtr")
+                            .then(|| ViewerDocument::deferred_file(path.clone(), &preferences).ok())
+                            .flatten();
+                        let document = match deferred {
+                            Some(document) => document,
+                            None => open_document_for_window_with_source_epoch(
+                                &app,
+                                &window_label,
+                                path,
+                                &preferences,
+                                reload_options.as_ref(),
+                                source_guard.as_ref(),
+                            )?,
+                        };
+                        if let (Some((source_path, document_id)), Some(epoch)) =
+                            (&source_registration, source_epoch)
+                        {
+                            if !opened_sources.register_if_epoch(
+                                document_id.clone(),
+                                window_label.clone(),
+                                source_path.clone(),
+                                "structure",
+                                epoch,
+                            )? {
+                                return Err("The document was closed while opening.".to_string());
+                            }
+                        }
+                        Ok(document)
+                    })();
+                    if result.is_err() {
+                        if let (Some((_, document_id)), Some(epoch)) =
+                            (&source_registration, source_epoch)
+                        {
+                            let _ = opened_sources.discard_registration_epoch(
+                                document_id,
+                                &window_label,
+                                epoch,
+                            );
                         }
                     }
-                    documents.push(document)
-                }
+                    result
+                },
+            ) {
+                Ok(document) => documents.push(document),
                 Err(error) => errors.push(error),
             }
         }
@@ -440,10 +486,48 @@ fn open_with_provisional_claim(
     window_label: &str,
     path: &Path,
     baseline_revision: u64,
-    open: impl FnOnce() -> Result<ViewerDocument, String>,
+    opened_sources: Option<&OpenedSourceRegistry>,
+    open: impl FnOnce(Option<u64>) -> Result<ViewerDocument, String>,
 ) -> Result<ViewerDocument, String> {
     let claim_id = registry.begin_provisional_open(window_label, path, baseline_revision)?;
-    finish_provisional_open(registry, window_label, claim_id, open())
+    // Reserve the claim before its source incarnation so another cancellation
+    // cannot remove the source between epoch lookup and claim publication.
+    let source_registration_epoch = opened_sources
+        .map(|sources| {
+            sources.registration_epoch(
+                &crate::preview::runtime_utils::stable_id(path),
+                window_label,
+            )
+        })
+        .transpose();
+    let source_registration_epoch = match source_registration_epoch {
+        Ok(epoch) => epoch,
+        Err(error) => {
+            if let Some(claim_id) = &claim_id {
+                let _ = registry.abort_open_claim(window_label, claim_id);
+            }
+            return Err(error);
+        }
+    };
+    if let (Some(claim_id), Some(epoch)) = (&claim_id, source_registration_epoch) {
+        if let Err(error) = registry.bind_open_claim_source_epoch(window_label, claim_id, epoch) {
+            let _ = registry.abort_open_claim(window_label, claim_id);
+            if let Some(sources) = opened_sources {
+                let _ = sources.discard_registration_epoch(
+                    &crate::preview::runtime_utils::stable_id(path),
+                    window_label,
+                    epoch,
+                );
+            }
+            return Err(error);
+        }
+    }
+    finish_provisional_open(
+        registry,
+        window_label,
+        claim_id,
+        open(source_registration_epoch),
+    )
 }
 
 fn finish_provisional_open(
@@ -456,6 +540,11 @@ fn finish_provisional_open(
         Ok(mut document) => {
             if let Some(claim_id) = claim_id {
                 if document.file_path().is_some() {
+                    registry.bind_open_claim_runtime_path(
+                        window_label,
+                        &claim_id,
+                        document.runtime_path(),
+                    )?;
                     document.set_open_claim_id(claim_id);
                 } else {
                     let _ = registry.abort_open_claim(window_label, &claim_id);
@@ -573,24 +662,43 @@ pub(crate) fn open_documents_for_window_label<R: Runtime>(
         return Ok(OpenDocumentsResult { documents, errors });
     }
     for path in document_paths {
-        let source_path = path.canonicalize().ok();
-        match open_document_for_window(
+        let opened_sources = app.state::<OpenedSourceRegistry>();
+        let source_registration = path
+            .canonicalize()
+            .ok()
+            .map(|source_path| -> Result<_, String> {
+                let document_id = crate::preview::runtime_utils::stable_id(&source_path);
+                let epoch = opened_sources.registration_epoch(&document_id, window_label)?;
+                Ok((source_path, document_id, epoch))
+            })
+            .transpose()?;
+        let source_guard =
+            source_registration
+                .as_ref()
+                .map(|(_, document_id, epoch)| SourceRegistrationEpoch {
+                    document_id: document_id.clone(),
+                    owner: window_label.to_string(),
+                    epoch: *epoch,
+                });
+        match open_document_for_window_with_source_epoch(
             app,
             window_label,
             path,
             &preferences,
             reload_options.as_ref(),
+            source_guard.as_ref(),
         ) {
             Ok(document) => {
-                if let Some(source_path) = source_path {
-                    let document_id = crate::preview::runtime_utils::stable_id(&source_path);
-                    if let Err(error) = app.state::<OpenedSourceRegistry>().register(
+                if let Some((source_path, document_id, epoch)) = source_registration {
+                    if !opened_sources.register_if_epoch(
                         document_id,
                         window_label.to_string(),
                         source_path,
                         "structure",
-                    ) {
-                        errors.push(error);
+                        epoch,
+                    )? {
+                        errors.push("The document was closed while opening.".to_string());
+                        continue;
                     }
                 }
                 documents.push(document)
@@ -657,7 +765,14 @@ fn open_combined_grid_document<R: Runtime>(
 
     let label_path = common_sdf_label_path(&sdf_paths);
     let combined = combined_sdf_data(&sdf_paths)?;
-    let path = format!("{}#combined-sdf-grid", label_path.to_string_lossy());
+    // Each derived collection owns its runtime. Recombining the same sources
+    // must not replace an already-open (possibly edited) collection before the
+    // frontend accepts this result.
+    let path = format!(
+        "{}#combined-sdf-grid:{}",
+        label_path.to_string_lossy(),
+        uuid::Uuid::new_v4()
+    );
     let title = combined_sdf_title(&label_path, "SDF grid", "Combined SDF grid");
     let document_id = crate::preview::runtime_utils::stable_id(Path::new(&path));
     let runtime_document_id = crate::windows::runtime_document_id(window_label, &document_id);
@@ -674,6 +789,7 @@ fn open_combined_grid_document<R: Runtime>(
             include_single_sdf: true,
             ..GridParseOptions::default()
         },
+        None,
     )?
     .ok_or_else(|| "No SDF records found to combine as a grid".to_string())?;
     Ok(ViewerDocument::virtual_structure(
@@ -806,6 +922,7 @@ fn expand_open_document_paths(paths: Vec<String>) -> (Vec<PathBuf>, Vec<String>)
             }
             Ok(expanded) => {
                 for expanded_path in expanded {
+                    let expanded_path = document_identity_path(&expanded_path);
                     if seen_paths.insert(expanded_path.clone()) {
                         expanded_paths.push(expanded_path);
                     }
@@ -1029,7 +1146,8 @@ pub(crate) fn open_delimited_grid_document<R: Runtime>(
         window.label(),
         &claimed_path,
         open_state_revision,
-        || {
+        None,
+        |_| {
             open_document_with_grid_options(
                 &app,
                 window.label(),
@@ -2043,12 +2161,65 @@ pub(crate) fn release_save_as_reservation<R: Runtime>(
 pub(crate) fn abort_open_document_claim<R: Runtime>(
     window: tauri::WebviewWindow<R>,
     registry: tauri::State<'_, OpenDocumentRegistry>,
+    opened_sources: tauri::State<'_, OpenedSourceRegistry>,
+    grids: tauri::State<'_, GridRuntimeRegistry>,
     claim_id: String,
 ) -> Result<bool, String> {
     let claim_id = uuid::Uuid::parse_str(&claim_id)
         .map_err(|_| "Open document claim ID is invalid".to_string())?
         .to_string();
-    registry.abort_open_claim(window.label(), &claim_id)
+    registry.abort_open_claim_with_cleanup(
+        window.label(),
+        &claim_id,
+        |path, epoch, runtime_path| {
+            release_cancelled_open_runtime(
+                &opened_sources,
+                &grids,
+                window.label(),
+                path,
+                epoch,
+                runtime_path,
+            )
+        },
+    )
+}
+
+fn release_cancelled_open_runtime(
+    opened_sources: &OpenedSourceRegistry,
+    grids: &GridRuntimeRegistry,
+    owner: &str,
+    source_path: &Path,
+    epoch: Option<u64>,
+    runtime_path: Option<&Path>,
+) -> Result<(), String> {
+    let document_id = crate::preview::runtime_utils::stable_id(source_path);
+    let mut may_release_source = true;
+    let mut release_grid = || {
+        if let Some(directory) = runtime_path.and_then(Path::parent) {
+            may_release_source = !matches!(
+                grids.unregister_if_runtime_directory(
+                    &crate::windows::runtime_document_id(owner, &document_id),
+                    directory
+                )?,
+                GridRuntimeRelease::Replaced,
+            );
+        }
+        Ok(())
+    };
+    if let Some(epoch) = epoch {
+        let registration = SourceRegistrationEpoch {
+            document_id: document_id.clone(),
+            owner: owner.to_string(),
+            epoch,
+        };
+        opened_sources.with_registration_epoch(&registration, release_grid)?;
+        if may_release_source {
+            opened_sources.unregister_if_epoch(&document_id, owner, epoch)?;
+        }
+        Ok(())
+    } else {
+        release_grid()
+    }
 }
 
 #[tauri::command]
@@ -3334,17 +3505,18 @@ fn pick_open_targets_macos<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<Vec<
 #[cfg(test)]
 mod tests {
     use super::{
-        bundled_conformer_python_candidates_from_executable, classify_open_paths,
+        bundled_conformer_python_candidates_from_executable, classify_open_paths_blocking,
         conformer_python_candidates, conformer_python_status_candidates, copy_file_atomically,
         expand_open_document_paths, expand_open_targets, expand_project_structure_targets,
         generate_3d_conformer_impl, generated_conformer_title,
         list_project_structure_files_blocking, list_project_structure_files_blocking_with_limits,
         looks_like_supported_structure_file, normalize_inline_structure_extension,
         open_text_structure_for_window_label, open_with_provisional_claim,
-        open_with_provisional_read_claims, read_sdf_file_with_limit, smiles_from_sheet_data,
-        supported_open_target_extensions, write_collection_with_provisional_claim,
-        write_text_atomically, CollectionWriteTarget, ConformerGenerationRequest,
-        ProjectStructureScan, ProjectStructureScanLimits, TextStructureRequest,
+        open_with_provisional_read_claims, read_sdf_file_with_limit,
+        release_cancelled_open_runtime, smiles_from_sheet_data, supported_open_target_extensions,
+        write_collection_with_provisional_claim, write_text_atomically, CollectionWriteTarget,
+        ConformerGenerationRequest, ProjectStructureScan, ProjectStructureScanLimits,
+        TextStructureRequest,
     };
     use crate::menu::OpenDocumentRegistry;
     use crate::preview::grid_store::GridRuntimeRegistry;
@@ -3385,7 +3557,7 @@ mod tests {
         let registry = OpenDocumentRegistry::default();
         let path = Path::new("/tmp/burette-failed-open.sdf");
 
-        let error = open_with_provisional_claim(&registry, "main", path, 7, || {
+        let error = open_with_provisional_claim(&registry, "main", path, 7, None, |_| {
             Err::<ViewerDocument, _>("parse failed".to_string())
         })
         .expect_err("the simulated open should fail");
@@ -3497,6 +3669,154 @@ mod tests {
         let app = tauri::test::mock_app();
         app.manage(GridRuntimeRegistry::default());
         app
+    }
+
+    #[test]
+    fn cancelled_grid_result_releases_ingestion_after_the_last_claim() {
+        use crate::commands::source_editing::OpenedSourceRegistry;
+        use crate::preview::grid_store::build_grid_store;
+        use std::sync::atomic::Ordering;
+
+        for source_editable in [true, false] {
+            let root = std::env::temp_dir()
+                .join(format!("burette-cancelled-grid-{}", uuid::Uuid::new_v4()));
+            let runtime = root.join("runtime");
+            fs::create_dir_all(&runtime).unwrap();
+            let root = root.canonicalize().unwrap();
+            let runtime = root.join("runtime");
+            let path = root.join("source.smi");
+            let document_id = crate::preview::runtime_utils::stable_id(&path);
+            let runtime_id = crate::windows::runtime_document_id("main", &document_id);
+            let claims = OpenDocumentRegistry::default();
+            let sources = OpenedSourceRegistry::default();
+            let grids = GridRuntimeRegistry::default();
+            let first = claims
+                .begin_provisional_open("main", &path, 0)
+                .unwrap()
+                .unwrap();
+            let second = claims
+                .begin_provisional_open("main", &path, 0)
+                .unwrap()
+                .unwrap();
+            let epoch =
+                source_editable.then(|| sources.registration_epoch(&document_id, "main").unwrap());
+            if let Some(epoch) = epoch {
+                claims
+                    .bind_open_claim_source_epoch("main", &first, epoch)
+                    .unwrap();
+                claims
+                    .bind_open_claim_source_epoch("main", &second, epoch)
+                    .unwrap();
+                sources
+                    .register_if_epoch(
+                        document_id.clone(),
+                        "main".into(),
+                        path.clone(),
+                        "structure",
+                        epoch,
+                    )
+                    .unwrap();
+            }
+            for claim in [&first, &second] {
+                claims
+                    .bind_open_claim_runtime_path("main", claim, Some(&runtime.join("index.html")))
+                    .unwrap();
+            }
+            let grid = build_grid_store(&runtime, "smi", b"CC Ethane\n")
+                .unwrap()
+                .unwrap();
+            let cancelled = grid.cancel_token.clone();
+            grids
+                .register(
+                    &runtime_id,
+                    grid.database_path,
+                    grid.summary.format,
+                    grid.cancel_token,
+                    grid.ingest_worker,
+                )
+                .unwrap();
+            let lease = grids.acquire_snapshot_lease(&runtime_id).unwrap();
+            let abort = |claim: &str| {
+                claims.abort_open_claim_with_cleanup("main", claim, |path, epoch, runtime_path| {
+                    release_cancelled_open_runtime(
+                        &sources,
+                        &grids,
+                        "main",
+                        path,
+                        epoch,
+                        runtime_path,
+                    )
+                })
+            };
+            abort(&first).unwrap();
+            assert!(!cancelled.load(Ordering::Relaxed));
+            abort(&second).unwrap();
+            assert!(cancelled.load(Ordering::Relaxed));
+            assert!(grids.acquire_snapshot_lease(&runtime_id).is_err());
+            assert!(
+                lease.database_path_for_freeze().is_file(),
+                "a compute snapshot still pins its exact files"
+            );
+            drop(lease);
+            let _ = fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
+    fn stale_cancelled_grid_result_preserves_a_new_runtime_at_the_same_document_id() {
+        use crate::commands::source_editing::OpenedSourceRegistry;
+        use crate::preview::grid_store::build_grid_store;
+        use std::sync::atomic::Ordering;
+
+        let root =
+            std::env::temp_dir().join(format!("burette-reopened-grid-{}", uuid::Uuid::new_v4()));
+        let current_runtime = root.join("current-runtime");
+        fs::create_dir_all(&current_runtime).unwrap();
+        let source = root.join("source.smi");
+        let document_id = crate::preview::runtime_utils::stable_id(&source);
+        let runtime_id = crate::windows::runtime_document_id("main", &document_id);
+        let sources = OpenedSourceRegistry::default();
+        let epoch = sources.registration_epoch(&document_id, "main").unwrap();
+        sources
+            .register_if_epoch(
+                document_id.clone(),
+                "main".into(),
+                source.clone(),
+                "structure",
+                epoch,
+            )
+            .unwrap();
+        let grids = GridRuntimeRegistry::default();
+        let grid = build_grid_store(&current_runtime, "smi", b"CCC Propane\n")
+            .unwrap()
+            .unwrap();
+        let cancelled = grid.cancel_token.clone();
+        grids
+            .register(
+                &runtime_id,
+                grid.database_path,
+                grid.summary.format,
+                grid.cancel_token,
+                grid.ingest_worker,
+            )
+            .unwrap();
+        release_cancelled_open_runtime(
+            &sources,
+            &grids,
+            "main",
+            &source,
+            Some(epoch),
+            Some(&root.join("old-runtime/index.html")),
+        )
+        .unwrap();
+        assert!(!cancelled.load(Ordering::Relaxed));
+        assert!(grids.acquire_snapshot_lease(&runtime_id).is_ok());
+        assert_eq!(
+            sources.registration_epoch(&document_id, "main").unwrap(),
+            epoch
+        );
+        grids.unregister(&runtime_id).unwrap();
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -3662,7 +3982,7 @@ mod tests {
         fs::create_dir_all(&nested).unwrap();
         fs::write(&pdb, "HEADER TEST\n").unwrap();
 
-        let classified = classify_open_paths(vec![
+        let classified = classify_open_paths_blocking(vec![
             pdb.to_string_lossy().to_string(),
             nested.to_string_lossy().to_string(),
             root.join("missing.pdb").to_string_lossy().to_string(),
@@ -3896,6 +4216,64 @@ mod tests {
         fs::remove_file(pdb).unwrap();
         fs::remove_dir(nested).unwrap();
         fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn desmond_pointer_claim_uses_cms_identity_and_cancel_invalidates_source() {
+        use crate::commands::source_editing::OpenedSourceRegistry;
+        let root =
+            std::env::temp_dir().join(format!("burette-desmond-claim-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(root.join("run_trj")).unwrap();
+        fs::write(root.join("run-out.cms"), b"cms").unwrap();
+        fs::write(root.join("run_trj/clickme.dtr"), b"").unwrap();
+        let cms = root.join("run-out.cms").canonicalize().unwrap();
+        let pointer = root.join("run_trj/clickme.dtr");
+        let (paths, errors) = expand_open_document_paths(vec![
+            pointer.to_string_lossy().into_owned(),
+            cms.to_string_lossy().into_owned(),
+        ]);
+        assert_eq!(paths, vec![cms.clone()]);
+        assert!(errors.is_empty());
+        // CMS still resolves the trajectory pointer: normalizing ownership does
+        // not remove the coordinate/segment source used by the runtime.
+        assert!(super::companion_paths_for_open_path(&cms, "cms")
+            .contains(&pointer.canonicalize().unwrap()));
+        let sources = OpenedSourceRegistry::default();
+        let claims = OpenDocumentRegistry::default();
+        let id = crate::preview::runtime_utils::stable_id(&cms);
+        let mut captured_epoch = None;
+        let document =
+            open_with_provisional_claim(&claims, "main", &paths[0], 0, Some(&sources), |epoch| {
+                captured_epoch = epoch;
+                assert!(sources.register_if_epoch(
+                    id.clone(),
+                    "main".into(),
+                    cms.clone(),
+                    "structure",
+                    epoch.unwrap()
+                )?);
+                ViewerDocument::deferred_file(cms.clone(), &viewer_preferences())
+            })
+            .unwrap();
+        let value = serde_json::to_value(document).unwrap();
+        assert_eq!(value["id"], id);
+        let claim = value["openClaimId"].as_str().unwrap();
+        claims
+            .abort_open_claim_with_cleanup("main", claim, |path, epoch, runtime| {
+                release_cancelled_open_runtime(
+                    &sources,
+                    &GridRuntimeRegistry::default(),
+                    "main",
+                    path,
+                    epoch,
+                    runtime,
+                )
+            })
+            .unwrap();
+        assert!(!sources
+            .register_if_epoch(id, "main".into(), cms, "structure", captured_epoch.unwrap())
+            .unwrap());
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

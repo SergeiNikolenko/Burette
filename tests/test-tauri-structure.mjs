@@ -220,9 +220,7 @@ const defaultCapability = JSON.parse(defaultCapabilitySource);
 const computeCapability = JSON.parse(computeCapabilitySource);
 const mainWindowConfig = tauriConfig.app.windows.find((window) => window.label === 'main');
 const tauriHandlerSource = lib.match(/tauri::generate_handler!\[([\s\S]*?)\]/)?.[1] ?? '';
-const registeredTauriCommands = [
-  ...tauriHandlerSource.matchAll(/(?:commands::(?:\w+::)+|compute::commands::)(\w+)/g),
-].map((match) => match[1]);
+const registeredTauriCommands = [...tauriHandlerSource.matchAll(/(?:\w+::)+(\w+)/g)].map((match) => match[1]);
 const allowedViewerCommands = [...tauriPermissionSource.matchAll(/^\s*"([a-z0-9_]+)",?$/gm)].map((match) => match[1]);
 const allowedComputeCommands = [...computePermissionSource.matchAll(/^\s*"([a-z0-9_]+)",?$/gm)].map((match) => match[1]);
 const allowedTauriCommands = [...allowedViewerCommands, ...allowedComputeCommands];
@@ -471,7 +469,7 @@ assert.match(previewRuntimeViewer, /window\.BuretteReceiveNativeRuntimeFile\(bod
 assert.match(startupSource, /arg == "--burette-launch-mode"/);
 assert.match(startupSource, /file_args_from_argv/);
 assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn pick_open_targets/);
-assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) fn classify_open_paths/);
+assert.match(documentsCommand, /#\[tauri::command\]\s+pub\(crate\) async fn classify_open_paths/);
 assert.match(
   documentsCommand,
   /#\[tauri::command\]\s+pub\(crate\) async fn open_documents[\s\S]*?spawn_blocking/,
@@ -637,7 +635,21 @@ assert.match(
 );
 assert.match(documentsCommand, /fn looks_like_supported_structure_file/);
 assert.match(previewCacheCommand, /#\[tauri::command\]\s+pub\(crate\) fn clear_preview_cache/);
-assert.match(runtimeDoctorCommand, /#\[tauri::command\]\s+pub\(crate\) fn external_runtime_doctor/);
+// The doctor and the probes it reuses start Python and external tools, so
+// they must not run inline on the main thread.
+assert.match(runtimeDoctorCommand, /#\[tauri::command\(async\)\]\s+pub\(crate\) fn external_runtime_doctor/);
+for (const [file, command] of [
+  ['commands/rgroups.rs', 'rgroup_runtime_status'],
+  ['commands/xtb.rs', 'xtb_status'],
+  ['commands/conformer.rs', 'conformer_status'],
+  ['commands/descriptors.rs', 'descriptor_runtime_status'],
+]) {
+  assert.match(
+    await source(`apps/desktop/src-tauri/src/${file}`),
+    new RegExp(`#\\[tauri::command\\(async\\)\\]\\s+pub\\(crate\\) fn ${command}\\b`),
+    `${command} must stay off the main thread`,
+  );
+}
 assert.match(runtimeDoctorCommand, /burette\.external-runtime-doctor\.v1/);
 for (const checkId of ['xyzrender', 'descriptors-python', 'rdkit-conformer-python', 'crest', 'prism', 'xtb']) {
   assert.match(runtimeDoctorCommand, new RegExp(`"${checkId}"`));
@@ -691,8 +703,8 @@ assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn read_external_
 assert.match(shellCommand, /externalArtifact/);
 assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn reveal_path/);
 assert.match(shellCommand, /tauri_plugin_opener::reveal_item_in_dir/);
-assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn write_base64_file/);
-assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) fn write_text_file/);
+assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) async fn write_base64_file/);
+assert.match(shellCommand, /#\[tauri::command\]\s+pub\(crate\) async fn write_text_file/);
 assert.match(quickLookCommand, /#\[tauri::command\]\s+pub\(crate\) fn reset_quick_look/);
 assert.match(updaterCommand, /#\[tauri::command\]\s+pub\(crate\) async fn install_update/);
 assert.match(updaterCommand, /format_download_detail\(0, request\.size, 0\.0\)/);

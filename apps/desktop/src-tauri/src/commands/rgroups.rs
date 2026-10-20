@@ -43,7 +43,9 @@ pub(crate) struct RGroupRuntimeStatus {
     install_hint: String,
 }
 
-#[tauri::command]
+// Starts a Python interpreter. A command without `async` runs on the main
+// thread, where this held the window for the whole probe at launch.
+#[tauri::command(async)]
 pub(crate) fn rgroup_runtime_status() -> RGroupRuntimeStatus {
     let python_path = match resolve_python_executable() {
         Ok(path) => path,
