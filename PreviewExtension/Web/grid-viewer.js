@@ -80,7 +80,9 @@
   const TABLE_COLUMN_MIN_WIDTH = 64;
   const TABLE_COLUMN_MAX_WIDTH = 640;
   const TABLE_COLUMN_OVERSCAN_PX = 360;
-  const RDKIT_SVG_CACHE_LIMIT = 220;
+  // Above the row count of a typical SDF, so a re-windowed grid redraws from
+  // cache instead of queueing RDKit layout again for every card.
+  const RDKIT_SVG_CACHE_LIMIT = 2000;
   const XYZRENDER_CARD_CACHE_LIMIT = 1500;
   const STRUCTURE_DRAG_MIME = 'application/x-burette-structure-paths';
   let activeStructureDrag = false;
@@ -202,6 +204,7 @@
     loadObserver: null,
     scrollHandler: null,
     resizeHandler: null,
+    resizeFrame: 0,
     virtualFrame: 0,
     lastPerfMetricAt: 0,
     windowStart: 0,
@@ -248,6 +251,16 @@
         window.parent?.postMessage({ source: 'burette-grid', body }, '*');
         window.webkit?.messageHandlers?.burette?.postMessage(body);
       }
+    } catch (_) {}
+  }
+
+  // One-time contextual guides live in the app shell, which places the card by
+  // this frame-relative rect and drops repeats once the guide has been shown.
+  function requestContextualGuide(id, element, cfg) {
+    if (cfg?.appViewer !== true || window.parent === window || !element) return;
+    const { left, top, width, height } = element.getBoundingClientRect();
+    try {
+      window.parent.postMessage({ type: 'burette:contextual-guide', id, rect: { left, top, width, height } }, '*');
     } catch (_) {}
   }
 
@@ -1976,7 +1989,10 @@
       onUndoGridEdit() { undoLastGridEdit(cfg); },
       onExportSmiles() { exportSmiles(cfg); },
       onExportCSV() { exportCSV(cfg); },
-      onViewModeChange(value) { setGridViewMode(value, cfg); },
+      onViewModeChange(value) {
+        setGridViewMode(value, cfg);
+        requestContextualGuide('grid', document.querySelector('[aria-label="Grid view mode"]'), cfg);
+      },
       onToggleTableColumns() { toggleTableColumnPanel(cfg); },
       onToggleTableFilters() { toggleTableFilters(cfg); },
       onSetCardRenderer(value) { setCardRenderer(value, cfg); },
@@ -2009,6 +2025,7 @@
         store(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, state.rdkitUseInputCoords ? 'true' : 'false');
         state.svgCache.clear();
         render(cfg);
+        post('chemicalSpaceMoleculePreviewsStale', '', {});
       }
     });
     const sortControl = document.getElementById('sort');
@@ -3220,7 +3237,13 @@
     // rather than remaining valid until the debounce expires.
     state.token += 1;
     state.dataToken += 1;
-    state.searchTimer = setTimeout(() => refresh(cfg), 120);
+    state.searchTimer = setTimeout(async () => {
+      await refresh(cfg);
+      // Anchored under the whole toolbar so the card never covers the query.
+      if (state.smarts.trim() && state.smartsMatches.size) {
+        requestContextualGuide('smarts-search', document.getElementById('grid-controls'), cfg);
+      }
+    }, 120);
     refreshGridControls(cfg);
   }
 
@@ -3530,12 +3553,20 @@
     state.scrollHandler = () => handleGridScroll(cfg);
     window.addEventListener('scroll', state.scrollHandler, { passive: true });
     if (state.resizeHandler) window.removeEventListener('resize', state.resizeHandler);
+    if (state.resizeFrame) window.cancelAnimationFrame(state.resizeFrame);
+    state.resizeFrame = 0;
+    // Each pass forces layout and walks every card, so resize events and host
+    // cover pushes are coalesced into one pass per frame.
     state.resizeHandler = () => {
-      updateVirtualGridMetrics();
-      scheduleVirtualWindowRender(cfg);
-      updateGridRailActive();
-      updateTableHeaderStick();
-      maybeLoadMore(cfg);
+      if (state.resizeFrame) return;
+      state.resizeFrame = window.requestAnimationFrame(() => {
+        state.resizeFrame = 0;
+        updateVirtualGridMetrics();
+        scheduleVirtualWindowRender(cfg);
+        updateGridRailActive();
+        updateTableHeaderStick();
+        maybeLoadMore(cfg);
+      });
     };
     window.addEventListener('resize', state.resizeHandler, { passive: true });
   }
@@ -4144,7 +4175,15 @@
     const viewportTop = Math.max(0, scrollTop() - gridTop);
     const viewportBottom = viewportTop + viewportHeight();
     const rowHeight = estimatedRowStride();
-    const firstGridRow = Math.max(0, Math.floor(viewportTop / rowHeight) - GRID_WINDOW_OVERSCAN_ROWS);
+    // A wider pane packs the rows into fewer grid rows while the scroll offset
+    // still points into the old, taller layout. Clamping keeps the last screen
+    // of cards in the window; otherwise it lands past the end, renders nothing,
+    // and the top spacer holds the page height so the scroll never clamps back.
+    const tailGridRows = Math.ceil(viewportHeight() / rowHeight) + GRID_WINDOW_OVERSCAN_ROWS;
+    const firstGridRow = Math.min(
+      Math.max(0, totalGridRows - tailGridRows),
+      Math.max(0, Math.floor(viewportTop / rowHeight) - GRID_WINDOW_OVERSCAN_ROWS)
+    );
     const lastGridRow = Math.min(
       totalGridRows,
       Math.ceil(viewportBottom / rowHeight) + GRID_WINDOW_OVERSCAN_ROWS
@@ -6282,6 +6321,59 @@
     return props;
   }
 
+  function renameGridRow(row, value, cfg) {
+    if (state.closeTransitionActive || state.saveAsPending || !capabilities(cfg).editing) return false;
+    const name = String(value ?? '').trim();
+    if (!name || name.length > 160 || /[\r\n\u0000]/u.test(name)) return false;
+    const current = state.rows.find(candidate => Number(candidate.index) === Number(row.index));
+    if (!current || current.name === name) return false;
+    const props = { ...current.props };
+    // Name takes precedence over the molfile title when an SDF is reopened.
+    // Keep identifiers (ID, compound_id, etc.) independent of the display name.
+    for (const key of Object.keys(props)) {
+      if (key.toLowerCase() === 'name') props[key] = name;
+    }
+    const molblock = current.molblock
+      ? String(current.molblock).replace(/^[^\r\n]*/u, () => name)
+      : current.molblock;
+    pushUndoSnapshot('Rename Molecule');
+    return replaceGridRow(current, { ...current, name, props, molblock }, cfg, { undo: false });
+  }
+
+  function beginGridRowRename(row, cfg) {
+    if (state.closeTransitionActive || state.saveAsPending || !capabilities(cfg).editing) return;
+    const rowElement = root.querySelector(`[data-index="${Number(row.index)}"]`);
+    const target = rowElement?.querySelector('td[data-column="name"], .buret-card-body h2')
+      || rowElement?.querySelector('td[data-column]');
+    if (!target || target.querySelector('input')) return;
+    const previous = [...target.childNodes];
+    const input = document.createElement('input');
+    input.className = 'buret-grid-name-input';
+    input.setAttribute('aria-label', 'Compound name');
+    input.maxLength = 160;
+    input.value = row.name || '';
+    target.replaceChildren(input);
+    let finished = false;
+    const finish = (commit, restoreFocus = false) => {
+      if (finished) return;
+      finished = true;
+      target.replaceChildren(...previous);
+      if (commit) renameGridRow(row, input.value, cfg);
+      if (restoreFocus) rowElement.focus({ preventScroll: true });
+    };
+    input.addEventListener('blur', () => finish(true));
+    input.addEventListener('keydown', event => {
+      event.stopPropagation();
+      if (event.isComposing) return;
+      if (event.key === 'Enter' || event.key === 'Escape') {
+        event.preventDefault();
+        finish(event.key === 'Enter', true);
+      }
+    });
+    input.focus();
+    input.select();
+  }
+
   function replaceGridRow(row, patch, cfg, options = {}) {
     if (state.closeTransitionActive || state.saveAsPending) return false;
     if (!capabilities(cfg).editing) return false;
@@ -6611,7 +6703,14 @@
         let molecule = null;
         try {
           molecule = rdkit.get_mol(input);
-          if (molecule) svg = molecule.get_svg(240, 160);
+          if (molecule) {
+            // The map's hover card draws the molecule the way its grid card does.
+            applyHydrogenDisplay(molecule, null);
+            if (!(state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock))) {
+              try { molecule.set_new_coords?.(); } catch (_) {}
+            }
+            svg = molecule.get_svg(240, 160);
+          }
         } finally {
           molecule?.delete?.();
         }
@@ -6846,6 +6945,10 @@
     if (event instanceof MouseEvent && event.button !== 0) return;
     event.preventDefault();
     hideMoleculeContextMenu();
+    if (capabilities(cfg).editing && event.target?.closest?.('td[data-column="name"], .buret-card-body h2')) {
+      beginGridRowRename(row, cfg);
+      return;
+    }
     showMoleculeDetail(row, cfg);
     setStatus(`[grid] Opened ${row.name || `Molecule ${Number(row.index) + 1}`}.`);
   }
@@ -7587,7 +7690,10 @@
   function moleculeContextMenuAction(action, row) {
     const cfg = config();
     const label = row.name || `Molecule ${Number(row.index) + 1}`;
-    if (action === 'open') {
+    if (action === 'rename') {
+      hideMoleculeContextMenu();
+      beginGridRowRename(row, cfg);
+    } else if (action === 'open') {
       hideMoleculeContextMenu();
       showMoleculeDetail(row, cfg);
       setStatus(`[grid] Opened ${label}.`);
@@ -7634,6 +7740,7 @@
       ['open', 'Preview molecule'],
       ['molstar', 'Open in 3D'],
       ...(editing ? [
+        ['rename', 'Rename…'],
         ['ketcher', 'Edit in Ketcher'],
         ['duplicate', 'Duplicate'],
         ['remove', 'Delete from collection']

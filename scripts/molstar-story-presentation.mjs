@@ -38,13 +38,15 @@ export function installAutomaticStoryPresentation(plugin, presentation) {
         structureFocus: undefined, camera: undefined,
         transition: undefined, startAnimation: false,
       });
+      // Auto removes the authored components that MVS focus targets refer to.
+      const camera = data ? cached.camera : presentation.resolveCamera(snapshot.camera);
       // Set component options BEFORE the standard provider creates geometry.
       await presentation.appearance(settings.appearance);
       if (!data) {
         await presentation.automatic();
-        cache.set(snapshot, { appearance: settings.appearance, data: state.data.getSnapshot() });
+        cache.set(snapshot, { appearance: settings.appearance, data: state.data.getSnapshot(), camera });
       }
-      await presentation.camera(snapshot.camera);
+      await presentation.camera(camera);
     } finally {
       canvas?.resume();
       canvas?.requestDraw();

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { Window } from "happy-dom";
 
 // The DataWarrior table operations that mutate rows and columns live in the
 // grid viewer, because that is where the collection's virtual edit layer is.
@@ -29,7 +30,7 @@ function harness(state, names, stubs = "") {
     "statuses",
     `
     const GRID_EDIT_HISTORY_LIMIT = 50;
-    function capabilities() { return { editing: true }; }
+    function capabilities() { return { editing: !state.hostReadOnly }; }
     function safeConfig() { return { documentId: 'doc' }; }
     function invalidateTableColumnCatalog() { state.tableColumnCatalogCache = null; }
     function syncGridEditControls() {}
@@ -446,3 +447,91 @@ console.log("Grid table operation checks passed.");
     {id:'analysis:rm1AtomicCharges',label:'RM1 atomic charges (e)'},
   ]);
 }
+
+// Rename is a collection edit: the save materializer must carry it across
+// remote page reloads, and SDF export must retain every byte below the title.
+for (const remoteMode of [false, true]) {
+  const molblock = fs.readFileSync('samples/mini.sdf', 'utf8').split('\n$$$$')[0].replaceAll('\n', '\r\n');
+  const original = { index: 4, name: 'Old name', molblock, smiles: 'O', props: { Name: 'Old name', NAME: 'Legacy name', ID: 'CHEM-004', Note: 'First line\nSecond line' } };
+  const other = { ...original, index: 9, name: 'Other', props: { Name: 'Other' } };
+  const state = gridState({ remoteMode, rows: [original], all: remoteMode ? [] : [original, other] });
+  const grid = harness(state, ['renameGridRow', 'replaceGridRow', 'serializeSdfRows', 'withSarProperties', 'undoLastGridEdit', 'redoLastGridEdit',
+    'materializeRemoteCollectionRows', 'applyVirtualGridEdits', 'stripDeletedPropColumns', 'applyColumnValueRanges']);
+  assert.equal(grid.renameGridRow(original, '  Новое соединение $& α  ', { format: 'sdf' }), true);
+  const renamed = { ...original, name: 'Новое соединение $& α', molblock: molblock.replace('Water', () => 'Новое соединение $& α'),
+    props: { ...original.props, Name: 'Новое соединение $& α', NAME: 'Новое соединение $& α' } };
+  assert.deepEqual(state.rows, [renamed]);
+  assert.equal(state.dirty, true);
+  assert.equal(state.sourceRevision, 1);
+  assert.equal(state.undoStack.length, 1);
+  assert.deepEqual(original.props, { Name: 'Old name', NAME: 'Legacy name', ID: 'CHEM-004', Note: 'First line\nSecond line' });
+  const saved = grid.serializeSdfRows(grid.materializeRemoteCollectionRows([original, other]));
+  assert.equal(saved.split('\r\n')[0], renamed.name);
+  assert.ok(saved.startsWith(renamed.name + molblock.slice('Water'.length)), 'coordinates, bonds and stereochemistry survive rename');
+  assert.match(saved, /> <Name>\nНовое соединение \$& α\n/);
+  assert.match(saved, /> <ID>\nCHEM-004\n/);
+  assert.match(saved, /> <Note>\nFirst line\nSecond line\n/);
+  assert.ok(saved.endsWith(grid.serializeSdfRows([other])), 'other records are unchanged');
+  assert.deepEqual(grid.materializeRemoteCollectionRows([original, other]), [renamed, other], 'refetching original rows retains the rename');
+  for (const invalid of ['', '   ', 'two\nrecords', 'bad\rtitle', '\u0000', 'x'.repeat(161), renamed.name]) {
+    assert.equal(grid.renameGridRow(renamed, invalid, { format: 'sdf' }), false);
+  }
+  assert.equal(state.undoStack.length, 1, 'empty, invalid and unchanged names are no-ops');
+  grid.undoLastGridEdit({});
+  assert.deepEqual(state.rows, [original]);
+  assert.equal(state.dirty, false);
+  grid.redoLastGridEdit({});
+  assert.deepEqual(state.rows, [renamed]);
+  assert.equal(state.dirty, true);
+  grid.undoLastGridEdit({});
+  for (const barrier of ['hostReadOnly', 'saveAsPending', 'closeTransitionActive']) {
+    state[barrier] = true;
+    assert.equal(grid.renameGridRow(original, 'Blocked', { format: 'sdf' }), false);
+    state[barrier] = false;
+  }
+  assert.equal(state.undoStack.length, 0, 'read-only and document transitions never mutate the collection');
+}
+
+{
+  const row = { index: 0, name: 'Untitled', molblock: '\n  Burette\n\nM  END', props: { ID: 'KEEP' } };
+  const state = gridState({ rows: [row], all: [row] });
+  const grid = harness(state, ['renameGridRow', 'replaceGridRow', 'serializeSdfRows', 'withSarProperties']);
+  assert.equal(grid.renameGridRow(row, 'Named', { format: 'sdf' }), true);
+  assert.deepEqual(state.rows[0].props, { ID: 'KEEP' }, 'title-only input does not acquire a duplicate visible name column');
+  assert.match(grid.serializeSdfRows(state.rows), /^Named\n  Burette\n\nM  END\n\n> <Name>\nNamed\n/);
+}
+
+// Exercise actual inline input events, including cancellation and blur commit.
+{
+  const window = new Window();
+  const root = window.document.body;
+  const row = { index: 0, name: 'Original', smiles: 'CC', props: {} };
+  const state = gridState({ rows: [row], all: [row] });
+  state.dom = { root, document: window.document };
+  const editing = harness(state, ['beginGridRowRename', 'renameGridRow', 'replaceGridRow'], 'const { root, document } = state.dom;');
+  for (const markup of ['<table><tbody><tr data-index="0" tabindex="0"><td data-column="name">Original</td></tr></tbody></table>',
+    '<article data-index="0" tabindex="0"><div class="buret-card-body"><h2>Original</h2></div></article>']) {
+    root.innerHTML = markup;
+    editing.beginGridRowRename(row, { format: 'sdf' });
+    let input = root.querySelector('input');
+    assert.equal(input.getAttribute('aria-label'), 'Compound name');
+    input.value = 'Cancelled';
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(state.undoStack.length, 0);
+    assert.equal(root.textContent, 'Original');
+    editing.beginGridRowRename(row, { format: 'sdf' });
+    input = root.querySelector('input');
+    input.value = 'Changed';
+    input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    assert.equal(state.rows[0].name, 'Changed');
+    editing.undo();
+    editing.beginGridRowRename(row, { format: 'sdf' });
+    input = root.querySelector('input');
+    input.value = 'Blurred';
+    input.blur();
+    assert.equal(state.rows[0].name, 'Blurred');
+    editing.undo();
+  }
+  window.happyDOM.abort();
+}
+console.log('Compound rename, SDF preservation and inline editing checks passed.');

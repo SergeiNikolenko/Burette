@@ -8,12 +8,13 @@ const calls: Array<[string, Record<string, unknown>]> = [];
 mock.module("@tauri-apps/api/core", () => ({ invoke: async () => scans }));
 mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => true }));
 mock.module("../apps/desktop/src/stores/settings-store", () => ({ useSettingsStore: { getState: () => ({ preferences: {} }) } }));
-mock.module("../apps/desktop/src/stores/molecule-store", () => ({ useMoleculeStore: { getState: () => ({ documents, setActiveDocument() {} }) } }));
+mock.module("../apps/desktop/src/stores/molecule-store", () => ({ useMoleculeStore: { getState: () => ({ documents, setActiveDocument() {} }), setState() {} } }));
 mock.module("../apps/desktop/src/lib/structure-text", () => ({ readStructureTextDocument: async (path: string) => ({ content: path, truncated: false }) }));
 mock.module("../apps/desktop/src/lib/viewer-bridge", () => ({
   activeViewerIframeForDocument: () => ({ contentWindow: {} }),
   requestViewerAction: async (id: string, action: Record<string, unknown>) => {
     if (action.type === "workspace_scene_state") return { ready: true };
+    if (action.type === "scene_source_paths") return { paths: action.paths };
     calls.push([id, action]);
     if (id === "left") await hold;
     if (fail) { fail = false; throw new Error("Broken molecule"); }

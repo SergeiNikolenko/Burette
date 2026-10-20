@@ -24,7 +24,7 @@ export class SshSession {
   }
   get busy() { return this.queued > 0; }
   run(payload: string, limit: number, signal: AbortSignal, timeoutMs = 45000): Promise<Buffer> {
-    if (this.queued >= 2) return Promise.reject(new Error("SSH connection is busy. Try again when loading finishes."));
+    if (this.queued >= 3) return Promise.reject(new Error("SSH connection is busy. Try again when loading finishes."));
     this.queued++;
     if (this.idle) clearTimeout(this.idle);
     const result = this.tail.catch(() => {}).then(() => new Promise<Buffer>((resolve, reject) => {

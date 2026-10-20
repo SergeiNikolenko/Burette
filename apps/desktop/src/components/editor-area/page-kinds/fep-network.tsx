@@ -9,6 +9,7 @@ import { parseFepNetworkText, type FepNetworkData, type FepNetworkEdge, type Fep
 import { loadRDKitModule } from "../../../lib/rdkit-module";
 import { isTauriRuntime } from "../../../lib/tauri";
 import { showNativeContextMenu } from "../../native-context-menu";
+import { requestContextualGuide } from "../../onboarding/request";
 import type { ShellActions } from "../../types";
 import { ArrowRotateCcw } from "../../ui/app-icons";
 import { Button } from "../../ui/button";
@@ -88,6 +89,7 @@ function FepNetworkPreview({ actions, location, preferences }: { actions: ShellA
   const [dataError, setDataError] = useState(false);
   const [rdkit, setRdkit] = useState<RDKitModule | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
+  const viewSwitchRef = useRef<HTMLDivElement>(null);
   const [highlightMode, setHighlightMode] = useState<HighlightMode>("off");
   const [showHydrogens, setShowHydrogens] = useState(false);
   const [structureDocument, setStructureDocument] = useState<ViewerDocument | null>(null);
@@ -485,8 +487,13 @@ function FepNetworkPreview({ actions, location, preferences }: { actions: ShellA
             size="sm"
             spacing={0}
             aria-label="View"
+            ref={viewSwitchRef}
             value={viewMode}
-            onValueChange={(value) => { if (value === "graph" || value === "grid" || value === "structure") setViewMode(value); }}
+            onValueChange={(value) => {
+              if (value !== "graph" && value !== "grid" && value !== "structure") return;
+              setViewMode(value);
+              requestContextualGuide("fep-network", viewSwitchRef.current);
+            }}
           >
             <ToggleGroupItem value="graph">Graph</ToggleGroupItem>
             <ToggleGroupItem value="grid">Grid</ToggleGroupItem>

@@ -57,4 +57,36 @@ assert.deepEqual(shape(read(viewer))[0][1][0][1][1], ['model2', [
 ]]);
 add('named-null', 'file', 'Group', 'Null');
 assert.ok(read(viewer)[0].children.some(node => node.ref === 'named-null'), 'a user label is not an empty state object');
+
+// The visible file row holds raw data, while its geometry lives several cells
+// below it. Focus must stay inside that file, even beside a much larger receptor.
+const ligandSphere = { center: [2, 3, 4], radius: 3 };
+const receptorSphere = { center: [0, 0, 0], radius: 40 };
+const transformedSphere = { center: [12, 3, 4], radius: 3 };
+cells.get('structure').obj.data.boundary = { sphere: ligandSphere };
+cells.get('all').obj.data.boundary = { sphere: ligandSphere };
+cells.get('surface').obj.data.boundary = { sphere: { center: [2, 3, 4], radius: 1 } };
+add('receptor', 'root', 'Data', 'receptor.pdb');
+add('receptor-structure', 'receptor', 'Structure', 'Receptor', { boundary: { sphere: receptorSphere } });
+const focused = [];
+const camera = {
+  focusSpheres: (targets, sphere, options) => focused.push({ spheres: targets.map(sphere), options }),
+  focusLoci: (loci, options) => focused.push({ loci, options }),
+};
+viewer.plugin.managers = { camera };
+const focus = new Function('activeMolstarViewer', 'debug',
+  ['sceneTreeChildRefs', 'isSceneTreeDecorator', 'focusSceneTreeNode'].map(fn).join('\n') + '\nreturn focusSceneTreeNode;')(() => viewer, error => { throw new Error(error); });
+focus('file');
+assert.deepEqual(focused.pop(), { spheres: [ligandSphere], options: { durationMs: 250 } });
+focus('receptor');
+assert.deepEqual(focused.pop(), { spheres: [receptorSphere], options: { durationMs: 250 } });
+focus('surface');
+assert.deepEqual(focused.pop().spheres, [cells.get('surface').obj.data.boundary.sphere]);
+add('transformed', 'structure', 'Structure', 'Model', { boundary: { sphere: transformedSphere } }, '', true);
+focus('file');
+assert.deepEqual(focused.pop().spheres, [transformedSphere], 'focus uses the decorated structure coordinates');
+const loci = { kind: 'element-loci', elements: [] };
+cells.get('distance').obj.data = [{ loci }];
+focus('distance');
+assert.deepEqual(focused.pop(), { loci: [loci], options: { durationMs: 250 } });
 console.log('Scene presentation: empty cells hidden, single-model plumbing flattened, multiple models and assemblies preserved');

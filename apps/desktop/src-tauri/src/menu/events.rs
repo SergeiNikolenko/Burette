@@ -38,7 +38,6 @@ const FORWARDED_COMMANDS: &[&str] = &[
     "view.toggle-sidebar",
     "view.toggle-inspector",
     "view.toggle-bottom-panel",
-    "view.toggle-side-panel",
     "view.grid-cards",
     "view.grid-table",
     "view.grid-properties",

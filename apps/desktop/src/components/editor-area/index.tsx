@@ -1,9 +1,10 @@
 import { memo, useEffect, useMemo, useState } from "react";
 import type { ShellActions, ShellViewState } from "../types";
 import { pageKind, type Location } from "./page-kinds";
-import { TabMemoryRouter, TabPageRoutes } from "./tab-router";
+import { TabHistoryPages } from "./tab-history-pages";
 import type { MoleculeTab, TabPane } from "../../stores/molecule-store";
 import { FloatingPaneHeader } from "../workspace-panes/floating-pane";
+import { useNativePopoutSession } from "../workspace-panes/native-scene-window";
 import { usePaneVisibility, type PaneShown } from "../workspace-panes/use-pane-tabs";
 
 const DEFAULT_WARM_PAGE_LIMIT = 10;
@@ -13,20 +14,26 @@ const MEMORY_PRESSURE_HEAP_BYTES = 768 * 1024 * 1024;
 const MEMORY_PRESSURE_HEAP_RATIO = 0.7;
 
 export function ViewerArea({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
+  useNativePopoutSession(actions);
   const activeTabId = state.activeTabId ?? state.activeTab?.id;
   const tabs = state.tabs.length > 0 ? state.tabs : [{ id: "fallback", location: activeLocation(state), back: [], forward: [] }];
   const activeTabIndex = tabs.findIndex((tab) => tab.id === activeTabId);
   const [recentlyUsedTabIds, setRecentlyUsedTabIds] = useState<string[]>([]);
   const warmPageLimit = mountedWarmPageLimit();
+  const protectedDocumentIds = useMemo(() => new Set([
+    ...(state.dirtyGridDocuments ?? []),
+    ...state.documents.filter(document => document.sceneUnsaved || (document.sceneSourcePaths?.length ?? 0) > 1).map(document => document.id),
+  ]), [state.dirtyGridDocuments, state.documents]);
   const dirtyTabIds = useMemo(() => new Set(tabs.filter((tab) => (
-    tab.location.kind === "file"
-    && state.dirtyGridDocuments?.has(tab.location.documentId ?? "")
-  )).map((tab) => tab.id)), [tabs, state.dirtyGridDocuments]);
+    [tab.location, ...tab.back, ...tab.forward].some((location) => (
+      location.kind === "file" && protectedDocumentIds.has(location.documentId ?? "")
+    ))
+  )).map((tab) => tab.id)), [tabs, protectedDocumentIds]);
   const warmMountedTabIds = useMemo(
     () => warmMountedTabs(tabs, activeTabIndex, recentlyUsedTabIds, warmPageLimit, dirtyTabIds),
     [activeTabIndex, recentlyUsedTabIds, tabs, warmPageLimit, dirtyTabIds],
   );
-  const paneVisibility = usePaneVisibility(tabs, state.page === "settings");
+  const paneVisibility = usePaneVisibility(state.page === "settings");
 
   useEffect(() => {
     setRecentlyUsedTabIds((current) => {
@@ -40,7 +47,7 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
   }, [activeTabId, tabs]);
 
   // Every screen stays a child of this one stack wherever it is shown: the
-  // side panel and the floating window only reposition its surface. Moving an
+  // floating window only repositions its surface. Moving an
   // iframe to another parent reloads it, which would rebuild the Mol* scene.
   return (
     <div className="page-stack">
@@ -50,7 +57,7 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
         const shown = paneVisibility(tab);
         // A screen in a pane is held like the active tab while on screen, and a
         // keep-alive one also while its pane shows another screen.
-        const held = shown !== "hidden" || (Boolean(tab.pane) && kind.keepAlive);
+        const held = shown !== "hidden" || dirtyTabIds.has(tab.id) || (Boolean(tab.pane) && kind.keepAlive);
         if (!isActive && !held && (!kind.keepAlive || !warmMountedTabIds.has(tab.id))) return null;
         return (
           <MountedPageSurface
@@ -99,15 +106,15 @@ const MountedPageSurface = memo(function MountedPageSurface({
       {/* The header slot is always present so that inserting the header never
           shifts the page's own nodes: React keeps the iframe where it is. */}
       {pane === "floating" ? <FloatingPaneHeader tab={tab} state={state} actions={actions} minimized={shown === "minimized"} /> : null}
-      <TabMemoryRouter tab={tab}>
-        <TabPageRoutes tabId={tab.id} location={tab.location} state={state} actions={actions} isActive={contentVisible} />
-      </TabMemoryRouter>
+      <TabHistoryPages tab={tab} state={state} actions={actions} isActive={contentVisible} />
     </div>
   );
 }, (previous, next) => {
   if (previous.isActive || next.isActive) return false;
   if (previous.shown !== "hidden" || next.shown !== "hidden") return false;
-  return previous.tab.id === next.tab.id && previous.tab.location === next.tab.location && previous.pane === next.pane;
+  return previous.tab.id === next.tab.id && previous.tab.location === next.tab.location && previous.pane === next.pane
+    && previous.state.dirtyGridDocuments === next.state.dirtyGridDocuments
+    && previous.state.documents === next.state.documents;
 });
 
 function activeLocation(state: ShellViewState): Location {

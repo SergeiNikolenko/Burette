@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "../../lib/tauri";
+import { isViewerFrameVisible } from "../../lib/viewer-frame-visibility";
 
 // Last on-screen image of each tab, shown by the tab hover preview. Hidden
 // tabs cannot be drawn, so the active page is captured while it is visible.
@@ -60,7 +61,8 @@ const THUMBNAIL_WIDTH_PX = 640;
 const MAX_FRAME_SVGS = 48;
 
 async function composeFrameThumbnail(page: HTMLElement, pageRect: DOMRect) {
-  const frame = page.querySelector<HTMLIFrameElement>("iframe.viewer-iframe, iframe");
+  const frame = Array.from(page.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe, iframe"))
+    .find(isViewerFrameVisible);
   let frameDocument: Document | null = null;
   try {
     frameDocument = frame?.contentDocument ?? null;

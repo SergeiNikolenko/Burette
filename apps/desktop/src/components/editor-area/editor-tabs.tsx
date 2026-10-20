@@ -23,6 +23,10 @@ import { isMainTab } from "../../stores/molecule-store";
 import { SCREEN_ENTRIES, openScreen, paneMoveItems } from "../workspace-panes/pane-actions";
 import { TabKindIcon } from "./tab-kind-icon";
 import { TabNameDialog } from "../scene-name-dialog";
+import { canStartNativeFileDrag, startNativeFileDrag } from "../../lib/native-file-drag";
+import { isFileDragTab, tabFileDragPayload } from "./tab-file-drag";
+import { useSourceEditing } from "../../lib/source-editing/context";
+import { toast } from "../ui/toast";
 
 const TAB_REORDER_ANIMATION_MS = 170;
 const TAB_DRAG_ACTIVATE_DELAY_MS = 520;
@@ -42,7 +46,11 @@ export function EditorTabs({
   readOnly?: boolean;
 }) {
   const workspaceMenus = useWorkspaceMenus();
-  // Screens moved to the side panel or the floating window leave the strip.
+  const sourceEditing = useSourceEditing();
+  const nativeDragPendingRef = useRef(false);
+  const nativeDragGenerationRef = useRef(0);
+  const suppressDragClickRef = useRef(false);
+  // A screen moved to the floating window leaves the strip.
   const visibleTabs = state.tabs.filter(isMainTab);
   const activeTabIndex = visibleTabs.findIndex((tab) => tab.id === state.activeTabId);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
@@ -119,7 +127,7 @@ export function EditorTabs({
 
   const tabPathForLocation = useCallback((tab: ShellViewState["tabs"][number]) => {
     if (tab.location.kind === "file") return tab.location.path;
-    if (tab.location.kind === "text-file") return tab.location.path;
+    if (tab.location.kind === "text-file" || tab.location.kind === "document") return tab.location.path;
     return null;
   }, []);
 
@@ -357,12 +365,38 @@ export function EditorTabs({
   }, [actions]);
 
   const stopTabDrag = useCallback(() => {
+    nativeDragGenerationRef.current += 1;
     removeMouseDragListeners();
     clearDragActivation();
     if (draggingTabIdRef.current) actions.setStructureDragActive(false);
     draggingTabIdRef.current = null;
     setDraggingTabId(null);
   }, [actions, clearDragActivation, removeMouseDragListeners]);
+
+  const startNativeTabDrag = (tabId: string) => {
+    removeMouseDragListeners();
+    const selected = selectedTabIdsRef.current;
+    const tabs = latestTabsRef.current.filter(tab => selected.has(tabId) && selected.size > 1 ? selected.has(tab.id) : tab.id === tabId);
+    const generation = ++nativeDragGenerationRef.current;
+    nativeDragPendingRef.current = true;
+    suppressDragClickRef.current = true;
+    draggingTabIdRef.current = tabId;
+    setDraggingTabId(tabId);
+    actions.setStructureDragActive(true);
+    void tabFileDragPayload(tabs, state, sourceEditing).then(async payload => {
+      if (generation !== nativeDragGenerationRef.current) return;
+      const { inAppDrop } = await startNativeFileDrag(payload, tabId);
+      if (!inAppDrop || generation !== nativeDragGenerationRef.current) return;
+      if (document.elementFromPoint(inAppDrop.x, inAppDrop.y)?.closest(".tab-strip")) moveDraggedTab(tabId, inAppDrop.x);
+      else runTabDropAtPoint(tabId, inAppDrop.x, inAppDrop.y);
+    }).catch(() => {
+      toast.add({ title: "Could not drag this tab. Save the file and try again.", type: "error" });
+    }).finally(() => {
+      nativeDragPendingRef.current = false;
+      stopTabDrag();
+      window.setTimeout(() => { suppressDragClickRef.current = false; }, 0);
+    });
+  };
 
   const startMouseTabReorder = useCallback((tabId: string, tabHasDockPayload: boolean, event: React.MouseEvent<HTMLButtonElement>) => {
     if (event.button !== 0) return;
@@ -653,9 +687,17 @@ export function EditorTabs({
                   if (event.button !== 0) return;
                   startMouseTabReorder(tab.id, true, event);
                 }}
-                onClick={(event) => handleTabClick(tab.id, event)}
+                onClick={(event) => {
+                  if (suppressDragClickRef.current) { event.preventDefault(); event.stopPropagation(); return; }
+                  handleTabClick(tab.id, event);
+                }}
                 onContextMenu={readOnly ? undefined : showTabMenu}
                 onDragStart={readOnly ? undefined : (event) => {
+                  if (canStartNativeFileDrag() && isFileDragTab(tab)) {
+                    event.preventDefault();
+                    startNativeTabDrag(tab.id);
+                    return;
+                  }
                   removeMouseDragListeners();
                   draggingTabIdRef.current = tab.id;
                   setDraggingTabId(tab.id);
@@ -667,11 +709,13 @@ export function EditorTabs({
                     items: [tabDragItem],
                   };
                   writeStructureDragPayload(event.dataTransfer, payload);
+                  // Non-file screens still reorder internally but offer no text to Finder.
+                  if (canStartNativeFileDrag()) event.dataTransfer.clearData("text/plain");
                   actions.setStructureDragActive(true);
                 }}
                 // Only drop handlers execute native drops. dragend also fires
                 // after Escape and must never open a file or run an action.
-                onDragEnd={readOnly ? undefined : stopTabDrag}
+                onDragEnd={readOnly ? undefined : () => { if (!nativeDragPendingRef.current) stopTabDrag(); }}
                 onDragOver={readOnly ? undefined : (event) => {
                   if (!hasStructureDrag(event.dataTransfer) || draggingTabIdRef.current) return;
                   if (!tabDropTarget) return;

@@ -183,9 +183,6 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
         .checked(true)
         .accelerator("CmdOrCtrl+Alt+B")
         .build(app)?;
-    let toggle_side_panel = MenuItemBuilder::with_id("view.toggle-side-panel", "Toggle Side Panel")
-        .accelerator("CmdOrCtrl+Alt+S")
-        .build(app)?;
     let show_bottom_panel =
         CheckMenuItemBuilder::with_id("view.toggle-bottom-panel", "Bottom Panel")
             .checked(false)
@@ -241,7 +238,6 @@ pub(crate) fn configure_menu<R: Runtime>(app: &tauri::App<R>) -> tauri::Result<(
             &show_sidebar,
             &show_inspector,
             &show_bottom_panel,
-            &toggle_side_panel,
             &PredefinedMenuItem::separator(app)?,
             &cards,
             &table,

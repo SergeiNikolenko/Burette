@@ -70,6 +70,11 @@
 .ketcher-editor-shell .Ketcher-root [data-testid="left-toolbar-buttons"] > :not(:first-child) > [class*="LeftToolbar-module_groupItem"] {border-top:1px solid var(--input);margin-top:4px;padding-top:6px;}
 .ketcher-editor-shell .Ketcher-root [class*="ToolbarMultiToolItem-module_root"] {display:flex;align-items:center;justify-content:flex-start;}
 .ketcher-editor-shell .Ketcher-root [class*="ToolbarMultiToolItem-module_root"] > button {flex-shrink:0;margin:0!important;}
+/* Shared controls use flex centering; upstream absolute-icon offsets must not
+   move their glyphs outside the button or expand a split tool past the rail. */
+.ketcher-editor-shell [data-size] svg {position:static!important;inset:auto!important;transform:none!important;margin:0!important;}
+.ketcher-editor-shell .ketcher-tool-expand {width:18px;min-width:18px;flex:none;aspect-ratio:auto;padding:0;}
+.ketcher-editor-shell .ketcher-tool-expand svg {width:12px!important;height:12px!important;}
 .ketcher-editor-shell .Ketcher-root :is(.ketcher-tool-button,.ketcher-tool-expand):not(:disabled) {color:#000;}
 .app-shell[data-effective-theme="dark"] .ketcher-editor-shell .Ketcher-root :is(.ketcher-tool-button,.ketcher-tool-expand):not(:disabled) {color:#fff;}
 /* Ketcher 3.15 ElementColor values for the native atom rail. H/C inherit the

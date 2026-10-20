@@ -19,6 +19,7 @@ import { Input } from "./ui/input";
 import { decodeAnimation, encodeAnimation, type AnimationFrames } from "../lib/xyzrender-animation";
 import { postToXyzrenderViewer } from "../lib/viewer-bridge";
 import { gifBytesToBase64, renderAnimationGifDataUrl } from "../lib/xyzrender-batch-animation";
+import { requestContextualGuide } from "./onboarding/request";
 
 export type AnimationSource = {
   itemId?: string;
@@ -94,7 +95,7 @@ export function XyzrenderAnimationDialog() {
   }, [source, prepare]);
   const [target, setTarget] = useState<HTMLElement | null>(null);
   useEffect(() => {
-    const open = (event: Event) => { setSource((event as CustomEvent<AnimationSource>).detail); setEditedAngles(null); window.setTimeout(() => { const node = document.getElementById("xyzrender-editor-controls"); setTarget(node); node?.scrollIntoView({ block: "nearest" }); }, 50); };
+    const open = (event: Event) => { setSource((event as CustomEvent<AnimationSource>).detail); setEditedAngles(null); window.setTimeout(() => { const node = document.getElementById("xyzrender-editor-controls"); setTarget(node); node?.scrollIntoView({ block: "nearest" }); if (node) requestContextualGuide("xyz-editor", document.querySelector(".xyzrender-editor-launch") ?? node); }, 50); };
     window.addEventListener("burette:xyzrender-animation", open);
     const style = (event: Event) => {
       const detail = (event as CustomEvent<AnimationSource>).detail;

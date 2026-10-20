@@ -1060,7 +1060,7 @@ assert.match(appFileOpenHook, /if \(document\.renderer === NOT_RENDERABLE_RENDER
 assert.match(appFileOpenHook, /if \(document\.renderer === NOT_RENDERABLE_RENDERER\) \{\s*closeDocument\(document\.id\);\s*void abortOpenDocumentClaims\(\[document\]\)/);
 assert.match(appDockPayloadHook, /const documents = result\.documents\.filter\(\(document\) => document\.renderer !== NOT_RENDERABLE_RENDERER\);/);
 assert.match(appFileOpenHook, /const backgroundTextPaths = structureAndTextPaths\.filter\(\(path\) => openedStructureAndTextPaths\.has\(path\)\);/);
-assert.match(appFileOpenHook, /await openTextDocuments\(backgroundTextPaths, \{ background: true \}\);/);
+assert.match(appFileOpenHook, /await openTextDocuments\(backgroundTextPaths, \{ \.\.\.options, background: true \}\);\s*if \(!mayApply\(\)\) return;/);
 assert.match(appFileOpenHook, /const unopenedStructureAndTextPaths = structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\);/);
 assert.match(browserDevStartup, /export function browserDevDockingFromLocation\(\): DockingDocumentRequest \| null/);
 assert.match(browserDevStartup, /params\.has\("devDocking"\)/);
@@ -1188,7 +1188,7 @@ assert.match(appDirtyGridHook, /transition\.pendingDocumentIds/);
 // Closing must not be gated on in-flight mutations: an unbounded wait here used
 // to strand the window with the grid overlay up and every later close refused.
 assert.doesNotMatch(appShellActionsHook, /waitForPending/);
-assert.match(appShellActionsHook, /const completeClose = \(permit: WindowCloseMutationPermit, close: \(\) => void\) => \{\s*try \{\s*close\(\);\s*\} finally \{\s*permit\.release\(\);/s);
+assert.match(appShellActionsHook, /const completeClose = \(permit: WindowCloseMutationPermit, close: \(\) => void\) => \{\s*try \{\s*if \(!nativePopoutBusy\(\)\) close\(\);\s*\} finally \{\s*permit\.release\(\);/s);
 assert.match(appGridWorkflowsHook, /if \(result\.recordsAppended > 0\) updateDirtyGridDocument\(targetDocument\.id, true\);\s*notifyGridRecordsAppended\(targetDocument\.id, result\)/s);
 assert.match(appKetcherActionsHook, /updateDirtyGridDocument\(request\.documentId, true\);\s*iframe\.contentWindow\.postMessage/s);
 assert.match(appKetcherActionsHook, /isGridDocumentCloseTransitionActive\(request\.documentId\)/);
@@ -1509,7 +1509,7 @@ assert.match(editorArea, /kind\.keepAlive/);
 assert.match(editorArea, /if \(!isActive && !held && \(!kind\.keepAlive \|\| !warmMountedTabIds\.has\(tab\.id\)\)\) return null/);
 assert.match(editorArea, /<MountedPageSurface\s+key=\{tab\.id\}/);
 assert.match(editorArea, /const MountedPageSurface = memo\(function MountedPageSurface/);
-assert.match(editorArea, /TabPageRoutes/);
+assert.match(editorArea, /<TabHistoryPages tab=\{tab\} state=\{state\} actions=\{actions\} isActive=\{contentVisible\}/);
 assert.match(editorArea, /if \(previous\.isActive \|\| next\.isActive\) return false/);
 assert.match(editorArea, /previous\.tab\.id === next\.tab\.id && previous\.tab\.location === next\.tab\.location/);
 assert.match(editorArea, /className="page-stack"/);
@@ -1548,11 +1548,10 @@ assert.doesNotMatch(editorTabs, /className="tab-history-controls"/);
 assert.match(editorTabs, /import \{ CloseIcon \} from "\.\.\/close-icon"/);
 assert.match(editorTabs, /<CloseIcon size=\{13\} \/>/);
 assert.match(appLayout, /className="chrome-leading-controls"/);
-const panelsMenu = await source("apps/desktop/src/components/workspace-panes/panels-menu.tsx");
-assert.match(appLayout, /<PanelsMenu/);
-for (const [state, action, label] of [["sideOpen", "toggleSide", "Side panel"], ["rightOpen", "toggleRight", "Right dock"], ["bottomOpen", "toggleBottom", "Bottom dock"]]) {
-  assert.ok(panelsMenu.includes(`checked={${state}} onCheckedChange={${action}}>${label}</DropdownMenuCheckboxItem>`), `${label} retains its real toggle and state`);
-}
+// The trailing title-bar button toggles the right dock directly; the bottom
+// dock opens from its shortcut only.
+assert.match(appLayout, /<RightDockToggle open=\{rightDockOpen\} toggle=\{\(\) => actions\.toggleDock\("right"\)\} \/>/);
+assert.doesNotMatch(appLayout, /toggleDock\("bottom"\)/);
 
 assert.match(appLayout, /from "\.\/shortcut-tooltip"/);
 assert.doesNotMatch(appLayout, /<ShortcutTooltip label=\{state\.sidebarOpen \? "Hide sidebar" : "Show sidebar"\} shortcut=\{"⌘\\\\"\} \/>/);
@@ -1955,7 +1954,7 @@ assert.match(gridViewer, /const GRID_MAX_WINDOW_ROWS = 18;/);
 assert.doesNotMatch(gridViewer, /GRID_WINDOW_RENDER_BATCH/);
 assert.match(gridViewer, /const RDKIT_CARD_FRAME_BATCH = 6;/);
 assert.match(gridViewer, /const RDKIT_CARD_FRAME_BUDGET_MS = 8;/);
-assert.match(gridViewer, /const RDKIT_SVG_CACHE_LIMIT = 220;/);
+assert.match(gridViewer, /const RDKIT_SVG_CACHE_LIMIT = 2000;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_CACHE_LIMIT = 1500;/);
 assert.match(gridViewer, /rdkitCardQueue: \[\]/);
 assert.match(gridViewer, /rdkitCardPending: new Map\(\)/);
@@ -2140,7 +2139,7 @@ assert.match(styles, /\.ketcher-editor-shell \[class\*="App-module_app"\]\s*\{[^
 assert.match(styles, /\.ketcher-editor-shell \[data-testid="top-toolbar"\]\s*\{[^}]*height: var\(--ketcher-top-toolbar-height\) !important;[^}]*min-height: var\(--ketcher-top-toolbar-height\) !important;/s);
 assert.match(styles, /\.ketcher-editor-shell \[data-testid="top-toolbar"\] button:has\(svg\)\s*\{[^}]*width: var\(--ketcher-top-toolbar-button-size\) !important;[^}]*min-width: var\(--ketcher-top-toolbar-button-size\) !important;/s);
 assert.match(styles, /\.ketcher-editor-shell \[data-testid="top-toolbar"\] button > svg\s*\{[^}]*width: var\(--ketcher-top-toolbar-icon-size\) !important;[^}]*height: var\(--ketcher-top-toolbar-icon-size\) !important;/s);
-assert.match(styles, /\.ketcher-editor-shell \[data-testid="bottom-toolbar"\] button,\s*\.ketcher-editor-shell \[data-testid="left-toolbar"\] button,\s*\.ketcher-editor-shell \[data-testid="right-toolbar"\] button,/);
+assert.match(styles, /\.ketcher-editor-shell \[data-testid="bottom-toolbar"\] button:not\(\.ketcher-tool-expand\),\s*\.ketcher-editor-shell \[data-testid="left-toolbar"\] button:not\(\.ketcher-tool-expand\),\s*\.ketcher-editor-shell \[data-testid="right-toolbar"\] button:not\(\.ketcher-tool-expand\),/);
 assert.match(styles, /\.ketcher-editor-shell \[data-testid="left-toolbar"\],\s*\.ketcher-editor-shell \[data-testid="right-toolbar"\]\s*\{[^}]*width: var\(--ketcher-side-rail-width\) !important;/s);
 assert.match(styles, /--ketcher-light-canvas: var\(--bg-base\)/);
 assert.match(styles, /background: var\(--ketcher-light-canvas\)/);
@@ -2395,8 +2394,10 @@ assert.match(groupPixelGuard, /panel\.resize\(`\$\{want\}px`\)/);
 // written once on release: setDockSize clones the workspace and the persist
 // middleware serialised every workspace to localStorage per drag frame. Open
 // flags still commit as they change. For the same gesture (and the toggle
-// slide) the shell carries data-resizing and every viewer iframe is pinned to
-// its pixel size so Mol* reflows once instead of once per frame.
+// slide) the shell carries data-resizing and every viewer is told to hold its
+// canvas, so Mol* resizes once instead of once per frame. The iframe itself
+// must keep following the panel: freezing its size clipped the viewer chrome
+// and made the scene jump on release.
 assert.match(appLayout, /function useResizeDragSession/);
 assert.match(appLayout, /function useDragCommittedSize/);
 assert.match(appLayout, /const sidebarResize = useDragCommittedSize\(onSidebarWidthChange\);/);
@@ -2411,10 +2412,14 @@ assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 
 assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 0\) beginResizeDrag\(rightDockResize\); \}\}/);
 assert.match(appLayout, /onPointerDown=\{\(event\) => \{ if \(event\.button === 0\) beginResizeDrag\(bottomDockResize\); \}\}/);
 assert.match(appLayout, /window\.addEventListener\("pointerup", end, true\);/);
-assert.match(appLayout, /const release = shellRef\.current \? pinViewerFrames\(shellRef\.current\) : null;/);
-assert.match(viewerFrame, /export function pinViewerFrames\(root: HTMLElement\): \(\) => void/);
+assert.match(appLayout, /const release = shellRef\.current \? beginViewerLayoutGesture\(shellRef\.current\) : null;/);
+assert.match(viewerFrame, /export function beginViewerLayoutGesture\(root: HTMLElement\): \(\) => void/);
 assert.match(viewerFrame, /root\.setAttribute\("data-resizing", "true"\);/);
-assert.match(viewerFrame, /frame\.style\.removeProperty\("width"\);/);
+assert.match(viewerFrame, /body: \{ type: "hostLayoutGesture", active \}/);
+assert.doesNotMatch(viewerFrame, /frame\.style\.width/);
+assert.match(viewer, /body\.type === 'hostLayoutGesture'/);
+assert.match(viewer, /if \(!hostLayoutGestureActive\) handleResize\(\);/);
+assert.match(previewRuntimeCss, /html\.buret-host-layout-gesture \.msp-plugin \.msp-viewport canvas \{/);
 assert.match(styles, /\.app-shell\[data-resizing\] \.viewer-iframe \{\s*pointer-events: none;\s*\}/);
 assert.doesNotMatch(appLayout, /\{rightDockOpen \? <DockPanel/);
 assert.doesNotMatch(appLayout, /\{bottomDockOpen \? <DockPanel/);
@@ -2632,7 +2637,8 @@ assert.match(appXtbWorkflowsHook, /requestXtbStatus\(\)\.then\(setXtbStatus\)\.c
 assert.match(appXtbWorkflowsHook, /openOptimizedPoseInCurrentView/);
 assert.match(appXtbWorkflowsHook, /xtbOperationLabel\(operation\)/);
 assert.match(appXtbWorkflowsHook, /molstarContextEntryExtension\(entry\.format\)/);
-assert.match(appXtbWorkflowsHook, /if \(isTauriRuntime\(\)\) \{[\s\S]*invoke<ViewerDocument>\("open_text_structure", \{[\s\S]*title: `\$\{sourceTitle\} xTB optimized\.\$\{extension\}`,[\s\S]*text: optimizedText,[\s\S]*openDocumentsInActiveTab\(\[documentWithSource\]\);[\s\S]*return;/);
+assert.match(appXtbWorkflowsHook, /if \(isTauriRuntime\(\)\) \{[\s\S]*invoke<ViewerDocument>\("open_text_structure", \{[\s\S]*title: `\$\{sourceTitle\} xTB optimized\.\$\{extension\}`,[\s\S]*text: optimizedText,[\s\S]*show\(\{ \.\.\.document, sourcePath \}\);[\s\S]*return;/);
+assert.match(appXtbWorkflowsHook, /store\.activeDocumentId === sourceDocument\.id\) openDocumentsInActiveTab\(\[document\]\);\s*else store\.addDocuments\(\[document\]\);/);
 assert.match(appXtbWorkflowsHook, /const document = await openBrowserDevMolstarContextDocument\(\{/);
 assert.match(appViewerHostMessagesHook, /Structure action did not match the structure/);
 assert.match(appViewerHostMessagesHook, /bodyString\(body\.id\)\.startsWith\("text-selection-"\)/);
@@ -4183,8 +4189,8 @@ assert.match(appShellActionsHook, /createDockDropShellActions/);
 assert.match(appShellActionsHook, /input\.payload\.paths\.length \+ input\.payload\.records\.length \+ \(input\.payload\.items\?\.length \?\? 0\)/);
 assert.match(appShellActionsHook, /\.\.\.createDocumentCloseShellActions\(\{/);
 assert.match(appShellActionsHook, /createDocumentCloseShellActions/);
-assert.match(appShellActionsHook, /confirmDiscardDirtyGridDocument\(documentId\)/);
-assert.match(appShellActionsHook, /closeGridRuntime\(targetDocumentId\)/);
+assert.match(appShellActionsHook, /confirmDiscardDirtyGridDocuments\(documentIds\)/);
+assert.match(appShellActionsHook, /for \(const documentId of documentIds\) closeGridRuntime\(documentId\)/);
 assert.match(appShellActionsHook, /forgetDirtyGridDocuments\(documentIds\)/);
 assert.match(appShellActionsHook, /\.\.\.createRecentShellActions\(\{ clearRecentStructures, pushStatus \}\)/);
 assert.match(appShellActionsHook, /pushStatus\("Recent structures cleared"\)/);
@@ -4317,7 +4323,7 @@ assert.match(appOpenActionsHook, /No recent structures to open/);
 assert.match(appOpenActionsHook, /const chooseFiles = useCallback/);
 assert.match(
   app,
-  /useAppNativeMenu\(\{\s*state,\s*actions,\s*gridMenuState:\s*activeGridMenuState,\s*openDocuments,\s*getWindowDocumentDirtySnapshot,\s*confirmSourceCloseWindow:\s*sourceEditing\.confirmCloseWindow,\s*windowDocumentDirty:\s*hasDirtyGridDocuments \|\| sourceEditing\.hasUnsavedOrSavingSessions,\s*sourceSaveEnabled,\s*saveActiveSource,\s*\}\)/s,
+  /useAppNativeMenu\(\{\s*state,\s*actions,\s*gridMenuState:\s*activeGridMenuState,\s*openDocuments,\s*getWindowDocumentDirtySnapshot,\s*confirmSourceCloseWindow:\s*sourceEditing\.confirmCloseWindow,\s*windowDocumentDirty:\s*hasDirtyGridDocuments \|\| sourceEditing\.hasUnsavedOrSavingSessions \|\| documents\.some\(document => document\.sceneUnsaved\),\s*sourceSaveEnabled,\s*saveActiveSource,\s*\}\)/s,
 );
 assert.match(app, /from "\.\/hooks\/use-app-host-runtime-operations"/);
 assert.match(app, /from "\.\/hooks\/use-app-preference-effects"/);
@@ -7157,7 +7163,7 @@ assert.match(appNativeMenuHook, /invoke<string>\("register_exit_preflight_listen
 assert.match(appNativeMenuHook, /invoke\("unregister_exit_preflight_listener", \{ registrationId/);
 assert.match(appNativeMenuHook, /invoke\("respond_to_exit_preflight"/);
 assert.match(appNativeMenuHook, /const barrier = sealWindowMutations\(\)/);
-assert.match(appNativeMenuHook, /closeTransitionActive: snapshot\.closeTransitionActive\s*\|\| barrier\.closeTransitionActive\s*\|\| barrier\.pendingCount > 0/);
+assert.match(appNativeMenuHook, /closeTransitionActive: snapshot\.closeTransitionActive\s*\|\| checkpointFailed\s*\|\| barrier\.closeTransitionActive\s*\|\| barrier\.pendingCount > 0/);
 assert.match(appNativeMenuHook, /dirty: snapshot\.dirty \|\| barrier\.pendingCount > 0/);
 assert.match(appNativeMenuHook, /revision: snapshot\.revision/);
 assert.match(appNativeMenuHook, /listen\(EXIT_TRANSITION_RESUMED_EVENT, resumeWindowMutations\)/);
@@ -8626,7 +8632,7 @@ assert.match(editorTabs, /const targetTabId = tabIdFromPoint\(clientX, clientY, 
 assert.match(editorTabs, /runShellDropActionChoices\(actions, payload, choices, \{ x: clientX, y: clientY \}\)/);
 assert.match(editorTabs, /runTabDropAtPoint\(tabId, upEvent\.clientX, upEvent\.clientY\)/);
 // A canceled native drag must clean up without running a drop action.
-assert.match(editorTabs, /onDragEnd=\{readOnly \? undefined : stopTabDrag\}/);
+assert.match(editorTabs, /onDragEnd=\{readOnly \? undefined : \(\) => \{ if \(!nativeDragPendingRef\.current\) stopTabDrag\(\); \}\}/);
 assert.match(editorTabs, /const tabDropTarget = fileLocation/);
 assert.match(editorTabs, /kind: "active-viewer" as const/);
 assert.match(editorTabs, /documentId: tabDocument\?\.id \?\? fileLocation\.documentId/);
@@ -8670,7 +8676,7 @@ assert.match(sidebarFileTreeNode, /title: item\.title/);
 assert.match(sidebarFileTreeNode, /detail: item\.relativePath/);
 assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(project\.items, project\.rootPath\)/);
 assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(projectTreeNodeItems\(node\), folderPath\)/);
-assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(\[item\]\)/);
+assert.match(sidebarFileTreeNode, /getPayload: \(\) => sidebarProjectItemsDragPayload\(menus\.selected\.has\(item\.path\)\s*\? Array\.from\(new Map\(state\.sidebarProjects\.flatMap\(project => project\.items\)\s*\.filter\(file => menus\.selected\.has\(file\.path\)\)\.map\(file => \[file\.path, file\]\)\)\.values\(\)\) : \[item\]\)/);
 assert.match(sidebarFileTreeNode, /className="project-group-row"[\s\S]*draggable=\{!renaming && project\.items\.length > 0\}/);
 assert.match(sidebarFileTreeNode, /className="project-folder-row"[\s\S]*draggable=\{node.hasItems\}/);
 assert.match(sidebarFileTreeNode, /readStructureDragPayload\(event\.dataTransfer\)/);
@@ -8764,10 +8770,11 @@ assert.match(
 );
 
 // The shell must not re-render for every pixel of a window drag: each render also
-// makes react-resizable-panels rebuild its own ResizeObservers. Measured over ten
-// 2px resize steps, quantising the width took observer rebuilds from 10 to 3.
+// makes react-resizable-panels rebuild its own ResizeObservers. Bounds now commit
+// only after the native resize session settles; frame pinning covers the gesture.
 assert.match(appLayout, /const VIEWPORT_WIDTH_STEP = 16;/u);
 assert.match(appLayout, /function quantisedViewportWidth\(\)/u);
+assert.match(appLayout, /useWindowResizeSession\(shellRef/);
 assert.doesNotMatch(appLayout, /\}, \[activeGridId, viewportWidth, rightDockOpen\]\);/u);
 
 

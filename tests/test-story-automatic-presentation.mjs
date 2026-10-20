@@ -21,6 +21,7 @@ function setup() {
     settings: () => settings,
     appearance: async value => calls.push(['appearance', value]),
     automatic: async () => calls.push(['auto']),
+    resolveCamera: value => { calls.push(['resolve', value]); return { resolved: value }; },
     camera: async value => calls.push(['camera', value]),
   };
   const original = plugin.state.setSnapshot;
@@ -32,7 +33,8 @@ test('first frame uses actual Auto, preserves source, and builds no discarded ge
   const x = setup();
   const before = structuredClone(x.snapshot);
   await x.plugin.state.setSnapshot(x.snapshot);
-  assert.deepEqual(x.calls.map(c => c[0]), ['pause', 'snapshot', 'appearance', 'auto', 'camera', 'resume', 'draw']);
+  assert.deepEqual(x.calls.map(c => c[0]), ['pause', 'snapshot', 'resolve', 'appearance', 'auto', 'camera', 'resume', 'draw']);
+  assert.deepEqual(x.calls.find(c => c[0] === 'camera')[1], { resolved: x.snapshot.camera });
   const loaded = x.calls[1][1];
   assert.deepEqual(loaded.data.tree.transforms.map(t => t.ref), ['root', 'structure']);
   assert.equal(loaded.canvas3d, undefined);
@@ -40,8 +42,10 @@ test('first frame uses actual Auto, preserves source, and builds no discarded ge
   assert.deepEqual(x.snapshot, before);
   x.calls.length = 0;
   await x.plugin.state.setSnapshot(x.snapshot);
-  assert.equal(x.calls.some(c => c[0] === 'auto'), false);
+  assert.equal(x.calls.some(c => c[0] === 'auto' || c[0] === 'resolve'), false);
   assert.equal(x.calls.find(c => c[0] === 'snapshot')[1].data, x.built);
+  // Auto already removed the components; reuse the camera resolved before it.
+  assert.deepEqual(x.calls.find(c => c[0] === 'camera')[1], { resolved: x.snapshot.camera });
 });
 
 test('appearance change invalidates cache; non-Story and explicit presets are untouched', async () => {

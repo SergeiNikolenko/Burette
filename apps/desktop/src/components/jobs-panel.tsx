@@ -8,9 +8,10 @@ import { SearchInput } from "./ui/search-input";
 import { Spinner } from "./ui/spinner";
 import type { ShellActions, ShellViewState } from "./types";
 import { Button } from "./ui/button";
+import { useSshConnections } from "../lib/ssh-projects";
 
 type JobRow = {
-  id: string; title: string; source: string; status: string; startedAt: number;
+  id: string; title: string; source: string; status: string; startedAt: number; host?: string | null;
   summary?: string | null; details?: string | null;
   cancel?: () => void; open?: () => void; report?: () => void; log?: () => void;
 };
@@ -46,6 +47,8 @@ export function JobsPanel({ state, actions, variant = "dock" }: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<JobFilter>("all");
   const page = variant === "page";
+  const connections = useSshConnections();
+  const hostName = (host: string) => connections.find(connection => connection.host === host)?.name ?? host;
   const openPath = (path?: string | null) => path ? () => { void actions.openPaths([path]); } : undefined;
   const openText = (path?: string | null) => path ? () => { void actions.openTextPaths([path]); } : undefined;
   const rows: JobRow[] = [
@@ -131,12 +134,14 @@ export function JobsPanel({ state, actions, variant = "dock" }: Props) {
                           <strong title={job.title}>{job.title}</strong>
                           <span className="jobs-panel-meta">
                             <span className="jobs-panel-status">{statusLabels[job.status] ?? job.status}</span>
+                            {job.host && <span className="jobs-panel-host">{hostName(job.host)}</span>}
                             {job.source && <span className="jobs-panel-source" title={job.source}>{job.source}</span>}
                           </span>
                         </span>
                       </> : <>
                         <ChevronRight className="jobs-panel-chevron size-3" aria-hidden />
                         <strong title={job.title}>{job.title}</strong>
+                        {job.host && <span className="jobs-panel-host">{hostName(job.host)}</span>}
                         <span className="jobs-panel-status">{active(job) ? <Spinner className="size-3" aria-hidden /> : null}{statusLabels[job.status] ?? job.status}</span>
                       </>}
                     </Button>

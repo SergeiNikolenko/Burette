@@ -59,6 +59,20 @@ Existing Burette installations receive the first Sparkle-enabled ZIP through
 the legacy updater. Preserve ZIP/SHA-256 sidecars and the older Burrete bridge.
 Do not rotate the Sparkle key or feed URL without planning that migration.
 
+### Delta updates
+
+The publisher builds Sparkle delta patches to the new app from the five newest
+feed entries (`scripts/sparkle-deltas.py`, at most three `BinaryDelta` runs at
+once on the release runner). Each patch is uploaded to the versioned release as
+`Burette-<version>-from-<build>.delta`, signed with the same Ed25519 key, and
+listed under the item's `sparkle:deltas`. Only uploaded patches enter the feed.
+A failed patch build or upload drops that patch and leaves publication intact.
+
+Sparkle picks the patch whose `deltaFrom` matches the installed build. With no
+match, or when a patch does not apply to the installed tree, it downloads the
+full ZIP. Measured 2026.10.11 → 2026.10.12: 20.9 MB patch against a 192.5 MB
+ZIP, applying to a tree byte-identical to the released app.
+
 ### Installation coverage
 
 | Existing installation | Route |

@@ -1,3 +1,5 @@
+import { isViewerFrameVisible } from "./viewer-frame-visibility";
+
 export type ActiveViewerIframeForDocument = (documentId: string, renderer?: string) => HTMLIFrameElement | null;
 export type KnownViewerMessageSource = (source: MessageEventSource | null, documentId?: string) => boolean;
 export type PostMessageToViewerSource = (source: MessageEventSource | null, payload: unknown) => void;
@@ -30,9 +32,7 @@ export function postMessageToViewerSource(source: MessageEventSource | null, pay
     ? payload.body.documentId
     : null;
   if (!documentId) return;
-  const selector = `.viewer-iframe[data-document-id="${CSS.escape(documentId)}"]`;
-  const iframe = document.querySelector<HTMLIFrameElement>(`${selector}:not([data-read-only="true"])`)
-    ?? document.querySelector<HTMLIFrameElement>(selector);
+  const iframe = activeViewerIframeForDocument(documentId);
   iframe?.contentWindow?.postMessage(payload, "*");
 }
 
@@ -49,15 +49,21 @@ export function postGridCommand(documentId: string, command: string, rowIndex?: 
 export function activeViewerIframeForDocument(documentId: string, renderer?: string) {
   const escapedId = CSS.escape(documentId);
   const rendererSelector = renderer ? `[data-renderer="${CSS.escape(renderer)}"]` : "";
-  return document.querySelector<HTMLIFrameElement>(
-    `.page-surface[data-active="true"] .viewer-iframe[data-document-id="${escapedId}"]${rendererSelector}:not([data-read-only="true"])`,
-  ) ?? document.querySelector<HTMLIFrameElement>(
-    `.viewer-iframe[data-document-id="${escapedId}"]${rendererSelector}:not([data-read-only="true"])`,
-  ) ?? document.querySelector<HTMLIFrameElement>(
-    `.page-surface[data-active="true"] .viewer-iframe[data-document-id="${escapedId}"]${rendererSelector}`,
-  ) ?? document.querySelector<HTMLIFrameElement>(
+  const frames = Array.from(document.querySelectorAll<HTMLIFrameElement>(
     `.viewer-iframe[data-document-id="${escapedId}"]${rendererSelector}`,
-  );
+  ));
+  const visible = frames.filter(isViewerFrameVisible);
+  const editable = (frame: HTMLIFrameElement) => frame.dataset.readOnly !== "true";
+  const active = (frame: HTMLIFrameElement) => Boolean(frame.closest('.page-surface[data-active]:not([data-active="false"])'));
+  // A visible pane can show the same document as a hidden history entry in the
+  // main tab. Prefer that live scene before falling back to warm runtimes.
+  return visible.find(frame => active(frame) && editable(frame))
+    ?? visible.find(editable)
+    ?? visible.find(active)
+    ?? visible[0]
+    ?? frames.find(editable)
+    ?? frames[0]
+    ?? null;
 }
 
 // xyzrender sheet items are addressed per viewer: another tab can show the
@@ -73,7 +79,7 @@ export function postToXyzrenderViewer(documentId: string | undefined, body: Reco
 // Request/ack transport for workspace commands that must finish before the next
 // operation. Both the frame and request id are checked, including hidden tabs.
 export async function requestViewerAction(documentId: string, action: Record<string, unknown>, timeoutMs = 60000) {
-  const frame = activeViewerIframeForDocument(documentId, "molstar");
+  const frame = activeViewerIframeForDocument(documentId);
   if (!frame?.contentWindow || frame.dataset.readOnly === "true") throw new Error("Open the scene and wait for it to load.");
   const source = frame.contentWindow;
   const id = `workspace-${crypto.randomUUID()}`;

@@ -17,10 +17,12 @@ async function fixture(files: string[], run: (mount: HTMLDivElement, calls: unkn
   const calls: unknown[][] = [];
   const record = (name: string) => async (...args: unknown[]) => { calls.push([name, ...args]); };
   const props = {
+    cancelBatch: record("cancel"), progress: null,
+    openBatch: (async (paths, mode, watch) => { calls.push(["batch", paths, mode, watch]); }) as unknown as Props["openBatch"],
     path: "/set", initialMode: "tabs", onClose: () => { calls.push(["close"]); },
     state: { sidebarProjects: [{ items: files.map(path => ({ path })) }] } as Props["state"],
-    actions: { openPaths: record("tabs"), openNewWindow: record("window"), openDockPayload: record("right") } as Props["actions"],
-    workflows: { sceneTargets: () => [{ id: "target", title: "Complex" }], addToScene: record("scene"), openTogether: record("together"), openAligned: record("aligned"), openPoses: record("poses") } as unknown as Props["workflows"],
+    actions: { openPaths: record("tabs"), openNewWindow: record("window"), openDockPayload: record("right"), openDockingDocument: record("together") } as Props["actions"],
+    workflows: { sceneTargets: () => [{ id: "target", title: "Complex" }], addToScene: record("scene"), openAligned: record("aligned"), openPoses: record("poses") } as unknown as Props["workflows"],
     ...patch,
   };
   const mount = document.createElement("div"); mount.className = "app-shell"; document.body.append(mount); const root = createRoot(mount);
@@ -41,7 +43,7 @@ test("folder selection supports mixed select-all, recursive discovery and exact 
     await submit(mount); expect(calls).toEqual([]);
     await act(async () => checkbox(mount, "Include subfolders").click());
     expect(mount.querySelector('[role="status"]')?.textContent).toBe("3 of 3 selected");
-    await submit(mount); expect(calls).toEqual([["tabs", proteinFiles], ["close"]]);
+    await submit(mount); expect(calls).toEqual([["batch", proteinFiles, "tabs", undefined], ["close"]]);
   });
 });
 
@@ -51,7 +53,8 @@ test("folder modes preserve scene, alignment, poses and right-panel dispatch", a
     const files = mode === "poses" ? molecules : proteins;
     await fixture(files, async (mount, calls) => {
       await submit(mount);
-      const expected = mode === "scene:target" ? ["scene", files, { id: "target", title: "Complex" }]
+      const expected = mode === "together" ? ["batch", files, "scene", undefined]
+        : mode === "scene:target" ? ["scene", files, { id: "target", title: "Complex" }]
         : mode === "right" ? ["right", { area: "right", tabKind: "files", payload: { paths: files, records: [], items: files.map(path => ({ kind: "file", path, title: path.split("/").pop() })) } }]
         : [mode, files];
       expect(calls).toEqual([expected, ["close"]]);
@@ -72,16 +75,16 @@ test("invalid combinations and more than 200 files cannot be submitted", async (
 test("in-flight open is guarded and failure stays retryable without raw error text", async () => {
   let reject!: (error: Error) => void; let opened = 0; const oldError = console.error; console.error = () => {};
   try {
-    await fixture(proteinFiles, async (mount, calls, props) => {
-      props.actions.openPaths = () => { opened++; return new Promise<void>((_resolve, fail) => { reject = fail; }); };
+    await fixture(proteinFiles, async (mount, calls) => {
       await submit(mount); await submit(mount); expect(opened).toBe(1);
-      expect(Array.from(mount.querySelectorAll<HTMLButtonElement>("button")).every(button => button.disabled)).toBe(true);
+      expect(mount.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true);
+      expect(Array.from(mount.querySelectorAll("button")).find(button => button.textContent === "Stop")?.disabled).toBe(false);
       await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
       expect(calls).toEqual([]);
       await act(async () => reject(new Error("secret path /private/data")));
       expect(mount.querySelector('[role="alert"]')?.textContent).toBe("Could not open the selected files. Try again.");
       expect(mount.textContent).not.toContain("/private/data");
       expect(mount.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(false);
-    });
+    }, { openBatch: (() => { opened++; return new Promise<void>((_resolve, fail) => { reject = fail; }); }) as Props["openBatch"] });
   } finally { console.error = oldError; }
 });

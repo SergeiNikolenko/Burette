@@ -1157,10 +1157,10 @@ button, select, input, textarea, .tab-shell, .tab, .new-tab, .chrome-button, .ta
   transition: flex-grow 180ms cubic-bezier(0.2, 0, 0, 1);
 }
 /* While a separator drag or a toggle animation is in flight the shell carries
-   data-resizing and every viewer iframe is pinned (inline, by pinViewerFrames)
-   to the pixel size it had when the gesture began, so Mol* reflows once on
-   release instead of once per frame. The frames must not take the pointer in
-   that window: an iframe under the cursor would swallow the drag. */
+   data-resizing (set by beginViewerLayoutGesture) and every viewer holds its
+   canvas, so Mol* resizes once on release instead of once per frame. The
+   frames must not take the pointer in that window: an iframe under the cursor
+   would swallow the drag. */
 .app-shell[data-resizing] .viewer-iframe {
   pointer-events: none;
 }
@@ -5629,18 +5629,18 @@ img.radix-menu-item-icon {
   height: 16px !important;
   margin-inline: var(--ketcher-toolbar-margin) !important;
 }
-.ketcher-editor-shell [data-testid="bottom-toolbar"] button,
-.ketcher-editor-shell [data-testid="left-toolbar"] button,
-.ketcher-editor-shell [data-testid="right-toolbar"] button,
+.ketcher-editor-shell [data-testid="bottom-toolbar"] button:not(.ketcher-tool-expand),
+.ketcher-editor-shell [data-testid="left-toolbar"] button:not(.ketcher-tool-expand),
+.ketcher-editor-shell [data-testid="right-toolbar"] button:not(.ketcher-tool-expand),
 .ketcher-editor-shell [class*="SpecialSymbolsButton-module_textButton"],
 .ketcher-editor-shell [class*="TextButton-module_textButton"] {
   width: var(--ketcher-toolbar-button-size) !important;
   height: var(--ketcher-toolbar-button-size) !important;
   margin: var(--ketcher-toolbar-margin) !important;
 }
-.ketcher-editor-shell [data-testid="bottom-toolbar"] button > svg,
-.ketcher-editor-shell [data-testid="left-toolbar"] button > svg,
-.ketcher-editor-shell [data-testid="right-toolbar"] button svg,
+.ketcher-editor-shell [data-testid="bottom-toolbar"] button:not([data-size]) > svg,
+.ketcher-editor-shell [data-testid="left-toolbar"] button:not([data-size]) > svg,
+.ketcher-editor-shell [data-testid="right-toolbar"] button:not([data-size]) svg,
 .ketcher-editor-shell [class*="SpecialSymbolsButton-module_textButton"] > svg,
 .ketcher-editor-shell [class*="TextButton-module_textButton"] > svg {
   width: var(--ketcher-toolbar-icon-size) !important;
@@ -5648,13 +5648,6 @@ img.radix-menu-item-icon {
   left: 50% !important;
   top: 50% !important;
   transform: translate(-50%, -50%) !important;
-}
-/* Atlas buttons centre their glyph with flex; the translate above is for
-   Ketcher's own absolutely placed svgs and pushed these past the rail edge. */
-.ketcher-editor-shell [data-testid="right-toolbar"] .atlas-button svg {
-  position: static !important;
-  margin: 0 !important;
-  transform: none !important;
 }
 .ketcher-editor-shell [data-testid="left-toolbar"],
 .ketcher-editor-shell [data-testid="right-toolbar"] {
@@ -8582,7 +8575,7 @@ img.settings-open-destination-icon {
 .sidebar-add-project { opacity: 1; }
 
 
-.ssh-dialog button:not([data-slot="button"]), .ssh-dialog input { font-weight: 400; }
+.ssh-dialog button:not([data-size]), .ssh-dialog input { font-weight: 400; }
 
 
 .ssh-project-section-title { padding: 12px 10px 4px; color: var(--text-faint); font-size: 12px; font-weight: 400; }

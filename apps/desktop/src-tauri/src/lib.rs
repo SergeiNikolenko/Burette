@@ -150,6 +150,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::clipboard::write_clipboard_text,
+            commands::popout_scene::save_popout_scene,
+            commands::popout_scene::save_popout_sheet,
+            commands::popout_scene::relay_popout_handoff,
             compute::commands::compute_capabilities,
             compute::commands::compute_register_inline_source,
             compute::commands::compute_align_grid_poses,
@@ -277,6 +280,7 @@ pub fn run() {
             commands::shell::export_diagnostics_bundle,
             commands::shell::open_logs_folder,
             commands::shell::frontend_log,
+            commands::action_journal::append_action_journal,
             commands::shell::open_external_url,
             commands::shell::existing_paths,
             commands::shell::watch_project_roots,
@@ -295,6 +299,8 @@ pub fn run() {
             commands::ssh::ssh_delete_folder,
             commands::ssh::ssh_preview,
             commands::ssh::download::ssh_download,
+            commands::ssh::remote_jobs::remote_job_list,
+            commands::ssh::remote_jobs::remote_job_resume,
             commands::shell::write_base64_file,
             commands::shell::write_text_file,
             commands::quicklook::reset_quick_look,

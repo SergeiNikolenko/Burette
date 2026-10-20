@@ -571,7 +571,9 @@ export function ProjectItem({
   const menus = useWorkspaceMenus();
   const sidebarDrag = useSidebarStructureDrag({
     actions,
-    getPayload: () => sidebarProjectItemsDragPayload([item]),
+    getPayload: () => sidebarProjectItemsDragPayload(menus.selected.has(item.path)
+      ? Array.from(new Map(state.sidebarProjects.flatMap(project => project.items)
+        .filter(file => menus.selected.has(file.path)).map(file => [file.path, file])).values()) : [item]),
     state,
   });
   const hoverCard = useSidebarHoverCard(structureHoverCard(item));
@@ -598,7 +600,7 @@ export function ProjectItem({
     if (event.target !== event.currentTarget) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      openItem();
+      if (!menus.select(item.path, event)) openItem();
     }
   };
 

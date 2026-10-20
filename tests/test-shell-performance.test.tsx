@@ -9,7 +9,7 @@ for (const key of ["window", "document", "navigator", "HTMLElement", "Element", 
 }
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import("react-dom/client");
-const { pinViewerFrames } = await import("../apps/desktop/src/components/editor-area/viewer-frame");
+const { beginViewerLayoutGesture } = await import("../apps/desktop/src/components/editor-area/viewer-frame");
 const { MarqueeName } = await import("../apps/desktop/src/components/marquee-name");
 const { useXyzrenderPlayback } = await import("../apps/desktop/src/hooks/use-xyzrender-playback");
 const { postToXyzrenderViewer, requestViewerAction, requestGridView } = await import("../apps/desktop/src/lib/viewer-bridge");
@@ -30,29 +30,36 @@ test("folder indexing marks draggable ancestors once and walks wide/deep trees w
   expect(collectProjectFolderPaths([deep]).length).toBe(12_001);
 });
 
-test("frame pinning batches layout reads, preserves styles and isolates shell roots", () => {
+test("layout gestures keep frames live and isolate overlapping shell roots", () => {
   const first = document.createElement("div"), second = document.createElement("div");
   first.innerHTML = '<iframe class="viewer-iframe"></iframe>'.repeat(3);
   second.innerHTML = '<iframe class="viewer-iframe"></iframe>';
+  document.body.append(first, second);
+  second.setAttribute("data-resizing", "prior");
   const frames = [...first.querySelectorAll("iframe")];
-  for (const frame of frames) frame.style.setProperty("width", "75%", "important");
-  frames.forEach((frame, index) => { frame.getBoundingClientRect = () => {
-    expect(frames.map(f => f.style.width)).toEqual(["75%", "75%", "75%"]);
-    return { width: index === 2 ? 0 : 500, height: 300 } as DOMRect;
-  }; });
-  const other = second.querySelector("iframe")!;
-  other.getBoundingClientRect = () => ({ width: 100, height: 100 }) as DOMRect;
-  const release = pinViewerFrames(first), nested = pinViewerFrames(first), independent = pinViewerFrames(second);
-  expect(frames.map(f => f.style.width)).toEqual(["500px", "500px", "75%"]);
+  const messages: unknown[] = [];
+  for (const frame of frames) {
+    frame.style.setProperty("width", "75%", "important");
+    frame.getBoundingClientRect = () => { throw new Error("gestures must not measure iframe layout"); };
+    frame.contentWindow!.postMessage = message => { messages.push(message.body); };
+  }
+  const release = beginViewerLayoutGesture(first), nested = beginViewerLayoutGesture(first), independent = beginViewerLayoutGesture(second);
+  expect(messages).toEqual(Array(3).fill({ type: "hostLayoutGesture", active: true }));
   release(); release();
-  expect(first.hasAttribute("data-resizing")).toBe(true);
+  expect(messages.length).toBe(3);
+  expect(first.getAttribute("data-resizing")).toBe("true");
   independent();
-  expect(second.hasAttribute("data-resizing")).toBe(false);
-  expect(first.hasAttribute("data-resizing")).toBe(true);
+  expect(second.getAttribute("data-resizing")).toBe("prior");
+  expect(first.getAttribute("data-resizing")).toBe("true");
+  const added = document.createElement("iframe"); added.className = "viewer-iframe"; first.append(added);
+  added.contentWindow!.postMessage = message => { messages.push(message.body); };
   nested();
+  expect(first.hasAttribute("data-resizing")).toBe(false);
+  expect(messages.slice(3)).toEqual(Array(4).fill({ type: "hostLayoutGesture", active: false }));
   expect(frames.map(f => [f.style.width, f.style.getPropertyPriority("width"), f.style.height])).toEqual([
     ["75%", "important", ""], ["75%", "important", ""], ["75%", "important", ""],
   ]);
+  first.remove(); second.remove();
 });
 
 test("500 inactive file names do not measure layout or allocate resize observers", async () => {
@@ -178,4 +185,40 @@ test("viewer transport releases timers/listeners on clone errors and ignores unr
     } }));
     await promise;
   } finally { viewer.remove(); clearTimeout.mockRestore(); clearInterval.mockRestore(); remove.mockRestore(); }
+});
+
+test("window resize holds canvases and batches React bounds until settling, and releases on unmount", async () => {
+  const { useWindowResizeSession } = await import("../apps/desktop/src/components/ui/use-window-resize-session");
+  const frames = new Map<number, FrameRequestCallback>();
+  const timers = new Map<number, () => void>();
+  let serial = 0, commits = 0, measures = 0;
+  const originalRequest = globalThis.requestAnimationFrame, originalCancel = globalThis.cancelAnimationFrame;
+  globalThis.requestAnimationFrame = callback => { frames.set(++serial, callback); return serial; };
+  globalThis.cancelAnimationFrame = id => { frames.delete(id); };
+  const setTimer = spyOn(window, "setTimeout").mockImplementation(((callback: () => void) => { timers.set(++serial, callback); return serial; }) as typeof window.setTimeout);
+  const clearTimer = spyOn(window, "clearTimeout").mockImplementation(id => { timers.delete(Number(id)); });
+  const shell = document.createElement("div");
+  const iframe = document.createElement("iframe"); iframe.className = "viewer-iframe";
+  iframe.getBoundingClientRect = () => { measures++; return { width: 500, height: 300 } as DOMRect; };
+  shell.append(iframe); document.body.append(shell);
+  const mount = document.createElement("div"); document.body.append(mount); const root = createRoot(mount);
+  const ref = { current: shell };
+  function Fixture() { useWindowResizeSession(ref, () => { commits++; }); return null; }
+  const tick = () => { const pending = [...frames.values()]; frames.clear(); pending.forEach(callback => callback(0)); };
+  try {
+    await act(async () => root.render(<Fixture />));
+    for (let i = 0; i < 200; i++) window.dispatchEvent(new browser.Event("resize"));
+    expect([measures, commits, timers.size, iframe.style.width, shell.hasAttribute("data-resizing")]).toEqual([0, 0, 1, "", true]);
+    await act(async () => { const pending = [...timers.values()]; timers.clear(); pending.forEach(callback => callback()); });
+    expect(commits).toBe(1);
+    tick(); expect(shell.hasAttribute("data-resizing")).toBe(true);
+    tick(); expect(shell.hasAttribute("data-resizing")).toBe(false);
+    expect(shell.querySelector("iframe")).toBe(iframe);
+    window.dispatchEvent(new browser.Event("resize"));
+    await act(async () => root.unmount());
+    expect([iframe.style.width, shell.hasAttribute("data-resizing"), timers.size, frames.size]).toEqual(["", false, 0, 0]);
+  } finally {
+    setTimer.mockRestore(); clearTimer.mockRestore(); globalThis.requestAnimationFrame = originalRequest; globalThis.cancelAnimationFrame = originalCancel;
+    shell.remove(); mount.remove();
+  }
 });

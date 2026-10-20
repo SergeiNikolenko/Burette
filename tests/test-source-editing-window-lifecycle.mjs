@@ -40,7 +40,7 @@ assert.match(nativeMenuHook, /onCloseRequested\(\(event\) => \{[\s\S]*event\.pre
 assert.match(nativeMenuHook, /case "file\.close-window":\s*await closeCurrentWindow\(\);/su);
 assert.match(nativeMenuHook, /const closeCurrentWindow = useCallback\(async \(\) => \{[\s\S]*if \(windowCount <= 1\) \{\s*void invoke\("request_app_quit"\)[\s\S]*const barrier = sealWindowMutations\(\);\s*const snapshot = getWindowDocumentDirtySnapshotRef\.current\(\);\s*const decision = await decideWindowClose\(\{/su);
 assert.match(nativeMenuHook, /sourceConfirm: \(\) => confirmSourceCloseWindowRef\.current\(\)/u);
-assert.match(nativeMenuHook, /if \(decision === "abort"\) \{\s*resumeWindowMutations\(\);\s*return;/su);
+assert.match(nativeMenuHook, /if \(decision === "abort" \|\| nativePopoutBusy\(\)\) \{\s*resumeWindowMutations\(\);\s*return;/su);
 assert.match(app, /confirmSourceCloseWindow: sourceEditing\.confirmCloseWindow/u);
 assert.match(app, /gridDirty: gridSnapshot\.dirty,\s*sourceDirty: sourceSnapshot\.dirty/su);
 

@@ -126,6 +126,7 @@ console.log('Iframe cancellation blocks the pending drop, and a new drag works n
 const nativeEffects = [];
 let nativeDrop;
 const nativeSaved = [];
+let nativeFileTab = null;
 const folder = document.createElement('div');
 folder.dataset.dropDirectory = '/project/native';
 folder.getBoundingClientRect = () => ({ left: 10, top: 180, width: 200, height: 30 });
@@ -134,6 +135,12 @@ const nativeDeps = { ...dependencies, CustomEvent: window.CustomEvent, requestAn
   isTauriRuntime: () => true, useEffect: fn => nativeEffects.push(fn),
   getCurrentWindow: () => ({ onDragDropEvent: fn => { nativeDrop = fn; return Promise.resolve(() => {}); } }),
   trackTauriListener: () => () => {},
+  nativeFileDragTabId: paths => paths[0] === '/data/tab.sdf' ? nativeFileTab : null,
+  nativeFileDragPayload: (paths, options) => {
+    if (paths[0] !== '/data/tab.sdf' || !nativeFileTab) return null;
+    if (options?.consume) nativeFileTab = null;
+    return { paths, records: [] };
+  },
 };
 Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true });
 const nativeHook = new Function(...Object.keys(nativeDeps), ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText + '\nreturn useOpenDrop;')(...Object.values(nativeDeps));
@@ -190,6 +197,16 @@ nativeDrop({ payload: { type: 'enter', paths: [], position: { x: 90, y: 198 } } 
 window.dispatchEvent(new window.DragEvent('dragend'));
 nativeDrop({ payload: { type: 'drop', paths: [], position: { x: 90, y: 198 } } });
 assert.equal(reordered.length, 2, 'Returning tab drag must retain reorder identity');
+
+// AppKit file-URL drags retain tab identity even though there is no HTML MIME.
+nativeFileTab = 'native-file-tab';
+nativeDrop({ payload: { type: 'enter', paths: ['/data/tab.sdf'], position: { x: 90, y: 198 } } });
+nativeDrop({ payload: { type: 'leave' } });
+nativeDrop({ payload: { type: 'enter', paths: ['/data/tab.sdf'], position: { x: 90, y: 198 } } });
+nativeDrop({ payload: { type: 'drop', paths: ['/data/tab.sdf'], position: { x: 90, y: 198 } } });
+assert.deepEqual(reordered.at(-1), { tabId: 'native-file-tab', x: 90 });
+assert.equal(nativeFileTab, null, 'Tab reorder consumes the native payload');
+assert.equal(nativeSaved.length, 2, 'Native file tab reorder never imports a duplicate');
 
 // Late native over/drop after Escape cannot reactivate a target or save files.
 document.elementFromPoint = () => folder;

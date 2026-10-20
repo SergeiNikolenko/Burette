@@ -29,6 +29,7 @@ import type { KetcherLocation } from "./editor-area/page-kinds";
 import type { KetcherEditorApi } from "./ketcher-editor";
 import { registerKetcherAgentController, unregisterKetcherAgentController, type KetcherPersistWriter } from "../lib/ketcher-agent";
 import { KetcherPersistRequestPrompt } from "./ketcher/persist-request";
+import { requestContextualGuide } from "./onboarding/request";
 import { RadixDropdownMenu } from "./radix-menu";
 import { ChevronDown, Minus, Plus, ColorTheme, Grid, Cube, Camera } from "@/components/ui/app-icons";
 import "./ketcher/workspace.css";
@@ -533,6 +534,11 @@ export function KetcherPage({
     if (!ketcher) return;
     return ketcher.subscribeZoom((zoom) => setKetcherZoom(normalizeKetcherZoom(zoom)));
   }, [ketcher]);
+
+  // Introduce the editor once it is usable in the tab the user is looking at.
+  useEffect(() => {
+    if (ketcher && isActive) requestContextualGuide("ketcher");
+  }, [isActive, ketcher]);
 
   useEffect(() => {
     // The compensated scale frame changes the editor's layout size whenever the

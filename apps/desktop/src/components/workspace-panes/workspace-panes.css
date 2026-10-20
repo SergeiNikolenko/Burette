@@ -1,28 +1,11 @@
-/* Screens placed in the side panel or the floating window stay children of the
-   main page stack and are laid out over their pane with position: fixed.
+/* A screen placed in the floating window stays a child of the main page stack
+   and is laid out over the window with position: fixed.
    Moving an iframe to another parent reloads it, so a viewer would restart on
    every move; repositioning the surface keeps it running. */
-.page-stack {
-  /* Read before a placed surface overrides --chrome-height for its content. */
-  --pane-shell-chrome-height: var(--chrome-height);
-}
-
 .page-stack > .page-surface[data-pane][data-pane-shown] {
   display: block;
   visibility: visible;
   pointer-events: auto;
-}
-
-.page-stack > .page-surface[data-pane="side"] {
-  position: fixed;
-  inset: auto;
-  top: calc(var(--pane-shell-chrome-height) + var(--side-pane-header-height));
-  bottom: 0;
-  right: var(--right-dock-edge, var(--right-dock-width, 0px));
-  width: var(--side-pane-edge, 0px);
-  z-index: 2;
-  --chrome-height: 0px;
-  background: var(--bg-base);
 }
 
 .page-stack > .page-surface[data-pane="floating"] {
@@ -44,10 +27,6 @@
   pointer-events: none;
 }
 
-.app-shell {
-  --side-pane-header-height: 44px;
-}
-
 /* Non-file screens (Jobs) fill the stage below the tab strip. */
 .screen-stage {
   position: absolute;
@@ -63,35 +42,6 @@
   min-height: 0;
   overflow: auto;
 }
-
-/* Pane header: the switcher on the start side, pane actions on the end side. */
-.side-pane {
-  position: relative;
-  /* Above a collection grid that spills out of the main column. */
-  z-index: 1;
-  width: 100%;
-  height: 100%;
-  padding-top: var(--chrome-height);
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-base);
-  border-left: 1px solid var(--line-subtler);
-}
-.side-pane-header {
-  height: var(--side-pane-header-height);
-  flex: 0 0 var(--side-pane-header-height);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 8px;
-  border-bottom: 1px solid var(--line-subtler);
-  box-sizing: border-box;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.side-pane-header-spacer { flex: 1; min-width: 0; }
-.side-pane-body { flex: 1; min-height: 0; }
 
 .pane-switcher {
   min-width: 0;

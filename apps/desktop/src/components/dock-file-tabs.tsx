@@ -6,6 +6,7 @@ import { showNativeContextMenu } from "./native-context-menu";
 import { FileBlank, Atom } from "./ui/app-icons";
 import { Button } from "./ui/button";
 import { ShortcutTooltip } from "./shortcut-tooltip";
+import { requestContextualGuide } from "./onboarding/request";
 
 export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, actions, state }: {
   area: DockArea;
@@ -29,12 +30,16 @@ export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, 
         event.preventDefault();
         event.stopPropagation();
         const capabilities = fileCapabilities(entry.path);
+        const tab = event.currentTarget.closest(".dock-tab-shell") ?? event.currentTarget;
         const renderer = (rendererMode: "auto" | "molstar" | "xyzrender-external") => {
           onTextView(entry.key, false);
           return actions.openDockPayload({ area, tabKind: "files", payload, rendererMode });
         };
         const items = [
-          ...(capabilities.text ? [menuItem("dock-file-text", "Text", () => { select(); onTextView(entry.key, true); })] : []),
+          ...(capabilities.text ? [menuItem("dock-file-text", "Text", () => {
+            select(); onTextView(entry.key, true);
+            if (entry.kind === "document") requestContextualGuide("source-dock", tab);
+          })] : []),
           menuItem("dock-file-preview", "Preview", () => {
             if (entry.kind === "text-document") return renderer("auto");
             select(); onTextView(entry.key, false);

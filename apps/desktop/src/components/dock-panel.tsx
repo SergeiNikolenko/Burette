@@ -12,6 +12,7 @@ import { XyzrenderProperties } from "./xyzrender-properties";
 import { StoryMarkdown } from "./story-markdown";
 import { DockHeader } from "./dock-header";
 import { DockFileTabs } from "./dock-file-tabs";
+import { requestContextualGuide } from "./onboarding/request";
 import { useDropHighlightReset } from "../hooks/use-drop-highlight-reset";
 import { Suspense, lazy, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -146,6 +147,13 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     [activeTab.kind, area, state.dockDroppedStructures],
   );
   const autoOpenedXyzrenderDocumentId = useRef<string | null>(null);
+  // Point at the Text tab once it exists; the add menu creates it on this action.
+  const showDockTab = (kind: DockTabKind, open: () => void) => {
+    open();
+    if (kind === "text" && activeStructureDocument) {
+      window.requestAnimationFrame(() => requestContextualGuide("source-dock", document.getElementById(`${panelId}-text`)));
+    }
+  };
 
   useEffect(() => {
     if (area !== "right") return;
@@ -175,7 +183,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
         id: `dock-${area}-${kind}`,
         text: DOCK_TAB_LABELS[kind],
         disabled: tabs.some((tab) => tab.kind === kind),
-        action: () => actions.openDockTab(area, kind),
+        action: () => showDockTab(kind, () => actions.openDockTab(area, kind)),
       })),
       { x: rect.left, y: rect.bottom + 6 },
     );
@@ -228,7 +236,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
         <DockHeader area={area} tabs={visibleTabs} activeKind={activeTab.kind} panelId={panelId} readOnly={readOnly}
           transientTabId={rawTabs.some(tab => tab.kind === "xyzrender") ? undefined : visibleTabs.find(tab => tab.kind === "xyzrender")?.id}
           fileDragProps={{ ...filesTabDrag, draggable: Boolean(filesTabDragPayload) }}
-          onSelect={kind => actions.setDockActiveTab(area, kind)} onClose={id => actions.closeDockTab(area, id)}
+          onSelect={kind => showDockTab(kind, () => actions.setDockActiveTab(area, kind))} onClose={id => actions.closeDockTab(area, id)}
           onAdd={showAddMenu} onHide={() => actions.setDockOpen(area, false)} />
         <div className="dock-panel-body" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${activeTab.kind}`} tabIndex={0}>
         <DockPanelContent

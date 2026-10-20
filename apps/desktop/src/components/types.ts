@@ -133,11 +133,13 @@ export type ChemicalEditorTarget = {
   matchReason: string;
 };
 
+export type FileOpenOptions = { shouldApply?: () => boolean; requireSuccess?: boolean };
+
 export type ShellActions = {
   chooseFiles: () => void | Promise<void>;
-  openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external" }) => void | Promise<void>;
+  openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external"; shouldApply?: () => boolean }) => void | Promise<void>;
   openTextPaths: (paths: string[]) => void | Promise<void>;
-  openPaths: (paths: string[]) => void | Promise<void>;
+  openPaths: (paths: string[], options?: FileOpenOptions) => void | Promise<void>;
   openStructureRecords: (records: StructureDragPayload["records"], directory?: string) => void | Promise<void>;
   openStructureUrlInMolstar: (url: string) => void | Promise<void>;
   openRecentStructure: (structure: RecentStructure) => void | Promise<void>;
@@ -207,7 +209,7 @@ export type ShellActions = {
   findSimilarInFile: (documentId: string) => void | Promise<void>;
   openRGroupDecomposition: (documentId: string) => void;
   checkConformerStatus: () => void | Promise<void>;
-  runConformerOperation: (operation: ConformerOperation, document?: ViewerDocument | null, selection?: StructureViewerAction | null) => void | Promise<void>;
+  runConformerOperation: (operation: ConformerOperation, document?: ViewerDocument | null, selection?: StructureViewerAction | null, target?: { scenePath?: string }) => void | Promise<void>;
   cancelConformerJob: (jobId: string) => void | Promise<void>;
   setConformerSettings: (settings: ConformerSettings) => void;
   clearConformerJobs: () => void;
@@ -217,7 +219,7 @@ export type ShellActions = {
   chooseXtbExecutable: () => void | Promise<void>;
   clearXtbExecutableSelection: () => void | Promise<void>;
   installXtb: () => void | Promise<void>;
-  runXtbActiveOperation: (operation: XtbOperation) => void | Promise<void>;
+  runXtbActiveOperation: (operation: XtbOperation, document?: ViewerDocument | null) => void | Promise<void>;
   runXtbJob: (request: XtbRunRequest, options?: { title?: string; inputLabel?: string; openPrimary?: boolean; openOptimizedPoseInCurrentView?: boolean; poseSourceDocument?: ViewerDocument | null }) => void | Promise<void>;
   cancelXtbJob: (jobId: string) => void | Promise<void>;
   runXtbKetcherSketch: (request: KetcherSketchRequest) => void | Promise<void>;
@@ -260,7 +262,7 @@ export type ShellActions = {
   closeOtherTabs: (id: string) => void | Promise<void>;
   closeActiveDocument: () => void | Promise<void>;
   clearAllDocuments: () => void | Promise<void>;
-  openDockingDocument: (receptorPath: string, ligandPaths: string[], options?: { activePose?: number | null; sceneMode?: DockingSceneMode | null }) => void | Promise<ViewerDocument | null>;
+  openDockingDocument: (receptorPath: string, ligandPaths: string[], options?: { activePose?: number | null; sceneMode?: DockingSceneMode | null; shouldApply?: () => boolean }) => void | Promise<ViewerDocument | null>;
   openDockingStructureRecords: (receptorPath: string, ligandPaths: string[], records: StructureDragPayload["records"]) => void | Promise<void>;
   appendGridRecords: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
   addXyzrenderSheetItems: (targetDocumentId: string, payload: StructureDragPayload) => boolean;

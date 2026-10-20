@@ -17,53 +17,36 @@ import {
   replayPendingGridCloseTransitionRequests,
 } from "../../lib/window-mutation-barrier";
 
-// Every mounted viewer iframe, frozen at the pixel size it had when the shell
-// started a layout gesture. `.viewer-iframe` is sized 100% x 100%, so a panel
-// drag re-laid the iframe out on every frame and Mol* inside redrew each time;
-// pinning the frame for the duration of the gesture (measured earlier: ~30 to
-// ~50 fps on a dock drag) leaves one reflow for the release. The pin is
-// reference counted because a drag can overlap a toggle animation, and the
-// shell carries `data-resizing` while any pin is held so the CSS can drop
-// pointer events on the frames (an iframe under the pointer would otherwise
-// swallow the drag).
-const framePins = new WeakMap<HTMLElement, { depth: number; restore: () => void }>();
+// Frames follow the shell during panel and window gestures; only Mol* holds
+// its canvas until the final size. Keep overlapping gestures scoped per shell
+// so detached panes release independently and preserve prior resize state.
+const layoutGestures = new WeakMap<HTMLElement, { depth: number; resizing: string | null }>();
 
-export function pinViewerFrames(root: HTMLElement): () => void {
-  let pin = framePins.get(root);
-  if (!pin) {
-    // Read every box before writing any size: interleaved reads and writes
-    // force layout once per document when many tabs are mounted.
-    const frames = Array.from(root.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe"), frame => ({
-      frame, rect: frame.getBoundingClientRect(),
-      width: frame.style.getPropertyValue("width"), widthPriority: frame.style.getPropertyPriority("width"),
-      height: frame.style.getPropertyValue("height"), heightPriority: frame.style.getPropertyPriority("height"),
-    })).filter(({ rect }) => rect.width > 0 && rect.height > 0);
-    const resizing = root.getAttribute("data-resizing");
-    for (const { frame, rect } of frames) {
-      frame.style.width = `${rect.width}px`;
-      frame.style.height = `${rect.height}px`;
-    }
-    root.setAttribute("data-resizing", "true");
-    pin = { depth: 0, restore: () => {
-      for (const { frame, width, widthPriority, height, heightPriority } of frames) {
-        if (width) frame.style.setProperty("width", width, widthPriority);
-        else frame.style.removeProperty("width");
-        if (height) frame.style.setProperty("height", height, heightPriority);
-        else frame.style.removeProperty("height");
-      }
-      if (resizing === null) root.removeAttribute("data-resizing");
-      else root.setAttribute("data-resizing", resizing);
-    } };
-    framePins.set(root, pin);
+function postLayoutGesture(root: HTMLElement, active: boolean) {
+  for (const frame of root.querySelectorAll<HTMLIFrameElement>("iframe.viewer-iframe")) {
+    frame.contentWindow?.postMessage({ source: "burette-host", body: { type: "hostLayoutGesture", active } }, "*");
   }
-  pin.depth++;
-  let released = false;
+}
+
+export function beginViewerLayoutGesture(root: HTMLElement): () => void {
+  let gesture = layoutGestures.get(root);
+  if (!gesture) {
+    gesture = { depth: 0, resizing: root.getAttribute("data-resizing") };
+    layoutGestures.set(root, gesture);
+    root.setAttribute("data-resizing", "true");
+    postLayoutGesture(root, true);
+  }
+  gesture.depth++;
+  let ended = false;
   return () => {
-    if (released) return;
-    released = true;
-    if (--pin.depth > 0) return;
-    pin.restore();
-    framePins.delete(root);
+    if (ended) return;
+    ended = true;
+    if (--gesture.depth > 0) return;
+    // Include frames mounted mid-gesture; releasing an unheld canvas is safe.
+    postLayoutGesture(root, false);
+    if (gesture.resizing === null) root.removeAttribute("data-resizing");
+    else root.setAttribute("data-resizing", gesture.resizing);
+    layoutGestures.delete(root);
   };
 }
 

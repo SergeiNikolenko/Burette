@@ -27,6 +27,8 @@ const supportedModes = new Set(['auto', 'browser-preview', 'browser-agent-shell'
 const MAX_AGENT_ACTION_HISTORY = 128;
 const MAX_PENDING_AGENT_ACTIONS = 64;
 const MAX_ACTION_INPUT_BYTES = 256 * 1024;
+const MAX_CAPTURE_EDGE = 8192;
+const CAPTURE_MIME_TYPES = new Map([['png', 'image/png'], ['jpeg', 'image/jpeg'], ['webp', 'image/webp']]);
 
 function usage() {
   console.error(`Usage:
@@ -43,6 +45,7 @@ function usage() {
   node scripts/burette-agent.mjs act --session-dir <desktop-agent-session> '<json-action>' [--action-file action.json] [--stdin] [--wait-ms 5000]
   node scripts/burette-agent.mjs scene <reset-camera|hide-waters|show-waters|show-surface|color-by-chain|focus-ligand|contacts> --session-dir <session> [--wait-ms 5000]
   node scripts/burette-agent.mjs render-panel --session-dir <desktop-agent-session> --kind markdown --file /tmp/notes.md [--area right]
+  node scripts/burette-agent.mjs capture --session-dir <session> | --url <url> [--output /tmp/view.png] [--width 1600 --height 1000] [--format png|jpeg|webp] [--quality 0.9] [--transparent] [--auto-crop] [--overwrite] [--wait-ms 15000]
   node scripts/burette-agent.mjs story-create --spec /tmp/story.json --output /tmp/story.mvsx [--asset protein.pdb=/path/protein.pdb]
   node scripts/burette-agent.mjs story-validate --file /tmp/story.mvsx
   node scripts/burette-agent.mjs story-template-list
@@ -147,6 +150,24 @@ function parseOptions(args) {
       out.overwrite = true;
       continue;
     }
+    if (arg === '--width' || arg === '--height' || arg === '--quality') {
+      out[arg.slice(2)] = Number(requireValue(args, index, arg));
+      index += 1;
+      continue;
+    }
+    if (arg === '--format') {
+      out.format = requireValue(args, index, arg);
+      index += 1;
+      continue;
+    }
+    if (arg === '--transparent') {
+      out.transparent = true;
+      continue;
+    }
+    if (arg === '--auto-crop') {
+      out.autoCrop = true;
+      continue;
+    }
     if (arg === '--area') {
       out.area = requireValue(args, index, arg);
       index += 1;
@@ -226,6 +247,10 @@ async function main() {
   }
   if (command === 'render-panel' || command === 'render') {
     await renderPanel(options);
+    return;
+  }
+  if (command === 'capture') {
+    await capture(options);
     return;
   }
   if (command === 'story-create') {
@@ -824,19 +849,20 @@ async function scene(options) {
 }
 
 async function act(options) {
-  if (options.sessionDir) {
-    await actDesktopSession(options);
-    return;
-  }
-  if (!options.url) fail('INVALID_ARGS', 'act requires url (--url) with the tokenized workspace URL, or sessionDir (--session-dir).', 2);
+  const { result } = await runAgentAction(options, () => readAction(options));
+  console.log(JSON.stringify({ ok: true, apiVersion, result }, null, 2));
+}
+
+// Resolves the workspace transport, queues one action and, with waitMs, waits
+// for its result. sessionDir is null for tokenized browser-preview sessions.
+async function runAgentAction(options, loadAction) {
+  const waitMs = Number.isFinite(options.waitMs) ? options.waitMs : 0;
+  if (options.sessionDir) return { sessionDir: options.sessionDir, result: await runSessionAction(options.sessionDir, loadAction, waitMs) };
+  if (!options.url) fail('INVALID_ARGS', `${options.command || 'act'} requires url (--url) with the tokenized workspace URL, or sessionDir (--session-dir).`, 2);
   const localUrl = requireLocalAgentUrl(options.url, 'INVALID_URL');
   const shellSessionDir = await browserShellSessionDir(localUrl.toString());
-  if (shellSessionDir) {
-    await actDesktopSession({ ...options, sessionDir: shellSessionDir });
-    return;
-  }
-  let action = await readAction(options);
-  action = await normalizeAgentActionPaths(action);
+  if (shellSessionDir) return { sessionDir: shellSessionDir, result: await runSessionAction(shellSessionDir, loadAction, waitMs) };
+  const action = await normalizeAgentActionPaths(await loadAction());
   const response = await fetch(buildAgentUrl(localUrl, '/__agent/act'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -847,13 +873,97 @@ async function act(options) {
     fail('ACT_FAILED', `Action request failed with HTTP ${response.status}.`, 1, body);
   }
   const parsed = parseJsonBody(body, 'Action response was not JSON.');
-  const waitMs = Number.isFinite(options.waitMs) ? options.waitMs : 0;
-  if (!waitMs || !parsed.action?.id) {
-    console.log(JSON.stringify({ ok: true, apiVersion, result: parsed }, null, 2));
-    return;
+  if (!waitMs || !parsed.action?.id) return { sessionDir: null, result: parsed };
+  return { sessionDir: null, result: await waitForAction(localUrl, parsed.action.id, waitMs) };
+}
+
+async function capture(options) {
+  const format = options.format || 'png';
+  const mimeType = CAPTURE_MIME_TYPES.get(format);
+  if (!mimeType) fail('INVALID_ARGS', 'capture --format must be png, jpeg, or webp.', 2);
+  const args = { format };
+  if (options.width !== undefined || options.height !== undefined) {
+    const valid = [options.width, options.height].every(value => Number.isInteger(value) && value > 0 && value <= MAX_CAPTURE_EDGE);
+    if (!valid) fail('INVALID_ARGS', `capture --width and --height must both be integers from 1 to ${MAX_CAPTURE_EDGE}.`, 2);
+    args.width = options.width;
+    args.height = options.height;
   }
-  const observed = await waitForAction(localUrl, parsed.action.id, waitMs);
-  console.log(JSON.stringify({ ok: true, apiVersion, result: observed }, null, 2));
+  if (options.quality !== undefined) {
+    if (!(options.quality >= 0 && options.quality <= 1)) fail('INVALID_ARGS', 'capture --quality must be a number from 0 to 1.', 2);
+    args.quality = options.quality;
+  }
+  if (options.transparent) args.transparent = true;
+  if (options.autoCrop) args.autoCrop = true;
+  const outputPath = options.output ? resolve(options.output) : null;
+  if (outputPath && !options.overwrite && existsSync(outputPath)) {
+    fail('OUTPUT_EXISTS', `${outputPath} already exists. Pass --overwrite to replace it.`, 2);
+  }
+
+  const { sessionDir, result } = await runAgentAction(
+    { ...options, command: 'capture', waitMs: Number.isFinite(options.waitMs) ? options.waitMs : 15000 },
+    async () => ({ type: 'screenshot', args }),
+  );
+  let actionResult = result.action?.result || null;
+  if (actionResult?.truncated && actionResult.artifact?.url) {
+    // Tokenized previews keep large action results out of observe as artifacts.
+    const response = await fetch(buildAgentUrl(options.url, actionResult.artifact.url));
+    if (!response.ok) fail('CAPTURE_FAILED', `Capture artifact request failed with HTTP ${response.status}.`, 1);
+    actionResult = parseJsonBody(await response.text(), 'Capture artifact was not JSON.');
+  }
+  const image = /^data:(image\/[a-z+]+);base64,(.+)$/su.exec(actionResult?.result?.dataUri || '');
+  if (!result.ok || actionResult?.ok === false || !image) {
+    fail('CAPTURE_FAILED', actionResult?.error?.message || 'The active viewer did not return an image.', 1, {
+      action: result.action ? { id: result.action.id, status: result.action.status, error: actionResult?.error || null } : null,
+    });
+  }
+  const bytes = Buffer.from(image[2], 'base64');
+  const extension = [...CAPTURE_MIME_TYPES].find(([, mime]) => mime === image[1])?.[0] || 'png';
+  const path = outputPath || resolve(
+    sessionDir ? resolve(sessionDir, 'captures') : resolve(tmpdir(), 'burette-agent-captures'),
+    `capture-${new Date().toISOString().replace(/[:.]/gu, '-')}-${randomUUID().slice(0, 8)}.${extension === 'jpeg' ? 'jpg' : extension}`,
+  );
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, bytes, { flag: options.overwrite ? 'w' : 'wx' });
+  if (sessionDir && result.action?.id) await replaceCapturedImage(sessionDir, result.action.id, path);
+  console.log(JSON.stringify({
+    ok: true,
+    apiVersion,
+    result: {
+      path,
+      mimeType: image[1],
+      byteCount: bytes.length,
+      ...imageDimensions(bytes),
+      transparent: args.transparent === true,
+      actionId: result.action?.id || null,
+    }
+  }, null, 2));
+}
+
+// The viewer reports the image inline; keep actions.json small by replacing it
+// with the written path once the capture is on disk.
+async function replaceCapturedImage(sessionDir, actionId, path) {
+  const actionsPath = resolve(sessionDir, 'actions.json');
+  const actionsFile = await readJsonFile(actionsPath, null);
+  const item = actionsFile?.actions?.find?.(action => action?.id === actionId);
+  if (!item?.result?.result?.dataUri) return;
+  const { dataUri: _dataUri, ...rest } = item.result.result;
+  item.result.result = { ...rest, path };
+  await writeJsonFile(actionsPath, actionsFile);
+}
+
+function imageDimensions(bytes) {
+  if (bytes.length >= 24 && bytes.readUInt32BE(0) === 0x89504e47 && bytes.toString('latin1', 12, 16) === 'IHDR') {
+    return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+  }
+  // JPEG: walk segments to the first start-of-frame marker.
+  for (let offset = 2; bytes[0] === 0xff && bytes[1] === 0xd8 && offset + 9 < bytes.length;) {
+    const marker = bytes[offset + 1];
+    if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) {
+      return { width: bytes.readUInt16BE(offset + 7), height: bytes.readUInt16BE(offset + 5) };
+    }
+    offset += 2 + bytes.readUInt16BE(offset + 2);
+  }
+  return { width: null, height: null };
 }
 
 async function renderPanel(options) {
@@ -934,13 +1044,13 @@ async function observeDesktopSession(options) {
   }, null, 2));
 }
 
-async function actDesktopSession(options) {
-  const session = await assertSessionResponsive(options.sessionDir);
-  let action = await readAction(options);
+async function runSessionAction(sessionDir, loadAction, waitMs) {
+  const session = await assertSessionResponsive(sessionDir);
+  let action = await loadAction();
   assertSessionActionSupported(action);
   action = await normalizeAgentActionPaths(action);
   await assertActionPathsAllowed(action, session);
-  const actionsPath = resolve(options.sessionDir, 'actions.json');
+  const actionsPath = resolve(sessionDir, 'actions.json');
   const actionsFile = await readJsonFile(actionsPath, { apiVersion: 'burette-agent-control/v1', actions: [] });
   const itemId = `act-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
   const item = {
@@ -956,13 +1066,8 @@ async function actDesktopSession(options) {
   if (pendingCount >= MAX_PENDING_AGENT_ACTIONS) fail('ACTION_QUEUE_FULL', `Agent session already has ${pendingCount} pending actions.`, 1);
   const actions = boundedAgentActions([...existingActions, item]);
   await writeJsonFile(actionsPath, { apiVersion: 'burette-agent-control/v1', actions });
-  const waitMs = Number.isFinite(options.waitMs) ? options.waitMs : 0;
-  if (!waitMs) {
-    console.log(JSON.stringify({ ok: true, apiVersion, result: { ok: true, action: publicDesktopAction(item) } }, null, 2));
-    return;
-  }
-  const result = await waitForDesktopAction(actionsPath, resolve(options.sessionDir, 'observe.json'), item.id, waitMs);
-  console.log(JSON.stringify({ ok: true, apiVersion, result }, null, 2));
+  if (!waitMs) return { ok: true, action: publicDesktopAction(item) };
+  return waitForDesktopAction(actionsPath, resolve(sessionDir, 'observe.json'), item.id, waitMs);
 }
 
 async function readAction(options) {

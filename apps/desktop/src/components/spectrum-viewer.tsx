@@ -1,5 +1,5 @@
 import { Spinner } from "@/components/ui/spinner";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,7 @@ import { parseSpectrumFile, spectrumSummary, type SpectrumDocument, type Spectru
 import { useSpectrumPeakSelection } from "../lib/spectrum-selection";
 import type { ViewerDocument } from "../types";
 import { formatBytes } from "./format";
+import { requestContextualGuide } from "./onboarding/request";
 
 type PlotlyModule = {
   newPlot: (element: HTMLElement, traces: unknown[], layout: unknown, config: unknown) => Promise<unknown>;
@@ -51,9 +52,18 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
   const { activePeakIndex, selectedPeakIndices, selectPeak, clearPeakSelection } = useSpectrumPeakSelection(document.id);
   const [normalize, setNormalize] = useState(true);
   const [labelTopPeaks, setLabelTopPeaks] = useState(true);
+  const toolbarRef = useRef<HTMLElement>(null);
+  const guideRequestedRef = useRef(false);
+  // Asked once per opened document, after its plot is first drawn.
+  const onPlotDrawn = useCallback(() => {
+    if (guideRequestedRef.current) return;
+    guideRequestedRef.current = true;
+    requestContextualGuide("spectra", toolbarRef.current);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
+    guideRequestedRef.current = false;
     setFile(null);
     setError(null);
     setSelectedIndex(0);
@@ -113,7 +123,7 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
 
   return (
     <div className={embedded ? "spectrum-embedded" : "spectrum-stage"}>
-      <header className="spectrum-toolbar">
+      <header ref={toolbarRef} className="spectrum-toolbar">
         <div className="spectrum-title">
           <span>{document.title}</span>
           <Badge variant="secondary">{file.format.toUpperCase()}</Badge>
@@ -139,6 +149,7 @@ export function SpectrumViewer({ document, embedded = false }: SpectrumViewerPro
             activePeakIndex={activePeakIndex}
             selectedPeakIndices={selectedPeakIndices}
             onPeakSelect={selectPeak}
+            onDrawn={onPlotDrawn}
           />
         </section>
       </main>
@@ -265,6 +276,7 @@ function SpectrumPlot({
   activePeakIndex,
   selectedPeakIndices,
   onPeakSelect,
+  onDrawn,
 }: {
   spectrum: SpectrumDocument;
   normalize: boolean;
@@ -272,6 +284,7 @@ function SpectrumPlot({
   activePeakIndex: number | null;
   selectedPeakIndices: number[];
   onPeakSelect: (index: number | null) => void;
+  onDrawn: () => void;
 }) {
   const plotRef = useRef<HTMLDivElement>(null);
   const plotlyRef = useRef<PlotlyModule | null>(null);
@@ -283,12 +296,13 @@ function SpectrumPlot({
     void import("plotly.js-basic-dist-min").then((module) => {
       if (disposed || !plotRef.current) return;
       plotlyRef.current = module.default as PlotlyModule;
-      return renderPlot(plotlyRef.current, plotRef.current, spectrum, peaks, labels, normalize, activePeakIndex, selectedPeakIndices, onPeakSelect);
+      return renderPlot(plotlyRef.current, plotRef.current, spectrum, peaks, labels, normalize, activePeakIndex, selectedPeakIndices, onPeakSelect)
+        .then(() => { if (!disposed) onDrawn(); });
     });
     return () => {
       disposed = true;
     };
-  }, [activePeakIndex, labels, normalize, onPeakSelect, peaks, selectedPeakIndices, spectrum]);
+  }, [activePeakIndex, labels, normalize, onDrawn, onPeakSelect, peaks, selectedPeakIndices, spectrum]);
 
   useEffect(() => {
     const element = plotRef.current;

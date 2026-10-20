@@ -41,6 +41,7 @@ function write(projects: SshProject[], connections: SshConnection[]) {
 }
 function connectionSnapshot() { snapshot(); return cachedConnections; }
 export function useSshConnections() { return useSyncExternalStore(subscribe, connectionSnapshot); }
+export function isSshConnectionEnabled(host: string) { return connectionSnapshot().some(c => c.host === host && c.enabled); }
 export function saveSshConnection(connection: SshConnection) {
   const previous = connectionSnapshot().find(c => c.host === connection.host);
   write(snapshot(), [...connectionSnapshot().filter(c => c.host !== connection.host), { ...connection, color: connection.color ?? previous?.color ?? randomColor() }]);
@@ -79,10 +80,20 @@ export async function sshList(host: string, root: string, path = ".", chemical =
     return value;
   } catch (error) { recordSshStatus(host, false); throw error; }
 }
+// Share in-flight reads only. The backend validates the remote fingerprint on
+// every later visit so a changed file never becomes a stale permanent JS cache.
+const previewRequests = new Map<string, Promise<string>>();
 export async function sshPreview(project: SshProject, path: string) {
   requireEnabled(project.host);
-  if (!isTauriRuntime()) return browserSsh<string>("preview", { host: project.host, root: project.root, path });
-  return invoke<string>("ssh_preview", { request: { host: project.host, root: project.root, path } });
+  const key = JSON.stringify([project.host, project.root, path]);
+  const existing = previewRequests.get(key);
+  if (existing) return existing;
+  const request = isTauriRuntime()
+    ? invoke<string>("ssh_preview", { request: { host: project.host, root: project.root, path } })
+    : browserSsh<string>("preview", { host: project.host, root: project.root, path });
+  previewRequests.set(key, request);
+  try { return await request; }
+  finally { if (previewRequests.get(key) === request) previewRequests.delete(key); }
 }
 
 export async function sshDownload(project: SshProject, path: string, destination: "desktop" | "choose" = "desktop", archive = false) {

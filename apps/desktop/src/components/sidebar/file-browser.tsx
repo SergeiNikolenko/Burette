@@ -1,5 +1,6 @@
 import { useProjectOrganization } from "./project-organization";
-import { Plus, ChevronRight, DotsHorizontal } from "../ui/app-icons";
+import { Plus, ChevronRight, DotsHorizontal, X } from "../ui/app-icons";
+import { Button } from "../ui/button";
 import { FolderExpandCollapseIcon } from "./folder-expand-collapse-icon";
 import { SshProjectDialog } from "../ssh/ssh-project-dialog";
 import { SshProjects } from "../ssh/ssh-projects";
@@ -25,13 +26,14 @@ import { ProjectGroup, ProjectItem } from "./file-tree-node";
 import { SCREEN_ENTRIES, openScreen } from "../workspace-panes/pane-actions";
 import { TabKindIcon } from "../editor-area/tab-kind-icon";
 import { useSidebarStructureDrag } from "./use-sidebar-structure-drag";
+import { useWorkspaceMenus } from "../workspace-menus";
 
 const SIDEBAR_TREE_ROW_SELECTOR = ".project-group-row, .project-folder-row, [data-sidebar-structure-path]";
 
 // DOM-based tree keyboard navigation: move focus across visible rows with the
 // arrow keys, expand/collapse the focused folder with Right/Left, and jump with
 // Home/End. Rows inside a collapsed subtree ([data-expanded="false"]) are skipped.
-function handleSidebarTreeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+function handleSidebarTreeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>, select: ReturnType<typeof useWorkspaceMenus>["select"]) {
   if (!["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
   const rows = Array.from(
     event.currentTarget.querySelectorAll<HTMLElement>(SIDEBAR_TREE_ROW_SELECTOR),
@@ -75,6 +77,8 @@ function handleSidebarTreeKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
   if (nextRow && nextRow !== active) {
     event.preventDefault();
     nextRow.focus();
+    const path = nextRow.dataset.sidebarStructurePath;
+    if (event.shiftKey && path) select(path, { ...event, currentTarget: nextRow });
   }
 }
 
@@ -85,6 +89,7 @@ export function FileBrowser({
   state: ShellViewState;
   actions: ShellActions;
 }) {
+  const menus = useWorkspaceMenus();
   const [sshDialogOpen, setSshDialogOpen] = useState(false);
   const sshProjects = useSshProjects();
   const hiddenProjectRoots = useShellStore((store) => store.hiddenProjectRoots);
@@ -175,6 +180,10 @@ export function FileBrowser({
           </button>
         </SidebarTooltip>
       </div>
+      {menus.batch?.progress && <div className="flex items-center gap-2 px-3 py-1" role="status" aria-live="polite">
+        <span className="min-w-0 flex-1 truncate text-sm tabular-nums">Opening {menus.batch.progress.completed} of {menus.batch.progress.total}…</span>
+        <Button variant="ghost" size="icon-xs" aria-label="Cancel opening files" onClick={menus.batch.cancel}><X size={14} aria-hidden="true" /></Button>
+      </div>}
       {/* Keep secondary screens in the new-tab menu and pane switchers. */}
       {SCREEN_ENTRIES.filter(entry => entry.location.kind === "launcher").map(entry => {
         const current = !state.activeTab?.pane && state.activeTab?.location.kind === entry.location.kind;
@@ -227,7 +236,7 @@ export function FileBrowser({
             </SidebarTooltip>
           </div>
           {pinnedExpanded && (
-            <div className="project-tree pinned-structures" role="tree" id="sidebar-pinned-tree" onKeyDown={handleSidebarTreeKeyDown}>
+            <div className="project-tree pinned-structures" role="tree" aria-multiselectable="true" id="sidebar-pinned-tree" onKeyDown={event => handleSidebarTreeKeyDown(event, menus.select)}>
               {pinnedProjects.map((project) => (
                 <ProjectGroup key={project.id} project={project} state={state} actions={actions}
                   expandFoldersByDefault={isWebDemoWorkspace() && project.rootPath === webDemoProjectRoot()} />
@@ -330,7 +339,7 @@ export function FileBrowser({
               {hasSidebarQuery ? "No matching projects or structures" : "No project structures yet"}
             </div>
           ) : (
-            <div className="project-tree" role="tree" id="sidebar-projects-tree" onKeyDown={handleSidebarTreeKeyDown}>
+            <div className="project-tree" role="tree" aria-multiselectable="true" id="sidebar-projects-tree" onKeyDown={event => handleSidebarTreeKeyDown(event, menus.select)}>
               {organization.organization === "connection" && recentProjects.length > 0 && <div className="ssh-project-section-title">This computer</div>}
               {recentProjects.map((project) => (
                 <ProjectGroup
