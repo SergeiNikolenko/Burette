@@ -1,5 +1,5 @@
 import DOMPurify from "dompurify";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { loadDerivedEngines } from "../lib/derived-columns";
 import { DARK_STRUCTURE_PALETTE } from "../lib/structure-palette";
@@ -174,7 +174,36 @@ export function GridHoverMoleculeCard({
   const hideMolecularPreview = !showingScaffold && !cardDrawing && (!molecularSource || invalidSource === molecularSource);
 
   const [previewHeight, setPreviewHeight] = useState(storedPreviewHeight);
+  const cardRef = useRef<HTMLDivElement | null>(null);
   const previewResizeRef = useRef<{ pointerY: number; height: number } | null>(null);
+  const previousPreviewHeight = useRef(previewHeight);
+  const revealPreview = useCallback(() => {
+    const card = cardRef.current;
+    const preview = card?.querySelector<HTMLElement>(".grid-hover-molecule-svg, .grid-molecule-3d");
+    const scroller = card?.closest<HTMLElement>(".dock-content");
+    if (!preview || !scroller) return;
+    const bounds = preview.getBoundingClientRect();
+    const viewport = scroller.getBoundingClientRect();
+    const header = scroller.querySelector(".structure-inspector-header")?.getBoundingClientRect();
+    const top = Math.max(viewport.top, header?.bottom ?? viewport.top);
+    // Adjust only this dock, leaving the shell's clipped ancestors and the
+    // horizontal scroll position alone. The file header is sticky.
+    if (bounds.top < top) scroller.scrollTop += bounds.top - top;
+    else if (bounds.bottom > viewport.bottom) {
+      scroller.scrollTop += Math.min(bounds.top - top, bounds.bottom - viewport.bottom);
+    }
+  }, []);
+  useLayoutEffect(() => {
+    // Only an explicit handle/key resize changes this height. A scrolled
+    // inspector can otherwise leave the now-small drawing above its viewport;
+    // row, filter and property updates must preserve the user's scroll position.
+    // Pointer drags reveal only on release so scrolling cannot pull the handle
+    // away from the pointer while it is still moving.
+    if (previewHeight < previousPreviewHeight.current && !previewResizeRef.current) {
+      revealPreview();
+    }
+    previousPreviewHeight.current = previewHeight;
+  }, [previewHeight, revealPreview]);
   const savePreviewHeight = useCallback((height: number) => {
     const next = Math.min(PREVIEW_MAX_HEIGHT, Math.max(PREVIEW_MIN_HEIGHT, height));
     setPreviewHeight(next);
@@ -192,13 +221,15 @@ export function GridHoverMoleculeCard({
     setPreviewHeight(Math.min(PREVIEW_MAX_HEIGHT, Math.max(PREVIEW_MIN_HEIGHT, start.height + event.clientY - start.pointerY)));
   }, []);
   const onPreviewResizeEnd = useCallback(() => {
-    if (!previewResizeRef.current) return;
+    const start = previewResizeRef.current;
+    if (!start) return;
     previewResizeRef.current = null;
     setPreviewHeight((height) => {
       window.localStorage.setItem(PREVIEW_HEIGHT_STORAGE_KEY, String(height));
       return height;
     });
-  }, []);
+    if (previewHeight < start.height) revealPreview();
+  }, [previewHeight, revealPreview]);
 
   // A callback ref, not a mount effect: the card is unmounted while nothing is
   // hovered and while it is collapsed, so an effect with an empty dependency
@@ -394,7 +425,7 @@ export function GridHoverMoleculeCard({
     ? (scaffold.kind === "failed" ? "" : `${scaffold.count} molecules`)
     : "";
   return (
-    <Card size="sm" className="structure-brief-card grid-hover-molecule">
+    <Card ref={cardRef} size="sm" className="structure-brief-card grid-hover-molecule">
       <header className="grid-hover-molecule-header">
         <span className="grid-hover-molecule-name" title={label}>{label}</span>
         {!showingScaffold && !hideMolecularPreview && <div className="grid-preview-mode" role="group" aria-label="Molecule preview mode">

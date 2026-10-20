@@ -992,8 +992,8 @@ assert.match(moleculeStore, /const existingLocation = existing\.location as Ketc
 assert.match(moleculeStore, /const nextLocation: KetcherLocation = \{ \.\.\.existingLocation, \.\.\.location, kind: "ketcher" \}/);
 assert.match(moleculeStore, /delete nextLocation\.importRequest/);
 assert.match(moleculeStore, /return \{ tabs, activeTabId: existing\.id, activeDocumentId: null \}/);
-assert.match(moleculeStore, /partialize: \(state\) => shouldIgnorePersistedSession\(\)\s*\?\s*devFilesPersistedSession\(state\.recentStructures\)/);
-assert.match(moleculeStore, /documents: \[\],\s*tabs: persistedTabs\(collapseDuplicateKetcherTabs\(state\.tabs, state\.activeTabId\)\)/);
+assert.match(moleculeStore, /partialize: sessionToPersist/);
+assert.match(moleculeStore, /if \(shouldIgnorePersistedSession\(\)\) return devFilesPersistedSession\(state\.recentStructures\)/);
 assert.match(moleculeStore, /const documents = current\.documents/);
 assert.match(moleculeStore, /from "\.\.\/lib\/temporary-documents"/);
 assert.doesNotMatch(moleculeStore, /function persistedDocuments/);
@@ -1309,7 +1309,7 @@ assert.match(appStartupEffectsHook, /await openDockingDocument\(trajectoryDockin
 assert.match(appStartupEffectsHook, /openedPersistedTabsRef/);
 assert.match(appStartupEffectsHook, /invoke<string\[\]>\("existing_paths", \{ paths \}\)/);
 assert.match(appStartupEffectsHook, /pruneMissingFileTabs\(paths, existingPaths\)/);
-assert.match(appStartupEffectsHook, /await openPaths\(existingPaths\)/);
+assert.match(appStartupEffectsHook, /await openPaths\(existingPaths, \{ preferredPath, preserveActiveTab: true \}\)/);
 assert.match(app, /useAppOpenDropController\(\{/);
 assert.equal((appOpenDropControllerHook.match(/useOpenEvents\(/g) || []).length, 1);
 assert.match(appOpenDropControllerHook, /useOpenEvents\(openPaths, pushErrorStatus\)/);
@@ -1473,10 +1473,10 @@ assert.match(appLayout, /const compactLeadingChrome = !tauriRuntime \|\| windowF
 assert.match(appLayout, /const chromeLeadingInset = compactLeadingChrome\s*\?\s*"112px"\s*:\s*viewportWidth <= 520\s*\?\s*"calc\(82px \/ var\(--window-zoom, 1\) \+ 40px\)"\s*:\s*"calc\(92px \/ var\(--window-zoom, 1\) \+ 100px\)"/);
 assert.match(appLayout, /"--chrome-leading-inset": chromeLeadingInset/);
 assert.doesNotMatch(appLayout, /tabChromeLeft/);
-assert.match(appLayout, /function usePanelEdgeVariables/);
+assert.match(appLayout, /import \{ usePanelEdgeVariables \} from "\.\/ui\/use-panel-edge-variables"/);
 assert.match(appLayout, /\{ elementRef: sidebarElementRef, property: "--sidebar-edge" \}/);
 assert.match(appLayout, /\{ elementRef: rightDockElementRef, property: "--right-dock-edge" \}/);
-assert.match(appLayout, /shell\.style\.setProperty\(entry\.property, `\$\{width\}px`\)/);
+
 assert.match(appLayout, /<header className="topbar">/);
 assert.match(appLayout, /const rightDockOpen = !settingsMode && !hostedMcpWidget && state\.rightDockOpen/);
 assert.match(appLayout, /const pluginSurface = isAgentPluginSurface\(state\.buildInfo\.isAgentShell\);/);
@@ -1504,12 +1504,12 @@ assert.match(editorArea, /const LOW_DEVICE_MEMORY_WARM_PAGE_LIMIT = 6/);
 assert.match(editorArea, /const MEMORY_PRESSURE_WARM_PAGE_LIMIT = 4/);
 assert.match(editorArea, /const MEMORY_PRESSURE_HEAP_RATIO = 0\.7/);
 assert.match(editorArea, /const \[recentlyUsedTabIds, setRecentlyUsedTabIds\] = useState<string\[\]>\(\[\]\)/);
-assert.match(editorArea, /warmMountedTabs\(tabs, activeTabIndex, recentlyUsedTabIds, warmPageLimit, dirtyTabIds\)/);
+assert.match(editorArea, /planSceneResidency\(\{/);
 assert.match(editorArea, /kind\.keepAlive/);
-assert.match(editorArea, /if \(!isActive && !held && \(!kind\.keepAlive \|\| !warmMountedTabIds\.has\(tab\.id\)\)\) return null/);
+assert.match(editorArea, /if \(!mountContent && shown !== "minimized"\) return null/);
 assert.match(editorArea, /<MountedPageSurface\s+key=\{tab\.id\}/);
 assert.match(editorArea, /const MountedPageSurface = memo\(function MountedPageSurface/);
-assert.match(editorArea, /<TabHistoryPages tab=\{tab\} state=\{state\} actions=\{actions\} isActive=\{contentVisible\}/);
+assert.match(editorArea, /<TabHistoryPages tab=\{tab\} state=\{state\} actions=\{actions\} isActive=\{contentVisible\} retainedHistoryKeys=\{retainedHistoryKeys\}/);
 assert.match(editorArea, /if \(previous\.isActive \|\| next\.isActive\) return false/);
 assert.match(editorArea, /previous\.tab\.id === next\.tab\.id && previous\.tab\.location === next\.tab\.location/);
 assert.match(editorArea, /className="page-stack"/);
@@ -1518,7 +1518,7 @@ assert.match(editorArea, /data-page-kind=\{kind\.kind\}/);
 assert.match(editorArea, /kind: "launcher"/);
 assert.doesNotMatch(editorArea, /function WelcomePanel/);
 assert.match(editorTabs, /New tab/);
-assert.match(editorTabs, /const visibleTabs = state\.tabs\.filter\(isMainTab\)/);
+assert.match(editorTabs, /const visibleTabs = useMemo\(\(\) => state\.tabs\.filter\(isMainTab\), \[state\.tabs\]\)/);
 assert.match(editorTabs, /visibleTabs\.map/);
 assert.match(editorTabs, /activeTabIndex/);
 assert.match(editorTabs, /const \[selectedTabIds, setSelectedTabIds\] = useState<Set<string>>\(\(\) => new Set\(\)\)/);
@@ -1528,7 +1528,7 @@ assert.match(editorTabs, /actions\.selectTab\(tab\.id\)/);
 assert.match(editorTabs, /const selectAllTabs = useCallback/);
 assert.match(editorTabs, /const handleTabListKeyDown = useCallback/);
 assert.match(editorTabs, /const selectAndFocusTab = useCallback/);
-assert.match(editorTabs, /querySelector<HTMLButtonElement>\('\[role="tab"\]'\)\?\.focus\(\)/);
+assert.match(editorTabs, /button\.focus\(\{ preventScroll: true \}\)/);
 assert.match(editorTabs, /selectAndFocusTab\(next\.id\)/);
 assert.match(editorTabs, /actions\.closeTab\(tab\.id\)/);
 assert.match(editorTabs, /from "\.\.\/\.\.\/lib\/collection-documents"/);
@@ -1587,8 +1587,8 @@ assert.match(fileKind, /export const fileKind = definePageKind/);
 assert.match(fileKind, /keepAlive: true/);
 assert.match(fileKind, /kind: "file"/);
 assert.match(fileKind, /path: location\.path/);
-assert.match(fileKind, /const document = findDocument\(location, state\.documents\);\s*return document \? <ViewerSurface document=\{document\} actions=\{actions\} preferences=\{state\.preferences\} isActive=\{isActive\} \/> : null;/);
-assert.doesNotMatch(fileKind, /findDocument\(location, state\.documents\) \?\? state\.activeDocument/);
+assert.match(fileKind, /const document = findIndexedDocument\(state\.documents, location\);\s*return document \? <ViewerSurface document=\{document\} actions=\{actions\} preferences=\{state\.preferences\} isActive=\{isActive\} \/> : null;/);
+assert.doesNotMatch(fileKind, /findIndexedDocument\(state\.documents, location\) \?\? state\.activeDocument/);
 assert.match(fileKind, /className=\{`molecule-stage/);
 assert.match(fileKind, /sourcePreview=\{sourceSession\?\.sourcePreview \?\? undefined\}/);
 assert.match(fileKind, /onStagingLoad=\{\(identity, frame\) => sourceEditing\?\.stagingLoaded\(document, identity, frame\)\}/);
@@ -2377,19 +2377,10 @@ assert.doesNotMatch(appLayout, /\[data-separator=/);
 assert.match(appLayout, /if \(!settingsMode\) setSidebarOpen\(isPanelOpen\(panel, px\)\);/);
 assert.match(appLayout, /if \(open !== rightDockOpenRef\.current\) actions\.setDockOpen\("right", open\);/);
 assert.match(appLayout, /if \(open !== bottomDockOpenRef\.current\) actions\.setDockOpen\("bottom", open\);/);
-const groupPixelGuard = await source("apps/desktop/src/components/ui/use-group-pixel-guard.ts");
-// The other half: a panel the group collapsed under pressure keeps its open
-// flag, so the pixel guard has to expand it again once the room is back.
-assert.match(groupPixelGuard, /if \(panel\.isCollapsed\(\)\) panel\.expand\(\);/);
+// Fixed-pixel group resizing belongs to react-resizable-panels 4.14. A second
+// ResizeObserver/rAF correction must not fight that layout while dragging.
+assert.doesNotMatch(appLayout, /useGroupPixelGuard/);
 assert.doesNotMatch(appLayout, /animatingRef/);
-// groupResizeBehavior="preserve-pixel-size" is inert in react-resizable-panels
-// 4.12.2, so fixed panels re-assert their stored pixel size when the group's
-// container resizes — deferred to the next frame because a resize() inside the
-// ResizeObserver callback races the library's own observer and converts px→%
-// through a stale cached group size.
-assert.match(appLayout, /import \{ useGroupPixelGuard \}/);
-assert.match(groupPixelGuard, /frame = requestAnimationFrame\(correct\)/);
-assert.match(groupPixelGuard, /panel\.resize\(`\$\{want\}px`\)/);
 // Sizes reported while a separator is dragged are parked in a DragCommit and
 // written once on release: setDockSize clones the workspace and the persist
 // middleware serialised every workspace to localStorage per drag frame. Open
@@ -2418,8 +2409,7 @@ assert.match(viewerFrame, /root\.setAttribute\("data-resizing", "true"\);/);
 assert.match(viewerFrame, /body: \{ type: "hostLayoutGesture", active \}/);
 assert.doesNotMatch(viewerFrame, /frame\.style\.width/);
 assert.match(viewer, /body\.type === 'hostLayoutGesture'/);
-assert.match(viewer, /if \(!hostLayoutGestureActive\) handleResize\(\);/);
-assert.match(previewRuntimeCss, /html\.buret-host-layout-gesture \.msp-plugin \.msp-viewport canvas \{/);
+assert.match(viewer, /BuretteResizeInteraction\?\.release\(viewer\)/);
 assert.match(styles, /\.app-shell\[data-resizing\] \.viewer-iframe \{\s*pointer-events: none;\s*\}/);
 assert.doesNotMatch(appLayout, /\{rightDockOpen \? <DockPanel/);
 assert.doesNotMatch(appLayout, /\{bottomDockOpen \? <DockPanel/);
@@ -3328,7 +3318,7 @@ assert.match(ketcherPage, /Ketcher did not return a sketch\. Draw a molecule fir
 assert.match(app, /const openDocumentsInActiveTab = useOpenDocumentsInActiveTab\(\)/);
 assert.match(appKetcherActionsHook, /const \[ketcherDraftMolfile, setKetcherDraftMolfile\] = useState\(""\)/);
 assert.match(appKetcherActionsHook, /const saveKetcherDraft = useCallback/);
-assert.match(appFileOpenHook, /openDocumentsInActiveTab\(result\.documents\)/);
+assert.match(appFileOpenHook, /openDocumentsInActiveTab\(batch\.documents\)/);
 assert.match(appKetcherActionsHook, /addDocuments\(\[document\]\)/);
 assert.doesNotMatch(app, /openDocumentsInActiveTab\(\[document\], \{\s*backLocation: request\.draftKet\?\.trim\(\) \|\| request\.draftMolfile\?\.trim\(\)/s);
 assert.match(appKetcherActionsHook, /\["molstar", "generate3d", "generateEnsemble", "optimizeGeometry", "semiempiricalRm1"\]\.includes\(request\.target\)/);
@@ -4337,7 +4327,7 @@ assert.doesNotMatch(app, /const writeGridPerfMetric = useCallback/);
 assert.doesNotMatch(app, /invoke\("sync_viewer_preferences", \{ preferences \}\)/);
 assert.match(app, /useAppHostRuntimeOperations\(\{\s*activeDocument,\s*pushErrorStatus,\s*pushStatus,\s*\}\)/s);
 assert.match(appHostRuntimeOperationsHook, /export function useAppHostRuntimeOperations\(\{/);
-assert.match(appHostRuntimeOperationsHook, /invoke\("grid_close_runtime", \{ documentId \}\)/);
+assert.match(appHostRuntimeOperationsHook, /invoke\("grid_close_runtime", \{ documentIds \}\)/);
 assert.match(appHostRuntimeOperationsHook, /invoke<string>\("read_external_preview_svg", \{ runtimePath: activeDocument\.runtimePath \}\)/);
 assert.match(appHostRuntimeOperationsHook, /save\(\{\s*defaultPath: `\$\{activeDocument\?\.title \?\? "preview"\}\.svg`/s);
 assert.match(appHostRuntimeOperationsHook, /invoke<string>\("write_text_file", \{\s*request: \{ outputPath, contents: svg \},\s*\}\)/s);
@@ -7763,7 +7753,7 @@ assert.match(appFileOpenHook, /request: \{ path, smilesColumn: "smiles" \}/);
 assert.match(appFileOpenHook, /replaceDocument\(documentId, replacement\)/);
 assert.match(appFileOpenHook, /invoke<ViewerDocument>\("open_delimited_grid_document"/);
 assert.match(appFileOpenHook, /openStateRevision: currentDocumentRegistryRevision\(\)/);
-assert.match(appFileOpenHook, /abortOpenDocumentClaims\(result\.documents\)/);
+assert.match(appFileOpenHook, /abortOpenDocumentClaims\(batch\.documents\)/);
 assert.match(appDockPayloadHook, /openStateRevision: currentDocumentRegistryRevision\(\)/);
 assert.match(appDockPayloadHook, /abortOpenDocumentClaims\(discardedDocuments\)/);
 assert.match(appDockPayloadHook, /let unmaterializedDocuments: Array<ViewerDocument \| TextFileDocument> = \[\];/);

@@ -204,7 +204,7 @@
     loadObserver: null,
     scrollHandler: null,
     resizeHandler: null,
-    resizeFrame: 0,
+    resizeTimer: 0,
     virtualFrame: 0,
     lastPerfMetricAt: 0,
     windowStart: 0,
@@ -3553,20 +3553,21 @@
     state.scrollHandler = () => handleGridScroll(cfg);
     window.addEventListener('scroll', state.scrollHandler, { passive: true });
     if (state.resizeHandler) window.removeEventListener('resize', state.resizeHandler);
-    if (state.resizeFrame) window.cancelAnimationFrame(state.resizeFrame);
-    state.resizeFrame = 0;
-    // Each pass forces layout and walks every card, so resize events and host
-    // cover pushes are coalesced into one pass per frame.
+    if (state.resizeTimer) window.clearTimeout(state.resizeTimer);
+    state.resizeTimer = 0;
+    // CSS keeps the toolbar and existing cards responsive during a panel drag.
+    // Re-windowing walks the cards and can redraw structures, so measure only
+    // after the gesture settles rather than competing with each pointer frame.
     state.resizeHandler = () => {
-      if (state.resizeFrame) return;
-      state.resizeFrame = window.requestAnimationFrame(() => {
-        state.resizeFrame = 0;
+      if (state.resizeTimer) window.clearTimeout(state.resizeTimer);
+      state.resizeTimer = window.setTimeout(() => {
+        state.resizeTimer = 0;
         updateVirtualGridMetrics();
         scheduleVirtualWindowRender(cfg);
         updateGridRailActive();
         updateTableHeaderStick();
         maybeLoadMore(cfg);
-      });
+      }, 120);
     };
     window.addEventListener('resize', state.resizeHandler, { passive: true });
   }

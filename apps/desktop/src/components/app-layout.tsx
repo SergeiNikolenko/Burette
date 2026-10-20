@@ -7,7 +7,7 @@ import { useNativeWorkspacePlacement } from "../hooks/use-native-workspace-place
 import { MobileWebDemoLayout } from "./mobile-web-demo-layout";
 import { XyzrenderAnimationDialog } from "./xyzrender-animation-dialog";
 import { useWindowResizeSession } from "./ui/use-window-resize-session";
-import { useGroupPixelGuard } from "./ui/use-group-pixel-guard";
+import { usePanelEdgeVariables } from "./ui/use-panel-edge-variables";
 import { SidebarFileOperations } from "./sidebar/file-operations";
 import { WorkspaceMenus } from "./workspace-menus";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
@@ -199,45 +199,6 @@ function isPanelOpen(panel: PanelImperativeHandle | null, sizePx: number) {
   return panel ? !panel.isCollapsed() : sizePx > 1;
 }
 
-// Publishes the panels' measured edges as CSS variables on the shell. The tab
-// strip is positioned absolutely over the panel grid, so its edges have to
-// follow what the panels actually occupy: sizing it from the stored sizes
-// desynced whenever a group could not honour one (a right dock squeezed to
-// 118px still reported its wanted 260px, leaving the strip's right edge ~140px
-// off the dock), and it lagged behind every drag because the stored width only
-// reaches the DOM through a React render. ResizeObserver fires between layout
-// and paint, and writing the variables straight to the node keeps drag frames
-// out of React entirely. React only ever writes the seed variables these
-// override (`--sidebar-layout-width`, `--right-dock-width`), so the two never
-// fight over the same property.
-function usePanelEdgeVariables(entries: { elementRef: React.RefObject<HTMLDivElement | null>; property: string }[]) {
-  const shellRef = useRef<HTMLElement | null>(null);
-  const entriesRef = useRef(entries);
-  entriesRef.current = entries;
-  useEffect(() => {
-    const shell = shellRef.current;
-    if (!shell) return;
-    const publish = (element: Element, width: number) => {
-      const entry = entriesRef.current.find((candidate) => candidate.elementRef.current === element);
-      if (entry && shell.style.getPropertyValue(entry.property) !== `${width}px`) shell.style.setProperty(entry.property, `${width}px`);
-    };
-    const observer = new ResizeObserver((records) => {
-      for (const record of records) {
-        publish(record.target, record.borderBoxSize?.[0]?.inlineSize ?? record.contentRect.width);
-      }
-    });
-    // No eager measurement: the observer delivers an initial observation for
-    // every element it starts watching, and a value published from here would
-    // be the panel's pre-collapse size on mount. Until that first delivery the
-    // CSS falls back to the stored layout widths.
-    for (const { elementRef } of entriesRef.current) {
-      if (elementRef.current) observer.observe(elementRef.current);
-    }
-    return () => observer.disconnect();
-  }, []);
-  return shellRef;
-}
-
 // The window width as state. Every layout bound below is derived from it — how
 // wide the sidebar may get, how wide the right dock may get, how far the viewer
 // may be squeezed before the dock starts covering it — and read straight from
@@ -404,12 +365,6 @@ function WorkspaceAppLayout({
   rightDockOpenRef.current = rightDockOpen;
   const bottomDockOpenRef = useRef(bottomDockOpen);
   bottomDockOpenRef.current = bottomDockOpen;
-  const sidebarWidthRef = useRef(sidebarWidth);
-  sidebarWidthRef.current = sidebarWidth;
-  const rightDockWidthRef = useRef(rightDockWidth);
-  rightDockWidthRef.current = rightDockWidth;
-  const bottomDockHeightRef = useRef(state.bottomDockHeight);
-  bottomDockHeightRef.current = state.bottomDockHeight;
   // The sidebar store only exposes a toggle; wrap it as an idempotent setter so
   // drag-to-collapse can sync the flag without double-toggling.
   const sidebarOpenRef = useRef(sidebarVisible);
@@ -422,15 +377,11 @@ function WorkspaceAppLayout({
     },
     [onToggleSidebar],
   );
-  const workspaceGroupRef = useGroupPixelGuard([
-    { panelRef: sidebarPanelRef, openRef: sidebarOpenRef, sizePxRef: sidebarWidthRef },
-  ]);
-  const workbenchGroupRef = useGroupPixelGuard([
-    { panelRef: rightDockPanelRef, openRef: rightDockOpenRef, sizePxRef: rightDockWidthRef },
-  ]);
-  const workbenchMainGroupRef = useGroupPixelGuard([
-    { panelRef: bottomDockPanelRef, openRef: bottomDockOpenRef, sizePxRef: bottomDockHeightRef },
-  ]);
+  // 4.14 preserves fixed pixel sizes from the requested (unclamped) layout.
+  // A second rAF correction would resize nested groups again after every move.
+  const workspaceGroupRef = useRef<HTMLDivElement | null>(null);
+  const workbenchGroupRef = useRef<HTMLDivElement | null>(null);
+  const workbenchMainGroupRef = useRef<HTMLDivElement | null>(null);
   // Sizes reported while a separator is being dragged are committed once, on
   // release; anything else (keyboard resizes) commits as it comes. The drag
   // frames themselves need no store round-trip: the panel library lays the
@@ -450,11 +401,8 @@ function WorkspaceAppLayout({
     const observer = new ResizeObserver(() => post());
     const shell = shellRef.current;
     const post = () => {
-      // While a gesture holds the frames pinned, every cover change would make
-      // the grid re-measure and rebuild its cards on the shared main thread
-      // (the drag then lagged the pointer by up to a second). The cover is sent
-      // once when the pin lifts instead.
-      if (shell?.hasAttribute("data-resizing")) return;
+      // Keep the toolbar inside the exposed strip throughout the gesture.
+      // The grid defers costly virtual-window measurement until resize settles.
       const iframe = activeViewerIframeForDocument(activeGridId, "grid2d");
       const win = iframe?.contentWindow ?? null;
       if (!iframe || !win) return;

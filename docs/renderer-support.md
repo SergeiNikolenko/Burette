@@ -45,6 +45,14 @@ tracks use the same stride policy with their own bounds. Ordinary playback
 does not implicitly enable smoothing; unused native animation controls must not
 start a competing trajectory clock.
 
+Native DCD, XTC, TRR and Desmond trajectories use disk-backed indexes and read
+one original frame at a time, retaining all source frames and their timing.
+MOLX/MOLJ scenes containing these trajectories store local source references
+rather than embedding the full coordinate run. They reopen on the same machine
+while the original files remain at their saved paths and revisions; a missing
+index is rebuilt. Missing or changed sources fail explicitly. These scenes are
+not self-contained trajectory archives for transfer to another machine.
+
 Pose/overlay collections retain their bounded controls. Smooth motion
 is a separate derived-coordinate operation, not new molecular-dynamics data.
 Paired MD smoothing writes DCD coordinates and reuses the original topology,
@@ -60,16 +68,14 @@ Unaligned DCD keeps per-frame unit cells; aligned DCD explicitly omits cells
 because a rotated lattice basis cannot be represented by DCD lengths/angles.
 DCD files use standard AKMA time (0.04888821 ps/unit). The version-locked
 Mol* 5.11 adapter corrects its inverse conversion, saved-step stride (NSAVC),
-initial step and empty-cell handling. Desmond cache publication is atomic and
-truncated DCD cache entries are rebuilt. Long Desmond runs still use a bounded
+initial step and empty-cell handling. Desmond index publication is atomic.
+Long Desmond runs still use a bounded
 preview topology in PDB format: independent CT components and overflow residue
 blocks get unused one-character chain identifiers, without changing atom order.
 These are derived display identifiers, not original CMS chain identifiers.
 The finite PDB atom/chain namespace is a limitation; conversion fails rather
 than silently merging residues when no distinct identifier remains. The CMS
-source file is not modified. Long trajectories use a bounded
-preview subset, not all source frames; its DCD spacing is an average of sampled
-times and is unsuitable for time-resolved quantitative analysis.
+source file is not modified.
 This visual spline is not constrained MD: do not use derived solute bond lengths,
 contacts, or energies as scientific trajectory measurements.
 

@@ -270,12 +270,15 @@ fn read_grid_append_path(
 pub(crate) fn grid_close_runtime<R: Runtime>(
     window: tauri::WebviewWindow<R>,
     registry: State<'_, GridRuntimeRegistry>,
-    document_id: String,
+    document_id: Option<String>,
+    document_ids: Option<Vec<String>>,
 ) -> Result<(), String> {
-    registry.unregister(&crate::windows::runtime_document_id(
-        window.label(),
-        &document_id,
-    ))
+    let mut ids = document_ids.unwrap_or_default();
+    ids.extend(document_id);
+    for id in ids {
+        registry.unregister(&crate::windows::runtime_document_id(window.label(), &id))?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]

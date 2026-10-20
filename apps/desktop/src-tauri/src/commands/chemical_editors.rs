@@ -157,7 +157,8 @@ const GENERIC_CHEMICAL_EXTENSIONS: &[&str] = &[
 
 const FINDER_APP_PATH: &str = "/System/Library/CoreServices/Finder.app";
 
-#[tauri::command]
+// Discovery and icon conversion can spawn sips; neither may block AppKit.
+#[tauri::command(async)]
 pub(crate) fn list_chemical_editor_targets<R: Runtime>(
     app: tauri::AppHandle<R>,
     path: String,
@@ -172,7 +173,7 @@ pub(crate) fn list_chemical_editor_targets<R: Runtime>(
     ))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn finder_icon_path<R: Runtime>(
     app: tauri::AppHandle<R>,
 ) -> Result<Option<String>, String> {
@@ -184,7 +185,7 @@ pub(crate) fn finder_icon_path<R: Runtime>(
     .map(|path| path.to_string_lossy().into_owned()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub(crate) fn default_application_icon_path<R: Runtime>(
     app: tauri::AppHandle<R>,
     path: String,

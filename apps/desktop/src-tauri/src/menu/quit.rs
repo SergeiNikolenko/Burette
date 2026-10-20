@@ -66,6 +66,7 @@ pub(crate) struct ExitTransition<R: Runtime> {
     app: tauri::AppHandle<R>,
     resume_on_drop: bool,
     paused_window_labels: HashSet<String>,
+    recent_updates_pause: Option<crate::commands::recent_documents::RecentUpdatesPause>,
 }
 
 impl<R: Runtime> ExitTransition<R> {
@@ -91,11 +92,14 @@ impl<R: Runtime> ExitTransition<R> {
             app: app.clone(),
             resume_on_drop: true,
             paused_window_labels: HashSet::new(),
+            recent_updates_pause: None,
         })
     }
 
-    fn pause_window_interaction(&mut self) -> Result<(), String> {
+    async fn pause_window_interaction(&mut self) -> Result<(), String> {
         self.paused_window_labels = pause_window_interaction(&self.app)?;
+        self.recent_updates_pause =
+            Some(crate::commands::recent_documents::pause_and_drain(&self.app).await?);
         Ok(())
     }
 
@@ -107,6 +111,9 @@ impl<R: Runtime> ExitTransition<R> {
 
     pub(crate) fn keep_paused(mut self) {
         self.resume_on_drop = false;
+        if let Some(pause) = self.recent_updates_pause.take() {
+            pause.keep_paused();
+        }
     }
 }
 
@@ -115,6 +122,7 @@ impl<R: Runtime> Drop for ExitTransition<R> {
         if !self.resume_on_drop {
             return;
         }
+        drop(self.recent_updates_pause.take());
         let _ = self.resume_window_interaction();
         if let Some(guard) = self.app.try_state::<QuitGuard>() {
             guard.finish_transition();
@@ -617,7 +625,7 @@ pub(crate) async fn confirm_exit<R: Runtime>(
         dirty_windows.len()
     );
     if dirty_windows.is_empty() {
-        if let Err(error) = transition.pause_window_interaction() {
+        if let Err(error) = transition.pause_window_interaction().await {
             let _ = coordinator.finish(&request_id);
             return Err(error);
         }
@@ -633,7 +641,7 @@ pub(crate) async fn confirm_exit<R: Runtime>(
     };
     eprintln!("[exit] unsaved dialog request={request_id} decision={decision:?}");
     if decision == UnsavedChangesDecision::Proceed {
-        if let Err(error) = transition.pause_window_interaction() {
+        if let Err(error) = transition.pause_window_interaction().await {
             let _ = coordinator.finish(&request_id);
             return Err(error);
         }

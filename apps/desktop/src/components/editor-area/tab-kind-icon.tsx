@@ -1,3 +1,4 @@
+import { findIndexedDocument } from "./document-index";
 import type { ShellViewState } from "../types";
 import { FileKindIcon, fileKindForPath } from "../sidebar/file-kind-icon";
 import { Chart, Compare, Edit, Flask, Plus, SettingsCog, Stopwatch } from "../ui/app-icons";
@@ -10,7 +11,7 @@ import "../workspace-panes/workspace-panes.css";
 export function TabKindIcon({ location, state }: { location: Location; state: Pick<ShellViewState, "documents"> }) {
   switch (location.kind) {
     case "file": {
-      const document = state.documents.find((candidate) => candidate.id === location.documentId || candidate.path === location.path);
+      const document = findIndexedDocument(state.documents, location, "first");
       return <FileKindIcon kind={fileKindForPath(location.path, document?.extension)} />;
     }
     case "text-file":

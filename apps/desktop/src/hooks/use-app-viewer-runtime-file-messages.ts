@@ -28,7 +28,7 @@ export function useAppViewerRuntimeFileMessages({
     body: ViewerRuntimeFileMessageBody,
     source: MessageEventSource | null,
   ) => {
-    if (sourceName !== "burette-viewer" || (body?.type !== "requestData" && body?.type !== "requestRuntimeFile")) {
+    if (sourceName !== "burette-viewer" || (body?.type !== "requestData" && body?.type !== "requestRuntimeFile" && body?.type !== "requestTrajectoryFrame")) {
       return false;
     }
     if (!body.requestToken) return true;
@@ -50,6 +50,26 @@ export function useAppViewerRuntimeFileMessages({
     void (async () => {
       try {
         if (!document) throw new Error("No matching viewer document.");
+        if (body.type === "requestTrajectoryFrame") {
+          if (!Number.isSafeInteger(body.frameIndex) || Number(body.frameIndex) < 0 ||
+            !Number.isSafeInteger(body.segmentIndex) || Number(body.segmentIndex) < 0) {
+            throw new Error("Invalid trajectory frame request.");
+          }
+          if (body.restoredTrajectory !== undefined &&
+            (!body.restoredTrajectory || typeof body.restoredTrajectory !== "object" ||
+              Array.isArray(body.restoredTrajectory) || JSON.stringify(body.restoredTrajectory).length > 16_384)) {
+            throw new Error("Invalid saved trajectory descriptor.");
+          }
+          const payload = await invoke<Record<string, unknown>>("read_indexed_trajectory_frame", {
+            runtimePath: document.runtimePath,
+            frameIndex: body.frameIndex,
+            segmentIndex: body.segmentIndex,
+            validateOnly: body.validateOnly === true,
+            restoredTrajectory: body.restoredTrajectory,
+          });
+          reply({ ...payload, requestToken: body.requestToken });
+          return;
+        }
         const fileName = body.type === "requestData"
           ? "preview-data.bin"
           : normalizeViewerRuntimeRelativePath(body.path);

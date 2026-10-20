@@ -107,7 +107,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
   const chemicalSpaceDockAvailable = Boolean(resolveChemicalSpaceDocument(state, dockDocument));
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
-  const foldingState = useFoldingResult(area === "bottom" ? activeStructureDocument : null);
+  const foldingState = useFoldingResult(area === "bottom" && open ? activeStructureDocument : null);
   const foldingDockAvailable = area === "bottom" && (foldingState.loading || Boolean(foldingState.bundle));
   const foldingDockRequested = area === "bottom" && storedActiveTabKind === "folding" && rawTabs.some((tab) => tab.kind === "folding");
   const pluginSurface = isHostedMcpWidget() || (typeof window !== "undefined" && Boolean(window.BuretteMcpWorkspace));
@@ -139,12 +139,22 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     && (tab.kind !== "scene" || Boolean(mesoscaleDockDocument))
   ));
   const activeTab = visibleTabs.find((tab) => tab.kind === activeTabKind) ?? visibleTabs[0] ?? tabs[0];
+  // Keep visited panels (including local analysis results) alive on Hide, but
+  // don't make them follow/read each new active file while they are closed.
+  const lastVisibleState = useRef<{ state: ShellViewState; kind: DockTabKind } | null>(null);
+  if (open || dockDocumentId || dockTool) lastVisibleState.current = { state, kind: activeTab.kind };
+  const contentSource = lastVisibleState.current?.state ?? null;
+  const contentKind = lastVisibleState.current?.kind ?? activeTab.kind;
+  const contentState = useMemo(() => contentSource && ({
+    ...contentSource,
+    [area === "right" ? "rightDockOpen" : "bottomDockOpen"]: open,
+  }), [area, contentSource, open]);
   const fileSelection = dockFileDocuments(state, area);
   const filesTabDragPayload = dockFilesDragPayload(fileSelection.document, fileSelection.textDocument, dockTool);
   const filesTabDrag = useSidebarStructureDrag({ state, actions, disabled: readOnly, getPayload: () => filesTabDragPayload });
   const dockDrops = useMemo(
-    () => state.dockDroppedStructures.filter((item) => item.area === area && item.tabKind === activeTab.kind),
-    [activeTab.kind, area, state.dockDroppedStructures],
+    () => contentState?.dockDroppedStructures.filter((item) => item.area === area && item.tabKind === contentKind) ?? [],
+    [contentKind, area, contentState],
   );
   const autoOpenedXyzrenderDocumentId = useRef<string | null>(null);
   // Point at the Text tab once it exists; the add menu creates it on this action.
@@ -239,13 +249,13 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
           onSelect={kind => showDockTab(kind, () => actions.setDockActiveTab(area, kind))} onClose={id => actions.closeDockTab(area, id)}
           onAdd={showAddMenu} onHide={() => actions.setDockOpen(area, false)} />
         <div className="dock-panel-body" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${activeTab.kind}`} tabIndex={0}>
-        <DockPanelContent
+        {contentState && <DockPanelContent
           area={area}
-          activeTabKind={activeTab.kind}
-          state={state}
+          activeTabKind={contentKind}
+          state={contentState}
           actions={actions}
           dockDrops={dockDrops}
-        />
+        />}
         </div>
       </div>
     </aside>

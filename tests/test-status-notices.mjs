@@ -11,6 +11,7 @@ new Function('require', 'exports', code)(name => {
   if (name === '../components/ui/toast') return {toast:{add: notice => notices.push(notice)}};
   if (name === '../lib/web-demo-analytics') return {trackWebDemoHandledError(){}};
   if (name === '../lib/frontend-error-log') return {logFrontendError(){}};
+  if (name === '../lib/action-journal') return {journalAction(){}};
   throw new Error(name);
 }, exports);
 const status = exports.useAppStatus();

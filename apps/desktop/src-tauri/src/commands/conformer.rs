@@ -151,7 +151,8 @@ struct CopiedInput {
     input_extension: String,
 }
 
-#[tauri::command]
+// Runs three tool probes; `async` keeps them off the main thread.
+#[tauri::command(async)]
 pub(crate) fn conformer_status() -> ConformerStatus {
     ConformerStatus {
         crest: conformer_tool_status(
