@@ -4,6 +4,7 @@ import { useMoleculeStore } from "../stores/molecule-store";
 import { readFolderContents } from "../components/folder-open-dialog";
 import { fileCapabilities } from "../components/workspace-menu-items";
 import { toast } from "../components/ui/toast";
+import { togetherDockingRequest } from "../lib/docking-documents";
 import type { ShellActions, ShellViewState } from "../components/types";
 
 type Progress = Awaited<ReturnType<typeof openFileBatch>>;
@@ -27,6 +28,22 @@ export function useLocalFileBatch(state: ShellViewState, actions: ShellActions) 
     const controller = target?.controller ?? new AbortController();
     active.current.add(controller);
     try {
+      // Fresh protein + ligand collections are docking runs. Watched folders
+      // retain incremental scene imports so later files can join the scene.
+      const unique = [...new Set(paths)];
+      const docking = mode === "scene" && !target && !watch && unique.length > 1
+        ? togetherDockingRequest(unique) : null;
+      if (docking && !docking.sceneMode) {
+        if (unique.length > 200) throw new Error("Choose up to 200 files at a time.");
+        const progress = { total: unique.length, completed: 0, opened: 0, failures: [], cancelled: false };
+        if (mounted.current) setProgress(progress);
+        const document = await current.current.actions.openDockingDocument(docking.receptorPath, docking.ligandPaths, {
+          shouldApply: () => !controller.signal.aborted && mounted.current,
+        });
+        if (controller.signal.aborted) return { ...progress, cancelled: true };
+        if (!document) throw new Error("Could not open the docking run.");
+        return { ...progress, completed: unique.length, opened: unique.length, documentId: document.id };
+      }
       const result = await openFileBatch(paths, { actions: current.current.actions, mode,
         targetDocumentId: target?.documentId, signal: controller.signal,
         onProgress: value => { if (mounted.current) setProgress(value); },

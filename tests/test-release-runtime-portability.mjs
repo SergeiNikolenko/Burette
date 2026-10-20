@@ -19,6 +19,8 @@ const registry = JSON.parse(source("config/preview-formats.json"));
 // than only matching the build script's source.
 execFileSync("python3", [fileURLToPath(new URL("./test-deduplicate-web-resources.py", import.meta.url))], { stdio: "inherit" });
 
+execFileSync("python3", [fileURLToPath(new URL("./test-prepare-xyzrender-runtime.py", import.meta.url))], { stdio: "inherit" });
+
 assert.match(buildScript, /relocate_bundled_python_runtime/);
 assert.match(buildScript, /install_name_tool/);
 assert.match(buildScript, /assert_no_external_python_dependencies/);
@@ -63,8 +65,10 @@ assert.match(
 );
 
 assert.match(releaseWorkflow, /echo "allow_adhoc=true"/);
-assert.match(releaseWorkflow, /publishing an ad-hoc signed release without notarization/);
-assert.doesNotMatch(releaseWorkflow, /Stable releases require Developer ID signing and Apple notarization credentials/);
+assert.match(releaseWorkflow, /Apple signing is partially configured/);
+assert.match(releaseWorkflow, /environment: release/);
+assert.match(releaseWorkflow, /if: github.ref == 'refs\/heads\/main'/);
+assert.doesNotMatch(releaseWorkflow, /tags:/);
 
 assert.match(conformerCommand, /candidate_errors/);
 assert.match(conformerCommand, /format_conformer_candidate_errors/);

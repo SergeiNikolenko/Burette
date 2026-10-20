@@ -8,6 +8,95 @@ function body(name) {
   const end = source.indexOf('\n  function ', start + 1);
   return source.slice(start, end);
 }
+const makeCache = (count = 2000, bytes = 128, entry = 64) => new Function(
+  'RDKIT_SVG_CACHE_LIMIT', 'RDKIT_SVG_CACHE_BYTES', 'RDKIT_SVG_ENTRY_BYTES',
+  `${body('createRdkitSvgCache')} return createRdkitSvgCache();`,
+)(count, bytes, entry);
+{
+  const cache = makeCache(3, 32, 24);
+  cache.set('a', '1234567').set('b', '1234567');
+  assert.equal(cache.retainedBytes, 32, 'exact byte boundary is admitted');
+  cache.set('c', '1234567');
+  assert.deepEqual([...cache.keys()], ['b', 'c'], 'byte eviction happens below the count cap');
+  cache.delete('b');
+  cache.set('b', '1234567');
+  assert.equal(cache.retainedBytes, 32, 'LRU promotion does not inflate accounting');
+  cache.set('b', 'x');
+  assert.equal(cache.retainedBytes, 20, 'replacement releases the previous payload');
+  cache.set('oversized-key', '');
+  assert.equal(cache.has('oversized-key'), false, 'keys are charged even without SVG');
+  assert.deepEqual([...cache.keys()], ['c', 'b'], 'oversized insertion does not flush useful drawings');
+  cache.set('b', 'x'.repeat(20));
+  assert.equal(cache.has('b'), false, 'oversized replacement cannot leave an obsolete drawing');
+  assert.equal(cache.retainedBytes, 16);
+  assert.equal(cache.delete('missing'), false);
+  cache.clear();
+  assert.equal(cache.retainedBytes, 0);
+  cache.set('分', '🧪');
+  assert.equal(cache.retainedBytes, 6, 'UTF-16 accounting includes surrogate pairs');
+  const small = makeCache(2, 128, 64);
+  for (const key of ['a', 'b', 'c']) small.set(key, 'x');
+  assert.deepEqual([...small.keys()], ['b', 'c'], 'small entries still obey the count cap');
+}
+{
+  let moleculeCalls = 0, reactionCalls = 0;
+  const normal = '<svg>normal</svg>', oversized = `<svg>${'x'.repeat(100)}</svg>`;
+  const drawingState = {
+    svgCache: makeCache(2000, 128, 64), smartsMatches: new Map(), rdkitUseInputCoords: false,
+    rdkit: {
+      get_mol(text) { moleculeCalls++; return { get_svg: () => text === 'large' ? oversized : normal, delete() {} }; },
+      get_rxn(text) { reactionCalls++; return { get_svg: () => text === 'large' ? oversized : normal, delete() {} }; },
+    },
+  };
+  const dependencies = {
+    state: drawingState, RDKIT_SVG_SIZE: 200, RDKIT_REACTION_SVG_WIDTH: 300, RDKIT_REACTION_SVG_HEIGHT: 100,
+    rowReactionText: row => row.reaction || '', rdkitCardKey: row => row.key,
+    hasMolblockInputCoordinates: () => false, applyHydrogenDisplay: (_mol, match) => match,
+    sanitizeSVG: value => value, stripSVGClipping: value => value, padSVGViewBox: value => value,
+    isDegenerateMoleculeSVG: () => false, moleculeErrorHTML: () => { throw new Error('Unexpected draw error'); },
+    omitInvalidCard: () => { throw new Error('Unexpected invalid molecule'); }, escapeHTML: value => value,
+  };
+  const draw = new Function(...Object.keys(dependencies), `
+    ${body('drawRdkitReaction')}
+    ${body('drawRdkit')}
+    return drawRdkit;
+  `)(...Object.values(dependencies));
+  for (let i = 0; i < 2; i++) assert.equal(draw({ key: 'm', smiles: 'C' }), normal);
+  for (let i = 0; i < 2; i++) assert.equal(draw({ key: 'r', reaction: 'C>>O' }), normal);
+  assert.equal(moleculeCalls, 1);
+  assert.equal(reactionCalls, 1);
+  assert.equal(draw({ key: 'big-m', smiles: 'large' }), oversized);
+  assert.equal(draw({ key: 'big-r', reaction: 'large' }), oversized);
+  assert.equal(drawingState.svgCache.has('big-m'), false);
+  assert.equal(drawingState.svgCache.has('big-r'), false);
+  assert.equal(drawingState.svgCache.retainedBytes, 2 * (normal.length + 1) * 2);
+  const callbacks = [];
+  Object.assign(drawingState, { rdkitCardRendering: false, rdkitCardQueue: [], rdkitCardPending: new Map(), rdkitCardSeq: 0 });
+  const enqueue = new Function('state', 'drawRdkit', 'requestAnimationFrame', 'cardRenderPriority', 'nowMs', 'window', 'emitGridPerfMetric', 'config', 'postGridReady', 'fitCardSVGs', 'repostInspectorRow', `
+    const RDKIT_CARD_FRAME_BATCH = 6, RDKIT_CARD_FRAME_BUDGET_MS = 8;
+    ${body('compareCardRenderJobs')}
+    ${body('pumpRdkitCardQueue')}
+    ${body('enqueueRdkitCard')}
+    ${body('updateRdkitCard')}
+    return enqueueRdkitCard;
+  `)(drawingState, draw, fn => callbacks.push(fn), () => 0, () => 0, { setTimeout() {} }, () => {}, () => ({}), () => {}, () => {}, () => {});
+  const targets = Array.from({ length: 2 }, () => ({
+    attributes: new Map([['data-buret-rdkit-card-key', 'big-m'], ['aria-label', 'Rendering']]),
+    classList: { remove() {} }, innerHTML: '', closest: () => null,
+    getAttribute(name) { return this.attributes.get(name); },
+    removeAttribute(name) { this.attributes.delete(name); },
+  }));
+  const before = moleculeCalls;
+  for (const target of targets) enqueue({ key: 'big-m', smiles: 'large' }, 'big-m', target);
+  callbacks.shift()();
+  assert.equal(moleculeCalls, before + 1, 'oversized pending drawings remain deduplicated');
+  for (const target of targets) {
+    assert.equal(target.innerHTML, oversized, 'uncached SVG reaches every waiting card without truncation');
+    assert.equal(target.attributes.size, 0, 'rendered cards leave the loading state');
+  }
+  assert.equal(drawingState.svgCache.has('big-m'), false);
+  assert.equal(drawingState.rdkitCardPending.size, 0);
+}
 const frames = [];
 
 {

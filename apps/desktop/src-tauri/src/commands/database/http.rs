@@ -6,10 +6,12 @@
 //! place means the SSRF guard, the timeout and the response ceiling are applied to
 //! every provider rather than remembered per provider.
 
-use std::io::Write;
-use std::process::{Command, Stdio};
+use std::process::Command;
+use std::time::{Duration, Instant};
 
-use crate::commands::documents::reject_private_fetch_target;
+use burette_core::bounded_process::{self, Limits};
+
+use crate::commands::documents::{public_fetch_addresses, reject_private_fetch_target};
 
 /// Providers answer with tables and small SDF files; anything larger is a sign the
 /// query was too broad, and the grid would not enjoy it either.
@@ -95,14 +97,15 @@ const REDIRECT_MARKER: &str = "burette-redirect:";
 /// scheme, so a public endpoint answering `302 http://169.254.169.254/` would
 /// otherwise walk straight past the allow-list.
 pub(crate) fn fetch(request: &DatabaseRequest) -> Result<Vec<u8>, String> {
+    let deadline = Instant::now() + Duration::from_secs(u64::from(request.timeout_seconds));
     let origin = validate_request_url(&request.url)?;
     let mut target = origin.clone();
     for _ in 0..=MAX_REDIRECTS {
-        // Only the originally requested host is trusted with the credentials and
+        // Only the originally requested origin is trusted with the credentials and
         // the body; a redirect elsewhere is replayed as a bare GET, which is what
         // curl itself does for 301/302/303 and for `Authorization` across hosts.
-        let trusted = target.host_str() == origin.host_str();
-        let (body, redirect) = run_curl(request, &target, trusted)?;
+        let trusted = target.origin() == origin.origin();
+        let (body, redirect) = run_curl(request, &target, trusted, deadline)?;
         let Some(redirect) = redirect else {
             return Ok(body);
         };
@@ -117,10 +120,22 @@ fn run_curl(
     request: &DatabaseRequest,
     target: &url::Url,
     trusted: bool,
+    deadline: Instant,
 ) -> Result<(Vec<u8>, Option<String>), String> {
     let max_filesize = request.max_bytes.to_string();
-    let timeout = request.timeout_seconds.to_string();
+    let addresses = public_fetch_addresses(target, deadline)?;
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() {
+        return Err("Database request deadline expired".into());
+    }
+    // curl treats zero as unlimited. The pipe supervisor uses the exact deadline.
+    let timeout = format!("{:.3}", remaining.as_secs_f64().max(0.001));
     let mut command = Command::new("/usr/bin/curl");
+    // No ambient curlrc/proxy may replace the validated destination.
+    command.args(["--disable", "--noproxy", "*"]);
+    if let Some(pin) = curl_address_pin(target, &addresses) {
+        command.args(["--resolve", &pin]);
+    }
     command.args([
         "--fail",
         // SMILES in a path segment carries [C@H] and friends; without --globoff
@@ -163,29 +178,16 @@ fn run_curl(
         command.args(["--config", "-"]);
     }
     command.arg(target.as_str());
-    command.stdin(if config.is_some() {
-        Stdio::piped()
-    } else {
-        Stdio::null()
-    });
-    command.stdout(Stdio::piped());
-    command.stderr(Stdio::piped());
-
-    let mut child = command
-        .spawn()
-        .map_err(|error| format!("Could not start curl: {error}"))?;
-    if let Some(config) = config {
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| "curl did not accept its configuration".to_string())?;
-        stdin
-            .write_all(config.as_bytes())
-            .map_err(|error| format!("Could not configure curl: {error}"))?;
-    }
-    let output = child
-        .wait_with_output()
-        .map_err(|error| format!("curl failed: {error}"))?;
+    let output = bounded_process::run(
+        &mut command,
+        config.as_deref().unwrap_or("").as_bytes(),
+        Limits {
+            stdout_bytes: request.max_bytes.min(MAX_RESPONSE_BYTES) as usize,
+            stderr_bytes: 64 * 1024,
+            deadline,
+        },
+    )
+    .map_err(|error| format!("Database request failed: {error}"))?;
     let (message, redirect) = split_curl_stderr(&String::from_utf8_lossy(&output.stderr));
     if !output.status.success() {
         return Err(if message.is_empty() {
@@ -198,6 +200,25 @@ fn run_curl(
         return Err("The database answered with more data than Burette accepts".to_string());
     }
     Ok((output.stdout, redirect))
+}
+
+fn curl_address_pin(target: &url::Url, addresses: &[std::net::IpAddr]) -> Option<String> {
+    if !matches!(target.host(), Some(url::Host::Domain(_))) {
+        return None;
+    }
+    let values = addresses
+        .iter()
+        .map(|ip| match ip {
+            std::net::IpAddr::V4(_) => ip.to_string(),
+            std::net::IpAddr::V6(_) => format!("[{ip}]"),
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    Some(format!(
+        "{}:{}:{values}",
+        target.host_str()?,
+        target.port_or_known_default()?
+    ))
 }
 
 /// Separates curl's diagnostics from the redirect target `--write-out` appended.
@@ -262,8 +283,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn expired_chain_deadline_cannot_be_restarted_by_a_hop() {
+        let request = DatabaseRequest::get("https://8.8.8.8/").with_timeout(180);
+        let target = validate_request_url(&request.url).unwrap();
+        // The hop must honor time already consumed by DNS and earlier redirects,
+        // even though the original request has a much larger timeout configured.
+        assert!(run_curl(&request, &target, true, Instant::now())
+            .unwrap_err()
+            .contains("deadline expired"));
+        assert!(
+            fetch(&DatabaseRequest::get("https://dns-must-not-run.invalid/").with_timeout(0))
+                .unwrap_err()
+                .contains("deadline expired")
+        );
+    }
+
+    #[test]
     fn only_http_and_https_urls_reach_the_network() {
-        assert!(validate_request_url("https://www.ebi.ac.uk/chembl/api/data/status.json").is_ok());
+        assert!(validate_request_url("https://8.8.8.8/status.json").is_ok());
         assert_eq!(
             validate_request_url("file:///etc/passwd").unwrap_err(),
             "Database requests support only http and https URLs"
@@ -282,12 +319,49 @@ mod tests {
             "http://169.254.169.254/latest/meta-data/",
             "http://[::1]/query",
             "http://0.0.0.0/query",
+            "http://127.1/query",
+            "http://2130706433/query",
+            "http://[::ffff:127.0.0.1]/query",
+            "http://[::ffff:10.0.0.1]/query",
+            "http://[fc00::1]/query",
+            "http://[fe80::1]/query",
+            "http://[2002:7f00:1::]/query",
+            "http://[2001::1]/query",
+            "http://[3fff::1]/query",
+            "http://100.64.0.1/query",
+            "http://198.18.0.1/query",
+            "http://224.0.0.1/query",
         ] {
             assert!(
                 validate_request_url(url).is_err(),
                 "{url} must not be reachable from a database provider"
             );
         }
+    }
+
+    #[test]
+    fn resolved_addresses_are_pinned_without_losing_the_tls_hostname() {
+        let url = url::Url::parse("https://example.org:8443/structure.sdf").unwrap();
+        let addresses = [
+            "8.8.8.8".parse().unwrap(),
+            "2606:4700:4700::1111".parse().unwrap(),
+        ];
+        assert_eq!(
+            curl_address_pin(&url, &addresses).unwrap(),
+            "example.org:8443:8.8.8.8,[2606:4700:4700::1111]"
+        );
+        assert_eq!(
+            curl_address_pin(&url::Url::parse("https://8.8.8.8/").unwrap(), &addresses),
+            None
+        );
+        assert_eq!(
+            public_fetch_addresses(
+                &url::Url::parse("https://[2606:4700:4700::1111]/").unwrap(),
+                Instant::now() + Duration::from_secs(1)
+            )
+            .unwrap(),
+            vec![addresses[1]]
+        );
     }
 
     #[test]

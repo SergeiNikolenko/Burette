@@ -52,13 +52,11 @@ assert.match(viteConfig, /function browserDevCommandTimedOut[\s\S]*value\?\.kill
 assert.match(viteConfig, /exitCode: cancelled \? 130 : timedOut \? 124/);
 assert.match(chemistryJobsHook, /cancelledXtbJobIdsRef\.current\.delete\(jobId\)[\s\S]*status: "running"/);
 
-assert.match(xtbRuntime, /Managed xTB installation requires Pixi or Conda/);
+assert.match(xtbRuntime, /Managed xTB installation requires Pixi to install the bundled lockfile/);
 assert.match(xtbRuntime, /"install", "--locked", "--manifest-path"/);
-assert.match(xtbRuntime, /"create",\s*"--yes",\s*"--no-default-packages",\s*"--override-channels"/);
 assert.match(xtbRuntime, /path\.is_absolute\(\) && is_executable_file\(path\)/);
 assert.match(browserDevXtbRuntime, /"install", "--locked", "--manifest-path"/);
-assert.match(browserDevXtbRuntime, /Managed xTB installation requires Pixi or Conda/);
-assert.match(browserDevXtbRuntime, /"create",\s*"--yes",\s*"--no-default-packages",\s*"--override-channels"/);
+assert.match(browserDevXtbRuntime, /Managed xTB installation requires Pixi to install the bundled lockfile/);
 assert.match(browserDevXtbRuntime, /isAbsolute\(path\) && isExecutableFile\(path\)/);
 assert.doesNotMatch(xtbRuntime, /global["']?,\s*["']install/);
 assert.doesNotMatch(browserDevXtbRuntime, /global["']?,\s*["']install/);

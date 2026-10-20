@@ -30,6 +30,9 @@ if [[ "$SCOPE" == "all" || "$SCOPE" == "js" ]]; then
   bun run test:mesoscale
   bun run test:agent
   bun run test:update
+  python3 tests/test-model-assets.py
+  bun tests/test-model-runtime-install.mjs
+  bun tests/test-svg-artwork-safety.mjs
   bun run test:ui
   bun run test:responsiveness
   bun run test:tauri-structure

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { browserGeneratedFilesRoot } from './generated-files-root.mjs';
 import { navigationLink, registerSessionLink } from './burette-deep-links.mjs';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -19,9 +20,7 @@ const agentShellServerScript = resolve(__dirname, 'agent-shell-server.mjs');
 const agentShellDistDir = process.env.BURETTE_AGENT_SHELL_DIST_DIR
   ? resolve(process.env.BURETTE_AGENT_SHELL_DIST_DIR)
   : defaultAgentShellDistDir();
-const browserDevGeneratedFilesRoot = process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT
-  ? resolve(process.env.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT)
-  : resolve(homedir(), 'Desktop', 'Burette Generated Files');
+const browserDevGeneratedFilesRoot = browserGeneratedFilesRoot();
 const apiVersion = 'burette-agent-cli/v1';
 const supportedModes = new Set(['auto', 'browser-preview', 'browser-agent-shell', 'browser-dev-shell', 'desktop-app']);
 const MAX_AGENT_ACTION_HISTORY = 128;

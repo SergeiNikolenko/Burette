@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   KETCHER_AGENT_LIMITS,
   applyInteractionRevision,
@@ -22,7 +22,8 @@ type RelaySurface = {
   selectedAtoms: number[];
   highlightedAtoms: number[];
   lastAction: unknown;
-  actionResults: Map<string, { hash: string; result: HostedKetcherActionResult }>;
+  actionResults: Map<string, { hash: string; result: HostedKetcherActionResult; bytes: number }>;
+  actionResultBytes: number;
 };
 
 export type HostedKetcherActionResult = {
@@ -37,6 +38,11 @@ export type HostedKetcherActionResult = {
 const surfaces = new Map<string, RelaySurface>();
 const RELAY_TTL_MS = 15 * 60 * 1000;
 const MAX_SURFACES = 256;
+// 256 surfaces × 1 MiB bounds retained replay payloads to 256 MiB.
+// One maximum MOL/SDF export can JSON-escape 2 × 64 KiB to almost 768 KiB;
+// keep room for that complete result so an immediate retry stays idempotent.
+// Current seeds are separately bounded by the contract's 64 KiB input limit.
+const MAX_REPLAY_BYTES_PER_SURFACE = 1024 * 1024;
 
 export function createHostedKetcherSurface(seed?: { format: string; content: string }) {
   pruneExpiredSurfaces();
@@ -57,6 +63,7 @@ export function createHostedKetcherSurface(seed?: { format: string; content: str
     highlightedAtoms: [],
     lastAction: null,
     actionResults: new Map(),
+    actionResultBytes: 0,
   };
   if (surface.input) surface.state = markPersisted(applyStructuralRevision(surface.state));
   surfaces.set(surfaceId, surface);
@@ -245,14 +252,17 @@ function seedFor(surface: RelaySurface) {
 
 function stableActionHash(action: KetcherControlAction) {
   const { actionId: _actionId, ...payload } = action;
-  return JSON.stringify(payload);
+  return createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
 function remember(surface: RelaySurface, action: KetcherControlAction, result: HostedKetcherActionResult, hash: string) {
-  surface.actionResults.set(action.actionId, { hash, result });
-  while (surface.actionResults.size > 256) {
+  const bytes = Buffer.byteLength(JSON.stringify(result)) + Buffer.byteLength(action.actionId) + hash.length;
+  surface.actionResults.set(action.actionId, { hash, result, bytes });
+  surface.actionResultBytes += bytes;
+  while (surface.actionResults.size > 256 || surface.actionResultBytes > MAX_REPLAY_BYTES_PER_SURFACE) {
     const oldest = surface.actionResults.keys().next().value;
     if (!oldest) break;
+    surface.actionResultBytes -= surface.actionResults.get(oldest)!.bytes;
     surface.actionResults.delete(oldest);
   }
   return result;

@@ -186,7 +186,11 @@ function isNonPublicIp(address: string): boolean {
   return true;
 }
 
-async function resolvePublicHttpsTarget(value: string): Promise<PublicHttpsTarget> {
+async function resolvePublicHttpsTarget(
+  value: string,
+  signal: AbortSignal = AbortSignal.timeout(STRUCTURE_FETCH_TIMEOUT_MS),
+): Promise<PublicHttpsTarget> {
+  signal.throwIfAborted();
   let url: URL;
   try {
     url = new URL(value);
@@ -231,8 +235,14 @@ async function resolvePublicHttpsTarget(value: string): Promise<PublicHttpsTarge
 
   let addresses: LookupAddress[];
   try {
-    addresses = await lookup(hostname, { all: true, verbatim: true });
+    addresses = await new Promise<LookupAddress[]>((resolve, reject) => {
+      const onAbort = () => reject(signal.reason);
+      signal.addEventListener("abort", onAbort, { once: true });
+      lookup(hostname, { all: true, verbatim: true }).then(resolve, reject)
+        .finally(() => signal.removeEventListener("abort", onAbort));
+    });
   } catch {
+    if (signal.aborted) throw signal.reason;
     throw new StructureServiceError(
       "FILE_HOST_UNREACHABLE",
       "The attachment host could not be resolved.",
@@ -257,6 +267,7 @@ async function readBoundedText(response: IncomingMessage): Promise<string> {
     Array.isArray(contentLength) ? contentLength[0] : contentLength,
   );
   if (Number.isFinite(declaredLength) && declaredLength > MAX_PUBLIC_STRUCTURE_BYTES) {
+    response.destroy();
     throw new StructureServiceError(
       "STRUCTURE_TOO_LARGE",
       `The structure exceeds the ${MAX_PUBLIC_STRUCTURE_BYTES} byte public preview limit.`,
@@ -336,7 +347,7 @@ async function fetchPublicText(source: string): Promise<string> {
   let current = source;
   try {
     for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects += 1) {
-      const target = await resolvePublicHttpsTarget(current);
+      const target = await resolvePublicHttpsTarget(current, controller.signal);
       const response = await requestPinnedHttps(target, controller.signal);
       const status = response.statusCode ?? 500;
       if (status >= 300 && status < 400) {

@@ -51,22 +51,26 @@ const loadStart = source.indexOf('  async function loadPreparedStructure(viewer,
 const loadEnd = source.indexOf('  async function loadMolstarEntry(', loadStart);
 for (const hosted of [false, true]) {
   const presets = [];
+  const sceneWindow = {};
+  runInNewContext(readFileSync(new URL('../PreviewExtension/Web/scene-file-actions.js', import.meta.url), 'utf8'), { window: sceneWindow, TextEncoder });
+  const trajectory = { obj: { data: { frameCount: 1 } } };
   const context = {
+    window: sceneWindow, normalizeFormat: format => format,
     activeConfig: { hostedMcpWidgetBootstrap: hosted },
     cancelScheduledMolstarWaterRepresentation() {}, updateSdfPoseButton() {},
     notifyStructureOverlayModeChanged() {}, installDockingPoseControls() {},
     configuredMolstarStyle: () => 'auto', applyMolstarStyle: async () => {},
     applyMolstarWaterLineRepresentation: async () => {}, trajectoryControlsForPrepared: () => null,
-    parseMolstarStructureTrajectories: async () => ['trajectory'],
+    parseMolstarStructureTrajectories: async () => [trajectory],
   };
-  runInNewContext(source.slice(loadStart, loadEnd), context);
-  const viewer = { plugin: { builders: { data: { rawData: async () => 'data' }, structure: {
+  runInNewContext(source.slice(loadStart, source.indexOf('  async function loadMolstarEntryWithStructureRefs(', loadEnd)), context);
+  const viewer = { plugin: { managers: { structure: { hierarchy: { current: { models: [] } } } }, builders: { data: { rawData: async () => 'data' }, structure: {
     hierarchy: { applyPreset: async (...args) => presets.push(args) },
   } } } };
   await context.loadPreparedStructure(viewer, { format: 'pdb', data: 'ATOM', label: '1STP' });
   assert.deepEqual(JSON.parse(JSON.stringify(presets[0])), hosted
-    ? ['trajectory', 'default', { structure: { name: 'model', params: {} } }]
-    : ['trajectory', 'default', null]);
+    ? [trajectory, 'default', { structure: { name: 'model', params: {} } }]
+    : [trajectory, 'default', null]);
   await context.loadPreparedStructure(viewer, { format: 'pdb', data: 'ATOM', loadPreset: 'all-models' });
   assert.equal(presets[1][2].useDefaultIfSingleModel, !hosted);
 }

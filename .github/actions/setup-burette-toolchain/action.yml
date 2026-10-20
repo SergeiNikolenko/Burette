@@ -9,7 +9,7 @@ inputs:
     description: Run bun install with the frozen lockfile.
     default: "true"
   install-xyzrender:
-    description: Install the xyzrender runtime through uv.
+    description: Use the authenticated, locked xyzrender runtime for native builds.
     default: "false"
 
 runs:
@@ -29,6 +29,4 @@ runs:
       if: inputs.install-xyzrender == 'true'
       shell: bash
       run: |
-        python3 -m pip install --user --break-system-packages uv
-        echo "$(python3 -m site --user-base)/bin" >> "$GITHUB_PATH"
-        "$(python3 -m site --user-base)/bin/uv" tool install xyzrender
+        echo "BURETTE_BUILD_LOCKED_XYZRENDER=1" >> "$GITHUB_ENV"

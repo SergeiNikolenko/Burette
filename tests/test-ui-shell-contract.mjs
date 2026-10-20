@@ -1043,7 +1043,7 @@ assert.match(browserDevStartup, /return \[\];\s*}\s*export function browserDevFo
 assert.match(browserDevStartup, /export function splitDevFiles\(rawFiles: string\)/);
 assert.doesNotMatch(app, /fetch\("\/__burette\/dev-files", \{ cache: "no-store" \}\)/);
 assert.match(buretteAgentCli, /function browserDevFsAllowRoots\(initialFile, extraFiles = \[\]\)/);
-assert.match(buretteAgentCli, /const browserDevGeneratedFilesRoot = process\.env\.BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT/);
+assert.match(buretteAgentCli, /const browserDevGeneratedFilesRoot = browserGeneratedFilesRoot\(\)/);
 assert.match(buretteAgentCli, /const explicitRoots = \(process\.env\.BURETTE_DEV_FS_ALLOW \?\? ""\)\.split\(delimiter\)\.filter\(Boolean\);/);
 assert.match(buretteAgentCli, /return Array\.from\(new Set\(\[\.\.\.roots, browserDevGeneratedFilesRoot\]\)\);/);
 assert.match(buretteAgentCli, /BURETTE_DEV_FS_ALLOW: browserDevFsAllowRoots\(initialFile, sceneFiles \?\? \[\]\)\.join\(delimiter\)/);
@@ -4949,7 +4949,7 @@ assert.match(browserDevDocuments, /failed to fetch collection data from \$\{url\
 assert.match(browserDevDocuments, /hasImplicitAtomIndex \|\|= headerLine\.toLowerCase\(\)\.includes\("first column is atom index"\)/);
 assert.match(browserDevDocuments, /const rowOffset = hasImplicitAtomIndex \? 1 : 0/);
 assert.match(browserDevDocuments, /\/__burette\/read-file\?path=\$\{encodeURIComponent\(path\)\}/);
-assert.match(browserDevDocuments, /new DecompressionStream\("gzip"\)/);
+assert.match(browserDevDocuments, /inflateStructureBytes\(bytes, 64 \* 1024 \* 1024\)/);
 assert.match(browserDevDocuments, /sourceExtension: extension/);
 assert.match(browserDevDocuments, /molstarAvailable: !format\.externalOnly \|\| externalMolstarAvailable/);
 assert.match(browserDevDocuments, /\{ value: "flat", label: "Flat" \}/);
@@ -5649,7 +5649,7 @@ assert.match(previewViewer, /\.buret-xyzrender-sheet-rotate-handle \{[^}]*width:
 assert.match(previewViewer, /\.buret-xyzrender-resize-n,\s*\.buret-xyzrender-resize-s \{[^}]*width: 84px;[^}]*height: 30px;/);
 assert.match(previewViewer, /\.buret-xyzrender-resize-ne,\s*\.buret-xyzrender-resize-nw,\s*\.buret-xyzrender-resize-se,\s*\.buret-xyzrender-resize-sw \{[^}]*width: 38px;[^}]*height: 38px;/);
 assert.match(previewViewer, /if \(region === 'left'\) layoutState\.left = layoutState\.left === 'full' \? 'hidden' : 'full'/);
-assert.match(previewViewer, /await plugin\.builders\.structure\.hierarchy\.applyPreset\(trajectory, 'default', presetOptions\)/);
+assert.match(previewViewer, /await loadMolstarEntry\(viewer, \{ \.\.\.prepared, loadPreset: 'default' \}, presetOptions\)/);
 assert.doesNotMatch(previewViewer, /typeParams: \{ sizeFactor: 0\.16, ignoreLight: true \}/);
 assert.match(previewViewer, /const style = configuredMolstarStyle\(activeConfig\)/);
 assert.match(previewViewer, /function isMolstarWaterComponent\(component\)/);
@@ -6808,12 +6808,12 @@ assert.match(previewViewer, /const contextColor = options\.contextColor \?\? rea
 assert.match(previewViewer, /await applySdfCollectionMolstarStyle\(\s*viewer,\s*contextStyle === 'match' \? style : contextStyle,\s*backgroundStructures,\s*contextOpacity,\s*contextColor\s*\)/s);
 assert.match(previewViewer, /await switchCachedPoseLayer\(viewer, state, activeIndex, \{[\s\S]*?data: activeData, format: 'pdb'/);
 assert.match(previewViewer, /structures => applySdfCollectionMolstarStyle\(viewer, style, structures, 1, 'colored'\)/);
-assert.match(previewViewer, /function dockingPoseCollectionStateKey\(prepared, style, allMode, contextStyle, contextOpacity, contextColor\)/);
+assert.match(previewViewer, /function dockingPoseCollectionStateKey\(prepared, style, allMode, contextStyle, activeIndex = 0\)/);
 assert.match(previewViewer, /async function applyDockingPoseCollectionVisibilityNow\(viewer, prepared, activePose = 0, options = \{\}\)/);
 assert.match(previewViewer, /const allMode = activeSdfPoseMode === 'all' && prepared\.sdfPoseOverlayAvailable === true/);
 assert.match(previewViewer, /backgroundStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\)/);
-assert.match(previewViewer, /async function loadMolstarEntry\(viewer, entry, presetOptions = undefined\)/);
-assert.match(previewViewer, /applyPreset\(trajectory, entry\.loadPreset \|\| 'default', presetOptions\)/);
+assert.match(previewViewer, /async function loadMolstarEntry\(viewer, entry, presetOptions = undefined, appendOwner = undefined\)/);
+assert.match(previewViewer, /await window\.BuretteSceneFiles\.loadModels\(viewer, \{ \.\.\.entry, \.\.\.payload \}, parseMolstarStructureTrajectories, presetOptions, appendOwner\)/);
 assert.match(previewViewer, /async function loadMolstarEntryWithStructureRefs\(viewer, entry, presetOptions = undefined\)/);
 assert.match(previewViewer, /await loadMolstarEntry\(viewer, entry, presetOptions\)/);
 assert.match(previewViewer, /const before = molstarStructureCellRefs\(viewer\);\s*await loadMolstarEntry\(viewer, entry, presetOptions\);/);
@@ -6916,7 +6916,7 @@ assert.match(previewViewer, /loopActive = Boolean\(active\)/);
 assert.match(previewViewer, /const open = !isAnimationOptionsOpen\(\);\s*setAnimationOptionsOpen\(open\);/);
 assert.match(previewViewer, /const loopTargetIndex = \(\) => \{/);
 assert.match(previewViewer, /const trajectoryControlBounds = \(poseIndex\) => \{/);
-assert.match(previewViewer, /currentIndex\.textContent = `\$\{poseIndex - current\.segment\.startFrame \+ 1\}\/\$\{current\.segment\.frameCount\} · \$\{current\.index \+ 1\}\/\$\{trajectorySegments\.length\}`/);
+assert.match(previewViewer, /currentIndex\.textContent = `\$\{poseIndex - current\.segment\.startFrame \+ 1\}\/\$\{current\.segment\.frameCount\} · \$\{current\.index \+ 1\}\/\$\{segments\.length\}`/);
 // A slow frame step must not let wall-clock time pick an absolute frame: the loop
 // would alternate between two frames instead of playing (WKWebView regression).
 // It still has to skip the frames that fell due, or fps above the step rate is
@@ -7846,7 +7846,7 @@ assert.match(gridViewer, /'the row split', 'collection'\)/);
 assert.match(gridViewer, /'the row merge', 'collection'\)/);
 assert.match(gridViewer, /function gridSaveAsSnapshot\(rows, cfg\)/);
 assert.match(gridViewer, /function serializeSdfRows\(rows\)/);
-assert.match(gridViewer, /function serializeDelimitedRows\(rows, separator\)/);
+assert.match(gridViewer, /function serializeDelimitedRows\(rows, separator, spreadsheet = false\)/);
 assert.match(gridViewer, /function applyVirtualGridEdits\(rows\)/);
 assert.match(gridViewer, /state\.rowPatches\.set\(index/);
 assert.match(gridViewer, /Unsaved changes\. Use Save to overwrite the source file, Save As to write a new file, or Undo to revert the last edit\./);

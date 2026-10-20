@@ -46,7 +46,7 @@ for (const list of runtimeAssets.matchAll(/return \[([^\]]+)\]/g)) {
   if (!list[1].includes('"viewer.js"')) continue;
   assert.ok(list[1].includes('"sequence-panel.js"'), "Every Quick Look viewer runtime must copy the sequence helper");
 }
-assert.match(quickLookRuntime, /<script src="\.\.\/assets\/sequence-panel\.js"><\/script>\s*<script src="\.\.\/assets\/viewer\.js"><\/script>/);
+assert.match(quickLookRuntime, /<script src="\.\.\/assets\/sequence-panel\.js"><\/script>\s*<script src="\.\.\/assets\/svg-sanitizer\.js"><\/script>\s*<script src="\.\.\/assets\/viewer\.js"><\/script>/);
 
 const matrix = JSON.parse(matrixSource);
 const surfaceDocs = `${testingSurfaces}\n${scriptsReadme}\n${mobileReadme}`;

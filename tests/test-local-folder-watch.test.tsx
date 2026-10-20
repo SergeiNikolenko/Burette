@@ -74,3 +74,51 @@ test("Open all reads fresh folder contents and excludes notes from the shared sc
     expect(batch.watching).toEqual([]);
   } finally { await act(async () => root.unmount()); mount.remove(); }
 });
+
+test("fresh protein/ligand folders open as docking runs while watched folders keep incremental scenes", async () => {
+  let batch!: ReturnType<typeof useLocalFileBatch>;
+  const docking: unknown[] = [];
+  const paths = ['/run/poses.sdf', '/run/receptor.pdb', '/run/crystal.sdf'];
+  const actions = { openDockingDocument: async (receptor: string, ligands: string[], options: { shouldApply: () => boolean }) => {
+    docking.push([receptor, ligands, options.shouldApply()]); return { id: 'docking' };
+  } };
+  function Harness() { batch = useLocalFileBatch({} as never, actions as never); return null; }
+  const mount = document.createElement('div'); document.body.append(mount); const root = createRoot(mount);
+  calls.length = 0; sceneOpen = true;
+  try {
+    await act(async () => root.render(<Harness />));
+    let result: unknown;
+    await act(async () => { result = await batch.open(paths, 'scene'); });
+    expect(result).toEqual({ total: 3, completed: 3, opened: 3, failures: [], cancelled: false, documentId: 'docking' });
+    expect(docking).toEqual([['/run/receptor.pdb', ['/run/poses.sdf', '/run/crystal.sdf'], true]]);
+    expect(calls).toHaveLength(0);
+    await act(async () => { await batch.open(paths, 'scene', { path: '/run', recursive: false, baseline: paths }); });
+    expect(calls).toHaveLength(1);
+    expect(docking).toHaveLength(1);
+    const oversized = ['/run/receptor.pdb', ...Array.from({length: 200}, (_, i) => `/run/${i}.sdf`)];
+    await act(async () => { await expect(batch.open(oversized, 'scene')).rejects.toThrow('200'); });
+    expect(docking).toHaveLength(1);
+  } finally { await act(async () => root.unmount()); mount.remove(); }
+});
+
+test("cancelling a pending docking folder invalidates its document apply guard", async () => {
+  let batch!: ReturnType<typeof useLocalFileBatch>, shouldApply!: () => boolean, finish!: () => void;
+  const actions = { openDockingDocument: async (_receptor: string, _ligands: string[], options: { shouldApply: () => boolean }) => {
+    shouldApply = options.shouldApply;
+    await new Promise<void>(resolve => { finish = resolve; });
+    expect(shouldApply()).toBe(false);
+    return null;
+  } };
+  function Harness() { batch = useLocalFileBatch({} as never, actions as never); return null; }
+  const mount = document.createElement('div'); document.body.append(mount); const root = createRoot(mount);
+  try {
+    await act(async () => root.render(<Harness />));
+    let pending!: ReturnType<typeof batch.open>;
+    await act(async () => { pending = batch.open(['/run/receptor.pdb', '/run/poses.sdf'], 'scene'); });
+    expect(shouldApply()).toBe(true);
+    batch.cancel();
+    let result: unknown;
+    await act(async () => { finish(); result = await pending; });
+    expect(result).toEqual({ total: 2, completed: 0, opened: 0, failures: [], cancelled: true });
+  } finally { await act(async () => root.unmount()); mount.remove(); }
+});

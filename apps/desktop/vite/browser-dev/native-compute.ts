@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import type { ViteDevServer } from "vite";
 
 import { readJsonBody, sendJson, sendJsonError } from "./http";
+import { resolveModelPython } from "../../../../scripts/model-runtime-path.mjs";
 
 const REQUEST_LIMIT_BYTES = 12 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
@@ -106,23 +107,13 @@ export function registerBrowserDevNativeComputeRoute(server: ViteDevServer, repo
   });
 }
 
-function molecularRepresentationPython(repoRoot: string) {
-  const configured = process.env.BURETTE_CHEMICAL_SPACE_MODEL_PYTHON?.trim();
-  const candidates = [
-    configured || null,
-    join(homedir(), "Library", "Application Support", "Burette", "model-python", "bin", "python"),
-    join(repoRoot, ".venv-chemical-space", "bin", "python"),
-  ].filter((candidate): candidate is string => Boolean(candidate));
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
-}
-
 async function runMolecularRepresentation(
   repoRoot: string,
   input: string,
   signal: AbortSignal,
   onProgress: (progress: unknown) => void,
 ) {
-  const python = molecularRepresentationPython(repoRoot);
+  const python = resolveModelPython(repoRoot)?.path;
   if (!python) {
     throw new Error(
       "Metal model runtime is not installed. Configure BURETTE_CHEMICAL_SPACE_MODEL_PYTHON.",

@@ -13,7 +13,7 @@ const window = {};
 vm.runInNewContext(readFileSync(new URL('../PreviewExtension/Web/scene-file-actions.js', import.meta.url), 'utf8'), { window, TextEncoder, Set, WeakMap });
 const cells = new Map([['root', { transform: { parent: 'root' } }], ['protein', { transform: { parent: 'root' }, style: 'cartoon' }]]);
 const removed = [];
-const viewer = { plugin: { state: { data: { cells, build: () => ({ delete(ref) { removed.push(ref); return this; }, async commit() { removed.forEach(ref => cells.delete(ref)); } }) } } } };
+const viewer = { plugin: { managers: { structure: { hierarchy: { current: { models: [] } } } }, state: { data: { cells, build: () => ({ delete(ref) { removed.push(ref); return this; }, async commit() { removed.forEach(ref => cells.delete(ref)); } }) } } } };
 const camera = { position: [10, 20, 30], target: [0, 0, 0] };
 let restored;
 const loaded = [];
@@ -39,7 +39,7 @@ console.log('Scene file imports preserve existing objects and camera, reject dup
 // and the host no longer counts it when the scene is rebuilt.
 const ROOT = '-=root=-';
 const liveCells = new Map([[ROOT, { transform: { parent: ROOT } }], ['p', { transform: { parent: ROOT }, obj: { label: 'protein.pdb' } }]]);
-const liveViewer = { plugin: { state: { data: { tree: { root: { ref: ROOT } }, cells: liveCells } } } };
+const liveViewer = { plugin: { managers: { structure: { hierarchy: { current: { models: [] } } } }, state: { data: { tree: { root: { ref: ROOT } }, cells: liveCells } } } };
 const liveContext = { ...context, load: async (_, item) => { liveCells.set(item.path, { transform: { parent: ROOT }, obj: { label: item.path.split('/').pop() } }); } };
 await window.BuretteSceneFiles.append(liveViewer, { sources: [source('/run/ligand.pdb')], existingPaths: ['/run/protein.pdb'] }, liveContext);
 await assert.rejects(window.BuretteSceneFiles.append(liveViewer, { sources: [source('/run/ligand.pdb')] }, liveContext), /already in this scene/);
@@ -91,7 +91,7 @@ assert.equal(repeatedDrop.result.added, 0);
 assert.equal(cells.get('protein').style, 'cartoon');
 assert.equal(restored, camera);
 const otherCells = new Map([['root', { transform: { parent: 'root' } }]]);
-const otherViewer = { plugin: { state: { data: { cells: otherCells } } } };
+const otherViewer = { plugin: { managers: { structure: { hierarchy: { current: { models: [] } } } }, state: { data: { cells: otherCells } } } };
 const otherContext = { ...context, load: async (_, item) => otherCells.set(item.path, { transform: { parent: 'root' } }) };
 assert.equal((await window.BuretteSceneFiles.append(otherViewer, {
   sources: [source('/new-from-folder.pdb')], skipExisting: true,

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sign the final ZIP and produce a bounded stable/beta Sparkle feed.
 
-Usage: sparkle-appcast.py <zip> <app> <output> [previous-feed] [--delta <patch>]...
+Usage: sparkle-appcast.py <zip> <app> <output> [previous-feed] [--delta <patch>]... [--asset <dmg>]
 Patches are named Burette-<version>-from-<build>.delta (see sparkle-deltas.py).
 """
 import base64
@@ -69,41 +69,58 @@ def sign(path, key):
     signer = Path(__file__).resolve().parent.parent / 'build/sparkle/2.10.0/bin/sign_update'
     signature = subprocess.run([str(signer), '--ed-key-file', '-', '-p', str(path)],
                                input=key + '\n', text=True, capture_output=True, check=True).stdout.strip()
-    assert len(base64.b64decode(signature, validate=True)) == 64
+    if len(base64.b64decode(signature, validate=True)) != 64:
+        raise ValueError('Sparkle signer returned an invalid signature')
     return signature
 
 
 def main():
-    args, patches = [], []
+    args, patches, assets = [], [], []
     argv = iter(sys.argv[1:])
     for arg in argv:
         if arg == '--delta':
             patches.append(Path(next(argv)))
+        elif arg == '--asset':
+            assets.append(Path(next(argv)))
         else:
             args.append(arg)
     archive, app, output = map(Path, args[:3])
     with (app / 'Contents/Info.plist').open('rb') as stream:
         info = plistlib.load(stream)
-    assert info['CFBundleIdentifier'] == 'com.local.BuretteV10', 'Only canonical release bundles may enter the public feed'
-    assert archive.name == f"Burette-{info['CFBundleShortVersionString']}.zip"
+    if info['CFBundleIdentifier'] != 'com.local.BuretteV10':
+        raise ValueError('Only canonical release bundles may enter the public feed')
+    if archive.name != f"Burette-{info['CFBundleShortVersionString']}.zip":
+        raise ValueError('Archive name must match the release version')
     key = os.environ['BURETTE_SPARKLE_PRIVATE_KEY'].strip()
     seed = base64.b64decode(key, validate=True)
-    assert len(seed) == 32, 'Use the 32-byte seed exported by Sparkle 2.10.0 generate_keys'
+    if len(seed) != 32:
+        raise ValueError('Use the 32-byte seed exported by Sparkle 2.10.0 generate_keys')
     public = subprocess.run(['openssl', 'pkey', '-inform', 'DER', '-pubout', '-outform', 'DER'],
                             input=bytes.fromhex('302e020100300506032b657004220420') + seed,
                             check=True, capture_output=True).stdout[-32:]
-    assert base64.b64encode(public).decode() == info['SUPublicEDKey'], 'Signing key does not match the key embedded in the app'
+    if base64.b64encode(public).decode() != info['SUPublicEDKey']:
+        raise ValueError('Signing key does not match the key embedded in the app')
+    installer_key = (Path(__file__).resolve().parents[1] / 'packages/burette/bin/release-signing-key.txt').read_text().strip()
+    if base64.b64encode(public).decode() != installer_key:
+        raise ValueError('Signing key does not match the pinned installer key')
     signature = sign(archive, key)
+    archive.with_name(archive.name + '.ed25519').write_text(signature + '\n')
+    for asset in assets:
+        if asset.name != f"Burette-{info['CFBundleShortVersionString']}.dmg":
+            raise ValueError('Unexpected distribution asset name')
+        asset.with_name(asset.name + '.ed25519').write_text(sign(asset, key) + '\n')
     prefix = f"Burette-{info['CFBundleShortVersionString']}-from-"
     deltas = []
     for patch in patches:
-        assert patch.name.startswith(prefix) and patch.suffix == '.delta', f'Unexpected delta name {patch.name}'
+        if not patch.name.startswith(prefix) or patch.suffix != '.delta':
+            raise ValueError(f'Unexpected delta name {patch.name}')
         deltas.append((patch.name[len(prefix):-len('.delta')], patch.name, patch.stat().st_size, sign(patch, key)))
     architectures = subprocess.check_output(['lipo', '-archs', str(app / 'Contents/MacOS' / info['CFBundleExecutable'])], text=True).split()
     previous = None
     if len(args) > 3:
         previous_path = Path(args[3])
-        assert previous_path.stat().st_size <= 262144, 'Existing appcast exceeds 256 KiB'
+        if previous_path.stat().st_size > 262144:
+            raise ValueError('Existing appcast exceeds 256 KiB')
         previous = previous_path.read_bytes()
     output.write_bytes(make_feed(info, archive.name, archive.stat().st_size, signature, previous,
                                  architectures == ['arm64'], deltas))

@@ -117,8 +117,10 @@ large duplicated files have an explicit explanation.
 ## Bundled Python Footprint
 
 Release builds package the `xyzrender` CLI and RDKit in a relocatable Python
-environment (`uv tool install --with rdkit xyzrender`). Datamol is not installed
-by the build; missing RDKit is installed directly before native compilation.
+environment prepared by `scripts/prepare-xyzrender-runtime.py`. Python, uv and the
+complete wheel dependency set are pinned by version and SHA-256 under
+`config/xyzrender/`. Each release gets a fresh environment; the build does not
+repair or copy the user's mutable tool installation. Datamol is not installed.
 The staged copy is reduced to the dependency closure of xyzrender, RDKit, and installed xyzrender file-format
 extras, excluding xyzrender's notebook-only `ipykernel` dependency. Shared
 requirements such as SciPy (through cclib) are retained. Datamol-only packages

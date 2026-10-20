@@ -529,7 +529,7 @@ const extractedLigand = await extractStructureComponentFile({
 });
 assert.equal(extractedLigand.atomCount, 44);
 assert.match(extractedLigand.outputPath, /test-nad-a-377\.pdb$/);
-await unlink(extractedLigand.outputPath);
+await rm(path.dirname(extractedLigand.outputPath), { recursive: true, force: true });
 
 const removedLigand = await editStructureFragmentFile({
   file: "samples/structures/proteins/1htb.pdb",
@@ -546,7 +546,7 @@ assert.match(removedLigand.outputPath, /test-1htb-without-nad\.pdb$/);
 const removedLigandText = await readFile(removedLigand.outputPath, "utf8");
 assert.doesNotMatch(removedLigandText, /^(?:ATOM|HETATM).{11}NAD A\s+377\b/m);
 assert.doesNotMatch(removedLigandText, /^CONECT/m);
-await unlink(removedLigand.outputPath);
+await rm(path.dirname(removedLigand.outputPath), { recursive: true, force: true });
 
 const replacementLigand = await editStructureFragmentFile({
   file: "samples/structures/proteins/1htb.pdb",
@@ -566,7 +566,7 @@ assert.match(replacementLigandText, /REMARK Operation replace_to_new_file/);
 assert.doesNotMatch(replacementLigandText, /^(?:ATOM|HETATM).{11}NAD A\s+377\b/m);
 assert.doesNotMatch(replacementLigandText, /^CONECT/m);
 assert.match(replacementLigandText, /\bGLY A\s+1\b/);
-await unlink(replacementLigand.outputPath);
+await rm(path.dirname(replacementLigand.outputPath), { recursive: true, force: true });
 
 const selfContainedPluginCheck = runNode([
   "--input-type=module",

@@ -2452,7 +2452,15 @@ mod document_open_tests {
 
             let cube = create_temp_file("cube", b"dummy cube");
             let com = create_temp_file("com", b"dummy input");
-            let mae_gz = create_temp_file("mae.gz", b"dummy schrodinger maestro");
+            use flate2::{write::GzEncoder, Compression};
+            use std::io::Write;
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+            encoder
+                .write_all(include_bytes!(
+                    "../../../../../tests/fixtures/real-systembuilder-mini.cms"
+                ))
+                .unwrap();
+            let mae_gz = create_temp_file("mae.gz", &encoder.finish().unwrap());
             created_files.push(cube.clone());
             created_files.push(com.clone());
             created_files.push(mae_gz.clone());
@@ -2481,7 +2489,7 @@ mod document_open_tests {
                 (rdf, "grid2d"),
                 (cube, "xyzrender-external"),
                 (com, "xyzrender-external"),
-                (mae_gz, "xyzrender-external"),
+                (mae_gz, "molstar"),
             ];
 
             for (path, expected_renderer) in cases {
@@ -2883,6 +2891,52 @@ f_m_ct {
         if let Some(parent) = path.parent() {
             let _ = fs::remove_dir_all(parent);
         }
+    }
+
+    #[test]
+    fn rejects_oversized_maestro_gzip_before_external_renderer_fallback() {
+        use flate2::{write::GzEncoder, Compression};
+        use std::io::Write;
+        with_fake_xyzrender(|| {
+            let app = mock_app_with_grid_registry();
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+            let block = [b' '; 64 * 1024];
+            for _ in 0..1024 {
+                encoder.write_all(&block).unwrap();
+            }
+            encoder.write_all(b"x").unwrap();
+            let path = create_temp_file("maegz", &encoder.finish().unwrap());
+            for renderer in ["auto", "xyzrender-external"] {
+                let mut preferences = viewer_preferences();
+                preferences.renderer_mode = renderer.to_string();
+                let error =
+                    open_document(app.handle(), path.clone(), &preferences, None).unwrap_err();
+                assert!(error.contains("64 MiB"), "{renderer}: {error}");
+            }
+            fs::remove_dir_all(path.parent().unwrap()).unwrap();
+
+            let fixture =
+                include_bytes!("../../../../../tests/fixtures/real-systembuilder-mini.cms");
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+            encoder.write_all(fixture).unwrap();
+            let path = create_temp_file("maegz", &encoder.finish().unwrap());
+            for renderer in ["auto", "xyzrender-external"] {
+                let mut preferences = viewer_preferences();
+                preferences.renderer_mode = renderer.to_string();
+                let document =
+                    open_document(app.handle(), path.clone(), &preferences, None).unwrap();
+                assert_eq!(
+                    document.renderer,
+                    if renderer == "auto" {
+                        "molstar"
+                    } else {
+                        renderer
+                    }
+                );
+                remove_runtime_artifacts(&document.runtime_path);
+            }
+            fs::remove_dir_all(path.parent().unwrap()).unwrap();
+        });
     }
 
     #[test]

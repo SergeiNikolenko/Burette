@@ -31,10 +31,73 @@ with a selection-copy fallback.
 Do not add recursive directory ingestion, broad home-directory reads, or hidden
 network fetches without an explicit design and validation plan.
 
+Native directory expansion confines every resolved descendant to the selected
+canonical directory, including file and directory symlinks. Internal aliases
+retain their displayed paths; an explicitly selected symlink file or directory
+still grants its resolved target. Existing traversal limits and cycle detection
+remain in effect. Canonical checks do not provide descriptor-level isolation
+against a malicious process replacing paths concurrently as the same user.
+
+Quick Look GraphML parsing rejects duplicate effective node IDs, including
+collisions with generated IDs, before constructing lookup dictionaries. GraphML
+and edge-list star layouts sort leaves once and index them by ID, preserving
+node order and coordinates without a per-node linear search through all leaves.
+
+The RDKit grid drawing cache retains at most 2,000 entries and 32 MiB of
+UTF-16 key and SVG string payload; individual entries above 2 MiB are not
+cached. Molecule and reaction drawings share this budget. Oversized drawings
+still reach waiting cards in full. These limits cover retained cache strings,
+not transient RDKit computation, visible DOM content, or separate renderer caches.
+
+Maestro gzip previews enforce a 64 MiB decompressed byte limit before parsing,
+including all gzip members. Overflow or corrupt native gzip input is rejected;
+it does not fall through to an external renderer with the original compressed
+file. Browser previews and the agent/server text routes enforce the same Maestro
+limit while inflating. Other browser gzip structure previews retain their 75 MiB
+limit, now enforced during decompression. Oversized compressed previews fail with
+an error; source files are preserved and no partial scientific model is returned.
+
+Scene append and the shared Mol* model loader admit at most 200 materialized
+models including existing hidden or restored models. SDF all-models loads count
+record boundaries before parsing; parsed trajectory frame counts are checked
+before any model preset is applied. Multi-block CIF loads allow at most 200
+coordinate trajectories and charge one model per default-preset trajectory.
+Single-model animation remains supported without charging every unused frame.
+Overflow rejects the load without truncating source records or changing the
+preset. Failed appends remove their new state and preserve the camera; deleting
+models releases capacity. Concurrent model loads through this boundary refuse
+while the current load is active. Snapshot/MVS imports, atom counts, symmetry
+copies and representation multiplicity have separate resource behavior; these
+limits do not establish a universal scene-memory quota.
+
 Updater cleanup is limited to staged `.app` bundles below Burette's current and
 legacy `Library/Application Support/.../Updates` directories. It must not scan
 or remove applications from the user's home folders, Trash, backups, or
 development worktrees.
+
+## Native HTTP Downloads
+
+Native database and remote-structure HTTP downloads bound curl stdout while it
+is read, including chunked responses on curl versions that do not enforce
+`--max-filesize` for unknown lengths. The existing caller limit is retained
+(at most 48 MiB); diagnostics are limited to 64 KiB. Overflow and IO failures
+discard partial data, kill the process group and reap the child. Concurrent
+stdin/stdout/stderr handling keeps one request deadline effective across DNS,
+all redirect hops and blocked pipes. DNS allows at most four active OS lookups
+process-wide, without a queue; callers stop waiting at the request deadline.
+An OS lookup cannot be cancelled and retains its slot until it actually exits.
+Every hop rejects non-public addresses and pins the complete validated answer
+(at most 64 addresses) into curl while retaining the original TLS hostname.
+
+The fixed RCSB PDB downloader also supervises curl pipes, retaining its separate
+75 MiB stdout limit and 120-second deadline, with at most 64 KiB of diagnostics.
+The PDB command accepts a validated four-character ID, not an arbitrary URL.
+Browser structure downloads count received bytes during streaming and abort
+transport on overflow or timeout: 10 MiB / 30 seconds for arbitrary structure
+URLs and 75 MiB / 120 seconds for RCSB PDB. The deadline covers headers and body;
+decoded UTF-8 replacement expansion is bounded too. No partial structure is
+returned. Browser CORS rules remain applicable; these transport bounds do not
+grant the browser native access to local files or private networks.
 
 ## Compute Data Root
 
@@ -171,3 +234,25 @@ data when they are not needed for the fix.
 Do not put exploit details, credentials, or private sample data into a public
 issue or pull request. Coordinate privately with a maintainer and provide a
 minimal reproduction that avoids sensitive molecular data where possible.
+
+## Collection editing limits
+
+Eager merge, append and create operations share two edit slots. Merge accepts at
+most 64 source paths and 75 MiB total input; all eager collection edits bound
+actual input reads and output growth to 75 MiB, with a 256 KiB CSV/TSV header
+limit. Rejected append operations preserve the target. Failed merged preview
+opening removes only the newly generated source directory. Successful generated
+sources remain available for the viewer and Save As. Ordinary large collection
+opening and file-backed Save As keep their existing streaming behavior.
+
+MolJ runtime classification validates the complete JSON using bounded nesting
+and no heap allocation. It preserves ordinary/Mesoscale routing, escaped keys,
+last duplicate values, and the existing malformed-session fallback without
+building a second document tree.
+
+Spreadsheet exports protect formula-like text with a leading apostrophe before
+CSV quoting. This covers grid Export CSV, CSV/TSV Export table, XLSX Export sheet
+and representative CSV bundles, including headers and leading controls/Unicode
+whitespace. Signed decimal/scientific numbers retain their original text.
+Save, Save As, original downloads, imported collections and SDF/SMILES output
+preserve scientific values; export protection never rewrites the source rows.
