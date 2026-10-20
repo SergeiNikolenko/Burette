@@ -2021,6 +2021,8 @@
   let xyzFrameAlignment = null;
   let sdfCollectionAlignment = null;
   let activeDockingPoseCollectionState = null;
+  // Poses kept on screen while other poses are browsed, for the open docking set.
+  let dockingPinnedPoseState = { key: '', indices: new Set() };
   let activeDockingSceneVisibilityState = null;
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
@@ -12587,7 +12589,8 @@ SOFTWARE.
         nativeTrajectoryControls: false,
         ligandLabel: prepared?.ligandLabel || activeConfig?.label || 'Docking poses',
         controlLabel: prepared?.controlLabel || 'Pose',
-        sdfPoseOverlayAvailable: true
+        sdfPoseOverlayAvailable: true,
+        poseGroups: prepared?.poseGroups || []
       };
     }
     if (prepared?.sdfPoseMode === 'all' || prepared?.pdbModelMode === 'all') {
@@ -12735,6 +12738,8 @@ SOFTWARE.
               data: `${record}\n$$$$\n`,
               format: 'sdf',
               label: `${source.label || `Ligand ${ligandIndex + 1}`} pose ${poseIndex + 1}`,
+              fileLabel: source.label || `Ligand ${ligandIndex + 1}`,
+              score: dockingPoseScore(record),
               sourcePath: source.path || '',
               ligandIndex,
               poseIndex,
@@ -12754,6 +12759,8 @@ SOFTWARE.
         data,
         format,
         label: source.label || `Ligand ${ligandIndex + 1}`,
+        fileLabel: source.label || `Ligand ${ligandIndex + 1}`,
+        score: format === 'sdf' ? dockingPoseScore(data) : null,
         sourcePath: source.path || '',
         ligandIndex,
         poseIndex: 0,
@@ -12822,6 +12829,7 @@ SOFTWARE.
       controlLabel: 'Pose',
       nativeTrajectoryControls: false,
       sdfPoseOverlayAvailable: poses.length > 1,
+      poseGroups: ligandSources.length > 1 && poses.length > ligandSources.length ? dockingPoseGroups(poses) : [],
       receptorEntry,
       poses,
       entries: [
@@ -12829,6 +12837,53 @@ SOFTWARE.
         poses[activePose]
       ]
     };
+  }
+
+  // Docking engines store their score as an SD tag: smina, gnina and Matcha write
+  // minimizedAffinity, Glide writes r_i_docking_score. Both are kcal/mol.
+  const DOCKING_SCORE_TAGS = ['minimizedAffinity', 'r_i_docking_score'];
+
+  function dockingPoseScore(record) {
+    const text = String(record || '');
+    for (const tag of DOCKING_SCORE_TAGS) {
+      const match = text.match(new RegExp(`^>.*<${tag}>.*\\r?\\n\\s*(-?\\d+(?:\\.\\d+)?)`, 'm'));
+      if (match) return { tag, value: Number(match[1]) };
+    }
+    return null;
+  }
+
+  // One group per ligand file, so the stepper walks the poses of one docking run
+  // and the list switches runs; poses from different files never interleave.
+  function dockingPoseGroups(poses) {
+    const groups = [];
+    poses.forEach((pose, index) => {
+      let group = groups[groups.length - 1];
+      if (!group || group.ligandIndex !== pose.ligandIndex) {
+        group = { ligandIndex: pose.ligandIndex, label: pose.fileLabel, sourcePath: pose.sourcePath, startFrame: index, endFrame: index, frameCount: 0, poses: [] };
+        groups.push(group);
+      }
+      group.endFrame = index;
+      group.frameCount += 1;
+      group.poses.push({ label: `Pose ${pose.poseIndex + 1}`, score: pose.score });
+    });
+    return groups;
+  }
+
+  const DOCKING_REFERENCE_FILE_PATTERN = /(^|[^a-z])(crystal|xtal|native|ref|reference|cocrystal)([^a-z]|$)/i;
+  const DOCKING_REFERENCE_CARBON_COLOR = 0xf97316;
+
+  // Pins live per docking set. A fresh set pins its single-pose reference
+  // files (crystal/native ligand) so they stay visible next to every pose.
+  function dockingPinnedPoseIndices(prepared) {
+    const groups = Array.isArray(prepared?.poseGroups) ? prepared.poseGroups : [];
+    const key = [activeConfig?.documentId || '', ...groups.map(group => `${group.label}:${group.frameCount}`)].join('|');
+    if (dockingPinnedPoseState.key !== key) {
+      const references = groups.length > 1
+        ? groups.filter(group => group.frameCount === 1 && DOCKING_REFERENCE_FILE_PATTERN.test(group.label || ''))
+        : [];
+      dockingPinnedPoseState = { key, indices: new Set(references.map(group => group.startFrame)) };
+    }
+    return dockingPinnedPoseState.indices;
   }
 
   function normalizeRenderer(renderer) {
@@ -16232,7 +16287,7 @@ SOFTWARE.
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
   }
 
-  function dockingPoseCollectionStateKey(prepared, style, allMode, contextStyle, contextOpacity, contextColor) {
+  function dockingPoseCollectionStateKey(prepared, style, allMode, contextStyle, activeIndex = 0) {
     const receptor = prepared?.receptorEntry || {};
     const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
     const firstPose = poses[0] || {};
@@ -16248,6 +16303,8 @@ SOFTWARE.
       style,
       allMode ? 'all' : 'single',
       contextStyle,
+      allMode ? (prepared.poseGroups || []).find(group => activeIndex >= group.startFrame && activeIndex <= group.endFrame)?.startFrame ?? '' : '',
+      [...dockingPinnedPoseIndices(prepared)].filter(index => index < poses.length).sort((a, b) => a - b).join(','),
     ].join('|');
   }
 
@@ -16262,8 +16319,16 @@ SOFTWARE.
     return molstarRefsStillLoaded(viewer, [
       ...(state.receptorRefs || []),
       ...(state.backgroundRefs || []),
+      ...[...(state.pinnedRefsByIndex?.values() || [])].flat(),
       ...(state.activeRefs || [])
     ]);
+  }
+
+  // The active pose already draws itself; its pinned copy would only overlap it.
+  function syncDockingPinnedPoseVisibility(viewer, state, activeIndex) {
+    for (const [index, refs] of state.pinnedRefsByIndex || []) {
+      setDockingSceneRefsHidden(viewer, refs, index === activeIndex);
+    }
   }
 
   function applyDockingPoseCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
@@ -16284,11 +16349,19 @@ SOFTWARE.
     if (!activeEntry) throw new Error('Docking pose data is unavailable.');
     const style = configuredMolstarStyle(activeConfig);
     const allMode = activeSdfPoseMode === 'all' && prepared.sdfPoseOverlayAvailable === true;
+    // With several ligand files, All overlays the active file's poses only.
+    const allGroup = allMode
+      ? (prepared.poseGroups || []).find(group => activeIndex >= group.startFrame && activeIndex <= group.endFrame)
+      : null;
+    const pinnedIndices = [...dockingPinnedPoseIndices(prepared)].filter(index => index < poses.length).sort((a, b) => a - b);
+    const pinned = new Set(pinnedIndices);
+    const backgroundPoses = (allGroup ? poses.slice(allGroup.startFrame, allGroup.endFrame + 1) : poses)
+      .filter((_, offset) => !pinned.has((allGroup ? allGroup.startFrame : 0) + offset));
     const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
     const resolvedContextStyle = dockingSceneBackgroundStyle(contextStyle, style);
     const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
     const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
-    const stateKey = dockingPoseCollectionStateKey(prepared, style, allMode, resolvedContextStyle, contextOpacity, contextColor);
+    const stateKey = dockingPoseCollectionStateKey(prepared, style, allMode, resolvedContextStyle, activeIndex);
     let state = activeDockingPoseCollectionState;
     if (!state || state.key !== stateKey || !dockingPoseCollectionStateStillLoaded(viewer, state)) {
       resetXyzFrameOverlayState(viewer);
@@ -16302,18 +16375,26 @@ SOFTWARE.
       }
       const backgroundStructures = [];
       if (allMode) {
-        for (const entry of poses) {
+        for (const entry of backgroundPoses) {
           backgroundStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
         }
         if (backgroundStructures.length) {
           await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, backgroundStructures, contextOpacity, contextColor);
         }
       }
+      const pinnedRefsByIndex = new Map();
+      for (const index of pinnedIndices) {
+        const structures = await loadMolstarEntryWithStructureRefs(viewer, poses[index], { representationPreset: 'empty' });
+        if (!structures.length) continue;
+        await applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'reference');
+        pinnedRefsByIndex.set(index, molstarStructureRefsOf(structures));
+      }
       state = {
         viewer,
         key: stateKey,
         receptorRefs: molstarStructureRefsOf(receptorStructures),
         backgroundRefs: molstarStructureRefsOf(backgroundStructures),
+        pinnedRefsByIndex,
         activeRefs: [],
         activeIndex: -1
       };
@@ -16335,6 +16416,7 @@ SOFTWARE.
 
     await switchCachedPoseLayer(viewer, state, activeIndex, activeEntry,
       structures => applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'colored'));
+    syncDockingPinnedPoseVisibility(viewer, state, activeIndex);
     updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
     await applyMolstarWaterLineRepresentation(viewer);
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
@@ -16660,7 +16742,7 @@ SOFTWARE.
       const style = configuredMolstarStyle(activeConfig);
       const allMode = activeSdfPoseMode === 'all' && prepared.sdfPoseOverlayAvailable === true;
       const contextStyle = dockingSceneBackgroundStyle(readSdfCollectionContextStyle(activeConfig), style);
-      state.key = dockingPoseCollectionStateKey(prepared, style, allMode, contextStyle);
+      state.key = dockingPoseCollectionStateKey(prepared, style, allMode, contextStyle, state.activeIndex);
       state.appearanceKey = null;
       await applyDockingPoseCollectionVisibility(viewer, prepared, state.activeIndex, { focus: false });
       return;
@@ -16838,7 +16920,10 @@ SOFTWARE.
     const color = normalizeSdfCollectionContextColor(colorMode) === 'colored' ? 'element-symbol' : 'uniform';
     const colorParams = color === 'uniform' ? { value: 0x6f7886 } : undefined;
     const themed = (representation) => colorParams ? { ...representation, color, colorParams } : { ...representation, color };
-    return { ghost, withAlpha, themed };
+    if (colorMode !== 'reference') return { ghost, withAlpha, themed };
+    // Reference (pinned) poses keep element colours on a fixed carbon tint.
+    const referenceParams = { carbonColor: { name: 'uniform', params: { value: DOCKING_REFERENCE_CARBON_COLOR } } };
+    return { ghost, withAlpha, themed: (representation) => ({ ...representation, color, colorParams: referenceParams }) };
   }
 
   function sdfCollectionRepresentationForStyle(style, alpha = 1, colorMode = 'gray', minAlpha = 0.04) {
@@ -20391,6 +20476,15 @@ SOFTWARE.
       : [];
     const hasTrajectorySegments = trajectorySegments.length > 1;
     if (hasTrajectorySegments) root.classList.add('buret-docking-poses-trajectory-segments');
+    // Poses from several ligand files step like trajectory segments: the arrows stay
+    // inside one file and the list below switches files or jumps to a pose.
+    const poseGroups = !hasTrajectorySegments && Array.isArray(prepared.poseGroups) && prepared.poseGroups.length > 1
+      ? prepared.poseGroups
+      : [];
+    const hasPoseGroups = poseGroups.length > 0;
+    if (hasPoseGroups) root.classList.add('buret-docking-poses-pose-groups');
+    const segments = hasPoseGroups ? poseGroups : trajectorySegments;
+    const hasSegments = hasTrajectorySegments || hasPoseGroups;
     const controlLabel = String(prepared.controlLabel || 'Pose');
     const controlLabelLower = controlLabel.toLowerCase();
     root.setAttribute('aria-label', `${controlLabel} controls`);
@@ -20470,7 +20564,7 @@ SOFTWARE.
     mainRow.className = 'buret-docking-pose-main';
     const animationRow = document.createElement('div');
     animationRow.className = 'buret-docking-pose-animation';
-    const hasFileList = prepared.dockingSceneMode || hasTrajectorySegments;
+    const hasFileList = prepared.dockingSceneMode || hasSegments;
     const poseCompareGuide = prepared.kind === 'docking' && !prepared.nativeTrajectoryControls && prepared.dockingSceneMode !== 'structureAll';
     root.classList.toggle('buret-docking-poses-frames', !hasFileList);
     const listEntries = prepared.dockingSceneMode ? prepared.poses : trajectorySegments;
@@ -20504,7 +20598,73 @@ SOFTWARE.
     label.title = prepared.ligandLabel || '';
     const fileList = hasFileList ? document.createElement('div') : null;
     const fileButtons = [];
-    if (fileList) {
+    // The pose each list row jumps to, parallel to fileButtons.
+    const fileTargets = [];
+    // Pin toggles for single poses and whole files; pinned poses stay drawn as references.
+    const canPinPoses = hasPoseGroups && prepared.kind === 'docking' && !prepared.dockingSceneMode && prepared.sdfPoseOverlayAvailable === true;
+    const pinControls = [];
+    const pinButton = (indices, label) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'buret-docking-pose-pin';
+      button.append(sceneTreeIconElement(APP_ICON_DATA.Pin));
+      pinControls.push({ button, indices, label });
+      return button;
+    };
+    if (fileList && hasPoseGroups) {
+      fileList.className = 'buret-docking-pose-files';
+      fileList.setAttribute('role', 'listbox');
+      fileList.setAttribute('aria-label', 'Poses by file');
+      poseGroups.forEach(group => {
+        const section = document.createElement('div');
+        section.className = 'buret-docking-pose-group';
+        section.setAttribute('role', 'group');
+        section.setAttribute('aria-label', group.label);
+        const heading = document.createElement('div');
+        heading.className = 'buret-docking-pose-group-label';
+        heading.title = group.label;
+        const name = document.createElement('span');
+        name.className = 'buret-docking-pose-file-name';
+        name.textContent = group.label;
+        const count = document.createElement('span');
+        count.className = 'buret-docking-pose-file-meta';
+        count.textContent = `${group.frameCount} ${group.frameCount === 1 ? 'pose' : 'poses'}`;
+        if (canPinPoses) {
+          heading.classList.add('buret-docking-pose-pin-heading');
+          heading.append(pinButton(group.poses.map((_, offset) => group.startFrame + offset), group.label));
+        }
+        heading.append(name, count);
+        section.append(heading);
+        group.poses.forEach((pose, offset) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'buret-docking-pose-file buret-docking-pose-group-pose';
+          button.setAttribute('role', 'option');
+          const poseName = document.createElement('span');
+          poseName.className = 'buret-docking-pose-file-name';
+          poseName.textContent = pose.label;
+          button.append(poseName);
+          if (pose.score) {
+            const score = document.createElement('span');
+            score.className = 'buret-docking-pose-file-meta';
+            score.textContent = pose.score.value.toFixed(2);
+            button.title = `${pose.label} · ${pose.score.tag} ${pose.score.value} kcal/mol`;
+            button.append(score);
+          }
+          fileButtons.push(button);
+          fileTargets.push(group.startFrame + offset);
+          if (canPinPoses) {
+            const row = document.createElement('div');
+            row.className = 'buret-docking-pose-pin-row';
+            row.append(pinButton([group.startFrame + offset], `${group.label} · ${pose.label}`), button);
+            section.append(row);
+          } else {
+            section.append(button);
+          }
+        });
+        fileList.append(section);
+      });
+    } else if (fileList) {
       fileList.className = 'buret-docking-pose-files';
       fileList.setAttribute('role', 'listbox');
       fileList.setAttribute('aria-label', hasTrajectorySegments ? 'Trajectory segments' : 'Open structures');
@@ -20531,6 +20691,7 @@ SOFTWARE.
           button.append(frameCount);
         }
         fileButtons.push(button);
+        fileTargets.push(hasTrajectorySegments ? entry.startFrame : index);
         fileList.append(button);
       });
     }
@@ -20716,12 +20877,12 @@ SOFTWARE.
       (prepared.kind === 'docking' && prepared.sdfPoseOverlayAvailable === true)
     );
     const activeTrajectorySegment = (poseIndex) => {
-      if (!hasTrajectorySegments) return { index: -1, segment: null };
-      const index = trajectorySegments.findIndex(segment => (
+      if (!hasSegments) return { index: -1, segment: null };
+      const index = segments.findIndex(segment => (
         poseIndex >= segment.startFrame && poseIndex <= segment.endFrame
       ));
-      const resolvedIndex = index >= 0 ? index : trajectorySegments.length - 1;
-      return { index: resolvedIndex, segment: trajectorySegments[resolvedIndex] };
+      const resolvedIndex = index >= 0 ? index : segments.length - 1;
+      return { index: resolvedIndex, segment: segments[resolvedIndex] };
     };
     const trajectoryControlBounds = (poseIndex) => {
       const active = activeTrajectorySegment(poseIndex);
@@ -20745,10 +20906,10 @@ SOFTWARE.
         label.textContent = trajectoryPoseLabel(prepared, controlLabel, poseIndex);
         return;
       }
-      if (hasTrajectorySegments) {
+      if (hasSegments) {
         const current = activeTrajectorySegment(poseIndex);
         setCurrentName(current.segment?.label || `${controlLabel} ${poseIndex + 1}`);
-        currentIndex.textContent = `${poseIndex - current.segment.startFrame + 1}/${current.segment.frameCount} · ${current.index + 1}/${trajectorySegments.length}`;
+        currentIndex.textContent = `${poseIndex - current.segment.startFrame + 1}/${current.segment.frameCount} · ${current.index + 1}/${segments.length}`;
         return;
       }
       setCurrentName(prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`);
@@ -20757,7 +20918,7 @@ SOFTWARE.
     const updateControls = () => {
       const controlBounds = trajectoryControlBounds(activePose);
       applyLabel(activePose);
-      label.title = hasTrajectorySegments
+      label.title = hasSegments
         ? activeTrajectorySegment(activePose).segment?.label || prepared.ligandLabel || ''
         : prepared?.poses?.[activePose]?.label || prepared.ligandLabel || '';
       previous.disabled = activePose <= controlBounds.start;
@@ -20767,7 +20928,7 @@ SOFTWARE.
       slider.dataset.globalFrameIndex = String(activePose);
       const activeSegmentIndex = activeTrajectorySegment(activePose).index;
       fileButtons.forEach((button, index) => {
-        const active = hasTrajectorySegments ? index === activeSegmentIndex : index === activePose;
+        const active = hasTrajectorySegments ? index === activeSegmentIndex : fileTargets[index] === activePose;
         button.classList.toggle('active', active);
         button.setAttribute('aria-selected', active ? 'true' : 'false');
       });
@@ -20805,6 +20966,7 @@ SOFTWARE.
       }
       root.classList.toggle('buret-docking-poses-files-open', Boolean(open));
       label.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open && hasPoseGroups) fileButtons[fileTargets.indexOf(activePose)]?.scrollIntoView({ block: 'nearest' });
     };
     const isFileListOpen = () => root.classList.contains('buret-docking-poses-files-open');
     const setAnimationOptionsOpen = (open) => {
@@ -21070,7 +21232,7 @@ SOFTWARE.
       });
       fileButtons.forEach((button, index) => {
         button.addEventListener('pointerenter', (event) => {
-          const targetPose = hasTrajectorySegments ? trajectorySegments[index].startFrame : index;
+          const targetPose = fileTargets[index];
           // Segments preview on hover like poses do: every frame is already in the one
           // trajectory, so jumping to a segment's first frame is a model-index change,
           // not a reload. Touch has no hover, and it would fire on the way to a tap.
@@ -21079,7 +21241,7 @@ SOFTWARE.
         });
         button.addEventListener('click', () => {
           setFileListOpen(false);
-          const targetPose = hasTrajectorySegments ? trajectorySegments[index].startFrame : index;
+          const targetPose = fileTargets[index];
           if (targetPose !== activePose) scheduleSliderInputPose(targetPose);
         });
       });
@@ -21091,6 +21253,31 @@ SOFTWARE.
       window.addEventListener('pointerdown', onOutsidePointerDown, true);
       fileListDisposer = () => window.removeEventListener('pointerdown', onOutsidePointerDown, true);
     }
+    const refreshPinControls = () => {
+      const pinned = dockingPinnedPoseIndices(prepared);
+      pinControls.forEach(({ button, indices, label: pinLabel }) => {
+        const count = indices.filter(index => pinned.has(index)).length;
+        const all = count === indices.length;
+        button.classList.toggle('pinned', all);
+        button.classList.toggle('partial', count > 0 && !all);
+        button.setAttribute('aria-pressed', all ? 'true' : count ? 'mixed' : 'false');
+        button.title = `${all ? 'Unpin' : 'Pin'} ${pinLabel}`;
+        button.setAttribute('aria-label', button.title);
+      });
+    };
+    pinControls.forEach(({ button, indices }) => {
+      button.addEventListener('click', () => {
+        const pinned = dockingPinnedPoseIndices(prepared);
+        const pin = !indices.every(index => pinned.has(index));
+        indices.forEach(index => (pin ? pinned.add(index) : pinned.delete(index)));
+        refreshPinControls();
+        // Queue behind pending steps so the rebuild draws the pose they settle on.
+        const queued = poseUpdateQueue.then(() => applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: false }));
+        // eslint-disable-next-line no-console
+        poseUpdateQueue = queued.catch(error => console.error(error));
+      });
+    });
+    refreshPinControls();
     if (story && storyPanel) {
       story.addEventListener('click', () => {
         const open = root.classList.toggle('buret-docking-poses-story-closed') === false;

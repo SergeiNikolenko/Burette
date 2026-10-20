@@ -6818,7 +6818,7 @@ assert.match(previewViewer, /const contextColor = options\.contextColor \?\? rea
 assert.match(previewViewer, /await applySdfCollectionMolstarStyle\(\s*viewer,\s*contextStyle === 'match' \? style : contextStyle,\s*backgroundStructures,\s*contextOpacity,\s*contextColor\s*\)/s);
 assert.match(previewViewer, /await switchCachedPoseLayer\(viewer, state, activeIndex, \{[\s\S]*?data: activeData, format: 'pdb'/);
 assert.match(previewViewer, /structures => applySdfCollectionMolstarStyle\(viewer, style, structures, 1, 'colored'\)/);
-assert.match(previewViewer, /function dockingPoseCollectionStateKey\(prepared, style, allMode, contextStyle, contextOpacity, contextColor\)/);
+assert.match(previewViewer, /function dockingPoseCollectionStateKey\(prepared, style, allMode, contextStyle, activeIndex = 0\)/);
 assert.match(previewViewer, /async function applyDockingPoseCollectionVisibilityNow\(viewer, prepared, activePose = 0, options = \{\}\)/);
 assert.match(previewViewer, /const allMode = activeSdfPoseMode === 'all' && prepared\.sdfPoseOverlayAvailable === true/);
 assert.match(previewViewer, /backgroundStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\)/);
@@ -6926,7 +6926,7 @@ assert.match(previewViewer, /loopActive = Boolean\(active\)/);
 assert.match(previewViewer, /const open = !isAnimationOptionsOpen\(\);\s*setAnimationOptionsOpen\(open\);/);
 assert.match(previewViewer, /const loopTargetIndex = \(\) => \{/);
 assert.match(previewViewer, /const trajectoryControlBounds = \(poseIndex\) => \{/);
-assert.match(previewViewer, /currentIndex\.textContent = `\$\{poseIndex - current\.segment\.startFrame \+ 1\}\/\$\{current\.segment\.frameCount\} · \$\{current\.index \+ 1\}\/\$\{trajectorySegments\.length\}`/);
+assert.match(previewViewer, /currentIndex\.textContent = `\$\{poseIndex - current\.segment\.startFrame \+ 1\}\/\$\{current\.segment\.frameCount\} · \$\{current\.index \+ 1\}\/\$\{segments\.length\}`/);
 // A slow frame step must not let wall-clock time pick an absolute frame: the loop
 // would alternate between two frames instead of playing (WKWebView regression).
 // It still has to skip the frames that fell due, or fps above the step rate is

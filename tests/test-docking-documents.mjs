@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
 
-const { dockingCandidatesForDrop, dockingRequestForDrop, extensionForDocking, isMolstarCombineSource, isMolstarCoordinateTrajectorySource, isProteinLikeDockingSource, ligandDropPathsForTarget } =
+const { dockingCandidatesForDrop, dockingRequestForDrop, extensionForDocking, isMolstarCombineSource, isMolstarCoordinateTrajectorySource, isProteinLikeDockingSource, ligandDropPathsForTarget, togetherDockingRequest } =
   await import("../apps/desktop/src/lib/docking-documents.ts");
 
 assert.equal(extensionForDocking("/tmp/protein.mae.gz"), "maegz");
@@ -27,6 +27,14 @@ assert.equal(isMolstarCombineSource("/tmp/network.graphml"), false);
 assert.equal(isMolstarCoordinateTrajectorySource("/tmp/traj.xtc"), true);
 assert.equal(isMolstarCoordinateTrajectorySource("/tmp/trajectory.nc"), true);
 assert.equal(isMolstarCoordinateTrajectorySource("/tmp/frame.gro"), false);
+
+assert.deepEqual(
+  togetherDockingRequest(["/run/crystal.sdf", "/run/protein.pdb", "/run/gnina_poses.sdf", "/run/vina_out.pdbqt"]),
+  { receptorPath: "/run/protein.pdb", ligandPaths: ["/run/crystal.sdf", "/run/gnina_poses.sdf", "/run/vina_out.pdbqt"] },
+);
+for (const paths of [["/set/a.pdb", "/set/b.cif", "/set/c.sdf"], ["/set/a.sdf", "/set/b.sdf"], ["/set/a.pdb", "/set/b.xyz"]]) {
+  assert.deepEqual(togetherDockingRequest(paths), { receptorPath: paths[0], ligandPaths: paths.slice(1), sceneMode: "structureAll" });
+}
 
 assert.deepEqual(
   ligandDropPathsForTarget("/tmp/receptor.pdb", ["/tmp/poses.sdf", "/tmp/poses.sdf", "/tmp/receptor.pdb", "", "  "]),

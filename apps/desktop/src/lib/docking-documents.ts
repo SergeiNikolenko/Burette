@@ -71,6 +71,22 @@ export function isStructureComparisonSource(path: string) {
   return STRUCTURE_COMPARISON_EXTENSIONS.has(extensionForDocking(path));
 }
 
+const DOCKING_LIGAND_EXTENSIONS = new Set(["mol", "mol2", "pdbqt", "sdf"]);
+
+/**
+ * One protein next to ligand or pose files is a docking run: the receptor stays
+ * on screen and every pose is stepped over it. Any other set is a comparison
+ * scene with every structure overlaid.
+ */
+export function togetherDockingRequest(paths: string[]): DockingDocumentRequest {
+  const receptors = paths.filter(isStructureComparisonSource);
+  const [receptorPath] = receptors;
+  if (receptors.length === 1 && paths.every((path) => path === receptorPath || DOCKING_LIGAND_EXTENSIONS.has(extensionForDocking(path)))) {
+    return { receptorPath, ligandPaths: paths.filter((path) => path !== receptorPath) };
+  }
+  return { receptorPath: paths[0], ligandPaths: paths.slice(1), sceneMode: "structureAll" };
+}
+
 export function isTrajectoryDocumentRequest(request: DockingDocumentRequest | null | undefined) {
   return Boolean(
     request
