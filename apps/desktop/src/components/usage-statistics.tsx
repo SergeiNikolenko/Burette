@@ -5,17 +5,11 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { chooseUsageStatistics, flushUsageStatistics, recordStatisticsFeature, useUsageStatistics } from "../lib/usage-statistics";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
+import { Alert, AlertTitle, AlertDescription, AlertAction } from "./ui/alert";
+import { SettingsSection, actionRow, type SettingRow } from "./settings-panel/setting-control";
 import "../styles/usage-statistics.css";
 
-function Disclosure({ noticeUrl }: { noticeUrl: string }) {
-  return <p>
-    Help Sergei Nikolenko improve Burette by sharing daily activity, feature use and error categories,
-    with a random installation ID, app version and CPU architecture. No files, molecules, paths,
-    typed text or error logs. Stored for 90 days. Optional; all features work without sharing.
-    Turn off and delete shared data in Settings → General.
-    {" "}<Button variant="link" size="sm" onClick={() => void openUrl(noticeUrl).catch(() => {})}>Privacy notice</Button>
-  </p>;
-}
+const disclosure = "Help improve Burette: activity and error categories, a random ID, no files or text. Kept for 90 days; turn off to delete.";
 
 export function UsageStatistics({ settings = false, pageKind, renderer }: { settings?: boolean; pageKind?: string; renderer?: string }) {
   const state = useUsageStatistics();
@@ -40,30 +34,40 @@ export function UsageStatistics({ settings = false, pageKind, renderer }: { sett
     finally { setBusy(false); }
   };
   if (!settings && (!state.available || state.decided || state.pendingErasure)) return null;
-  if (settings && !state.available && !state.pendingErasure) return <section className="usage-statistics-settings"><h2>Usage statistics</h2><p>Sharing is unavailable in this build.</p></section>;
+  if (settings && !state.available && !state.pendingErasure) return null;
   const exportData = async () => {
     const contents = await invoke<string>("statistics_export");
     const outputPath = await save({ defaultPath: "burette-statistics.json", filters: [{ name: "JSON", extensions: ["json"] }] });
     if (outputPath) await invoke("write_text_file", { request: { outputPath, contents } });
   };
-  return <section className={settings ? "usage-statistics-settings" : "usage-statistics-banner"} aria-label="Usage statistics">
-    <h2>{settings ? "Usage statistics" : "Share usage statistics?"}</h2>
-    {state.noticeUrl && <Disclosure noticeUrl={state.noticeUrl} />}
-    <div className="usage-statistics-actions">
-      {settings ? <>
-        <label className="usage-statistics-toggle">Share usage statistics
-          <Switch aria-label="Share usage statistics" tone="neutral" checked={state.enabled}
-            disabled={busy || !state.available || state.pendingErasure}
-            onCheckedChange={enabled => void perform(() => chooseUsageStatistics(enabled))} />
-        </label>
-        {state.enabled && <Button variant="outline" size="sm" disabled={busy} onClick={() => void perform(exportData)}>Export my statistics</Button>}
-      </> : <>
+  const privacy = () => state.noticeUrl ? openUrl(state.noticeUrl) : Promise.resolve();
+  if (settings) {
+    const rows: SettingRow[] = [{
+      label: "Share usage statistics",
+      description: disclosure,
+      control: <Switch aria-label="Share usage statistics" tone="neutral" checked={state.enabled}
+        disabled={busy || !state.available || state.pendingErasure}
+        onCheckedChange={enabled => void perform(() => chooseUsageStatistics(enabled))} />,
+    }];
+    if (state.noticeUrl) rows.push(actionRow("Privacy", "", "View", () => void perform(privacy), busy));
+    if (state.enabled) rows.push(actionRow("My statistics", "", "Export", () => void perform(exportData), busy));
+    if (state.pendingErasure) rows.push({ label: "Deletion pending", control:
+      <Button variant="outline" size="settings" disabled={busy} onClick={() => void perform(flushUsageStatistics)}>Retry deletion</Button> });
+    return <>
+      <SettingsSection title="Usage statistics" rows={rows} />
+      {error && <p role="alert">{error}</p>}
+    </>;
+  }
+  return <div className="usage-statistics-banner">
+    <Alert role="region" aria-label="Usage statistics" className="text-sm">
+      <AlertTitle>Share usage statistics?</AlertTitle>
+      <AlertDescription>{disclosure}</AlertDescription>
+      <AlertAction>
+        {state.noticeUrl && <Button variant="ghost" size="sm" className="mr-auto" disabled={busy} onClick={() => void perform(privacy)}>Privacy</Button>}
         <Button variant="outline" size="sm" disabled={busy} onClick={() => void perform(() => chooseUsageStatistics(false))}>Don’t share</Button>
-        <Button variant="outline" size="sm" disabled={busy} onClick={() => void perform(() => chooseUsageStatistics(true))}>Share statistics</Button>
-      </>}
-      {state.pendingErasure && <><span role="status">Sharing is off. Deletion is pending a connection.</span>
-        <Button variant="outline" size="sm" disabled={busy} onClick={() => void perform(flushUsageStatistics)}>Retry deletion</Button></>}
-    </div>
-    {error && <p role="alert">{error}</p>}
-  </section>;
+        <Button variant="outline" size="sm" disabled={busy} onClick={() => void perform(() => chooseUsageStatistics(true))}>Share</Button>
+      </AlertAction>
+      {error && <p role="alert">{error}</p>}
+    </Alert>
+  </div>;
 }

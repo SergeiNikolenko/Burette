@@ -53,11 +53,11 @@ test("consent UI refuses without events, enables explicitly, sends categories an
   try {
     await act(async () => { stop = startUsageStatistics(); root.render(<UsageStatistics pageKind="ketcher" />); await settle(); });
     expect(events).toEqual([]);
-    expect(button("Don’t share").className).toBe(button("Share statistics").className);
+    expect(button("Don’t share").className).toBe(button("Share").className);
     await act(async () => { button("Don’t share").click(); await settle(); });
     expect(choices).toEqual([false]);
     expect(events).toEqual([]);
-    expect(shell.querySelector("section")).toBeNull();
+    expect(shell.querySelector('[aria-label="Usage statistics"]')).toBeNull();
     await act(async () => root.render(<UsageStatistics settings />));
     const toggle = () => shell.querySelector<HTMLButtonElement>('[role="switch"]')!;
     expect(toggle().getAttribute("aria-checked")).toBe("false");
@@ -71,7 +71,7 @@ test("consent UI refuses without events, enables explicitly, sends categories an
     offline = true;
     await act(async () => { toggle().click(); await settle(); });
     expect(toggle().disabled).toBe(true);
-    expect(shell.textContent).toContain("Deletion is pending");
+    expect(shell.textContent).toContain("Deletion pending");
     const before = events.length;
     recordStatisticsError("private parse error");
     expect(events.length).toBe(before);

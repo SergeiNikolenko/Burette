@@ -7,7 +7,7 @@ an incomplete notice.
 
 ## Your choice
 
-Sharing is off until you choose “Share statistics” or enable it in
+Sharing is off until you choose “Share” or enable it in
 Settings → General after reading the disclosure. Refusing changes no features.
 You can turn it off in the same settings at any time. Your choice applies to
 this installation; we do not track you across devices.

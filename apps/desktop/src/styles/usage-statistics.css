@@ -1,25 +1,7 @@
-.usage-statistics-banner,
-.usage-statistics-settings {
-  color: var(--color-text);
-  font-size: var(--ui-body-size);
-  line-height: var(--ui-body-line);
-}
 .usage-statistics-banner {
   position: absolute;
   z-index: 40;
   bottom: 32px;
   right: 16px;
-  width: min(460px, calc(100% - 32px));
-  padding: 16px;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: var(--color-surface);
-  box-shadow: var(--shadow-lg);
+  width: min(400px, calc(100% - 32px));
 }
-.usage-statistics-settings { margin-top: 24px; }
-.usage-statistics-banner h2,
-.usage-statistics-settings h2 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
-.usage-statistics-banner p,
-.usage-statistics-settings p { margin: 0 0 12px; }
-.usage-statistics-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.usage-statistics-toggle { display: flex; align-items: center; gap: 12px; }
