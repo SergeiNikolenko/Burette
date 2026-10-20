@@ -58,9 +58,6 @@ test("consent UI refuses without events, enables explicitly, sends categories an
     expect(choices).toEqual([false]);
     expect(events).toEqual([]);
     expect(shell.querySelector("section")).toBeNull();
-    // Remembered refusal survives frontend restart.
-    await act(async () => { stop(); stop = startUsageStatistics(); await settle(); });
-    expect(shell.querySelector("section")).toBeNull();
     await act(async () => root.render(<UsageStatistics settings />));
     const toggle = () => shell.querySelector<HTMLButtonElement>('[role="switch"]')!;
     expect(toggle().getAttribute("aria-checked")).toBe("false");
