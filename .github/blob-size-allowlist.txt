@@ -181,3 +181,9 @@ plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-BYUSNe5H.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-DY4otyY0.js
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-CYzCmhqK.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-DLkh2cnD.js
+
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-BzyPYDB8.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-Bu-H-WOM.js
+
+# Reviewed generated shell after final main integration.
+plugins/burette-agent/browser-shell-dist/assets/viewer-qrnc7pxo.js

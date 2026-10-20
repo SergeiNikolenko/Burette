@@ -347,11 +347,12 @@ const controlsViewer = { plugin: {
 } };
 controlsWindow.sessionStorage.setItem('burette.trajectoryControl.saved_scene', '42');
 const controlContext = vm.createContext({
-  dockingPinnedPoseState: { key: null, indices: new Set() }, window: controlsWindow, document: controlsDocument, File, console, sessionStorage: controlsWindow.sessionStorage,
+  window: controlsWindow, document: controlsDocument, File, console, sessionStorage: controlsWindow.sessionStorage,
   activeViewer: controlsViewer, activeConfig: { documentId: 'saved_scene', activeModel: 0 }, activeMolstarPrepared: null, activeDockingPrepared: null,
   activeStructureAlignmentControl: null, activeStructurePoseSetter: null, activeSdfCollectionPoseSetter: null, activeTrajectoryPlaybackControl: null,
   dockingPoseKeydownDisposer: null, dockingPoseControlsDisposer: null, pendingTrajectoryPlaybackRestore: { frameIndex: 40, playing: true, fps: 50 },
   activeSdfPoseMode: 'single', trajectorySmoothingState: null, molstarStructureFocusSerial: 0, hostViewerVisible: true,
+  dockingPinnedPoseState: { key: '', indices: new Set() },
   structureOverlayAvailable: () => false, structureOverlayToggleAvailable: () => false, structureSceneStoryAvailable: () => false,
   sceneTreeIconElement: () => controlsDocument.createElement('span'), APP_ICON_DATA: {}, formatTrajectoryFps: String, readTrajectoryLoopFps: () => 20,
   postHostMessage: () => {}, updateViewportAnimateState: () => {}, xyzSingleFrameSceneActive: () => false,
@@ -359,8 +360,8 @@ const controlContext = vm.createContext({
   restoreDockingPoseControlsPosition: () => {}, installDockingPoseInteractionIsolation: () => {}, installDockingPoseHoverSuppression: () => {}, initDockingPoseControlsDrag: () => {},
   clearMolstarTrajectoryHover: () => {}, afterNativeTrajectoryPaint: () => Promise.resolve(), readNativeTrajectoryPositionFromDom: () => null,
 });
-const controlFunctions = ['dockingPinnedPoseIndices', 'nativeTrajectoryFrameCount', 'nativeTrajectoryModelTransform', 'readNativeTrajectoryPosition', 'readTrajectoryControlIndex',
-  'trajectoryControlStorageKey', 'setNativeTrajectoryPoseDirect', 'setNativeTrajectoryPose', 'installNativeTrajectoryPoseSync', 'notifyDockingPoseChanged', 'installDockingPoseControls'];
+const controlFunctions = ['nativeTrajectoryFrameCount', 'nativeTrajectoryModelTransform', 'readNativeTrajectoryPosition', 'readTrajectoryControlIndex',
+  'trajectoryControlStorageKey', 'setNativeTrajectoryPoseDirect', 'setNativeTrajectoryPose', 'installNativeTrajectoryPoseSync', 'notifyDockingPoseChanged', 'dockingPinnedPoseIndices', 'installDockingPoseControls'];
 const extractedControls = controlFunctions.map(name => {
   const fn = viewerSource.match(new RegExp(`\\n  (?:async )?function ${name}\\([\\s\\S]*?\\n  \\}`, 'u'))?.[0];
   assert.ok(fn, name);

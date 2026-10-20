@@ -20716,7 +20716,20 @@ SOFTWARE.
         section.setAttribute('aria-label', group.label);
         const heading = document.createElement('div');
         heading.className = 'buret-docking-pose-group-label';
-        heading.title = group.label;
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'buret-docking-pose-group-toggle';
+        toggle.setAttribute('aria-expanded', 'true');
+        toggle.setAttribute('aria-label', group.label);
+        const chevron = sceneTreeIconElement(APP_ICON_DATA.ChevronRight);
+        chevron.classList.add('buret-docking-pose-group-chevron');
+        const poses = document.createElement('div');
+        poses.id = `buret-docking-pose-group-${group.startFrame}`;
+        toggle.setAttribute('aria-controls', poses.id);
+        toggle.addEventListener('click', () => {
+          poses.hidden = !poses.hidden;
+          toggle.setAttribute('aria-expanded', poses.hidden ? 'false' : 'true');
+        });
         const name = document.createElement('span');
         name.className = 'buret-docking-pose-file-name';
         name.textContent = group.label;
@@ -20727,8 +20740,9 @@ SOFTWARE.
           heading.classList.add('buret-docking-pose-pin-heading');
           heading.append(pinButton(group.poses.map((_, offset) => group.startFrame + offset), group.label));
         }
-        heading.append(name, count);
-        section.append(heading);
+        toggle.append(chevron, name, count);
+        heading.append(toggle);
+        section.append(heading, poses);
         group.poses.forEach((pose, offset) => {
           const button = document.createElement('button');
           button.type = 'button';
@@ -20751,9 +20765,9 @@ SOFTWARE.
             const row = document.createElement('div');
             row.className = 'buret-docking-pose-pin-row';
             row.append(pinButton([group.startFrame + offset], `${group.label} · ${pose.label}`), button);
-            section.append(row);
+            poses.append(row);
           } else {
-            section.append(button);
+            poses.append(button);
           }
         });
         fileList.append(section);
