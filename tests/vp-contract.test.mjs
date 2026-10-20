@@ -116,6 +116,7 @@ const contractScripts = {
   "test-color-picker.mjs": () => import("./test-color-picker.mjs"),
   "test-molstar-context-environment.mjs": () => import("./test-molstar-context-environment.mjs"),
   "test-chemical-space-settings.mjs": () => import("./test-chemical-space-settings.mjs"),
+  "test-chemical-space-viewer-selection.test.tsx": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-chemical-space-viewer-selection.test.tsx", import.meta.url))]),
   "test-chemical-space-grid-navigation.mjs": () => import("./test-chemical-space-grid-navigation.mjs"),
   "test-burette-agent.mjs": () => import("./test-burette-agent.mjs"),
   "test-agent-preview-server.mjs": () => import("./test-agent-preview-server.mjs"),
