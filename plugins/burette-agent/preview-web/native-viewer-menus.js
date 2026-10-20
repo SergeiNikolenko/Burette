@@ -2094,6 +2094,10 @@ to{transform:rotate(1turn)}
   --button-text-color: var(--color-text-primary-ghost);
   --button-text-color-hover: var(--color-text-primary-ghost);
 }
+.buret-viewport-rail .buret-rail-button[data-buret-viewport-action="clear-selection"] {
+  --button-text-color: var(--color-text-danger);
+  --button-text-color-hover: var(--color-text-danger);
+}
 .buret-rail-button svg { pointer-events: none; flex-shrink: 0; }
 .buret-main-toolbar-button .buret-molstar-preset-chevron svg { width: 12px; height: 12px; }
 .buret-viewport-tooltip, .buret-molstar-tooltip { font-family: var(--font-sans); }
