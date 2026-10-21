@@ -12,7 +12,16 @@ Quick Look behavior.
 - `ci.yml` builds the native bundle only when a PR changes native, package, or
   build/install files. The native build runs in parallel with fast validation.
 
+- New commits cancel obsolete CI and blob-size runs for the same PR, freeing
+  runners instead of finishing checks against an outdated revision. Main CI runs
+  are not cancelled while running.
+- Native acceptance ZIP artifacts are uploaded without additional compression.
+
 ## Build Caches
+
+- The shared toolchain action caches Bun downloads by OS, architecture, Bun
+  version and lockfile, with a same-toolchain fallback for changed lockfiles.
+  Frozen-lockfile installation still runs; `node_modules` is not cached.
 
 - Native, nightly, and release jobs set `CARGO_TARGET_DIR` outside the
   workspace because `scripts/build.sh` compiles from a throwaway copy. They share
