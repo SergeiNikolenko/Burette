@@ -309,6 +309,12 @@ Cold imports and genuinely new structures still require computation. Preparing
 cards early improves view-switch latency; it is not proof of zero cold-launch
 latency. Validate cold document-open and warm/prepared view-switch times separately.
 
+Native packaging precompiles the renderer's imported startup modules with its
+bundled Python after pruning and before signing. These checked-hash caches remain
+valid after relocating the app, invalidate when source changes, and avoid runtime
+bytecode writes. Only the startup import set is cached (about 10 MiB for the current
+runtime), rather than every installed scientific module.
+
 ### Native xyzrender editor
 
 The desktop Orientation & animation editor renders through the `render_xyzrender_editor` Tauri command using the bundled xyzrender runtime. It does not require a browser-dev server. GIF, SVG, PNG, PDF and TIFF exports use the native save dialog. Trajectory and vibration rendering read the original source file; the selected inline frame remains the input for static orientation and synthetic sheet items. Browser-dev keeps its HTTP transport. Native rendering stages input in a temporary cache directory, bounds inputs/outputs to 16 MiB and animation decoding to 100 million pixels, and allows two concurrent renders with a 120-second animation timeout. Closing a panel discards its result; an already running native render finishes within its timeout before releasing its slot.

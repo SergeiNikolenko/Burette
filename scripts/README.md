@@ -83,6 +83,12 @@ changing CLI, MCP, or skill behavior.
 
 ## Internal Helpers
 
+`prepare-xyzrender-bytecode.py` runs with the staged app's bundled Python from
+`build.sh`, after runtime pruning and before signing. It precompiles only imported
+renderer startup modules into checked-hash caches; it must not run against a
+source environment. Validate relocation and read-only cache invalidation with
+`python3 tests/test-prepare-xyzrender-bytecode.py`.
+
 Scripts such as `dev-namespace.mjs`, `preview-content-type.mjs`,
 `patch-web-assets.sh`, vendor scripts, and release signing helpers are
 implementation details for the public commands above. Use them directly only

@@ -20,6 +20,7 @@ const registry = JSON.parse(source("config/preview-formats.json"));
 execFileSync("python3", [fileURLToPath(new URL("./test-deduplicate-web-resources.py", import.meta.url))], { stdio: "inherit" });
 
 execFileSync("python3", [fileURLToPath(new URL("./test-prepare-xyzrender-runtime.py", import.meta.url))], { stdio: "inherit" });
+execFileSync("python3", [fileURLToPath(new URL("./test-prepare-xyzrender-bytecode.py", import.meta.url))], { stdio: "inherit" });
 
 assert.match(buildScript, /relocate_bundled_python_runtime/);
 assert.match(buildScript, /install_name_tool/);
