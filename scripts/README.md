@@ -83,6 +83,15 @@ changing CLI, MCP, or skill behavior.
 
 ## Internal Helpers
 
+`molstar-surface-field-cache.mjs` adapts the version-locked Mol* unit-surface
+calculation during vendoring. Its 64 MiB LRU stores CPU scalar/group fields,
+never GPU resources or molecule objects. Exact coordinates, radii, atom/group
+indices, bounds and effective resolution/probe parameters invalidate entries;
+color and opacity do not. Eviction releases the arrays. The cache accelerates
+repeat Surface visits, not a cold calculation, and never combines molecules.
+Run `bun tests/test-molstar-surface-field-cache.mjs` and `vp run vendor:molstar`
+after changes; rebuild the agent-shell mirror and check the vendor lock.
+
 Scripts such as `dev-namespace.mjs`, `preview-content-type.mjs`,
 `patch-web-assets.sh`, vendor scripts, and release signing helpers are
 implementation details for the public commands above. Use them directly only
