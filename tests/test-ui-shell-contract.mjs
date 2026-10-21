@@ -6995,8 +6995,8 @@ assert.match(previewViewer, /window\.addEventListener\('pointermove', onPointerM
 assert.match(previewViewer, /window\.addEventListener\('pointerup', finishDrag, true\)/);
 assert.match(previewViewer, /moveDockingPoseControls\(root, saved\.left, saved\.top\);/);
 assert.match(previewViewer, /function stableTextHash\(value\)/);
-assert.match(previewViewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(nextIndex\)\)/);
-assert.match(previewViewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(previousIndex\)\)/);
+assert.match(previewViewer, /writeTrajectoryControlIndex\(activeConfig, prepared, nextIndex\)/);
+assert.match(previewViewer, /writeTrajectoryControlIndex\(activeConfig, prepared, previousIndex\)/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses \{/);
 assert.match(previewRuntimeCss, /body\.buret-docking-pose-controls-active \.msp-animation-viewport-controls,\s*body\.buret-docking-pose-controls-active \.msp-traj-controls \{/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{/);

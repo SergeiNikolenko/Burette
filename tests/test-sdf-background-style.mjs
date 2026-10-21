@@ -212,3 +212,39 @@ updateState.value = false;
 treeContext.scheduleSceneTreeRender();
 scheduled.shift()();
 assert.deepEqual([renders, reports], [1, 1]);
+
+// A completed pose step must remain selected when storage is denied and a
+// later appearance action reads the active index (including a reparsed input).
+{
+  let selectedIndex = 0;
+  const values = new Map();
+  const poseContext = {
+    activeConfig: { documentId: 'pose-storage', activeModel: 0 },
+    activeMolstarPrepared: prepared, activeViewer: viewer, activeSdfPoseMode: 'all',
+    activeSdfCollectionPoseSetter: null, trajectoryControlIndices: new Map(),
+    sessionStorage: { getItem() { throw Error('SecurityError'); }, setItem() { throw Error('SecurityError'); } },
+    setSdfCollectionContextStyle: value => value,
+    setSdfCollectionContextColor: value => value,
+    setSdfCollectionContextOpacity: value => value,
+    applySdfCollectionVisibility: async (_viewer, _prepared, index) => { selectedIndex = index; },
+    agentActionFailure: (_action, _code, message) => { throw Error(message); },
+  };
+  const names = ['trajectoryControlStorageKey', 'readTrajectoryControlIndex', 'writeTrajectoryControlIndex',
+    'setSdfCollectionMoleculeFromAction', 'agentFrameIndexFailure',
+    ...['Style', 'Color', 'Opacity'].map(name => `setSdfCollectionContext${name}FromAction`)];
+  runInNewContext(names.map(extract).join('\n'), poseContext);
+  assert.equal((await poseContext.setSdfCollectionMoleculeFromAction({ index: 1 })).ok, true);
+  assert.equal(selectedIndex, 1);
+  poseContext.activeMolstarPrepared = { ...prepared };
+  for (const [name, action] of [['Style', { style: 'line' }], ['Color', { color: 'gray' }], ['Opacity', { opacity: 0.4 }]]) {
+    assert.equal((await poseContext[`setSdfCollectionContext${name}FromAction`](action)).ok, true);
+    assert.equal(selectedIndex, 1, 'Appearance must retain Pose 2 even when session storage throws');
+  }
+  assert.equal(poseContext.readTrajectoryControlIndex({ documentId: 'other', activeModel: 3 }, prepared, 9), 3);
+  // Successful persistence restores the position in a new page runtime.
+  poseContext.sessionStorage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  await poseContext.setSdfCollectionMoleculeFromAction({ index: 2 });
+  poseContext.trajectoryControlIndices.clear();
+  assert.equal(poseContext.readTrajectoryControlIndex(poseContext.activeConfig, prepared, 9), 2);
+}
+console.log('Pose selection survives denied storage and subsequent background appearance actions');

@@ -12535,6 +12535,17 @@ SOFTWARE.
     return `burette.trajectoryControl.fallback-${stableTextHash(fallback)}`;
   }
 
+  // Asset-origin storage may be unavailable. Keep the latest selection across
+  // appearance updates/reparsing without retaining document or molecule objects.
+  const trajectoryControlIndices = new Map();
+  function writeTrajectoryControlIndex(config, prepared, index) {
+    const key = trajectoryControlStorageKey(config, prepared);
+    trajectoryControlIndices.delete(key);
+    trajectoryControlIndices.set(key, index);
+    if (trajectoryControlIndices.size > 32) trajectoryControlIndices.delete(trajectoryControlIndices.keys().next().value);
+    try { sessionStorage.setItem(key, String(index)); } catch (_) {}
+  }
+
   function readTrajectoryControlIndex(config, prepared, poseCount) {
     if (prepared?.kind === 'docking') return readDockingPoseIndex(config, poseCount);
     if (prepared?.kind === 'session' && prepared.nativeTrajectoryControls === true) {
@@ -12545,11 +12556,14 @@ SOFTWARE.
       const value = Number(prepared?.activePose || 0);
       return Math.max(0, Math.min(poseCount - 1, Number.isFinite(value) ? Math.trunc(value) : 0));
     }
-    let value = Number(config?.activeModel || 0);
-    try {
-      const stored = sessionStorage.getItem(trajectoryControlStorageKey(config, prepared));
-      if (stored !== null) value = Number(stored);
-    } catch (_) {}
+    const key = trajectoryControlStorageKey(config, prepared);
+    let value = trajectoryControlIndices.get(key) ?? Number(config?.activeModel || 0);
+    if (!trajectoryControlIndices.has(key)) {
+      try {
+        const stored = sessionStorage.getItem(key);
+        if (stored !== null) value = Number(stored);
+      } catch (_) {}
+    }
     if (!Number.isFinite(value)) value = 0;
     return Math.max(0, Math.min(poseCount - 1, Math.trunc(value)));
   }
@@ -19756,7 +19770,7 @@ SOFTWARE.
       if (activeSdfCollectionPoseSetter) {
         await activeSdfCollectionPoseSetter(index);
       } else {
-        try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(index)); } catch (_) {}
+        writeTrajectoryControlIndex(activeConfig, prepared, index);
         await applySdfCollectionVisibility(activeViewer, prepared, index);
       }
       return {
@@ -20227,7 +20241,7 @@ SOFTWARE.
         notifyStructureOverlayModeChanged(prepared);
         updateSdfPoseButton(prepared);
       }
-      try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(index)); } catch (_) {}
+      writeTrajectoryControlIndex(activeConfig, prepared, index);
       if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all' && !xyzSingleFrameSceneActive(activeViewer)) {
         const switched = await setNativeTrajectoryPose(index, poseCount);
         if (!switched) throw new Error('Mol* trajectory controls are not available.');
@@ -21037,7 +21051,7 @@ SOFTWARE.
     slider.setAttribute('aria-label', `${controlLabel} slider`);
     const refreshNativeTrajectoryStandalonePreview = () => {
       if (!prepared.nativeTrajectoryControls || !activeConfig) return;
-      try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(activePose)); } catch (_) {}
+      writeTrajectoryControlIndex(activeConfig, prepared, activePose);
     };
     const supportsLivePoseInput = () => (
       prepared.nativeTrajectoryControls ||
@@ -21338,7 +21352,7 @@ SOFTWARE.
       // A normal step keeps the user's view. Cancel delayed focus retries from
       // an earlier load/selection before replacing any scene layers.
       if (!shouldFocus) molstarStructureFocusSerial += 1;
-      try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
+      writeTrajectoryControlIndex(activeConfig, prepared, nextIndex);
       previous.disabled = true;
       next.disabled = true;
       applyLabel(nextIndex);
@@ -21385,7 +21399,7 @@ SOFTWARE.
         // Hovering an open pose list previews poses; only a committed switch counts.
         if (options.userStep === true && poseCompareGuide && !isFileListOpen()) requestContextualGuide('pose-compare', label);
       } catch (error) {
-        try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(previousIndex)); } catch (_) {}
+        writeTrajectoryControlIndex(activeConfig, prepared, previousIndex);
         activePose = previousIndex;
         updateControls();
         // Stepping frames is the most repeated action here and a loop retries it on a
