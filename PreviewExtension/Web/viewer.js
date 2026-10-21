@@ -4025,6 +4025,7 @@
       const poseCount = Number(activeMolstarPrepared.poseCount || 0);
       const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
       await applyDockingPoseCollectionVisibility(activeViewer, activeMolstarPrepared, activePose, { focus: false });
+      document.querySelector('.buret-docking-poses')?.dispatchEvent(new Event('buret-pose-selection-changed'));
       return;
     }
     await reloadActiveMolstarStructure();
@@ -19267,6 +19268,11 @@ SOFTWARE.
       if (!isDockingPoseInteractiveTarget(event.target)) return;
       event.stopPropagation();
     };
+    const isolateContextMenu = (event) => {
+      // The picker has no secondary action; do not expose WebKit's iframe menu.
+      event.preventDefault();
+      event.stopPropagation();
+    };
     const isolateWheel = (event) => {
       if (!root.contains(event.target)) return;
       event.preventDefault();
@@ -19281,11 +19287,13 @@ SOFTWARE.
     };
     const pointerEvents = ['pointerdown', 'pointerup', 'pointercancel', 'mousedown', 'mouseup', 'click', 'dblclick', 'touchstart', 'touchmove', 'touchend'];
     pointerEvents.forEach(eventName => root.addEventListener(eventName, isolatePointer));
+    root.addEventListener('contextmenu', isolateContextMenu);
     root.addEventListener('wheel', isolateWheel, { passive: false });
     root.addEventListener('keydown', isolateKeys);
     root.addEventListener('keyup', isolateKeys);
     return () => {
       pointerEvents.forEach(eventName => root.removeEventListener(eventName, isolatePointer));
+      root.removeEventListener('contextmenu', isolateContextMenu);
       root.removeEventListener('wheel', isolateWheel);
       root.removeEventListener('keydown', isolateKeys);
       root.removeEventListener('keyup', isolateKeys);
@@ -20751,7 +20759,12 @@ SOFTWARE.
           const button = document.createElement('button');
           button.type = 'button';
           button.className = 'buret-docking-pose-file buret-docking-pose-group-pose';
-          button.setAttribute('role', 'menuitemradio');
+          button.setAttribute('role', 'menuitemcheckbox');
+          const check = document.createElement('span');
+          check.className = 'buret-docking-pose-check';
+          check.setAttribute('aria-hidden', 'true');
+          check.append(sceneTreeIconElement(APP_ICON_DATA.Check));
+          button.append(check);
           const poseName = document.createElement('span');
           poseName.className = 'buret-docking-pose-file-name';
           poseName.textContent = pose.label;
@@ -21020,6 +21033,14 @@ SOFTWARE.
       setCurrentName(prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`);
       currentIndex.textContent = `${poseIndex + 1}/${prepared.poseCount}`;
     };
+    const selectedPoseIndices = () => {
+      const selected = new Set([activePose, ...dockingPinnedPoseIndices(prepared)]);
+      if (activeSdfPoseMode === 'all') {
+        const group = poseGroups.find(group => activePose >= group.startFrame && activePose < group.startFrame + group.frameCount);
+        if (group) for (let i = 0; i < group.frameCount; i += 1) selected.add(group.startFrame + i);
+      }
+      return selected;
+    };
     const updateControls = () => {
       const controlBounds = trajectoryControlBounds(activePose);
       applyLabel(activePose);
@@ -21029,8 +21050,10 @@ SOFTWARE.
       slider.value = String(activePose - controlBounds.start + 1);
       slider.dataset.globalFrameIndex = String(activePose);
       const activeSegmentIndex = activeTrajectorySegment(activePose).index;
+      const selected = hasPoseGroups ? selectedPoseIndices() : null;
       fileButtons.forEach((button, index) => {
-        const active = hasTrajectorySegments ? index === activeSegmentIndex : fileTargets[index] === activePose;
+        const active = selected ? selected.has(fileTargets[index]) : hasTrajectorySegments ? index === activeSegmentIndex : fileTargets[index] === activePose;
+        if (selected) button.setAttribute('aria-disabled', String(active && selected.size === 1));
         button.classList.toggle('active', active);
         button.setAttribute(hasPoseGroups ? 'aria-checked' : 'aria-selected', active ? 'true' : 'false');
       });
@@ -21055,8 +21078,10 @@ SOFTWARE.
       });
       updateViewportAnimateState();
     };
+    root.addEventListener('buret-pose-selection-changed', updateControls);
     const setFileListOpen = (open) => {
       if (!fileList) return;
+      if (open && hasPoseGroups) updateControls();
       if (open) {
         const rootRect = root.getBoundingClientRect();
         const triggerLeft = Math.round(label.offsetLeft);
@@ -21331,6 +21356,44 @@ SOFTWARE.
         console.error(error);
       }
     };
+    const toggleSelectedPose = (index) => {
+      setLoopActive(false);
+      poseUpdateQueue = poseUpdateQueue.then(async () => {
+        if (activeStructurePoseSetter !== setPose) return;
+        const selected = selectedPoseIndices();
+        if (selected.has(index) && selected.size === 1) return;
+        const pins = dockingPinnedPoseIndices(prepared);
+        const previousPins = [...pins];
+        const previousPose = activePose;
+        const previousMode = activeSdfPoseMode;
+        if (selected.has(index)) selected.delete(index);
+        else selected.add(index);
+        const nextPose = selected.has(activePose) ? activePose : selected.values().next().value;
+        pins.clear();
+        for (const selectedIndex of selected) if (selectedIndex !== nextPose) pins.add(selectedIndex);
+        setSdfPoseMode('single');
+        molstarStructureFocusSerial += 1;
+        try {
+          await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextPose, { focus: false });
+          activePose = nextPose;
+          try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(activePose)); } catch (_) {}
+          notifyDockingPoseChanged(activePose, prepared);
+          notifyStructureOverlayModeChanged(activeMolstarPrepared || prepared);
+        } catch (error) {
+          pins.clear();
+          for (const index of previousPins) pins.add(index);
+          activePose = previousPose;
+          setSdfPoseMode(previousMode);
+          // A failed rebuild may already have cleared or partially replaced the scene.
+          resetDockingPoseCollectionState(viewer);
+          try {
+            await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, previousPose, { focus: false });
+          } catch (restoreError) { console.error(restoreError); }
+          setStatus(`[web] Could not change pose selection.\n\n${error?.message || String(error)}`, 'error');
+        }
+        updateControls();
+      }).catch(error => console.error(error));
+    };
     if (fileList) {
       label.addEventListener('click', () => {
         setFileListOpen(!isFileListOpen());
@@ -21344,6 +21407,10 @@ SOFTWARE.
           scheduleSliderInputPose(targetPose);
         });
         button.addEventListener('click', () => {
+          if (hasPoseGroups) {
+            toggleSelectedPose(fileTargets[index]);
+            return;
+          }
           setFileListOpen(false);
           label.focus();
           const targetPose = fileTargets[index];

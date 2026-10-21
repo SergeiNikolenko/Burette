@@ -132,9 +132,11 @@ The shell is a workspace, not a brand canvas.
 The compact picker shows the current filename and one pose counter. Its opaque
 menu uses the viewer menu surface, regular-weight rows and inline file
 disclosures. The current file starts expanded; other files start collapsed.
-Selecting a pose closes the menu and keeps the camera in place. Hovering only
-highlights a row. Scores remain visible; repeated file hints, file counters and
-pin controls do not belong in this picker.
+Checkbox rows select visible poses across files without closing the menu or
+moving the camera. Unchecking removes a pose; the last visible pose stays selected.
+File chevrons only fold the list. Hovering only highlights a row. Scores remain visible; repeated file hints, file counters and
+pin controls do not belong in this picker. Secondary clicks inside the picker do
+not open the browser iframe menu.
 
 Disclosure transitions last 140 ms and reverse when interrupted; reduced motion
 removes them. Arrow keys navigate visible rows and expand/collapse files; Escape

@@ -250,7 +250,7 @@ assert.equal(alignmentCommits, 1);
   toggles[0].click();
   assert.deepEqual(rows.map(row => row.inert), [false, false]);
   assert.equal(toggles[0].getAttribute('aria-expanded'), 'true');
-  assert.deepEqual([...rows[0].querySelectorAll('[role="menuitemradio"]')], fileButtons.slice(0, 2), 'expand reuses the original pose controls');
+  assert.deepEqual([...rows[0].querySelectorAll('[role="menuitemcheckbox"]')], fileButtons.slice(0, 2), 'expand reuses the original pose controls');
   const root = document.createElement('div');
   root.className = 'buret-docking-poses';
   const label = document.createElement('button');
@@ -263,7 +263,7 @@ assert.equal(alignmentCommits, 1);
     window, document, root, label, fileList, fileButtons, fileTargets, hasPoseGroups: true,
     activePose: 0, Node: window.Node,
     isFileListOpen: () => open, setFileListOpen: value => { open = value; },
-    scheduleSliderInputPose: index => scheduled.push(index), fileListDisposer: null,
+    scheduleSliderInputPose: index => scheduled.push(index), toggleSelectedPose: index => scheduled.push(index), fileListDisposer: null,
     isDockingPoseKeyboardTarget: () => false,
   };
   const eventsStart = source.indexOf("    if (fileList) {\n      label.addEventListener('click'");
@@ -272,12 +272,13 @@ assert.equal(alignmentCommits, 1);
   fileButtons[1].dispatchEvent(new window.PointerEvent('pointerenter', { pointerType: 'mouse' }));
   assert.deepEqual(scheduled, [], 'hover must not change the molecular scene');
   fileButtons[1].click();
-  assert.deepEqual({ scheduled, open, focused: document.activeElement === label }, { scheduled: [1], open: false, focused: true });
+  assert.deepEqual({ scheduled, open, focused: document.activeElement === label }, { scheduled: [1], open: true, focused: false });
   const keysStart = source.indexOf('    const onKeyDown = (event) => {', eventsEnd);
   const keysEnd = source.indexOf('    mainRow.append(animation', keysStart);
   runInNewContext(source.slice(keysStart, keysEnd), context);
   const key = (target, value) => target.dispatchEvent(new window.KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }));
   toggles[1].click();
+  open = false;
   key(label, 'ArrowUp');
   assert.equal(document.activeElement, toggles[1], 'up from a closed trigger starts at the last visible item');
   key(toggles[1], 'ArrowLeft');
@@ -295,3 +296,110 @@ assert.equal(alignmentCommits, 1);
   await window.happyDOM.close();
 }
 console.log('Docking file disclosure preserves pose indices, scores and keyboard exclusion');
+
+// Selection uses the rendered union (including All and references), is queued,
+// keeps the menu mounted, and restores its model if the renderer rejects a change.
+{
+  const pins = new Set([2]);
+  const rendered = [];
+  let fail = false;
+  let visible = [];
+  const context = {
+    activePose: 0, activeSdfPoseMode: 'single', prepared: {}, viewer: {}, activeMolstarPrepared: null,
+    poseGroups: [{ startFrame: 0, frameCount: 2 }, { startFrame: 2, frameCount: 1 }],
+    dockingPinnedPoseIndices: () => pins, setLoopActive() {}, setPose() {},
+    poseUpdateQueue: Promise.resolve(), molstarStructureFocusSerial: 0,
+    setSdfPoseMode: mode => { context.activeSdfPoseMode = mode; },
+    applyDockingPoseCollectionVisibility: async (_viewer, _prepared, active) => {
+      visible = []; // Rebuild has already cleared the previous scene.
+      if (fail) { fail = false; throw new Error('load failed'); }
+      visible = [active, ...pins].sort();
+      rendered.push(visible);
+    },
+    resetDockingPoseCollectionState() {},
+    updateControls() {}, notifyDockingPoseChanged() {}, notifyStructureOverlayModeChanged() {},
+    sessionStorage: { setItem() {} }, trajectoryControlStorageKey: () => 'pose', activeConfig: {}, setStatus() {}, console,
+  };
+  context.activeStructurePoseSetter = context.setPose;
+  const selectionStart = source.indexOf('    const selectedPoseIndices = () => {');
+  const selectionEnd = source.indexOf('    const updateControls =', selectionStart);
+  const toggleStart = source.indexOf('    const toggleSelectedPose = (index) => {');
+  const toggleEnd = source.indexOf('    if (fileList) {', toggleStart);
+  const toggle = runInNewContext(source.slice(selectionStart, selectionEnd) + source.slice(toggleStart, toggleEnd) + '\ntoggleSelectedPose', context);
+  toggle(1); toggle(2);
+  await context.poseUpdateQueue;
+  assert.deepEqual(rendered, [[0, 1, 2], [0, 1]], 'rapid clicks preserve both ordered changes');
+  toggle(0); await context.poseUpdateQueue;
+  assert.equal(context.activePose, 1, 'removing the active pose chooses another selected pose');
+  toggle(1); await context.poseUpdateQueue;
+  assert.deepEqual(rendered.at(-1), [1], 'last visible pose stays selected');
+  context.activeSdfPoseMode = 'all';
+  toggle(2); await context.poseUpdateQueue;
+  assert.deepEqual(rendered.at(-1), [0, 1, 2], 'editing All retains its visible poses');
+  fail = true;
+  const before = [context.activePose, [...pins], context.activeSdfPoseMode];
+  toggle(0); await context.poseUpdateQueue;
+  assert.deepEqual([context.activePose, [...pins], context.activeSdfPoseMode], before);
+  assert.deepEqual(visible, [0, 1, 2], "rollback restores the actual scene after a partial rebuild");
+}
+console.log('Docking multi-selection preserves visible poses and recovers failed changes');
+
+// All can change through the visible control or the agent action without a
+// frame step. Both paths must update the mounted picker, including references.
+{
+  const window = new Window();
+  const document = window.document;
+  const root = document.createElement('div');
+  root.className = 'buret-docking-poses';
+  const label = document.createElement('button');
+  const fileList = document.createElement('div');
+  const fileButtons = [0, 1, 2].map(() => document.createElement('button'));
+  fileList.append(...fileButtons);
+  root.append(label, fileList);
+  document.body.append(root);
+  const pins = new Set([2]);
+  const poseGroups = [{ startFrame: 0, endFrame: 1, frameCount: 2 }, { startFrame: 2, endFrame: 2, frameCount: 1 }];
+  const prepared = { kind: 'docking', sdfPoseOverlayAvailable: true, poseCount: 3 };
+  let visible = [];
+  const context = {
+    window, document, Event: window.Event, root, label, fileList, fileButtons, fileTargets: [0, 1, 2],
+    prepared, poseGroups, activePose: 0, activeSdfPoseMode: 'single', hasPoseGroups: true, hasTrajectorySegments: false,
+    dockingPinnedPoseIndices: () => pins, trajectoryControlBounds: () => ({ start: 0, end: 1, count: 2 }),
+    activeTrajectorySegment: () => ({ index: 0, segment: poseGroups[0] }),
+    applyLabel() {}, previous: {}, next: {}, slider: { dataset: {} }, storyStep: null,
+    refreshNativeTrajectoryStandalonePreview() {}, postHostMessage() {}, activeConfig: {}, loopActive: false,
+    updateViewportAnimateState() {}, activeViewer: {}, activeMolstarPrepared: prepared,
+    structureOverlayAvailable: () => true, structureOverlayNoun: () => 'poses',
+    setSdfPoseMode: mode => { context.activeSdfPoseMode = mode; },
+    notifyStructureOverlayModeChanged() {}, updateSdfPoseButton() {}, setStatus() {}, readTrajectoryControlIndex: () => 0,
+    applyDockingPoseCollectionVisibility: async () => { visible = [...context.selectedPoseIndices()].sort((a, b) => a - b); },
+    agentActionFailure: (_command, _code, message) => { throw new Error(message); },
+  };
+  const selectionStart = source.indexOf('    const selectedPoseIndices = () => {');
+  const selectionEnd = source.indexOf('    const isFileListOpen =', selectionStart);
+  Object.assign(context, runInNewContext(source.slice(selectionStart, selectionEnd)
+    + '\n({ selectedPoseIndices, updateControls, setFileListOpen })', context));
+  runInNewContext(extract('reloadSdfPoseMode') + extract('toggleSdfPoseMode') + extract('setSdfPoseModeFromAction'), context);
+  const reload = context.reloadSdfPoseMode;
+  let modeChange;
+  context.reloadSdfPoseMode = () => (modeChange = reload());
+  const checks = () => fileButtons.map(button => button.getAttribute('aria-checked'));
+  try {
+    context.updateControls();
+    assert.deepEqual(checks(), ['true', 'false', 'true']);
+    context.toggleSdfPoseMode();
+    await modeChange;
+    assert.deepEqual({ visible, checked: checks() }, { visible: [0, 1, 2], checked: ['true', 'true', 'true'] });
+    context.toggleSdfPoseMode();
+    await modeChange;
+    assert.deepEqual({ visible, checked: checks() }, { visible: [0, 2], checked: ['true', 'false', 'true'] });
+    await context.setSdfPoseModeFromAction({ mode: 'all' });
+    assert.deepEqual(checks(), ['true', 'true', 'true']);
+    await context.setSdfPoseModeFromAction({ mode: 'single' });
+    assert.deepEqual(checks(), ['true', 'false', 'true']);
+    context.activeSdfPoseMode = 'all';
+    context.setFileListOpen(true);
+    assert.deepEqual(checks(), ['true', 'true', 'true'], 'reopening the menu resynchronizes selection without a frame step');
+  } finally { await window.happyDOM.close(); }
+}
+console.log('Docking All control and agent changes keep picker checks synchronized');

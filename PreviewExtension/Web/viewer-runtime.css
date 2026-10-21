@@ -2874,7 +2874,7 @@ body.burette-mobile-host .buret-docking-poses button {
   .buret-docking-poses-files-open .buret-docking-pose-files { animation: none; }
 }
 .buret-docking-poses .buret-docking-pose-group-pose {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
   padding-left: 14px;
 }
 .buret-docking-pose-file-meta {
@@ -5295,8 +5295,20 @@ body .buret-docking-pose-files:has(.buret-docking-pose-group) { min-width: min(2
 body .buret-docking-pose-group-label { border-radius: 15px; }
 body .buret-docking-poses .buret-docking-pose-group-toggle:hover { background: var(--buret-menu-section-background); }
 body .buret-docking-pose-group-toggle:focus-visible { outline: 1px solid currentColor; outline-offset: -1px; }
-body .buret-docking-poses .buret-docking-pose-group-pose { padding: 0 30px 0 20px; }
-body .buret-docking-pose-group-pose.active::after { border-color: currentColor; }
+body .buret-docking-poses .buret-docking-pose-group-pose { padding: 0 8px 0 20px; }
+body .buret-docking-pose-group-pose.active::after { content: none; }
+.buret-docking-poses .buret-docking-pose-check {
+  min-width: 0;
+  display: grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+  border-radius: 3px;
+}
+.buret-docking-pose-check svg { width: 12px; height: 12px; visibility: hidden; }
+[aria-checked="true"] > .buret-docking-pose-check { background: var(--buret-toolbar-color); border-color: var(--buret-toolbar-color); color: var(--buret-toolbar-background); }
+[aria-checked="true"] > .buret-docking-pose-check svg { visibility: visible; }
 
 body :is(.buret-tree-menu-icon, .buret-tree-menu-icon > svg) { width: 16px; height: 16px; }
 body :is(.buret-tree-menu-title, .buret-molecule-context-menu-section-label, .buret-tree-menu-actions > summary),
