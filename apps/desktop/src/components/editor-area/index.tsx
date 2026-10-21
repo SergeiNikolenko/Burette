@@ -1,3 +1,4 @@
+import { useNativePageWindowSession } from "../workspace-panes/native-page-window";
 import { useMoleculeStore } from "../../stores/molecule-store";
 import { WorkspaceSplitLayout, WorkspaceGroupHeader } from "../workspace-panes/workspace-split-layout";
 import { useWorkspacePanesStore } from "../../stores/workspace-panes-store";
@@ -23,6 +24,7 @@ const MEMORY_PRESSURE_HEAP_RATIO = 0.7;
 
 export function ViewerArea({ state, actions }: { state: ShellViewState; actions: ShellActions }) {
   useNativePopoutSession(actions);
+  useNativePageWindowSession(actions);
   const activeTabId = state.activeTabId ?? state.activeTab?.id;
   const tabs = state.tabs.length > 0 ? state.tabs : [{ id: "fallback", location: activeLocation(state), back: [], forward: [] }];
   const activeTabIndex = tabs.findIndex((tab) => tab.id === activeTabId);

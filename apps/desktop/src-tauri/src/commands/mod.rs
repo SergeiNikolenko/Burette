@@ -43,3 +43,5 @@ pub(crate) mod folder_contents;
 
 pub(crate) mod ssh;
 pub(crate) mod xyzrender_editor;
+
+pub(crate) mod workspace_page;

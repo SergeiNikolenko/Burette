@@ -164,6 +164,7 @@ pub fn run() {
                 commands::popout_scene::save_popout_scene,
                 commands::popout_scene::save_popout_sheet,
                 commands::popout_scene::relay_popout_handoff,
+                commands::workspace_page::relay_workspace_page,
                 compute::commands::compute_capabilities,
                 compute::commands::compute_register_inline_source,
                 compute::commands::compute_align_grid_poses,

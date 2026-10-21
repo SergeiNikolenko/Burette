@@ -625,11 +625,11 @@ export function EditorTabs({
             items.push({ kind: "separator" },
               { kind: "item", id: "close-tab", text: "Close tab", action: () => actions.closeTab(tab.id) });
             if (visibleTabs.some(other => other.id !== tab.id && !other.pinned)) items.push(
-              { kind: "item", id: "close-other-tabs", text: "Close other tabs", action: () => actions.closeOtherTabs(tab.id) });
+              { kind: "item", id: "close-other-tabs", text: "Close other tabs", action: () => { void actions.closeTabs(visibleTabs.filter(other => other.id !== tab.id && !other.pinned).map(other => other.id)); } });
             if (tabsToRight.length) items.push(
               { kind: "item", id: "close-tabs-right", text: "Close tabs to the right", action: () => { void actions.closeTabs(tabsToRight.map(tab => tab.id)); } });
             if (visibleTabs.length > 1) items.push(
-              { kind: "item", id: "close-all-tabs", text: "Close all tabs", action: actions.clearAllDocuments });
+              { kind: "item", id: "close-all-tabs", text: "Close all tabs", action: () => { void actions.closeTabs(visibleTabs.filter(other => !other.pinned).map(other => other.id)); } });
             const chosenTabs = selectedTabIds.has(tab.id) && selectedTabIds.size > 1
               ? visibleTabs.filter(candidate => selectedTabIds.has(candidate.id)) : [tab];
             const chosenPaths = chosenTabs.flatMap(candidate => { const path = tabPathForLocation(candidate); return path ? [path] : []; });

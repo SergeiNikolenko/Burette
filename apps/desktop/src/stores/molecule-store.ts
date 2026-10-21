@@ -455,14 +455,15 @@ function settingsReturnTabId(state: MoleculeState) {
 }
 
 // A tab shown in the main strip: Settings is a separate full-window mode and
-// a placed tab lives in the floating window.
+// a placed tab lives in another workspace group.
 export function isMainTab(tab: MoleculeTab) {
   return tab.location.kind !== "settings" && !tab.pane;
 }
 
 // Keyboard tab navigation follows the visible strip and leaves parked screens in place.
 export function adjacentMainTabId(tabs: MoleculeTab[], activeTabId: string | null, offset: -1 | 1) {
-  const mainTabs = tabs.filter(isMainTab);
+  const pane = tabs.find(tab => tab.id === activeTabId)?.pane ?? null;
+  const mainTabs = tabs.filter(tab => tab.location.kind !== "settings" && (tab.pane ?? null) === pane);
   if (mainTabs.length === 0) return null;
   const index = mainTabs.findIndex((tab) => tab.id === activeTabId);
   if (index < 0) return mainTabs[offset === 1 ? 0 : mainTabs.length - 1].id;
@@ -852,6 +853,7 @@ export const useMoleculeStore = create<MoleculeState>()(
       openNewTab: () =>
         set((state) => {
           const tab = createLauncherTab();
+          tab.pane = state.tabs.find(current => current.id === state.activeTabId)?.pane;
           const tabs = [...state.tabs, tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
         }),
@@ -982,7 +984,7 @@ export const useMoleculeStore = create<MoleculeState>()(
         }),
       activateLastNonSettingsTab: () =>
         set((state) => {
-          const target = state.tabs.find((tab) => tab.id === state.settingsReturnTabId && isMainTab(tab))
+          const target = state.tabs.find((tab) => tab.id === state.settingsReturnTabId && tab.location.kind !== "settings")
             ?? [...state.tabs].reverse().find(isMainTab);
           if (target) {
             return { activeTabId: target.id, activeDocumentId: activeDocumentIdFrom(state.tabs, target.id, state.documents) };
@@ -1066,7 +1068,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           const target = state.tabs.find((tab) => tab.id === id);
           if (!target || target.location.kind === "settings") return state;
           if ((target.pane ?? null) === pane) {
-            return pane === null ? { activeTabId: id, activeDocumentId: activeDocumentIdFrom(state.tabs, id, state.documents) } : state;
+            return { activeTabId: id, activeDocumentId: activeDocumentIdFrom(state.tabs, id, state.documents) };
           }
           // One floating window: the screen it showed returns to the strip.
           const tabs = ensureTabs(state.tabs.map((tab) => (
