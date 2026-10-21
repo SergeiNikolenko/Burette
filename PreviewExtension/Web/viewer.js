@@ -8111,6 +8111,9 @@ SOFTWARE.
       updateViewportCornerLayout();
       return;
     }
+    // Keep availability/selection current, but build rows only when visible.
+    // Opening the panel below renders the latest completed state.
+    if (panel.classList.contains('hidden')) return;
     const root = document.createElement('div');
     root.className = 'buret-tree';
     const highlight = document.createElement('div');
@@ -8174,6 +8177,7 @@ SOFTWARE.
       // it stays open, it does not become the panel's new home.
       panel.style.removeProperty('left');
       panel.style.removeProperty('top');
+      renderSceneTree();
     } else {
       moveSceneTreeHighlight(null);
       closeSceneTreeMenu();

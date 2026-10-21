@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
+import { Window } from "happy-dom";
 
 const source = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 const viewer = source("PreviewExtension/Web/viewer.js");
@@ -310,3 +311,39 @@ assert.match(group, /name\.startsWith\('align:'\) \|\| name === 'align-structure
 assert.match(group, /name\.startsWith\('extract:'\) \|\| name\.startsWith\('split:'\)\) return 'export'/);
 
 console.log("Structure operations contract tests passed");
+
+// Hidden tree updates keep controls current without allocating invisible rows;
+// opening (including after edits while closed) renders the newest snapshot.
+const treeWindow = new Window();
+try {
+  const document = treeWindow.document;
+  document.body.innerHTML = '<button id="buret-scene-tree-toggle"></button><div id="buret-viewport-rail"></div><div id="buret-scene-tree" class="hidden"><div data-buret-scene-tree-body></div></div>';
+  let nodes = [{ label: 'Line' }], rowBuilds = 0, selectionUpdates = 0;
+  const renderContext = {
+    document, activeMolstarViewer: () => ({}), sceneTreeNodes: () => nodes,
+    reconcileSceneTreeExpansion() {}, updateSelectionBar: () => selectionUpdates++,
+    updateSceneTreeExpandButton() {}, updateViewportCornerLayout() {},
+    updateSceneTreeStoryCaption() {}, moveSceneTreeHighlight() {}, closeSceneTreeMenu() {},
+    sceneTreeHoverRef: '', requestAnimationFrame: callback => callback(),
+    sceneTreeNodeElement: node => { rowBuilds++; const row = document.createElement('div'); row.textContent = node.label; return row; },
+  };
+  runInNewContext(fn('renderSceneTree') + fn('setSceneTreeOpen'), renderContext);
+  renderContext.renderSceneTree();
+  assert.deepEqual([rowBuilds, selectionUpdates], [0, 1]);
+  renderContext.setSceneTreeOpen(true);
+  const body = document.querySelector('[data-buret-scene-tree-body]');
+  assert.equal(body.textContent, 'Line');
+  renderContext.setSceneTreeOpen(false);
+  nodes = [{ label: 'Molecular Surface' }];
+  renderContext.renderSceneTree();
+  assert.equal(rowBuilds, 1);
+  renderContext.setSceneTreeOpen(true);
+  assert.equal(body.textContent, 'Molecular Surface');
+  nodes = [];
+  renderContext.renderSceneTree();
+  assert.equal(body.textContent, '');
+  assert.equal(document.getElementById('buret-scene-tree').getAttribute('aria-hidden'), 'true');
+  assert.equal(document.getElementById('buret-scene-tree-toggle').classList.contains('hidden'), true);
+} finally {
+  await treeWindow.happyDOM.close();
+}
