@@ -80,6 +80,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            commands::telemetry::initialize(app.handle())?;
             if let Ok(cache_dir) = app.path().app_cache_dir() {
                 perf_trace::install(cache_dir);
             }
@@ -155,6 +156,11 @@ pub fn run() {
         })
         .invoke_handler(perf_trace::timed::<tauri::Wry, _>(
             commands::recent_documents::ordered(tauri::generate_handler![
+                commands::telemetry::statistics_status,
+                commands::telemetry::statistics_consent,
+                commands::telemetry::statistics_record,
+                commands::telemetry::statistics_flush,
+                commands::telemetry::statistics_export,
                 commands::clipboard::write_clipboard_text,
                 commands::popout_scene::save_popout_scene,
                 commands::popout_scene::save_popout_sheet,

@@ -28,6 +28,8 @@ contains only documents that describe the active project.
 - [Security and permissions](security-and-permissions.md): local file access,
   Tauri permissions, browser/agent surfaces, local servers, release secrets,
   diagnostics, and security reporting.
+- [Optional usage statistics](usage-statistics.md): desktop consent, bounded
+  event schema, deletion, retention, deployment gate and privacy-notice draft.
 - [Molecular drag and drop](drag-and-drop.md): source/destination matrix, safe file creation,
   gesture feedback, bounds and focused checks.
 - [Scene naming proposal](scene-naming.md): content-based automatic titles, stable file
