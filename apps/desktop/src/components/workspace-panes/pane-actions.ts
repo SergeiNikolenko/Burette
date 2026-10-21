@@ -13,6 +13,7 @@ import { toast } from "../ui/toast";
 // itself never remounts (see ViewerArea); these only change where its surface
 // is laid out.
 export function placeScreen(tabId: string, pane: TabPane | null) {
+  useWorkspacePanesStore.getState().setFullView(null);
   useMoleculeStore.getState().placeTab(tabId, pane);
   if (pane === "floating") useWorkspacePanesStore.getState().setFloatingMinimized(false);
 }
@@ -57,12 +58,21 @@ export const SCREEN_ENTRIES: { id: string; text: string; location: Location }[] 
 // "Pop out", "Move to New Window" and "Move to Main Window" for one screen, shared by the tab context
 // menu and the floating window header so they always agree.
 export function paneMoveItems(tab: MoleculeTab, state: ShellViewState, actions: ShellActions): MenuItemSpec[] {
-  const items: MenuItemSpec[] = [];
+  const full = useWorkspacePanesStore.getState().fullViewTabId === tab.id;
+  const items: MenuItemSpec[] = [
+    { kind: "item", id: "pane-full-view", text: full ? "Exit Full View" : "Enter Full View", action: () => {
+      useMoleculeStore.getState().setActiveTab(tab.id);
+      useWorkspacePanesStore.getState().setFullView(full ? null : tab.id);
+    } },
+    ...(["right", "bottom"] as const).filter(pane => tab.pane !== pane).map(pane => ({
+      kind: "item" as const, id: `pane-split-${pane}`, text: pane === "right" ? "Move to Right Split" : "Move to Bottom Split", action: () => placeScreen(tab.id, pane),
+    })),
+  ];
   if (isNativePopoutTab(tab.id)) return [{ kind: "item", id: "pane-return-main", text: "Move to Main Window", action: () => {
     void returnMovedScene().catch(() => toast.add({ title: "Could not return scene", description: "Keep this window open and try again.", type: "error" }));
   } }];
   if (tab.pane) {
-    items.push({ kind: "item", id: "pane-move-main", text: "Move to Main Window", action: () => placeScreen(tab.id, null) });
+    items.push({ kind: "item", id: "pane-move-main", text: "Move to Main Tabs", action: () => placeScreen(tab.id, null) });
   }
   if (canOpenNativePopout(tab) || tab.pane !== "floating") {
     items.push({ kind: "item", id: "pane-pop-out", text: "Pop out", action: async () => {

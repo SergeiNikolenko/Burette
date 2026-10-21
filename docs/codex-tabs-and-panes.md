@@ -23,13 +23,16 @@ and included in session snapshots and closed-tab restoration.
 | Place | Layout and ownership |
 | --- | --- |
 | Main | Multiple screens with one active tab |
+| Right / bottom split | Independent tabs; resize with pointer or arrow keys |
 | Browser floating surface | One in-page floating screen; movable, resizable and minimizable |
 | Native preview window | A compact Tauri window holding a copy of a file screen (Pop out) |
 | Native detached window | A separate Tauri workspace window that owns a moved molecular scene or illustration sheet (Move to New Window) |
 
-`MoleculeTab.pane` (`"floating" | undefined`) records the place.
-`activeTabId` always names a main tab; making a placed screen active (sidebar,
-deep link, open actions) brings it back to the main strip. Tabs saved by older
+`MoleculeTab.pane` (`"right" | "bottom" | "floating" | undefined`) records the place.
+`activeTabId` names the focused view in any group. Activating a placed screen
+preserves its placement. Right and bottom splits have independent tab selection
+and resizable bounds. Full View hides other groups without moving or rebuilding
+the selected view; Exit Full View restores the split. Tabs saved by older
 builds in the retired side panel (`pane: "side"`) load into the main strip.
 Settings temporarily hides placed surfaces.
 
