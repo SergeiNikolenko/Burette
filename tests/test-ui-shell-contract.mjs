@@ -1512,13 +1512,12 @@ assert.match(editorArea, /const MountedPageSurface = memo\(function MountedPageS
 assert.match(editorArea, /<TabHistoryPages tab=\{tab\} state=\{state\} actions=\{actions\} isActive=\{contentVisible\} retainedHistoryKeys=\{retainedHistoryKeys\}/);
 assert.match(editorArea, /if \(previous\.isActive \|\| next\.isActive\) return false/);
 assert.match(editorArea, /previous\.tab\.id === next\.tab\.id && previous\.tab\.location === next\.tab\.location/);
-assert.match(editorArea, /className="page-stack"/);
+assert.match(await source("apps/desktop/src/components/workspace-panes/workspace-split-layout.tsx"), /className="page-stack"/);
 assert.match(editorArea, /className="page-surface"/);
 assert.match(editorArea, /data-page-kind=\{kind\.kind\}/);
 assert.match(editorArea, /kind: "launcher"/);
 assert.doesNotMatch(editorArea, /function WelcomePanel/);
 assert.match(editorTabs, /New tab/);
-assert.match(editorTabs, /const visibleTabs = useMemo\(\(\) => state\.tabs\.filter\(isMainTab\), \[state\.tabs\]\)/);
 assert.match(editorTabs, /visibleTabs\.map/);
 assert.match(editorTabs, /activeTabIndex/);
 assert.match(editorTabs, /const \[selectedTabIds, setSelectedTabIds\] = useState<Set<string>>\(\(\) => new Set\(\)\)/);
@@ -1542,7 +1541,7 @@ assert.match(editorTabs, /actions\.saveMoleculeCollectionAs\(tabDocument\.id\)/)
 assert.match(editorTabs, /kind: tab\.location\.kind === "ketcher" \? "ketcher" as const : tab\.location\.kind === "text-file" \? "writer" as const : "tab" as const/);
 assert.match(editorTabs, /startMouseTabReorder\(tab\.id, true, event\);/);
 assert.match(editorTabs, /showNativeContextMenu\(menuSections\(/);
-assert.match(editorTabs, /actions\.openNewTab/);
+assert.match(editorTabs, /openScreen\(\{ kind: "launcher" \}/);
 assert.doesNotMatch(editorTabs, /from "lucide-react"/);
 assert.doesNotMatch(editorTabs, /className="tab-history-controls"/);
 assert.match(editorTabs, /import \{ CloseIcon \} from "\.\.\/close-icon"/);
@@ -1572,7 +1571,7 @@ assert.match(appLayout, /data-window-fullscreen=\{windowFullscreen \? "true" : u
 assert.doesNotMatch(appLayout, /<header\s+className="topbar"[^>]*data-tauri-drag-region/s);
 assert.match(editorTabs, /className="tab-strip"/);
 assert.doesNotMatch(editorTabs, /className="tab-strip" data-tauri-drag-region/);
-assert.match(editorTabs, /className="tab-scroll-region"[\s\S]*role="tablist"[\s\S]*aria-label="Open structures"/);
+assert.match(editorTabs, /className="tab-scroll-region"[\s\S]*role="tablist"[\s\S]*aria-label=\{group === "main" \? "Workspace tabs"/);
 assert.doesNotMatch(editorTabs, /className="tab-scroll-region"[\s\S]{0,180}data-tauri-drag-region/);
 assert.match(editorTabs, /className="tab-strip-spacer"[\s\S]*data-tauri-drag-region/);
 assert.match(defaultCapability, /"core:window:allow-internal-toggle-maximize"/);

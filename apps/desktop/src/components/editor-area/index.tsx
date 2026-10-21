@@ -1,3 +1,6 @@
+import { useMoleculeStore } from "../../stores/molecule-store";
+import { WorkspaceSplitLayout, WorkspaceGroupHeader } from "../workspace-panes/workspace-split-layout";
+import { useWorkspacePanesStore } from "../../stores/workspace-panes-store";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ShellActions, ShellViewState } from "../types";
 import { pageKind, type Location } from "./page-kinds";
@@ -41,8 +44,7 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
     tabs,
     warmTabIds: new Set(tabs.filter(tab => pageKind(tab.location).keepAlive).map(tab => tab.id)),
     recentTabIds: recentlyUsedTabIds,
-    visibleTabIds: new Set(tabs.filter((tab, index) => (index === activeTabIndex && !tab.pane)
-      || paneVisibility(tab) === "visible").map(tab => tab.id)),
+    visibleTabIds: new Set(tabs.filter(tab => paneVisibility(tab) === "visible").map(tab => tab.id)),
     protectedDocumentIds,
     documents: state.documents,
     limit: warmPageLimit,
@@ -70,15 +72,15 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
   // floating window only repositions its surface. Moving an
   // iframe to another parent reloads it, which would rebuild the Mol* scene.
   return (
-    <div className="page-stack">
+    <WorkspaceSplitLayout tabs={tabs} state={state} actions={actions}>
       {tabs.map((tab, index) => {
-        const isActive = index === activeTabIndex && !tab.pane;
+        const isActive = index === activeTabIndex;
         const kind = pageKind(tab.location);
         const shown = paneVisibility(tab);
         // Non-file pane controls have local UI state and no molecular viewer
         // to reclaim. Preserve the established hidden-dock state contract.
-        const panePageHeld = Boolean(tab.pane) && kind.keepAlive && tab.location.kind !== "file";
-        const mountContent = isActive || shown === "visible" || panePageHeld || residency.mountedTabIds.has(tab.id);
+        const panePageHeld = kind.keepAlive && tab.location.kind !== "file";
+        const mountContent = shown === "visible" || panePageHeld || residency.mountedTabIds.has(tab.id);
         // Keep a minimized floating header usable even when its clean page is
         // cold. The surface/iframe parent never moves during pane transitions.
         if (!mountContent && shown !== "minimized") return null;
@@ -99,7 +101,7 @@ export function ViewerArea({ state, actions }: { state: ShellViewState; actions:
           />
         );
       })}
-    </div>
+    </WorkspaceSplitLayout>
   );
 }
 
@@ -131,19 +133,26 @@ const MountedPageSurface = memo(function MountedPageSurface({
   const kind = pageKind(tab.location);
   // A minimized floating window still shows its header, but the page behind
   // it is out of sight and may pause like any background tab.
-  const contentVisible = isActive || shown === "visible";
+  const fullViewTabId = useWorkspacePanesStore(store => store.fullViewTabId);
+  const contentVisible = shown === "visible";
   return (
     <div
       className="page-surface"
       data-page-kind={kind.kind}
-      data-active={isActive || undefined}
+      data-active={isActive && contentVisible || undefined}
+      data-workspace-visible={contentVisible || undefined}
+      data-view-id={tab.id}
+      data-full-view={fullViewTabId === tab.id || undefined}
+      onPointerDownCapture={event => { if (!isActive && !(event.target as Element).closest(".workspace-group-header")) useMoleculeStore.getState().setActiveTab(tab.id); }}
+      onFocusCapture={event => { if (!isActive && !(event.target as Element).closest(".workspace-group-header")) useMoleculeStore.getState().setActiveTab(tab.id); }}
       data-pane={pane ?? undefined}
       data-pane-shown={shown === "hidden" ? undefined : shown}
       aria-hidden={!contentVisible && shown !== "minimized"}
     >
       {/* The header slot is always present so that inserting the header never
           shifts the page's own nodes: React keeps the iframe where it is. */}
-      {pane === "floating" ? <FloatingPaneHeader tab={tab} state={state} actions={actions} minimized={shown === "minimized"} /> : null}
+      {pane === "floating" && fullViewTabId !== tab.id ? <FloatingPaneHeader tab={tab} state={state} actions={actions} minimized={shown === "minimized"} />
+        : pane && fullViewTabId !== tab.id ? <WorkspaceGroupHeader group={pane} state={state} actions={actions} tab={tab} /> : null}
       {mountContent ? <TabHistoryPages tab={tab} state={state} actions={actions} isActive={contentVisible} retainedHistoryKeys={retainedHistoryKeys} protectedDocumentIds={protectedDocumentIds}
         pausedPage={paused ? <FileViewerEmptyState title="Scene paused" icon={null} action={<Button variant="outline" size="sm" onClick={() => resumePage(scenePageKey(tab.id, tab.location))}>Open scene</Button>} /> : undefined} /> : null}
     </div>
