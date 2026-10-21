@@ -1,3 +1,4 @@
+import { chemicalSpaceDocument as resolveCollection, chemicalSpaceSourceMatches } from "../lib/chemical-space-documents";
 import { Spinner } from "@/components/ui/spinner";
 import { useSidebarStructureDrag } from "./sidebar/use-sidebar-structure-drag";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
@@ -63,24 +64,9 @@ function resolveChemicalSpaceDocument(
   state: ShellViewState,
   dockDocument: ViewerDocument | null,
 ) {
-  const supportsChemicalSpace = (document: ViewerDocument | null): document is ViewerDocument => (
-    document?.renderer === "grid2d"
-    || ["csv", "tsv", "dwar", "smi", "smiles"].includes(document?.extension.toLowerCase() ?? "")
-  );
-  if (supportsChemicalSpace(dockDocument)) return dockDocument;
-  if (supportsChemicalSpace(state.activeDocument)) return state.activeDocument;
-  if (supportsChemicalSpace(state.quickLookDocument)) return state.quickLookDocument;
-  const location = state.activeTab?.location;
-  if (location?.kind === "file") {
-    const locationDocument = state.documents.find((document) => (
-      supportsChemicalSpace(document)
-      && (document.id === location.documentId || document.path === location.path)
-    ));
-    if (locationDocument) return locationDocument;
-  }
-  return state.visibleDocuments.find(supportsChemicalSpace)
-    ?? state.documents.find(supportsChemicalSpace)
-    ?? null;
+  // A structure may be a selected subset of a grid, or the original SDF.
+  // Never substitute the first unrelated collection in the workspace.
+  return resolveCollection(dockDocument ?? state.activeDocument ?? state.quickLookDocument, state.documents);
 }
 
 export function DockPanel({ area, state, actions, readOnly = false }: DockPanelProps) {
@@ -454,7 +440,14 @@ function DockPanelContent({
   if (activeTabKind === "chemical-space") {
     return (
       <Suspense fallback={null}>
-        <ChemicalSpacePanel document={chemicalSpaceDocument} visible={area === "right" ? state.rightDockOpen : state.bottomDockOpen} inspectorOpen={state.rightDockOpen && state.rightDockActiveTab === "inspector"} />
+        <ChemicalSpacePanel
+          document={chemicalSpaceDocument}
+          viewerDocument={[state.activeDocument, ...state.visibleDocuments].find(document =>
+            document?.renderer === "molstar" && chemicalSpaceDocument
+            && chemicalSpaceSourceMatches(document, chemicalSpaceDocument)) ?? null}
+          visible={area === "right" ? state.rightDockOpen : state.bottomDockOpen}
+          inspectorOpen={state.rightDockOpen && state.rightDockActiveTab === "inspector"}
+        />
       </Suspense>
     );
   }

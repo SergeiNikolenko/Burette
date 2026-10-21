@@ -1,3 +1,4 @@
+import { useChemicalSpaceViewerSelection } from "../hooks/use-chemical-space-viewer-selection";
 import {
   cloneElement,
   lazy,
@@ -90,6 +91,7 @@ const ChemicalSpace3D = lazy(() => import("./chemical-space-3d").then((module) =
 
 type ChemicalSpacePanelProps = {
   document: ViewerDocument | null;
+  viewerDocument?: ViewerDocument | null;
   visible?: boolean;
   /** The inspector already shows the hovered molecule, so the map's own
    *  floating card would only repeat it and cover the points being explored. */
@@ -270,7 +272,7 @@ function indexingProgressLabel(state: GridIndexState | null) {
   return `${percent}% · ${records} molecules indexed`;
 }
 
-export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = true }: ChemicalSpacePanelProps) {
+export function ChemicalSpacePanel({ document, viewerDocument = null, inspectorOpen = false, visible = true }: ChemicalSpacePanelProps) {
   const documentSettingsKey = document?.renderer === "grid2d" ? gridDocumentInstanceKey(document) : "empty";
   const portalContainer = useThemePortalContainer();
   const [draft, setDraft] = useChemicalSpaceSetting(documentSettingsKey, "draft", DEFAULT_OPTIONS);
@@ -711,7 +713,8 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
         || !isKnownViewerMessageSource(event.source, documentId)
       ) return;
       if (data.body.type === "ready") subscribe();
-      if (data.body.type === "gridMenuStateChanged" && Array.isArray(data.body.selectedSourceIndexes)) {
+      if (data.body.type === "gridMenuStateChanged" && viewerDocument?.renderer !== "molstar"
+        && Array.isArray(data.body.selectedSourceIndexes)) {
         setSelected(new Set(data.body.selectedSourceIndexes
           .slice(0, GRID_SELECTION_BRIDGE_LIMIT)
           .map(Number)
@@ -804,7 +807,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
         body: { type: "chemicalSpaceVisibilitySubscription", documentId, subscriberId, active: false },
       }, "*");
     };
-  }, [applySourceRevision, documentId, documentInstanceKey, visible]);
+  }, [applySourceRevision, documentId, documentInstanceKey, visible, viewerDocument?.renderer]);
 
   // Only one of the two shows the hovered molecule. Putting the inspector card
   // away with its close button hands the job back to the map's own small
@@ -832,6 +835,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
       }));
     }
   }, [documentId]);
+  const focusMolecule = useChemicalSpaceViewerSelection(document, viewerDocument, setSelected);
   const stopCalculation = useCallback(() => {
     workflowControllerRef.current?.abort();
     workflowControllerRef.current = null;
@@ -1291,10 +1295,9 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                 postToGrid({ type: "chemicalSpaceHoverChanged", sourceRecordId });
               }}
               onSelect={(sourceRecordIds) => {
-                const expanded = tool === "navigate" && sourceRecordIds.length === 1
-                  ? clusterMembersForSource(rankedClusters, sourceRecordIds[0])
-                  : sourceRecordIds;
-                const bounded = expanded.slice(0, GRID_SELECTION_BRIDGE_LIMIT);
+                // Point clicks navigate one molecule. Lasso/group/pair selection
+                // stays a set and never chooses an arbitrary pose to display.
+                const bounded = sourceRecordIds.slice(0, GRID_SELECTION_BRIDGE_LIMIT);
                 setSelected(new Set(bounded));
                 postToGrid({
                   type: "chemicalSpaceSelectionChanged",
@@ -1302,6 +1305,7 @@ export function ChemicalSpacePanel({ document, inspectorOpen = false, visible = 
                   filterToSelection: tool === "lasso",
                   focusSourceRecordId: tool === "navigate" && sourceRecordIds.length === 1 ? sourceRecordIds[0] : null,
                 });
+                if (tool === "navigate" && bounded.length === 1) focusMolecule(bounded[0]);
               }}
             />
           ) : awaitingIndexState ? (
@@ -2776,17 +2780,6 @@ function alignedClusterIds(
     ]),
   );
   return sourceRecordIds.map((sourceRecordId) => bySource.get(sourceRecordId) ?? null);
-}
-
-function clusterMembersForSource(
-  clusters: ChemicalSpaceClusterResult | null,
-  sourceRecordId: number,
-) {
-  if (!clusters) return [sourceRecordId];
-  const index = clusters.sourceRecordIds.indexOf(sourceRecordId);
-  const clusterId = index < 0 ? undefined : clusters.clusterIds[index];
-  if (clusterId === undefined) return [sourceRecordId];
-  return clusters.sourceRecordIds.filter((_, memberIndex) => clusters.clusterIds[memberIndex] === clusterId);
 }
 
 function ChemicalSpaceRepresentationUnavailable({

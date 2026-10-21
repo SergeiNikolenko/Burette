@@ -238,6 +238,7 @@
     pendingGridRailPosition: null,
     menuStateSignature: '',
     chemicalSpaceHoverToken: 0,
+    chemicalSpaceOpenToken: 0,
   };
 
   function post(type, message, payload = {}) {
@@ -747,6 +748,7 @@
         return;
       }
       if (body.type === 'chemicalSpaceSelectionChanged') {
+        state.chemicalSpaceOpenToken += 1;
         const indexes = Array.isArray(body.sourceRecordIds)
           ? body.sourceRecordIds
             .slice(0, GRID_SELECTION_BRIDGE_LIMIT)
@@ -763,6 +765,21 @@
         if (Number.isSafeInteger(focusIndex) && indexes.includes(focusIndex)) {
           void Promise.resolve(refreshed).then(() => revealChemicalSpaceRow(focusIndex, cfg, token));
         }
+        return;
+      }
+      if (body.type === 'chemicalSpaceOpenMolecule') {
+        if (state.closeTransitionActive || state.saveAsPending || !capabilities(config()).molstarOpen) return;
+        const index = body.sourceRecordId;
+        if (!Number.isSafeInteger(index) || index < 0) return;
+        const token = state.dataToken;
+        const openToken = ++state.chemicalSpaceOpenToken;
+        const isCurrent = () => token === state.dataToken && openToken === state.chemicalSpaceOpenToken;
+        void chemicalSpaceRow(index).then(row => {
+          if (!row || !isCurrent()) return;
+          return requestSingleMolstarDocument(row, config(), 'active-tab', {
+            documentId: body.navigationDocumentId, isCurrent
+          });
+        }).catch(() => setStatus('[grid] Could not open the selected molecule.', 'error'));
         return;
       }
       if (body.type === 'chemicalSpaceRequestState') {
@@ -2572,13 +2589,15 @@
       // header block down one line and losing the molecule names.
       textBase64: textToBase64(records.join('')),
       controlLabel: 'Molecule',
+      sourceRecordIds: records.length === rows.length ? rows.map(row => Number(row.index)) : null,
       receptorPath: receptorPath || null
     });
     setStatus(`[grid] Opening ${records.length.toLocaleString()} selected molecule${records.length === 1 ? '' : 's'} in Molstar.`);
   }
 
-  async function requestSingleMolstarDocument(row, cfg, openTarget = 'new-tab') {
+  async function requestSingleMolstarDocument(row, cfg, openTarget = 'new-tab', navigation = null) {
     const records = await sdfRecordTextsForMolstar([row]);
+    if (navigation && !navigation.isCurrent()) return;
     const record = records[0] || null;
     const label = row?.name || `Molecule ${Number(row?.index) + 1 || 1}`;
     if (!record) {
@@ -2594,6 +2613,8 @@
       extension: 'sdf',
       textBase64: textToBase64(record),
       controlLabel: 'Molecule',
+      sourceRecordIds: [Number(row.index)],
+      navigationDocumentId: navigation?.documentId ?? null,
       receptorPath: receptorPath || null
     });
     setStatus(`[grid] Opening ${label} in Molstar.`);
@@ -6701,26 +6722,31 @@
     });
   }
 
+  async function chemicalSpaceRow(index) {
+    const localPool = state.remoteMode ? state.rows : state.all;
+    let row = localPool.find(candidate => Number(candidate?.index) === index) || null;
+    if (!row && state.remoteMode) {
+      const result = await hostRequest('gridFetchPage', {
+        query: '',
+        sort: 'index',
+        columnFilters: [],
+        descriptorFilters: [],
+        analysisFilters: [],
+        descriptorSort: null,
+        offset: index,
+        limit: 1
+      });
+      row = Array.isArray(result.rows)
+        ? result.rows.find(candidate => Number(candidate?.index) === index) || null
+        : null;
+    }
+    return row;
+  }
+
   async function postChemicalSpaceMoleculePreview(index, cfg) {
     const token = ++state.chemicalSpaceHoverToken;
     try {
-      const localPool = state.remoteMode ? state.rows : state.all;
-      let row = localPool.find(candidate => Number(candidate?.index) === index) || null;
-      if (!row && state.remoteMode) {
-        const result = await hostRequest('gridFetchPage', {
-          query: '',
-          sort: 'index',
-          columnFilters: [],
-          descriptorFilters: [],
-          analysisFilters: [],
-          descriptorSort: null,
-          offset: index,
-          limit: 1
-        });
-        row = Array.isArray(result.rows)
-          ? result.rows.find(candidate => Number(candidate?.index) === index) || null
-          : null;
-      }
+      const row = await chemicalSpaceRow(index);
       if (token !== state.chemicalSpaceHoverToken || !row) return;
       const input = String(row.molblock || row.smiles || '').trim();
       let svg = '';

@@ -262,7 +262,7 @@ export type ShellActions = {
   closeOtherTabs: (id: string) => void | Promise<void>;
   closeActiveDocument: () => void | Promise<void>;
   clearAllDocuments: () => void | Promise<void>;
-  openDockingDocument: (receptorPath: string, ligandPaths: string[], options?: { activePose?: number | null; sceneMode?: DockingSceneMode | null; shouldApply?: () => boolean }) => void | Promise<ViewerDocument | null>;
+  openDockingDocument: (receptorPath: string, ligandPaths: string[], options?: { activePose?: number | null; sceneMode?: DockingSceneMode | null; shouldApply?: () => boolean; moleculeSource?: ViewerDocument["moleculeSource"] }) => void | Promise<ViewerDocument | null>;
   openDockingStructureRecords: (receptorPath: string, ligandPaths: string[], records: StructureDragPayload["records"]) => void | Promise<void>;
   appendGridRecords: (targetDocumentId: string, payload: StructureDragPayload) => boolean;
   addXyzrenderSheetItems: (targetDocumentId: string, payload: StructureDragPayload) => boolean;

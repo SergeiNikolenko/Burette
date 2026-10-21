@@ -337,6 +337,7 @@ button:where(:not(.atlas-button, .atlas-menu-item)):disabled {
     font-family: inherit;
     text-align: center;
     vertical-align: middle;
+    justify-content: center;
   }
 }
 

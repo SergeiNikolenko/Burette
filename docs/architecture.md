@@ -148,7 +148,26 @@ cards or table. The `chemicalSpaceSelectionChanged` message optionally includes
 `focusSourceRecordId` for point navigation; lasso selection and hover do not
 request a jump. The grid resolves that identity in the current sort/filter
 order, paging as needed, and cancels navigation when a newer query or selection
-replaces it. A filtered-out molecule leaves the filters intact.
+replaces it. A filtered-out molecule leaves the filters intact. Point navigation also
+opens the exact source molecule in Mol*, or selects it in the related visible
+structure. SDF subsets retain an ordered `moleculeSource` mapping of source
+file/document and record IDs. Lasso, group and cliff-pair selections stay sets;
+they do not choose a pose. Changing the displayed molecule replaces the map
+selection. A dock resolves the map from its current file or explicit source,
+never the first unrelated collection in the workspace.
+
+The desktop host sends `chemicalSpaceRequestSelection` and
+`chemicalSpaceFocusMolecule` (`documentId`, `sourcePath`, `sourceRecordId`) to the
+owning Mol* frame. `chemicalSpaceMoleculeChanged` reports the source-file-local
+record ID; a multi-file scene must not use the global pose offset as that ID.
+`dockingPoseChanged` also carries optional `sourceRecordId`, retaining the
+existing global `activePose` field. The standalone Quick Look/iPhone runtime can
+emit these messages without a map host; only the desktop/browser shell consumes
+them. `chemicalSpaceOpenMolecule` resolves unloaded rows by their source index and
+opens them in the current tab, retaining the collection in history. Its
+`navigationDocumentId` cancels an asynchronous open after the user switches
+documents. Extracted grid structures send bounded `sourceRecordIds` with
+`openSdfMolstarDocument`; absent metadata leaves legacy documents unlinked.
 
 Composition rows for chains, ligand instances and ion species offer the same
 hide/show/remove actions as scene components. Their component actions carry an
@@ -327,6 +346,16 @@ remote paths still travel only as JSON on stdin. Refreshing a remote project
 keeps its cached tree visible.
 
 ### Native conformers in Mol* collections
+
+Before standalone conformer generation or optimization, `conformer-input.ts`
+rejects sources whose records all contain explicit R-group (`R#`) or wildcard
+(`*`) atoms. It checks V2000/V3000 atom fields and SMILES atom tokens, not alias
+labels or SDF properties. The extraction worker applies the same check per
+record, preserving the existing partial-result path for mixed collections.
+This narrow admission check does not replace parsing, sanitization or geometry
+validation, and does not alter source files or choose substituents. Such
+generalized structures remain suitable for 2D depiction; their aliases must be
+preserved separately from concrete-molecule 3D operations.
 
 Generate 3D on an SDF/MOL document restores the native artifact coordinates
 into its source records by the artifact molecule ordinal. The active tab keeps
