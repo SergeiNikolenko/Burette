@@ -1,3 +1,4 @@
+import { toolKind, type ToolLocation } from "./tool";
 import { chemicalSpaceKind, type ChemicalSpaceLocation } from "./chemical-space";
 import { documentKind, type DocumentLocation } from "./document";
 import { fepSetupKind, type FepSetupLocation } from "./fep-setup";
@@ -11,11 +12,11 @@ import { settingsKind, type SettingsLocation } from "./settings";
 import { textFileKind, type TextFileLocation } from "./text-file";
 import type { AnyPageKind, PageKind, SerializedLocation } from "./types";
 
-const kinds = [fileKind, textFileKind, documentKind, fepNetworkKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind, jobsKind, chemicalSpaceKind] as const;
+const kinds = [toolKind, fileKind, textFileKind, documentKind, fepNetworkKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind, jobsKind, chemicalSpaceKind] as const;
 
 export const registeredPageKinds = kinds;
 
-export type Location = FileLocation | TextFileLocation | DocumentLocation | FepNetworkLocation | FepSetupLocation | KetcherLocation | LauncherLocation | PoseReviewLocation | SettingsLocation | JobsLocation | ChemicalSpaceLocation;
+export type Location = ToolLocation | FileLocation | TextFileLocation | DocumentLocation | FepNetworkLocation | FepSetupLocation | KetcherLocation | LauncherLocation | PoseReviewLocation | SettingsLocation | JobsLocation | ChemicalSpaceLocation;
 
 const byKind: Map<string, AnyPageKind> = new Map(
   kinds.map((kind) => [kind.kind, kind as unknown as AnyPageKind]),

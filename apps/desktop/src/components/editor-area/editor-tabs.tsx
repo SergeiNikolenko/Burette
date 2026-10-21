@@ -602,10 +602,6 @@ export function EditorTabs({
                 action: () => actions.togglePinnedTab(tab.id) },
             ];
             if (tabPath) items.push(
-              { kind: "item", id: "open-tab-right-panel", text: "Open in Right Panel", action: () => {
-                void actions.openDockPayload({ area: "right", tabKind: textDocument ? "text" : "files",
-                  payload: { paths: [tabPath], records: [], items: [tabDragItem] } });
-              } },
               { kind: "item", id: "show-tab-in-sidebar", text: "Show in Sidebar", action: () => {
                 if (!state.sidebarOpen) actions.toggleSidebar();
                 const project = state.sidebarProjects.find(project => project.items.some(item => item.path === tabPath));
@@ -820,7 +816,7 @@ export function EditorTabs({
         </div>
       </ScrollFade>
       {!readOnly ? <ShortcutTooltip label="New tab" shortcut="⌘T">
-        <ToolbarButton type="button" className="new-tab" onMouseDown={(event) => event.preventDefault()} onClick={() => openScreen({ kind: "launcher" }, group === "main" ? null : group)} onContextMenu={(event) => showNewTabMenu(event, group)} aria-label="New tab">
+        <ToolbarButton type="button" className="new-tab" onMouseDown={(event) => event.preventDefault()} onClick={() => openScreen({ kind: "launcher" }, group === "main" ? null : group, { newTab: true })} onContextMenu={(event) => showNewTabMenu(event, group)} aria-label="New tab">
           <Plus size={16} aria-hidden />
         </ToolbarButton>
       </ShortcutTooltip> : null}
@@ -845,7 +841,7 @@ function showNewTabMenu(event: React.MouseEvent<HTMLButtonElement>, group: Works
     id: `new-tab-${entry.id}`,
     text: entry.text,
     accelerator: entry.location.kind === "launcher" ? "CmdOrCtrl+T" : undefined,
-    action: () => openScreen(entry.location, group === "main" ? null : group),
+    action: () => openScreen(entry.location, group === "main" ? null : group, { newTab: true }),
   }));
   void showNativeContextMenu(items, { x: rect.left, y: rect.bottom + 4 }, { presentation: "dropdown" });
 }

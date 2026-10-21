@@ -5,6 +5,8 @@ import type { ViewerDocument } from "../../types";
 const MIB = 1024 * 1024;
 
 export function pageLocationKey(location: Location) {
+  if (location.kind === "tool") return `tool:${location.tool}:${location.sourcePath ?? ""}`;
+  if (location.kind === "chemical-space") return `chemical-space:${location.collectionPath ?? ""}`;
   return `${location.kind}:${"path" in location ? location.path : ""}`;
 }
 

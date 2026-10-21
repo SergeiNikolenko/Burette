@@ -1,3 +1,4 @@
+import { dockScreenLocation, openDockScreen } from "./workspace-panes/dock-screen";
 import { chemicalSpaceDocument as resolveCollection, chemicalSpaceSourceMatches } from "../lib/chemical-space-documents";
 import { Spinner } from "@/components/ui/spinner";
 import { useSidebarStructureDrag } from "./sidebar/use-sidebar-structure-drag";
@@ -233,6 +234,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
           transientTabId={rawTabs.some(tab => tab.kind === "xyzrender") ? undefined : visibleTabs.find(tab => tab.kind === "xyzrender")?.id}
           fileDragProps={{ ...filesTabDrag, draggable: Boolean(filesTabDragPayload) }}
           onSelect={kind => showDockTab(kind, () => actions.setDockActiveTab(area, kind))} onClose={id => actions.closeDockTab(area, id)}
+          onOpenScreen={dockScreenLocation(area, activeTab.kind, state) ? () => openDockScreen(area, activeTab.kind, state, actions) : undefined}
           onAdd={showAddMenu} onHide={() => actions.setDockOpen(area, false)} />
         <div className="dock-panel-body" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${activeTab.kind}`} tabIndex={0}>
         {contentState && <DockPanelContent
@@ -248,7 +250,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   );
 }
 
-function DockPanelContent({
+export function DockPanelContent({
   area,
   activeTabKind,
   state,

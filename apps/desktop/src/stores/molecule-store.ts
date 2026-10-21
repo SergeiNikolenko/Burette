@@ -103,7 +103,7 @@ type MoleculeState = {
   setActiveDocument: (id: string) => void;
   moveTab: (id: string, toIndex: number) => void;
   placeTab: (id: string, pane: TabPane | null) => void;
-  openScreenTab: (location: Location, pane?: TabPane | null) => void;
+  openScreenTab: (location: Location, pane?: TabPane | null, options?: { newTab: boolean }) => void;
   togglePinnedTab: (id: string) => void;
   renameTab: (id: string, title: string) => void;
   closeTab: (id: string) => void;
@@ -255,6 +255,8 @@ function sameLocation(left: Location, right: Location) {
   if (left.kind === "file" && right.kind === "file") return left.path === right.path;
   if (left.kind === "text-file" && right.kind === "text-file") return left.path === right.path;
   if (left.kind === "chemical-space" && right.kind === "chemical-space") return left.collectionPath === right.collectionPath;
+  if (left.kind === "tool" && right.kind === "tool") return left.tool === right.tool && left.area === right.area && left.sourcePath === right.sourcePath;
+  if (left.kind === "document" && right.kind === "document") return left.path === right.path;
   return true;
 }
 
@@ -409,6 +411,7 @@ function documentForLocation(location: Location, documents: ViewerDocument[]) {
       null
     );
   }
+  if (location.kind === "tool") return documents.find(document => document.path === location.sourcePath) ?? null;
   if (location.kind !== "file") return null;
   return (
     documents.find((document) => document.id === location.documentId) ??
@@ -426,7 +429,9 @@ function activeDocumentIdFrom(tabs: MoleculeTab[], activeTabId: string | null, d
 function tabDocumentPaths(tabs: MoleculeTab[]) {
   return new Set(tabs.flatMap(tab => [...tab.back, tab.location, ...tab.forward].flatMap(location => {
     if (location.kind === "file" || location.kind === "text-file") return [location.path];
-    if (location.kind === "fep-setup" || location.kind === "pose-review") return [location.dockingPath];
+    if (location.kind === "fep-setup" || location.kind === "pose-review") return [location.dockingPath, location.gridPath];
+    if (location.kind === "chemical-space" && location.collectionPath) return [location.collectionPath];
+    if (location.kind === "tool" && location.sourcePath) return [location.sourcePath];
     return [];
   })));
 }
@@ -1078,8 +1083,8 @@ export const useMoleculeStore = create<MoleculeState>()(
         }),
       // Opens a screen that is not a file (Jobs, Chemical Space...) or brings
       // the open one forward, optionally straight into a secondary pane.
-      openScreenTab: (location, pane = null) => {
-        const existing = get().tabs.find((tab) => tab.location.kind !== "settings" && sameLocation(tab.location, location));
+      openScreenTab: (location, pane = null, options) => {
+        const existing = options?.newTab ? undefined : get().tabs.find((tab) => tab.location.kind !== "settings" && sameLocation(tab.location, location));
         const tab = existing ?? { id: createTabId(), location, back: [], forward: [] };
         if (!existing) set((state) => ({ tabs: [...(pane ? state.tabs : state.tabs.filter(retainedOnOpen)), tab] }));
         get().placeTab(tab.id, pane);

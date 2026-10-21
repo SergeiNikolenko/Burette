@@ -18,8 +18,8 @@ export function placeScreen(tabId: string, pane: TabPane | null) {
   if (pane === "floating") useWorkspacePanesStore.getState().setFloatingMinimized(false);
 }
 
-export function openScreen(location: Location, pane: TabPane | null = null) {
-  useMoleculeStore.getState().openScreenTab(location, pane);
+export function openScreen(location: Location, pane: TabPane | null = null, options?: { newTab: boolean }) {
+  useMoleculeStore.getState().openScreenTab(location, pane, options);
   if (pane === "floating") useWorkspacePanesStore.getState().setFloatingMinimized(false);
 }
 
