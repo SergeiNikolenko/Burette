@@ -34,6 +34,14 @@ if [[ "$SCOPE" == "all" || "$SCOPE" == "js" ]]; then
   bun tests/test-model-runtime-install.mjs
   bun tests/test-svg-artwork-safety.mjs
   bun run test:ui
+  for workspace_test in \
+    tests/test-workspace-split.test.tsx \
+    tests/test-dock-screen.test.ts \
+    tests/test-native-page-window.test.tsx \
+    tests/test-workspace-source-binding.test.tsx; do
+    bun test "$workspace_test"
+  done
+  node --test tests/test-agent-workspace-panel.mjs
   bun run test:responsiveness
   bun run test:tauri-structure
   bun run test:compute-metal

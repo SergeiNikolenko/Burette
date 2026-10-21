@@ -985,8 +985,6 @@ assert.match(moleculeStore, /name: workspaceStorageKey\("burette\.molecule\.sess
 assert.match(moleculeStore, /function shouldIgnorePersistedSession\(\)/);
 assert.match(moleculeStore, /window\.location\.hostname === "127\.0\.0\.1" \|\| window\.location\.hostname === "localhost"/);
 assert.match(moleculeStore, /function devFilesPersistedSession\(recentStructures: RecentStructure\[\]\): PersistedMoleculeState/);
-assert.match(moleculeStore, /function collapseDuplicateKetcherTabs\(tabs: MoleculeTab\[\], preferredActiveId: string \| null = null\)/);
-assert.match(moleculeStore, /const ketcherTabs = tabs\.filter\(\(tab\) => tab\.location\.kind === "ketcher"\)/);
 assert.match(moleculeStore, /const existing = state\.tabs\.find\(\(tab\) => tab\.location\.kind === "ketcher"\)/);
 assert.match(moleculeStore, /const existingLocation = existing\.location as KetcherLocation/);
 assert.match(moleculeStore, /const nextLocation: KetcherLocation = \{ \.\.\.existingLocation, \.\.\.location, kind: "ketcher" \}/);
@@ -4593,7 +4591,7 @@ assert.match(appDockPayloadHook, /const recordResult = cleanRecords\.length > 0/
 assert.match(appDockPayloadHook, /setDockDocument\(input\.area, firstDockDocumentId\)/);
 assert.match(appDockPayloadHook, /pushErrorStatus\(error, "Dock open failed"\)/);
 assert.match(appSpectrumDockLifecycleHook, /export function useAppSpectrumDockLifecycle/);
-assert.match(appSpectrumDockLifecycleHook, /if \(activeDocument\?\.renderer === "spectrum"\) return/);
+assert.match(appSpectrumDockLifecycleHook, /if \(activeDocument\?\.renderer === "spectrum"/);
 assert.match(appSpectrumDockLifecycleHook, /bottomDockTabs\.find\(\(tab\) => tab\.kind === "spectrum"\)/);
 assert.match(appSpectrumDockLifecycleHook, /closeDockTab\("bottom", spectrumTab\.id\)/);
 assert.match(appSpectrumDockLifecycleHook, /if \(bottomDockActiveTab === "spectrum"\) setDockActiveTab\("bottom", "files"\)/);

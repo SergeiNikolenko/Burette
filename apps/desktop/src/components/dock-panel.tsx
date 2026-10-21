@@ -94,6 +94,13 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
   const chemicalSpaceDockAvailable = Boolean(resolveChemicalSpaceDocument(state, dockDocument));
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
+  // File screens use the same editable page in every group. Legacy Files entry
+  // points become placements instead of creating a second read-only renderer.
+  useEffect(() => {
+    if (!readOnly && open && storedActiveTabKind === "files" && dockScreenLocation(area, "files", state)) {
+      openDockScreen(area, "files", state, actions, area);
+    }
+  }, [open, storedActiveTabKind, dockDocumentId, dockTool, area, readOnly, state, actions]);
   const foldingState = useFoldingResult(area === "bottom" && open ? activeStructureDocument : null);
   const foldingDockAvailable = area === "bottom" && (foldingState.loading || Boolean(foldingState.bundle));
   const foldingDockRequested = area === "bottom" && storedActiveTabKind === "folding" && rawTabs.some((tab) => tab.kind === "folding");

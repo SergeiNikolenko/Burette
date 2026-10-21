@@ -2,6 +2,7 @@ import type { ShellActions, ShellViewState } from "../types";
 import type { DockArea, DockTabKind } from "../../lib/dock";
 import type { Location } from "../editor-area/page-kinds";
 import { useMoleculeStore, type TabPane } from "../../stores/molecule-store";
+import { defaultTabWorkspace, useTabWorkspaceStore } from "../../stores/tab-workspace-store";
 import { openScreen } from "./pane-actions";
 
 export function dockScreenLocation(area: DockArea, kind: DockTabKind, state: ShellViewState): Location | null {
@@ -25,5 +26,11 @@ export function openDockScreen(area: DockArea, kind: DockTabKind, state: ShellVi
   // Capture the previous tool owner before changing focus.
   actions.setDockOpen(area, false);
   openScreen(location, pane);
-  return useMoleculeStore.getState().activeTabId;
+  const id = useMoleculeStore.getState().activeTabId;
+  if (id && location.kind === "tool") {
+    const store = useTabWorkspaceStore.getState();
+    store.restoreSnapshot({ workspaces: { ...store.workspaces, [id]: { ...(store.workspaces[id] ?? defaultTabWorkspace()),
+      droppedStructures: structuredClone(state.dockDroppedStructures?.filter(drop => drop.area === area && drop.tabKind === kind) ?? []) } } });
+  }
+  return id;
 }

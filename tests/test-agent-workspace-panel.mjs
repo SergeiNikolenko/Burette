@@ -6,10 +6,11 @@ import ts from 'typescript-compiler-api';
 
 test('panel action routes open documents to either dock and rejects foreign targets', async () => {
   const source = await readFile(new URL('../apps/desktop/src/lib/agent-workspace-panel.ts', import.meta.url), 'utf8');
-  const workspaces = { active: { right: { open: false }, bottom: { open: false } } };
-  const state = { workspaces, setDockDocument: (tab, area, documentId) => { workspaces[tab][area].documentId = documentId; }, setDockOpen: (tab, area, open) => { workspaces[tab][area].open = open; } };
+  const workspaces = { active: { right: { open: false } }, 'window-tools': { bottom: { open: false } } };
+  const owner = (tab, area) => area === 'bottom' ? 'window-tools' : tab;
+  const state = { workspaces, setDockDocument: (tab, area, documentId) => { workspaces[owner(tab, area)][area].documentId = documentId; }, setDockOpen: (tab, area, open) => { workspaces[owner(tab, area)][area].open = open; } };
   const exports = {};
-  runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports, require: () => ({ useTabWorkspaceStore: { getState: () => state } }) });
+  runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports, require: () => ({ WINDOW_TOOLS_ID: 'window-tools', useTabWorkspaceStore: { getState: () => state } }) });
   const tabs = [{ id: 'active', location: { kind: 'file', documentId: 'protein' } }, { id: 'second', location: { kind: 'file', documentId: 'ligand' } }];
   for (const area of ['right', 'bottom']) {
     const result = exports.setAgentWorkspacePanel({ area, open: true, documentId: 'ligand' }, 'active', tabs);

@@ -47,4 +47,8 @@ test("focused group owns new tabs, cycling, reactivation and Settings return", (
   store.openSettingsSection("general");
   store.activateLastNonSettingsTab();
   expect(useMoleculeStore.getState().activeTabId).toBe(jobs);
+  store.openNewTab();
+  store.closeActiveDocument();
+  const afterClose = useMoleculeStore.getState();
+  expect(afterClose.tabs.find(tab => tab.id === afterClose.activeTabId)?.pane).toBe("right");
 });

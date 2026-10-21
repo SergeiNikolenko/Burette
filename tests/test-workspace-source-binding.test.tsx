@@ -10,7 +10,7 @@ for (const key of ["window", "document", "navigator", "localStorage", "HTMLEleme
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import("react-dom/client");
 const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store");
-const { useTabWorkspaceStore, getTabWorkspaceStoreSnapshot } = await import("../apps/desktop/src/stores/tab-workspace-store");
+const { useTabWorkspaceStore, getTabWorkspaceStoreSnapshot, WINDOW_TOOLS_ID } = await import("../apps/desktop/src/stores/tab-workspace-store");
 const { useDockLayout } = await import("../apps/desktop/src/hooks/use-dock-layout");
 const { chemicalSpaceKind } = await import("../apps/desktop/src/components/editor-area/page-kinds/chemical-space");
 const collection = (id: string, path = "/collection.sdf") => ({ id, path, title: path, extension: "sdf", renderer: "grid2d" }) as ViewerDocument;
@@ -43,5 +43,25 @@ test("saved pins resolve new runtime IDs and remain missing until their source r
   expect(binding).toBe("missing:/collection.sdf");
   await act(async () => { useTabWorkspaceStore.getState().setDockDocument("owner", "right", null); });
   expect(binding).toBeNull();
+  await act(async () => root.unmount());
+});
+
+
+test("bottom tools persist across source focus and closure", async () => {
+  useTabWorkspaceStore.setState({ workspaces: {} });
+  useMoleculeStore.setState({ tabs: [{ id: "source-a", location: { kind: "jobs" }, back: [], forward: [] }], activeTabId: "source-a" });
+  let layout: ReturnType<typeof useDockLayout>;
+  function Probe() { layout = useDockLayout(useMoleculeStore(state => state.activeTabId)); return null; }
+  const root = createRoot(document.createElement("div"));
+  await act(async () => root.render(<Probe />));
+  await act(async () => { layout.openDockTab("bottom", "logs"); });
+  const { setAgentWorkspacePanel } = await import("../apps/desktop/src/lib/agent-workspace-panel");
+  await act(async () => { setAgentWorkspacePanel({ area: "bottom", open: false }, "source-a", useMoleculeStore.getState().tabs); });
+  expect(layout.bottomDockOpen).toBe(false);
+  await act(async () => { setAgentWorkspacePanel({ area: "bottom", open: true }, "source-a", useMoleculeStore.getState().tabs); });
+  await act(async () => { useMoleculeStore.getState().openNewTab(); });
+  expect([layout.bottomDockOpen, layout.bottomDockActiveTab]).toEqual([true, "logs"]);
+  await act(async () => { useMoleculeStore.getState().closeTab("source-a"); });
+  expect(useTabWorkspaceStore.getState().workspaces[WINDOW_TOOLS_ID].bottom.activeTab).toBe("logs");
   await act(async () => root.unmount());
 });

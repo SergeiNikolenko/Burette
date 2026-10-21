@@ -36,12 +36,16 @@ const {
   getTabWorkspace,
   getTabWorkspaceStoreSnapshot,
   useTabWorkspaceStore,
+  WINDOW_TOOLS_ID,
 } = await import("../apps/desktop/src/stores/tab-workspace-store.ts");
 
 assert.equal(getTabWorkspace("tab-1").right.open, true);
 assert.equal(getTabWorkspace("tab-1").right.size, 488);
 assert.equal(getTabWorkspace("tab-1").bottom.open, true);
 assert.equal(getTabWorkspace("tab-1").bottom.size, 344);
+useTabWorkspaceStore.getState().ensureWindowTools("tab-1");
+assert.equal(getTabWorkspace(WINDOW_TOOLS_ID).bottom.activeTab, "jobs");
+assert.equal(getTabWorkspace(WINDOW_TOOLS_ID).bottom.size, 344);
 
 function resetStore() {
   storage.clear();
@@ -72,9 +76,11 @@ assert.equal(tabA.right.activeTab, "xyzrender");
 assert.equal(tabA.bottom.open, false);
 assert.equal(tabB.right.open, false);
 assert.equal(tabB.right.size, 330);
-assert.equal(tabB.bottom.open, true);
-assert.equal(tabB.bottom.size, 410);
-assert.equal(tabB.bottom.activeTab, "jobs");
+assert.deepEqual(tabB.bottom, defaultTabWorkspace().bottom);
+const windowTools = getTabWorkspace(WINDOW_TOOLS_ID).bottom;
+assert.equal(windowTools.open, true);
+assert.equal(windowTools.size, 410);
+assert.equal(windowTools.activeTab, "jobs");
 
 workspace.setDockDocument("tab-a", "right", "runtime-only-document");
 workspace.addDockDrop("tab-a", {
@@ -106,7 +112,8 @@ assert.deepEqual(
 );
 
 workspace.pruneWorkspaces(["tab-b"]);
-assert.deepEqual(Object.keys(useTabWorkspaceStore.getState().workspaces), ["tab-b"]);
+assert.deepEqual(new Set(Object.keys(useTabWorkspaceStore.getState().workspaces)), new Set(["tab-b", WINDOW_TOOLS_ID]));
+assert.deepEqual(getTabWorkspace(WINDOW_TOOLS_ID).bottom, windowTools, "closing a source tab must retain window tools");
 
 // Closing a panel must survive the next normalization, resize and reopen.
 resetStore();
@@ -136,7 +143,7 @@ for (const area of ["right", "bottom"]) {
       : workspace.setDockDocument("reopen", area, "structure-1");
     open();
     open();
-    const dock = getTabWorkspace("reopen")[area];
+    const dock = getTabWorkspace(area === "bottom" ? WINDOW_TOOLS_ID : "reopen")[area];
     assert.equal(dock.activeTab, "files");
     assert.equal(dock.tabs.filter(tab => tab.kind === "files").length, 1);
     assert.equal(dock.open, true);
