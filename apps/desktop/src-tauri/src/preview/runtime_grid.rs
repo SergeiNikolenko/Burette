@@ -112,7 +112,7 @@ pub(crate) fn create_grid_runtime_with_options<R: Runtime>(
     };
     let collection = grid_store.summary;
     if collection.has_molecules {
-        super::xyzrender::warmup_grid_renderer();
+        super::xyzrender::warmup_renderer(super::xyzrender::XyzrenderWarmup::Grid);
     }
     let mut pending_store = PendingGridStore::new(grid_store);
     // The shared asset directory already holds the wasm and a base64 copy of it,

@@ -466,10 +466,19 @@ fn batch_miss_error(miss: XyzrenderPreparedCardBatchMiss, error: &str) -> Xyzren
     }
 }
 
-pub(super) fn warmup_grid_renderer() {
+pub(crate) enum XyzrenderWarmup {
+    Startup,
+    Grid,
+}
+
+pub(crate) fn warmup_renderer(scope: XyzrenderWarmup) {
+    let desired_workers = match scope {
+        XyzrenderWarmup::Startup => 2,
+        XyzrenderWarmup::Grid => usize::MAX,
+    };
     if let Ok(executable) = resolve_xyzrender_executable() {
         if let Some(launch) = xyzrender_worker_launch(&executable) {
-            super::xyzrender_pool::warmup(launch);
+            super::xyzrender_pool::warmup(launch, desired_workers);
         }
     }
 }
@@ -1879,7 +1888,8 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        warmup_grid_renderer();
+        warmup_renderer(XyzrenderWarmup::Startup);
+        warmup_renderer(XyzrenderWarmup::Grid);
         let results = create_xyzrender_card_batch_artifacts(requests);
         assert_eq!(results.len(), smiles.len());
         for result in &results {

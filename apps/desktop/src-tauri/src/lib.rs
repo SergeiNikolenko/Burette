@@ -134,6 +134,7 @@ pub fn run() {
             if launch_mode.is_register() && startup_paths.is_empty() {
                 windows::hide_workspace_application(app.handle());
             } else {
+                preview::xyzrender::warmup_renderer(preview::xyzrender::XyzrenderWarmup::Startup);
                 let initial_app = app.handle().clone();
                 let initial_workspace = move || {
                     if let Err(error) = windows::restore_workspace_windows(&initial_app) {

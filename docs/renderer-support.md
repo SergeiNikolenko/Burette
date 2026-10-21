@@ -287,8 +287,9 @@ non-CIF inputs; those directions require crystal lattice data.
 
 ### Native 3D card preparation
 
-Opening a molecular grid starts its bounded renderer pool (up to six workers)
-in the background. Once the
+Normal desktop startup prepares two renderer workers while the shell loads;
+registration-only launches do not. Opening a molecular grid fills the bounded
+pool (up to six workers) in the background. Once the
 initial table or 2D card view has rendered, the native bridge prepares at most 24
 initial 3D thumbnails through the same bounded queue used by visible cards.
 Switching to 3D joins in-flight work or consumes ready images; visible requests

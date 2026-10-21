@@ -137,12 +137,14 @@ pub(super) fn render_cards(
 
 /// Prepare the bounded pool while the molecular grid is opening. Reserving slots under
 /// the pool lock makes concurrent document opens bounded and non-blocking.
-pub(super) fn warmup(launch: XyzrenderWorkerLaunch) {
+pub(super) fn warmup(launch: XyzrenderWorkerLaunch, desired_workers: usize) {
     let pool = pool();
     ensure_idle_worker_reaper();
     pool.discard_stale_workers(&launch.signature);
     let mut state = pool.state.lock().unwrap_or_else(|err| err.into_inner());
-    let count = pool.capacity.saturating_sub(state.live);
+    let count = desired_workers
+        .min(pool.capacity)
+        .saturating_sub(state.live);
     state.live += count;
     drop(state);
     if count == 0 {
