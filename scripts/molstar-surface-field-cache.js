@@ -16,14 +16,20 @@ export class MolecularSurfaceFieldCache {
     this.bytes -= entry.bytes;
     entry.field = undefined;
     entry.input = undefined;
+    entry.evicted = true;
   }
 
   async getOrCreate(unit, input, calculate) {
     const n = OrderedSet.size(input.position.indices);
     // Avoid allocating large input snapshots for protein/assembly surfaces.
     if (n > 4096) return calculate();
-    const signature = fieldInput(input, n);
     let entry = this.units.get(unit);
+    // An oversized collection is traversed in the same order on each style
+    // switch. Readmitting evicted units would evict every remaining hit before
+    // reaching it. Keep the surviving subset until new units displace it;
+    // this weak tombstone retains neither the unit nor its field/signature.
+    if (entry?.evicted) return calculate();
+    const signature = fieldInput(input, n);
     if (entry?.field && sameInput(entry.input, signature)) {
       this.entries.delete(entry);
       this.entries.set(entry, true);

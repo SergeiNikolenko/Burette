@@ -67,6 +67,25 @@ assert.equal(misses, 3);
 assert.ok(bounded.bytes <= size * 2);
 await boundedGet(a); assert.equal(misses, 3);
 await boundedGet(b); assert.equal(misses, 4, 'least recently used field was released');
+// Repeated ordered scans larger than the budget must retain useful hits.
+const scan = new MolecularSurfaceFieldCache(size * 2);
+const units = [{}, {}, {}, {}];
+let scanMisses = 0;
+const scanGet = u => scan.getOrCreate(u, original, () => { scanMisses++; return compute(original); });
+for (const u of units) await scanGet(u);
+const evicted = scan.units.get(units[0]);
+assert.deepEqual(evicted, { field: undefined, input: undefined, bytes: size, evicted: true });
+for (let pass = 0; pass < 3; pass++) {
+  const before = scanMisses;
+  for (const u of units) assert.deepEqual(values(await scanGet(u)), values(reference));
+  assert.equal(scanMisses - before, 2, 'the retained half survives each full scan');
+  assert.equal(scan.bytes, size * 2);
+}
+const newUnit = {};
+await scanGet(newUnit);
+const beforeNewHit = scanMisses;
+await scanGet(newUnit);
+assert.equal(scanMisses, beforeNewHit, 'new documents can replace old retained units');
 const tiny = new MolecularSurfaceFieldCache(1);
 assert.notEqual(await tiny.getOrCreate(a, original, () => compute(original)),
   await tiny.getOrCreate(a, original, () => compute(original)));
