@@ -6735,8 +6735,7 @@ assert.match(structureInfoPanel, /function normalizeSdfContextOpacity\(value: st
 // rebuilds (slider drags, rapid style clicks) must run through one queue -
 // while loadPreparedStructure keeps calling the *Now variants to avoid
 // deadlocking the queue from inside a running rebuild.
-assert.match(previewViewer, /function queueMolstarSceneRebuild\(run, appearanceKey = null\)/);
-assert.match(previewViewer, /function applySdfCollectionVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applySdfCollectionVisibilityNow\(viewer, prepared, activePose, options\),[\s\S]*?prepared : null\);/);
+assert.match(previewViewer, /function queueMolstarSceneRebuild\(run, appearanceKey = null, holdDraw = true\)/);
 assert.match(previewViewer, /function applyDockingPoseCollectionVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyDockingPoseCollectionVisibilityNow\(viewer, prepared, activePose, options\),[\s\S]*?prepared : null\);/);
 assert.match(previewViewer, /async function applyXyzFrameOverlayVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{[\s\S]*?await queueMolstarSceneRebuild\(\(\) => applyXyzFrameOverlayVisibilityNow\(viewer, prepared, activePose, options\),[\s\S]*?prepared : null\);/);
 assert.match(previewViewer, /function applyDockingSceneVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyDockingSceneVisibilityNow\(viewer, prepared, activePose, options\),[\s\S]*?prepared : null\);/);
@@ -6795,10 +6794,10 @@ assert.match(previewViewer, /prepared\?\.kind !== 'sdf-collection' && !prepared\
 assert.match(previewViewer, /await applyDockingSceneVisibility\(activeViewer, prepared, activePose, \{ focus: false \}\)/);
 assert.match(previewViewer, /await applyDockingPoseCollectionVisibility\(activeViewer, prepared, activePose, \{ contextStyle: style, focus: false \}\)/);
 assert.match(previewViewer, /else if \(activeSdfPoseMode === 'all'\) \{/);
-assert.match(previewViewer, /async function applySdfCollectionMolstarStyle\(viewer, style, structures = null, alpha = 1, colorMode = 'gray'\)/);
-assert.match(previewViewer, /function sdfCollectionStateKey\(prepared, style, allMode, contextStyle, contextOpacity, contextColor\)/);
+assert.match(previewViewer, /async function applySdfCollectionMolstarStyle\(viewer, style, structures = null, alpha = 1, colorMode = 'gray', signal\)/);
+assert.match(previewViewer, /function sdfCollectionStateKey\(prepared, style, allMode\)/);
 assert.match(previewViewer, /function sdfCollectionVisibilityStateStillLoaded\(viewer, state\)/);
-assert.match(previewViewer, /const stateKey = sdfCollectionStateKey\(prepared, style, allMode, contextStyle, contextOpacity, contextColor\)/);
+assert.match(previewViewer, /const stateKey = sdfCollectionStateKey\(prepared, style, allMode\)/);
 assert.doesNotMatch(previewViewer, /const contextStructures = await loadSdfCollectionPdbLayer\(viewer, prepared\.data,/);
 assert.match(previewViewer, /const contextStyle = options\.contextStyle \?\? readSdfCollectionContextStyle\(activeConfig\)/);
 assert.match(previewViewer, /const contextOpacity = options\.contextOpacity \?\? readSdfCollectionContextOpacity\(activeConfig\)/);
@@ -6840,8 +6839,7 @@ assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*aw
 assert.match(previewViewer, /function sdfCollectionRepresentationForStyle\(style, alpha = 1, colorMode = 'gray', minAlpha = 0\.04\)/);
 assert.match(previewViewer, /const \{ ghost, withAlpha, themed \} = sdfCollectionAlphaHelpers\(alpha, colorMode, minAlpha\)/);
 assert.doesNotMatch(previewViewer, /if \(normalized === 'illustrative' \|\| normalized === 'cartoon' \|\| normalized === 'polymer-ligand'\) \{/);
-assert.match(previewViewer, /if \(normalized === 'default' \|\| normalized === 'illustrative' \|\| normalized === 'cartoon' \|\| normalized === 'polymer-ligand'\) \{\s*await applyMolstarPolymerLigandRepresentationToStructures\(/s);
-assert.match(previewViewer, /await applyMolstarRepresentationsToStructures\(viewer, targets, sdfCollectionRepresentationForStyle\(normalized, alpha, colorMode\)\)/);
+assert.match(previewViewer, /await applyMolstarRepresentationsToStructures\(viewer, targets, sdfCollectionRepresentationForStyle\(normalized, alpha, colorMode\), signal\)/);
 assert.match(previewViewer, /if \(normalized === 'spacefill'\) \{\s*return themed\(\{ type: 'spacefill'/s);
 assert.match(previewViewer, /if \(normalized === 'molecular-surface'\) \{[\s\S]*?return themed\(\{ type: 'molecular-surface'/);
 assert.doesNotMatch(previewViewer, /visuals: \['structure-gaussian-surface-mesh'\]/);
@@ -6861,8 +6859,8 @@ assert.match(previewViewer, /function sdfCollectionLigandRepresentationForStyle\
 assert.match(previewViewer, /const \{ ghost, withAlpha, themed \} = sdfCollectionAlphaHelpers\(alpha, colorMode\)/);
 assert.doesNotMatch(previewViewer, /const lineLigands = normalized === 'cartoon'/);
 assert.match(previewViewer, /type: 'ball-and-stick'/);
-assert.match(previewViewer, /async function applyMolstarRepresentationsToStructures\(viewer, structures, representation\)/);
-assert.match(previewViewer, /async function applyMolstarPolymerLigandRepresentationToStructures\(viewer, structures, polymerRepresentation, ligandRepresentation\)/);
+assert.match(previewViewer, /async function applyMolstarRepresentationsToStructures\(viewer, structures, representation, signal\)/);
+assert.match(previewViewer, /async function applyMolstarPolymerLigandRepresentationToStructures\(viewer, structures, polymerRepresentation, ligandRepresentation, signal\)/);
 assert.match(previewViewer, /const polymer = await tryCreateMolstarComponent\(plugin, structure, 'polymer'\)/);
 assert.match(previewViewer, /async function clearMolstarMainRepresentationsForStructures\(viewer, structures\)/);
 assert.match(previewViewer, /await reloadActiveMolstarStructure\(\)/);
@@ -6995,8 +6993,8 @@ assert.match(previewViewer, /window\.addEventListener\('pointermove', onPointerM
 assert.match(previewViewer, /window\.addEventListener\('pointerup', finishDrag, true\)/);
 assert.match(previewViewer, /moveDockingPoseControls\(root, saved\.left, saved\.top\);/);
 assert.match(previewViewer, /function stableTextHash\(value\)/);
-assert.match(previewViewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(nextIndex\)\)/);
-assert.match(previewViewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(previousIndex\)\)/);
+assert.match(previewViewer, /writeTrajectoryControlIndex\(activeConfig, prepared, nextIndex\)/);
+assert.match(previewViewer, /writeTrajectoryControlIndex\(activeConfig, prepared, previousIndex\)/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses \{/);
 assert.match(previewRuntimeCss, /body\.buret-docking-pose-controls-active \.msp-animation-viewport-controls,\s*body\.buret-docking-pose-controls-active \.msp-traj-controls \{/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{/);
