@@ -6454,7 +6454,6 @@ assert.match(previewViewer, /data-buret-rdkit-svg="fallback"/);
 assert.match(previewViewer, /const molblock = splitSdfRecords\(String\(entry\.data \|\| ''\)\)\[0\] \|\| String\(entry\.data \|\| ''\);\s*mol = rdkit\.get_mol\(molblock\);/);
 assert.match(previewViewer, /normalizeFormat\(target\.sourceEntry\?\.format\) === 'sdf'[\s\S]*?return target\.sourceEntry;/);
 assert.match(previewViewer, /format !== 'pdb' && format !== 'pdbqt' && format !== 'sdf'/);
-assert.match(previewViewer, /const activePose = Math\.max\(0, Math\.min\(records\.length - 1, Number\(activeMolstarPrepared\?\.activePose\) \|\| 0\)\)/);
 assert.doesNotMatch(previewViewer, /if \(!image\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
 assert.match(previewViewer, /molstarMoleculePreviewCardHTML\(label, image \|\| escapeHTML\('Rendering 2D preview\.\.\.'\)\)/);
 assert.match(previewViewer, /function molstarPreviewLoadRDKitScript\(\)/);

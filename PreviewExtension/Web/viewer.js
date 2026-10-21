@@ -23748,7 +23748,7 @@ SOFTWARE.
     return 'selection';
   }
 
-  function molstarContextSourceEntryForActiveConfig() {
+  function molstarContextSourceEntryForActiveConfig(structureRef = null) {
     if (!activeConfig || activeConfig.docking) return null;
     const format = normalizeFormat(activeConfig.molstarFormat || activeConfig.format);
     if (format !== 'pdb' && format !== 'pdbqt' && format !== 'sdf') return null;
@@ -23756,7 +23756,23 @@ SOFTWARE.
       const data = rawStructureData({ ...activeConfig, format, binary: false });
       if (format === 'sdf') {
         const records = splitSdfRecords(data);
-        const activePose = Math.max(0, Math.min(records.length - 1, Number(activeMolstarPrepared?.activePose) || 0));
+        // A collection's prepared.activePose is its load-time value. Resolve the
+        // displayed/picked layer, including a background molecule in All mode.
+        const state = activeSdfCollectionVisibilityState;
+        const ownsScene = activeMolstarPrepared?.kind === 'sdf-collection'
+          && state?.viewer === activeViewer
+          && state.key === sdfCollectionStateKey(activeMolstarPrepared, configuredMolstarStyle(activeConfig), activeSdfPoseMode === 'all');
+        let activePose = ownsScene ? state.activeIndex
+          : readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, records.length);
+        if (structureRef && activeMolstarPrepared?.kind === 'sdf-collection') {
+          if (!ownsScene) return null;
+          const ref = structureRef.cell?.transform?.ref;
+          const index = state.allRefsByIndex?.findIndex(refs => refs.includes(ref)) ?? -1;
+          activePose = index >= 0 ? index : state.activeRefs?.includes(ref) ? state.activeIndex : -1;
+          // A discarded layer/document must not silently borrow another record.
+          if (activePose < 0) return null;
+        }
+        activePose = Math.max(0, Math.min(records.length - 1, Number(activePose) || 0));
         return {
           data: records[activePose] || data,
           format: 'sdf',
@@ -23784,7 +23800,10 @@ SOFTWARE.
         : 0;
       let data = null;
       if (format === 'sdf') {
-        const record = splitSdfRecords(text)[0] || String(text || '');
+        const records = splitSdfRecords(text);
+        const record = config === activeConfig
+          ? molstarContextSourceEntryForActiveConfig()?.data || ''
+          : records[readTrajectoryControlIndex(config, activeMolstarPrepared, records.length)] || '';
         if (!record.trim()) return null;
         data = `${record.trimEnd()}\n$$$$\n`;
       } else if (format === 'pdb' || format === 'pdbqt' || format === 'mmcif' || format === 'cifCore' || format === 'xyz') {
@@ -23981,7 +24000,7 @@ SOFTWARE.
         };
       }
     }
-    const sourceEntry = molstarContextSourceEntryForActiveConfig();
+    const sourceEntry = molstarContextSourceEntryForActiveConfig(targetStructure);
     return {
       structures: targetStructures,
       structure: targetStructure,
@@ -24647,6 +24666,9 @@ SOFTWARE.
   }
 
   function molstarContextSdfEntryForExport(target) {
+    if (target?.scope === 'ligand' && target.structure && activeMolstarPrepared?.kind === 'sdf-collection') {
+      return molstarContextSourceEntryForActiveConfig(target.structure);
+    }
     if (target?.scope === 'ligand' && normalizeFormat(target.sourceEntry?.format) === 'sdf') {
       return target.sourceEntry;
     }
@@ -26632,6 +26654,9 @@ SOFTWARE.
 
   function molstarMoleculePreviewEntry(target) {
     if (!target || (target.scope !== 'ligand' && target.scope !== 'ion')) return null;
+    if (target.structure && activeMolstarPrepared?.kind === 'sdf-collection') {
+      return molstarContextSourceEntryForActiveConfig(target.structure);
+    }
     const sdfEntry = molstarMoleculePreviewSdfEntry(target);
     if (sdfEntry) return sdfEntry;
     const entry = target.selectedEntry || target.ligand || null;
@@ -26785,7 +26810,7 @@ SOFTWARE.
   }
 
   function molstarPreviewLigandTarget(entry) {
-    const sourceEntry = molstarContextSourceEntryForActiveConfig();
+    const sourceEntry = molstarContextSourceEntryForActiveConfig(entry.structureRef);
     const selectedEntry = sourceEntry ? pdbEntryForResidue(sourceEntry, entry.atom) : null;
     return {
       structures: [entry.structureRef],
@@ -26807,7 +26832,10 @@ SOFTWARE.
   function molstarPreviewLigandIndex(entries) {
     const atom = molstarMoleculePreviewTarget?.atom;
     const key = atom ? molstarContextResidueLabel(atom) : '';
-    const index = key ? entries.findIndex(entry => entry.label === key) : -1;
+    const structure = molstarMoleculePreviewTarget?.structure;
+    const ref = structure?.cell?.transform?.ref;
+    const index = key ? entries.findIndex(entry => entry.label === key
+      && (!structure || entry.structureRef === structure || (ref && entry.structureRef?.cell?.transform?.ref === ref))) : -1;
     return index >= 0 ? index : 0;
   }
 
@@ -26864,7 +26892,9 @@ SOFTWARE.
     // Preserve the coordinate source for chemical bond perception in the host;
     // the distance-only SDF used by the preview is not an editable molecule.
     const source = target?.sourceEntry || target?.receptor;
-    const entry = (target?.atom && normalizeFormat(target.ligand?.format) === 'sdf' && target.ligand)
+    const entry = target?.structure && activeMolstarPrepared?.kind === 'sdf-collection'
+      ? molstarContextSourceEntryForActiveConfig(target.structure)
+      : (target?.atom && normalizeFormat(target.ligand?.format) === 'sdf' && target.ligand)
       || (target?.atom && pdbEntryForResidue(source, target.atom))
       || (!target?.atom && normalizeFormat(source?.format) === 'pdb' && source)
       || molstarMoleculePreviewEntry(target);
@@ -27519,17 +27549,21 @@ SOFTWARE.
     }
     void molstarMoleculePreviewRDKitSVG(entry)
       .then(svg => {
-        if (!svg || !molstarMoleculePreview || molstarMoleculePreview.dataset.buretPreviewKey !== key) return;
+        if (!svg || molstarMoleculePreview !== popover || molstarMoleculePreviewTarget !== target || popover.dataset.buretPreviewKey !== key) return;
         const imageEl = molstarMoleculePreview.querySelector('.buret-molstar-molecule-preview-image');
         if (imageEl && imageEl.dataset.depictionKey !== key) {
           imageEl.innerHTML = svg;
           imageEl.dataset.depictionKey = key;
           fitMolstarMoleculePreviewDrawing(molstarMoleculePreview);
-          window.BuretteMoleculePreviewInteractions?.install(imageEl, positions => selectMolstarMoleculePreviewAtoms(target, positions));
+          window.BuretteMoleculePreviewInteractions?.install(imageEl, positions => {
+            if (molstarMoleculePreview === popover && molstarMoleculePreviewTarget) {
+              selectMolstarMoleculePreviewAtoms(molstarMoleculePreviewTarget, positions);
+            }
+          });
         }
       })
       .catch(() => {
-        if (!image && molstarMoleculePreview?.dataset?.buretPreviewKey === key) {
+        if (!image && molstarMoleculePreview === popover && molstarMoleculePreviewTarget === target && popover.dataset.buretPreviewKey === key) {
           const imageEl = molstarMoleculePreview.querySelector('.buret-molstar-molecule-preview-image');
           if (imageEl) imageEl.textContent = '2D preview unavailable';
         }
@@ -27539,13 +27573,13 @@ SOFTWARE.
   function molstarSelectionMoleculePreviewTarget() {
     const structures = molstarContextStructures();
     if (!structures.length) return null;
-    const sourceEntry = molstarContextSourceEntryForActiveConfig();
     for (const structureRef of structures) {
       const structure = molstarStructureFromRef(structureRef) || structureRef;
       const loci = molstarContextSelectionLociForStructure(structureRef);
       const atom = molstarContextAtomFromLoci(loci);
       const scope = molstarContextScopeForAtom(atom);
       if (scope !== 'ligand' && scope !== 'ion') continue;
+      const sourceEntry = molstarContextSourceEntryForActiveConfig(structureRef);
       const selectedEntry = sourceEntry ? pdbEntryForResidue(sourceEntry, atom) : null;
       return {
         structures: [structureRef],
