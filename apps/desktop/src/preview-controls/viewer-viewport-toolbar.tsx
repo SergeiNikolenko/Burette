@@ -49,6 +49,7 @@ function ViewportToolbar({ options, state }: { options: RailOptions; state: Rail
     return <Tooltip key={control.action}>
       <TooltipTrigger asChild>
         <ToolbarButton className="buret-rail-button" aria-label={control.label}
+          data-pill="" data-squircle={undefined}
           selected={control.selected}
           aria-pressed={popup ? undefined : control.selected}
           aria-haspopup={popup} aria-expanded={popup ? false : undefined}

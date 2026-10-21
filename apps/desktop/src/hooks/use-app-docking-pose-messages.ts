@@ -35,7 +35,7 @@ export function useAppDockingPoseMessages({
     const gridDocument = sourcePath
       ? documents.find((document) => document.path === sourcePath && document.renderer === "grid2d")
       : null;
-    const activePose = Math.max(0, Math.trunc(Number(body.activePose) || 0));
+    const activePose = Math.max(0, Math.trunc(Number(body.sourceRecordId ?? body.activePose) || 0));
     const poseMode = body.poseMode === "all" ? "all" : "single";
     if (dockingDocument?.dockingRequest && dockingDocument.dockingRequest.poseMode !== poseMode) {
       addBackgroundDocuments([{

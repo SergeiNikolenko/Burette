@@ -3273,6 +3273,16 @@
     const data = event.data || {};
     const body = data.source === 'burette-host' ? data.body : null;
     if (!body) return;
+    if (event.source === window.parent && body.documentId === activeConfig?.documentId) {
+      if (body.type === 'chemicalSpaceRequestSelection') {
+        notifyChemicalSpaceMolecule();
+        return;
+      }
+      if (body.type === 'chemicalSpaceFocusMolecule') {
+        void focusChemicalSpaceMolecule(body);
+        return;
+      }
+    }
     if (event.source === window.parent && body.type === 'openXyzrenderEditor') {
       if (body.documentId === (activeConfig || window.BuretteConfig || {}).documentId) void openXyzrender3DEditor();
       return;
@@ -19740,6 +19750,38 @@ SOFTWARE.
     return () => subscription?.unsubscribe?.();
   }
 
+  function notifyChemicalSpaceMolecule(index) {
+    const prepared = activeMolstarPrepared;
+    if (!prepared || !(prepared.kind === 'docking' || prepared.sdfPoseRecordCount > 0)) return;
+    const activePose = index ?? readTrajectoryControlIndex(activeConfig, prepared, prepared.poseCount || 1);
+    const pose = prepared.kind === 'docking' ? prepared.poses?.[activePose] : null;
+    postHostMessage({
+      type: 'chemicalSpaceMoleculeChanged',
+      sourcePath: pose?.sourcePath || activeConfig?.sourcePath || '',
+      sourceRecordId: pose?.poseIndex ?? activePose,
+    });
+  }
+
+  async function focusChemicalSpaceMolecule(body) {
+    const prepared = activeMolstarPrepared;
+    const sourceRecordId = body.sourceRecordId;
+    if (!Number.isSafeInteger(sourceRecordId) || sourceRecordId < 0 || !prepared) return;
+    const index = prepared.kind === 'docking'
+      ? prepared.poses.findIndex(pose => pose.sourcePath === body.sourcePath
+        && (pose.poseIndex ?? 0) === sourceRecordId)
+      : prepared.sdfPoseRecordCount > 0 && activeConfig?.sourcePath === body.sourcePath
+        ? sourceRecordId : -1;
+    if (index < 0 || index >= prepared.poseCount) return;
+    if (prepared.poseCount === 1) {
+      notifyChemicalSpaceMolecule(0);
+      return;
+    }
+    if (!activeStructurePoseSetter) return;
+    setSdfPoseMode('single');
+    notifyStructureOverlayModeChanged(prepared);
+    await activeStructurePoseSetter(index);
+  }
+
   function notifyDockingPoseChanged(activePose, prepared) {
     if (prepared?.kind !== 'docking') return;
     const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
@@ -19748,6 +19790,7 @@ SOFTWARE.
     postHostMessage({
       type: 'dockingPoseChanged',
       activePose: index,
+      sourceRecordId: pose?.poseIndex ?? index,
       poseCount: poses.length,
       poseMode: activeSdfPoseMode === 'all' ? 'all' : 'single',
       sourcePath: pose?.sourcePath || ''
@@ -21123,6 +21166,7 @@ SOFTWARE.
         postHostMessage({ type: 'structureStoryChanged', ...storyPayload });
       }
       refreshNativeTrajectoryStandalonePreview();
+      notifyChemicalSpaceMolecule(activePose);
       const activeSegment = activeTrajectorySegment(activePose);
       postHostMessage({
         type: 'trajectoryFrameChanged',

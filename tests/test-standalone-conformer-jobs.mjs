@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript-compiler-api';
+import * as conformerInput from '../apps/desktop/src/lib/conformer-input.ts';
 const source = readFileSync(new URL('../apps/desktop/src/lib/standalone-compute.ts', import.meta.url), 'utf8');
 const code = ts.transpile(source, { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 });
 const jobs = [], calls = [], workflows = [];
@@ -8,6 +9,7 @@ let fail = false;
 const module = { exports: {} };
 new Function('require', 'exports', code)((name) => {
   if (name === './compute-analysis') return {};
+  if (name === './conformer-input') return conformerInput;
   if (name === './conformer-job-events') return { publishConformerJob: job => jobs.push(job) };
   if (name === '@tauri-apps/api/core') return { invoke: async (command, payload) => {
     calls.push([command, payload]);
@@ -42,4 +44,12 @@ assert.equal(jobs.at(-1).status, 'failed');
 assert.equal(jobs.at(-1).error, 'service failed');
 assert.equal(workflows.length, 4, 'a Metal failure must not start a CPU retry');
 assert.equal(calls.at(-1)[0], 'grid_close_runtime');
+jobs.length = 0;
+const previousCalls = calls.length;
+const variableSource = Object.freeze({ title: 'R-group', extension: 'smi', text: '*CO R1' });
+await assert.rejects(module.exports.runStandaloneConformerWorkflow(variableSource, () => {}), /fully specified molecule/);
+assert.deepEqual(jobs.map(job => job.status), ['running', 'failed']);
+assert.equal(calls.length, previousCalls, 'preflight must not register a source or start native compute');
+assert.match(jobs.at(-1).error, /keep this structure in 2D/);
+assert.equal(variableSource.text, '*CO R1');
 console.log('Standalone conformer Jobs lifecycle and cleanup passed');
