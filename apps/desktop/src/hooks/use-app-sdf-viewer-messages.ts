@@ -1,8 +1,10 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { isProteinLikeDockingSource } from "../lib/docking-documents";
 import { openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { isTauriRuntime } from "../lib/tauri";
+import { moleculeSourceFromMessage } from "../lib/chemical-space-documents";
+import type { ShellActions } from "../components/types";
 import type { OpenDocumentsMode, ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
@@ -15,7 +17,7 @@ type UseAppSdfViewerMessagesOptions = {
   addDocuments: (documents: ViewerDocument[]) => void;
   documents: ViewerDocument[];
   openBrowserDevTextDocument: typeof openBrowserDevTextDocument;
-  openDockingDocument: (receptorPath: string, ligandPaths: string[]) => Promise<unknown> | void;
+  openDockingDocument: ShellActions["openDockingDocument"];
   openDocuments: (
     paths: string[],
     reloadOptions?: ViewerReloadOptions,
@@ -54,8 +56,15 @@ export function useAppSdfViewerMessages({
   rememberRecentStructures,
   setPoseReviewSelections,
 }: UseAppSdfViewerMessagesOptions) {
+  const navigation = useRef({ documentId: activeDocument?.id, generation: 0 });
+  if (navigation.current.documentId !== activeDocument?.id) {
+    navigation.current = { documentId: activeDocument?.id, generation: navigation.current.generation + 1 };
+  }
   const handleSdfViewerMessage = useCallback(async (body: SdfViewerMessageBody) => {
     if (body?.type === "openSdfMolstarDocument") {
+      const navigationDocumentId = bodyString(body.navigationDocumentId);
+      if (navigationDocumentId && navigationDocumentId !== navigation.current.documentId) return true;
+      const generation = ++navigation.current.generation;
       const title = bodyString(body.title).trim() || "selected-molecules.sdf";
       const textBase64 = bodyString(body.textBase64).trim();
       if (!textBase64) {
@@ -99,9 +108,16 @@ export function useAppSdfViewerMessages({
               molstarPreferences,
               { sdfPoseControlLabel: controlLabel },
             );
+        if (navigationDocumentId && (navigation.current.generation !== generation
+          || navigation.current.documentId !== navigationDocumentId)) return true;
+        document.moleculeSource = moleculeSourceFromMessage(body, documents);
         if (receptorDocument && document.path) {
           pushStatus("Opening selected molecules in Molstar docking view...");
-          void openDockingDocument(receptorDocument.path, [document.path]);
+          void openDockingDocument(receptorDocument.path, [document.path], {
+            moleculeSource: document.moleculeSource,
+            shouldApply: navigationDocumentId ? () => navigation.current.generation === generation
+              && navigation.current.documentId === navigationDocumentId : undefined,
+          });
           return true;
         }
         if (body.openTarget === "active-tab") openDocumentsInActiveTab([document]);

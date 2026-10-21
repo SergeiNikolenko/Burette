@@ -148,7 +148,26 @@ cards or table. The `chemicalSpaceSelectionChanged` message optionally includes
 `focusSourceRecordId` for point navigation; lasso selection and hover do not
 request a jump. The grid resolves that identity in the current sort/filter
 order, paging as needed, and cancels navigation when a newer query or selection
-replaces it. A filtered-out molecule leaves the filters intact.
+replaces it. A filtered-out molecule leaves the filters intact. Point navigation also
+opens the exact source molecule in Mol*, or selects it in the related visible
+structure. SDF subsets retain an ordered `moleculeSource` mapping of source
+file/document and record IDs. Lasso, group and cliff-pair selections stay sets;
+they do not choose a pose. Changing the displayed molecule replaces the map
+selection. A dock resolves the map from its current file or explicit source,
+never the first unrelated collection in the workspace.
+
+The desktop host sends `chemicalSpaceRequestSelection` and
+`chemicalSpaceFocusMolecule` (`documentId`, `sourcePath`, `sourceRecordId`) to the
+owning Mol* frame. `chemicalSpaceMoleculeChanged` reports the source-file-local
+record ID; a multi-file scene must not use the global pose offset as that ID.
+`dockingPoseChanged` also carries optional `sourceRecordId`, retaining the
+existing global `activePose` field. The standalone Quick Look/iPhone runtime can
+emit these messages without a map host; only the desktop/browser shell consumes
+them. `chemicalSpaceOpenMolecule` resolves unloaded rows by their source index and
+opens them in the current tab, retaining the collection in history. Its
+`navigationDocumentId` cancels an asynchronous open after the user switches
+documents. Extracted grid structures send bounded `sourceRecordIds` with
+`openSdfMolstarDocument`; absent metadata leaves legacy documents unlinked.
 
 Composition rows for chains, ligand instances and ion species offer the same
 hide/show/remove actions as scene components. Their component actions carry an

@@ -82,7 +82,10 @@ assert.match(chemicalSpacePanel, /biggest \/ total > CLUSTER_DOMINANT_SHARE/);
 assert.match(chemicalSpacePanel, /singles \/ total > CLUSTER_SINGLETON_SHARE/);
 assert.match(chemicalSpacePanel, /function rankClustersBySize/);
 assert.match(chemicalSpacePanel, /data-testid="chemical-space-cluster-controls"/);
-assert.match(chemicalSpacePanel, /clusterMembersForSource/);
+// Group colouring must not expand a point click into a multi-record selection.
+// The executed onSelect contract lives in test-chemical-space-viewer-selection.
+assert.doesNotMatch(chemicalSpacePanel, /clusterMembersForSource/);
+assert.match(chemicalSpacePanel, /if \(tool === "navigate" && bounded\.length === 1\) focusMolecule\(bounded\[0\]\)/);
 assert.match(chemicalSpace3d, /vertexColors: true/);
 assert.match(chemicalSpacePanel, /isKnownViewerMessageSource\(event\.source, documentId\)/);
 assert.match(chemicalSpacePanel, /MAX_LASSO_POINTS = 1_024/);

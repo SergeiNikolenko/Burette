@@ -71,7 +71,7 @@ export function useAppDockingWorkflows({
   const openDockingDocument = useCallback(async (
     targetPath: string,
     droppedPaths: string[],
-    options: { activePose?: number | null; sceneMode?: DockingSceneMode | null; shouldApply?: () => boolean } = {},
+    options: { activePose?: number | null; sceneMode?: DockingSceneMode | null; shouldApply?: () => boolean; moleculeSource?: ViewerDocument["moleculeSource"] } = {},
   ) => {
     if (options.shouldApply?.() === false) return null;
     const existingDockingRequest = documents.find((document) => document.path === targetPath || document.id === targetPath)?.dockingRequest;
@@ -94,6 +94,7 @@ export function useAppDockingWorkflows({
             sceneMode: request.sceneMode,
           });
       if (options.shouldApply?.() === false) return null;
+      if (options.moleculeSource) document.moleculeSource = options.moleculeSource;
       addDocuments([document]);
       rememberRecentStructures([document]);
       setStructureDragActive(false);
