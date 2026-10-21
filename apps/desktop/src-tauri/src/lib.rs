@@ -160,7 +160,6 @@ pub fn run() {
                 commands::telemetry::statistics_record,
                 commands::telemetry::statistics_flush,
                 commands::telemetry::statistics_export,
-
                 commands::clipboard::write_clipboard_text,
                 commands::popout_scene::save_popout_scene,
                 commands::popout_scene::save_popout_sheet,
