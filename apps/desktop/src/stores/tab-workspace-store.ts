@@ -24,6 +24,7 @@ export type DockAreaWorkspace = {
   tabs: DockTab[];
   activeTab: DockTabKind;
   documentId: string | null;
+  documentPath?: string;
   tool: DockToolKind | null;
 };
 
@@ -91,6 +92,7 @@ function normalizeArea(area: DockArea, input: Partial<DockAreaWorkspace> | undef
     tabs,
     activeTab: normalizeDockActiveTab(area, tabs, input?.activeTab ?? fallback.activeTab),
     documentId: typeof input?.documentId === "string" ? input.documentId : null,
+    ...(typeof input?.documentPath === "string" ? { documentPath: input.documentPath } : {}),
     tool: input?.tool === "ketcher" ? input.tool : null,
   };
 }
@@ -258,6 +260,8 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
           ...workspace[area],
           open: true,
           documentId,
+          documentPath: documentId ? [...useMoleculeStore.getState().documents, ...useMoleculeStore.getState().textDocuments]
+            .find(document => document.id === documentId && !isTemporaryDocumentPath(document.path))?.path : undefined,
           tool: null,
           tabs: workspace[area].tabs.some((tab) => tab.kind === "files")
             ? workspace[area].tabs
@@ -271,6 +275,7 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
           ...workspace[area],
           open: true,
           documentId: null,
+          documentPath: undefined,
           tool,
           tabs: workspace[area].tabs.some((tab) => tab.kind === "files")
             ? workspace[area].tabs

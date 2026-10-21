@@ -88,7 +88,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
-  const activeStructureDocument = dockDocument ?? state.activeDocument;
+  const activeStructureDocument = dockDocumentId ? dockDocument : state.activeDocument;
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
   const chemicalSpaceDockAvailable = Boolean(resolveChemicalSpaceDocument(state, dockDocument));

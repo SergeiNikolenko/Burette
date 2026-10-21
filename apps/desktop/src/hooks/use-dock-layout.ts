@@ -6,6 +6,11 @@ export function useDockLayout(activeTabId: string | null) {
   const workspace = useTabWorkspaceStore((state) => activeTabId ? state.workspaces[activeTabId] : undefined);
   const fallback = useMemo(defaultTabWorkspace, []);
   const current = workspace ?? fallback;
+  const documents = useMoleculeStore(state => state.documents);
+  const textDocuments = useMoleculeStore(state => state.textDocuments);
+  const boundDocument = (dock: typeof current.right) => dock.documentPath
+    ? [...documents, ...textDocuments].find(document => document.path === dock.documentPath)?.id ?? `missing:${dock.documentPath}`
+    : dock.documentId;
   const toggleDockAction = useTabWorkspaceStore((state) => state.toggleDock);
   const setDockOpenAction = useTabWorkspaceStore((state) => state.setDockOpen);
   const setDockSizeAction = useTabWorkspaceStore((state) => state.setDockSize);
@@ -58,13 +63,13 @@ export function useDockLayout(activeTabId: string | null) {
     rightDockWidth: current.right.size,
     rightDockTabs: current.right.tabs,
     rightDockActiveTab: current.right.activeTab,
-    rightDockDocumentId: current.right.documentId,
+    rightDockDocumentId: boundDocument(current.right),
     rightDockTool: current.right.tool,
     bottomDockOpen: current.bottom.open,
     bottomDockHeight: current.bottom.size,
     bottomDockTabs: current.bottom.tabs,
     bottomDockActiveTab: current.bottom.activeTab,
-    bottomDockDocumentId: current.bottom.documentId,
+    bottomDockDocumentId: boundDocument(current.bottom),
     bottomDockTool: current.bottom.tool,
     dockDroppedStructures: current.droppedStructures,
     toggleDock,

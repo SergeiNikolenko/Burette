@@ -9,6 +9,7 @@ export const jobsKind = definePageKind<"jobs", JobsLocation>({
   kind: "jobs",
   title: () => "Jobs",
   description: "Calculations",
+  keepAlive: true,
   Component: ({ state, actions }) => (
     <div className="screen-stage">
       <div className="screen-scroll">
