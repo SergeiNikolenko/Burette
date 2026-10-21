@@ -6,6 +6,7 @@ import { execPath } from "node:process";
 const isolatedNode = script => promisify(execFile)(execPath, [fileURLToPath(new URL(script, import.meta.url))]);
 
 const contractScripts = {
+  "test-conformer-variable-atoms.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-conformer-variable-atoms.mjs", import.meta.url))]),
   "test-clear-recent-structures.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-clear-recent-structures.mjs", import.meta.url))]),
   "test-perf-app-cleanup.mjs": () => isolatedNode("./test-perf-app-cleanup.mjs"),
   "test-perf-core-cleanup.mjs": () => isolatedNode("./test-perf-core-cleanup.mjs"),
