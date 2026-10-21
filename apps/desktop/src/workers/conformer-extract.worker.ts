@@ -2,6 +2,7 @@
 // coordinator before conformer submission is exposed.
 // @ts-expect-error generated pinned RDKit module has no authored declarations
 import initializeExtractor from "../../../../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js";
+import { assertConcreteConformerInput } from "../lib/conformer-input";
 import type {
   ConformerExtractionWorkerRequest,
   ConformerExtractionWorkerResponse,
@@ -64,6 +65,7 @@ async function extractStandalone(request: Extract<ConformerExtractionWorkerReque
   const extractor = await loadExtractor();
   return request.records.map((record) => {
     if (!record.input.trim()) throw new Error("Standalone conformer input is empty.");
+    assertConcreteConformerInput(record.input, record.format);
     const inputFormat = record.format === "molblock" ? 0 : 1;
     const conformer = extractor.extract_conformer_parameters(
       record.input,
@@ -114,6 +116,7 @@ function extractRecord(
     return failedRecord(record, "Conformer input is empty.");
   }
   try {
+    assertConcreteConformerInput(record.input, record.format);
     const inputFormat = record.format === "molblock" ? 0 : 1;
     const conformerPayload = extractor.extract_conformer_parameters(
       record.input,

@@ -328,6 +328,16 @@ keeps its cached tree visible.
 
 ### Native conformers in Mol* collections
 
+Before standalone conformer generation or optimization, `conformer-input.ts`
+rejects sources whose records all contain explicit R-group (`R#`) or wildcard
+(`*`) atoms. It checks V2000/V3000 atom fields and SMILES atom tokens, not alias
+labels or SDF properties. The extraction worker applies the same check per
+record, preserving the existing partial-result path for mixed collections.
+This narrow admission check does not replace parsing, sanitization or geometry
+validation, and does not alter source files or choose substituents. Such
+generalized structures remain suitable for 2D depiction; their aliases must be
+preserved separately from concrete-molecule 3D operations.
+
 Generate 3D on an SDF/MOL document restores the native artifact coordinates
 into its source records by the artifact molecule ordinal. The active tab keeps
 the source name and SDF topology/properties, so Grid and pose alignment remain
