@@ -2666,15 +2666,15 @@ fn reject_private_ip(ip: IpAddr) -> Result<(), String> {
     let public = match ip {
         IpAddr::V4(value) => {
             let [a, b, c, _] = value.octets();
-            !value.is_private()
-                && !value.is_loopback()
-                && !value.is_link_local()
-                && a != 0
-                && a < 224
-                && !(a == 100 && (64..=127).contains(&b))
-                && !(a == 192 && b == 0 && (c == 0 || c == 2))
-                && !(a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100)))
-                && !(a == 203 && b == 0 && c == 113)
+            !(value.is_private()
+                || value.is_loopback()
+                || value.is_link_local()
+                || a == 0
+                || a >= 224
+                || (a == 100 && (64..=127).contains(&b))
+                || (a == 192 && b == 0 && (c == 0 || c == 2))
+                || (a == 198 && (b == 18 || b == 19 || (b == 51 && c == 100)))
+                || (a == 203 && b == 0 && c == 113))
         }
         IpAddr::V6(value) => {
             if let Some(mapped) = value.to_ipv4_mapped() {

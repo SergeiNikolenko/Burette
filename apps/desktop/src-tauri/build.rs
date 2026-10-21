@@ -1,4 +1,6 @@
 fn main() {
+    println!("cargo:rerun-if-env-changed=BURETTE_TELEMETRY_URL");
+    println!("cargo:rerun-if-env-changed=BURETTE_TELEMETRY_NOTICE_URL");
     // Live controls for native context menus are AppKit views, written in
     // Objective-C and linked into the app on macOS.
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {

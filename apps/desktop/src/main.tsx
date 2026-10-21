@@ -6,6 +6,7 @@ import App from "./App";
 import { ErrorBoundary } from "./components/error-boundary";
 import { installActionJournal } from "./lib/action-journal";
 import { installFrontendErrorLog } from "./lib/frontend-error-log";
+import { startUsageStatistics } from "./lib/usage-statistics";
 import { installKetcherBrowserRequire } from "./lib/ketcher-browser-require";
 import { markPerformanceOnce } from "./lib/performance";
 import { installPerfTrace } from "./lib/perf-trace";
@@ -28,6 +29,7 @@ installKetcherBrowserRequire();
 function Root() {
   React.useEffect(() => {
     markPerformanceOnce("app:react-mounted");
+    return startUsageStatistics();
   }, []);
 
   return (
