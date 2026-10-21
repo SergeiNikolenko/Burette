@@ -218,13 +218,13 @@ assert.equal(await controller.restoreAfterSceneReload(sceneViewer, prepared), tr
 assert.equal(alignmentCommits, 1);
 
 
-// Collapsing a file only hides its rows: indices, scores and independent pins
-// must survive reopening the group and the surrounding menu.
+// Collapsing a file preserves pose indices and scores, and removes closed rows
+// from keyboard navigation without rebuilding them.
 {
   const window = new Window();
   const document = window.document;
   const fileList = document.createElement('div');
-  const fileButtons = [], fileTargets = [], pins = [];
+  const fileButtons = [], fileTargets = [];
   const poseGroups = [
     { label: 'gnina.sdf', startFrame: 0, frameCount: 2, poses: [{ label: 'Pose 1', score: { value: -8.1, tag: 'Affinity' } }, { label: 'Pose 2' }] },
     { label: 'crystal.sdf', startFrame: 2, frameCount: 1, poses: [{ label: 'Pose 1' }] },
@@ -233,14 +233,8 @@ assert.equal(alignmentCommits, 1);
   const end = source.indexOf('    } else if (fileList) {', start);
   assert.ok(start > 0 && end > start);
   runInNewContext(source.slice(start, end) + '}', {
-    document, fileList, hasPoseGroups: true, canPinPoses: true, poseGroups, fileButtons, fileTargets,
+    document, fileList, hasPoseGroups: true, activePose: 0, poseGroups, fileButtons, fileTargets,
     sceneTreeIconElement: () => document.createElement('span'), APP_ICON_DATA: {},
-    pinButton: indices => {
-      const pin = document.createElement('button');
-      pin.className = 'buret-docking-pose-pin';
-      pin.onclick = () => pins.push([...indices]);
-      return pin;
-    },
   });
   document.body.append(fileList);
   const toggles = [...fileList.querySelectorAll('.buret-docking-pose-group-toggle')];
@@ -248,15 +242,56 @@ assert.equal(alignmentCommits, 1);
   assert.deepEqual(fileTargets, [0, 1, 2]);
   assert.equal(fileButtons[0].textContent, 'Pose 1-8.10');
   toggles[0].click();
-  assert.deepEqual(rows.map(row => row.hidden), [true, false]);
+  assert.deepEqual(rows.map(row => row.inert), [true, true]);
   assert.equal(toggles[0].getAttribute('aria-expanded'), 'false');
-  fileList.querySelector('.buret-docking-pose-group-label .buret-docking-pose-pin').click();
-  assert.deepEqual(pins, [[0, 1]]);
-  assert.equal(rows[0].hidden, true, 'pinning a collapsed file must not toggle its disclosure');
+  assert.equal(fileList.querySelectorAll('[title], .buret-docking-pose-pin').length, 0);
+  toggles[1].click();
+  assert.deepEqual(rows.map(row => row.inert), [true, false]);
   toggles[0].click();
-  assert.deepEqual(rows.map(row => row.hidden), [false, false]);
+  assert.deepEqual(rows.map(row => row.inert), [false, false]);
   assert.equal(toggles[0].getAttribute('aria-expanded'), 'true');
-  assert.deepEqual([...rows[0].querySelectorAll('[role="option"]')], fileButtons.slice(0, 2), 'expand reuses the original pose controls');
+  assert.deepEqual([...rows[0].querySelectorAll('[role="menuitemradio"]')], fileButtons.slice(0, 2), 'expand reuses the original pose controls');
+  const root = document.createElement('div');
+  root.className = 'buret-docking-poses';
+  const label = document.createElement('button');
+  label.className = 'buret-docking-pose-current';
+  root.append(label, fileList);
+  document.body.append(root);
+  const scheduled = [];
+  let open = true;
+  const context = {
+    window, document, root, label, fileList, fileButtons, fileTargets, hasPoseGroups: true,
+    activePose: 0, Node: window.Node,
+    isFileListOpen: () => open, setFileListOpen: value => { open = value; },
+    scheduleSliderInputPose: index => scheduled.push(index), fileListDisposer: null,
+    isDockingPoseKeyboardTarget: () => false,
+  };
+  const eventsStart = source.indexOf("    if (fileList) {\n      label.addEventListener('click'");
+  const eventsEnd = source.indexOf('    if (story && storyPanel)', eventsStart);
+  runInNewContext(source.slice(eventsStart, eventsEnd), context);
+  fileButtons[1].dispatchEvent(new window.PointerEvent('pointerenter', { pointerType: 'mouse' }));
+  assert.deepEqual(scheduled, [], 'hover must not change the molecular scene');
+  fileButtons[1].click();
+  assert.deepEqual({ scheduled, open, focused: document.activeElement === label }, { scheduled: [1], open: false, focused: true });
+  const keysStart = source.indexOf('    const onKeyDown = (event) => {', eventsEnd);
+  const keysEnd = source.indexOf('    mainRow.append(animation', keysStart);
+  runInNewContext(source.slice(keysStart, keysEnd), context);
+  const key = (target, value) => target.dispatchEvent(new window.KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }));
+  toggles[1].click();
+  key(label, 'ArrowUp');
+  assert.equal(document.activeElement, toggles[1], 'up from a closed trigger starts at the last visible item');
+  key(toggles[1], 'ArrowLeft');
+  assert.equal(rows[1].inert, true);
+  key(toggles[1], 'Escape');
+  assert.equal(open, false);
+  assert.equal(document.activeElement, label);
+  key(label, 'ArrowDown');
+  assert.equal(document.activeElement, toggles[0]);
+  key(toggles[0], 'ArrowLeft');
+  key(toggles[0], 'ArrowDown');
+  assert.equal(document.activeElement, toggles[1], 'collapsed poses are skipped');
+  const tooltipControl = runInNewContext(extract('molstarTooltipControlFromEvent') + '\nmolstarTooltipControlFromEvent');
+  for (const target of [label, ...toggles, ...fileButtons]) assert.equal(tooltipControl({ target }), null);
   await window.happyDOM.close();
 }
-console.log('Docking file disclosure preserves pose indices, scores and independent pins');
+console.log('Docking file disclosure preserves pose indices, scores and keyboard exclusion');

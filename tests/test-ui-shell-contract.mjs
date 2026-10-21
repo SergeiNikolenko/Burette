@@ -5206,7 +5206,6 @@ assert.match(previewViewer, /requestGenerated3DCameraView\(activeViewer\)/);
 assert.match(previewViewer, /function installMolstarControlTooltips\(\)/);
 assert.match(previewViewer, /window\.__buretteMolstarControlTooltipsInstalled/);
 assert.match(previewViewer, /\.msp-plugin button\[aria-label\], \.msp-plugin button\[title\]/);
-assert.match(previewViewer, /control\.closest\('\.msp-hover-box-wrapper, \.buret-seq-header, \.buret-seq-footer'\)/);
 assert.doesNotMatch(previewViewer, /scheduleViewportPopoverRefresh/);
 assert.match(previewViewer, /function molstarTooltipLabel\(control\)/);
 assert.match(previewViewer, /control\.getAttribute\('aria-label'\) \|\| control\.dataset\.buretHint \|\| control\.getAttribute\('title'\)/);
@@ -6916,7 +6915,6 @@ assert.match(previewViewer, /loopActive = Boolean\(active\)/);
 assert.match(previewViewer, /const open = !isAnimationOptionsOpen\(\);\s*setAnimationOptionsOpen\(open\);/);
 assert.match(previewViewer, /const loopTargetIndex = \(\) => \{/);
 assert.match(previewViewer, /const trajectoryControlBounds = \(poseIndex\) => \{/);
-assert.match(previewViewer, /currentIndex\.textContent = `\$\{poseIndex - current\.segment\.startFrame \+ 1\}\/\$\{current\.segment\.frameCount\} · \$\{current\.index \+ 1\}\/\$\{segments\.length\}`/);
 // A slow frame step must not let wall-clock time pick an absolute frame: the loop
 // would alternate between two frames instead of playing (WKWebView regression).
 // It still has to skip the frames that fell due, or fps above the step rate is
@@ -6951,7 +6949,6 @@ assert.match(previewViewer, /const supportsLivePoseInput = \(\) => \(/);
 assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.sdfPoseOverlayAvailable === true/);
 assert.match(previewViewer, /if \(supportsLivePoseInput\(\)\) scheduleSliderInputPose\(previewIndex\)/);
 assert.match(previewViewer, /slider\.addEventListener\('change', \(\) => \{/);
-assert.match(previewViewer, /if \(event\.pointerType === 'touch' \|\| targetPose === activePose\) return;/);
 assert.match(previewViewer, /function installDockingPoseInteractionIsolation\(root\)/);
 assert.match(previewViewer, /root\.addEventListener\('wheel', isolateWheel, \{ passive: false \}\)/);
 assert.match(previewViewer, /const isolationDisposer = installDockingPoseInteractionIsolation\(root\)/);

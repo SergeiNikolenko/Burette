@@ -127,6 +127,21 @@ The shell is a workspace, not a brand canvas.
 - Keep keyboard selection, disabled-item skipping, parent focus restoration and
   portal placement covered in `tests/test-overlay-interactions.test.tsx`.
 
+### Docking Pose Picker
+
+The compact picker shows the current filename and one pose counter. Its opaque
+menu uses the viewer menu surface, regular-weight rows and inline file
+disclosures. The current file starts expanded; other files start collapsed.
+Selecting a pose closes the menu and keeps the camera in place. Hovering only
+highlights a row. Scores remain visible; repeated file hints, file counters and
+pin controls do not belong in this picker.
+
+Disclosure transitions last 140 ms and reverse when interrupted; reduced motion
+removes them. Arrow keys navigate visible rows and expand/collapse files; Escape
+closes the menu and restores focus to its trigger. Embedded desktop viewers leave
+file-drop presentation to the workspace, while standalone viewers retain their
+own import behavior.
+
 ### Viewer Menus on macOS
 
 Browser Grid select popups reuse the generated Atlas Select menu CSS and

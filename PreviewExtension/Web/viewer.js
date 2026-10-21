@@ -387,7 +387,8 @@
       '.msp-plugin input[aria-label], .msp-plugin input[title]'
     );
     if (!control || control.closest('.buret-preview-dock, .buret-generate-3d-control') || control.matches('[data-tooltip-trigger]')) return null;
-    if (control.closest('.msp-hover-box-wrapper, .buret-seq-header, .buret-seq-footer')) return null;
+    if (control.closest('.msp-hover-box-wrapper, .buret-seq-header, .buret-seq-footer, .buret-docking-pose-files')) return null;
+    if (control.matches('.buret-docking-pose-current')) return null;
     return control;
   }
 
@@ -20672,7 +20673,7 @@ SOFTWARE.
     const animationRow = document.createElement('div');
     animationRow.className = 'buret-docking-pose-animation';
     const hasFileList = prepared.dockingSceneMode || hasSegments;
-    const poseCompareGuide = prepared.kind === 'docking' && !prepared.nativeTrajectoryControls && prepared.dockingSceneMode !== 'structureAll';
+    const poseCompareGuide = !hasPoseGroups && prepared.kind === 'docking' && !prepared.nativeTrajectoryControls && prepared.dockingSceneMode !== 'structureAll';
     root.classList.toggle('buret-docking-poses-frames', !hasFileList);
     const listEntries = prepared.dockingSceneMode ? prepared.poses : trajectorySegments;
     const label = hasFileList ? document.createElement('button') : document.createElement('span');
@@ -20682,7 +20683,7 @@ SOFTWARE.
     if (currentName && currentIndex) {
       label.type = 'button';
       label.className = 'buret-docking-pose-current';
-      label.setAttribute('aria-haspopup', 'listbox');
+      label.setAttribute('aria-haspopup', hasPoseGroups ? 'menu' : 'listbox');
       label.setAttribute('aria-expanded', 'false');
       currentName.className = 'buret-docking-pose-current-name';
       currentIndex.className = 'buret-docking-pose-current-index';
@@ -20702,25 +20703,13 @@ SOFTWARE.
       label.addEventListener('pointerenter', measureNameMarquee);
       label.addEventListener('focus', measureNameMarquee);
     }
-    label.title = prepared.ligandLabel || '';
     const fileList = hasFileList ? document.createElement('div') : null;
     const fileButtons = [];
     // The pose each list row jumps to, parallel to fileButtons.
     const fileTargets = [];
-    // Pin toggles for single poses and whole files; pinned poses stay drawn as references.
-    const canPinPoses = hasPoseGroups && prepared.kind === 'docking' && !prepared.dockingSceneMode && prepared.sdfPoseOverlayAvailable === true;
-    const pinControls = [];
-    const pinButton = (indices, label) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'buret-docking-pose-pin';
-      button.append(sceneTreeIconElement(APP_ICON_DATA.Pin));
-      pinControls.push({ button, indices, label });
-      return button;
-    };
     if (fileList && hasPoseGroups) {
       fileList.className = 'buret-docking-pose-files';
-      fileList.setAttribute('role', 'listbox');
+      fileList.setAttribute('role', 'menu');
       fileList.setAttribute('aria-label', 'Poses by file');
       poseGroups.forEach(group => {
         const section = document.createElement('div');
@@ -20732,35 +20721,37 @@ SOFTWARE.
         const toggle = document.createElement('button');
         toggle.type = 'button';
         toggle.className = 'buret-docking-pose-group-toggle';
-        toggle.setAttribute('aria-expanded', 'true');
+        const expanded = activePose >= group.startFrame && activePose < group.startFrame + group.frameCount;
+        toggle.setAttribute('aria-expanded', String(expanded));
+        toggle.setAttribute('role', 'menuitem');
         toggle.setAttribute('aria-label', group.label);
         const chevron = sceneTreeIconElement(APP_ICON_DATA.ChevronRight);
         chevron.classList.add('buret-docking-pose-group-chevron');
         const poses = document.createElement('div');
         poses.id = `buret-docking-pose-group-${group.startFrame}`;
+        poses.className = 'buret-docking-pose-group-content';
+        poses.classList.toggle('expanded', expanded);
+        poses.inert = !expanded;
+        const poseRows = document.createElement('div');
+        poses.append(poseRows);
         toggle.setAttribute('aria-controls', poses.id);
         toggle.addEventListener('click', () => {
-          poses.hidden = !poses.hidden;
-          toggle.setAttribute('aria-expanded', poses.hidden ? 'false' : 'true');
+          const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+          poses.classList.toggle('expanded', expanded);
+          poses.inert = !expanded;
+          toggle.setAttribute('aria-expanded', String(expanded));
         });
         const name = document.createElement('span');
         name.className = 'buret-docking-pose-file-name';
         name.textContent = group.label;
-        const count = document.createElement('span');
-        count.className = 'buret-docking-pose-file-meta';
-        count.textContent = `${group.frameCount} ${group.frameCount === 1 ? 'pose' : 'poses'}`;
-        if (canPinPoses) {
-          heading.classList.add('buret-docking-pose-pin-heading');
-          heading.append(pinButton(group.poses.map((_, offset) => group.startFrame + offset), group.label));
-        }
-        toggle.append(chevron, name, count);
+        toggle.append(name, chevron);
         heading.append(toggle);
         section.append(heading, poses);
         group.poses.forEach((pose, offset) => {
           const button = document.createElement('button');
           button.type = 'button';
           button.className = 'buret-docking-pose-file buret-docking-pose-group-pose';
-          button.setAttribute('role', 'option');
+          button.setAttribute('role', 'menuitemradio');
           const poseName = document.createElement('span');
           poseName.className = 'buret-docking-pose-file-name';
           poseName.textContent = pose.label;
@@ -20769,19 +20760,12 @@ SOFTWARE.
             const score = document.createElement('span');
             score.className = 'buret-docking-pose-file-meta';
             score.textContent = pose.score.value.toFixed(2);
-            button.title = `${pose.label} · ${pose.score.tag} ${pose.score.value} kcal/mol`;
+            button.setAttribute('aria-label', `${pose.label}, ${pose.score.value.toFixed(2)} kcal/mol`);
             button.append(score);
           }
           fileButtons.push(button);
           fileTargets.push(group.startFrame + offset);
-          if (canPinPoses) {
-            const row = document.createElement('div');
-            row.className = 'buret-docking-pose-pin-row';
-            row.append(pinButton([group.startFrame + offset], `${group.label} · ${pose.label}`), button);
-            poses.append(row);
-          } else {
-            poses.append(button);
-          }
+          poseRows.append(button);
         });
         fileList.append(section);
       });
@@ -21030,7 +21014,7 @@ SOFTWARE.
       if (hasSegments) {
         const current = activeTrajectorySegment(poseIndex);
         setCurrentName(current.segment?.label || `${controlLabel} ${poseIndex + 1}`);
-        currentIndex.textContent = `${poseIndex - current.segment.startFrame + 1}/${current.segment.frameCount} · ${current.index + 1}/${segments.length}`;
+        currentIndex.textContent = `${poseIndex - current.segment.startFrame + 1}/${current.segment.frameCount}`;
         return;
       }
       setCurrentName(prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`);
@@ -21039,9 +21023,6 @@ SOFTWARE.
     const updateControls = () => {
       const controlBounds = trajectoryControlBounds(activePose);
       applyLabel(activePose);
-      label.title = hasSegments
-        ? activeTrajectorySegment(activePose).segment?.label || prepared.ligandLabel || ''
-        : prepared?.poses?.[activePose]?.label || prepared.ligandLabel || '';
       previous.disabled = activePose <= controlBounds.start;
       next.disabled = activePose >= controlBounds.end;
       slider.max = String(controlBounds.count);
@@ -21051,7 +21032,7 @@ SOFTWARE.
       fileButtons.forEach((button, index) => {
         const active = hasTrajectorySegments ? index === activeSegmentIndex : fileTargets[index] === activePose;
         button.classList.toggle('active', active);
-        button.setAttribute('aria-selected', active ? 'true' : 'false');
+        button.setAttribute(hasPoseGroups ? 'aria-checked' : 'aria-selected', active ? 'true' : 'false');
       });
       if (storyStep && storyTitle && storySummary) {
         const storyPayload = structureStoryPayload();
@@ -21087,7 +21068,10 @@ SOFTWARE.
       }
       root.classList.toggle('buret-docking-poses-files-open', Boolean(open));
       label.setAttribute('aria-expanded', open ? 'true' : 'false');
-      if (open && hasPoseGroups) fileButtons[fileTargets.indexOf(activePose)]?.scrollIntoView({ block: 'nearest' });
+      if (open && hasPoseGroups) {
+        const active = fileButtons[fileTargets.indexOf(activePose)];
+        if (!active?.closest('[inert]')) active?.scrollIntoView({ block: 'nearest' });
+      }
     };
     const isFileListOpen = () => root.classList.contains('buret-docking-poses-files-open');
     const setAnimationOptionsOpen = (open) => {
@@ -21334,7 +21318,7 @@ SOFTWARE.
         }
         if (shouldFocus) scheduleMolstarStructureFocus(viewer, { reason: 'pose-selection', durationMs: 180, force: true });
         notifyDockingPoseChanged(activePose, prepared);
-        // Hovering an open pose list previews poses; only a committed switch counts.
+        // Only a committed switch outside the open list can request a guide.
         if (options.userStep === true && poseCompareGuide && !isFileListOpen()) requestContextualGuide('pose-compare', label);
       } catch (error) {
         try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(previousIndex)); } catch (_) {}
@@ -21354,14 +21338,14 @@ SOFTWARE.
       fileButtons.forEach((button, index) => {
         button.addEventListener('pointerenter', (event) => {
           const targetPose = fileTargets[index];
-          // Segments preview on hover like poses do: every frame is already in the one
-          // trajectory, so jumping to a segment's first frame is a model-index change,
-          // not a reload. Touch has no hover, and it would fire on the way to a tap.
-          if (event.pointerType === 'touch' || targetPose === activePose) return;
+          // Trajectory segments retain hover preview. Grouped docking poses commit
+          // only on selection, so moving through the menu cannot change the scene.
+          if (hasPoseGroups || event.pointerType === 'touch' || targetPose === activePose) return;
           scheduleSliderInputPose(targetPose);
         });
         button.addEventListener('click', () => {
           setFileListOpen(false);
+          label.focus();
           const targetPose = fileTargets[index];
           if (targetPose !== activePose) scheduleSliderInputPose(targetPose);
         });
@@ -21374,31 +21358,6 @@ SOFTWARE.
       window.addEventListener('pointerdown', onOutsidePointerDown, true);
       fileListDisposer = () => window.removeEventListener('pointerdown', onOutsidePointerDown, true);
     }
-    const refreshPinControls = () => {
-      const pinned = dockingPinnedPoseIndices(prepared);
-      pinControls.forEach(({ button, indices, label: pinLabel }) => {
-        const count = indices.filter(index => pinned.has(index)).length;
-        const all = count === indices.length;
-        button.classList.toggle('pinned', all);
-        button.classList.toggle('partial', count > 0 && !all);
-        button.setAttribute('aria-pressed', all ? 'true' : count ? 'mixed' : 'false');
-        button.title = `${all ? 'Unpin' : 'Pin'} ${pinLabel}`;
-        button.setAttribute('aria-label', button.title);
-      });
-    };
-    pinControls.forEach(({ button, indices }) => {
-      button.addEventListener('click', () => {
-        const pinned = dockingPinnedPoseIndices(prepared);
-        const pin = !indices.every(index => pinned.has(index));
-        indices.forEach(index => (pin ? pinned.add(index) : pinned.delete(index)));
-        refreshPinControls();
-        // Queue behind pending steps so the rebuild draws the pose they settle on.
-        const queued = poseUpdateQueue.then(() => applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: false }));
-        // eslint-disable-next-line no-console
-        poseUpdateQueue = queued.catch(error => console.error(error));
-      });
-    });
-    refreshPinControls();
     if (story && storyPanel) {
       story.addEventListener('click', () => {
         const open = root.classList.toggle('buret-docking-poses-story-closed') === false;
@@ -21710,6 +21669,28 @@ SOFTWARE.
         label.focus();
         return;
       }
+      if (hasPoseGroups && fileList && (isFileListOpen() || event.target === label)) {
+        if (event.key === 'Tab') { setFileListOpen(false); return; }
+        if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+          event.preventDefault();
+          setFileListOpen(true);
+          const items = [...fileList.querySelectorAll('button')].filter(item => !item.closest('[inert]'));
+          const current = items.indexOf(document.activeElement);
+          const index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+            : event.key === 'ArrowDown' ? (current + 1) % items.length : current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;
+          items[index]?.focus();
+          return;
+        }
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+          event.preventDefault();
+          const group = event.target.closest('.buret-docking-pose-group');
+          const toggle = group?.querySelector('.buret-docking-pose-group-toggle');
+          const expand = event.key === 'ArrowRight';
+          if (toggle && (toggle.getAttribute('aria-expanded') === 'true') !== expand) toggle.click();
+          if (!expand) toggle?.focus();
+          return;
+        }
+      }
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
         if (activePose > trajectoryControlBounds(activePose).start) void setPose(activePose - 1, { userStep: true });
@@ -21718,8 +21699,10 @@ SOFTWARE.
         if (activePose < trajectoryControlBounds(activePose).end) void setPose(activePose + 1, { userStep: true });
       }
     };
+    root.addEventListener('keydown', onKeyDown);
     window.addEventListener('keydown', onKeyDown);
     dockingPoseKeydownDisposer = () => {
+      root.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keydown', onKeyDown);
     };
     mainRow.append(animation, previous, label, next);
@@ -29108,6 +29091,12 @@ SOFTWARE.
       viewer = typeof window.molstar.Viewer.create === 'function'
         ? await window.molstar.Viewer.create('app', createViewerOptions())
         : new window.molstar.Viewer('app', createViewerOptions());
+      // Embedded imports belong to the workspace; Mol*'s competing drop layer
+      // can otherwise remain over the scene after a drag leaves the iframe.
+      if (window.parent && window.parent !== window) {
+        viewer.plugin.spec.components.disableDragOverlay = true;
+        viewer.plugin.layout.events.updated.next();
+      }
       viewer.plugin.canvas3d?.setProps({ transparentBackground, renderer: { backgroundColor: canvasBackgroundColor() } });
       viewer.plugin.canvas3d?.requestDraw();
       // WebKit may suspend animation callbacks while this container is hidden.
