@@ -14,7 +14,8 @@ type Status = {
 type Feature = "structure" | "table" | "editor" | "trajectory" | "docking" | "compute" | "files" | "export";
 type ErrorCategory = "network" | "parse" | "render" | "timeout" | "permission" | "unsupported" | "unknown";
 type StatisticsEvent = { kind: "active"; value: "day" } | { kind: "feature"; value: Feature } | { kind: "error"; value: ErrorCategory };
-let status: Status = { available: false, decided: false, enabled: false, pendingErasure: false, noticeUrl: null };
+const unavailableStatus: Status = { available: false, decided: false, enabled: false, pendingErasure: false, noticeUrl: null };
+let status = unavailableStatus;
 const subscribers = new Set<() => void>();
 let revision = 0;
 let running = false;
@@ -32,7 +33,7 @@ function subscribe(notify: () => void) {
   return () => { subscribers.delete(notify); };
 }
 export function useUsageStatistics() {
-  return useSyncExternalStore(subscribe, () => status);
+  return useSyncExternalStore(subscribe, () => status, () => unavailableStatus);
 }
 async function refresh() {
   const ticket = ++revision;
