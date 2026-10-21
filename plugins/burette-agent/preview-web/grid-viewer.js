@@ -169,6 +169,7 @@
     rdkitCardLazyJobs: new WeakMap(),
     rdkitCardLazyTargets: [],
     xyzrenderCardCache: new Map(),
+    xyzrenderInitialPrefetched: false,
     xyzrenderCardQueue: [],
     xyzrenderCardsRunning: 0,
     xyzrenderBatchesRunning: 0,
@@ -3809,6 +3810,22 @@
     }
   }
 
+  function prefetchInitialXyzrenderCards(cfg) {
+    if (state.xyzrenderInitialPrefetched || !state.rows.length
+      || cfg.appViewer !== true || cfg.gridDataMode !== 'bridge'
+      || !effectiveMolecularGrid(cfg)
+      || (state.viewMode === 'cards' && state.cardRenderer === 'xyzrender')) return;
+    state.xyzrenderInitialPrefetched = true;
+    // Prepare only the initial screen, not the collection. The normal queue and
+    // content/style keys let an immediate switch join the same in-flight work.
+    // Foreground requests keep priority over these unmounted targets.
+    for (const row of state.rows.slice(0, 24)) {
+      const record = gridDragRecord(row);
+      if (!record || record.inputExtension === 'rxn') continue;
+      enqueueXyzrenderCard(row, cfg, record, xyzrenderCardKey(row, record), null);
+    }
+  }
+
   function pumpXyzrenderCardQueue() {
     const cfg = config();
     if (cfg.appViewer === true && cfg.gridDataMode === 'bridge') {
@@ -4113,6 +4130,7 @@
           });
           return;
         }
+        prefetchInitialXyzrenderCards(cfg);
         if (state.pendingLoad) {
           state.pendingLoad = false;
           loadMore(cfg);
@@ -8653,7 +8671,10 @@
   function resetCardRenderQueues() {
     state.rdkitCardQueue = [];
     state.rdkitCardPending.clear();
-    for (const job of state.xyzrenderCardQueue) state.xyzrenderCardCache.delete(job.key);
+    for (const job of state.xyzrenderCardQueue) {
+      if (!job.target) state.xyzrenderInitialPrefetched = false;
+      state.xyzrenderCardCache.delete(job.key);
+    }
     state.xyzrenderCardQueue = [];
     if (state.xyzrenderBatchTimer) {
       window.clearTimeout(state.xyzrenderBatchTimer);
@@ -8664,6 +8685,7 @@
   function resetDocumentRuntimeState() {
     cancelVirtualWindowRender();
     state.dataToken += 1;
+    state.xyzrenderInitialPrefetched = false;
     state.remoteLoadToken += 1;
     state.remoteLoading = false;
     window.clearTimeout(state.searchTimer);
@@ -8858,6 +8880,12 @@
   }
 
   function markXyzrenderCardError(job, message) {
+    // Speculative failures must not poison the first explicit 3D request (for
+    // example, if the runtime was unavailable while the table was opening).
+    if (!job.target) {
+      state.xyzrenderCardCache.delete(job.key);
+      return;
+    }
     state.xyzrenderCardCache.set(job.key, { error: message });
     updateXyzrenderCard(job.key, `<div class="buret-molecule-error"><strong>${escapeHTML(job.row.name || `Molecule ${Number(job.row.index) + 1}`)}</strong><span>${escapeHTML(message)}</span></div>`);
     emitGridPerfMetric(job.cfg, 'xyzrender-card-error', nowMs(), {

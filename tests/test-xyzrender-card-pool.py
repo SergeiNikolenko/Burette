@@ -31,9 +31,10 @@ def load(value, **kwargs):
     return value
 def render(mol, **kwargs): return json.dumps(kwargs, sort_keys=True)
 ''')
-            jobs = [dict(id=str(i), smiles='CO', config='default', outputPath=str(root / f'{i}.svg'), displayHydrogens=mode)
+            jobs = [dict(id=str(i), inputPath='CO', config='default', outputPath=str(root / f'{i}.svg'), displayHydrogens=mode)
                     for i, mode in enumerate(['none', 'all', 'auto', None, 'none'])]
-            jobs.insert(2, dict(id='bad', smiles='invalid', outputPath=str(root / 'bad.svg')))
+            jobs.append(dict(id='full', smiles='CO', outputPath=str(root / 'full.svg')))
+            jobs.insert(2, dict(id='bad', inputPath='invalid', outputPath=str(root / 'bad.svg')))
             result = subprocess.run([sys.executable, '-u', '-c', HELPER],
                                     input=''.join(json.dumps(job) + '\n' for job in jobs),
                                     text=True, capture_output=True, timeout=15,
@@ -47,6 +48,68 @@ def render(mol, **kwargs): return json.dumps(kwargs, sort_keys=True)
                 {'config': 'default', 'no_hy': True}, {'config': 'default', 'hy': True},
                 {'config': 'default'}, {'config': 'default'}, {'config': 'default', 'no_hy': True},
             ])
+
+    @unittest.skipUnless(LIVE, 'Use --live for thumbnail chemistry and cache validation')
+    def test_live_thumbnail_conformer_and_bounded_reuse(self):
+        # Exercise the embedded helper without starting its stdin protocol loop.
+        script = HELPER.split('for line in sys.stdin:', 1)[0] + r"""
+from unittest.mock import patch
+from rdkit import Chem
+from rdkit.Chem import rdDistGeom
+import numpy as np
+import re
+
+original_load = load
+captured = []
+def inspect_load(value, **kwargs):
+    if hasattr(value, "GetConformer"):
+        captured.append(Chem.Mol(value))
+    return original_load(value, **kwargs)
+load = inspect_load
+
+samples = ["C[C@H](O)C(=O)O", "F/C=C/F", "c1ccc2ccccc2c1", "C[NH3+]", "CCO.[Na+]"]
+for smiles in samples:
+    molecule = load_thumbnail(smiles)
+    rd_mol = captured[-1]
+    assert rd_mol.GetNumConformers() == 1
+    expected = Chem.MolToSmiles(Chem.MolFromSmiles(smiles), isomericSmiles=True)
+    assert Chem.MolToSmiles(Chem.RemoveHs(rd_mol), isomericSmiles=True) == expected
+    xyz = np.array(rd_mol.GetConformer().GetPositions())
+    assert np.isfinite(xyz).all() and np.ptp(xyz, axis=0).max() > 0
+    before = str(render(molecule, config="default", no_hy=True))
+    render(molecule, config="default", hy=True)
+    render(molecule, config="flat", no_hy=True)
+    after = str(render(molecule, config="default", no_hy=True))
+    assert re.sub(r"\bx[0-9a-f]{32}", "xUUID", before) == re.sub(r"\bx[0-9a-f]{32}", "xUUID", after)
+    assert load_thumbnail(smiles) is molecule
+    first_positions = xyz.copy()
+    thumbnail_cache.clear()
+    load_thumbnail(smiles)
+    assert np.allclose(captured[-1].GetConformer().GetPositions(), first_positions)
+
+# A failed embed retains the established fallback; invalid SMILES fail cleanly.
+thumbnail_cache.clear()
+with patch.object(rdDistGeom, "EmbedMolecule", return_value=-1):
+    assert len(load_thumbnail("CCO").graph) > 0
+try:
+    load_thumbnail("not-a-molecule")
+except ValueError:
+    pass
+else:
+    raise AssertionError("invalid SMILES accepted")
+thumbnail_cache.clear()
+# Bound cached prepared structures independently from the persistent SVG cache.
+for i in range(40):
+    load_thumbnail("C" + " " * i)
+assert len(thumbnail_cache) == 32
+oversized_key = "C" + " " * 4096
+load_thumbnail(oversized_key)
+assert oversized_key not in thumbnail_cache
+responses.write("thumbnail chemistry, deterministic coordinates, fallback and bounded reuse passed\n")
+"""
+        result = subprocess.run([sys.executable, '-c', script], text=True,
+                                capture_output=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     @unittest.skipUnless(LIVE, 'Use --live with the bundled xyzrender Python for API/CLI equivalence')
     def test_live_api_cli_hydrogen_geometry(self):

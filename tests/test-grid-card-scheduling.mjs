@@ -285,3 +285,64 @@ await consumeBatch(jobs);
 assert.equal(yields, 11, 'each expensive card yields before processing the next');
 assert.deepEqual(batchUpdates, jobs.map(job => job.key));
 console.log('3D cards: late cache delivery, remount priority, preset reuse and UI-thread yields passed.');
+
+{
+  const runtime = { token: 1, rows: [{}], visibleCount: 1, viewMode: 'table' };
+  let prefetches = 0;
+  const grid = { replaceChildren() {} };
+  const dependencies = Object.fromEntries([
+    'resetRdkitCardObserver', 'resetXyzrenderCardObserver', 'resetCardRenderQueues',
+    'restoreTableScrollPosition', 'startVisibleRdkitCards', 'updateTableHeaderStick',
+    'updateVirtualGridMetrics', 'updateChrome', 'scrollPendingGridRow',
+    'maybeLoadMoreForRenderedRange', 'postGridReady', 'emitGridPerfMetric',
+    'requestAnimationFrame', 'scheduleRdkitCard', 'scheduleXyzrenderCard',
+  ].map(name => [name, () => {}]));
+  Object.assign(dependencies, {
+    state: runtime, status: null, window: {}, nowMs: () => 0,
+    document: { getElementById: () => grid, createDocumentFragment: () => ({ appendChild() {} }) },
+    virtualWindowRange: () => ({ start: 0, end: 1 }), cardViewRows: rows => rows,
+    gridTable: () => ({}), card: () => ({}),
+    prefetchInitialXyzrenderCards: () => { prefetches++; },
+  });
+  const renderSource = source.slice(source.indexOf('  async function renderVirtualWindow('), source.indexOf('  // The horizontal scroll box'));
+  const renderWindow = new Function(...Object.keys(dependencies), `${renderSource} return renderVirtualWindow;`)(...Object.values(dependencies));
+  await renderWindow({}, 0, { force: true });
+  assert.equal(prefetches, 0, 'superseded views must not prepare stale document data');
+  await renderWindow({}, 1, { force: true });
+  assert.equal(prefetches, 1, 'initial remote table page prepares its first screen');
+  runtime.viewMode = 'cards';
+  await renderWindow({}, 1, { force: true });
+  assert.equal(prefetches, 2, 'initial remote card page also reaches preparation');
+}
+
+{
+  const initial = { xyzrenderInitialPrefetched: false, rows: Array.from({ length: 1000 }, (_, index) => ({ index })), viewMode: 'table', cardRenderer: 'rdkit' };
+  const queued = [];
+  const prefetch = new Function('state', 'effectiveMolecularGrid', 'gridDragRecord', 'xyzrenderCardKey', 'enqueueXyzrenderCard', `${body('prefetchInitialXyzrenderCards')} return prefetchInitialXyzrenderCards;`)(
+    initial, cfg => cfg.molecularGrid, row => ({ inputExtension: row.index === 2 ? 'rxn' : 'smi' }), row => String(row.index),
+    (row, cfg, record, key, target) => queued.push({ index: row.index, key, target }),
+  );
+  prefetch({ appViewer: true, molecularGrid: true, xyzrenderEndpoint: '/render' });
+  prefetch({ appViewer: true, gridDataMode: 'bridge', molecularGrid: false });
+  assert.equal(queued.length, 0, 'no speculative browser or nonmolecular work');
+  const cfg = { appViewer: true, gridDataMode: 'bridge', molecularGrid: true };
+  prefetch(cfg); prefetch(cfg);
+  assert.deepEqual(queued, Array.from({ length: 24 }, (_, index) => ({ index, key: String(index), target: null })).filter(row => row.index !== 2), 'one bounded initial screen, reactions excluded');
+  initial.xyzrenderInitialPrefetched = false;
+  initial.viewMode = 'cards'; initial.cardRenderer = 'xyzrender';
+  queued.length = 0;
+  prefetch(cfg);
+  assert.equal(queued.length, 0, 'foreground 3D rendering already schedules its viewport');
+}
+
+{
+  const errors = { xyzrenderCardCache: new Map([['preload', { pending: true }]]) };
+  const updates = [];
+  const fail = new Function('state', 'updateXyzrenderCard', 'escapeHTML', 'emitGridPerfMetric', 'nowMs', `${body('markXyzrenderCardError')} return markXyzrenderCardError;`)(errors, (...args) => updates.push(args), value => value, () => {}, () => 0);
+  fail({ key: 'preload', target: null }, 'temporarily unavailable');
+  assert.equal(errors.xyzrenderCardCache.has('preload'), false, 'explicit opening can retry failed background work');
+  assert.equal(updates.length, 0);
+  fail({ key: 'visible', target: {}, row: { index: 0 }, cfg: {} }, 'invalid molecule');
+  assert.deepEqual(errors.xyzrenderCardCache.get('visible'), { error: 'invalid molecule' });
+  assert.equal(updates.length, 1, 'foreground failures still reach the card');
+}
