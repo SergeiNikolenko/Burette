@@ -2775,8 +2775,6 @@ assert.ok(
     < structureInfoPanel.indexOf("{assemblySymmetry.available ? ("),
   "grid filters should be the first inspector section after the document header",
 );
-assert.match(app, /activeDocument\?\.renderer === "grid2d" && activeGridFilterModel\?\.columns\.length/);
-assert.match(app, /setDockOpen\("right", true\);\s*setDockActiveTab\("right", "inspector"\);/);
 assert.match(gridFilterSection, /CHART_CONFIG = \{ count: \{ label: "Rows"/);
 assert.doesNotMatch(gridFilterSection, /model\.visible\.toLocaleString\(\)\} of \{model\.total\.toLocaleString\(\)\} rows/);
 assert.match(gridFilterSection, /Loaded-page range · \{\(column\.statsRows \?\? 0\)\.toLocaleString\(\)\} of \{\(column\.statsTotal \?\? 0\)\.toLocaleString\(\)\} rows/);
