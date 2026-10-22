@@ -152,36 +152,85 @@ for (const failure of ['throw', 'empty']) {
 }
 console.log('Scene switching, hidden presets, aligned reloads and partial builder failures passed');
 
-// A representation preset must not invalidate the receptor+SDF pose cache.
-// The next step should replace only the foreground at the existing camera.
+// Selection/All/pins must never clear or reload the receptor. Only selected
+// ligand structures belong in the live hierarchy; parsed offscreen data is cached.
 {
-  const docking = { kind: 'docking', sdfPoseOverlayAvailable: true, poses: [{ label: 'Pose 1' }, { label: 'Pose 2' }] };
-  const poseViewer = { plugin: {
-    clear: async () => { throw Error('Preset must not reload the scene'); },
+  let clears = 0, parses = 0, receptorLoads = 0, receptorStyles = 0, fail = false;
+  const live = new Set(), deleted = [], children = new Map();
+  const pins = new Set(), selection = new Set();
+  const docking = { kind: 'docking', sdfPoseOverlayAvailable: true, receptorEntry: { label: 'receptor' },
+    poses: Array.from({ length: 8 }, (_, i) => ({ label: `pose${i}` })),
+    poseGroups: [{ startFrame: 0, endFrame: 2 }] };
+  const camera = { props: { camera: { manualReset: false } },
+    view: { zoom: 3, rotation: [1, 2, 3] }, setProps(value) { Object.assign(this.props.camera, value.camera); }, commit() {} };
+  const poseViewer = { plugin: { canvas3d: camera,
+    clear: async () => { clears++; live.clear(); },
+    state: { data: { tree: { children }, build: () => {
+      const refs = [];
+      return { delete(ref) { refs.push(ref); return this; }, async commit() { for (const ref of refs) { deleted.push(ref); live.delete(ref); } } };
+    } } },
     builders: { data: { rawData() {} }, structure: { parseTrajectory() {}, hierarchy: { applyPreset() {} } } },
   } };
-  const state = { viewer: poseViewer, key: 'old-style', receptorRefs: ['receptor'], backgroundRefs: [], activeRefs: ['ligand-1'], activeIndex: 0 };
   const context = {
     activeMolstarPrepared: docking, activeConfig: { molstarStyle: 'ball-and-stick' }, activeSdfPoseMode: 'single',
-    activeDockingPoseCollectionState: state,
+    activeDockingPoseCollectionState: null,
     configuredMolstarStyle: config => config.molstarStyle,
     dockingSceneBackgroundStyle: value => value, readSdfCollectionContextStyle: () => 'match',
     readSdfCollectionContextOpacity: () => 0.2, readSdfCollectionContextColor: () => 'gray',
     xyzFrameOverlayRawSignature: () => '',
-    dockingPoseCollectionStateStillLoaded: () => true,
-    dockingPinnedPoseIndices: () => new Set(), syncDockingPinnedPoseVisibility() {},
-    molstarStructuresByRefs: () => [], applySdfCollectionMolstarStyle: async () => {},
+    molstarRefsStillLoaded: (_viewer, refs) => refs.length && refs.every(ref => live.has(ref)),
+    dockingPinnedPoseIndices: () => pins, dockingSelectedPoseIndices: () => selection,
+    molstarStructuresByRefs: (_viewer, refs) => refs, molstarStructureRefsOf: refs => refs,
+    loadMolstarEntryWithStructureRefs: async () => { receptorLoads++; live.add('receptor'); return ['receptor']; },
+    applySdfCollectionMolstarStyle: async (_viewer, _style, refs) => {
+      if (refs.includes('receptor')) receptorStyles++;
+      else if (fail) { fail = false; throw new Error('representation failed'); }
+    },
     document: { querySelector: () => null }, updateStructureOverlayToggleButton() {},
-    applyMolstarWaterLineRepresentation: async () => {},
-    switchCachedPoseLayer: async (_viewer, target, index) => { target.activeIndex = index; target.activeRefs = [`ligand-${index + 1}`]; },
+    resetXyzFrameOverlayState() {}, resetSdfCollectionVisibilityState() {},
+    switchCachedPoseLayer: async (_viewer, layer, index, entry, style) => {
+      layer.poseCache ||= new Map();
+      if (!layer.poseCache.has(index)) {
+        parses++;
+        layer.poseCache.set(index, { raw: { ref: `raw${index}` }, trajectories: [{ ref: `trajectory${index}` }], sourceBytes: 100 });
+      }
+      children.set(`trajectory${index}`, new Set([entry.label]));
+      await style([entry.label]);
+      live.add(entry.label);
+      layer.activeIndex = index; layer.activeRefs = [entry.label];
+    },
   };
-  runInNewContext(extract('dockingPoseCollectionStateKey') + extract('resyncDockingSceneAfterRestyle') + extract('applyDockingPoseCollectionVisibilityNow'), context);
+  runInNewContext(extract('dockingPoseCollectionStateKey') + extract('dockingPoseCollectionStateStillLoaded')
+    + extract('resyncDockingSceneAfterRestyle') + extract('applyDockingPoseCollectionVisibilityNow'), context);
   context.applyDockingPoseCollectionVisibility = context.applyDockingPoseCollectionVisibilityNow;
+  const render = index => context.applyDockingPoseCollectionVisibilityNow(poseViewer, docking, index, { focus: false });
+  await render(0);
+  selection.add(1); await render(0);
+  assert.deepEqual([...live].sort(), ['pose0', 'pose1', 'receptor']);
+  selection.delete(1); await render(0);
+  assert.deepEqual([...live].sort(), ['pose0', 'receptor'], 'deselected structures do not leak into exports');
+  selection.add(1); await render(0);
+  assert.equal(parses, 2, 'reselect reuses the parsed ligand');
+  fail = true; pins.add(1);
+  await assert.rejects(render(0), /representation failed/);
+  assert.equal(context.activeDockingPoseCollectionState.layers.get(1).appearanceKey, null);
+  pins.delete(1); await render(0);
+  assert.equal(context.activeDockingPoseCollectionState.layers.get(1).appearanceKey, '["ball-and-stick",1,"colored"]', 'failed restyle is retried on rollback');
+  pins.add(1); await render(0);
+  context.activeSdfPoseMode = 'all'; await render(0);
+  assert.deepEqual([...live].sort(), ['pose0', 'pose1', 'pose2', 'receptor']);
+  context.activeSdfPoseMode = 'single'; await render(0);
+  fail = true; selection.add(3);
+  await assert.rejects(render(0), /representation failed/);
+  selection.delete(3); await render(0);
+  assert.ok(deleted.includes('raw3'), 'failed builder is disposed');
+  assert.deepEqual([...live].sort(), ['pose0', 'pose1', 'receptor']);
   await context.resyncDockingSceneAfterRestyle(poseViewer);
-  await context.applyDockingPoseCollectionVisibilityNow(poseViewer, docking, 1, { focus: false });
-  assert.deepEqual({ key: state.key, receptor: state.receptorRefs, active: state.activeRefs, index: state.activeIndex }, {
-    key: context.dockingPoseCollectionStateKey(docking, 'ball-and-stick', false, 'match', 1), receptor: ['receptor'], active: ['ligand-2'], index: 1,
-  });
+  assert.deepEqual({ clears, receptorLoads, receptorStyles, camera: camera.view, manualReset: camera.props.camera.manualReset },
+    { clears: 1, receptorLoads: 1, receptorStyles: 1, camera: { zoom: 3, rotation: [1, 2, 3] }, manualReset: false });
+  selection.clear(); pins.clear();
+  for (let i = 0; i < 8; i++) await render(i);
+  assert.ok(context.activeDockingPoseCollectionState.layers.size <= 5, 'inactive parsed cache is bounded');
 }
 
 // Light/outline appearance is independent of the geometric representation.
@@ -234,6 +283,7 @@ assert.equal(alignmentCommits, 1);
   assert.ok(start > 0 && end > start);
   runInNewContext(source.slice(start, end) + '}', {
     document, fileList, hasPoseGroups: true, activePose: 0, poseGroups, fileButtons, fileTargets,
+    groupControls: [], createPosePin: () => document.createElement('button'), toggleSelectedPose() {},
     sceneTreeIconElement: () => document.createElement('span'), APP_ICON_DATA: {},
   });
   document.body.append(fileList);
@@ -280,7 +330,7 @@ assert.equal(alignmentCommits, 1);
   toggles[1].click();
   open = false;
   key(label, 'ArrowUp');
-  assert.equal(document.activeElement, toggles[1], 'up from a closed trigger starts at the last visible item');
+  assert.equal(document.activeElement, fileList.lastElementChild.querySelector('.buret-docking-pose-group-label').lastElementChild, 'up from a closed trigger starts at the last visible item');
   key(toggles[1], 'ArrowLeft');
   assert.equal(rows[1].inert, true);
   key(toggles[1], 'Escape');
@@ -290,7 +340,7 @@ assert.equal(alignmentCommits, 1);
   assert.equal(document.activeElement, toggles[0]);
   key(toggles[0], 'ArrowLeft');
   key(toggles[0], 'ArrowDown');
-  assert.equal(document.activeElement, toggles[1], 'collapsed poses are skipped');
+  assert.equal(document.activeElement, toggles[0].nextElementSibling, 'collapsed poses are skipped');
   const tooltipControl = runInNewContext(extract('molstarTooltipControlFromEvent') + '\nmolstarTooltipControlFromEvent');
   for (const target of [label, ...toggles, ...fileButtons]) assert.equal(tooltipControl({ target }), null);
   await window.happyDOM.close();
@@ -301,19 +351,20 @@ console.log('Docking file disclosure preserves pose indices, scores and keyboard
 // keeps the menu mounted, and restores its model if the renderer rejects a change.
 {
   const pins = new Set([2]);
+  const selection = new Set();
   const rendered = [];
   let fail = false;
   let visible = [];
   const context = {
     activePose: 0, activeSdfPoseMode: 'single', prepared: {}, viewer: {}, activeMolstarPrepared: null,
     poseGroups: [{ startFrame: 0, frameCount: 2 }, { startFrame: 2, frameCount: 1 }],
-    dockingPinnedPoseIndices: () => pins, setLoopActive() {}, setPose() {},
+    dockingPinnedPoseIndices: () => pins, dockingSelectedPoseIndices: () => selection, setLoopActive() {}, setPose() {},
     poseUpdateQueue: Promise.resolve(), molstarStructureFocusSerial: 0,
     setSdfPoseMode: mode => { context.activeSdfPoseMode = mode; },
     applyDockingPoseCollectionVisibility: async (_viewer, _prepared, active) => {
       visible = []; // Rebuild has already cleared the previous scene.
       if (fail) { fail = false; throw new Error('load failed'); }
-      visible = [active, ...pins].sort();
+      visible = [...new Set([active, ...pins, ...selection])].sort();
       rendered.push(visible);
     },
     resetDockingPoseCollectionState() {},
@@ -323,7 +374,7 @@ console.log('Docking file disclosure preserves pose indices, scores and keyboard
   context.activeStructurePoseSetter = context.setPose;
   const selectionStart = source.indexOf('    const selectedPoseIndices = () => {');
   const selectionEnd = source.indexOf('    const updateControls =', selectionStart);
-  const toggleStart = source.indexOf('    const toggleSelectedPose = (index) => {');
+  const toggleStart = source.indexOf('    const toggleSelectedPose = (target, options = {}) => {');
   const toggleEnd = source.indexOf('    if (fileList) {', toggleStart);
   const toggle = runInNewContext(source.slice(selectionStart, selectionEnd) + source.slice(toggleStart, toggleEnd) + '\ntoggleSelectedPose', context);
   toggle(1); toggle(2);
@@ -341,6 +392,14 @@ console.log('Docking file disclosure preserves pose indices, scores and keyboard
   toggle(0); await context.poseUpdateQueue;
   assert.deepEqual([context.activePose, [...pins], context.activeSdfPoseMode], before);
   assert.deepEqual(visible, [0, 1, 2], "rollback restores the actual scene after a partial rebuild");
+  toggle([0, 2], { pin: true }); await context.poseUpdateQueue;
+  assert.deepEqual([...pins].sort(), [0, 2], 'whole collection pinning is explicit');
+  toggle([0, 2], { pin: true }); await context.poseUpdateQueue;
+  assert.deepEqual([...pins], [], 'unpin keeps poses selected until navigation');
+  assert.deepEqual(visible, [0, 1, 2]);
+  toggle([0, 2]); await context.poseUpdateQueue;
+  assert.deepEqual(visible, [1], 'collection checkbox removes the whole selected collection');
+
 }
 console.log('Docking multi-selection preserves visible poses and recovers failed changes');
 
@@ -364,7 +423,7 @@ console.log('Docking multi-selection preserves visible poses and recovers failed
   const context = {
     window, document, Event: window.Event, root, label, fileList, fileButtons, fileTargets: [0, 1, 2],
     prepared, poseGroups, activePose: 0, activeSdfPoseMode: 'single', hasPoseGroups: true, hasTrajectorySegments: false,
-    dockingPinnedPoseIndices: () => pins, trajectoryControlBounds: () => ({ start: 0, end: 1, count: 2 }),
+    dockingPinnedPoseIndices: () => pins, dockingSelectedPoseIndices: () => new Set(), groupControls: [], pinControls: [], trajectoryControlBounds: () => ({ start: 0, end: 1, count: 2 }),
     activeTrajectorySegment: () => ({ index: 0, segment: poseGroups[0] }),
     applyLabel() {}, previous: {}, next: {}, slider: { dataset: {} }, storyStep: null,
     refreshNativeTrajectoryStandalonePreview() {}, postHostMessage() {}, activeConfig: {}, loopActive: false,

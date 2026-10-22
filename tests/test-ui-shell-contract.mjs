@@ -6807,10 +6807,8 @@ assert.match(previewViewer, /const contextColor = options\.contextColor \?\? rea
 assert.match(previewViewer, /await applySdfCollectionMolstarStyle\(\s*viewer,\s*contextStyle === 'match' \? style : contextStyle,\s*backgroundStructures,\s*contextOpacity,\s*contextColor\s*\)/s);
 assert.match(previewViewer, /await switchCachedPoseLayer\(viewer, state, activeIndex, \{[\s\S]*?data: activeData, format: 'pdb'/);
 assert.match(previewViewer, /structures => applySdfCollectionMolstarStyle\(viewer, style, structures, 1, 'colored'\)/);
-assert.match(previewViewer, /function dockingPoseCollectionStateKey\(prepared, style, allMode, contextStyle, activeIndex = 0\)/);
 assert.match(previewViewer, /async function applyDockingPoseCollectionVisibilityNow\(viewer, prepared, activePose = 0, options = \{\}\)/);
 assert.match(previewViewer, /const allMode = activeSdfPoseMode === 'all' && prepared\.sdfPoseOverlayAvailable === true/);
-assert.match(previewViewer, /backgroundStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\)/);
 assert.match(previewViewer, /async function loadMolstarEntry\(viewer, entry, presetOptions = undefined\)/);
 assert.match(previewViewer, /applyPreset\(trajectory, entry\.loadPreset \|\| 'default', presetOptions\)/);
 assert.match(previewViewer, /async function loadMolstarEntryWithStructureRefs\(viewer, entry, presetOptions = undefined\)/);

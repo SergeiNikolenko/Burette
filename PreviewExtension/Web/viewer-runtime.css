@@ -5297,18 +5297,6 @@ body .buret-docking-poses .buret-docking-pose-group-toggle:hover { background: v
 body .buret-docking-pose-group-toggle:focus-visible { outline: 1px solid currentColor; outline-offset: -1px; }
 body .buret-docking-poses .buret-docking-pose-group-pose { padding: 0 8px 0 20px; }
 body .buret-docking-pose-group-pose.active::after { content: none; }
-.buret-docking-poses .buret-docking-pose-check {
-  min-width: 0;
-  display: grid;
-  place-items: center;
-  width: 13px;
-  height: 13px;
-  border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
-  border-radius: 3px;
-}
-.buret-docking-pose-check svg { width: 12px; height: 12px; visibility: hidden; }
-[aria-checked="true"] > .buret-docking-pose-check { background: var(--buret-toolbar-color); border-color: var(--buret-toolbar-color); color: var(--buret-toolbar-background); }
-[aria-checked="true"] > .buret-docking-pose-check svg { visibility: visible; }
 
 body :is(.buret-tree-menu-icon, .buret-tree-menu-icon > svg) { width: 16px; height: 16px; }
 body :is(.buret-tree-menu-title, .buret-molecule-context-menu-section-label, .buret-tree-menu-actions > summary),
@@ -5458,3 +5446,102 @@ body:not(.buret-theme-light):not(.burette-mobile-host) .buret-molecule-context-s
   padding: 4px;
   font: var(--text-sm)/var(--menu-line-height) var(--font-sans);
 }
+
+/* The docking pose picker is the viewer's Atlas menu (styleMenu adds the
+   surface tokens), kept opaque over the scene. Files and poses share one
+   trailing check column; pins show on hover and stay while pinned. */
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content {
+  display: none;
+  margin: 0;
+  min-width: min(248px, calc(100vw - 28px));
+  max-height: min(360px, 60vh);
+  border: 0;
+  border-radius: var(--radius-2xl);
+  background: var(--color-surface-elevated-secondary);
+  backdrop-filter: none;
+  box-shadow: 0 0 0 var(--dropdown-overlay-ring-width) var(--color-border-overlay), var(--shadow-dropdown-overlay);
+  color: var(--color-text);
+  font: var(--menu-font-size)/var(--menu-line-height) var(--font-sans);
+}
+body .buret-docking-poses-files-open .buret-docking-pose-files.atlas-menu-content { display: flex; }
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-row {
+  position: relative;
+  display: block;
+  min-height: 0;
+  border-radius: var(--radius-xl);
+}
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-row:is(:hover, :focus-within) {
+  background: var(--color-background-primary-ghost-hover);
+}
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button {
+  height: auto;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: default;
+  font: inherit;
+}
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .atlas-menu-item {
+  display: flex;
+  width: 100%;
+  min-height: 28px;
+  padding: 5px 56px 5px 8px;
+  gap: 6px;
+  border-radius: var(--radius-xl);
+  text-align: left;
+}
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose { padding-left: 30px; }
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-file-name { flex: 1 1 auto; }
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-file-meta {
+  color: var(--color-text-tertiary);
+  font-size: inherit;
+}
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-chevron {
+  width: 16px;
+  height: 16px;
+  color: var(--color-text-secondary);
+  opacity: 1;
+}
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose .atlas-menu-check {
+  position: absolute;
+  right: 8px;
+}
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-row:hover [aria-checked="false"] .atlas-menu-check {
+  visibility: visible;
+  opacity: 0.35;
+}
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content :is(.buret-docking-pose-group-select, .buret-docking-pose-pin) {
+  position: absolute;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  margin-top: -12px;
+  padding: 0;
+  border-radius: var(--radius-lg);
+}
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-select { right: 4px; }
+.buret-docking-pose-group-select > svg {
+  position: absolute;
+  inset: 4px;
+  width: 16px;
+  height: 16px;
+  visibility: hidden;
+}
+.buret-docking-pose-group-select[aria-checked="true"] > svg:first-child,
+.buret-docking-pose-group-select[aria-checked="mixed"] > svg:last-child { visibility: visible; }
+.buret-docking-pose-row:hover > .buret-docking-pose-group-select[aria-checked="false"] > svg:first-child { visibility: visible; opacity: 0.35; }
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-pin {
+  right: 28px;
+  display: grid;
+  place-items: center;
+  color: var(--color-text-secondary);
+}
+.buret-docking-pose-files .buret-docking-pose-pin { opacity: 0; }
+.buret-docking-pose-row:is(:hover, :focus-within) > .buret-docking-pose-pin,
+.buret-docking-pose-files .buret-docking-pose-pin[aria-checked="true"] { opacity: 1; }
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-pin:hover {
+  background: var(--color-background-primary-ghost-hover);
+  color: var(--color-text);
+}
+.buret-docking-pose-pin svg { width: 14px; height: 14px; }

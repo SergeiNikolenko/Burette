@@ -129,14 +129,24 @@ The shell is a workspace, not a brand canvas.
 
 ### Docking Pose Picker
 
-The compact picker shows the current filename and one pose counter. Its opaque
-menu uses the viewer menu surface, regular-weight rows and inline file
-disclosures. The current file starts expanded; other files start collapsed.
-Checkbox rows select visible poses across files without closing the menu or
-moving the camera. Unchecking removes a pose; the last visible pose stays selected.
-File chevrons only fold the list. Hovering only highlights a row. Scores remain visible; repeated file hints, file counters and
-pin controls do not belong in this picker. Secondary clicks inside the picker do
-not open the browser iframe menu.
+The compact picker shows the current filename and one pose counter. Its menu is
+the same Atlas menu as Style (`styleMenu`, `atlas-menu-item` rows), kept opaque
+over the scene. File rows lead with a disclosure chevron; pose rows align with
+the file name and keep their score in tertiary text. The current file starts
+expanded; other files start collapsed.
+
+Files and poses share one trailing check column. Clicking a pose row shows or
+hides that pose without closing the menu or moving the camera; the last visible
+pose stays selected. The file check shows or hides the whole collection and
+reads as a check (all poses) or a dash (some). Hovering a row previews its check
+and reveals a pin; a pinned pose or collection keeps a filled pin and stays
+visible while stepping through other poses. The chevron only folds the list.
+Scores remain visible without repeated file hints or counters. Secondary clicks
+inside the picker do not open the browser iframe menu.
+
+Selection changes update ligand layers in place. They preserve the receptor, its
+representations and camera input. Deselected structures leave the live hierarchy;
+only their parsed data is cached, limited to four inactive poses or 16 MiB.
 
 Disclosure transitions last 140 ms and reverse when interrupted; reduced motion
 removes them. Arrow keys navigate visible rows and expand/collapse files; Escape
