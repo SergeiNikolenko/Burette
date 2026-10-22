@@ -127,6 +127,16 @@ The shell is a workspace, not a brand canvas.
 - Keep keyboard selection, disabled-item skipping, parent focus restoration and
   portal placement covered in `tests/test-overlay-interactions.test.tsx`.
 
+### Viewer Top Chrome
+
+The viewer's floating chrome is one set of shapes. Pills (toolbar, viewport
+rail, pose controls, scene tree toggle) are 36 px tall with 18 px corners, and
+their controls sit 4 px inside with 14 px corners, so every fill follows the
+pill's ends. Panels (scene tree, pose menu) follow the Atlas menu: 20 px corners
+around pill-shaped rows. The scene tree opens out of its toggle and closes back
+into it. When the pose controls share the toggle's column, the tree starts below
+them and moves with them while their playback row opens or closes.
+
 ### Docking Pose Picker
 
 The compact picker shows the current filename and one pose counter. Its menu is

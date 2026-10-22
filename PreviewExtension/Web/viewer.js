@@ -19426,6 +19426,34 @@ SOFTWARE.
     root.style.top = clampedTop + 'px';
     root.style.right = 'auto';
     root.style.bottom = 'auto';
+    syncSceneTreeClearance(root);
+  }
+
+  // The scene tree opens under the corner toggle. When the pose controls share
+  // that column (a narrow viewport, or the playback row reaching down), the tree
+  // starts below them. Size changes follow frame by frame, so the tree moves
+  // with the controls as their playback row opens or closes.
+  let sceneTreeClearanceRoot = null;
+  const sceneTreeClearanceObserver = typeof ResizeObserver === 'function'
+    ? new ResizeObserver(() => syncSceneTreeClearance(sceneTreeClearanceRoot))
+    : null;
+  function syncSceneTreeClearance(root) {
+    if (root !== sceneTreeClearanceRoot) {
+      sceneTreeClearanceObserver?.disconnect();
+      sceneTreeClearanceRoot = root;
+      if (root) sceneTreeClearanceObserver?.observe(root);
+    }
+    const corner = visibleRect('#buret-viewport-corner');
+    const rect = root?.isConnected ? root.getBoundingClientRect() : null;
+    let clearance = 0;
+    if (corner && rect?.width) {
+      const treeTop = corner.bottom + FLOATING_LAYOUT_GAP;
+      const treeRight = corner.left + (document.getElementById('buret-scene-tree')?.offsetWidth || 272);
+      const sharesColumn = rect.left < treeRight && rect.right > corner.left;
+      const reachesTree = rect.top < treeTop + FLOATING_LAYOUT_GAP && rect.bottom + FLOATING_LAYOUT_GAP > treeTop;
+      if (sharesColumn && reachesTree) clearance = Math.ceil(rect.bottom + FLOATING_LAYOUT_GAP - treeTop);
+    }
+    document.documentElement.style.setProperty('--buret-scene-tree-clearance', `${clearance}px`);
   }
 
   function saveDockingPoseControlsPosition(root) {
@@ -20625,6 +20653,7 @@ SOFTWARE.
 
   function installDockingPoseControls(viewer, prepared) {
     document.querySelector('.buret-docking-poses')?.remove();
+    syncSceneTreeClearance(null);
     activeStructureAlignmentControl?.destroy?.();
     if (dockingPoseKeydownDisposer) {
       dockingPoseKeydownDisposer();
