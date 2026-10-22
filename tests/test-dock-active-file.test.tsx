@@ -278,7 +278,7 @@ test("the same document in two workspace panels has separate iframe ownership", 
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  const actions = { setStructureDragActive() {} } as unknown as ShellActions;
+  const actions = { setStructureDragActive() {}, setDockOpen() {} } as unknown as ShellActions;
   const draw = async (workspaceId: string, open = true) => act(async () => root.render(<DockPanel area="right" state={{
     ...state, activeTab: { ...state.activeTab!, id: workspaceId }, rightDockOpen: open, rightDockDocumentId: open ? a.id : null,
   }} actions={actions} />));

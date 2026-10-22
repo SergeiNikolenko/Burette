@@ -3,7 +3,7 @@ import { Window } from "happy-dom";
 import React, { act } from "react";
 import type { ViewerDocument, TextFileDocument } from "../apps/desktop/src/types";
 const browser = new Window();
-for (const key of ["window", "document", "navigator", "HTMLElement", "Node", "Event", "MutationObserver", "getComputedStyle", "localStorage"] as const)
+for (const key of ["window", "document", "navigator", "HTMLElement", "Node", "Event", "MutationObserver", "getComputedStyle", "localStorage", "CSS"] as const)
   Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let release: (() => void) | undefined;
@@ -21,12 +21,17 @@ const { createRoot } = await import("react-dom/client");
 const { useAppDockPayloadOpen } = await import("../apps/desktop/src/hooks/use-app-dock-payload-open");
 const { useAppSpectrumDockLifecycle } = await import("../apps/desktop/src/hooks/use-app-spectrum-dock-lifecycle");
 const { useDockLayout } = await import("../apps/desktop/src/hooks/use-dock-layout");
-const { useTabWorkspaceStore, getTabWorkspace } = await import("../apps/desktop/src/stores/tab-workspace-store");
+const { useTabWorkspaceStore, getTabWorkspace, WINDOW_TOOLS_ID } = await import("../apps/desktop/src/stores/tab-workspace-store");
+const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store");
+// The right dock belongs to the workspace tab; the bottom dock to the window-wide tools workspace.
+const dockOf = (tabId: string, area: "right" | "bottom") => getTabWorkspace(area === "bottom" ? WINDOW_TOOLS_ID : tabId)[area];
+const liveTabs = (...ids: string[]) => useMoleculeStore.setState({ tabs: ids.map(id => ({ id, location: { kind: "file" as const, documentId: id, path: `/${id}` }, back: [], forward: [] })) as never });
 const { dockFileEntries } = await import("../apps/desktop/src/lib/dock");
 
 test("mixed files stay in the requested panel, and slow opens retain their originating workspace", async () => {
   Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: { invoke } });
   useTabWorkspaceStore.setState({ workspaces: {} });
+  liveTabs("workspace-a", "workspace-b");
   let open!: ReturnType<typeof useAppDockPayloadOpen>;
   const added: unknown[] = [];
   const noop = () => {};
@@ -44,10 +49,10 @@ test("mixed files stay in the requested panel, and slow opens retain their origi
     await act(async () => root.render(<Fixture tabId="workspace-a" />));
     for (const [area, path] of [["right", "/image.png"], ["bottom", "/table.csv"], ["right", "/protein.pdb"], ["bottom", "/ligand.sdf"]] as const) {
       const opposite = area === "right" ? "bottom" : "right";
-      const before = getTabWorkspace("workspace-a")[opposite];
+      const before = dockOf("workspace-a", opposite);
       await act(async () => open({ area, tabKind: "files", payload: { paths: [path], records: [] } }));
-      expect(getTabWorkspace("workspace-a")[area].documentId).toBe(path.endsWith("png") || path.endsWith("csv") ? `media:${path}` : path);
-      expect(getTabWorkspace("workspace-a")[opposite]).toEqual(before);
+      expect(dockOf("workspace-a", area).documentId).toBe(path.endsWith("png") || path.endsWith("csv") ? `media:${path}` : path);
+      expect(dockOf("workspace-a", opposite)).toEqual(before);
     }
     expect(added).toHaveLength(2);
     expect(invoke.mock.calls.filter(([command]) => command === "open_documents").map(([, args]) => args.paths)).toEqual([["/protein.pdb"], ["/ligand.sdf"]]);
@@ -79,6 +84,7 @@ test.each(["right", "bottom"] as const)("%s panel preserves text fallback and re
   });
   Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: { invoke: backend } });
   useTabWorkspaceStore.setState({ workspaces: {} });
+  liveTabs("text-workspace");
   let open!: ReturnType<typeof useAppDockPayloadOpen>;
   function Fixture() {
     const dock = useDockLayout("text-workspace");
@@ -96,20 +102,20 @@ test.each(["right", "bottom"] as const)("%s panel preserves text fallback and re
     expect(backend.mock.calls.map(([command, args]) => [command, args.paths])).toEqual([
       ["open_text_files", ["/run.log", "/artifact.unknown", "/README"]],
     ]);
-    expect(getTabWorkspace("text-workspace")[area].documentId).toBe("text:/run.log");
+    expect(dockOf("text-workspace", area).documentId).toBe("text:/run.log");
     await send(["/both.nw", "/throw.nw", "/broken.csv"]);
     expect(structures.map(doc => doc.path)).toEqual(["/both.nw"]);
     expect(texts.map(doc => doc.path)).toEqual(["/run.log", "/artifact.unknown", "/README", "/both.nw", "/throw.nw", "/broken.csv"]);
-    expect(getTabWorkspace("text-workspace")[area].documentId).toBe("/both.nw");
+    expect(dockOf("text-workspace", area).documentId).toBe("/both.nw");
     expect(statuses.some(status => status[1] === "error")).toBe(false);
     const count = backend.mock.calls.length;
     for (const [path, id] of [["/both.nw", "/both.nw"], ["/throw.nw", "text:/throw.nw"], ["/broken.csv", "text:/broken.csv"]]) {
       await send([path]);
-      expect(getTabWorkspace("text-workspace")[area].documentId).toBe(id);
+      expect(dockOf("text-workspace", area).documentId).toBe(id);
     }
     expect(backend.mock.calls.length).toBe(count);
     const other = area === "right" ? "bottom" : "right";
-    expect(getTabWorkspace("text-workspace")[other].documentId).toBeNull();
+    expect(dockOf("text-workspace", other).documentId).toBeNull();
   } finally { await act(async () => root.unmount()); host.remove(); Reflect.deleteProperty(window, "__TAURI_INTERNALS__"); }
 });
 
