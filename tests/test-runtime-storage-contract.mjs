@@ -63,6 +63,7 @@ assert.deepEqual(storageConstants(gridViewer), sortedPairs([
   ["HYDROGEN_DISPLAY_STORAGE_KEY", "buret.grid.hydrogenDisplay"],
   ["MMFF_VARIANT_STORAGE_KEY", "buret.grid.mmffVariant"],
   ["RDKIT_USE_INPUT_COORDS_STORAGE_KEY", "buret.grid.rdkitUseInputCoords"],
+  ["XYZRENDER_USE_3D_COORDS_STORAGE_KEY", "buret.grid.xyzrenderUse3DCoords"],
   ["SEMIEMPIRICAL_METHOD_STORAGE_KEY", "buret.grid.semiempiricalMethod"],
   ["TABLE_COLUMN_WIDTHS_STORAGE_KEY", "buret.grid.tableColumnWidths"],
   ["TABLE_HIDDEN_COLUMNS_STORAGE_KEY", "buret.grid.tableHiddenColumns"],

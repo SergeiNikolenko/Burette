@@ -274,11 +274,11 @@ const batchUpdates = [];
 let clock = 0;
 let yields = 0;
 const jobs = Array.from({ length: 12 }, (_, i) => ({ key: `batch-${i}`, row: { index: i }, cfg: {}, record: {} }));
-const consumeBatch = new Function('state', 'hostRequest', 'currentXyzrenderPreset', 'xyzrenderCardControls', 'textToBase64', 'xyzrenderCardInputText', 'prepareXyzrenderCardSVG', 'svgDataImageHTML', 'evictXyzrenderCardCache', 'updateXyzrenderCard', 'emitGridPerfMetric', 'xyzrenderCardBatchConcurrency', 'markXyzrenderCardError', 'nowMs', 'window', `
+const consumeBatch = new Function('state', 'hostRequest', 'currentXyzrenderPreset', 'xyzrenderCardControls', 'textToBase64', 'xyzrenderCardInput', 'prepareXyzrenderCardSVG', 'svgDataImageHTML', 'evictXyzrenderCardCache', 'updateXyzrenderCard', 'emitGridPerfMetric', 'xyzrenderCardBatchConcurrency', 'markXyzrenderCardError', 'nowMs', 'window', `
   const XYZRENDER_CARD_BATCH_TIMEOUT_MS = 60000, RDKIT_CARD_FRAME_BUDGET_MS = 8;
   ${asyncBody}
   return requestXyzrenderCardBatch;
-`)(state, async () => ({ items: jobs.map(job => ({ id: job.key, svg: '<svg/>' })) }), () => 'default', () => ({}), x => x, () => '', svg => { clock += 9; return svg; }, svg => svg, () => {}, key => batchUpdates.push(key), () => {}, () => 1, (_job, error) => assert.fail(error), () => clock, {
+`)(state, async () => ({ items: jobs.map(job => ({ id: job.key, svg: '<svg/>' })) }), () => 'default', () => ({}), x => x, () => ({ text: '', extension: 'smi' }), svg => { clock += 9; return svg; }, svg => svg, () => {}, key => batchUpdates.push(key), () => {}, () => 1, (_job, error) => assert.fail(error), () => clock, {
   setTimeout(resolve) { yields++; assert.ok(batchUpdates.length > 0 && batchUpdates.length < jobs.length); setTimeout(resolve, 0); },
 });
 await consumeBatch(jobs);

@@ -102,6 +102,12 @@ locally with the bundled OpenChemLib runtime; ordinary table properties remain
 available for search, sorting, and inspection. CSV/TSV files without molecule
 columns still open as generic delimited data tables in the same grid surface.
 
+In `3D renders`, cards use white paper in both themes. Their 2D/3D control
+switches between a fresh flat layout and the original 3D pose (or a generated
+conformer for SMILES and flat input). It changes only the preview, not the
+collection. The separate `buret.grid.xyzrenderUse3DCoords` preference defaults
+to 3D; the existing RDKit input-coordinate preference retains its meaning.
+
 In editable collections, double-click a compound's name in the table or on its
 card, or choose **Rename…** from its context menu. Enter or leaving the field
 applies the name; Escape cancels. Use **Save** to write the collection, or
@@ -228,9 +234,9 @@ match Mol*: W/S zoom, A/D horizontal movement, R/F vertical movement, Q/E roll.
 Text inputs and modified command shortcuts retain their normal keyboard behavior.
 Orientation angles and animation speed/amplitude use the shared Kinetic
 ScrubNumberField (Calligraph and Motion): drag to change. Speed and assembly
-noise do not enter text editing on click. Animation defaults to 60 fps and
-640 px / 240 frames; speed ranges from 30 to 120 fps, and 120 frames are available
-in the collapsed GIF settings section. Actual preview cadence is limited by the
+noise do not enter text editing on click. Animation defaults to 30 fps and
+384 px / 120 frames. Generated motion supports 24–240 frames within the pixel
+budget; resolution and frame count are available in GIF settings. Actual preview cadence is limited by the
 display refresh rate. GIF export resamples to at most 50 fps with delays of at
 least 20 ms, preserving duration to GIF timing precision. Style changes notify the active animation editor by
 document identity, including inline sheet sources whose path is only a label,
@@ -258,8 +264,8 @@ frames / 100 million pixels; large trajectories must be shortened before editing
 The browser render has a 120-second timeout and a 16 MB output limit.
 The orientation editor exports SVG, PNG, PDF and TIFF; animation exports GIF.
 PDF on macOS supplies the Homebrew Cairo library lookup path to the child process.
-These orientation/animation/export endpoints are browser-dev only; native
-animation bridging is not implemented. They do not create a Mol* scene.
+Browser-dev uses HTTP endpoints; desktop uses the native bridge described below.
+Neither creates a Mol* scene.
 
 The tested local runtime is xyzrender 0.3.8, installed with
 `uv tool install --upgrade 'xyzrender[all]==0.3.8'`. This updates the external user
@@ -321,3 +327,14 @@ runtime), rather than every installed scientific module.
 The desktop Orientation & animation editor renders through the `render_xyzrender_editor` Tauri command using the bundled xyzrender runtime. It does not require a browser-dev server. GIF, SVG, PNG, PDF and TIFF exports use the native save dialog. Trajectory and vibration rendering read the original source file; the selected inline frame remains the input for static orientation and synthetic sheet items. Browser-dev keeps its HTTP transport. Native rendering stages input in a temporary cache directory, bounds inputs/outputs to 16 MiB and animation decoding to 100 million pixels, and allows two concurrent renders with a 120-second animation timeout. Closing a panel discards its result; an already running native render finishes within its timeout before releasing its slot.
 
 Orientation and animation controls share one inspector. Changing angles keeps the existing movie playing until its replacement is ready, retaining the playback position and export range. Native animation renders are queued; obsolete queued requests are discarded. Image presets span 256–1024 pixels and generated motion detail spans 24–240 frames within the pixel budget. Opening or resizing docks preserves the sheet zoom and item dimensions, moving the sheet with the viewport center. Orientation commands target only the inspected document. XYZ frame and alignment rebuilds retain the selected Mol* appearance.
+
+Full-range GIF application and export at up to 50 fps retime the rendered GIF
+without decoding and quantizing it again. This preserves the compressed frames,
+palette and transparency. Trimming and higher frame rates retain the existing
+compositing and resampling encoder. The same fast path applies to selected items.
+
+Desktop animations run the same xyzrender command line inside a warm grid
+worker, which keeps a four-process pool for GIF frames between requests. A
+default 384 px / 120-frame rotation takes about 1.5 s there instead of about
+4 s for a new process, with identical output. Without the bundled Python
+runtime, rendering falls back to a separate process.

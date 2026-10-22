@@ -10,6 +10,7 @@
   const TABLE_COLUMN_WIDTHS_STORAGE_KEY = 'buret.grid.tableColumnWidths';
   const CARD_RENDERER_STORAGE_KEY = 'buret.grid.cardRenderer';
   const HOVER_PREVIEW_SVG_LIMIT = 512_000;
+  const XYZRENDER_USE_3D_COORDS_STORAGE_KEY = 'buret.grid.xyzrenderUse3DCoords';
   const RDKIT_USE_INPUT_COORDS_STORAGE_KEY = 'buret.grid.rdkitUseInputCoords';
   // The toolbar H toggle. Values match the xyzrender display option: 'none'
   // folds hydrogens into heteroatom labels (OH, NH2), 'all' draws every H.
@@ -56,7 +57,10 @@
   const XYZRENDER_CARD_ROOT_MARGIN = '600px 0px';
   const XYZRENDER_CARD_BATCH_SIZE = 12;
   const XYZRENDER_CARD_BATCH_MIN_CONCURRENCY = 1;
-  const XYZRENDER_CARD_BATCH_TIMEOUT_MS = 60000;
+  // The native pool allows a cold worker 60 s to start and each card 20 s, and
+  // always answers per card. Wait past that bound so a slow first start
+  // still delivers its drawings instead of timing out the whole batch.
+  const XYZRENDER_CARD_BATCH_TIMEOUT_MS = 120000;
   const XYZRENDER_CARD_BATCH_DELAY_MS = 16;
   const XYZRENDER_CARD_PREFETCH_DELAY_MS = 200;
   const RDKIT_CARD_FRAME_BATCH = 6;
@@ -142,6 +146,7 @@
     tableFilterTimer: 0,
     cardRenderer: storedCardRenderer(),
     xyzrenderPreset: null,
+    xyzrenderUse3DCoords: storedBoolean(XYZRENDER_USE_3D_COORDS_STORAGE_KEY, true),
     rdkitUseInputCoords: storedBoolean(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, false),
     hydrogenDisplay: storedChoice(HYDROGEN_DISPLAY_STORAGE_KEY, HYDROGEN_DISPLAY_MODES, 'none'),
     cardMin: storedOptionalInteger(CARD_MIN_STORAGE_KEY, MIN_CARD_MIN, MAX_CARD_MIN),
@@ -2041,6 +2046,15 @@
       onCalculateSelectedDescriptors() { requestSelectedDescriptorCalculation(cfg); },
       onRendererSwitch(value) { requestRendererSwitch(value, cfg); },
       onRdkitUseInputCoordsChange(checked) {
+        if (state.cardRenderer === 'xyzrender') {
+          state.xyzrenderUse3DCoords = checked === true;
+          store(XYZRENDER_USE_3D_COORDS_STORAGE_KEY, String(state.xyzrenderUse3DCoords));
+          resetXyzrenderCardObserver();
+          resetCardRenderQueues();
+          render(cfg);
+          repostInspectorRow(cfg);
+          return;
+        }
         state.rdkitUseInputCoords = checked === true;
         store(RDKIT_USE_INPUT_COORDS_STORAGE_KEY, state.rdkitUseInputCoords ? 'true' : 'false');
         state.svgCache.clear();
@@ -2514,13 +2528,16 @@
     const control = document.getElementById('rdkit-use-input-coords-control');
     const toggle = document.getElementById('rdkit-use-input-coords');
     if (!control || !toggle) return;
-    const hasInputCoordinates = hasInputCoordinateRows();
-    control.hidden = state.cardRenderer !== 'rdkit' || !hasInputCoordinates;
-    toggle.disabled = !hasInputCoordinates;
-    toggle.title = hasInputCoordinates ? 'Use coordinates embedded in the file' : 'No file coordinates in this grid';
-    toggle.setAttribute('aria-pressed', hasInputCoordinates && state.rdkitUseInputCoords ? 'true' : 'false');
+    const xyzrender = state.cardRenderer === 'xyzrender';
+    const hasInputCoordinates = !xyzrender && hasInputCoordinateRows();
+    const use3D = xyzrender ? state.xyzrenderUse3DCoords : hasInputCoordinates && state.rdkitUseInputCoords;
+    control.hidden = !xyzrender && !hasInputCoordinates;
+    toggle.disabled = xyzrender ? !state.rdkit : !hasInputCoordinates;
+    toggle.title = xyzrender ? 'Switch between 2D and 3D coordinates' : hasInputCoordinates ? 'Use coordinates embedded in the file' : 'No file coordinates in this grid';
+    toggle.setAttribute('aria-label', xyzrender ? '2D/3D coordinates' : 'Use file coords');
+    toggle.setAttribute('aria-pressed', use3D ? 'true' : 'false');
     const label = toggle.querySelector('[data-coordinate-mode]');
-    if (label) label.textContent = hasInputCoordinates && state.rdkitUseInputCoords ? '3D' : '2D';
+    if (label) label.textContent = use3D ? '3D' : '2D';
   }
 
   function hasInputCoordinateRows() {
@@ -3223,6 +3240,23 @@
     const smiles = String(row?.smiles || '').trim();
     if (smiles) return `${smiles}\n`;
     return xyzrenderFragmentText(record);
+  }
+
+  // Generate a new flat layout only for the displayed card. File coordinates
+  // and exported records remain intact; returning to 3D reuses the original pose.
+  function xyzrenderCardInput(row, record) {
+    if (state.xyzrenderUse3DCoords && (!row.molblock || hasMolblockInput3DCoordinates(row.molblock))) {
+      return { text: xyzrenderCardInputText(row, record), extension: record.inputExtension };
+    }
+    const mol = state.rdkit?.get_mol(row.molblock || row.smiles || xyzrenderFragmentText(record));
+    if (!mol) throw new Error('Could not prepare molecule coordinates');
+    try {
+      if (state.xyzrenderUse3DCoords) return { text: mol.get_smiles() + '\n', extension: 'smi' };
+      mol.set_new_coords();
+      return { text: mol.get_molblock() + '\n$$$$\n', extension: 'sdf' };
+    } finally {
+      mol.delete();
+    }
   }
 
   function normalizeRenderer(renderer) {
@@ -8630,7 +8664,7 @@
   }
 
   function xyzrenderCardKey(row, record) {
-    return `${row.index}|${record.inputExtension}|${currentXyzrenderPreset(config())}|H:${state.hydrogenDisplay}|${hash(xyzrenderCardInputText(row, record))}|${state.smarts}`;
+    return `${row.index}|${record.inputExtension}|${currentXyzrenderPreset(config())}|H:${state.hydrogenDisplay}|${state.xyzrenderUse3DCoords ? '3D' : '2D'}|${hash(xyzrenderCardInputText(row, record))}|${state.smarts}`;
   }
 
   function scheduleXyzrenderCard(card, row, cfg) {
@@ -8794,12 +8828,13 @@
     const endpoint = String(cfg.xyzrenderEndpoint || '/__burette/xyzrender');
     const startedAt = nowMs();
     try {
+      const input = xyzrenderCardInput(row, record);
       const request = {
         path: record.path,
         preset: currentXyzrenderPreset(cfg),
         controls: xyzrenderCardControls(),
-        inputDataBase64: textToBase64(xyzrenderCardInputText(row, record)),
-        inputExtension: record.inputExtension
+        inputDataBase64: textToBase64(input.text),
+        inputExtension: input.extension
       };
       let payload;
       if (cfg.appViewer === true && cfg.gridDataMode === 'bridge') {
@@ -8848,16 +8883,26 @@
     const cfg = jobs[0].cfg;
     const startedAt = nowMs();
     try {
-      const payload = await hostRequest('renderXyzrenderCards', {
-        items: jobs.map(job => ({
-          id: job.key,
-          path: job.record.path,
-          preset: currentXyzrenderPreset(job.cfg),
-          controls: xyzrenderCardControls(),
-          inputDataBase64: textToBase64(xyzrenderCardInputText(job.row, job.record)),
-          inputExtension: job.record.inputExtension
-        }))
-      }, XYZRENDER_CARD_BATCH_TIMEOUT_MS);
+      const items = [];
+      jobs = jobs.filter(job => {
+        try {
+          const input = xyzrenderCardInput(job.row, job.record);
+          items.push({
+            id: job.key,
+            path: job.record.path,
+            preset: currentXyzrenderPreset(job.cfg),
+            controls: xyzrenderCardControls(),
+            inputDataBase64: textToBase64(input.text),
+            inputExtension: input.extension
+          });
+          return true;
+        } catch (error) {
+          markXyzrenderCardError(job, error?.message || String(error));
+          return false;
+        }
+      });
+      if (!items.length) return;
+      const payload = await hostRequest('renderXyzrenderCards', { items }, XYZRENDER_CARD_BATCH_TIMEOUT_MS);
       const results = Array.isArray(payload?.items) ? payload.items : [];
       const byId = new Map(results.map(item => [String(item?.id || ''), item]));
       let frameStartedAt = nowMs();
@@ -8936,7 +8981,7 @@
   function prepareXyzrenderCardSVG(svg) {
     let html = sanitizeSVG(String(svg || ''));
     html = stripSVGClipping(html);
-    // The card surface supplies the theme. Remove only the renderer's full-
+    // The card surface supplies the white paper. Remove only the renderer's full-
     // canvas white rectangle, not white atoms, gradients or molecular geometry.
     const doc = new DOMParser().parseFromString(html, 'image/svg+xml');
     if (!doc.querySelector('parsererror')) {

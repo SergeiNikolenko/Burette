@@ -3,6 +3,9 @@ import { GIFEncoder, quantize, applyPalette } from "gifenc";
 
 export type AnimationFrames = { width: number; height: number; frames: Uint8ClampedArray[] };
 
+// The alpha byte of an RGBA pixel read as one platform-endian 32-bit word.
+const ALPHA_MASK = new Uint8Array(new Uint32Array([0xff]).buffer)[0] === 0xff ? 0xff000000 : 0xff;
+
 // Materialize composited frames, respecting optimized GIF patches and disposal.
 export function decodeAnimation(bytes: ArrayBuffer): AnimationFrames {
   const parsed = parseGIF(bytes);
@@ -13,11 +16,18 @@ export function decodeAnimation(bytes: ArrayBuffer): AnimationFrames {
   const frames = decompressFrames(parsed, true).map(frame => {
     const before = frame.disposalType === 3 ? screen.slice() : null;
     const { left, top, width: w, height: h } = frame.dims;
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      if (left + x >= width || top + y >= height) continue;
-      const src = (y * w + x) * 4;
-      const dst = ((top + y) * width + left + x) * 4;
-      if (frame.patch[src + 3]) screen.set(frame.patch.subarray(src, src + 4), dst);
+    // Copy whole RGBA pixels; a subarray per pixel cost about a second for a
+    // default 120-frame preview. A zero alpha byte keeps the pixel beneath.
+    const pixels = new Uint32Array(screen.buffer);
+    const patch = new Uint32Array(frame.patch.slice().buffer, 0, w * h);
+    const columns = Math.min(w, width - left);
+    for (let y = 0; y < h && top + y < height; y++) {
+      const src = y * w;
+      const dst = (top + y) * width + left;
+      for (let x = 0; x < columns; x++) {
+        const value = patch[src + x];
+        if (value & ALPHA_MASK) pixels[dst + x] = value;
+      }
     }
     const result = screen.slice();
     if (before) screen = before;

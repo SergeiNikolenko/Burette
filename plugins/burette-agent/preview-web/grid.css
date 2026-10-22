@@ -2624,3 +2624,8 @@ body.buret-hide-properties .buret-card-body:has(.buret-grid-name-input) {
   display: block;
 }
 
+
+/* Molecular renders always sit on white paper, including the dark theme. */
+body[data-buret-grid-card-renderer="xyzrender"] {
+  --buret-picture-bg: #fff;
+}
