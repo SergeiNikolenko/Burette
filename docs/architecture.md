@@ -426,3 +426,21 @@ Scene drops retain all SDF models. Explicit comparison/docking commands remain
 available for pose paging and structure alignment.
 
 The grid inspector boots its 3D iframe from an external packaged script and inert JSON, preserving the desktop content security policy. Its first nonempty molecule initializes the viewer; later rows reuse it. Card viewport cover is recalculated when either the iframe, workbench or dock changes size.
+
+### Files in right and bottom panels
+
+The file menu offers both panel destinations. Each Files strip has its own
+picker and file names; opening another file selects it only in that panel.
+Its file menu and existing drag gesture can open it in the other panel or main
+area without removing the source. Images and ordinary CSV use DocumentSurface
+in place; molecular CSV, PDB and SDF keep format-based rendering. Path-backed
+media use `media:<path>` dock identities rather than molecular registry records.
+Async preparation captures its originating workspace before applying a result.
+
+Each dock retains at most four visited previews within a 256 MiB admission
+estimate using the existing scene-cost estimator, not a measurement of GPU
+memory. Hidden Mol* frames receive the visibility message and stop their render
+loop and trajectory playback. Recent views retain zoom, filters and cameras;
+evicted views recreate their runtime when selected again.
+Browser-picked binary documents retain their original bytes (at most 32 files,
+subject to the existing per-file byte limit).

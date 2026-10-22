@@ -1,3 +1,4 @@
+import { readBrowserPickedFile } from "../lib/web-demo-workspace";
 import { FileViewerErrorState, FileViewerLoadingState } from "./ui/file-viewer-state";
 import "katex/dist/katex.min.css";
 import { invoke } from "@tauri-apps/api/core";
@@ -101,6 +102,8 @@ function useDocumentSource(path: string): DocumentSourceState & { retry: () => v
     if (isTauriRuntime()) return null;
     // Web-demo paths exist only in the in-memory virtual store; the dev-server
     // bridge would try the real filesystem and 404.
+    const picked = readBrowserPickedFile(path);
+    if (picked) return { kind: "blob", blob: picked, fileName: basename(path), identityKey: path };
     const virtualText = readBrowserDevVirtualTextDocument(path);
     if (virtualText !== null) {
       return { kind: "text", text: virtualText, fileName: basename(path), identityKey: path };

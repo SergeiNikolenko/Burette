@@ -24,6 +24,17 @@ export function useDockLayout(activeTabId: string | null) {
   const setDockToolAction = useTabWorkspaceStore((state) => state.setDockTool);
   const addDockDropAction = useTabWorkspaceStore((state) => state.addDockDrop);
   const currentTabId = useCallback((area: "right" | "bottom") => area === "bottom" ? WINDOW_TOOLS_ID : useMoleculeStore.getState().activeTabId ?? activeTabId, [activeTabId]);
+  // Capture the originating panel before file preparation starts; the general
+  // shell actions still resolve the current tab after synchronous navigation.
+  // The bottom dock belongs to the window-wide tools workspace.
+  const captureDockTarget = useCallback(() => {
+    const targetTabId = (area: "right" | "bottom") => area === "bottom" ? WINDOW_TOOLS_ID : activeTabId;
+    return {
+      setDockDocument: (area: Parameters<typeof setDockDocumentAction>[1], id: string | null) => { const tabId = targetTabId(area); if (tabId) setDockDocumentAction(tabId, area, id); },
+      setDockTool: (area: Parameters<typeof setDockToolAction>[1], tool: Parameters<typeof setDockToolAction>[2]) => { const tabId = targetTabId(area); if (tabId) setDockToolAction(tabId, area, tool); },
+      addDockDrop: (input: Parameters<typeof addDockDropAction>[1]) => { const tabId = targetTabId(input.area); if (tabId) addDockDropAction(tabId, input); },
+    };
+  }, [activeTabId, setDockDocumentAction, setDockToolAction, addDockDropAction]);
   const toggleDock = useCallback((area: Parameters<typeof toggleDockAction>[1]) => {
     const tabId = currentTabId(area);
     if (tabId) toggleDockAction(tabId, area);
@@ -62,6 +73,7 @@ export function useDockLayout(activeTabId: string | null) {
   }, [addDockDropAction, currentTabId]);
 
   return {
+    captureDockTarget,
     rightDockOpen: current.right.open,
     rightDockWidth: current.right.size,
     rightDockTabs: current.right.tabs,

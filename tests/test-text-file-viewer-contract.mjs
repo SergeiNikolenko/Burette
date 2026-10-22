@@ -231,17 +231,13 @@ assert.match(appFileOpen, /const result = await openDocuments\(structurePaths, u
 assert.match(appFileOpen, /const result = await openDocuments\(structureAndTextPaths, undefined, \{ rendererMode: "auto" \}, \{ \.\.\.options, reuseExisting: true, deferErrorStatus: true \}\);\s*if \(!mayApply\(\)\) return;/);
 assert.match(appFileOpen, /openedStructureAndTextPaths\.add\(document\.path\);/);
 assert.match(appFileOpen, /structureAndTextPaths\.filter\(\(path\) => !openedStructureAndTextPaths\.has\(path\)\)/);
-assert.match(appDockPayloadOpen, /let dockOpenPaths = unopenedPaths;/);
-assert.match(appDockPayloadOpen, /const rightDockContentSpectrumPaths = await detectContentSpectrumPaths\(unopenedPaths\);/);
-assert.match(appDockPayloadOpen, /const rightDockTextPaths = unopenedPaths\.filter\(\(path\) => \{/);
-assert.match(appDockPayloadOpen, /isPreferredTextPath\(path, extension\) \|\| \(!structureExtensions\.has\(extension\) && !structureAndTextExtensions\.has\(extension\)\)/);
+// Both panel destinations share the same routing/fallback pipeline. Its
+// behavior (including existing-document reuse) is exercised in test-dock-routing.
+assert.match(appDockPayloadOpen, /resolveDockDropPaths\(cleanPaths, documents, textDocuments\)/);
 assert.match(appDockPayloadOpen, /else if \(isPreferredTextPath\(path, extension\)\) \{\s*textPaths\.push\(path\);/);
-assert.match(appDockPayloadOpen, /dockOpenPaths = unopenedPaths\.filter\(\(path\) => !rightDockTextPaths\.includes\(path\)\);/);
-assert.match(appDockPayloadOpen, /open_text_files", \{[\s\S]*paths: rightDockTextPaths,[\s\S]*openStateRevision: currentDocumentRegistryRevision\(\),[\s\S]*\}/);
-assert.match(appDockPayloadOpen, /for \(const path of dockOpenPaths\) \{/);
-const rightDockTextOpenBlock = appDockPayloadOpen.match(/if \(input\.area === "right" && unopenedPaths\.length > 0\) \{[\s\S]*?return;\s*\}/)?.[0] ?? "";
-assert.match(rightDockTextOpenBlock, /pathExtension|structureExtensions|structureAndTextExtensions/);
-assert.doesNotMatch(rightDockTextOpenBlock, /preferredTextExtensions/);
+assert.match(appDockPayloadOpen, /const textOpenPaths = \[\.\.\.textPaths, \.\.\.structureAndTextPaths\];/);
+assert.match(appDockPayloadOpen, /open_text_files", \{[\s\S]*paths: textOpenPaths,[\s\S]*openStateRevision: currentDocumentRegistryRevision\(\),/);
+assert.match(appDockPayloadOpen, /: await openBrowserDevTextFiles\(textOpenPaths\)/);
 assert.match(appOpenDropController, /useOpenEvents\(openPaths, pushErrorStatus\)/);
 assert.match(appOpenDropController, /useOpenDrop\(openPaths, pushStatus/);
 assert.match(app, /showTextFileMetadata/);

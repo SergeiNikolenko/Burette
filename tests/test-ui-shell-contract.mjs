@@ -4582,7 +4582,7 @@ assert.match(app, /const openDockPayload = useAppDockPayloadOpen\(\{[\s\S]*?docu
 assert.match(appDockPayloadHook, /const ketcherItem = input\.payload\.items\?\.find\(\(item\) => item\.kind === "ketcher"\) \?\? null/);
 assert.match(appDockPayloadHook, /setDockTool\(input\.area, "ketcher"\)/);
 assert.match(appDockPayloadHook, /function browserDevDockDocumentIds\(area: DockArea, paths: string\[\]\)/);
-assert.match(appDockPayloadHook, /const rightDockTextPaths = unopenedPaths\.filter\(\(path\) => \{/);
+// Both docks now share the same media, table, structure and text routing.
 assert.match(appDockPayloadHook, /invoke<OpenTextFilesResult>\("open_text_files"/);
 assert.match(appDockPayloadHook, /openBrowserDevDocuments\(structurePaths, dockPreferences, structurePaths\.length === 1 \? rendererViewReloadOptions\(structurePaths\[0\]\) : undefined, browserDevDockDocumentIds\(input\.area, structurePaths\)\)/);
 assert.match(appDockPayloadHook, /addDockDrop\(input\)/);
@@ -7157,7 +7157,7 @@ assert.match(viewerFrame, /name: readOnly \? "burette-read-only" : "burette-edit
 assert.match(viewerFrame, /body: \{ type: "gridReadOnlyChanged", readOnly: true \}/);
 assert.match(viewerFrame, /isGridDocumentCloseTransitionActive\(document\.id\)/);
 assert.match(viewerFrame, /body: \{ type: "gridCloseTransitionChanged", active: true \}/);
-assert.match(dockPanel, /<ViewerFrame document=\{effectiveDockDocument\} readOnly \/>/);
+assert.match(dockPanel, /<DockFileViews /);
 assert.match(appGridControlMessagesHook, /isReadOnlyViewerMessageSource\(eventSource\)/);
 assert.match(appNativeMenuHook, /case "file\.open-recent"/);
 assert.match(appNativeMenuHook, /\(\{ command, recentPath \}: NativeMenuCommand\)/);
