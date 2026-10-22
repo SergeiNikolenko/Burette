@@ -20,10 +20,23 @@ export function useAppMolstarActionSenders({
   documents,
   pushStatus,
 }: UseAppMolstarActionSendersOptions) {
-  const selectTextStructure = useCallback((textDocument: TextFileDocument, selection: TextStructureSelection) => {
+  const selectTextStructure = useCallback((textDocument: TextFileDocument, selection: TextStructureSelection | null) => {
     // A rendered document can also have an interactive copy in a dock. Resolve
     // the actual interactive frame, not the main document's chosen renderer.
     const candidates = [activeDocument, ...documents].filter((document) => document?.path === textDocument.path);
+    // A collection drawn as cards marks the record's atoms on its card.
+    const grid = candidates.map(document => document && activeViewerIframeForDocument(document.id, "grid2d")).find(Boolean);
+    const atomIndex = selection?.granularity === "atom" ? selection.selector.atom_index : undefined;
+    grid?.contentWindow?.postMessage({
+      source: "burette-grid-host",
+      body: {
+        type: "gridSourceAtomSelection",
+        record: selection?.record ?? 0,
+        atoms: atomIndex === undefined ? [] : [atomIndex].flat(),
+      },
+    }, "*");
+    // Mol* keeps its selection on a collapsed caret and shows the first record's atoms.
+    if (!selection || (selection.record ?? 0) > 0) return;
     const iframe = candidates.map(document => document && activeViewerIframeForDocument(document.id, "molstar")).find(Boolean);
     if (!iframe?.contentWindow) return;
     iframe.contentWindow.postMessage({

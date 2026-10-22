@@ -55,6 +55,7 @@ const makeCache = (count = 2000, bytes = 128, entry = 64) => new Function(
     sanitizeSVG: value => value, stripSVGClipping: value => value, padSVGViewBox: value => value,
     isDegenerateMoleculeSVG: () => false, moleculeErrorHTML: () => { throw new Error('Unexpected draw error'); },
     omitInvalidCard: () => { throw new Error('Unexpected invalid molecule'); }, escapeHTML: value => value,
+    sourceAtomHighlightFor: () => null,
   };
   const draw = new Function(...Object.keys(dependencies), `
     ${body('drawRdkitReaction')}

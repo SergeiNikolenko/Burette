@@ -144,10 +144,11 @@ for (const failure of ['throw', 'empty']) {
     return {};
   } } } } };
   const buildContext = {
+    molstarShowHydrogens: true,
     collectionRepresentations: new WeakMap(), updateCollectionRepresentations: async () => false,
     clearCollectionRepresentations: async () => {}, tryCreateMolstarComponent: async () => ({}),
   };
-  const apply = runInNewContext(extract('addCollectionRepresentation') + extract('applyMolstarRepresentationsToStructures') + '\napplyMolstarRepresentationsToStructures', buildContext);
+  const apply = runInNewContext(extract('molstarHydrogenRepresentation') + extract('addCollectionRepresentation') + extract('applyMolstarRepresentationsToStructures') + '\napplyMolstarRepresentationsToStructures', buildContext);
   await assert.rejects(apply({ plugin }, [{}, {}], {}), /builder failed|could not build/);
 }
 console.log('Scene switching, hidden presets, aligned reloads and partial builder failures passed');

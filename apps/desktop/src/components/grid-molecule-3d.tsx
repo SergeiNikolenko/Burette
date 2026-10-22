@@ -6,18 +6,19 @@ import { logFrontendError } from "../lib/frontend-error-log";
 const assets = import.meta.glob<string>("../../../../PreviewExtension/Web/{molstar.js,molstar.css,svg-sanitizer.js,viewer.js,viewer-shell.js,viewer-runtime.css,renderer-view-state.js,molstar-preset-preview-controller.js,color-picker.js,sequence-panel.js,native-viewer-menus.js,scene-file-actions.js}", { eager: true, query: "?url", import: "default" });
 const asset = (name: string) => new URL(assets[`../../../../PreviewExtension/Web/${name}`], window.location.href).href;
 
-export default function GridMolecule3D({ molblock, theme, height, onOpen }: { molblock: string; theme: string; height: number; onOpen: () => void }) {
+export default function GridMolecule3D({ molblock, hydrogenDisplay, theme, height, onOpen }: { molblock: string; hydrogenDisplay: "none" | "all"; theme: string; height: number; onOpen: () => void }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const initial = useRef("");
   if (!initial.current && molblock && molblock.length <= 350_000) initial.current = molblock;
   const initialMolblock = initial.current;
+  const initialHydrogens = useRef(hydrogenDisplay).current;
   const open = useRef(onOpen);
   open.current = onOpen;
   const { html, channel } = useMemo(() => {
     if (!initialMolblock) return { html: "<!doctype html><html></html>", channel: "" };
     const channel = crypto.randomUUID();
     const config = { format: "mol", molstarFormat: "mol", renderer: "molstar", label: "Molecule", appViewer: true,
-      inspectorPreview: true, inspectorChannel: channel, autoFocusStructure: true, theme, canvasBackground: theme === "dark" ? "#111111" : "#ffffff",
+      hydrogenDisplay: initialHydrogens, inspectorPreview: true, inspectorChannel: channel, autoFocusStructure: true, theme, canvasBackground: theme === "dark" ? "#111111" : "#ffffff",
       molstarPreset: "automatic", molstarStyle: "illustrative", xyzrenderAvailable: false, sdfGrid: false,
       defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" } };
     const data = btoa(Array.from(new TextEncoder().encode(initialMolblock), byte => String.fromCharCode(byte)).join(""));
@@ -37,9 +38,9 @@ export default function GridMolecule3D({ molblock, theme, height, onOpen }: { mo
       <script src="${new URL(bootstrapUrl, window.location.href).href}"></script>
       ${scripts.map(name => `<script src="${asset(name)}"></script>`).join("")}
       </body></html>` };
-  }, [theme, initialMolblock]);
+  }, [theme, initialMolblock, initialHydrogens]);
   useEffect(() => {
-    const send = () => frame.current?.contentWindow?.postMessage({ source: "burette-inspector-host", channel, molblock }, "*");
+    const send = () => frame.current?.contentWindow?.postMessage({ source: "burette-inspector-host", channel, molblock, hydrogenDisplay }, "*");
     const ready = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow || event.data?.channel !== channel) return;
       if (event.data?.source === "burette-inspector-ready") send();
@@ -49,6 +50,6 @@ export default function GridMolecule3D({ molblock, theme, height, onOpen }: { mo
     window.addEventListener("message", ready);
     const timer = window.setTimeout(send, 60);
     return () => { window.clearTimeout(timer); window.removeEventListener("message", ready); };
-  }, [molblock, html, channel]);
+  }, [molblock, hydrogenDisplay, html, channel]);
   return <iframe ref={frame} className="grid-molecule-3d" title="Molecule 3D preview" style={{ height }} srcDoc={html} sandbox="allow-scripts allow-same-origin allow-downloads" />;
 }

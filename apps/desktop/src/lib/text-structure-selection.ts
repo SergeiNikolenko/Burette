@@ -7,6 +7,8 @@ export type TextStructureSelection = {
   selector: TextStructureSelector;
   granularity: "atom" | "residue";
   lineCount: number;
+  /** SDF/MOL record (0-based) holding the selected atoms; a collection grid draws it as one card. */
+  record?: number;
 };
 
 type TextLine = {
@@ -16,7 +18,8 @@ type TextLine = {
   end: number;
 };
 
-type TextIndex = { content: string; lines: string[]; starts: number[]; atomRange: ReturnType<typeof atomLineRangeFor> };
+type AtomLineRange = { start: number; end: number; record?: number };
+type TextIndex = { content: string; lines: string[]; starts: number[]; atomRanges: AtomLineRange[] };
 const textIndexes = new WeakMap<TextFileDocument, TextIndex>();
 
 function textIndex(document: TextFileDocument): TextIndex {
@@ -29,7 +32,7 @@ function textIndex(document: TextFileDocument): TextIndex {
     offset += line.length + 1;
     return start;
   });
-  const index = { content: document.content, lines, starts, atomRange: atomLineRangeFor(lines, document.extension.toLowerCase().replace(/^\./u, "")) };
+  const index = { content: document.content, lines, starts, atomRanges: atomLineRangesFor(lines, document.extension.toLowerCase().replace(/^\./u, "")) };
   textIndexes.set(document, index);
   return index;
 }
@@ -56,7 +59,7 @@ export function textStructureSelectionFromRange(
   if (selectedLines.length === 0) return null;
 
   return pdbSelection(selectedLines, options) ??
-    indexedAtomSelection(index.atomRange, selectedLines) ??
+    indexedAtomSelection(index.atomRanges, selectedLines) ??
     null;
 }
 
@@ -165,9 +168,15 @@ function parsePdbAtomRecord(line: string): PdbAtomRecord | null {
 }
 
 function indexedAtomSelection(
-  atomLineRange: TextIndex["atomRange"],
+  atomRanges: AtomLineRange[],
   selectedLines: TextLine[],
 ): TextStructureSelection | null {
+  // Atom indices are per record, so a selection spanning records keeps the first one.
+  let atomLineRange: AtomLineRange | undefined;
+  for (const line of selectedLines) {
+    atomLineRange = atomRangeForLine(atomRanges, line.number);
+    if (atomLineRange) break;
+  }
   if (!atomLineRange) return null;
   const atomIndices = uniqueNumbers(selectedLines.flatMap((line) => {
     if (line.number < atomLineRange.start || line.number >= atomLineRange.end) return [];
@@ -179,7 +188,40 @@ function indexedAtomSelection(
     selector: atomIndices.length === 1 ? { atom_index: atomIndices[0] } : { atom_index: atomIndices },
     granularity: "atom",
     lineCount: atomIndices.length,
+    ...(atomLineRange.record === undefined ? {} : { record: atomLineRange.record }),
   };
+}
+
+function atomRangeForLine(ranges: AtomLineRange[], lineNumber: number) {
+  let low = 0;
+  let high = ranges.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (ranges[middle].start <= lineNumber) low = middle + 1;
+    else high = middle;
+  }
+  const range = ranges[low - 1];
+  return range && lineNumber < range.end ? range : undefined;
+}
+
+function atomLineRangesFor(lines: string[], extension: string): AtomLineRange[] {
+  if (extension === "mol" || extension === "sdf" || extension === "sd") return sdfAtomLineRanges(lines);
+  const range = atomLineRangeFor(lines, extension);
+  return range ? [range] : [];
+}
+
+// Each record has its own V2000 counts line; records end at a "$$$$" line.
+function sdfAtomLineRanges(lines: string[]) {
+  const ranges: AtomLineRange[] = [];
+  let recordStart = 0;
+  for (let record = 0; recordStart + 3 < lines.length; record += 1) {
+    const atomCount = finiteInteger(lines[recordStart + 3].slice(0, 3).trim()) ?? 0;
+    if (atomCount > 0) ranges.push({ start: recordStart + 4, end: Math.min(lines.length, recordStart + 4 + atomCount), record });
+    let next = recordStart + 4 + Math.max(0, atomCount);
+    while (next < lines.length && lines[next].trim() !== "$$$$") next += 1;
+    recordStart = next + 1;
+  }
+  return ranges;
 }
 
 function atomLineRangeFor(lines: string[], extension: string) {
@@ -192,11 +234,6 @@ function atomLineRangeFor(lines: string[], extension: string) {
     const atomCount = finiteInteger(lines[1]?.trim() ?? "");
     if (!atomCount || atomCount <= 0) return null;
     return { start: 2, end: Math.min(lines.length, atomCount + 2) };
-  }
-  if (extension === "mol" || extension === "sdf" || extension === "sd") {
-    const atomCount = finiteInteger(lines[3]?.slice(0, 3).trim() ?? "");
-    if (!atomCount || atomCount <= 0) return null;
-    return { start: 4, end: Math.min(lines.length, atomCount + 4) };
   }
   if (extension === "mol2") {
     return mol2AtomLineRange(lines);

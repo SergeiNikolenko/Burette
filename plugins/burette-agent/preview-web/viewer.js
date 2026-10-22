@@ -223,6 +223,8 @@
   let molstarPreviewRdkit = null;
   let molstarPreviewRdkitPromise = null;
   const molstarPreviewSvgCache = new Map();
+  let molstarShowHydrogens = true;
+  let molstarHydrogensPending = false;
   const molstarEditUndoStack = [];
   const molstarEditRedoStack = [];
   let activeDockingPrepared = null;
@@ -2672,6 +2674,7 @@
     const molstarPresetSlot = toolbar.querySelector('[data-buret-molstar-preset-slot]');
     const molstarPresetTrigger = toolbar.querySelector('[data-buret-molstar-preset-trigger]');
     molstarPresetSlot?.classList.toggle('visible', renderer === 'molstar');
+    toolbar.querySelector('[data-buret-action="hydrogens"]')?.classList.toggle('hidden', renderer !== 'molstar');
     if (renderer !== 'molstar') hideMolstarPresetMenu();
     if (molstarPresetTrigger) {
       molstarPresetTrigger.disabled = renderer !== 'molstar';
@@ -4140,6 +4143,7 @@
     const lassoButton = toolbar.querySelector('[data-buret-action="molstar-lasso"]');
     const external = normalized === 'xyzrender-external';
     molstarPresetSlot?.classList.toggle('visible', !external);
+    toolbar.querySelector('[data-buret-action="hydrogens"]')?.classList.toggle('hidden', normalized !== 'molstar');
     if (external) hideMolstarPresetMenu();
     if (molstarPresetTrigger) molstarPresetTrigger.disabled = external;
     const lassoAvailable = normalized === 'molstar' || external;
@@ -6492,6 +6496,45 @@
     else setMolstarLassoEnabled(!molstarLassoEnabled);
   }
 
+  // Display state belongs to the viewer document, including its pose changes.
+  // The structure and export entries are never modified by this control.
+  function updateMolstarHydrogenButtons() {
+    for (const button of document.querySelectorAll('[data-buret-hydrogens]')) {
+      button.setAttribute('aria-pressed', String(molstarShowHydrogens));
+      button.classList.toggle('active', molstarShowHydrogens);
+      button.disabled = molstarHydrogensPending;
+      const label = molstarShowHydrogens ? 'Hide hydrogens' : 'Show hydrogens';
+      button.setAttribute('aria-label', label);
+      button.title = label;
+      button.dataset.buretHint = label;
+      setTooltipLabel(button, label);
+    }
+  }
+
+  async function toggleMolstarHydrogens() {
+    const manager = activeMolstarViewer()?.plugin?.managers.structure.component;
+    if (!manager || molstarHydrogensPending) return;
+    const restoreFocus = document.activeElement?.matches('[data-buret-molecule-preview-action="hydrogens"]');
+    molstarHydrogensPending = true;
+    updateMolstarHydrogenButtons();
+    try {
+      await manager.setOptions({ ...manager.state.options, hydrogens: molstarShowHydrogens ? 'hide-all' : 'all' });
+      molstarShowHydrogens = !molstarShowHydrogens;
+      if (molstarMoleculePreviewTarget) showMolstarMoleculePreview(molstarMoleculePreviewTarget);
+    } catch (error) {
+      setStatus('Could not change hydrogen visibility: ' + (error?.message || error), 'error');
+    } finally {
+      molstarHydrogensPending = false;
+      updateMolstarHydrogenButtons();
+      if (restoreFocus) molstarMoleculePreview?.querySelector('[data-buret-hydrogens]')?.focus();
+    }
+  }
+
+  function molstarHydrogenRepresentation(representation) {
+    return { ...representation, typeParams: { ...representation.typeParams,
+      ignoreHydrogens: !molstarShowHydrogens, ignoreHydrogensVariant: 'all' } };
+  }
+
   function installMolstarToolbarActionDelegates() {
     if (window.__buretteMolstarToolbarActionDelegatesInstalled) return;
     window.__buretteMolstarToolbarActionDelegatesInstalled = true;
@@ -6510,6 +6553,7 @@
     document.addEventListener('click', event => {
       const target = event.target instanceof Element ? event.target : null;
       if (!target) return;
+      if (target.closest('[data-buret-action="hydrogens"]')) void toggleMolstarHydrogens();
       if (target.closest('[data-buret-action="molstar-lasso"]') && Date.now() < molstarLassoSuppressClickUntil) {
         event.preventDefault();
         event.stopPropagation();
@@ -17102,7 +17146,7 @@ SOFTWARE.
       const update = state.build();
       const batch = entries.slice(offset, offset + batchSize);
       for (const entry of batch) {
-        const representation = representations[entry.role];
+        const representation = molstarHydrogenRepresentation(representations[entry.role]);
         const provider = registry.get(representation.type);
         const defaults = entry.type === representation.type ? entry.defaults : provider.defaultValues;
         const color = themes.colorThemeRegistry.get(representation.color);
@@ -17133,7 +17177,7 @@ SOFTWARE.
 
   async function addCollectionRepresentation(plugin, structure, component, representation, role) {
     if (!component) return false;
-    const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation);
+    const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarHydrogenRepresentation(representation));
     if (!result) throw new Error('Mol* could not build this representation.');
     if (result.ref && structure.cell) {
       const params = plugin.state.data.cells.get(result.ref)?.transform?.params?.type?.params || {};
@@ -17230,7 +17274,7 @@ SOFTWARE.
   async function addMolstarRepresentation(plugin, component, representation) {
     if (!component) return false;
     try {
-      await plugin.builders.structure.representation.addRepresentation(component.cell || component, representation);
+      await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarHydrogenRepresentation(representation));
       return true;
     } catch (error) {
       debug('Mol* representation failed: ' + (error && error.message || String(error)));
@@ -26805,7 +26849,7 @@ SOFTWARE.
   }
 
   function molstarPreviewKey(entry) {
-    return `${normalizeFormat(entry?.format)}:${String(entry?.data || '')}`;
+    return `${molstarShowHydrogens ? 'all-H' : 'no-H'}:${normalizeFormat(entry?.format)}:${String(entry?.data || '')}`;
   }
 
   function molstarMoleculePreviewResizeHandlesHTML() {
@@ -26924,6 +26968,7 @@ SOFTWARE.
       <div class="buret-molecule-card-toolbar" role="toolbar" aria-label="Molecule preview actions">
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.ketcher)}<span>Edit</span></button>
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="copy-smiles" aria-label="Copy SMILES" title="Copy SMILES">${molstarMoleculePreviewIconHTML(MOLECULE_PREVIEW_ICON.copy)}<span>SMILES</span></button>
+        <button type="button" class="buret-molecule-card-button" data-buret-hydrogens data-buret-molecule-preview-action="hydrogens" aria-label="${molstarShowHydrogens ? 'Hide' : 'Show'} hydrogens" aria-pressed="${molstarShowHydrogens}" title="${molstarShowHydrogens ? 'Hide' : 'Show'} hydrogens">H</button>
         <button type="button" class="buret-molecule-card-button" data-buret-molecule-preview-action="lasso" aria-label="Lasso atoms in 2D" aria-pressed="false" title="Select atoms by drawing a lasso · Esc to exit">${molstarMoleculePreviewIconHTML(['M7 17c-3-1-5-3-5-6 0-5 5-8 11-8s9 3 9 7-5 8-11 8', 'M7 15c-3 0-4 2-3 4s4 2 5 0-1-4-2-4', 'M7 21c2 2 5 2 7 0'])}<span>Lasso</span></button>
       </div>
       <div class="buret-molstar-molecule-preview-image" data-buret-molecule-preview-drag>${image}</div>
@@ -27099,6 +27144,7 @@ SOFTWARE.
     else if (action === 'minimize') minimizeMolstarMoleculePreview();
     else if (action === 'ketcher') openMolstarMoleculePreviewInKetcher(molstarMoleculePreviewTarget);
     else if (action === 'copy-smiles') void copyMolstarMoleculePreviewSmiles(molstarMoleculePreviewTarget);
+    else if (action === 'hydrogens') void toggleMolstarHydrogens();
     else if (action === 'lasso') molstarMoleculePreview?.querySelector('.buret-molstar-molecule-preview-image')?.dispatchEvent(new Event('burette-toggle-lasso'));
     else if (action === 'prev') stepMolstarMoleculePreview(-1);
     else if (action === 'next') stepMolstarMoleculePreview(1);
@@ -27434,12 +27480,15 @@ SOFTWARE.
     return '#8f9499';
   }
 
-  function molstarMoleculePreviewFallbackSVG(entry) {
+  function molstarMoleculePreviewFallbackSVG(entry, showHydrogens = molstarShowHydrogens) {
     const parsed = molstarPreviewParseMolblock2D(entry?.data);
     if (!parsed?.atoms?.length) return '';
     const size = MOLSTAR_PREVIEW_RDKIT_SVG_SIZE;
     const pad = 18;
     let atoms = parsed.atoms;
+    const visible = atom => showHydrogens || !['H', 'D', 'T'].includes(atom.element.toUpperCase());
+    const visibleAtoms = atoms.filter(visible);
+    if (!visibleAtoms.length) return '';
     let minX = Math.min(...atoms.map(atom => atom.x));
     let maxX = Math.max(...atoms.map(atom => atom.x));
     let minY = Math.min(...atoms.map(atom => atom.y));
@@ -27463,12 +27512,12 @@ SOFTWARE.
       x: dx + (atom.x - minX) * scale,
       y: size - (dy + (atom.y - minY) * scale)
     });
-    const bondLines = parsed.bonds.map(bond => {
+    const bondLines = parsed.bonds.filter(bond => visible(atoms[bond.a]) && visible(atoms[bond.b])).map(bond => {
       const a = point(atoms[bond.a]);
       const b = point(atoms[bond.b]);
       return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="var(--depiction-carbon)" stroke-width="${Math.max(2, bond.order + 1)}" stroke-linecap="round" />`;
     }).join('');
-    const atomNodes = atoms.map(atom => {
+    const atomNodes = atoms.filter(visible).map(atom => {
       const p = point(atom);
       const color = molstarPreviewAtomColor(atom.element);
       const label = escapeHTML(atom.element);
@@ -27483,6 +27532,7 @@ SOFTWARE.
   }
 
   async function molstarMoleculePreviewRDKitSVG(entry) {
+    const showHydrogens = molstarShowHydrogens;
     if (normalizeFormat(entry?.format) !== 'sdf') return '';
     const key = molstarPreviewKey(entry);
     if (molstarPreviewSvgCache.has(key)) return molstarPreviewSvgCache.get(key);
@@ -27493,6 +27543,9 @@ SOFTWARE.
         const molblock = splitSdfRecords(String(entry.data || ''))[0] || String(entry.data || '');
         mol = rdkit.get_mol(molblock);
         if (!mol || (typeof mol.is_valid === 'function' && !mol.is_valid())) throw new Error('invalid molecule');
+        // Work on the disposable depiction molecule only. Read coordinates after
+        // H removal so lasso atom indices still map to the original 3D positions.
+        if (!showHydrogens) mol.remove_hs_in_place();
         const original = JSON.parse(mol.get_json()).molecules?.[0];
         const sourcePositions = original?.conformers?.[0]?.coords || [];
         mol.set_new_coords(true);
@@ -27515,7 +27568,7 @@ SOFTWARE.
       }
     } catch (error) {
       debug(`RDKit molecule preview failed; using SVG fallback: ${error?.message || error}`);
-      const fallback = molstarMoleculePreviewFallbackSVG(entry);
+      const fallback = molstarMoleculePreviewFallbackSVG(entry, showHydrogens);
       if (!fallback) throw error;
       molstarPreviewCacheSVG(key, fallback);
       return fallback;
@@ -27586,6 +27639,7 @@ SOFTWARE.
       popover.dataset.buretPreviewKey = key;
       if (created) applyMolstarMoleculePreviewGeometry(popover);
       rememberMolstarMoleculePreviewGeometry(popover);
+      updateMolstarHydrogenButtons();
     }
     void molstarMoleculePreviewRDKitSVG(entry)
       .then(svg => {
@@ -29374,6 +29428,11 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       debug('BuretteAgent attach failed: ' + (error && error.message || String(error)));
     }
     activeViewer = viewer;
+    await viewer.plugin.managers.structure.component.setOptions({
+      ...viewer.plugin.managers.structure.component.state.options,
+      hydrogens: molstarShowHydrogens ? 'all' : 'hide-all'
+    });
+    updateMolstarHydrogenButtons();
     window.BuretteHandleResize = () => scheduleViewerResize(viewer);
     molstarContainerResizeCleanup = installMolstarContainerResizeObserver(viewer);
     applyViewerUIScale(viewer);
@@ -29537,6 +29596,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       return;
     }
 
+    if (config.inspectorPreview === true) molstarShowHydrogens = config.hydrogenDisplay === 'all';
     await startMolstar(config, cb);
     if (config.inspectorPreview === true) {
       activeViewer.plugin.canvas3d?.setProps({ cameraResetDurationMs: 0, camera: { helper: { axes: { name: 'off', params: {} } } } });
@@ -29567,7 +29627,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
           || event.data?.source !== 'burette-inspector-host') return;
         const data = event.data.molblock;
         if (typeof data !== 'string' || !data || data.length > 350000) return;
-        pending = data;
+        pending = { data, showHydrogens: event.data.hydrogenDisplay === 'all' };
         if (running) return;
         running = true;
         const previousFrame = captureMolstarTransitionFrame();
@@ -29578,11 +29638,12 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
           while (pending !== null) {
             const next = pending;
             pending = null;
-            if (next === current) continue;
+            if (next.showHydrogens !== molstarShowHydrogens) await toggleMolstarHydrogens();
+            if (next.data === current) continue;
             await activeViewer.plugin.clear();
-            await loadPreparedStructure(activeViewer, { data: next, format: 'mol', label: 'Molecule' });
+            await loadPreparedStructure(activeViewer, { data: next.data, format: 'mol', label: 'Molecule' });
             await applyConfiguredMolstarPreset(activeViewer, activeConfig);
-            current = next;
+            current = next.data;
             await settlePreview();
           }
         } catch (error) { console.error('Inspector preview:', error); }

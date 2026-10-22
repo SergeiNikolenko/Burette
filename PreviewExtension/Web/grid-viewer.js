@@ -118,6 +118,7 @@
     smarts: '',
     smartsError: '',
     smartsMatches: new Map(),
+    sourceAtomHighlight: null,
     sort: 'index',
     descriptorFilters: [],
     descriptorSort: null,
@@ -378,7 +379,10 @@
 
   function postGridRowHover(index, cfg) {
     const row = Number.isSafeInteger(index) && index >= 0 ? gridRowByIndex(index) : null;
-    const match = row ? state.smartsMatches.get(Number(row.index)) : null;
+    const smartsMatch = row ? state.smartsMatches.get(Number(row.index)) : null;
+    // Drawn-atom indices: the inspector applies the same H display before using them.
+    const sourceMatch = row && state.sourceAtomHighlight?.index === index ? state.sourceAtomHighlight.drawn : null;
+    const match = sourceMatch || smartsMatch;
     state.hoveredGridRowIndex = row ? index : null;
     if (row) state.lastGridRowIndex = index;
     let previewSvg = '';
@@ -407,6 +411,8 @@
             smiles: String(row.smiles || ''),
             molblock: String(row.molblock || ''),
             cardRenderer: state.cardRenderer,
+            hydrogenDisplay: state.hydrogenDisplay,
+            highlightSmarts: smartsMatch && !sourceMatch ? state.smarts.slice(0, 4096) : '',
             previewSvg,
             useInputCoords: state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock),
             highlightAtoms: Array.isArray(match?.atoms) ? match.atoms.slice(0, 256) : [],
@@ -770,6 +776,10 @@
         if (Number.isSafeInteger(focusIndex) && indexes.includes(focusIndex)) {
           void Promise.resolve(refreshed).then(() => revealChemicalSpaceRow(focusIndex, cfg, token));
         }
+        return;
+      }
+      if (body.type === 'gridSourceAtomSelection') {
+        applySourceAtomSelection(body, config());
         return;
       }
       if (body.type === 'chemicalSpaceOpenMolecule') {
@@ -8232,8 +8242,58 @@
 
   function rdkitCardKey(row) {
     const match = state.smartsMatches.get(Number(row.index));
+    const source = sourceAtomHighlightFor(row);
     const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
-    return `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|H:${state.hydrogenDisplay}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}`;
+    return `${row.index}|${row.smiles || ''}|${hash(row.molblock || '')}|${state.smarts}|${useInputCoords ? 'file-coords' : 'new-coords'}|H:${state.hydrogenDisplay}|${match ? `${match.atoms.join(',')}:${match.bonds.join(',')}` : ''}${source ? `|text:${source.atoms.join(',')}` : ''}`;
+  }
+
+  function sourceAtomHighlightFor(row) {
+    const source = state.sourceAtomHighlight;
+    return source && source.index === Number(row?.index) ? source : null;
+  }
+
+  // Atoms selected in the file's text mark their record's card. The card is
+  // selected and revealed, and the inspector follows it; an empty list clears.
+  function applySourceAtomSelection(body, cfg) {
+    const index = Number(body.record);
+    const atoms = Array.isArray(body.atoms)
+      ? [...new Set(body.atoms.slice(0, 256).map(Number).filter(atom => Number.isSafeInteger(atom) && atom >= 0))]
+      : [];
+    if (!Number.isSafeInteger(index) || index < 0 || !atoms.length) {
+      if (!state.sourceAtomHighlight) return;
+      state.sourceAtomHighlight = null;
+      render(cfg);
+      repostInspectorRow(cfg);
+      return;
+    }
+    state.sourceAtomHighlight = { index, atoms, drawn: null };
+    state.selected = new Set([index]);
+    state.selectionAnchorIndex = index;
+    state.lastGridRowIndex = index;
+    const token = state.dataToken;
+    void Promise.resolve(render(cfg)).then(() => {
+      repostInspectorRow(cfg);
+      return revealChemicalSpaceRow(index, cfg, token);
+    });
+  }
+
+  // RDKit keeps a molblock's explicit H and H removal keeps the remaining atoms
+  // in order, so a file atom is drawn at its rank among the atoms still present.
+  function sourceAtomMatch(mol, fileAtoms, atomicNumbers) {
+    const drawn = JSON.parse(mol.get_json() || '{}').molecules?.[0] || {};
+    const count = Array.isArray(drawn.atoms) ? drawn.atoms.length : 0;
+    let heavyCount = 0;
+    const heavyRank = atomicNumbers.map(z => (z === 1 ? null : heavyCount++));
+    let drawnIndex;
+    if (count >= atomicNumbers.length) drawnIndex = index => index;
+    else if (count === heavyCount) drawnIndex = index => heavyRank[index];
+    else return null;
+    const atoms = fileAtoms.filter(index => index < atomicNumbers.length).map(drawnIndex).filter(Number.isInteger);
+    const marked = new Set(atoms);
+    const bonds = (Array.isArray(drawn.bonds) ? drawn.bonds : []).flatMap((bond, index) => (
+      Array.isArray(bond?.atoms) && bond.atoms.every(atom => marked.has(atom)) ? [index] : []
+    ));
+    return atoms.length ? { atoms, bonds } : null;
   }
 
   function createRdkitSvgCache() {
@@ -8345,7 +8405,8 @@
       if (state.svgCache.has(reactionKey)) return state.svgCache.get(reactionKey);
       return drawRdkitReaction(row, reactionText, reactionKey);
     }
-    let match = state.smartsMatches.get(Number(row.index));
+    const source = sourceAtomHighlightFor(row);
+    let match = source ? null : state.smartsMatches.get(Number(row.index));
     const useInputCoords = state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock);
     const key = rdkitCardKey(row);
     if (state.svgCache.has(key)) return state.svgCache.get(key);
@@ -8358,7 +8419,9 @@
         omitInvalidCard(row);
         return '';
       }
+      const atomicNumbers = source ? JSON.parse(mol.get_json() || '{}').molecules?.[0]?.atoms?.map(atom => atom.z ?? 6) ?? [] : null;
       match = applyHydrogenDisplay(mol, match);
+      if (source) match = source.drawn = sourceAtomMatch(mol, source.atoms, atomicNumbers);
       try {
         if (!useInputCoords) {
           try { mol.set_new_coords?.(); } catch (_) {}
