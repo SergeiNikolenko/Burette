@@ -236,7 +236,6 @@ export default function App() {
     bottomDockHeight,
     bottomDockTabs,
     bottomDockActiveTab,
-    captureDockTarget,
     bottomDockDocumentId,
     bottomDockTool,
     dockDroppedStructures,
