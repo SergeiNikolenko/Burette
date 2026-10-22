@@ -165,6 +165,7 @@ console.log('2D preview zoom, lasso, cancellation and replacement passed');
     molstarMoleculePreviewCardHTML: (_label, image) => `<div class="buret-molstar-molecule-preview-image">${image}</div>`,
     molstarMoleculePreviewRDKitSVG: () => new Promise((resolve, reject) => pending.push({ resolve, reject })),
     selectMolstarMoleculePreviewAtoms: target => { selected = target; },
+    updateMolstarHydrogenButtons() {},
   };
   let selected;
   const api = new Function(...Object.keys(bindings), `
