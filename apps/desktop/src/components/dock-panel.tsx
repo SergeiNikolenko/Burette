@@ -1,3 +1,5 @@
+import { dockScreenLocation, openDockScreen } from "./workspace-panes/dock-screen";
+import { chemicalSpaceDocument as resolveCollection, chemicalSpaceSourceMatches } from "../lib/chemical-space-documents";
 import { Spinner } from "@/components/ui/spinner";
 import { useSidebarStructureDrag } from "./sidebar/use-sidebar-structure-drag";
 import { isHostedMcpWidget } from "../lib/hosted-mcp-widget";
@@ -63,24 +65,9 @@ function resolveChemicalSpaceDocument(
   state: ShellViewState,
   dockDocument: ViewerDocument | null,
 ) {
-  const supportsChemicalSpace = (document: ViewerDocument | null): document is ViewerDocument => (
-    document?.renderer === "grid2d"
-    || ["csv", "tsv", "dwar", "smi", "smiles"].includes(document?.extension.toLowerCase() ?? "")
-  );
-  if (supportsChemicalSpace(dockDocument)) return dockDocument;
-  if (supportsChemicalSpace(state.activeDocument)) return state.activeDocument;
-  if (supportsChemicalSpace(state.quickLookDocument)) return state.quickLookDocument;
-  const location = state.activeTab?.location;
-  if (location?.kind === "file") {
-    const locationDocument = state.documents.find((document) => (
-      supportsChemicalSpace(document)
-      && (document.id === location.documentId || document.path === location.path)
-    ));
-    if (locationDocument) return locationDocument;
-  }
-  return state.visibleDocuments.find(supportsChemicalSpace)
-    ?? state.documents.find(supportsChemicalSpace)
-    ?? null;
+  // A structure may be a selected subset of a grid, or the original SDF.
+  // Never substitute the first unrelated collection in the workspace.
+  return resolveCollection(dockDocument ?? state.activeDocument ?? state.quickLookDocument, state.documents);
 }
 
 export function DockPanel({ area, state, actions, readOnly = false }: DockPanelProps) {
@@ -102,11 +89,18 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const dockTool = area === "right" ? state.rightDockTool : state.bottomDockTool;
   const dockDocument = dockDocumentId ? state.documents.find((document) => document.id === dockDocumentId) ?? null : null;
   const dockTextDocument = dockDocumentId ? state.textDocuments.find((document) => document.id === dockDocumentId) ?? null : null;
-  const activeStructureDocument = dockDocument ?? state.activeDocument;
+  const activeStructureDocument = dockDocumentId ? dockDocument : state.activeDocument;
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
   const chemicalSpaceDockAvailable = Boolean(resolveChemicalSpaceDocument(state, dockDocument));
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
+  // File screens use the same editable page in every group. Legacy Files entry
+  // points become placements instead of creating a second read-only renderer.
+  useEffect(() => {
+    if (!readOnly && open && storedActiveTabKind === "files" && dockScreenLocation(area, "files", state)) {
+      openDockScreen(area, "files", state, actions, area);
+    }
+  }, [open, storedActiveTabKind, dockDocumentId, dockTool, area, readOnly, state, actions]);
   const foldingState = useFoldingResult(area === "bottom" && open ? activeStructureDocument : null);
   const foldingDockAvailable = area === "bottom" && (foldingState.loading || Boolean(foldingState.bundle));
   const foldingDockRequested = area === "bottom" && storedActiveTabKind === "folding" && rawTabs.some((tab) => tab.kind === "folding");
@@ -247,6 +241,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
           transientTabId={rawTabs.some(tab => tab.kind === "xyzrender") ? undefined : visibleTabs.find(tab => tab.kind === "xyzrender")?.id}
           fileDragProps={{ ...filesTabDrag, draggable: Boolean(filesTabDragPayload) }}
           onSelect={kind => showDockTab(kind, () => actions.setDockActiveTab(area, kind))} onClose={id => actions.closeDockTab(area, id)}
+          onOpenScreen={dockScreenLocation(area, activeTab.kind, state) ? () => openDockScreen(area, activeTab.kind, state, actions) : undefined}
           onAdd={showAddMenu} onHide={() => actions.setDockOpen(area, false)} />
         <div className="dock-panel-body" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${activeTab.kind}`} tabIndex={0}>
         {contentState && <DockPanelContent
@@ -262,7 +257,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   );
 }
 
-function DockPanelContent({
+export function DockPanelContent({
   area,
   activeTabKind,
   state,
@@ -454,7 +449,14 @@ function DockPanelContent({
   if (activeTabKind === "chemical-space") {
     return (
       <Suspense fallback={null}>
-        <ChemicalSpacePanel document={chemicalSpaceDocument} visible={area === "right" ? state.rightDockOpen : state.bottomDockOpen} inspectorOpen={state.rightDockOpen && state.rightDockActiveTab === "inspector"} />
+        <ChemicalSpacePanel
+          document={chemicalSpaceDocument}
+          viewerDocument={[state.activeDocument, ...state.visibleDocuments].find(document =>
+            document?.renderer === "molstar" && chemicalSpaceDocument
+            && chemicalSpaceSourceMatches(document, chemicalSpaceDocument)) ?? null}
+          visible={area === "right" ? state.rightDockOpen : state.bottomDockOpen}
+          inspectorOpen={state.rightDockOpen && state.rightDockActiveTab === "inspector"}
+        />
       </Suspense>
     );
   }

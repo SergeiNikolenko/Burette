@@ -196,12 +196,14 @@ const hostMessages = [];
 const iframeWindow = { postMessage: message => hostMessages.push(message.body) };
 const listeners = new Set();
 let sourceUpdates = 0;
+const hostSelections = [];
 const hostWindow = { addEventListener: (_, listener) => listeners.add(listener), removeEventListener: (_, listener) => listeners.delete(listener) };
-function mountHost(visible) {
+function mountHost(visible, viewerDocument = null) {
   let cleanup;
-  new Function('useEffect', 'documentId', 'documentInstanceKey', 'visible', 'crypto', 'window', 'activeViewerIframeForDocument', 'isKnownViewerMessageSource', 'applySourceRevision', effectJs)(
+  new Function('useEffect', 'documentId', 'documentInstanceKey', 'visible', 'crypto', 'window', 'activeViewerIframeForDocument', 'isKnownViewerMessageSource', 'applySourceRevision', 'viewerDocument', 'setSelected', 'GRID_SELECTION_BRIDGE_LIMIT', effectJs)(
     effect => { cleanup = effect(); }, 'fixture', 'v1', visible, { randomUUID: () => 'panel' }, hostWindow,
     () => ({ contentWindow: iframeWindow }), source => source === iframeWindow, () => { sourceUpdates++; },
+    viewerDocument, selection => hostSelections.push([...selection]), 100000,
   );
   return cleanup;
 }
@@ -216,8 +218,24 @@ assert.equal(hostMessages[0].type, 'chemicalSpaceVisibilitySubscription');
 assert.equal(hostMessages[0].active, true);
 for (const listener of listeners) listener({ source: iframeWindow, data: { source: 'burette-grid', body: { type: 'ready', documentId: 'fixture' } } });
 assert.equal(hostMessages.at(-1).active, true, 'iframe readiness rebinds subscription');
+const publishGridSelection = () => {
+  for (const listener of listeners) listener({ source: iframeWindow, data: { source: 'burette-grid', body: {
+    type: 'gridMenuStateChanged', documentId: 'fixture', selectedSourceIndexes: [1, 4],
+  } } });
+};
+publishGridSelection();
+assert.deepEqual(hostSelections, [[1, 4]], 'without a linked structure viewer, grid selection owns map selection');
 unmount();
 assert.equal(hostMessages.at(-1).active, false, 'hide/unmount unsubscribes');
+assert.equal(listeners.size, 0);
+const unmountLinkedViewer = mountHost(true, {
+  id: 'subset-viewer', path: '/fixtures/subset.sdf', renderer: 'molstar',
+  moleculeSource: { documentId: 'fixture', path: '/fixtures/collection.sdf', sourceRecordIds: [1, 4] },
+});
+publishGridSelection();
+assert.deepEqual(hostSelections, [[1, 4]], 'the retained source grid cannot overwrite linked Molstar selection');
+unmountLinkedViewer();
+assert.equal(hostMessages.at(-1).active, false, 'linked viewer still cleans up the grid visibility subscription');
 assert.equal(listeners.size, 0);
 assert.match(readFileSync('apps/desktop/src/components/dock-panel.tsx', 'utf8'), /visible=\{area === "right" \? state\.rightDockOpen : state\.bottomDockOpen\}/);
 console.log('Host subscription: hidden=0; visible subscribes; ready rebinds; hide cleans up.');

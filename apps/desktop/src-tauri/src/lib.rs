@@ -80,6 +80,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            commands::telemetry::initialize(app.handle())?;
             if let Ok(cache_dir) = app.path().app_cache_dir() {
                 perf_trace::install(cache_dir);
             }
@@ -134,6 +135,7 @@ pub fn run() {
             if launch_mode.is_register() && startup_paths.is_empty() {
                 windows::hide_workspace_application(app.handle());
             } else {
+                preview::xyzrender::warmup_renderer(preview::xyzrender::XyzrenderWarmup::Startup);
                 let initial_app = app.handle().clone();
                 let initial_workspace = move || {
                     if let Err(error) = windows::restore_workspace_windows(&initial_app) {
@@ -154,10 +156,16 @@ pub fn run() {
         })
         .invoke_handler(perf_trace::timed::<tauri::Wry, _>(
             commands::recent_documents::ordered(tauri::generate_handler![
+                commands::telemetry::statistics_status,
+                commands::telemetry::statistics_consent,
+                commands::telemetry::statistics_record,
+                commands::telemetry::statistics_flush,
+                commands::telemetry::statistics_export,
                 commands::clipboard::write_clipboard_text,
                 commands::popout_scene::save_popout_scene,
                 commands::popout_scene::save_popout_sheet,
                 commands::popout_scene::relay_popout_handoff,
+                commands::workspace_page::relay_workspace_page,
                 compute::commands::compute_capabilities,
                 compute::commands::compute_register_inline_source,
                 compute::commands::compute_align_grid_poses,

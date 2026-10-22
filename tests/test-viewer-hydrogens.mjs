@@ -23,10 +23,11 @@ const context = { document, molstarShowHydrogens: true, molstarHydrogensPending:
   molstarMoleculePreviewTarget: { label: 'MOL A 1' }, showMolstarMoleculePreview: target => previews.push(target),
   setStatus: (...args) => errors.push(args), normalizeFormat: value => value,
 };
+let collections;
 const api = runInNewContext(['setTooltipLabel', 'updateMolstarHydrogenButtons', 'toggleMolstarHydrogens',
   'molstarHydrogenRepresentation', 'molstarPreviewKey', 'addCollectionRepresentation', 'updateCollectionRepresentations']
   .map(fn).join('\n') + '\n({ toggleMolstarHydrogens, molstarHydrogenRepresentation, molstarPreviewKey, addCollectionRepresentation, updateCollectionRepresentations })',
-  { ...context, collectionRepresentations: new WeakMap() });
+  { ...context, collectionRepresentations: (collections = new WeakMap()) });
 const buttons = [...document.querySelectorAll('button')];
 buttons[1].focus();
 const toggling = api.toggleMolstarHydrogens();
@@ -46,10 +47,14 @@ let representation;
 const params = { type: { name: 'ball-and-stick', params: { ignoreHydrogens: false } }, colorTheme: { params: {} } };
 const plugin = { state: { data: { cells: new Map([['r', { transform: { params } }]]), build: () => ({
   to() { return this; }, update(callback) { Object.assign(params, callback(params)); }, async commit() {},
-}) } }, builders: { structure: { representation: { async addRepresentation(_, props) { representation = props; return { ref: 'r' }; } } } } };
+}) } }, builders: { structure: { representation: { async addRepresentation(_, props) { representation = props; return { ref: 'r' }; } } } },
+  representation: { structure: { registry: { get: () => ({ defaultValues: {}, defaultSizeTheme: { name: 'physical', props: {} } }) }, themes: {
+    colorThemeRegistry: { get: name => ({ name, defaultValues: {} }) }, sizeThemeRegistry: { get: name => ({ name, defaultValues: {} }) },
+  } } } };
 const structure = { cell: {} };
 await api.addCollectionRepresentation(plugin, structure, {}, { type: 'ball-and-stick', typeParams: { sizeFactor: 0.16 }, color: 'element-symbol' }, 0);
 assert.equal(representation.typeParams.ignoreHydrogens, true);
+collections.get(structure.cell).layout = 1;
 await api.updateCollectionRepresentations(plugin, [structure], [{ type: 'ball-and-stick', typeParams: { sizeFactor: 0.2 }, color: 'element-symbol' }]);
 assert.equal(params.type.params.ignoreHydrogens, true);
 assert.equal(params.type.params.sizeFactor, 0.2);

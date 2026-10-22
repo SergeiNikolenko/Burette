@@ -2,8 +2,8 @@
 
 A screen is a `MoleculeTab` whose `location` selects a page kind. The main tab
 strip and the browser floating surface share screen placement state. Native
-detached windows have a separate runtime and receive a saved scene instead of a
-live iframe moved between windows.
+windows have a separate runtime and receive serialized page inputs or a saved
+scene instead of a live iframe moved between windows.
 
 ## Screens And Placement
 
@@ -14,6 +14,7 @@ live iframe moved between windows.
 | `launcher`, `ketcher` | New tab or molecular sketcher |
 | `jobs`, `chemical-space` | Calculations or collection projection |
 | `pose-review`, `fep-setup`, `fep-network` | Pose and FEP workflows |
+| `tool` | Independent Info, Text, Basket, Compare and other dock tools |
 | `settings` | Full-window settings; placed screens step aside |
 
 `TabKindIcon` supplies the shared glyph. Optional tab titles label the screen
@@ -23,13 +24,17 @@ and included in session snapshots and closed-tab restoration.
 | Place | Layout and ownership |
 | --- | --- |
 | Main | Multiple screens with one active tab |
+| Right / bottom split | Independent tabs; resize with pointer or arrow keys |
 | Browser floating surface | One in-page floating screen; movable, resizable and minimizable |
 | Native preview window | A compact Tauri window holding a copy of a file screen (Pop out) |
+| Native workspace copy | Open in New Window copies a page and its source bindings into a separate workspace |
 | Native detached window | A separate Tauri workspace window that owns a moved molecular scene or illustration sheet (Move to New Window) |
 
-`MoleculeTab.pane` (`"floating" | undefined`) records the place.
-`activeTabId` always names a main tab; making a placed screen active (sidebar,
-deep link, open actions) brings it back to the main strip. Tabs saved by older
+`MoleculeTab.pane` (`"right" | "bottom" | "floating" | undefined`) records the place.
+`activeTabId` names the focused view in any group. Activating a placed screen
+preserves its placement. Right and bottom splits have independent tab selection
+and resizable bounds. Full View hides other groups without moving or rebuilding
+the selected view; Exit Full View restores the split. Tabs saved by older
 builds in the retired side panel (`pane: "side"`) load into the main strip.
 Settings temporarily hides placed surfaces.
 
@@ -40,9 +45,13 @@ Settings temporarily hides placed surfaces.
 | Right dock | Per-tab tools (Info, Text, Files, Ketcher, Jobs, Chemical space, ...) following the front tab | title bar panel button, Opt+Cmd+B |
 | Bottom dock | Shared tools (Jobs, logs) | Cmd+J only; the title bar has no button for it |
 
-The right dock is the only panel beside the main column. The separate side
-panel was removed because it duplicated the right dock's tools. Dock tabs,
-selected dock tool, open state and width live in `tab-workspace-store`.
+Context tools can be opened as workspace tabs, then placed in either split or
+Full View. The Files entry opens the existing editable screen in that group.
+The right inspector remains contextual; bottom tools use one window-owned
+workspace (`window-tools`) and survive source tab changes and closure. Source
+pins persist by path, resolving the new document ID after restoration. Missing
+pinned sources never fall back to unrelated structures. Basket/Compare inputs
+are copied when their tool becomes an independent tab.
 
 ## Placement And Runtime Lifetime
 
@@ -76,6 +85,19 @@ Older clean pages may be recreated when revisited after eviction.
 Closing a tab is different from navigating its history: its runtime may unload.
 Reopen closed tab reads file content again and restores the saved label when a
 new matching tab is created; it is not a live viewer undo operation.
+
+## Open In New Window
+
+`workspace-panes/native-page-window.ts` copies a page through a private,
+host-validated relay. Page metadata and tool inputs have a combined 2 MiB limit;
+tool inputs are limited to 60 entries. The host supplies sender identity, and
+the opener accepts acknowledgements only from the destination window. Retries
+are idempotent and stop after 60 seconds. Failure always retains the source.
+
+Files are reopened from their paths; sketches export their current KET. This
+operation copies inputs, not every local filter, camera, selection or undo
+stack. Use Move to New Window below for a checkpointed molecular scene. Text
+sources must be present in the destination registry before success is reported.
 
 ## Native Pop Out, Move And Return
 
@@ -122,7 +144,7 @@ may still reference them.
 
 | Action | Where |
 | --- | --- |
-| Pop out, Move to New Window, Move to Main Window | tab context menu, pane switcher |
+| Full View, Move to Right/Bottom Split, Move to Main Tabs, Open in New Window, Pop out, Move to New Window | tab context menu, pane switcher |
 | Switch screen, show a main tab here, open Jobs, Chemical space, Ketcher | pane switcher (title and chevron) |
 | New screen of any kind | right-click "+" in the tab strip; click "+" is New Tab (Cmd+T) |
 | Hide or show the right dock | panel button at the end of the title bar, or Opt+Cmd+B |
@@ -154,7 +176,8 @@ paths; see [Drag and Drop](drag-and-drop.md) for their routing contracts.
 
 Screen locations, history, labels and placement are part of the molecular
 session. Browser floating geometry uses the window-scoped workspace-panes store;
-per-tab dock layout uses the tab-workspace store.
+per-tab right tools and window-owned bottom tools use the tab-workspace store.
+All independently created Ketcher tabs retain their identities during restoration.
 Disabling restore-on-launch starts fresh tabs while retaining layout preferences.
 
 Save scene captures the current Mol* state as a `.molx` archive with embedded

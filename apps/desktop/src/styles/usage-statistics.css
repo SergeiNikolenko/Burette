@@ -1,0 +1,7 @@
+.usage-statistics-banner {
+  position: absolute;
+  z-index: 40;
+  bottom: 32px;
+  right: 16px;
+  width: min(400px, calc(100% - 32px));
+}

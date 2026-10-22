@@ -18,12 +18,15 @@ import { isTemporaryDocumentPath } from "../lib/temporary-documents";
 import { workspaceStorageKey } from "../lib/window-scope";
 import { useMoleculeStore } from "./molecule-store";
 
+export const WINDOW_TOOLS_ID = "window-tools";
+
 export type DockAreaWorkspace = {
   open: boolean;
   size: number;
   tabs: DockTab[];
   activeTab: DockTabKind;
   documentId: string | null;
+  documentPath?: string;
   tool: DockToolKind | null;
 };
 
@@ -38,6 +41,7 @@ export type TabWorkspaceSnapshot = {
 };
 
 type TabWorkspaceState = TabWorkspaceSnapshot & {
+  ensureWindowTools: (tabId: string | null) => void;
   setDockOpen: (tabId: string, area: DockArea, open: boolean) => void;
   setDockSize: (tabId: string, area: DockArea, size: number) => void;
   toggleDock: (tabId: string, area: DockArea) => void;
@@ -91,6 +95,7 @@ function normalizeArea(area: DockArea, input: Partial<DockAreaWorkspace> | undef
     tabs,
     activeTab: normalizeDockActiveTab(area, tabs, input?.activeTab ?? fallback.activeTab),
     documentId: typeof input?.documentId === "string" ? input.documentId : null,
+    ...(typeof input?.documentPath === "string" ? { documentPath: input.documentPath } : {}),
     tool: input?.tool === "ketcher" ? input.tool : null,
   };
 }
@@ -215,18 +220,24 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
   persist<TabWorkspaceState, [], [], TabWorkspaceSnapshot>(
     (set) => ({
       workspaces: {},
-      setDockOpen: (tabId, area, open) => set((state) => updateWorkspace(state, tabId, (workspace) => ({
+      ensureWindowTools: (tabId) => set(state => {
+        if (state.workspaces[WINDOW_TOOLS_ID]) return state;
+        const workspace = normalizeWorkspace(tabId ? state.workspaces[tabId] : undefined);
+        return { workspaces: { ...state.workspaces, [WINDOW_TOOLS_ID]: { ...defaultTabWorkspace(), bottom: workspace.bottom,
+          droppedStructures: workspace.droppedStructures.filter(drop => drop.area === "bottom") } } };
+      }),
+      setDockOpen: (tabId, area, open) => set((state) => updateWorkspace(state, area === "bottom" ? WINDOW_TOOLS_ID : tabId, (workspace) => ({
         ...workspace,
         [area]: {
           ...workspace[area],
           open,
         },
       }))),
-      setDockSize: (tabId, area, size) => set((state) => updateWorkspace(state, tabId, (workspace) => ({
+      setDockSize: (tabId, area, size) => set((state) => updateWorkspace(state, area === "bottom" ? WINDOW_TOOLS_ID : tabId, (workspace) => ({
         ...workspace,
         [area]: { ...workspace[area], size: normalizeSize(area, size) },
       }))),
-      toggleDock: (tabId, area) => set((state) => updateWorkspace(state, tabId, (workspace) => ({
+      toggleDock: (tabId, area) => set((state) => updateWorkspace(state, area === "bottom" ? WINDOW_TOOLS_ID : tabId, (workspace) => ({
         ...workspace,
         [area]: {
           ...workspace[area],
@@ -235,29 +246,31 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
       }))),
       openDockTab: (tabId, area, kind) => set((state) => {
         if (!dockTabCatalog(area).includes(kind)) return state;
-        return updateWorkspace(state, tabId, (workspace) => {
+        return updateWorkspace(state, area === "bottom" ? WINDOW_TOOLS_ID : tabId, (workspace) => {
           const current = workspace[area];
           const tabs = current.tabs.some((tab) => tab.kind === kind) ? current.tabs : [...current.tabs, createDockTab(kind)];
           return { ...workspace, [area]: { ...current, open: true, tabs, activeTab: kind } };
         });
       }),
-      closeDockTab: (tabId, area, dockTabId) => set((state) => updateWorkspace(state, tabId, (workspace) => {
+      closeDockTab: (tabId, area, dockTabId) => set((state) => updateWorkspace(state, area === "bottom" ? WINDOW_TOOLS_ID : tabId, (workspace) => {
         const current = workspace[area];
         const tabs = normalizeDockTabs(area, current.tabs.filter((tab) => tab.id !== dockTabId));
         return { ...workspace, [area]: { ...current, tabs, activeTab: normalizeDockActiveTab(area, tabs, current.activeTab) } };
       })),
-      setDockActiveTab: (tabId, area, kind) => set((state) => updateWorkspace(state, tabId, (workspace) => {
+      setDockActiveTab: (tabId, area, kind) => set((state) => updateWorkspace(state, area === "bottom" ? WINDOW_TOOLS_ID : tabId, (workspace) => {
         const current = workspace[area];
         return current.tabs.some((tab) => tab.kind === kind)
           ? { ...workspace, [area]: { ...current, activeTab: kind } }
           : workspace;
       })),
-      setDockDocument: (tabId, area, documentId) => set((state) => updateWorkspace(state, tabId, (workspace) => ({
+      setDockDocument: (tabId, area, documentId) => set((state) => updateWorkspace(state, area === "bottom" ? WINDOW_TOOLS_ID : tabId, (workspace) => ({
         ...workspace,
         [area]: {
           ...workspace[area],
           open: true,
           documentId,
+          documentPath: documentId ? [...useMoleculeStore.getState().documents, ...useMoleculeStore.getState().textDocuments]
+            .find(document => document.id === documentId && !isTemporaryDocumentPath(document.path))?.path : undefined,
           tool: null,
           tabs: workspace[area].tabs.some((tab) => tab.kind === "files")
             ? workspace[area].tabs
@@ -265,12 +278,13 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
           activeTab: "files",
         },
       }))),
-      setDockTool: (tabId, area, tool) => set((state) => updateWorkspace(state, tabId, (workspace) => ({
+      setDockTool: (tabId, area, tool) => set((state) => updateWorkspace(state, area === "bottom" ? WINDOW_TOOLS_ID : tabId, (workspace) => ({
         ...workspace,
         [area]: {
           ...workspace[area],
           open: true,
           documentId: null,
+          documentPath: undefined,
           tool,
           tabs: workspace[area].tabs.some((tab) => tab.kind === "files")
             ? workspace[area].tabs
@@ -282,7 +296,7 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
         if (!dockTabCatalog(input.area).includes(input.tabKind)) return state;
         const items = dockDropItems(input);
         if (items.length === 0) return state;
-        return updateWorkspace(state, tabId, (workspace) => {
+        return updateWorkspace(state, input.area === "bottom" ? WINDOW_TOOLS_ID : tabId, (workspace) => {
           const current = workspace[input.area];
           const tabs = current.tabs.some((tab) => tab.kind === input.tabKind)
             ? current.tabs
@@ -295,7 +309,7 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
         });
       }),
       pruneWorkspaces: (tabIds) => set((state) => {
-        const live = new Set(tabIds);
+        const live = new Set([...tabIds, WINDOW_TOOLS_ID]);
         const workspaces = Object.fromEntries(Object.entries(state.workspaces).filter(([tabId]) => live.has(tabId)));
         return Object.keys(workspaces).length === Object.keys(state.workspaces).length ? state : { workspaces };
       }),

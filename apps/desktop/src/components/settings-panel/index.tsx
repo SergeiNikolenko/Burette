@@ -1,4 +1,5 @@
 import { useChemicalEditorTargets } from "../../hooks/use-chemical-editor-targets";
+import { UsageStatistics } from "../usage-statistics";
 import { SshConnections } from "../ssh/ssh-projects";
 import { useMemo } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -143,6 +144,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
                 <>
                   <SettingsSection title="Work mode" rows={[...openDestinationRows, restoreSessionRow(preferences, actions.setPreference)]} />
                   <SettingsSection title="Getting started" rows={[actionRow("Onboarding", "", "Reset onboarding", resetOnboarding)]} />
+                  <UsageStatistics settings />
                 </>
               ) : null}
               {section === "appearance" ? (

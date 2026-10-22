@@ -127,3 +127,33 @@
   font-size: var(--text-sm);
   font-weight: 400;
 }
+
+/* All groups share a stable page stack: moving a view changes its rectangle,
+   never its iframe's parent. Focus and visibility are independent. */
+.page-stack > .page-surface[data-workspace-visible] {
+  display: block;
+  visibility: visible;
+  pointer-events: auto;
+}
+.page-stack[data-split-right] > .page-surface:not([data-pane]) { right: calc(100% - var(--split-right)); }
+.page-stack[data-split-bottom] > .page-surface:not([data-pane]) { bottom: calc(100% - var(--split-bottom)); }
+.page-stack > .page-surface[data-pane="right"] { left: var(--split-right); }
+.page-stack > .page-surface[data-pane="bottom"] { top: var(--split-bottom); --chrome-height: 36px; }
+.page-stack[data-split-right] > .page-surface[data-pane="bottom"] { right: calc(100% - var(--split-right)); }
+.page-stack > .page-surface[data-full-view] { position: absolute; inset: 0; width: auto !important; height: auto !important; border: 0; border-radius: 0; box-shadow: none; --chrome-height: 56px; }
+.workspace-group-header { position: absolute; inset: 0 0 auto; height: var(--chrome-height); display: flex; align-items: center; gap: 4px; padding: 0 8px; z-index: 3; border-bottom: 1px solid var(--color-border); background: var(--bg-base); }
+.workspace-group-header .tab-strip { min-width: 0; flex: 1; }
+.workspace-group-header .tab-strip-spacer { display: none; }
+.workspace-split-handle { position: absolute; z-index: 12; touch-action: none; }
+.workspace-split-right { left: calc(var(--split-right) - 3px); top: 0; bottom: 0; width: 6px; cursor: col-resize; border-left: 1px solid var(--color-border); }
+.workspace-split-bottom { top: calc(var(--split-bottom) - 3px); left: 0; right: 0; height: 6px; cursor: row-resize; border-top: 1px solid var(--color-border); }
+.page-stack[data-split-right] > .workspace-split-bottom { right: calc(100% - var(--split-right)); }
+.workspace-split-handle:focus-visible { outline: 2px solid var(--color-text-secondary); outline-offset: -2px; }
+.workspace-exit-full { position: absolute; right: 8px; top: 60px; z-index: 15; }
+.app-shell:has(.page-stack[data-split-right]) .drag-region,
+.app-shell:has(.page-stack[data-split-right]) .topbar {
+  right: calc(var(--right-dock-edge, var(--right-dock-width, 0px)) + var(--workspace-side-width, 0px) + 12px);
+}
+.page-surface[data-pane="right"] > .workspace-group-header {
+  padding-right: max(8px, calc(var(--chrome-trailing-width, 30px) + 24px - var(--right-dock-edge, 0px)));
+}

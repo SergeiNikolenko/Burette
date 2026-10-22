@@ -1351,7 +1351,8 @@ export function createDocumentCloseShellActions({
       });
     },
     closeOtherTabs: async (id: string) => {
-      let otherTabs = tabs.filter((tab) => tab.id !== id && !tab.pinned);
+      const pane = tabs.find(tab => tab.id === id)?.pane ?? null;
+      let otherTabs = tabs.filter((tab) => tab.id !== id && !tab.pinned && (tab.pane ?? null) === pane);
       if (otherTabs.length === 0 || nativePopoutBusy()) return;
       if (otherTabs.some(tab => isNativePopoutTab(tab.id))) {
         const owners = new Set(otherTabs.filter(tab => isNativePopoutTab(tab.id)).map(tab => tab.id));

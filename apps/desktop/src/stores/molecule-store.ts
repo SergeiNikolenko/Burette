@@ -40,9 +40,9 @@ import { clearNativeRecentStructures } from "../lib/clear-recent-structures";
 import { workspaceStorageKey } from "../lib/window-scope";
 import { useSettingsStore } from "./settings-store";
 
-// Where a screen is shown when it is not in the main tab strip: the floating
-// window. A tab without a pane lives in the main strip.
-export type TabPane = "floating";
+// Placement belongs to the view; activeTabId names the focused view in any group.
+// A tab without a pane lives in the main strip.
+export type TabPane = "right" | "bottom" | "floating";
 
 export type MoleculeTab = {
   title?: string;
@@ -103,7 +103,7 @@ type MoleculeState = {
   setActiveDocument: (id: string) => void;
   moveTab: (id: string, toIndex: number) => void;
   placeTab: (id: string, pane: TabPane | null) => void;
-  openScreenTab: (location: Location, pane?: TabPane | null) => void;
+  openScreenTab: (location: Location, pane?: TabPane | null, options?: { newTab: boolean }) => void;
   togglePinnedTab: (id: string) => void;
   renameTab: (id: string, title: string) => void;
   closeTab: (id: string) => void;
@@ -255,6 +255,8 @@ function sameLocation(left: Location, right: Location) {
   if (left.kind === "file" && right.kind === "file") return left.path === right.path;
   if (left.kind === "text-file" && right.kind === "text-file") return left.path === right.path;
   if (left.kind === "chemical-space" && right.kind === "chemical-space") return left.collectionPath === right.collectionPath;
+  if (left.kind === "tool" && right.kind === "tool") return left.tool === right.tool && left.area === right.area && left.sourcePath === right.sourcePath;
+  if (left.kind === "document" && right.kind === "document") return left.path === right.path;
   return true;
 }
 
@@ -391,7 +393,7 @@ function sessionToPersist(state: MoleculeState): PersistedMoleculeState {
   if (shouldIgnorePersistedSession()) return devFilesPersistedSession(state.recentStructures);
   if (persistedTabSource !== state.tabs) {
     persistedTabSource = state.tabs;
-    persistedTabSnapshot = persistedTabs(collapseDuplicateKetcherTabs(state.tabs, state.activeTabId));
+    persistedTabSnapshot = persistedTabs(state.tabs);
   }
   if (persistedRecentSource !== state.recentStructures) {
     persistedRecentSource = state.recentStructures;
@@ -409,6 +411,7 @@ function documentForLocation(location: Location, documents: ViewerDocument[]) {
       null
     );
   }
+  if (location.kind === "tool") return documents.find(document => document.path === location.sourcePath) ?? null;
   if (location.kind !== "file") return null;
   return (
     documents.find((document) => document.id === location.documentId) ??
@@ -426,7 +429,9 @@ function activeDocumentIdFrom(tabs: MoleculeTab[], activeTabId: string | null, d
 function tabDocumentPaths(tabs: MoleculeTab[]) {
   return new Set(tabs.flatMap(tab => [...tab.back, tab.location, ...tab.forward].flatMap(location => {
     if (location.kind === "file" || location.kind === "text-file") return [location.path];
-    if (location.kind === "fep-setup" || location.kind === "pose-review") return [location.dockingPath];
+    if (location.kind === "fep-setup" || location.kind === "pose-review") return [location.dockingPath, location.gridPath];
+    if (location.kind === "chemical-space" && location.collectionPath) return [location.collectionPath];
+    if (location.kind === "tool" && location.sourcePath) return [location.sourcePath];
     return [];
   })));
 }
@@ -440,7 +445,9 @@ function stateAfterClosingTabs(state: MoleculeState, wanted: Set<string>, additi
   const keep = (document: { path: string }) => !removed.has(document.path) || retained.has(document.path);
   const documents = state.documents.filter(keep);
   const textDocuments = state.textDocuments.filter(keep);
-  const activeTabId = activeTabIdOrFirst(tabs, wanted.has(state.activeTabId ?? "") ? null : state.activeTabId);
+  const focusedPane = state.tabs.find(tab => tab.id === state.activeTabId)?.pane ?? null;
+  const sibling = tabs.find(tab => tab.location.kind !== "settings" && (tab.pane ?? null) === focusedPane);
+  const activeTabId = activeTabIdOrFirst(tabs, wanted.has(state.activeTabId ?? "") ? sibling?.id ?? null : state.activeTabId);
   return { documents, textDocuments, tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, documents) };
 }
 
@@ -450,14 +457,15 @@ function settingsReturnTabId(state: MoleculeState) {
 }
 
 // A tab shown in the main strip: Settings is a separate full-window mode and
-// a placed tab lives in the floating window.
+// a placed tab lives in another workspace group.
 export function isMainTab(tab: MoleculeTab) {
   return tab.location.kind !== "settings" && !tab.pane;
 }
 
 // Keyboard tab navigation follows the visible strip and leaves parked screens in place.
 export function adjacentMainTabId(tabs: MoleculeTab[], activeTabId: string | null, offset: -1 | 1) {
-  const mainTabs = tabs.filter(isMainTab);
+  const pane = tabs.find(tab => tab.id === activeTabId)?.pane ?? null;
+  const mainTabs = tabs.filter(tab => tab.location.kind !== "settings" && (tab.pane ?? null) === pane);
   if (mainTabs.length === 0) return null;
   const index = mainTabs.findIndex((tab) => tab.id === activeTabId);
   if (index < 0) return mainTabs[offset === 1 ? 0 : mainTabs.length - 1].id;
@@ -465,8 +473,7 @@ export function adjacentMainTabId(tabs: MoleculeTab[], activeTabId: string | nul
 }
 
 function activeTabIdOrFirst(tabs: MoleculeTab[], activeTabId: string | null) {
-  // An explicitly requested placed tab is kept: the store moves it back to
-  // the strip right after (see the subscription at the end of this module).
+  // Activation changes focus, never placement.
   if (activeTabId && tabs.some((tab) => tab.id === activeTabId)) return activeTabId;
   // Settings is hidden from the tab strip and is only selected explicitly.
   return tabs.find(isMainTab)?.id ?? null;
@@ -484,17 +491,9 @@ function withPane(tab: MoleculeTab, pane: TabPane | null): MoleculeTab {
   return rest;
 }
 
-// The main tab that takes over when the active one leaves the strip: the next
-// one to its right, else the one to its left.
-function neighborMainTabId(tabs: MoleculeTab[], id: string) {
-  const strip = tabs.filter((tab) => isMainTab(tab) || tab.id === id);
-  const index = strip.findIndex((tab) => tab.id === id);
-  return strip[index + 1]?.id ?? strip[index - 1]?.id ?? null;
-}
-
 function isTabPane(value: unknown): value is TabPane {
   // Tabs saved in the retired side panel ("side") load into the main strip.
-  return value === "floating";
+  return value === "floating" || value === "right" || value === "bottom";
 }
 
 function moveTabToIndex(tabs: MoleculeTab[], id: string, toIndex: number) {
@@ -520,16 +519,6 @@ function ensureTabs(tabs: MoleculeTab[]) {
     next.push(createLauncherTab());
   }
   return next.sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)));
-}
-
-function collapseDuplicateKetcherTabs(tabs: MoleculeTab[], preferredActiveId: string | null = null) {
-  const ketcherTabs = tabs.filter((tab) => tab.location.kind === "ketcher");
-  if (ketcherTabs.length <= 1) return tabs;
-
-  const keepId = (
-    preferredActiveId ? ketcherTabs.find((tab) => tab.id === preferredActiveId)?.id : null
-  ) ?? ketcherTabs[0].id;
-  return tabs.filter((tab) => tab.location.kind !== "ketcher" || tab.id === keepId);
 }
 
 function serializeTab(tab: MoleculeTab): SessionTab | null {
@@ -637,6 +626,7 @@ export const useMoleculeStore = create<MoleculeState>()(
               openedTabId ??= existing.id;
             } else {
               const tab = createFileTab(document);
+              tab.pane = state.tabs.find(current => current.id === state.activeTabId)?.pane;
               tabs.push(tab);
               tabByPath.set(document.path, tab);
               openedTabId ??= tab.id;
@@ -721,6 +711,7 @@ export const useMoleculeStore = create<MoleculeState>()(
               existing.location = fileLocation(document);
             } else {
               const tab = createFileTab(document);
+              tab.pane = state.tabs.find(current => current.id === state.activeTabId)?.pane;
               tabs.push(tab);
               tabByPath.set(document.path, tab);
             }
@@ -751,6 +742,7 @@ export const useMoleculeStore = create<MoleculeState>()(
               openedTabId ??= existing.id;
             } else {
               const tab = createTextFileTab(document);
+              tab.pane = state.tabs.find(current => current.id === state.activeTabId)?.pane;
               tabs.push(tab);
               tabByPath.set(document.path, tab);
               openedTabId ??= tab.id;
@@ -808,6 +800,7 @@ export const useMoleculeStore = create<MoleculeState>()(
               existing.location = textFileLocation(document);
             } else {
               const tab = createTextFileTab(document);
+              tab.pane = state.tabs.find(current => current.id === state.activeTabId)?.pane;
               tabs.push(tab);
               tabByPath.set(document.path, tab);
             }
@@ -856,6 +849,7 @@ export const useMoleculeStore = create<MoleculeState>()(
       openNewTab: () =>
         set((state) => {
           const tab = createLauncherTab();
+          tab.pane = state.tabs.find(current => current.id === state.activeTabId)?.pane;
           const tabs = [...state.tabs, tab];
           return { tabs, activeTabId: tab.id, activeDocumentId: null };
         }),
@@ -986,7 +980,7 @@ export const useMoleculeStore = create<MoleculeState>()(
         }),
       activateLastNonSettingsTab: () =>
         set((state) => {
-          const target = state.tabs.find((tab) => tab.id === state.settingsReturnTabId && isMainTab(tab))
+          const target = state.tabs.find((tab) => tab.id === state.settingsReturnTabId && tab.location.kind !== "settings")
             ?? [...state.tabs].reverse().find(isMainTab);
           if (target) {
             return { activeTabId: target.id, activeDocumentId: activeDocumentIdFrom(state.tabs, target.id, state.documents) };
@@ -1070,16 +1064,15 @@ export const useMoleculeStore = create<MoleculeState>()(
           const target = state.tabs.find((tab) => tab.id === id);
           if (!target || target.location.kind === "settings") return state;
           if ((target.pane ?? null) === pane) {
-            return pane === null ? { activeTabId: id, activeDocumentId: activeDocumentIdFrom(state.tabs, id, state.documents) } : state;
+            return { activeTabId: id, activeDocumentId: activeDocumentIdFrom(state.tabs, id, state.documents) };
           }
-          const successor = state.activeTabId === id ? neighborMainTabId(state.tabs, id) : state.activeTabId;
           // One floating window: the screen it showed returns to the strip.
           const tabs = ensureTabs(state.tabs.map((tab) => (
             tab.id === id ? withPane(tab, pane)
               : pane === "floating" && tab.pane === "floating" ? withPane(tab, null)
                 : tab
           )));
-          const activeTabId = activeTabIdOrFirst(tabs, pane === null ? id : successor);
+          const activeTabId = activeTabIdOrFirst(tabs, id);
           return {
             tabs,
             activeTabId,
@@ -1088,8 +1081,8 @@ export const useMoleculeStore = create<MoleculeState>()(
         }),
       // Opens a screen that is not a file (Jobs, Chemical Space...) or brings
       // the open one forward, optionally straight into a secondary pane.
-      openScreenTab: (location, pane = null) => {
-        const existing = get().tabs.find((tab) => tab.location.kind !== "settings" && sameLocation(tab.location, location));
+      openScreenTab: (location, pane = null, options) => {
+        const existing = options?.newTab ? undefined : get().tabs.find((tab) => tab.location.kind !== "settings" && sameLocation(tab.location, location));
         const tab = existing ?? { id: createTabId(), location, back: [], forward: [] };
         if (!existing) set((state) => ({ tabs: [...(pane ? state.tabs : state.tabs.filter(retainedOnOpen)), tab] }));
         get().placeTab(tab.id, pane);
@@ -1157,7 +1150,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           const hydratedTabs = sessionTabs.map((tab) => hydrateTab(tab));
           const requested = activeIndex === null ? null : hydratedTabs[activeIndex]?.id ?? null;
           const validTabs = hydratedTabs.filter((tab): tab is MoleculeTab => tab !== null);
-          const tabs = dedupeTabIds(ensureTabs(collapseDuplicateKetcherTabs(validTabs, requested)));
+          const tabs = dedupeTabIds(ensureTabs(validTabs));
           const activeTabId = activeTabIdOrFirst(tabs, requested);
           return { tabs, activeTabId, activeDocumentId: activeDocumentIdFrom(tabs, activeTabId, state.documents) };
         }),
@@ -1203,10 +1196,7 @@ export const useMoleculeStore = create<MoleculeState>()(
           )
         ));
         const storedActiveTabId = restoreTabs ? stored?.activeTabId : undefined;
-        const tabs = collapseDuplicateKetcherTabs(
-          dedupeTabIds(ensureTabs(storedTabs.map((tab) => withPane(cloneTab(tab), isTabPane(tab.pane) ? tab.pane : null)))),
-          storedActiveTabId ?? current.activeTabId,
-        );
+        const tabs = dedupeTabIds(ensureTabs(storedTabs.map((tab) => withPane(cloneTab(tab), isTabPane(tab.pane) ? tab.pane : null))));
         const activeTabId = activeTabIdOrFirst(tabs, storedActiveTabId ?? current.activeTabId);
         return {
           ...current,
@@ -1220,16 +1210,6 @@ export const useMoleculeStore = create<MoleculeState>()(
     },
   ),
 );
-
-// Opening or selecting a screen that is parked in the floating window (from
-// the sidebar, a menu, a deep link...) brings it back to the main strip: every
-// action that activates a tab goes through here, so the rule needs no copy in
-// each of them.
-useMoleculeStore.subscribe((state) => {
-  const active = state.tabs.find((tab) => tab.id === state.activeTabId);
-  if (!active?.pane) return;
-  useMoleculeStore.setState({ tabs: state.tabs.map((tab) => (tab.id === active.id ? withPane(tab, null) : tab)) });
-});
 
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   if (isTauriRuntime()) {

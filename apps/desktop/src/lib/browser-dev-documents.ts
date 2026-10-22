@@ -2,6 +2,7 @@ import { inflateStructureBytes } from "./structure-inflate";
 import { demoLibraryUrl } from "./web-demo-library";
 import { standaloneDemoSnapshot } from "./web-demo-scenes";
 import { collectionExtension, mergeCollectionSources, parseReactionCollectionRecords, parseSdfCollectionRecords } from "./collection-documents";
+import { assertConcreteConformerSource } from "./conformer-input";
 import { runBrowserDevMetalConformer } from "./browser-dev-compute";
 import { parseDataWarrior } from "./datawarrior";
 import { nativePreviewHtml } from "./native-mcp-workspace";
@@ -676,6 +677,7 @@ export async function generateBrowserDev3DConformer(
   const source = request.operation === "optimize" && request.source3d
     ? request.source3d
     : { title: request.title, extension: request.extension, text: request.text };
+  assertConcreteConformerSource(source);
   return runBrowserDevMetalConformer(source, {
     mode: request.mode,
     optimize: request.operation === "optimize",

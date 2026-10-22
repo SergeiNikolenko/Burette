@@ -230,8 +230,8 @@ useMoleculeStore.getState().restoreSession(
 );
 
 const restored = useMoleculeStore.getState();
-assert.equal(restored.tabs.filter((tab) => tab.location.kind === "ketcher").length, 1);
-assert.equal(restored.tabs.length, 2);
+assert.equal(restored.tabs.filter((tab) => tab.location.kind === "ketcher").length, 2);
+assert.equal(restored.tabs.length, 3);
 assert.equal(restored.activeTabId, "session-ketcher-b");
 assert.equal(restored.tabs.find((tab) => tab.id === restored.activeTabId)?.location.kind, "ketcher");
 assert.equal(restored.activeDocumentId, null);
@@ -455,7 +455,7 @@ delete window.BuretteMcpWorkspace;
 
 
 // A screen placed in the floating window leaves the strip but stays a tab;
-// the active tab is always a main one.
+// activation and placement are independent.
 resetStore();
 useMoleculeStore.getState().addDocuments([document("main", "/data/main.pdb"), document("other", "/data/other.pdb")]);
 const otherTabId = useMoleculeStore.getState().activeTabId;
@@ -463,16 +463,20 @@ useMoleculeStore.getState().placeTab(otherTabId, "floating");
 {
   const state = useMoleculeStore.getState();
   assert.equal(state.tabs.find((tab) => tab.id === otherTabId).pane, "floating");
-  assert.notEqual(state.activeTabId, otherTabId, "popping out the active tab selects a neighbouring main tab");
-  assert.equal(state.tabs.find((tab) => tab.id === state.activeTabId).pane, undefined);
+  assert.equal(state.activeTabId, otherTabId, "the moved view retains focus");
 }
-const mainTabId = useMoleculeStore.getState().activeTabId;
+const mainTabId = useMoleculeStore.getState().tabs.find(isMainTab).id;
 useMoleculeStore.getState().placeTab(mainTabId, "floating");
 assert.deepEqual(useMoleculeStore.getState().tabs.filter((tab) => tab.pane === "floating").map((tab) => tab.id), [mainTabId],
   "the floating window holds one screen; the previous one returns to the strip");
 useMoleculeStore.getState().setActiveTab(mainTabId);
-assert.equal(useMoleculeStore.getState().tabs.find((tab) => tab.id === mainTabId).pane, undefined,
-  "activating a placed screen moves it back to the main window");
+assert.equal(useMoleculeStore.getState().tabs.find((tab) => tab.id === mainTabId).pane, "floating",
+  "activating a placed screen preserves its placement");
+useMoleculeStore.getState().placeTab(mainTabId, "right");
+useMoleculeStore.getState().placeTab(otherTabId, "bottom");
+useMoleculeStore.getState().setActiveTab(mainTabId);
+assert.deepEqual(Object.fromEntries(useMoleculeStore.getState().tabs.filter(tab => [mainTabId, otherTabId].includes(tab.id)).map(tab => [tab.id, tab.pane])),
+  { [mainTabId]: "right", [otherTabId]: "bottom" });
 
 const sessionKey = useMoleculeStore.persist.getOptions().name;
 // Screens saved in the retired side panel come back in the main strip.

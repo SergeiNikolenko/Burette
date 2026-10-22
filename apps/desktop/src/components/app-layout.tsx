@@ -1,5 +1,6 @@
 import { NativePreviewLayout } from "./workspace-panes/native-preview-layout";
 import { isNativePreviewWindow } from "../lib/window-scope";
+import { UsageStatistics } from "./usage-statistics";
 import { Spinner } from "@/components/ui/spinner";
 import { ToolbarButton } from "@/components/ui/toolbar-button";
 import { NativeWorkspaceMenu, NativeWorkspaceSidebar } from "./native-workspace-navigation";
@@ -498,6 +499,7 @@ function WorkspaceAppLayout({
       style={shellStyle}
     >
       <XyzrenderAnimationDialog />
+      {!hostedMcpWidget && <UsageStatistics pageKind={activePageKind ?? undefined} renderer={state.activeDocument?.renderer} />}
       {!hostedMcpWidget && <div className="drag-region" data-tauri-drag-region />}
       {chromeVisible && !window.BuretteMcpWorkspace && (
         <>

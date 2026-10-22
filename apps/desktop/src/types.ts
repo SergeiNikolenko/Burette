@@ -459,6 +459,8 @@ export type ViewerDocument = {
   virtual?: boolean;
   openClaimId?: string;
   sourcePath?: string | null;
+  /** Ordered source rows for a structure extracted from a molecular collection. */
+  moleculeSource?: { documentId: string; path: string; sourceRecordIds: number[] };
   /** Sources in an incrementally assembled scene; bounded to 200 paths. */
   sceneSourcePaths?: string[];
   sceneUnsaved?: boolean;

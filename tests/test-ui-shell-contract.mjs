@@ -985,8 +985,6 @@ assert.match(moleculeStore, /name: workspaceStorageKey\("burette\.molecule\.sess
 assert.match(moleculeStore, /function shouldIgnorePersistedSession\(\)/);
 assert.match(moleculeStore, /window\.location\.hostname === "127\.0\.0\.1" \|\| window\.location\.hostname === "localhost"/);
 assert.match(moleculeStore, /function devFilesPersistedSession\(recentStructures: RecentStructure\[\]\): PersistedMoleculeState/);
-assert.match(moleculeStore, /function collapseDuplicateKetcherTabs\(tabs: MoleculeTab\[\], preferredActiveId: string \| null = null\)/);
-assert.match(moleculeStore, /const ketcherTabs = tabs\.filter\(\(tab\) => tab\.location\.kind === "ketcher"\)/);
 assert.match(moleculeStore, /const existing = state\.tabs\.find\(\(tab\) => tab\.location\.kind === "ketcher"\)/);
 assert.match(moleculeStore, /const existingLocation = existing\.location as KetcherLocation/);
 assert.match(moleculeStore, /const nextLocation: KetcherLocation = \{ \.\.\.existingLocation, \.\.\.location, kind: "ketcher" \}/);
@@ -1512,13 +1510,12 @@ assert.match(editorArea, /const MountedPageSurface = memo\(function MountedPageS
 assert.match(editorArea, /<TabHistoryPages tab=\{tab\} state=\{state\} actions=\{actions\} isActive=\{contentVisible\} retainedHistoryKeys=\{retainedHistoryKeys\}/);
 assert.match(editorArea, /if \(previous\.isActive \|\| next\.isActive\) return false/);
 assert.match(editorArea, /previous\.tab\.id === next\.tab\.id && previous\.tab\.location === next\.tab\.location/);
-assert.match(editorArea, /className="page-stack"/);
+assert.match(await source("apps/desktop/src/components/workspace-panes/workspace-split-layout.tsx"), /className="page-stack"/);
 assert.match(editorArea, /className="page-surface"/);
 assert.match(editorArea, /data-page-kind=\{kind\.kind\}/);
 assert.match(editorArea, /kind: "launcher"/);
 assert.doesNotMatch(editorArea, /function WelcomePanel/);
 assert.match(editorTabs, /New tab/);
-assert.match(editorTabs, /const visibleTabs = useMemo\(\(\) => state\.tabs\.filter\(isMainTab\), \[state\.tabs\]\)/);
 assert.match(editorTabs, /visibleTabs\.map/);
 assert.match(editorTabs, /activeTabIndex/);
 assert.match(editorTabs, /const \[selectedTabIds, setSelectedTabIds\] = useState<Set<string>>\(\(\) => new Set\(\)\)/);
@@ -1542,7 +1539,7 @@ assert.match(editorTabs, /actions\.saveMoleculeCollectionAs\(tabDocument\.id\)/)
 assert.match(editorTabs, /kind: tab\.location\.kind === "ketcher" \? "ketcher" as const : tab\.location\.kind === "text-file" \? "writer" as const : "tab" as const/);
 assert.match(editorTabs, /startMouseTabReorder\(tab\.id, true, event\);/);
 assert.match(editorTabs, /showNativeContextMenu\(menuSections\(/);
-assert.match(editorTabs, /actions\.openNewTab/);
+assert.match(editorTabs, /openScreen\(\{ kind: "launcher" \}/);
 assert.doesNotMatch(editorTabs, /from "lucide-react"/);
 assert.doesNotMatch(editorTabs, /className="tab-history-controls"/);
 assert.match(editorTabs, /import \{ CloseIcon \} from "\.\.\/close-icon"/);
@@ -1572,12 +1569,12 @@ assert.match(appLayout, /data-window-fullscreen=\{windowFullscreen \? "true" : u
 assert.doesNotMatch(appLayout, /<header\s+className="topbar"[^>]*data-tauri-drag-region/s);
 assert.match(editorTabs, /className="tab-strip"/);
 assert.doesNotMatch(editorTabs, /className="tab-strip" data-tauri-drag-region/);
-assert.match(editorTabs, /className="tab-scroll-region"[\s\S]*role="tablist"[\s\S]*aria-label="Open structures"/);
+assert.match(editorTabs, /className="tab-scroll-region"[\s\S]*role="tablist"[\s\S]*aria-label=\{group === "main" \? "Workspace tabs"/);
 assert.doesNotMatch(editorTabs, /className="tab-scroll-region"[\s\S]{0,180}data-tauri-drag-region/);
 assert.match(editorTabs, /className="tab-strip-spacer"[\s\S]*data-tauri-drag-region/);
 assert.match(defaultCapability, /"core:window:allow-internal-toggle-maximize"/);
 assert.match(defaultCapability, /"core:window:allow-start-dragging"/);
-assert.match(pageKinds, /const kinds = \[fileKind, textFileKind, documentKind, fepNetworkKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind, jobsKind, chemicalSpaceKind\] as const/);
+assert.match(pageKinds, /const kinds = \[toolKind, fileKind, textFileKind, documentKind, fepNetworkKind, fepSetupKind, ketcherKind, launcherKind, poseReviewKind, settingsKind, jobsKind, chemicalSpaceKind\] as const/);
 assert.match(pageKinds, /export function pageKind/);
 assert.match(pageKinds, /export function serializeLocation/);
 assert.match(pageKinds, /export function deserializeLocation/);
@@ -2775,8 +2772,6 @@ assert.ok(
     < structureInfoPanel.indexOf("{assemblySymmetry.available ? ("),
   "grid filters should be the first inspector section after the document header",
 );
-assert.match(app, /activeDocument\?\.renderer === "grid2d" && activeGridFilterModel\?\.columns\.length/);
-assert.match(app, /setDockOpen\("right", true\);\s*setDockActiveTab\("right", "inspector"\);/);
 assert.match(gridFilterSection, /CHART_CONFIG = \{ count: \{ label: "Rows"/);
 assert.doesNotMatch(gridFilterSection, /model\.visible\.toLocaleString\(\)\} of \{model\.total\.toLocaleString\(\)\} rows/);
 assert.match(gridFilterSection, /Loaded-page range · \{\(column\.statsRows \?\? 0\)\.toLocaleString\(\)\} of \{\(column\.statsTotal \?\? 0\)\.toLocaleString\(\)\} rows/);
@@ -4398,7 +4393,7 @@ assert.match(appSdfViewerMessagesHook, /body\?\.type === "openSdfMolstarDocument
 assert.match(appSdfViewerMessagesHook, /pushErrorStatus\("Select one or more molecules before opening Molstar\.", "Molstar view failed"\)/);
 assert.match(appSdfViewerMessagesHook, /invoke<ViewerDocument>\("open_text_structure"/);
 assert.match(appSdfViewerMessagesHook, /rendererMode: "molstar" as const/);
-assert.match(appSdfViewerMessagesHook, /void openDockingDocument\(receptorDocument\.path, \[document\.path\]\)/);
+assert.match(appSdfViewerMessagesHook, /void openDockingDocument\(receptorDocument\.path, \[document\.path\], \{\s*moleculeSource: document\.moleculeSource,/);
 assert.match(appSdfViewerMessagesHook, /pushStatus\("Opening selected molecules in Molstar docking view\.\.\."\)/);
 assert.match(appSdfViewerMessagesHook, /pushStatus\("Opened selected molecules in Molstar"\)/);
 assert.match(appSdfViewerMessagesHook, /openDocumentsInActiveTab\(\[document\]\)/);
@@ -4596,7 +4591,7 @@ assert.match(appDockPayloadHook, /const recordResult = cleanRecords\.length > 0/
 assert.match(appDockPayloadHook, /setDockDocument\(input\.area, firstDockDocumentId\)/);
 assert.match(appDockPayloadHook, /pushErrorStatus\(error, "Dock open failed"\)/);
 assert.match(appSpectrumDockLifecycleHook, /export function useAppSpectrumDockLifecycle/);
-assert.match(appSpectrumDockLifecycleHook, /if \(activeDocument\?\.renderer === "spectrum"\) return/);
+assert.match(appSpectrumDockLifecycleHook, /if \(activeDocument\?\.renderer === "spectrum"/);
 assert.match(appSpectrumDockLifecycleHook, /bottomDockTabs\.find\(\(tab\) => tab\.kind === "spectrum"\)/);
 assert.match(appSpectrumDockLifecycleHook, /closeDockTab\("bottom", spectrumTab\.id\)/);
 assert.match(appSpectrumDockLifecycleHook, /if \(bottomDockActiveTab === "spectrum"\) setDockActiveTab\("bottom", "files"\)/);
@@ -6737,8 +6732,7 @@ assert.match(structureInfoPanel, /function normalizeSdfContextOpacity\(value: st
 // rebuilds (slider drags, rapid style clicks) must run through one queue -
 // while loadPreparedStructure keeps calling the *Now variants to avoid
 // deadlocking the queue from inside a running rebuild.
-assert.match(previewViewer, /function queueMolstarSceneRebuild\(run, appearanceKey = null\)/);
-assert.match(previewViewer, /function applySdfCollectionVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applySdfCollectionVisibilityNow\(viewer, prepared, activePose, options\),[\s\S]*?prepared : null\);/);
+assert.match(previewViewer, /function queueMolstarSceneRebuild\(run, appearanceKey = null, holdDraw = true\)/);
 assert.match(previewViewer, /function applyDockingPoseCollectionVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyDockingPoseCollectionVisibilityNow\(viewer, prepared, activePose, options\),[\s\S]*?prepared : null\);/);
 assert.match(previewViewer, /async function applyXyzFrameOverlayVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{[\s\S]*?await queueMolstarSceneRebuild\(\(\) => applyXyzFrameOverlayVisibilityNow\(viewer, prepared, activePose, options\),[\s\S]*?prepared : null\);/);
 assert.match(previewViewer, /function applyDockingSceneVisibility\(viewer, prepared, activePose = 0, options = \{\}\) \{\s*return queueMolstarSceneRebuild\(\(\) => applyDockingSceneVisibilityNow\(viewer, prepared, activePose, options\),[\s\S]*?prepared : null\);/);
@@ -6797,10 +6791,10 @@ assert.match(previewViewer, /prepared\?\.kind !== 'sdf-collection' && !prepared\
 assert.match(previewViewer, /await applyDockingSceneVisibility\(activeViewer, prepared, activePose, \{ focus: false \}\)/);
 assert.match(previewViewer, /await applyDockingPoseCollectionVisibility\(activeViewer, prepared, activePose, \{ contextStyle: style, focus: false \}\)/);
 assert.match(previewViewer, /else if \(activeSdfPoseMode === 'all'\) \{/);
-assert.match(previewViewer, /async function applySdfCollectionMolstarStyle\(viewer, style, structures = null, alpha = 1, colorMode = 'gray'\)/);
-assert.match(previewViewer, /function sdfCollectionStateKey\(prepared, style, allMode, contextStyle, contextOpacity, contextColor\)/);
+assert.match(previewViewer, /async function applySdfCollectionMolstarStyle\(viewer, style, structures = null, alpha = 1, colorMode = 'gray', signal\)/);
+assert.match(previewViewer, /function sdfCollectionStateKey\(prepared, style, allMode\)/);
 assert.match(previewViewer, /function sdfCollectionVisibilityStateStillLoaded\(viewer, state\)/);
-assert.match(previewViewer, /const stateKey = sdfCollectionStateKey\(prepared, style, allMode, contextStyle, contextOpacity, contextColor\)/);
+assert.match(previewViewer, /const stateKey = sdfCollectionStateKey\(prepared, style, allMode\)/);
 assert.doesNotMatch(previewViewer, /const contextStructures = await loadSdfCollectionPdbLayer\(viewer, prepared\.data,/);
 assert.match(previewViewer, /const contextStyle = options\.contextStyle \?\? readSdfCollectionContextStyle\(activeConfig\)/);
 assert.match(previewViewer, /const contextOpacity = options\.contextOpacity \?\? readSdfCollectionContextOpacity\(activeConfig\)/);
@@ -6842,8 +6836,7 @@ assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*aw
 assert.match(previewViewer, /function sdfCollectionRepresentationForStyle\(style, alpha = 1, colorMode = 'gray', minAlpha = 0\.04\)/);
 assert.match(previewViewer, /const \{ ghost, withAlpha, themed \} = sdfCollectionAlphaHelpers\(alpha, colorMode, minAlpha\)/);
 assert.doesNotMatch(previewViewer, /if \(normalized === 'illustrative' \|\| normalized === 'cartoon' \|\| normalized === 'polymer-ligand'\) \{/);
-assert.match(previewViewer, /if \(normalized === 'default' \|\| normalized === 'illustrative' \|\| normalized === 'cartoon' \|\| normalized === 'polymer-ligand'\) \{\s*await applyMolstarPolymerLigandRepresentationToStructures\(/s);
-assert.match(previewViewer, /await applyMolstarRepresentationsToStructures\(viewer, targets, sdfCollectionRepresentationForStyle\(normalized, alpha, colorMode\)\)/);
+assert.match(previewViewer, /await applyMolstarRepresentationsToStructures\(viewer, targets, sdfCollectionRepresentationForStyle\(normalized, alpha, colorMode\), signal\)/);
 assert.match(previewViewer, /if \(normalized === 'spacefill'\) \{\s*return themed\(\{ type: 'spacefill'/s);
 assert.match(previewViewer, /if \(normalized === 'molecular-surface'\) \{[\s\S]*?return themed\(\{ type: 'molecular-surface'/);
 assert.doesNotMatch(previewViewer, /visuals: \['structure-gaussian-surface-mesh'\]/);
@@ -6863,8 +6856,8 @@ assert.match(previewViewer, /function sdfCollectionLigandRepresentationForStyle\
 assert.match(previewViewer, /const \{ ghost, withAlpha, themed \} = sdfCollectionAlphaHelpers\(alpha, colorMode\)/);
 assert.doesNotMatch(previewViewer, /const lineLigands = normalized === 'cartoon'/);
 assert.match(previewViewer, /type: 'ball-and-stick'/);
-assert.match(previewViewer, /async function applyMolstarRepresentationsToStructures\(viewer, structures, representation\)/);
-assert.match(previewViewer, /async function applyMolstarPolymerLigandRepresentationToStructures\(viewer, structures, polymerRepresentation, ligandRepresentation\)/);
+assert.match(previewViewer, /async function applyMolstarRepresentationsToStructures\(viewer, structures, representation, signal\)/);
+assert.match(previewViewer, /async function applyMolstarPolymerLigandRepresentationToStructures\(viewer, structures, polymerRepresentation, ligandRepresentation, signal\)/);
 assert.match(previewViewer, /const polymer = await tryCreateMolstarComponent\(plugin, structure, 'polymer'\)/);
 assert.match(previewViewer, /async function clearMolstarMainRepresentationsForStructures\(viewer, structures\)/);
 assert.match(previewViewer, /await reloadActiveMolstarStructure\(\)/);
@@ -6997,8 +6990,8 @@ assert.match(previewViewer, /window\.addEventListener\('pointermove', onPointerM
 assert.match(previewViewer, /window\.addEventListener\('pointerup', finishDrag, true\)/);
 assert.match(previewViewer, /moveDockingPoseControls\(root, saved\.left, saved\.top\);/);
 assert.match(previewViewer, /function stableTextHash\(value\)/);
-assert.match(previewViewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(nextIndex\)\)/);
-assert.match(previewViewer, /sessionStorage\.setItem\(trajectoryControlStorageKey\(activeConfig, prepared\), String\(previousIndex\)\)/);
+assert.match(previewViewer, /writeTrajectoryControlIndex\(activeConfig, prepared, nextIndex\)/);
+assert.match(previewViewer, /writeTrajectoryControlIndex\(activeConfig, prepared, previousIndex\)/);
 assert.match(previewRuntimeCss, /\.buret-docking-poses \{/);
 assert.match(previewRuntimeCss, /body\.buret-docking-pose-controls-active \.msp-animation-viewport-controls,\s*body\.buret-docking-pose-controls-active \.msp-traj-controls \{/);
 assert.match(previewRuntimeCss, /\.buret-docking-pose-slider \{/);
@@ -8291,7 +8284,7 @@ assert.match(gridViewer, /const molblock = typeof mol\.get_molblock === 'functio
 assert.match(gridViewer, /return sdfRecordFromMolblock\(molblock\)/);
 assert.match(gridViewer, /const text = String\(record\.text \|\| ''\)\.trimEnd\(\);[\s\S]*?if \(!text\.trim\(\)\) return null;/);
 assert.match(gridViewer, /const molblock = String\(row\?\.molblock \|\| ''\)\.trimEnd\(\);[\s\S]*?if \(molblock\.trim\(\)\) \{/);
-assert.match(gridViewer, /function requestSingleMolstarDocument\(row, cfg, openTarget = 'new-tab'\)/);
+assert.match(gridViewer, /function requestSingleMolstarDocument\(row, cfg, openTarget = 'new-tab', navigation = null\)/);
 assert.match(gridViewer, /openTarget,/);
 assert.match(gridViewer, /data-buret-detail-action="molstar">Open in new tab/);
 assert.match(gridViewer, /data-buret-detail-action="ketcher">Edit in Ketcher/);

@@ -1,5 +1,6 @@
 import { runAnalysisWorkflow } from "./compute-analysis";
 import { publishConformerJob } from "./conformer-job-events";
+import { assertConcreteConformerSource } from "./conformer-input";
 import type { ConformerJob } from "../types";
 
 import { invoke } from "@tauri-apps/api/core";
@@ -97,6 +98,7 @@ export async function runStandaloneConformerWorkflow(
   };
   update({});
   try {
+    assertConcreteConformerSource(source);
     const result = await withInlineSource(source, ({ documentId, sourceIndexes }) => runConformerWorkflow(
       documentId,
       sourceIndexes,

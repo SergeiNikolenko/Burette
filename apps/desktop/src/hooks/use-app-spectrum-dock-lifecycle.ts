@@ -32,7 +32,9 @@ export function useAppSpectrumDockLifecycle({
   textDocuments,
 }: UseAppSpectrumDockLifecycleOptions) {
   useEffect(() => {
-    if (activeDocument?.renderer === "spectrum") return;
+    if (activeDocument?.renderer === "spectrum"
+      || bottomDockDocumentId?.startsWith("missing:")
+      || documents.some(document => document.id === bottomDockDocumentId && document.renderer === "spectrum")) return;
 
     const spectrumTab = bottomDockTabs.find((tab) => tab.kind === "spectrum");
     if (spectrumTab) closeDockTab("bottom", spectrumTab.id);
