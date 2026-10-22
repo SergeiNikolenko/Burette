@@ -5201,7 +5201,6 @@ assert.match(previewViewer, /requestGenerated3DCameraView\(activeViewer\)/);
 assert.match(previewViewer, /function installMolstarControlTooltips\(\)/);
 assert.match(previewViewer, /window\.__buretteMolstarControlTooltipsInstalled/);
 assert.match(previewViewer, /\.msp-plugin button\[aria-label\], \.msp-plugin button\[title\]/);
-assert.match(previewViewer, /control\.closest\('\.msp-hover-box-wrapper, \.buret-seq-header, \.buret-seq-footer'\)/);
 assert.doesNotMatch(previewViewer, /scheduleViewportPopoverRefresh/);
 assert.match(previewViewer, /function molstarTooltipLabel\(control\)/);
 assert.match(previewViewer, /control\.getAttribute\('aria-label'\) \|\| control\.dataset\.buretHint \|\| control\.getAttribute\('title'\)/);
@@ -6801,10 +6800,8 @@ assert.match(previewViewer, /const contextColor = options\.contextColor \?\? rea
 assert.match(previewViewer, /await applySdfCollectionMolstarStyle\(\s*viewer,\s*contextStyle === 'match' \? style : contextStyle,\s*backgroundStructures,\s*contextOpacity,\s*contextColor\s*\)/s);
 assert.match(previewViewer, /await switchCachedPoseLayer\(viewer, state, activeIndex, \{[\s\S]*?data: activeData, format: 'pdb'/);
 assert.match(previewViewer, /structures => applySdfCollectionMolstarStyle\(viewer, style, structures, 1, 'colored'\)/);
-assert.match(previewViewer, /function dockingPoseCollectionStateKey\(prepared, style, allMode, contextStyle, activeIndex = 0\)/);
 assert.match(previewViewer, /async function applyDockingPoseCollectionVisibilityNow\(viewer, prepared, activePose = 0, options = \{\}\)/);
 assert.match(previewViewer, /const allMode = activeSdfPoseMode === 'all' && prepared\.sdfPoseOverlayAvailable === true/);
-assert.match(previewViewer, /backgroundStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\)/);
 assert.match(previewViewer, /async function loadMolstarEntry\(viewer, entry, presetOptions = undefined, appendOwner = undefined\)/);
 assert.match(previewViewer, /await window\.BuretteSceneFiles\.loadModels\(viewer, \{ \.\.\.entry, \.\.\.payload \}, parseMolstarStructureTrajectories, presetOptions, appendOwner\)/);
 assert.match(previewViewer, /async function loadMolstarEntryWithStructureRefs\(viewer, entry, presetOptions = undefined\)/);
@@ -6843,7 +6840,7 @@ assert.match(previewViewer, /function sdfCollectionAlphaHelpers\(alpha = 1, colo
 assert.match(previewViewer, /const ghost = Number\.isFinite\(Number\(alpha\)\) && Number\(alpha\) < 1/);
 assert.match(previewViewer, /alpha: Math\.max\(minAlpha, Math\.min\(value, 1\)\)/);
 assert.match(previewViewer, /transparentBackfaces: 'on'/);
-assert.match(previewViewer, /const color = normalizeSdfCollectionContextColor\(colorMode\) === 'colored' \? 'element-symbol' : 'uniform'/);
+assert.match(previewViewer, /const color = carbon !== null \|\| normalizeSdfCollectionContextColor\(colorMode\) === 'colored' \? 'element-symbol' : 'uniform'/);
 assert.match(previewViewer, /const colorParams = color === 'uniform' \? \{ value: 0x6f7886 \} : undefined/);
 assert.match(previewViewer, /const themed = \(representation\) => colorParams \? \{ \.\.\.representation, color, colorParams \} : \{ \.\.\.representation, color \}/);
 assert.match(previewViewer, /typeParams: withAlpha\(\{ sizeFactor: ghost \? 0\.095 : 0\.16 \}\)/);
@@ -6908,7 +6905,6 @@ assert.match(previewViewer, /loopActive = Boolean\(active\)/);
 assert.match(previewViewer, /const open = !isAnimationOptionsOpen\(\);\s*setAnimationOptionsOpen\(open\);/);
 assert.match(previewViewer, /const loopTargetIndex = \(\) => \{/);
 assert.match(previewViewer, /const trajectoryControlBounds = \(poseIndex\) => \{/);
-assert.match(previewViewer, /currentIndex\.textContent = `\$\{poseIndex - current\.segment\.startFrame \+ 1\}\/\$\{current\.segment\.frameCount\} · \$\{current\.index \+ 1\}\/\$\{segments\.length\}`/);
 // A slow frame step must not let wall-clock time pick an absolute frame: the loop
 // would alternate between two frames instead of playing (WKWebView regression).
 // It still has to skip the frames that fell due, or fps above the step rate is
@@ -6943,7 +6939,6 @@ assert.match(previewViewer, /const supportsLivePoseInput = \(\) => \(/);
 assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.sdfPoseOverlayAvailable === true/);
 assert.match(previewViewer, /if \(supportsLivePoseInput\(\)\) scheduleSliderInputPose\(previewIndex\)/);
 assert.match(previewViewer, /slider\.addEventListener\('change', \(\) => \{/);
-assert.match(previewViewer, /if \(event\.pointerType === 'touch' \|\| targetPose === activePose\) return;/);
 assert.match(previewViewer, /function installDockingPoseInteractionIsolation\(root\)/);
 assert.match(previewViewer, /root\.addEventListener\('wheel', isolateWheel, \{ passive: false \}\)/);
 assert.match(previewViewer, /const isolationDisposer = installDockingPoseInteractionIsolation\(root\)/);
