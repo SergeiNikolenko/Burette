@@ -4,7 +4,7 @@ const browser = new Window();
 for (const key of ["window", "document", "navigator", "HTMLElement", "Element", "Node", "Event", "CustomEvent"] as const) Object.defineProperty(globalThis, key, { configurable: true, value: key === "window" ? browser : browser[key] });
 Object.defineProperty(globalThis, "localStorage", { configurable: true, value: browser.localStorage });
 const { dockScreenLocation } = await import("../apps/desktop/src/components/workspace-panes/dock-screen");
-const { useMoleculeStore } = await import("../apps/desktop/src/stores/molecule-store");
+const { useMoleculeStore, adjacentMainTabId } = await import("../apps/desktop/src/stores/molecule-store");
 const { serializeLocation, deserializeLocation } = await import("../apps/desktop/src/components/editor-area/page-kinds");
 
 test("workspace tools pin their input and retain it after the source tab closes", () => {
@@ -30,4 +30,21 @@ test("explicit new screens have independent identities within the same group", (
   useMoleculeStore.getState().openScreenTab({ kind: "jobs" }, "right", { newTab: true });
   expect(useMoleculeStore.getState().activeTabId).not.toBe(first);
   expect(useMoleculeStore.getState().tabs.filter(tab => tab.location.kind === "jobs").length).toBe(2);
+});
+
+
+test("focused group owns new tabs, cycling, reactivation and Settings return", () => {
+  const store = useMoleculeStore.getState();
+  store.openScreenTab({ kind: "jobs" }, "right");
+  const jobs = useMoleculeStore.getState().activeTabId!;
+  store.openNewTab();
+  const state = useMoleculeStore.getState();
+  expect(state.tabs.find(tab => tab.id === state.activeTabId)?.pane).toBe("right");
+  const next = adjacentMainTabId(state.tabs, state.activeTabId, 1);
+  expect(state.tabs.find(tab => tab.id === next)?.pane).toBe("right");
+  store.openScreenTab({ kind: "jobs" }, "right");
+  expect(useMoleculeStore.getState().activeTabId).toBe(jobs);
+  store.openSettingsSection("general");
+  store.activateLastNonSettingsTab();
+  expect(useMoleculeStore.getState().activeTabId).toBe(jobs);
 });

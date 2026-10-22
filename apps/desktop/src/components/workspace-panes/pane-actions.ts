@@ -1,3 +1,4 @@
+import { openNativePageWindow } from "./native-page-window";
 import type { MenuItemSpec } from "../menu-types";
 import type { ShellActions, ShellViewState } from "../types";
 import { canOpenNativePopout, openNativePopout } from "./native-popout";
@@ -83,9 +84,10 @@ export function paneMoveItems(tab: MoleculeTab, state: ShellViewState, actions: 
   }
   // Pop out copies the scene into a compact preview; this moves the scene and
   // its checkpointed state into an independent workspace window instead.
-  if (isTauriRuntime() && !tab.pane) {
+  if (isTauriRuntime()) {
+    items.push({ kind: "item", id: "pane-open-window", text: "Open in New Window", action: () => { void openNativePageWindow(tab); } });
     const reason = nativePopoutReason(tab);
-    items.push({ kind: "item", id: "pane-move-window", text: "Move to New Window", disabled: Boolean(reason), tooltip: reason ?? undefined, action: () => { void popOutNativeScene(tab.id); } });
+    if (!reason) items.push({ kind: "item", id: "pane-move-window", text: "Move to New Window", action: () => { void popOutNativeScene(tab.id); } });
   }
   return items;
 }

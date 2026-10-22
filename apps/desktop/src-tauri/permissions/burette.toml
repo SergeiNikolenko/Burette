@@ -139,6 +139,7 @@ commands.allow = [
   "save_popout_scene",
   "save_popout_sheet",
   "relay_popout_handoff",
+  "relay_workspace_page",
   "reset_quick_look",
   "open_pubchem_search",
   "install_update",
