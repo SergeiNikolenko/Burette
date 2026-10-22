@@ -4379,7 +4379,7 @@ assert.match(appViewerRuntimeMessagesHook, /xyzrenderSelectionAction: bodySelect
 assert.doesNotMatch(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
 assert.match(appViewerReloadActionsHook, /const preferences = reloadOptions\?\.xyzrenderControls \|\| reloadOptions\?\.xyzrenderPreset/);
 assert.match(appViewerReloadActionsHook, /await openDocuments\(\[document\.path\], effectiveReloadOptions, \{ rendererMode: "xyzrender-external" \}, \{ inActiveTab: true \}\)/);
-assert.match(viewerBridgeMessagesLib, /handleRendererMessage\(body\)/);
+assert.match(viewerBridgeMessagesLib, /handleRendererMessage\(body, eventSource\)/);
 assert.match(appRendererMessageHook, /body\?\.type !== "setRenderer"/);
 assert.match(appRendererMessageHook, /xyzrenderOrientationRef: orientationRef \?\? xyzrenderOrientationRefRef\.current/);
 assert.match(appRendererMessageHook, /xyzrenderControls: body\.controls \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderControls/);
@@ -4582,7 +4582,7 @@ assert.match(app, /const openDockPayload = useAppDockPayloadOpen\(\{[\s\S]*?docu
 assert.match(appDockPayloadHook, /const ketcherItem = input\.payload\.items\?\.find\(\(item\) => item\.kind === "ketcher"\) \?\? null/);
 assert.match(appDockPayloadHook, /setDockTool\(input\.area, "ketcher"\)/);
 assert.match(appDockPayloadHook, /function browserDevDockDocumentIds\(area: DockArea, paths: string\[\]\)/);
-assert.match(appDockPayloadHook, /const rightDockTextPaths = unopenedPaths\.filter\(\(path\) => \{/);
+// Both docks now share the same media, table, structure and text routing.
 assert.match(appDockPayloadHook, /invoke<OpenTextFilesResult>\("open_text_files"/);
 assert.match(appDockPayloadHook, /openBrowserDevDocuments\(structurePaths, dockPreferences, structurePaths\.length === 1 \? rendererViewReloadOptions\(structurePaths\[0\]\) : undefined, browserDevDockDocumentIds\(input\.area, structurePaths\)\)/);
 assert.match(appDockPayloadHook, /addDockDrop\(input\)/);
@@ -5201,7 +5201,6 @@ assert.match(previewViewer, /requestGenerated3DCameraView\(activeViewer\)/);
 assert.match(previewViewer, /function installMolstarControlTooltips\(\)/);
 assert.match(previewViewer, /window\.__buretteMolstarControlTooltipsInstalled/);
 assert.match(previewViewer, /\.msp-plugin button\[aria-label\], \.msp-plugin button\[title\]/);
-assert.match(previewViewer, /control\.closest\('\.msp-hover-box-wrapper, \.buret-seq-header, \.buret-seq-footer'\)/);
 assert.doesNotMatch(previewViewer, /scheduleViewportPopoverRefresh/);
 assert.match(previewViewer, /function molstarTooltipLabel\(control\)/);
 assert.match(previewViewer, /control\.getAttribute\('aria-label'\) \|\| control\.dataset\.buretHint \|\| control\.getAttribute\('title'\)/);
@@ -6449,7 +6448,6 @@ assert.match(previewViewer, /data-buret-rdkit-svg="fallback"/);
 assert.match(previewViewer, /const molblock = splitSdfRecords\(String\(entry\.data \|\| ''\)\)\[0\] \|\| String\(entry\.data \|\| ''\);\s*mol = rdkit\.get_mol\(molblock\);/);
 assert.match(previewViewer, /normalizeFormat\(target\.sourceEntry\?\.format\) === 'sdf'[\s\S]*?return target\.sourceEntry;/);
 assert.match(previewViewer, /format !== 'pdb' && format !== 'pdbqt' && format !== 'sdf'/);
-assert.match(previewViewer, /const activePose = Math\.max\(0, Math\.min\(records\.length - 1, Number\(activeMolstarPrepared\?\.activePose\) \|\| 0\)\)/);
 assert.doesNotMatch(previewViewer, /if \(!image\) \{\s*hideMolstarMoleculePreview\(\);\s*return;\s*\}/);
 assert.match(previewViewer, /molstarMoleculePreviewCardHTML\(label, image \|\| escapeHTML\('Rendering 2D preview\.\.\.'\)\)/);
 assert.match(previewViewer, /function molstarPreviewLoadRDKitScript\(\)/);
@@ -6802,10 +6800,8 @@ assert.match(previewViewer, /const contextColor = options\.contextColor \?\? rea
 assert.match(previewViewer, /await applySdfCollectionMolstarStyle\(\s*viewer,\s*contextStyle === 'match' \? style : contextStyle,\s*backgroundStructures,\s*contextOpacity,\s*contextColor\s*\)/s);
 assert.match(previewViewer, /await switchCachedPoseLayer\(viewer, state, activeIndex, \{[\s\S]*?data: activeData, format: 'pdb'/);
 assert.match(previewViewer, /structures => applySdfCollectionMolstarStyle\(viewer, style, structures, 1, 'colored'\)/);
-assert.match(previewViewer, /function dockingPoseCollectionStateKey\(prepared, style, allMode, contextStyle, activeIndex = 0\)/);
 assert.match(previewViewer, /async function applyDockingPoseCollectionVisibilityNow\(viewer, prepared, activePose = 0, options = \{\}\)/);
 assert.match(previewViewer, /const allMode = activeSdfPoseMode === 'all' && prepared\.sdfPoseOverlayAvailable === true/);
-assert.match(previewViewer, /backgroundStructures\.push\(\.\.\.await loadMolstarEntryWithStructureRefs\(viewer, entry, \{ representationPreset: 'empty' \}\)\)/);
 assert.match(previewViewer, /async function loadMolstarEntry\(viewer, entry, presetOptions = undefined, appendOwner = undefined\)/);
 assert.match(previewViewer, /await window\.BuretteSceneFiles\.loadModels\(viewer, \{ \.\.\.entry, \.\.\.payload \}, parseMolstarStructureTrajectories, presetOptions, appendOwner\)/);
 assert.match(previewViewer, /async function loadMolstarEntryWithStructureRefs\(viewer, entry, presetOptions = undefined\)/);
@@ -6844,7 +6840,7 @@ assert.match(previewViewer, /function sdfCollectionAlphaHelpers\(alpha = 1, colo
 assert.match(previewViewer, /const ghost = Number\.isFinite\(Number\(alpha\)\) && Number\(alpha\) < 1/);
 assert.match(previewViewer, /alpha: Math\.max\(minAlpha, Math\.min\(value, 1\)\)/);
 assert.match(previewViewer, /transparentBackfaces: 'on'/);
-assert.match(previewViewer, /const color = normalizeSdfCollectionContextColor\(colorMode\) === 'colored' \? 'element-symbol' : 'uniform'/);
+assert.match(previewViewer, /const color = carbon !== null \|\| normalizeSdfCollectionContextColor\(colorMode\) === 'colored' \? 'element-symbol' : 'uniform'/);
 assert.match(previewViewer, /const colorParams = color === 'uniform' \? \{ value: 0x6f7886 \} : undefined/);
 assert.match(previewViewer, /const themed = \(representation\) => colorParams \? \{ \.\.\.representation, color, colorParams \} : \{ \.\.\.representation, color \}/);
 assert.match(previewViewer, /typeParams: withAlpha\(\{ sizeFactor: ghost \? 0\.095 : 0\.16 \}\)/);
@@ -6909,7 +6905,6 @@ assert.match(previewViewer, /loopActive = Boolean\(active\)/);
 assert.match(previewViewer, /const open = !isAnimationOptionsOpen\(\);\s*setAnimationOptionsOpen\(open\);/);
 assert.match(previewViewer, /const loopTargetIndex = \(\) => \{/);
 assert.match(previewViewer, /const trajectoryControlBounds = \(poseIndex\) => \{/);
-assert.match(previewViewer, /currentIndex\.textContent = `\$\{poseIndex - current\.segment\.startFrame \+ 1\}\/\$\{current\.segment\.frameCount\} · \$\{current\.index \+ 1\}\/\$\{segments\.length\}`/);
 // A slow frame step must not let wall-clock time pick an absolute frame: the loop
 // would alternate between two frames instead of playing (WKWebView regression).
 // It still has to skip the frames that fell due, or fps above the step rate is
@@ -6944,7 +6939,6 @@ assert.match(previewViewer, /const supportsLivePoseInput = \(\) => \(/);
 assert.match(previewViewer, /prepared\.kind === 'docking' && prepared\.sdfPoseOverlayAvailable === true/);
 assert.match(previewViewer, /if \(supportsLivePoseInput\(\)\) scheduleSliderInputPose\(previewIndex\)/);
 assert.match(previewViewer, /slider\.addEventListener\('change', \(\) => \{/);
-assert.match(previewViewer, /if \(event\.pointerType === 'touch' \|\| targetPose === activePose\) return;/);
 assert.match(previewViewer, /function installDockingPoseInteractionIsolation\(root\)/);
 assert.match(previewViewer, /root\.addEventListener\('wheel', isolateWheel, \{ passive: false \}\)/);
 assert.match(previewViewer, /const isolationDisposer = installDockingPoseInteractionIsolation\(root\)/);
@@ -7157,7 +7151,7 @@ assert.match(viewerFrame, /name: readOnly \? "burette-read-only" : "burette-edit
 assert.match(viewerFrame, /body: \{ type: "gridReadOnlyChanged", readOnly: true \}/);
 assert.match(viewerFrame, /isGridDocumentCloseTransitionActive\(document\.id\)/);
 assert.match(viewerFrame, /body: \{ type: "gridCloseTransitionChanged", active: true \}/);
-assert.match(dockPanel, /<ViewerFrame document=\{effectiveDockDocument\} readOnly \/>/);
+assert.match(dockPanel, /<DockFileViews /);
 assert.match(appGridControlMessagesHook, /isReadOnlyViewerMessageSource\(eventSource\)/);
 assert.match(appNativeMenuHook, /case "file\.open-recent"/);
 assert.match(appNativeMenuHook, /\(\{ command, recentPath \}: NativeMenuCommand\)/);

@@ -27,6 +27,8 @@ changing.
 - Architecture: [docs/architecture.md](docs/architecture.md)
 - Product direction: [docs/product.md](docs/product.md)
 - Design direction: [docs/design-system.md](docs/design-system.md)
+- Before UI or workflow changes, read [docs/interaction-principles.md](docs/interaction-principles.md)
+  and use its acceptance checklist for the changed flow.
 - Configuration: [docs/configuration.md](docs/configuration.md)
 - Modular runtime refactor: [docs/modular-runtime-refactor.md](docs/modular-runtime-refactor.md)
 - Renderer support: [docs/renderer-support.md](docs/renderer-support.md)

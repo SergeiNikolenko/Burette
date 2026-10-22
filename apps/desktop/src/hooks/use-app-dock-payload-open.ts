@@ -1,11 +1,14 @@
+import { isMolecularDelimitedFile } from "../lib/delimited-molecules";
+import type { useDockLayout } from "./use-dock-layout";
 import { useCallback } from "react";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
+import { prepareDockCameraTransfer } from "../lib/dock-camera-transfer";
 import { invoke } from "@tauri-apps/api/core";
 
 import type { StatusKind } from "../components/types";
 import { openBrowserDevDocuments } from "../lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "../lib/browser-dev-text-files";
-import { DOCK_TAB_LABELS, dockTabLoadsDroppedDocument, resolveDockDropPaths, type DockArea, type DockDropInput, type DockToolKind } from "../lib/dock";
+import { DOCK_TAB_LABELS, dockMediaId, dockTabLoadsDroppedDocument, resolveDockDropPaths, type DockArea, type DockDropInput } from "../lib/dock";
 import {
   documentFallbackExtensions,
   isDocumentMediaPath,
@@ -39,16 +42,13 @@ type UseAppDockPayloadOpenOptions = {
   preferences: ViewerPreferences;
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   addBackgroundTextDocuments: (documents: TextFileDocument[]) => void;
-  addDockDrop: (input: DockDropInput) => void;
+  captureDockTarget: ReturnType<typeof useDockLayout>["captureDockTarget"];
   detectContentSpectrumPaths: (paths: string[]) => Promise<Set<string>>;
   documents: ViewerDocument[];
-  openDocumentTab: (path: string) => void;
   openStructureRecordDocuments: OpenStructureRecordDocuments;
   pushErrorStatus: PushErrorStatus;
   pushStatus: PushStatus;
   rememberRecentStructures: (documents: ViewerDocument[]) => void;
-  setDockDocument: (area: DockArea, documentId: string | null) => void;
-  setDockTool: (area: DockArea, tool: DockToolKind | null) => void;
   textDocuments: TextFileDocument[];
 };
 
@@ -60,19 +60,17 @@ export function useAppDockPayloadOpen({
   preferences,
   addBackgroundDocuments,
   addBackgroundTextDocuments,
-  addDockDrop,
+  captureDockTarget,
   detectContentSpectrumPaths,
   documents,
-  openDocumentTab,
   openStructureRecordDocuments,
   pushErrorStatus,
   pushStatus,
   rememberRecentStructures,
-  setDockDocument,
-  setDockTool,
   textDocuments,
 }: UseAppDockPayloadOpenOptions) {
   return useCallback(async (input: DockDropInput) => {
+    const { workspaceId, addDockDrop, setDockDocument, setDockTool } = captureDockTarget();
     const ketcherItem = input.payload.items?.find((item) => item.kind === "ketcher") ?? null;
     const itemPaths = (input.payload.items ?? [])
       .map((item) => item.path)
@@ -98,8 +96,12 @@ export function useAppDockPayloadOpen({
     const { existingDocumentId, unopenedPaths } = input.rendererMode
       ? { existingDocumentId: null, unopenedPaths: cleanPaths }
       : resolveDockDropPaths(cleanPaths, documents, textDocuments);
-    const dockPreferences = input.rendererMode ? { ...preferences, rendererMode: input.rendererMode } : preferences;
-    if (existingDocumentId) setDockDocument(input.area, existingDocumentId);
+    const dockPreferences = { ...preferences, rendererMode: input.rendererMode ?? "auto" as const };
+    if (existingDocumentId) {
+      const source = documents.find(document => document.id === existingDocumentId);
+      if (input.tabKind === "files" && source) await prepareDockCameraTransfer(input.area, source, workspaceId);
+      setDockDocument(input.area, existingDocumentId);
+    }
     if (unopenedPaths.length === 0 && cleanRecords.length === 0) {
       addDockDrop(input);
       pushStatus(`Opened existing document in ${input.area === "right" ? "right dock" : "bottom dock"}`);
@@ -109,45 +111,7 @@ export function useAppDockPayloadOpen({
     pushStatus(`Opening in ${input.area === "right" ? "right dock" : "bottom dock"}...`);
     let unmaterializedDocuments: Array<ViewerDocument | TextFileDocument> = [];
     try {
-      let dockOpenPaths = unopenedPaths;
-      if (input.area === "right" && unopenedPaths.length > 0) {
-        const rightDockContentSpectrumPaths = await detectContentSpectrumPaths(unopenedPaths);
-        const rightDockTextPaths = unopenedPaths.filter((path) => {
-          const extension = pathExtension(path);
-          return !isSpectrumPath(path, extension)
-            && !rightDockContentSpectrumPaths.has(path)
-            && !isDocumentMediaPath(path, extension)
-            && (isPreferredTextPath(path, extension) || (!structureExtensions.has(extension) && !structureAndTextExtensions.has(extension)));
-        });
-        dockOpenPaths = unopenedPaths.filter((path) => !rightDockTextPaths.includes(path));
-        if (rightDockTextPaths.length > 0) {
-          const textResult = isTauriRuntime()
-            ? await invoke<OpenTextFilesResult>("open_text_files", {
-                paths: rightDockTextPaths,
-                openStateRevision: currentDocumentRegistryRevision(),
-              })
-            : await openBrowserDevTextFiles(rightDockTextPaths);
-          unmaterializedDocuments.push(...textResult.documents);
-          if (textResult.documents.length > 0) {
-            addBackgroundTextDocuments(textResult.documents);
-            const materializedRightDockTextClaims = new Set<ViewerDocument | TextFileDocument>(textResult.documents);
-            unmaterializedDocuments = unmaterializedDocuments.filter((document) => !materializedRightDockTextClaims.has(document));
-            setDockDocument(input.area, textResult.documents[0].id);
-          }
-          const openedText = `Opened ${textResult.documents.length} text file${textResult.documents.length === 1 ? "" : "s"} in right dock`;
-          if (textResult.errors.length > 0) {
-            if (existingDocumentId || textResult.documents.length > 0) addDockDrop(input);
-            pushStatus(textResult.documents.length > 0 ? `${openedText}. ${summarizeErrors(textResult.errors)}` : summarizeErrors(textResult.errors), "error", textResult.errors);
-            return;
-          }
-          pushStatus(openedText);
-          if (dockOpenPaths.length === 0 && cleanRecords.length === 0) {
-            addDockDrop(input);
-            return;
-          }
-        }
-      }
-
+      const dockOpenPaths = unopenedPaths;
       const structurePaths: string[] = [];
       const spectrumPaths: string[] = [];
       const documentPaths: string[] = [];
@@ -162,6 +126,8 @@ export function useAppDockPayloadOpen({
           documentPaths.push(path);
         } else if (isPreferredTextPath(path, extension)) {
           textPaths.push(path);
+        } else if (documentFallbackExtensions.has(extension) && !(await isMolecularDelimitedFile(path))) {
+          documentPaths.push(path);
         } else if (structureAndTextExtensions.has(extension)) {
           structureAndTextPaths.push(path);
         } else if (structureExtensions.has(extension)) {
@@ -171,10 +137,6 @@ export function useAppDockPayloadOpen({
         } else {
           textPaths.push(path);
         }
-      }
-
-      for (const path of documentPaths) {
-        openDocumentTab(path);
       }
 
       const structurePathResult = structurePaths.length > 0
@@ -277,16 +239,14 @@ export function useAppDockPayloadOpen({
         const materializedTextClaims = new Set<ViewerDocument | TextFileDocument>(openedTextDocuments);
         unmaterializedDocuments = unmaterializedDocuments.filter((document) => !materializedTextClaims.has(document));
       }
-      const firstDockDocumentId = openedStructures[0]?.id ?? openedTextDocuments[0]?.id ?? existingDocumentId;
+      const firstDockDocumentId = documentPaths[0] ? dockMediaId(documentPaths[0]) : openedStructures[0]?.id ?? openedTextDocuments[0]?.id ?? existingDocumentId;
       if (firstDockDocumentId) {
         setDockDocument(input.area, firstDockDocumentId);
         addDockDrop(input);
       }
       const openedCount = openedStructures.length + openedTextDocuments.length + documentPaths.length;
       const dockLabel = input.area === "right" ? "right dock" : "bottom dock";
-      const openedText = documentPaths.length > 0 && openedCount === documentPaths.length
-        ? `Opened ${documentPaths.length} document${documentPaths.length === 1 ? "" : "s"} in a tab`
-        : `Opened ${openedCount} item${openedCount === 1 ? "" : "s"} in ${dockLabel}`;
+      const openedText = `Opened ${openedCount} item${openedCount === 1 ? "" : "s"} in ${dockLabel}`;
       if (errors.length > 0) {
         pushStatus(openedCount > 0 ? `${openedText}. ${summarizeErrors(errors)}` : summarizeErrors(errors), "error", errors);
         return;
@@ -303,17 +263,14 @@ export function useAppDockPayloadOpen({
   }, [
     addBackgroundDocuments,
     addBackgroundTextDocuments,
-    addDockDrop,
+    captureDockTarget,
     detectContentSpectrumPaths,
     documents,
-    openDocumentTab,
     openStructureRecordDocuments,
     preferences,
     pushErrorStatus,
     pushStatus,
     rememberRecentStructures,
-    setDockDocument,
-    setDockTool,
     textDocuments,
   ]);
 }

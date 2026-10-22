@@ -68,7 +68,8 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
     optionLabels: Object.fromEntries([[THIS_MAC, "This Mac"], ...connections.map(connection => [connection.host, connection.name])]),
     action: value => setComputeHost(value === THIS_MAC ? null : value),
   });
-  return <div className="absolute bottom-3 right-3 z-20">
+  // Opaque base under the soft secondary pill so the scene never shows through it.
+  return <div className="absolute bottom-3 right-3 z-20 rounded-(--radius-button-toolbar) bg-(--app-shell-sidebar-popover-background)">
     <RadixDropdownMenu
       align="end"
       items={items}

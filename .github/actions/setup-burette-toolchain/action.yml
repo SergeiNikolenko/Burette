@@ -20,6 +20,19 @@ runs:
       with:
         bun-version: ${{ inputs.bun-version }}
 
+    - name: Locate Bun download cache
+      id: bun-cache
+      shell: bash
+      run: echo "path=$(bun pm cache)" >> "$GITHUB_OUTPUT"
+
+    - name: Cache Bun downloads
+      uses: actions/cache@v6
+      with:
+        path: ${{ steps.bun-cache.outputs.path }}
+        key: bun-${{ runner.os }}-${{ runner.arch }}-${{ inputs.bun-version }}-${{ hashFiles('bun.lock') }}
+        restore-keys: |
+          bun-${{ runner.os }}-${{ runner.arch }}-${{ inputs.bun-version }}-
+
     - name: Install dependencies
       if: inputs.install-dependencies == 'true'
       shell: bash

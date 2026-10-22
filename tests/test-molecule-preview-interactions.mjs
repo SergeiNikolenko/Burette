@@ -147,3 +147,57 @@ assert.equal(visibility.state().chip, null);
 assert.equal(visibility.state().scheduled, 1);
 window.happyDOM.abort();
 console.log('2D preview zoom, lasso, cancellation and replacement passed');
+
+// A depiction resolving after a document/card replacement cannot paint the new
+// card, even when both molecules share the same cached SVG key and label.
+{
+  const pending = [];
+  let lasso;
+  const drawingWindow = new Window();
+  drawingWindow.BuretteMoleculePreviewInteractions = { install(_image, handler) { lasso = handler; } };
+  const bindings = {
+    window: drawingWindow, document: drawingWindow.document,
+    normalizeFormat: value => value, molstarMoleculePreviewEntry: target => target.entry,
+    molstarPreviewKey: entry => entry.data, molstarPreviewSvgCache: new Map(),
+    installMolstarMoleculePreviewResize() {}, applyMolstarMoleculePreviewGeometry() {},
+    rememberMolstarMoleculePreviewGeometry() {}, fitMolstarMoleculePreviewDrawing() {},
+    escapeHTML: value => value,
+    molstarMoleculePreviewCardHTML: (_label, image) => `<div class="buret-molstar-molecule-preview-image">${image}</div>`,
+    molstarMoleculePreviewRDKitSVG: () => new Promise((resolve, reject) => pending.push({ resolve, reject })),
+    selectMolstarMoleculePreviewAtoms: target => { selected = target; },
+    updateMolstarHydrogenButtons() {},
+  };
+  let selected;
+  const api = new Function(...Object.keys(bindings), `
+    let molstarMoleculePreview = null, molstarMoleculePreviewTarget = null;
+    let molstarMoleculePreviewSuppressed = false, molstarMoleculePreviewMinimized = false;
+    ${previewFunction('showMolstarMoleculePreview')}
+    return { show: showMolstarMoleculePreview, card: () => molstarMoleculePreview,
+      clear() { molstarMoleculePreview?.remove(); molstarMoleculePreview = null; molstarMoleculePreviewTarget = null; } };
+  `)(...Object.values(bindings));
+  const first = { label: 'MOL A 1', entry: { format: 'sdf', data: 'same chemistry' } };
+  const second = { ...first };
+  api.show(first); api.clear(); api.show(second);
+  pending[0].resolve('<svg id="old-document"/>');
+  await Promise.resolve();
+  assert.equal(api.card().querySelector('#old-document'), null);
+  pending[1].resolve('<svg id="current-document"/>');
+  await Promise.resolve();
+  assert.ok(api.card().querySelector('#current-document'));
+  const third = { ...first };
+  api.show(third); pending[2].resolve('<svg id="current-document"/>');
+  await Promise.resolve();
+  lasso([]);
+  assert.equal(selected, third, 'Identical SVGs must use the latest structure owner for 2D selection');
+  api.clear();
+  lasso([]);
+  assert.equal(selected, third, 'Removed cards cannot act on another document');
+  api.show(first); api.show({ label: 'different', entry: { format: 'sdf', data: 'different chemistry' } });
+  pending[3].resolve('<svg id="old-pose"/>');
+  pending[4].resolve('<svg id="new-pose"/>');
+  await Promise.resolve();
+  assert.equal(api.card().querySelector('#old-pose'), null);
+  assert.ok(api.card().querySelector('#new-pose'));
+  drawingWindow.happyDOM.abort();
+}
+console.log('Delayed depictions and shared SVGs retain current document/structure ownership');

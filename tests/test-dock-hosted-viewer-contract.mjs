@@ -12,6 +12,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (path) => readFileSync(resolve(root, path), "utf8");
 
 const dockPanel = read("apps/desktop/src/components/dock-panel.tsx");
+const dockFiles = read("apps/desktop/src/components/dock-file-views.tsx");
 const viewerFrame = read("apps/desktop/src/components/editor-area/viewer-frame.tsx");
 const filePageKind = read("apps/desktop/src/components/editor-area/page-kinds/file.tsx");
 const textFilePageKind = read("apps/desktop/src/components/editor-area/page-kinds/text-file.tsx");
@@ -24,7 +25,7 @@ const gridFileActionsHook = read("apps/desktop/src/hooks/use-app-grid-file-actio
 
 // The dock renders the shared ViewerFrame with the default class, so every
 // selector-based lookup in the host sees the dock frame next to the tab frame.
-assert.match(dockPanel, /<ViewerFrame document=\{effectiveDockDocument\} readOnly \/>/);
+assert.match(dockFiles, /<ViewerFrame document=\{document\} readOnly iframeRef=\{frame\}/);
 assert.match(filePageKind, /<ViewerFrame\s+document=\{document\}/);
 assert.match(viewerFrame, /className = "viewer-iframe",/);
 assert.match(viewerFrame, /"data-document-id": document\.id,\s*"data-renderer": document\.renderer,\s*"data-read-only": readOnly \? "true" : undefined,\s*name: readOnly \? "burette-read-only" : "burette-editable",/);

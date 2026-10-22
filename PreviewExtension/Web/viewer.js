@@ -389,7 +389,8 @@
       '.msp-plugin input[aria-label], .msp-plugin input[title]'
     );
     if (!control || control.closest('.buret-preview-dock, .buret-generate-3d-control') || control.matches('[data-tooltip-trigger]')) return null;
-    if (control.closest('.msp-hover-box-wrapper, .buret-seq-header, .buret-seq-footer')) return null;
+    if (control.closest('.msp-hover-box-wrapper, .buret-seq-header, .buret-seq-footer, .buret-docking-pose-files')) return null;
+    if (control.matches('.buret-docking-pose-current')) return null;
     return control;
   }
 
@@ -2036,7 +2037,7 @@
   let sdfCollectionAlignment = null;
   let activeDockingPoseCollectionState = null;
   // Poses kept on screen while other poses are browsed, for the open docking set.
-  let dockingPinnedPoseState = { key: '', indices: new Set() };
+  let dockingPinnedPoseState = { key: '', indices: new Set(), selected: new Set(), references: new Set() };
   let activeDockingSceneVisibilityState = null;
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
@@ -2316,6 +2317,7 @@
     const root = document.body;
     root.style.setProperty('--buret-shell-background', `color-mix(in srgb, ${background} ${Math.round(opacity * 100)}%, transparent)`);
     root.style.setProperty('--buret-panel-background', `color-mix(in srgb, ${islands} ${Math.round(Math.min(opacity + 0.08, 1) * 100)}%, transparent)`);
+    root.style.setProperty('--buret-toolbar-solid-background', islands);
     root.style.setProperty('--buret-toolbar-background', `color-mix(in srgb, ${islands} ${Math.round(Math.min(opacity + 0.08, 1) * 100)}%, transparent)`);
     root.style.setProperty('--buret-toolbar-border', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 24)}%, transparent)`);
     root.style.setProperty('--buret-toolbar-hover', `color-mix(in srgb, ${foreground} ${Math.round(contrast * 28)}%, transparent)`);
@@ -3386,7 +3388,21 @@
     if (body.type === 'viewerVisibilityChanged') {
       hostViewerVisible = body.visible !== false;
       activeTrajectoryPlaybackControl?.visibilityChanged?.();
+      // Retained file panels keep their camera, but must not tick a hidden
+      // WebGL scene (including spin/rock animations).
+      const loop = activeViewer?.plugin?.animationLoop;
+      if (hostViewerVisible) {
+        if (loop && !loop.isAnimating) loop.start();
+      } else loop?.stop({ noDraw: true });
       if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer);
+      return;
+    }
+    if (event.source === window.parent && body.type === 'captureRendererViewState') {
+      if (typeof body.requestId !== 'string' || body.requestId.length > 128) return;
+      const camera = activeViewer?.plugin?.canvas3d?.camera;
+      postHostMessage({ type: 'rendererViewStateCaptured', requestId: body.requestId,
+        viewState: { camera: captureMolstarCameraSnapshot(activeViewer) },
+        viewport: camera ? { width: camera.viewport.width, height: camera.viewport.height } : null });
       return;
     }
     if (event.source === window.parent && body.type === 'hostLayoutGesture') {
@@ -4028,6 +4044,7 @@
       const poseCount = Number(activeMolstarPrepared.poseCount || 0);
       const activePose = readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, poseCount || 1);
       await applyDockingPoseCollectionVisibility(activeViewer, activeMolstarPrepared, activePose, { focus: false });
+      document.querySelector('.buret-docking-poses')?.dispatchEvent(new Event('buret-pose-selection-changed'));
       return;
     }
     await reloadActiveMolstarStructure();
@@ -7877,6 +7894,11 @@ SOFTWARE.
       for (const [index, entry] of scene.poseCache || []) {
         if (index !== scene.activeIndex) cachedRoots.add(entry.raw.ref);
       }
+      for (const layer of scene.layers?.values() || []) {
+        for (const [index, entry] of layer.poseCache || []) {
+          if (index !== layer.activeIndex) cachedRoots.add(entry.raw.ref);
+        }
+      }
     }
     const { children, rootRef } = sceneTreeChildRefs(state);
     if (rootRef === null) return [];
@@ -8187,6 +8209,7 @@ SOFTWARE.
       for (const node of nodes) root.appendChild(sceneTreeNodeElement(node));
     }
     body.replaceChildren(root);
+    document.querySelector('.buret-docking-poses')?.dispatchEvent(new Event('buret-scene-tree-rendered'));
     updateSceneTreeStoryCaption();
     requestAnimationFrame(() => root.classList.add('buret-tree-animate'));
     const hovered = sceneTreeHoverRef
@@ -13006,6 +13029,9 @@ SOFTWARE.
 
   const DOCKING_REFERENCE_FILE_PATTERN = /(^|[^a-z])(crystal|xtal|native|ref|reference|cocrystal)([^a-z]|$)/i;
   const DOCKING_REFERENCE_CARBON_COLOR = 0xf97316;
+  // Shown poses get distinct carbon tints that stay clear of the green receptor;
+  // the tree's colour dot reads and edits the same value.
+  const DOCKING_POSE_CARBON_COLORS = [0xe5762c, 0xc2419b, 0x7468d1, 0x3591d6, 0xd9a52b, 0xd2504a, 0x9b7a5a];
 
   // Pins live per docking set. A fresh set pins its single-pose reference
   // files (crystal/native ligand) so they stay visible next to every pose.
@@ -13016,9 +13042,43 @@ SOFTWARE.
       const references = groups.length > 1
         ? groups.filter(group => group.frameCount === 1 && DOCKING_REFERENCE_FILE_PATTERN.test(group.label || ''))
         : [];
-      dockingPinnedPoseState = { key, indices: new Set(references.map(group => group.startFrame)) };
+      const starts = references.map(group => group.startFrame);
+      dockingPinnedPoseState = { key, indices: new Set(starts), selected: new Set(), references: new Set(starts) };
     }
     return dockingPinnedPoseState.indices;
+  }
+
+  function dockingSelectedPoseIndices(prepared) {
+    dockingPinnedPoseIndices(prepared);
+    return dockingPinnedPoseState.selected;
+  }
+
+  // Crystal and native ligands keep their reference colour.
+  function dockingReferencePoseIndices(prepared) {
+    dockingPinnedPoseIndices(prepared);
+    return dockingPinnedPoseState.references;
+  }
+
+  // The scene tree row that colours one displayed pose layer.
+  function dockingPoseTreeNode(viewer, refs) {
+    const cells = viewer?.plugin?.state?.data?.cells;
+    if (!cells) return null;
+    const owned = ref => {
+      for (let current = ref; current && cells.has(current); current = cells.get(current).transform.parent) {
+        if (refs.includes(current)) return true;
+        if (current === cells.get(current).transform.parent) break;
+      }
+      return false;
+    };
+    const find = nodes => {
+      for (const node of nodes) {
+        if (node.colorable && owned(node.ref)) return node;
+        const child = find(node.children);
+        if (child) return child;
+      }
+      return null;
+    };
+    return find(sceneTreeNodes(viewer));
   }
 
   function normalizeRenderer(renderer) {
@@ -16360,6 +16420,31 @@ SOFTWARE.
     const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
     const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
     const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
+    const foreground = sdfCollectionRepresentationForStyle(style, 1, 'colored');
+    const background = sdfCollectionRepresentationForStyle(contextStyle === 'match' ? style : contextStyle, contextOpacity, contextColor);
+    // Atom/bond representations can batch models without changing their meaning.
+    // Surfaces retain independent per-molecule construction and its style path.
+    const batchedTypes = ['ball-and-stick', 'line', 'spacefill'];
+    if (batchedTypes.includes(foreground.type) && (!allMode || batchedTypes.includes(background.type))) {
+      if (!window.BuretteSdfCollection) {
+        await loadScript(runtimeURL('BuretteSdfCollectionURL', './sdf-collection-scene.js'), 'collection scene', 10000);
+      }
+      await window.BuretteSdfCollection.show(plugin, {
+        molecules: prepared.collectionMolecules, index: activeIndex, all: allMode,
+        spread: allMode && activeSdfCollectionLayout === 'spread',
+        spreadCells: activeConfig?.sdfCollectionSpreadCells,
+        spreadMolecules: spreadSdfCollectionMolecules, foreground, background
+      });
+      resetSdfCollectionVisibilityState(viewer);
+      resetXyzFrameOverlayState(viewer);
+      resetDockingPoseCollectionState(viewer);
+      resetDockingSceneVisibilityState(viewer);
+      await applyMolstarAppearance(viewer, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
+      updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+      if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
+      return;
+    }
+    window.BuretteSdfCollection?.reset(plugin);
     const stateKey = sdfCollectionStateKey(prepared, style, allMode);
     let state = activeSdfCollectionVisibilityState;
     if (!state || state.key !== stateKey || !sdfCollectionVisibilityStateStillLoaded(viewer, state)) {
@@ -16443,7 +16528,7 @@ SOFTWARE.
     if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
   }
 
-  function dockingPoseCollectionStateKey(prepared, style, allMode, contextStyle, activeIndex = 0) {
+  function dockingPoseCollectionStateKey(prepared) {
     const receptor = prepared?.receptorEntry || {};
     const poses = Array.isArray(prepared?.poses) ? prepared.poses : [];
     const firstPose = poses[0] || {};
@@ -16456,11 +16541,6 @@ SOFTWARE.
       poses.length,
       firstPose.sourcePath || firstPose.label || '',
       lastPose.sourcePath || lastPose.label || '',
-      style,
-      allMode ? 'all' : 'single',
-      contextStyle,
-      allMode ? (prepared.poseGroups || []).find(group => activeIndex >= group.startFrame && activeIndex <= group.endFrame)?.startFrame ?? '' : '',
-      [...dockingPinnedPoseIndices(prepared)].filter(index => index < poses.length).sort((a, b) => a - b).join(','),
     ].join('|');
   }
 
@@ -16474,17 +16554,9 @@ SOFTWARE.
     if (!state || state.viewer !== viewer) return false;
     return molstarRefsStillLoaded(viewer, [
       ...(state.receptorRefs || []),
-      ...(state.backgroundRefs || []),
-      ...[...(state.pinnedRefsByIndex?.values() || [])].flat(),
+      ...[...(state.layers?.values() || [])].flatMap(layer => layer.activeRefs),
       ...(state.activeRefs || [])
     ]);
-  }
-
-  // The active pose already draws itself; its pinned copy would only overlap it.
-  function syncDockingPinnedPoseVisibility(viewer, state, activeIndex) {
-    for (const [index, refs] of state.pinnedRefsByIndex || []) {
-      setDockingSceneRefsHidden(viewer, refs, index === activeIndex);
-    }
   }
 
   function applyDockingPoseCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
@@ -16509,15 +16581,23 @@ SOFTWARE.
     const allGroup = allMode
       ? (prepared.poseGroups || []).find(group => activeIndex >= group.startFrame && activeIndex <= group.endFrame)
       : null;
-    const pinnedIndices = [...dockingPinnedPoseIndices(prepared)].filter(index => index < poses.length).sort((a, b) => a - b);
-    const pinned = new Set(pinnedIndices);
-    const backgroundPoses = (allGroup ? poses.slice(allGroup.startFrame, allGroup.endFrame + 1) : poses)
-      .filter((_, offset) => !pinned.has((allGroup ? allGroup.startFrame : 0) + offset));
+    const pinned = dockingPinnedPoseIndices(prepared);
+    const references = dockingReferencePoseIndices(prepared);
+    const selected = new Set([activeIndex, ...pinned, ...dockingSelectedPoseIndices(prepared)]);
     const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
     const resolvedContextStyle = dockingSceneBackgroundStyle(contextStyle, style);
     const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
     const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
-    const stateKey = dockingPoseCollectionStateKey(prepared, style, allMode, resolvedContextStyle, activeIndex);
+    const wanted = new Map();
+    if (allMode) {
+      for (let index = allGroup?.startFrame ?? 0; index <= (allGroup?.endFrame ?? poses.length - 1); index += 1) {
+        wanted.set(index, [resolvedContextStyle, contextOpacity, contextColor]);
+      }
+    }
+    for (const index of selected) {
+      if (poses[index]) wanted.set(index, [style, 1, references.has(index) ? 'reference' : DOCKING_POSE_CARBON_COLORS[index % DOCKING_POSE_CARBON_COLORS.length]]);
+    }
+    const stateKey = dockingPoseCollectionStateKey(prepared);
     let state = activeDockingPoseCollectionState;
     if (!state || state.key !== stateKey || !dockingPoseCollectionStateStillLoaded(viewer, state)) {
       resetXyzFrameOverlayState(viewer);
@@ -16526,56 +16606,80 @@ SOFTWARE.
       const receptorStructures = prepared.receptorEntry
         ? await loadMolstarEntryWithStructureRefs(viewer, prepared.receptorEntry)
         : [];
-      if (receptorStructures.length) {
-        await applySdfCollectionMolstarStyle(viewer, style, receptorStructures, 1, 'colored');
-      }
-      const backgroundStructures = [];
-      if (allMode) {
-        for (const entry of backgroundPoses) {
-          backgroundStructures.push(...await loadMolstarEntryWithStructureRefs(viewer, entry, { representationPreset: 'empty' }));
-        }
-        if (backgroundStructures.length) {
-          await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, backgroundStructures, contextOpacity, contextColor);
-        }
-      }
-      const pinnedRefsByIndex = new Map();
-      for (const index of pinnedIndices) {
-        const structures = await loadMolstarEntryWithStructureRefs(viewer, poses[index], { representationPreset: 'empty' });
-        if (!structures.length) continue;
-        await applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'reference');
-        pinnedRefsByIndex.set(index, molstarStructureRefsOf(structures));
-      }
-      state = {
-        viewer,
-        key: stateKey,
-        receptorRefs: molstarStructureRefsOf(receptorStructures),
-        backgroundRefs: molstarStructureRefsOf(backgroundStructures),
-        pinnedRefsByIndex,
-        activeRefs: [],
-        activeIndex: -1
-      };
+      if (receptorStructures.length) await applySdfCollectionMolstarStyle(viewer, style, receptorStructures, 1, 'colored');
+      state = { viewer, key: stateKey, receptorRefs: molstarStructureRefsOf(receptorStructures),
+        layers: new Map(), activeRefs: [], activeIndex: -1 };
       activeDockingPoseCollectionState = state;
     }
 
-    const appearanceKey = `${contextOpacity}|${contextColor}`;
-    if (state.appearanceKey !== appearanceKey) {
-      const background = molstarStructuresByRefs(viewer, state.backgroundRefs);
-      if (background.length) await applySdfCollectionMolstarStyle(viewer, resolvedContextStyle, background, contextOpacity, contextColor);
-      state.appearanceKey = appearanceKey;
-    }
-
-    if (state.activeIndex === activeIndex && dockingPoseCollectionStateStillLoaded(viewer, state)) {
+    // Selection changes touch ligand layers only. Keep the receptor, authored
+    // representations, visibility, and the live camera input intact.
+    const canvas = plugin.canvas3d;
+    const preserveCamera = state.activeIndex >= 0;
+    const manualReset = canvas?.props?.camera?.manualReset === true;
+    if (preserveCamera) canvas?.setProps({ camera: { manualReset: true } });
+    try {
+      // Load additions before removing anything. A failed addition leaves the
+      // previous visible set available for rollback without clearing the scene.
+      for (const [index, appearance] of wanted) {
+        let layer = state.layers.get(index);
+        if (!layer) {
+          layer = { activeIndex: -1, activeRefs: [] };
+          state.layers.set(index, layer);
+        }
+        const appearanceKey = JSON.stringify(appearance);
+        if (!layer.activeRefs.length) {
+          try {
+            await switchCachedPoseLayer(viewer, layer, index, poses[index], structures =>
+              applySdfCollectionMolstarStyle(viewer, appearance[0], structures, appearance[1], appearance[2]));
+          } catch (error) {
+            // Dispose partial builders too; they must not leak into exports.
+            for (const cached of layer.poseCache?.values() || []) await plugin.state.data.build().delete(cached.raw.ref).commit();
+            state.layers.delete(index);
+            throw error;
+          }
+          layer.appearanceKey = appearanceKey;
+        } else if (layer.appearanceKey !== appearanceKey) {
+          layer.appearanceKey = null;
+          await applySdfCollectionMolstarStyle(viewer, appearance[0], molstarStructuresByRefs(viewer, layer.activeRefs), appearance[1], appearance[2]);
+          layer.appearanceKey = appearanceKey;
+        }
+      }
+      for (const [index, layer] of state.layers) {
+        if (wanted.has(index) || !layer.activeRefs.length) continue;
+        const remove = plugin.state.data.build();
+        for (const cached of layer.poseCache.values()) {
+          for (const trajectory of cached.trajectories) {
+            for (const child of plugin.state.data.tree.children.get(trajectory.ref) || []) remove.delete(child);
+          }
+        }
+        await remove.commit();
+        layer.activeRefs = [];
+        layer.activeIndex = -1;
+      }
+      // Only parsed data is cached off screen; inactive structures never appear
+      // in exports or selections. Bound the reusable cache independently of the
+      // number of poses deliberately displayed by the user.
+      const inactive = [...state.layers].filter(([index]) => !wanted.has(index));
+      let bytes = inactive.reduce((sum, [, layer]) => sum + [...layer.poseCache.values()].reduce((n, entry) => n + entry.sourceBytes, 0), 0);
+      while (inactive.length > 4 || bytes > 16 * 1024 * 1024) {
+        const [index, layer] = inactive.shift();
+        for (const cached of layer.poseCache.values()) {
+          await plugin.state.data.build().delete(cached.raw.ref).commit();
+          bytes -= cached.sourceBytes;
+        }
+        state.layers.delete(index);
+      }
+      state.activeIndex = activeIndex;
+      state.activeRefs = state.layers.get(activeIndex)?.activeRefs || [];
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
-      if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
-      return;
+    } finally {
+      if (preserveCamera) {
+        try { canvas?.commit(true); }
+        finally { canvas?.setProps({ camera: { manualReset } }); }
+      }
     }
-
-    await switchCachedPoseLayer(viewer, state, activeIndex, activeEntry,
-      structures => applySdfCollectionMolstarStyle(viewer, style, structures, 1, 'colored'));
-    syncDockingPinnedPoseVisibility(viewer, state, activeIndex);
-    updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
-    await applyMolstarWaterLineRepresentation(viewer);
-    if (options.focus !== false) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
+    if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'docking-poses', durationMs: 180 });
   }
 
   async function applyXyzFrameOverlayVisibility(viewer, prepared, activePose = 0, options = {}) {
@@ -16895,11 +16999,8 @@ SOFTWARE.
     if (!prepared.dockingSceneMode) {
       const state = activeDockingPoseCollectionState;
       if (!dockingPoseCollectionStateStillLoaded(viewer, state)) return;
-      const style = configuredMolstarStyle(activeConfig);
-      const allMode = activeSdfPoseMode === 'all' && prepared.sdfPoseOverlayAvailable === true;
-      const contextStyle = dockingSceneBackgroundStyle(readSdfCollectionContextStyle(activeConfig), style);
-      state.key = dockingPoseCollectionStateKey(prepared, style, allMode, contextStyle, state.activeIndex);
-      state.appearanceKey = null;
+      state.key = dockingPoseCollectionStateKey(prepared);
+      for (const layer of state.layers.values()) layer.appearanceKey = null;
       await applyDockingPoseCollectionVisibility(viewer, prepared, state.activeIndex, { focus: false });
       return;
     }
@@ -17079,13 +17180,14 @@ SOFTWARE.
       const value = Number(alpha);
       return ghost ? { ...params, alpha: Math.max(minAlpha, Math.min(value, 1)), transparentBackfaces: 'on' } : params;
     };
-    const color = normalizeSdfCollectionContextColor(colorMode) === 'colored' ? 'element-symbol' : 'uniform';
+    // A number is an explicit carbon tint; references keep a fixed one.
+    const carbon = colorMode === 'reference' ? DOCKING_REFERENCE_CARBON_COLOR : Number.isFinite(colorMode) ? colorMode : null;
+    const color = carbon !== null || normalizeSdfCollectionContextColor(colorMode) === 'colored' ? 'element-symbol' : 'uniform';
     const colorParams = color === 'uniform' ? { value: 0x6f7886 } : undefined;
     const themed = (representation) => colorParams ? { ...representation, color, colorParams } : { ...representation, color };
-    if (colorMode !== 'reference') return { ghost, withAlpha, themed };
-    // Reference (pinned) poses keep element colours on a fixed carbon tint.
-    const referenceParams = { carbonColor: { name: 'uniform', params: { value: DOCKING_REFERENCE_CARBON_COLOR } } };
-    return { ghost, withAlpha, themed: (representation) => ({ ...representation, color, colorParams: referenceParams }) };
+    if (carbon === null) return { ghost, withAlpha, themed };
+    const carbonParams = { carbonColor: { name: 'uniform', params: { value: carbon } } };
+    return { ghost, withAlpha, themed: (representation) => ({ ...representation, color, colorParams: carbonParams }) };
   }
 
   function sdfCollectionRepresentationForStyle(style, alpha = 1, colorMode = 'gray', minAlpha = 0.04) {
@@ -19382,6 +19484,11 @@ SOFTWARE.
       if (!isDockingPoseInteractiveTarget(event.target)) return;
       event.stopPropagation();
     };
+    const isolateContextMenu = (event) => {
+      // The picker has no secondary action; do not expose WebKit's iframe menu.
+      event.preventDefault();
+      event.stopPropagation();
+    };
     const isolateWheel = (event) => {
       if (!root.contains(event.target)) return;
       event.preventDefault();
@@ -19396,11 +19503,13 @@ SOFTWARE.
     };
     const pointerEvents = ['pointerdown', 'pointerup', 'pointercancel', 'mousedown', 'mouseup', 'click', 'dblclick', 'touchstart', 'touchmove', 'touchend'];
     pointerEvents.forEach(eventName => root.addEventListener(eventName, isolatePointer));
+    root.addEventListener('contextmenu', isolateContextMenu);
     root.addEventListener('wheel', isolateWheel, { passive: false });
     root.addEventListener('keydown', isolateKeys);
     root.addEventListener('keyup', isolateKeys);
     return () => {
       pointerEvents.forEach(eventName => root.removeEventListener(eventName, isolatePointer));
+      root.removeEventListener('contextmenu', isolateContextMenu);
       root.removeEventListener('wheel', isolateWheel);
       root.removeEventListener('keydown', isolateKeys);
       root.removeEventListener('keyup', isolateKeys);
@@ -20847,7 +20956,7 @@ SOFTWARE.
     const animationRow = document.createElement('div');
     animationRow.className = 'buret-docking-pose-animation';
     const hasFileList = prepared.dockingSceneMode || hasSegments;
-    const poseCompareGuide = prepared.kind === 'docking' && !prepared.nativeTrajectoryControls && prepared.dockingSceneMode !== 'structureAll';
+    const poseCompareGuide = !hasPoseGroups && prepared.kind === 'docking' && !prepared.nativeTrajectoryControls && prepared.dockingSceneMode !== 'structureAll';
     root.classList.toggle('buret-docking-poses-frames', !hasFileList);
     const listEntries = prepared.dockingSceneMode ? prepared.poses : trajectorySegments;
     const label = hasFileList ? document.createElement('button') : document.createElement('span');
@@ -20857,7 +20966,7 @@ SOFTWARE.
     if (currentName && currentIndex) {
       label.type = 'button';
       label.className = 'buret-docking-pose-current';
-      label.setAttribute('aria-haspopup', 'listbox');
+      label.setAttribute('aria-haspopup', hasPoseGroups ? 'menu' : 'listbox');
       label.setAttribute('aria-expanded', 'false');
       currentName.className = 'buret-docking-pose-current-name';
       currentIndex.className = 'buret-docking-pose-current-index';
@@ -20877,65 +20986,107 @@ SOFTWARE.
       label.addEventListener('pointerenter', measureNameMarquee);
       label.addEventListener('focus', measureNameMarquee);
     }
-    label.title = prepared.ligandLabel || '';
     const fileList = hasFileList ? document.createElement('div') : null;
     const fileButtons = [];
+    const groupControls = [];
+    const poseDots = [];
+    // A visible pose carries the scene tree's colour dot; it opens the same
+    // colour and representation menu as the pose's row in the tree.
+    const createPoseDot = (index, name) => {
+      const dot = document.createElement('button');
+      dot.type = 'button';
+      dot.className = 'buret-tree-dot buret-docking-pose-dot';
+      dot.setAttribute('aria-label', `Colour ${name}`);
+      dot.hidden = true;
+      // The colour menu opens beside the picker, which stays open for more edits.
+      dot.addEventListener('click', () => {
+        if (!dot.dataset.ref) return;
+        closeSceneTreeMenu();
+        openSceneTreeMenu(dot.dataset.ref, fileList.getBoundingClientRect().right + 6, dot.getBoundingClientRect().top - 10);
+      });
+      poseDots.push({ dot, index });
+      return dot;
+    };
+    const eyeIcons = () => [sceneTreeIconElement(SCENE_TREE_ICON.eye), sceneTreeIconElement(SCENE_TREE_ICON.eyeOff)];
     // The pose each list row jumps to, parallel to fileButtons.
     const fileTargets = [];
-    // Pin toggles for single poses and whole files; pinned poses stay drawn as references.
-    const canPinPoses = hasPoseGroups && prepared.kind === 'docking' && !prepared.dockingSceneMode && prepared.sdfPoseOverlayAvailable === true;
-    const pinControls = [];
-    const pinButton = (indices, label) => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'buret-docking-pose-pin';
-      button.append(sceneTreeIconElement(APP_ICON_DATA.Pin));
-      pinControls.push({ button, indices, label });
-      return button;
-    };
     if (fileList && hasPoseGroups) {
       fileList.className = 'buret-docking-pose-files';
-      fileList.setAttribute('role', 'listbox');
+      fileList.setAttribute('role', 'menu');
       fileList.setAttribute('aria-label', 'Poses by file');
+      // One block slides between rows, as in the scene tree, instead of each
+      // row painting its own hover fill.
+      const highlight = document.createElement('div');
+      highlight.className = 'buret-tree-highlight buret-docking-pose-highlight';
+      fileList.append(highlight);
+      const moveHighlight = (row) => {
+        if (!row) {
+          highlight.classList.remove('buret-tree-highlight-active');
+          return;
+        }
+        const listRect = fileList.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        const instant = !highlight.classList.contains('buret-tree-highlight-active');
+        highlight.classList.toggle('buret-tree-highlight-instant', instant);
+        highlight.style.width = `${rowRect.width}px`;
+        highlight.style.height = `${rowRect.height}px`;
+        highlight.style.transform = `translate(${rowRect.left - listRect.left - fileList.clientLeft}px, ${rowRect.top - listRect.top - fileList.clientTop + fileList.scrollTop}px)`;
+        highlight.classList.add('buret-tree-highlight-active');
+        if (instant) requestAnimationFrame(() => highlight.classList.remove('buret-tree-highlight-instant'));
+      };
+      fileList.addEventListener('pointermove', event => moveHighlight(event.target.closest('.buret-docking-pose-row')));
+      fileList.addEventListener('pointerleave', () => moveHighlight(null));
+      fileList.addEventListener('focusin', event => moveHighlight(event.target.closest('.buret-docking-pose-row')));
       poseGroups.forEach(group => {
         const section = document.createElement('div');
         section.className = 'buret-docking-pose-group';
         section.setAttribute('role', 'group');
         section.setAttribute('aria-label', group.label);
         const heading = document.createElement('div');
-        heading.className = 'buret-docking-pose-group-label';
+        heading.className = 'buret-docking-pose-row buret-docking-pose-group-label';
         const toggle = document.createElement('button');
         toggle.type = 'button';
-        toggle.className = 'buret-docking-pose-group-toggle';
-        toggle.setAttribute('aria-expanded', 'true');
+        toggle.className = 'atlas-menu-item buret-docking-pose-group-toggle';
+        const expanded = activePose >= group.startFrame && activePose < group.startFrame + group.frameCount;
+        toggle.setAttribute('aria-expanded', String(expanded));
+        toggle.setAttribute('role', 'menuitem');
         toggle.setAttribute('aria-label', group.label);
         const chevron = sceneTreeIconElement(APP_ICON_DATA.ChevronRight);
         chevron.classList.add('buret-docking-pose-group-chevron');
         const poses = document.createElement('div');
         poses.id = `buret-docking-pose-group-${group.startFrame}`;
+        poses.className = 'buret-docking-pose-group-content';
+        poses.classList.toggle('expanded', expanded);
+        poses.inert = !expanded;
+        const poseRows = document.createElement('div');
+        poses.append(poseRows);
         toggle.setAttribute('aria-controls', poses.id);
         toggle.addEventListener('click', () => {
-          poses.hidden = !poses.hidden;
-          toggle.setAttribute('aria-expanded', poses.hidden ? 'false' : 'true');
+          const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+          poses.classList.toggle('expanded', expanded);
+          poses.inert = !expanded;
+          toggle.setAttribute('aria-expanded', String(expanded));
         });
         const name = document.createElement('span');
         name.className = 'buret-docking-pose-file-name';
         name.textContent = group.label;
-        const count = document.createElement('span');
-        count.className = 'buret-docking-pose-file-meta';
-        count.textContent = `${group.frameCount} ${group.frameCount === 1 ? 'pose' : 'poses'}`;
-        if (canPinPoses) {
-          heading.classList.add('buret-docking-pose-pin-heading');
-          heading.append(pinButton(group.poses.map((_, offset) => group.startFrame + offset), group.label));
-        }
-        toggle.append(chevron, name, count);
-        heading.append(toggle);
+        toggle.append(chevron, name);
+        const indices = group.poses.map((_, offset) => group.startFrame + offset);
+        // Like a tree row: the eye shows or hides the whole file.
+        const eye = document.createElement('button');
+        eye.type = 'button';
+        eye.className = 'buret-docking-pose-eye';
+        eye.setAttribute('role', 'menuitemcheckbox');
+        eye.append(...eyeIcons());
+        eye.addEventListener('click', () => toggleSelectedPose(indices));
+        groupControls.push({ select: eye, indices, name: group.label });
+        heading.append(toggle, eye);
         section.append(heading, poses);
         group.poses.forEach((pose, offset) => {
           const button = document.createElement('button');
           button.type = 'button';
-          button.className = 'buret-docking-pose-file buret-docking-pose-group-pose';
-          button.setAttribute('role', 'option');
+          button.className = 'atlas-menu-item buret-docking-pose-file buret-docking-pose-group-pose';
+          button.setAttribute('role', 'menuitemcheckbox');
           const poseName = document.createElement('span');
           poseName.className = 'buret-docking-pose-file-name';
           poseName.textContent = pose.label;
@@ -20944,19 +21095,20 @@ SOFTWARE.
             const score = document.createElement('span');
             score.className = 'buret-docking-pose-file-meta';
             score.textContent = pose.score.value.toFixed(2);
-            button.title = `${pose.label} · ${pose.score.tag} ${pose.score.value} kcal/mol`;
+            button.setAttribute('aria-label', `${pose.label}, ${pose.score.value.toFixed(2)} kcal/mol`);
             button.append(score);
           }
+          const eye = document.createElement('span');
+          eye.className = 'buret-docking-pose-eye';
+          eye.setAttribute('aria-hidden', 'true');
+          eye.append(...eyeIcons());
+          button.append(eye);
           fileButtons.push(button);
           fileTargets.push(group.startFrame + offset);
-          if (canPinPoses) {
-            const row = document.createElement('div');
-            row.className = 'buret-docking-pose-pin-row';
-            row.append(pinButton([group.startFrame + offset], `${group.label} · ${pose.label}`), button);
-            poses.append(row);
-          } else {
-            poses.append(button);
-          }
+          const row = document.createElement('div');
+          row.className = 'buret-docking-pose-row';
+          row.append(button, createPoseDot(group.startFrame + offset, `${group.label}, ${pose.label}`));
+          poseRows.append(row);
         });
         fileList.append(section);
       });
@@ -21205,29 +21357,58 @@ SOFTWARE.
       if (hasSegments) {
         const current = activeTrajectorySegment(poseIndex);
         setCurrentName(current.segment?.label || `${controlLabel} ${poseIndex + 1}`);
-        currentIndex.textContent = `${poseIndex - current.segment.startFrame + 1}/${current.segment.frameCount} · ${current.index + 1}/${segments.length}`;
+        currentIndex.textContent = `${poseIndex - current.segment.startFrame + 1}/${current.segment.frameCount}`;
         return;
       }
       setCurrentName(prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`);
       currentIndex.textContent = `${poseIndex + 1}/${prepared.poseCount}`;
     };
+    const selectedPoseIndices = () => {
+      const selected = new Set([activePose, ...dockingPinnedPoseIndices(prepared), ...dockingSelectedPoseIndices(prepared)]);
+      if (activeSdfPoseMode === 'all') {
+        const group = poseGroups.find(group => activePose >= group.startFrame && activePose < group.startFrame + group.frameCount);
+        if (group) for (let i = 0; i < group.frameCount; i += 1) selected.add(group.startFrame + i);
+      }
+      return selected;
+    };
+    // Dots follow the live colours, so the tree's colour menu updates them too.
+    const updatePoseDots = (selected) => {
+      if (!fileList?.classList.contains('buret-atlas-menu')) return;
+      const molstarViewer = activeMolstarViewer();
+      const layers = activeDockingPoseCollectionState?.layers;
+      for (const { dot, index } of poseDots) {
+        const refs = selected.has(index) ? layers?.get(index)?.activeRefs : null;
+        const node = refs?.length ? dockingPoseTreeNode(molstarViewer, refs) : null;
+        dot.hidden = !node || node.value === null;
+        if (dot.hidden) continue;
+        dot.dataset.ref = node.ref;
+        dot.style.background = sceneTreeColorHex(node.value);
+      }
+    };
     const updateControls = () => {
       const controlBounds = trajectoryControlBounds(activePose);
       applyLabel(activePose);
-      label.title = hasSegments
-        ? activeTrajectorySegment(activePose).segment?.label || prepared.ligandLabel || ''
-        : prepared?.poses?.[activePose]?.label || prepared.ligandLabel || '';
       previous.disabled = activePose <= controlBounds.start;
       next.disabled = activePose >= controlBounds.end;
       slider.max = String(controlBounds.count);
       slider.value = String(activePose - controlBounds.start + 1);
       slider.dataset.globalFrameIndex = String(activePose);
       const activeSegmentIndex = activeTrajectorySegment(activePose).index;
+      const selected = hasPoseGroups ? selectedPoseIndices() : null;
       fileButtons.forEach((button, index) => {
-        const active = hasTrajectorySegments ? index === activeSegmentIndex : fileTargets[index] === activePose;
+        const active = selected ? selected.has(fileTargets[index]) : hasTrajectorySegments ? index === activeSegmentIndex : fileTargets[index] === activePose;
+        if (selected) button.setAttribute('aria-disabled', String(active && selected.size === 1));
         button.classList.toggle('active', active);
-        button.setAttribute('aria-selected', active ? 'true' : 'false');
+        button.setAttribute(hasPoseGroups ? 'aria-checked' : 'aria-selected', active ? 'true' : 'false');
       });
+      if (selected) {
+        for (const { select, indices, name } of groupControls) {
+          const count = indices.filter(index => selected.has(index)).length;
+          select.setAttribute('aria-checked', count === indices.length ? 'true' : count ? 'mixed' : 'false');
+          select.setAttribute('aria-label', `${count === indices.length ? 'Hide' : 'Show'} all poses in ${name}`);
+        }
+        updatePoseDots(selected);
+      }
       if (storyStep && storyTitle && storySummary) {
         const storyPayload = structureStoryPayload();
         storyStep.textContent = `Step ${storyPayload.stepIndex + 1} of ${storyPayload.stepCount}`;
@@ -21250,8 +21431,14 @@ SOFTWARE.
       });
       updateViewportAnimateState();
     };
+    root.addEventListener('buret-pose-selection-changed', updateControls);
     const setFileListOpen = (open) => {
       if (!fileList) return;
+      if (open && hasPoseGroups) {
+        // The pose picker is the same Atlas menu as Style and the 3D menu.
+        window.BuretteNativeViewerMenus?.styleMenu?.(fileList, activeConfig?.themeTokens, resolveViewerTheme());
+        updateControls();
+      }
       if (open) {
         const rootRect = root.getBoundingClientRect();
         const triggerLeft = Math.round(label.offsetLeft);
@@ -21263,7 +21450,10 @@ SOFTWARE.
       }
       root.classList.toggle('buret-docking-poses-files-open', Boolean(open));
       label.setAttribute('aria-expanded', open ? 'true' : 'false');
-      if (open && hasPoseGroups) fileButtons[fileTargets.indexOf(activePose)]?.scrollIntoView({ block: 'nearest' });
+      if (open && hasPoseGroups) {
+        const active = fileButtons[fileTargets.indexOf(activePose)];
+        if (!active?.closest('[inert]')) active?.scrollIntoView({ block: 'nearest' });
+      }
     };
     const isFileListOpen = () => root.classList.contains('buret-docking-poses-files-open');
     const setAnimationOptionsOpen = (open) => {
@@ -21462,6 +21652,9 @@ SOFTWARE.
     const performSetPose = async (index, options = {}) => {
       const nextIndex = Math.max(0, Math.min(prepared.poseCount - 1, index));
       const previousIndex = activePose;
+      const selection = hasPoseGroups ? dockingSelectedPoseIndices(prepared) : null;
+      const previousSelection = selection ? [...selection] : [];
+      selection?.clear();
       const shouldFocus = options.focus === true;
       // A normal step keeps the user's view. Cancel delayed focus retries from
       // an earlier load/selection before replacing any scene layers.
@@ -21510,11 +21703,12 @@ SOFTWARE.
         }
         if (shouldFocus) scheduleMolstarStructureFocus(viewer, { reason: 'pose-selection', durationMs: 180, force: true });
         notifyDockingPoseChanged(activePose, prepared);
-        // Hovering an open pose list previews poses; only a committed switch counts.
+        // Only a committed switch outside the open list can request a guide.
         if (options.userStep === true && poseCompareGuide && !isFileListOpen()) requestContextualGuide('pose-compare', label);
       } catch (error) {
         writeTrajectoryControlIndex(activeConfig, prepared, previousIndex);
         activePose = previousIndex;
+        for (const index of previousSelection) selection.add(index);
         updateControls();
         // Stepping frames is the most repeated action here and a loop retries it on a
         // timer, so a failed step stays in the console: the label and buttons have
@@ -21523,21 +21717,72 @@ SOFTWARE.
         console.error(error);
       }
     };
+    const toggleSelectedPose = (target) => {
+      setLoopActive(false);
+      poseUpdateQueue = poseUpdateQueue.then(async () => {
+        if (activeStructurePoseSetter !== setPose) return;
+        const indices = Array.isArray(target) ? target : [target];
+        const visible = selectedPoseIndices();
+        const pins = dockingPinnedPoseIndices(prepared);
+        const selection = dockingSelectedPoseIndices(prepared);
+        const previousPins = [...pins];
+        const previousSelection = [...selection];
+        const previousPose = activePose;
+        const previousMode = activeSdfPoseMode;
+        // An eye keeps its pose on screen while stepping; the last visible pose stays.
+        const hide = indices.every(index => visible.has(index));
+        for (const index of indices) {
+          if (hide) { visible.delete(index); pins.delete(index); }
+          else visible.add(index);
+        }
+        if (!visible.size) visible.add(activePose);
+        const nextPose = visible.has(activePose) ? activePose : visible.values().next().value;
+        for (const index of visible) if (index !== nextPose || (!hide && indices.includes(index))) pins.add(index);
+        selection.clear();
+        setSdfPoseMode('single');
+        activePose = nextPose;
+        updateControls();
+        molstarStructureFocusSerial += 1;
+        try {
+          await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextPose, { focus: false });
+          try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(activePose)); } catch (_) {}
+          notifyDockingPoseChanged(activePose, prepared);
+          notifyStructureOverlayModeChanged(activeMolstarPrepared || prepared);
+        } catch (error) {
+          pins.clear();
+          for (const index of previousPins) pins.add(index);
+          selection.clear();
+          for (const index of previousSelection) selection.add(index);
+          activePose = previousPose;
+          setSdfPoseMode(previousMode);
+          try {
+            await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, previousPose, { focus: false });
+          } catch (restoreError) { console.error(restoreError); }
+          setStatus(`[web] Could not change pose selection.\n\n${error?.message || String(error)}`, 'error');
+        }
+        updateControls();
+      }).catch(error => console.error(error));
+    };
     if (fileList) {
       label.addEventListener('click', () => {
         setFileListOpen(!isFileListOpen());
       });
+      if (hasPoseGroups) root.addEventListener('buret-scene-tree-rendered', () => updatePoseDots(selectedPoseIndices()));
       fileButtons.forEach((button, index) => {
         button.addEventListener('pointerenter', (event) => {
           const targetPose = fileTargets[index];
-          // Segments preview on hover like poses do: every frame is already in the one
-          // trajectory, so jumping to a segment's first frame is a model-index change,
-          // not a reload. Touch has no hover, and it would fire on the way to a tap.
-          if (event.pointerType === 'touch' || targetPose === activePose) return;
+          // Trajectory segments retain hover preview. Grouped docking poses commit
+          // only on selection, so moving through the menu cannot change the scene.
+          if (hasPoseGroups || event.pointerType === 'touch' || targetPose === activePose) return;
           scheduleSliderInputPose(targetPose);
         });
         button.addEventListener('click', () => {
+          if (hasPoseGroups) {
+            toggleSelectedPose(fileTargets[index]);
+            return;
+          }
           setFileListOpen(false);
+          label.focus();
           const targetPose = fileTargets[index];
           if (targetPose !== activePose) scheduleSliderInputPose(targetPose);
         });
@@ -21545,36 +21790,12 @@ SOFTWARE.
       const onOutsidePointerDown = (event) => {
         if (!isFileListOpen()) return;
         if (event.target instanceof Node && root.contains(event.target)) return;
+        if (event.target instanceof Element && event.target.closest('#buret-scene-tree-menu')) return;
         setFileListOpen(false);
       };
       window.addEventListener('pointerdown', onOutsidePointerDown, true);
       fileListDisposer = () => window.removeEventListener('pointerdown', onOutsidePointerDown, true);
     }
-    const refreshPinControls = () => {
-      const pinned = dockingPinnedPoseIndices(prepared);
-      pinControls.forEach(({ button, indices, label: pinLabel }) => {
-        const count = indices.filter(index => pinned.has(index)).length;
-        const all = count === indices.length;
-        button.classList.toggle('pinned', all);
-        button.classList.toggle('partial', count > 0 && !all);
-        button.setAttribute('aria-pressed', all ? 'true' : count ? 'mixed' : 'false');
-        button.title = `${all ? 'Unpin' : 'Pin'} ${pinLabel}`;
-        button.setAttribute('aria-label', button.title);
-      });
-    };
-    pinControls.forEach(({ button, indices }) => {
-      button.addEventListener('click', () => {
-        const pinned = dockingPinnedPoseIndices(prepared);
-        const pin = !indices.every(index => pinned.has(index));
-        indices.forEach(index => (pin ? pinned.add(index) : pinned.delete(index)));
-        refreshPinControls();
-        // Queue behind pending steps so the rebuild draws the pose they settle on.
-        const queued = poseUpdateQueue.then(() => applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: false }));
-        // eslint-disable-next-line no-console
-        poseUpdateQueue = queued.catch(error => console.error(error));
-      });
-    });
-    refreshPinControls();
     if (story && storyPanel) {
       story.addEventListener('click', () => {
         const open = root.classList.toggle('buret-docking-poses-story-closed') === false;
@@ -21886,6 +22107,28 @@ SOFTWARE.
         label.focus();
         return;
       }
+      if (hasPoseGroups && fileList && (isFileListOpen() || event.target === label)) {
+        if (event.key === 'Tab') { setFileListOpen(false); return; }
+        if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+          event.preventDefault();
+          setFileListOpen(true);
+          const items = [...fileList.querySelectorAll('button')].filter(item => !item.hidden && !item.closest('[inert]'));
+          const current = items.indexOf(document.activeElement);
+          const index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+            : event.key === 'ArrowDown' ? (current + 1) % items.length : current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;
+          items[index]?.focus();
+          return;
+        }
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+          event.preventDefault();
+          const group = event.target.closest('.buret-docking-pose-group');
+          const toggle = group?.querySelector('.buret-docking-pose-group-toggle');
+          const expand = event.key === 'ArrowRight';
+          if (toggle && (toggle.getAttribute('aria-expanded') === 'true') !== expand) toggle.click();
+          if (!expand) toggle?.focus();
+          return;
+        }
+      }
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
         if (activePose > trajectoryControlBounds(activePose).start) void setPose(activePose - 1, { userStep: true });
@@ -21894,8 +22137,10 @@ SOFTWARE.
         if (activePose < trajectoryControlBounds(activePose).end) void setPose(activePose + 1, { userStep: true });
       }
     };
+    root.addEventListener('keydown', onKeyDown);
     window.addEventListener('keydown', onKeyDown);
     dockingPoseKeydownDisposer = () => {
+      root.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keydown', onKeyDown);
     };
     mainRow.append(animation, previous, label, next);
@@ -23862,7 +24107,7 @@ SOFTWARE.
     return 'selection';
   }
 
-  function molstarContextSourceEntryForActiveConfig() {
+  function molstarContextSourceEntryForActiveConfig(structureRef = null) {
     if (!activeConfig || activeConfig.docking) return null;
     const format = normalizeFormat(activeConfig.molstarFormat || activeConfig.format);
     if (format !== 'pdb' && format !== 'pdbqt' && format !== 'sdf') return null;
@@ -23870,7 +24115,23 @@ SOFTWARE.
       const data = rawStructureData({ ...activeConfig, format, binary: false });
       if (format === 'sdf') {
         const records = splitSdfRecords(data);
-        const activePose = Math.max(0, Math.min(records.length - 1, Number(activeMolstarPrepared?.activePose) || 0));
+        // A collection's prepared.activePose is its load-time value. Resolve the
+        // displayed/picked layer, including a background molecule in All mode.
+        const state = activeSdfCollectionVisibilityState;
+        const ownsScene = activeMolstarPrepared?.kind === 'sdf-collection'
+          && state?.viewer === activeViewer
+          && state.key === sdfCollectionStateKey(activeMolstarPrepared, configuredMolstarStyle(activeConfig), activeSdfPoseMode === 'all');
+        let activePose = ownsScene ? state.activeIndex
+          : readTrajectoryControlIndex(activeConfig, activeMolstarPrepared, records.length);
+        if (structureRef && activeMolstarPrepared?.kind === 'sdf-collection') {
+          if (!ownsScene) return null;
+          const ref = structureRef.cell?.transform?.ref;
+          const index = state.allRefsByIndex?.findIndex(refs => refs.includes(ref)) ?? -1;
+          activePose = index >= 0 ? index : state.activeRefs?.includes(ref) ? state.activeIndex : -1;
+          // A discarded layer/document must not silently borrow another record.
+          if (activePose < 0) return null;
+        }
+        activePose = Math.max(0, Math.min(records.length - 1, Number(activePose) || 0));
         return {
           data: records[activePose] || data,
           format: 'sdf',
@@ -23898,7 +24159,10 @@ SOFTWARE.
         : 0;
       let data = null;
       if (format === 'sdf') {
-        const record = splitSdfRecords(text)[0] || String(text || '');
+        const records = splitSdfRecords(text);
+        const record = config === activeConfig
+          ? molstarContextSourceEntryForActiveConfig()?.data || ''
+          : records[readTrajectoryControlIndex(config, activeMolstarPrepared, records.length)] || '';
         if (!record.trim()) return null;
         data = `${record.trimEnd()}\n$$$$\n`;
       } else if (format === 'pdb' || format === 'pdbqt' || format === 'mmcif' || format === 'cifCore' || format === 'xyz') {
@@ -24095,7 +24359,7 @@ SOFTWARE.
         };
       }
     }
-    const sourceEntry = molstarContextSourceEntryForActiveConfig();
+    const sourceEntry = molstarContextSourceEntryForActiveConfig(targetStructure);
     return {
       structures: targetStructures,
       structure: targetStructure,
@@ -24625,7 +24889,7 @@ SOFTWARE.
     if (!Array.isArray(structures)) return [];
     const lib = molstarExportLib();
     const unit = lib.Unit || {};
-    return structures.map((structureRef, index) => {
+    return structures.flatMap((structureRef, index) => {
       const source = molstarStructureFromRef(structureRef);
       if (!source || !Array.isArray(source.units) || source.elementCount <= 0) return null;
       const componentStructures = molstarComponentStructuresForExport(structureRef);
@@ -24633,6 +24897,17 @@ SOFTWARE.
       if (!structure || structure.elementCount <= 0) return null;
       if (typeof unit.isAtomic === 'function' && structure.units.some(currentUnit => !unit.isAtomic(currentUnit))) {
         return null;
+      }
+      if (structureRef.cell?.transform?.tags?.includes('burette-sdf-ensemble')) {
+        // The mmCIF writer requires one model per input structure. Use live subsets so
+        // selection, transforms and edits survive, including restored scenes.
+        return structure.models.map(model => {
+          const builder = structure.subsetBuilder(true);
+          for (const unit of structure.units) {
+            if (unit.model === model) builder.setUnit(unit.id, Array.from(unit.elements));
+          }
+          return { name: model.label.replace(/[^A-Za-z0-9_]/g, '_'), structure: builder.getStructure() };
+        });
       }
       return {
         name: molstarExportStructureName(structureRef, index),
@@ -24761,6 +25036,9 @@ SOFTWARE.
   }
 
   function molstarContextSdfEntryForExport(target) {
+    if (target?.scope === 'ligand' && target.structure && activeMolstarPrepared?.kind === 'sdf-collection') {
+      return molstarContextSourceEntryForActiveConfig(target.structure);
+    }
     if (target?.scope === 'ligand' && normalizeFormat(target.sourceEntry?.format) === 'sdf') {
       return target.sourceEntry;
     }
@@ -26746,6 +27024,9 @@ SOFTWARE.
 
   function molstarMoleculePreviewEntry(target) {
     if (!target || (target.scope !== 'ligand' && target.scope !== 'ion')) return null;
+    if (target.structure && activeMolstarPrepared?.kind === 'sdf-collection') {
+      return molstarContextSourceEntryForActiveConfig(target.structure);
+    }
     const sdfEntry = molstarMoleculePreviewSdfEntry(target);
     if (sdfEntry) return sdfEntry;
     const entry = target.selectedEntry || target.ligand || null;
@@ -26899,7 +27180,7 @@ SOFTWARE.
   }
 
   function molstarPreviewLigandTarget(entry) {
-    const sourceEntry = molstarContextSourceEntryForActiveConfig();
+    const sourceEntry = molstarContextSourceEntryForActiveConfig(entry.structureRef);
     const selectedEntry = sourceEntry ? pdbEntryForResidue(sourceEntry, entry.atom) : null;
     return {
       structures: [entry.structureRef],
@@ -26921,7 +27202,10 @@ SOFTWARE.
   function molstarPreviewLigandIndex(entries) {
     const atom = molstarMoleculePreviewTarget?.atom;
     const key = atom ? molstarContextResidueLabel(atom) : '';
-    const index = key ? entries.findIndex(entry => entry.label === key) : -1;
+    const structure = molstarMoleculePreviewTarget?.structure;
+    const ref = structure?.cell?.transform?.ref;
+    const index = key ? entries.findIndex(entry => entry.label === key
+      && (!structure || entry.structureRef === structure || (ref && entry.structureRef?.cell?.transform?.ref === ref))) : -1;
     return index >= 0 ? index : 0;
   }
 
@@ -26979,7 +27263,9 @@ SOFTWARE.
     // Preserve the coordinate source for chemical bond perception in the host;
     // the distance-only SDF used by the preview is not an editable molecule.
     const source = target?.sourceEntry || target?.receptor;
-    const entry = (target?.atom && normalizeFormat(target.ligand?.format) === 'sdf' && target.ligand)
+    const entry = target?.structure && activeMolstarPrepared?.kind === 'sdf-collection'
+      ? molstarContextSourceEntryForActiveConfig(target.structure)
+      : (target?.atom && normalizeFormat(target.ligand?.format) === 'sdf' && target.ligand)
       || (target?.atom && pdbEntryForResidue(source, target.atom))
       || (!target?.atom && normalizeFormat(source?.format) === 'pdb' && source)
       || molstarMoleculePreviewEntry(target);
@@ -27643,17 +27929,21 @@ SOFTWARE.
     }
     void molstarMoleculePreviewRDKitSVG(entry)
       .then(svg => {
-        if (!svg || !molstarMoleculePreview || molstarMoleculePreview.dataset.buretPreviewKey !== key) return;
+        if (!svg || molstarMoleculePreview !== popover || molstarMoleculePreviewTarget !== target || popover.dataset.buretPreviewKey !== key) return;
         const imageEl = molstarMoleculePreview.querySelector('.buret-molstar-molecule-preview-image');
         if (imageEl && imageEl.dataset.depictionKey !== key) {
           imageEl.innerHTML = svg;
           imageEl.dataset.depictionKey = key;
           fitMolstarMoleculePreviewDrawing(molstarMoleculePreview);
-          window.BuretteMoleculePreviewInteractions?.install(imageEl, positions => selectMolstarMoleculePreviewAtoms(target, positions));
+          window.BuretteMoleculePreviewInteractions?.install(imageEl, positions => {
+            if (molstarMoleculePreview === popover && molstarMoleculePreviewTarget) {
+              selectMolstarMoleculePreviewAtoms(molstarMoleculePreviewTarget, positions);
+            }
+          });
         }
       })
       .catch(() => {
-        if (!image && molstarMoleculePreview?.dataset?.buretPreviewKey === key) {
+        if (!image && molstarMoleculePreview === popover && molstarMoleculePreviewTarget === target && popover.dataset.buretPreviewKey === key) {
           const imageEl = molstarMoleculePreview.querySelector('.buret-molstar-molecule-preview-image');
           if (imageEl) imageEl.textContent = '2D preview unavailable';
         }
@@ -27663,13 +27953,13 @@ SOFTWARE.
   function molstarSelectionMoleculePreviewTarget() {
     const structures = molstarContextStructures();
     if (!structures.length) return null;
-    const sourceEntry = molstarContextSourceEntryForActiveConfig();
     for (const structureRef of structures) {
       const structure = molstarStructureFromRef(structureRef) || structureRef;
       const loci = molstarContextSelectionLociForStructure(structureRef);
       const atom = molstarContextAtomFromLoci(loci);
       const scope = molstarContextScopeForAtom(atom);
       if (scope !== 'ligand' && scope !== 'ion') continue;
+      const sourceEntry = molstarContextSourceEntryForActiveConfig(structureRef);
       const selectedEntry = sourceEntry ? pdbEntryForResidue(sourceEntry, atom) : null;
       return {
         structures: [structureRef],
@@ -29294,6 +29584,12 @@ SOFTWARE.
       viewer = typeof window.molstar.Viewer.create === 'function'
         ? await window.molstar.Viewer.create('app', createViewerOptions())
         : new window.molstar.Viewer('app', createViewerOptions());
+      // Embedded imports belong to the workspace; Mol*'s competing drop layer
+      // can otherwise remain over the scene after a drag leaves the iframe.
+      if (window.parent && window.parent !== window) {
+        viewer.plugin.spec.components.disableDragOverlay = true;
+        viewer.plugin.layout.events.updated.next();
+      }
       viewer.plugin.canvas3d?.setProps({ transparentBackground, renderer: { backgroundColor: canvasBackgroundColor() } });
       viewer.plugin.canvas3d?.requestDraw();
       // WebKit may suspend animation callbacks while this container is hidden.
@@ -29515,11 +29811,15 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       if (window.BuretteNativeFirstFrame) throw error;
     }
     if (window.BuretteViewerDisposed) return;
-    await restoredView;
+    const sourceViewport = await restoredView;
     const savedCamera = window.BuretteRendererViewState?.read(config.documentId, config.rendererViewState).camera;
     if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {
       molstarStructureFocusSerial += 1;
-      restoreMolstarCameraSnapshotNow(viewer, savedCamera);
+      const camera = sourceViewport
+        ? window.BuretteRendererViewState.transferCamera(savedCamera, sourceViewport, viewer.plugin.canvas3d?.camera?.viewport)
+        : savedCamera;
+      restoreMolstarCameraSnapshotNow(viewer, camera);
+      if (sourceViewport) saveRendererViewState();
     } else if ((isQuickLookHost() || prepared.fitSessionCamera) && !hasMolstarContextFocus(config)) {
       // Quick Look keeps the file's orientation and never animates the camera; it
       // only trades Mol*'s bounding-sphere distance for the atom-fitted one. An MVS
@@ -29569,6 +29869,8 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       molstarStructureFocusSerial += 1;
       await applyHostedMcpActions();
     }
+    // A panel can be hidden while its initial structure is still loading.
+    if (!hostViewerVisible) viewer.plugin.animationLoop.stop({ noDraw: true });
   }
 
   async function start() {

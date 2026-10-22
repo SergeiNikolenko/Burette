@@ -6,6 +6,19 @@ import { buildThemeStyle, readPreviewThemeTokens, resolveAppearanceTheme } from 
 import { AppearanceSettings } from "../apps/desktop/src/components/settings-panel/themes-section";
 import type { ShellActions } from "../apps/desktop/src/components/types";
 
+test("native workspace shell and molecular preview follow the host background", () => {
+  const previous = globalThis.window;
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { BuretteMcpWorkspace: { theme: "dark", backgrounds: { light: "#fafafa", dark: "#101010" } } } });
+  try {
+    for (const mode of ["light", "dark"] as const) {
+      const expected = mode === "dark" ? "#101010" : "#fafafa";
+      expect(resolveAppearanceTheme(defaultPreferences, mode).surface).toBe(expected);
+      expect(readPreviewThemeTokens(defaultPreferences, mode).background).toBe(expected);
+      expect(buildThemeStyle(defaultPreferences, "dark")["--bg-base" as keyof React.CSSProperties]).toBe("#101010");
+    }
+  } finally { Object.defineProperty(globalThis, "window", { configurable: true, value: previous }); }
+});
+
 test("appearance controls show the same resolved defaults as the rendered shell", () => {
   for (const mode of ["light", "dark"] as const) {
     // The theme card edits the active mode, as in Codex.

@@ -31,6 +31,9 @@ const context = {
     style, refs: structures.map(s => s.cell.transform.ref), alpha, color,
   }),
   document: { querySelector: () => null }, updateStructureOverlayToggleButton() {},
+  // Atom/bond styles use the batched collection scene; this exercises the
+  // per-molecule path that surface representations keep.
+  sdfCollectionRepresentationForStyle: () => ({ type: 'molecular-surface' }), window: {},
 };
 runInNewContext(['sdfCollectionStateKey', 'molstarRefsStillLoaded', 'sdfCollectionVisibilityStateStillLoaded',
   'molstarStructuresByRefs', 'applySdfCollectionVisibilityNow'].map(extract).join('\n'), context);

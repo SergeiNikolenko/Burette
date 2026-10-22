@@ -6,6 +6,11 @@ on:
     branches:
       - main
 
+# New PR commits supersede older checks; main runs retain their own results.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   BURETTE_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
 
@@ -151,3 +156,4 @@ jobs:
           name: native-acceptance-${{ github.event.number }}-${{ github.sha }}
           path: build/native-acceptance.zip
           retention-days: 7
+          compression-level: 0

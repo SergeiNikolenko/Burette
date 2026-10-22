@@ -11,6 +11,10 @@ The source of truth for runtime theme defaults is:
 - `apps/desktop/src/lib/codex-theme.ts`
 - `apps/desktop/src/styles/codex-tokens.css`
 
+For interaction behavior, progress, recovery, and workflow acceptance, also follow
+[Interaction Principles](interaction-principles.md). Those are requirements for
+future changes, not a claim that every existing surface already complies.
+
 ## Current Reality
 
 The desktop shell follows the Codex InterfaceAtlas tokens and primitives while
@@ -126,6 +130,37 @@ The shell is a workspace, not a brand canvas.
   Ketcher editor-mode switch close before their surrounding UI is refreshed.
 - Keep keyboard selection, disabled-item skipping, parent focus restoration and
   portal placement covered in `tests/test-overlay-interactions.test.tsx`.
+
+### Docking Pose Picker
+
+The compact picker shows the current filename and one pose counter. Its menu is
+the same Atlas menu as Style (`styleMenu`, `atlas-menu-item` rows), kept opaque
+over the scene. Rows use the scene tree's compact metrics (24 px rows, 12 px
+labels) and one hover highlight that slides between them like the tree's. File
+rows lead with a disclosure chevron; pose rows align with the file name and keep
+their score in tertiary text. The current file starts expanded; other files
+start collapsed.
+
+Visibility follows the scene tree. Clicking a pose row shows or hides it, and an
+eye marks every pose on screen; hidden poses read in secondary text and show an
+eye-off on hover. The file eye shows or hides the whole collection and dims when
+only part of it is visible. Shown poses stay on screen while stepping through
+other poses; the last visible pose cannot be hidden. A visible pose carries the
+tree's colour dot, which opens the same colour and representation menu as its
+tree row beside the picker; the picker stays open and the dot follows colour
+changes live. The chevron only folds the list. Scores remain visible without
+repeated file hints or counters. Secondary clicks inside the picker do not open
+the browser iframe menu.
+
+Selection changes update ligand layers in place. They preserve the receptor, its
+representations and camera input. Deselected structures leave the live hierarchy;
+only their parsed data is cached, limited to four inactive poses or 16 MiB.
+
+Disclosure transitions last 140 ms and reverse when interrupted; reduced motion
+removes them. Arrow keys navigate visible rows and expand/collapse files; Escape
+closes the menu and restores focus to its trigger. Embedded desktop viewers leave
+file-drop presentation to the workspace, while standalone viewers retain their
+own import behavior.
 
 ### Viewer Menus on macOS
 

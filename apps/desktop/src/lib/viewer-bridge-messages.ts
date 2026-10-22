@@ -39,7 +39,7 @@ export type ViewerBridgeMessageHandlers = {
   handleKetcherViewerMessage: BodyMessageHandler;
   handleMolstarContextMessage: BodyMessageHandler;
   handlePubChemSearchMessage: BodyMessageHandler;
-  handleRendererMessage: BodyMessageHandler;
+  handleRendererMessage: BodyEventMessageHandler;
   handleSdfViewerMessage: AsyncBodyMessageHandler;
   handleViewerConformerMessage: BodyEventMessageHandler;
   handleViewerFileMessage: BodyEventMessageHandler;
@@ -144,7 +144,7 @@ export async function dispatchViewerBridgeMessage(
   if (handlers.handleKetcherViewerMessage(body)) {
     return true;
   }
-  if (handlers.handleRendererMessage(body)) {
+  if (handlers.handleRendererMessage(body, eventSource)) {
     return true;
   }
   return false;

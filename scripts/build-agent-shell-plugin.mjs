@@ -38,6 +38,7 @@ const requiredPreviewAssets = [
   'sequence-panel.js',
   'native-viewer-menus.js',
   'scene-file-actions.js',
+  'sdf-collection-scene.js',
   'molstar.js',
   'molstar.css',
   'mesoscale.js',

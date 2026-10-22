@@ -25,6 +25,7 @@ declare global {
       storage?: { getItem: (key: string) => string | null; setItem: (key: string, value: string) => void; removeItem: (key: string) => void };
       closed: boolean;
       theme: "light" | "dark";
+      backgrounds?: { light: string; dark: string };
       placement?: {
         getSnapshot: () => { mode: "inline" | "fullscreen"; target: "inline" | "fullscreen"; disabled: boolean; available?: boolean };
         subscribe: (listener: () => void) => () => void;

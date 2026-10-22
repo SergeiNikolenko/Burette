@@ -239,6 +239,7 @@ export default function App() {
     bottomDockDocumentId,
     bottomDockTool,
     dockDroppedStructures,
+    captureDockTarget,
     toggleDock,
     setDockOpen,
     setDockSize,
@@ -744,17 +745,14 @@ export default function App() {
   const openDockPayload = useAppDockPayloadOpen({
     addBackgroundDocuments,
     addBackgroundTextDocuments,
-    addDockDrop,
+    captureDockTarget,
     detectContentSpectrumPaths,
     documents,
     openStructureRecordDocuments,
     preferences,
-    openDocumentTab,
     pushErrorStatus,
     pushStatus,
     rememberRecentStructures,
-    setDockDocument,
-    setDockTool,
     textDocuments,
   });
 

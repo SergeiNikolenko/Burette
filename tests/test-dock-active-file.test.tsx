@@ -247,3 +247,56 @@ test("hiding a chemical-space dock retains its running calculation until the sou
     mock.module("../apps/desktop/src/lib/viewer-bridge", () => bridge);
   }
 });
+
+test("file switching retains iframe identity, pauses hidden files, and bounds retained previews", async () => {
+  const { DockFileViews } = await import("../apps/desktop/src/components/dock-file-views");
+  const docs = Array.from({ length: 7 }, (_, index) => molecule(`pane-${index}`));
+  const entries = docs.map(doc => ({ key: `document:${doc.id}`, kind: "document" as const, documentId: doc.id, title: doc.title, detail: "", path: doc.path }));
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const draw = async (index: number, visible = true) => act(async () => root.render(<DockFileViews entries={entries} activeKey={entries[index].key}
+    textViews={{}} state={{ ...state, documents: docs }} actions={{} as ShellActions} renderText={() => null} visible={visible} />));
+  try {
+    await draw(0);
+    const first = host.querySelector<HTMLIFrameElement>("iframe")!;
+    const messages: unknown[] = [];
+    first.contentWindow!.postMessage = (payload: unknown) => { messages.push(payload); };
+    await draw(1);
+    expect(host.querySelector('iframe[data-document-id="pane-0"]')).toBe(first);
+    expect(messages).toContainEqual({ source: "burette-host", body: { type: "viewerVisibilityChanged", documentId: "pane-0", visible: false } });
+    await draw(0);
+    expect(host.querySelector('iframe[data-document-id="pane-0"]')).toBe(first);
+    expect(messages.at(-1)).toEqual({ source: "burette-host", body: { type: "viewerVisibilityChanged", documentId: "pane-0", visible: true } });
+    await draw(0, false);
+    expect(messages.at(-1)).toEqual({ source: "burette-host", body: { type: "viewerVisibilityChanged", documentId: "pane-0", visible: false } });
+    for (let index = 2; index < docs.length; index++) { await draw(index); expect(host.querySelectorAll("iframe").length).toBeLessThanOrEqual(4); }
+    expect(host.querySelector('iframe[data-document-id="pane-0"]')).toBeNull();
+    expect(host.querySelectorAll('[data-dock-file]:not([hidden])')).toHaveLength(1);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("the same document in two workspace panels has separate iframe ownership", async () => {
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  const actions = { setStructureDragActive() {}, setDockOpen() {} } as unknown as ShellActions;
+  const draw = async (workspaceId: string, open = true) => act(async () => root.render(<DockPanel area="right" state={{
+    ...state, activeTab: { ...state.activeTab!, id: workspaceId }, rightDockOpen: open, rightDockDocumentId: open ? a.id : null,
+  }} actions={actions} />));
+  try {
+    await draw("workspace-a");
+    const sourceA = host.querySelector("iframe")!;
+    expect(sourceA.closest<HTMLElement>(".dock-panel")?.dataset.workspaceId).toBe("workspace-a");
+    await draw("workspace-b", false);
+    expect(host.querySelector("iframe")).toBe(sourceA);
+    expect(sourceA.closest<HTMLElement>(".dock-panel")?.dataset.workspaceId).toBe("workspace-a");
+    await draw("workspace-b");
+    const sourceB = host.querySelector("iframe")!;
+    expect(sourceB.dataset.documentId).toBe(sourceA.dataset.documentId);
+    expect(sourceB).not.toBe(sourceA);
+    expect(sourceA.isConnected).toBe(false);
+    expect(sourceB.closest<HTMLElement>(".dock-panel")?.dataset.workspaceId).toBe("workspace-b");
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});
