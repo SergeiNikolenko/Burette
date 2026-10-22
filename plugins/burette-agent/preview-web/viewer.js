@@ -16374,6 +16374,31 @@ SOFTWARE.
     const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
     const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
     const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
+    const foreground = sdfCollectionRepresentationForStyle(style, 1, 'colored');
+    const background = sdfCollectionRepresentationForStyle(contextStyle === 'match' ? style : contextStyle, contextOpacity, contextColor);
+    // Atom/bond representations can batch models without changing their meaning.
+    // Surfaces retain independent per-molecule construction and its style path.
+    const batchedTypes = ['ball-and-stick', 'line', 'spacefill'];
+    if (batchedTypes.includes(foreground.type) && (!allMode || batchedTypes.includes(background.type))) {
+      if (!window.BuretteSdfCollection) {
+        await loadScript(runtimeURL('BuretteSdfCollectionURL', './sdf-collection-scene.js'), 'collection scene', 10000);
+      }
+      await window.BuretteSdfCollection.show(plugin, {
+        molecules: prepared.collectionMolecules, index: activeIndex, all: allMode,
+        spread: allMode && activeSdfCollectionLayout === 'spread',
+        spreadCells: activeConfig?.sdfCollectionSpreadCells,
+        spreadMolecules: spreadSdfCollectionMolecules, foreground, background
+      });
+      resetSdfCollectionVisibilityState(viewer);
+      resetXyzFrameOverlayState(viewer);
+      resetDockingPoseCollectionState(viewer);
+      resetDockingSceneVisibilityState(viewer);
+      await applyMolstarAppearance(viewer, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
+      updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
+      if (options.focus === true) scheduleMolstarStructureFocus(viewer, { reason: 'sdf-collection', durationMs: 180 });
+      return;
+    }
+    window.BuretteSdfCollection?.reset(plugin);
     const stateKey = sdfCollectionStateKey(prepared, style, allMode);
     let state = activeSdfCollectionVisibilityState;
     if (!state || state.key !== stateKey || !sdfCollectionVisibilityStateStillLoaded(viewer, state)) {
@@ -24639,7 +24664,7 @@ SOFTWARE.
     if (!Array.isArray(structures)) return [];
     const lib = molstarExportLib();
     const unit = lib.Unit || {};
-    return structures.map((structureRef, index) => {
+    return structures.flatMap((structureRef, index) => {
       const source = molstarStructureFromRef(structureRef);
       if (!source || !Array.isArray(source.units) || source.elementCount <= 0) return null;
       const componentStructures = molstarComponentStructuresForExport(structureRef);
@@ -24647,6 +24672,17 @@ SOFTWARE.
       if (!structure || structure.elementCount <= 0) return null;
       if (typeof unit.isAtomic === 'function' && structure.units.some(currentUnit => !unit.isAtomic(currentUnit))) {
         return null;
+      }
+      if (structureRef.cell?.transform?.tags?.includes('burette-sdf-ensemble')) {
+        // The mmCIF writer requires one model per input structure. Use live subsets so
+        // selection, transforms and edits survive, including restored scenes.
+        return structure.models.map(model => {
+          const builder = structure.subsetBuilder(true);
+          for (const unit of structure.units) {
+            if (unit.model === model) builder.setUnit(unit.id, Array.from(unit.elements));
+          }
+          return { name: model.label.replace(/[^A-Za-z0-9_]/g, '_'), structure: builder.getStructure() };
+        });
       }
       return {
         name: molstarExportStructureName(structureRef, index),

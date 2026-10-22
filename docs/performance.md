@@ -89,6 +89,29 @@ edited rows. Cancellation releases only unadopted virtual grid result IDs throug
 the existing batched grid close command; adopted collections use ordinary document
 teardown and are excluded from abandoned-result cleanup.
 
+## SDF collection scenes
+
+`PreviewExtension/Web/sdf-collection-scene.js` parses a collection into one
+cached SDF trajectory. Single mode builds one model; All builds an ensemble
+of independent models with disjoint selected-pose and background components.
+Ball-and-stick, line and spacefill share background geometry. Surface styles
+keep the existing per-molecule path so their geometry does not merge.
+
+Switching modes removes inactive geometry while retaining parsed models.
+Changing the source molecules, alignment or spread layout invalidates that
+cache; external scene clearing also invalidates it. Transactions restore the
+previous scene on failure, and construction yields between major stages to
+let the host process tab actions. Scene export partitions the live ensemble
+into one input structure per model for the existing mmCIF writer, preserving
+all selected atoms.
+
+Run `vp exec bun tests/test-sdf-collection-scene.mjs` for real Mol* topology,
+selection, export, cache, style and failure/retry coverage. For performance
+acceptance, measure initial document loading separately from the first All
+toggle and subsequent Single/All toggles. Record input-to-action completion
+and presented-frame latency separately, and create/switch tabs during loading.
+Browser results do not establish packaged macOS or Quick Look performance.
+
 ## Asset Profiles
 
 The profile manifest lives at `config/web-runtime-profiles.json`. It is the
