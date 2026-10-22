@@ -135,14 +135,15 @@ over the scene. File rows lead with a disclosure chevron; pose rows align with
 the file name and keep their score in tertiary text. The current file starts
 expanded; other files start collapsed.
 
-Files and poses share one trailing check column. Clicking a pose row shows or
-hides that pose without closing the menu or moving the camera; the last visible
-pose stays selected. The file check shows or hides the whole collection and
-reads as a check (all poses) or a dash (some). Hovering a row previews its check
-and reveals a pin; a pinned pose or collection keeps a filled pin and stays
-visible while stepping through other poses. The chevron only folds the list.
-Scores remain visible without repeated file hints or counters. Secondary clicks
-inside the picker do not open the browser iframe menu.
+Visibility follows the scene tree. Clicking a pose row shows or hides it, and an
+eye marks every pose on screen; hidden poses read in secondary text and show an
+eye-off on hover. The file eye shows or hides the whole collection and dims when
+only part of it is visible. Shown poses stay on screen while stepping through
+other poses; the last visible pose cannot be hidden. A visible pose carries the
+tree's colour dot, which opens the same colour and representation menu as its
+tree row. The chevron only folds the list. Scores remain visible without
+repeated file hints or counters. Secondary clicks inside the picker do not open
+the browser iframe menu.
 
 Selection changes update ligand layers in place. They preserve the receptor, its
 representations and camera input. Deselected structures leave the live hierarchy;

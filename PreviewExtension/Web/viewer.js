@@ -2035,7 +2035,7 @@
   let sdfCollectionAlignment = null;
   let activeDockingPoseCollectionState = null;
   // Poses kept on screen while other poses are browsed, for the open docking set.
-  let dockingPinnedPoseState = { key: '', indices: new Set(), selected: new Set() };
+  let dockingPinnedPoseState = { key: '', indices: new Set(), selected: new Set(), references: new Set() };
   let activeDockingSceneVisibilityState = null;
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
@@ -7835,6 +7835,11 @@ SOFTWARE.
       for (const [index, entry] of scene.poseCache || []) {
         if (index !== scene.activeIndex) cachedRoots.add(entry.raw.ref);
       }
+      for (const layer of scene.layers?.values() || []) {
+        for (const [index, entry] of layer.poseCache || []) {
+          if (index !== layer.activeIndex) cachedRoots.add(entry.raw.ref);
+        }
+      }
     }
     const { children, rootRef } = sceneTreeChildRefs(state);
     if (rootRef === null) return [];
@@ -12944,6 +12949,9 @@ SOFTWARE.
 
   const DOCKING_REFERENCE_FILE_PATTERN = /(^|[^a-z])(crystal|xtal|native|ref|reference|cocrystal)([^a-z]|$)/i;
   const DOCKING_REFERENCE_CARBON_COLOR = 0xf97316;
+  // Shown poses get distinct carbon tints that stay clear of the green receptor;
+  // the tree's colour dot reads and edits the same value.
+  const DOCKING_POSE_CARBON_COLORS = [0xe5762c, 0xc2419b, 0x7468d1, 0x3591d6, 0xd9a52b, 0xd2504a, 0x9b7a5a];
 
   // Pins live per docking set. A fresh set pins its single-pose reference
   // files (crystal/native ligand) so they stay visible next to every pose.
@@ -12954,7 +12962,8 @@ SOFTWARE.
       const references = groups.length > 1
         ? groups.filter(group => group.frameCount === 1 && DOCKING_REFERENCE_FILE_PATTERN.test(group.label || ''))
         : [];
-      dockingPinnedPoseState = { key, indices: new Set(references.map(group => group.startFrame)), selected: new Set() };
+      const starts = references.map(group => group.startFrame);
+      dockingPinnedPoseState = { key, indices: new Set(starts), selected: new Set(), references: new Set(starts) };
     }
     return dockingPinnedPoseState.indices;
   }
@@ -12962,6 +12971,34 @@ SOFTWARE.
   function dockingSelectedPoseIndices(prepared) {
     dockingPinnedPoseIndices(prepared);
     return dockingPinnedPoseState.selected;
+  }
+
+  // Crystal and native ligands keep their reference colour.
+  function dockingReferencePoseIndices(prepared) {
+    dockingPinnedPoseIndices(prepared);
+    return dockingPinnedPoseState.references;
+  }
+
+  // The scene tree row that colours one displayed pose layer.
+  function dockingPoseTreeNode(viewer, refs) {
+    const cells = viewer?.plugin?.state?.data?.cells;
+    if (!cells) return null;
+    const owned = ref => {
+      for (let current = ref; current && cells.has(current); current = cells.get(current).transform.parent) {
+        if (refs.includes(current)) return true;
+        if (current === cells.get(current).transform.parent) break;
+      }
+      return false;
+    };
+    const find = nodes => {
+      for (const node of nodes) {
+        if (node.colorable && owned(node.ref)) return node;
+        const child = find(node.children);
+        if (child) return child;
+      }
+      return null;
+    };
+    return find(sceneTreeNodes(viewer));
   }
 
   function normalizeRenderer(renderer) {
@@ -16425,6 +16462,7 @@ SOFTWARE.
       ? (prepared.poseGroups || []).find(group => activeIndex >= group.startFrame && activeIndex <= group.endFrame)
       : null;
     const pinned = dockingPinnedPoseIndices(prepared);
+    const references = dockingReferencePoseIndices(prepared);
     const selected = new Set([activeIndex, ...pinned, ...dockingSelectedPoseIndices(prepared)]);
     const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
     const resolvedContextStyle = dockingSceneBackgroundStyle(contextStyle, style);
@@ -16437,7 +16475,7 @@ SOFTWARE.
       }
     }
     for (const index of selected) {
-      if (poses[index]) wanted.set(index, [style, 1, pinned.has(index) && index !== activeIndex ? 'reference' : 'colored']);
+      if (poses[index]) wanted.set(index, [style, 1, references.has(index) ? 'reference' : DOCKING_POSE_CARBON_COLORS[index % DOCKING_POSE_CARBON_COLORS.length]]);
     }
     const stateKey = dockingPoseCollectionStateKey(prepared);
     let state = activeDockingPoseCollectionState;
@@ -17016,13 +17054,14 @@ SOFTWARE.
       const value = Number(alpha);
       return ghost ? { ...params, alpha: Math.max(minAlpha, Math.min(value, 1)), transparentBackfaces: 'on' } : params;
     };
-    const color = normalizeSdfCollectionContextColor(colorMode) === 'colored' ? 'element-symbol' : 'uniform';
+    // A number is an explicit carbon tint; references keep a fixed one.
+    const carbon = colorMode === 'reference' ? DOCKING_REFERENCE_CARBON_COLOR : Number.isFinite(colorMode) ? colorMode : null;
+    const color = carbon !== null || normalizeSdfCollectionContextColor(colorMode) === 'colored' ? 'element-symbol' : 'uniform';
     const colorParams = color === 'uniform' ? { value: 0x6f7886 } : undefined;
     const themed = (representation) => colorParams ? { ...representation, color, colorParams } : { ...representation, color };
-    if (colorMode !== 'reference') return { ghost, withAlpha, themed };
-    // Reference (pinned) poses keep element colours on a fixed carbon tint.
-    const referenceParams = { carbonColor: { name: 'uniform', params: { value: DOCKING_REFERENCE_CARBON_COLOR } } };
-    return { ghost, withAlpha, themed: (representation) => ({ ...representation, color, colorParams: referenceParams }) };
+    if (carbon === null) return { ghost, withAlpha, themed };
+    const carbonParams = { carbonColor: { name: 'uniform', params: { value: carbon } } };
+    return { ghost, withAlpha, themed: (representation) => ({ ...representation, color, colorParams: carbonParams }) };
   }
 
   function sdfCollectionRepresentationForStyle(style, alpha = 1, colorMode = 'gray', minAlpha = 0.04) {
@@ -20735,17 +20774,25 @@ SOFTWARE.
     const fileList = hasFileList ? document.createElement('div') : null;
     const fileButtons = [];
     const groupControls = [];
-    const pinControls = [];
-    const createPosePin = (indices, name) => {
-      const pin = document.createElement('button');
-      pin.type = 'button';
-      pin.className = 'buret-docking-pose-pin';
-      pin.setAttribute('role', 'menuitemcheckbox');
-      pin.append(sceneTreeIconElement(APP_ICON_DATA.Pin));
-      pin.addEventListener('click', () => toggleSelectedPose(indices, { pin: true }));
-      pinControls.push({ pin, indices, name });
-      return pin;
+    const poseDots = [];
+    // A visible pose carries the scene tree's colour dot; it opens the same
+    // colour and representation menu as the pose's row in the tree.
+    const createPoseDot = (index, name) => {
+      const dot = document.createElement('button');
+      dot.type = 'button';
+      dot.className = 'buret-tree-dot buret-docking-pose-dot';
+      dot.setAttribute('aria-label', `Colour ${name}`);
+      dot.hidden = true;
+      dot.addEventListener('click', () => {
+        if (!dot.dataset.ref) return;
+        const rect = dot.getBoundingClientRect();
+        setFileListOpen(false);
+        openSceneTreeMenu(dot.dataset.ref, rect.left, rect.bottom + 4);
+      });
+      poseDots.push({ dot, index });
+      return dot;
     };
+    const eyeIcons = () => [sceneTreeIconElement(SCENE_TREE_ICON.eye), sceneTreeIconElement(SCENE_TREE_ICON.eyeOff)];
     // The pose each list row jumps to, parallel to fileButtons.
     const fileTargets = [];
     if (fileList && hasPoseGroups) {
@@ -20787,17 +20834,15 @@ SOFTWARE.
         name.textContent = group.label;
         toggle.append(chevron, name);
         const indices = group.poses.map((_, offset) => group.startFrame + offset);
-        // One trailing check column for files and poses: a full check shows the
-        // whole file, a dash shows part of it.
-        const select = document.createElement('button');
-        select.type = 'button';
-        select.className = 'buret-docking-pose-group-select';
-        select.setAttribute('role', 'menuitemcheckbox');
-        select.setAttribute('aria-label', `Show all poses in ${group.label}`);
-        select.append(sceneTreeIconElement(APP_ICON_DATA.Check), sceneTreeIconElement(APP_ICON_DATA.Minus));
-        select.addEventListener('click', () => toggleSelectedPose(indices));
-        groupControls.push({ select, indices });
-        heading.append(toggle, createPosePin(indices, group.label), select);
+        // Like a tree row: the eye shows or hides the whole file.
+        const eye = document.createElement('button');
+        eye.type = 'button';
+        eye.className = 'buret-docking-pose-eye';
+        eye.setAttribute('role', 'menuitemcheckbox');
+        eye.append(...eyeIcons());
+        eye.addEventListener('click', () => toggleSelectedPose(indices));
+        groupControls.push({ select: eye, indices, name: group.label });
+        heading.append(toggle, eye);
         section.append(heading, poses);
         group.poses.forEach((pose, offset) => {
           const button = document.createElement('button');
@@ -20815,14 +20860,16 @@ SOFTWARE.
             button.setAttribute('aria-label', `${pose.label}, ${pose.score.value.toFixed(2)} kcal/mol`);
             button.append(score);
           }
-          const check = sceneTreeIconElement(APP_ICON_DATA.Check);
-          check.classList.add('atlas-menu-check');
-          button.append(check);
+          const eye = document.createElement('span');
+          eye.className = 'buret-docking-pose-eye';
+          eye.setAttribute('aria-hidden', 'true');
+          eye.append(...eyeIcons());
+          button.append(eye);
           fileButtons.push(button);
           fileTargets.push(group.startFrame + offset);
           const row = document.createElement('div');
           row.className = 'buret-docking-pose-row';
-          row.append(button, createPosePin([group.startFrame + offset], `${group.label}, ${pose.label}`));
+          row.append(button, createPoseDot(group.startFrame + offset, `${group.label}, ${pose.label}`));
           poseRows.append(row);
         });
         fileList.append(section);
@@ -21103,19 +21150,21 @@ SOFTWARE.
         button.setAttribute(hasPoseGroups ? 'aria-checked' : 'aria-selected', active ? 'true' : 'false');
       });
       if (selected) {
-        for (const { select, indices } of groupControls) {
+        for (const { select, indices, name } of groupControls) {
           const count = indices.filter(index => selected.has(index)).length;
           select.setAttribute('aria-checked', count === indices.length ? 'true' : count ? 'mixed' : 'false');
+          select.setAttribute('aria-label', `${count === indices.length ? 'Hide' : 'Show'} all poses in ${name}`);
         }
-        const pins = dockingPinnedPoseIndices(prepared);
-        for (const { pin, indices, name } of pinControls) {
-          const count = indices.filter(index => pins.has(index)).length;
-          const checked = count === indices.length;
-          pin.setAttribute('aria-checked', checked ? 'true' : count ? 'mixed' : 'false');
-          pin.setAttribute('aria-label', `${checked ? 'Unpin' : 'Pin'} ${name}`);
-          if (pin.dataset.pinned !== String(checked)) {
-            pin.dataset.pinned = String(checked);
-            pin.replaceChildren(sceneTreeIconElement(checked ? APP_ICON_DATA.PinFilled : APP_ICON_DATA.Pin));
+        if (fileList?.classList.contains('buret-atlas-menu')) {
+          const molstarViewer = activeMolstarViewer();
+          const layers = activeDockingPoseCollectionState?.layers;
+          for (const { dot, index } of poseDots) {
+            const refs = selected.has(index) ? layers?.get(index)?.activeRefs : null;
+            const node = refs?.length ? dockingPoseTreeNode(molstarViewer, refs) : null;
+            dot.hidden = !node || node.value === null;
+            if (dot.hidden) continue;
+            dot.dataset.ref = node.ref;
+            dot.style.background = sceneTreeColorHex(node.value);
           }
         }
       }
@@ -21426,36 +21475,28 @@ SOFTWARE.
         console.error(error);
       }
     };
-    const toggleSelectedPose = (target, options = {}) => {
+    const toggleSelectedPose = (target) => {
       setLoopActive(false);
       poseUpdateQueue = poseUpdateQueue.then(async () => {
         if (activeStructurePoseSetter !== setPose) return;
         const indices = Array.isArray(target) ? target : [target];
-        const selected = selectedPoseIndices();
+        const visible = selectedPoseIndices();
         const pins = dockingPinnedPoseIndices(prepared);
         const selection = dockingSelectedPoseIndices(prepared);
         const previousPins = [...pins];
         const previousSelection = [...selection];
         const previousPose = activePose;
         const previousMode = activeSdfPoseMode;
-        if (options.pin) {
-          const remove = indices.every(index => pins.has(index));
-          for (const index of indices) {
-            if (remove) pins.delete(index);
-            else pins.add(index);
-            selected.add(index);
-          }
-        } else {
-          const remove = indices.every(index => selected.has(index));
-          for (const index of indices) {
-            if (remove) { selected.delete(index); pins.delete(index); }
-            else selected.add(index);
-          }
+        // An eye keeps its pose on screen while stepping; the last visible pose stays.
+        const hide = indices.every(index => visible.has(index));
+        for (const index of indices) {
+          if (hide) { visible.delete(index); pins.delete(index); }
+          else visible.add(index);
         }
-        if (!selected.size) selected.add(activePose);
-        const nextPose = selected.has(activePose) ? activePose : selected.values().next().value;
+        if (!visible.size) visible.add(activePose);
+        const nextPose = visible.has(activePose) ? activePose : visible.values().next().value;
+        for (const index of visible) if (index !== nextPose || (!hide && indices.includes(index))) pins.add(index);
         selection.clear();
-        for (const index of selected) if (index !== nextPose && !pins.has(index)) selection.add(index);
         setSdfPoseMode('single');
         activePose = nextPose;
         updateControls();
@@ -21827,7 +21868,7 @@ SOFTWARE.
         if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
           event.preventDefault();
           setFileListOpen(true);
-          const items = [...fileList.querySelectorAll('button')].filter(item => !item.closest('[inert]'));
+          const items = [...fileList.querySelectorAll('button')].filter(item => !item.hidden && !item.closest('[inert]'));
           const current = items.indexOf(document.activeElement);
           const index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
             : event.key === 'ArrowDown' ? (current + 1) % items.length : current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;

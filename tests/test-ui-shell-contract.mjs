@@ -6848,7 +6848,7 @@ assert.match(previewViewer, /function sdfCollectionAlphaHelpers\(alpha = 1, colo
 assert.match(previewViewer, /const ghost = Number\.isFinite\(Number\(alpha\)\) && Number\(alpha\) < 1/);
 assert.match(previewViewer, /alpha: Math\.max\(minAlpha, Math\.min\(value, 1\)\)/);
 assert.match(previewViewer, /transparentBackfaces: 'on'/);
-assert.match(previewViewer, /const color = normalizeSdfCollectionContextColor\(colorMode\) === 'colored' \? 'element-symbol' : 'uniform'/);
+assert.match(previewViewer, /const color = carbon !== null \|\| normalizeSdfCollectionContextColor\(colorMode\) === 'colored' \? 'element-symbol' : 'uniform'/);
 assert.match(previewViewer, /const colorParams = color === 'uniform' \? \{ value: 0x6f7886 \} : undefined/);
 assert.match(previewViewer, /const themed = \(representation\) => colorParams \? \{ \.\.\.representation, color, colorParams \} : \{ \.\.\.representation, color \}/);
 assert.match(previewViewer, /typeParams: withAlpha\(\{ sizeFactor: ghost \? 0\.095 : 0\.16 \}\)/);

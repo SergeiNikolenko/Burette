@@ -157,7 +157,7 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
 {
   let clears = 0, parses = 0, receptorLoads = 0, receptorStyles = 0, fail = false;
   const live = new Set(), deleted = [], children = new Map();
-  const pins = new Set(), selection = new Set();
+  const pins = new Set(), selection = new Set(), references = new Set();
   const docking = { kind: 'docking', sdfPoseOverlayAvailable: true, receptorEntry: { label: 'receptor' },
     poses: Array.from({ length: 8 }, (_, i) => ({ label: `pose${i}` })),
     poseGroups: [{ startFrame: 0, endFrame: 2 }] };
@@ -179,7 +179,7 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
     readSdfCollectionContextOpacity: () => 0.2, readSdfCollectionContextColor: () => 'gray',
     xyzFrameOverlayRawSignature: () => '',
     molstarRefsStillLoaded: (_viewer, refs) => refs.length && refs.every(ref => live.has(ref)),
-    dockingPinnedPoseIndices: () => pins, dockingSelectedPoseIndices: () => selection,
+    dockingPinnedPoseIndices: () => pins, dockingSelectedPoseIndices: () => selection, dockingReferencePoseIndices: () => references, DOCKING_POSE_CARBON_COLORS: [0x111111, 0x222222],
     molstarStructuresByRefs: (_viewer, refs) => refs, molstarStructureRefsOf: refs => refs,
     loadMolstarEntryWithStructureRefs: async () => { receptorLoads++; live.add('receptor'); return ['receptor']; },
     applySdfCollectionMolstarStyle: async (_viewer, _style, refs) => {
@@ -211,11 +211,11 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
   assert.deepEqual([...live].sort(), ['pose0', 'receptor'], 'deselected structures do not leak into exports');
   selection.add(1); await render(0);
   assert.equal(parses, 2, 'reselect reuses the parsed ligand');
-  fail = true; pins.add(1);
+  fail = true; references.add(1);
   await assert.rejects(render(0), /representation failed/);
   assert.equal(context.activeDockingPoseCollectionState.layers.get(1).appearanceKey, null);
-  pins.delete(1); await render(0);
-  assert.equal(context.activeDockingPoseCollectionState.layers.get(1).appearanceKey, '["ball-and-stick",1,"colored"]', 'failed restyle is retried on rollback');
+  references.delete(1); await render(0);
+  assert.equal(context.activeDockingPoseCollectionState.layers.get(1).appearanceKey, JSON.stringify(['ball-and-stick', 1, 0x222222]), 'failed restyle is retried on rollback');
   pins.add(1); await render(0);
   context.activeSdfPoseMode = 'all'; await render(0);
   assert.deepEqual([...live].sort(), ['pose0', 'pose1', 'pose2', 'receptor']);
@@ -283,7 +283,7 @@ assert.equal(alignmentCommits, 1);
   assert.ok(start > 0 && end > start);
   runInNewContext(source.slice(start, end) + '}', {
     document, fileList, hasPoseGroups: true, activePose: 0, poseGroups, fileButtons, fileTargets,
-    groupControls: [], createPosePin: () => document.createElement('button'), toggleSelectedPose() {},
+    groupControls: [], createPoseDot: () => document.createElement('button'), eyeIcons: () => [], toggleSelectedPose() {},
     sceneTreeIconElement: () => document.createElement('span'), APP_ICON_DATA: {},
   });
   document.body.append(fileList);
@@ -374,7 +374,7 @@ console.log('Docking file disclosure preserves pose indices, scores and keyboard
   context.activeStructurePoseSetter = context.setPose;
   const selectionStart = source.indexOf('    const selectedPoseIndices = () => {');
   const selectionEnd = source.indexOf('    const updateControls =', selectionStart);
-  const toggleStart = source.indexOf('    const toggleSelectedPose = (target, options = {}) => {');
+  const toggleStart = source.indexOf('    const toggleSelectedPose = (target) => {');
   const toggleEnd = source.indexOf('    if (fileList) {', toggleStart);
   const toggle = runInNewContext(source.slice(selectionStart, selectionEnd) + source.slice(toggleStart, toggleEnd) + '\ntoggleSelectedPose', context);
   toggle(1); toggle(2);
@@ -392,13 +392,10 @@ console.log('Docking file disclosure preserves pose indices, scores and keyboard
   toggle(0); await context.poseUpdateQueue;
   assert.deepEqual([context.activePose, [...pins], context.activeSdfPoseMode], before);
   assert.deepEqual(visible, [0, 1, 2], "rollback restores the actual scene after a partial rebuild");
-  toggle([0, 2], { pin: true }); await context.poseUpdateQueue;
-  assert.deepEqual([...pins].sort(), [0, 2], 'whole collection pinning is explicit');
-  toggle([0, 2], { pin: true }); await context.poseUpdateQueue;
-  assert.deepEqual([...pins], [], 'unpin keeps poses selected until navigation');
-  assert.deepEqual(visible, [0, 1, 2]);
   toggle([0, 2]); await context.poseUpdateQueue;
-  assert.deepEqual(visible, [1], 'collection checkbox removes the whole selected collection');
+  assert.deepEqual({ visible, pins: [...pins] }, { visible: [1], pins: [] }, 'a collection eye hides the whole collection');
+  toggle([0, 2]); await context.poseUpdateQueue;
+  assert.deepEqual({ visible, pins: [...pins].sort() }, { visible: [0, 1, 2], pins: [0, 2] }, 'shown poses stay on screen while stepping');
 
 }
 console.log('Docking multi-selection preserves visible poses and recovers failed changes');
@@ -423,7 +420,7 @@ console.log('Docking multi-selection preserves visible poses and recovers failed
   const context = {
     window, document, Event: window.Event, root, label, fileList, fileButtons, fileTargets: [0, 1, 2],
     prepared, poseGroups, activePose: 0, activeSdfPoseMode: 'single', hasPoseGroups: true, hasTrajectorySegments: false,
-    dockingPinnedPoseIndices: () => pins, dockingSelectedPoseIndices: () => new Set(), groupControls: [], pinControls: [], trajectoryControlBounds: () => ({ start: 0, end: 1, count: 2 }),
+    dockingPinnedPoseIndices: () => pins, dockingSelectedPoseIndices: () => new Set(), groupControls: [], poseDots: [], trajectoryControlBounds: () => ({ start: 0, end: 1, count: 2 }),
     activeTrajectorySegment: () => ({ index: 0, segment: poseGroups[0] }),
     applyLabel() {}, previous: {}, next: {}, slider: { dataset: {} }, storyStep: null,
     refreshNativeTrajectoryStandalonePreview() {}, postHostMessage() {}, activeConfig: {}, loopActive: false,

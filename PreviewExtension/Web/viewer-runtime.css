@@ -5503,45 +5503,57 @@ body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .buret-do
   color: var(--color-text-secondary);
   opacity: 1;
 }
-.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose .atlas-menu-check {
-  position: absolute;
-  right: 8px;
-}
-.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-row:hover [aria-checked="false"] .atlas-menu-check {
-  visibility: visible;
-  opacity: 0.35;
-}
-body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content :is(.buret-docking-pose-group-select, .buret-docking-pose-pin) {
+/* Visibility follows the scene tree: an eye on shown poses, an eye-off on
+   hover for hidden ones, dimmed labels for poses off screen. */
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose[aria-checked="false"] { color: var(--color-text-secondary); }
+.buret-docking-pose-eye > svg { display: none; width: 16px; height: 16px; }
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose .buret-docking-pose-eye {
   position: absolute;
   top: 50%;
+  right: 8px;
+  display: grid;
+  width: 16px;
+  min-width: 0;
+  height: 16px;
+  margin-top: -8px;
+  color: var(--color-text-secondary);
+}
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-eye {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: grid;
+  place-items: center;
   width: 24px;
   height: 24px;
   margin-top: -12px;
   padding: 0;
   border-radius: var(--radius-lg);
-}
-body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-select { right: 4px; }
-.buret-docking-pose-group-select > svg {
-  position: absolute;
-  inset: 4px;
-  width: 16px;
-  height: 16px;
-  visibility: hidden;
-}
-.buret-docking-pose-group-select[aria-checked="true"] > svg:first-child,
-.buret-docking-pose-group-select[aria-checked="mixed"] > svg:last-child { visibility: visible; }
-.buret-docking-pose-row:hover > .buret-docking-pose-group-select[aria-checked="false"] > svg:first-child { visibility: visible; opacity: 0.35; }
-body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-pin {
-  right: 28px;
-  display: grid;
-  place-items: center;
   color: var(--color-text-secondary);
 }
-.buret-docking-pose-files .buret-docking-pose-pin { opacity: 0; }
-.buret-docking-pose-row:is(:hover, :focus-within) > .buret-docking-pose-pin,
-.buret-docking-pose-files .buret-docking-pose-pin[aria-checked="true"] { opacity: 1; }
-body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-pin:hover {
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-eye:hover {
   background: var(--color-background-primary-ghost-hover);
   color: var(--color-text);
 }
-.buret-docking-pose-pin svg { width: 14px; height: 14px; }
+:is(.buret-docking-pose-group-pose[aria-checked="true"] .buret-docking-pose-eye, .buret-docking-pose-eye:is([aria-checked="true"], [aria-checked="mixed"])) > svg:first-child,
+.buret-docking-pose-row:hover :is(.buret-docking-pose-group-pose[aria-checked="false"] .buret-docking-pose-eye, .buret-docking-pose-eye[aria-checked="false"]) > svg:last-child { display: block; }
+.buret-docking-pose-eye[aria-checked="mixed"] > svg:first-child { opacity: 0.5; }
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-dot {
+  position: absolute;
+  top: 50%;
+  right: 32px;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  padding: 0;
+  border: 1px solid rgba(127, 127, 127, 0.4);
+  border-radius: 50%;
+}
+.buret-docking-pose-dot[hidden] { display: none; }
+
+/* The scene tree toggle floats over the structure: its fill stays opaque and
+   hover or the open state tints that fill. */
+body .buret-corner-toggle { background: var(--buret-toolbar-solid-background, var(--buret-molstar-panel-background)); }
+body .buret-corner-toggle:is(:hover, [aria-expanded="true"]) {
+  background: linear-gradient(var(--buret-molstar-hover-background) 0 0), var(--buret-toolbar-solid-background, var(--buret-molstar-panel-background));
+}
