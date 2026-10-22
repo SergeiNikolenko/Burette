@@ -74,8 +74,8 @@ assert.match(types, /export type TextFileDocument = \{/);
 assert.match(types, /export type OpenTextFilesResult = \{/);
 
 assert.match(pageKinds, /import \{ textFileKind, type TextFileLocation \} from "\.\/text-file";/);
-assert.match(pageKinds, /const kinds = \[fileKind, textFileKind,/);
-assert.match(pageKinds, /export type Location = FileLocation \| TextFileLocation/);
+assert.match(pageKinds, /const kinds = \[[^\]]*\btextFileKind\b/);
+assert.match(pageKinds, /export type Location = [^;]*\bTextFileLocation\b/);
 assert.match(textFileKind, /kind: "text-file"/);
 assert.match(textFileKind, /serialize: \(location\) => \(\{ documentId: location\.documentId, path: location\.path \}\)/);
 assert.match(textFileKind, /<TextFileViewer document=\{document\} openPaths=\{actions\.openPaths\} onStructureSelection=\{actions\.selectTextStructure\} \/>/);

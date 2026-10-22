@@ -19,6 +19,7 @@ export function TabKindIcon({ location, state }: { location: Location; state: Pi
       return <FileKindIcon kind={fileKindForPath(location.path)} />;
     case "launcher":
       return <Plus size={16} aria-hidden />;
+    case "tool":
     case "settings":
       return <SettingsCog size={16} aria-hidden />;
     case "ketcher":
