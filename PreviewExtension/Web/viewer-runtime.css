@@ -5465,7 +5465,7 @@ body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content {
   min-width: min(248px, calc(100vw - 28px));
   max-height: min(360px, 60vh);
   border: 0;
-  border-radius: var(--radius-2xl);
+  border-radius: 20px;
   background: var(--color-surface-elevated-secondary);
   backdrop-filter: none;
   box-shadow: 0 0 0 var(--dropdown-overlay-ring-width) var(--color-border-overlay), var(--shadow-dropdown-overlay);
@@ -5498,7 +5498,7 @@ body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .atlas-me
   min-height: 24px;
   padding: 4px 52px 4px 6px;
   gap: 4px;
-  border-radius: 8px;
+  border-radius: 12px;
   text-align: left;
 }
 body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose { padding-left: 26px; }
@@ -5566,4 +5566,63 @@ body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.bu
 body .buret-corner-toggle { background: var(--buret-toolbar-solid-background, var(--buret-molstar-panel-background)); }
 body .buret-corner-toggle:is(:hover, [aria-expanded="true"]) {
   background: linear-gradient(var(--buret-molstar-hover-background) 0 0), var(--buret-toolbar-solid-background, var(--buret-molstar-panel-background));
+}
+
+/* One top chrome. Pills (toolbar, rail, pose controls, tree toggle) are 36px
+   tall with controls 4px inside, so every control is fully round and follows
+   the pill's ends. Panels (scene tree, pose menu) follow the Atlas menu: 20px
+   corners around pill-shaped rows. */
+body :is(#buret-toolbar, #buret-viewport-rail) :is(button, .atlas-button) {
+  border-radius: 14px;
+  corner-shape: round;
+}
+body .buret-docking-pose-speed {
+  border: 0;
+  border-radius: 14px;
+  background: var(--buret-toolbar-hover);
+}
+body .buret-scene-tree-header button { border-radius: 50%; }
+body :is(.buret-tree-row, .buret-tree-highlight) { border-radius: 12px; }
+body #buret-scene-tree {
+  top: calc(var(--buret-toolbar-safe-top) + 48px + var(--buret-viewport-top-inset, 0px) + var(--buret-scene-tree-clearance, 0px));
+  max-height: calc(var(--buret-viewport-panel-max-height) - var(--buret-scene-tree-clearance, 0px));
+  border-color: var(--buret-toolbar-border);
+  border-radius: 20px;
+  background: var(--buret-toolbar-background);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 8%);
+  /* The panel pours out of the toggle: it starts as the toggle's circle in
+     the toggle's place and opens down into the full panel. */
+  clip-path: inset(0 round 20px);
+  transition:
+    clip-path 240ms cubic-bezier(0.32, 0.72, 0, 1),
+    transform 240ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 160ms ease,
+    display 240ms allow-discrete;
+}
+body #buret-scene-tree.hidden {
+  display: none;
+  opacity: 0;
+  transform: translateY(calc(-48px - var(--buret-scene-tree-clearance, 0px)));
+  clip-path: inset(0 calc(100% - 36px) calc(100% - 36px) 0 round 18px);
+  transition-duration: 180ms, 180ms, 120ms, 180ms;
+}
+@starting-style {
+  body #buret-scene-tree {
+    opacity: 0;
+    transform: translateY(calc(-48px - var(--buret-scene-tree-clearance, 0px)));
+    clip-path: inset(0 calc(100% - 36px) calc(100% - 36px) 0 round 18px);
+  }
+}
+/* The playback row stays in the flow, so closing it shrinks the controls as
+   smoothly as opening grows them; while shut it claims none of their width. */
+.buret-docking-poses .buret-docking-pose-animation {
+  position: static;
+  width: auto;
+  contain: inline-size;
+}
+.buret-docking-poses.buret-docking-poses-animation-open .buret-docking-pose-animation { contain: none; }
+@media (prefers-reduced-motion: reduce) {
+  body #buret-scene-tree,
+  body #buret-scene-tree.hidden { transform: none; clip-path: none; }
+  @starting-style { body #buret-scene-tree { transform: none; clip-path: none; } }
 }
