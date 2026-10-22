@@ -6782,7 +6782,7 @@ assert.match(previewViewer, /if \(activeSdfCollectionPoseSetter\) \{/);
 assert.match(previewViewer, /await activeSdfCollectionPoseSetter\(index\)/);
 assert.match(previewViewer, /if \(prepared\.kind === 'sdf-collection'\) activeSdfCollectionPoseSetter = setPose/);
 assert.match(previewViewer, /async function setSdfCollectionContextStyleFromAction\(action = \{\}\)/);
-assert.match(previewViewer, /const style = setSdfCollectionContextStyle\(action\.style\)/);
+assert.match(previewViewer, /const style = setSdfCollectionContextStyle\(requestedStyle\)/);
 assert.match(previewViewer, /await applySdfCollectionVisibility\(activeViewer, prepared, activePose, \{ contextStyle: style, focus: false \}\)/);
 assert.match(previewViewer, /async function setSdfCollectionContextOpacityFromAction\(action = \{\}\)/);
 assert.match(previewViewer, /const opacity = setSdfCollectionContextOpacity\(action\.opacity\)/);

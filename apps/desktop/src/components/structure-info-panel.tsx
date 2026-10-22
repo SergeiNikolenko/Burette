@@ -273,6 +273,28 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
     setSdfContextOpacity(readSdfContextOpacityPreference(document));
   }, [document]);
 
+  // Agent actions change the background inside the viewer without a click here.
+  // Store what the viewer applied so a later document refresh cannot restore a
+  // stale choice either.
+  useEffect(() => {
+    if (!document) return;
+    const handle = (event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      if (String(detail?.documentId || "") !== document.id) return;
+      const style = normalizeSdfContextStyle(String(detail.style ?? ""));
+      const opacity = normalizeSdfContextOpacity(typeof detail.opacity === "number" ? detail.opacity : null);
+      const color = normalizeSdfContextColor(String(detail.color ?? ""));
+      setSdfContextStyle(style);
+      setSdfContextOpacity(opacity);
+      setSdfContextColor(color);
+      writeSdfContextStylePreference(document, style);
+      writeSdfContextOpacityPreference(document, opacity);
+      writeSdfContextColorPreference(document, color);
+    };
+    window.addEventListener("burette:sdf-context-changed", handle);
+    return () => window.removeEventListener("burette:sdf-context-changed", handle);
+  }, [document]);
+
   if (!document) {
     if (textDocument) {
       return <TextFileInfoPanel document={textDocument} dockDrops={dockDrops} actions={actions} />;
