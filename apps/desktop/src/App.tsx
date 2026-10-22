@@ -319,20 +319,6 @@ export default function App() {
     setGridColumnFilter,
     clearGridColumnFilters,
   } = useAppGridFilterModel(activeDocument, documents, postMessageToViewerSource);
-  const openedGridFilterDockRef = useRef<string | null>(null);
-  useEffect(() => {
-    const documentId = activeDocument?.renderer === "grid2d" && activeGridFilterModel?.columns.length
-      ? activeDocument.id
-      : null;
-    if (!documentId) {
-      openedGridFilterDockRef.current = null;
-      return;
-    }
-    if (openedGridFilterDockRef.current === documentId) return;
-    openedGridFilterDockRef.current = documentId;
-    setDockOpen("right", true);
-    setDockActiveTab("right", "inspector");
-  }, [activeDocument, activeGridFilterModel?.columns.length, setDockActiveTab, setDockOpen]);
   const [poseReviewSelections, setPoseReviewSelections] = useState<Record<string, number>>({});
   const [viewerLigandSelections, setViewerLigandSelections] = useState<Record<string, ViewerLigandSelection | null>>({});
   const [structureOverlayModes, setStructureOverlayModes] = useState<Record<string, StructureOverlayMode>>({});

@@ -20,7 +20,7 @@ function supportsChemicalSpace(document: ViewerDocument | null | undefined): doc
 function chemicalSpaceDocument(location: ChemicalSpaceLocation, state: ShellViewState) {
   if (location.collectionPath) {
     const pinned = state.documents.find((document) => document.path === location.collectionPath);
-    if (supportsChemicalSpace(pinned)) return pinned;
+    return supportsChemicalSpace(pinned) ? pinned : null;
   }
   if (supportsChemicalSpace(state.activeDocument)) return state.activeDocument;
   return state.documents.find(supportsChemicalSpace) ?? null;

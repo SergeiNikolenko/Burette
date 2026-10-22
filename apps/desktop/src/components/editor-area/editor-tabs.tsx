@@ -1,3 +1,5 @@
+import { useWorkspacePanesStore, type WorkspaceGroup } from "../../stores/workspace-panes-store";
+import { selectedGroupTab } from "../workspace-panes/use-pane-tabs";
 import { findIndexedDocument } from "./document-index";
 import { useTabWindow } from "./use-tab-window";
 import { useWorkspaceMenus } from "../workspace-menus";
@@ -42,19 +44,24 @@ export function EditorTabs({
   state,
   actions,
   readOnly = false,
+  group: requestedGroup,
 }: {
   state: ShellViewState;
   actions: ShellActions;
   readOnly?: boolean;
+  group?: WorkspaceGroup;
 }) {
   const workspaceMenus = useWorkspaceMenus();
   const sourceEditing = useSourceEditing();
   const nativeDragPendingRef = useRef(false);
   const nativeDragGenerationRef = useRef(0);
   const suppressDragClickRef = useRef(false);
-  // A screen moved to the floating window leaves the strip.
-  const visibleTabs = useMemo(() => state.tabs.filter(isMainTab), [state.tabs]);
-  const activeTabIndex = visibleTabs.findIndex((tab) => tab.id === state.activeTabId);
+  const fullViewTabId = useWorkspacePanesStore(store => store.fullViewTabId);
+  const selectedTabs = useWorkspacePanesStore(store => store.selectedTabs);
+  const group = requestedGroup ?? (state.tabs.find(tab => tab.id === fullViewTabId)?.pane ?? "main");
+  const visibleTabs = useMemo(() => state.tabs.filter(tab => (tab.pane ?? "main") === group && tab.location.kind !== "settings"), [state.tabs, group]);
+  const selectedTab = selectedGroupTab(state.tabs, state.activeTabId, selectedTabs, group);
+  const activeTabIndex = visibleTabs.findIndex(tab => tab.id === selectedTab?.id);
   const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
   const [selectedTabIds, setSelectedTabIds] = useState<Set<string>>(() => new Set());
   const [selectionAnchorTabId, setSelectionAnchorTabId] = useState<string | null>(null);
@@ -70,7 +77,7 @@ export function EditorTabs({
   const latestTabsRef = useRef(visibleTabs);
   latestTabsRef.current = visibleTabs;
   const stripRef = useRef<HTMLDivElement>(null);
-  const activeTabId = state.activeTabId;
+  const activeTabId = selectedTab?.id;
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
   const renamingTab = state.tabs.find(tab => tab.id === renamingTabId) ?? null;
 
@@ -547,7 +554,7 @@ export function EditorTabs({
         onBlurCapture={tabWindow.onBlur}
         className="tab-scroll-region"
         role="tablist"
-        aria-label="Open structures"
+        aria-label={group === "main" ? "Workspace tabs" : `${group} tabs`}
         onDragOver={readOnly ? undefined : handleEmptyTabStripDragOver}
         onDrop={readOnly ? undefined : handleEmptyTabStripDrop}
         onKeyDown={handleTabListKeyDown}
@@ -813,7 +820,7 @@ export function EditorTabs({
         </div>
       </ScrollFade>
       {!readOnly ? <ShortcutTooltip label="New tab" shortcut="⌘T">
-        <ToolbarButton type="button" className="new-tab" onMouseDown={(event) => event.preventDefault()} onClick={actions.openNewTab} onContextMenu={(event) => showNewTabMenu(event, actions)} aria-label="New tab">
+        <ToolbarButton type="button" className="new-tab" onMouseDown={(event) => event.preventDefault()} onClick={() => openScreen({ kind: "launcher" }, group === "main" ? null : group)} onContextMenu={(event) => showNewTabMenu(event, group)} aria-label="New tab">
           <Plus size={16} aria-hidden />
         </ToolbarButton>
       </ShortcutTooltip> : null}
@@ -830,7 +837,7 @@ export function EditorTabs({
 
 // Right-clicking "+" offers every kind of screen a tab can hold, the way the
 // atlas new-tab menu lists tab kinds. A plain click stays "New Tab".
-function showNewTabMenu(event: React.MouseEvent<HTMLButtonElement>, actions: ShellActions) {
+function showNewTabMenu(event: React.MouseEvent<HTMLButtonElement>, group: WorkspaceGroup) {
   event.preventDefault();
   const rect = event.currentTarget.getBoundingClientRect();
   const items: MenuItemSpec[] = SCREEN_ENTRIES.map((entry) => ({
@@ -838,7 +845,7 @@ function showNewTabMenu(event: React.MouseEvent<HTMLButtonElement>, actions: She
     id: `new-tab-${entry.id}`,
     text: entry.text,
     accelerator: entry.location.kind === "launcher" ? "CmdOrCtrl+T" : undefined,
-    action: entry.location.kind === "launcher" ? actions.openNewTab : () => openScreen(entry.location),
+    action: () => openScreen(entry.location, group === "main" ? null : group),
   }));
   void showNativeContextMenu(items, { x: rect.left, y: rect.bottom + 4 }, { presentation: "dropdown" });
 }

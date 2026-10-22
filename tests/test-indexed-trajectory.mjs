@@ -347,7 +347,7 @@ const controlsViewer = { plugin: {
 } };
 controlsWindow.sessionStorage.setItem('burette.trajectoryControl.saved_scene', '42');
 const controlContext = vm.createContext({
-  window: controlsWindow, document: controlsDocument, File, console, sessionStorage: controlsWindow.sessionStorage,
+  trajectoryControlIndices: new Map(), window: controlsWindow, document: controlsDocument, File, console, sessionStorage: controlsWindow.sessionStorage,
   activeViewer: controlsViewer, activeConfig: { documentId: 'saved_scene', activeModel: 0 }, activeMolstarPrepared: null, activeDockingPrepared: null,
   activeStructureAlignmentControl: null, activeStructurePoseSetter: null, activeSdfCollectionPoseSetter: null, activeTrajectoryPlaybackControl: null,
   dockingPoseKeydownDisposer: null, dockingPoseControlsDisposer: null, pendingTrajectoryPlaybackRestore: { frameIndex: 40, playing: true, fps: 50 },
@@ -361,7 +361,7 @@ const controlContext = vm.createContext({
   clearMolstarTrajectoryHover: () => {}, afterNativeTrajectoryPaint: () => Promise.resolve(), readNativeTrajectoryPositionFromDom: () => null,
 });
 const controlFunctions = ['nativeTrajectoryFrameCount', 'nativeTrajectoryModelTransform', 'readNativeTrajectoryPosition', 'readTrajectoryControlIndex',
-  'trajectoryControlStorageKey', 'setNativeTrajectoryPoseDirect', 'setNativeTrajectoryPose', 'installNativeTrajectoryPoseSync', 'notifyChemicalSpaceMolecule', 'notifyDockingPoseChanged', 'dockingPinnedPoseIndices', 'installDockingPoseControls'];
+  'trajectoryControlStorageKey', 'writeTrajectoryControlIndex', 'setNativeTrajectoryPoseDirect', 'setNativeTrajectoryPose', 'installNativeTrajectoryPoseSync', 'notifyChemicalSpaceMolecule', 'notifyDockingPoseChanged', 'dockingPinnedPoseIndices', 'installDockingPoseControls'];
 const extractedControls = controlFunctions.map(name => {
   const fn = viewerSource.match(new RegExp(`\\n  (?:async )?function ${name}\\([\\s\\S]*?\\n  \\}`, 'u'))?.[0];
   assert.ok(fn, name);

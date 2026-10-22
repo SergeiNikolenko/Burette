@@ -7,14 +7,22 @@ import { workspaceStorageKey } from "../lib/window-scope";
 // remembers how the window is laid out.
 export type FloatingPaneRect = { x: number; y: number; width: number; height: number };
 
+export type WorkspaceGroup = "main" | "right" | "bottom" | "floating";
+
 type WorkspacePanesState = {
+  selectedTabs: Partial<Record<WorkspaceGroup, string>>;
+  fullViewTabId: string | null;
+  split: { right: number; bottom: number };
+  selectTab: (group: WorkspaceGroup, id: string) => void;
+  setFullView: (id: string | null) => void;
+  setSplit: (axis: "right" | "bottom", ratio: number) => void;
   floating: FloatingPaneRect;
   floatingMinimized: boolean;
   setFloatingRect: (rect: FloatingPaneRect) => void;
   setFloatingMinimized: (minimized: boolean) => void;
 };
 
-type PersistedWorkspacePanes = Pick<WorkspacePanesState, "floating" | "floatingMinimized">;
+type PersistedWorkspacePanes = Pick<WorkspacePanesState, "floating" | "floatingMinimized" | "selectedTabs" | "split">;
 
 // The atlas hotkey window: 470 x 640 by default, at least 400 x 400.
 export const FLOATING_PANE_MIN_WIDTH = 400;
@@ -53,6 +61,12 @@ export function placeFloatingRect(rect: FloatingPaneRect, viewport: { width: num
 export const useWorkspacePanesStore = create<WorkspacePanesState>()(
   persist<WorkspacePanesState, [], [], PersistedWorkspacePanes>(
     (set) => ({
+      selectedTabs: {},
+      fullViewTabId: null,
+      split: { right: 0.5, bottom: 0.6 },
+      selectTab: (group, id) => set(state => state.selectedTabs[group] === id ? state : ({ selectedTabs: { ...state.selectedTabs, [group]: id } })),
+      setFullView: (fullViewTabId) => set({ fullViewTabId }),
+      setSplit: (axis, ratio) => set(state => ({ split: { ...state.split, [axis]: Math.max(0.2, Math.min(0.8, ratio)) } })),
       floating: DEFAULT_FLOATING,
       floatingMinimized: false,
       setFloatingRect: (rect) => set({ floating: normalizeFloatingRect(rect) }),
@@ -63,6 +77,8 @@ export const useWorkspacePanesStore = create<WorkspacePanesState>()(
       storage: createJSONStorage(() => window.BuretteMcpWorkspace?.storage ?? localStorage),
       version: 1,
       partialize: (state) => ({
+        selectedTabs: state.selectedTabs,
+        split: state.split,
         floating: state.floating,
         floatingMinimized: state.floatingMinimized,
       }),
@@ -70,6 +86,8 @@ export const useWorkspacePanesStore = create<WorkspacePanesState>()(
         const stored = persisted as Partial<PersistedWorkspacePanes> | undefined;
         return {
           ...current,
+          selectedTabs: Object.fromEntries(Object.entries(stored?.selectedTabs ?? {}).filter(([group, id]) => ["main", "right", "bottom", "floating"].includes(group) && typeof id === "string")),
+          split: { right: normalizeRatio(stored?.split?.right, 0.5), bottom: normalizeRatio(stored?.split?.bottom, 0.6) },
           floating: normalizeFloatingRect(stored?.floating),
           floatingMinimized: stored?.floatingMinimized === true,
         };
@@ -77,3 +95,7 @@ export const useWorkspacePanesStore = create<WorkspacePanesState>()(
     },
   ),
 );
+
+function normalizeRatio(value: unknown, fallback: number) {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0.2, Math.min(0.8, value)) : fallback;
+}

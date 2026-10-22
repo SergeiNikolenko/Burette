@@ -40,9 +40,9 @@ import { clearNativeRecentStructures } from "../lib/clear-recent-structures";
 import { workspaceStorageKey } from "../lib/window-scope";
 import { useSettingsStore } from "./settings-store";
 
-// Where a screen is shown when it is not in the main tab strip: the floating
-// window. A tab without a pane lives in the main strip.
-export type TabPane = "floating";
+// Placement belongs to the view; activeTabId names the focused view in any group.
+// A tab without a pane lives in the main strip.
+export type TabPane = "right" | "bottom" | "floating";
 
 export type MoleculeTab = {
   title?: string;
@@ -465,8 +465,7 @@ export function adjacentMainTabId(tabs: MoleculeTab[], activeTabId: string | nul
 }
 
 function activeTabIdOrFirst(tabs: MoleculeTab[], activeTabId: string | null) {
-  // An explicitly requested placed tab is kept: the store moves it back to
-  // the strip right after (see the subscription at the end of this module).
+  // Activation changes focus, never placement.
   if (activeTabId && tabs.some((tab) => tab.id === activeTabId)) return activeTabId;
   // Settings is hidden from the tab strip and is only selected explicitly.
   return tabs.find(isMainTab)?.id ?? null;
@@ -484,17 +483,9 @@ function withPane(tab: MoleculeTab, pane: TabPane | null): MoleculeTab {
   return rest;
 }
 
-// The main tab that takes over when the active one leaves the strip: the next
-// one to its right, else the one to its left.
-function neighborMainTabId(tabs: MoleculeTab[], id: string) {
-  const strip = tabs.filter((tab) => isMainTab(tab) || tab.id === id);
-  const index = strip.findIndex((tab) => tab.id === id);
-  return strip[index + 1]?.id ?? strip[index - 1]?.id ?? null;
-}
-
 function isTabPane(value: unknown): value is TabPane {
   // Tabs saved in the retired side panel ("side") load into the main strip.
-  return value === "floating";
+  return value === "floating" || value === "right" || value === "bottom";
 }
 
 function moveTabToIndex(tabs: MoleculeTab[], id: string, toIndex: number) {
@@ -1072,14 +1063,13 @@ export const useMoleculeStore = create<MoleculeState>()(
           if ((target.pane ?? null) === pane) {
             return pane === null ? { activeTabId: id, activeDocumentId: activeDocumentIdFrom(state.tabs, id, state.documents) } : state;
           }
-          const successor = state.activeTabId === id ? neighborMainTabId(state.tabs, id) : state.activeTabId;
           // One floating window: the screen it showed returns to the strip.
           const tabs = ensureTabs(state.tabs.map((tab) => (
             tab.id === id ? withPane(tab, pane)
               : pane === "floating" && tab.pane === "floating" ? withPane(tab, null)
                 : tab
           )));
-          const activeTabId = activeTabIdOrFirst(tabs, pane === null ? id : successor);
+          const activeTabId = activeTabIdOrFirst(tabs, id);
           return {
             tabs,
             activeTabId,
@@ -1220,16 +1210,6 @@ export const useMoleculeStore = create<MoleculeState>()(
     },
   ),
 );
-
-// Opening or selecting a screen that is parked in the floating window (from
-// the sidebar, a menu, a deep link...) brings it back to the main strip: every
-// action that activates a tab goes through here, so the rule needs no copy in
-// each of them.
-useMoleculeStore.subscribe((state) => {
-  const active = state.tabs.find((tab) => tab.id === state.activeTabId);
-  if (!active?.pane) return;
-  useMoleculeStore.setState({ tabs: state.tabs.map((tab) => (tab.id === active.id ? withPane(tab, null) : tab)) });
-});
 
 if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
   if (isTauriRuntime()) {
