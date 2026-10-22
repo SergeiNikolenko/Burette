@@ -180,7 +180,8 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
     readSdfCollectionContextOpacity: () => 0.2, readSdfCollectionContextColor: () => 'gray',
     xyzFrameOverlayRawSignature: () => '',
     molstarRefsStillLoaded: (_viewer, refs) => refs.length && refs.every(ref => live.has(ref)),
-    dockingPinnedPoseIndices: () => pins, dockingSelectedPoseIndices: () => selection, dockingReferencePoseIndices: () => references, DOCKING_POSE_CARBON_COLORS: [0x111111, 0x222222],
+    dockingPinnedPoseIndices: () => pins, dockingSelectedPoseIndices: () => selection, dockingReferencePoseIndices: () => references,
+    dockingPinnedPoseState: { activeHidden: false }, dockingPoseCarbonColor: (_prepared, index) => [0x111111, 0x222222][index % 2],
     molstarStructuresByRefs: (_viewer, refs) => refs, molstarStructureRefsOf: refs => refs,
     loadMolstarEntryWithStructureRefs: async () => { receptorLoads++; live.add('receptor'); return ['receptor']; },
     applySdfCollectionMolstarStyle: async (_viewer, _style, refs) => {
@@ -226,6 +227,9 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
   selection.delete(3); await render(0);
   assert.ok(deleted.includes('raw3'), 'failed builder is disposed');
   assert.deepEqual([...live].sort(), ['pose0', 'pose1', 'receptor']);
+  context.dockingPinnedPoseState.activeHidden = true; await render(0);
+  assert.deepEqual([...live].sort(), ['pose1', 'receptor'], 'a hidden stepper pose leaves the scene');
+  context.dockingPinnedPoseState.activeHidden = false; await render(0);
   await context.resyncDockingSceneAfterRestyle(poseViewer);
   assert.deepEqual({ clears, receptorLoads, receptorStyles, camera: camera.view, manualReset: camera.props.camera.manualReset },
     { clears: 1, receptorLoads: 1, receptorStyles: 1, camera: { zoom: 3, rotation: [1, 2, 3] }, manualReset: false });
@@ -284,7 +288,10 @@ assert.equal(alignmentCommits, 1);
   assert.ok(start > 0 && end > start);
   runInNewContext(source.slice(start, end) + '}', {
     document, fileList, hasPoseGroups: true, activePose: 0, poseGroups, fileButtons, fileTargets,
-    groupControls: [], createPoseDot: () => document.createElement('button'), eyeIcons: () => [], toggleSelectedPose() {},
+    groupControls: [], prepared: {}, editPoseVisibility() {}, openPickerMenu() {}, poseActions() {}, poseDots: [],
+    createPoseDot: () => document.createElement('button'),
+    createPosePin: () => Object.assign(document.createElement('button'), { className: 'buret-docking-pose-pin' }),
+    dockingPoseSetColor: () => 0, sceneTreeColorHex: () => '#000000',
     sceneTreeIconElement: () => document.createElement('span'), APP_ICON_DATA: {},
   });
   document.body.append(fileList);
@@ -295,7 +302,8 @@ assert.equal(alignmentCommits, 1);
   toggles[0].click();
   assert.deepEqual(rows.map(row => row.inert), [true, true]);
   assert.equal(toggles[0].getAttribute('aria-expanded'), 'false');
-  assert.equal(fileList.querySelectorAll('[title], .buret-docking-pose-pin').length, 0);
+  assert.equal(fileList.querySelectorAll('[title]').length, 0);
+  assert.equal(fileList.querySelectorAll('.buret-docking-pose-pin').length, 5, 'every file and pose carries a pin');
   toggles[1].click();
   assert.deepEqual(rows.map(row => row.inert), [true, false]);
   toggles[0].click();
@@ -309,13 +317,15 @@ assert.equal(alignmentCommits, 1);
   root.append(label, fileList);
   document.body.append(root);
   const scheduled = [];
-  let open = true;
+  let open = true, sideMenusClosed = 0;
   const context = {
     window, document, root, label, fileList, fileButtons, fileTargets, hasPoseGroups: true,
-    activePose: 0, Node: window.Node,
+    activePose: 0, Node: window.Node, Element: window.Element,
     isFileListOpen: () => open, setFileListOpen: value => { open = value; },
-    scheduleSliderInputPose: index => scheduled.push(index), toggleSelectedPose: index => scheduled.push(index), fileListDisposer: null,
+    scheduleSliderInputPose: index => scheduled.push(index), editPoseVisibility: (_action, index) => scheduled.push(index), fileListDisposer: null,
+    updatePoseDots() {}, selectedPoseIndices: () => new Set(),
     isDockingPoseKeyboardTarget: () => false,
+    closeSceneTreeMenu: () => { sideMenusClosed++; document.getElementById('buret-scene-tree-menu')?.remove(); },
   };
   const eventsStart = source.indexOf("    if (fileList) {\n      label.addEventListener('click'");
   const eventsEnd = source.indexOf('    if (story && storyPanel)', eventsStart);
@@ -328,78 +338,86 @@ assert.equal(alignmentCommits, 1);
   const keysEnd = source.indexOf('    mainRow.append(animation', keysStart);
   runInNewContext(source.slice(keysStart, keysEnd), context);
   const key = (target, value) => target.dispatchEvent(new window.KeyboardEvent('keydown', { key: value, bubbles: true, cancelable: true }));
+  const groupShows = [...fileList.querySelectorAll('.buret-docking-pose-group-show')];
   toggles[1].click();
   open = false;
   key(label, 'ArrowUp');
-  assert.equal(document.activeElement, fileList.lastElementChild.querySelector('.buret-docking-pose-group-label').lastElementChild, 'up from a closed trigger starts at the last visible item');
+  assert.equal(document.activeElement, groupShows[1], 'up from a closed trigger starts at the last visible item');
   key(toggles[1], 'ArrowLeft');
   assert.equal(rows[1].inert, true);
+  const sideMenu = document.createElement('div');
+  sideMenu.id = 'buret-scene-tree-menu';
+  sideMenu.dataset.motion = 'side';
+  document.body.append(sideMenu);
+  key(toggles[1], 'Escape');
+  assert.deepEqual({ open, sideMenusClosed }, { open: true, sideMenusClosed: 1 }, 'Escape closes a menu beside the picker first');
   key(toggles[1], 'Escape');
   assert.equal(open, false);
   assert.equal(document.activeElement, label);
   key(label, 'ArrowDown');
-  assert.equal(document.activeElement, toggles[0]);
+  assert.equal(document.activeElement, groupShows[0]);
   key(toggles[0], 'ArrowLeft');
-  key(toggles[0], 'ArrowDown');
-  assert.equal(document.activeElement, toggles[0].nextElementSibling, 'collapsed poses are skipped');
+  groupShows[0].focus();
+  key(groupShows[0], 'ArrowDown');
+  assert.equal(document.activeElement, groupShows[1], 'collapsed poses are skipped');
   const tooltipControl = runInNewContext(extract('molstarTooltipControlFromEvent') + '\nmolstarTooltipControlFromEvent');
   for (const target of [label, ...toggles, ...fileButtons]) assert.equal(tooltipControl({ target }), null);
   await window.happyDOM.close();
 }
 console.log('Docking file disclosure preserves pose indices, scores and keyboard exclusion');
 
-// Selection uses the rendered union (including All and references), is queued,
-// keeps the menu mounted, and restores its model if the renderer rejects a change.
+// Pose visibility edits: rows show poses for now, the stepper's pose can be
+// hidden, a whole file is All, pins survive steps, and failed renders roll back.
 {
-  const pins = new Set([2]);
-  const selection = new Set();
   const rendered = [];
   let fail = false;
   let visible = [];
+  const poseGroups = [{ startFrame: 0, endFrame: 1, frameCount: 2 }, { startFrame: 2, endFrame: 2, frameCount: 1 }];
   const context = {
-    activePose: 0, activeSdfPoseMode: 'single', prepared: {}, viewer: {}, activeMolstarPrepared: null,
-    poseGroups: [{ startFrame: 0, frameCount: 2 }, { startFrame: 2, frameCount: 1 }],
-    dockingPinnedPoseIndices: () => pins, dockingSelectedPoseIndices: () => selection, setLoopActive() {}, setPose() {},
-    poseUpdateQueue: Promise.resolve(), molstarStructureFocusSerial: 0,
-    setSdfPoseMode: mode => { context.activeSdfPoseMode = mode; },
-    applyDockingPoseCollectionVisibility: async (_viewer, _prepared, active) => {
+    activePose: 0, activeSdfPoseMode: 'single', prepared: { poseGroups }, viewer: {}, activeMolstarPrepared: null, poseGroups,
+    dockingPinnedPoseState: { indices: new Set(), selected: new Set(), activeHidden: false },
+    dockingPinnedPoseIndices: () => context.dockingPinnedPoseState.indices, dockingReferencePoseIndices: () => new Set(),
+    setLoopActive() {}, setPose() {}, poseUpdateQueue: Promise.resolve(), molstarStructureFocusSerial: 0,
+    setSdfPoseMode: mode => { context.activeSdfPoseMode = mode; context.dockingPinnedPoseState.activeHidden = false; },
+    applyDockingPoseCollectionVisibility: async (_viewer, prepared, active) => {
       visible = []; // Rebuild has already cleared the previous scene.
       if (fail) { fail = false; throw new Error('load failed'); }
-      visible = [...new Set([active, ...pins, ...selection])].sort();
+      visible = [...context.dockingVisiblePoseIndices(prepared, active)].sort();
       rendered.push(visible);
     },
-    resetDockingPoseCollectionState() {},
     updateControls() {}, notifyDockingPoseChanged() {}, notifyStructureOverlayModeChanged() {},
     sessionStorage: { setItem() {} }, trajectoryControlStorageKey: () => 'pose', activeConfig: {}, setStatus() {}, console,
   };
   context.activeStructurePoseSetter = context.setPose;
-  const selectionStart = source.indexOf('    const selectedPoseIndices = () => {');
-  const selectionEnd = source.indexOf('    const updateControls =', selectionStart);
-  const toggleStart = source.indexOf('    const toggleSelectedPose = (target) => {');
-  const toggleEnd = source.indexOf('    if (fileList) {', toggleStart);
-  const toggle = runInNewContext(source.slice(selectionStart, selectionEnd) + source.slice(toggleStart, toggleEnd) + '\ntoggleSelectedPose', context);
-  toggle(1); toggle(2);
+  runInNewContext(extract('dockingVisiblePoseIndices'), context);
+  const selectionStart = source.indexOf('    const selectedPoseIndices = () =>');
+  const selectionEnd = source.indexOf('    // Dots follow the live colours', selectionStart);
+  const editStart = source.indexOf('    const editPoseVisibility = (action, target) => {');
+  const editEnd = source.indexOf('    if (fileList) {', editStart);
+  const edit = runInNewContext(source.slice(selectionStart, selectionEnd) + source.slice(editStart, editEnd) + '\neditPoseVisibility', context);
+  const run = async (action, target) => { edit(action, target); await context.poseUpdateQueue; };
+  const state = () => ({ visible, mode: context.activeSdfPoseMode, active: context.activePose, pins: [...context.dockingPinnedPoseState.indices].sort() });
+  edit('toggle', 1); edit('toggle', 2);
   await context.poseUpdateQueue;
-  assert.deepEqual(rendered, [[0, 1, 2], [0, 1]], 'rapid clicks preserve both ordered changes');
-  toggle(0); await context.poseUpdateQueue;
-  assert.equal(context.activePose, 1, 'removing the active pose chooses another selected pose');
-  toggle(1); await context.poseUpdateQueue;
-  assert.deepEqual(rendered.at(-1), [1], 'last visible pose stays selected');
-  context.activeSdfPoseMode = 'all';
-  toggle(2); await context.poseUpdateQueue;
-  assert.deepEqual(rendered.at(-1), [0, 1, 2], 'editing All retains its visible poses');
+  assert.deepEqual(rendered, [[0, 1], [0, 1, 2]], 'rapid clicks preserve both ordered changes');
+  await run('toggle', 0);
+  assert.deepEqual(state(), { visible: [1, 2], mode: 'single', active: 0, pins: [] }, 'the stepper pose can be hidden');
+  await run('toggle', [0, 1]);
+  assert.deepEqual(state(), { visible: [0, 1, 2], mode: 'all', active: 0, pins: [] }, 'showing the stepper file turns All on');
+  await run('toggle', 1);
+  assert.deepEqual(state(), { visible: [0, 2], mode: 'single', active: 0, pins: [] }, 'hiding part of All keeps the rest');
+  const before = state();
   fail = true;
-  const before = [context.activePose, [...pins], context.activeSdfPoseMode];
-  toggle(0); await context.poseUpdateQueue;
-  assert.deepEqual([context.activePose, [...pins], context.activeSdfPoseMode], before);
-  assert.deepEqual(visible, [0, 1, 2], "rollback restores the actual scene after a partial rebuild");
-  toggle([0, 2]); await context.poseUpdateQueue;
-  assert.deepEqual({ visible, pins: [...pins] }, { visible: [1], pins: [] }, 'a collection eye hides the whole collection');
-  toggle([0, 2]); await context.poseUpdateQueue;
-  assert.deepEqual({ visible, pins: [...pins].sort() }, { visible: [0, 1, 2], pins: [0, 2] }, 'shown poses stay on screen while stepping');
-
+  await run('only', [2]);
+  assert.deepEqual(state(), before, 'rollback restores the model and the scene');
+  await run('only', [2]);
+  assert.deepEqual(state(), { visible: [2], mode: 'single', active: 2, pins: [] });
+  await run('pin', [0, 1]);
+  assert.deepEqual(state(), { visible: [0, 1, 2], mode: 'single', active: 2, pins: [0, 1] });
+  await run('pin', [0, 1]);
+  assert.deepEqual(state(), { visible: [0, 1, 2], mode: 'single', active: 2, pins: [] }, 'unpinned poses stay on screen for now');
 }
-console.log('Docking multi-selection preserves visible poses and recovers failed changes');
+console.log('Docking pose visibility edits follow pins, sets and All, and recover failed changes');
 
 // All can change through the visible control or the agent action without a
 // frame step. Both paths must update the mounted picker, including references.
@@ -416,12 +434,14 @@ console.log('Docking multi-selection preserves visible poses and recovers failed
   document.body.append(root);
   const pins = new Set([2]);
   const poseGroups = [{ startFrame: 0, endFrame: 1, frameCount: 2 }, { startFrame: 2, endFrame: 2, frameCount: 1 }];
-  const prepared = { kind: 'docking', sdfPoseOverlayAvailable: true, poseCount: 3 };
+  const prepared = { kind: 'docking', sdfPoseOverlayAvailable: true, poseCount: 3, poseGroups };
   let visible = [];
   const context = {
     window, document, Event: window.Event, root, label, fileList, fileButtons, fileTargets: [0, 1, 2],
     prepared, poseGroups, activePose: 0, activeSdfPoseMode: 'single', hasPoseGroups: true, hasTrajectorySegments: false,
-    dockingPinnedPoseIndices: () => pins, dockingSelectedPoseIndices: () => new Set(), groupControls: [], poseDots: [], trajectoryControlBounds: () => ({ start: 0, end: 1, count: 2 }),
+    dockingPinnedPoseIndices: () => pins, dockingPinnedPoseState: { selected: new Set(), activeHidden: false },
+    groupControls: [], poseDots: [], posePins: [], trajectoryControlBounds: () => ({ start: 0, end: 1, count: 2 }),
+    activeMolstarViewer: () => null, sceneTreeNodes: () => [], activeDockingPoseCollectionState: null,
     activeTrajectorySegment: () => ({ index: 0, segment: poseGroups[0] }),
     applyLabel() {}, previous: {}, next: {}, slider: { dataset: {} }, storyStep: null,
     refreshNativeTrajectoryStandalonePreview() {}, postHostMessage() {}, activeConfig: {}, loopActive: false,
@@ -433,7 +453,8 @@ console.log('Docking multi-selection preserves visible poses and recovers failed
     applyDockingPoseCollectionVisibility: async () => { visible = [...context.selectedPoseIndices()].sort((a, b) => a - b); },
     agentActionFailure: (_command, _code, message) => { throw new Error(message); },
   };
-  const selectionStart = source.indexOf('    const selectedPoseIndices = () => {');
+  runInNewContext(extract('dockingVisiblePoseIndices'), context);
+  const selectionStart = source.indexOf('    const selectedPoseIndices = () =>');
   const selectionEnd = source.indexOf('    const isFileListOpen =', selectionStart);
   Object.assign(context, runInNewContext(source.slice(selectionStart, selectionEnd)
     + '\n({ selectedPoseIndices, updateControls, setFileListOpen })', context));

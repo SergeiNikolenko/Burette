@@ -151,26 +151,40 @@ rows lead with a disclosure chevron; pose rows align with the file name and keep
 their score in tertiary text. The current file starts expanded; other files
 start collapsed.
 
-Visibility follows the scene tree. Clicking a pose row shows or hides it, and an
-eye marks every pose on screen; hidden poses read in secondary text and show an
-eye-off on hover. The file eye shows or hides the whole collection and dims when
-only part of it is visible. Shown poses stay on screen while stepping through
-other poses; the last visible pose cannot be hidden. A visible pose carries the
-tree's colour dot, which opens the same colour and representation menu as its
-tree row beside the picker; the picker stays open and the dot follows colour
-changes live. The chevron only folds the list. Scores remain visible without
-repeated file hints or counters. Secondary clicks inside the picker do not open
-the browser iframe menu.
+Clicking a pose row shows or hides that pose for now; stepping to another pose
+clears poses shown for now. A pin keeps a pose, or a whole file, on screen while
+stepping; unpinning leaves it shown until the next step. Pins appear on row hover
+and stay visible while pressed. The stepper's own pose can be hidden too. Showing
+poses while nothing current is on screen moves the stepper to the first one.
+
+The file row shows or hides the whole file and counts its visible poses
+(`3/20`). Showing the stepper's whole file is the same state as All, so the All
+button lights up; hiding part of All keeps the rest of the file as poses shown
+for now. Showing another whole file shows its poses alongside. "Show only" keeps
+crystal and native references.
+
+Each file has one hue and its poses use lighter and darker shades of it, so sets
+stay distinguishable in a crowded overlay. The file swatch shows the hue. Every
+pose row carries a dot: an outline in its shade while hidden (a click shows it)
+and the live tree colour while shown (a click opens its colour and
+representation menu). Right-clicking a shown pose opens that molecule's tree
+menu; right-clicking a hidden pose or a file opens Show/Hide, Pin/Unpin and Show
+only. These menus slide out of the picker's right edge as if it grew another
+column, and they close with it. Secondary clicks never open the browser iframe
+menu. File headers stay pinned while a long file scrolls.
 
 Selection changes update ligand layers in place. They preserve the receptor, its
-representations and camera input. Deselected structures leave the live hierarchy;
-only their parsed data is cached, limited to four inactive poses or 16 MiB.
+representations and camera input. Deselected structures leave the live hierarchy; only their parsed data is cached,
+limited to four inactive poses or 16 MiB.
 
-Disclosure transitions last 140 ms and reverse when interrupted; reduced motion
-removes them. Arrow keys navigate visible rows and expand/collapse files; Escape
-closes the menu and restores focus to its trigger. Embedded desktop viewers leave
-file-drop presentation to the workspace, while standalone viewers retain their
-own import behavior.
+The menu unrolls from its trigger with a clip-path reveal (220 ms in, 140 ms
+out), and menus beside it slide out of its edge (220 ms). Toolbar and viewport
+menus fade and scale in from their trigger. All of them reverse when
+interrupted, and reduced motion removes the movement. Disclosure transitions last
+140 ms. Arrow keys walk the visible rows and expand/collapse files. Escape first
+closes a menu beside the picker, then the picker, and returns focus to its
+trigger. Embedded desktop viewers leave file-drop presentation to the workspace,
+while standalone viewers retain their own import behavior.
 
 ### Viewer Menus on macOS
 

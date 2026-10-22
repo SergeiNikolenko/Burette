@@ -2037,7 +2037,7 @@
   let sdfCollectionAlignment = null;
   let activeDockingPoseCollectionState = null;
   // Poses kept on screen while other poses are browsed, for the open docking set.
-  let dockingPinnedPoseState = { key: '', indices: new Set(), selected: new Set(), references: new Set() };
+  let dockingPinnedPoseState = { key: '', indices: new Set(), selected: new Set(), references: new Set(), activeHidden: false };
   let activeDockingSceneVisibilityState = null;
   let activeMolstarCacheBuster = null;
   let molstarStyleApplySerial = 0;
@@ -3894,6 +3894,8 @@
 
   function setSdfPoseMode(mode) {
     activeSdfPoseMode = mode === 'all' ? 'all' : 'single';
+    // Entering or leaving All shows the stepper's pose again.
+    dockingPinnedPoseState.activeHidden = false;
     try {
       const storageKey = poseModeStorageKey(activeConfig);
       window.localStorage?.setItem(storageKey, activeSdfPoseMode);
@@ -8566,6 +8568,40 @@ SOFTWARE.
     scheduleSceneTreeRender();
   }
 
+  // Floating menus grow from where they were opened and leave the same way. A
+  // menu opened from another menu slides out of that menu's edge, so the two read
+  // as one surface. A closing menu drops its id at once: code looking for the
+  // open menu, or a replacement opening in its place, never meets the fading copy.
+  const FLOATING_MENU_EASE = 'cubic-bezier(0.23, 1, 0.32, 1)';
+  function floatingMenuMotion(menu) {
+    return typeof menu?.animate === 'function'
+      && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  }
+  function floatingMenuFrames(menu) {
+    return menu.dataset.motion === 'side'
+      ? [{ opacity: 0, transform: 'translateX(-10px)', clipPath: 'inset(0 100% 0 0 round 20px)' },
+        { opacity: 1, transform: 'none', clipPath: 'inset(0 0 0 0 round 20px)' }]
+      : [{ opacity: 0, transform: 'scale(0.96)' }, { opacity: 1, transform: 'none' }];
+  }
+  function revealFloatingMenu(menu, { origin = 'top left', side = false } = {}) {
+    if (side) menu.dataset.motion = 'side';
+    if (!floatingMenuMotion(menu)) return;
+    menu.style.transformOrigin = origin;
+    menu.animate(floatingMenuFrames(menu), { duration: side ? 220 : 180, easing: FLOATING_MENU_EASE });
+  }
+  function dismissFloatingMenu(menu) {
+    if (!menu?.isConnected) return;
+    if (!floatingMenuMotion(menu) || menu.style.visibility === 'hidden') {
+      menu.remove();
+      return;
+    }
+    menu.removeAttribute('id');
+    menu.inert = true;
+    menu.style.pointerEvents = 'none';
+    const exit = menu.animate(floatingMenuFrames(menu).reverse(), { duration: 140, easing: 'ease-out', fill: 'forwards' });
+    exit.onfinish = exit.oncancel = () => menu.remove();
+  }
+
   function closeSceneTreeMenu() {
     sceneTreeMenuRef = '';
     const menu = document.getElementById('buret-scene-tree-menu');
@@ -8574,7 +8610,7 @@ SOFTWARE.
     for (const list of menu?.querySelectorAll('[data-scene-tree-picker-list]') || []) {
       closeSceneTreePicker(list, { restore: true });
     }
-    menu?.remove();
+    dismissFloatingMenu(menu);
   }
 
   function sceneTreeNodeByRef(nodes, ref) {
@@ -9489,7 +9525,7 @@ SOFTWARE.
     sceneTreeAdvancedSection(menu, viewer, target);
   }
 
-  function openSceneTreeMenu(ref, clientX, clientY) {
+  function openSceneTreeMenu(ref, clientX, clientY, options = {}) {
     closeSceneTreeMenu();
     const viewer = activeMolstarViewer();
     const node = sceneTreeNodeByRef(sceneTreeNodes(viewer), ref);
@@ -9595,6 +9631,7 @@ SOFTWARE.
     menu.style.left = `${Math.round(left)}px`;
     menu.style.top = `${Math.round(top)}px`;
     initViewportPanelDrag(menu);
+    revealFloatingMenu(menu, { side: options.side === true, origin: `${Math.round(clientX - left)}px ${Math.round(clientY - top)}px` });
     queueMicrotask(() => showNativeViewerMenu(menu, clientX, clientY, closeSceneTreeMenu));
   }
 
@@ -10161,7 +10198,7 @@ SOFTWARE.
   function closeViewportMenu({ restoreFocus = false } = {}) {
     viewportMenuControls?.dispose();
     viewportMenuControls = null;
-    document.getElementById('buret-viewport-menu')?.remove();
+    dismissFloatingMenu(document.getElementById('buret-viewport-menu'));
     for (const trigger of document.querySelectorAll('#buret-viewport-rail [aria-expanded], #buret-selection-bar [aria-expanded], .buret-seq-footer [aria-expanded]')) {
       if (restoreFocus && trigger.getAttribute('aria-expanded') === 'true') trigger.focus();
       trigger.setAttribute('aria-expanded', 'false');
@@ -10214,6 +10251,9 @@ SOFTWARE.
     trigger.setAttribute('aria-haspopup', menu.getAttribute('role'));
     trigger.setAttribute('aria-expanded', 'true');
     positionOpenViewportMenu();
+    const triggerRect = trigger.getBoundingClientRect();
+    const menuRect = menu.getBoundingClientRect();
+    revealFloatingMenu(menu, { origin: `${Math.round(triggerRect.left + triggerRect.width / 2 - menuRect.left)}px ${Math.round(triggerRect.top + triggerRect.height / 2 - menuRect.top)}px` });
     if (menu.getAttribute('role') === 'dialog') (menu.querySelector('input') || menu.querySelector('button[aria-checked="true"], button:not(:disabled)'))?.focus();
     else if (menu.classList.contains('atlas-menu-content')) menu.querySelector('[role="menuitem"]:not(:disabled)')?.focus();
   }
@@ -11450,8 +11490,11 @@ SOFTWARE.
           return;
         }
         if (event.key !== 'Escape') return;
-        if (document.getElementById('buret-scene-tree-menu')) closeSceneTreeMenu();
-        else if (!panel.classList.contains('hidden')) setSceneTreeOpen(false);
+        if (document.getElementById('buret-scene-tree-menu')) {
+          // The menu may hang off the pose picker, which closes on a later Escape.
+          event.preventDefault();
+          closeSceneTreeMenu();
+        } else if (!panel.classList.contains('hidden')) setSceneTreeOpen(false);
       });
     }
     sceneTreeStateDisposer?.();
@@ -13029,9 +13072,27 @@ SOFTWARE.
 
   const DOCKING_REFERENCE_FILE_PATTERN = /(^|[^a-z])(crystal|xtal|native|ref|reference|cocrystal)([^a-z]|$)/i;
   const DOCKING_REFERENCE_CARBON_COLOR = 0xf97316;
-  // Shown poses get distinct carbon tints that stay clear of the green receptor;
-  // the tree's colour dot reads and edits the same value.
-  const DOCKING_POSE_CARBON_COLORS = [0xe5762c, 0xc2419b, 0x7468d1, 0x3591d6, 0xd9a52b, 0xd2504a, 0x9b7a5a];
+  // Each ligand file gets one hue clear of the green receptor and of the orange
+  // reference; its poses are shades of that hue, the first pose deepest. The
+  // tree's colour dot reads and edits the same carbon tint.
+  const DOCKING_POSE_SET_HUES = [212, 272, 328, 44, 2, 190, 246, 300];
+  function dockingPoseSetColor(setIndex, offset, count) {
+    const hue = DOCKING_POSE_SET_HUES[setIndex % DOCKING_POSE_SET_HUES.length];
+    const lightness = 0.46 + (count > 1 ? 0.28 * offset / (count - 1) : 0);
+    const chroma = (1 - Math.abs(2 * lightness - 1)) * 0.7;
+    const channel = (n) => {
+      const k = (n + hue / 30) % 12;
+      return Math.round(255 * (lightness - chroma / 2 * Math.max(-1, Math.min(k - 3, 9 - k, 1))));
+    };
+    return (channel(0) << 16) | (channel(8) << 8) | channel(4);
+  }
+  function dockingPoseCarbonColor(prepared, index) {
+    const groups = prepared?.poseGroups || [];
+    const setIndex = groups.findIndex(group => index >= group.startFrame && index <= group.endFrame);
+    if (setIndex < 0) return dockingPoseSetColor(0, 0, 1);
+    const group = groups[setIndex];
+    return dockingPoseSetColor(setIndex, index - group.startFrame, group.frameCount);
+  }
 
   // Pins live per docking set. A fresh set pins its single-pose reference
   // files (crystal/native ligand) so they stay visible next to every pose.
@@ -13043,9 +13104,21 @@ SOFTWARE.
         ? groups.filter(group => group.frameCount === 1 && DOCKING_REFERENCE_FILE_PATTERN.test(group.label || ''))
         : [];
       const starts = references.map(group => group.startFrame);
-      dockingPinnedPoseState = { key, indices: new Set(starts), selected: new Set(), references: new Set(starts) };
+      dockingPinnedPoseState = { key, indices: new Set(starts), selected: new Set(), references: new Set(starts), activeHidden: false };
     }
     return dockingPinnedPoseState.indices;
+  }
+
+  // The poses on screen: the stepper's pose unless the user hid it, pinned
+  // poses, poses shown for now, and in All the stepper's whole file.
+  function dockingVisiblePoseIndices(prepared, activeIndex) {
+    const visible = new Set([...dockingPinnedPoseIndices(prepared), ...dockingPinnedPoseState.selected]);
+    const group = activeSdfPoseMode === 'all'
+      ? (prepared?.poseGroups || []).find(entry => activeIndex >= entry.startFrame && activeIndex <= entry.endFrame)
+      : null;
+    if (group) for (let index = group.startFrame; index <= group.endFrame; index += 1) visible.add(index);
+    else if (!dockingPinnedPoseState.activeHidden) visible.add(activeIndex);
+    return visible;
   }
 
   function dockingSelectedPoseIndices(prepared) {
@@ -13060,7 +13133,7 @@ SOFTWARE.
   }
 
   // The scene tree row that colours one displayed pose layer.
-  function dockingPoseTreeNode(viewer, refs) {
+  function dockingPoseTreeNode(viewer, refs, nodes = sceneTreeNodes(viewer)) {
     const cells = viewer?.plugin?.state?.data?.cells;
     if (!cells) return null;
     const owned = ref => {
@@ -13078,7 +13151,7 @@ SOFTWARE.
       }
       return null;
     };
-    return find(sceneTreeNodes(viewer));
+    return find(nodes);
   }
 
   function normalizeRenderer(renderer) {
@@ -16583,7 +16656,8 @@ SOFTWARE.
       : null;
     const pinned = dockingPinnedPoseIndices(prepared);
     const references = dockingReferencePoseIndices(prepared);
-    const selected = new Set([activeIndex, ...pinned, ...dockingSelectedPoseIndices(prepared)]);
+    const selected = new Set([...pinned, ...dockingSelectedPoseIndices(prepared)]);
+    if (allMode || !dockingPinnedPoseState.activeHidden) selected.add(activeIndex);
     const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
     const resolvedContextStyle = dockingSceneBackgroundStyle(contextStyle, style);
     const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
@@ -16591,11 +16665,11 @@ SOFTWARE.
     const wanted = new Map();
     if (allMode) {
       for (let index = allGroup?.startFrame ?? 0; index <= (allGroup?.endFrame ?? poses.length - 1); index += 1) {
-        wanted.set(index, [resolvedContextStyle, contextOpacity, contextColor]);
+        wanted.set(index, [resolvedContextStyle, contextOpacity, contextColor === 'gray' ? contextColor : dockingPoseCarbonColor(prepared, index)]);
       }
     }
     for (const index of selected) {
-      if (poses[index]) wanted.set(index, [style, 1, references.has(index) ? 'reference' : DOCKING_POSE_CARBON_COLORS[index % DOCKING_POSE_CARBON_COLORS.length]]);
+      if (poses[index]) wanted.set(index, [style, 1, references.has(index) ? 'reference' : dockingPoseCarbonColor(prepared, index)]);
     }
     const stateKey = dockingPoseCollectionStateKey(prepared);
     let state = activeDockingPoseCollectionState;
@@ -19485,14 +19559,15 @@ SOFTWARE.
       event.stopPropagation();
     };
     const isolateContextMenu = (event) => {
-      // The picker has no secondary action; do not expose WebKit's iframe menu.
+      // Pose rows open their own menus; nothing here exposes WebKit's iframe menu.
       event.preventDefault();
       event.stopPropagation();
     };
     const isolateWheel = (event) => {
       if (!root.contains(event.target)) return;
-      event.preventDefault();
       event.stopPropagation();
+      // A long pose list scrolls; the wheel never zooms the scene behind it.
+      if (!(event.target instanceof Element && event.target.closest('.buret-docking-pose-files'))) event.preventDefault();
     };
     const isolateKeys = (event) => {
       if (!isDockingPoseInteractiveTarget(event.target)) return;
@@ -21019,24 +21094,89 @@ SOFTWARE.
     const fileButtons = [];
     const groupControls = [];
     const poseDots = [];
-    // A visible pose carries the scene tree's colour dot; it opens the same
-    // colour and representation menu as the pose's row in the tree.
+    const posePins = [];
+    // Menus the picker opens sit beside it and slide out of its edge, as if the
+    // picker grew another column. A shown pose opens its molecule menu; a hidden
+    // pose and a file open their visibility actions.
+    const openPickerMenu = (anchor, target) => {
+      closeSceneTreeMenu();
+      const x = fileList.getBoundingClientRect().right + 6;
+      const y = anchor.getBoundingClientRect().top - 6;
+      if (typeof target === 'string') {
+        openSceneTreeMenu(target, x, y, { side: true });
+        return;
+      }
+      const menu = document.createElement('div');
+      menu.id = 'buret-scene-tree-menu';
+      menu.className = 'buret-tree-menu buret-docking-pose-actions';
+      menu.setAttribute('role', 'menu');
+      menu.setAttribute('aria-label', `${target.title} actions`);
+      const header = document.createElement('div');
+      header.className = 'buret-tree-menu-header';
+      const heading = document.createElement('span');
+      heading.className = 'buret-tree-menu-heading';
+      heading.textContent = target.title;
+      header.append(heading);
+      menu.append(header);
+      for (const [text, icon, run] of target.items) {
+        const item = sceneTreeMenuItem(text, '', { icon });
+        delete item.dataset.sceneTreeAction;
+        item.addEventListener('click', () => {
+          closeSceneTreeMenu();
+          run();
+        });
+        menu.append(item);
+      }
+      document.body.append(menu);
+      const rect = menu.getBoundingClientRect();
+      menu.style.left = `${Math.round(Math.max(6, Math.min(x, window.innerWidth - rect.width - 6)))}px`;
+      menu.style.top = `${Math.round(Math.max(6, Math.min(y, window.innerHeight - rect.height - 6)))}px`;
+      revealFloatingMenu(menu, { side: true });
+      menu.querySelector('button')?.focus({ preventScroll: true });
+    };
+    const poseActions = (indices, title) => {
+      const visible = selectedPoseIndices();
+      const pins = dockingPinnedPoseIndices(prepared);
+      const shown = indices.every(index => visible.has(index));
+      const pinned = indices.every(index => pins.has(index));
+      const many = indices.length > 1;
+      return {
+        title,
+        items: [
+          [shown ? (many ? 'Hide all' : 'Hide') : (many ? 'Show all' : 'Show'), shown ? SCENE_TREE_ICON.eyeOff : SCENE_TREE_ICON.eye, () => editPoseVisibility('toggle', indices)],
+          [pinned ? (many ? 'Unpin all' : 'Unpin') : (many ? 'Pin all' : 'Pin'), APP_ICON_DATA.Pin, () => editPoseVisibility('pin', indices)],
+          [many ? 'Show only this file' : 'Show only this pose', SCENE_TREE_ICON.isolate, () => editPoseVisibility('only', indices)],
+        ]
+      };
+    };
+    // Every pose carries its colour: filled while the pose is on screen, where
+    // it opens that molecule's colour and representation menu, and an outline
+    // while hidden, where it shows the pose.
     const createPoseDot = (index, name) => {
       const dot = document.createElement('button');
       dot.type = 'button';
       dot.className = 'buret-tree-dot buret-docking-pose-dot';
       dot.setAttribute('aria-label', `Colour ${name}`);
-      dot.hidden = true;
-      // The colour menu opens beside the picker, which stays open for more edits.
+      dot.style.setProperty('--buret-pose-color', sceneTreeColorHex(dockingPoseCarbonColor(prepared, index)));
       dot.addEventListener('click', () => {
-        if (!dot.dataset.ref) return;
-        closeSceneTreeMenu();
-        openSceneTreeMenu(dot.dataset.ref, fileList.getBoundingClientRect().right + 6, dot.getBoundingClientRect().top - 10);
+        if (dot.dataset.ref) openPickerMenu(dot, dot.dataset.ref);
+        else editPoseVisibility('toggle', index);
       });
       poseDots.push({ dot, index });
       return dot;
     };
-    const eyeIcons = () => [sceneTreeIconElement(SCENE_TREE_ICON.eye), sceneTreeIconElement(SCENE_TREE_ICON.eyeOff)];
+    // A pin keeps a pose, or a whole file, on screen while stepping.
+    const createPosePin = (indices, name) => {
+      const pin = document.createElement('button');
+      pin.type = 'button';
+      pin.className = 'buret-docking-pose-pin';
+      pin.setAttribute('aria-pressed', 'false');
+      pin.setAttribute('aria-label', `Pin ${name}`);
+      pin.append(sceneTreeIconElement(APP_ICON_DATA.Pin));
+      pin.addEventListener('click', () => editPoseVisibility('pin', indices));
+      posePins.push({ pin, indices, name });
+      return pin;
+    };
     // The pose each list row jumps to, parallel to fileButtons.
     const fileTargets = [];
     if (fileList && hasPoseGroups) {
@@ -21066,22 +21206,32 @@ SOFTWARE.
       fileList.addEventListener('pointermove', event => moveHighlight(event.target.closest('.buret-docking-pose-row')));
       fileList.addEventListener('pointerleave', () => moveHighlight(null));
       fileList.addEventListener('focusin', event => moveHighlight(event.target.closest('.buret-docking-pose-row')));
+      fileList.addEventListener('contextmenu', event => {
+        const row = event.target.closest('.buret-docking-pose-row');
+        if (!row?.dataset.poseIndices) return;
+        event.preventDefault();
+        const indices = row.dataset.poseIndices.split(',').map(Number);
+        const ref = indices.length === 1 ? poseDots.find(entry => entry.index === indices[0])?.dot.dataset.ref : '';
+        openPickerMenu(row, ref || poseActions(indices, row.dataset.poseTitle));
+      });
       poseGroups.forEach(group => {
         const section = document.createElement('div');
         section.className = 'buret-docking-pose-group';
         section.setAttribute('role', 'group');
         section.setAttribute('aria-label', group.label);
+        const indices = group.poses.map((_, offset) => group.startFrame + offset);
         const heading = document.createElement('div');
         heading.className = 'buret-docking-pose-row buret-docking-pose-group-label';
+        heading.dataset.poseIndices = indices.join(',');
+        heading.dataset.poseTitle = group.label;
+        // The chevron folds the file; the rest of the row shows or hides it.
         const toggle = document.createElement('button');
         toggle.type = 'button';
-        toggle.className = 'atlas-menu-item buret-docking-pose-group-toggle';
+        toggle.className = 'buret-docking-pose-group-toggle';
         const expanded = activePose >= group.startFrame && activePose < group.startFrame + group.frameCount;
         toggle.setAttribute('aria-expanded', String(expanded));
-        toggle.setAttribute('role', 'menuitem');
-        toggle.setAttribute('aria-label', group.label);
-        const chevron = sceneTreeIconElement(APP_ICON_DATA.ChevronRight);
-        chevron.classList.add('buret-docking-pose-group-chevron');
+        toggle.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} ${group.label}`);
+        toggle.append(sceneTreeIconElement(APP_ICON_DATA.ChevronRight));
         const poses = document.createElement('div');
         poses.id = `buret-docking-pose-group-${group.startFrame}`;
         poses.className = 'buret-docking-pose-group-content';
@@ -21095,23 +21245,28 @@ SOFTWARE.
           poses.classList.toggle('expanded', expanded);
           poses.inert = !expanded;
           toggle.setAttribute('aria-expanded', String(expanded));
+          toggle.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} ${group.label}`);
         });
+        const show = document.createElement('button');
+        show.type = 'button';
+        show.className = 'atlas-menu-item buret-docking-pose-group-show';
+        show.setAttribute('role', 'menuitemcheckbox');
+        const swatch = document.createElement('span');
+        swatch.className = 'buret-docking-pose-swatch';
+        swatch.setAttribute('aria-hidden', 'true');
+        swatch.style.background = sceneTreeColorHex(dockingPoseSetColor(poseGroups.indexOf(group), 0, 1));
         const name = document.createElement('span');
         name.className = 'buret-docking-pose-file-name';
         name.textContent = group.label;
-        toggle.append(chevron, name);
-        const indices = group.poses.map((_, offset) => group.startFrame + offset);
-        // Like a tree row: the eye shows or hides the whole file.
-        const eye = document.createElement('button');
-        eye.type = 'button';
-        eye.className = 'buret-docking-pose-eye';
-        eye.setAttribute('role', 'menuitemcheckbox');
-        eye.append(...eyeIcons());
-        eye.addEventListener('click', () => toggleSelectedPose(indices));
-        groupControls.push({ select: eye, indices, name: group.label });
-        heading.append(toggle, eye);
+        const count = document.createElement('span');
+        count.className = 'buret-docking-pose-file-meta';
+        show.append(swatch, name, count);
+        show.addEventListener('click', () => editPoseVisibility('toggle', indices));
+        groupControls.push({ select: show, count, indices, name: group.label });
+        heading.append(toggle, show, createPosePin(indices, group.label));
         section.append(heading, poses);
         group.poses.forEach((pose, offset) => {
+          const index = group.startFrame + offset;
           const button = document.createElement('button');
           button.type = 'button';
           button.className = 'atlas-menu-item buret-docking-pose-file buret-docking-pose-group-pose';
@@ -21127,16 +21282,13 @@ SOFTWARE.
             button.setAttribute('aria-label', `${pose.label}, ${pose.score.value.toFixed(2)} kcal/mol`);
             button.append(score);
           }
-          const eye = document.createElement('span');
-          eye.className = 'buret-docking-pose-eye';
-          eye.setAttribute('aria-hidden', 'true');
-          eye.append(...eyeIcons());
-          button.append(eye);
           fileButtons.push(button);
-          fileTargets.push(group.startFrame + offset);
+          fileTargets.push(index);
           const row = document.createElement('div');
           row.className = 'buret-docking-pose-row';
-          row.append(button, createPoseDot(group.startFrame + offset, `${group.label}, ${pose.label}`));
+          row.dataset.poseIndices = String(index);
+          row.dataset.poseTitle = `${group.label}, ${pose.label}`;
+          row.append(button, createPoseDot(index, `${group.label}, ${pose.label}`), createPosePin([index], `${group.label}, ${pose.label}`));
           poseRows.append(row);
         });
         fileList.append(section);
@@ -21392,26 +21544,22 @@ SOFTWARE.
       setCurrentName(prepared?.poses?.[poseIndex]?.label || `${controlLabel} ${poseIndex + 1}`);
       currentIndex.textContent = `${poseIndex + 1}/${prepared.poseCount}`;
     };
-    const selectedPoseIndices = () => {
-      const selected = new Set([activePose, ...dockingPinnedPoseIndices(prepared), ...dockingSelectedPoseIndices(prepared)]);
-      if (activeSdfPoseMode === 'all') {
-        const group = poseGroups.find(group => activePose >= group.startFrame && activePose < group.startFrame + group.frameCount);
-        if (group) for (let i = 0; i < group.frameCount; i += 1) selected.add(group.startFrame + i);
-      }
-      return selected;
-    };
+    const selectedPoseIndices = () => dockingVisiblePoseIndices(prepared, activePose);
     // Dots follow the live colours, so the tree's colour menu updates them too.
+    // The scene tree is read once per refresh and only while the menu is open.
     const updatePoseDots = (selected) => {
-      if (!fileList?.classList.contains('buret-atlas-menu')) return;
+      if (!root.classList.contains('buret-docking-poses-files-open')) return;
       const molstarViewer = activeMolstarViewer();
+      const nodes = sceneTreeNodes(molstarViewer);
       const layers = activeDockingPoseCollectionState?.layers;
       for (const { dot, index } of poseDots) {
         const refs = selected.has(index) ? layers?.get(index)?.activeRefs : null;
-        const node = refs?.length ? dockingPoseTreeNode(molstarViewer, refs) : null;
-        dot.hidden = !node || node.value === null;
-        if (dot.hidden) continue;
-        dot.dataset.ref = node.ref;
-        dot.style.background = sceneTreeColorHex(node.value);
+        const node = refs?.length ? dockingPoseTreeNode(molstarViewer, refs, nodes) : null;
+        const shown = Boolean(node && node.value !== null);
+        dot.classList.toggle('buret-docking-pose-dot-shown', shown);
+        dot.dataset.ref = shown ? node.ref : '';
+        dot.style.background = shown ? sceneTreeColorHex(node.value) : '';
+        dot.setAttribute('aria-label', `${shown ? 'Colour' : 'Show'} ${dot.closest('.buret-docking-pose-row')?.dataset.poseTitle || 'pose'}`);
       }
     };
     const updateControls = () => {
@@ -21426,15 +21574,21 @@ SOFTWARE.
       const selected = hasPoseGroups ? selectedPoseIndices() : null;
       fileButtons.forEach((button, index) => {
         const active = selected ? selected.has(fileTargets[index]) : hasTrajectorySegments ? index === activeSegmentIndex : fileTargets[index] === activePose;
-        if (selected) button.setAttribute('aria-disabled', String(active && selected.size === 1));
         button.classList.toggle('active', active);
         button.setAttribute(hasPoseGroups ? 'aria-checked' : 'aria-selected', active ? 'true' : 'false');
       });
       if (selected) {
-        for (const { select, indices, name } of groupControls) {
+        for (const { select, count: counter, indices, name } of groupControls) {
           const count = indices.filter(index => selected.has(index)).length;
           select.setAttribute('aria-checked', count === indices.length ? 'true' : count ? 'mixed' : 'false');
           select.setAttribute('aria-label', `${count === indices.length ? 'Hide' : 'Show'} all poses in ${name}`);
+          if (counter) counter.textContent = count ? `${count}/${indices.length}` : String(indices.length);
+        }
+        const pins = dockingPinnedPoseIndices(prepared);
+        for (const { pin, indices, name } of posePins) {
+          const pinned = indices.every(index => pins.has(index));
+          pin.setAttribute('aria-pressed', String(pinned));
+          pin.setAttribute('aria-label', `${pinned ? 'Unpin' : 'Pin'} ${name}`);
         }
         updatePoseDots(selected);
       }
@@ -21480,9 +21634,12 @@ SOFTWARE.
       root.classList.toggle('buret-docking-poses-files-open', Boolean(open));
       label.setAttribute('aria-expanded', open ? 'true' : 'false');
       if (open && hasPoseGroups) {
+        updatePoseDots(selectedPoseIndices());
         const active = fileButtons[fileTargets.indexOf(activePose)];
         if (!active?.closest('[inert]')) active?.scrollIntoView({ block: 'nearest' });
       }
+      // Menus that slid out of the picker close with it.
+      if (!open && document.querySelector('#buret-scene-tree-menu[data-motion="side"]')) closeSceneTreeMenu();
     };
     const isFileListOpen = () => root.classList.contains('buret-docking-poses-files-open');
     const setAnimationOptionsOpen = (open) => {
@@ -21683,7 +21840,10 @@ SOFTWARE.
       const previousIndex = activePose;
       const selection = hasPoseGroups ? dockingSelectedPoseIndices(prepared) : null;
       const previousSelection = selection ? [...selection] : [];
+      const previousActiveHidden = dockingPinnedPoseState.activeHidden;
+      // A step replaces poses shown for now and always shows the new pose.
       selection?.clear();
+      if (selection) dockingPinnedPoseState.activeHidden = false;
       const shouldFocus = options.focus === true;
       // A normal step keeps the user's view. Cancel delayed focus retries from
       // an earlier load/selection before replacing any scene layers.
@@ -21738,6 +21898,7 @@ SOFTWARE.
         writeTrajectoryControlIndex(activeConfig, prepared, previousIndex);
         activePose = previousIndex;
         for (const index of previousSelection) selection.add(index);
+        if (selection) dockingPinnedPoseState.activeHidden = previousActiveHidden;
         updateControls();
         // Stepping frames is the most repeated action here and a loop retries it on a
         // timer, so a failed step stays in the console: the label and buttons have
@@ -21746,46 +21907,92 @@ SOFTWARE.
         console.error(error);
       }
     };
-    const toggleSelectedPose = (target) => {
+    // Rows and files are shown or hidden for now; a pin keeps a pose on screen
+    // while stepping. The stepper's whole file on screen is the All view, so the
+    // file row, the menu and the All button act as one control.
+    const editPoseVisibility = (action, target) => {
       setLoopActive(false);
       poseUpdateQueue = poseUpdateQueue.then(async () => {
         if (activeStructurePoseSetter !== setPose) return;
         const indices = Array.isArray(target) ? target : [target];
-        const visible = selectedPoseIndices();
         const pins = dockingPinnedPoseIndices(prepared);
-        const selection = dockingSelectedPoseIndices(prepared);
-        const previousPins = [...pins];
-        const previousSelection = [...selection];
-        const previousPose = activePose;
-        const previousMode = activeSdfPoseMode;
-        // An eye keeps its pose on screen while stepping; the last visible pose stays.
-        const hide = indices.every(index => visible.has(index));
-        for (const index of indices) {
-          if (hide) { visible.delete(index); pins.delete(index); }
-          else visible.add(index);
+        const state = dockingPinnedPoseState;
+        const selection = state.selected;
+        const before = { pins: [...pins], selection: [...selection], activePose, activeHidden: state.activeHidden, mode: activeSdfPoseMode };
+        const visible = selectedPoseIndices();
+        const fileOf = index => poseGroups.find(group => index >= group.startFrame && index < group.startFrame + group.frameCount);
+        const activeFile = fileOf(activePose);
+        const fileIndices = file => Array.from({ length: file?.frameCount || 0 }, (_, offset) => file.startFrame + offset);
+        // Editing part of All keeps the rest of the file as poses shown for now.
+        const leaveAll = () => {
+          if (activeSdfPoseMode !== 'all' || !indices.some(index => fileOf(index) === activeFile)) return;
+          setSdfPoseMode('single');
+          for (const index of fileIndices(activeFile)) if (index !== activePose) selection.add(index);
+        };
+        const show = (index) => {
+          if (index === activePose) state.activeHidden = false;
+          else selection.add(index);
+        };
+        if (action === 'pin') {
+          const unpin = indices.every(index => pins.has(index));
+          for (const index of indices) {
+            if (unpin) {
+              pins.delete(index);
+              if (index !== activePose) selection.add(index);
+            } else {
+              pins.add(index);
+              selection.delete(index);
+              if (index === activePose) state.activeHidden = false;
+            }
+          }
+        } else if (action === 'only') {
+          // Only these poses stay, next to the crystal or native reference.
+          const references = dockingReferencePoseIndices(prepared);
+          for (const index of [...pins]) if (!references.has(index)) pins.delete(index);
+          selection.clear();
+          activePose = indices[0];
+          const wholeFile = indices.length > 1 && indices.length === fileOf(indices[0])?.frameCount;
+          setSdfPoseMode(wholeFile ? 'all' : 'single');
+          if (!wholeFile) for (const index of indices.slice(1)) selection.add(index);
+        } else if (indices.every(index => visible.has(index))) {
+          leaveAll();
+          for (const index of indices) {
+            pins.delete(index);
+            selection.delete(index);
+            if (index === activePose) state.activeHidden = true;
+          }
+        } else {
+          const hidden = indices.filter(index => !visible.has(index));
+          // With nothing current on screen, the stepper moves to the first pose shown.
+          if (state.activeHidden && activeSdfPoseMode !== 'all') {
+            activePose = hidden[0];
+            state.activeHidden = false;
+          }
+          const file = fileOf(activePose);
+          if (indices.length > 1 && fileOf(indices[0]) === file && indices.length === file.frameCount) {
+            setSdfPoseMode('all');
+            for (const index of indices) selection.delete(index);
+          } else {
+            for (const index of hidden) show(index);
+          }
         }
-        if (!visible.size) visible.add(activePose);
-        const nextPose = visible.has(activePose) ? activePose : visible.values().next().value;
-        for (const index of visible) if (index !== nextPose || (!hide && indices.includes(index))) pins.add(index);
-        selection.clear();
-        setSdfPoseMode('single');
-        activePose = nextPose;
         updateControls();
         molstarStructureFocusSerial += 1;
         try {
-          await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, nextPose, { focus: false });
+          await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: false });
           try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(activePose)); } catch (_) {}
           notifyDockingPoseChanged(activePose, prepared);
           notifyStructureOverlayModeChanged(activeMolstarPrepared || prepared);
         } catch (error) {
           pins.clear();
-          for (const index of previousPins) pins.add(index);
+          for (const index of before.pins) pins.add(index);
           selection.clear();
-          for (const index of previousSelection) selection.add(index);
-          activePose = previousPose;
-          setSdfPoseMode(previousMode);
+          for (const index of before.selection) selection.add(index);
+          activePose = before.activePose;
+          setSdfPoseMode(before.mode);
+          state.activeHidden = before.activeHidden;
           try {
-            await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, previousPose, { focus: false });
+            await applyDockingPoseCollectionVisibility(viewer, activeMolstarPrepared || prepared, activePose, { focus: false });
           } catch (restoreError) { console.error(restoreError); }
           setStatus(`[web] Could not change pose selection.\n\n${error?.message || String(error)}`, 'error');
         }
@@ -21807,7 +22014,7 @@ SOFTWARE.
         });
         button.addEventListener('click', () => {
           if (hasPoseGroups) {
-            toggleSelectedPose(fileTargets[index]);
+            editPoseVisibility('toggle', fileTargets[index]);
             return;
           }
           setFileListOpen(false);
@@ -22132,6 +22339,10 @@ SOFTWARE.
       if (isDockingPoseKeyboardTarget(event.target)) return;
       if (event.key === 'Escape' && fileList && isFileListOpen()) {
         event.preventDefault();
+        if (document.querySelector('#buret-scene-tree-menu[data-motion="side"]')) {
+          closeSceneTreeMenu();
+          return;
+        }
         setFileListOpen(false);
         label.focus();
         return;
@@ -22141,7 +22352,9 @@ SOFTWARE.
         if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
           event.preventDefault();
           setFileListOpen(true);
-          const items = [...fileList.querySelectorAll('button')].filter(item => !item.hidden && !item.closest('[inert]'));
+          // Arrows walk the menu rows; the context menu key opens a row's pin
+          // and colour actions.
+          const items = [...fileList.querySelectorAll('button.atlas-menu-item')].filter(item => !item.hidden && !item.closest('[inert]'));
           const current = items.indexOf(document.activeElement);
           const index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
             : event.key === 'ArrowDown' ? (current + 1) % items.length : current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;
