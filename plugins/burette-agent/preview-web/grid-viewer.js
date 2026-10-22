@@ -400,6 +400,8 @@
             smiles: String(row.smiles || ''),
             molblock: String(row.molblock || ''),
             cardRenderer: state.cardRenderer,
+            hydrogenDisplay: state.hydrogenDisplay,
+            highlightSmarts: match ? state.smarts.slice(0, 4096) : '',
             previewSvg,
             useInputCoords: state.rdkitUseInputCoords && hasMolblockInputCoordinates(row.molblock),
             highlightAtoms: Array.isArray(match?.atoms) ? match.atoms.slice(0, 256) : [],

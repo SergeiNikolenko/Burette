@@ -17,13 +17,14 @@ const useMemo = (fn, deps) => {
 const render = new Function('React', 'useRef', 'useMemo', 'useEffect', 'window', 'bootstrapUrl', `${code};return GridMolecule3D;`)(
   React, value => refs[cursor++] ??= { current: value }, useMemo, () => {}, { location: { href: 'https://burette.test/' } }, '/bootstrap.js',
 );
-const view = (molblock, theme = 'light') => { cursor = 0; return render({ molblock, theme, height: 400, onOpen() {} }).props.srcDoc; };
+const view = (molblock, theme = 'light', hydrogenDisplay = 'none') => { cursor = 0; return render({ molblock, hydrogenDisplay, theme, height: 400, onOpen() {} }).props.srcDoc; };
 assert.equal(view(''), '<!doctype html><html></html>');
 const molblock = 'Molecule\nheader\n\nM  END\n';
 const html = view(molblock);
 const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)];
 assert(scripts.length > 1);
 for (const [, attrs, text] of scripts) assert(attrs.includes('type="application/json"') || attrs.includes('src=') && !text.trim(), 'strict CSP must not require executable inline scripts');
+assert.equal(view(molblock, 'light', 'all'), html, 'H changes must not replace the iframe');
 assert.equal(view('next molecule'), html, 'changing rows reuses the live iframe');
 const data = JSON.parse(scripts.find(match => match[1].includes('application/json'))[2]);
 assert.equal(Buffer.from(data.data, 'base64').toString(), molblock);

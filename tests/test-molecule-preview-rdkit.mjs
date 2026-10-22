@@ -77,3 +77,35 @@ assert.equal(exported.get_smiles(), originalSmiles);
 assert.equal(JSON.parse(exported.get_json()).molecules[0].atoms.length, original.atoms.length);
 exported.delete();
 console.log('Hydrogen depiction toggle, source atom mapping and unchanged export input passed');
+
+// The inspector redraws from molecular source, so it must apply the grid's H
+// choice itself instead of losing it when the small card SVG is discarded.
+const inspectorSource = readFileSync(new URL('../apps/desktop/src/components/grid-hover-molecule.tsx', import.meta.url), 'utf8');
+const effectStart = inspectorSource.indexOf('    const token = ++renderTokenRef.current;');
+const effectEnd = inspectorSource.indexOf('  }, [scaffold, showingScaffold, shown, theme, wellSize, cardDrawing]);', effectStart);
+assert.ok(effectStart > 0 && effectEnd > effectStart);
+const effect = inspectorSource.slice(effectStart, effectEnd);
+const caffeine = readFileSync(new URL('../samples/structures/small-molecules/caffeine.sdf', import.meta.url), 'utf8');
+const inspectorCache = new Map();
+const drawInspector = hydrogenDisplay => new Promise((resolve, reject) => {
+  runInNewContext(`(() => {${effect}})()`, {
+    renderTokenRef: { current: 0 }, wellSize: { width: 300, height: 300 }, cardDrawing: null,
+    showingScaffold: false, scaffold: { kind: 'idle' },
+    shown: { molblock: caffeine, hydrogenDisplay, highlightSmarts: '[#6]=O' },
+    theme: 'light', paperColour: () => [1, 1, 1], wellNodeRef: { current: null },
+    structurePalette: () => undefined, svgCache: inspectorCache, SVG_CACHE_LIMIT: 200,
+    PREVIEW_RENDER_SCALE: 2, loadDerivedEngines: async () => ({ rdkit: a }),
+    setSvg: svg => svg ? resolve(svg) : reject(new Error('Inspector drawing failed')),
+    setInvalidSource: reject,
+  });
+});
+const inspectorShown = await drawInspector('all');
+const inspectorHidden = await drawInspector('none');
+assert.notEqual(inspectorShown, inspectorHidden);
+const drawnAtomIds = svg => new Set([...svg.matchAll(/atom-(\d+)/g)].map(match => Number(match[1])));
+assert.equal(drawnAtomIds(inspectorShown).size, 24);
+assert.equal(drawnAtomIds(inspectorHidden).size, 14);
+assert.equal(await drawInspector('all'), inspectorShown, 'the cache separates H modes');
+assert.match(inspectorHidden, /#FF7F7F/i, 'search highlighting survives H removal');
+assert.equal(inspectorCache.size, 2);
+console.log('Grid inspector: real caffeine depiction follows H state, caches both modes and retains highlights.');

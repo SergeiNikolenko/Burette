@@ -29451,6 +29451,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       return;
     }
 
+    if (config.inspectorPreview === true) molstarShowHydrogens = config.hydrogenDisplay === 'all';
     await startMolstar(config, cb);
     if (config.inspectorPreview === true) {
       activeViewer.plugin.canvas3d?.setProps({ cameraResetDurationMs: 0, camera: { helper: { axes: { name: 'off', params: {} } } } });
@@ -29481,7 +29482,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
           || event.data?.source !== 'burette-inspector-host') return;
         const data = event.data.molblock;
         if (typeof data !== 'string' || !data || data.length > 350000) return;
-        pending = data;
+        pending = { data, showHydrogens: event.data.hydrogenDisplay === 'all' };
         if (running) return;
         running = true;
         const previousFrame = captureMolstarTransitionFrame();
@@ -29492,11 +29493,12 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
           while (pending !== null) {
             const next = pending;
             pending = null;
-            if (next === current) continue;
+            if (next.showHydrogens !== molstarShowHydrogens) await toggleMolstarHydrogens();
+            if (next.data === current) continue;
             await activeViewer.plugin.clear();
-            await loadPreparedStructure(activeViewer, { data: next, format: 'mol', label: 'Molecule' });
+            await loadPreparedStructure(activeViewer, { data: next.data, format: 'mol', label: 'Molecule' });
             await applyConfiguredMolstarPreset(activeViewer, activeConfig);
-            current = next;
+            current = next.data;
             await settlePreview();
           }
         } catch (error) { console.error('Inspector preview:', error); }

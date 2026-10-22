@@ -193,6 +193,8 @@ export function useAppGridControlMessages({
             molblock: typeof raw.molblock === "string" ? raw.molblock : null,
             cardRenderer: raw.cardRenderer === "xyzrender" ? "xyzrender" as const : "rdkit" as const,
             previewSvg,
+            hydrogenDisplay: raw.hydrogenDisplay === "all" ? "all" as const : "none" as const,
+            highlightSmarts: typeof raw.highlightSmarts === "string" ? raw.highlightSmarts.slice(0, 4096) : "",
             useInputCoords: raw.useInputCoords === true,
             highlightAtoms: highlightIndices(raw.highlightAtoms),
             highlightBonds: highlightIndices(raw.highlightBonds),

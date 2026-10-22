@@ -335,6 +335,8 @@ export type HoveredGridRow = {
   smiles?: string | null;
   molblock?: string | null;
   cardRenderer?: "rdkit" | "xyzrender";
+  hydrogenDisplay?: "none" | "all";
+  highlightSmarts?: string;
   previewSvg?: string | null;
   useInputCoords?: boolean;
   highlightAtoms?: number[];

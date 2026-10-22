@@ -276,9 +276,10 @@ export function GridHoverMoleculeCard({
       return;
     }
     const paper = paperColour(wellNodeRef.current, theme);
-    const atoms = showingScaffold ? [] : shown?.highlightAtoms ?? [];
-    const bonds = showingScaffold ? [] : shown?.highlightBonds ?? [];
-    const sizedKey = `${theme} ${paper.join(",")} ${wellSize.width}x${wellSize.height} ${shown?.useInputCoords === true} ${atoms.join(",")} ${bonds.join(",")} ${source}`;
+    let atoms = showingScaffold ? [] : shown?.highlightAtoms ?? [];
+    let bonds = showingScaffold ? [] : shown?.highlightBonds ?? [];
+    const showHydrogens = shown?.hydrogenDisplay === "all";
+    const sizedKey = `${theme} ${paper.join(",")} ${wellSize.width}x${wellSize.height} ${shown?.useInputCoords === true} H:${showHydrogens} ${shown?.highlightSmarts ?? ""} ${atoms.join(",")} ${bonds.join(",")} ${source}`;
     const cachedSvg = svgCache.get(sizedKey);
     if (cachedSvg !== undefined) {
       setSvg(cachedSvg);
@@ -299,6 +300,19 @@ export function GridHoverMoleculeCard({
           return;
         }
         try {
+          if (showHydrogens) mol.add_hs_in_place();
+          else {
+            mol.remove_hs_in_place();
+            // Removal can renumber atoms; repeat the grid's query on this copy.
+            if (!showingScaffold && shown?.highlightSmarts) {
+              const query = engines.rdkit.get_qmol(shown.highlightSmarts);
+              try {
+                const match = query ? JSON.parse(mol.get_substruct_match(query)) : {};
+                atoms = match.atoms ?? [];
+                bonds = match.bonds ?? [];
+              } finally { query?.delete(); }
+            }
+          }
           if (showingScaffold || !shown?.useInputCoords) mol.set_new_coords();
           const palette = structurePalette(theme);
           const rendered = mol.get_svg_with_highlights(JSON.stringify({
@@ -434,7 +448,7 @@ export function GridHoverMoleculeCard({
         {badge ? <span className="grid-hover-molecule-index">{badge}</span> : null}
       </header>
       {!hideMolecularPreview && (previewMode === "3d" && !showingScaffold ? <Suspense fallback={<div className="grid-molecule-3d" style={{ height: previewHeight }} />}>
-        <GridMolecule3D key={documentId} molblock={shown?.molblock ?? ""} theme={theme} height={previewHeight} onOpen={() => { if (shown) postGridCommand(documentId, "structure.open-in-molstar", shown.index); }} />
+        <GridMolecule3D key={documentId} hydrogenDisplay={shown?.hydrogenDisplay ?? "none"} molblock={shown?.molblock ?? ""} theme={theme} height={previewHeight} onOpen={() => { if (shown) postGridCommand(documentId, "structure.open-in-molstar", shown.index); }} />
       </Suspense> : <div
         ref={attachWell}
         className="grid-hover-molecule-svg"
