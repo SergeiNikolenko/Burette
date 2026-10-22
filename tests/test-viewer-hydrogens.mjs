@@ -25,7 +25,7 @@ const context = { document, molstarShowHydrogens: true, molstarHydrogensPending:
 };
 let collections;
 const api = runInNewContext(['setTooltipLabel', 'updateMolstarHydrogenButtons', 'toggleMolstarHydrogens',
-  'molstarHydrogenRepresentation', 'molstarPreviewKey', 'addCollectionRepresentation', 'updateCollectionRepresentations']
+  'molstarHydrogenRepresentation', 'molstarPreviewKey', 'addCollectionRepresentation', 'recordCollectionRepresentation', 'updateCollectionRepresentations']
   .map(fn).join('\n') + '\n({ toggleMolstarHydrogens, molstarHydrogenRepresentation, molstarPreviewKey, addCollectionRepresentation, updateCollectionRepresentations })',
   { ...context, collectionRepresentations: (collections = new WeakMap()) });
 const buttons = [...document.querySelectorAll('button')];

@@ -174,7 +174,11 @@ column, and they close with it. Secondary clicks never open the browser iframe
 menu. File headers stay pinned while a long file scrolls.
 
 Selection changes update ligand layers in place. They preserve the receptor, its
-representations and camera input. Deselected structures leave the live hierarchy; only their parsed data is cached,
+representations and camera input. New SDF/MOL pose layers are built in two Mol*
+commits per change (data through components, then representations), and the
+appearance pass runs once per change. Showing a 100-pose file takes about a
+second. Other formats and unusual structures fall back to the per-pose builders.
+Deselected structures leave the live hierarchy; only their parsed data is cached,
 limited to four inactive poses or 16 MiB.
 
 The menu unrolls from its trigger with a clip-path reveal (220 ms in, 140 ms

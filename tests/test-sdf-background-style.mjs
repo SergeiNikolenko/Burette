@@ -169,7 +169,8 @@ const styleContext = {
   applyMolstarPolymerLigandRepresentationToStructures: async () => routes.push('partition'),
   configuredMolstarAppearance: () => 'illustrative', applyMolstarAppearance: async () => {},
 };
-runInNewContext(extract('applySdfCollectionMolstarStyle'), styleContext);
+runInNewContext(extract('applySdfCollectionMolstarStyle') + extract('applySdfCollectionMolstarRepresentations')
+  + extract('sdfCollectionRepresentationPlan'), styleContext);
 for (const polymerResidueCount of [0, 3]) {
   await styleContext.applySdfCollectionMolstarStyle(viewer, 'illustrative', [{ cell: { obj: { data: { polymerResidueCount } } } }]);
 }

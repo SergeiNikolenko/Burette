@@ -16401,8 +16401,17 @@ SOFTWARE.
       state.poseCache.delete(index);
       state.poseCache.set(index, cached);
       const before = molstarStructureCellRefs(viewer);
-      for (const trajectory of cached.trajectories) await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', { representationPreset: 'empty' });
-      const structures = Array.from(molstarCurrentStructures(viewer)).filter(structure => !before.has(structure.cell.transform.ref));
+      const presetCells = [];
+      for (const trajectory of cached.trajectories) {
+        const result = await plugin.builders.structure.hierarchy.applyPreset(trajectory, entry.loadPreset || 'default', { representationPreset: 'empty' });
+        for (const selector of [result?.structure, ...(result?.structures || [])]) {
+          const cell = selector?.ref && plugin.state.data.cells.get(selector.ref);
+          if (cell) presetCells.push(cell);
+        }
+      }
+      let structures = Array.from(molstarCurrentStructures(viewer)).filter(structure => !before.has(structure.cell.transform.ref));
+      // Inside a data transaction the hierarchy syncs only once it ends.
+      if (!structures.length) structures = presetCells.map(cell => ({ cell, components: [] }));
       await applyStyle(structures);
       state.activeRefs = molstarStructureRefsOf(structures);
       state.activeIndex = index;
@@ -16427,6 +16436,100 @@ SOFTWARE.
   }
 
   const sdfCollectionAppearanceUpdates = new WeakMap();
+
+  // Each builder call commits separately and every Mol* commit has a fixed
+  // cost, so a pose took about six commits and showing a 100-pose file took
+  // ten seconds. Build all new SDF/MOL pose layers in two commits instead:
+  // data through components, then representations. Returns the items that
+  // still need the per-pose path.
+  async function addDockingPoseLayers(viewer, items) {
+    const plugin = viewer.plugin;
+    const transforms = window.molstar?.lib?.plugin?.StateTransforms;
+    const representationBuilder = plugin.builders?.structure?.representation;
+    if (!transforms?.Model?.StructureComponent || !representationBuilder?.buildRepresentation) return items;
+    const parsers = { sdf: transforms.Model.TrajectoryFromSDF, mol: transforms.Model.TrajectoryFromMOL };
+    const batch = [];
+    const rest = [];
+    for (const item of items) {
+      const cached = item.layer.poseCache?.get(item.index);
+      const reusable = cached?.trajectories.length === 1 && plugin.state.data.cells.has(cached.raw.ref) ? cached : null;
+      const parser = parsers[normalizeFormat(item.entry.format)];
+      if ((item.entry.loadPreset || 'default') !== 'default' || (!reusable && !parser)) rest.push(item);
+      else batch.push({ ...item, cached: reusable, parser });
+    }
+    if (!batch.length) return rest;
+    const created = [];
+    try {
+      const data = plugin.state.data.build();
+      for (const item of batch) {
+        item.representations = sdfCollectionRepresentationPlan(...item.appearance);
+        let trajectory;
+        if (item.cached) {
+          trajectory = data.to(item.cached.trajectories[0].ref);
+        } else {
+          const raw = data.toRoot().apply(transforms.Data.RawData, { data: item.entry.data, label: item.entry.label });
+          trajectory = raw.apply(item.parser);
+          item.cached = { raw: { ref: raw.ref }, trajectories: [{ ref: trajectory.ref }], sourceBytes: (item.entry.data?.length || 0) * 2 };
+          created.push(raw.ref);
+        }
+        const structure = trajectory
+          .apply(transforms.Model.ModelFromTrajectory, { modelIndex: 0 })
+          .apply(transforms.Model.StructureFromModel, { type: { name: 'model', params: {} } });
+        item.structureRef = structure.ref;
+        const kinds = item.representations.length > 1 ? ['polymer', 'ligand', 'ion'] : ['all'];
+        item.components = kinds.map(kind => ({
+          role: kind === 'polymer' ? 0 : item.representations.length - 1,
+          ref: structure.apply(transforms.Model.StructureComponent,
+            { type: { name: 'static', params: kind }, nullIfEmpty: true, label: '' },
+            { tags: [`structure-component-static-${kind}`] }).ref
+        }));
+      }
+      await data.commit({ revertOnError: true });
+      const cells = plugin.state.data.cells;
+      const representations = plugin.state.data.build();
+      const added = [];
+      for (const item of batch) {
+        item.added = [];
+        for (const component of item.components) {
+          if (!cells.get(component.ref)?.obj?.data?.elementCount) {
+            representations.delete(component.ref);
+            continue;
+          }
+          const representation = item.representations[component.role];
+          const selector = representationBuilder.buildRepresentation(representations, component.ref, molstarHydrogenRepresentation(representation));
+          if (selector) item.added.push({ ref: selector.ref, representation, role: component.role });
+        }
+        // Unusual structures keep their parsed data and take the builders.
+        if (item.added.length) added.push(item);
+        else representations.delete(item.structureRef);
+      }
+      await representations.commit({ revertOnError: true });
+      for (const item of batch) {
+        item.layer.poseCache ||= new Map();
+        item.layer.poseCache.set(item.index, item.cached);
+        if (!added.includes(item)) {
+          rest.push(item);
+          continue;
+        }
+        const structureCell = cells.get(item.structureRef);
+        for (const { ref, representation, role } of item.added) recordCollectionRepresentation(plugin, structureCell, ref, representation, role);
+        collectionRepresentations.get(structureCell).layout = item.representations.length;
+        item.layer.activeRefs = [item.structureRef];
+        item.layer.activeIndex = item.index;
+      }
+      return rest;
+    } catch (error) {
+      debug('Batched pose loading failed: ' + (error?.message || String(error)));
+      const remove = plugin.state.data.build();
+      for (const ref of [...created, ...batch.map(item => item.structureRef)]) {
+        if (ref && plugin.state.data.cells.has(ref)) remove.delete(ref);
+      }
+      await remove.commit();
+      for (const item of batch) if (created.includes(item.cached?.raw.ref)) item.layer.poseCache?.delete(item.index);
+      return items;
+    }
+  }
+
   function applySdfCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
     const appearanceOnly = options.contextStyle != null || options.contextOpacity != null || options.contextColor != null;
     if (!appearanceOnly) return queueMolstarSceneRebuild(() => applySdfCollectionVisibilityNow(viewer, prepared, activePose, options));
@@ -16695,39 +16798,61 @@ SOFTWARE.
     try {
       // Load additions before removing anything. A failed addition leaves the
       // previous visible set available for rollback without clearing the scene.
-      for (const [index, appearance] of wanted) {
-        let layer = state.layers.get(index);
-        if (!layer) {
-          layer = { activeIndex: -1, activeRefs: [] };
-          state.layers.set(index, layer);
-        }
-        const appearanceKey = JSON.stringify(appearance);
-        if (!layer.activeRefs.length) {
-          try {
-            await switchCachedPoseLayer(viewer, layer, index, poses[index], structures =>
-              applySdfCollectionMolstarStyle(viewer, appearance[0], structures, appearance[1], appearance[2]));
-          } catch (error) {
-            // Dispose partial builders too; they must not leak into exports.
-            for (const cached of layer.poseCache?.values() || []) await plugin.state.data.build().delete(cached.raw.ref).commit();
-            state.layers.delete(index);
-            throw error;
+      let restyled = false;
+      // One transaction lets Mol* re-sync the scene hierarchy once for all
+      // layer restyles and additions instead of after every commit.
+      const addLayers = async () => {
+        const additions = [];
+        for (const [index, appearance] of wanted) {
+          let layer = state.layers.get(index);
+          if (!layer) {
+            layer = { activeIndex: -1, activeRefs: [] };
+            state.layers.set(index, layer);
           }
-          layer.appearanceKey = appearanceKey;
-        } else if (layer.appearanceKey !== appearanceKey) {
-          layer.appearanceKey = null;
-          await applySdfCollectionMolstarStyle(viewer, appearance[0], molstarStructuresByRefs(viewer, layer.activeRefs), appearance[1], appearance[2]);
-          layer.appearanceKey = appearanceKey;
+          const appearanceKey = JSON.stringify(appearance);
+          if (!layer.activeRefs.length) {
+            additions.push({ index, layer, appearance, entry: poses[index] });
+          } else if (layer.appearanceKey !== appearanceKey) {
+            layer.appearanceKey = null;
+            await applySdfCollectionMolstarRepresentations(viewer, appearance[0], molstarStructuresByRefs(viewer, layer.activeRefs), appearance[1], appearance[2]);
+            layer.appearanceKey = appearanceKey;
+            restyled = true;
+          }
         }
-      }
+        if (!additions.length) return;
+        const remaining = new Set((await addDockingPoseLayers(viewer, additions)).map(item => item.index));
+        for (const { index, layer, appearance, entry } of additions) {
+          if (remaining.has(index)) {
+            try {
+              await switchCachedPoseLayer(viewer, layer, index, entry, structures =>
+                applySdfCollectionMolstarRepresentations(viewer, appearance[0], structures, appearance[1], appearance[2]));
+            } catch (error) {
+              // Dispose partial builders too; they must not leak into exports.
+              for (const cached of layer.poseCache?.values() || []) await plugin.state.data.build().delete(cached.raw.ref).commit();
+              state.layers.delete(index);
+              throw error;
+            }
+          }
+          layer.appearanceKey = JSON.stringify(appearance);
+        }
+        restyled = true;
+      };
+      if (plugin.dataTransaction) await plugin.dataTransaction(addLayers);
+      else await addLayers();
+      if (restyled) await applyMolstarAppearance(viewer, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
+      const remove = plugin.state.data.build();
+      const removed = [];
       for (const [index, layer] of state.layers) {
         if (wanted.has(index) || !layer.activeRefs.length) continue;
-        const remove = plugin.state.data.build();
         for (const cached of layer.poseCache.values()) {
           for (const trajectory of cached.trajectories) {
             for (const child of plugin.state.data.tree.children.get(trajectory.ref) || []) remove.delete(child);
           }
         }
-        await remove.commit();
+        removed.push(layer);
+      }
+      if (removed.length) await remove.commit();
+      for (const layer of removed) {
         layer.activeRefs = [];
         layer.activeIndex = -1;
       }
@@ -16736,14 +16861,18 @@ SOFTWARE.
       // number of poses deliberately displayed by the user.
       const inactive = [...state.layers].filter(([index]) => !wanted.has(index));
       let bytes = inactive.reduce((sum, [, layer]) => sum + [...layer.poseCache.values()].reduce((n, entry) => n + entry.sourceBytes, 0), 0);
+      const evict = plugin.state.data.build();
+      let evicted = false;
       while (inactive.length > 4 || bytes > 16 * 1024 * 1024) {
         const [index, layer] = inactive.shift();
         for (const cached of layer.poseCache.values()) {
-          await plugin.state.data.build().delete(cached.raw.ref).commit();
+          evict.delete(cached.raw.ref);
           bytes -= cached.sourceBytes;
+          evicted = true;
         }
         state.layers.delete(index);
       }
+      if (evicted) await evict.commit();
       state.activeIndex = activeIndex;
       state.activeRefs = state.layers.get(activeIndex)?.activeRefs || [];
       updateStructureOverlayToggleButton(document.querySelector('[data-buret-action="structure-overlay-toggle"]'), prepared);
@@ -17226,26 +17355,36 @@ SOFTWARE.
   }
 
   async function applySdfCollectionMolstarStyle(viewer, style, structures = null, alpha = 1, colorMode = 'gray', signal) {
-    const normalized = normalizeMolstarStyle(style);
-    const targets = Array.isArray(structures) && structures.length ? structures : Array.from(molstarCurrentStructures(viewer));
-    if (normalized === 'default' || normalized === 'illustrative' || normalized === 'cartoon' || normalized === 'polymer-ligand') {
-      // SDF collection entries with no polymer use the ligand style throughout;
-      // retain their whole-molecule component when entering/leaving Match.
-      if (activeMolstarPrepared?.kind === 'sdf-collection' && targets.every(target => target.cell?.obj?.data?.polymerResidueCount === 0)) {
-        await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionLigandRepresentationForStyle(normalized, alpha, colorMode), signal);
-      } else await applyMolstarPolymerLigandRepresentationToStructures(
-        viewer,
-        targets,
-        sdfCollectionCartoonRepresentation(alpha),
-        sdfCollectionLigandRepresentationForStyle(normalized, alpha, colorMode),
-        signal
-      );
-    } else {
-      await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode), signal);
-    }
+    await applySdfCollectionMolstarRepresentations(viewer, style, structures, alpha, colorMode, signal);
     signal?.throwIfAborted();
     // Pose replacement changes geometry, not the separately chosen appearance.
     await applyMolstarAppearance(viewer, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
+  }
+
+  // Appearance options update every component in the scene, so callers adding
+  // many layers style each one here and apply the appearance once afterwards.
+  async function applySdfCollectionMolstarRepresentations(viewer, style, structures = null, alpha = 1, colorMode = 'gray', signal) {
+    const targets = Array.isArray(structures) && structures.length ? structures : Array.from(molstarCurrentStructures(viewer));
+    const representations = sdfCollectionRepresentationPlan(style, alpha, colorMode);
+    if (representations.length === 1) {
+      await applyMolstarRepresentationsToStructures(viewer, targets, representations[0], signal);
+    } else if (activeMolstarPrepared?.kind === 'sdf-collection' && targets.every(target => target.cell?.obj?.data?.polymerResidueCount === 0)) {
+      // SDF collection entries with no polymer use the ligand style throughout;
+      // retain their whole-molecule component when entering/leaving Match.
+      await applyMolstarRepresentationsToStructures(viewer, targets, representations[1], signal);
+    } else {
+      await applyMolstarPolymerLigandRepresentationToStructures(viewer, targets, ...representations, signal);
+    }
+  }
+
+  // Polymer styles use a polymer representation (role 0) and a ligand one
+  // (role 1); every other style draws the whole structure with role 0.
+  function sdfCollectionRepresentationPlan(style, alpha = 1, colorMode = 'gray') {
+    const normalized = normalizeMolstarStyle(style);
+    if (normalized === 'default' || normalized === 'illustrative' || normalized === 'cartoon' || normalized === 'polymer-ligand') {
+      return [sdfCollectionCartoonRepresentation(alpha), sdfCollectionLigandRepresentationForStyle(normalized, alpha, colorMode)];
+    }
+    return [sdfCollectionRepresentationForStyle(normalized, alpha, colorMode)];
   }
 
   function sdfCollectionAlphaHelpers(alpha = 1, colorMode = 'gray', minAlpha = 0.04) {
@@ -17355,14 +17494,16 @@ SOFTWARE.
     if (!component) return false;
     const result = await plugin.builders.structure.representation.addRepresentation(component.cell || component, molstarHydrogenRepresentation(representation));
     if (!result) throw new Error('Mol* could not build this representation.');
-    if (result.ref && structure.cell) {
-      const params = plugin.state.data.cells.get(result.ref)?.transform?.params?.type?.params || {};
-      const entries = collectionRepresentations.get(structure.cell) || [];
-      entries.push({ ref: result.ref, role, type: representation.type,
-        defaults: { ...params, alpha: 1, transparentBackfaces: 'off' } });
-      collectionRepresentations.set(structure.cell, entries);
-    }
+    if (result.ref && structure.cell) recordCollectionRepresentation(plugin, structure.cell, result.ref, representation, role);
     return true;
+  }
+
+  function recordCollectionRepresentation(plugin, structureCell, ref, representation, role) {
+    const params = plugin.state.data.cells.get(ref)?.transform?.params?.type?.params || {};
+    const entries = collectionRepresentations.get(structureCell) || [];
+    entries.push({ ref, role, type: representation.type,
+      defaults: { ...params, alpha: 1, transparentBackfaces: 'off' } });
+    collectionRepresentations.set(structureCell, entries);
   }
 
   async function clearCollectionRepresentations(viewer, structures) {

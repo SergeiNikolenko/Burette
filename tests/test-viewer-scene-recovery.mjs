@@ -156,7 +156,7 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
 // Selection/All/pins must never clear or reload the receptor. Only selected
 // ligand structures belong in the live hierarchy; parsed offscreen data is cached.
 {
-  let clears = 0, parses = 0, receptorLoads = 0, receptorStyles = 0, fail = false;
+  let clears = 0, parses = 0, receptorLoads = 0, receptorStyles = 0, appearances = 0, fail = false;
   const live = new Set(), deleted = [], children = new Map();
   const pins = new Set(), selection = new Set(), references = new Set();
   const docking = { kind: 'docking', sdfPoseOverlayAvailable: true, receptorEntry: { label: 'receptor' },
@@ -186,8 +186,12 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
     loadMolstarEntryWithStructureRefs: async () => { receptorLoads++; live.add('receptor'); return ['receptor']; },
     applySdfCollectionMolstarStyle: async (_viewer, _style, refs) => {
       if (refs.includes('receptor')) receptorStyles++;
-      else if (fail) { fail = false; throw new Error('representation failed'); }
     },
+    applySdfCollectionMolstarRepresentations: async () => {
+      if (fail) { fail = false; throw new Error('representation failed'); }
+    },
+    configuredMolstarAppearance: () => 'lit', applyMolstarAppearance: async () => { appearances++; },
+    addDockingPoseLayers: async (_viewer, items) => items,
     document: { querySelector: () => null }, updateStructureOverlayToggleButton() {},
     resetXyzFrameOverlayState() {}, resetSdfCollectionVisibilityState() {},
     switchCachedPoseLayer: async (_viewer, layer, index, entry, style) => {
@@ -219,8 +223,10 @@ console.log('Scene switching, hidden presets, aligned reloads and partial builde
   references.delete(1); await render(0);
   assert.equal(context.activeDockingPoseCollectionState.layers.get(1).appearanceKey, JSON.stringify(['ball-and-stick', 1, 0x222222]), 'failed restyle is retried on rollback');
   pins.add(1); await render(0);
+  const appearancesBeforeAll = appearances;
   context.activeSdfPoseMode = 'all'; await render(0);
   assert.deepEqual([...live].sort(), ['pose0', 'pose1', 'pose2', 'receptor']);
+  assert.equal(appearances - appearancesBeforeAll, 1, 'appearance is applied once per change, not per pose');
   context.activeSdfPoseMode = 'single'; await render(0);
   fail = true; selection.add(3);
   await assert.rejects(render(0), /representation failed/);
@@ -248,9 +254,76 @@ for (const appearance of ['illustrative', 'lit']) {
     configuredMolstarAppearance: config => config.appearance,
     applyMolstarAppearance: async (_viewer, value) => applied.push(value),
   };
-  const apply = runInNewContext(extract('applySdfCollectionMolstarStyle') + '\napplySdfCollectionMolstarStyle', context);
+  const apply = runInNewContext(extract('applySdfCollectionMolstarStyle') + extract('applySdfCollectionMolstarRepresentations')
+    + extract('sdfCollectionRepresentationPlan') + '\napplySdfCollectionMolstarStyle', context);
   await apply({}, 'ball-and-stick', [{}]);
   assert.deepEqual(applied, ['geometry', appearance]);
+}
+
+// New SDF/MOL pose layers load in two commits; anything else, empty
+// structures and failed batches fall back to the per-pose builders.
+{
+  const cells = new Map();
+  const deleted = [];
+  let commits = 0, failRepresentations = false, nextRef = 0;
+  const build = () => {
+    const pending = [];
+    const node = ref => ({ ref, apply(transformer, params) {
+      const child = `${transformer}${++nextRef}`;
+      pending.push({ ref: child, parent: ref, transformer, params });
+      return node(child);
+    } });
+    return {
+      toRoot: () => node('root'), to: node, delete(ref) { pending.push({ delete: ref }); return this; },
+      async commit() {
+        commits++;
+        if (failRepresentations && pending.some(entry => entry.transformer === 'Representation')) throw new Error('commit failed');
+        for (const entry of pending) {
+          if (entry.delete) { deleted.push(entry.delete); cells.delete(entry.delete); continue; }
+          let source = cells.get(entry.parent);
+          while (source && source.transformer !== 'RawData') source = cells.get(source.parent);
+          const atoms = entry.transformer === 'Component' && source?.params.data !== 'empty' ? 12 : 0;
+          cells.set(entry.ref, { ...entry, obj: { data: { elementCount: atoms } } });
+        }
+      },
+    };
+  };
+  const plugin = {
+    state: { data: { build, cells } },
+    builders: { structure: { representation: {
+      buildRepresentation: (builder, ref, representation) => builder.to(ref).apply('Representation', representation),
+    } } },
+  };
+  const recorded = [];
+  const context = {
+    window: { molstar: { lib: { plugin: { StateTransforms: {
+      Data: { RawData: 'RawData' },
+      Model: { TrajectoryFromSDF: 'Sdf', TrajectoryFromMOL: 'Mol', ModelFromTrajectory: 'Model', StructureFromModel: 'Structure', StructureComponent: 'Component' },
+    } } } } },
+    normalizeFormat: format => format, debug() {}, molstarHydrogenRepresentation: representation => representation,
+    sdfCollectionRepresentationPlan: style => [{ type: style }], collectionRepresentations: new Map(),
+    recordCollectionRepresentation: (_plugin, cell, ref) => {
+      recorded.push([cell.ref, ref]);
+      context.collectionRepresentations.set(cell, [...(context.collectionRepresentations.get(cell) || []), ref]);
+    },
+  };
+  const addLayers = runInNewContext(extract('addDockingPoseLayers') + '\naddDockingPoseLayers', context);
+  const item = (index, format, data) => ({ index, entry: { format, data, label: `pose${index}` },
+    appearance: ['ball-and-stick', 1, 0x111111], layer: { activeIndex: -1, activeRefs: [] } });
+  const items = [item(0, 'sdf', 'a'), item(1, 'pdb', 'b'), item(2, 'mol', 'empty')];
+  const rest = await addLayers({ plugin }, items);
+  assert.deepEqual({ rest: Array.from(rest, entry => entry.index), commits }, { rest: [1, 2], commits: 2 });
+  const structure = items[0].layer.activeRefs[0];
+  assert.equal(cells.get(structure).transformer, 'Structure');
+  assert.deepEqual(Array.from(recorded, ([cell]) => cell), [structure]);
+  assert.equal(context.collectionRepresentations.get(cells.get(structure)).layout, 1, 'restyles can reuse the batched representation');
+  assert.ok(items[2].layer.poseCache.has(2) && !items[2].layer.activeRefs.length, 'an empty structure keeps its parse for the builders');
+  assert.ok(deleted.length && deleted.every(ref => !cells.has(ref)));
+  failRepresentations = true;
+  const failed = [item(3, 'sdf', 'c')];
+  assert.equal(await addLayers({ plugin }, failed), failed);
+  assert.ok(![...cells.values()].some(cell => cell.params?.label === 'pose3'), 'a failed batch removes its data');
+  assert.equal(failed[0].layer.poseCache?.has(3) ?? false, false);
 }
 console.log('Docking preset keeps receptor/pose cache and independent appearance');
 

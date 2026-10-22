@@ -6832,7 +6832,9 @@ assert.match(previewViewer, /await loadMolstarEntry\(viewer, activeEntry\);\s*aw
 assert.match(previewViewer, /function sdfCollectionRepresentationForStyle\(style, alpha = 1, colorMode = 'gray', minAlpha = 0\.04\)/);
 assert.match(previewViewer, /const \{ ghost, withAlpha, themed \} = sdfCollectionAlphaHelpers\(alpha, colorMode, minAlpha\)/);
 assert.doesNotMatch(previewViewer, /if \(normalized === 'illustrative' \|\| normalized === 'cartoon' \|\| normalized === 'polymer-ligand'\) \{/);
-assert.match(previewViewer, /await applyMolstarRepresentationsToStructures\(viewer, targets, sdfCollectionRepresentationForStyle\(normalized, alpha, colorMode\), signal\)/);
+assert.match(previewViewer, /if \(normalized === 'default' \|\| normalized === 'illustrative' \|\| normalized === 'cartoon' \|\| normalized === 'polymer-ligand'\) \{\s*return \[sdfCollectionCartoonRepresentation\(alpha\), sdfCollectionLigandRepresentationForStyle\(normalized, alpha, colorMode\)\];/s);
+assert.match(previewViewer, /return \[sdfCollectionRepresentationForStyle\(normalized, alpha, colorMode\)\];/);
+assert.match(previewViewer, /if \(representations\.length === 1\) \{\s*await applyMolstarRepresentationsToStructures\(viewer, targets, representations\[0\], signal\);/s);
 assert.match(previewViewer, /if \(normalized === 'spacefill'\) \{\s*return themed\(\{ type: 'spacefill'/s);
 assert.match(previewViewer, /if \(normalized === 'molecular-surface'\) \{[\s\S]*?return themed\(\{ type: 'molecular-surface'/);
 assert.doesNotMatch(previewViewer, /visuals: \['structure-gaussian-surface-mesh'\]/);
