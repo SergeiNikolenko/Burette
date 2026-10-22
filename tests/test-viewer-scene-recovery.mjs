@@ -429,6 +429,7 @@ console.log('Docking multi-selection preserves visible poses and recovers failed
     structureOverlayAvailable: () => true, structureOverlayNoun: () => 'poses',
     setSdfPoseMode: mode => { context.activeSdfPoseMode = mode; },
     notifyStructureOverlayModeChanged() {}, updateSdfPoseButton() {}, setStatus() {}, readTrajectoryControlIndex: () => 0,
+    notifyChemicalSpaceMolecule() {},
     applyDockingPoseCollectionVisibility: async () => { visible = [...context.selectedPoseIndices()].sort((a, b) => a - b); },
     agentActionFailure: (_command, _code, message) => { throw new Error(message); },
   };
