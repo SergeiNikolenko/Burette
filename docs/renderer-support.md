@@ -285,6 +285,37 @@ reuses a canvas, avoiding PNG encoding on playback. Committed GIFs continue usin
 `applyXyzrenderAnimation`. The molecular editor hides Miller directions for
 non-CIF inputs; those directions require crystal lattice data.
 
+### Native 3D card preparation
+
+Normal desktop startup prepares two renderer workers while the shell loads;
+registration-only launches do not. Opening a molecular grid fills the bounded
+pool (up to six workers) in the background. Once the
+initial table or 2D card view has rendered, the native bridge prepares at most 24
+initial 3D thumbnails through the same bounded queue used by visible cards.
+Switching to 3D joins in-flight work or consumes ready images; visible requests
+outrank unmounted prefetch targets. Browser-dev and Quick Look do not perform this
+native prefetch. Idle workers still retire after 120 seconds.
+
+For SMILES-only grid thumbnails, the worker builds one deterministic ETKDGv3
+conformer (seed 42), optimizes it with MMFF94 and renders it with the existing
+style. This avoids the full renderer's ten-conformer energy search. These are
+illustrative 3D layouts, not lowest-energy conformer results. Coordinate-bearing
+inputs preserve their supplied coordinates; opening/exporting a structure through
+the full renderer retains its existing behavior. Failed single embeddings use the
+existing renderer fallback. Prepared molecules of at most 256 atoms (including H) and 4096 SMILES characters
+are cached up to 32 per worker;
+SMILES thumbnail disk entries have a separate versioned cache namespace.
+
+Cold imports and genuinely new structures still require computation. Preparing
+cards early improves view-switch latency; it is not proof of zero cold-launch
+latency. Validate cold document-open and warm/prepared view-switch times separately.
+
+Native packaging precompiles the renderer's imported startup modules with its
+bundled Python after pruning and before signing. These checked-hash caches remain
+valid after relocating the app, invalidate when source changes, and avoid runtime
+bytecode writes. Only the startup import set is cached (about 10 MiB for the current
+runtime), rather than every installed scientific module.
+
 ### Native xyzrender editor
 
 The desktop Orientation & animation editor renders through the `render_xyzrender_editor` Tauri command using the bundled xyzrender runtime. It does not require a browser-dev server. GIF, SVG, PNG, PDF and TIFF exports use the native save dialog. Trajectory and vibration rendering read the original source file; the selected inline frame remains the input for static orientation and synthetic sheet items. Browser-dev keeps its HTTP transport. Native rendering stages input in a temporary cache directory, bounds inputs/outputs to 16 MiB and animation decoding to 100 million pixels, and allows two concurrent renders with a 120-second animation timeout. Closing a panel discards its result; an already running native render finishes within its timeout before releasing its slot.

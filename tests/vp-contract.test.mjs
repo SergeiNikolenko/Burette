@@ -29,6 +29,7 @@ const contractScripts = {
   "test-spreadsheet-export.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-spreadsheet-export.mjs", import.meta.url))]),
   "test-structure-inflate.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-structure-inflate.test.ts", import.meta.url))]),
   "test-grid-card-scheduling.mjs": () => import("./test-grid-card-scheduling.mjs"),
+  "test-xyzrender-card-pool.py": () => promisify(execFile)("python3", [fileURLToPath(new URL("./test-xyzrender-card-pool.py", import.meta.url))]),
   "test-structure-download.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-structure-download.test.ts", import.meta.url))]),
   "test-hosted-structure-fetch.test.ts": () => promisify(execFile)("bun", ["test", fileURLToPath(new URL("./test-hosted-structure-fetch.test.ts", import.meta.url))]),
   "test-database-menu-contract.mjs": () => promisify(execFile)("bun", [fileURLToPath(new URL("./test-database-menu-contract.mjs", import.meta.url))]),

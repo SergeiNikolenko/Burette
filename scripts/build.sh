@@ -682,6 +682,13 @@ smoke_bundled_compute_service "$TAURI_BUILT_APP"
 clean_detritus "$TAURI_BUILT_APP"
 prepare_bundled_python_for_signing "$TAURI_BUILT_APP/Contents/Resources/xyzrender-runtime"
 prepare_bundled_python_for_signing "$TAURI_BUILT_APP/Contents/Resources/xyzrender-python"
+if [[ -x "$TAURI_BUILT_APP/Contents/Resources/xyzrender-python/bin/python3" ]]; then
+  # Rebuild only startup caches with the relocated interpreter, after pruning
+  # stale bytecode and before signing. Runtime imports remain read-only.
+  PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 \
+    "$TAURI_BUILT_APP/Contents/Resources/xyzrender-python/bin/python3" \
+    "$ROOT/scripts/prepare-xyzrender-bytecode.py" "$TAURI_BUILT_APP/Contents/Resources"
+fi
 CODESIGN_ARGS=(--force --sign "$SIGN_IDENTITY")
 if [[ "$SIGN_IDENTITY" != "-" ]]; then
   CODESIGN_ARGS+=(--options runtime --timestamp)

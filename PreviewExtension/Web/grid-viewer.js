@@ -169,6 +169,7 @@
     rdkitCardLazyJobs: new WeakMap(),
     rdkitCardLazyTargets: [],
     xyzrenderCardCache: new Map(),
+    xyzrenderInitialPrefetched: false,
     xyzrenderCardQueue: [],
     xyzrenderCardsRunning: 0,
     xyzrenderBatchesRunning: 0,
@@ -2204,7 +2205,11 @@
     if (currentXyzrenderPreset(cfg) === next) return;
     state.xyzrenderPreset = next;
     resetXyzrenderCardObserver();
-    state.xyzrenderCardCache.clear();
+    // Preset is part of the cache key; keep finished images for switching back.
+    // Failed renders can be retried by returning to the preset.
+    for (const [key, cached] of state.xyzrenderCardCache) {
+      if (cached.error) state.xyzrenderCardCache.delete(key);
+    }
     resetCardRenderQueues();
     refreshGridControls(cfg);
     applyGridPreferences(cfg);
@@ -3826,6 +3831,22 @@
     }
   }
 
+  function prefetchInitialXyzrenderCards(cfg) {
+    if (state.xyzrenderInitialPrefetched || !state.rows.length
+      || cfg.appViewer !== true || cfg.gridDataMode !== 'bridge'
+      || !effectiveMolecularGrid(cfg)
+      || (state.viewMode === 'cards' && state.cardRenderer === 'xyzrender')) return;
+    state.xyzrenderInitialPrefetched = true;
+    // Prepare only the initial screen, not the collection. The normal queue and
+    // content/style keys let an immediate switch join the same in-flight work.
+    // Foreground requests keep priority over these unmounted targets.
+    for (const row of state.rows.slice(0, 24)) {
+      const record = gridDragRecord(row);
+      if (!record || record.inputExtension === 'rxn') continue;
+      enqueueXyzrenderCard(row, cfg, record, xyzrenderCardKey(row, record), null);
+    }
+  }
+
   function pumpXyzrenderCardQueue() {
     const cfg = config();
     if (cfg.appViewer === true && cfg.gridDataMode === 'bridge') {
@@ -3880,6 +3901,7 @@
   }
 
   function takeXyzrenderCardBatchJobs() {
+    sortXyzrenderCardQueue();
     const visible = [];
     const deferred = [];
     for (const job of state.xyzrenderCardQueue) {
@@ -4129,6 +4151,7 @@
           });
           return;
         }
+        prefetchInitialXyzrenderCards(cfg);
         if (state.pendingLoad) {
           state.pendingLoad = false;
           loadMore(cfg);
@@ -8562,7 +8585,7 @@
   }
 
   function cardRenderPriority(target) {
-    if (!target || typeof target.getBoundingClientRect !== 'function') return Number.MAX_SAFE_INTEGER;
+    if (!target || target.isConnected === false || typeof target.getBoundingClientRect !== 'function') return Number.MAX_SAFE_INTEGER;
     const rect = target.getBoundingClientRect();
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
     if (!Number.isFinite(rect.top) || !Number.isFinite(rect.bottom)) return Number.MAX_SAFE_INTEGER;
@@ -8674,7 +8697,10 @@
   function resetCardRenderQueues() {
     state.rdkitCardQueue = [];
     state.rdkitCardPending.clear();
-    for (const job of state.xyzrenderCardQueue) state.xyzrenderCardCache.delete(job.key);
+    for (const job of state.xyzrenderCardQueue) {
+      if (!job.target) state.xyzrenderInitialPrefetched = false;
+      state.xyzrenderCardCache.delete(job.key);
+    }
     state.xyzrenderCardQueue = [];
     if (state.xyzrenderBatchTimer) {
       window.clearTimeout(state.xyzrenderBatchTimer);
@@ -8685,6 +8711,7 @@
   function resetDocumentRuntimeState() {
     cancelVirtualWindowRender();
     state.dataToken += 1;
+    state.xyzrenderInitialPrefetched = false;
     state.remoteLoadToken += 1;
     state.remoteLoading = false;
     window.clearTimeout(state.searchTimer);
@@ -8746,9 +8773,15 @@
 
   function enqueueXyzrenderCard(row, cfg, record, key, target) {
     const cached = state.xyzrenderCardCache.get(key);
-    if (cached?.html || cached?.error) return;
+    // A render may finish after this placeholder was mounted but before its
+    // observer runs. Consume that result instead of leaving an empty tile.
+    if (cached?.html || cached?.error) {
+      updateXyzrenderCard(key, drawXyzrenderCard(row, cfg));
+      return;
+    }
     if (cached?.pending) {
       cached.target = target || cached.target;
+      cached.job.target = cached.target;
       return;
     }
     const job = { row, cfg, record, key, target, seq: state.xyzrenderCardSeq++ };
@@ -8827,7 +8860,14 @@
       }, XYZRENDER_CARD_BATCH_TIMEOUT_MS);
       const results = Array.isArray(payload?.items) ? payload.items : [];
       const byId = new Map(results.map(item => [String(item?.id || ''), item]));
+      let frameStartedAt = nowMs();
       for (const job of jobs) {
+        // SVG sanitization and DOM insertion share the UI thread with scrolling.
+        // Yield between expensive cards, including when the native cache is hot.
+        if (nowMs() - frameStartedAt >= RDKIT_CARD_FRAME_BUDGET_MS) {
+          await new Promise(resolve => window.setTimeout(resolve, 0));
+          frameStartedAt = nowMs();
+        }
         const item = byId.get(job.key);
         if (!item) {
           markXyzrenderCardError(job, 'xyzrender batch returned no result');
@@ -8866,6 +8906,12 @@
   }
 
   function markXyzrenderCardError(job, message) {
+    // Speculative failures must not poison the first explicit 3D request (for
+    // example, if the runtime was unavailable while the table was opening).
+    if (!job.target) {
+      state.xyzrenderCardCache.delete(job.key);
+      return;
+    }
     state.xyzrenderCardCache.set(job.key, { error: message });
     updateXyzrenderCard(job.key, `<div class="buret-molecule-error"><strong>${escapeHTML(job.row.name || `Molecule ${Number(job.row.index) + 1}`)}</strong><span>${escapeHTML(message)}</span></div>`);
     emitGridPerfMetric(job.cfg, 'xyzrender-card-error', nowMs(), {

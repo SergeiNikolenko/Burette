@@ -295,6 +295,13 @@ pub(crate) fn create_xyzrender_card_batch_artifacts(
                 continue;
             }
         };
+        // Thumbnail SMILES use a single conformer; never reuse them as full
+        // renderer artifacts (or consume the old ten-conformer card cache).
+        let cache_key = if request.direct_smiles.is_some() && request.cache_directory.is_some() {
+            format!("{cache_key}-thumbnail-v2")
+        } else {
+            cache_key
+        };
         let cache_entry = request
             .cache_directory
             .as_ref()
@@ -365,6 +372,7 @@ pub(crate) fn create_xyzrender_card_batch_artifacts(
         .map(|miss| XyzrenderCardJob {
             id: miss.request.id.clone(),
             smiles: miss.request.direct_smiles.clone(),
+            thumbnail: miss.request.cache_directory.is_some(),
             input_path: miss
                 .request
                 .direct_smiles
@@ -377,6 +385,9 @@ pub(crate) fn create_xyzrender_card_batch_artifacts(
                 .controls
                 .as_ref()
                 .and_then(|controls| finite_positive(controls.canvas_size)),
+            display_hydrogens: miss.request.controls.as_ref().and_then(|controls| {
+                normalized_display_hydrogens(controls.display_hydrogens.as_deref())
+            }),
         })
         .collect();
     let outcomes = render_cards(&launch, jobs);
@@ -452,6 +463,23 @@ fn batch_miss_error(miss: XyzrenderPreparedCardBatchMiss, error: &str) -> Xyzren
         log: String::new(),
         cache_hit: false,
         error: Some(error.to_string()),
+    }
+}
+
+pub(crate) enum XyzrenderWarmup {
+    Startup,
+    Grid,
+}
+
+pub(crate) fn warmup_renderer(scope: XyzrenderWarmup) {
+    let desired_workers = match scope {
+        XyzrenderWarmup::Startup => 2,
+        XyzrenderWarmup::Grid => usize::MAX,
+    };
+    if let Ok(executable) = resolve_xyzrender_executable() {
+        if let Some(launch) = xyzrender_worker_launch(&executable) {
+            super::xyzrender_pool::warmup(launch, desired_workers);
+        }
     }
 }
 
@@ -1860,6 +1888,8 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
+        warmup_renderer(XyzrenderWarmup::Startup);
+        warmup_renderer(XyzrenderWarmup::Grid);
         let results = create_xyzrender_card_batch_artifacts(requests);
         assert_eq!(results.len(), smiles.len());
         for result in &results {

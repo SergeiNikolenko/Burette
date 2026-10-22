@@ -215,3 +215,134 @@ console.log('Grid card scheduling: priority, frame budget, in-flight deduplicati
   assert.doesNotMatch(cell({}, { id: 'prop:RGroup_Status', get: () => 'Matched' }, {}), /drawing/);
   assert.doesNotMatch(cell({}, { id: 'prop:RGroup_R1', get: () => '' }, {}), /drawing/);
 }
+
+// A virtual-window rebuild can mount a placeholder while its previous request
+// is completing. The observer must attach the ready image, not enqueue it again.
+state.xyzrenderCardCache = new Map();
+state.xyzrenderCardQueue = [];
+state.xyzrenderCardSeq = 0;
+let pumps = 0;
+const updates = [];
+const enqueue = new Function('state', 'pumpXyzrenderCardQueue', 'updateXyzrenderCard', 'drawXyzrenderCard', `${body('enqueueXyzrenderCard')} return enqueueXyzrenderCard;`)(
+  state, () => pumps++, (key, html) => updates.push([key, html]), row => state.xyzrenderCardCache.get(row.key).html || '<div>Failed molecule</div>',
+);
+const oldTarget = { isConnected: false };
+const newTarget = { isConnected: true };
+const row = { key: 'racing' };
+enqueue(row, {}, {}, row.key, oldTarget);
+enqueue(row, {}, {}, row.key, newTarget);
+assert.equal(pumps, 1, 'remount does not duplicate an in-flight render');
+assert.equal(state.xyzrenderCardQueue[0].target, newTarget, 'priority follows the mounted target');
+state.xyzrenderCardCache.set(row.key, { html: '<img alt="Molecule"/>' });
+enqueue(row, {}, {}, row.key, newTarget);
+assert.deepEqual(updates, [['racing', '<img alt="Molecule"/>']], 'late observer consumes a finished image');
+state.xyzrenderCardCache.set(row.key, { error: 'render failed' });
+enqueue(row, {}, {}, row.key, newTarget);
+assert.deepEqual(updates.at(-1), ['racing', '<div>Failed molecule</div>'], 'late observer also resolves failed placeholders');
+assert.equal(pumps, 1, 'ready images and failures never restart work');
+
+const priority = new Function('window', 'document', `${body('cardRenderPriority')} return cardRenderPriority;`)(
+  { innerHeight: 600 }, {},
+);
+const targetAt = (top, bottom, isConnected = true) => ({ isConnected, getBoundingClientRect: () => ({ top, bottom }) });
+assert.equal(priority(targetAt(0, 0, false)), Number.MAX_SAFE_INTEGER, 'detached nodes are not visible');
+state.xyzrenderCardQueue = [
+  { key: 'distant', target: targetAt(1200, 1300), seq: 0 },
+  { key: 'nearby', target: targetAt(700, 800), seq: 1 },
+  { key: 'visible', target: targetAt(50, 150), seq: 2 },
+];
+const takeBatch = new Function('state', 'cardRenderPriority', `const XYZRENDER_CARD_BATCH_SIZE = 12; ${body('sortXyzrenderCardQueue')} ${body('takeXyzrenderCardBatchJobs')} return takeXyzrenderCardBatchJobs;`)(state, priority);
+assert.deepEqual(takeBatch().map(job => job.key), ['visible']);
+assert.deepEqual(takeBatch().map(job => job.key), ['nearby', 'distant'], 'prefetch stays closest-first after scrolling');
+
+state.xyzrenderPreset = 'default';
+state.xyzrenderCardCache = new Map([['default', { html: '<svg/>' }], ['failed', { error: 'Timeout' }]]);
+state.cardRenderer = 'xyzrender';
+const preset = new Function('state', 'normalizeXyzrenderPreset', 'currentXyzrenderPreset', 'resetXyzrenderCardObserver', 'resetCardRenderQueues', 'refreshGridControls', 'applyGridPreferences', 'render', `${body('setXyzrenderPreset')}
+return setXyzrenderPreset;`)(
+  state, value => value, () => state.xyzrenderPreset, () => {}, () => {}, () => {}, () => {}, () => {},
+);
+preset('flat', {});
+preset('default', {});
+assert.equal(state.xyzrenderCardCache.get('default').html, '<svg/>', 'returning to a preset retains ready images');
+assert.equal(state.xyzrenderCardCache.has('failed'), false, 'returning to a preset allows failed renders to retry');
+
+// Exercise the real batch consumer with deliberately expensive SVG processing.
+// Its promise remains pending at each yield, allowing input before all 12 cards.
+const asyncBody = source.slice(source.indexOf('  async function requestXyzrenderCardBatch('), source.indexOf('\n  function markXyzrenderCardError('));
+const batchUpdates = [];
+let clock = 0;
+let yields = 0;
+const jobs = Array.from({ length: 12 }, (_, i) => ({ key: `batch-${i}`, row: { index: i }, cfg: {}, record: {} }));
+const consumeBatch = new Function('state', 'hostRequest', 'currentXyzrenderPreset', 'xyzrenderCardControls', 'textToBase64', 'xyzrenderCardInputText', 'prepareXyzrenderCardSVG', 'svgDataImageHTML', 'evictXyzrenderCardCache', 'updateXyzrenderCard', 'emitGridPerfMetric', 'xyzrenderCardBatchConcurrency', 'markXyzrenderCardError', 'nowMs', 'window', `
+  const XYZRENDER_CARD_BATCH_TIMEOUT_MS = 60000, RDKIT_CARD_FRAME_BUDGET_MS = 8;
+  ${asyncBody}
+  return requestXyzrenderCardBatch;
+`)(state, async () => ({ items: jobs.map(job => ({ id: job.key, svg: '<svg/>' })) }), () => 'default', () => ({}), x => x, () => '', svg => { clock += 9; return svg; }, svg => svg, () => {}, key => batchUpdates.push(key), () => {}, () => 1, (_job, error) => assert.fail(error), () => clock, {
+  setTimeout(resolve) { yields++; assert.ok(batchUpdates.length > 0 && batchUpdates.length < jobs.length); setTimeout(resolve, 0); },
+});
+await consumeBatch(jobs);
+assert.equal(yields, 11, 'each expensive card yields before processing the next');
+assert.deepEqual(batchUpdates, jobs.map(job => job.key));
+console.log('3D cards: late cache delivery, remount priority, preset reuse and UI-thread yields passed.');
+
+{
+  const runtime = { token: 1, rows: [{}], visibleCount: 1, viewMode: 'table' };
+  let prefetches = 0;
+  const grid = { replaceChildren() {} };
+  const dependencies = Object.fromEntries([
+    'resetRdkitCardObserver', 'resetXyzrenderCardObserver', 'resetCardRenderQueues',
+    'restoreTableScrollPosition', 'startVisibleRdkitCards', 'updateTableHeaderStick',
+    'updateVirtualGridMetrics', 'updateChrome', 'scrollPendingGridRow',
+    'maybeLoadMoreForRenderedRange', 'postGridReady', 'emitGridPerfMetric',
+    'requestAnimationFrame', 'scheduleRdkitCard', 'scheduleXyzrenderCard',
+  ].map(name => [name, () => {}]));
+  Object.assign(dependencies, {
+    state: runtime, status: null, window: {}, nowMs: () => 0,
+    document: { getElementById: () => grid, createDocumentFragment: () => ({ appendChild() {} }) },
+    virtualWindowRange: () => ({ start: 0, end: 1 }), cardViewRows: rows => rows,
+    gridTable: () => ({}), card: () => ({}),
+    prefetchInitialXyzrenderCards: () => { prefetches++; },
+  });
+  const renderSource = source.slice(source.indexOf('  async function renderVirtualWindow('), source.indexOf('  // The horizontal scroll box'));
+  const renderWindow = new Function(...Object.keys(dependencies), `${renderSource} return renderVirtualWindow;`)(...Object.values(dependencies));
+  await renderWindow({}, 0, { force: true });
+  assert.equal(prefetches, 0, 'superseded views must not prepare stale document data');
+  await renderWindow({}, 1, { force: true });
+  assert.equal(prefetches, 1, 'initial remote table page prepares its first screen');
+  runtime.viewMode = 'cards';
+  await renderWindow({}, 1, { force: true });
+  assert.equal(prefetches, 2, 'initial remote card page also reaches preparation');
+}
+
+{
+  const initial = { xyzrenderInitialPrefetched: false, rows: Array.from({ length: 1000 }, (_, index) => ({ index })), viewMode: 'table', cardRenderer: 'rdkit' };
+  const queued = [];
+  const prefetch = new Function('state', 'effectiveMolecularGrid', 'gridDragRecord', 'xyzrenderCardKey', 'enqueueXyzrenderCard', `${body('prefetchInitialXyzrenderCards')} return prefetchInitialXyzrenderCards;`)(
+    initial, cfg => cfg.molecularGrid, row => ({ inputExtension: row.index === 2 ? 'rxn' : 'smi' }), row => String(row.index),
+    (row, cfg, record, key, target) => queued.push({ index: row.index, key, target }),
+  );
+  prefetch({ appViewer: true, molecularGrid: true, xyzrenderEndpoint: '/render' });
+  prefetch({ appViewer: true, gridDataMode: 'bridge', molecularGrid: false });
+  assert.equal(queued.length, 0, 'no speculative browser or nonmolecular work');
+  const cfg = { appViewer: true, gridDataMode: 'bridge', molecularGrid: true };
+  prefetch(cfg); prefetch(cfg);
+  assert.deepEqual(queued, Array.from({ length: 24 }, (_, index) => ({ index, key: String(index), target: null })).filter(row => row.index !== 2), 'one bounded initial screen, reactions excluded');
+  initial.xyzrenderInitialPrefetched = false;
+  initial.viewMode = 'cards'; initial.cardRenderer = 'xyzrender';
+  queued.length = 0;
+  prefetch(cfg);
+  assert.equal(queued.length, 0, 'foreground 3D rendering already schedules its viewport');
+}
+
+{
+  const errors = { xyzrenderCardCache: new Map([['preload', { pending: true }]]) };
+  const updates = [];
+  const fail = new Function('state', 'updateXyzrenderCard', 'escapeHTML', 'emitGridPerfMetric', 'nowMs', `${body('markXyzrenderCardError')} return markXyzrenderCardError;`)(errors, (...args) => updates.push(args), value => value, () => {}, () => 0);
+  fail({ key: 'preload', target: null }, 'temporarily unavailable');
+  assert.equal(errors.xyzrenderCardCache.has('preload'), false, 'explicit opening can retry failed background work');
+  assert.equal(updates.length, 0);
+  fail({ key: 'visible', target: {}, row: { index: 0 }, cfg: {} }, 'invalid molecule');
+  assert.deepEqual(errors.xyzrenderCardCache.get('visible'), { error: 'invalid molecule' });
+  assert.equal(updates.length, 1, 'foreground failures still reach the card');
+}

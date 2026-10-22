@@ -83,6 +83,12 @@ changing CLI, MCP, or skill behavior.
 
 ## Internal Helpers
 
+`prepare-xyzrender-bytecode.py` runs with the staged app's bundled Python from
+`build.sh`, after runtime pruning and before signing. It precompiles only imported
+renderer startup modules into checked-hash caches; it must not run against a
+source environment. Validate relocation and read-only cache invalidation with
+`python3 tests/test-prepare-xyzrender-bytecode.py`.
+
 `molstar-surface-field-cache.mjs` adapts the version-locked Mol* unit-surface
 calculation during vendoring. Its 64 MiB LRU stores CPU scalar/group fields,
 never GPU resources or molecule objects. Exact coordinates, radii, atom/group

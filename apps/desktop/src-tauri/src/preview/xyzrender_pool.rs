@@ -25,10 +25,12 @@ pub(super) struct XyzrenderWorkerLaunch {
 pub(super) struct XyzrenderCardJob {
     pub(super) id: String,
     pub(super) smiles: Option<String>,
+    pub(super) thumbnail: bool,
     pub(super) input_path: Option<PathBuf>,
     pub(super) output_path: PathBuf,
     pub(super) config: String,
     pub(super) canvas_size: Option<f64>,
+    pub(super) display_hydrogens: Option<&'static str>,
 }
 
 pub(super) struct XyzrenderCardOutcome {
@@ -43,12 +45,15 @@ struct WorkerRequest<'a> {
     id: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     smiles: Option<&'a str>,
+    thumbnail: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     input_path: Option<String>,
     output_path: String,
     config: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     canvas_size: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display_hydrogens: Option<&'a str>,
 }
 
 #[derive(Deserialize)]
@@ -128,6 +133,38 @@ pub(super) fn render_cards(
         ));
     }
     results
+}
+
+/// Prepare the bounded pool while the molecular grid is opening. Reserving slots under
+/// the pool lock makes concurrent document opens bounded and non-blocking.
+pub(super) fn warmup(launch: XyzrenderWorkerLaunch, desired_workers: usize) {
+    let pool = pool();
+    ensure_idle_worker_reaper();
+    pool.discard_stale_workers(&launch.signature);
+    let mut state = pool.state.lock().unwrap_or_else(|err| err.into_inner());
+    let count = desired_workers
+        .min(pool.capacity)
+        .saturating_sub(state.live);
+    state.live += count;
+    drop(state);
+    if count == 0 {
+        return;
+    }
+    thread::spawn(move || {
+        thread::scope(|scope| {
+            for _ in 0..count {
+                let launch = &launch;
+                scope.spawn(move || match spawn_worker(launch) {
+                    Ok(worker) => pool.release(worker),
+                    Err(_) => {
+                        let mut state = pool.state.lock().unwrap_or_else(|err| err.into_inner());
+                        state.live = state.live.saturating_sub(1);
+                        pool.available.notify_all();
+                    }
+                });
+            }
+        });
+    });
 }
 
 fn push_outcome(outcomes: &Mutex<Vec<XyzrenderCardOutcome>>, outcome: XyzrenderCardOutcome) {
@@ -290,6 +327,7 @@ impl Worker {
         let request = WorkerRequest {
             id: &job.id,
             smiles: job.smiles.as_deref(),
+            thumbnail: job.thumbnail,
             input_path: job
                 .input_path
                 .as_ref()
@@ -297,6 +335,7 @@ impl Worker {
             output_path: job.output_path.display().to_string(),
             config: &job.config,
             canvas_size: job.canvas_size,
+            display_hydrogens: job.display_hydrogens,
         };
         let payload = serde_json::to_string(&request).map_err(|err| {
             WorkerFailure::Job(format!("Could not encode xyzrender card request: {err}"))
@@ -453,6 +492,7 @@ const XYZRENDER_GRID_WORKER_HELPER: &str = r#"
 import json
 import os
 import sys
+from collections import OrderedDict
 
 responses = os.fdopen(os.dup(1), "w")
 os.dup2(2, 1)
@@ -461,16 +501,53 @@ sys.stdout = sys.stderr
 from xyzrender import load, render
 
 
+thumbnail_cache = OrderedDict()
+
+
+def load_thumbnail(smiles):
+    if smiles in thumbnail_cache:
+        molecule = thumbnail_cache.pop(smiles)
+        thumbnail_cache[smiles] = molecule
+        return molecule
+    # A card needs one reproducible 3D layout, not a ten-conformer energy search.
+    # Use public RDKit/xyzrender APIs; coordinate-bearing files bypass this path.
+    from rdkit import Chem
+    from rdkit.Chem import rdDistGeom, rdForceFieldHelpers
+
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError("Could not parse molecule")
+    mol = Chem.AddHs(mol)
+    params = rdDistGeom.ETKDGv3()
+    params.randomSeed = 42
+    if rdDistGeom.EmbedMolecule(mol, params) < 0:
+        # Keep the existing recovery path for difficult embeddings.
+        return load(smiles, smiles=True)
+    rdForceFieldHelpers.MMFFOptimizeMolecule(mol)
+    molecule = load(mol)
+    # Bound both entry count and molecule/key size, including explicit H atoms.
+    if mol.GetNumAtoms() <= 256 and len(smiles) <= 4096:
+        thumbnail_cache[smiles] = molecule
+        while len(thumbnail_cache) > 32:
+            thumbnail_cache.popitem(last=False)
+    return molecule
+
+
 def draw(request):
     smiles = request.get("smiles")
     if smiles:
-        mol = load(str(smiles), smiles=True)
+        mol = load_thumbnail(str(smiles)) if request.get("thumbnail") else load(str(smiles), smiles=True)
     else:
         mol = load(str(request.get("inputPath") or ""))
     kwargs = {"config": request.get("config") or "default"}
     canvas_size = request.get("canvasSize")
     if canvas_size:
         kwargs["canvas_size"] = canvas_size
+    hydrogens = request.get("displayHydrogens")
+    if hydrogens == "none":
+        kwargs["no_hy"] = True
+    elif hydrogens == "all":
+        kwargs["hy"] = True
     svg = render(mol, **kwargs)
     with open(request["outputPath"], "w", encoding="utf-8") as handle:
         handle.write(str(svg))
@@ -480,7 +557,7 @@ def handle(request):
     identifier = str(request.get("id", ""))
     try:
         if request.get("op") == "warmup":
-            render(load("C", smiles=True), config="default")
+            render(load_thumbnail("C"), config="default")
         else:
             draw(request)
         return {"id": identifier, "log": ""}
