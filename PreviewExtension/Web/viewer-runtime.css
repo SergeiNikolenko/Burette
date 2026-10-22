@@ -2498,6 +2498,12 @@ body.buret-docking-pose-controls-active .msp-traj-controls {
   cursor: pointer;
   font: inherit;
 }
+/* Row controls sit 4px inside the 18px pill, so their fills are fully round
+   and follow its ends concentrically. */
+.buret-docking-pose-main > button,
+.buret-docking-pose-animation > button {
+  border-radius: 14px;
+}
 .buret-docking-poses button:not(:disabled):hover {
   background: var(--buret-toolbar-hover);
 }
