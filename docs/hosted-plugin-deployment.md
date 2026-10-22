@@ -12,6 +12,9 @@ its Vercel Git integration is disconnected.
 - If the budget is exhausted or the project is paused, do not deploy, promote,
   resume or retry a blocked deployment. Continue source work only. A prebuilt
   upload is not permission to bypass the budget or resume billable traffic.
+  An explicit, action-time user approval may authorize a named project's
+  resumption and resulting over-budget traffic; record its scope and leave
+  unrelated projects, the plan and the configured limit unchanged.
 - Keep the $1 spend-management limit and automatic pausing unchanged unless
   the user explicitly changes that instruction. Vercel accounting and pausing
   can lag; the limit alone cannot guarantee an exact cap under live traffic.
@@ -44,6 +47,31 @@ its Vercel Git integration is disconnected.
    using a candidate with an external host.
 
 ## Acceptance remains separate
+
+### Production publication — 2026-09-14
+
+The user explicitly authorized resuming only `burette-plugin` and publishing
+the prepared artifact despite the exhausted $1 budget. The plan and limit were
+not changed. Git integration remains disconnected (`link: null`).
+
+Deployment `dpl_9jewfceWxjoGiCgmzuFHDmJofspm` was uploaded with `--prebuilt
+--prod --skip-domain`, passed candidate preflight, and was promoted without
+rebuilding to `https://burette-plugin.vercel.app`. Source metadata is
+`628150e5a`, runtime source `9186af298`; project state is READY, `paused: false`.
+The deployment URL is
+`https://burette-plugin-515u9p9tc-nikolenko-sergei.vercel.app`.
+
+Both candidate and canonical preflights passed all 17 requests: five tool
+descriptors, two resources, Ketcher continuation/editing, concurrent CAS
+conflict and replay, public 1CRN (327 atoms, 46 residues, one chain), and an
+invalid-PDB negative case. Canonical health and shell HTML/JS returned 200;
+shell asset security headers matched the checklist. Live Python rendering of
+ethanol returned SVG with HTTP 200 (6.48 seconds end-to-end on this request).
+
+Submission remains blocked: landing `/privacy` and `/docs/plugin` returned
+503. The landing project was not resumed because approval covered only the
+plugin. Connector rescan, real ChatGPT/Codex interaction, physical-iPhone
+acceptance and a new recording remain unverified. No OpenAI submission was made.
 
 ### Local packaging checkpoint — 2026-09-14
 

@@ -7,7 +7,22 @@ requires accurate listing/policy material, production MCP metadata and five
 positive plus three negative cases. Keep the user's one-command, no-attachment
 demo separate from this complete operator test matrix.
 
-## Latest engineering checkpoint — 2026-09-13
+## Latest publication checkpoint — 2026-09-14
+
+- Published prebuilt deployment `dpl_9jewfceWxjoGiCgmzuFHDmJofspm` and promoted
+  it to `https://burette-plugin.vercel.app` after explicit approval to resume
+  only this project with possible spending beyond the exhausted $1 budget.
+  The plan/limit are unchanged and Git integration remains disconnected.
+- Source metadata: `628150e5a`; runtime source: `9186af298`. Candidate and
+  canonical 17-request preflights passed, including shared CAS conflict/replay
+  and exact-count 1CRN. Health, shell assets/security headers and live Python
+  ethanol-to-SVG rendering passed. See the
+  [publication record](../../../docs/hosted-plugin-deployment.md).
+- **Submission blocker:** public landing privacy/docs URLs return 503. The
+  landing project was not resumed. Connector rescan, actual host interaction,
+  physical-iPhone checks and new video remain outstanding; no submission made.
+
+## Earlier engineering checkpoint — 2026-09-13
 
 - Fresh-main integration: `origin/main` at `39466efd44c5947ac433b1d8869da8ca8a2af7ae`
   was merged with remediation head `b4e1a4473` in an isolated worktree.
