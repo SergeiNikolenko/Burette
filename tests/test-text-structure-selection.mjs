@@ -128,8 +128,25 @@ assert.deepEqual(
     selector: { atom_index: [0, 1] },
     granularity: "atom",
     lineCount: 2,
+    record: 0,
   },
 );
+
+// Atom lines in a later SDF record resolve against that record's own counts line.
+const sdf = [mol, "$$$$", mol, "$$$$", ""].join("\n");
+const secondRecordAtom = rangeForLines(sdf, 17, 17);
+assert.deepEqual(
+  textStructureSelectionFromRange(documentFor("sdf", sdf), secondRecordAtom.from, secondRecordAtom.to),
+  {
+    label: "Atom 3",
+    selector: { atom_index: 2 },
+    granularity: "atom",
+    lineCount: 1,
+    record: 1,
+  },
+);
+const betweenRecords = rangeForLines(sdf, 7, 10);
+assert.equal(textStructureSelectionFromRange(documentFor("sdf", sdf), betweenRecords.from, betweenRecords.to), null);
 
 const mol2 = [
   "@<TRIPOS>MOLECULE",

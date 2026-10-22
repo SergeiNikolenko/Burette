@@ -494,6 +494,14 @@ The grid's **H** control also drives the inspector's 2D and 3D previews. The
 inspector channel forwards the display choice with each molecule update, without
 reloading its iframe or resetting the camera for a visibility-only update.
 
+Selecting atom lines in an SDF/MOL text view also marks them in the grid. The
+host sends `gridSourceAtomSelection` with the 0-based `record` and the record's
+file atom indices (at most 256). The grid selects and reveals that card and
+highlights those atoms and the bonds between them; with H hidden, file indices
+map to the drawn heavy atoms and selected H lines are skipped. The inspector
+receives the same highlight. A collapsed caret sends an empty list, which
+clears the highlight. Mol* receives text selections only from the first record.
+
 The ligand 2D preview keeps a square drawing area. Mouse-wheel zoom stays inside
 the drawing and does not move the 3D camera. Its lasso uses RDKit atom locations
 and retained source coordinates to select the same atoms in Mol*, without

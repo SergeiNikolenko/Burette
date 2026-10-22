@@ -33,7 +33,7 @@ export function TextFileViewer({
 }: {
   document: TextFileDocument;
   openPaths?: MarkdownOpenPaths;
-  onStructureSelection?: (document: TextFileDocument, selection: TextStructureSelection) => void;
+  onStructureSelection?: (document: TextFileDocument, selection: TextStructureSelection | null) => void;
   sourceEditing?: {
     editable: boolean;
     content: string;
@@ -100,8 +100,7 @@ export function TextFileViewer({
       selectionTimeoutRef.current = window.setTimeout(() => {
         selectionTimeoutRef.current = null;
         const selection = resolve();
-        if (!selection) return;
-        const selectionKey = JSON.stringify([selection.granularity, selection.selector, selection.lineCount]);
+        const selectionKey = selection ? JSON.stringify([selection.granularity, selection.selector, selection.lineCount, selection.record]) : "";
         if (selectionKey === lastStructureSelectionKeyRef.current) return;
         lastStructureSelectionKeyRef.current = selectionKey;
         onStructureSelectionRef.current?.(documentRef.current, selection);
@@ -140,7 +139,11 @@ export function TextFileViewer({
             }
             if (!update.selectionSet) return;
             const range = update.state.selection.main;
-            if (range.empty) return;
+            // A collapsed caret releases highlights that only mirror the text.
+            if (range.empty) {
+              emitStructureSelection(() => null);
+              return;
+            }
             emitStructureSelection(() => textStructureSelectionFromRange(documentRef.current, range.from, range.to));
           }),
           keymap.of([

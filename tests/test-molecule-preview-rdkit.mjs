@@ -109,3 +109,20 @@ assert.equal(await drawInspector('all'), inspectorShown, 'the cache separates H 
 assert.match(inspectorHidden, /#FF7F7F/i, 'search highlighting survives H removal');
 assert.equal(inspectorCache.size, 2);
 console.log('Grid inspector: real caffeine depiction follows H state, caches both modes and retains highlights.');
+
+// Atoms picked in the SDF text mark the grid card. Hiding H shifts the drawn
+// indices when an H precedes heavy atoms in the file, and drops picked H.
+const gridSource = readFileSync(new URL('../PreviewExtension/Web/grid-viewer.js', import.meta.url), 'utf8');
+const sourceAtomMatch = new Function(`${gridSource.slice(gridSource.indexOf('  function sourceAtomMatch('), gridSource.indexOf('  function createRdkitSvgCache('))}; return sourceAtomMatch;`)();
+const methanolInput = a.get_mol('[H]OC([H])([H])[H]', JSON.stringify({ removeHs: false }));
+const methanolBlock = methanolInput.get_molblock();
+methanolInput.delete();
+const methanol = a.get_mol(methanolBlock);
+const fileAtomicNumbers = JSON.parse(methanol.get_json()).molecules[0].atoms.map(atom => atom.z ?? 6);
+assert.deepEqual(fileAtomicNumbers, [1, 8, 6, 1, 1, 1]);
+assert.deepEqual(sourceAtomMatch(methanol, [1, 2], fileAtomicNumbers), { atoms: [1, 2], bonds: [1] });
+methanol.remove_hs_in_place();
+assert.deepEqual(sourceAtomMatch(methanol, [0, 1, 2], fileAtomicNumbers), { atoms: [0, 1], bonds: [0] });
+assert.equal(sourceAtomMatch(methanol, [0], fileAtomicNumbers), null);
+methanol.delete();
+console.log('Grid text selection: file atoms map to drawn atoms with H shown and hidden.');
