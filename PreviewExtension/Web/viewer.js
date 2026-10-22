@@ -12507,6 +12507,122 @@ SOFTWARE.
     return molecules.every(molecule => sdfCollectionBondSignature(molecule) === signature);
   }
 
+  // Collections of different molecules (a congeneric series, conformers with
+  // renumbered atoms) superimpose on what they share: every molecule is matched
+  // to the first by growing a connected common substructure of heavy atoms, and
+  // the rigid fit uses only the matched pairs. Labels refined over three bond
+  // shells rank which atoms look alike, and among equally large matches the one
+  // with the lowest RMSD wins, so symmetric rings do not flip.
+  function sdfMoleculeMatchGraph(molecule, labelIds) {
+    const atoms = molecule?.atoms || [];
+    const heavy = atoms.map(atom => String(atom.element || '').toUpperCase() !== 'H');
+    const neighbors = atoms.map(() => []);
+    for (const bond of molecule?.bonds || []) {
+      const a = bond.a - 1;
+      const b = bond.b - 1;
+      if (heavy[a] && heavy[b]) { neighbors[a].push(b); neighbors[b].push(a); }
+    }
+    const intern = text => {
+      if (!labelIds.has(text)) labelIds.set(text, labelIds.size);
+      return labelIds.get(text);
+    };
+    let labels = atoms.map((atom, index) => intern(`${atom.element}:${neighbors[index].length}`));
+    const rounds = [labels];
+    for (let round = 0; round < 3; round += 1) {
+      const previous = labels;
+      labels = previous.map((label, index) => intern(`${label}|${neighbors[index].map(other => previous[other]).sort((x, y) => x - y).join(',')}`));
+      rounds.push(labels);
+    }
+    return { atoms, heavy, neighbors, rounds };
+  }
+
+  function sdfMatchSimilarity(reference, moving, a, b) {
+    let score = 0;
+    while (score < reference.rounds.length && reference.rounds[score][a] === moving.rounds[score][b]) score += 1;
+    return score;
+  }
+
+  // The strict pass pairs atoms of the same element; the loose pass, used when
+  // that finds fewer than three atoms, pairs any heavy atoms.
+  function sdfAtomsCompatible(reference, moving, a, b, anyElement) {
+    return anyElement || reference.atoms[a].element === moving.atoms[b].element;
+  }
+
+  function growSdfAtomMatch(reference, moving, seedA, seedB, anyElement) {
+    const matched = new Map([[seedA, seedB]]);
+    const used = new Set([seedB]);
+    const queue = [seedA];
+    for (let head = 0; head < queue.length; head += 1) {
+      const a = queue[head];
+      const b = matched.get(a);
+      const candidates = [];
+      for (const nextA of reference.neighbors[a]) {
+        if (matched.has(nextA)) continue;
+        for (const nextB of moving.neighbors[b]) {
+          if (used.has(nextB) || !sdfAtomsCompatible(reference, moving, nextA, nextB, anyElement)) continue;
+          candidates.push([sdfMatchSimilarity(reference, moving, nextA, nextB), nextA, nextB]);
+        }
+      }
+      candidates.sort((x, y) => y[0] - x[0]);
+      for (const [, nextA, nextB] of candidates) {
+        if (matched.has(nextA) || used.has(nextB)) continue;
+        // Every bond to an already matched atom must exist on both sides.
+        const bonded = reference.neighbors[nextA].filter(atom => matched.has(atom));
+        if (bonded.some(atom => !moving.neighbors[nextB].includes(matched.get(atom)))) continue;
+        if (moving.neighbors[nextB].some(atom => used.has(atom) && !bonded.some(other => matched.get(other) === atom))) continue;
+        matched.set(nextA, nextB);
+        used.add(nextB);
+        queue.push(nextA);
+      }
+    }
+    return [...matched];
+  }
+
+  function sdfCollectionAtomMatch(reference, moving) {
+    const point = atom => [atom.x, atom.y, atom.z];
+    const search = anyElement => {
+      const seeds = [];
+      for (let a = 0; a < reference.atoms.length; a += 1) {
+        if (!reference.heavy[a]) continue;
+        for (let b = 0; b < moving.atoms.length; b += 1) {
+          if (moving.heavy[b] && sdfAtomsCompatible(reference, moving, a, b, anyElement)) {
+            seeds.push([sdfMatchSimilarity(reference, moving, a, b), reference.neighbors[a].length, a, b]);
+          }
+        }
+      }
+      seeds.sort((x, y) => y[0] - x[0] || y[1] - x[1]);
+      let best = null;
+      for (const [, , a, b] of seeds.slice(0, 12)) {
+        const pairs = growSdfAtomMatch(reference, moving, a, b, anyElement);
+        if (pairs.length < 3 || (best && pairs.length < best.pairs.length)) continue;
+        const fit = pdbRigidAlignment(pairs.map(([, atom]) => point(moving.atoms[atom])), pairs.map(([atom]) => point(reference.atoms[atom])));
+        if (fit && (!best || pairs.length > best.pairs.length || fit.rmsd < best.rmsd)) best = { pairs, rmsd: fit.rmsd };
+      }
+      return best?.pairs || null;
+    };
+    return search(false) || search(true);
+  }
+
+  function sdfCollectionMatchable(molecules) {
+    return Array.isArray(molecules) && molecules.length > 1
+      && (molecules[0]?.atoms || []).filter(atom => String(atom.element || '').toUpperCase() !== 'H').length >= 3;
+  }
+
+  async function sdfCollectionAtomPairs(molecules, signal) {
+    const labelIds = new Map();
+    const reference = sdfMoleculeMatchGraph(molecules[0], labelIds);
+    const pairs = [null];
+    for (let index = 1; index < molecules.length; index += 1) {
+      if (index % 16 === 0) {
+        setStatus(`[web] Matching molecules: ${index + 1} / ${molecules.length}`);
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+      if (signal?.aborted) throw new DOMException('Alignment cancelled', 'AbortError');
+      pairs.push(sdfCollectionAtomMatch(reference, sdfMoleculeMatchGraph(molecules[index], labelIds)));
+    }
+    return pairs;
+  }
+
   const XYZ_ALIGNMENT_GAIN_THRESHOLD = 0.5;
 
   function xyzFrameAlignmentGain(frames) {
@@ -12527,13 +12643,16 @@ SOFTWARE.
     return best;
   }
 
-  async function alignXyzFramesToFirst(frames, signal) {
+  // Without atomPairs every frame is fitted by atom order; with them, frame i
+  // is fitted on its [referenceAtom, frameAtom] pairs and left in place when
+  // it has none.
+  async function alignXyzFramesToFirst(frames, signal, atomPairs = null) {
     const owner = activeMolstarPrepared;
     const assertCurrent = () => {
       if (signal?.aborted || activeMolstarPrepared !== owner) throw new DOMException('Alignment cancelled', 'AbortError');
     };
     assertCurrent();
-    if (!xyzFramesAlignable(frames)) throw new Error('Alignment needs every structure to list the same atoms in the same order.');
+    if (!atomPairs && !xyzFramesAlignable(frames)) throw new Error('Alignment needs every structure to list the same atoms in the same order.');
     const referencePoints = frames[0].atoms.map(atom => [atom.x, atom.y, atom.z]);
     const source = `${largestEigenvectorSymmetric4.toString()}; ${pdbRigidAlignment.toString()};
       self.onmessage = ({ data }) => {
@@ -12545,12 +12664,16 @@ SOFTWARE.
     const workerUrl = URL.createObjectURL(new Blob([source], { type: 'text/javascript' }));
     let worker;
     let rmsdTotal = 0;
+    let alignedCount = 0;
+    let matchedTotal = 0;
     const aligned = [frames[0]];
     try {
       worker = new Worker(workerUrl);
       for (let index = 1; index < frames.length; index++) {
         assertCurrent();
         const frame = frames[index];
+        const pairs = atomPairs?.[index];
+        if (atomPairs && !pairs) { aligned.push(frame); continue; }
         const result = await new Promise((resolve, reject) => {
           const cleanup = () => { clearInterval(watch); signal?.removeEventListener('abort', cancel); };
           const fail = error => { cleanup(); reject(error); };
@@ -12559,7 +12682,9 @@ SOFTWARE.
           signal?.addEventListener('abort', cancel, { once: true });
           worker.onmessage = ({ data }) => { cleanup(); data.error ? reject(new Error(data.error)) : resolve(data); };
           worker.onerror = event => fail(new Error(event.message || 'Alignment worker failed'));
-          worker.postMessage({ moving: frame.atoms.map(atom => [atom.x, atom.y, atom.z]), reference: referencePoints });
+          worker.postMessage(pairs
+            ? { moving: pairs.map(([, atom]) => [frame.atoms[atom].x, frame.atoms[atom].y, frame.atoms[atom].z]), reference: pairs.map(([atom]) => referencePoints[atom]) }
+            : { moving: frame.atoms.map(atom => [atom.x, atom.y, atom.z]), reference: referencePoints });
         });
         assertCurrent();
         const matrix = result.matrix;
@@ -12573,11 +12698,18 @@ SOFTWARE.
             z: matrix[2] * atom.x + matrix[6] * atom.y + matrix[10] * atom.z + matrix[14] });
         }
         rmsdTotal += result.rmsd;
+        alignedCount += 1;
+        matchedTotal += pairs ? pairs.length : frame.atoms.length;
         aligned.push({ ...frame, atoms });
         setStatus(`[web] Aligning structures: ${index + 1} / ${frames.length}`);
       }
       assertCurrent();
-      return { frames: aligned, averageRmsd: rmsdTotal / Math.max(1, frames.length - 1), atomCount: frames[0].atoms.length };
+      return {
+        frames: aligned,
+        averageRmsd: rmsdTotal / Math.max(1, alignedCount),
+        atomCount: Math.round(matchedTotal / Math.max(1, alignedCount)),
+        skipped: frames.length - 1 - alignedCount
+      };
     } finally { worker?.terminate(); URL.revokeObjectURL(workerUrl); }
   }
 
@@ -21643,6 +21775,11 @@ SOFTWARE.
         atoms: (molecule.atoms || []).map(atom => ({ symbol: atom.element, x: atom.x, y: atom.y, z: atom.z }))
       }))
       : null;
+    const sdfAlignByOrder = Boolean(sdfCollectionAlignFrames)
+      && xyzFramesAlignable(sdfCollectionAlignFrames) && sdfCollectionTopologyUniform(sdfAlignTarget.collectionMolecules);
+    const sdfAlignTitle = sdfAlignByOrder
+      ? 'Superimpose every molecule onto the first one by atom order'
+      : 'Superimpose every molecule onto the first one by their shared substructure';
     const align = prepared.dockingSceneMode || xyzAlignFrames || sdfCollectionAlignFrames ? document.createElement('button') : null;
     const storyAvailable = structureSceneStoryAvailable(prepared);
     const story = storyAvailable ? document.createElement('button') : null;
@@ -21704,7 +21841,7 @@ SOFTWARE.
     const alignmentSupported = Boolean(align) && (xyzAlignFrames
       ? xyzFramesAlignable(xyzAlignFrames)
       : sdfCollectionAlignFrames
-        ? xyzFramesAlignable(sdfCollectionAlignFrames) && sdfCollectionTopologyUniform(sdfAlignTarget.collectionMolecules)
+        ? sdfAlignByOrder || sdfCollectionMatchable(sdfAlignTarget.collectionMolecules)
         : Boolean(prepared.dockingSceneMode)
           && prepared.poses.length > 1
           && window.molstar?.BuretteSuperposition?.version === 1);
@@ -21722,12 +21859,12 @@ SOFTWARE.
         ? (xyzAlignFrames
           ? 'Alignment needs every structure to list the same atoms in the same order'
           : sdfCollectionAlignFrames
-            ? 'Alignment needs every molecule to list the same atoms in the same order'
+            ? 'Alignment needs a first molecule with at least three heavy atoms'
             : 'Superposition needs two or more loaded structures')
         : xyzAlignFrames
           ? 'Superimpose every structure onto the first one by atom order'
           : sdfCollectionAlignFrames
-            ? 'Superimpose every molecule onto the first one by atom order'
+            ? sdfAlignTitle
             : 'Automatically superimpose every structure onto the first one';
       align.hidden = !alignmentSupported;
       align.disabled = !alignmentSupported;
@@ -22403,7 +22540,8 @@ SOFTWARE.
         try {
           let result = null;
           if (enabling) {
-            result = await alignXyzFramesToFirst(sdfCollectionAlignFrames, alignmentAbortController.signal);
+            const atomPairs = sdfAlignByOrder ? null : await sdfCollectionAtomPairs(sdfAlignTarget.collectionMolecules, alignmentAbortController.signal);
+            result = await alignXyzFramesToFirst(sdfCollectionAlignFrames, alignmentAbortController.signal, atomPairs);
             const alignedMolecules = sdfAlignTarget.collectionMolecules.map((molecule, index) => ({
               ...molecule,
               atoms: (molecule.atoms || []).map((atom, atomIndex) => {
@@ -22437,10 +22575,12 @@ SOFTWARE.
             align.classList.toggle('active', enabling);
             align.setAttribute('aria-pressed', enabling ? 'true' : 'false');
             if (result) {
-              align.title = `Superimposed onto the first molecule by atom order · ${result.atomCount} atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
-              setStatus(`[web] Aligned ${sdfCollectionAlignFrames.length} molecules onto the first one by atom order (${result.atomCount} atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å).`);
+              const matchedBy = sdfAlignByOrder ? 'by atom order' : 'by their shared substructure';
+              const unmatched = result.skipped ? `, ${result.skipped} without a match kept in place` : '';
+              align.title = `Superimposed onto the first molecule ${matchedBy} · ${result.atomCount} atoms · average RMSD ${result.averageRmsd.toFixed(2)} Å`;
+              setStatus(`[web] Aligned ${sdfCollectionAlignFrames.length} molecules onto the first one ${matchedBy} (${result.atomCount} atoms, average RMSD ${result.averageRmsd.toFixed(2)} Å${unmatched}).`);
             } else {
-              align.title = 'Superimpose every molecule onto the first one by atom order';
+              align.title = sdfAlignTitle;
               setStatus('[web] Restored original molecule coordinates.');
             }
             setTimeout(hideStatus, 2200);

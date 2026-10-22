@@ -409,7 +409,13 @@ Spread arranges collection molecules in a grid in the 3D scene without changing
 the source coordinates. All/Spread loads each molecule as a separate structure,
 so selection and scene-tree operations stay scoped to that molecule. Stepping
 changes foreground styling without replacing the other structures. Align remains
-a separate operation and is hidden when the collection cannot be aligned.
+a separate operation. Conformers with identical atoms and bonds fit by atom
+order. Collections of different molecules fit each molecule onto the first by
+their shared substructure: a connected common fragment of heavy atoms grown from
+the most similar atom pairs, with consistent bonds, falling back to any heavy
+atoms when fewer than three share an element. Molecules without a match keep
+their coordinates. Align is hidden only when the first molecule has fewer than
+three heavy atoms.
 
 The initial Mol* canvas stays hidden until its background is configured. Paint
 waits use a timer fallback because WKWebView can suspend animation callbacks for

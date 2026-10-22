@@ -6745,21 +6745,23 @@ assert.match(structureInfoPanel, /opacitySendTimer\.current = window\.setTimeout
 // A ghost background surface over a whole collection would be re-sorted every
 // frame at full grid resolution; the coarser grid keeps it interactive.
 assert.match(previewViewer, /type: 'molecular-surface', typeParams: \{ \.\.\.typeParams, resolution: ghost \? 2 : 0\.5 \}/);
-// SDF collections get the same atom-order Align toggle the XYZ overlay has:
-// enabled for homogeneous collections (conformers/poses of one molecule),
-// visible-but-disabled with an explanation otherwise, and re-applied when a
-// reload rebuilds `prepared` from the raw file.
+// SDF collections get the Align toggle the XYZ overlay has, re-applied when a
+// reload rebuilds `prepared` from the raw file. Conformers of one molecule fit
+// by atom order; collections of different molecules fit on their shared
+// substructure.
 assert.match(previewViewer, /const sdfCollectionAlignFrames = sdfAlignSignature/);
 assert.match(previewViewer, /const align = prepared\.dockingSceneMode \|\| xyzAlignFrames \|\| sdfCollectionAlignFrames \? document\.createElement\('button'\) : null/);
 // Element order alone is not enough: isomers share the element sequence with
-// different bonding, so SDF alignment also requires uniform bond topology.
-assert.match(previewViewer, /sdfCollectionAlignFrames\s*\? xyzFramesAlignable\(sdfCollectionAlignFrames\) && sdfCollectionTopologyUniform\(sdfAlignTarget\.collectionMolecules\)/);
+// different bonding, so atom-order fitting also requires uniform bond topology.
+assert.match(previewViewer, /&& xyzFramesAlignable\(sdfCollectionAlignFrames\) && sdfCollectionTopologyUniform\(sdfAlignTarget\.collectionMolecules\);/);
+assert.match(previewViewer, /\? sdfAlignByOrder \|\| sdfCollectionMatchable\(sdfAlignTarget\.collectionMolecules\)/);
+assert.match(previewViewer, /const atomPairs = sdfAlignByOrder \? null : await sdfCollectionAtomPairs\(/);
 assert.match(previewViewer, /function sdfCollectionTopologyUniform\(molecules\)/);
 // A rebuild that fails after aligned layers were swapped in must restore the
 // originals, or the scene keeps aligned coordinates behind an "Align" button.
 assert.match(previewViewer, /const revertFailedSdfCollectionAlignment = \(enabling\) => \{/);
 assert.match(previewViewer, /if \(sdfCollectionAlignment\?\.original\) applySdfCollectionAlignmentLayers\(sdfAlignTarget, sdfCollectionAlignment\.original\);/);
-assert.match(previewViewer, /'Alignment needs every molecule to list the same atoms in the same order'/);
+assert.match(previewViewer, /'Alignment needs a first molecule with at least three heavy atoms'/);
 assert.match(previewViewer, /else if \(align && alignmentSupported && sdfCollectionAlignFrames\) \{/);
 assert.match(previewViewer, /function restoreSdfCollectionAlignment\(prepared\)/);
 assert.match(previewViewer, /restoreSdfCollectionAlignment\(prepared\);/);
