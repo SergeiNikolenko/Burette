@@ -347,6 +347,7 @@ const controlsViewer = { plugin: {
 } };
 controlsWindow.sessionStorage.setItem('burette.trajectoryControl.saved_scene', '42');
 const controlContext = vm.createContext({
+  syncSceneTreeClearance: () => {},
   trajectoryControlIndices: new Map(), window: controlsWindow, document: controlsDocument, File, console, sessionStorage: controlsWindow.sessionStorage,
   activeViewer: controlsViewer, activeConfig: { documentId: 'saved_scene', activeModel: 0 }, activeMolstarPrepared: null, activeDockingPrepared: null,
   activeStructureAlignmentControl: null, activeStructurePoseSetter: null, activeSdfCollectionPoseSetter: null, activeTrajectoryPlaybackControl: null,
