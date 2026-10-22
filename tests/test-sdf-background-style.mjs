@@ -228,9 +228,10 @@ assert.deepEqual([renders, reports], [1, 1]);
     setSdfCollectionContextOpacity: value => value,
     applySdfCollectionVisibility: async (_viewer, _prepared, index) => { selectedIndex = index; },
     agentActionFailure: (_action, _code, message) => { throw Error(message); },
+    postSdfCollectionContextChanged() {},
   };
   const names = ['trajectoryControlStorageKey', 'readTrajectoryControlIndex', 'writeTrajectoryControlIndex',
-    'setSdfCollectionMoleculeFromAction', 'agentFrameIndexFailure',
+    'setSdfCollectionMoleculeFromAction', 'agentFrameIndexFailure', 'normalizeSdfCollectionContextStyle',
     ...['Style', 'Color', 'Opacity'].map(name => `setSdfCollectionContext${name}FromAction`)];
   runInNewContext(names.map(extract).join('\n'), poseContext);
   assert.equal((await poseContext.setSdfCollectionMoleculeFromAction({ index: 1 })).ok, true);
@@ -248,3 +249,37 @@ assert.deepEqual([renders, reports], [1, 1]);
   assert.equal(poseContext.readTrajectoryControlIndex(poseContext.activeConfig, prepared, 9), 2);
 }
 console.log('Pose selection survives denied storage and subsequent background appearance actions');
+
+// Agent background actions reject unknown values instead of silently applying
+// Match/Colored/40%, and report the applied set so the inspector cannot show a
+// stale choice. The inspector's own actions (notify: false) are not echoed.
+{
+  const stored = new Map();
+  const posted = [];
+  const appearanceContext = {
+    activeConfig: { documentId: 'doc-1' }, activeMolstarPrepared: { kind: 'sdf-collection' },
+    activeViewer: {}, activeSdfPoseMode: 'single',
+    setSdfCollectionContextStyle: value => (stored.set('style', value), value),
+    setSdfCollectionContextOpacity: value => (stored.set('opacity', value), value),
+    setSdfCollectionContextColor: value => (stored.set('color', value), value),
+    readSdfCollectionContextStyle: () => stored.get('style') ?? 'match',
+    readSdfCollectionContextOpacity: () => stored.get('opacity') ?? 0.4,
+    readSdfCollectionContextColor: () => stored.get('color') ?? 'colored',
+    postHostMessage: message => posted.push(message),
+  };
+  runInNewContext(['agentActionFailure', 'normalizeSdfCollectionContextStyle', 'postSdfCollectionContextChanged',
+    ...['Style', 'Color', 'Opacity'].map(name => `setSdfCollectionContext${name}FromAction`)].map(extract).join('\n'), appearanceContext);
+  for (const [name, action, code] of [
+    ['Style', { style: 'surface' }, 'INVALID_STYLE'],
+    ['Color', { color: 'blue' }, 'INVALID_COLOR'],
+    ['Opacity', { opacity: '0.7' }, 'INVALID_OPACITY'],
+  ]) {
+    assert.equal((await appearanceContext[`setSdfCollectionContext${name}FromAction`](action)).error.code, code);
+  }
+  assert.equal(stored.size, 0, 'Rejected values must not change stored preferences');
+  assert.equal(posted.length, 0);
+  await appearanceContext.setSdfCollectionContextStyleFromAction({ style: 'molecular-surface' });
+  await appearanceContext.setSdfCollectionContextOpacityFromAction({ opacity: 0.7, notify: false });
+  assert.deepEqual(plain(posted), [{ type: 'sdfContextChanged', documentId: 'doc-1', style: 'molecular-surface', opacity: 0.4, color: 'colored' }]);
+}
+console.log('Background agent actions validate values and notify the inspector');
