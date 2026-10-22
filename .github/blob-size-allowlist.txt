@@ -196,3 +196,4 @@ plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CgVX
 plugins/burette-agent/browser-shell-dist/assets/native-viewer-menus-DEoKtlj0.js
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-BMKp5Z-D.js
 plugins/burette-agent/browser-shell-dist/assets/index-Dpu_oRwI.css
+plugins/burette-agent/browser-shell-dist/assets/viewer-C3u9xZg_.js
