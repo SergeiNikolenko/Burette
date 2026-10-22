@@ -131,9 +131,11 @@ The shell is a workspace, not a brand canvas.
 
 The compact picker shows the current filename and one pose counter. Its menu is
 the same Atlas menu as Style (`styleMenu`, `atlas-menu-item` rows), kept opaque
-over the scene. File rows lead with a disclosure chevron; pose rows align with
-the file name and keep their score in tertiary text. The current file starts
-expanded; other files start collapsed.
+over the scene. Rows use the scene tree's compact metrics (24 px rows, 12 px
+labels) and one hover highlight that slides between them like the tree's. File
+rows lead with a disclosure chevron; pose rows align with the file name and keep
+their score in tertiary text. The current file starts expanded; other files
+start collapsed.
 
 Visibility follows the scene tree. Clicking a pose row shows or hides it, and an
 eye marks every pose on screen; hidden poses read in secondary text and show an
@@ -141,7 +143,8 @@ eye-off on hover. The file eye shows or hides the whole collection and dims when
 only part of it is visible. Shown poses stay on screen while stepping through
 other poses; the last visible pose cannot be hidden. A visible pose carries the
 tree's colour dot, which opens the same colour and representation menu as its
-tree row. The chevron only folds the list. Scores remain visible without
+tree row beside the picker; the picker stays open and the dot follows colour
+changes live. The chevron only folds the list. Scores remain visible without
 repeated file hints or counters. Secondary clicks inside the picker do not open
 the browser iframe menu.
 

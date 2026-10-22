@@ -8144,6 +8144,7 @@ SOFTWARE.
       for (const node of nodes) root.appendChild(sceneTreeNodeElement(node));
     }
     body.replaceChildren(root);
+    document.querySelector('.buret-docking-poses')?.dispatchEvent(new Event('buret-scene-tree-rendered'));
     updateSceneTreeStoryCaption();
     requestAnimationFrame(() => root.classList.add('buret-tree-animate'));
     const hovered = sceneTreeHoverRef
@@ -20783,11 +20784,11 @@ SOFTWARE.
       dot.className = 'buret-tree-dot buret-docking-pose-dot';
       dot.setAttribute('aria-label', `Colour ${name}`);
       dot.hidden = true;
+      // The colour menu opens beside the picker, which stays open for more edits.
       dot.addEventListener('click', () => {
         if (!dot.dataset.ref) return;
-        const rect = dot.getBoundingClientRect();
-        setFileListOpen(false);
-        openSceneTreeMenu(dot.dataset.ref, rect.left, rect.bottom + 4);
+        closeSceneTreeMenu();
+        openSceneTreeMenu(dot.dataset.ref, fileList.getBoundingClientRect().right + 6, dot.getBoundingClientRect().top - 10);
       });
       poseDots.push({ dot, index });
       return dot;
@@ -20799,6 +20800,29 @@ SOFTWARE.
       fileList.className = 'buret-docking-pose-files';
       fileList.setAttribute('role', 'menu');
       fileList.setAttribute('aria-label', 'Poses by file');
+      // One block slides between rows, as in the scene tree, instead of each
+      // row painting its own hover fill.
+      const highlight = document.createElement('div');
+      highlight.className = 'buret-tree-highlight buret-docking-pose-highlight';
+      fileList.append(highlight);
+      const moveHighlight = (row) => {
+        if (!row) {
+          highlight.classList.remove('buret-tree-highlight-active');
+          return;
+        }
+        const listRect = fileList.getBoundingClientRect();
+        const rowRect = row.getBoundingClientRect();
+        const instant = !highlight.classList.contains('buret-tree-highlight-active');
+        highlight.classList.toggle('buret-tree-highlight-instant', instant);
+        highlight.style.width = `${rowRect.width}px`;
+        highlight.style.height = `${rowRect.height}px`;
+        highlight.style.transform = `translate(${rowRect.left - listRect.left - fileList.clientLeft}px, ${rowRect.top - listRect.top - fileList.clientTop + fileList.scrollTop}px)`;
+        highlight.classList.add('buret-tree-highlight-active');
+        if (instant) requestAnimationFrame(() => highlight.classList.remove('buret-tree-highlight-instant'));
+      };
+      fileList.addEventListener('pointermove', event => moveHighlight(event.target.closest('.buret-docking-pose-row')));
+      fileList.addEventListener('pointerleave', () => moveHighlight(null));
+      fileList.addEventListener('focusin', event => moveHighlight(event.target.closest('.buret-docking-pose-row')));
       poseGroups.forEach(group => {
         const section = document.createElement('div');
         section.className = 'buret-docking-pose-group';
@@ -21133,6 +21157,20 @@ SOFTWARE.
       }
       return selected;
     };
+    // Dots follow the live colours, so the tree's colour menu updates them too.
+    const updatePoseDots = (selected) => {
+      if (!fileList?.classList.contains('buret-atlas-menu')) return;
+      const molstarViewer = activeMolstarViewer();
+      const layers = activeDockingPoseCollectionState?.layers;
+      for (const { dot, index } of poseDots) {
+        const refs = selected.has(index) ? layers?.get(index)?.activeRefs : null;
+        const node = refs?.length ? dockingPoseTreeNode(molstarViewer, refs) : null;
+        dot.hidden = !node || node.value === null;
+        if (dot.hidden) continue;
+        dot.dataset.ref = node.ref;
+        dot.style.background = sceneTreeColorHex(node.value);
+      }
+    };
     const updateControls = () => {
       const controlBounds = trajectoryControlBounds(activePose);
       applyLabel(activePose);
@@ -21155,18 +21193,7 @@ SOFTWARE.
           select.setAttribute('aria-checked', count === indices.length ? 'true' : count ? 'mixed' : 'false');
           select.setAttribute('aria-label', `${count === indices.length ? 'Hide' : 'Show'} all poses in ${name}`);
         }
-        if (fileList?.classList.contains('buret-atlas-menu')) {
-          const molstarViewer = activeMolstarViewer();
-          const layers = activeDockingPoseCollectionState?.layers;
-          for (const { dot, index } of poseDots) {
-            const refs = selected.has(index) ? layers?.get(index)?.activeRefs : null;
-            const node = refs?.length ? dockingPoseTreeNode(molstarViewer, refs) : null;
-            dot.hidden = !node || node.value === null;
-            if (dot.hidden) continue;
-            dot.dataset.ref = node.ref;
-            dot.style.background = sceneTreeColorHex(node.value);
-          }
-        }
+        updatePoseDots(selected);
       }
       if (storyStep && storyTitle && storySummary) {
         const storyPayload = structureStoryPayload();
@@ -21525,6 +21552,7 @@ SOFTWARE.
       label.addEventListener('click', () => {
         setFileListOpen(!isFileListOpen());
       });
+      if (hasPoseGroups) root.addEventListener('buret-scene-tree-rendered', () => updatePoseDots(selectedPoseIndices()));
       fileButtons.forEach((button, index) => {
         button.addEventListener('pointerenter', (event) => {
           const targetPose = fileTargets[index];
@@ -21547,6 +21575,7 @@ SOFTWARE.
       const onOutsidePointerDown = (event) => {
         if (!isFileListOpen()) return;
         if (event.target instanceof Node && root.contains(event.target)) return;
+        if (event.target instanceof Element && event.target.closest('#buret-scene-tree-menu')) return;
         setFileListOpen(false);
       };
       window.addEventListener('pointerdown', onOutsidePointerDown, true);

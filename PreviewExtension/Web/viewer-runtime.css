@@ -5448,11 +5448,14 @@ body:not(.buret-theme-light):not(.burette-mobile-host) .buret-molecule-context-s
 }
 
 /* The docking pose picker is the viewer's Atlas menu (styleMenu adds the
-   surface tokens), kept opaque over the scene. Files and poses share one
-   trailing check column; pins show on hover and stay while pinned. */
+   surface tokens), kept opaque over the scene. Rows use the scene tree's
+   compact metrics and one shared highlight that slides between them. */
 body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content {
+  position: absolute;
   display: none;
   margin: 0;
+  padding: 4px;
+  gap: 0;
   min-width: min(248px, calc(100vw - 28px));
   max-height: min(360px, 60vh);
   border: 0;
@@ -5461,16 +5464,16 @@ body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content {
   backdrop-filter: none;
   box-shadow: 0 0 0 var(--dropdown-overlay-ring-width) var(--color-border-overlay), var(--shadow-dropdown-overlay);
   color: var(--color-text);
-  font: var(--menu-font-size)/var(--menu-line-height) var(--font-sans);
+  font: 12px/16px var(--font-sans);
 }
 body .buret-docking-poses-files-open .buret-docking-pose-files.atlas-menu-content { display: flex; }
 .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-row {
   position: relative;
   display: block;
+  z-index: 1;
   min-height: 0;
-  border-radius: var(--radius-xl);
 }
-.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-row:is(:hover, :focus-within) {
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-highlight {
   background: var(--color-background-primary-ghost-hover);
 }
 body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button {
@@ -5485,17 +5488,18 @@ body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button {
 body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .atlas-menu-item {
   display: flex;
   width: 100%;
-  min-height: 28px;
-  padding: 5px 56px 5px 8px;
-  gap: 6px;
-  border-radius: var(--radius-xl);
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 52px 4px 6px;
+  gap: 4px;
+  border-radius: 8px;
   text-align: left;
 }
-body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose { padding-left: 30px; }
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose { padding-left: 26px; }
 .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-file-name { flex: 1 1 auto; }
 .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-file-meta {
   color: var(--color-text-tertiary);
-  font-size: inherit;
+  font-size: 10.5px;
 }
 .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-chevron {
   width: 16px;
@@ -5524,11 +5528,11 @@ body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.bu
   right: 4px;
   display: grid;
   place-items: center;
-  width: 24px;
-  height: 24px;
-  margin-top: -12px;
+  width: 20px;
+  height: 20px;
+  margin-top: -10px;
   padding: 0;
-  border-radius: var(--radius-lg);
+  border-radius: 6px;
   color: var(--color-text-secondary);
 }
 body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-eye:hover {
@@ -5541,7 +5545,7 @@ body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.bu
 body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-dot {
   position: absolute;
   top: 50%;
-  right: 32px;
+  right: 30px;
   width: 10px;
   height: 10px;
   margin-top: -5px;
