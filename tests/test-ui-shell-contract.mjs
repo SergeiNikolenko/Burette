@@ -1926,7 +1926,7 @@ assert.match(gridViewer, /rootMargin: `\$\{RDKIT_CARD_ROOT_MARGIN\}px 0px`/);
 assert.match(gridViewer, /const XYZRENDER_CARD_ROOT_MARGIN = '600px 0px';/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_SIZE = 12;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_MIN_CONCURRENCY = 1;/);
-assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_TIMEOUT_MS = 60000;/);
+assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_TIMEOUT_MS = 120000;/);
 assert.doesNotMatch(gridViewer, /XYZRENDER_CARD_BATCH_MAX_CONCURRENCY/);
 assert.match(gridViewer, /const XYZRENDER_CARD_BATCH_DELAY_MS = 16;/);
 assert.match(gridViewer, /const XYZRENDER_CARD_PREFETCH_DELAY_MS = 200;/);
@@ -8061,11 +8061,13 @@ assert.match(gridUi, /id="rdkit-use-input-coords"/);
 assert.match(gridUi, /Use file coords/);
 assert.match(gridViewer, /function initRdkitCoordinatesControl\(\)/);
 assert.match(gridViewer, /function syncRdkitCoordinatesControl\(\)/);
-assert.match(gridViewer, /const hasInputCoordinates = hasInputCoordinateRows\(\)/);
-assert.match(gridViewer, /control\.hidden = state\.cardRenderer !== 'rdkit' \|\| !hasInputCoordinates/);
+// RDKit cards offer the toggle only when the file carries coordinates; xyzrender
+// cards always offer it and switch between a fresh 2D layout and the 3D pose.
+assert.match(gridViewer, /const hasInputCoordinates = !xyzrender && hasInputCoordinateRows\(\)/);
+assert.match(gridViewer, /control\.hidden = !xyzrender && !hasInputCoordinates/);
 // The checkbox became an icon toggle button driven by `aria-pressed`.
-assert.match(gridViewer, /toggle\.disabled = !hasInputCoordinates/);
-assert.match(gridViewer, /toggle\.setAttribute\('aria-pressed', hasInputCoordinates && state\.rdkitUseInputCoords \? 'true' : 'false'\)/);
+assert.match(gridViewer, /toggle\.disabled = xyzrender \? !state\.rdkit : !hasInputCoordinates/);
+assert.match(gridViewer, /toggle\.setAttribute\('aria-pressed', use3D \? 'true' : 'false'\)/);
 assert.match(gridViewer, /syncRdkitCoordinatesControl\(\);\s*syncGridEditControls\(\);\s*let footerText;/s);
 assert.match(gridViewer, /footer\.textContent = footerText;\s*footer\.hidden = !footerText;/);
 assert.match(gridViewer, /function hasMolblockInputCoordinates\(value\)/);
@@ -8187,8 +8189,9 @@ assert.match(gridViewer, /window\.clearTimeout\(state\.xyzrenderBatchTimer\)/);
 assert.match(gridViewer, /function xyzrenderCardInputText\(row, record\)/);
 assert.match(gridViewer, /const preview = '<div class="buret-molecule-loading" aria-label="Rendering molecule with xyzrender"><\/div>';/);
 assert.match(gridViewer, /hash\(xyzrenderCardInputText\(row, record\)\)/);
-assert.match(gridViewer, /inputDataBase64: textToBase64\(xyzrenderCardInputText\(row, record\)\)/);
-assert.match(gridViewer, /inputDataBase64: textToBase64\(xyzrenderCardInputText\(job\.row, job\.record\)\)/);
+// Both card paths send the displayed coordinates (2D layout or 3D pose).
+assert.match(gridViewer, /const input = xyzrenderCardInput\(row, record\);[\s\S]*?inputDataBase64: textToBase64\(input\.text\)/);
+assert.match(gridViewer, /const input = xyzrenderCardInput\(job\.row, job\.record\);[\s\S]*?inputDataBase64: textToBase64\(input\.text\)/);
 assert.doesNotMatch(gridViewer, /function drawXyzrenderPlaceholder\(row\)/);
 assert.doesNotMatch(gridViewer, /target\.classList\.remove\('buret-xyzrender-preview'\)/);
 assert.match(gridUi, /id="card-renderer"/);
@@ -8332,7 +8335,7 @@ assert.match(gridViewer, /const filledSmiles = !state\.remoteMode && fillMissing
 assert.match(gridViewer, /function drawXyzrenderCard\(row, cfg\)/);
 assert.match(gridViewer, /function xyzrenderFragmentText\(record\)/);
 assert.match(gridViewer, /function xyzrenderCardInputText\(row, record\)/);
-assert.match(gridViewer, /inputDataBase64: textToBase64\(xyzrenderCardInputText\(row, record\)\)/);
+assert.match(gridViewer, /function xyzrenderCardInput\(row, record\)/);
 assert.match(gridViewer, /function prepareXyzrenderCardSVG\(svg\)/);
 assert.match(gridViewer, /markSVGForFitting\(html, 'data-buret-xyzrender-svg'\)/);
 assert.match(gridViewer, /cacheHit: payload\?\.cacheHit === true/);
@@ -8464,7 +8467,7 @@ assert.match(gridViewer, /if \(returnFocus\?\.isConnected\) returnFocus\.focus\?
 assert.doesNotMatch(gridViewer, /installMoleculeDetailResize/);
 assert.doesNotMatch(gridViewer, /data-buret-detail-resize/);
 assert.doesNotMatch(gridViewer, /function drawXyzrenderFallback/);
-assert.match(gridViewer, /inputExtension: record\.inputExtension/);
+assert.match(gridViewer, /extension: record\.inputExtension/);
 assert.doesNotMatch(gridViewer, /function molblockForRow/);
 assert.doesNotMatch(gridViewer, /return \{ extension: 'smi'/);
 assert.match(gridViewer, /fetch\(endpoint, \{/);

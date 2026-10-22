@@ -1,3 +1,4 @@
+import { retimeGif } from "../lib/xyzrender-gif-timing";
 import { renderXyzrender, saveXyzrenderFile, type SavedXyzrenderFile } from "../lib/xyzrender-transport";
 import { createAnimationBudget } from "../lib/xyzrender-animation-budget";
 import { useXyzrenderPlayback } from "../hooks/use-xyzrender-playback";
@@ -187,6 +188,7 @@ function AnimationContent({ source, angles, reserve, suspended, visible, initial
   // a playing preview turns around the new orientation without stopping. The
   // static drawing for the same angles only swaps orientationRef afterwards
   // and must not restart the render.
+  const renderedGif = useRef<{ animation: AnimationFrames; bytes: Uint8Array } | null>(null);
   const motionRequest = useRef<{ source: AnimationSource; angles?: number[]; input: MotionInput } | null>(null);
   const motionInput = useMemo(() => {
     const previous = motionRequest.current;
@@ -238,6 +240,7 @@ function AnimationContent({ source, angles, reserve, suspended, visible, initial
           if (!reserve(reservationKey, Math.max(size * size * frames, decoded.width * decoded.height * decoded.frames.length))) throw new Error("Animation memory limit reached");
           retainedPixels = decoded.width * decoded.height * decoded.frames.length;
           const previousCount = previewCount;
+          renderedGif.current = { animation: decoded, bytes };
           setAnimation(decoded); setPreview(draft);
           setRange(current => previousCount ? current.map(value => Math.min(decoded.frames.length - 1, Math.round(value * decoded.frames.length / previousCount))) : [0, decoded.frames.length - 1]);
           setFrame(value => previousCount ? Math.min(decoded.frames.length - 1, Math.round(value * decoded.frames.length / previousCount)) : 0);
@@ -277,7 +280,10 @@ function AnimationContent({ source, angles, reserve, suspended, visible, initial
     const controller = new AbortController(); exportController.current = controller;
     setSaving(true); setPlaying(false); setProgress(0); setError(""); setSaved(null);
     try {
-      const gif = gifBytesToBase64(await encodeAnimation(animation, range[0], range[1], fps, setProgress, controller.signal));
+      const original = renderedGif.current;
+      const timed = original?.animation === animation && range[0] === 0 && range[1] === animation.frames.length - 1
+        ? retimeGif(original.bytes, fps) : null;
+      const gif = gifBytesToBase64(timed ?? await encodeAnimation(animation, range[0], range[1], fps, setProgress, controller.signal));
       if (applyToCanvas) {
         postToXyzrenderViewer(source.documentId, { type: 'applyXyzrenderAnimation', itemId: source.itemId, image: 'data:image/gif;base64,' + gif, commit: true });
         setLive(false);

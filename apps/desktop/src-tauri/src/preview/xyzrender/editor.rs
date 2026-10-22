@@ -237,7 +237,7 @@ pub(crate) fn render(request: EditorRequest, directory: &Path) -> Result<EditorR
             .map(|value| value.arguments(&directory.join("animation.gif")))
             .transpose()?
             .unwrap_or_default();
-        let run = |reference: Option<&Path>| -> Result<(std::process::ExitStatus, String), String> {
+        let run = |reference: Option<&Path>| -> Result<(bool, String), String> {
             let mut args = build_xyzrender_args(
                 &input,
                 output,
@@ -247,6 +247,16 @@ pub(crate) fn render(request: EditorRequest, directory: &Path) -> Result<EditorR
                 None,
             );
             args.extend(animation_args.iter().cloned());
+            // Animations reuse a warm worker and its frame processes; a new
+            // process per request spent most of its time importing.
+            if let Some(launch) = animation.and_then(|_| xyzrender_worker_launch(&executable)) {
+                let outcome = crate::preview::xyzrender_pool::run_cli(
+                    &launch,
+                    &args,
+                    Duration::from_secs(120),
+                )?;
+                return Ok((outcome.success, outcome.log));
+            }
             let mut command = Command::new(&executable);
             command
                 .args(args)
@@ -269,16 +279,16 @@ pub(crate) fn render(request: EditorRequest, directory: &Path) -> Result<EditorR
                 XYZRENDER_TIMEOUT
             };
             run_xyzrender_process(command, &directory.join("render.log"), timeout)
+                .map(|(status, log)| (status.success(), log))
         };
-        let (mut status, mut log) = run(reference)?;
-        let periodic_reference = reference.is_some()
-            && !status.success()
-            && xyzrender_ref_unsupported_for_periodic(&log);
+        let (mut success, mut log) = run(reference)?;
+        let periodic_reference =
+            reference.is_some() && !success && xyzrender_ref_unsupported_for_periodic(&log);
         if periodic_reference {
             let _ = fs::remove_file(output);
-            (status, log) = run(None)?;
+            (success, log) = run(None)?;
         }
-        if !status.success() {
+        if !success {
             let detail = log
                 .lines()
                 .rev()

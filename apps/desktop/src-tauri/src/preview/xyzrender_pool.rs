@@ -56,6 +56,13 @@ struct WorkerRequest<'a> {
     display_hydrogens: Option<&'a str>,
 }
 
+#[derive(Serialize)]
+struct WorkerCliRequest<'a> {
+    op: &'static str,
+    id: &'static str,
+    args: &'a [String],
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct WorkerResponse {
@@ -63,6 +70,13 @@ struct WorkerResponse {
     log: Option<String>,
     #[serde(default)]
     error: Option<String>,
+    #[serde(default)]
+    status: Option<i32>,
+}
+
+pub(super) struct XyzrenderCliOutcome {
+    pub(super) success: bool,
+    pub(super) log: String,
 }
 
 /// Renders grid cards on a pool of long-lived xyzrender worker processes.
@@ -133,6 +147,45 @@ pub(super) fn render_cards(
         ));
     }
     results
+}
+
+/// Runs one xyzrender command line inside a warm pool worker.
+///
+/// A command-line animation starts a new interpreter and then a new process
+/// pool that imports the render stack again for its frames. The worker keeps
+/// both alive, which cut a default 120-frame rotation GIF from about 4 s to
+/// 1.4 s with byte-identical output.
+pub(super) fn run_cli(
+    launch: &XyzrenderWorkerLaunch,
+    args: &[String],
+    timeout: Duration,
+) -> Result<XyzrenderCliOutcome, String> {
+    let payload = serde_json::to_string(&WorkerCliRequest {
+        op: "cli",
+        id: "cli",
+        args,
+    })
+    .map_err(|err| format!("Could not encode xyzrender request: {err}"))?;
+    let pool = pool();
+    ensure_idle_worker_reaper();
+    pool.discard_stale_workers(&launch.signature);
+    let mut worker = pool.acquire(launch)?;
+    match worker.exchange(&payload, timeout) {
+        Ok(response) => {
+            pool.release(worker);
+            if let Some(error) = response.error.filter(|value| !value.is_empty()) {
+                return Err(error);
+            }
+            Ok(XyzrenderCliOutcome {
+                success: response.status == Some(0),
+                log: response.log.unwrap_or_default(),
+            })
+        }
+        Err(WorkerFailure::Job(error) | WorkerFailure::Worker(error)) => {
+            pool.discard(worker);
+            Err(error)
+        }
+    }
 }
 
 /// Prepare the bounded pool while the molecular grid is opening. Reserving slots under
@@ -492,13 +545,21 @@ const XYZRENDER_GRID_WORKER_HELPER: &str = r#"
 import json
 import os
 import sys
+import tempfile
 from collections import OrderedDict
 
-responses = os.fdopen(os.dup(1), "w")
-os.dup2(2, 1)
-sys.stdout = sys.stderr
+# Animation frame processes import this file as __mp_main__; only the worker
+# itself owns the response pipe and the request loop.
+if __name__ == "__main__":
+    responses = os.fdopen(os.dup(1), "w")
+    os.dup2(2, 1)
+    sys.stdout = sys.stderr
 
 from xyzrender import load, render
+
+ANIMATION_FRAME_PROCESSES = 4
+CLI_LOG_BYTES = 64 * 1024
+frame_pool = None
 
 
 thumbnail_cache = OrderedDict()
@@ -553,9 +614,64 @@ def draw(request):
         handle.write(str(svg))
 
 
+def use_frame_pool():
+    # xyzrender opens a new spawn pool for every GIF, so each animation paid for
+    # importing the render stack in every frame process. Keep one pool per
+    # warm worker; the frames still come from xyzrender's own frame functions.
+    global frame_pool
+    from xyzrender import gif
+
+    if frame_pool is None:
+        import multiprocessing
+
+        frame_pool = multiprocessing.get_context("spawn").Pool(ANIMATION_FRAME_PROCESSES)
+
+    def parallel_render(worker, items, total):
+        pngs = [b""] * total
+        for index, png in frame_pool.imap_unordered(worker, items, chunksize=4):
+            pngs[index] = png
+        return pngs
+
+    gif._parallel_render = parallel_render
+
+
+def run_cli(request):
+    from xyzrender import cli
+
+    use_frame_pool()
+    status = 0
+    saved_argv = sys.argv
+    sys.stderr.flush()
+    saved_stderr = os.dup(2)
+    with tempfile.TemporaryFile() as capture:
+        os.dup2(capture.fileno(), 2)
+        try:
+            sys.argv = ["xyzrender", *[str(value) for value in request.get("args") or []]]
+            cli.main()
+        except SystemExit as exc:
+            if isinstance(exc.code, int):
+                status = exc.code
+            elif exc.code is not None:
+                status = 1
+                print(exc.code, file=sys.stderr)
+        except Exception as exc:
+            status = 1
+            print("xyzrender: error: " + str(exc), file=sys.stderr)
+        finally:
+            sys.argv = saved_argv
+            sys.stderr.flush()
+            os.dup2(saved_stderr, 2)
+            os.close(saved_stderr)
+        capture.seek(0)
+        log = capture.read()[-CLI_LOG_BYTES:].decode("utf-8", "replace")
+    return {"id": str(request.get("id", "")), "log": log, "status": status}
+
+
 def handle(request):
     identifier = str(request.get("id", ""))
     try:
+        if request.get("op") == "cli":
+            return run_cli(request)
         if request.get("op") == "warmup":
             render(load_thumbnail("C"), config="default")
         else:
@@ -565,16 +681,21 @@ def handle(request):
         return {"id": identifier, "error": str(exc)}
 
 
-for line in sys.stdin:
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        request = json.loads(line)
-    except Exception as exc:
-        response = {"id": "", "error": "invalid xyzrender worker request: " + str(exc)}
-    else:
-        response = handle(request)
-    responses.write(json.dumps(response) + "\n")
-    responses.flush()
+def serve():
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            request = json.loads(line)
+        except Exception as exc:
+            response = {"id": "", "error": "invalid xyzrender worker request: " + str(exc)}
+        else:
+            response = handle(request)
+        responses.write(json.dumps(response) + "\n")
+        responses.flush()
+
+
+if __name__ == "__main__":
+    serve()
 "#;

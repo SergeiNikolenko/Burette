@@ -687,7 +687,7 @@ function GridActionToolbar(props: GridControlProps) {
       {/* A pressed-state button rather than a checkbox: grid-viewer owns both the
           `hidden` on the wrapper and the pressed state on the button by id. */}
       <span id="rdkit-use-input-coords-control" className="buret-rdkit-coords-control" hidden>
-        <ControlTooltip label="2D diagram / 3D file coordinates"><Button variant="ghost" size="sm"
+        <ControlTooltip label="2D/3D coordinates"><Button variant="ghost" size="sm"
           id="rdkit-use-input-coords"
           className="ab-btn"
           type="button"

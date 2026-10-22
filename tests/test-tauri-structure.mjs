@@ -1668,8 +1668,9 @@ assert.match(gridViewerJS, /void refreshRemote\(config\(\)\)/);
 assert.match(gridViewerJS, /function xyzrenderFragmentText\(record\)/);
 assert.match(gridViewerJS, /const smiles = firstLine\.trim\(\)\.split\(\/\\s\+\/u\)\[0\]/);
 assert.match(gridViewerJS, /function xyzrenderCardInputText\(row, record\)/);
-assert.match(gridViewerJS, /inputDataBase64: textToBase64\(xyzrenderCardInputText\(row, record\)\)/);
-assert.match(gridViewerJS, /inputDataBase64: textToBase64\(xyzrenderCardInputText\(job\.row, job\.record\)\)/);
+// Cards send the displayed coordinates: a flat layout or the 3D pose.
+assert.match(gridViewerJS, /const input = xyzrenderCardInput\(row, record\);[\s\S]*?inputDataBase64: textToBase64\(input\.text\)/);
+assert.match(gridViewerJS, /const input = xyzrenderCardInput\(job\.row, job\.record\);[\s\S]*?inputDataBase64: textToBase64\(input\.text\)/);
 assert.match(gridViewerJS, /preset: currentXyzrenderPreset\(cfg\)/);
 assert.match(gridViewerJS, /preset: currentXyzrenderPreset\(job\.cfg\)/);
 assert.match(gridViewerJS, /function prepareXyzrenderCardSVG\(svg\)/);
