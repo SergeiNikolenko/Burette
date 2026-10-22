@@ -481,6 +481,27 @@ Distance, angle and dihedral picking temporarily use atom granularity and clear
 prior selection. Completion or Escape restores the previous selection and picking
 level.
 
+The Mol* toolbar and ligand 2D preview share the **H** display toggle within
+one viewer document. It hides or shows existing explicit hydrogens and retains
+the choice across pose changes. Only representation parameters and disposable
+RDKit depiction copies change; source structures, Copy SMILES and save/edit
+inputs remain unchanged. This display choice is not a chemistry edit or a global
+preference.
+
+The grid's **H** control also drives the inspector's 2D and 3D previews. The
+`gridRowHover` row carries `hydrogenDisplay` (`none` or `all`) and a bounded
+`highlightSmarts` query for re-matching after depiction-only H removal. The
+inspector channel forwards the display choice with each molecule update, without
+reloading its iframe or resetting the camera for a visibility-only update.
+
+Selecting atom lines in an SDF/MOL text view also marks them in the grid. The
+host sends `gridSourceAtomSelection` with the 0-based `record` and the record's
+file atom indices (at most 256). The grid selects and reveals that card and
+highlights those atoms and the bonds between them; with H hidden, file indices
+map to the drawn heavy atoms and selected H lines are skipped. The inspector
+receives the same highlight. A collapsed caret sends an empty list, which
+clears the highlight. Mol* receives text selections only from the first record.
+
 The ligand 2D preview keeps a square drawing area. Mouse-wheel zoom stays inside
 the drawing and does not move the 3D camera. Its lasso uses RDKit atom locations
 and retained source coordinates to select the same atoms in Mol*, without

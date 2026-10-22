@@ -13,6 +13,8 @@ const gate = new Promise(resolve => { release = resolve; });
 const loaded = [];
 let presets = 0;
 const context = {
+  molstarShowHydrogens: false,
+  async toggleMolstarHydrogens() { context.molstarShowHydrogens = !context.molstarShowHydrogens; },
   config: { inspectorPreview: true, inspectorChannel: 'this-inspector' }, activeConfig: {}, console,
   activeViewer: { handleResize() {}, plugin: { canvas3d: { setProps() {}, commit() {} }, animationLoop: { async tick() {}, stop() {}, start() {} }, managers: { camera: { orientAxes() {} } }, async clear() { await gate; } } },
   structureDataForMolstar: () => ({ data: 'initial' }),
@@ -26,7 +28,7 @@ const context = {
   window: { parent, addEventListener: (_name, handler) => handlers.push(handler) },
 };
 await vm.runInNewContext(`(async () => {${block}})()`, context);
-const send = (molblock, channel = 'this-inspector', from = parent) => handlers[0]({ source: from, data: { source: 'burette-inspector-host', channel, molblock } });
+const send = (molblock, channel = 'this-inspector', from = parent, hydrogenDisplay = 'none') => handlers[0]({ source: from, data: { source: 'burette-inspector-host', channel, molblock, hydrogenDisplay } });
 await send('initial');
 await send('ignored', 'another-inspector');
 await send('ignored', null);
@@ -39,4 +41,10 @@ release();
 await first;
 assert.deepEqual(loaded, ['second', 'latest']);
 assert.equal(presets, 2);
+await send('latest', 'this-inspector', parent, 'all');
+assert.equal(context.molstarShowHydrogens, true);
+assert.deepEqual(loaded, ['second', 'latest'], 'H-only updates preserve the loaded molecule and camera');
+await send('latest');
+assert.equal(context.molstarShowHydrogens, false);
+assert.equal(presets, 2, 'H-only updates preserve the chosen style');
 console.log('Inspector shared renderer: channel isolation, WebKit sender identity, bounded payloads, latest-row coalescing and preset retention passed.');

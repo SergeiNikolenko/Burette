@@ -72,6 +72,7 @@ console.log("Inspector large-drawing path checks passed.");
     structurePalette: () => undefined, PREVIEW_RENDER_SCALE: 2, SVG_CACHE_LIMIT: 200,
     loadDerivedEngines: async () => ({ rdkit: { get_mol: () => ({
       get_smiles: () => "CCO", set_new_coords() { coordsReset += 1; }, delete() {},
+      add_hs_in_place() {}, remove_hs_in_place() {},
       get_svg_with_highlights: (value) => { options = JSON.parse(value); return "<svg/>"; },
     }) } }),
   };

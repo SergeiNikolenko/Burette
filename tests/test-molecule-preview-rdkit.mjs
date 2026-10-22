@@ -20,8 +20,8 @@ const window = {
     return 'blob:packaged-rdkit';
   },
 };
-const api = runInNewContext(`${loader}\n${draw}\n({ init: molstarPreviewInitRDKit, draw: molstarMoleculePreviewRDKitSVG })`, {
-  window, Uint8Array, molstarPreviewRdkit: null, molstarPreviewRdkitPromise: null,
+const api = runInNewContext(`${loader}\n${draw}\n({ init: molstarPreviewInitRDKit, draw: molstarMoleculePreviewRDKitSVG, showHydrogens(value) { molstarShowHydrogens = value; } })`, {
+  window, Uint8Array, molstarShowHydrogens: true, molstarPreviewRdkit: null, molstarPreviewRdkitPromise: null,
   molstarPreviewSvgCache: new Map(), MOLSTAR_PREVIEW_RDKIT_SVG_SIZE: 400,
   runtimeURL: (name, fallback) => window[name] || fallback,
   withTimeout: async promise => promise,
@@ -53,3 +53,76 @@ assert.match(svg, /<svg/);
 assert.match(svg, /class='bond-/);
 assert.doesNotMatch(svg, /data-buret-rdkit-svg="fallback"/);
 console.log('Native lazy asset resolution, shared initialization and real NAD RDKit 2D depiction passed');
+
+// Depiction-only H removal must retain the heavy atoms' original 3D positions
+// for lasso selection, and must not change the structure consumed by copy/save.
+const ethanol = a.get_mol('CCO');
+ethanol.add_hs_in_place();
+const entry = Object.freeze({ format: 'sdf', data: ethanol.get_molblock() });
+const originalSmiles = ethanol.get_smiles();
+const original = JSON.parse(ethanol.get_json()).molecules[0];
+ethanol.delete();
+const shown = await api.draw(entry);
+api.showHydrogens(false);
+const hidden = await api.draw(entry);
+api.showHydrogens(true);
+const restored = await api.draw(entry);
+const positions = drawing => [...drawing.matchAll(/data-source-position='([^']*)'/g)].map(match => match[1]);
+assert.equal(positions(shown).length, 9);
+assert.equal(positions(hidden).length, 3);
+assert.deepEqual(positions(hidden), positions(shown).slice(0, 3));
+assert.equal(restored, shown);
+const exported = a.get_mol(entry.data);
+assert.equal(exported.get_smiles(), originalSmiles);
+assert.equal(JSON.parse(exported.get_json()).molecules[0].atoms.length, original.atoms.length);
+exported.delete();
+console.log('Hydrogen depiction toggle, source atom mapping and unchanged export input passed');
+
+// The inspector redraws from molecular source, so it must apply the grid's H
+// choice itself instead of losing it when the small card SVG is discarded.
+const inspectorSource = readFileSync(new URL('../apps/desktop/src/components/grid-hover-molecule.tsx', import.meta.url), 'utf8');
+const effectStart = inspectorSource.indexOf('    const token = ++renderTokenRef.current;');
+const effectEnd = inspectorSource.indexOf('  }, [scaffold, showingScaffold, shown, theme, wellSize, cardDrawing]);', effectStart);
+assert.ok(effectStart > 0 && effectEnd > effectStart);
+const effect = inspectorSource.slice(effectStart, effectEnd);
+const caffeine = readFileSync(new URL('../samples/structures/small-molecules/caffeine.sdf', import.meta.url), 'utf8');
+const inspectorCache = new Map();
+const drawInspector = hydrogenDisplay => new Promise((resolve, reject) => {
+  runInNewContext(`(() => {${effect}})()`, {
+    renderTokenRef: { current: 0 }, wellSize: { width: 300, height: 300 }, cardDrawing: null,
+    showingScaffold: false, scaffold: { kind: 'idle' },
+    shown: { molblock: caffeine, hydrogenDisplay, highlightSmarts: '[#6]=O' },
+    theme: 'light', paperColour: () => [1, 1, 1], wellNodeRef: { current: null },
+    structurePalette: () => undefined, svgCache: inspectorCache, SVG_CACHE_LIMIT: 200,
+    PREVIEW_RENDER_SCALE: 2, loadDerivedEngines: async () => ({ rdkit: a }),
+    setSvg: svg => svg ? resolve(svg) : reject(new Error('Inspector drawing failed')),
+    setInvalidSource: reject,
+  });
+});
+const inspectorShown = await drawInspector('all');
+const inspectorHidden = await drawInspector('none');
+assert.notEqual(inspectorShown, inspectorHidden);
+const drawnAtomIds = svg => new Set([...svg.matchAll(/atom-(\d+)/g)].map(match => Number(match[1])));
+assert.equal(drawnAtomIds(inspectorShown).size, 24);
+assert.equal(drawnAtomIds(inspectorHidden).size, 14);
+assert.equal(await drawInspector('all'), inspectorShown, 'the cache separates H modes');
+assert.match(inspectorHidden, /#FF7F7F/i, 'search highlighting survives H removal');
+assert.equal(inspectorCache.size, 2);
+console.log('Grid inspector: real caffeine depiction follows H state, caches both modes and retains highlights.');
+
+// Atoms picked in the SDF text mark the grid card. Hiding H shifts the drawn
+// indices when an H precedes heavy atoms in the file, and drops picked H.
+const gridSource = readFileSync(new URL('../PreviewExtension/Web/grid-viewer.js', import.meta.url), 'utf8');
+const sourceAtomMatch = new Function(`${gridSource.slice(gridSource.indexOf('  function sourceAtomMatch('), gridSource.indexOf('  function createRdkitSvgCache('))}; return sourceAtomMatch;`)();
+const methanolInput = a.get_mol('[H]OC([H])([H])[H]', JSON.stringify({ removeHs: false }));
+const methanolBlock = methanolInput.get_molblock();
+methanolInput.delete();
+const methanol = a.get_mol(methanolBlock);
+const fileAtomicNumbers = JSON.parse(methanol.get_json()).molecules[0].atoms.map(atom => atom.z ?? 6);
+assert.deepEqual(fileAtomicNumbers, [1, 8, 6, 1, 1, 1]);
+assert.deepEqual(sourceAtomMatch(methanol, [1, 2], fileAtomicNumbers), { atoms: [1, 2], bonds: [1] });
+methanol.remove_hs_in_place();
+assert.deepEqual(sourceAtomMatch(methanol, [0, 1, 2], fileAtomicNumbers), { atoms: [0, 1], bonds: [0] });
+assert.equal(sourceAtomMatch(methanol, [0], fileAtomicNumbers), null);
+methanol.delete();
+console.log('Grid text selection: file atoms map to drawn atoms with H shown and hidden.');

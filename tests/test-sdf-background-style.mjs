@@ -110,6 +110,7 @@ const plugin = {
 };
 const update = runInNewContext(extract('updateCollectionRepresentations') + '\nupdateCollectionRepresentations', {
   collectionRepresentations: cache, setTimeout: callback => { yields++; setTimeout(callback, 0); },
+  molstarHydrogenRepresentation: representation => representation,
 });
 for (const type of providers.keys()) {
   assert.equal(await update(plugin, targets, [{ type, color: 'element-symbol', typeParams: { alpha: 0.4 } }]), true);

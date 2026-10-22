@@ -1,0 +1,219 @@
+(() => {
+  'use strict';
+
+  // Hidden until viewer.js reports the first rendered frame or an error (see
+  // revealViewer there). The timer only guards against viewer.js never running.
+  document.documentElement.classList.add('buret-viewer-booting');
+  window.setTimeout(() => document.documentElement.classList.remove('buret-viewer-booting'), 8000);
+
+  function mountToolbar() {
+    if (document.getElementById('buret-toolbar')) return;
+    const app = document.getElementById('app');
+    if (!app) return;
+    app.insertAdjacentHTML('afterend', `
+      <div id="buret-toolbar" role="toolbar" aria-label="Burette preview controls">
+        <div class="buret-toolbar-content" data-buret-toolbar-content>
+          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="left" aria-label="Toggle left panel" title="Toggle object tree"><span data-buret-mode-icon="SidebarLeft" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Toggle object tree</span></button>
+          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="right" aria-label="Toggle right panel" title="Toggle properties panel"><span data-buret-mode-icon="SidebarRight" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Toggle properties panel</span></button>
+          <button class="buret-button buret-panel-toggle" type="button" data-buret-toggle="sequence" aria-label="Toggle sequence panel" title="Toggle sequence panel">Seq<span class="buret-tooltip" role="tooltip">Toggle sequence panel</span></button>
+          <div class="buret-molstar-preset-slot" data-buret-molstar-preset-slot>
+            <button id="buret-molstar-preset-trigger" class="buret-button buret-molstar-preset-trigger" type="button" data-buret-molstar-preset-trigger aria-label="Representation preset" aria-haspopup="menu" aria-controls="buret-molstar-preset-menu" aria-expanded="false" title="Representation preset">
+              <span data-buret-molstar-preset-label>Style: Auto</span>
+              <span class="buret-molstar-preset-chevron" data-buret-mode-icon="ChevronDown" aria-hidden="true"></span>
+              <span class="buret-tooltip" role="tooltip">Choose component and representation preset</span>
+            </button>
+          </div>
+          <button class="buret-button" type="button" data-buret-action="hydrogens" data-buret-hydrogens aria-label="Hide hydrogens" aria-pressed="true" title="Hide hydrogens">H<span class="buret-tooltip" role="tooltip">Hide hydrogens</span></button>
+          <button class="buret-button buret-assembly-symmetry hidden" type="button" data-buret-action="assembly-symmetry" aria-label="Show assembly symmetry axes" aria-pressed="false" title="Show assembly symmetry axes">Symmetry<span class="buret-tooltip" role="tooltip">Show assembly symmetry axes</span></button>
+          <button class="buret-button buret-molstar-lasso" type="button" data-buret-action="molstar-lasso" aria-label="Lasso select" aria-pressed="false" title="Lasso select">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.2 5.6c2.3-2 6.6-2.4 10.2-.8 3.5 1.6 5.4 4.6 4.5 7.3-.8 2.5-3.7 4.2-7.3 4.2-1.5 0-3-.3-4.3-.9l-2.6 3.2c-.4.5-1.2.2-1.2-.4l.2-4.1C2.5 12 2.6 7.8 5.2 5.6Zm1.3 1.5c-1.8 1.5-1.7 4.4.2 5.8.2.1.3.4.3.7l-.1 1.8 1.6-1.9c.3-.3.7-.4 1-.2 1 .6 2 .9 3.1.9 2.8 0 4.9-1.2 5.4-2.7.5-1.6-.8-3.6-3.5-4.8-2.9-1.3-6.4-1.1-8 .4Z" fill="currentColor"/></svg>
+            <span class="buret-tooltip" role="tooltip">Select all atoms inside the lasso</span>
+          </button>
+          <button class="buret-button" type="button" data-buret-action="theme" aria-label="Theme: Auto (system)" title="Theme: Auto (system)"><span class="buret-tooltip" role="tooltip">Theme: Auto (system)</span></button>
+          <button class="buret-button buret-save-modified hidden" type="button" data-buret-action="save-modified-structure" aria-label="Save modified structure" title="Save modified structure">Save<span class="buret-tooltip" role="tooltip">Save modified structure</span></button>
+          <button class="buret-button buret-mode-button hidden" type="button" data-buret-action="ketcher" aria-label="Open in Ketcher" title="Open in Ketcher"><span data-buret-mode-icon="Edit" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Open this structure in Ketcher</span></button>
+          <button class="buret-button buret-xyzrender-inspector" type="button" data-buret-action="xyzrender-inspector" aria-label="Appearance">Appearance<span class="buret-tooltip" role="tooltip">Rendering appearance settings</span></button>
+          <div class="buret-xyzrender-preset-slot" data-buret-xyzrender-preset-slot>
+            <select class="buret-select" data-buret-xyzrender-preset aria-label="Rendering preset" title="Rendering preset"></select>
+            <span class="buret-tooltip" role="tooltip">Choose rendering preset</span>
+          </div>
+          <button class="buret-button buret-xyzrender-tune hidden" type="button" data-buret-action="xyzrender-tune" aria-label="Rendering controls" title="Rendering controls">
+            <span data-buret-mode-icon="SettingsSlider" aria-hidden="true"></span>
+            <span class="buret-tooltip" role="tooltip">Rendering controls</span>
+          </button>
+          <button class="buret-button buret-mode-button hidden" type="button" data-buret-action="sdf-grid" aria-label="Show SDF grid" title="Show SDF grid"><span data-buret-mode-icon="Grid" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Return to the SDF grid</span></button>
+          <button class="buret-button buret-pose-toggle hidden" type="button" data-buret-action="sdf-poses" aria-label="Show all SDF poses together" aria-pressed="false" title="Show all SDF poses together">All<span class="buret-tooltip" role="tooltip">Show all SDF poses together</span></button>
+          <div class="buret-renderer-control" data-buret-renderer-control>
+            <button class="buret-button buret-mode-button buret-renderer-choice" type="button" data-buret-renderer="molstar" aria-label="Interactive view" title="Interactive view"><span data-buret-mode-icon="Cube" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Interactive view</span></button>
+            <button class="buret-button buret-mode-button buret-renderer-choice" type="button" data-buret-renderer="xyzrender-external" aria-label="Rendered view" title="Rendered view"><span data-buret-mode-icon="Camera" aria-hidden="true"></span><span class="buret-tooltip" role="tooltip">Rendered view</span></button>
+          </div>
+        </div>
+        <button class="buret-button buret-grip" type="button" data-drag-handle aria-label="Collapse controls" aria-expanded="true" title="Collapse controls">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5h2v2H8V5Zm6 0h2v2h-2V5ZM8 11h2v2H8v-2Zm6 0h2v2h-2v-2ZM8 17h2v2H8v-2Zm6 0h2v2h-2v-2Z" fill="currentColor"/></svg>
+          <span class="buret-tooltip" role="tooltip">Drag or collapse controls</span>
+        </button>
+          <div class="buret-xyzrender-popover hidden" data-buret-xyzrender-popover role="dialog" aria-label="xyzrender controls">
+            <div class="buret-xyzrender-popover-header">
+              <div class="buret-xyzrender-popover-title">xyzrender</div>
+              <button class="buret-button buret-xyzrender-header-action" type="button" data-buret-action="xyzrender-reset-orientation" aria-label="Reset xyzrender 3D view" title="Reset xyzrender 3D view">Reset 3D<span class="buret-tooltip" role="tooltip">Reset xyzrender 3D view</span></button>
+              <button class="buret-button buret-xyzrender-header-action" type="button" data-buret-action="xyzrender-reset" aria-label="Reset xyzrender controls" title="Reset xyzrender controls">Reset<span class="buret-tooltip" role="tooltip">Reset xyzrender controls</span></button>
+            </div>
+            <div class="buret-xyzrender-section buret-xyzrender-section-flags">
+              <div class="buret-flag-list">
+                <label class="buret-flag-row">
+                  <span class="buret-flag-copy"><span class="buret-flag-label">Transparent</span></span>
+                  <input type="checkbox" data-buret-xctrl="transparentBackground" />
+                </label>
+                <label class="buret-flag-row">
+                  <span class="buret-flag-copy"><span class="buret-flag-label">Gradients</span></span>
+                  <select class="buret-input" data-buret-xctrl="gradients"><option value="">Default</option><option value="on">On</option><option value="off">Off</option></select>
+                </label>
+                <label class="buret-flag-row">
+                  <span class="buret-flag-copy"><span class="buret-flag-label">Fog</span></span>
+                  <select class="buret-input" data-buret-xctrl="fog"><option value="">Default</option><option value="on">On</option><option value="off">Off</option></select>
+                </label>
+                <label class="buret-flag-row">
+                  <span class="buret-flag-copy"><span class="buret-flag-label">VdW</span></span>
+                  <input type="checkbox" data-buret-xctrl="showVdw" />
+                </label>
+                <label class="buret-flag-row">
+                  <span class="buret-flag-copy"><span class="buret-flag-label">Hide bonds</span></span>
+                  <input type="checkbox" data-buret-xctrl="hideBonds" />
+                </label>
+              </div>
+            </div>
+          <details class="buret-xyzrender-advanced buret-xyzrender-crystal hidden" data-buret-xyzrender-crystal>
+            <summary>Crystal</summary>
+            <div class="buret-xyzrender-section buret-xyzrender-section-advanced">
+              <div class="buret-flag-list">
+                <label class="buret-flag-row">
+                  <span class="buret-flag-copy"><span class="buret-flag-label">Cell</span></span>
+                  <select class="buret-input" data-buret-xctrl="showCell"><option value="">Default</option><option value="on">On</option><option value="off">Off</option></select>
+                </label>
+                <label class="buret-flag-row">
+                  <span class="buret-flag-copy"><span class="buret-flag-label">Ghosts</span></span>
+                  <select class="buret-input" data-buret-xctrl="showGhosts"><option value="">Default</option><option value="on">On</option><option value="off">Off</option></select>
+                </label>
+                <label class="buret-flag-row">
+                  <span class="buret-flag-copy"><span class="buret-flag-label">Axes</span></span>
+                  <select class="buret-input" data-buret-xctrl="showAxes"><option value="">Default</option><option value="on">On</option><option value="off">Off</option></select>
+                </label>
+                <label class="buret-flag-row">
+                  <span class="buret-flag-copy"><span class="buret-flag-label">Supercell</span></span>
+                  <input class="buret-input" type="text" placeholder="2 2 1" data-buret-xctrl="supercell" />
+                </label>
+              </div>
+            </div>
+          </details>
+          <details class="buret-xyzrender-advanced" data-buret-xyzrender-field>
+            <summary>Field overlay</summary>
+            <div class="buret-xyzrender-section buret-xyzrender-section-advanced">
+              <div class="buret-field-grid">
+                <label class="buret-field"><span>Mode</span><select class="buret-input" data-buret-xctrl="fieldMode"><option value="">Auto</option><option value="off">Off</option><option value="density">Density</option><option value="mo">MO</option><option value="esp">ESP</option><option value="nci">NCI</option></select></label>
+                <label class="buret-field"><span>Iso</span><span class="buret-slider-row"><input class="buret-slider" type="range" min="0.01" max="2" step="0.01" value="0.3" data-buret-xctrl-slider="fieldIso" /><input class="buret-input buret-slider-value" type="number" min="0.01" step="0.01" placeholder="auto" data-buret-xctrl="fieldIso" /></span></label>
+                <label class="buret-field"><span>Opacity</span><span class="buret-slider-row"><input class="buret-slider" type="range" min="0" max="1" step="0.01" value="0.5" data-buret-xctrl-slider="fieldOpacity" /><input class="buret-input buret-slider-value" type="number" min="0" max="1" step="0.01" placeholder="auto" data-buret-xctrl="fieldOpacity" /></span></label>
+                <label class="buret-field"><span>Surface</span><select class="buret-input" data-buret-xctrl="fieldSurfaceStyle"><option value="">Auto</option><option value="solid">Solid</option><option value="mesh">Mesh</option><option value="contour">Contour</option><option value="dot">Dot</option></select></label>
+                <label class="buret-field"><span>MO + color</span><input class="buret-input" type="text" placeholder="steelblue" data-buret-xctrl="fieldMoPositiveColor" /></label>
+                <label class="buret-field"><span>MO - color</span><input class="buret-input" type="text" placeholder="maroon" data-buret-xctrl="fieldMoNegativeColor" /></label>
+                <label class="buret-field"><span>Density color</span><input class="buret-input" type="text" placeholder="steelblue" data-buret-xctrl="fieldDensityColor" /></label>
+                <label class="buret-field"><span>Palette</span><input class="buret-input" type="text" placeholder="viridis" data-buret-xctrl="fieldCmapPalette" /></label>
+                <label class="buret-field"><span>Range min</span><span class="buret-slider-row"><input class="buret-slider" type="range" min="-5" max="5" step="0.05" value="-1" data-buret-xctrl-slider="fieldCmapMin" /><input class="buret-input buret-slider-value" type="number" step="0.05" placeholder="auto" data-buret-xctrl="fieldCmapMin" /></span></label>
+                <label class="buret-field"><span>Range max</span><span class="buret-slider-row"><input class="buret-slider" type="range" min="-5" max="5" step="0.05" value="1" data-buret-xctrl-slider="fieldCmapMax" /><input class="buret-input buret-slider-value" type="number" step="0.05" placeholder="auto" data-buret-xctrl="fieldCmapMax" /></span></label>
+              </div>
+            </div>
+          </details>
+          <details class="buret-xyzrender-advanced" data-buret-xyzrender-appearance>
+            <summary>Appearance</summary>
+            <div class="buret-xyzrender-section buret-xyzrender-section-advanced">
+              <div class="buret-field-grid">
+                <label class="buret-field"><span>Atom scale</span><input class="buret-input" type="number" min="0" step="0.05" data-buret-xctrl="atomScale" /></label>
+                <label class="buret-field"><span>Bond width</span><input class="buret-input" type="number" min="0" step="0.1" data-buret-xctrl="bondWidth" /></label>
+                <label class="buret-field"><span>VdW scale</span><input class="buret-input" type="number" min="0" step="0.05" data-buret-xctrl="vdwScale" /></label>
+                <label class="buret-field buret-field-full"><span>Mol color</span><input class="buret-input" type="text" placeholder="#rrggbb or name" data-buret-xctrl="molColor" /></label>
+              </div>
+            </div>
+          </details>
+        </div>
+      </div>
+      <div id="buret-molstar-preset-menu" class="buret-molstar-preset-menu hidden" data-buret-molstar-preset-menu role="menu" aria-labelledby="buret-molstar-preset-trigger" aria-orientation="vertical"></div>
+      <div class="buret-molstar-preset-preview hidden" data-buret-molstar-preset-preview role="button" tabindex="0" aria-label="Apply preset preview">
+        <div class="buret-molstar-preset-preview-header">
+          <span data-buret-molstar-preset-preview-label>Preset preview</span>
+        </div>
+        <div class="buret-molstar-preset-preview-canvas" data-buret-molstar-preset-preview-canvas>
+          <canvas class="buret-molstar-preset-preview-image" data-buret-molstar-preset-preview-image aria-hidden="true"></canvas>
+          <div class="buret-molstar-preset-preview-stage" data-buret-molstar-preset-preview-stage aria-hidden="true" inert></div>
+        </div>
+        <div class="buret-molstar-preset-preview-state" data-buret-molstar-preset-preview-state aria-live="polite">Rendering preview…</div>
+      </div>
+      <div id="buret-viewport-corner" class="buret-viewport-corner">
+        <button id="buret-scene-tree-toggle" class="buret-corner-toggle hidden" type="button" data-buret-action="scene-tree" aria-label="Toggle scene tree" aria-haspopup="dialog" aria-controls="buret-scene-tree" aria-expanded="false" title="Scene tree (⌘T)">
+          <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg>
+          <span class="buret-tooltip" role="tooltip">Scene tree (⌘T)</span>
+        </button>
+      </div>
+      <div id="buret-viewport-rail" class="buret-viewport-rail hidden" role="toolbar" aria-label="Viewport controls"></div>
+      <div id="buret-selection-bar" class="buret-selection-bar hidden" role="toolbar" aria-label="Selection controls"></div>
+      <div id="buret-sequence-resize" class="buret-sequence-resize" data-buret-sequence-resize role="separator" aria-orientation="horizontal" aria-label="Resize sequence"></div>
+      <aside id="buret-scene-tree" class="buret-scene-tree hidden" data-buret-scene-tree role="dialog" aria-label="Scene tree" aria-hidden="true">
+        <div class="buret-scene-tree-header" data-buret-panel-handle>
+          <span class="buret-scene-tree-title">Scene</span>
+          <span class="buret-scene-tree-story hidden" data-buret-scene-tree-story></span>
+          <span class="buret-scene-tree-header-actions">
+          <button class="buret-scene-tree-header-action" type="button" data-buret-action="scene-tree-expand-all" aria-label="Collapse all" title="Collapse all"></button>
+          <button class="buret-scene-tree-header-action" type="button" data-buret-action="scene-tree-close" aria-label="Close scene tree" title="Close scene tree">
+            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+          </button>
+          </span>
+        </div>
+        <div class="buret-scene-tree-body" data-buret-scene-tree-body></div>
+      </aside>
+      <button id="buret-compute-menu-trigger" class="buret-generate-3d-control hidden" type="button" data-atlas-variant="surface" data-atlas-size="lg" data-color="primary" data-pill data-buret-action="generate-3d-conformer" aria-label="Open molecular compute menu" aria-haspopup="menu" aria-controls="buret-compute-menu" aria-expanded="false">
+        <span class="atlas-button-inner">
+          <span class="atlas-loading-indicator" aria-hidden="true"></span>
+          <span data-buret-generate-3d-label>Compute</span>
+        </span>
+        <span class="buret-tooltip" role="tooltip">Molecular calculations</span>
+      </button>
+      <div id="buret-compute-menu" class="buret-generate-3d-menu hidden" data-buret-generate-3d-menu role="menu" aria-labelledby="buret-compute-menu-trigger" aria-orientation="vertical">
+        <button class="atlas-menu-item" type="button" role="menuitem" data-buret-compute-operation="generate3d">Generate 3D</button>
+        <button class="atlas-menu-item" type="button" role="menuitem" data-buret-compute-operation="generateEnsemble">Generate conformer ensemble</button>
+        <button class="atlas-menu-item" type="button" role="menuitem" data-buret-compute-operation="optimizeGeometry">Optimize geometry</button>
+        <button class="atlas-menu-item" type="button" role="menuitem" data-buret-compute-operation="semiempiricalRm1">RM1 energy &amp; charges</button>
+        <button class="atlas-menu-item" type="button" role="menuitem" data-buret-compute-operation="alignPoses">Align &amp; compare poses</button>
+      </div>
+      <aside class="buret-preview-dock buret-preview-dock-right" data-buret-preview-dock="right" aria-label="Right dock" aria-hidden="true"></aside>
+      <section class="buret-preview-dock buret-preview-dock-bottom" data-buret-preview-dock="bottom" aria-label="Bottom dock" aria-hidden="true"></section>
+    `);
+    if (window.__BURETTE_HOSTED_MCP_WIDGET__ === true) {
+      const toolbar = document.getElementById('buret-toolbar');
+      const grip = toolbar?.querySelector('[data-drag-handle]');
+      if (toolbar && grip) {
+        toolbar.classList.add('collapsed');
+        document.body?.classList.add('buret-toolbar-collapsed');
+        grip.setAttribute('aria-expanded', 'false');
+        grip.setAttribute('aria-label', 'Expand controls');
+        grip.setAttribute('title', 'Expand controls');
+        const fallbackGripClick = event => {
+          event.preventDefault();
+          event.stopPropagation();
+          const collapsed = !toolbar.classList.contains('collapsed');
+          toolbar.classList.toggle('collapsed', collapsed);
+          document.body?.classList.toggle('buret-toolbar-collapsed', collapsed);
+          grip.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+          grip.setAttribute('aria-label', collapsed ? 'Expand controls' : 'Collapse controls');
+          grip.setAttribute('title', collapsed ? 'Expand controls' : 'Collapse controls');
+        };
+        window.__BURETTE_HOSTED_GRIP_FALLBACK__ = fallbackGripClick;
+        grip.addEventListener('click', fallbackGripClick);
+      }
+    }
+  }
+
+  window.BuretteViewerShell = { mountToolbar };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mountToolbar, { once: true });
+  } else {
+    mountToolbar();
+  }
+})();
