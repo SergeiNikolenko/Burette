@@ -2,6 +2,7 @@ import { isMolecularDelimitedFile } from "../lib/delimited-molecules";
 import type { useDockLayout } from "./use-dock-layout";
 import { useCallback } from "react";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
+import { prepareDockCameraTransfer } from "../lib/dock-camera-transfer";
 import { invoke } from "@tauri-apps/api/core";
 
 import type { StatusKind } from "../components/types";
@@ -69,7 +70,7 @@ export function useAppDockPayloadOpen({
   textDocuments,
 }: UseAppDockPayloadOpenOptions) {
   return useCallback(async (input: DockDropInput) => {
-    const { addDockDrop, setDockDocument, setDockTool } = captureDockTarget();
+    const { workspaceId, addDockDrop, setDockDocument, setDockTool } = captureDockTarget();
     const ketcherItem = input.payload.items?.find((item) => item.kind === "ketcher") ?? null;
     const itemPaths = (input.payload.items ?? [])
       .map((item) => item.path)
@@ -96,7 +97,11 @@ export function useAppDockPayloadOpen({
       ? { existingDocumentId: null, unopenedPaths: cleanPaths }
       : resolveDockDropPaths(cleanPaths, documents, textDocuments);
     const dockPreferences = { ...preferences, rendererMode: input.rendererMode ?? "auto" as const };
-    if (existingDocumentId) setDockDocument(input.area, existingDocumentId);
+    if (existingDocumentId) {
+      const source = documents.find(document => document.id === existingDocumentId);
+      if (input.tabKind === "files" && source) await prepareDockCameraTransfer(input.area, source, workspaceId);
+      setDockDocument(input.area, existingDocumentId);
+    }
     if (unopenedPaths.length === 0 && cleanRecords.length === 0) {
       addDockDrop(input);
       pushStatus(`Opened existing document in ${input.area === "right" ? "right dock" : "bottom dock"}`);

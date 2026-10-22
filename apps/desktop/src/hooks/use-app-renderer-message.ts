@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { rememberRendererViewState, rendererViewReloadOptions } from "../lib/renderer-view-state";
+import { rememberDockCamera } from "../lib/dock-camera-transfer";
 import type { ViewerDocument, ViewerPreferences, ViewerReloadOptions } from "../types";
 
 type RefValue<T> = { current: T };
@@ -41,10 +42,11 @@ export function useAppRendererMessage({
   skipNextPreferenceRefreshRef,
   xyzrenderOrientationRefRef,
 }: UseAppRendererMessageOptions) {
-  const handleRendererMessage = useCallback((body: RendererMessageBody) => {
+  const handleRendererMessage = useCallback((body: RendererMessageBody, eventSource: MessageEventSource | null) => {
     if (body?.type === "rendererViewStateChanged") {
       const document = documents.find((item) => item.id === body.documentId);
       if (document) {
+        if (rememberDockCamera(eventSource, document.id, body.viewState)) return true;
         const persisted = rememberRendererViewState(document.path, body.viewState);
         window.dispatchEvent(new CustomEvent("burette:renderer-view-checkpoint", { detail: { documentId: document.id, persisted } }));
       }

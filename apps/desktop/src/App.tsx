@@ -240,6 +240,7 @@ export default function App() {
     bottomDockDocumentId,
     bottomDockTool,
     dockDroppedStructures,
+    captureDockTarget,
     toggleDock,
     setDockOpen,
     setDockSize,

@@ -226,6 +226,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
       ref={panel}
       className="dock-panel"
       data-area={area}
+      data-workspace-id={contentState?.activeTab?.id}
       data-active-tab={activeTab.kind}
       data-open={open ? "true" : "false"}
       data-drop-active={dropActive || undefined}
@@ -248,12 +249,13 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
           onOpenScreen={dockScreenLocation(area, activeTab.kind, state) ? () => openDockScreen(area, activeTab.kind, state, actions) : undefined}
           onAdd={showAddMenu} onHide={() => actions.setDockOpen(area, false)} />
         <div className="dock-panel-body" role="tabpanel" id={panelId} aria-labelledby={`${panelId}-${activeTab.kind}`} tabIndex={0}>
-        {contentState && filesVisited.current && <div className="dock-files-view" hidden={contentKind !== "files"}
+        {contentState && filesVisited.current && <div key={contentState.activeTab?.id} className="dock-files-view" hidden={contentKind !== "files"}
           inert={contentKind !== "files"} style={contentKind === "files" ? undefined : { display: "none" }}>
           <DockPanelContent area={area} activeTabKind="files" state={contentState} actions={actions} filesVisible={open && contentKind === "files"}
             dockDrops={contentState.dockDroppedStructures.filter(item => item.area === area && item.tabKind === "files")} />
         </div>}
         {contentState && contentKind !== "files" && <DockPanelContent
+          key={contentState.activeTab?.id}
           area={area} activeTabKind={contentKind} state={contentState} actions={actions} dockDrops={dockDrops}
         />}
         </div>

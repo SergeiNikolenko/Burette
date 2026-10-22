@@ -3395,6 +3395,14 @@
       if (hostViewerVisible && activeViewer) scheduleViewerResize(activeViewer);
       return;
     }
+    if (event.source === window.parent && body.type === 'captureRendererViewState') {
+      if (typeof body.requestId !== 'string' || body.requestId.length > 128) return;
+      const camera = activeViewer?.plugin?.canvas3d?.camera;
+      postHostMessage({ type: 'rendererViewStateCaptured', requestId: body.requestId,
+        viewState: { camera: captureMolstarCameraSnapshot(activeViewer) },
+        viewport: camera ? { width: camera.viewport.width, height: camera.viewport.height } : null });
+      return;
+    }
     if (event.source === window.parent && body.type === 'hostLayoutGesture') {
       hostLayoutGestureActive = body.active === true;
       if (hostLayoutGestureActive) deferViewerResize(activeViewer);
@@ -29521,11 +29529,15 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       if (window.BuretteNativeFirstFrame) throw error;
     }
     if (window.BuretteViewerDisposed) return;
-    await restoredView;
+    const sourceViewport = await restoredView;
     const savedCamera = window.BuretteRendererViewState?.read(config.documentId, config.rendererViewState).camera;
     if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {
       molstarStructureFocusSerial += 1;
-      restoreMolstarCameraSnapshotNow(viewer, savedCamera);
+      const camera = sourceViewport
+        ? window.BuretteRendererViewState.transferCamera(savedCamera, sourceViewport, viewer.plugin.canvas3d?.camera?.viewport)
+        : savedCamera;
+      restoreMolstarCameraSnapshotNow(viewer, camera);
+      if (sourceViewport) saveRendererViewState();
     } else if ((isQuickLookHost() || prepared.fitSessionCamera) && !hasMolstarContextFocus(config)) {
       // Quick Look keeps the file's orientation and never animates the camera; it
       // only trades Mol*'s bounding-sphere distance for the atom-fitted one. An MVS

@@ -4379,7 +4379,7 @@ assert.match(appViewerRuntimeMessagesHook, /xyzrenderSelectionAction: bodySelect
 assert.doesNotMatch(app, /await openDocuments\(\[targetDocument\.path\], reloadOptions, undefined, \{ inActiveTab: true \}\)/);
 assert.match(appViewerReloadActionsHook, /const preferences = reloadOptions\?\.xyzrenderControls \|\| reloadOptions\?\.xyzrenderPreset/);
 assert.match(appViewerReloadActionsHook, /await openDocuments\(\[document\.path\], effectiveReloadOptions, \{ rendererMode: "xyzrender-external" \}, \{ inActiveTab: true \}\)/);
-assert.match(viewerBridgeMessagesLib, /handleRendererMessage\(body\)/);
+assert.match(viewerBridgeMessagesLib, /handleRendererMessage\(body, eventSource\)/);
 assert.match(appRendererMessageHook, /body\?\.type !== "setRenderer"/);
 assert.match(appRendererMessageHook, /xyzrenderOrientationRef: orientationRef \?\? xyzrenderOrientationRefRef\.current/);
 assert.match(appRendererMessageHook, /xyzrenderControls: body\.controls \?\? pendingViewerReloadOptionsRef\.current\?\.xyzrenderControls/);

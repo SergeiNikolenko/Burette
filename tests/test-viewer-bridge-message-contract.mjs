@@ -73,6 +73,19 @@ assert.equal(viewerBridgeBodyDocumentId({ documentId: 1 }), undefined);
 assert.equal(viewerBridgeBodyDocumentId(null), undefined);
 
 {
+  const cameraBody = { type: "rendererViewStateChanged", documentId: "doc-1", viewState: { camera: {} } };
+  const { calls, handlers } = makeHandlers({
+    handleRendererMessage: (...args) => {
+      calls.push(["renderer", ...args]);
+      return true;
+    },
+  });
+  assert.equal(await dispatchViewerBridgeMessage({ source: "burette-viewer", body: cameraBody, eventSource }, handlers), true);
+  // Pane checkpoints require the authenticated iframe identity, not just its document ID.
+  assert.deepEqual(calls.filter(([name]) => name === "renderer"), [["renderer", cameraBody, eventSource]]);
+}
+
+{
   const pubChemBody = { type: "openPubChemSearch", searchType: "identity", smiles: "C#N", documentId: "doc-1" };
   const pubChemMessage = parseViewerBridgeMessage({
     data: { source: "burette-viewer", body: pubChemBody },
