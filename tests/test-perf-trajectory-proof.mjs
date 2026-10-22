@@ -54,7 +54,8 @@ try {
     const deadline = Date.now() + 4000;
     let queued;
     while (!queued && Date.now() < deadline) {
-      const state = JSON.parse(await readFile(join(session, 'actions.json'), 'utf8'));
+      // The CLI rewrites actions.json in place, so a poll can observe it mid-write.
+      const state = await readFile(join(session, 'actions.json'), 'utf8').then(JSON.parse).catch(() => ({ actions: [] }));
       queued = state.actions[0];
       if (queued) await writeFile(join(session, 'actions.json'), JSON.stringify({ actions: [{ ...queued, status: completion.status, result: completion.result }] }));
       else await new Promise(resolve => setTimeout(resolve, 20));
