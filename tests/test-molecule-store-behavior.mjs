@@ -230,8 +230,8 @@ useMoleculeStore.getState().restoreSession(
 );
 
 const restored = useMoleculeStore.getState();
-assert.equal(restored.tabs.filter((tab) => tab.location.kind === "ketcher").length, 1);
-assert.equal(restored.tabs.length, 2);
+assert.equal(restored.tabs.filter((tab) => tab.location.kind === "ketcher").length, 2);
+assert.equal(restored.tabs.length, 3);
 assert.equal(restored.activeTabId, "session-ketcher-b");
 assert.equal(restored.tabs.find((tab) => tab.id === restored.activeTabId)?.location.kind, "ketcher");
 assert.equal(restored.activeDocumentId, null);
