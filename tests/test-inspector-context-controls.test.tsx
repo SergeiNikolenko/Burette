@@ -71,6 +71,20 @@ test("collection style, color and debounced opacity keep exact viewer commands a
     expect(localStorage.getItem(`buret.sdf.contextStyle.${molecule.id}`)).toBe("line");
     expect(localStorage.getItem(`buret.sdf.contextColor.${molecule.id}`)).toBe("gray");
     expect(localStorage.getItem(`buret.sdf.contextOpacity.${molecule.id}`)).toBe("0.43");
+    // An agent change applied inside the viewer moves the inspector and its
+    // stored choice without echoing a command; other documents are ignored.
+    const viewerChanged = (detail: Record<string, unknown>) => act(async () => {
+      window.dispatchEvent(new CustomEvent("burette:sdf-context-changed", { detail }));
+    });
+    await viewerChanged({ documentId: "other", style: "spacefill", opacity: 1, color: "gray" });
+    expect(button("Line").getAttribute("aria-pressed")).toBe("true");
+    await viewerChanged({ documentId: molecule.id, style: "molecular-surface", opacity: 0.7, color: "colored" });
+    expect(button("Surface").getAttribute("aria-pressed")).toBe("true");
+    expect(button("Colored").getAttribute("aria-pressed")).toBe("true");
+    expect(slider.getAttribute("aria-valuenow")).toBe("0.7");
+    expect(localStorage.getItem(`buret.sdf.contextStyle.${molecule.id}`)).toBe("molecular-surface");
+    expect(localStorage.getItem(`buret.sdf.contextOpacity.${molecule.id}`)).toBe("0.70");
+    expect(calls).toHaveLength(3);
     // Changing documents cancels pending opacity work and keeps named scene
     // selections mapped to their original zero-based viewer index.
     await act(async () => slider.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));

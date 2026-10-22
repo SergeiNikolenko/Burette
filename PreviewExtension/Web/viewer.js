@@ -20190,12 +20190,29 @@ SOFTWARE.
     }
   }
 
+  // The inspector keeps its own copy of the background choices and sends its
+  // actions with notify: false. Other callers (agents) change them only here,
+  // so report the full set or the panel shows a stale style.
+  function postSdfCollectionContextChanged() {
+    postHostMessage({
+      type: 'sdfContextChanged',
+      documentId: activeConfig?.documentId || '',
+      style: readSdfCollectionContextStyle(activeConfig),
+      opacity: readSdfCollectionContextOpacity(activeConfig),
+      color: readSdfCollectionContextColor(activeConfig)
+    });
+  }
+
   async function setSdfCollectionContextStyleFromAction(action = {}) {
     const prepared = activeMolstarPrepared;
     if (!activeViewer || (prepared?.kind !== 'sdf-collection' && !prepared?.dockingSceneMode && prepared?.sdfPoseOverlayAvailable !== true && prepared?.xyzFrameOverlayAvailable !== true)) {
       return agentActionFailure('set_sdf_context_style', 'NO_SCENE_CONTEXT', 'The active Mol* viewer does not expose scene background controls.');
     }
-    const style = setSdfCollectionContextStyle(action.style);
+    const requestedStyle = String(action.style || '').trim().toLowerCase();
+    if (normalizeSdfCollectionContextStyle(requestedStyle) !== requestedStyle) {
+      return agentActionFailure('set_sdf_context_style', 'INVALID_STYLE', 'Background style must be line, ball-and-stick, cartoon, spacefill, molecular-surface or match.');
+    }
+    const style = setSdfCollectionContextStyle(requestedStyle);
     try {
       if (prepared.dockingSceneMode) {
         const poseCount = Number(prepared.poseCount || 0);
@@ -20214,6 +20231,7 @@ SOFTWARE.
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
         await applySdfCollectionVisibility(activeViewer, prepared, activePose, { contextStyle: style, focus: false });
       }
+      if (action.notify !== false) postSdfCollectionContextChanged();
       return {
         ok: true,
         command: 'set_sdf_context_style',
@@ -20228,6 +20246,9 @@ SOFTWARE.
     const prepared = activeMolstarPrepared;
     if (!activeViewer || (prepared?.kind !== 'sdf-collection' && !prepared?.dockingSceneMode && prepared?.sdfPoseOverlayAvailable !== true && prepared?.xyzFrameOverlayAvailable !== true)) {
       return agentActionFailure('set_sdf_context_opacity', 'NO_SCENE_CONTEXT', 'The active Mol* viewer does not expose scene background controls.');
+    }
+    if (typeof action.opacity !== 'number' || !Number.isFinite(action.opacity)) {
+      return agentActionFailure('set_sdf_context_opacity', 'INVALID_OPACITY', 'Background opacity must be a number from 0.04 to 1.');
     }
     const opacity = setSdfCollectionContextOpacity(action.opacity);
     try {
@@ -20248,6 +20269,7 @@ SOFTWARE.
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
         await applySdfCollectionVisibility(activeViewer, prepared, activePose, { contextOpacity: opacity, focus: false });
       }
+      if (action.notify !== false) postSdfCollectionContextChanged();
       return {
         ok: true,
         command: 'set_sdf_context_opacity',
@@ -20262,6 +20284,9 @@ SOFTWARE.
     const prepared = activeMolstarPrepared;
     if (!activeViewer || (prepared?.kind !== 'sdf-collection' && !prepared?.dockingSceneMode && prepared?.sdfPoseOverlayAvailable !== true && prepared?.xyzFrameOverlayAvailable !== true)) {
       return agentActionFailure('set_sdf_context_color', 'NO_SCENE_CONTEXT', 'The active Mol* viewer does not expose scene background controls.');
+    }
+    if (action.color !== 'gray' && action.color !== 'colored') {
+      return agentActionFailure('set_sdf_context_color', 'INVALID_COLOR', 'Background color must be gray or colored.');
     }
     const color = setSdfCollectionContextColor(action.color);
     try {
@@ -20282,6 +20307,7 @@ SOFTWARE.
         const activePose = readTrajectoryControlIndex(activeConfig, prepared, poseCount || 1);
         await applySdfCollectionVisibility(activeViewer, prepared, activePose, { contextColor: color, focus: false });
       }
+      if (action.notify !== false) postSdfCollectionContextChanged();
       return {
         ok: true,
         command: 'set_sdf_context_color',
