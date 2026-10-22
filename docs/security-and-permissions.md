@@ -5,6 +5,12 @@ browser-dev servers, and agent-operated sessions. The security model is local
 first: explicit files, bounded payloads, tokenized browser surfaces, and narrow
 native command permissions.
 
+Optional desktop statistics require explicit consent and a configured HTTPS
+collector/notice. They use closed categories and a random installation
+credential; local diagnostic logs are not uploaded. See
+[usage statistics](usage-statistics.md) for collection, erasure and deployment
+contracts.
+
 ## Local File Access
 
 Desktop Copy actions use the `write_clipboard_text` command to write plain text

@@ -32,6 +32,7 @@ pub(crate) mod shell;
 pub(crate) mod source_editing;
 pub(crate) mod startup;
 pub(crate) mod tab_thumbnail;
+pub(crate) mod telemetry;
 pub(crate) mod text_files;
 pub(crate) mod update_progress;
 pub(crate) mod updater;

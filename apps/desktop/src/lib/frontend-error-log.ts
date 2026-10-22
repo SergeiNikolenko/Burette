@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import { isTauriRuntime } from "./tauri";
+import { recordStatisticsError } from "./usage-statistics";
 
 // WKWebView prints its console nowhere in a packaged app, so an uncaught
 // frontend error is visible only on screen and only for a moment. Everything
@@ -27,6 +28,7 @@ function forward(event: string, parts: unknown[]) {
   forwarded += 1;
   const message = parts.map(describe).join(" ").slice(0, 4096);
   if (!message.trim()) return;
+  recordStatisticsError(message);
   void invoke("frontend_log", { level: "error", event, message }).catch(() => {});
 }
 

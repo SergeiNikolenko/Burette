@@ -2204,60 +2204,51 @@
     return value === 'gray' ? 'gray' : 'colored';
   }
 
+  // WKWebView asset origins can deny localStorage. Keep the current choices
+  // available to subsequent style/color/opacity actions in the same viewer.
+  const sceneContextPreferences = new Map();
+  function readSceneContextPreference(key) {
+    if (sceneContextPreferences.has(key)) return sceneContextPreferences.get(key);
+    try { return window.localStorage?.getItem(key); } catch (_) { return null; }
+  }
+
+  function writeSceneContextPreference(key, value) {
+    sceneContextPreferences.set(key, value);
+    try { window.localStorage?.setItem(key, value); } catch (_) {}
+  }
+
   function readSdfCollectionContextStyle(config) {
-    try {
-      return normalizeSdfCollectionContextStyle(window.localStorage?.getItem(sdfCollectionContextStyleStorageKey(config)));
-    } catch (_) {
-      return 'match';
-    }
+    return normalizeSdfCollectionContextStyle(readSceneContextPreference(sdfCollectionContextStyleStorageKey(config)));
   }
 
   function setSdfCollectionContextStyle(style) {
     const value = normalizeSdfCollectionContextStyle(style);
-    try {
-      window.localStorage?.setItem(sdfCollectionContextStyleStorageKey(activeConfig || window.BuretteConfig || {}), value);
-    } catch (_) {}
+    writeSceneContextPreference(sdfCollectionContextStyleStorageKey(activeConfig || window.BuretteConfig || {}), value);
     return value;
   }
 
   function readSdfCollectionContextOpacity(config) {
-    try {
-      return normalizeSdfCollectionContextOpacity(window.localStorage?.getItem(sdfCollectionContextOpacityStorageKey(config)));
-    } catch (_) {
-      return 0.4;
-    }
+    return normalizeSdfCollectionContextOpacity(readSceneContextPreference(sdfCollectionContextOpacityStorageKey(config)));
   }
 
   function setSdfCollectionContextOpacity(opacity) {
     const value = normalizeSdfCollectionContextOpacity(opacity);
-    try {
-      window.localStorage?.setItem(sdfCollectionContextOpacityStorageKey(activeConfig || window.BuretteConfig || {}), value.toFixed(2));
-    } catch (_) {}
+    writeSceneContextPreference(sdfCollectionContextOpacityStorageKey(activeConfig || window.BuretteConfig || {}), value.toFixed(2));
     return value;
   }
 
   function readSdfCollectionContextColor(config) {
-    try {
-      return normalizeSdfCollectionContextColor(window.localStorage?.getItem(sdfCollectionContextColorStorageKey(config)));
-    } catch (_) {
-      return 'colored';
-    }
+    return normalizeSdfCollectionContextColor(readSceneContextPreference(sdfCollectionContextColorStorageKey(config)));
   }
 
   function readXyzFrameContextColor(config) {
-    try {
-      const stored = window.localStorage?.getItem(sdfCollectionContextColorStorageKey(config));
-      return stored === 'colored' ? 'colored' : 'gray';
-    } catch (_) {
-      return 'gray';
-    }
+    const stored = readSceneContextPreference(sdfCollectionContextColorStorageKey(config));
+    return stored === 'colored' ? 'colored' : 'gray';
   }
 
   function setSdfCollectionContextColor(color) {
     const value = normalizeSdfCollectionContextColor(color);
-    try {
-      window.localStorage?.setItem(sdfCollectionContextColorStorageKey(activeConfig || window.BuretteConfig || {}), value);
-    } catch (_) {}
+    writeSceneContextPreference(sdfCollectionContextColorStorageKey(activeConfig || window.BuretteConfig || {}), value);
     return value;
   }
 
@@ -7679,10 +7670,10 @@ SOFTWARE.
     'dashLength', 'color', 'arcScale', 'sectorOpacity', 'borderWidth'
   ]);
 
-  function sceneTreeMeasurementTargets(viewer, ref) {
+  function sceneTreeMeasurementTargets(viewer, ref, children) {
     const state = viewer?.plugin?.state?.data;
     if (!state?.cells?.has(ref)) return [];
-    return sceneTreeSubtreeRefs(state, ref)
+    return sceneTreeSubtreeRefs(state, ref, children)
       .map(targetRef => state.cells.get(targetRef))
       .filter(cell => {
         const params = cell?.transform?.params;
@@ -7898,7 +7889,7 @@ SOFTWARE.
           const nodeRef = chain[chain.length - 1];
           const nodeCell = state.cells.get(nodeRef) || cell;
           const components = colorTargets.get(nodeRef) || null;
-          const measurementEditable = sceneTreeMeasurementTargets(viewer, nodeRef).length > 0;
+          const measurementEditable = sceneTreeMeasurementTargets(viewer, nodeRef, children).length > 0;
           const rawLabel = String(cell.obj.label || 'Node');
           const display = sceneTreeRowLabel(cell, rawLabel);
           const label = display.label;
@@ -8079,6 +8070,9 @@ SOFTWARE.
     if (sceneTreeRenderHandle) return;
     sceneTreeRenderHandle = window.setTimeout(() => {
       sceneTreeRenderHandle = 0;
+      // Surface tasks yield inside a state commit. The isUpdating subscription
+      // schedules the completed tree; avoid rebuilding its intermediate states.
+      if (activeMolstarViewer()?.plugin?.behaviors?.state?.isUpdating?.value) return;
       renderSceneTree();
       reportMolstarCompositionVisibility();
     }, 0);
@@ -8127,6 +8121,9 @@ SOFTWARE.
       updateViewportCornerLayout();
       return;
     }
+    // Keep availability/selection current, but build rows only when visible.
+    // Opening the panel below renders the latest completed state.
+    if (panel.classList.contains('hidden')) return;
     const root = document.createElement('div');
     root.className = 'buret-tree';
     const highlight = document.createElement('div');
@@ -8190,6 +8187,7 @@ SOFTWARE.
       // it stays open, it does not become the panel's new home.
       panel.style.removeProperty('left');
       panel.style.removeProperty('top');
+      renderSceneTree();
     } else {
       moveSceneTreeHighlight(null);
       closeSceneTreeMenu();
@@ -8244,8 +8242,7 @@ SOFTWARE.
 
   // Mol* hides a cell by walking its subtree, so a representation stays hidden
   // while its component is hidden and comes back with it.
-  function sceneTreeSubtreeRefs(state, ref) {
-    const { children } = sceneTreeChildRefs(state);
+  function sceneTreeSubtreeRefs(state, ref, children = sceneTreeChildRefs(state).children) {
     const refs = [];
     const stack = [ref];
     while (stack.length) {
@@ -12548,6 +12545,17 @@ SOFTWARE.
     return `burette.trajectoryControl.fallback-${stableTextHash(fallback)}`;
   }
 
+  // Asset-origin storage may be unavailable. Keep the latest selection across
+  // appearance updates/reparsing without retaining document or molecule objects.
+  const trajectoryControlIndices = new Map();
+  function writeTrajectoryControlIndex(config, prepared, index) {
+    const key = trajectoryControlStorageKey(config, prepared);
+    trajectoryControlIndices.delete(key);
+    trajectoryControlIndices.set(key, index);
+    if (trajectoryControlIndices.size > 32) trajectoryControlIndices.delete(trajectoryControlIndices.keys().next().value);
+    try { sessionStorage.setItem(key, String(index)); } catch (_) {}
+  }
+
   function readTrajectoryControlIndex(config, prepared, poseCount) {
     if (prepared?.kind === 'docking') return readDockingPoseIndex(config, poseCount);
     if (prepared?.kind === 'session' && prepared.nativeTrajectoryControls === true) {
@@ -12558,11 +12566,14 @@ SOFTWARE.
       const value = Number(prepared?.activePose || 0);
       return Math.max(0, Math.min(poseCount - 1, Number.isFinite(value) ? Math.trunc(value) : 0));
     }
-    let value = Number(config?.activeModel || 0);
-    try {
-      const stored = sessionStorage.getItem(trajectoryControlStorageKey(config, prepared));
-      if (stored !== null) value = Number(stored);
-    } catch (_) {}
+    const key = trajectoryControlStorageKey(config, prepared);
+    let value = trajectoryControlIndices.get(key) ?? Number(config?.activeModel || 0);
+    if (!trajectoryControlIndices.has(key)) {
+      try {
+        const stored = sessionStorage.getItem(key);
+        if (stored !== null) value = Number(stored);
+      } catch (_) {}
+    }
     if (!Number.isFinite(value)) value = 0;
     return Math.max(0, Math.min(poseCount - 1, Math.trunc(value)));
   }
@@ -15839,7 +15850,7 @@ SOFTWARE.
     return molstarRefsStillLoaded(viewer, state.backgroundRefs);
   }
 
-  function sdfCollectionStateKey(prepared, style, allMode, contextStyle, contextOpacity, contextColor) {
+  function sdfCollectionStateKey(prepared, style, allMode) {
     return [
       activeConfig?.documentId || '',
       prepared?.label || '',
@@ -15847,7 +15858,6 @@ SOFTWARE.
       style,
       allMode ? 'all' : 'single',
       allMode ? activeSdfCollectionLayout : 'overlap',
-      contextStyle,
     ].join('|');
   }
 
@@ -16163,13 +16173,13 @@ SOFTWARE.
 
   let molstarSceneRebuildChain = Promise.resolve();
   const pendingSceneAppearance = new Map();
-  function queueMolstarSceneRebuild(run, appearanceKey = null) {
+  function queueMolstarSceneRebuild(run, appearanceKey = null, holdDraw = true) {
     const pending = appearanceKey && pendingSceneAppearance.get(appearanceKey);
     if (pending) { pending.run = run; return pending.job; }
     const entry = { run, job: null };
     const execute = () => {
       if (appearanceKey) pendingSceneAppearance.delete(appearanceKey);
-      return withMolstarDrawHold(activeViewer, () => entry.run());
+      return holdDraw ? withMolstarDrawHold(activeViewer, () => entry.run()) : entry.run();
     };
     entry.job = molstarSceneRebuildChain.then(execute, execute);
     if (appearanceKey) pendingSceneAppearance.set(appearanceKey, entry);
@@ -16239,9 +16249,28 @@ SOFTWARE.
     }
   }
 
+  const sdfCollectionAppearanceUpdates = new WeakMap();
   function applySdfCollectionVisibility(viewer, prepared, activePose = 0, options = {}) {
-    return queueMolstarSceneRebuild(() => applySdfCollectionVisibilityNow(viewer, prepared, activePose, options),
-      options.contextOpacity != null || options.contextColor != null ? prepared : null);
+    const appearanceOnly = options.contextStyle != null || options.contextOpacity != null || options.contextColor != null;
+    if (!appearanceOnly) return queueMolstarSceneRebuild(() => applySdfCollectionVisibilityNow(viewer, prepared, activePose, options));
+    sdfCollectionAppearanceUpdates.get(prepared)?.abort();
+    const controller = new AbortController();
+    sdfCollectionAppearanceUpdates.set(prepared, controller);
+    // Keep drawing and input live. Pending changes coalesce; an in-flight
+    // obsolete style stops between bounded representation commits.
+    return queueMolstarSceneRebuild(async () => {
+      const canvas = viewer?.plugin?.canvas3d;
+      const manualReset = canvas?.props?.camera?.manualReset === true;
+      canvas?.setProps({ camera: { manualReset: true } });
+      try {
+        await applySdfCollectionVisibilityNow(viewer, prepared, activePose, { ...options, signal: controller.signal });
+      } catch (error) {
+        if (!controller.signal.aborted) throw error;
+      } finally {
+        canvas?.setProps({ camera: { manualReset } });
+        if (sdfCollectionAppearanceUpdates.get(prepared) === controller) sdfCollectionAppearanceUpdates.delete(prepared);
+      }
+    }, prepared, false);
   }
 
   function applySdfCollectionAlignmentLayers(prepared, layers) {
@@ -16287,7 +16316,7 @@ SOFTWARE.
     const contextStyle = options.contextStyle ?? readSdfCollectionContextStyle(activeConfig);
     const contextOpacity = options.contextOpacity ?? readSdfCollectionContextOpacity(activeConfig);
     const contextColor = options.contextColor ?? readSdfCollectionContextColor(activeConfig);
-    const stateKey = sdfCollectionStateKey(prepared, style, allMode, contextStyle, contextOpacity, contextColor);
+    const stateKey = sdfCollectionStateKey(prepared, style, allMode);
     let state = activeSdfCollectionVisibilityState;
     if (!state || state.key !== stateKey || !sdfCollectionVisibilityStateStillLoaded(viewer, state)) {
       resetXyzFrameOverlayState(viewer);
@@ -16321,19 +16350,20 @@ SOFTWARE.
         allRefsByIndex,
         activeRefs: allMode ? allRefsByIndex[activeIndex] : [],
         activeIndex: allMode ? activeIndex : -1,
-        appearanceKey: allMode ? `${contextOpacity}|${contextColor}` : undefined
+        appearanceKey: allMode ? `${contextStyle}|${contextOpacity}|${contextColor}` : undefined
       };
       activeSdfCollectionVisibilityState = state;
     }
 
-    const appearanceKey = `${contextOpacity}|${contextColor}`;
+    const appearanceKey = `${contextStyle}|${contextOpacity}|${contextColor}`;
     if (state.appearanceKey !== appearanceKey) {
-      const background = molstarStructuresByRefs(viewer, state.backgroundRefs);
-      if (background.length) await applySdfCollectionMolstarStyle(viewer, contextStyle === 'match' ? style : contextStyle, background, contextOpacity, contextColor);
-      if (allMode) {
-        const selected = molstarStructuresByRefs(viewer, state.allRefsByIndex[activeIndex]);
-        await applySdfCollectionMolstarStyle(viewer, style, selected, 1, 'colored');
-      }
+      // The foreground has a different representation and opacity. Including it
+      // would invalidate reuse for every background molecule on every slider tick.
+      const selectedRefs = new Set(state.activeRefs);
+      const background = molstarStructuresByRefs(viewer, state.backgroundRefs.filter(ref => !selectedRefs.has(ref)));
+      state.appearanceKey = null;
+      if (background.length) await applySdfCollectionMolstarStyle(viewer, contextStyle === 'match' ? style : contextStyle, background, contextOpacity, contextColor, options.signal);
+      options.signal?.throwIfAborted();
       state.appearanceKey = appearanceKey;
     }
 
@@ -16976,19 +17006,25 @@ SOFTWARE.
       .filter(structure => !before.has(structure?.cell?.transform?.ref));
   }
 
-  async function applySdfCollectionMolstarStyle(viewer, style, structures = null, alpha = 1, colorMode = 'gray') {
+  async function applySdfCollectionMolstarStyle(viewer, style, structures = null, alpha = 1, colorMode = 'gray', signal) {
     const normalized = normalizeMolstarStyle(style);
     const targets = Array.isArray(structures) && structures.length ? structures : Array.from(molstarCurrentStructures(viewer));
     if (normalized === 'default' || normalized === 'illustrative' || normalized === 'cartoon' || normalized === 'polymer-ligand') {
-      await applyMolstarPolymerLigandRepresentationToStructures(
+      // SDF collection entries with no polymer use the ligand style throughout;
+      // retain their whole-molecule component when entering/leaving Match.
+      if (activeMolstarPrepared?.kind === 'sdf-collection' && targets.every(target => target.cell?.obj?.data?.polymerResidueCount === 0)) {
+        await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionLigandRepresentationForStyle(normalized, alpha, colorMode), signal);
+      } else await applyMolstarPolymerLigandRepresentationToStructures(
         viewer,
         targets,
         sdfCollectionCartoonRepresentation(alpha),
-        sdfCollectionLigandRepresentationForStyle(normalized, alpha, colorMode)
+        sdfCollectionLigandRepresentationForStyle(normalized, alpha, colorMode),
+        signal
       );
     } else {
-      await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode));
+      await applyMolstarRepresentationsToStructures(viewer, targets, sdfCollectionRepresentationForStyle(normalized, alpha, colorMode), signal);
     }
+    signal?.throwIfAborted();
     // Pose replacement changes geometry, not the separately chosen appearance.
     await applyMolstarAppearance(viewer, configuredMolstarAppearance(activeConfig || window.BuretteConfig || {}));
   }
@@ -17046,27 +17082,52 @@ SOFTWARE.
 
   // Representations this viewer built per collection structure, each tagged
   // with the index (`role`) of the style it was built from. An opacity or
-  // colour change restyles them in a single state update instead of removing
+  // colour change restyles them in bounded state updates instead of removing
   // and rebuilding every structure's geometry.
   const collectionRepresentations = new WeakMap();
-  async function updateCollectionRepresentations(plugin, structures, representations) {
+  async function updateCollectionRepresentations(plugin, structures, representations, signal) {
     const state = plugin.state.data;
     const cached = (structures || []).map(structure => collectionRepresentations.get(structure.cell));
-    const reusable = cached.length > 0 && cached.every(entries => entries?.length && entries.every(entry => {
-      const representation = representations[entry.role];
-      return representation && state.cells.has(entry.ref)
-        && entry.type === representation.type && entry.color === representation.color;
-    }));
+    const reusable = cached.length > 0 && cached.every(entries => entries?.layout === representations.length && entries.length && entries.every(entry =>
+      representations[entry.role] && state.cells.has(entry.ref)
+    ));
     if (!reusable) return false;
-    const update = state.build();
-    for (const entry of cached.flat()) {
-      const representation = representations[entry.role];
-      update.to(entry.ref).update(old => ({ ...old,
-        type: { ...old.type, params: { ...entry.defaults, ...representation.typeParams } },
-        colorTheme: { ...old.colorTheme, params: { ...old.colorTheme.params, ...representation.colorParams } }
-      }));
+    const { registry, themes } = plugin.representation.structure;
+    const entries = cached.flat();
+    // Bound each commit: Mol* tasks for these small molecules can otherwise
+    // complete entirely in microtasks, starving pointer and tab events.
+    const batchSize = entries.some(entry => entry.type !== representations[entry.role].type) ? 8 : 32;
+    for (let offset = 0; offset < entries.length; offset += batchSize) {
+      signal?.throwIfAborted();
+      const update = state.build();
+      const batch = entries.slice(offset, offset + batchSize);
+      for (const entry of batch) {
+        const representation = representations[entry.role];
+        const provider = registry.get(representation.type);
+        const defaults = entry.type === representation.type ? entry.defaults : provider.defaultValues;
+        const color = themes.colorThemeRegistry.get(representation.color);
+        const size = themes.sizeThemeRegistry.get(provider.defaultSizeTheme.name);
+        update.to(entry.ref).update(old => ({ ...old,
+          type: { name: representation.type, params: {
+            ...defaults,
+            ...Object.fromEntries(['ignoreLight', 'ignoreHydrogens', 'ignoreHydrogensVariant', 'quality', 'material', 'clip', 'interior', 'animation']
+              .filter(key => key in old.type.params).map(key => [key, old.type.params[key]])),
+            ...representation.typeParams
+          } },
+          colorTheme: { name: color.name, params: { ...color.defaultValues, ...representation.colorParams } },
+          sizeTheme: { name: size.name, params: { ...size.defaultValues, ...provider.defaultSizeTheme.props } }
+        }));
+      }
+      await update.commit();
+      for (const entry of batch) {
+        const representation = representations[entry.role];
+        if (entry.type !== representation.type) {
+          entry.defaults = { ...registry.get(representation.type).defaultValues };
+          entry.type = representation.type;
+        }
+      }
+      if (offset + batchSize < entries.length) await new Promise(resolve => setTimeout(resolve, 0));
     }
-    await update.commit();
     return true;
   }
 
@@ -17078,7 +17139,7 @@ SOFTWARE.
       const params = plugin.state.data.cells.get(result.ref)?.transform?.params?.type?.params || {};
       const entries = collectionRepresentations.get(structure.cell) || [];
       entries.push({ ref: result.ref, role, type: representation.type,
-        color: representation.color, defaults: { ...params, alpha: 1, transparentBackfaces: 'off' } });
+        defaults: { ...params, alpha: 1, transparentBackfaces: 'off' } });
       collectionRepresentations.set(structure.cell, entries);
     }
     return true;
@@ -17091,28 +17152,36 @@ SOFTWARE.
     }
   }
 
-  async function applyMolstarRepresentationsToStructures(viewer, structures, representation) {
+  async function applyMolstarRepresentationsToStructures(viewer, structures, representation, signal) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    if (await updateCollectionRepresentations(plugin, structures, [representation])) return;
+    signal?.throwIfAborted();
+    if (await updateCollectionRepresentations(plugin, structures, [representation], signal)) return;
     await clearCollectionRepresentations(viewer, structures);
     let created = 0;
     for (const structure of structures || []) {
+      signal?.throwIfAborted();
       const component = await tryCreateMolstarComponent(plugin, structure, 'all');
       if (!await addCollectionRepresentation(plugin, structure, component, representation, 0)) {
         throw new Error('Mol* could not create a component for this style.');
       }
+      const entries = collectionRepresentations.get(structure.cell);
+      if (entries) entries.layout = 1;
       created += 1;
+      if (created % 4 === 0) await new Promise(resolve => setTimeout(resolve, 0));
     }
     if (created === 0) throw new Error('Mol* could not create a component for this style.');
   }
 
-  async function applyMolstarPolymerLigandRepresentationToStructures(viewer, structures, polymerRepresentation, ligandRepresentation) {
+  async function applyMolstarPolymerLigandRepresentationToStructures(viewer, structures, polymerRepresentation, ligandRepresentation, signal) {
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    if (await updateCollectionRepresentations(plugin, structures, [polymerRepresentation, ligandRepresentation])) return;
+    signal?.throwIfAborted();
+    if (await updateCollectionRepresentations(plugin, structures, [polymerRepresentation, ligandRepresentation], signal)) return;
     await clearCollectionRepresentations(viewer, structures);
+    let processed = 0;
     for (const structure of structures || []) {
+      signal?.throwIfAborted();
       let created = 0;
       const polymer = await tryCreateMolstarComponent(plugin, structure, 'polymer');
       if (await addCollectionRepresentation(plugin, structure, polymer, polymerRepresentation, 0)) created += 1;
@@ -17120,7 +17189,13 @@ SOFTWARE.
         const component = await tryCreateMolstarComponent(plugin, structure, kind);
         if (await addCollectionRepresentation(plugin, structure, component, ligandRepresentation, 1)) created += 1;
       }
-      if (created === 0) await applyMolstarRepresentationsToStructures(viewer, [structure], ligandRepresentation);
+      if (created === 0) {
+        await applyMolstarRepresentationsToStructures(viewer, [structure], ligandRepresentation, signal);
+        for (const entry of collectionRepresentations.get(structure.cell) || []) entry.role = 1;
+      }
+      const entries = collectionRepresentations.get(structure.cell);
+      if (entries) entries.layout = 2;
+      if (++processed % 4 === 0) await new Promise(resolve => setTimeout(resolve, 0));
     }
   }
 
@@ -19738,7 +19813,7 @@ SOFTWARE.
       if (activeSdfCollectionPoseSetter) {
         await activeSdfCollectionPoseSetter(index);
       } else {
-        try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(index)); } catch (_) {}
+        writeTrajectoryControlIndex(activeConfig, prepared, index);
         await applySdfCollectionVisibility(activeViewer, prepared, index);
       }
       return {
@@ -20209,7 +20284,7 @@ SOFTWARE.
         notifyStructureOverlayModeChanged(prepared);
         updateSdfPoseButton(prepared);
       }
-      try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(index)); } catch (_) {}
+      writeTrajectoryControlIndex(activeConfig, prepared, index);
       if (prepared.nativeTrajectoryControls && activeSdfPoseMode !== 'all' && !xyzSingleFrameSceneActive(activeViewer)) {
         const switched = await setNativeTrajectoryPose(index, poseCount);
         if (!switched) throw new Error('Mol* trajectory controls are not available.');
@@ -21019,7 +21094,7 @@ SOFTWARE.
     slider.setAttribute('aria-label', `${controlLabel} slider`);
     const refreshNativeTrajectoryStandalonePreview = () => {
       if (!prepared.nativeTrajectoryControls || !activeConfig) return;
-      try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(activePose)); } catch (_) {}
+      writeTrajectoryControlIndex(activeConfig, prepared, activePose);
     };
     const supportsLivePoseInput = () => (
       prepared.nativeTrajectoryControls ||
@@ -21321,7 +21396,7 @@ SOFTWARE.
       // A normal step keeps the user's view. Cancel delayed focus retries from
       // an earlier load/selection before replacing any scene layers.
       if (!shouldFocus) molstarStructureFocusSerial += 1;
-      try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(nextIndex)); } catch (_) {}
+      writeTrajectoryControlIndex(activeConfig, prepared, nextIndex);
       previous.disabled = true;
       next.disabled = true;
       applyLabel(nextIndex);
@@ -21368,7 +21443,7 @@ SOFTWARE.
         // Hovering an open pose list previews poses; only a committed switch counts.
         if (options.userStep === true && poseCompareGuide && !isFileListOpen()) requestContextualGuide('pose-compare', label);
       } catch (error) {
-        try { sessionStorage.setItem(trajectoryControlStorageKey(activeConfig, prepared), String(previousIndex)); } catch (_) {}
+        writeTrajectoryControlIndex(activeConfig, prepared, previousIndex);
         activePose = previousIndex;
         updateControls();
         // Stepping frames is the most repeated action here and a loop retries it on a
