@@ -5544,7 +5544,7 @@ body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .atlas-me
   width: 100%;
   align-items: center;
   min-height: 24px;
-  padding: 4px 56px 4px 26px;
+  padding: 4px 56px 4px 30px;
   gap: 6px;
   border-radius: 12px;
   text-align: left;
@@ -5556,8 +5556,10 @@ body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .atlas-me
   font-size: 10.5px;
   font-variant-numeric: tabular-nums;
 }
-.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose[aria-checked="false"],
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose[data-shown="false"],
 .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-show[aria-checked="false"] { color: var(--color-text-secondary); }
+/* The stepper's pose reads as the current row, whether or not it is on screen. */
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose[aria-checked="true"] { font-weight: 600; }
 .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-swatch {
   flex: 0 0 auto;
   width: 8px;
@@ -5571,20 +5573,20 @@ body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .atlas-me
 body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-group-toggle {
   position: absolute;
   top: 50%;
-  left: 4px;
+  left: 8px;
   z-index: 1;
   display: grid;
   place-items: center;
-  width: 20px;
-  height: 20px;
-  margin-top: -10px;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
   padding: 0;
   border-radius: 50%;
   color: var(--color-text-secondary);
 }
 .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-toggle > svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-toggle[aria-expanded="true"] > svg { transform: rotate(90deg); }
@@ -5715,3 +5717,89 @@ body .buret-molstar-preset-menu.hidden {
   body .buret-molstar-preset-menu, body .buret-molstar-preset-menu.hidden { transform: none; }
   @starting-style { body #buret-scene-tree { transform: none; clip-path: none; } }
 }
+
+/* Morphs between the shapes of the viewer's islands. The toolbar folds into
+   its grip at the right edge and the pose controls grow from their top-left
+   corner, so their snapshots stay unscaled and are clipped by the moving
+   outline. The canvas never cross-fades. */
+#buret-toolbar { view-transition-name: buret-toolbar; }
+body .buret-docking-poses { view-transition-name: buret-pose-controls; }
+#buret-viewport-rail { view-transition-name: buret-viewport-rail; }
+#buret-viewport-corner { view-transition-name: buret-viewport-corner; }
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; }
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+::view-transition-image-pair(buret-toolbar),
+::view-transition-image-pair(buret-pose-controls) {
+  overflow: clip;
+  border-radius: 18px;
+}
+::view-transition-old(buret-toolbar),
+::view-transition-new(buret-toolbar) {
+  width: auto;
+  height: 100%;
+  inset: 0 0 auto auto;
+  object-fit: none;
+  object-position: right center;
+}
+::view-transition-old(buret-pose-controls),
+::view-transition-new(buret-pose-controls) {
+  width: auto;
+  height: auto;
+  inset: 0 auto auto 0;
+  object-fit: none;
+  object-position: left top;
+}
+
+/* After the first layout, islands glide to the place a resize or a
+   neighbour's new shape gives them; dragging still moves them directly. */
+html.buret-chrome-settled #buret-toolbar:not(.buret-dragging) {
+  transition: background 180ms ease, box-shadow 180ms ease,
+    left 260ms cubic-bezier(0.32, 0.72, 0, 1), top 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+html.buret-chrome-settled body .buret-docking-poses:not(.buret-docking-poses-dragging),
+html.buret-chrome-settled #buret-viewport-rail:not(.buret-dragging) {
+  transition: left 260ms cubic-bezier(0.32, 0.72, 0, 1), top 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* A pane narrower than the toolbar wraps its buttons onto a second row
+   instead of clipping them under the grip. */
+#buret-toolbar.buret-toolbar-docked.buret-toolbar-wrapped { border-radius: 20px; }
+#buret-toolbar.buret-toolbar-docked.buret-toolbar-wrapped .buret-toolbar-content {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  overflow: visible;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.buret-chrome-settled #buret-toolbar:not(.buret-dragging),
+  html.buret-chrome-settled body .buret-docking-poses:not(.buret-docking-poses-dragging),
+  html.buret-chrome-settled #buret-viewport-rail:not(.buret-dragging) { transition: none; }
+}
+
+/* Kinetic scrub field (LigandPro Atlas number fields): the digits sit over
+   the input until it is focused for typing. */
+.buret-scrub-box { position: relative; display: inline-grid; }
+.buret-scrub-box > input { grid-area: 1 / 1; }
+.buret-scrub-value {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.buret-scrub-value > span { grid-area: 1 / 1; }
+.buret-docking-poses :is(.buret-scrub-box, .buret-scrub-value, .buret-scrub-value > span) { min-width: 0 !important; }
+.buret-scrub-field:not(.buret-scrub-editing) .buret-scrub-box > input {
+  color: transparent;
+  caret-color: transparent;
+  cursor: ew-resize;
+}
+.buret-scrub-field.buret-scrub-editing .buret-scrub-value { visibility: hidden; }
+.buret-scrub-field.buret-scrubbing .buret-scrub-box > input { background: var(--buret-menu-input-focus-background); }

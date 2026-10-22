@@ -6769,7 +6769,7 @@
       }
       return;
     }
-    setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), viewer);
+    morphViewerChrome(() => setToolbarCollapsed(toolbar, !toolbar.classList.contains('collapsed'), viewer));
   }
 
   function initToolbarDrag(toolbar) {
@@ -7062,6 +7062,11 @@
     const content = toolbar.querySelector('[data-buret-toolbar-content]');
     if (content) {
       content.style.maxWidth = Math.max(0, availableWidth - TOOLBAR_MARGIN * 2 - 36) + 'px';
+      // A pane narrower than the toolbar wraps its buttons onto a second row
+      // instead of clipping them under the grip.
+      toolbar.classList.remove('buret-toolbar-wrapped');
+      toolbar.classList.toggle('buret-toolbar-wrapped', !toolbar.classList.contains('collapsed')
+        && content.scrollWidth > content.clientWidth + 1);
     }
   }
 
@@ -7232,6 +7237,9 @@
     window.addEventListener('resize', scheduleFloatingLayoutRefresh);
     document.addEventListener('click', () => setTimeout(scheduleFloatingLayoutRefresh, 0), true);
     scheduleFloatingLayoutRefresh();
+    // After the first layout the islands glide to new places instead of
+    // jumping when the pane resizes or a neighbour changes shape.
+    setTimeout(() => document.documentElement.classList.add('buret-chrome-settled'), 800);
   }
 
   function scheduleFloatingLayoutRefresh() {
@@ -8573,6 +8581,16 @@ SOFTWARE.
   // as one surface. A closing menu drops its id at once: code looking for the
   // open menu, or a replacement opening in its place, never meets the fading copy.
   const FLOATING_MENU_EASE = 'cubic-bezier(0.23, 1, 0.32, 1)';
+  // Chrome that changes shape (the toolbar folding into its grip, the pose
+  // controls opening or folding a row) morphs between its two layouts.
+  function morphViewerChrome(update) {
+    if (typeof document.startViewTransition !== 'function'
+      || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      update();
+      return;
+    }
+    document.startViewTransition(update);
+  }
   function floatingMenuMotion(menu) {
     return typeof menu?.animate === 'function'
       && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -12712,6 +12730,125 @@ SOFTWARE.
     const delay = Number(delayMs);
     if (!Number.isFinite(delay) || delay <= 0) return DEFAULT_TRAJECTORY_LOOP_FPS;
     return Math.max(1000 / delay, 0.1);
+  }
+
+  // A Kinetic scrub field, as in the LigandPro Atlas number fields: drag
+  // sideways to change the value (Shift x10, Alt x0.1), click to type, arrows
+  // step. Digits roll in the direction of the change and the field shakes when
+  // pushed against a bound. The input stays the control and the value source.
+  function installScrubNumberField(input, { min = -Infinity, max = Infinity, format = String } = {}) {
+    const field = input.parentElement;
+    const box = document.createElement('span');
+    box.className = 'buret-scrub-box';
+    const display = document.createElement('span');
+    display.className = 'buret-scrub-value';
+    display.setAttribute('aria-hidden', 'true');
+    display.append(Object.assign(document.createElement('span'), { textContent: input.value }));
+    input.replaceWith(box);
+    box.append(input, display);
+    field.classList.add('buret-scrub-field');
+    let shown = input.value;
+    let shaking = false;
+    let drag = null;
+    const motion = () => !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const roll = (text, direction = 0) => {
+      if (text === shown) return;
+      shown = text;
+      const previous = display.lastElementChild;
+      const next = Object.assign(document.createElement('span'), { textContent: text });
+      display.append(next);
+      if (!direction || !motion() || typeof next.animate !== 'function') {
+        previous?.remove();
+        return;
+      }
+      const timing = { duration: 180, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' };
+      next.animate([{ transform: `translateY(${direction * 70}%)`, opacity: 0 }, { transform: 'none', opacity: 1 }], timing);
+      const exit = previous?.animate([{ transform: 'none', opacity: 1 }, { transform: `translateY(${direction * -70}%)`, opacity: 0 }], { ...timing, fill: 'forwards' });
+      if (exit) exit.onfinish = exit.oncancel = () => previous.remove();
+    };
+    const shake = () => {
+      if (shaking || !motion() || typeof box.animate !== 'function') return;
+      shaking = true;
+      const animation = box.animate([{ transform: 'none' }, { transform: 'translateX(3px)' }, { transform: 'translateX(-3px)' },
+        { transform: 'translateX(1px)' }, { transform: 'none' }], { duration: 280, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+      animation.onfinish = animation.oncancel = () => { shaking = false; };
+    };
+    const valueOf = () => {
+      const value = Number(input.value);
+      return Number.isFinite(value) ? value : min;
+    };
+    const set = (value, { commit = false } = {}) => {
+      const previous = valueOf();
+      const clamped = Math.min(max, Math.max(min, Math.round(value * 10) / 10));
+      if (clamped !== value) shake();
+      if (clamped === previous) return;
+      input.value = format(clamped);
+      roll(input.value, clamped > previous ? 1 : -1);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      if (commit) input.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const stepFor = event => event.shiftKey ? 10 : event.altKey ? 0.1 : 1;
+    input.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || document.activeElement === input) return;
+      event.preventDefault();
+      input.setPointerCapture?.(event.pointerId);
+      drag = { x: event.clientX, carry: 0, moved: false, start: valueOf() };
+    });
+    input.addEventListener('pointermove', event => {
+      if (!drag) return;
+      const delta = event.clientX - drag.x;
+      if (!drag.moved && Math.abs(delta) < 3) return;
+      if (!drag.moved) field.classList.add('buret-scrubbing');
+      drag.moved = true;
+      drag.x = event.clientX;
+      // Four pixels per step keeps a short drag precise.
+      drag.carry += delta / 4;
+      const steps = Math.trunc(drag.carry);
+      if (!steps) return;
+      drag.carry -= steps;
+      set(valueOf() + steps * stepFor(event));
+    });
+    const endDrag = (event) => {
+      if (!drag) return;
+      const { moved, start } = drag;
+      drag = null;
+      field.classList.remove('buret-scrubbing');
+      if (moved) {
+        if (valueOf() !== start) input.dispatchEvent(new Event('change', { bubbles: true }));
+      } else if (event.type === 'pointerup') {
+        input.focus();
+      }
+    };
+    input.addEventListener('pointerup', endDrag);
+    input.addEventListener('pointercancel', endDrag);
+    let editStart = input.value;
+    input.addEventListener('focus', () => {
+      editStart = input.value;
+      field.classList.add('buret-scrub-editing');
+      input.select();
+    });
+    input.addEventListener('blur', () => {
+      field.classList.remove('buret-scrub-editing');
+      roll(input.value);
+    });
+    input.addEventListener('keydown', event => {
+      if (event.key === 'Escape') {
+        input.value = editStart;
+        event.preventDefault();
+        event.stopPropagation();
+        input.blur();
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        input.blur();
+      } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+        event.preventDefault();
+        set(valueOf() + (event.key === 'ArrowUp' ? 1 : -1) * stepFor(event), { commit: true });
+        input.select();
+      }
+    });
+    // Restores and the change handler's normalising write update the digits too.
+    input.addEventListener('input', () => { if (document.activeElement !== input) roll(input.value); });
+    input.addEventListener('change', () => queueMicrotask(() => roll(input.value)));
   }
 
   function formatTrajectoryFps(value) {
@@ -21290,19 +21427,16 @@ SOFTWARE.
         ]
       };
     };
-    // Every pose carries its colour: filled while the pose is on screen, where
-    // it opens that molecule's colour and representation menu, and an outline
-    // while hidden, where it shows the pose.
+    // Every pose carries its colour: filled while the pose is on screen and an
+    // outline while hidden. The dot shows or hides the pose next to the current
+    // one; right-clicking a shown pose opens its molecule menu.
     const createPoseDot = (index, name) => {
       const dot = document.createElement('button');
       dot.type = 'button';
       dot.className = 'buret-tree-dot buret-docking-pose-dot';
       dot.setAttribute('aria-label', `Colour ${name}`);
       dot.style.setProperty('--buret-pose-color', sceneTreeColorHex(dockingPoseCarbonColor(prepared, index)));
-      dot.addEventListener('click', () => {
-        if (dot.dataset.ref) openPickerMenu(dot, dot.dataset.ref);
-        else editPoseVisibility('toggle', index);
-      });
+      dot.addEventListener('click', () => editPoseVisibility('toggle', index));
       poseDots.push({ dot, index });
       return dot;
     };
@@ -21411,7 +21545,7 @@ SOFTWARE.
           const button = document.createElement('button');
           button.type = 'button';
           button.className = 'atlas-menu-item buret-docking-pose-file buret-docking-pose-group-pose';
-          button.setAttribute('role', 'menuitemcheckbox');
+          button.setAttribute('role', 'menuitemradio');
           const poseName = document.createElement('span');
           poseName.className = 'buret-docking-pose-file-name';
           poseName.textContent = pose.label;
@@ -21620,7 +21754,9 @@ SOFTWARE.
     speed.min = '0.1';
     speed.step = '0.1';
     speed.inputMode = 'decimal';
-    speed.value = playbackRestore?.fps || formatTrajectoryFps(readTrajectoryLoopFps(activeConfig, prepared));
+    // The field shows the rate the loop can actually reach.
+    const maxLoopFps = minimumTrajectoryLoopDelay(prepared) > 0 ? trajectoryDelayToFps(minimumTrajectoryLoopDelay(prepared), prepared) : 240;
+    speed.value = playbackRestore?.fps || formatTrajectoryFps(Math.min(maxLoopFps, readTrajectoryLoopFps(activeConfig, prepared)));
     speed.title = 'Target source frames per second; under load frames may be skipped and speed is capped, not guaranteed redraw FPS';
     // The rate carries its unit, so a bare number never reads as a stray count.
     const speedField = document.createElement('label');
@@ -21629,6 +21765,7 @@ SOFTWARE.
     speedUnit.className = 'buret-docking-pose-speed-unit';
     speedUnit.textContent = 'fps';
     speedField.append(speed, speedUnit);
+    installScrubNumberField(speed, { min: 0.1, max: Math.round(maxLoopFps * 100) / 100, format: formatTrajectoryFps });
     const slider = document.createElement('input');
     slider.className = 'buret-docking-pose-slider';
     slider.type = 'range';
@@ -21665,6 +21802,17 @@ SOFTWARE.
         count: active.segment.frameCount
       };
     };
+    // Stepping and the loop walk every pose of every file in turn; the slider
+    // and the counter stay within the current file.
+    const stepBounds = (poseIndex) => hasPoseGroups
+      ? { start: 0, end: prepared.poseCount - 1, count: prepared.poseCount }
+      : trajectoryControlBounds(poseIndex);
+    // A running loop wraps, so its ends never disable the step buttons.
+    const syncStepButtons = () => {
+      const ends = stepBounds(activePose);
+      previous.disabled = !loopActive && activePose <= ends.start;
+      next.disabled = !loopActive && activePose >= ends.end;
+    };
     // Every frame step relabels the control, but within a segment the name does not
     // change. Rewriting the text node anyway relaid the line and cut short the hover
     // slide that walks a long name, so it only lands when the name actually differs.
@@ -21700,23 +21848,25 @@ SOFTWARE.
         dot.classList.toggle('buret-docking-pose-dot-shown', shown);
         dot.dataset.ref = shown ? node.ref : '';
         dot.style.background = shown ? sceneTreeColorHex(node.value) : '';
-        dot.setAttribute('aria-label', `${shown ? 'Colour' : 'Show'} ${dot.closest('.buret-docking-pose-row')?.dataset.poseTitle || 'pose'}`);
+        dot.setAttribute('aria-pressed', String(selected.has(index)));
+        dot.setAttribute('aria-label', `${selected.has(index) ? 'Hide' : 'Show'} ${dot.closest('.buret-docking-pose-row')?.dataset.poseTitle || 'pose'}`);
       }
     };
     const updateControls = () => {
       const controlBounds = trajectoryControlBounds(activePose);
       applyLabel(activePose);
-      previous.disabled = activePose <= controlBounds.start;
-      next.disabled = activePose >= controlBounds.end;
+      syncStepButtons();
       slider.max = String(controlBounds.count);
       slider.value = String(activePose - controlBounds.start + 1);
       slider.dataset.globalFrameIndex = String(activePose);
       const activeSegmentIndex = activeTrajectorySegment(activePose).index;
       const selected = hasPoseGroups ? selectedPoseIndices() : null;
       fileButtons.forEach((button, index) => {
-        const active = selected ? selected.has(fileTargets[index]) : hasTrajectorySegments ? index === activeSegmentIndex : fileTargets[index] === activePose;
+        // Pose rows mark the stepper's pose; their dots carry visibility.
+        const active = hasTrajectorySegments && !hasPoseGroups ? index === activeSegmentIndex : fileTargets[index] === activePose;
         button.classList.toggle('active', active);
         button.setAttribute(hasPoseGroups ? 'aria-checked' : 'aria-selected', active ? 'true' : 'false');
+        if (selected) button.dataset.shown = String(selected.has(fileTargets[index]));
       });
       if (selected) {
         for (const { select, count: counter, indices, name } of groupControls) {
@@ -21803,6 +21953,7 @@ SOFTWARE.
         loopStepMs = 0;
       }
       loop.classList.toggle('active', Boolean(active));
+      syncStepButtons();
       loop.textContent = active ? 'Stop' : 'Loop';
       loop.setAttribute('aria-label', active ? `Stop ${controlLabelLower} loop` : `Play ${controlLabelLower} loop`);
       if (active) setAnimationOptionsOpen(true);
@@ -21880,7 +22031,7 @@ SOFTWARE.
       return stride;
     };
     const loopTargetIndex = () => {
-      const loopBounds = trajectoryControlBounds(activePose);
+      const loopBounds = stepBounds(activePose);
       return loopBounds.start + ((activePose - loopBounds.start + loopStride(loopBounds)) % loopBounds.count);
     };
     const loopNextDelay = () => {
@@ -21990,8 +22141,6 @@ SOFTWARE.
       // an earlier load/selection before replacing any scene layers.
       if (!shouldFocus) molstarStructureFocusSerial += 1;
       writeTrajectoryControlIndex(activeConfig, prepared, nextIndex);
-      previous.disabled = true;
-      next.disabled = true;
       applyLabel(nextIndex);
       const xyzOverlayFrames = prepared.xyzFrameOverlayAvailable === true
         && (prepared.kind === 'xyz-frame-overlay' || xyzSingleFrameSceneActive(viewer));
@@ -22048,8 +22197,8 @@ SOFTWARE.
         console.error(error);
       }
     };
-    // Rows and files are shown or hidden for now; a pin keeps a pose on screen
-    // while stepping. The stepper's whole file on screen is the All view, so the
+    // Dots and files show or hide poses until the next step; a pin keeps a pose
+    // on screen while stepping. The stepper's whole file on screen is the All view, so the
     // file row, the menu and the All button act as one control.
     const editPoseVisibility = (action, target) => {
       setLoopActive(false);
@@ -22155,7 +22304,11 @@ SOFTWARE.
         });
         button.addEventListener('click', () => {
           if (hasPoseGroups) {
-            editPoseVisibility('toggle', fileTargets[index]);
+            // A row goes to its pose, like the step buttons; the current pose
+            // comes back on screen if it was hidden.
+            const targetPose = fileTargets[index];
+            if (targetPose !== activePose) void setPose(targetPose, { userStep: true });
+            else if (dockingPinnedPoseState.activeHidden && activeSdfPoseMode !== 'all') editPoseVisibility('toggle', targetPose);
             return;
           }
           setFileListOpen(false);
@@ -22354,7 +22507,7 @@ SOFTWARE.
     };
     const repeatPoseStep = (direction) => {
       if (poseRepeatBusy) return;
-      const controlBounds = trajectoryControlBounds(activePose);
+      const controlBounds = stepBounds(activePose);
       const nextIndex = activePose + direction;
       const wrappedIndex = nextIndex < controlBounds.start
         ? controlBounds.end
@@ -22418,19 +22571,18 @@ SOFTWARE.
       setFileListOpen(false);
       setAnimationOptionsOpen(false);
     };
+    // Click opens and closes the playback row; right-click folds the controls
+    // to this button. Each change morphs the island between its shapes.
     animation.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       event.stopPropagation();
-      setControlsCollapsed(!root.classList.contains('buret-docking-poses-collapsed'));
+      morphViewerChrome(() => setControlsCollapsed(!root.classList.contains('buret-docking-poses-collapsed')));
     });
     animation.addEventListener('click', () => {
-      if (root.classList.contains('buret-docking-poses-collapsed')) {
-        setControlsCollapsed(false);
-        return;
-      }
-      const open = !isAnimationOptionsOpen();
-      setAnimationOptionsOpen(open);
-
+      morphViewerChrome(() => {
+        if (root.classList.contains('buret-docking-poses-collapsed')) setControlsCollapsed(false);
+        else setAnimationOptionsOpen(!isAnimationOptionsOpen());
+      });
     });
     bindPoseStepButton(previous, -1);
     bindPoseStepButton(next, 1);
@@ -22514,10 +22666,10 @@ SOFTWARE.
       }
       if (event.key === 'ArrowLeft') {
         event.preventDefault();
-        if (activePose > trajectoryControlBounds(activePose).start) void setPose(activePose - 1, { userStep: true });
+        if (activePose > stepBounds(activePose).start) void setPose(activePose - 1, { userStep: true });
       } else if (event.key === 'ArrowRight') {
         event.preventDefault();
-        if (activePose < trajectoryControlBounds(activePose).end) void setPose(activePose + 1, { userStep: true });
+        if (activePose < stepBounds(activePose).end) void setPose(activePose + 1, { userStep: true });
       }
     };
     root.addEventListener('keydown', onKeyDown);

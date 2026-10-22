@@ -141,6 +141,13 @@ around pill-shaped rows. The scene tree opens out of its toggle and closes back
 into it. When the pose controls share the toggle's column, the tree starts below
 them and moves with them while their playback row opens or closes.
 
+Discrete chrome changes morph through the View Transitions API (280 ms):
+collapsing the toolbar from its grip, and the pose controls' three states (the
+animation button opens or closes the playback row, a right-click folds the
+controls, a click unfolds them). When the window resizes, the pills glide to
+their new positions after the first layout, except while dragging. A toolbar
+that no longer fits wraps onto a second row instead of clipping under the grip.
+
 ### Docking Pose Picker
 
 The compact picker shows the current filename and one pose counter. Its menu is
@@ -151,11 +158,20 @@ rows lead with a disclosure chevron; pose rows align with the file name and keep
 their score in tertiary text. The current file starts expanded; other files
 start collapsed.
 
-Clicking a pose row shows or hides that pose for now; stepping to another pose
-clears poses shown for now. A pin keeps a pose, or a whole file, on screen while
-stepping; unpinning leaves it shown until the next step. Pins appear on row hover
-and stay visible while pressed. The stepper's own pose can be hidden too. Showing
-poses while nothing current is on screen moves the stepper to the first one.
+Clicking a pose row goes to that pose, like the step arrows; the current row is
+bold. The row's dot shows or hides the pose alongside the current one until the
+next step, and a pin keeps a pose, or a whole file, on screen while stepping;
+unpinning leaves it shown until the next step. Pins appear on row hover and stay
+visible while pressed. The stepper's own pose can be hidden from its dot, and
+clicking its row again shows it. Showing poses while nothing current is on
+screen moves the stepper to the first one.
+
+The step arrows, keyboard arrows and Loop walk every pose of every file in menu
+order, so Loop crosses from one file into the next. While Loop runs, the arrows
+stay enabled at the ends instead of flickering disabled on every step. The fps
+field is the Atlas Kinetic number field: drag sideways to scrub (Shift for 10,
+Alt for 0.1), click to type, digits roll on change and the field shakes at its
+bounds. Its maximum is the loop's real cap (16.67 fps for non-native data).
 
 The file row shows or hides the whole file and counts its visible poses
 (`3/20`). Showing the stepper's whole file is the same state as All, so the All
@@ -165,10 +181,9 @@ crystal and native references.
 
 Each file has one hue and its poses use lighter and darker shades of it, so sets
 stay distinguishable in a crowded overlay. The file swatch shows the hue. Every
-pose row carries a dot: an outline in its shade while hidden (a click shows it)
-and the live tree colour while shown (a click opens its colour and
-representation menu). Right-clicking a shown pose opens that molecule's tree
-menu; right-clicking a hidden pose or a file opens Show/Hide, Pin/Unpin and Show
+pose row carries a dot: an outline in its shade while hidden and the live tree
+colour while shown; a click toggles it. Right-clicking a shown pose opens that
+molecule's tree menu; right-clicking a hidden pose or a file opens Show/Hide, Pin/Unpin and Show
 only. These menus slide out of the picker's right edge as if it grew another
 column, and they close with it. Secondary clicks never open the browser iframe
 menu. File headers stay pinned while a long file scrolls.

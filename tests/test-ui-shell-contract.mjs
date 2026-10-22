@@ -6866,7 +6866,7 @@ assert.match(previewViewer, /speed\.type = 'number'/);
 assert.match(previewViewer, /speed\.setAttribute\('aria-label', `\$\{controlLabel\} loop frames per second`\)/);
 assert.doesNotMatch(previewViewer, /speed\.max/);
 assert.match(previewViewer, /speed\.inputMode = 'decimal'/);
-assert.match(previewViewer, /speed\.value = playbackRestore\?\.fps \|\| formatTrajectoryFps\(readTrajectoryLoopFps\(activeConfig, prepared\)\)/);
+assert.match(previewViewer, /speed\.value = playbackRestore\?\.fps \|\| formatTrajectoryFps\(Math\.min\(maxLoopFps, readTrajectoryLoopFps\(activeConfig, prepared\)\)\)/);
 assert.match(previewViewer, /speed\.title = 'Target source frames per second; under load frames may be skipped and speed is capped, not guaranteed redraw FPS'/);
 assert.match(previewViewer, /function createStructureOverlayToggleButton\(prepared = activeMolstarPrepared\)/);
 assert.match(previewViewer, /button\.dataset\.buretAction = 'structure-overlay-toggle'/);
@@ -6904,14 +6904,16 @@ assert.match(previewViewer, /localStorage\.setItem\(trajectoryLoopFpsStorageKey\
 assert.match(previewViewer, /loop\.addEventListener\('click', \(\) => \{/);
 assert.match(previewViewer, /let loopActive = Boolean\(playbackRestore\?\.playing\)/);
 assert.match(previewViewer, /loopActive = Boolean\(active\)/);
-assert.match(previewViewer, /const open = !isAnimationOptionsOpen\(\);\s*setAnimationOptionsOpen\(open\);/);
+assert.match(previewViewer, /else setAnimationOptionsOpen\(!isAnimationOptionsOpen\(\)\);/);
 assert.match(previewViewer, /const loopTargetIndex = \(\) => \{/);
 assert.match(previewViewer, /const trajectoryControlBounds = \(poseIndex\) => \{/);
 // A slow frame step must not let wall-clock time pick an absolute frame: the loop
 // would alternate between two frames instead of playing (WKWebView regression).
 // It still has to skip the frames that fell due, or fps above the step rate is
 // ignored, so the loop moves forward by a bounded stride from the current frame.
-assert.match(previewViewer, /const loopBounds = trajectoryControlBounds\(activePose\)/);
+assert.match(previewViewer, /const loopBounds = stepBounds\(activePose\)/);
+// Pose groups loop and step across every file; other kinds stay in their segment.
+assert.match(previewViewer, /const stepBounds = \(poseIndex\) => hasPoseGroups\s*\? \{ start: 0, end: prepared\.poseCount - 1, count: prepared\.poseCount \}\s*: trajectoryControlBounds\(poseIndex\);/);
 assert.match(previewViewer, /return loopBounds\.start \+ \(\(activePose - loopBounds\.start \+ loopStride\(loopBounds\)\) % loopBounds\.count\)/);
 assert.match(previewViewer, /const stride = window\.molstar\.BuretteTrajectoryPlayback\.stride\(loopBounds\.count, due\);/);
 // A loop that keeps up must still show every frame.

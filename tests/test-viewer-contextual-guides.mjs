@@ -102,7 +102,7 @@ assert.match(
 {
   const expression = source.match(/\n    const poseCompareGuide = ([^;\n]+);/u)?.[1];
   assert.ok(expression, 'pose-compare eligibility is decided once per toolbar');
-  const eligible = new Function('prepared', `return ${expression};`);
+  const eligible = new Function('prepared', `const hasPoseGroups = false; return ${expression};`);
   assert.deepEqual([
     { kind: 'docking', dockingSceneMode: 'structurePoses' },
     { kind: 'docking', sdfPoseOverlayAvailable: true },

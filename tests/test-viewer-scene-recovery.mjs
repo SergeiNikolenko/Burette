@@ -382,7 +382,7 @@ assert.equal(alignmentCommits, 1);
   toggles[0].click();
   assert.deepEqual(rows.map(row => row.inert), [false, false]);
   assert.equal(toggles[0].getAttribute('aria-expanded'), 'true');
-  assert.deepEqual([...rows[0].querySelectorAll('[role="menuitemcheckbox"]')], fileButtons.slice(0, 2), 'expand reuses the original pose controls');
+  assert.deepEqual([...rows[0].querySelectorAll('[role="menuitemradio"]')], fileButtons.slice(0, 2), 'expand reuses the original pose controls');
   const root = document.createElement('div');
   root.className = 'buret-docking-poses';
   const label = document.createElement('button');
@@ -395,7 +395,9 @@ assert.equal(alignmentCommits, 1);
     window, document, root, label, fileList, fileButtons, fileTargets, hasPoseGroups: true,
     activePose: 0, Node: window.Node, Element: window.Element,
     isFileListOpen: () => open, setFileListOpen: value => { open = value; },
-    scheduleSliderInputPose: index => scheduled.push(index), editPoseVisibility: (_action, index) => scheduled.push(index), fileListDisposer: null,
+    scheduleSliderInputPose: index => scheduled.push(index), editPoseVisibility: (action, index) => scheduled.push([action, index]), fileListDisposer: null,
+    setPose: index => { scheduled.push(index); return Promise.resolve(); },
+    dockingPinnedPoseState: { activeHidden: false }, activeSdfPoseMode: 'single',
     updatePoseDots() {}, selectedPoseIndices: () => new Set(),
     isDockingPoseKeyboardTarget: () => false,
     closeSceneTreeMenu: () => { sideMenusClosed++; document.getElementById('buret-scene-tree-menu')?.remove(); },
@@ -406,7 +408,13 @@ assert.equal(alignmentCommits, 1);
   fileButtons[1].dispatchEvent(new window.PointerEvent('pointerenter', { pointerType: 'mouse' }));
   assert.deepEqual(scheduled, [], 'hover must not change the molecular scene');
   fileButtons[1].click();
-  assert.deepEqual({ scheduled, open, focused: document.activeElement === label }, { scheduled: [1], open: true, focused: false });
+  assert.deepEqual({ scheduled, open, focused: document.activeElement === label }, { scheduled: [1], open: true, focused: false }, 'a row goes to its pose and keeps the menu open');
+  fileButtons[0].click();
+  assert.deepEqual(scheduled, [1], 'the current row is already on screen');
+  context.dockingPinnedPoseState.activeHidden = true;
+  fileButtons[0].click();
+  assert.deepEqual(scheduled.at(-1), ['toggle', 0], 'the current row shows its hidden pose again');
+  scheduled.length = 0;
   const keysStart = source.indexOf('    const onKeyDown = (event) => {', eventsEnd);
   const keysEnd = source.indexOf('    mainRow.append(animation', keysStart);
   runInNewContext(source.slice(keysStart, keysEnd), context);
@@ -515,6 +523,7 @@ console.log('Docking pose visibility edits follow pins, sets and All, and recove
     dockingPinnedPoseIndices: () => pins, dockingPinnedPoseState: { selected: new Set(), activeHidden: false },
     groupControls: [], poseDots: [], posePins: [], trajectoryControlBounds: () => ({ start: 0, end: 1, count: 2 }),
     activeMolstarViewer: () => null, sceneTreeNodes: () => [], activeDockingPoseCollectionState: null,
+    syncStepButtons() {},
     activeTrajectorySegment: () => ({ index: 0, segment: poseGroups[0] }),
     applyLabel() {}, previous: {}, next: {}, slider: { dataset: {} }, storyStep: null,
     refreshNativeTrajectoryStandalonePreview() {}, postHostMessage() {}, activeConfig: {}, loopActive: false,
@@ -535,7 +544,7 @@ console.log('Docking pose visibility edits follow pins, sets and All, and recove
   const reload = context.reloadSdfPoseMode;
   let modeChange;
   context.reloadSdfPoseMode = () => (modeChange = reload());
-  const checks = () => fileButtons.map(button => button.getAttribute('aria-checked'));
+  const checks = () => fileButtons.map(button => button.dataset.shown);
   try {
     context.updateControls();
     assert.deepEqual(checks(), ['true', 'false', 'true']);

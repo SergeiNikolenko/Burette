@@ -356,9 +356,10 @@ const controlContext = vm.createContext({
   dockingPinnedPoseState: { key: '', indices: new Set() },
   structureOverlayAvailable: () => false, structureOverlayToggleAvailable: () => false, structureSceneStoryAvailable: () => false,
   sceneTreeIconElement: () => controlsDocument.createElement('span'), APP_ICON_DATA: {}, formatTrajectoryFps: String, readTrajectoryLoopFps: () => 20,
+  minimumTrajectoryLoopDelay: () => 0, trajectoryDelayToFps: () => 240,
   postHostMessage: () => {}, updateViewportAnimateState: () => {}, xyzSingleFrameSceneActive: () => false,
   trajectoryPoseLabel: (prepared, label, index) => `${label} ${index + 1} / ${prepared.poseCount}`,
-  restoreDockingPoseControlsPosition: () => {}, installDockingPoseInteractionIsolation: () => {}, installDockingPoseHoverSuppression: () => {}, initDockingPoseControlsDrag: () => {},
+  restoreDockingPoseControlsPosition: () => {}, installScrubNumberField: () => {}, installDockingPoseInteractionIsolation: () => {}, installDockingPoseHoverSuppression: () => {}, initDockingPoseControlsDrag: () => {},
   clearMolstarTrajectoryHover: () => {}, afterNativeTrajectoryPaint: () => Promise.resolve(), readNativeTrajectoryPositionFromDom: () => null,
 });
 const controlFunctions = ['nativeTrajectoryFrameCount', 'nativeTrajectoryModelTransform', 'readNativeTrajectoryPosition', 'readTrajectoryControlIndex',
