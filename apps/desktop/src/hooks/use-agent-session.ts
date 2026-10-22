@@ -19,7 +19,12 @@ const MAX_OBSERVED_DOCUMENTS = 128;
 const MAX_OBSERVED_TABS = 128;
 const MAX_OBSERVED_PANELS = 64;
 // Scene captures and large screenshots render offscreen and can outlast the default wait.
-const SLOW_VIEWER_ACTION_TYPES = new Set(["capture_scene", "screenshot", "export_image"]);
+// Background and pose-mode changes restyle every molecule of a collection; a
+// cold surface pass over ~90 molecules routinely outlasts the 5 s default.
+const SLOW_VIEWER_ACTION_TYPES = new Set([
+  "capture_scene", "screenshot", "export_image",
+  "set_sdf_pose_mode", "set_sdf_pose_index", "set_sdf_context_style", "set_sdf_context_opacity", "set_sdf_context_color",
+]);
 const isBrowserAgentShell = import.meta.env.VITE_BURETTE_AGENT_SHELL === "1";
 
 type KetcherAgentModule = typeof import("../lib/ketcher-agent");
