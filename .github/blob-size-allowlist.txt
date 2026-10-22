@@ -187,3 +187,12 @@ plugins/burette-agent/browser-shell-dist/assets/viewer-Bu-H-WOM.js
 
 # Reviewed generated shell with shared 2D/3D hydrogen visibility.
 plugins/burette-agent/browser-shell-dist/assets/viewer-QN3kosDi.js
+plugins/burette-agent/browser-shell-dist/assets/molstar-CG5Tbarg.js
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-CKnzlmxZ.js
+plugins/burette-agent/browser-shell-dist/assets/dist-BOa68gqd.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-Cwtfk7wJ.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-uhnEl35v.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CgVXKH8y.js
+plugins/burette-agent/browser-shell-dist/assets/native-viewer-menus-DEoKtlj0.js
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-BMKp5Z-D.js
+plugins/burette-agent/browser-shell-dist/assets/index-Dpu_oRwI.css
