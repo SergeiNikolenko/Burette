@@ -23,7 +23,8 @@ const click = async (label: string) => {
 const finishIntroduction = async () => { await click("Get started"); await click("Continue"); await click("Explore on my own"); };
 
 async function mountOnboarding(state = initial, actionOverrides: Partial<ShellActions> = {}) {
-  const mount = document.createElement("div"); document.body.append(mount); const root = createRoot(mount);
+  // The desktop app renders onboarding inside its shell, as here.
+  const mount = document.createElement("main"); mount.className = "app-shell"; document.body.append(mount); const root = createRoot(mount);
   const actions = { openSettingsSection: () => {}, setPreference: () => {}, chooseFiles: () => {}, openKetcher: () => {}, chooseWorkspace: () => {}, ...actionOverrides } as ShellActions;
   await act(async () => root.render(<OnboardingHost state={state} actions={actions} />));
   return { render: async (next: ShellViewState) => act(async () => root.render(<OnboardingHost state={next} actions={actions} />)),
@@ -104,6 +105,9 @@ test("a window held for the opening plays it first and continues the welcome at 
   try {
     expect(panel()).toBeNull();
     expect(document.documentElement.dataset.buretteIntro).toBe("playing");
+    // The shell is hidden while the opening plays, so the opening must not sit inside it.
+    const opening = document.querySelector(".atom-intro");
+    expect(opening !== null && opening.closest(".app-shell") === null).toBe(true);
     await act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); await Bun.sleep(250); });
     await click("Get started");
     await act(() => Bun.sleep(500));

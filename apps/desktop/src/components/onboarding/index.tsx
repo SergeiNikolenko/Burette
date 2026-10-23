@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { isTauriRuntime } from "../../lib/tauri";
 import type { ShellActions, ShellViewState } from "../types";
 import { Dialog, DialogContent } from "../ui/dialog";
@@ -56,11 +57,17 @@ function LocalOnboarding({ state, actions }: Props) {
     setIntro(false);
     setStep(outcome === "finished" ? 1 : 0);
   };
+  // The welcome takes focus itself: at appearance, focusing the first option would open its tooltip over the title.
+  const focusWelcome = (event: Event) => {
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).focus();
+  };
   return <>
   <ContextualGuideHost />
-  {intro && <AtomIntro theme={state.preferences.theme} onDone={finishIntro} />}
+  {/* The app shell is hidden while the opening plays, so the opening renders beside it. */}
+  {intro && createPortal(<AtomIntro theme={state.preferences.theme} onDone={finishIntro} />, document.body)}
   <Dialog open={welcome && !intro} onOpenChange={next => { if (!next) dismiss(); }}>
-    <DialogContent variant="form" size="medium" className="gap-0 overflow-x-hidden overscroll-contain p-0" aria-describedby={undefined}>
+    <DialogContent variant="form" size="medium" className="gap-0 overflow-x-hidden overscroll-contain p-0" aria-describedby={undefined} onOpenAutoFocus={focusWelcome}>
       <OnboardingContent dialog step={step} theme={state.preferences.theme}
         onThemeChange={theme => actions.setPreference("theme", theme)} onStepChange={setStep} onStopTips={dismiss}
         onCompleteWelcome={action => completeWelcome(action ? ({ file: actions.chooseFiles, draw: actions.openKetcher, folder: actions.chooseWorkspace })[action] : undefined)} />

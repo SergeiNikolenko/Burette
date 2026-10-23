@@ -1,5 +1,9 @@
-/* The opening owns the transparent window until it hands over to the app. */
-html[data-burette-intro="playing"] .app-shell,
+/* The opening owns the transparent window until it hands over to the app.
+   Opacity hides the whole shell: its active page sets a visibility of its own. */
+html[data-burette-intro="playing"] .app-shell {
+  opacity: 0;
+}
+
 html[data-burette-intro] #burette-boot-overlay {
   visibility: hidden;
 }
