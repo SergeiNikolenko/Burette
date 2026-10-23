@@ -34,6 +34,7 @@ test("shared viewport controls preserve camera, lighting, selection, animation, 
     structure: { selection: { stats: { elementCount: 0, label: "" }, events: { changed } } },
   }, behaviors: { state: { isAnimating: changed } } };
   const bindings = {
+    dismissFloatingMenu: (menu: Element | null) => menu?.remove(), revealFloatingMenu: () => {},
     document, window: { BuretteNativeViewerMenus: {
       mountViewportToolbar: mountViewerViewportToolbar, mountSelectionToolbar: mountViewerSelectionToolbar,
       styleControls: (element: HTMLElement) => { element.dataset.effectiveTheme = theme; },

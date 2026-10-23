@@ -31,6 +31,7 @@ test("real Animate builder uses shared controls, live scene state, keyboard slid
     activeConfig: {}, activeTrajectoryPlaybackControl: null, resolveViewerTheme: () => "dark",
     positionOpenViewportMenu: () => {}, updateViewportAnimateState: () => {}, setStatus: () => {}, debug: () => {},
     sceneTreeMenuSection: () => {}, viewportMenuItem: () => {},
+    dismissFloatingMenu: (menu: Element | null) => menu?.remove(),
   };
   const constants = ["VIEWPORT_MOTIONS", "VIEWPORT_MOTION_SPEEDS", "VIEWPORT_CONTEXT_ANIMATIONS", "VIEWPORT_WIGGLES", "VIEWPORT_WIGGLE_MODES", "VIEWPORT_WIGGLE_SLIDERS"].map(constant).join("\n");
   const methods = ["viewportAnimateMenu", "viewportMotionState", "viewportWiggleState", "refreshViewportWiggleControls", "setViewportMotion", "setViewportWiggleOptions", "runViewportWiggleAction", "streamViewportWiggleOption", "closeViewportMenu"].map(source).join("\n");
