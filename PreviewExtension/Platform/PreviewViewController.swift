@@ -1515,9 +1515,31 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return ["mesoscale.js", "mesoscale.css"]
         }
         if renderer == BuretteRendererMode.xyzrenderExternal {
-            return ["viewer-runtime.css", "viewer-shell.js", "molstar.css", "burette-agent.js", "molstar-preset-preview-controller.js", "sequence-panel.js", "svg-sanitizer.js", "viewer.js"]
+            return ["viewer-runtime.css", "viewer-shell.js", "molstar.css"] + viewerScriptAssets
         }
-        return ["viewer-runtime.css", "viewer-shell.js", "molstar.js", "molstar.css", "burette-agent.js", "molstar-preset-preview-controller.js", "sequence-panel.js", "svg-sanitizer.js", "viewer.js"]
+        return ["viewer-runtime.css", "viewer-shell.js", "molstar.js", "molstar.css"] + viewerScriptAssets
+    }
+
+    // Loaded in this order by the inline viewer HTML. Keep in sync with the
+    // script tags in PreviewExtension/Web/index.html: viewer.js calls these
+    // helpers directly, so a missing one aborts the preview at startup.
+    private static let viewerScriptAssets = [
+        "burette-agent.js",
+        "trajectory-smoothing.js",
+        "molstar-preset-preview-controller.js",
+        "superposition-panel.js",
+        "molecule-preview-interactions.js",
+        "renderer-view-state.js",
+        "color-picker.js",
+        "sequence-panel.js",
+        "native-viewer-menus.js",
+        "scene-file-actions.js",
+        "svg-sanitizer.js",
+        "viewer.js",
+    ]
+
+    private static var viewerScriptTags: String {
+        viewerScriptAssets.map { "<script src=\"../assets/\($0)\"></script>" }.joined(separator: "\n  ")
     }
 
     private static func copyAssetIfNeeded(from source: URL, to destination: URL, fileManager: FileManager) throws -> Bool {
@@ -2555,11 +2577,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
           <script>
             window.__mqlStatus && window.__mqlStatus('[web] About to load viewer.js from bundled resource…');
           </script>
-          <script src="../assets/burette-agent.js"></script>
-          <script src="../assets/molstar-preset-preview-controller.js"></script>
-          <script src="../assets/sequence-panel.js"></script>
-          <script src="../assets/svg-sanitizer.js"></script>
-          <script src="../assets/viewer.js"></script>
+          \(viewerScriptTags)
           <script>
             window.__mqlDebug && window.__mqlDebug('[web] viewer.js script tag parsed. async startup may still be running.');
           </script>
@@ -2706,7 +2724,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
     }
 
     private static func validateVendoredWebAssets(in webDirectory: URL, fileManager: FileManager, diagnostics: inout [String]) throws {
-        let required = ["svg-sanitizer.js", "viewer.js", "burette-agent.js", "viewer-shell.js", "molstar-preset-preview-controller.js", "sequence-panel.js", "molstar.js", "molstar.css", "viewer-runtime.css"]
+        let required = viewerScriptAssets + ["viewer-shell.js", "molstar.js", "molstar.css", "viewer-runtime.css"]
         for name in required {
             let url = webDirectory.appendingPathComponent(name)
             let exists = fileManager.fileExists(atPath: url.path)
