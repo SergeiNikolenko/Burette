@@ -49,6 +49,8 @@ impl Default for WindowManifest {
 
 pub(crate) struct WindowStateRegistry {
     path: Option<PathBuf>,
+    /// No window state had been saved yet: this is the install's first launch.
+    fresh: bool,
     manifest: Mutex<WindowManifest>,
 }
 
@@ -60,6 +62,7 @@ impl WindowStateRegistry {
             .map_err(|error| io::Error::other(error.to_string()))?;
         fs::create_dir_all(&directory)?;
         let path = directory.join(MANIFEST_FILE_NAME);
+        let fresh = !path.exists();
         let manifest = fs::read(&path)
             .ok()
             .and_then(|bytes| serde_json::from_slice::<WindowManifest>(&bytes).ok())
@@ -68,6 +71,7 @@ impl WindowStateRegistry {
             .unwrap_or_default();
         Ok(Self {
             path: Some(path),
+            fresh,
             manifest: Mutex::new(manifest),
         })
     }
@@ -75,8 +79,13 @@ impl WindowStateRegistry {
     pub(crate) fn unavailable() -> Self {
         Self {
             path: None,
+            fresh: false,
             manifest: Mutex::new(WindowManifest::default()),
         }
+    }
+
+    pub(crate) fn is_fresh(&self) -> bool {
+        self.fresh
     }
 
     pub(crate) fn restoration_order(&self) -> (Vec<String>, Option<String>) {

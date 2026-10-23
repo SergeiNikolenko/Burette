@@ -4,6 +4,7 @@
 mod commands;
 mod compute;
 mod deep_links;
+mod intro;
 #[cfg(target_os = "macos")]
 mod macos;
 mod menu;
@@ -119,12 +120,22 @@ pub fn run() {
             app.manage(compute_coordinator);
             let argv: Vec<String> = std::env::args().collect();
             let launch_mode = startup::LaunchMode::current(&argv);
-            let startup_links = argv
+            let startup_links: Vec<String> = argv
                 .iter()
                 .filter(|arg| arg.starts_with("burette") && arg.contains("://"))
                 .cloned()
                 .collect();
             let startup_paths = startup::file_args_from_argv(argv, std::env::current_dir().ok());
+            // A fresh install opened on its own plays the first-launch opening.
+            let entrance = if cfg!(target_os = "macos")
+                && startup_paths.is_empty()
+                && startup_links.is_empty()
+                && app.state::<window_state::WindowStateRegistry>().is_fresh()
+            {
+                windows::WindowEntrance::Intro
+            } else {
+                windows::WindowEntrance::Ordinary
+            };
             #[cfg(target_os = "macos")]
             app.set_activation_policy(if launch_mode.is_register() && startup_paths.is_empty() {
                 tauri::ActivationPolicy::Accessory
@@ -138,7 +149,7 @@ pub fn run() {
                 preview::xyzrender::warmup_renderer(preview::xyzrender::XyzrenderWarmup::Startup);
                 let initial_app = app.handle().clone();
                 let initial_workspace = move || {
-                    if let Err(error) = windows::restore_workspace_windows(&initial_app) {
+                    if let Err(error) = windows::restore_workspace_windows(&initial_app, entrance) {
                         eprintln!("failed to restore Burette workspaces: {error}");
                     }
                     if !startup_paths.is_empty() {
@@ -156,6 +167,7 @@ pub fn run() {
         })
         .invoke_handler(perf_trace::timed::<tauri::Wry, _>(
             commands::recent_documents::ordered(tauri::generate_handler![
+                intro::present_intro,
                 commands::telemetry::statistics_status,
                 commands::telemetry::statistics_consent,
                 commands::telemetry::statistics_record,
