@@ -87,6 +87,31 @@ test("reset restarts welcome immediately and preserves workspace and preference 
   } finally { await view.dispose(); }
 });
 
+test("a window held for the opening plays it first and continues the welcome at appearance", async () => {
+  localStorage.clear();
+  window.__BURETTE_INTRO__ = true;
+  const gl = new Proxy({}, { get: (_, key) => key === "isContextLost" ? () => false : () => ({}) });
+  const webgl = spyOn(browser.HTMLCanvasElement.prototype, "getContext").mockImplementation(() => gl as never);
+  // No frames arrive, so the clock stays still and Escape skips straight to the end.
+  const frames = spyOn(browser, "requestAnimationFrame").mockImplementation(() => 0);
+  const view = await mountOnboarding();
+  try {
+    expect(panel()).toBeNull();
+    expect(document.documentElement.dataset.buretteIntro).toBe("playing");
+    await act(async () => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); await Bun.sleep(250); });
+    await click("Get started");
+    await act(() => Bun.sleep(500));
+    expect(document.documentElement.dataset.buretteIntro).toBeUndefined();
+    expect(title()).toBe("Choose your appearance");
+  } finally { webgl.mockRestore(); frames.mockRestore(); await view.dispose(); }
+  // Without WebGL the opening gives way to the whole welcome.
+  localStorage.clear();
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  const fallback = await mountOnboarding();
+  try { expect(title()).toBe("Welcome to Burette"); expect(warn).toHaveBeenCalled(); }
+  finally { warn.mockRestore(); await fallback.dispose(); delete window.__BURETTE_INTRO__; }
+});
+
 test("established workspaces and hosted workspaces are not interrupted", async () => {
   localStorage.clear();
   const existing = await mountOnboarding({ ...initial, recentStructures: [{ path: "/molecule.pdb" }] } as ShellViewState);

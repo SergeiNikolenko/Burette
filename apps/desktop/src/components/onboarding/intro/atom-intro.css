@@ -1,0 +1,96 @@
+/* The opening owns the transparent window until it hands over to the app. */
+html[data-burette-intro="playing"] .app-shell,
+html[data-burette-intro] #burette-boot-overlay {
+  visibility: hidden;
+}
+
+html[data-burette-intro="leaving"] .app-shell {
+  animation: atom-intro-reveal 0.45s ease both;
+}
+
+@keyframes atom-intro-reveal {
+  from { opacity: 0; }
+}
+
+.atom-intro {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  overflow: hidden;
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: opacity 0.45s ease;
+}
+
+.atom-intro[data-phase="leaving"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.atom-intro-stage {
+  position: absolute;
+  inset: 0;
+  transition: opacity 0.34s ease;
+}
+
+.atom-intro[data-phase="skipping"] .atom-intro-stage {
+  opacity: 0;
+  transition-duration: 0.18s;
+}
+
+/* After the window settles it can be moved by its title-bar strip. */
+.atom-intro-drag {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 30px;
+}
+
+.atom-intro-title {
+  display: flex;
+  margin: 0;
+  white-space: pre;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.022em;
+  pointer-events: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.atom-intro-title > span {
+  display: inline-block;
+  transform-origin: 50% 90%;
+}
+
+.atom-intro-action {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.atom-intro-action:hover {
+  transform: scale(1.045);
+}
+
+.atom-intro-action:active {
+  transform: scale(0.97);
+  transition-duration: 0.08s;
+}
+
+.atom-intro-action:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--atom-intro-ring) 50%, transparent);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .atom-intro,
+  .atom-intro-stage,
+  .atom-intro-action {
+    transition: none;
+  }
+}
