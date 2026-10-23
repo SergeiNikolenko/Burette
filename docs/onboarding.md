@@ -32,8 +32,10 @@ opening in that window and sends `present_intro` cues as it plays:
 
 The button at the end of the opening continues to the welcome's appearance
 step, since the opening already greets the user. Esc or switching away skips to
-the end. With Reduce Motion on, or when WebGL is unavailable, the window
-settles at once and the welcome starts from its first step. If the page never
+the end. The opening plays only while Burette is the active app: when it was
+launched in the background or the user moved on while it loaded, `begin` fails,
+the window appears as usual and the welcome starts from its first step. The
+same fallback applies with Reduce Motion on or without WebGL. If the page never
 begins or never finishes, `intro.rs` settles the window itself so no display
 stays dimmed. Reset onboarding replays the opening in the current window.
 

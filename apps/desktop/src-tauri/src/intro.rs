@@ -18,6 +18,7 @@ pub(crate) const HELD_WINDOW_SCRIPT: &str = "window.__BURETTE_INTRO__ = true;";
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub(crate) enum IntroCue {
     /// Strips the window chrome, dims every display and brings the window forward.
+    /// Fails, leaving an ordinary window, when Burette is not the active application.
     Begin,
     /// Fades the traffic lights in.
     Chrome,
@@ -131,6 +132,14 @@ mod platform {
 
     fn begin<R: Runtime>(window: &WebviewWindow<R>) -> Result<(), String> {
         HELD.store(false, Ordering::SeqCst);
+        // The opening plays only in front of the user. Launched in the background,
+        // or left while it loaded, Burette shows an ordinary window instead of
+        // dimming a desktop the user is working on.
+        if !in_front() {
+            eprintln!("[intro] Burette is not in front; showing the window as usual");
+            settle(window)?;
+            return Err("Burette is not the active application".into());
+        }
         let presentation = PRESENTATION.fetch_add(1, Ordering::SeqCst) + 1;
         window
             .set_effects(None::<WindowEffectsConfig>)
@@ -172,6 +181,15 @@ mod platform {
         })?;
         crate::macos::reposition_traffic_lights(window);
         Ok(())
+    }
+
+    /// Whether Burette is the active application; `NSRunningApplication` can be read on any thread.
+    fn in_front() -> bool {
+        unsafe {
+            let current: id = msg_send![class!(NSRunningApplication), currentApplication];
+            let active: BOOL = msg_send![current, isActive];
+            active == YES
+        }
     }
 
     fn on_main<R: Runtime>(

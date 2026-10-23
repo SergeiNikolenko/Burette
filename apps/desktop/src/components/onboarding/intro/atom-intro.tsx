@@ -14,8 +14,9 @@ type IntroCue = { kind: "begin" } | { kind: "chrome" } | { kind: "undim"; second
 export type IntroOutcome = "finished" | "unavailable";
 type Phase = "waiting" | "playing" | "skipping" | "leaving";
 
+/** Resolves whether the shell accepted the cue; outside the desktop app every cue is accepted. */
 export const presentIntro = (cue: IntroCue) =>
-  isTauriRuntime() ? invoke("present_intro", { cue }).catch(() => undefined) : Promise.resolve();
+  isTauriRuntime() ? invoke("present_intro", { cue }).then(() => true, () => false) : Promise.resolve(true);
 
 const SKIP_OUT_MS = 180;
 const SKIP_IN_MS = 340;
@@ -47,6 +48,8 @@ export function AtomIntro({ theme, onDone }: Props) {
   const finished = useRef(false);
   const fired = useRef(new Set<string>());
   const timers = useRef<number[]>([]);
+  const done = useRef(onDone);
+  useLayoutEffect(() => { done.current = onDone; }, [onDone]);
 
   const enter = useCallback((next: Phase) => { phaseRef.current = next; setPhase(next); }, []);
   const later = useCallback((ms: number, work: () => void) => { timers.current.push(window.setTimeout(work, ms)); }, []);
@@ -68,14 +71,27 @@ export function AtomIntro({ theme, onDone }: Props) {
     return () => window.removeEventListener("resize", resize);
   }, []);
 
+  const gone = useRef(false);
+  const unavailable = useCallback(() => {
+    if (gone.current) return;
+    gone.current = true;
+    introSound.stop(0);
+    void presentIntro({ kind: "settle" });
+    done.current("unavailable");
+  }, []);
+
   // The native window strips its chrome and dims the desktop; the clock and the
   // sound start with the first frame that reaches the screen.
   useEffect(() => {
+    // The canvas failed during layout: the opening has already handed over.
+    if (gone.current) return;
     let frame = 0;
     let last = 0;
     let cancelled = false;
-    void presentIntro({ kind: "begin" }).then(() => {
+    void presentIntro({ kind: "begin" }).then((accepted) => {
       if (cancelled) return;
+      // Burette is not in front: the window is already ordinary, so the welcome opens there.
+      if (!accepted) return unavailable();
       const tick = (now: number) => {
         if (!start.current) {
           start.current = now;
@@ -98,7 +114,7 @@ export function AtomIntro({ theme, onDone }: Props) {
       window.cancelAnimationFrame(frame);
       introSound.stop();
     };
-  }, [enter]);
+  }, [enter, unavailable]);
 
   useEffect(() => {
     if (phase !== "playing") return;
@@ -151,14 +167,8 @@ export function AtomIntro({ theme, onDone }: Props) {
     if (phaseRef.current === "leaving") return;
     enter("leaving");
     document.documentElement.dataset.buretteIntro = "leaving";
-    later(LEAVE_MS, () => onDone("finished"));
-  }, [enter, later, onDone]);
-
-  const unavailable = useCallback(() => {
-    introSound.stop(0);
-    void presentIntro({ kind: "settle" });
-    onDone("unavailable");
-  }, [onDone]);
+    later(LEAVE_MS, () => done.current("finished"));
+  }, [enter, later]);
 
   const { width, height, dpr } = viewport;
   const ink = dark ? PAPER : INK;

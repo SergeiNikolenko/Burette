@@ -87,13 +87,19 @@ test("reset restarts welcome immediately and preserves workspace and preference 
   } finally { await view.dispose(); }
 });
 
+// The flag the native shell sets on a window it holds for the opening (vite-env.d.ts).
+const heldWindow = window as typeof window & { __BURETTE_INTRO__?: boolean };
+const drawableCanvas = () => {
+  const gl = new Proxy({}, { get: (_, key) => key === "isContextLost" ? () => false : () => ({}) });
+  return spyOn(browser.HTMLCanvasElement.prototype, "getContext").mockImplementation(() => gl as never);
+};
+
 test("a window held for the opening plays it first and continues the welcome at appearance", async () => {
   localStorage.clear();
-  window.__BURETTE_INTRO__ = true;
-  const gl = new Proxy({}, { get: (_, key) => key === "isContextLost" ? () => false : () => ({}) });
-  const webgl = spyOn(browser.HTMLCanvasElement.prototype, "getContext").mockImplementation(() => gl as never);
+  heldWindow.__BURETTE_INTRO__ = true;
+  const webgl = drawableCanvas();
   // No frames arrive, so the clock stays still and Escape skips straight to the end.
-  const frames = spyOn(browser, "requestAnimationFrame").mockImplementation(() => 0);
+  const frames = spyOn(browser, "requestAnimationFrame").mockImplementation(() => 0 as never);
   const view = await mountOnboarding();
   try {
     expect(panel()).toBeNull();
@@ -103,13 +109,32 @@ test("a window held for the opening plays it first and continues the welcome at 
     await act(() => Bun.sleep(500));
     expect(document.documentElement.dataset.buretteIntro).toBeUndefined();
     expect(title()).toBe("Choose your appearance");
-  } finally { webgl.mockRestore(); frames.mockRestore(); await view.dispose(); }
-  // Without WebGL the opening gives way to the whole welcome.
-  localStorage.clear();
-  const warn = spyOn(console, "warn").mockImplementation(() => {});
-  const fallback = await mountOnboarding();
-  try { expect(title()).toBe("Welcome to Burette"); expect(warn).toHaveBeenCalled(); }
-  finally { warn.mockRestore(); await fallback.dispose(); delete window.__BURETTE_INTRO__; }
+  } finally { webgl.mockRestore(); frames.mockRestore(); await view.dispose(); delete heldWindow.__BURETTE_INTRO__; }
+});
+
+test("an opening that cannot play in front of the user hands over to the whole welcome without dimming", async () => {
+  heldWindow.__BURETTE_INTRO__ = true;
+  const cues: string[] = [];
+  const invoke = async (command: string, args: { cue?: { kind: string } }) => {
+    if (command !== "present_intro" || !args.cue) return;
+    cues.push(args.cue.kind);
+    if (args.cue.kind === "begin") throw "Burette is not the active application";
+  };
+  Object.defineProperty(window, "__TAURI_INTERNALS__", { configurable: true, value: { invoke } });
+  try {
+    localStorage.clear();
+    const webgl = drawableCanvas();
+    const background = await mountOnboarding();
+    try { expect(title()).toBe("Welcome to Burette"); expect(cues).toEqual(["begin", "settle"]); }
+    finally { webgl.mockRestore(); await background.dispose(); }
+    // A canvas that cannot draw hands over before the shell is ever asked to dim.
+    localStorage.clear();
+    cues.length = 0;
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    const blank = await mountOnboarding();
+    try { expect(title()).toBe("Welcome to Burette"); expect(cues).toEqual(["settle"]); expect(warn).toHaveBeenCalled(); }
+    finally { warn.mockRestore(); await blank.dispose(); }
+  } finally { Reflect.deleteProperty(window, "__TAURI_INTERNALS__"); delete heldWindow.__BURETTE_INTRO__; }
 });
 
 test("established workspaces and hosted workspaces are not interrupted", async () => {
