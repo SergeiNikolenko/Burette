@@ -42,11 +42,16 @@ const [
 // A helper in the shared index alone is not available in Finder's temporary runtime.
 const quickLookRuntime = await source("PreviewExtension/Platform/PreviewViewController.swift");
 const runtimeAssets = quickLookRuntime.slice(quickLookRuntime.indexOf("    private static func runtimeAssets("), quickLookRuntime.indexOf("    private static func copyAssetIfNeeded("));
-for (const list of runtimeAssets.matchAll(/return \[([^\]]+)\]/g)) {
-  if (!list[1].includes('"viewer.js"')) continue;
-  assert.ok(list[1].includes('"sequence-panel.js"'), "Every Quick Look viewer runtime must copy the sequence helper");
+const quickLookViewerScripts = [...runtimeAssets.match(/viewerScriptAssets = \[([^\]]+)\]/)[1].matchAll(/"([^"]+)"/g)].map(match => match[1]);
+const sharedIndexScripts = [...(await source("PreviewExtension/Web/index.html")).matchAll(/<script src="\.\/([^"]+)"/g)]
+  .map(match => match[1])
+  .filter(name => name !== "viewer-shell.js");
+assert.deepEqual(quickLookViewerScripts, sharedIndexScripts, "Quick Look must load the same viewer helpers, in order, as the shared index");
+for (const list of runtimeAssets.matchAll(/return \[([^\]]+)\]( \+ viewerScriptAssets)?/g)) {
+  if (list[1].includes('"mesoscale.js"')) continue;
+  assert.ok(list[2], "Every Quick Look viewer runtime must copy the shared viewer helpers");
 }
-assert.match(quickLookRuntime, /<script src="\.\.\/assets\/sequence-panel\.js"><\/script>\s*<script src="\.\.\/assets\/svg-sanitizer\.js"><\/script>\s*<script src="\.\.\/assets\/viewer\.js"><\/script>/);
+assert.match(quickLookRuntime, /\\\(viewerScriptTags\)/);
 
 const matrix = JSON.parse(matrixSource);
 const surfaceDocs = `${testingSurfaces}\n${scriptsReadme}\n${mobileReadme}`;
