@@ -137,6 +137,18 @@ test("an opening that cannot play in front of the user hands over to the whole w
   } finally { Reflect.deleteProperty(window, "__TAURI_INTERNALS__"); delete heldWindow.__BURETTE_INTRO__; }
 });
 
+test("the empty recent list a first launch saves while booting still gets the welcome; a remembered structure does not", async () => {
+  localStorage.clear();
+  localStorage.setItem("burette.recent.structures", '{"revision":1,"documents":[]}');
+  const fresh = await mountOnboarding();
+  try { expect(title()).toBe("Welcome to Burette"); } finally { await fresh.dispose(); }
+  localStorage.clear();
+  localStorage.setItem("burette.recent.structures", JSON.stringify({ revision: 3, documents: [
+    { path: "/Users/me/protein.pdb", title: "protein.pdb", extension: "pdb", renderer: "molstar", byteCount: 2048, openedAt: 1 }] }));
+  const established = await mountOnboarding();
+  try { expect(panel()).toBeNull(); } finally { await established.dispose(); }
+});
+
 test("established workspaces and hosted workspaces are not interrupted", async () => {
   localStorage.clear();
   const existing = await mountOnboarding({ ...initial, recentStructures: [{ path: "/molecule.pdb" }] } as ShellViewState);
