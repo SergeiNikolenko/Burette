@@ -31,6 +31,7 @@ test("selection builders preserve exact queries, modifiers, actions, placement a
   } }, state: { data: { canUndo: false } } };
   const undo: unknown[] = [], redo: unknown[] = [];
   const bindings = {
+    dismissFloatingMenu: (menu: Element | null) => menu?.remove(), revealFloatingMenu: () => {},
     document, window: { innerWidth: 800, innerHeight: 600, BuretteNativeViewerMenus: {
       stylePopover: () => {}, mountQueryControls: controls.mountViewerQueryControls, mountSelectionActions: controls.mountViewerSelectionActions,
     } }, viewportPlugin: () => plugin, activeConfig: {}, resolveViewerTheme: () => "dark",

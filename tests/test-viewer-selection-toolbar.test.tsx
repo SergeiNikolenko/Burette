@@ -28,6 +28,7 @@ test("selection toolbar follows live scene state and retains one action binding 
     stats: { elementCount: 0, label: "" }, events: { changed },
   } } } };
   const bindings = {
+    dismissFloatingMenu: (menu: Element | null) => menu?.remove(), revealFloatingMenu: () => {},
     document, window: { BuretteNativeViewerMenus: { mountSelectionToolbar: mountViewerSelectionToolbar, mountViewportToolbar: mountViewerViewportToolbar, styleControls: () => {} } },
     viewportPlugin: () => plugin, activeConfig: {}, resolveViewerTheme: () => "dark",
     molstarSelectionLevel: () => level, setMolstarSelectionLevel: (value: string) => { level = value; calls.push(["level", value]); },

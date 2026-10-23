@@ -134,8 +134,9 @@ const events = [];
   const rail = document.createElement('div'); rail.id = 'buret-viewport-rail';
   const trigger = document.createElement('button'); trigger.setAttribute('aria-expanded', 'true');
   rail.append(trigger); document.body.append(rail);
-  new Function('document', 'let viewportMenuControls = null;' + source('closeViewportMenu') + '; closeViewportMenu({ restoreFocus: true });')(document);
-  assert.equal(menu.isConnected, false);
+  new Function('document', 'window', 'let viewportMenuControls = null;' + ['floatingMenuMotion', 'floatingMenuFrames', 'dismissFloatingMenu', 'closeViewportMenu'].map(source).join('\n')
+    + '; closeViewportMenu({ restoreFocus: true });')(document, window);
+  assert.equal(document.getElementById('buret-viewport-menu'), null);
   assert.equal(trigger.getAttribute('aria-expanded'), 'false');
   assert.equal(document.activeElement, trigger);
   rail.remove();
@@ -361,7 +362,8 @@ console.log('Native scene/rail adapter: scoped actions, disabled rows, types, th
     setMolstarPresetMenuRovingItem: (_menu, item) => item,
     showNativeViewerMenu: () => { throw Error('toolbar must not enter NSMenu'); } };
   const names = ['showGenerate3DMenu', 'hideGenerate3DMenu', 'showMolstarPresetMenu', 'hideMolstarPresetMenu', 'openViewportMenu', 'closeViewportMenu'];
-  const menus = new Function(...Object.keys(bindings), names.map(source).join('\n') + `;return {${names.join(',')}}`)(...Object.values(bindings));
+  const motion = "const FLOATING_MENU_EASE = 'ease-out';\n" + ['floatingMenuMotion', 'floatingMenuFrames', 'revealFloatingMenu', 'dismissFloatingMenu'].map(source).join('\n');
+  const menus = new Function(...Object.keys(bindings), motion + names.map(source).join('\n') + `;return {${names.join(',')}}`)(...Object.values(bindings));
   const generate = dom.document.querySelector('[data-buret-action]');
   const preset = dom.document.querySelector('[data-buret-molstar-preset-trigger]');
   const camera = dom.document.querySelector('#buret-viewport-rail button');

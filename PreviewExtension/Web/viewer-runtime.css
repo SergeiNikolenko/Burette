@@ -5454,8 +5454,9 @@ body:not(.buret-theme-light):not(.burette-mobile-host) .buret-molecule-context-s
 }
 
 /* The docking pose picker is the viewer's Atlas menu (styleMenu adds the
-   surface tokens), kept opaque over the scene. Rows use the scene tree's
-   compact metrics and one shared highlight that slides between them. */
+   surface tokens). Rows use the scene tree's compact metrics and one shared
+   highlight that slides between them. It unrolls out of the toolbar and rolls
+   back into it, so the menu reads as part of the control. */
 body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content {
   position: absolute;
   display: none;
@@ -5471,19 +5472,66 @@ body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content {
   box-shadow: 0 0 0 var(--dropdown-overlay-ring-width) var(--color-border-overlay), var(--shadow-dropdown-overlay);
   color: var(--color-text);
   font: 12px/16px var(--font-sans);
+  scrollbar-width: thin;
+  animation: none;
+  opacity: 0;
+  transform: translateY(-6px);
+  clip-path: inset(0 0 100% 0 round 20px);
+  transition:
+    clip-path 140ms ease-out,
+    transform 140ms ease-out,
+    opacity 120ms ease-out,
+    display 140ms allow-discrete;
 }
-body .buret-docking-poses-files-open .buret-docking-pose-files.atlas-menu-content { display: flex; }
+body .buret-docking-poses-files-above .buret-docking-pose-files.atlas-menu-content {
+  transform: translateY(6px);
+  clip-path: inset(100% 0 0 0 round 20px);
+}
+body .buret-docking-poses.buret-docking-poses-files-open .buret-docking-pose-files.atlas-menu-content {
+  display: flex;
+  opacity: 1;
+  transform: none;
+  clip-path: inset(0 0 0 0 round 20px);
+  transition:
+    clip-path 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 140ms ease-out,
+    display 220ms allow-discrete;
+}
+@starting-style {
+  body .buret-docking-poses.buret-docking-poses-files-open .buret-docking-pose-files.atlas-menu-content {
+    opacity: 0;
+    transform: translateY(-6px);
+    clip-path: inset(0 0 100% 0 round 20px);
+  }
+  body .buret-docking-poses.buret-docking-poses-files-open.buret-docking-poses-files-above .buret-docking-pose-files.atlas-menu-content {
+    transform: translateY(6px);
+    clip-path: inset(100% 0 0 0 round 20px);
+  }
+}
 .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-row {
   position: relative;
   display: block;
   z-index: 1;
   min-height: 0;
 }
+/* File rows stay pinned to the top while their poses scroll beneath, so a
+   long run keeps its file controls in reach. */
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-label {
+  position: sticky;
+  top: -4px;
+  z-index: 2;
+  border-radius: 12px;
+  background: var(--color-surface-elevated-secondary);
+}
 .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-highlight {
+  z-index: 3;
+  border-radius: 12px;
   background: var(--color-background-primary-ghost-hover);
 }
 body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button {
   height: auto;
+  min-height: 0;
   margin: 0;
   border: 0;
   background: transparent;
@@ -5496,70 +5544,98 @@ body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .atlas-me
   width: 100%;
   align-items: center;
   min-height: 24px;
-  padding: 4px 52px 4px 6px;
-  gap: 4px;
+  padding: 4px 56px 4px 30px;
+  gap: 6px;
   border-radius: 12px;
   text-align: left;
 }
-body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose { padding-left: 26px; }
-.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-file-name { flex: 1 1 auto; }
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-file-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.buret-docking-pose-files.atlas-menu-content :is(.buret-docking-pose-file-meta, .buret-docking-pose-swatch) { min-width: 0 !important; }
 .buret-docking-pose-files.atlas-menu-content .buret-docking-pose-file-meta {
   color: var(--color-text-tertiary);
   font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
 }
-.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-chevron {
-  width: 16px;
-  height: 16px;
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose[data-shown="false"],
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-show[aria-checked="false"] { color: var(--color-text-secondary); }
+/* The stepper's pose reads as the current row, whether or not it is on screen. */
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose[aria-checked="true"] { font-weight: 600; }
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-swatch {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  opacity: 0.4;
+  transition: opacity 140ms ease;
+}
+.buret-docking-pose-group-show:is([aria-checked="true"], [aria-checked="mixed"]) .buret-docking-pose-swatch { opacity: 1; }
+/* The chevron folds a file; it sits where the tree's twisty does. */
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-group-toggle {
+  position: absolute;
+  top: 50%;
+  left: 8px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: -9px;
+  padding: 0;
+  border-radius: 50%;
   color: var(--color-text-secondary);
+}
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-toggle > svg {
+  width: 12px;
+  height: 12px;
+  transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-toggle[aria-expanded="true"] > svg { transform: rotate(90deg); }
+/* A pose's colour dot: filled while it is on screen, an outline while hidden. */
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-dot {
+  position: absolute;
+  top: 50%;
+  right: 32px;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  padding: 0;
+  border: 1.5px solid var(--buret-pose-color);
+  border-radius: 50%;
+  opacity: 0.55;
+  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1), opacity 140ms ease, background-color 140ms ease;
+}
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-dot.buret-docking-pose-dot-shown {
+  border-color: transparent;
   opacity: 1;
 }
-/* Visibility follows the scene tree: an eye on shown poses, an eye-off on
-   hover for hidden ones, dimmed labels for poses off screen. */
-.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose[aria-checked="false"] { color: var(--color-text-secondary); }
-.buret-docking-pose-eye > svg { display: none; width: 16px; height: 16px; }
-.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-group-pose .buret-docking-pose-eye {
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-dot:hover { transform: scale(1.25); opacity: 1; }
+/* A pin keeps a pose or file on screen while stepping. It shows on hover and
+   stays while pinned. */
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-pin {
   position: absolute;
   top: 50%;
-  right: 8px;
-  display: grid;
-  width: 16px;
-  min-width: 0;
-  height: 16px;
-  margin-top: -8px;
-  color: var(--color-text-secondary);
-}
-body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-eye {
-  position: absolute;
-  top: 50%;
-  right: 4px;
+  right: 6px;
+  z-index: 1;
   display: grid;
   place-items: center;
   width: 20px;
   height: 20px;
   margin-top: -10px;
   padding: 0;
-  border-radius: 6px;
-  color: var(--color-text-secondary);
-}
-body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-eye:hover {
-  background: var(--color-background-primary-ghost-hover);
-  color: var(--color-text);
-}
-:is(.buret-docking-pose-group-pose[aria-checked="true"] .buret-docking-pose-eye, .buret-docking-pose-eye:is([aria-checked="true"], [aria-checked="mixed"])) > svg:first-child,
-.buret-docking-pose-row:hover :is(.buret-docking-pose-group-pose[aria-checked="false"] .buret-docking-pose-eye, .buret-docking-pose-eye[aria-checked="false"]) > svg:last-child { display: block; }
-.buret-docking-pose-eye[aria-checked="mixed"] > svg:first-child { opacity: 0.5; }
-body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-dot {
-  position: absolute;
-  top: 50%;
-  right: 30px;
-  width: 10px;
-  height: 10px;
-  margin-top: -5px;
-  padding: 0;
-  border: 1px solid rgba(127, 127, 127, 0.4);
   border-radius: 50%;
+  color: var(--color-text-secondary);
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease;
 }
-.buret-docking-pose-dot[hidden] { display: none; }
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-pin > svg { width: 14px; height: 14px; }
+.buret-docking-pose-files.atlas-menu-content .buret-docking-pose-row:is(:hover, :focus-within) > .buret-docking-pose-pin { opacity: 1; }
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button.buret-docking-pose-pin[aria-pressed="true"] { opacity: 1; color: var(--color-text); }
+body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content button:is(.buret-docking-pose-pin, .buret-docking-pose-group-toggle):hover { color: var(--color-text); }
+@media (prefers-reduced-motion: reduce) {
+  body .buret-docking-poses .buret-docking-pose-files.atlas-menu-content,
+  body .buret-docking-poses.buret-docking-poses-files-open .buret-docking-pose-files.atlas-menu-content { transform: none; clip-path: none; }
+}
 
 /* The scene tree toggle floats over the structure: its fill stays opaque and
    hover or the open state tints that fill. */
@@ -5613,6 +5689,20 @@ body #buret-scene-tree.hidden {
     clip-path: inset(0 calc(100% - 36px) calc(100% - 36px) 0 round 18px);
   }
 }
+/* Style grows out of its trigger and folds back into it. */
+body .buret-molstar-preset-menu {
+  transform-origin: top left;
+  transition: opacity 140ms ease-out, transform 180ms cubic-bezier(0.23, 1, 0.32, 1), display 180ms allow-discrete;
+}
+body .buret-molstar-preset-menu[data-placement="top"] { transform-origin: bottom left; }
+body .buret-molstar-preset-menu.hidden {
+  opacity: 0;
+  transform: scale(0.96);
+  transition-duration: 120ms, 120ms, 120ms;
+}
+@starting-style {
+  body .buret-molstar-preset-menu:not(.hidden) { opacity: 0; transform: scale(0.96); }
+}
 /* The playback row stays in the flow, so closing it shrinks the controls as
    smoothly as opening grows them; while shut it claims none of their width. */
 .buret-docking-poses .buret-docking-pose-animation {
@@ -5624,5 +5714,92 @@ body #buret-scene-tree.hidden {
 @media (prefers-reduced-motion: reduce) {
   body #buret-scene-tree,
   body #buret-scene-tree.hidden { transform: none; clip-path: none; }
+  body .buret-molstar-preset-menu, body .buret-molstar-preset-menu.hidden { transform: none; }
   @starting-style { body #buret-scene-tree { transform: none; clip-path: none; } }
 }
+
+/* Morphs between the shapes of the viewer's islands. The toolbar folds into
+   its grip at the right edge and the pose controls grow from their top-left
+   corner, so their snapshots stay unscaled and are clipped by the moving
+   outline. The canvas never cross-fades. */
+#buret-toolbar { view-transition-name: buret-toolbar; }
+body .buret-docking-poses { view-transition-name: buret-pose-controls; }
+#buret-viewport-rail { view-transition-name: buret-viewport-rail; }
+#buret-viewport-corner { view-transition-name: buret-viewport-corner; }
+::view-transition-old(root),
+::view-transition-new(root) { animation: none; }
+::view-transition-group(*),
+::view-transition-old(*),
+::view-transition-new(*) {
+  animation-duration: 280ms;
+  animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1);
+}
+::view-transition-image-pair(buret-toolbar),
+::view-transition-image-pair(buret-pose-controls) {
+  overflow: clip;
+  border-radius: 18px;
+}
+::view-transition-old(buret-toolbar),
+::view-transition-new(buret-toolbar) {
+  width: auto;
+  height: 100%;
+  inset: 0 0 auto auto;
+  object-fit: none;
+  object-position: right center;
+}
+::view-transition-old(buret-pose-controls),
+::view-transition-new(buret-pose-controls) {
+  width: auto;
+  height: auto;
+  inset: 0 auto auto 0;
+  object-fit: none;
+  object-position: left top;
+}
+
+/* After the first layout, islands glide to the place a resize or a
+   neighbour's new shape gives them; dragging still moves them directly. */
+html.buret-chrome-settled #buret-toolbar:not(.buret-dragging) {
+  transition: background 180ms ease, box-shadow 180ms ease,
+    left 260ms cubic-bezier(0.32, 0.72, 0, 1), top 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+html.buret-chrome-settled body .buret-docking-poses:not(.buret-docking-poses-dragging),
+html.buret-chrome-settled #buret-viewport-rail:not(.buret-dragging) {
+  transition: left 260ms cubic-bezier(0.32, 0.72, 0, 1), top 260ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+/* A pane narrower than the toolbar wraps its buttons onto a second row
+   instead of clipping them under the grip. */
+#buret-toolbar.buret-toolbar-docked.buret-toolbar-wrapped { border-radius: 20px; }
+#buret-toolbar.buret-toolbar-docked.buret-toolbar-wrapped .buret-toolbar-content {
+  flex-wrap: wrap;
+  row-gap: 2px;
+  overflow: visible;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.buret-chrome-settled #buret-toolbar:not(.buret-dragging),
+  html.buret-chrome-settled body .buret-docking-poses:not(.buret-docking-poses-dragging),
+  html.buret-chrome-settled #buret-viewport-rail:not(.buret-dragging) { transition: none; }
+}
+
+/* Kinetic scrub field (LigandPro Atlas number fields): the digits sit over
+   the input until it is focused for typing. */
+.buret-scrub-box { position: relative; display: inline-grid; }
+.buret-scrub-box > input { grid-area: 1 / 1; }
+.buret-scrub-value {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+  font: 400 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+.buret-scrub-value > span { grid-area: 1 / 1; }
+.buret-docking-poses :is(.buret-scrub-box, .buret-scrub-value, .buret-scrub-value > span) { min-width: 0 !important; }
+.buret-scrub-field:not(.buret-scrub-editing) .buret-scrub-box > input {
+  color: transparent;
+  caret-color: transparent;
+  cursor: ew-resize;
+}
+.buret-scrub-field.buret-scrub-editing .buret-scrub-value { visibility: hidden; }
+.buret-scrub-field.buret-scrubbing .buret-scrub-box > input { background: var(--buret-menu-input-focus-background); }

@@ -52,6 +52,38 @@ release(); await Promise.all([blocker,old,latest]);
 assert.deepEqual(calls,['latest']);
 console.log('Worker alignment parity, cancellation, document replacement and appearance coalescing passed');
 
+// Different molecules superimpose on their shared substructure: toluene and a
+// renumbered, rotated phenol share the ring; the methyl carbon and the hydroxyl
+// oxygen stay unmatched, and a molecule with nothing to match keeps its place.
+const matching = new Function('Worker', `
+ let activeMolstarPrepared = {};
+ const setStatus = () => {};
+ ${['largestEigenvectorSymmetric4','pdbRigidAlignment','xyzFrameElementSignature','xyzFramesAlignable','alignXyzFramesToFirst',
+   'sdfMoleculeMatchGraph','sdfMatchSimilarity','sdfAtomsCompatible','growSdfAtomMatch','sdfCollectionAtomMatch','sdfCollectionAtomPairs'].map(extract).join('\n')}
+ return {align:alignXyzFramesToFirst, pairs:sdfCollectionAtomPairs};
+`)(Worker);
+const ring = Array.from({length:6},(_,i)=>[1.4*Math.cos(i*Math.PI/3),1.4*Math.sin(i*Math.PI/3),0]);
+const ringBonds = Array.from({length:6},(_,i)=>({a:i+1,b:(i+1)%6+1,order:i%2?2:1}));
+const toluene = {atoms:[...ring,[2.9,0,0]].map(([x,y,z])=>({element:'C',x,y,z})), bonds:[...ringBonds,{a:1,b:7,order:1}]};
+const order = [6,2,4,0,5,1,3];
+const rotate = ([x,y,z]) => [-y+4,x-1,z+3];
+const phenolAtoms = [...ring,[2.8,0,0]].map((p,i)=>({element:i===6?'O':'C',...Object.fromEntries(rotate(p).map((v,k)=>['xyz'[k],v]))}));
+const phenol = {atoms:order.map(i=>phenolAtoms[i]), bonds:[...ringBonds,{a:1,b:7,order:1}].map(({a,b,order:o})=>({a:order.indexOf(a-1)+1,b:order.indexOf(b-1)+1,order:o}))};
+const oxygen = {atoms:[{element:'O',x:9,y:9,z:9},{element:'O',x:10,y:9,z:9}], bonds:[{a:1,b:2,order:2}]};
+const molecules = [toluene, phenol, oxygen];
+const atomPairs = await matching.pairs(molecules, new AbortController().signal);
+assert.equal(atomPairs[1].length, 6);
+assert.equal(atomPairs[2], null);
+const asFrame = m => ({atoms:m.atoms.map(a=>({symbol:a.element,x:a.x,y:a.y,z:a.z}))});
+const fitted = await matching.align(molecules.map(asFrame), new AbortController().signal, atomPairs);
+assert.ok(fitted.averageRmsd < 1e-6);
+assert.deepEqual([fitted.atomCount, fitted.skipped], [6, 1]);
+for (const atom of fitted.frames[1].atoms.filter(a=>a.symbol==='C')) {
+  assert.ok(ring.some(([x,y,z])=>Math.hypot(atom.x-x,atom.y-y,atom.z-z)<1e-6), 'ring carbons land on the reference ring');
+}
+assert.deepEqual(fitted.frames[2], asFrame(oxygen));
+console.log('Shared-substructure alignment of different molecules passed');
+
 // Rebuilding aligned or individual XYZ frames must retain the selected appearance.
 const appearances = [];
 const styledLayers = [];
