@@ -63,7 +63,8 @@ mod platform {
     /// The opening runs 7.5 s; past this the desktop is never left dimmed.
     const SAFETY: Duration = Duration::from_secs(16);
     /// A held window appears as an ordinary window if its page never answers.
-    const HOLD_TIMEOUT: Duration = Duration::from_secs(6);
+    /// A first launch boots cold, and on a busy Mac its page has needed more than 6 s.
+    const HOLD_TIMEOUT: Duration = Duration::from_secs(10);
 
     const NS_WINDOW_BELOW: i64 = -1;
     const NS_FLOATING_WINDOW_LEVEL: i64 = 3;
