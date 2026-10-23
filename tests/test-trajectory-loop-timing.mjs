@@ -21,7 +21,7 @@ function scheduler({ fps, count = 148, start = 0, stepMs = 200 }) {
     loopNow: () => now,
     loopDelayMs: () => 1000 / fps,
     minimumTrajectoryLoopTimerDelay: () => 16,
-    trajectoryControlBounds: () => ({ start, count }),
+    stepBounds: () => ({ start, end: start + count - 1, count }),
     window: { molstar: { BuretteTrajectoryPlayback }, setTimeout: (fn, delay) => { timer = { fn, delay }; return 1; } },
     setPose: async (index) => {
       now += stepMs;

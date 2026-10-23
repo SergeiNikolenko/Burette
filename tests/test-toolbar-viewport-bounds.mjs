@@ -14,8 +14,9 @@ for (const width of [120, 320, 640, 1280]) {
       document: { querySelector: () => rect ? { getBoundingClientRect: () => rect } : null },
       TOOLBAR_MARGIN: 12, dockToolbar() {}, defaultToolbarTop: () => 12, updateFloatingLayoutOffsets() {},
     });
-    const content = { style: {} };
+    const content = { style: {}, scrollWidth: 0, clientWidth: 0 };
     const toolbar = { style: {}, dataset: {}, querySelector: () => content,
+      classList: { remove() {}, toggle() {}, contains: () => false },
       get offsetWidth() { return Math.min(420, parseFloat(this.style.maxWidth)); } };
     position(toolbar);
     assert.equal(bounds().right, width, 'A stale molecular viewport cannot move controls outside the actual frame');
