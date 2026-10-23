@@ -2,6 +2,7 @@
 identifier = "allow-viewer-commands"
 description = "Allows the Burette desktop shell to open structures and manage local viewer runtime state."
 commands.allow = [
+  "present_intro",
   "agent_integration_status",
   "frontend_log",
   "append_action_journal",

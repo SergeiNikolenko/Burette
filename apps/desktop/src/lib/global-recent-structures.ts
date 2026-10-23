@@ -78,6 +78,11 @@ export function loadGlobalRecentStructures(): RecentStructure[] | null {
   return loadGlobalRecentStructuresSnapshot()?.documents ?? null;
 }
 
+/** Whether a recent structure is saved; reading leaves the revision untouched. */
+export function hasSavedRecentStructures() {
+  return (storedSnapshot()?.documents.length ?? 0) > 0;
+}
+
 export function globalRecentStructuresRevision() {
   const storedRevision = storedSnapshot()?.revision ?? 0;
   latestRevision = Math.max(latestRevision, storedRevision);

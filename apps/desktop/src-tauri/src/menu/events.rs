@@ -202,7 +202,9 @@ pub(crate) fn handle_event<R: Runtime>(app: &tauri::AppHandle<R>, id: &str) {
     }
 
     if id == "file.resume-session" {
-        if let Err(error) = crate::windows::restore_workspace_windows(app) {
+        if let Err(error) =
+            crate::windows::restore_workspace_windows(app, crate::windows::WindowEntrance::Ordinary)
+        {
             eprintln!("failed to resume Burette session: {error}");
         }
         return;

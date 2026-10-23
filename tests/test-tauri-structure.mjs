@@ -1163,9 +1163,15 @@ assert.match(lib, /startup::signal_open_documents_for_window\(app, window\.label
 assert.match(windowsSource, /pub\(crate\) const MAIN_WINDOW_LABEL: &str = "main"/);
 assert.match(windowsSource, /pub\(crate\) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-"/);
 assert.match(windowsSource, /pub\(crate\) fn focus_or_create_workspace_window/);
-assert.match(windowsSource, /create_workspace_window\(app, MAIN_WINDOW_LABEL\.to_string\(\)\)/);
+assert.match(
+  windowsSource,
+  /create_workspace_window\(app, MAIN_WINDOW_LABEL\.to_string\(\), WindowEntrance::Ordinary\)/,
+);
 assert.match(windowsSource, /WindowPresentation::Workspace => next_workspace_label\(app\)/);
-assert.match(windowsSource, /let window = create_workspace_window\(app, label\.clone\(\)\)\?/);
+assert.match(
+  windowsSource,
+  /let window = create_workspace_window\(app, label\.clone\(\), WindowEntrance::Ordinary\)\?/,
+);
 assert.match(windowsSource, /WebviewWindowBuilder::new\(app, &label, url\)/);
 assert.match(windowsSource, /index\.html\?buretteWindow=\{label\}/);
 assert.match(windowsSource, /\.transparent\(true\)\s*\.background_color\(Color\(0, 0, 0, 0\)\)/);

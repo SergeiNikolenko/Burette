@@ -1,8 +1,8 @@
 # Onboarding
 
-Burette has two kinds of onboarding: a three-step welcome on the first launch
-and one-time contextual guides that appear when the user first reaches a
-feature. Both live in `apps/desktop/src/components/onboarding`.
+Burette has two kinds of onboarding: an opening and a three-step welcome on the
+first launch, and one-time contextual guides that appear when the user first
+reaches a feature. All of them live in `apps/desktop/src/components/onboarding`.
 
 ## Policy
 
@@ -14,6 +14,35 @@ feature. Both live in `apps/desktop/src/components/onboarding`.
 - Hosted MCP widgets and Codex workspace embeds never show onboarding.
 - Settings → Getting started → Reset onboarding restores the welcome and makes
   every contextual guide eligible again.
+
+## Opening
+
+The first launch of a fresh macOS install plays the Atom opening before the
+welcome. A launch counts as fresh when there is no saved window state and no
+file or link arrived with it. The main window then starts held: hidden, without
+its material, shadow or traffic lights. `intro/atom-intro.tsx` draws the
+opening in that window and sends `present_intro` cues as it plays:
+
+| Cue | Native effect |
+| --- | --- |
+| `begin` | Dims every display and shows the bare window above the dim. |
+| `chrome` | Fades the traffic lights in. |
+| `undim` | Lifts the dims over the given number of seconds. |
+| `settle` | Restores the material and shadow; the window stays an ordinary window. |
+
+The button at the end of the opening continues to the welcome's appearance
+step, since the opening already greets the user. Esc or switching away skips to
+the end. The opening plays only while Burette is the active app: when it was
+launched in the background or the user moved on while it loaded, `begin` fails,
+the window appears as usual and the welcome starts from its first step. The
+same fallback applies with Reduce Motion on or without WebGL. If the page never
+begins or never finishes, `intro.rs` settles the window itself so no display
+stays dimmed. Reset onboarding replays the opening in the current window.
+
+Cue times and the shader live in `intro/atom-scene.ts`. The sound,
+`apps/desktop/public/onboarding/intro/atom-intro.m4a`, is rendered by
+`uv run scripts/create_intro_sound.py`; change the script and render again
+instead of editing the file.
 
 ## Adding a guide
 

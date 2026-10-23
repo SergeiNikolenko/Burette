@@ -17,6 +17,8 @@ interface ImportMeta {
 }
 
 interface Window {
+  /** Set by the native shell on a fresh install's first window, held back for the opening. */
+  __BURETTE_INTRO__?: boolean;
   __BURETTE_HOSTED_MCP_BRIDGE_READY__?: boolean;
   __BURETTE_HOSTED_MCP_RESULTS__?: unknown[];
   __BURETTE_HOSTED_OPENAI_GLOBALS__?: { toolOutput?: unknown; toolResponseMetadata?: unknown };

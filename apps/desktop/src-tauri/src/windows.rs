@@ -10,6 +10,15 @@ use crate::window_state::WindowStateRegistry;
 pub(crate) const MAIN_WINDOW_LABEL: &str = "main";
 pub(crate) const WORKSPACE_WINDOW_PREFIX: &str = "workspace-";
 
+/// How a workspace window first appears.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum WindowEntrance {
+    Ordinary,
+    /// A fresh install's first window: bare and hidden until its page starts
+    /// the first-launch opening (see `crate::intro`).
+    Intro,
+}
+
 #[derive(Clone, Copy, Default, PartialEq, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum WindowPresentation {
@@ -69,7 +78,7 @@ pub(crate) fn focus_or_create_workspace_window<R: Runtime>(
     let (window, created) = match existing_window {
         Some(window) => (window, false),
         None => (
-            create_workspace_window(app, MAIN_WINDOW_LABEL.to_string())?,
+            create_workspace_window(app, MAIN_WINDOW_LABEL.to_string(), WindowEntrance::Ordinary)?,
             true,
         ),
     };
@@ -114,7 +123,7 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
         WindowPresentation::Workspace => next_workspace_label(app),
         WindowPresentation::Preview => format!("workspace-preview-{}", uuid::Uuid::new_v4()),
     };
-    let window = create_workspace_window(app, label.clone())?;
+    let window = create_workspace_window(app, label.clone(), WindowEntrance::Ordinary)?;
     if crate::menu::exit_transition_is_active(app) {
         let _ = window.destroy();
         return Err(
@@ -131,6 +140,7 @@ pub(crate) fn open_new_workspace_window<R: Runtime>(
 
 pub(crate) fn restore_workspace_windows<R: Runtime>(
     app: &tauri::AppHandle<R>,
+    entrance: WindowEntrance,
 ) -> Result<(), String> {
     show_workspace_application(app)?;
     let registry = app.state::<WindowStateRegistry>();
@@ -143,7 +153,16 @@ pub(crate) fn restore_workspace_windows<R: Runtime>(
         if app.get_webview_window(&label).is_some() {
             continue;
         }
-        match create_workspace_window(app, label.clone()) {
+        let window_entrance = if label == MAIN_WINDOW_LABEL {
+            entrance
+        } else {
+            WindowEntrance::Ordinary
+        };
+        match create_workspace_window(app, label.clone(), window_entrance) {
+            Ok(window) if window_entrance == WindowEntrance::Intro => {
+                crate::intro::hold(&window);
+                restored.push(window);
+            }
             Ok(window) => {
                 window.show().map_err(|error| error.to_string())?;
                 reposition_traffic_lights(&window);
@@ -156,6 +175,10 @@ pub(crate) fn restore_workspace_windows<R: Runtime>(
             }
             Err(error) => return Err(error),
         }
+    }
+    // A held window is shown and focused by its opening.
+    if entrance == WindowEntrance::Intro {
+        return Ok(());
     }
     let focus_label = active_label
         .filter(|label| app.get_webview_window(label).is_some())
@@ -186,9 +209,19 @@ fn show_workspace_application<R: Runtime>(app: &tauri::AppHandle<R>) -> Result<(
     Ok(())
 }
 
+/// The material behind every workspace window; the opening clears it while it plays.
+#[cfg(target_os = "macos")]
+pub(crate) fn workspace_effects() -> tauri::utils::config::WindowEffectsConfig {
+    EffectsBuilder::new()
+        .effect(Effect::HudWindow)
+        .state(EffectState::Active)
+        .build()
+}
+
 fn create_workspace_window<R: Runtime>(
     app: &tauri::AppHandle<R>,
     label: String,
+    entrance: WindowEntrance,
 ) -> Result<WebviewWindow<R>, String> {
     let url = WebviewUrl::App(format!("index.html?buretteWindow={label}").into());
     let preview = label.starts_with("workspace-preview-");
@@ -224,21 +257,23 @@ fn create_workspace_window<R: Runtime>(
     } else {
         builder
     };
+    let builder = match entrance {
+        WindowEntrance::Ordinary => builder,
+        WindowEntrance::Intro => builder.initialization_script(crate::intro::HELD_WINDOW_SCRIPT),
+    };
     #[cfg(target_os = "macos")]
     let builder = if preview {
         builder.shadow(true)
     } else {
-        builder
+        let builder = builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)
             .hidden_title(true)
-            .traffic_light_position(crate::macos::TRAFFIC_LIGHT_INSET)
-            .effects(
-                EffectsBuilder::new()
-                    .effect(Effect::HudWindow)
-                    .state(EffectState::Active)
-                    .build(),
-            )
-            .shadow(true)
+            .traffic_light_position(crate::macos::TRAFFIC_LIGHT_INSET);
+        match entrance {
+            WindowEntrance::Ordinary => builder.effects(workspace_effects()).shadow(true),
+            // The opening restores the material and shadow when it settles.
+            WindowEntrance::Intro => builder.shadow(false),
+        }
     };
     let window = builder.build().map_err(|error| error.to_string())?;
     if crate::menu::exit_transition_is_active(app) {

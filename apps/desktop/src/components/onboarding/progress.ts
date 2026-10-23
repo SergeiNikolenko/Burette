@@ -1,3 +1,4 @@
+import { hasSavedRecentStructures } from "../../lib/global-recent-structures";
 import type { ShellViewState } from "../types";
 import { isContextualGuideId, type ContextualGuideId } from "./contextual-guides";
 
@@ -26,7 +27,9 @@ export function readOnboardingProgress(state?: ShellViewState): OnboardingProgre
     }
     // An update must not present a new first-run flow to an established user,
     // even when their current workspace is empty or restoration is still pending.
-    if ([legacyKey, "burette.shell", "burette.recent.structures"].some(key => localStorage.getItem(key) !== null)) {
+    // Saved recents count only when they hold a structure: every first launch
+    // saves an empty list while it boots.
+    if ([legacyKey, "burette.shell"].some(key => localStorage.getItem(key) !== null) || hasSavedRecentStructures()) {
       return { enabled: false, welcomeCompleted: true, seen: [] };
     }
   } catch { if (sessionProgress) return sessionProgress; }
