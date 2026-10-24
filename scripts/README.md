@@ -152,3 +152,24 @@ Release builds should not use `BURETTE_DEV_FLAVOR`.
 and `controls.tsx` into `PreviewExtension/Web/sequence-panel.js`. Rebuild after
 changing these sources or their shared Select/Resizable components. The runtime
 uses the same primitives as the desktop docks with preview theme tokens.
+
+## Local diagnostics capture
+
+Run `python3 scripts/collect-diagnostics.py --output build/reports/<new-directory>`
+after an app failure. The parent directory must already exist; existing captures
+are never overwritten. For a development installation, pass its exact bundle
+identifier with `--app-id com.local.BuretteV10.<suffix>`.
+
+This local-only capture reads the app cache's current action journal, newest
+journal archive, and app log. It keeps at most 256 KiB and 500 recent lines per
+source, with timestamps, source sizes, truncation and missing-file status in
+`summary.json`. Journal targets are omitted; only event metadata and scalar detail fields
+`id`, `durableJobId`, `operation`, `status`, and `error` are retained for job
+correlation. All other detail fields are omitted. URLs, credentials and absolute paths (including percent-encoded paths)
+are redacted, and multiline log payloads are omitted. The capture directory is
+private (0700), its files are 0600. No databases or molecular files are copied,
+and nothing is uploaded. Arbitrary free-text messages may still contain sensitive
+context; review captures before sharing. This captures persisted desktop logs;
+browser-only failures and events never written by the app cannot be recovered.
+
+Validate with `python3 tests/test-collect-diagnostics.py`.

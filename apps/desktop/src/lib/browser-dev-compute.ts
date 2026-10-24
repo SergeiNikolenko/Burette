@@ -22,6 +22,7 @@ import {
 import type { StandaloneAlignmentResult, StandaloneComputeSource, StandaloneSemiempiricalResult } from "./standalone-compute";
 import { stableTextDocumentId } from "./file-export";
 import { attachSharedRun, stopSharedRuns, type SharedRunStore } from "./shared-progress-run";
+import { loadRDKitModule } from "./rdkit-module";
 import type { TextFileDocument } from "../types";
 
 type BrowserDevNativeComputeOperation = "generate3d" | "generateEnsemble" | "optimizeGeometry" | "semiempiricalRm1" | "alignPoses" | "chemicalSpace" | "chemicalSpaceCluster";
@@ -105,7 +106,7 @@ export async function runBrowserDevChemicalSpace(
     );
     if (signal?.aborted) throw abortError();
     onProgress({ phase: "embedding" });
-    return executeBrowserLearnedChemicalSpace(records, represented, options);
+    return executeBrowserLearnedChemicalSpace(records, represented, options, signal);
   }
   const fingerprints = await prepareBrowserChemicalSpaceFingerprints(
     records,
@@ -114,7 +115,7 @@ export async function runBrowserDevChemicalSpace(
   );
   if (signal?.aborted) throw abortError();
   onProgress({ phase: "embedding" });
-  return executeBrowserChemicalSpace(fingerprints, options);
+  return executeBrowserChemicalSpace(fingerprints, options, signal);
 }
 
 export async function runBrowserDevChemicalSpaceClustering(
@@ -146,6 +147,7 @@ export async function runBrowserDevChemicalSpaceClustering(
         error: record.error,
       })),
     },
+    signal,
   );
 }
 
@@ -170,7 +172,7 @@ export async function runBrowserDevChemicalSpaceStudy(
     for (let index = 0; index < frames.length; index += 1) {
       if (signal?.aborted) throw abortError();
       onProgress({ phase: "study", completedFrames: index, totalFrames: frames.length });
-      results.push(await executeBrowserLearnedChemicalSpace(records, represented, frames[index]));
+      results.push(await executeBrowserLearnedChemicalSpace(records, represented, frames[index], signal));
     }
     onProgress({ phase: "study", completedFrames: frames.length, totalFrames: frames.length });
     return results;
@@ -188,7 +190,7 @@ export async function runBrowserDevChemicalSpaceStudy(
       completedFrames: index,
       totalFrames: frames.length,
     });
-    results.push(await executeBrowserChemicalSpace(fingerprints, frames[index]));
+    results.push(await executeBrowserChemicalSpace(fingerprints, frames[index], signal));
   }
   onProgress({
     phase: "study",
@@ -376,6 +378,7 @@ function trimBrowserFingerprintCache() {
 function executeBrowserChemicalSpace(
   fingerprints: Awaited<ReturnType<typeof fingerprintBrowserChemicalSpaceRecords>>,
   options: ChemicalSpaceOptions,
+  signal?: AbortSignal,
 ) {
   const { representation, ...embeddingOptions } = options;
   return runBrowserDevNativeCompute<ChemicalSpaceResult>(
@@ -397,6 +400,8 @@ function executeBrowserChemicalSpace(
         error: record.error,
       })),
     },
+    undefined,
+    signal,
   ).then((result) => ({ ...result, representation }));
 }
 
@@ -404,6 +409,7 @@ async function executeBrowserLearnedChemicalSpace(
   records: BrowserChemicalSpaceInputRecord[],
   represented: LearnedRepresentationResult,
   options: ChemicalSpaceOptions,
+  signal?: AbortSignal,
 ) {
   const validIds = new Set(represented.sourceRecordIds);
   const invalidIds = records
@@ -437,6 +443,8 @@ async function executeBrowserLearnedChemicalSpace(
         options.neighbors,
       ),
     },
+    undefined,
+    signal,
   );
   return {
     ...result,
@@ -466,7 +474,7 @@ export async function runBrowserDevMetalConformer(
 ): Promise<ConformerGenerationResult> {
   const variant = options.variant ?? "ETKDGv3";
   const mmffVariant = options.mmffVariant ?? "MMFF94s";
-  const records = standaloneExtractionRecords(source);
+  const records = await standaloneExtractionRecords(source);
   const extracted = await extractStandaloneConformers(records, variant, mmffVariant);
   const operation: BrowserDevNativeComputeOperation = options.optimize
     ? "optimizeGeometry"
@@ -492,11 +500,13 @@ async function runBrowserDevNativeCompute<T>(
   conformer?: Record<string, unknown>,
   chemicalSpace?: Record<string, unknown>,
   chemicalSpaceCluster?: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<T> {
   const response = await fetch("/__burette/native-compute", {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=utf-8" },
     body: JSON.stringify({ operation, source, conformer, chemicalSpace, chemicalSpaceCluster }),
+    signal,
   });
   const payload = await response.json().catch(() => null) as BrowserDevNativeComputeResponse<T> & { error?: unknown } | null;
   if (!response.ok) {
@@ -517,13 +527,13 @@ function abortError() {
   return error;
 }
 
-function standaloneExtractionRecords(source: StandaloneComputeSource) {
+async function standaloneExtractionRecords(source: StandaloneComputeSource) {
   const extension = source.extension.trim().replace(/^\./u, "").toLowerCase();
   if (extension === "mol") return [{ input: source.text, format: "molblock" as const }];
   if (extension === "sdf" || extension === "sd") {
     const records = source.text.split("$$$$")
-      .map((record) => record.trim())
-      .filter(Boolean)
+      .map((record, index) => index ? record.replace(/^\r?\n/u, "") : record)
+      .filter((record) => record.trim().length > 0)
       .map((input) => ({ input, format: "molblock" as const }));
     if (records.length) return records;
   }
@@ -532,7 +542,20 @@ function standaloneExtractionRecords(source: StandaloneComputeSource) {
       .map((line) => line.trim().split(/\s+/u)[0] || "")
       .filter(Boolean)
       .map((input) => ({ input, format: "smiles" as const }));
-    if (records.length) return records;
+    if (records.length) {
+      const rdkit = await loadRDKitModule();
+      return records.map((record) => {
+        const molecule = rdkit.get_mol(record.input);
+        try {
+          if (!molecule?.is_valid()) throw new Error("Invalid SMILES input for conformer generation.");
+          // Extract parameters from this same explicit-H graph so coordinates
+          // and template atom indices cannot diverge between RDKit runtimes.
+          return { input: molecule.add_hs(), format: "molblock" as const };
+        } finally {
+          molecule?.delete();
+        }
+      });
+    }
   }
   throw new Error("Native Metal conformer generation accepts MOL, SDF, or SMILES input.");
 }

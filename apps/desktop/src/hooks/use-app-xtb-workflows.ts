@@ -297,7 +297,13 @@ export function useAppXtbWorkflows({
       }
       const sourcePath = request.sourcePath ?? request.inputPath ?? null;
       if ((result.ok || recovered) && options.openOptimizedPoseInCurrentView && request.operation === "optimize") {
-        await openXtbOptimizedPoseInCurrentView(options.poseSourceDocument, sourcePath, result);
+        try {
+          await openXtbOptimizedPoseInCurrentView(options.poseSourceDocument, sourcePath, result);
+        } catch (error) {
+          // Presentation failure must not overwrite the saved calculation result.
+          pushErrorStatus(error, "xTB results were saved, but the optimized pose could not be opened");
+          return;
+        }
       }
       if (options.openPrimary !== false && result.primaryOpenPath) {
         void openPaths([result.primaryOpenPath]);
@@ -343,7 +349,13 @@ export function useAppXtbWorkflows({
       pushStatus("Open a structure before running xTB.", "error");
       return;
     }
-    const contextDocument = await requestMolstarXtbContextDocument(document);
+    let contextDocument: MolstarContextDocument | null;
+    try {
+      contextDocument = await requestMolstarXtbContextDocument(document);
+    } catch (error) {
+      pushErrorStatus(error, "xTB input could not be read; calculation was not started");
+      return;
+    }
     const contextInputRequest = xtbInputRequestForMolstarContextDocument(contextDocument, document.sourcePath ?? document.path);
     // A combined scene has no single input file; its path is a virtual scene id.
     if (!contextInputRequest && document.dockingRequest) {
@@ -366,7 +378,7 @@ export function useAppXtbWorkflows({
       openOptimizedPoseInCurrentView,
       poseSourceDocument: openOptimizedPoseInCurrentView ? document : null,
     });
-  }, [activeDocument, pushStatus, requestMolstarXtbContextDocument, runXtbJob]);
+  }, [activeDocument, pushErrorStatus, pushStatus, requestMolstarXtbContextDocument, runXtbJob]);
 
   const runXtbKetcherSketch = useCallback(async (request: KetcherSketchRequest) => {
     await runXtbJob({

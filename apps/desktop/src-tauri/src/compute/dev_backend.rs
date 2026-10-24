@@ -84,7 +84,7 @@ struct DevConformerRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct DevConformerRecord {
-    template: Option<String>,
+    template: String,
     conformer_base64: String,
     mmff_base64: String,
 }
@@ -347,20 +347,14 @@ fn execute_conformer(
             .map_err(|error| error.to_string())?;
         let mmff = decode_native_mmff_parameters(&mmff_bytes, 64 * 1024 * 1024)
             .map_err(|error| format!("invalid native MMFF parameters: {error}"))?;
-        let identity_bytes = record
-            .template
-            .as_deref()
-            .unwrap_or(source.text.as_str())
-            .as_bytes();
+        let identity_bytes = record.template.as_bytes();
         identities.push(ConformerMoleculeIdentity {
             source_record_id: (index + 1) as u64,
             molecule_content_sha256: hex_sha256(identity_bytes),
         });
         input_positions.push(
             if initialization == ConformerInitialization::InputGeometry {
-                Some(parse_molfile_positions(record.template.as_deref().ok_or(
-                    "Metal geometry optimization requires MOL or SDF coordinates",
-                )?)?)
+                Some(parse_molfile_positions(&record.template)?)
             } else {
                 None
             },
@@ -454,18 +448,10 @@ fn conformer_sdf(
         let atom_start = distance.conformer_atom_starts[conformer] as usize;
         let atom_end = distance.conformer_atom_starts[conformer + 1] as usize;
         let positions = &distance.positions[atom_start..atom_end];
-        let molecule = distance
-            .distance_engine
-            .molecule(molecule_index as u64)
-            .map_err(|error| error.to_string())?
-            .ok_or("native conformer output references an invalid molecule")?;
-        let molblock = match records
+        let record = records
             .get(molecule_index)
-            .and_then(|record| record.template.as_deref())
-        {
-            Some(template) => molblock_with_positions(template, positions)?,
-            None => synthetic_molblock(molecule.atomic_numbers, positions)?,
-        };
+            .ok_or("native conformer output references an invalid molecule")?;
+        let molblock = molblock_with_positions(&record.template, positions)?;
         output.push_str(molblock.trim_end());
         output.push_str(&format!(
             "\n>  <BURETTE_COMPUTE_BACKEND>\nMetal GPU\n\n>  <BURETTE_CONFORMER_VARIANT>\n{}\n\n>  <BURETTE_MMFF_ENERGY_KCAL_MOL>\n{:.8}\n\n>  <BURETTE_STEREO_STATUS>\n{}\n\n$$$$\n",
@@ -534,42 +520,6 @@ fn molblock_with_positions(template: &str, positions: &[[f32; 3]]) -> Result<Str
         .to_string();
     }
     Ok(lines.join("\n"))
-}
-
-fn synthetic_molblock(atomic_numbers: &[u16], positions: &[[f32; 3]]) -> Result<String, String> {
-    if atomic_numbers.len() != positions.len() || atomic_numbers.len() > 999 {
-        return Err("SMILES Metal output cannot be represented as V2000".into());
-    }
-    let mut output = format!(
-        "Burette Metal conformer\n  Burette\n\n{:>3}{:>3}  0  0  0  0            999 V2000\n",
-        atomic_numbers.len(),
-        0
-    );
-    for (&atomic_number, position) in atomic_numbers.iter().zip(positions) {
-        output.push_str(&format!(
-            "{:>10.4}{:>10.4}{:>10.4} {:<3} 0  0  0  0  0  0  0  0  0  0  0  0\n",
-            position[0],
-            position[1],
-            position[2],
-            element_symbol(atomic_number)?
-        ));
-    }
-    output.push_str("M  END");
-    Ok(output)
-}
-
-fn element_symbol(atomic_number: u16) -> Result<&'static str, String> {
-    const SYMBOLS: [&str; 54] = [
-        "", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg", "Al", "Si", "P", "S",
-        "Cl", "Ar", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga",
-        "Ge", "As", "Se", "Br", "Kr", "Rb", "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd",
-        "Ag", "Cd", "In", "Sn", "Sb", "Te", "I",
-    ];
-    SYMBOLS
-        .get(atomic_number as usize)
-        .copied()
-        .filter(|symbol| !symbol.is_empty())
-        .ok_or_else(|| format!("atomic number {atomic_number} is not supported by dev SDF output"))
 }
 
 fn parse_runtime_root() -> Result<PathBuf, String> {
@@ -678,6 +628,22 @@ mod tests {
     use burette_compute_metal::MetalTanimotoKnnExecution;
 
     const WATER: &str = "water\n  Burette\n\n  3  2  0  0  0  0  0  0  0  0999 V2000\n    0.0000    0.0000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0\n    0.9572    0.0000    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n   -0.2390    0.9270    0.0000 H   0  0  0  0  0  0  0  0  0  0  0  0\n  1  2  1  0  0  0  0\n  1  3  1  0  0  0  0\nM  END\n";
+
+    #[test]
+    fn rejects_conformer_records_without_topology_before_execution() {
+        for template in [None, Some(Value::Null)] {
+            let mut record = json!({ "conformerBase64": "AA==", "mmffBase64": "AA==" });
+            if let Some(template) = template {
+                record["template"] = template;
+            }
+            assert!(serde_json::from_value::<DevConformerRecord>(record).is_err());
+        }
+        let record: DevConformerRecord = serde_json::from_value(json!({
+            "template": WATER, "conformerBase64": "AA==", "mmffBase64": "AA=="
+        }))
+        .expect("coordinate template");
+        assert_eq!(record.template, WATER);
+    }
 
     #[test]
     fn splits_bounded_sdf_ensemble_into_stable_rows() {

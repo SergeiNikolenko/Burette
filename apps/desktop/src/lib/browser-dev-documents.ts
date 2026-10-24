@@ -185,6 +185,8 @@ type BrowserDevConformerGenerationRequest = {
   text: string;
   operation?: "generate" | "optimize";
   mode?: "single" | "ensemble";
+  variant?: import("./compute-conformer").ConformerVariant;
+  mmffVariant?: import("./compute-conformer").MmffVariant;
   candidateCount?: number;
   rmsdCutoff?: number;
   source3d?: {
@@ -680,6 +682,8 @@ export async function generateBrowserDev3DConformer(
   assertConcreteConformerSource(source);
   return runBrowserDevMetalConformer(source, {
     mode: request.mode,
+    variant: request.variant,
+    mmffVariant: request.mmffVariant,
     optimize: request.operation === "optimize",
   });
 }
