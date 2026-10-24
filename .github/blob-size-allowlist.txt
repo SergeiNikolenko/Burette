@@ -197,3 +197,12 @@ plugins/burette-agent/browser-shell-dist/assets/native-viewer-menus-DEoKtlj0.js
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-BMKp5Z-D.js
 plugins/burette-agent/browser-shell-dist/assets/index-Dpu_oRwI.css
 plugins/burette-agent/browser-shell-dist/assets/viewer-C3u9xZg_.js
+
+# Reviewed generated shell for compute reliability and diagnostics.
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-CGvq3q__.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-CCG-GRBL.js
+plugins/burette-agent/browser-shell-dist/assets/index-vroafz0D.css
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-Clh7iQ75.js
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-CrHyt0G9.js
+plugins/burette-agent/browser-shell-dist/assets/native-viewer-menus-UbsynBMn.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-CY1nAkEY.js
