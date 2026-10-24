@@ -45,6 +45,7 @@ if [[ "$SCOPE" == "all" || "$SCOPE" == "js" ]]; then
   bun run test:responsiveness
   bun run test:tauri-structure
   bun run test:compute-metal
+  bun run test:compute-reliability
   plutil -lint apps/desktop/src-tauri/AppMetadata.plist apps/desktop/src-tauri/Info.plist PreviewExtension/Info.plist PreviewExtension/BurettePreview.entitlements
 fi
 
