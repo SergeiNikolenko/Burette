@@ -1423,19 +1423,17 @@ body.burette-mobile-host .buret-molecule-context-menu button:focus {
   transform: translateX(10px);
   pointer-events: none;
 }
-#buret-toolbar.collapsed .buret-grip,
-#buret-toolbar.buret-suppressed-by-molstar-panel .buret-grip {
+body #buret-toolbar.collapsed .buret-grip,
+body #buret-toolbar.buret-suppressed-by-molstar-panel .buret-grip {
   width: 36px;
   min-width: 36px;
   height: 36px;
   min-height: 36px;
-  border-radius: 12px;
+  border-radius: 50%;
   cursor: pointer;
   background: var(--buret-toolbar-background);
   border: 1px solid var(--buret-toolbar-border);
-  box-shadow:
-    0 8px 22px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 8%);
   /* Rolled up, the grip is the only control left on the canvas — the muting that
      keeps it out of the way beside the open toolbar would wash the whole island. */
   opacity: 1;
