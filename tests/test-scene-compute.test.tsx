@@ -73,8 +73,104 @@ test("scene calculations extract the clicked viewer selection rather than an unr
   const js=new Bun.Transpiler({loader:"ts"}).transformSync(section);
   const active={id:"other",path:"/other.xyz"};const target={id:"clicked",path:"/clicked.xyz",title:"Clicked molecule"};
   const requestContext=mock(async()=>({entries:[{data:"selected atoms"}]}));const run=mock(async()=>{});
-  const operation=new Function("useCallback","activeDocument","pushStatus","requestMolstarXtbContextDocument","xtbInputRequestForMolstarContextDocument","xtbInputRequestForDocument","runXtbJob","xtbOperationLabel",js+";return runXtbActiveOperation;")((fn:unknown)=>fn,active,()=>{},requestContext,()=>({inputText:"selected atoms",label:"Selected atoms"}),()=>{throw new Error("Selection was lost");},run,()=>"Optimize geometry");
+  const operation=new Function("useCallback","activeDocument","pushErrorStatus","pushStatus","requestMolstarXtbContextDocument","xtbInputRequestForMolstarContextDocument","xtbInputRequestForDocument","runXtbJob","xtbOperationLabel",js+";return runXtbActiveOperation;")((fn:unknown)=>fn,active,()=>{},()=>{},requestContext,()=>({inputText:"selected atoms",label:"Selected atoms"}),()=>{throw new Error("Selection was lost");},run,()=>"Optimize geometry");
   await operation("optimize",target);
   expect(requestContext.mock.calls).toEqual([[target]]);
   expect(run.mock.calls[0]).toEqual([{operation:"optimize",inputText:"selected atoms",label:"Selected atoms"},{title:"Optimize geometry",inputLabel:"Selected atoms",openPrimary:false,openOptimizedPoseInCurrentView:true,poseSourceDocument:target}]);
+});
+
+test("PRISM reads the displayed derived ensemble, not its original provenance file", async () => {
+  const source = readFileSync(new URL("../apps/desktop/src/hooks/use-app-conformer-workflows.ts", import.meta.url), "utf8");
+  const section = source.slice(source.indexOf("  const runConformerOperation ="), source.indexOf("  return { runConformerJob"));
+  const js = new Bun.Transpiler({ loader: "ts" }).transformSync(section);
+  const derived = { id: "optimized", title: "Ligand optimization.xyz", extension: "xyz", path: "/generated/optimization.xyz", sourcePath: "/original/ligand.mol", renderer: "molstar", virtual: true };
+  const run = mock(async () => {});
+  const guard = mock(async () => null);
+  const operation = new Function(
+    "useCallback", "activeDocument", "pushStatus", "pushErrorStatus", "requestMolstarXtbContextDocument", "runConformerJob",
+    "isTauriRuntime", "readBrowserDevVirtualTextDocument", "directChemistryJobGuardMessage", "canUseConformerWorkflow", "canInspectConformerEnsemble", "conformerOutputDirectory", "textToBase64",
+    js + ";return runConformerOperation;",
+  )((fn: unknown) => fn, derived, () => {}, () => {}, async () => null, run,
+    () => true, () => null, guard, () => true, () => true, () => "/original", btoa);
+  await operation("prism-prune", derived);
+  expect(run.mock.calls).toEqual([[{
+    operation: "prism-prune", path: derived.path, title: derived.title, extension: "xyz", inputDataBase64: null, outputDirectory: null,
+  }]]);
+  expect(guard.mock.calls).toEqual([["PRISM", null, "xyz", derived.path]]);
+});
+
+test("xTB keeps a successful result when opening its optimized pose fails", async () => {
+  const source = readFileSync(new URL("../apps/desktop/src/hooks/use-app-xtb-workflows.ts", import.meta.url), "utf8");
+  const section = source.slice(source.indexOf("  const runXtbJob ="), source.indexOf("  const runXtbActiveOperation ="));
+  const js = new Bun.Transpiler({ loader: "ts" }).transformSync(section);
+  const result = { ok: true, primaryOpenPath: "/result/xtbopt.xyz", artifacts: [], reportPath: "", logPath: "" };
+  let jobs: Array<{ status: string; result: unknown; error: unknown }> = [];
+  const openingError = new Error("Viewer could not load the optimized pose");
+  const pushErrorStatus = mock(() => {});
+  const dependencies = {
+    useCallback: (fn: unknown) => fn,
+    xtbOperationLabel: () => "Optimize geometry",
+    directChemistryJobGuardMessage: async () => null,
+    structureExtensionFromPath: () => "xyz",
+    computeHost: () => null,
+    setXtbJobs: (update: (previous: typeof jobs) => typeof jobs) => { jobs = update(jobs); },
+    xtbSettings: { solvent: "none" },
+    runXtbRequest: async () => result,
+    cancelledXtbJobIdsRef: { current: new Set<string>() },
+    requestXtbStatus: async () => ({}),
+    setXtbStatus: () => {},
+    openTextDocuments: () => {},
+    openXtbOptimizedPoseInCurrentView: async () => { throw openingError; },
+    openPaths: () => {}, openDockTab: () => {}, setDockActiveTab: () => {}, setDockOpen: () => {}, addDockDrop: () => {}, pushStatus: () => {}, pushErrorStatus,
+  };
+  const run = new Function(...Object.keys(dependencies), js + ";return runXtbJob;")(...Object.values(dependencies));
+  await run({ operation: "optimize", inputPath: "/input.xyz" }, { openOptimizedPoseInCurrentView: true, openPrimary: false });
+  expect(jobs.map(({ status, result: savedResult, error }) => ({ status, result: savedResult, error }))).toEqual([{ status: "success", result, error: null }]);
+  expect(pushErrorStatus.mock.calls).toEqual([[openingError, "xTB results were saved, but the optimized pose could not be opened"]]);
+});
+
+test("calculation selection transport distinguishes no selection from timeout and viewer errors", async () => {
+  const source = readFileSync(new URL("../apps/desktop/src/hooks/use-app-molstar-xtb-context.ts", import.meta.url), "utf8");
+  const js = new Bun.Transpiler({ loader: "ts" }).transformSync(source.slice(source.indexOf("export function")).replace("export function", "function"));
+  for (const scenario of ["none", "selection", "timeout", "error", "malformed", "empty-context", "missing", "send-failure"] as const) {
+    let receive: ((event: unknown) => void) | null = null;
+    let expire = () => {};
+    let requestId = "";
+    const frame = { postMessage: (message: { body: { id: string } }) => { requestId = message.body.id; if (scenario === "send-failure") throw new Error("Detached viewer"); } };
+    const timers = new Set<number>();
+    const fakeWindow = {
+      setTimeout: (callback: () => void) => { expire = callback; timers.add(1); return 1; },
+      clearTimeout: (id: number) => timers.delete(id),
+      addEventListener: (_name: string, listener: typeof receive) => { receive = listener; },
+      removeEventListener: () => { receive = null; },
+    };
+    const hook = new Function("useCallback", "window", js + ";return useAppMolstarXtbContext;")((fn: unknown) => fn, fakeWindow);
+    const { requestMolstarXtbContextDocument: request } = hook({ activeViewerIframeForDocument: () => scenario === "missing" ? null : { contentWindow: frame }, isKnownViewerMessageSource: () => true });
+    const pending = request({ id: "target", renderer: "molstar" });
+    const context = { entries: [{ data: "selected molecule", format: "mol" }] };
+    if (scenario === "timeout") expire();
+    else if (receive) (receive as (event: unknown) => void)({ source: frame, data: { source: "burette-agent-viewer", body: { type: "agent-action-result", id: requestId, result: scenario === "malformed" ? {} : { ok: scenario !== "error", result: { contextDocument: scenario === "selection" ? context : scenario === "empty-context" ? { entries: [] } : null } } } } });
+    if (scenario === "none" || scenario === "selection") expect(await pending).toEqual(scenario === "none" ? null : context);
+    else await expect(pending).rejects.toThrow();
+    expect({ listener: receive, timers: timers.size }).toEqual({ listener: null, timers: 0 });
+  }
+});
+
+test("xTB and CREST stop before submitting a job when selection extraction fails", async () => {
+  for (const kind of ["xtb", "conformer"] as const) {
+    const source = readFileSync(new URL(`../apps/desktop/src/hooks/use-app-${kind}-workflows.ts`, import.meta.url), "utf8");
+    const name = kind === "xtb" ? "runXtbActiveOperation" : "runConformerOperation";
+    const end = kind === "xtb" ? "  const runXtbKetcherSketch" : "  return { runConformerJob";
+    const js = new Bun.Transpiler({ loader: "ts" }).transformSync(source.slice(source.indexOf(`  const ${name} =`), source.indexOf(end)));
+    const error = new Error("The structure viewer did not respond");
+    const submit = mock(async () => {}), notify = mock(() => {});
+    const dependencies = {
+      useCallback: (fn: unknown) => fn, activeDocument: null, pushStatus: () => {}, pushErrorStatus: notify,
+      requestMolstarXtbContextDocument: async () => { throw error; }, runXtbJob: submit, runConformerJob: submit,
+    };
+    const run = new Function(...Object.keys(dependencies), js + `;return ${name};`)(...Object.values(dependencies));
+    await run(kind === "xtb" ? "optimize" : "crest-generate", { id: "selected", renderer: "molstar", extension: "xyz", path: "/original.xyz" });
+    expect(submit.mock.calls).toEqual([]);
+    expect(notify.mock.calls).toEqual([[error, `${kind === "xtb" ? "xTB" : "CREST"} input could not be read; calculation was not started`]]);
+  }
 });
