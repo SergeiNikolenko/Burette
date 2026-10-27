@@ -39,6 +39,7 @@
 				<string>checkpoint</string>
 				<string>chk</string>
 				<string>cif</string>
+				<string>cjson</string>
 				<string>cms</string>
 				<string>com</string>
 				<string>config</string>
@@ -193,6 +194,7 @@
 				<string>com.local.burette10.tsv</string>
 				<string>com.local.burette10.volume-map</string>
 				<string>com.local.burette10.xyz</string>
+				<string>com.local.burette10.cjson</string>
 				<string>com.local.burette10.xyzrender-input</string>
 				<string>com.schrodinger.mae</string>
 				<string>com.schrodinger.mol</string>
@@ -249,6 +251,29 @@
 	</array>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+				<string>public.plain-text</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Chemical JSON molecular structure file</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.local.burette10.cjson</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>cjson</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>chemical/x-cjson</string>
+				</array>
+			</dict>
+		</dict>
 		<dict>
 			<key>UTTypeConformsTo</key>
 			<array>

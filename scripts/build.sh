@@ -731,8 +731,20 @@ actual_carbon="$(/usr/libexec/PlistBuddy -c 'Print :LSRequiresCarbon' "$LOCAL_AP
 [[ -z "$actual_carbon" ]] || { echo "error: built app must not set LSRequiresCarbon." >&2; exit 1; }
 actual_pkg_info="$(cat "$LOCAL_APP/Contents/PkgInfo" 2>/dev/null || true)"
 [[ "$actual_pkg_info" == "APPL????" ]] || { echo "error: built app PkgInfo missing or invalid." >&2; exit 1; }
-actual_pdb_type="$(/usr/libexec/PlistBuddy -c 'Print :UTExportedTypeDeclarations:0:UTTypeIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
-[[ "$actual_pdb_type" == "$PDB_CONTENT_TYPE" ]] || { echo "error: built app is missing Burette exported content types." >&2; exit 1; }
+# Exported type declaration order is not a bundle contract.
+/usr/bin/python3 - "$APP_METADATA_PLIST" "$LOCAL_APP/Contents/Info.plist" <<'PY'
+import plistlib
+import sys
+
+def exported_types(path):
+    with open(path, "rb") as handle:
+        return {entry["UTTypeIdentifier"] for entry in plistlib.load(handle).get("UTExportedTypeDeclarations", [])}
+
+expected = exported_types(sys.argv[1])
+missing = expected - exported_types(sys.argv[2])
+if not expected or missing:
+    sys.exit("error: built app is missing Burette exported content types: " + ", ".join(sorted(missing)))
+PY
 [[ -x "$LOCAL_APP/Contents/MacOS/burette" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burette" >&2; exit 1; }
 [[ -d "$LOCAL_APP/Contents/PlugIns/BurettePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
 [[ -x "$LOCAL_APP/Contents/PlugIns/BurettePreview.appex/Contents/Resources/burette-core-bridge" ]] || { echo "error: embedded Quick Look extension is missing burette-core bridge helper." >&2; exit 1; }
