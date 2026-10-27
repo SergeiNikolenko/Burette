@@ -102,7 +102,7 @@
       "name": "@burette/desktop",
       "dependencies": {
         "@burette/ketcher-agent-contract": "workspace:*",
-        "@chenglou/pretext": "^0.0.9",
+        "@chenglou/pretext": "^1.0.0",
         "@e965/xlsx": "0.20.3",
         "@kenjiuno/msgreader": "^1.28.0",
         "@radix-ui/react-roving-focus": "1.1.19",
@@ -249,7 +249,7 @@
 
     "@burette/public-plugin": ["@burette/public-plugin@workspace:apps/burette-public-plugin"],
 
-    "@chenglou/pretext": ["@chenglou/pretext@0.0.9", "", {}, "sha512-vInlpC//3vjRfWTs78k2BBIq/0bUdpjIp8TIn9fXe0NvnChhTQZfjioVzERQQbkQvCVpPpw7PDOrTWMHpq27VA=="],
+    "@chenglou/pretext": ["@chenglou/pretext@1.0.0", "", {}, "sha512-BxKiDMxWJhyzL8asvcgg3T9YnUU7OUFsKO8oRaR2SYAPX4Sh2wM9gqTBjrBaZ4fnl84cEQ8czC0Q1M83z3chsA=="],
 
     "@chevrotain/cst-dts-gen": ["@chevrotain/cst-dts-gen@11.1.2", "", { "dependencies": { "@chevrotain/gast": "11.1.2", "@chevrotain/types": "11.1.2", "lodash-es": "4.17.23" } }, "sha512-XTsjvDVB5nDZBQB8o0o/0ozNelQtn2KrUVteIHSlPd2VAV2utEb6JzyCJaJ8tGxACR4RiBNWy5uYUHX2eji88Q=="],
 

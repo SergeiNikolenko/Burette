@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@burette/ketcher-agent-contract": "workspace:*",
-    "@chenglou/pretext": "^0.0.9",
+    "@chenglou/pretext": "^1.0.0",
     "@e965/xlsx": "0.20.3",
     "@kenjiuno/msgreader": "^1.28.0",
     "@radix-ui/react-roving-focus": "1.1.19",
