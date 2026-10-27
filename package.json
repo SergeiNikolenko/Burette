@@ -101,7 +101,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "dompurify": "^3.4.16",
-    "fast-uri": "4.2.1",
+    "fast-uri": "4.2.3",
     "molstar": "5.11.0",
     "openchemlib": "9.25.0",
     "plotly.js-basic-dist-min": "^4.1.1",
