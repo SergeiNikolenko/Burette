@@ -37,7 +37,7 @@
         "radix-ui": "^1.6.7",
         "rdkit-compute": "npm:@rdkit/rdkit@2025.3.4-1.0.0",
         "react": "^19.3.0",
-        "react-dom": "^19.3.0",
+        "react-dom": "^19.3.1",
         "react-resizable-panels": "^4.14.0",
         "react-router": "^8.4.0",
         "shiki": "^4.5.0",
@@ -87,7 +87,7 @@
         "molstar": "5.11.0",
         "next": "16.3.6",
         "react": "19.3.0",
-        "react-dom": "19.3.0",
+        "react-dom": "19.3.1",
         "zod": "4.6.5",
       },
       "devDependencies": {
@@ -2321,7 +2321,7 @@
 
     "react-device-detect": ["react-device-detect@2.2.3", "", { "dependencies": { "ua-parser-js": "^1.0.33" }, "peerDependencies": { "react": ">= 0.14.0", "react-dom": ">= 0.14.0" } }, "sha512-buYY3qrCnQVlIFHrC5UcUoAj7iANs/+srdkwsnNjI7anr3Tt7UY6MqNxtMLlr0tMBied0O49UZVK8XKs3ZIiPw=="],
 
-    "react-dom": ["react-dom@19.3.0", "", { "dependencies": { "scheduler": "^0.28.0" }, "peerDependencies": { "react": "^19.3.0" } }, "sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q=="],
+    "react-dom": ["react-dom@19.3.1", "", { "dependencies": { "scheduler": "^0.28.0" }, "peerDependencies": { "react": "^19.3.1" } }, "sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ=="],
 
     "react-dropzone": ["react-dropzone@11.7.1", "", { "dependencies": { "attr-accept": "^2.2.2", "file-selector": "^0.4.0", "prop-types": "^15.8.1" }, "peerDependencies": { "react": ">= 16.8" } }, "sha512-zxCMwhfPy1olUEbw3FLNPLhAm/HnaYH5aELIEglRbqabizKAdHs0h+WuyOpmA+v1JXn0++fpQDdNfUagWt5hJQ=="],
 
