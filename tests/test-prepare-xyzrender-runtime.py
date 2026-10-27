@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -68,6 +69,7 @@ class RuntimePreparationTests(unittest.TestCase):
             self.assertIn('--no-config', command)
             self.assertIn('--no-cache', command)
             self.assertEqual(command[command.index('--only-binary') + 1], ':all:')
+            self.assertEqual(options['cwd'], self.root, 'Resolve the vendored wheel from the repository root')
             self.assertEqual(options['env']['MACOSX_DEPLOYMENT_TARGET'], '12.0')
             self.assertFalse(any(key.startswith(('UV_', 'PIP_', 'PYTHON')) or key == 'VIRTUAL_ENV' for key in options['env']))
 
@@ -135,6 +137,29 @@ class RuntimePreparationTests(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 prepare.prepare()
         self.assertEqual(list((self.root / 'build').iterdir()), [])
+
+    def test_native_build_rejects_stale_renderer_and_accepts_snapshot(self):
+        source = (Path(__file__).resolve().parents[1] / 'scripts/build.sh').read_text()
+        guard = 'ensure_xyzrender_rdkit() {' + source.split('ensure_xyzrender_rdkit() {', 1)[1].split('relocate_bundled_python_runtime() {', 1)[0]
+        expected = '9.9.9+fixture.1'
+        (self.locks / 'source.json').write_text(json.dumps({'version': expected}))
+        environment = self.root / 'venv'
+        (environment / 'bin').mkdir(parents=True)
+        (environment / 'bin/python3').symlink_to(sys.executable)
+        site = self.root / 'site'
+        (site / 'rdkit').mkdir(parents=True)
+        (site / 'rdkit/__init__.py').write_text('class Chem:\n    MolFromSmiles = staticmethod(lambda value: object())\n')
+        metadata = site / 'xyzrender-fixture.dist-info'
+        metadata.mkdir()
+        script = guard + '\nROOT="$1"\nLOCAL_XYZRENDER_ENV="$2"\nensure_xyzrender_rdkit\n'
+        for installed, success in [('0.3.8', False), (expected, True)]:
+            with self.subTest(installed=installed):
+                (metadata / 'METADATA').write_text(f'Name: xyzrender\nVersion: {installed}\n')
+                result = subprocess.run(['bash', '-c', script, 'guard', str(self.root), str(environment)],
+                                        env={**os.environ, 'PYTHONPATH': str(site)}, text=True, capture_output=True)
+                self.assertEqual(result.returncode == 0, success, result.stderr)
+                if not success:
+                    self.assertIn('BURETTE_BUILD_LOCKED_XYZRENDER=1', result.stderr)
 
 
 if __name__ == '__main__':

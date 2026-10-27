@@ -201,10 +201,21 @@ ensure_xyzrender_rdkit() {
     echo "error: local xyzrender runtime is missing Python: $python" >&2
     exit 1
   }
-  if PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 "$python" -c 'from rdkit import Chem' >/dev/null 2>&1; then
+  if PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 "$python" - "$ROOT/config/xyzrender/source.json" >/dev/null 2>&1 <<'PY'
+import json
+from importlib.metadata import version
+from pathlib import Path
+import sys
+from rdkit import Chem
+expected = json.loads(Path(sys.argv[1]).read_text())["version"]
+assert version("xyzrender") == expected
+assert Chem.MolFromSmiles("CCO") is not None
+PY
+  then
     return 0
   fi
-  echo "error: selected xyzrender environment has no RDKit; use scripts/prepare-xyzrender-runtime.py." >&2
+  echo "error: selected xyzrender environment does not match the reviewed snapshot or has no RDKit; use scripts/prepare-xyzrender-runtime.py." >&2
+  echo "Set BURETTE_XYZRENDER_ENV to the prepared environment, or BURETTE_BUILD_LOCKED_XYZRENDER=1 to prepare one during the build." >&2
   exit 1
 }
 relocate_bundled_python_runtime() {

@@ -1,0 +1,44 @@
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -4,7 +4,7 @@
+ 
+ [project]
+ name = "xyzrender"
+-version = "0.3.9"
++version = "0.3.9+burette.1"
+ description = "Publication-quality molecular graphics."
+ authors = [{name = "Alister S. Goodfellow"}]
+ readme = "README.md"
+--- a/src/xyzrender/dens.py
++++ b/src/xyzrender/dens.py
+@@ -94,8 +94,10 @@
+     # Tight bounds from actual voxel positions (for canvas fitting)
+     vx_xmin, vx_xmax = float(lobe_pos[:, 0].min()), float(lobe_pos[:, 0].max())
+     vx_ymin, vx_ymax = float(lobe_pos[:, 1].min()), float(lobe_pos[:, 1].max())
+-    vx_xpad = (vx_xmax - vx_xmin) * 0.02 + 1e-9
+-    vx_ypad = (vx_ymax - vx_ymin) * 0.02 + 1e-9
++    # Keep the normalized blur inside the projection so contours close at the rim.
++    blur_padding = max(0.02, (4 * _DENS_BLUR + 1) / (base_res * _PROJ_MULT))
++    vx_xpad = (vx_xmax - vx_xmin) * blur_padding + 1e-9
++    vx_ypad = (vx_ymax - vx_ymin) * blur_padding + 1e-9
+ 
+     # 2D projection bounds (use tight voxel bounds, not full cube grid)
+     if fixed_bounds is not None:
+@@ -129,8 +131,15 @@
+     c1 = min(proj_res, int(nz_cols.max()) + pad + 1)
+     cropped = grid_2d[r0:r1, c0:c1]
+ 
+-    # Blur (on cropped grid — much smaller than full projection)
+-    blurred = np.maximum(gaussian_blur_2d(cropped, _DENS_BLUR), 0.0)
++    # Normalize occupied-pixel density as in the ESP projection. Empty pixels
++    # between projected voxels must not dilute the physical density scale;
++    # retain the original fall-off outside the occupied interior.
++    hits = (grid_2d[r0:r1, c0:c1] > 0)
++    hit_blur = gaussian_blur_2d(hits.astype(float), _DENS_BLUR)
++    interior_density = max(float(np.median(hit_blur[hits])), 1e-12)
++    blurred = np.maximum(
++        gaussian_blur_2d(cropped, _DENS_BLUR) / np.maximum(hit_blur, interior_density), 0.0
++    )
+ 
+     # Multi-level contour extraction on the blurred grid (before upsample).
+     # Running marching squares on the smaller grid is much faster;

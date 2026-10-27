@@ -1,0 +1,3 @@
+# Build tools for the reviewed upstream snapshot wheel only; absent from packaged runtime.
+setuptools==80.9.0
+wheel==0.45.1
