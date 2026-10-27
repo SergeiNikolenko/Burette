@@ -66,8 +66,8 @@ const changes = [];
 const commits = [];
 let submitted = null;
 
-function Harness() {
-  const [value, setValue] = useState(10);
+function Harness({ initialValue = 10, max = 20 } = {}) {
+  const [value, setValue] = useState(initialValue);
   return React.createElement(
     "form",
     {
@@ -81,7 +81,7 @@ function Harness() {
       "aria-label": "Test value",
       id: "test-scrub-value",
       min: 0,
-      max: 20,
+      max,
       step: 0.5,
       value,
       onValueChange(next) {
@@ -112,9 +112,11 @@ assert.equal(host.querySelector("label").control, spinbutton(), "the external la
 await key("ArrowUp");
 assert.equal(spinbutton()?.getAttribute("aria-valuenow"), "10.5");
 assert.equal(changes.at(-1), 10.5);
+assert.equal(commits.at(-1), 10.5, "keyboard nudge commits to consumers");
 
 await key("End");
 assert.equal(spinbutton()?.getAttribute("aria-valuenow"), "20");
+assert.equal(commits.at(-1), 20, "jump to bound commits to consumers");
 await key("Home");
 assert.equal(spinbutton()?.getAttribute("aria-valuenow"), "0");
 
@@ -197,6 +199,28 @@ assert.equal(commits.at(-1), 7.25);
 
 await act(async () => host.querySelector('button[type="submit"]').click());
 assert.equal(submitted, 7.25, "the form observes the value committed by the field");
+
+await act(async () => root.render(React.createElement(Harness, {
+  key: "precise-angle", initialValue: 179.99998917895974, max: 180,
+})));
+await act(async () => {
+  const control = spinbutton();
+  for (const type of ["pointerdown", "pointerup"]) control.dispatchEvent(new window.PointerEvent(type, {
+    bubbles: true, button: 0, buttons: type === "pointerdown" ? 1 : 0,
+    clientX: 10, clientY: 10, pointerId: 3, pointerType: "mouse",
+  }));
+  await new Promise(resolve => window.setTimeout(resolve, 0));
+});
+await act(async () => {
+  const input = host.querySelector('input[role="spinbutton"]');
+  assert.ok(input, "precise angle enters the actual editor");
+  input.focus();
+  Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set.call(input, "179.9999918842198");
+  input.dispatchEvent(new window.Event("input", { bubbles: true }));
+  input.blur();
+});
+assert.equal(commits.at(-1), 179.9999918842198, "typed near-linear angle is not rounded to 180");
+assert.equal(Number(spinbutton().getAttribute("aria-valuenow")), 179.9999918842198);
 
 await act(async () => root.unmount());
 host.remove();

@@ -877,7 +877,9 @@ export function useNumberScrub({
     draftRef.current = nextDraft
     setDraft(nextDraft)
     lastCommittedValueRef.current = value
-  }, [formatForEdit, value])
+    // Runs again when an interaction ends: a value the owner set during it (a refused
+    // commit springing back) must become the base of the next nudge.
+  }, [formatForEdit, interactionEpoch, value])
 
   useEffect(() => {
     if (min != null && value > min) {
@@ -1083,6 +1085,7 @@ export function useNumberScrub({
       setDraft(nextDraft)
       lastCommittedValueRef.current = bounded
       onChange(bounded)
+      notifyCommit(bounded)
 
       return true
     },
@@ -1094,6 +1097,7 @@ export function useNumberScrub({
       max,
       min,
       onChange,
+      notifyCommit,
       step,
       triggerBoundFeedback,
     ],
@@ -1173,9 +1177,9 @@ export function useNumberScrub({
 
   const jumpToBound = useCallback(
     (target: number) => {
-      commit(target, "key")
+      notifyCommit(commit(target, "key"))
     },
-    [commit],
+    [commit, notifyCommit],
   )
 
   const handleKeyboardNudge = useCallback(
