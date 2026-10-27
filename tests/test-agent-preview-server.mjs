@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, request } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -68,6 +68,12 @@ async function waitForReady(child) {
   throw new Error(`agent-preview did not become ready. stdout=${stdout} stderr=${stderr}`);
 }
 
+const publicBind = spawnSync(process.execPath, [
+  'scripts/agent-preview.mjs', 'samples/mini.pdb', '--host', '0.0.0.0',
+], { encoding: 'utf8', timeout: 5000 });
+assert.notEqual(publicBind.status, 0);
+assert.match(publicBind.stderr, /must bind to a loopback host/);
+
 const port = await freePort();
 const child = spawn(process.execPath, ['scripts/agent-preview.mjs', 'samples/mini.pdb', '--port', String(port)], {
   stdio: ['ignore', 'pipe', 'pipe']
@@ -79,6 +85,21 @@ try {
   assert.match(ready.url, new RegExp(`^http://127\\.0\\.0\\.1:${port}/index\\.html\\?token=`));
 
   const base = `http://127.0.0.1:${port}`;
+  assert.match(ready.token, /^[a-f0-9]{64}$/);
+  for (const headers of [
+    { Host: 'attacker.example' },
+    { Origin: 'https://attacker.example' },
+    { Origin: 'null' },
+    { 'Sec-Fetch-Site': 'cross-site' },
+  ]) {
+    const denied = await get(`${base}/preview-data.js?token=${ready.token}`, headers);
+    assert.equal(denied.statusCode, 403, 'valid tokens must not bypass browser origin/host checks');
+  }
+  const sameOrigin = await get(`${base}/preview-data.js?token=${ready.token}`, { Origin: base });
+  assert.equal(sameOrigin.statusCode, 200);
+  assert.equal(sameOrigin.headers['cache-control'], 'no-store');
+  assert.equal(sameOrigin.headers['referrer-policy'], 'no-referrer');
+  assert.equal(sameOrigin.headers['x-frame-options'], 'DENY');
   const htmlWithoutToken = await get(`${base}/index.html`);
   assert.equal(htmlWithoutToken.statusCode, 403);
 
@@ -166,6 +187,7 @@ try {
   assert.match(htmlWithToken.body, /viewer\.js\?v=\d+/);
   const cookie = htmlWithToken.headers['set-cookie']?.find(value => value.startsWith('BuretteAgentPreviewToken='));
   assert.ok(cookie, 'authorized HTML response should set the preview token cookie');
+  assert.match(cookie, /; HttpOnly;/);
 
   const cookieHeader = cookie.split(';')[0];
   const dataWithCookie = await get(`${base}/preview-data.js`, { Cookie: cookieHeader });

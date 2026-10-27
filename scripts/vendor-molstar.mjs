@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { browserEncoderCryptoPlugin, assertNoLegacyBrowserCrypto } from './browser-encoder-crypto-plugin.mjs';
 import { createRequire } from 'node:module';
 import { copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -48,7 +49,7 @@ const buildResult = await Bun.build({
   write: false,
   loader: { '.jpg': 'dataurl' },
   define: { 'process.env.NODE_ENV': JSON.stringify('production') },
-  plugins: [molstarStatePreconditionPlugin, molstarDcdTimePlugin, molstarResizeDrawPlugin, molstarSurfaceFieldCachePlugin, molstarSurfaceLoopPlugin],
+  plugins: [await browserEncoderCryptoPlugin(projectRoot), molstarStatePreconditionPlugin, molstarDcdTimePlugin, molstarResizeDrawPlugin, molstarSurfaceFieldCachePlugin, molstarSurfaceLoopPlugin],
 });
 if (!buildResult.success) {
   for (const log of buildResult.logs) console.error(log);
@@ -61,6 +62,7 @@ if (!jsOutput) {
 }
 const jsTarget = join(webDir, 'molstar.js');
 const jsBundle = (await jsOutput.text()).replace(/[ \t]+$/gmu, '');
+assertNoLegacyBrowserCrypto(jsBundle);
 await Bun.write(jsTarget, jsBundle);
 console.log(`Built Mol* viewer with Burette superposition facade -> ${jsTarget}`);
 

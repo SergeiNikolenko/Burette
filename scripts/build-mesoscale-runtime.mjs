@@ -5,13 +5,12 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const source = resolve(root, "apps/desktop/src/preview-mesoscale/mesoscale-runtime.ts");
 const web = resolve(root, "PreviewExtension/Web");
 const mirror = resolve(root, "plugins/burette-agent/preview-web");
 const theme = resolve(root, "apps/desktop/src/preview-mesoscale/mesoscale-burette-theme.css");
 
 await mkdir(web, { recursive: true });
-await run("bun", ["build", source, "--outdir", web, "--entry-naming", "mesoscale.js", "--target", "browser", "--format", "iife", "--production", "--minify", "--loader", ".jpg:dataurl"]);
+await run("bun", [resolve(root, "scripts/build-mesoscale-bundle.mjs")]);
 await run(resolve(root, "node_modules/.bin/sass"), ["--no-source-map", "--style=compressed", resolve(root, "node_modules/molstar/lib/apps/mesoscale-explorer/style.scss"), resolve(web, "mesoscale.css")]);
 await appendFile(resolve(web, "mesoscale.css"), `\n${(await readFile(theme, "utf8")).trimEnd()}\n`);
 await mkdir(mirror, { recursive: true });

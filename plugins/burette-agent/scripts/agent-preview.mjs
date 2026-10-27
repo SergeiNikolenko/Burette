@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createServer } from 'node:http';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { gunzipSync } from 'node:zlib';
@@ -1475,6 +1475,11 @@ async function main() {
     process.exit(args.help ? 0 : 2);
   }
 
+  if (!['127.0.0.1', 'localhost', '::1'].includes(args.host)) {
+    throw new Error('Agent preview must bind to a loopback host.');
+  }
+  const authority = `${args.host === '::1' ? '[::1]' : args.host}:${args.port}`;
+  const previewOrigin = `http://${authority}`;
   const structurePath = resolve(args.structure);
   const sourceBytes = await readFile(structurePath);
   const st = await stat(structurePath);
@@ -1506,7 +1511,7 @@ async function main() {
     canvasBackground: 'auto'
   };
   const dataBase64 = preview.bytes.toString('base64');
-  const token = args.token || Math.random().toString(36).slice(2) + Date.now().toString(36);
+  const token = args.token || randomBytes(32).toString('hex');
   const tokenCookieName = 'BuretteAgentPreviewToken';
   let liveReport = null;
   let nextActionId = 1;
@@ -1523,7 +1528,21 @@ async function main() {
 
   const server = createServer(async (req, res) => {
     try {
-      const url = new URL(req.url || '/', `http://${args.host}:${args.port}`);
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+      res.setHeader('X-Frame-Options', 'DENY');
+      // Token authentication remains mandatory; this separately rejects browser
+      // cross-origin requests and DNS-rebinding hosts before routing.
+      if (req.headers.host !== authority
+          || (req.headers.origin !== undefined && req.headers.origin !== previewOrigin)
+          || req.headers['sec-fetch-site'] === 'cross-site') {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Agent preview requires a same-origin loopback request.');
+        return;
+      }
+      const url = new URL(req.url || '/', previewOrigin);
       const hasValidToken = url.searchParams.get('token') === token || cookieValue(req.headers.cookie, tokenCookieName) === token;
       if (url.pathname === '/healthz') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1715,7 +1734,7 @@ async function main() {
       await stat(file);
       const headers = { 'Content-Type': contentType(file) };
       if (url.pathname === '/' || url.pathname.endsWith('.html')) {
-        headers['Set-Cookie'] = `${tokenCookieName}=${encodeURIComponent(token)}; Path=/; SameSite=Strict`;
+        headers['Set-Cookie'] = `${tokenCookieName}=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Strict`;
         if (config.textPreview) {
           res.writeHead(200, { ...headers, 'Content-Type': 'text/html; charset=utf-8' });
           res.end(textPreviewHtml({
@@ -1752,7 +1771,7 @@ async function main() {
   });
 
   server.listen(args.port, args.host, () => {
-    const url = `http://${args.host}:${args.port}/index.html?token=${encodeURIComponent(token)}`;
+    const url = `${previewOrigin}/index.html?token=${encodeURIComponent(token)}`;
     console.log(JSON.stringify({ ok: true, url, token, structurePath, config }, null, 2));
   });
 }

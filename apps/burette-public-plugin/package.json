@@ -15,15 +15,15 @@
   "dependencies": {
     "@burette/ketcher-agent-contract": "workspace:*",
     "@modelcontextprotocol/ext-apps": "2.0.3",
-    "@modelcontextprotocol/sdk": "1.30.1",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@vercel/analytics": "2.0.1",
     "molstar": "5.11.0",
-    "next": "16.3.6",
+    "next": "16.4.3",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "zod": "4.6.5",
-    "@modelcontextprotocol/server": "^2.1.0",
-    "@modelcontextprotocol/core": "^2.1.0"
+    "zod": "4.6.7",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "@modelcontextprotocol/core": "^2.4.0"
   },
   "devDependencies": {
     "@types/bun": "1.4.2",
