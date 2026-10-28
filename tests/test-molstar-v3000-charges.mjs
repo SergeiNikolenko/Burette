@@ -26,10 +26,10 @@ assert.throws(() => patchMolstarV3000Atoms('changed upstream'), /reader changed/
 assert.throws(() => patchMolstarV3000Charges(patchMolstarV3000Charges(originalParser)), /reader changed/);
 assert.throws(() => patchMolstarV3000Atoms(patchMolstarV3000Atoms(originalAtoms)), /reader changed/);
 
-function sdf(atoms = ['1 C 0 0 0 0 CHG=1', '2 O 1.2 0 0 0 CHG=-1'], newline = '\n') {
+function sdf(atoms = ['1 C 0 0 0 0 CHG=1', '2 O 1.2 0 0 0 CHG=-1'], newline = '\n', bonds = ['1 2 1 2']) {
   return ['Charged V3000', 'Burette', '', '  0  0  0     0  0            999 V3000',
-    'M  V30 BEGIN CTAB', `M  V30 COUNTS ${atoms.length} 1 0 0 0`, 'M  V30 BEGIN ATOM',
-    ...atoms.map(atom => `M  V30 ${atom}`), 'M  V30 END ATOM', 'M  V30 BEGIN BOND', 'M  V30 1 2 1 2',
+    'M  V30 BEGIN CTAB', `M  V30 COUNTS ${atoms.length} ${bonds.length} 0 0 0`, 'M  V30 BEGIN ATOM',
+    ...atoms.map(atom => `M  V30 ${atom}`), 'M  V30 END ATOM', 'M  V30 BEGIN BOND', ...bonds.map(bond => `M  V30 ${bond}`),
     'M  V30 END BOND', 'M  V30 END CTAB', 'M  END', '> <COMMENT>', 'CHG=99 is a foreign data value', '', '$$$$', ''].join(newline);
 }
 async function parsed(text, reader = parseSdf) {
@@ -45,6 +45,11 @@ function snapshot(model) {
     charges: Array.from(model.atomicHierarchy.atoms.pdbx_formal_charge.toArray()),
     x: Array.from(model.atomicConformation.x), y: Array.from(model.atomicConformation.y), z: Array.from(model.atomicConformation.z),
     bonds: Array.from(IndexPairBonds.Provider.get(model).bonds.edgeProps.order) };
+}
+function connectivity(model) {
+  const graph = IndexPairBonds.Provider.get(model).bonds, edges = [];
+  for (let i = 0; i < graph.a.length; i++) if (graph.a[i] < graph.b[i]) edges.push([graph.a[i], graph.b[i], graph.edgeProps.order[i]]);
+  return edges;
 }
 
 const charged = sdf();
@@ -86,6 +91,45 @@ for (const text of [v2000, v2000.replace('M  END', 'M  CHG  2   1   2   2  -2\nM
 }
 assert.deepEqual(snapshot(await model((await parsed(v2000))[0])).charges, [1, -1]);
 
+// Source ids are identifiers, not row numbers. Keep every atom, including an
+// isolated atom, its charge, directed bond endpoints and stereo geometry.
+for (const ids of [[10, 30, 90, 1000], [3, 1, 2, 7]]) for (const charged of [false, true]) {
+  const atoms = [`${ids[0]} C 0 0 0 0 CFG=1${charged ? ' CHG=1' : ''}`, `${ids[1]} O 1 0 0 0${charged ? ' CHG=-1' : ''}`,
+    `${ids[2]} N 0 1 0 0`, `${ids[3]} F 0 0 1 0`];
+  const bonds = [`500 1 ${ids[0]} ${ids[2]} CFG=1`, `900 2 ${ids[2]} ${ids[1]} -\nM  V30 CFG=2`];
+  const text = sdf(atoms, '\n', bonds), compound = (await parsed(text))[0], actual = await model(compound);
+  assert.deepEqual(snapshot(actual), { elements: ['C', 'O', 'N', 'F'], charges: charged ? [1, -1, 0, 0] : [0, 0, 0, 0],
+    x: [0, 1, 0, 0], y: [0, 0, 1, 0], z: [0, 0, 0, 1], bonds: [1, 2, 1, 2] });
+  assert.deepEqual(connectivity(actual), [[0, 2, 1], [1, 2, 2]]);
+  assert.deepEqual([Array.from(compound.molFile.bonds.atomIdxA.toArray()), Array.from(compound.molFile.bonds.atomIdxB.toArray())], [[1, 3], [3, 2]],
+    'remap to 1-based rows without reversing the source bond direction');
+}
+for (const bonds of [[], ['1 1 10 30']]) {
+  const text = sdf(['10 C 0 0 0 0', '30 O 1 0 0 0', '90 N 0 1 0 0'], '\n', bonds);
+  const actual = await model((await parsed(text))[0]);
+  assert.equal(actual.atomicHierarchy.atoms._rowCount, 3);
+  assert.deepEqual(snapshot(actual).charges, [0, 0, 0]);
+  assert.deepEqual(connectivity(actual), bonds.length ? [[0, 1, 1]] : []);
+  if (!bonds.length) assert.deepEqual(snapshot(await model((await parsed(text.replace('M  V30 BEGIN BOND\nM  V30 END BOND\n', '')))[0])), snapshot(actual));
+}
+for (const bonds of [['1 1 1 99'], ['1 1 1 1'], ['1 1 1 2', '1 2 2 3'], ['1 1 1 2', '2 1 2 1'], ['1 1 1 2', '2 2 1 2']]) {
+  await assert.rejects(parsed(sdf(['1 C 0 0 0 0', '2 O 1 0 0 0', '3 N 0 1 0 0'], '\n', bonds)), /V3000.*bond/);
+}
+for (const bond of ['0 1 1 2', '1 0 1 2', '1 128 1 2', '1 1.5 1 2', '1 1 0 2', '1 1 1 -2', '1 1 1.5 2', '9007199254740992 1 1 2']) {
+  await assert.rejects(parsed(sdf(undefined, '\n', [bond])), /Invalid V3000 bond/);
+}
+await assert.rejects(parsed(charged.replace('COUNTS 2 1', 'COUNTS 2 1000000000')), /Invalid or truncated V3000 bond count/);
+await assert.rejects(parsed(charged.replace('M  V30 BEGIN BOND', 'M  V30 BEGIN SGROUP')), /Missing V3000 BEGIN BOND/);
+await assert.rejects(parsed(charged.replace('M  V30 END BOND', 'M  V30 END CTAB')), /Missing V3000 END BOND/);
+await assert.rejects(parsed(charged.slice(0, charged.indexOf('M  V30 END BOND'))), /end of V3000 bond block/);
+await assert.rejects(parsed(sdf(undefined, '\n', [`1 1 1 2 LABEL=${'x'.repeat(65_536)}`])), /V3000 bond record exceeds/);
+await assert.rejects(parsed(sdf(undefined, '\n', [`1 1 1 2 ${'-\nM  V30 '.repeat(256)}CFG=1`])), /256 continuation lines/);
+await assert.rejects(parsed(sdf(undefined, '\n', ['1 1 1 2 LABEL="unterminated'])), /Unterminated V3000 bond property/);
+const remappedCollection = await parsed(sdf(['90 C 0 0 0 0', '10 O 1 0 0 0', '30 N 0 1 0 0'], '\n', ['20 1 90 30'])
+  + sdf(['10 C 0 0 0 0', '30 O 1 0 0 0', '90 N 0 1 0 0'], '\n', ['20 1 10 30']));
+assert.deepEqual(await Promise.all(remappedCollection.map(async compound => connectivity(await model(compound)))), [[[0, 2, 1]], [[0, 1, 1]]],
+  'each compound owns its source-id map');
+
 for (const value of ['x', '', '1.5', '1e1', 'Infinity', 'NaN', '2147483648', '-2147483649', '"1"', '(1 1)', '1 CHG=2']) {
   await assert.rejects(parsed(sdf([`1 C 0 0 0 0 CHG=${value}`, '2 O 1.2 0 0 0'])), /Invalid or duplicate V3000 CHG/);
 }
@@ -100,4 +144,4 @@ await assert.rejects(parsed(sdf([`1 C 0 0 0 0 LABEL=${'x'.repeat(65_536)}`, '2 O
 await assert.rejects(parsed(sdf([`1 C 0 0 0 0 ${'-\nM  V30 '.repeat(256)}CHG=1`, '2 O 1.2 0 0 0'])), /256 continuation lines/);
 assert.equal(await readFile(parserUrl, 'utf8'), originalParser, 'never edit installed Mol* source');
 assert.equal(await readFile(atomsUrl, 'utf8'), originalAtoms);
-console.log('Mol* V3000 direct formal charges, continuations, V2000 parity, source data and bounded malformed rejection passed');
+console.log('Mol* V3000 id-to-row bonds, formal charges, continuations, V2000 parity, stereo geometry and bounded malformed rejection passed');
