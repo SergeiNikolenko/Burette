@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { CheckCircle, ChevronRight, ExclamationCircle, Flask, Search, Stopwatch, Warning, XCircleCrossedClose } from "./ui/app-icons";
 import { PanelEmptyState } from "./ui/panel-empty-state";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
@@ -12,12 +12,12 @@ import { useSshConnections } from "../lib/ssh-projects";
 
 type JobRow = {
   id: string; title: string; source: string; status: string; startedAt: number; host?: string | null;
-  summary?: string | null; details?: string | null;
+  summary?: string | null; details?: string | null; statusLabel?: string;
   cancel?: () => void; open?: () => void; report?: () => void; log?: () => void;
 };
 type Props = {
-  state: Pick<ShellViewState, "conformerJobs" | "xtbJobs" | "derivedColumnJobs" | "databaseJobs">;
-  actions: Pick<ShellActions, "openPaths" | "openTextPaths" | "cancelConformerJob" | "cancelXtbJob" | "selectDocument" | "clearConformerJobs" | "clearXtbJobs" | "clearDerivedColumnJobs" | "clearDatabaseJobs">;
+  state: Pick<ShellViewState, "conformerJobs" | "xtbJobs" | "derivedColumnJobs" | "databaseJobs" | "resourceJobs">;
+  actions: Pick<ShellActions, "openPaths" | "openTextPaths" | "cancelConformerJob" | "cancelXtbJob" | "selectDocument" | "clearConformerJobs" | "clearXtbJobs" | "clearDerivedColumnJobs" | "clearDatabaseJobs" | "cancelResourceJob" | "clearResourceJobs" | "openSettingsSection">;
   /** `page` is the Jobs screen (Codex list page); `dock` is the compact panel list. */
   variant?: "dock" | "page";
 };
@@ -44,6 +44,7 @@ const matchesFilter: Record<JobFilter, (row: JobRow) => boolean> = {
 export function JobsPanel({ state, actions, variant = "dock" }: Props) {
   const panel = useRef<HTMLElement>(null);
   const cleared = useRef(false);
+  const cancellationFocus = useRef<{ element: HTMLElement; details: HTMLElement | null; jobId: string } | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<JobFilter>("all");
   const page = variant === "page";
@@ -75,6 +76,14 @@ export function JobsPanel({ state, actions, variant = "dock" }: Props) {
       details: [job.error, ...(job.warnings ?? [])].filter(Boolean).join("\n"),
       open: job.documentId ? () => actions.selectDocument(job.documentId!) : undefined,
     })),
+    ...state.resourceJobs.map((job): JobRow => ({
+      ...job, id: `resource:${job.id}`, source: "Extensions", details: job.error,
+      statusLabel: job.status !== "running" ? undefined : !job.cancelable ? "Cancelling" : job.phase === "reading"
+        ? `${job.receivedBytes.toLocaleString("en-US")} / ${job.totalBytes.toLocaleString("en-US")} bytes`
+        : job.phase === "installing" ? "Installing" : "Removing",
+      cancel: job.status === "running" && job.cancelable ? () => actions.cancelResourceJob(job.id) : undefined,
+      open: job.status === "success" ? () => actions.openSettingsSection("extensions") : undefined,
+    })),
   ];
   rows.sort((left, right) => Number(active(right)) - Number(active(left)) || right.startedAt - left.startedAt);
   const pending = rows.filter(active).length;
@@ -82,11 +91,31 @@ export function JobsPanel({ state, actions, variant = "dock" }: Props) {
   const visible = page
     ? rows.filter(row => matchesFilter[filter](row) && (!needle || `${row.title}\n${row.source}`.toLowerCase().includes(needle)))
     : rows;
+  useLayoutEffect(() => {
+    const tracked = cancellationFocus.current;
+    if (!tracked) return;
+    const document = tracked.element.ownerDocument;
+    const running = rows.some(row => row.id === tracked.jobId && active(row));
+    if (tracked.element.isConnected) {
+      if (document.activeElement !== tracked.element || !running) cancellationFocus.current = null;
+      return;
+    }
+    cancellationFocus.current = null;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    const target = tracked.details?.isConnected ? tracked.details : panel.current;
+    // A cancelling row can leave Active only after asynchronous cleanup finishes.
+    if (target && target === tracked.details && running) cancellationFocus.current = { ...tracked, element: target };
+    target?.focus({ preventScroll: true });
+  });
   const clearTrigger = <AlertDialogTrigger asChild>
     <Button type="button" variant={page ? "secondary" : "ghost"} size={page ? "toolbar" : "xs"} disabled={rows.length === pending}>Clear finished</Button>
   </AlertDialogTrigger>;
   return (
-    <section ref={panel} className="jobs-panel" data-variant={variant} aria-label="Calculations" tabIndex={-1}>
+    <section ref={panel} className="jobs-panel" data-variant={variant} aria-label="Jobs" tabIndex={-1}
+      onBlurCapture={event => {
+        const tracked = cancellationFocus.current;
+        if (tracked?.element === event.target && tracked.element.isConnected) cancellationFocus.current = null;
+      }}>
       <AlertDialog>
         {page ? <header className="jobs-page-header">
           <h1>Jobs</h1>
@@ -100,14 +129,14 @@ export function JobsPanel({ state, actions, variant = "dock" }: Props) {
           cleared.current = false; event.preventDefault(); panel.current?.focus();
         }}>
           <AlertDialogHeader>
-            <AlertDialogTitle>Clear finished calculations?</AlertDialogTitle>
+            <AlertDialogTitle>Clear finished jobs?</AlertDialogTitle>
             <AlertDialogDescription>Finished jobs will be removed from this list. Active jobs and result files are kept.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={() => {
               cleared.current = true;
-              actions.clearConformerJobs(); actions.clearXtbJobs(); actions.clearDerivedColumnJobs(); actions.clearDatabaseJobs();
+              actions.clearConformerJobs(); actions.clearXtbJobs(); actions.clearDerivedColumnJobs(); actions.clearDatabaseJobs(); actions.clearResourceJobs();
             }}>Clear finished</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -133,7 +162,7 @@ export function JobsPanel({ state, actions, variant = "dock" }: Props) {
                         <span className="jobs-panel-text">
                           <strong title={job.title}>{job.title}</strong>
                           <span className="jobs-panel-meta">
-                            <span className="jobs-panel-status">{statusLabels[job.status] ?? job.status}</span>
+                            <span className="jobs-panel-status">{job.statusLabel ?? statusLabels[job.status] ?? job.status}</span>
                             {job.host && <span className="jobs-panel-host">{hostName(job.host)}</span>}
                             {job.source && <span className="jobs-panel-source" title={job.source}>{job.source}</span>}
                           </span>
@@ -142,12 +171,19 @@ export function JobsPanel({ state, actions, variant = "dock" }: Props) {
                         <ChevronRight className="jobs-panel-chevron size-3" aria-hidden />
                         <strong title={job.title}>{job.title}</strong>
                         {job.host && <span className="jobs-panel-host">{hostName(job.host)}</span>}
-                        <span className="jobs-panel-status">{active(job) ? <Spinner className="size-3" aria-hidden /> : null}{statusLabels[job.status] ?? job.status}</span>
+                        <span className="jobs-panel-status">{active(job) ? <Spinner className="size-3" aria-hidden /> : null}{job.statusLabel ?? statusLabels[job.status] ?? job.status}</span>
                       </>}
                     </Button>
                   </CollapsibleTrigger>
                   <div className="jobs-panel-actions">
-                    {job.cancel ? <Button type="button" variant="ghost" size={page ? "toolbar" : "xs"} onClick={job.cancel}>Cancel</Button> : null}
+                    {job.cancel ? <Button type="button" variant="ghost" size={page ? "toolbar" : "xs"} onClick={event => {
+                      const button = event.currentTarget;
+                      if (button.ownerDocument.activeElement === button) cancellationFocus.current = {
+                        element: button, jobId: job.id,
+                        details: button.closest(".jobs-panel-row")?.querySelector<HTMLElement>(".jobs-panel-toggle") ?? null,
+                      };
+                      job.cancel?.();
+                    }}>Cancel</Button> : null}
                     {job.open ? <Button type="button" variant="ghost" size={page ? "toolbar" : "xs"} onClick={job.open}>Open result</Button>
                       : job.report ? <Button type="button" variant="ghost" size={page ? "toolbar" : "xs"} onClick={job.report}>Report</Button> : null}
                   </div>

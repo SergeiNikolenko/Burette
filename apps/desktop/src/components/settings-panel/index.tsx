@@ -32,6 +32,7 @@ import { KeyboardShortcutsSection } from "./keyboard-shortcuts-section";
 import { AppearanceSettings } from "./themes-section";
 import { ViewerDefaultsSection } from "./viewer-defaults-section";
 import { JobsSettingsSections, restoreSessionRow, useMaintenanceCacheRows } from "./app-settings-sections";
+import { ExtensionsSection, type ExtensionsSectionProps } from "./extensions-section";
 
 const defaultRendererModeOptions: Array<ViewerPreferences["rendererMode"]> = ["auto", "molstar", "xyzrender-external"];
 const structureStyleLabels: Record<ViewerPreferences["molstarStyle"], string> = {
@@ -75,7 +76,7 @@ function preferenceRow<K extends Extract<keyof ViewerPreferences, string>>(
   );
 }
 
-export function SettingsPanel({ location, state, actions }: { location: SettingsPanelLocation; state: ShellViewState; actions: ShellActions }) {
+export function SettingsPanel({ location, state, actions, extensions }: { location: SettingsPanelLocation; state: ShellViewState; actions: ShellActions; extensions?: ExtensionsSectionProps["extensions"] }) {
   const preferences = state.preferences;
   const update = state.update;
   const section = location.section;
@@ -183,6 +184,7 @@ export function SettingsPanel({ location, state, actions }: { location: Settings
               ) : null}
               {section === "structure" ? <ViewerDefaultsSection preferences={preferences} actions={actions} /> : null}
               {section === "jobs" ? <JobsSettingsSections preferences={preferences} actions={actions} /> : null}
+              {section === "extensions" && extensions ? <ExtensionsSection extensions={extensions} /> : null}
               {section === "xtb" ? (
                 <>
                   <SettingsSection

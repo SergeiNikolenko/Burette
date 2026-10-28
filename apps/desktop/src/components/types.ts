@@ -1,5 +1,7 @@
 import type { ConformerJob, ConformerOperation, ConformerSettings, ConformerStatus, DerivedColumnJob, HoveredGridRow, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbSettings, XtbStatus, DatabaseJob } from "../types";
 import type { DatabaseQueryDraft } from "../hooks/use-app-database";
+import type { ResourceJob } from "../lib/extensions/resource-install-runner";
+import type { InstalledResource } from "../lib/extensions/resource-bundle";
 import type { DatabaseProvider } from "../lib/database";
 import type { TextFileSaveOutcome } from "../lib/file-export";
 import type { MoleculeTab } from "../stores/molecule-store";
@@ -215,6 +217,11 @@ export type ShellActions = {
   clearConformerJobs: () => void;
   openDatabaseQuery: (provider: DatabaseProvider, seed?: Partial<DatabaseQueryDraft>) => void;
   clearDatabaseJobs: () => void;
+  installCrystals: () => Promise<ResourceJob>;
+  removeCrystals: () => Promise<ResourceJob>;
+  refreshResourceExtensions: () => Promise<void>;
+  cancelResourceJob: (jobId: string) => void;
+  clearResourceJobs: () => void;
   checkXtbStatus: () => void | Promise<void>;
   chooseXtbExecutable: () => void | Promise<void>;
   clearXtbExecutableSelection: () => void | Promise<void>;
@@ -384,6 +391,8 @@ export type ShellViewState = {
   conformerSettings: ConformerSettings;
   conformerJobs: ConformerJob[];
   databaseJobs: DatabaseJob[];
+  resourceJobs: readonly ResourceJob[];
+  resourceExtensions: { installed: InstalledResource | null; initialized: boolean; error: string | null };
   viewerLigandSelection: ViewerLigandSelection | null;
   structureStory: StructureStory | null;
   structureOverlayMode: StructureOverlayMode;

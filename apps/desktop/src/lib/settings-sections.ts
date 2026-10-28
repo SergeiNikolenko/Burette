@@ -9,6 +9,7 @@ export type SettingsSectionId =
   | "xtb"
   | "connections"
   | "agent"
+  | "extensions"
   | "maintenance";
 
 export type AppSettingsSectionId = SettingsSectionId;
@@ -55,6 +56,7 @@ export const settingsNavGroups: SettingsNavGroup[] = [
     items: [
       { id: "connections", label: "Connections", description: "SSH machines and remote projects" },
       { id: "agent", label: "Agents", description: "Agent plugin status and diagnostics" },
+      { id: "extensions", label: "Extensions", description: "Crystals and resource libraries" },
     ],
   },
   {

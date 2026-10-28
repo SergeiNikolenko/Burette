@@ -17,6 +17,7 @@ import {
 import { useAppActiveTextDocument } from "./hooks/use-app-active-text-document";
 import { useAppBrowserDevStartup } from "./hooks/use-app-browser-dev-startup";
 import { useAppAgentSessionActions } from "./hooks/use-app-agent-session-actions";
+import { useResourceExtensions } from "./hooks/use-resource-extensions";
 import { useAppChemistryJobs } from "./hooks/use-app-chemistry-jobs";
 import { useAppConformerWorkflows } from "./hooks/use-app-conformer-workflows";
 import { CalculatePropertiesDialog, type CalculatePropertiesRequest } from "./components/calculate-properties-dialog";
@@ -347,6 +348,7 @@ export default function App() {
     xtbSettings,
     xtbStatus,
   } = useAppChemistryJobs({ pushErrorStatus, pushStatus });
+  const resourceExtensions = useResourceExtensions();
   const {
     buildInfo,
     checkForUpdates,
@@ -1114,6 +1116,11 @@ export default function App() {
   });
 
   const actions = useAppShellActions({
+    installCrystals: resourceExtensions.installCrystals,
+    removeCrystals: resourceExtensions.remove,
+    refreshResourceExtensions: resourceExtensions.refresh,
+    cancelResourceJob: resourceExtensions.cancel,
+    clearResourceJobs: resourceExtensions.clearFinished,
     setGridColumnFilter,
     clearGridColumnFilters,
     activeDocument,
@@ -1273,6 +1280,8 @@ export default function App() {
   const page = activeTab?.location.kind === "settings" ? "settings" : "viewer";
 
   const state = useAppShellViewState({
+    resourceExtensions: { installed: resourceExtensions.installed, initialized: resourceExtensions.initialized, error: resourceExtensions.error },
+    resourceJobs: resourceExtensions.jobs,
     dirtyGridDocuments,
     gridFilterModel: activeGridFilterModel,
     documents,

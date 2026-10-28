@@ -93,7 +93,7 @@ type ChemistryShellViewState = Pick<
   | "hoveredGridRows"
 >;
 
-type SettingsShellViewState = Pick<ShellViewState, "preferences" | "update">;
+type SettingsShellViewState = Pick<ShellViewState, "preferences" | "update" | "resourceExtensions" | "resourceJobs">;
 
 export type AppShellViewStateSlices = {
   documents: DocumentShellViewState;
@@ -211,6 +211,8 @@ export function createAppShellViewStateSlices(input: AppShellViewStateInput): Ap
       hoveredGridRows: state.hoveredGridRows,
     },
     settings: {
+      resourceExtensions: state.resourceExtensions,
+      resourceJobs: state.resourceJobs,
       preferences: state.preferences,
       update: state.update,
     },

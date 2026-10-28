@@ -14,7 +14,11 @@ export const settingsKind = definePageKind<"settings", SettingsLocation>({
   description: "App preferences",
   Component: ({ location, state, actions }) => (
     <Suspense fallback={null}>
-      <SettingsPanel location={location} state={state} actions={actions} />
+      <SettingsPanel location={location} state={state} actions={actions} extensions={{
+        ...state.resourceExtensions, jobs: state.resourceJobs,
+        installCrystals: actions.installCrystals, remove: actions.removeCrystals, refresh: actions.refreshResourceExtensions,
+        cancel: actions.cancelResourceJob, clearFinished: actions.clearResourceJobs,
+      }} />
     </Suspense>
   ),
   fromPayload: (data) => ({ kind: "settings", section: normalizeSettingsSection(data.section) }),
