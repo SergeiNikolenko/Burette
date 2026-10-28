@@ -208,6 +208,11 @@ if (
   renderer !== "spectrum" &&
   renderer !== "fep-graphml"
 ) {
+  if (["ccp4", "mtz"].includes(format.viewer?.molstarFormat)) {
+    const volumeCount = maxEvidenceNumber(readyEvidence, "molstarVolumeCount");
+    if (volumeCount <= 0) fail("Mol* preview did not expose a rendered volume");
+    pass(`molstar volumes=${volumeCount}`);
+  }
   const structureCount = maxEvidenceNumber(readyEvidence, "molstarStructureCount");
   if (structureCount <= 0) fail("Mol* preview did not expose a rendered structure");
   pass(`molstar structures=${structureCount}`);
