@@ -27,7 +27,8 @@ const install: {
   error: string | null;
   child: ChildProcess | null;
   cancelled: boolean;
-} = { phase: "idle", line: null, error: null, child: null, cancelled: false };
+  committed: boolean;
+} = { phase: "idle", line: null, error: null, child: null, cancelled: false, committed: false };
 
 export function registerBrowserDevModelRuntimeRoutes(server: ViteDevServer, repoRoot: string) {
   server.middlewares.use("/__burette/chemical-space-model-runtime", (req, res) => {
@@ -98,6 +99,7 @@ function startInstall(repoRoot: string) {
   install.line = "Preparing the model runtime installation…";
   install.error = null;
   install.cancelled = false;
+  install.committed = false;
   void runInstall(repoRoot)
     .then(() => {
       install.phase = "completed";
@@ -115,7 +117,7 @@ function startInstall(repoRoot: string) {
 }
 
 function cancelInstall() {
-  if (install.phase !== "installing") return;
+  if (install.phase !== "installing" || install.committed) return;
   install.cancelled = true;
   install.child?.kill("SIGKILL");
 }
@@ -133,7 +135,9 @@ async function runInstall(repoRoot: string) {
     "utf8",
   );
   const bootstrapRequirements = await readFile(join(repoRoot, "compute", "models", "requirements-bootstrap.txt"), "utf8");
-  if (await stampMatches(root, requirements, bootstrapRequirements)) return;
+  const current = await stampMatches(root, requirements, bootstrapRequirements);
+  ensureNotCancelled();
+  if (current) return;
   const staging = join(parent, `model-python.staging-${randomUUID()}`);
   try {
     install.line = "Creating the Python 3.12 environment…";
@@ -152,11 +156,13 @@ async function runInstall(repoRoot: string) {
     ensureNotCancelled();
     install.line = "Validating the installed runtime…";
     await runStep(python, ["-c", "import numpy, rdkit, torch, transformers; print('imports ok')"]);
+    ensureNotCancelled();
     await writeFile(
       join(staging, STAMP_FILE),
       `${JSON.stringify({ requirements, bootstrapRequirements, validatedAtMs: Date.now() }, null, 2)}\n`,
       "utf8",
     );
+    ensureNotCancelled();
     await promoteStaging(root, staging);
   } catch (error) {
     await rm(staging, { recursive: true, force: true }).catch(() => undefined);
@@ -177,13 +183,18 @@ async function stampMatches(root: string, requirements: string, bootstrapRequire
 }
 
 async function promoteStaging(root: string, staging: string) {
+  ensureNotCancelled();
   let legacy: string | null = null;
   if (existsSync(root)) {
     legacy = `${root}.legacy-${randomUUID()}`;
     await rename(root, legacy);
   }
   try {
+    ensureNotCancelled();
     await rename(staging, root);
+    // Successful publication is the commit point. Cancellation during later
+    // backup cleanup cannot undo or relabel the installed runtime.
+    install.committed = true;
   } catch (error) {
     if (legacy) await rename(legacy, root).catch(() => undefined);
     throw error;
@@ -199,6 +210,7 @@ function ensureNotCancelled() {
 
 function runStep(command: string, args: string[]) {
   return new Promise<void>((resolve, reject) => {
+    ensureNotCancelled();
     const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
       !key.startsWith("UV_") && !key.startsWith("PIP_") && !key.startsWith("PYTHON") && key !== "VIRTUAL_ENV",
     ));
