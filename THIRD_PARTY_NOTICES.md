@@ -12,6 +12,14 @@ This project follows the same broad product idea as QuickLookProtein: a host mac
 
 Burette can call a user-installed `xyzrender` executable from the standalone app and Quick Look previews. The `xyzrender` Python package is MIT-licensed by Alister S. Goodfellow and contributors. `xyzrender` itself is not bundled with Burette.
 
+## OpenChemLib
+
+Burette bundles OpenChemLib from the `openchemlib` package for molecular
+processing and the fallback 2D preview. It is BSD-3-Clause licensed,
+copyright (c) 2015-2017, cheminfo. The package's complete license is copied
+to `PreviewExtension/Web/openchemlib/LICENSE` and ships beside the browser
+runtime.
+
 ## RDKit
 
 Burette uses the official `@rdkit/rdkit` MinimalLib distribution and stages a

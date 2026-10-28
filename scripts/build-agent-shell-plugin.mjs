@@ -32,6 +32,7 @@ const requiredPreviewAssets = [
   'molstar-preset-preview-controller.js',
   'superposition-panel.js',
   'molecule-preview-interactions.js',
+  'molecule-preview-ocl.js',
   'renderer-view-state.js',
   'xyzrender-3d-editor.js',
   'color-picker.js',
@@ -48,6 +49,7 @@ const requiredPreviewAssets = [
   'grid-ui.js',
   'grid.css',
   'openchemlib/openchemlib.js',
+  'openchemlib/LICENSE',
   'rdkit/RDKit_minimal.js',
   'rdkit/RDKit_minimal.wasm',
 ];

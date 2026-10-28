@@ -104,3 +104,35 @@ test('the packaged OCL browser global supplies the same real drawing and source 
   expect(drawing(svg).querySelectorAll('path[class*="bond-"]')).toHaveLength(3);
   expect(drawing(svg).textContent).toContain('+');
 });
+
+for (const hosted of [false, true]) test(`actual viewer fallback lazily loads one depiction runtime for concurrent previews (${hosted ? 'hosted asset transport' : 'served assets'})`, async () => {
+  const viewer = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
+  const loader = viewer.slice(viewer.indexOf('  let molstarPreviewOclPromise = null;'), viewer.indexOf('  async function molstarMoleculePreviewRDKitSVG(entry) {'));
+  const preview = viewer.slice(viewer.indexOf('  async function molstarMoleculePreviewRDKitSVG(entry) {'), viewer.indexOf('  function selectMolstarMoleculePreviewAtoms('));
+  const cleaner = viewer.match(/\n  function molstarPreviewCleanRDKitSVG\([\s\S]*?\n  \}/u)![0];
+  const browser: Record<string, any> = hosted ? { BuretteResolveRuntimeAsset: () => {} } : {};
+  const loaded: string[] = [], cache = new Map<string, string>();
+  const deps = {
+    window: browser, document: { baseURI: 'https://shell.example/document/', scripts: [{ src: 'https://assets.example/runtime/scene-file-actions.js?v=7' }] },
+    runtimeURL: (_key: string, fallback: string) => fallback,
+    loadScript: async (url: string) => {
+      loaded.push(url); await Promise.resolve();
+      if (url.split('?')[0].endsWith('openchemlib.js')) browser.BuretteOpenChemLib = ocl;
+      else browser.BuretteMoleculePreviewOcl = scope.BuretteMoleculePreviewOcl;
+    },
+    molstarShowHydrogens: true, normalizeFormat: (format: string) => format,
+    molstarPreviewKey: (entry: { label: string }) => entry.label, molstarPreviewSvgCache: cache,
+    molstarPreviewCacheSVG: (key: string, svg: string) => cache.set(key, svg),
+    molstarPreviewInitRDKit: async () => ({ get_mol: () => null }), splitSdfRecords: (data: string) => [data],
+    MOLSTAR_PREVIEW_RDKIT_SVG_SIZE: 400, molstarMoleculePreviewFallbackSVG: () => '', debug: () => {},
+  };
+  const run = new Function(...Object.keys(deps), `${cleaner}\n${loader}\n${preview}\nreturn molstarMoleculePreviewRDKitSVG;`)(...Object.values(deps));
+  const source = nitro(), results = await Promise.all(['first', 'second'].map(label => run({ format: 'sdf', data: source, label })));
+  const expected = ['openchemlib/openchemlib.js', 'molecule-preview-ocl.js'];
+  expect(loaded).toEqual(hosted ? expected : expected.map(path => `https://assets.example/runtime/${path}?v=7`));
+  expect(results[0]).toEqual(results[1]);
+  expect(atomRows(results[0]).map(atom => atom.source)).toEqual([0, 1, 2, 3, 4]);
+  expect(cache.size).toBe(2);
+  expect(await run({ format: 'sdf', data: source, label: 'first' })).toEqual(results[0]);
+  expect(loaded).toHaveLength(2);
+});

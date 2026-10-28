@@ -28492,6 +28492,25 @@ SOFTWARE.
     while (molstarPreviewSvgCache.size > 64) molstarPreviewSvgCache.delete(molstarPreviewSvgCache.keys().next().value);
   }
 
+  let molstarPreviewOclPromise = null;
+  async function molstarPreviewOclRuntime() {
+    if (window.BuretteOpenChemLib?.Molecule && window.BuretteMoleculePreviewOcl) return window.BuretteMoleculePreviewOcl;
+    if (!molstarPreviewOclPromise) molstarPreviewOclPromise = (async () => {
+      const asset = relative => {
+        if (window.BuretteResolveRuntimeAsset) return relative;
+        const sceneScript = Array.from(document.scripts).find(script => /(?:^|\/)scene-file-actions\.js(?:[?#]|$)/u.test(script.src));
+        const base = new URL(runtimeURL('BuretteSceneFilesURL', sceneScript?.src || './scene-file-actions.js'), document.baseURI);
+        const url = new URL(relative, base); url.search = base.search;
+        return String(url);
+      };
+      if (!window.BuretteOpenChemLib?.Molecule) await loadScript(asset('openchemlib/openchemlib.js'), 'molecule depiction', 15000);
+      if (!window.BuretteMoleculePreviewOcl) await loadScript(asset('molecule-preview-ocl.js'), 'molecule depiction', 10000);
+      if (!window.BuretteOpenChemLib?.Molecule || !window.BuretteMoleculePreviewOcl) throw new Error('Molecule depiction is unavailable.');
+      return window.BuretteMoleculePreviewOcl;
+    })().finally(() => { molstarPreviewOclPromise = null; });
+    return molstarPreviewOclPromise;
+  }
+
   async function molstarMoleculePreviewRDKitSVG(entry) {
     const showHydrogens = molstarShowHydrogens;
     if (normalizeFormat(entry?.format) !== 'sdf') return '';
@@ -28529,7 +28548,12 @@ SOFTWARE.
       }
     } catch (error) {
       debug(`RDKit molecule preview failed; using SVG fallback: ${error?.message || error}`);
-      const fallback = molstarMoleculePreviewFallbackSVG(entry, showHydrogens);
+      let fallback = '';
+      try {
+        const depiction = await molstarPreviewOclRuntime();
+        fallback = molstarPreviewCleanRDKitSVG(depiction.render(String(entry.data || ''), showHydrogens, MOLSTAR_PREVIEW_RDKIT_SVG_SIZE, window.BuretteOpenChemLib));
+      } catch (cause) { debug(`Molecule depiction fallback failed: ${cause?.message || cause}`); }
+      if (!fallback) fallback = molstarMoleculePreviewFallbackSVG(entry, showHydrogens);
       if (!fallback) throw error;
       molstarPreviewCacheSVG(key, fallback);
       return fallback;

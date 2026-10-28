@@ -103,6 +103,12 @@
       "package": "openchemlib",
       "bytes": 1104184,
       "sha256": "sha256-Turw1Xa2ag0+dGTMeKEX4l0rXCBu2bHjLp7Q82lsK1g="
+    },
+    {
+      "path": "PreviewExtension/Web/openchemlib/LICENSE",
+      "package": "openchemlib",
+      "bytes": 1515,
+      "sha256": "sha256-ONw67T3vjMTdFayHnapK+bDXGvhv74JhHKF1JJfG9GQ="
     }
   ],
   "profiles": {
@@ -116,6 +122,7 @@
       "molstar-preset-preview-controller.js",
       "superposition-panel.js",
       "molecule-preview-interactions.js",
+      "molecule-preview-ocl.js",
       "renderer-view-state.js",
       "xyzrender-3d-editor.js",
       "color-picker.js",
@@ -125,6 +132,8 @@
       "sdf-collection-scene.js",
       "svg-sanitizer.js",
       "viewer.js",
+      "openchemlib/openchemlib.js",
+      "openchemlib/LICENSE",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
     ],
@@ -136,6 +145,7 @@
       "native-viewer-menus.js",
       "grid-viewer.js",
       "openchemlib/openchemlib.js",
+      "openchemlib/LICENSE",
       "grid.css",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
@@ -156,6 +166,7 @@
       "molstar-preset-preview-controller.js",
       "superposition-panel.js",
       "molecule-preview-interactions.js",
+      "molecule-preview-ocl.js",
       "renderer-view-state.js",
       "xyzrender-3d-editor.js",
       "color-picker.js",
@@ -165,6 +176,8 @@
       "sdf-collection-scene.js",
       "svg-sanitizer.js",
       "viewer.js",
+      "openchemlib/openchemlib.js",
+      "openchemlib/LICENSE",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"
     ],
@@ -176,6 +189,7 @@
       "native-viewer-menus.js",
       "grid-viewer.js",
       "openchemlib/openchemlib.js",
+      "openchemlib/LICENSE",
       "grid.css",
       "rdkit/RDKit_minimal.js",
       "rdkit/RDKit_minimal.wasm"

@@ -38,6 +38,7 @@ const assetSpecs = [
   { path: 'PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js', package: 'burette-rdkit-conformer' },
   { path: 'PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm', package: 'burette-rdkit-conformer' },
   { path: 'PreviewExtension/Web/openchemlib/openchemlib.js', package: 'openchemlib' },
+  { path: 'PreviewExtension/Web/openchemlib/LICENSE', package: 'openchemlib' },
 ];
 
 function readJson(filePath) {

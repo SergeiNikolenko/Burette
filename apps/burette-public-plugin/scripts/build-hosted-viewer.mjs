@@ -28,6 +28,7 @@ const VIEWER_FILES = [
   "trajectory-smoothing.js",
   "superposition-panel.js",
   "molecule-preview-interactions.js",
+  "molecule-preview-ocl.js",
   "color-picker.js",
   "sequence-panel.js",
   "native-viewer-menus.js",
@@ -54,6 +55,11 @@ await Promise.all([
   cp(
     path.join(SOURCE_VIEWER_ROOT, "rdkit"),
     path.join(OUTPUT_VIEWER_ROOT, "rdkit"),
+    { recursive: true },
+  ),
+  cp(
+    path.join(SOURCE_VIEWER_ROOT, "openchemlib"),
+    path.join(OUTPUT_VIEWER_ROOT, "openchemlib"),
     { recursive: true },
   ),
   cp(MOBILE_VIEWER_SOURCE, MOBILE_VIEWER_OUTPUT),
