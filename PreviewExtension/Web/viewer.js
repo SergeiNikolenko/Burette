@@ -8227,7 +8227,13 @@ SOFTWARE.
       canExport: !document.body?.classList.contains('burette-mobile-host'),
       onError: error => setStatus(`[web] Map operation failed.\n\n${error?.message || String(error)}`, 'error')
     });
-    body.replaceChildren(root, ...(segmentation ? [segmentation] : []));
+    if (segmentation?.parentElement === body) {
+      // Keep the live map controls attached so scene updates retain their focus.
+      for (const child of [...body.children]) if (child !== segmentation) child.remove();
+      body.prepend(root);
+    } else {
+      body.replaceChildren(root, ...(segmentation ? [segmentation] : []));
+    }
     document.querySelector('.buret-docking-poses')?.dispatchEvent(new Event('buret-scene-tree-rendered'));
     updateSceneTreeStoryCaption();
     requestAnimationFrame(() => root.classList.add('buret-tree-animate'));
