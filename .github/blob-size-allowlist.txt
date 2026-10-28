@@ -186,4 +186,4 @@ plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-CY2Jp0Nj.js
 plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-DcS5exTY.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CsZ3p8Hg.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-b2xQvG17.js
-plugins/burette-agent/browser-shell-dist/assets/molecule-store-S4YjnjgC.js
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-qgEVw2dA.js

@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+// This direct-transform harness bypasses the default plugin spec that registers
+// Mol*'s optional query languages.
+import '@molstar/query-language/transpilers/pymol';
 
 const { parsePDB } = await import('@molstar/io/reader/pdb/parser');
 const { trajectoryFromPDB } = await import('@molstar/model/formats/structure/pdb');
