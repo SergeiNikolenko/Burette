@@ -8222,7 +8222,12 @@ SOFTWARE.
     } else {
       for (const node of nodes) root.appendChild(sceneTreeNodeElement(node));
     }
-    body.replaceChildren(root);
+    const segmentation = window.molstar?.BuretteVolumeSegmentation?.panel(activeMolstarViewer().plugin, {
+      download: downloadBlob,
+      canExport: !document.body?.classList.contains('burette-mobile-host'),
+      onError: error => setStatus(`[web] Map operation failed.\n\n${error?.message || String(error)}`, 'error')
+    });
+    body.replaceChildren(root, ...(segmentation ? [segmentation] : []));
     document.querySelector('.buret-docking-poses')?.dispatchEvent(new Event('buret-scene-tree-rendered'));
     updateSceneTreeStoryCaption();
     requestAnimationFrame(() => root.classList.add('buret-tree-animate'));
@@ -8270,6 +8275,7 @@ SOFTWARE.
       panel.style.removeProperty('top');
       renderSceneTree();
     } else {
+      window.molstar?.BuretteVolumeSegmentation?.cancelDrawing(activeMolstarViewer()?.plugin);
       moveSceneTreeHighlight(null);
       closeSceneTreeMenu();
     }
