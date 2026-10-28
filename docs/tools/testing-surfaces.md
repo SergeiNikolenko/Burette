@@ -142,6 +142,11 @@ Navigate the in-app Browser to that URL. Use this surface to test quick-look
 document routing, browser-dev preview generation, spectrum/text fallback, and
 viewer layout without rebuilding the packaged app.
 
+For a pinned external renderer, set `BURETTE_XYZRENDER_ENV` to the prepared
+Python environment before starting the server. Browser-dev uses its
+`bin/xyzrender` exclusively; a missing executable reports an unavailable runtime
+instead of falling back to a different installed version.
+
 For external files, set `BURETTE_DEV_FS_ALLOW` to the containing directory
 before starting the server:
 
