@@ -181,6 +181,7 @@ function linkSourcePackages() {
         const destination = resolve(modules, manifest.name);
         mkdirSync(destination, { recursive: true });
         const compiledPackage = resolve(molstarCompiledRoot, relative(molstarSourceRoot, path));
+        mkdirSync(compiledPackage, { recursive: true });
         link(resolve(compiledPackage, 'src'), resolve(destination, 'src'));
         link(resolve(path, 'lib'), resolve(destination, 'types'));
         link(resolve(path, 'lib'), resolve(compiledPackage, 'types'));
@@ -191,7 +192,6 @@ function linkSourcePackages() {
           return [key, source ? { types, bun: javascript, import: javascript } : null];
         }));
         writeAtomic(resolve(destination, 'package.json'), JSON.stringify({ name: manifest.name, version: molstarSource.version, type: 'module', exports: entries }));
-        mkdirSync(compiledPackage, { recursive: true });
         writeAtomic(resolve(compiledPackage, 'package.json'), JSON.stringify({ name: manifest.name, version: molstarSource.version, type: 'module', exports: entries }));
       }
     }

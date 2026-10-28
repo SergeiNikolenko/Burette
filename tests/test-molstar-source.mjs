@@ -13,7 +13,10 @@ const scratch = await mkdtemp(join(tmpdir(), 'burette-molstar-source-'));
 let fixture = join(scratch, 'original');
 try {
   const source = join(scratch, 'archive', 'source');
-  await Promise.all(['packages/core/src', 'apps/viewer', 'apps/mesoscale-explorer'].map(path => mkdir(join(source, path), { recursive: true })));
+  await Promise.all(['packages/core/src', 'packages/prism/ui/lib', 'apps/viewer', 'apps/mesoscale-explorer'].map(path => mkdir(join(source, path), { recursive: true })));
+  // Declaration emit includes packages excluded from runtime compilation.
+  await writeFile(join(source, 'packages/prism/ui/package.json'), JSON.stringify({ name: '@molstar/prism-ui', exports: { '.': { 'molstar-src': './src/index.ts' } } }));
+  await writeFile(join(source, 'packages/prism/ui/lib/index.d.ts'), 'export declare const UI: object;');
   await writeFile(join(source, 'version.json'), JSON.stringify({ version: '6.0.0-dev.0' }));
   await writeFile(join(source, 'packages/core/package.json'), JSON.stringify({
     name: '@molstar/core', exports: { '.': { 'molstar-src': './src/index.ts' }, './*': { 'molstar-src': './src/*.ts' } },
@@ -68,6 +71,7 @@ console.log('SOURCE_READY');
   for (const result of cold) assertReady(result);
   const firstModule = resolve(fixture, '.tmp/molstar', config.revision, '.burette-lib/packages/core/src/index.js');
   assert.ok(existsSync(firstModule));
+  assert.ok(existsSync(resolve(fixture, '.tmp/molstar', config.revision, '.burette-lib/packages/prism/ui/types/index.d.ts')));
 
   // Reusing node_modules after a revision switch must refresh every source link.
   const nextConfig = { ...config, revision: 'b'.repeat(40) };
