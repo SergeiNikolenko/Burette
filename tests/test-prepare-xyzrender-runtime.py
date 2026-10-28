@@ -110,20 +110,29 @@ class RuntimePreparationTests(unittest.TestCase):
             'otool': 'printf "%s\\n" "@rpath/libpython3.13.dylib (compatibility version 3.13.0)"',
             'ditto': 'cp "$3" "$4"',
             'install_name_tool': 'printf "%s\\n" "$@" > "$TEST_LINK_ARGS"',
+            'xcrun': 'printf "%s\\n" "$@" > "$TEST_COMPILE_ARGS"\n'
+                     'while [ "$#" -gt 0 ]; do\n'
+                     '  if [ "$1" = "-o" ]; then shift; printf "bridge fixture" > "$1"; fi\n'
+                     '  shift\ndone',
         }.items():
             executable = commands / name
             executable.write_text('#!/bin/sh\n' + body + '\n')
             executable.chmod(0o700)
         bundle = self.root / 'Preview.appex'
         args = self.root / 'link-args'
+        compile_args = self.root / 'compile-args'
         env = {**os.environ, 'PATH': str(commands) + os.pathsep + os.environ['PATH'],
                'BURETTE_XYZRENDER_ENV': str(venv), 'CODESIGNING_FOLDER_PATH': str(bundle),
-               'CODE_SIGNING_ALLOWED': 'NO', 'TEST_LINK_ARGS': str(args)}
+               'CODE_SIGNING_ALLOWED': 'NO', 'TEST_LINK_ARGS': str(args), 'TEST_COMPILE_ARGS': str(compile_args)}
         script = Path(__file__).resolve().parents[1] / 'scripts/bundle-quicklook-xyzrender-launcher.sh'
         subprocess.run(['bash', str(script)], env=env, check=True)
         self.assertEqual((bundle / 'Contents/lib/libpython3.13.dylib').read_bytes(), library.read_bytes())
         self.assertEqual((bundle / 'Contents/Resources/xyzrender-python3').read_bytes(), python.read_bytes())
         self.assertIn('@executable_path/../lib/libpython3.13.dylib', args.read_text())
+        self.assertEqual((bundle / 'Contents/lib/burette-xyzrender-bridge.dylib').read_bytes(), b'bridge fixture')
+        self.assertIn('-dynamiclib', compile_args.read_text())
+        self.assertIn(str(runtime / 'include/python3.13'), compile_args.read_text())
+        self.assertIn('PreviewExtension/EmbeddedXyzrender.c', compile_args.read_text())
         library.unlink()
         result = subprocess.run(['bash', str(script)], env=env, capture_output=True)
         self.assertNotEqual(result.returncode, 0)
