@@ -201,3 +201,85 @@ console.log('2D preview zoom, lasso, cancellation and replacement passed');
   drawingWindow.happyDOM.abort();
 }
 console.log('Delayed depictions and shared SVGs retain current document/structure ownership');
+
+// The host closes its Radix menu after blur when a press enters the iframe.
+// Its late reply and document pointerup must retain the card until button click.
+{
+  const frameWindow = new Window(), frameDocument = frameWindow.document;
+  new Function('window', 'document', source)(frameWindow, frameDocument);
+  const posted = [], selected = [], selectionUpdates = [], selectionListeners = new Set();
+  const changed = { subscribe(update) { selectionListeners.add(update); return { unsubscribe() { selectionListeners.delete(update); } }; } };
+  const pointerHandler = viewerSource.slice(viewerSource.indexOf('    const onPointerDown = (event) => {', viewerSource.indexOf('  function installMolstarContextMenu(')), viewerSource.indexOf('    const onPointerMove = (event) => {', viewerSource.indexOf('  function installMolstarContextMenu(')));
+  const dependencies = {
+    window: frameWindow, document: frameDocument, Element: frameWindow.Element, Event: frameWindow.Event,
+    activeConfig: { appViewer: true }, postHostMessage: message => { posted.push(message); return true; },
+    molstarNativeMenuEntries: () => [{ kind: 'item', id: 'focus', text: 'Focus' }],
+    pushMolstarEditUndoSnapshot() {}, moleculeMenuCloseSubmenus() {}, moleculeMenuCancelHoverIntent() {},
+    rememberMolstarMoleculePreviewGeometry() {}, beginMolstarSelectionPreserve() {}, clearTouchContextPointer() {},
+    molstarContextEventIsTouch: () => false, menuIsInAtomMode: () => false,
+    molstarSelectedMoleculeTargetFromSelection: () => null,
+    notifyMolstarSelectionChanged: target => selectionUpdates.push(target),
+    selectionViewer: { plugin: { managers: { structure: { selection: { events: { changed } } } } } },
+  };
+  const api = new Function(...Object.keys(dependencies), `
+    let molstarNativeMenuSerial = 0, molstarNativeMenuPending = null, molstarContextMenuPick = null, contextPointer = null;
+    let molstarMoleculePreviewFrame = 0, molstarMoleculePreview = null, molstarMoleculePreviewTarget = null;
+    let molstarMoleculePreviewSuppressed = false, molstarMoleculePreviewMinimized = false, molstarMoleculePreviewDrag = null;
+    let molstarSelectionPreviewCleanup = null;
+    const molstarSelectedMoleculePreviewTarget = () => null;
+    ${['showDesktopNativeMolstarContextMenu', 'handleMolstarNativeMenuResult', 'hideMolstarContextMenu',
+      'scheduleMolstarSelectedMoleculePreview', 'hideMolstarMoleculePreview', 'runMolstarMoleculePreviewAction',
+      'installMolstarMoleculePreviewResize', 'subscribeMolstarPreviewEvent', 'installMolstarSelectionPreviewSync'].map(previewFunction).join('\n')}
+    ${pointerHandler}
+    document.addEventListener('pointerdown', onPointerDown, true);
+    installMolstarSelectionPreviewSync(selectionViewer);
+    return {
+      open(card) {
+        molstarMoleculePreview = card; molstarMoleculePreviewTarget = { label: 'Molecule' };
+        installMolstarMoleculePreviewResize(card);
+        return showDesktopNativeMolstarContextMenu({ clientX: 20, clientY: 20 }, {}, molstarMoleculePreviewTarget, 'residue');
+      },
+      closed(requestId) { handleMolstarNativeMenuResult({ event: 'closed', requestId }); },
+      cleanup() { molstarSelectionPreviewCleanup(); }
+    };
+  `)(...Object.values(dependencies));
+  const card = frameDocument.createElement('div'); card.className = 'buret-molstar-molecule-preview';
+  card.innerHTML = '<button data-buret-molecule-preview-action="lasso" aria-pressed="false">Lasso</button><div class="buret-molstar-molecule-preview-image"><svg viewBox="0 0 100 100"><circle class="buret-preview-atom atom-0" cx="20" cy="20" data-source-position="1,2,3"/></svg></div>';
+  frameDocument.body.append(card);
+  const button = card.querySelector('button'), image = card.querySelector('.buret-molstar-molecule-preview-image'), svg = image.querySelector('svg');
+  svg.createSVGPoint = () => ({ x: 0, y: 0, matrixTransform() { return { x: this.x, y: this.y }; } });
+  svg.getScreenCTM = () => ({ inverse: () => ({}) });
+  image.setPointerCapture = () => {}; image.hasPointerCapture = () => false;
+  frameWindow.BuretteMoleculePreviewInteractions.install(image, positions => selected.push(positions));
+  assert.equal(api.open(card), true);
+  const request = posted.at(-1); assert.equal(request.type, 'molstarContextMenu');
+  button.dispatchEvent(new frameWindow.PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 1 }));
+  // The actual host promise resolves on its deferred blur cleanup, after press.
+  await new Promise(resolve => setTimeout(resolve, 0)); api.closed(request.requestId);
+  assert.equal(card.isConnected, true, 'The host close reply must not remove the pressed preview card');
+  button.dispatchEvent(new frameWindow.PointerEvent('pointerup', { bubbles: true, button: 0, pointerId: 1 }));
+  assert.equal(card.isConnected, true, 'Document pointerup must not remove the card before its button click');
+  button.dispatchEvent(new frameWindow.MouseEvent('click', { bubbles: true }));
+  assert.equal(button.getAttribute('aria-pressed'), 'true');
+  assert.equal(image.classList.contains('buret-preview-lasso-active'), true);
+  button.dispatchEvent(new frameWindow.KeyboardEvent('keyup', { bubbles: true, key: 'Enter' }));
+  assert.equal(card.isConnected, true, 'Toolbar keyboard interaction must retain the preview');
+  const pick = (type, x, y) => image.dispatchEvent(new frameWindow.PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 2, button: 0, clientX: x, clientY: y }));
+  pick('pointerdown', 10, 10); pick('pointermove', 40, 10); pick('pointermove', 40, 40); pick('pointermove', 10, 40); pick('pointerup', 10, 10);
+  assert.deepEqual(selected, [[[1, 2, 3]]]);
+  assert.deepEqual(selectionUpdates, [null], 'Preview controls must not publish empty selection updates');
+  for (const update of selectionListeners) update({});
+  assert.equal(card.isConnected, false, 'Actual Mol* selection changes must still refresh the preview');
+  assert.deepEqual(selectionUpdates, [null, null]);
+  frameDocument.body.append(card); api.open(card);
+  frameDocument.body.dispatchEvent(new frameWindow.PointerEvent('pointerup', { bubbles: true }));
+  assert.equal(card.isConnected, false, 'Pointer release outside the preview must still refresh selection');
+  assert.deepEqual(selectionUpdates, [null, null, null]);
+  frameDocument.body.append(card);
+  assert.equal(api.open(card), true);
+  api.closed(posted.at(-1).requestId);
+  assert.equal(card.isConnected, false, 'An ordinary dismissal still restores the selected-molecule preview');
+  api.cleanup(); assert.equal(selectionListeners.size, 0);
+  frameWindow.happyDOM.abort();
+}
+console.log('Host context-menu dismissal retains a pressed 2D preview and its working lasso');

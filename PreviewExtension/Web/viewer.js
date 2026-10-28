@@ -27355,7 +27355,8 @@ SOFTWARE.
           showMolstarContextMenu(point, pick);
         } else if (!this.actionChosen) {
           // A chosen action hides the menu state itself once it has run.
-          hideMolstarContextMenu();
+          if (this.keepMoleculePreview) hideMolstarContextMenu({ keepMoleculePreview: true });
+          else hideMolstarContextMenu();
         }
       }
     };
@@ -28775,7 +28776,12 @@ SOFTWARE.
       previousFocus.focus({ preventScroll: true });
     }
     molstarContextMenuPick = null;
-    if (options.keepMoleculePreview) return;
+    if (options.keepMoleculePreview) {
+      // The host menu closes after its blur cleanup. Keep this press's intent
+      // until that asynchronous reply, so it cannot remove the card before click.
+      if (molstarNativeMenuPending) molstarNativeMenuPending.keepMoleculePreview = true;
+      return;
+    }
     scheduleMolstarSelectedMoleculePreview();
   }
 
@@ -30176,7 +30182,10 @@ SOFTWARE.
     }
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    const update = () => {
+    const update = (event) => {
+      // Toolbar pointerup precedes click; refreshing empty selection here would
+      // remove a context-menu preview before its control can run.
+      if (event instanceof Event && event.target instanceof Element && event.target.closest('.buret-molstar-molecule-preview')) return;
       const target = molstarSelectedMoleculeTargetFromSelection();
       scheduleMolstarSelectedMoleculePreview(target);
       notifyMolstarSelectionChanged(target);
