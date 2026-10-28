@@ -8096,7 +8096,13 @@ private struct PreviewPreferences {
     }
 
     var resolvedMolstarStyle: String {
-        molstarStyle == "default" ? "default" : "illustrative"
+        switch molstarStyle {
+        case "default", "illustrative", "illustrative-surface", "polymer-ligand",
+             "cartoon", "ball-and-stick", "spacefill", "line", "molecular-surface", "blob-surface":
+            molstarStyle
+        default:
+            "illustrative"
+        }
     }
 
     var themeTokens: [String: Any] {

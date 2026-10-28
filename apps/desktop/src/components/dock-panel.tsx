@@ -573,8 +573,8 @@ const XYZRENDER_README_PRESET_GALLERY = [
 
 const XYZRENDER_README_DISPLAY_OPTIONS = [
   { group: "hydrogens", value: "all", label: "All H", image: xyzrenderGalleryImage("ethanol_all_h.svg") },
-  { group: "hydrogens", value: "auto", label: "Some H", image: xyzrenderGalleryImage("ethanol_some_h.svg") },
-  { group: "hydrogens", value: "none", label: "No H", image: xyzrenderGalleryImage("ethanol_no_h.svg") },
+  { group: "hydrogens", value: "auto", label: "Auto H", image: xyzrenderGalleryImage("ethanol_some_h.svg") },
+  { group: "hydrogens", value: "none", label: "Essential H", image: xyzrenderGalleryImage("ethanol_no_h.svg") },
   { group: "bonds", value: "aromatic", label: "Aromatic", image: xyzrenderGalleryImage("benzene.svg") },
   { group: "bonds", value: "kekule", label: "Kekule", image: xyzrenderGalleryImage("caffeine_kekule.svg") },
 ] as const;

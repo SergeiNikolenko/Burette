@@ -54,7 +54,8 @@
     { value: 'ball-and-stick', label: 'Ball+Stick' },
     { value: 'spacefill', label: 'Spacefill' },
     { value: 'line', label: 'Line' },
-    { value: 'molecular-surface', label: 'Surface' }
+    { value: 'molecular-surface', label: 'Surface' },
+    { value: 'blob-surface', label: 'Envelope' }
   ];
   const MOLSTAR_APPEARANCE_OPTIONS = [
     { value: 'default', label: 'Default' },
@@ -66,6 +67,7 @@
     { value: 'ball-and-stick', label: 'Ball & Stick', group: 'Burette', legacyStyle: 'ball-and-stick' },
     { value: 'spacefill', label: 'Spacefill by Element', group: 'Burette', legacyStyle: 'spacefill' },
     { value: 'line', label: 'Line', group: 'Burette', legacyStyle: 'line' },
+    { value: 'blob-surface', label: 'Envelope', group: 'Burette', legacyStyle: 'blob-surface' },
     { value: 'atomic-detail', label: 'Atomic Detail', group: 'Basic', provider: 'preset-structure-representation-atomic-detail' },
     { value: 'polymer-cartoon', label: 'Polymer Cartoon', group: 'Basic', provider: 'preset-structure-representation-polymer-cartoon' },
     { value: 'polymer-ligand', label: 'Polymer & Ligand', group: 'Basic', provider: 'preset-structure-representation-polymer-and-ligand' },
@@ -165,7 +167,8 @@
     line: { type: 'line', typeParams: { sizeFactor: 0.08 }, color: 'element-symbol' },
     'ball-and-stick': { type: 'ball-and-stick', typeParams: { sizeFactor: 0.16 }, color: 'element-symbol' },
     spacefill: { type: 'spacefill', typeParams: { sizeFactor: 0.45 }, color: 'element-symbol' },
-    'molecular-surface': { type: 'molecular-surface', typeParams: { alpha: 0.72 }, color: 'element-symbol' }
+    'molecular-surface': { type: 'molecular-surface', typeParams: { alpha: 0.72 }, color: 'element-symbol' },
+    'blob-surface': { type: 'blob-surface', color: 'chain-id' }
   };
   // `Illustrative` keeps the scene as authored and only flattens the shading, so
   // it is not a representation of its own - but `ignoreLight` lives on each
@@ -2136,7 +2139,7 @@
     // config still asking for the legacy `cartoon` style means.
     if (normalized === 'cartoon') return 'polymer-cartoon';
     if (['ball-and-stick', 'spacefill', 'line', 'illustrative-surface'].includes(normalized)) return normalized;
-    if (normalized === 'molecular-surface') return 'molecular-surface';
+    if (normalized === 'molecular-surface' || normalized === 'blob-surface') return normalized;
     return DEFAULT_MOLSTAR_PRESET;
   }
 
@@ -2169,7 +2172,7 @@
 
   function normalizeSdfCollectionContextStyle(value) {
     const normalized = String(value || '').trim().toLowerCase();
-    if (['line', 'ball-and-stick', 'cartoon', 'spacefill', 'molecular-surface', 'match'].includes(normalized)) return normalized;
+    if (['line', 'ball-and-stick', 'cartoon', 'spacefill', 'molecular-surface', 'blob-surface', 'match'].includes(normalized)) return normalized;
     return 'match';
   }
 
@@ -4680,6 +4683,7 @@
     const { stage } = molstarPresetPreviewElements();
     if (!stage || !window.molstar?.Viewer) throw new Error('Mol* preview renderer is unavailable.');
     const viewer = await withTimeout(window.molstar.Viewer.create(stage, {
+      graphicsBackend: 'webgl',
       layoutIsExpanded: false,
       layoutShowControls: false,
       layoutShowRemoteState: false,
@@ -8456,7 +8460,7 @@ SOFTWARE.
   // Everything else keeps its element colours and only the carbons take the pick,
   // which is what the default Mol* colouring does with its own carbon palette.
   const SCENE_TREE_FLAT_REPRESENTATIONS = new Set([
-    'cartoon', 'backbone', 'putty', 'molecular-surface', 'gaussian-surface', 'gaussian-volume'
+    'cartoon', 'backbone', 'putty', 'molecular-surface', 'blob-surface', 'gaussian-surface', 'gaussian-volume'
   ]);
 
   function sceneTreeTintParams(value) {
@@ -8989,7 +8993,7 @@ SOFTWARE.
     }
     if (!Array.isArray(types)) return [];
     return types
-      .map(entry => ({ name: String(entry?.[0] || ''), label: String(entry?.[1] || entry?.[0] || '') }))
+      .map(entry => ({ name: String(entry?.[0] || ''), label: entry?.[0] === 'blob-surface' ? 'Envelope' : String(entry?.[1] || entry?.[0] || '') }))
       .filter(entry => entry.name);
   }
 
@@ -9253,6 +9257,11 @@ SOFTWARE.
     ['sizeFactor', 'Scale'],
     ['sizeAspectRatio', 'Bond thickness'],
     ['probeRadius', 'Probe radius'],
+    ['blobSize', 'Envelope size'],
+    ['radiusOffset', 'Radius offset'],
+    ['smoothness', 'Surface smoothness'],
+    ['adjustResolution', 'Automatic detail'],
+    ['solidInterior', 'Solid cut surface'],
     ['resolution', 'Detail'],
     ['aspectRatio', 'Ribbon width'],
     ['thicknessFactor', 'Ribbon thickness'],
@@ -10893,7 +10902,7 @@ SOFTWARE.
     const types = typeof plugin?.managers?.structure?.component?.constructor?.getRepresentationTypes === 'function'
       ? plugin.managers.structure.component.constructor
         .getRepresentationTypes(plugin, plugin.managers.structure.hierarchy.current.structures[0])
-        .map(entry => ({ name: String(entry?.[0] || ''), label: String(entry?.[1] || entry?.[0] || '') }))
+        .map(entry => ({ name: String(entry?.[0] || ''), label: entry?.[0] === 'blob-surface' ? 'Envelope' : String(entry?.[1] || entry?.[0] || '') }))
         .filter(entry => entry.name)
       : [];
     viewportMenuControls = window.BuretteNativeViewerMenus.mountSelectionActions(menu, {
@@ -17299,13 +17308,13 @@ SOFTWARE.
 
   function xyzFrameRepresentationStyle(style) {
     const normalized = normalizeMolstarStyle(style);
-    if (normalized === 'line' || normalized === 'ball-and-stick' || normalized === 'spacefill' || normalized === 'molecular-surface') return normalized;
+    if (normalized === 'line' || normalized === 'ball-and-stick' || normalized === 'spacefill' || normalized === 'molecular-surface' || normalized === 'blob-surface') return normalized;
     return 'line';
   }
 
   function xyzFrameForegroundStyle(style) {
     const normalized = normalizeMolstarStyle(style);
-    if (normalized === 'line' || normalized === 'ball-and-stick' || normalized === 'spacefill' || normalized === 'molecular-surface') return normalized;
+    if (normalized === 'line' || normalized === 'ball-and-stick' || normalized === 'spacefill' || normalized === 'molecular-surface' || normalized === 'blob-surface') return normalized;
     return 'ball-and-stick';
   }
 
@@ -17680,6 +17689,9 @@ SOFTWARE.
     }
     if (normalized === 'spacefill') {
       return themed({ type: 'spacefill', typeParams: withAlpha({ sizeFactor: ghost ? 0.28 : 0.45 }) });
+    }
+    if (normalized === 'blob-surface') {
+      return themed({ type: 'blob-surface', typeParams: withAlpha({}) });
     }
     if (normalized === 'molecular-surface') {
       // A translucent background surface over a whole collection is re-sorted
@@ -18442,7 +18454,7 @@ SOFTWARE.
     }
     const edit = operation === 'edit' ? action.edit : null;
     if (operation === 'edit' && !(edit && (
-      (edit.operation === 'representation' && ['cartoon', 'backbone', 'ball-and-stick', 'spacefill', 'line', 'molecular-surface'].includes(edit.value))
+      (edit.operation === 'representation' && ['cartoon', 'backbone', 'ball-and-stick', 'spacefill', 'line', 'molecular-surface', 'blob-surface'].includes(edit.value))
       || (edit.operation === 'opacity' && Number.isFinite(edit.value) && edit.value >= 0 && edit.value <= 1)
       || (edit.operation === 'color' && /^#[0-9a-f]{6}$/i.test(edit.value))
     ))) return sceneActionFailure(command, 'INVALID_ARGUMENT', 'Unsupported component edit.');
@@ -20832,7 +20844,7 @@ SOFTWARE.
     }
     const requestedStyle = String(action.style || '').trim().toLowerCase();
     if (normalizeSdfCollectionContextStyle(requestedStyle) !== requestedStyle) {
-      return agentActionFailure('set_sdf_context_style', 'INVALID_STYLE', 'Background style must be line, ball-and-stick, cartoon, spacefill, molecular-surface or match.');
+      return agentActionFailure('set_sdf_context_style', 'INVALID_STYLE', 'Background style must be line, ball-and-stick, cartoon, spacefill, molecular-surface, blob-surface or match.');
     }
     const style = setSdfCollectionContextStyle(requestedStyle);
     try {
@@ -30230,7 +30242,7 @@ SOFTWARE.
       collapseRightPanel: true,
       pdbProvider: 'rcsb',
       emdbProvider: 'rcsb',
-      preferWebgl1: option('molstarPreferWebgl1', true),
+      graphicsBackend: activeConfig?.molstarPreferWebgl1 === true ? 'webgl1' : 'webgl',
       disableAntialiasing: option('molstarDisableAntialiasing', true),
       ...(pixelScale !== undefined ? { pixelScale } : {}),
       ...(pickScale !== undefined ? { pickScale } : {}),

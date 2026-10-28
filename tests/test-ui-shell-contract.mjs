@@ -2824,7 +2824,7 @@ assert.match(structureInfoPanel, /\{ value: "line", label: "Line" \}/);
 assert.match(structureInfoPanel, /\{ value: "cartoon", label: "Cartoon" \}/);
 assert.match(structureInfoPanel, /\{ value: "match", label: "Match" \}/);
 assert.match(structureInfoPanel, /const SMALL_MOLECULE_CONTEXT_STYLE_OPTIONS = \[/);
-assert.match(structureInfoPanel, /\{ value: "molecular-surface", label: "Surface" \},\s*\{ value: "match", label: "Match" \},\s*\] as const satisfies readonly SdfContextStyleOption\[\]/);
+assert.match(structureInfoPanel, /\{ value: "molecular-surface", label: "Surface" \},\s*\{ value: "blob-surface", label: "Envelope" \},\s*\{ value: "match", label: "Match" \},\s*\] as const satisfies readonly SdfContextStyleOption\[\]/);
 assert.match(structureInfoPanel, /styleOptions: isXyzStructureDocument\(document\) \? SMALL_MOLECULE_CONTEXT_STYLE_OPTIONS : undefined/);
 // Cartoon falls back to ball-and-stick for small molecules, so SDF collections
 // offer the small-molecule subset instead of a second Ball+Stick button.
@@ -4035,7 +4035,7 @@ assert.match(themesSection, /labels=\{\{ system: "System", custom: "Use custom f
 assert.match(settingsPanel, /const defaultRendererModeOptions: Array<ViewerPreferences\["rendererMode"\]> = \["auto", "molstar", "xyzrender-external"\]/);
 assert.doesNotMatch(settingsPanel, /function visibleRendererModeOptions\(current: ViewerPreferences\["rendererMode"\]\)/);
 assert.match(settingsPanel, /preferenceRow<"molstarStyle">\("Default style", "[^"]+", preferences\.molstarStyle, structureStyleOptions, defaultPreferences\.molstarStyle, \(molstarStyle\) => actions\.setPreference\("molstarStyle", molstarStyle\), structureStyleLabels\)/);
-for (const style of ["default", "illustrative", "illustrative-surface", "polymer-ligand", "cartoon", "ball-and-stick", "spacefill", "line", "molecular-surface"]) {
+for (const style of ["default", "illustrative", "illustrative-surface", "polymer-ligand", "cartoon", "ball-and-stick", "spacefill", "line", "molecular-surface", "blob-surface"]) {
   assert.match(settingsPanel, new RegExp(`"?${style}"?: "[A-Z][a-z ]+",`));
 }
 assert.match(settingsPanel, /Desktop preview limit/);
@@ -6625,9 +6625,9 @@ for (const runtimeSource of [previewViewer]) {
   assert.doesNotMatch(runtimeSource, /sourceFormat === 'xyz' \|\| sourceFormat === 'extxyz'/);
   assert.match(runtimeSource, /const overlayToggleAvailable = structureOverlayToggleAvailable\(prepared\);[\s\S]*?const all = overlayToggleAvailable \? createStructureOverlayToggleButton\(prepared\) : null;/);
   assert.match(runtimeSource, /function xyzFrameRepresentationStyle\(style\)/);
-  assert.match(runtimeSource, /if \(normalized === 'line' \|\| normalized === 'ball-and-stick' \|\| normalized === 'spacefill' \|\| normalized === 'molecular-surface'\) return normalized;\s*return 'line';/);
+  assert.match(runtimeSource, /if \(normalized === 'line' \|\| normalized === 'ball-and-stick' \|\| normalized === 'spacefill' \|\| normalized === 'molecular-surface' \|\| normalized === 'blob-surface'\) return normalized;\s*return 'line';/);
   assert.match(runtimeSource, /function xyzFrameForegroundStyle\(style\)/);
-  assert.match(runtimeSource, /function xyzFrameForegroundStyle\(style\) \{\s*const normalized = normalizeMolstarStyle\(style\);\s*if \(normalized === 'line' \|\| normalized === 'ball-and-stick' \|\| normalized === 'spacefill' \|\| normalized === 'molecular-surface'\) return normalized;\s*return 'ball-and-stick';\s*\}/);
+  assert.match(runtimeSource, /function xyzFrameForegroundStyle\(style\) \{\s*const normalized = normalizeMolstarStyle\(style\);\s*if \(normalized === 'line' \|\| normalized === 'ball-and-stick' \|\| normalized === 'spacefill' \|\| normalized === 'molecular-surface' \|\| normalized === 'blob-surface'\) return normalized;\s*return 'ball-and-stick';\s*\}/);
   assert.match(runtimeSource, /function xyzFrameBackgroundStyle\(contextStyle, foregroundStyle\) \{\s*const normalized = normalizeSdfCollectionContextStyle\(contextStyle\);\s*if \(normalized === 'match'\) return xyzFrameRepresentationStyle\(foregroundStyle\);\s*return xyzFrameRepresentationStyle\(normalized\);\s*\}/);
   assert.match(runtimeSource, /function xyzFrameBackgroundLayerOpacity\(contextOpacity, layerCount\)/);
   assert.match(runtimeSource, /return 1 - Math\.pow\(1 - opacity, 1 \/ count\)/);
@@ -6720,7 +6720,7 @@ assert.match(previewViewer, /return setSdfPoseIndexFromAction\(action\)/);
 assert.match(previewViewer, /const SDF_CONTEXT_STYLE_STORAGE_KEY = 'buret\.sdf\.contextStyle'/);
 assert.match(previewViewer, /const SDF_CONTEXT_OPACITY_STORAGE_KEY = 'buret\.sdf\.contextOpacity'/);
 assert.match(previewViewer, /function normalizeSdfCollectionContextStyle\(value\)/);
-assert.match(previewViewer, /\['line', 'ball-and-stick', 'cartoon', 'spacefill', 'molecular-surface', 'match'\]\.includes\(normalized\)/);
+assert.match(previewViewer, /\['line', 'ball-and-stick', 'cartoon', 'spacefill', 'molecular-surface', 'blob-surface', 'match'\]\.includes\(normalized\)/);
 assert.match(previewViewer, /function normalizeSdfCollectionContextOpacity\(value\)/);
 // Number(null) is 0, so a missing stored preference must return the 40%
 // default instead of clamping to the 4% floor - on both sides of the bridge.

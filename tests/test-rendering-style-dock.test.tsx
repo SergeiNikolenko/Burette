@@ -42,7 +42,7 @@ test("style gallery preserves scientific controls and selection while using shar
     await click("Partial");
     expect(calls.at(-1)).toMatchObject([molecule, { xyzrenderPreset: "default", xyzrenderSelectionAction: "vdw" }]);
     expect(button("Partial").getAttribute("aria-pressed")).toBe("false");
-    await click("No H");
+    await click("Essential H");
     expect(calls.at(-1)).toMatchObject([molecule, { xyzrenderControls: { displayHydrogens: "none" } }]);
     await click("Faces + pore");
     expect(calls.at(-1)).toMatchObject([molecule, { xyzrenderControls: { hullMode: "faces-pore", hullOpacity: 0.45, poreOpacity: 0.6 } }]);
