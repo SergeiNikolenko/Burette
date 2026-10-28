@@ -4,6 +4,16 @@ Burette supports multiple renderer paths. The desktop shell selects a renderer
 from user settings and runtime policy; Finder Quick Look uses the extension
 runtime under `PreviewExtension/`.
 
+The viewer, Mesoscale runtime and MolViewSpec schema are built together from
+the immutable Mol* revision in `config/molstar-source.json`. The current
+`6.0.0-dev.0` snapshot includes 5.13.1 and the subsequent volume, contact and
+surface changes; it is an unreleased upstream snapshot, not a published v6
+release. Archive integrity and generated assets are checked by the vendor lock.
+WebGL remains the default graphics backend: automatic WebGPU selection produced
+a depth/stencil pipeline failure in browser acceptance. Hosts that explicitly
+request WebGL 1 retain that setting. The new volume and surface features work
+through WebGL; no WebGPU compatibility or speedup is claimed.
+
 ## Renderer Modes
 
 The user-facing global renderer setting exposes `auto`, `molstar`, and
@@ -67,7 +77,7 @@ transform. Frames outside selected keyframe bounds are copied unchanged.
 Unaligned DCD keeps per-frame unit cells; aligned DCD explicitly omits cells
 because a rotated lattice basis cannot be represented by DCD lengths/angles.
 DCD files use standard AKMA time (0.04888821 ps/unit). The version-locked
-Mol* 5.11 adapter corrects its inverse conversion, saved-step stride (NSAVC),
+Mol* source adapter corrects its inverse conversion, saved-step stride (NSAVC),
 initial step and empty-cell handling. Desmond index publication is atomic.
 Long Desmond runs still use a bounded
 preview topology in PDB format: independent CT components and overflow residue
@@ -89,6 +99,25 @@ records as unnamed ligands; `ATOM UNK` retains unknown-amino-acid behavior.
 Mesoscale documents (`molj`, `molx`, `.mesozip` packages, and
 CellPack/Petworld-style CIF paths) open in the dedicated Mesoscale runtime
 rather than the standard Mol* viewer.
+
+Chemical JSON (`.cjson`) files render directly through `xyzrender`, including on
+`auto`. The original file is passed to the renderer so its bonds, per-atom colors,
+unit cell and authored camera remain available. This route uses a dedicated
+extension and content type; ordinary `.json` files retain their existing handling.
+The source remains inspectable as JSON. On iPhone, CJSON opens in the read-only
+text view because the external Python renderer is not available there.
+
+Finder Quick Look renders bundled CJSON through the same pinned xyzrender
+interpreter inside its extension process, since its sandbox denies subprocess
+launches. Calls are serialized; Python initialization ignores ambient settings,
+and per-render arguments, paths, streams, tracing and RDKit's `RDBASE` change are
+restored. Input is limited to 64 MiB, render arguments to 1 MiB, SVG output to
+32 MiB and logs to 64 KiB. The 25-second Python deadline is cooperative: it
+cannot interrupt a blocked native-library call. A native renderer crash ends the
+extension process. Custom external executables keep their existing launch path.
+Run `BURETTE_XYZRENDER_ENV=/path/to/pinned/venv bun tests/test-embedded-xyzrender.mjs`
+to verify repeated rendering, invalid-input recovery, initialization failure and
+environment isolation with `process-fork` denied.
 
 External-renderer text formats (CUB/CUBE, ABI, COM, FDF, FHIAIMS, GMS, IN,
 INP, LOG, NW, OUT, PSI4, QCIN, VASP, XYZR) are converted to PDB through the
@@ -134,6 +163,49 @@ MolViewSpec files are loaded through the Mol* `loadMvsData` path instead of the
 coordinate trajectory parser. This keeps MVS usable as a declarative scene and
 agent-control format for camera, components, selections, annotations, and
 representation state.
+
+## Envelope Representation
+
+**Envelope** in the Style menu draws an approximate, coarsened surface of a
+structure using the `blob-surface` representation. It is also available for an
+individual scene component and for collection/XYZ background structures.
+The existing scene editor controls its colour, opacity, solid/wireframe fill,
+envelope size, surface smoothness and detail. Envelope is a visual overview;
+it does not replace the molecular surface for inspecting atomic-scale pockets.
+It is saved in scene snapshots and can be selected as the default style for
+new desktop, Quick Look and source-built iPhone previews.
+
+## Volume Segmentation
+
+For a loaded density map, **Scene → Segment map** opens the body segmentation
+controls. Set the density threshold, add a body, and draw a polygon around it.
+Finish with Enter, a double-click, or a click on the first vertex; Escape cancels
+and Backspace removes a vertex. Arrow keys add vertices in 10-pixel steps for
+keyboard input. Rotate the map between polygons: each body's views intersect in
+3D. **Exclude** inverts a view, and body order determines priority where bodies
+overlap. **Remainder** collects unassigned voxels above the threshold.
+
+Preview the source, active body, or all body masks. Extend and soft-edge widths
+are in voxels. **Undo** restores body definitions; source density is preserved by
+segmentation and mask export. Body names, view polygons, threshold, per-body mask widths and preview choice
+are serialized into MOLJ/MOLX state as bounded definitions. Voxel labels are
+recomputed from those definitions when the scene is reopened, before mask
+previews load. Definitions are limited to 255 bodies, 64 views per body, 1024
+vertices per view, 16384 vertices in total and 1 MiB of JSON.
+
+Export the active body as a float32 MRC mask or all nonempty bodies in a ZIP.
+Masks retain the source box, world origin and grid geometry, regardless of the
+source tensor's axis order. Export uses the regular native Save dialog or browser
+download, bounded to 128 MiB per map/mask or ZIP. For a larger combined export,
+choose individual active masks or work with a smaller map.
+
+The **Map tools** disclosure also provides dust removal and handedness reversal.
+These operations require an explicit Apply in the panel and modify a copy of
+the loaded density; the source file is unchanged. **Undo map edit** removes the
+last operation. Up to 64 map edits are recorded in the scene and replayed before
+body labels and mask previews are restored. **Export map** writes a separate MRC
+containing those edits. The iPhone preview can inspect and segment maps, but
+export controls are omitted because its host does not expose a binary save bridge.
 
 ## Ketcher Editing
 
@@ -267,10 +339,16 @@ PDF on macOS supplies the Homebrew Cairo library lookup path to the child proces
 Browser-dev uses HTTP endpoints; desktop uses the native bridge described below.
 Neither creates a Mol* scene.
 
-The tested local runtime is xyzrender 0.3.8, installed with
-`uv tool install --upgrade 'xyzrender[all]==0.3.8'`. This updates the external user
-runtime, not an already packaged application's embedded runtime. Bundling follows
-`scripts/bundle-quicklook-xyzrender-launcher.sh`.
+The locked runtime is xyzrender 0.3.9+burette.1, a reviewed upstream snapshot
+with an additional standalone density-projection correction. The immutable source,
+local patch and wheel hashes are recorded in `config/xyzrender/source.json`.
+It preserves ESP magnitude, density silhouettes, CJSON camera orientation,
+colours and cells, and hydrogens bonded to R/S stereocentres. `Essential H`
+hides nonessential C-bound hydrogens; `Auto H` follows the selected style.
+See `config/xyzrender/README.md` for regeneration and focused regressions.
+`scripts/prepare-xyzrender-runtime.py` creates an isolated environment; native
+development builds can use its returned path through `BURETTE_XYZRENDER_ENV`.
+Bundling follows `scripts/bundle-quicklook-xyzrender-launcher.sh`.
 
 In desktop xyzrender mode, Appearance toggles the xyzrender dock. Mol* panel
 shortcuts and viewport rail are hidden; sheet history uses the existing host

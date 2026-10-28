@@ -1,15 +1,16 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { DefaultPluginSpec, PluginSpec } from 'molstar/lib/mol-plugin/spec.js';
-import { MolViewSpec } from 'molstar/lib/extensions/mvs/behavior.js';
-import { loadMVSData } from 'molstar/lib/extensions/mvs/components/formats.js';
-import { Camera } from 'molstar/lib/mol-canvas3d/camera.js';
-import { Canvas3DParams } from 'molstar/lib/mol-canvas3d/canvas3d.js';
-import { ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition.js';
-import { createMVSX } from 'molstar/lib/extensions/mvs/export.js';
-import { Unzip } from 'molstar/lib/mol-util/zip/zip.js';
+import { PluginContext } from '@molstar/plugin';
+import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
+import { PluginSpec } from '@molstar/plugin/spec';
+import { MolViewSpec } from '@molstar/mvs/behavior';
+import { loadMVSData } from '@molstar/mvs/components/formats';
+import { Camera } from '@molstar/graphics/canvas3d/camera';
+import { Canvas3DParams } from '@molstar/graphics/canvas3d/canvas3d';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { createMVSX } from '@molstar/mvs-builder/export';
+import { Unzip } from '@molstar/core/util/zip/zip';
 import { BuretteStory } from '../scripts/molstar-story-facade.js';
 
 // An authored MVS focus node targets a component that the Auto presentation
@@ -27,6 +28,7 @@ try {
     setProps(props) { Object.assign(this.props, props); },
     add() {}, remove() {}, update() {}, mark() {}, syncVisibility() {},
     pause() {}, resume() {}, requestDraw() {}, requestCameraReset() {}, dispose() {},
+    precompile: async () => {},
   };
   const cameras = [];
   BuretteStory.install(plugin, {

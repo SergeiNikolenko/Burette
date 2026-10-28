@@ -60,6 +60,7 @@ enum MobileMolecularStyle: String, CaseIterable, Identifiable {
     case spacefill
     case line
     case molecularSurface = "molecular-surface"
+    case envelope = "blob-surface"
 
     var id: String { rawValue }
 
@@ -72,6 +73,7 @@ enum MobileMolecularStyle: String, CaseIterable, Identifiable {
         case .spacefill: "Spacefill"
         case .line: "Line"
         case .molecularSurface: "Surface"
+        case .envelope: "Envelope"
         }
     }
 
@@ -83,7 +85,7 @@ enum MobileMolecularStyle: String, CaseIterable, Identifiable {
         case .ballAndStick: "circle.grid.cross"
         case .spacefill: "circle.hexagongrid.fill"
         case .line: "line.diagonal"
-        case .molecularSurface: "capsule"
+        case .molecularSurface, .envelope: "capsule"
         }
     }
 }

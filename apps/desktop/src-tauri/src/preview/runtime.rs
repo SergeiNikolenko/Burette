@@ -316,7 +316,8 @@ impl ViewerPreferences {
             | "ball-and-stick"
             | "spacefill"
             | "line"
-            | "molecular-surface" => self.molstar_style.as_str(),
+            | "molecular-surface"
+            | "blob-surface" => self.molstar_style.as_str(),
             _ => "illustrative",
         }
     }
@@ -495,6 +496,7 @@ mod viewer_preferences_tests {
             "spacefill",
             "line",
             "molecular-surface",
+            "blob-surface",
         ] {
             preferences.molstar_style = style.to_string();
             assert_eq!(preferences.resolved_molstar_style(), style);

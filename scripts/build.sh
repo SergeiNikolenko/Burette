@@ -201,10 +201,21 @@ ensure_xyzrender_rdkit() {
     echo "error: local xyzrender runtime is missing Python: $python" >&2
     exit 1
   }
-  if PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 "$python" -c 'from rdkit import Chem' >/dev/null 2>&1; then
+  if PYTHONNOUSERSITE=1 PYTHONDONTWRITEBYTECODE=1 "$python" - "$ROOT/config/xyzrender/source.json" >/dev/null 2>&1 <<'PY'
+import json
+from importlib.metadata import version
+from pathlib import Path
+import sys
+from rdkit import Chem
+expected = json.loads(Path(sys.argv[1]).read_text())["version"]
+assert version("xyzrender") == expected
+assert Chem.MolFromSmiles("CCO") is not None
+PY
+  then
     return 0
   fi
-  echo "error: selected xyzrender environment has no RDKit; use scripts/prepare-xyzrender-runtime.py." >&2
+  echo "error: selected xyzrender environment does not match the reviewed snapshot or has no RDKit; use scripts/prepare-xyzrender-runtime.py." >&2
+  echo "Set BURETTE_XYZRENDER_ENV to the prepared environment, or BURETTE_BUILD_LOCKED_XYZRENDER=1 to prepare one during the build." >&2
   exit 1
 }
 relocate_bundled_python_runtime() {
@@ -720,8 +731,20 @@ actual_carbon="$(/usr/libexec/PlistBuddy -c 'Print :LSRequiresCarbon' "$LOCAL_AP
 [[ -z "$actual_carbon" ]] || { echo "error: built app must not set LSRequiresCarbon." >&2; exit 1; }
 actual_pkg_info="$(cat "$LOCAL_APP/Contents/PkgInfo" 2>/dev/null || true)"
 [[ "$actual_pkg_info" == "APPL????" ]] || { echo "error: built app PkgInfo missing or invalid." >&2; exit 1; }
-actual_pdb_type="$(/usr/libexec/PlistBuddy -c 'Print :UTExportedTypeDeclarations:0:UTTypeIdentifier' "$LOCAL_APP/Contents/Info.plist" 2>/dev/null || true)"
-[[ "$actual_pdb_type" == "$PDB_CONTENT_TYPE" ]] || { echo "error: built app is missing Burette exported content types." >&2; exit 1; }
+# Exported type declaration order is not a bundle contract.
+/usr/bin/python3 - "$APP_METADATA_PLIST" "$LOCAL_APP/Contents/Info.plist" <<'PY'
+import plistlib
+import sys
+
+def exported_types(path):
+    with open(path, "rb") as handle:
+        return {entry["UTTypeIdentifier"] for entry in plistlib.load(handle).get("UTExportedTypeDeclarations", [])}
+
+expected = exported_types(sys.argv[1])
+missing = expected - exported_types(sys.argv[2])
+if not expected or missing:
+    sys.exit("error: built app is missing Burette exported content types: " + ", ".join(sorted(missing)))
+PY
 [[ -x "$LOCAL_APP/Contents/MacOS/burette" ]] || { echo "error: built Tauri app executable missing: $LOCAL_APP/Contents/MacOS/burette" >&2; exit 1; }
 [[ -d "$LOCAL_APP/Contents/PlugIns/BurettePreview.appex" ]] || { echo "error: embedded Quick Look extension missing in Tauri app." >&2; exit 1; }
 [[ -x "$LOCAL_APP/Contents/PlugIns/BurettePreview.appex/Contents/Resources/burette-core-bridge" ]] || { echo "error: embedded Quick Look extension is missing burette-core bridge helper." >&2; exit 1; }

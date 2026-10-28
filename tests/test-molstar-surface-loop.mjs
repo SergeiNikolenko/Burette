@@ -1,14 +1,19 @@
+import { readMolstarModule, resolveMolstarModule } from '../scripts/molstar-source.mjs';
+import { pathToFileURL } from 'node:url';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import { patchMolstarSurfaceLoop } from '../scripts/molstar-surface-loop.mjs';
-import { calcMolecularSurface } from 'molstar/lib/mol-math/geometry/molecular-surface.js';
-import { getBoundary } from 'molstar/lib/mol-math/geometry/boundary.js';
-import { OrderedSet } from 'molstar/lib/mol-data/int.js';
-import { computeMarchingCubesMesh } from 'molstar/lib/mol-geo/util/marching-cubes/algorithm.js';
+import { calcMolecularSurface } from '@molstar/core/math/geometry/molecular-surface';
+import { getBoundary } from '@molstar/core/math/geometry/boundary';
+import { OrderedSet } from '@molstar/core/data/int';
+import { computeMarchingCubesMesh } from '@molstar/graphics/geo/util/marching-cubes/algorithm';
 
-const url = new URL('../node_modules/molstar/lib/mol-math/geometry/molecular-surface.js', import.meta.url);
-const source = await readFile(url, 'utf8');
-const patched = patchMolstarSurfaceLoop(source).replace(/from '(\.[^']+)'/gu, (_, path) => `from '${new URL(path, url)}'`);
+const moduleName = '@molstar/core/math/geometry/molecular-surface';
+const url = pathToFileURL(resolveMolstarModule(moduleName));
+const source = await readMolstarModule(moduleName);
+const patched = patchMolstarSurfaceLoop(source).replace(/(from |import )(["'])([^"']+)\2/gu, (_, prefix, _quote, path) => {
+  const target = path.startsWith('@molstar/') ? pathToFileURL(resolveMolstarModule(path)) : new URL(path, url);
+  return `${prefix}'${target}'`;
+});
 const { calcMolecularSurface: optimized } = await import(`data:text/javascript;base64,${Buffer.from(patched).toString('base64')}`);
 assert.throws(() => patchMolstarSurfaceLoop(patched), /surface loop changed/);
 assert.throws(() => patchMolstarSurfaceLoop('different upstream'), /surface loop changed/);

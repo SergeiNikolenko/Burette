@@ -7,8 +7,11 @@
   "packages": {
     "molstar": {
       "packageName": "molstar",
-      "version": "5.11.0",
-      "integrity": "sha512-Jv2oHkKoCpzrhqLmGlknepm0pfRsoTDebsGRkvXpbUFb6p+JIAkhLyM3uqV2twC6VR83ZbXtdswOtouPhozpuQ=="
+      "repository": "https://github.com/molstar/molstar",
+      "revision": "fe1ac1555001d1acb023077cd4dc6ca1d06870f8",
+      "version": "6.0.0-dev.0",
+      "archive": "https://codeload.github.com/molstar/molstar/tar.gz/fe1ac1555001d1acb023077cd4dc6ca1d06870f8",
+      "sha256": "13affa816cf19857bf86363b14c8609afa2ccaa1c6034c744f2eda1657c1bc55"
     },
     "dompurify": {
       "packageName": "dompurify",
@@ -41,26 +44,32 @@
     {
       "path": "PreviewExtension/Web/molstar.js",
       "package": "molstar",
-      "bytes": 5822645,
-      "sha256": "sha256-eMSfqlONm5wfI+eocjd1u+Ir7BMfRXdFY+U7GCz2GpU="
+      "bytes": 5447642,
+      "sha256": "sha256-dDD2Aq0TZYRhcKRak4JhgQfkvm4axpwPpPdTf3Zdeu4="
+    },
+    {
+      "path": "scripts/mvs-schema-validator.mjs",
+      "package": "molstar",
+      "bytes": 150860,
+      "sha256": "sha256-5480tj0af2kk4e0Yk4FrkvlLEwHi0p/GGcnGyj2Ahuk="
     },
     {
       "path": "PreviewExtension/Web/molstar.css",
       "package": "molstar",
-      "bytes": 72842,
-      "sha256": "sha256-W2jOttNkJUm06bLAceWOQbmKU1CuJpGAWHs52oaSXVU="
+      "bytes": 76931,
+      "sha256": "sha256-vvRuTaik9HmLx4ErjjnzTZHqVVbdkbiBNSL0Ca9CHD8="
     },
     {
       "path": "PreviewExtension/Web/mesoscale.js",
       "package": "molstar",
-      "bytes": 5428687,
-      "sha256": "sha256-sMUnpJOQ0pt6Mfmmdb/WI7sjtaqa7TpGLs85Vt4Q9PM="
+      "bytes": 4291104,
+      "sha256": "sha256-WgDKmwgUh5wRtABMWfZMsUaFw9SkuwHZrRxA/EppYRo="
     },
     {
       "path": "PreviewExtension/Web/mesoscale.css",
       "package": "molstar",
-      "bytes": 97896,
-      "sha256": "sha256-SJi64V70hc72iDKCgBhUGiRzBEgq73EEuU9bEqJkhDU="
+      "bytes": 97895,
+      "sha256": "sha256-9qJOG1wpp4M6aJK2f2nhxvZwe6ykwjbIr77XDY7H2Js="
     },
     {
       "path": "PreviewExtension/Web/rdkit/RDKit_minimal.js",

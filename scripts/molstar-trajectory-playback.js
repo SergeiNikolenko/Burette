@@ -1,8 +1,8 @@
-import { AnimateModelIndex } from 'molstar/lib/mol-plugin-state/animation/built-in/model-index.js';
-import { PluginCommands } from 'molstar/lib/mol-plugin/commands.js';
-import { StateSelection } from 'molstar/lib/mol-state/index.js';
-import { PluginStateObject } from 'molstar/lib/mol-plugin-state/objects.js';
-import { StateTransforms } from 'molstar/lib/mol-plugin-state/transforms.js';
+import { AnimateModelIndex } from '@molstar/plugin/state/animation/built-in/model-index';
+import { PluginCommands } from '@molstar/plugin/commands';
+import { StateSelection } from '@molstar/core/state';
+import { PluginStateObject } from '@molstar/plugin/state/objects';
+import { StateTransforms } from '@molstar/viewer/state-transforms';
 
 // A fixed stride sharing a divisor with N visits only N/gcd(N, stride) frames.
 // At saturation, cap skipping and choose a coprime stride so overload cannot lock the

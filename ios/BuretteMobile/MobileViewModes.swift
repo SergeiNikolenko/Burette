@@ -32,7 +32,7 @@ enum MobileViewModeCatalog {
 
     /// UTF-8 text-inspectable formats.
     static let textFormats: Set<String> = structureFormats.union([
-        "txt", "csv", "tsv", "smi", "smiles", "dat", "json", "xml",
+        "txt", "csv", "tsv", "smi", "smiles", "dat", "json", "cjson", "xml",
         "mdp", "top", "itp", "key", "par", "prm", "rtf", "str", "log", "out",
         "com", "inp", "in", "nw", "psi4", "qcin", "vasp"
     ])

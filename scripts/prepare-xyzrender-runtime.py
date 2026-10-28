@@ -60,7 +60,7 @@ def prepare():
         subprocess.run(command + ['pip', 'sync', '--no-python-downloads', '--python', str(environment / 'bin/python3'),
                                  '--default-index', 'https://pypi.org/simple', '--python-platform', 'aarch64-apple-darwin',
                                  '--require-hashes', '--only-binary', ':all:', str(LOCKS / 'requirements.txt')],
-                       env=env, check=True, stdout=sys.stderr)
+                       cwd=ROOT, env=env, check=True, stdout=sys.stderr)
         subprocess.run(command + ['pip', 'check', '--python', str(environment / 'bin/python3')],
                        env=env, check=True, stdout=sys.stderr)
         subprocess.run([str(environment / 'bin/python3'), '-c',

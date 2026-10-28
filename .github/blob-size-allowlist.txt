@@ -44,7 +44,6 @@ packaging/dmg/background.tiff
 apps/burette-public-plugin/public/demo-scenes/1HTB.pdb
 apps/burette-public-plugin/public/demo-scenes/metadynamics-binding.mae
 apps/burette-public-plugin/public/demo-scenes/metadynamics-binding.mae.molj
-
 # User-selected scientific demo library; loaded only when opened.
 apps/burette-public-plugin/public/demo-library/Motion & Reactions/bimp.out
 apps/burette-public-plugin/public/demo-library/Motion & Reactions/mn-h2.log
@@ -52,11 +51,9 @@ apps/burette-public-plugin/public/demo-library/Quantum/base-pair-dens.cube
 apps/burette-public-plugin/public/demo-library/Quantum/base-pair-grad.cube
 apps/burette-public-plugin/public/demo-library/Quantum/caffeine_dens.cube
 apps/burette-public-plugin/public/demo-library/Quantum/caffeine_homo.cube
-
 # Generated browser-shell chemistry, viewer, and Story runtime assets.
 plugins/burette-agent/browser-shell-dist/assets/RDKit_minimal-tnscgqxm.wasm
 plugins/burette-agent/browser-shell-dist/assets/molstar-F2uvN7Xl.js
-
 # Regenerated browser-shell bundles for molecular view icons.
 plugins/burette-agent/browser-shell-dist/assets/dist-RzgJ_-Tl.js
 plugins/burette-agent/browser-shell-dist/assets/index.modern-D6gEcQFq.js
@@ -64,7 +61,6 @@ plugins/burette-agent/browser-shell-dist/assets/index.modern-DQWd4CLe.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CPvhX_Et.js
 plugins/burette-agent/browser-shell-dist/assets/scaffold.worker-CZm3QNgR.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-DBGdXR42.js
-
 # Regenerated browser-shell bundles for the trajectory loop frame-step fix.
 plugins/burette-agent/browser-shell-dist/assets/dist-ChRp6sLR.js
 plugins/burette-agent/browser-shell-dist/assets/index.modern-DN6_6mNQ.js
@@ -77,7 +73,6 @@ plugins/burette-agent/browser-shell-dist/assets/molstar-Ixvy7bU4.js
 plugins/burette-agent/browser-shell-dist/assets/dist-Dv4k6zHo.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-BTcAHrJY.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-qDI2I3Uz.js
-
 # Regenerated chemistry, viewer, and document bundles from the 2026-09-27
 # dependency refresh. Entries are exact paths so newly added large blobs
 # continue to require review.
@@ -106,13 +101,11 @@ plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-DSoiEezx.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-DQSmqDX9.js
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-B1sappZd.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-B3AJSIFE.js
-
 # Rebuilt packaged runtime for the hosted review workflow repairs.
 plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-j8K2nAZT.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-9JAFqKqA.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CETyIt6z.js
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-BGyBJOfz.js
-
 # Viewer regenerated after integration of the panel-toggle repair.
 plugins/burette-agent/browser-shell-dist/assets/viewer-BjXButBs.js
 plugins/burette-agent/browser-shell-dist/assets/dist-_ca1w920.js
@@ -121,14 +114,12 @@ plugins/burette-agent/browser-shell-dist/assets/molstar-B7BC_Jy4.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-CtZdJnTM.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-kixYkB-1.js
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-C-RITij7.js
-
 # Reviewed packaged runtime rebuilt for 2026.10.1 scene/shell responsiveness.
 plugins/burette-agent/browser-shell-dist/assets/dist-BJxoZHnw.js
 plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-DEjxfZRv.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-BudWj4Vg.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-BaKJqiW9.js
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-Bjn0_yxY.js
-
 # Reviewed generated workspace, syntax workers and shared React viewer controls
 # for 2026.10.2; exact paths keep new oversized assets subject to review.
 PreviewExtension/Web/grid-ui.js
@@ -149,7 +140,6 @@ plugins/burette-agent/browser-shell-dist/assets/viewer-DEy_k-ZM.js
 plugins/burette-agent/browser-shell-dist/assets/wasm-BnjxR4X6.js
 plugins/burette-agent/preview-web/grid-ui.js
 plugins/burette-agent/preview-web/native-viewer-menus.js
-
 # Reviewed runtime bundles regenerated for native workspace performance.
 plugins/burette-agent/browser-shell-dist/assets/molstar-BQsJBDKI.js
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-DA3xLFJ5.js
@@ -159,12 +149,10 @@ plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-BrtFQr4F.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-oDLTWabD.js
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-zvsDmrsm.js
 plugins/burette-agent/browser-shell-dist/assets/index-v3gL5Nm7.css
-
 # Regenerated shell after current panel gestures and compound rename integration.
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-DXD4Vr5t.js
 plugins/burette-agent/browser-shell-dist/assets/molstar-CT4y9u88.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-CudoY1L_.js
-
 # Official browser-shell rebuild for spreadsheet-safe derived exports.
 plugins/burette-agent/browser-shell-dist/assets/molstar-BeRqnyag.js
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-DHhpmcr9.js
@@ -174,35 +162,28 @@ plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-BcVEWSjc.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-p3BlfA5h.js
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-BAdaZcS5.js
 plugins/burette-agent/browser-shell-dist/assets/index-4bUcvoys.css
-
 # Reviewed generated shell after security and native responsiveness integration.
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-DrVSxW1g.js
 plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-BYUSNe5H.js
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-DY4otyY0.js
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-CYzCmhqK.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-DLkh2cnD.js
-
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-BzyPYDB8.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-Bu-H-WOM.js
-
 # Reviewed generated shell with shared 2D/3D hydrogen visibility.
 plugins/burette-agent/browser-shell-dist/assets/viewer-QN3kosDi.js
-plugins/burette-agent/browser-shell-dist/assets/molstar-CG5Tbarg.js
-plugins/burette-agent/browser-shell-dist/assets/molecule-store-CKnzlmxZ.js
 plugins/burette-agent/browser-shell-dist/assets/dist-BOa68gqd.js
 plugins/burette-agent/browser-shell-dist/assets/viewer-Cwtfk7wJ.js
-plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-uhnEl35v.js
-plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CgVXKH8y.js
 plugins/burette-agent/browser-shell-dist/assets/native-viewer-menus-DEoKtlj0.js
+plugins/burette-agent/browser-shell-dist/assets/index-vroafz0D.css
+plugins/burette-agent/browser-shell-dist/assets/molstar-CiwXDnZr.js
 plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-BMKp5Z-D.js
 plugins/burette-agent/browser-shell-dist/assets/index-Dpu_oRwI.css
 plugins/burette-agent/browser-shell-dist/assets/viewer-C3u9xZg_.js
-
 # Reviewed generated shell for compute reliability and diagnostics.
-plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-CGvq3q__.js
-plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-CCG-GRBL.js
-plugins/burette-agent/browser-shell-dist/assets/index-vroafz0D.css
-plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-Clh7iQ75.js
-plugins/burette-agent/browser-shell-dist/assets/molecule-store-CrHyt0G9.js
 plugins/burette-agent/browser-shell-dist/assets/native-viewer-menus-UbsynBMn.js
-plugins/burette-agent/browser-shell-dist/assets/viewer-CY1nAkEY.js
+plugins/burette-agent/browser-shell-dist/assets/chemical-space-3d-CY2Jp0Nj.js
+plugins/burette-agent/browser-shell-dist/assets/elk-276RUBZZ-DcS5exTY.js
+plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-CsZ3p8Hg.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-b2xQvG17.js
+plugins/burette-agent/browser-shell-dist/assets/molecule-store-qgEVw2dA.js

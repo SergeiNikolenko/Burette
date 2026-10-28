@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { DefaultPluginSpec } from 'molstar/lib/mol-plugin/spec.js';
+import { PluginContext } from '@molstar/plugin';
+import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
 
 const source = await readFile(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
 const extract = name => source.match(new RegExp(`\n  (?:async )?function ${name}\\([\\s\\S]*?\n  \\}`, 'u'))[0];

@@ -20,7 +20,7 @@ export function compositionStyleMenu(
   const types = [
     ...(kind === "polymer" ? [["cartoon", "Cartoon"], ["backbone", "Backbone"]] : []),
     ["ball-and-stick", "Ball & Stick"], ["spacefill", "Spacefill"],
-    ["line", "Line"], ["molecular-surface", "Molecular Surface"],
+    ["line", "Line"], ["molecular-surface", "Molecular Surface"], ["blob-surface", "Envelope"],
   ];
   return [
     ...(row.action?.type === "focus_ligand" ? [] : [{ kind: "item" as const, id: "focus-component", text: "Focus", action: () => run({ type: "focus_selection", label: `Focus ${row.label}`, selector: selector! }) }]),

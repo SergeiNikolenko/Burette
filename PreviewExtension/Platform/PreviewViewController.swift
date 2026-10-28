@@ -4501,6 +4501,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             "externalArtifact",
             "xyzrenderSvgBytes",
             "molstarStructureCount",
+            "molstarVolumeCount",
             "poseCount",
             "trajectoryFrameCount"
         ]
@@ -7093,32 +7094,49 @@ private enum PreviewExternalXyzrenderWorker {
         process.arguments = arguments
         process.environment = mergedEnvironment(overrides: launch.environment)
 
-        _ = fileManager.createFile(atPath: logURL.path, contents: nil)
-        let logHandle = try FileHandle(forWritingTo: logURL)
-        defer { logHandle.closeFile() }
-        process.standardOutput = logHandle
-        process.standardError = logHandle
-        let semaphore = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in semaphore.signal() }
         let started = Date()
-        do {
-            try process.run()
-        } catch {
-            throw PreviewExternalXyzrenderError.launchFailed(
-                diagnostics: launchFailureDiagnostics(error: error, launch: launch, arguments: arguments)
+        let status: Int32
+        let extensionBundle = Bundle(for: PreviewViewController.self).bundleURL
+        if extensionBundle.pathExtension == "appex",
+           (sourceFilename as NSString).pathExtension.lowercased() == "cjson",
+           launch.argumentPrefix == ["-m", "xyzrender.cli"],
+           let pythonHome = launch.environment["PYTHONHOME"],
+           let sitePackages = launch.environment["PYTHONPATH"] {
+            status = try EmbeddedXyzrender.render(
+                extensionBundle: extensionBundle,
+                pythonHome: pythonHome,
+                sitePackages: sitePackages,
+                sourceURL: inputURL,
+                arguments: Array(arguments.dropFirst(launch.argumentPrefix.count)),
+                logURL: logURL
             )
+        } else {
+            _ = fileManager.createFile(atPath: logURL.path, contents: nil)
+            let logHandle = try FileHandle(forWritingTo: logURL)
+            defer { logHandle.closeFile() }
+            process.standardOutput = logHandle
+            process.standardError = logHandle
+            let semaphore = DispatchSemaphore(value: 0)
+            process.terminationHandler = { _ in semaphore.signal() }
+            do {
+                try process.run()
+            } catch {
+                throw PreviewExternalXyzrenderError.launchFailed(
+                    diagnostics: launchFailureDiagnostics(error: error, launch: launch, arguments: arguments)
+                )
+            }
+            if semaphore.wait(timeout: .now() + 25) == .timedOut {
+                process.terminate()
+                throw PreviewExternalXyzrenderError.timedOut
+            }
+            logHandle.synchronizeFile()
+            status = process.terminationStatus
         }
 
-        if semaphore.wait(timeout: .now() + 25) == .timedOut {
-            process.terminate()
-            throw PreviewExternalXyzrenderError.timedOut
-        }
-
-        logHandle.synchronizeFile()
         let logData = (try? Data(contentsOf: logURL)) ?? Data()
         let log = String(data: logData, encoding: .utf8) ?? String(decoding: logData, as: UTF8.self)
-        guard process.terminationStatus == 0 else {
-            throw PreviewExternalXyzrenderError.failed(status: process.terminationStatus, log: log)
+        guard status == 0 else {
+            throw PreviewExternalXyzrenderError.failed(status: status, log: log)
         }
         guard fileManager.fileExists(atPath: outputURL.path) else {
             throw PreviewExternalXyzrenderError.missingOutput
@@ -8096,7 +8114,13 @@ private struct PreviewPreferences {
     }
 
     var resolvedMolstarStyle: String {
-        molstarStyle == "default" ? "default" : "illustrative"
+        switch molstarStyle {
+        case "default", "illustrative", "illustrative-surface", "polymer-ligand",
+             "cartoon", "ball-and-stick", "spacefill", "line", "molecular-surface", "blob-surface":
+            molstarStyle
+        default:
+            "illustrative"
+        }
     }
 
     var themeTokens: [String: Any] {

@@ -44,6 +44,7 @@ const structureStyleLabels: Record<ViewerPreferences["molstarStyle"], string> = 
   spacefill: "Spacefill",
   line: "Lines",
   "molecular-surface": "Molecular surface",
+  "blob-surface": "Envelope",
 };
 const structureStyleOptions = Object.keys(structureStyleLabels) as Array<ViewerPreferences["molstarStyle"]>;
 type SettingsPanelLocation = { kind: "settings"; section: AppSettingsSectionId };

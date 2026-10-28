@@ -145,6 +145,15 @@ real desktop React shell in hosted MCP mode with stable component entry files.
 The generated `public/burette-viewer` and `public/viewer-shell` directories are
 build output and are not committed.
 
+The Python renderer requirement uses the same reviewed snapshot wheel as
+`config/xyzrender/source.json`, through an immutable repository URL and SHA-256.
+This keeps Vercel's Python dependency installation independent of the app root
+and the later asset build. Update that URL and hash when the reviewed wheel
+changes; `tests/test-hosted-xyzrender-route.mjs` checks it against the native
+wheel. The bounded `/api/xyzrender` service accepts original CJSON bytes in
+addition to its existing molecular formats. The MCP attachment tool retains
+the format list declared in its contract above.
+
 ## Submission materials
 
 - `chatgpt-app-submission.json` — listing suggestions and exactly five independent

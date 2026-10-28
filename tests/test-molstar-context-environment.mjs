@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
+// This direct-transform harness bypasses the default plugin spec that registers
+// Mol*'s optional query languages.
+import '@molstar/query-language/transpilers/pymol';
 
-const require = createRequire(import.meta.url);
-const { parsePDB } = require('molstar/lib/commonjs/mol-io/reader/pdb/parser.js');
-const { trajectoryFromPDB } = require('molstar/lib/commonjs/mol-model-formats/structure/pdb.js');
-const { Structure, StructureElement } = require('molstar/lib/commonjs/mol-model/structure.js');
+const { parsePDB } = await import('@molstar/io/reader/pdb/parser');
+const { trajectoryFromPDB } = await import('@molstar/model/formats/structure/pdb');
+const { Structure, StructureElement } = await import('@molstar/model/model/structure');
 const viewer = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
 const functionSource = name => {
   const match = viewer.match(new RegExp(`\n  (?:async )?function ${name}\\([\\s\\S]*?\n  \\}`, 'u'));
@@ -26,7 +27,7 @@ async function parseStructure(records, id) {
 const receptor = await parseStructure(lines.filter(line => line.startsWith('ATOM  ')), 'receptor');
 const ligand = await parseStructure(lines.filter(line => line.startsWith('HETATM') && line.slice(17, 20) === 'NAD' && line[21] === 'A'), 'ligand');
 const pick = Structure.toStructureElementLoci(ligand);
-const { StateTransforms } = require('molstar/lib/commonjs/mol-plugin-state/transforms.js');
+const { StateTransforms } = await import('@molstar/viewer/state-transforms');
 const queryLoci = new Function('window', 'molstarStructureRuntime', 'compositionQueryCache', `${functionSource('compositionQueryLoci')}; return compositionQueryLoci;`)(
   { molstar: { lib: { plugin: { StateTransforms } } } }, () => ({ Structure }), new WeakMap(),
 );

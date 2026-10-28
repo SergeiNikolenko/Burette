@@ -135,9 +135,9 @@ console.log("composition style menu routing ok");
 // Exercise the viewer snapshot against real Mol* loci: hidden objects remain,
 // removed subsets disappear, overlapping components do not double the counts,
 // and an empty scene still sends the snapshot needed to clear the inspector.
-const { Structure, StructureElement } = await import("molstar/lib/commonjs/mol-model/structure.js");
-const { parsePDB } = await import("molstar/lib/commonjs/mol-io/reader/pdb/parser.js");
-const { trajectoryFromPDB } = await import("molstar/lib/commonjs/mol-model-formats/structure/pdb.js");
+const { Structure, StructureElement } = await import("@molstar/model/model/structure");
+const { parsePDB } = await import("@molstar/io/reader/pdb/parser");
+const { trajectoryFromPDB } = await import("@molstar/model/formats/structure/pdb");
 const parsed = await parsePDB(await read("samples/mini.pdb")).run();
 assert.equal(parsed.isError, false);
 const trajectory = await trajectoryFromPDB(parsed.result).run();

@@ -2,6 +2,7 @@
 """Prune a staged runtime using installed dependency metadata; never a source env."""
 import argparse
 from importlib.metadata import distributions
+import json
 from pathlib import Path
 import os
 import shutil
@@ -66,6 +67,15 @@ def prune(runtime, python_root):
     for path in obsolete:
         if path.is_file() or path.is_symlink():
             path.unlink()
+    # A locally vendored wheel's installer metadata contains the builder's
+    # absolute checkout path. Keep that provenance in the source environment;
+    # the shipped runtime identifies the reviewed snapshot by its version.
+    for entry in installed["xyzrender"].files or []:
+        if entry.name == "direct_url.json":
+            path = Path(installed["xyzrender"].locate_file(entry))
+            if (path.resolve().is_relative_to(site) and path.is_file()
+                    and json.loads(path.read_text()).get("url", "").startswith("file:")):
+                path.unlink()
     # Keep package resources and test/data directories: some are used at runtime.
     # Only cache files and the interpreter's own development tools are removed.
     for root in (runtime, python_root):

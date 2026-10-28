@@ -118,6 +118,7 @@ const SDF_CONTEXT_STYLE_OPTIONS = [
   { value: "cartoon", label: "Cartoon" },
   { value: "spacefill", label: "Spacefill" },
   { value: "molecular-surface", label: "Surface" },
+  { value: "blob-surface", label: "Envelope" },
   { value: "match", label: "Match" },
 ] as const;
 
@@ -132,6 +133,7 @@ const SMALL_MOLECULE_CONTEXT_STYLE_OPTIONS = [
   { value: "ball-and-stick", label: "Ball+Stick" },
   { value: "spacefill", label: "Spacefill" },
   { value: "molecular-surface", label: "Surface" },
+  { value: "blob-surface", label: "Envelope" },
   { value: "match", label: "Match" },
 ] as const satisfies readonly SdfContextStyleOption[];
 const SDF_CONTEXT_OPACITY_DEFAULT = 0.4;

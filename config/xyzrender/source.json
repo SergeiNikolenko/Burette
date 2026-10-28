@@ -1,0 +1,16 @@
+{
+  "commit": "828e721e40b18f1944c87f949ce224af812dc649",
+  "version": "0.3.9+burette.1",
+  "url": "https://codeload.github.com/aligfellow/xyzrender/tar.gz/828e721e40b18f1944c87f949ce224af812dc649",
+  "sha256": "05027cdcd1185da1cf25b67a6b04a89a669c2958089cb672b38fa960b8a88d6d",
+  "sourceDateEpoch": 1790604363,
+  "wheel": "xyzrender-0.3.9+burette.1-py3-none-any.whl",
+  "patches": [
+    {
+      "path": "patches/density-projection.patch",
+      "sha256": "a827fbc838d558e4b8a796e5ccba3deddd0b2b371c24978783a43c482963d0d2"
+    }
+  ],
+  "wheelSha256": "7a20a6b1348eda1a7e56246c8e6ae2c2e64cc2641592c9461f9aff117320b01c",
+  "buildPython": "3.13.13"
+}

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { readMolstarModule } from '../scripts/molstar-source.mjs';
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -247,9 +248,9 @@ try {
   globalThis.clearTimeout = originalClearTimeout;
 }
 
-const canvasSource = await readFile(join(repoRoot, "node_modules/molstar/lib/mol-canvas3d/canvas3d.js"), "utf8");
+const canvasSource = await readMolstarModule('@molstar/graphics/canvas3d/canvas3d');
 const patched = patchMolstarResizeDraw(canvasSource);
-assert.equal(patched.replace("            requestDraw,\n            draw,\n            tick,", "            requestDraw,\n            tick,"), canvasSource);
+assert.equal(patched.replace("      requestDraw,\n      draw,\n", "      requestDraw,\n"), canvasSource);
 assert.throws(() => patchMolstarResizeDraw(patched), /Canvas3D changed/u, "an upstream change must fail closed");
 
 console.log("viewer resize contract OK: 60 continuous frames, coalesced geometry and hidden-tab guards");

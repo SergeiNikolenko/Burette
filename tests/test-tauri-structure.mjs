@@ -929,7 +929,7 @@ assert.match(vendorRdkitScript, /check-vendor-assets\.mjs/);
 assert.equal(vendorAssetsLock.schemaVersion, 2);
 assert.equal(vendorAssetsLock.source.bunLock, 'bun.lock');
 assert.equal(vendorAssetsLock.source.profiles, 'config/web-runtime-profiles.json');
-assert.equal(vendorAssetsLock.packages.molstar.version, packageConfig.dependencies.molstar);
+assert.deepEqual(vendorAssetsLock.packages.molstar, { packageName: 'molstar', ...JSON.parse(await source('config/molstar-source.json')) });
 assert.equal(vendorAssetsLock.packages['@rdkit/rdkit'].version, packageConfig.dependencies['@rdkit/rdkit']);
 assert.equal(vendorAssetsLock.packages.openchemlib.version, packageConfig.dependencies.openchemlib);
 assert.deepEqual(vendorAssetsLock.assets.map((asset) => asset.path).toSorted(), [
@@ -945,6 +945,7 @@ assert.deepEqual(vendorAssetsLock.assets.map((asset) => asset.path).toSorted(), 
   'PreviewExtension/Web/rdkit/RDKit_minimal.js',
   'PreviewExtension/Web/rdkit/RDKit_minimal.wasm',
   'PreviewExtension/Web/svg-sanitizer.js',
+  'scripts/mvs-schema-validator.mjs',
 ]);
 for (const asset of vendorAssetsLock.assets) {
   assert.match(asset.sha256, /^sha256-/);

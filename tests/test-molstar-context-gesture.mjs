@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { createRequire } from 'node:module';
 
-const require = createRequire(import.meta.url);
-const { DefaultFocusLociBindings } = require('molstar/lib/commonjs/mol-plugin/behavior/dynamic/camera.js');
-const { Binding } = require('molstar/lib/commonjs/mol-util/binding.js');
-const { ButtonsType, ModifiersKeys } = require('molstar/lib/commonjs/mol-util/input/input-observer.js');
+const { DefaultFocusLociBindings } = await import('@molstar/plugin/behavior/dynamic/camera');
+const { Binding } = await import('@molstar/core/util/binding');
+const { ButtonsType, ModifiersKeys } = await import('@molstar/core/util/input/input-observer');
 const cameraFocus = { params: { bindings: DefaultFocusLociBindings } };
 
 const source = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');

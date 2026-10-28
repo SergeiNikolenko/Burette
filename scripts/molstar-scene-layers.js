@@ -1,7 +1,7 @@
-import { StructureElement } from 'molstar/lib/mol-model/structure.js';
-import { StateTransforms } from 'molstar/lib/mol-plugin-state/transforms.js';
-import { createStructureRepresentationParams } from 'molstar/lib/mol-plugin-state/helpers/structure-representation-params.js';
-import { deepEqual } from 'molstar/lib/mol-util/index.js';
+import { StructureElement } from '@molstar/model/model/structure';
+import { StateTransforms } from '@molstar/viewer/state-transforms';
+import { createStructureRepresentationParams } from '@molstar/plugin/state/helpers/structure-representation-params';
+import { deepEqual } from '@molstar/core/util';
 
 const tag = 'burette-scene-layer-v1', prefix = `${tag}:`;
 const componentType = StateTransforms.Model.StructureComponent;

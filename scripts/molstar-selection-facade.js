@@ -1,5 +1,5 @@
-import { OrderedSet } from 'molstar/lib/mol-data/int.js';
-import { StructureElement, Unit } from 'molstar/lib/mol-model/structure.js';
+import { OrderedSet } from '@molstar/core/data/int';
+import { StructureElement, Unit } from '@molstar/model/model/structure';
 import { measureGeometry } from './molecular-geometry.js';
 import { groupExactAtoms } from './molecular-groups.js';
 import { distanceIndex } from './molecular-spatial-index.js';

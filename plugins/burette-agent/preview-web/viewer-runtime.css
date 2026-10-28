@@ -5801,3 +5801,19 @@ html.buret-chrome-settled #buret-viewport-rail:not(.buret-dragging) {
 }
 .buret-scrub-field.buret-scrub-editing .buret-scrub-value { visibility: hidden; }
 .buret-scrub-field.buret-scrubbing .buret-scrub-box > input { background: var(--buret-menu-input-focus-background); }
+
+/* Volume tools share the scene panel's controls and theme tokens. */
+.buret-volume-segmentation { border-top: 1px solid var(--buret-molstar-border); padding-block: 4px; }
+.buret-volume-segmentation summary { cursor: pointer; pointer-events: auto; color: var(--buret-molstar-text); }
+.buret-volume-segmentation .buret-tree-menu-field { justify-content: space-between; }
+.buret-volume-segmentation .buret-tree-menu-text { width: 100px; }
+.buret-volume-actions { display: flex; flex-wrap: wrap; gap: 4px; padding: 3px 8px; }
+.buret-volume-count { display: block; padding: 4px 8px; font-size: 11px; }
+.buret-volume-polygon { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 10; cursor: crosshair; touch-action: none; }
+body.burette-opaque-background .msp-plugin canvas.buret-volume-polygon { background: transparent !important; }
+
+.buret-volume-confirm { padding: 4px 8px; }
+.buret-volume-confirm p { margin: 0 0 4px; font-size: 11px; }
+.buret-volume-confirm .buret-button + .buret-button { margin-left: 4px; }
+.buret-volume-count { font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.buret-volume-polygon:focus-visible { outline: 2px solid var(--buret-molstar-text); outline-offset: -2px; }

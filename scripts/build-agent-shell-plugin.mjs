@@ -62,17 +62,8 @@ for (const script of runtimeScripts) {
 const storyTemplateAssets = resolve(pluginRoot, 'assets', 'mvs-story-templates');
 await rm(storyTemplateAssets, { recursive: true, force: true });
 await cp(resolve(repoRoot, 'templates', 'mvs-story'), storyTemplateAssets, { recursive: true });
-await run('bun', [
-  'build',
-  resolve(repoRoot, 'scripts/mvs-schema-validator.mjs'),
-  '--outfile',
-  resolve(pluginRoot, 'scripts/mvs-schema-validator.mjs'),
-  '--target',
-  'node',
-  '--format',
-  'esm',
-  '--minify',
-]);
+// The standalone validator is generated from the same pinned source as the viewer.
+await cp(resolve(repoRoot, 'scripts/mvs-schema-validator.mjs'), resolve(pluginRoot, 'scripts/mvs-schema-validator.mjs'));
 await mkdir(previewWeb, { recursive: true });
 await run('rsync', [
   '-a',

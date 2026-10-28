@@ -368,12 +368,16 @@ Every release and CI native build prepares a fresh macOS arm64 environment with
 `scripts/prepare-xyzrender-runtime.py`. `config/xyzrender/bootstrap.json` pins
 CPython 3.13.13 and uv 0.11.7 distribution URLs and SHA-256 digests obtained from
 their upstream release assets. Downloads are verified before extraction or execution.
-The complete `requirements.txt` pins xyzrender 0.3.8, RDKit 2026.9.1 and transitive
-wheels with hashes; installation disables source builds, automatic Python downloads
+The complete `requirements.txt` pins a vendored xyzrender 0.3.9+burette.1 upstream snapshot,
+RDKit 2026.9.1 and transitive wheels with hashes. The snapshot's immutable source,
+reproducible wheel hashes and regeneration procedure are recorded in
+[`config/xyzrender/README.md`](../config/xyzrender/README.md); it is not a PyPI release.
+Installation disables source builds, automatic Python downloads
 and ambient pip/uv configuration. Resolution/installation targets macOS 12.0.
 The Quick Look launcher receives the same absolute environment path as the app build.
 
-To update dependencies, review the intended versions and regenerate the lock with:
+To update dependencies, review the intended versions, regenerate the reviewed
+snapshot wheel when needed, and regenerate the lock from the repository root with:
 
 ```bash
 MACOSX_DEPLOYMENT_TARGET=12.0 uv pip compile --no-config --default-index https://pypi.org/simple --python-version 3.13.13 --python-platform aarch64-apple-darwin --generate-hashes --only-binary :all: config/xyzrender/requirements.in -o config/xyzrender/requirements.txt
