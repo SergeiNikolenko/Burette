@@ -8,7 +8,7 @@ import { CRYSTALS_RESOURCE, verifyResourceBundle, type ResourceCatalogEntry } fr
 import { createResourceStore } from "../apps/desktop/src/lib/extensions/resource-store";
 const require = createRequire(new URL("../apps/desktop/package.json", import.meta.url));
 const { gzipSync } = require("fflate");
-const real = new Uint8Array(readFileSync(new URL("../resources/extensions/openchemistry-crystals.json.gz", import.meta.url)));
+const real = new Uint8Array(readFileSync(new URL("../resources/extensions/openchemistry-crystals.bin", import.meta.url)));
 const corpus = JSON.parse(gunzipSync(real).toString());
 const sha = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 function fixture(version = "v1", mutate: (document: typeof corpus) => void = () => {}) {

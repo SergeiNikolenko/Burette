@@ -5,7 +5,7 @@ import { createResourceInstallRunner, type ResourceJob } from "../apps/desktop/s
 import { CRYSTALS_RESOURCE } from "../apps/desktop/src/lib/extensions/resource-bundle";
 import { createResourceStore } from "../apps/desktop/src/lib/extensions/resource-store";
 
-const bytes = new Uint8Array(readFileSync(new URL("../resources/extensions/openchemistry-crystals.json.gz", import.meta.url)));
+const bytes = new Uint8Array(readFileSync(new URL("../resources/extensions/openchemistry-crystals.bin", import.meta.url)));
 const prior = { ...CRYSTALS_RESOURCE, version: "previous" };
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -35,7 +35,7 @@ test("fixed asset streams actual byte progress, installs, refreshes through a ne
   expect(latest(runner).status).toBe("queued");
   const job = await pending;
   expect({ status: job.status, received: job.receivedBytes, total: job.totalBytes, cancelable: job.cancelable }).toEqual({ status: "success", received: bytes.length, total: bytes.length, cancelable: false });
-  expect(requested.endsWith("/resources/extensions/openchemistry-crystals.json.gz")).toBe(true);
+  expect(requested.endsWith("/resources/extensions/openchemistry-crystals.bin")).toBe(true);
   expect(options).toMatchObject({ mode: "same-origin", redirect: "error", credentials: "same-origin", signal: expect.any(AbortSignal) });
   expect(progress).toEqual([100, 200, bytes.length]); expect(phases).toEqual(["reading", "installing"]);
   const reopened = createResourceInstallRunner({ store: createResourceStore(factory), fetcher });

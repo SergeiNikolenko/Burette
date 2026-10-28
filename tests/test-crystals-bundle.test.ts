@@ -124,7 +124,7 @@ syncBuiltinESMExports();
       expect(result.stderr).toContain(fault === 'partial-write' ? 'INJECTED_PARTIAL_WRITE' : 'INJECTED_RENAME_FAILURE');
       expect(readFileSync(output)).toEqual(previous);
     }
-    expect(readdirSync(dirname(output))).toEqual(['openchemistry-crystals.json.gz']);
+    expect(readdirSync(dirname(output))).toEqual(['openchemistry-crystals.bin']);
   } finally {
     if (process.platform === 'darwin') execFileSync('timeout', ['30', '/usr/bin/trash', directory]);
     else rmSync(directory, { recursive: true, force: true });

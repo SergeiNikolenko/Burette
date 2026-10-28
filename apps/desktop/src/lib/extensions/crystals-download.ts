@@ -1,4 +1,4 @@
-import bundleUrl from "../../../../../resources/extensions/openchemistry-crystals.json.gz?url";
+import bundleUrl from "../../../../../resources/extensions/openchemistry-crystals.bin?url";
 import { CRYSTALS_RESOURCE, resourceAbort } from "./resource-bundle";
 
 /** The build owns this URL. Callers cannot supply an archive or proxy destination. */

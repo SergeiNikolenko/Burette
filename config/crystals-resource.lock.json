@@ -21,7 +21,7 @@
     "cifBytes": 1429884
   },
   "bundle": {
-    "path": "resources/extensions/openchemistry-crystals.json.gz",
+    "path": "resources/extensions/openchemistry-crystals.bin",
     "bytes": 294538,
     "sha256": "6d817d984aa89ccd124ac5862c8aaa1393e1a0e7256726235dbbae207c0e5c5a",
     "compressor": "fflate-0.8.3-gzip-level9-mtime0"
