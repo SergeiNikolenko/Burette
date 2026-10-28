@@ -592,11 +592,11 @@ export function useAppFileOpen({
         const message = `Saved ${paths.length} molecule file${paths.length === 1 ? "" : "s"} in ${directory}`;
         pushStatus(errors.length ? `${message}. ${summarizeErrors(errors)}` : message, errors.length ? "error" : "success", errors);
       } catch (error) { pushErrorStatus(error, "Could not save dropped molecules"); }
-      return;
+      return [];
     }
     pushStatus("Opening pasted structures...");
     const { opened, errors } = await openStructureRecordDocuments(records);
-    if (opened.length === 0 && errors.length === 0) return;
+    if (opened.length === 0 && errors.length === 0) return opened;
     if (opened.length > 0) {
       addDocuments(opened);
       rememberRecentStructures(opened);
@@ -604,9 +604,10 @@ export function useAppFileOpen({
     const openedText = "Opened " + opened.length + " pasted structure" + (opened.length === 1 ? "" : "s");
     if (errors.length > 0) {
       pushStatus(opened.length > 0 ? `${openedText}. ${summarizeErrors(errors)}` : summarizeErrors(errors), "error", errors);
-      return;
+      return opened;
     }
     pushStatus(openedText);
+    return opened;
   }, [addDocuments, openDocuments, openStructureRecordDocuments, pushErrorStatus, pushStatus, rememberRecentStructures]);
 
   const openStructureUrlInMolstar = useCallback(async (url: string) => {

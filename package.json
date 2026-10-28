@@ -79,7 +79,8 @@
     "test:extension-resources": "bun test tests/test-extension-resources.test.ts",
     "test:extension-runner": "bun test tests/test-resource-install-runner.test.ts && bun test tests/test-resource-extensions-hook.test.tsx",
     "test:mol-v3000": "bun test tests/test-molstar-mol-v3000.test.ts",
-    "test:extension-ui": "bun test tests/test-extensions-section.test.tsx"
+    "test:extension-ui": "bun test tests/test-extensions-section.test.tsx",
+    "test:structure-record-outcome": "bun test tests/test-structure-record-open-outcome.test.tsx"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

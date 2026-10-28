@@ -142,7 +142,7 @@ export type ShellActions = {
   openStructurePaths: (paths: string[], options?: { mode?: OpenDocumentsMode; rendererMode?: "molstar" | "grid2d" | "xyzrender-external"; shouldApply?: () => boolean }) => void | Promise<void>;
   openTextPaths: (paths: string[]) => void | Promise<void>;
   openPaths: (paths: string[], options?: FileOpenOptions) => void | Promise<void>;
-  openStructureRecords: (records: StructureDragPayload["records"], directory?: string) => void | Promise<void>;
+  openStructureRecords: (records: StructureDragPayload["records"], directory?: string) => Promise<ViewerDocument[]>;
   openStructureUrlInMolstar: (url: string) => void | Promise<void>;
   openRecentStructure: (structure: RecentStructure) => void | Promise<void>;
   openMostRecentStructure: () => void | Promise<void>;

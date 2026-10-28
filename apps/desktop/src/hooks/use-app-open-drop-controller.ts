@@ -24,7 +24,7 @@ type OpenDockingStructureRecords = (
   ligandPaths: string[],
   records: StructureDragRecord[],
 ) => void | Promise<void>;
-type OpenStructureRecords = (records: StructureDragRecord[], directory?: string) => void | Promise<void>;
+type OpenStructureRecords = (records: StructureDragRecord[], directory?: string) => void | Promise<void | ViewerDocument[]>;
 type OpenKetcherWithStructures = (
   paths: string[],
   fragments?: Array<{ title: string; text: string }>,
