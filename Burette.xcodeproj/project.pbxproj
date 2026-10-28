@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A8C0A0010000000000000001 /* EmbeddedXyzrender.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C0A0010000000000000002 /* EmbeddedXyzrender.swift */; };
 		3F8B96A03E7544E6A395D202 /* MoleculeGridPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */; };
 		71B2D3E4F5A60718293A4B5D /* RendererPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71B2D3E4F5A60718293A4B5B /* RendererPolicy.swift */; };
 		3C65656FB6FE8E52854AC3F4 /* PreviewViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02CDF88EC813372195D216 /* PreviewViewController.swift */; };
@@ -30,6 +31,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		A8C0A0010000000000000002 /* EmbeddedXyzrender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbeddedXyzrender.swift; sourceTree = "<group>"; };
 		664D234BD361BA8FA6C574ED /* BurettePreview.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BurettePreview.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B15000000000000000000005 /* BuretteThumbnail.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BuretteThumbnail.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C20000000000000000000001 /* BuretteMobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BuretteMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -93,6 +95,7 @@
 				A11111111111111111111104 /* QuickLookPreviewSurface.swift */,
 				3F8B96A03E7544E6A395D200 /* MoleculeGridPreview.swift */,
 				71B2D3E4F5A60718293A4B5B /* RendererPolicy.swift */,
+				A8C0A0010000000000000002 /* EmbeddedXyzrender.swift */,
 				B15000000000000000000001 /* ThumbnailProvider.swift */,
 				D112F5444BEBEFD99D68B6DD /* Info.plist */,
 				B15000000000000000000004 /* ThumbnailInfo.plist */,
@@ -319,6 +322,7 @@
 			outputFileListPaths = ();
 			outputPaths = (
 				"$(CODESIGNING_FOLDER_PATH)/Contents/Resources/xyzrender-python3",
+				"$(CODESIGNING_FOLDER_PATH)/Contents/lib/burette-xyzrender-bridge.dylib",
 				"$(CODESIGNING_FOLDER_PATH)/Contents/lib/.xyzrender-python-library.stamp",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -337,6 +341,7 @@
 				A11111111111111111111105 /* QuickLookPreviewSurface.swift in Sources */,
 				3F8B96A03E7544E6A395D202 /* MoleculeGridPreview.swift in Sources */,
 				71B2D3E4F5A60718293A4B5D /* RendererPolicy.swift in Sources */,
+				A8C0A0010000000000000001 /* EmbeddedXyzrender.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

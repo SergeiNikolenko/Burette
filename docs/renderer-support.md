@@ -107,6 +107,18 @@ extension and content type; ordinary `.json` files retain their existing handlin
 The source remains inspectable as JSON. On iPhone, CJSON opens in the read-only
 text view because the external Python renderer is not available there.
 
+Finder Quick Look renders bundled CJSON through the same pinned xyzrender
+interpreter inside its extension process, since its sandbox denies subprocess
+launches. Calls are serialized; Python initialization ignores ambient settings,
+and per-render arguments, paths, streams, tracing and RDKit's `RDBASE` change are
+restored. Input is limited to 64 MiB, render arguments to 1 MiB, SVG output to
+32 MiB and logs to 64 KiB. The 25-second Python deadline is cooperative: it
+cannot interrupt a blocked native-library call. A native renderer crash ends the
+extension process. Custom external executables keep their existing launch path.
+Run `BURETTE_XYZRENDER_ENV=/path/to/pinned/venv bun tests/test-embedded-xyzrender.mjs`
+to verify repeated rendering, invalid-input recovery, initialization failure and
+environment isolation with `process-fork` denied.
+
 External-renderer text formats (CUB/CUBE, ABI, COM, FDF, FHIAIMS, GMS, IN,
 INP, LOG, NW, OUT, PSI4, QCIN, VASP, XYZR) are converted to PDB through the
 required `text-coordinates-to-pdb` converter and open in Mol* on `auto`; the
