@@ -15,6 +15,8 @@ import { Asset } from "@molstar/core/util/assets";
 import { Unzip } from "@molstar/core/util/zip/zip";
 import { Color } from "@molstar/core/util/color";
 import { Binding } from "@molstar/core/util/binding";
+import type { KeyInput } from "@molstar/core/util/input/input-observer";
+import type { InteractivityManager } from "@molstar/plugin/state/manager/interactivity";
 import { MarkerAction } from "@molstar/core/util/marker-action";
 import { createMesoscaleCanvasInteractionController, shouldClearMesoscaleSelectionOnMiss, type MesoscaleCanvasPoint } from "./mesoscale-canvas-interaction";
 import { installMesoscalePanelResizeHandles } from "./mesoscale-panel-resize";
@@ -1406,7 +1408,7 @@ function postSceneSummary(runtime: MesoscaleRuntimeApi, documentId: string | und
 }
 
 function installBuretteSelectionAppearanceGuard(runtime: MesoscaleRuntimeApi) {
-  return runtime.plugin.behaviors.interaction.keyReleased.subscribe(({ code }) => {
+  return runtime.plugin.behaviors.interaction.keyReleased.subscribe(({ code }: KeyInput) => {
     if (!code.startsWith("Shift") && !code.startsWith("Control")) return;
     queueMicrotask(() => {
       const canvas = runtime.plugin.canvas3d;
@@ -1418,7 +1420,7 @@ function installBuretteSelectionAppearanceGuard(runtime: MesoscaleRuntimeApi) {
 }
 
 function installBuretteSceneHover(runtime: MesoscaleRuntimeApi) {
-  const subscription = runtime.plugin.behaviors.interaction.hover.subscribe(({ current }) => {
+  const subscription = runtime.plugin.behaviors.interaction.hover.subscribe(({ current }: InteractivityManager.HoverEvent) => {
     const canvas = runtime.plugin.canvas3d;
     if (!canvas) return;
     canvas.mark({ loci: EveryLoci }, MarkerAction.RemoveHighlight);
