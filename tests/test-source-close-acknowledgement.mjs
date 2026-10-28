@@ -15,7 +15,7 @@ let openSource = async () => ({
 });
 const errors = [];
 globalThis.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
-globalThis.window = { location: { search: "" }, confirm() { throw new Error("Native source close used window.confirm"); }, alert() { throw new Error("Native source close used window.alert"); }, setTimeout: () => 1, clearTimeout() {} };
+globalThis.window = { location: { search: "" }, addEventListener() {}, removeEventListener() {}, confirm() { throw new Error("Native source close used window.confirm"); }, alert() { throw new Error("Native source close used window.alert"); }, setTimeout: () => 1, clearTimeout() {} };
 const react = await import("react");
 mock.module("react", () => ({
   ...react,
@@ -49,6 +49,7 @@ const controller = useSourceEditingController({ activeDocument: document, prefer
 await controller.beginEditing(document);
 controller.updateDraft(document, "ATOM draft\n");
 const draft = sessions[document.path];
+const operation = controller.captureOperation(document);
 
 function shellActions() {
   useMoleculeStore.getState().setDocuments([document]);
@@ -73,6 +74,7 @@ for (const route of ["closeTab", "clearAllDocuments"]) {
   await actions[route](tabs[0].id);
   assert.deepEqual(useMoleculeStore.getState().tabs, tabs);
   assert.equal(sessions[document.path], draft);
+  assert.equal(operation.isCurrent(), true, "Cancel keeps the pending edit's document lifetime");
 }
 assert.equal(calls.filter(([command]) => command === "close_opened_source_documents").length, 0);
 assert.deepEqual(dialogs.at(-1)[2], { title: "Unsaved Source Changes", kind: "warning", okLabel: "Discard", cancelLabel: "Cancel" });
@@ -85,8 +87,10 @@ await controller.save(document);
 assert.equal(await controller.closeDocuments([document.id]), false, "overlapping closes cannot bypass the pending prompt");
 assert.equal(sessions[document.path], draft);
 assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, true);
+assert.equal(operation.isCurrent(), false, "an edit cannot write during the close prompt");
 answer(false);
 assert.equal(await prompting, false);
+assert.equal(operation.isCurrent(), true);
 assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, false);
 confirm = async () => { throw new Error("dialog unavailable"); };
 assert.equal(await controller.closeDocuments([document.id]), false);
@@ -97,6 +101,7 @@ confirm = async () => true;
 close = async () => { throw new Error("source_commit_uncertain"); };
 assert.equal(await controller.closeDocuments([document.id]), false);
 assert.equal(sessions[document.path], draft, "a rejected native release preserves the full editable draft");
+assert.equal(operation.isCurrent(), true, "a failed native release cannot invalidate pending edits");
 assert.equal(errors.length, 1);
 
 let release;
@@ -111,6 +116,8 @@ assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, true);
 await closing;
 release();
 assert.equal(await pending, true);
+assert.equal(operation.isCurrent(), false, "the close acknowledgement permanently invalidates the pending edit");
+operation.release();
 assert.deepEqual(sessions, {});
 assert.equal(controller.getWindowDirtySnapshot().closeTransitionActive, false);
 assert.equal(calls.filter(([command]) => command === "close_source_edit_session").length, 0,

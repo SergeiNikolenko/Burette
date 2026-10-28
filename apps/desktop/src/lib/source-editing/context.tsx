@@ -2,10 +2,15 @@ import { createContext, useContext, type ReactNode } from "react";
 import type { ViewerDocument } from "../../types";
 import type { SourcePreviewFrameSnapshot, SourcePreviewIdentity } from "../source-preview/types";
 
+/** Whether the scene shows the draft while its replacement preview loads. */
+export type SourcePreviewState = "current" | "queued" | "staging" | "manual" | "paused" | "unsupported";
+
 export type SourceEditingView = {
   documentId: string;
   path: string;
   content: string;
+  /** Last acknowledged file content, for detecting replacement before export. */
+  baseContent?: string;
   editable: boolean;
   dirty: boolean;
   saving: boolean;
@@ -14,6 +19,7 @@ export type SourceEditingView = {
   previewMode: "live" | "manual";
   saveDisabledReason: string | null;
   sourcePreview: SourcePreviewFrameSnapshot | null;
+  previewState?: SourcePreviewState;
 };
 
 export type SourceEditingWindowDirtySnapshot = {
@@ -22,8 +28,12 @@ export type SourceEditingWindowDirtySnapshot = {
   closeTransitionActive: boolean;
 };
 
+/** A pending edit belongs to its open document until release or successful close. */
+export type SourceEditingOperation = { isCurrent: () => boolean; release: () => void };
+
 export type SourceEditingContextValue = {
   sessionForDocument: (document: ViewerDocument | null) => SourceEditingView | null;
+  captureOperation: (document: ViewerDocument) => SourceEditingOperation;
   beginEditing: (document: ViewerDocument) => void | Promise<void>;
   updateDraft: (document: ViewerDocument, content: string) => void;
   applyPreview: (document: ViewerDocument) => void | Promise<void>;

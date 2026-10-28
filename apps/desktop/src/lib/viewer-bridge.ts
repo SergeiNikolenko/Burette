@@ -78,22 +78,27 @@ export function postToXyzrenderViewer(documentId: string | undefined, body: Reco
 
 // Request/ack transport for workspace commands that must finish before the next
 // operation. Both the frame and request id are checked, including hidden tabs.
-export async function requestViewerAction(documentId: string, action: Record<string, unknown>, timeoutMs = 60000) {
+export async function requestViewerAction(documentId: string, action: Record<string, unknown>, timeoutMs = 60000, signal?: AbortSignal) {
+  signal?.throwIfAborted();
   const frame = activeViewerIframeForDocument(documentId);
   if (!frame?.contentWindow || frame.dataset.readOnly === "true") throw new Error("Open the scene and wait for it to load.");
   const source = frame.contentWindow;
   const id = `workspace-${crypto.randomUUID()}`;
   return new Promise<Record<string, unknown>>((resolve, reject) => {
-    const finish = () => { window.clearTimeout(timer); window.removeEventListener("message", receive); };
+    const finish = () => { window.clearTimeout(timer); window.removeEventListener("message", receive); signal?.removeEventListener("abort", abort); };
+    const abort = () => { finish(); reject(new DOMException("Viewer request cancelled.", "AbortError")); };
     const receive = (event: MessageEvent) => {
       const body = event.data?.source === "burette-agent-viewer" ? event.data.body : null;
       if (event.source !== source || body?.type !== "agent-action-result" || body.id !== id) return;
       finish();
-      if (body.result?.ok) resolve(body.result.result ?? {});
+      if (activeViewerIframeForDocument(documentId)?.contentWindow !== source) reject(new Error("The viewer changed before the response arrived."));
+      else if (body.result?.ok) resolve(body.result.result ?? {});
       else reject(new Error(body.result?.error?.message ?? body.result?.message ?? "The viewer could not complete this action."));
     };
     const timer = window.setTimeout(() => { finish(); reject(new Error("The scene did not respond. Check it before retrying.")); }, timeoutMs);
     window.addEventListener("message", receive);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) { abort(); return; }
     try {
       source.postMessage({ source: "burette-agent-host", body: { type: "agent-action", id, action } }, "*");
     } catch (error) {

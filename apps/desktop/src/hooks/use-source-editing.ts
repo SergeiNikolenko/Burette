@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
-import type { SourceEditingContextValue, SourceEditingView } from "../lib/source-editing/context";
+import type { SourceEditingContextValue, SourceEditingView, SourcePreviewState } from "../lib/source-editing/context";
 import { SourcePreviewAdapter } from "../lib/source-preview/adapter";
 import type { SourcePreviewCandidate, SourcePreviewIdentity } from "../lib/source-preview/types";
 import { openBrowserDevTextDocument } from "../lib/browser-dev-documents";
@@ -31,7 +31,7 @@ type InternalSourceSession = SourceEditingView & {
   lastValidRevision: number;
   expectedRevision: FileRevision | null;
   baseContent: string;
-  previewState: "current" | "queued" | "staging" | "manual" | "paused" | "unsupported";
+  previewState: SourcePreviewState;
 };
 
 type NativeOpenResult = {
@@ -100,8 +100,24 @@ export function useSourceEditingController({
   const savingPathsRef = useRef(new Set<string>());
   const closingDocumentIdsRef = useRef(new Set<string>());
   const openingSourceTokensRef = useRef(new Map<string, symbol>());
+  const operationTokensRef = useRef(new Map<string, Set<symbol>>());
   const stagingWindowsRef = useRef(new Map<WindowProxy, { path: string; identity: SourcePreviewIdentity }>());
   const dirtySnapshotRef = useRef({ signature: "", revision: 0 });
+
+  const captureOperation = useCallback((document: ViewerDocument) => {
+    const tokens = operationTokensRef.current.get(document.id) ?? new Set<symbol>();
+    const token = Symbol();
+    tokens.add(token);
+    operationTokensRef.current.set(document.id, tokens);
+    return {
+      isCurrent: () => operationTokensRef.current.get(document.id) === tokens && tokens.has(token)
+        && !closingDocumentIdsRef.current.has(document.id),
+      release: () => {
+        tokens.delete(token);
+        if (!tokens.size && operationTokensRef.current.get(document.id) === tokens) operationTokensRef.current.delete(document.id);
+      },
+    };
+  }, []);
 
   const commitSessions = useCallback((update: (current: Record<string, InternalSourceSession>) => Record<string, InternalSourceSession>) => {
     const current = sessionsRef.current;
@@ -514,6 +530,7 @@ export function useSourceEditingController({
   }, [hasUnsavedOrSavingSessions]);
 
   useEffect(() => () => {
+    operationTokensRef.current.clear();
     for (const timer of timersRef.current.values()) window.clearTimeout(timer);
     for (const adapter of adaptersRef.current.values()) adapter.dispose();
   }, []);
@@ -565,6 +582,8 @@ export function useSourceEditingController({
       commitSessions((current) => Object.fromEntries(
         Object.entries(current).filter(([, session]) => !wanted.has(session.documentId)),
       ));
+      // Invalidate pending edits even when no source session has opened.
+      for (const id of wanted) operationTokensRef.current.delete(id);
       return true;
     } catch (error) {
       pushErrorStatus(error, "Close source");
@@ -575,7 +594,13 @@ export function useSourceEditingController({
   }, [clearStagingWindows, commitSessions, pushErrorStatus]);
 
   return useMemo(() => ({
-    sessionForDocument: (document: ViewerDocument | null) => document ? sessions[document.path] ?? null : null,
+    // Async callers must see updates made since their render.
+    sessionForDocument: (document: ViewerDocument | null) => {
+      if (!document) return null;
+      const session = sessionsRef.current[document.path];
+      return session?.documentId === document.id ? session : null;
+    },
+    captureOperation,
     beginEditing,
     updateDraft,
     applyPreview: (document: ViewerDocument) => preparePreview(document),
@@ -585,5 +610,5 @@ export function useSourceEditingController({
     confirmCloseWindow,
     getWindowDirtySnapshot,
     hasUnsavedOrSavingSessions,
-  }), [beginEditing, closeDocuments, confirmCloseWindow, getWindowDirtySnapshot, hasUnsavedOrSavingSessions, preparePreview, save, sessions, stagingLoaded, updateDraft]);
+  }), [beginEditing, captureOperation, closeDocuments, confirmCloseWindow, getWindowDirtySnapshot, hasUnsavedOrSavingSessions, preparePreview, save, sessions, stagingLoaded, updateDraft]);
 }
