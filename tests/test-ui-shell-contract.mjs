@@ -1003,7 +1003,7 @@ assert.match(moleculeStore, /invoke\("prune_recent_documents", \{ checkedDocumen
 assert.match(moleculeStore, /listen<GlobalRecentStructuresSnapshot>\(\s*"recent-documents:changed"/);
 assert.match(moleculeStore, /void initializeNativeRecentDocuments\(\)/);
 assert.match(moleculeStore, /const storedTabs = \(\(restoreTabs \? stored\?\.tabs : undefined\) \?\? current\.tabs\)\.filter/);
-assert.match(browserDevStartup, /export async function browserDevFilesFromLocation\(\)/);
+assert.match(browserDevStartup, /export async function browserDevFilesFromLocation\(/);
 assert.match(browserDevStartup, /if \(params\.has\("devDocking"\)\) return \[\];/);
 assert.match(browserDevStartup, /params\.has\("devFiles"\)/);
 assert.match(browserDevStructureBundles, /for \(const path of paths\) \{\s*addPath\(path\);\s*if \(!isStructureBundleCandidate\(path\)\) continue;/);
@@ -1038,7 +1038,8 @@ assert.match(appSidebarProjectsHook, /window\.setTimeout\(\(\) => void refresh\(
 assert.match(appSidebarProjectsHook, /const sidebarRecentStructures = browserDevExplicitFolders\.length > 0 \? noRecentStructures : recentStructures;/);
 assert.match(appSidebarProjectsHook, /recentStructures: sidebarRecentStructures,/);
 assert.match(browserDevStartup, /return \[\];\s*}\s*export function browserDevFoldersFromLocation/);
-assert.match(browserDevStartup, /export function splitDevFiles\(rawFiles: string\)/);
+assert.match(await source("apps/desktop/src/lib/browser-dev-paths.ts"), /export function splitDevFiles\(rawFiles: string\)/);
+assert.match(browserDevStartup, /export \{ absoluteBrowserDevPath, splitDevFiles \} from "\.\/browser-dev-paths";/);
 assert.doesNotMatch(app, /fetch\("\/__burette\/dev-files", \{ cache: "no-store" \}\)/);
 assert.match(buretteAgentCli, /function browserDevFsAllowRoots\(initialFile, extraFiles = \[\]\)/);
 assert.match(buretteAgentCli, /const browserDevGeneratedFilesRoot = browserGeneratedFilesRoot\(\)/);

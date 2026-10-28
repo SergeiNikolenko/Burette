@@ -1,3 +1,4 @@
+import { BROWSER_IMPORT_MAX_FILE_BYTES, listBrowserImports, saveBrowserImport, type BrowserImport } from "./browser-import-storage";
 import { isDocumentMediaPath, documentViewerExtensions } from "./file-routing";
 import { demoLibraryFiles } from "./web-demo-library";
 import { standaloneDemoScenes } from "./web-demo-scenes";
@@ -5,7 +6,7 @@ import kras from "../../../../samples/structures/proteins/7rpz.pdb?raw";
 import imatinibPoses from "../../../../samples/structures/small-molecules/imatinib-poses.sdf?raw";
 import mosesProperties from "../../../../samples/collections/tables/moses-properties.csv?raw";
 import type { SidebarProjectStructure } from "./sidebar-projects";
-import { writeBrowserDevVirtualTextDocument } from "./browser-dev-documents";
+import { readBrowserDevVirtualTextDocument, writeBrowserDevVirtualTextDocument } from "./browser-dev-documents";
 import moses10k from "../../../../samples/collections/tables/moses-10k.csv?raw";
 import extxyzCell from "../../../../samples/extxyz-cell.xyz?raw";
 import ketcher2dBenzene from "../../../../samples/ketcher-2d-benzene.sdf?raw";
@@ -36,10 +37,20 @@ const WEB_DEMO_ROOT = "/BuretteDemo";
 const WEB_DEMO_ENABLED = import.meta.env.VITE_BURETTE_WEB_DEMO === "1";
 const MAX_FILE_BYTES = 3 * 1024 * 1024;
 const listeners = new Set<() => void>();
-const binaryFiles = new Map<string, File>();
+const binaryFiles = new Map<string, Blob>();
 export function readBrowserPickedFile(path: string) { return binaryFiles.get(path) ?? null; }
 const files = new Map<string, SidebarProjectStructure>();
 let standaloneInitialized = false;
+let importsInitialized: Promise<void> | undefined;
+
+export function initializeBrowserImportedFiles() {
+  importsInitialized ??= listBrowserImports().then(async (imports) => {
+    if (imports.some(record => record.kind !== "text" && record.kind !== "media")) throw new Error("Saved browser files require a newer file reader.");
+    for (const record of imports) await registerImportedFile(record);
+    if (imports.length) emitChange();
+  }).catch(error => { importsInitialized = undefined; throw error; });
+  return importsInitialized;
+}
 
 const methaneXyz = `5
 Methane
@@ -102,11 +113,11 @@ export async function initializeWebDemoWorkspace() {
       if (!response.ok) throw new Error(`Could not load demo file ${scene.asset}`);
       return { path: `${WEB_DEMO_ROOT}/${scene.path}`, text: await response.text() };
     }));
-    files.clear();
     for (const source of sources) registerText(source.path, source.text);
     for (const file of demoLibraryFiles) {
       const title = file.path.split("/").pop()!;
       const path = `${WEB_DEMO_ROOT}/${file.path}`;
+      if (files.has(path)) continue;
       files.set(path, { path, title, extension: title.split(".").pop()!.toLowerCase(), renderer: "molstar", byteCount: file.byteCount, openedAt: null });
     }
     emitChange();
@@ -152,18 +163,46 @@ export async function pickWebDemoFiles(options: { directory?: boolean } = {}) {
     const relativePath = options.directory ? file.webkitRelativePath : file.name;
     const path = `${root}/${relativePath.split("/").slice(options.directory ? 1 : 0).map(cleanSegment).join("/")}`;
     if (!path || path.endsWith("/")) continue;
-    if (isDocumentMediaPath(path)) {
-      if (!binaryFiles.has(path) && binaryFiles.size >= 32) throw new Error("Too many open documents");
-      binaryFiles.set(path, file);
-      registerFile(path, file.size);
-    } else registerText(path, await file.text(), file.size);
-    paths.push(path);
+    paths.push(await importFile(path, file, MAX_FILE_BYTES));
   }
   emitChange();
   return paths.length > 0 ? { root, paths } : null;
 }
 
+async function importFile(path: string, file: File, maxInputBytes: number) {
+  const kind = isDocumentMediaPath(path) ? "media" : "text";
+  if (file.size > maxInputBytes) throw new Error("File exceeds the browser import limit");
+  if (kind === "media" && binaryFiles.size >= 32) throw new Error("Too many open documents");
+  const text = kind === "text" ? await file.text() : undefined;
+  const record = await saveBrowserImport({ path, name: file.name, file, kind }, files.keys());
+  await registerImportedFile(record, text);
+  return record.path;
+}
+
+async function registerImportedFile(record: BrowserImport, text?: string) {
+  const { path, file, kind } = record;
+  if (files.has(path)) return;
+  if (kind === "media") binaryFiles.set(path, file);
+  else {
+    const restored = text ?? await file.text();
+    if (readBrowserDevVirtualTextDocument(path) === null) writeBrowserDevVirtualTextDocument(path, restored);
+  }
+  registerFile(path, file.size);
+}
+
+export async function registerDroppedBrowserFiles(selected: File[], maxInputBytes: number) {
+  const paths: string[] = [], errors: string[] = [];
+  for (const file of selected) {
+    try {
+      paths.push(await importFile(`/OpenedFiles/${cleanSegment(file.name)}`, file, Math.min(maxInputBytes, BROWSER_IMPORT_MAX_FILE_BYTES)));
+    } catch (error) { errors.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`); }
+  }
+  if (paths.length) emitChange();
+  return { paths, errors };
+}
+
 function registerText(path: string, text: string, byteCount = new TextEncoder().encode(text).length) {
+  if (files.has(path)) return;
   writeBrowserDevVirtualTextDocument(path, text);
   registerFile(path, byteCount);
 }

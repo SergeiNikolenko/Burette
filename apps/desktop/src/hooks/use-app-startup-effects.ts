@@ -71,7 +71,9 @@ export function useAppStartupEffects({
     if (isTauriRuntime() || syncingBrowserDevFilesRef.current) return;
     let cancelled = false;
     void (async () => {
-      const paths = await browserDevFilesFromLocation();
+      const paths = await browserDevFilesFromLocation((error) => {
+        if (!cancelled) pushErrorStatus(error, "Restore browser files failed");
+      });
       if (cancelled || paths.length === 0) return;
       const normalizedFiles = paths.join("\n");
       const needsInitialOpen = openedBrowserDevFilesRef.current !== normalizedFiles;

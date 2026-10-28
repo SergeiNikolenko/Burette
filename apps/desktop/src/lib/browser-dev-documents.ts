@@ -1,3 +1,6 @@
+import { readBrowserImport } from "./browser-import-storage";
+import { isExplicitBrowserDevServerPath } from "./browser-dev-paths";
+import { isTauriRuntime } from "./tauri";
 import { inflateStructureBytes } from "./structure-inflate";
 import { demoLibraryUrl } from "./web-demo-library";
 import { standaloneDemoSnapshot } from "./web-demo-scenes";
@@ -644,7 +647,7 @@ export async function appendToBrowserDevCollection(
 }
 
 export async function readBrowserDevCollectionText(path: string) {
-  const virtualText = browserDevVirtualTextDocuments.get(path);
+  const virtualText = await readBrowserVirtualText(path);
   if (virtualText !== undefined) return virtualText;
   const extension = collectionExtension(path);
   const url = browserDevReadUrl(path, extension);
@@ -661,6 +664,18 @@ export async function readBrowserDevCollectionText(path: string) {
 
 export function readBrowserDevVirtualTextDocument(path: string) {
   return browserDevVirtualTextDocuments.get(path) ?? null;
+}
+
+/** Restore immutable original text only when no current draft exists. */
+export async function readBrowserVirtualText(path: string) {
+  if (!isTauriRuntime() && !isExplicitBrowserDevServerPath(path) && !browserDevVirtualTextDocuments.has(path)) {
+    const record = await readBrowserImport(path);
+    if (record?.kind === "text" && !browserDevVirtualTextDocuments.has(path)) {
+      const restored = await record.file.text();
+      if (!browserDevVirtualTextDocuments.has(path)) browserDevVirtualTextDocuments.set(path, restored);
+    }
+  }
+  return browserDevVirtualTextDocuments.get(path);
 }
 
 export function deleteBrowserDevVirtualTextDocument(path: string) {
@@ -691,7 +706,7 @@ async function openBrowserDevDocument(
   documentId?: string,
 ): Promise<ViewerDocument> {
   const extension = fileExtension(path);
-  const virtualText = browserDevVirtualTextDocuments.get(path);
+  const virtualText = await readBrowserVirtualText(path);
   if (virtualText !== undefined) {
     const bytes = new TextEncoder().encode(virtualText);
     if (bytes.length === 0) throw new Error(`${path} is empty`);
@@ -1046,7 +1061,7 @@ function isCoordinateTrajectoryPayload(payload: BrowserDevDockingPayload) {
 
 async function readBrowserDevDockingPayload(path: string): Promise<BrowserDevDockingPayload> {
   const extension = fileExtension(path);
-  const virtualText = browserDevVirtualTextDocuments.get(path);
+  const virtualText = await readBrowserVirtualText(path);
   if (virtualText !== undefined) {
     const bytes = new TextEncoder().encode(virtualText);
     return browserDevDockingPayloadFromBytes(path, extension, bytes, bytes.length);
