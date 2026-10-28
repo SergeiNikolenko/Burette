@@ -117,6 +117,7 @@
         "dompurify": "^3.4.16",
         "eve-raphael": "0.5.0",
         "events": "3.3.0",
+        "fflate": "0.8.3",
         "gifenc": "^1.0.3",
         "gifuct-js": "^2.1.2",
         "hast-util-to-jsx-runtime": "^2.3.6",

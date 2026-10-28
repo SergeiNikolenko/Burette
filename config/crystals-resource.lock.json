@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "openchemistry-crystals",
+  "source": {
+    "repository": "https://github.com/OpenChemistry/crystals",
+    "commit": "7adea78a682c1fa793825c85e67de531005413ff",
+    "prefix": "crystals-7adea78a682c1fa793825c85e67de531005413ff/",
+    "archiveUrl": "https://codeload.github.com/OpenChemistry/crystals/zip/7adea78a682c1fa793825c85e67de531005413ff",
+    "archiveBytes": 21874232,
+    "archiveSha256": "d9479041bb9c437a45cf06c926107c6290da72ebcda4291023d9d41e76b0a155"
+  },
+  "limits": {
+    "archiveBytes": 67108864,
+    "expandedBytes": 67108864,
+    "entries": 2048,
+    "cifBytes": 32768,
+    "retainedBytes": 4194304
+  },
+  "corpus": {
+    "cifCount": 524,
+    "cifBytes": 1429884
+  },
+  "bundle": {
+    "path": "resources/extensions/openchemistry-crystals.json.gz",
+    "bytes": 294538,
+    "sha256": "6d817d984aa89ccd124ac5862c8aaa1393e1a0e7256726235dbbae207c0e5c5a",
+    "compressor": "fflate-0.8.3-gzip-level9-mtime0"
+  }
+}
