@@ -14,6 +14,8 @@ import { ShortcutTooltip } from "./shortcut-tooltip";
 import { FoldingResultsPanel, useFoldingResult } from "./folding-results-panel";
 import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState, StructureOverlayMode, StructureViewerAction } from "./types";
+import { classifyCifStructure, type CifStructureClassification } from "../lib/cif-structure-classification";
+import { useSourceEditing } from "../lib/source-editing/context";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
 import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
 import { activeViewerIframeForDocument, isKnownViewerMessageSource, requestViewerAction } from "../lib/viewer-bridge";
@@ -79,6 +81,7 @@ type StructureInfoPanelProps = {
 
 type XtbSettingsCategory = "core" | "solvation" | "properties" | "dynamics" | "output";
 type InspectorStructureTextSource = {
+  text?: string;
   path: string;
   extension: string;
   virtual: boolean;
@@ -308,7 +311,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
     );
   }
 
-  const brief = structureBriefForDocument(document, formatBytes(document.byteCount));
+  const brief = structureBriefForDocument(document, formatBytes(document.byteCount), composition.cifKind);
   const derivedTopology = document.dockingRequest?.syntheticTopology === true;
   // Placeholder atoms have no chemical identity, so a parsed composition would
   // mislabel atom count as residues/ligands and must stay hidden until the user
@@ -2133,26 +2136,35 @@ function XtbArtifactInfoCard({
 }
 
 function useStructureComposition(document: ViewerDocument | null) {
+  const draft = useSourceEditing()?.sessionForDocument(document)?.content;
+  const sourceIdentity = useMemo(() => ({ document, draft }), [document, draft]);
   const [state, setState] = useState<{
     documentId: string | null;
+    sourceIdentity: object | null;
+    cifKind: CifStructureClassification["kind"];
     loading: boolean;
     summary: StructureCompositionSummary | null;
     error: string | null;
-  }>({ documentId: null, loading: false, summary: null, error: null });
+  }>({ documentId: null, sourceIdentity: null, cifKind: null, loading: false, summary: null, error: null });
 
   useEffect(() => {
     if (!document) {
-      setState({ documentId: null, loading: false, summary: null, error: null });
+      setState({ documentId: null, sourceIdentity, cifKind: null, loading: false, summary: null, error: null });
       return undefined;
     }
     let cancelled = false;
-    setState({ documentId: document.id, loading: true, summary: null, error: null });
-    const source = structureCompositionSourceForDocument(document);
+    setState({ documentId: document.id, sourceIdentity, cifKind: null, loading: true, summary: null, error: null });
+    const source = { ...structureCompositionSourceForDocument(document), text: document.dockingRequest ? undefined : draft };
     void readInspectorStructureText(source)
-      .then((text) => {
+      .then(async (text) => {
+        if (cancelled) return;
+        // Reuse this source read; publish its classification only for this exact revision.
+        const cifKind = ["cif", "mmcif"].includes(source.extension.replace(/^\./u, "").toLowerCase())
+          ? (await classifyCifStructure(text)).kind : null;
         if (cancelled) return;
         setState({
           documentId: document.id,
+          sourceIdentity, cifKind,
           loading: false,
           summary: parseStructureComposition(text, source.extension),
           error: null,
@@ -2162,6 +2174,7 @@ function useStructureComposition(document: ViewerDocument | null) {
         if (cancelled) return;
         setState({
           documentId: document.id,
+          sourceIdentity, cifKind: null,
           loading: false,
           summary: null,
           error: error instanceof Error ? error.message : String(error),
@@ -2170,9 +2183,9 @@ function useStructureComposition(document: ViewerDocument | null) {
     return () => {
       cancelled = true;
     };
-  }, [document]);
+  }, [document, draft]);
 
-  return state;
+  return { ...state, cifKind: state.sourceIdentity === sourceIdentity ? state.cifKind : null };
 }
 
 function structureCompositionSourceForDocument(document: ViewerDocument): InspectorStructureTextSource {
@@ -2188,7 +2201,7 @@ function structureCompositionSourceForDocument(document: ViewerDocument): Inspec
 
 function readInspectorStructureText(source: InspectorStructureTextSource) {
   const maxBytes = compositionReadLimit(source);
-  const virtualText = source.virtual ? readBrowserDevVirtualTextDocument(source.path) : null;
+  const virtualText = source.text ?? (source.virtual ? readBrowserDevVirtualTextDocument(source.path) : null);
   if (virtualText !== null) {
     return Promise.resolve(maxBytes === undefined ? virtualText : virtualText.slice(0, maxBytes));
   }

@@ -2654,7 +2654,7 @@ assert.match(structureInfoPanel, /No structure selected/);
 assert.match(structureInfoPanel, /actions\.showDocumentMetadata\(document\)/);
 assert.match(structureInfoPanel, /actions\.revealDocument\(document\)/);
 assert.match(structureInfoPanel, /actions\.copyDocumentPath\(document\)/);
-assert.match(structureInfoPanel, /structureBriefForDocument\(document, formatBytes\(document\.byteCount\)\)/);
+assert.match(structureInfoPanel, /structureBriefForDocument\(document, formatBytes\(document\.byteCount\), composition\.cifKind\)/);
 assert.match(structureInfoPanel, /readBrowserDevVirtualTextDocument\(document\.path\)/);
 assert.match(structureInfoPanel, /<InspectorSection title="Composition"/);
 // Grid hover is rendered once in the inspector, above the filters, rather than
@@ -2998,7 +2998,7 @@ assert.match(structureInfoPanel, /import \{ extensionForDocking \} from "\.\.\/l
 assert.match(structureInfoPanel, /path: document\.dockingRequest\.receptorPath/);
 assert.match(structureInfoPanel, /extension: extensionForDocking\(document\.dockingRequest\.receptorPath\)/);
 assert.match(structureInfoPanel, /function readInspectorStructureText\(source: InspectorStructureTextSource\)/);
-assert.match(structureInfoPanel, /const virtualText = source\.virtual \? readBrowserDevVirtualTextDocument\(source\.path\) : null/);
+assert.match(structureInfoPanel, /const virtualText = source\.text \?\? \(source\.virtual \? readBrowserDevVirtualTextDocument\(source\.path\) : null\)/);
 assert.match(structureInfoPanel, /return readStructureText\(source\.path, \{ maxBytes \}\)/);
 assert.match(structureInfoPanel, /return 12 \* 1024 \* 1024/);
 assert.match(structureInfoPanel, /const primaryAction = row\.action/);
@@ -3053,7 +3053,7 @@ assert.match(browserDevDocuments, /function maestroIndependentEntriesToPdb/);
 assert.match(browserDevDocuments, /function maestroEntryChainName/);
 assert.match(structureComposition, /normalizedType === "full_system"/);
 assert.doesNotMatch(structureComposition, /componentRows\.push\(\{ label: "Energy"/);
-assert.match(structureBrief, /export function structureBriefForDocument\(document: ViewerDocument, sizeLabel: string\): StructureBriefModel/);
+assert.match(structureBrief, /export function structureBriefForDocument\(document: ViewerDocument, sizeLabel: string, cifKind: CifStructureClassification\["kind"\] = null\): StructureBriefModel/);
 assert.match(structureBrief, /\["pdb", "pdbqt", "cif", "mmcif", "bcif", "gro", "mae", "maegz", "cms"\]/);
 assert.match(structureBrief, /\["sdf", "mol", "mol2", "smiles", "smi"\]/);
 assert.match(structureBrief, /\["csv", "tsv"\]/);

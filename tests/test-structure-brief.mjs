@@ -32,10 +32,22 @@ function rowValue(rows, label) {
   return row.value;
 }
 
-for (const extension of ["pdb", "pdbqt", "cif", "mmcif", "bcif", "gro"]) {
+for (const extension of ["pdb", "pdbqt", "gro"]) {
   assert.equal(documentKind(document(extension)), "Macromolecule", extension);
   assert.equal(rowValue(usefulElements(document(extension)), "Components"), "Polymers, ligands, water, and ions when parsed", extension);
 }
+
+for (const extension of ["cif", "mmcif", "bcif"]) {
+  assert.equal(documentKind(document(extension)), "Molecular structure");
+  assert.equal(structureBriefForDocument(document(extension), "1 KB", "Crystal structure").kind, "Crystal structure");
+  assert.equal(documentKind(document(extension), "Macromolecule"), "Macromolecule");
+}
+assert.equal(documentKind(document("sdf"), "Crystal structure"), "Small molecule");
+const { classifyCifStructure } = await import("../apps/desktop/src/lib/cif-structure-classification.ts");
+const parsedCrystal = await classifyCifStructure(await readFile(join(process.cwd(), "samples/mini_core.cif"), "utf8"));
+assert.equal(structureBriefForDocument(document(".CIF"), "1 KB", parsedCrystal.kind).kind, "Crystal structure");
+const parsedPolymer = await classifyCifStructure("data_polymer\n_entity.id 1\n_entity.type polymer\nloop_\n_atom_site.label_entity_id\n_atom_site.Cartn_x\n_atom_site.Cartn_y\n_atom_site.Cartn_z\n1 0 0 0\n");
+assert.equal(structureBriefForDocument(document("MMCIF"), "1 KB", parsedPolymer.kind).kind, "Macromolecule");
 
 for (const extension of ["mae", "maegz", "cms"]) {
   const brief = structureBriefForDocument(document(extension), "1 KB");
@@ -309,6 +321,7 @@ const dockingDocument = document("sdf", {
   },
 });
 assert.equal(documentKind(dockingDocument), "Docking view");
+assert.equal(documentKind({ ...dockingDocument, extension: "cif" }, "Crystal structure"), "Docking view");
 assert.equal(rowValue(usefulElements(dockingDocument), "Receptor"), "receptor.pdb");
 assert.equal(rowValue(usefulElements(dockingDocument), "Ligands"), "2");
 assert.equal(rowValue(usefulElements(dockingDocument), "Active pose"), "3");
