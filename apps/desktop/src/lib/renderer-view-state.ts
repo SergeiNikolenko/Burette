@@ -3,6 +3,11 @@ import { workspaceStorageKey } from "./window-scope";
 type ViewCheckpoint = { version: 1; revision: number; value: string };
 type CheckpointStorage = Pick<Storage, "getItem" | "setItem">;
 
+const MAX_VIEW_STATE_BYTES = 8192;
+// Escaping the payload JSON as a string can double its bytes; the bounded
+// version/revision/value envelope needs fewer than another 128 bytes.
+const MAX_CHECKPOINT_BYTES = 2 * MAX_VIEW_STATE_BYTES + 128;
+
 // Independent bounded records avoid serializing a 1,000-document registry on
 // every camera move. Quota/readback failure never discards the in-memory view.
 export function createRendererViewCheckpointStore(storage: () => CheckpointStorage | null) {
@@ -13,10 +18,10 @@ export function createRendererViewCheckpointStore(storage: () => CheckpointStora
     if (memory) return memory;
     try {
       const text = storage()?.getItem(key(path));
-      if (!text || text.length > 9000) return null;
+      if (!text || text.length > MAX_CHECKPOINT_BYTES || new TextEncoder().encode(text).byteLength > MAX_CHECKPOINT_BYTES) return null;
       const checkpoint = JSON.parse(text) as ViewCheckpoint;
       if (checkpoint.version !== 1 || !Number.isSafeInteger(checkpoint.revision) || checkpoint.revision < 1
-        || typeof checkpoint.value !== "string" || checkpoint.value.length > 8192) return null;
+        || typeof checkpoint.value !== "string" || checkpoint.value.length > MAX_VIEW_STATE_BYTES || new TextEncoder().encode(checkpoint.value).byteLength > MAX_VIEW_STATE_BYTES) return null;
       const value = JSON.parse(checkpoint.value);
       if (!value || typeof value !== "object" || Array.isArray(value)) return null;
       return checkpoint;
@@ -28,7 +33,7 @@ export function createRendererViewCheckpointStore(storage: () => CheckpointStora
       if (!value || typeof value !== "object" || Array.isArray(value) || !path || path.length > 4096) return false;
       let text: string;
       try { text = JSON.stringify(value); } catch { return false; }
-      if (text.length > 8192) return false;
+      if (text.length > MAX_VIEW_STATE_BYTES || new TextEncoder().encode(text).byteLength > MAX_VIEW_STATE_BYTES) return false;
       const previous = read(path);
       const checkpoint: ViewCheckpoint = { version: 1, revision: (previous?.revision ?? 0) + 1, value: text };
       views.delete(path);

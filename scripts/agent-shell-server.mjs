@@ -74,6 +74,7 @@ const RUNTIME_ASSET_PATHS = new Set([
   'sequence-panel.js',
   'native-viewer-menus.js',
   'scene-file-actions.js',
+  'measurement-coordinate.js',
   'sdf-collection-scene.js',
   'molstar.css',
   'molstar.js',

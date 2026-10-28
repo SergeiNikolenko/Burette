@@ -23,6 +23,29 @@ assert.equal(host.save('/source-1.pdb', { xyz: { scale: 2, x: 1, y: 3 } }), fals
 failReadback = false;
 assert.equal(host.save('/oversized', { camera: 'a'.repeat(9000) }), false);
 assert.equal(host.read('/oversized'), null);
+assert.equal(host.save('/unicode', { label: '漢'.repeat(1000) }), true);
+assert.deepEqual(JSON.parse(createRendererViewCheckpointStore(durable).read('/unicode').value), { label: '漢'.repeat(1000) });
+assert.equal(host.save('/unicode', { label: '漢'.repeat(2800) }), false, 'the native view-state limit counts UTF-8 bytes');
+assert.deepEqual(JSON.parse(host.read('/unicode').value), { label: '漢'.repeat(1000) }, 'an oversized update preserves the previous view');
+for (const [name, label] of [
+  ['unicode', '漢'.repeat(2726) + 'ab'],
+  ['quoted-unicode', '漢'.repeat(2000) + '"'.repeat(1090)],
+  ['escaped-ascii', '\\"'.repeat(2045)],
+]) {
+  const path = `/byte-cap-${name}`, value = { label };
+  assert.equal(Buffer.byteLength(JSON.stringify(value), 'utf8'), 8192, `${name} exercises the actual byte cap`);
+  assert.equal(host.save(path, value), true);
+  const checkpoint = host.read(path), key = `burette.renderer-view.v1:${path}`, serialized = checkpoints.get(key);
+  assert.deepEqual(JSON.parse(createRendererViewCheckpointStore(durable).read(path).value), value, `${name} survives a fresh store`);
+  assert.equal(host.save(path, { label: label + 'x' }), false, `${name} rejects one extra byte`);
+  assert.deepEqual(host.read(path), checkpoint, `${name} preserves the live checkpoint`);
+  assert.equal(checkpoints.get(key), serialized, `${name} preserves the durable checkpoint`);
+  assert.deepEqual(createRendererViewCheckpointStore(durable).read(path), checkpoint, `${name} preserves the remounted checkpoint`);
+}
+checkpoints.set('burette.renderer-view.v1:/legacy-oversized', JSON.stringify({ version: 1, revision: 1, value: JSON.stringify({ label: '漢'.repeat(2800) }) }));
+assert.equal(createRendererViewCheckpointStore(durable).read('/legacy-oversized'), null, 'legacy oversized payloads cannot enter through durable storage');
+checkpoints.set('burette.renderer-view.v1:/oversized-envelope', JSON.stringify({ version: 1, revision: 1, value: '{}', padding: '漢'.repeat(6000) }));
+assert.equal(createRendererViewCheckpointStore(durable).read('/oversized-envelope'), null, 'an oversized UTF-8 envelope is bounded before decoding');
 
 const source = readFileSync(new URL('../PreviewExtension/Web/renderer-view-state.js', import.meta.url), 'utf8');
 let stored = null;

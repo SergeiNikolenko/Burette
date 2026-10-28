@@ -108,7 +108,85 @@
     const live = paths.filter(path => labels.has(path.split('/').pop()));
     return live.length ? live : paths;
   }
+  const SCIENCE_ATOM_LIMIT = 10000;
+  function scienceBinding(viewer) {
+    const plugin = viewer?.plugin;
+    const roots = plugin?.managers?.structure?.hierarchy?.current?.structures;
+    if (!Array.isArray(roots) || roots.length !== 1) throw new Error('Scientific data is saved with scenes of exactly one structure.');
+    const structureCell = roots[0].cell;
+    const structure = structureCell?.obj?.data;
+    if (!structure) throw new Error('Wait for the scene to load.');
+    const cells = plugin.state.data.cells;
+    let model = null;
+    let trajectory = null;
+    for (let cell = cells.get(structureCell.transform.parent); cell;) {
+      const id = String(cell.transform.transformer?.id || '');
+      if (!model && id.endsWith('model-from-trajectory')) model = cell;
+      else if (model && id.includes('trajectory-from-')) { trajectory = cell; break; }
+      const parent = cell.transform.parent;
+      if (!parent || parent === cell.transform.ref) break;
+      cell = cells.get(parent);
+    }
+    if (!model || !trajectory) throw new Error('This scene structure has no trajectory source.');
+    const atomCount = structure.elementCount;
+    if (!Number.isInteger(atomCount) || atomCount < 1 || atomCount > SCIENCE_ATOM_LIMIT) throw new Error('Scientific data is saved for structures of 1–10,000 atoms.');
+    const elements = Array.from({ length: atomCount });
+    const positions = new Float64Array(atomCount * 3);
+    const seen = new Uint8Array(atomCount);
+    for (const unit of structure.units) {
+      if (unit.kind !== 0) throw new Error('Scientific data needs an atomic structure.');
+      const hierarchy = unit.model.atomicHierarchy;
+      for (let index = 0; index < unit.elements.length; index++) {
+        const element = unit.elements[index];
+        const source = hierarchy.atomSourceIndex.value(element);
+        if (!(source >= 0 && source < atomCount) || seen[source]) throw new Error('The scene structure does not list each atom once.');
+        seen[source] = 1;
+        elements[source] = String(hierarchy.atoms.type_symbol.value(element));
+        positions[source * 3] = unit.conformation.x(element);
+        positions[source * 3 + 1] = unit.conformation.y(element);
+        positions[source * 3 + 2] = unit.conformation.z(element);
+      }
+    }
+    if (seen.includes(0)) throw new Error('The scene structure does not list each atom once.');
+    return {
+      structureRef: structureCell.transform.ref,
+      modelRef: model.transform.ref,
+      trajectoryRef: trajectory.transform.ref,
+      frameIndex: Math.max(0, Math.trunc(Number(model.transform.params?.modelIndex) || 0)),
+      frameCount: Math.max(1, Math.trunc(Number(trajectory.obj?.data?.frameCount) || 1)),
+      atomCount,
+      elements,
+      positions,
+    };
+  }
+  // Explicit graph identity includes the exact parser input, not coincident positions.
+  async function graphSourceBinding(viewer) {
+    const report = scienceBinding(viewer);
+    const cells = viewer.plugin.state.data.cells;
+    const trajectory = cells.get(report.trajectoryRef);
+    const transformer = String(trajectory?.transform?.transformer?.id || '');
+    const sourceFormat = transformer.endsWith('trajectory-from-sdf') ? 'sdf' : transformer.endsWith('trajectory-from-mol') ? 'mol' : null;
+    if (!sourceFormat) throw new Error('This scene has no MOL or SDF graph source.');
+    const raw = cells.get(trajectory.transform.parent);
+    const text = raw?.obj?.data;
+    if (typeof text !== 'string' || new TextEncoder().encode(text).byteLength > 16 * 1024 * 1024) throw new Error('This scene has no bounded graph source.');
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+    // Do not return an identity captured before another model/source was loaded.
+    const current = scienceBinding(viewer);
+    if (!sameScienceBinding(current, { binding: report, positions: report.positions }) || cells.get(report.trajectoryRef) !== trajectory
+      || String(trajectory.transform.transformer?.id || '') !== transformer || cells.get(trajectory.transform.parent) !== raw || raw.obj.data !== text) throw new Error('The scene source changed while it was being read.');
+    return { ...report, sourceFormat, sourceSha256: Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('') };
+  }
+  function sameScienceBinding(current, expected) {
+    const binding = expected?.binding;
+    if (!binding || !['structureRef', 'modelRef', 'trajectoryRef', 'frameIndex', 'frameCount', 'atomCount'].every(key => current[key] === binding[key])) return false;
+    const positions = expected.positions;
+    if (!positions || positions.length !== current.positions.length) return false;
+    for (let index = 0; index < positions.length; index++) if (!(Math.abs(positions[index] - current.positions[index]) <= 1e-3)) return false;
+    return true;
+  }
   window.BuretteSceneFiles = {
+    science: { binding: scienceBinding, graphBinding: graphSourceBinding },
     loadModels,
     checkTrajectoryCount,
     livePaths,
