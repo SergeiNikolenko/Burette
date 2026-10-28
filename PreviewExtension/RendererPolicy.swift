@@ -61,24 +61,40 @@ private struct BundledFormatRegistryDocument: Decodable {
 
 private struct BundledFormatRegistryFormat: Decodable {
     let extensions: [String]
+    let viewer: BundledFormatRegistryViewer?
+}
+
+private struct BundledFormatRegistryViewer: Decodable {
+    let molstarFormat: String
+    let binary: Bool
+    let externalOnly: Bool
 }
 
 enum BundledFormatRegistry {
     private static let registryName = "preview-formats"
 
     static func supportedExtension(_ fileExtension: String) -> Bool? {
-        supportedExtensions.map { $0.contains(normalizeExtension(fileExtension)) }
+        registry.map { $0.formats.contains { $0.extensions.map(normalizeExtension).contains(normalizeExtension(fileExtension)) } }
     }
 
-    private static let supportedExtensions: Set<String>? = {
+    static func format(fileExtension: String) -> BuretteRendererFormat? {
+        guard let viewer = registry?.formats.first(where: {
+            $0.extensions.map(normalizeExtension).contains(normalizeExtension(fileExtension))
+        })?.viewer else { return nil }
+        return BuretteRendererFormat(
+            molstarFormat: viewer.molstarFormat,
+            isBinary: viewer.binary,
+            isExternalXyzrenderOnly: viewer.externalOnly
+        )
+    }
+
+    private static let registry: BundledFormatRegistryDocument? = {
         guard let url = registryURL(),
               let data = try? Data(contentsOf: url),
               let registry = try? JSONDecoder().decode(BundledFormatRegistryDocument.self, from: data) else {
             return nil
         }
-        return Set(registry.formats.flatMap { format in
-            format.extensions.map(normalizeExtension)
-        })
+        return registry
     }()
 
     private static func registryURL() -> URL? {
@@ -116,7 +132,9 @@ enum BuretteCoreBridge {
 
     static func format(fileExtension: String) -> BuretteRendererFormat? {
         guard let response: BuretteCoreBridgeFormat = runJSON(arguments: ["format", fileExtension]) else {
-            return nil
+            // Quick Look can deny a helper process in its sandbox. The bundled
+            // registry still owns parser selection, including binary volumes.
+            return BundledFormatRegistry.format(fileExtension: fileExtension)
         }
         return BuretteRendererFormat(
             molstarFormat: response.molstarFormat,
@@ -243,7 +261,7 @@ struct BuretteRendererPolicy: Equatable {
         let renderer: String
 
         if format.isExternalXyzrenderOnly {
-            renderer = requestedMode == BuretteRendererMode.molstar
+            renderer = requestedMode == BuretteRendererMode.molstar && format.molstarFormat != "cjson"
                 ? BuretteRendererMode.molstar
                 : BuretteRendererMode.xyzrenderExternal
         } else {

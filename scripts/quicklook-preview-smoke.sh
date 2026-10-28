@@ -217,11 +217,23 @@ is_system_table_type() {
      "$type" == "public.tab-separated-values-text" ]]
 }
 
+request_failure_note() {
+  local block="$1"
+  if ! printf '%s\n' "$block" | grep -E 'renderNativeError|JS message type=error:|trace\.requestID=.* state=failed' >/dev/null; then
+    return 1
+  fi
+  printf '%s\n' "$block" |
+    grep -Ei 'renderNativeError|PreviewError|JS message type=error:|timeout|error|failed|exception|unsupported|could not' |
+    tail -n 6 |
+    tr '\t\n' '  ' |
+    sed 's/[[:space:]]\+/ /g; s/[[:space:]]$//'
+}
+
 wait_for_preview_result() {
   local file="$1"
   local before_request_id="$2"
   local deadline=$((SECONDS + TIMEOUT_SECONDS))
-  local request_id block
+  local request_id block diagnostic_note
 
   while [[ "$SECONDS" -lt "$deadline" ]]; do
     request_id="$(last_request_id_for_file "$file")"
@@ -231,14 +243,8 @@ wait_for_preview_result() {
         printf 'OK\t%s\tready\n' "$request_id"
         return 0
       fi
-      if printf '%s\n' "$block" | grep -F 'renderNativeError' >/dev/null; then
-        printf 'FAIL\t%s\t%s\n' "$request_id" "$(
-          printf '%s\n' "$block" |
-            grep -Ei 'renderNativeError|PreviewError|timeout|error|failed|exception|unsupported|could not' |
-            tail -n 6 |
-            tr '\n' ' ' |
-            sed 's/[[:space:]]\+/ /g'
-        )"
+      if diagnostic_note="$(request_failure_note "$block")"; then
+        printf 'FAIL\t%s\t%s\n' "$request_id" "$diagnostic_note"
         return 0
       fi
     fi
@@ -252,8 +258,17 @@ wait_for_preview_result() {
       printf 'OK\t%s\tready\n' "$request_id"
       return 0
     fi
+    if diagnostic_note="$(request_failure_note "$block")"; then
+      printf 'FAIL\t%s\t%s\n' "$request_id" "$diagnostic_note"
+    else
+      diagnostic_note="$(printf '%s\n' "$block" | tail -n 3 | tr '\t\n' '  ' | sed 's/[[:space:]]\+/ /g; s/[[:space:]]$//')"
+      printf 'FAIL\t%s\tpreview request timed out before ready; %s\n' "$request_id" "$diagnostic_note"
+    fi
+    return 0
   fi
 
+  # A current request proves the extension launched. Only diagnose launch or
+  # signing failures when this preview never reached the extension.
   diagnostic_note="$(extension_launch_failure_note "$((TIMEOUT_SECONDS + 15))")"
   if [[ -n "$diagnostic_note" ]]; then
     printf 'FAIL\t%s\t%s\n' "${request_id:-}" "$diagnostic_note"

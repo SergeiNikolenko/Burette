@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 
 const smoke = await readFile(new URL("../scripts/quicklook-preview-smoke.sh", import.meta.url), "utf8");
 const forcePreview = await readFile(new URL("../scripts/force-preview.sh", import.meta.url), "utf8");
@@ -36,6 +37,34 @@ assert.match(smoke, /AppleMobileFileIntegrityError/);
 assert.match(smoke, /Quick Look extension launch failure/);
 assert.match(smoke, /Signature=adhoc/);
 assert.match(smoke, /installed preview extension is ad-hoc signed/);
+
+// Exercise the real shell classifier with request logs and hostile fallback
+// diagnostics: historical signing errors must never replace a current failure.
+const classifier = smoke.slice(smoke.indexOf("request_failure_note() {"), smoke.indexOf("\nrun_preview() {"));
+function classifyPreview({ request = "NEW", previous = "OLD", block = "", timeout = 0, launch = "historical signing failure", adhoc = "ad-hoc signed" } = {}) {
+  const quote = value => `'${String(value).replaceAll("'", "'\\''")}'`;
+  const run = spawnSync("bash", [], {
+    input: `set -euo pipefail\n${classifier}\nTIMEOUT_SECONDS=${timeout}\n` +
+      `last_request_id_for_file() { printf '%s' ${quote(request)}; }\n` +
+      `lines_for_request_id() { printf '%s' ${quote(block)}; }\n` +
+      `extension_launch_failure_note() { printf '%s' ${quote(launch)}; }\n` +
+      `adhoc_extension_note() { printf '%s' ${quote(adhoc)}; }\n` +
+      `wait_for_preview_result fixture ${quote(previous)}\n`,
+    encoding: "utf8", timeout: 5000,
+  });
+  assert.equal(run.status, 0, run.stderr);
+  return run.stdout.trimEnd();
+}
+assert.equal(classifyPreview({ block: "[NEW] JS message type=error: invalid map\n[NEW] trace.requestID=UUID state=failed", timeout: 2 }),
+  "FAIL\tNEW\t[NEW] JS message type=error: invalid map [NEW] trace.requestID=UUID state=failed");
+assert.equal(classifyPreview({ block: "[NEW] renderNativeError: unsupported format" }),
+  "FAIL\tNEW\t[NEW] renderNativeError: unsupported format");
+assert.equal(classifyPreview({ block: "[NEW] WK didCommit" }),
+  "FAIL\tNEW\tpreview request timed out before ready; [NEW] WK didCommit");
+assert.equal(classifyPreview({ block: "[NEW] JS message type=ready: ready" }), "OK\tNEW\tready");
+assert.equal(classifyPreview({ request: "OLD" }), "FAIL\tOLD\thistorical signing failure");
+assert.equal(classifyPreview({ request: "", launch: "" }), "FAIL\t\tad-hoc signed");
+assert.equal(classifyPreview({ request: "", launch: "", adhoc: "" }), "NO_REQUEST\t\tno new request-id in Burette log");
 assert.match(smoke, /preview-trace\.jsonl/);
 assert.match(smoke, /manifest\.json/);
 assert.match(smoke, /trace\+manifest/);
