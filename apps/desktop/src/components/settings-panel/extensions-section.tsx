@@ -6,13 +6,19 @@ import { isTauriRuntime } from "../../lib/tauri";
 import { Button } from "../ui/button";
 import { DotsHorizontal } from "../ui/app-icons";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import type { ShellActions } from "../types";
+import { CrystalsBrowser } from "./crystals-browser";
 import { SettingsSection, type SettingRow } from "./setting-control";
 
-export type ExtensionsSectionProps = { extensions: ReturnType<typeof useResourceExtensions> };
+export type ExtensionsSectionProps = { extensions: ReturnType<typeof useResourceExtensions> & Pick<ShellActions, "openCrystalsStructure"> };
 const links = { Source: "https://github.com/OpenChemistry/crystals", Issues: "https://github.com/OpenChemistry/crystals/issues" };
 
 export function ExtensionsSection({ extensions }: ExtensionsSectionProps) {
   const [issue, setIssue] = useState<{ message: string; retry: () => void; focusTarget: "primary" | "links" } | null>(null);
+  const [browsing, setBrowsing] = useState(false);
+  const library = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (!extensions.installed) setBrowsing(false); }, [extensions.installed]);
+  useLayoutEffect(() => { if (browsing) library.current?.querySelector<HTMLInputElement>("input")?.focus(); }, [browsing]);
   const [dismissedJob, setDismissedJob] = useState<string | null>(null);
   const primary = useRef<HTMLButtonElement>(null), linkButton = useRef<HTMLButtonElement>(null);
   const restoreFocus = useRef<{ from: HTMLElement; to: "primary" | "links" } | null>(null);
@@ -61,6 +67,8 @@ export function ExtensionsSection({ extensions }: ExtensionsSectionProps) {
     control: <>
       <span className="text-sm" aria-label={`${CRYSTALS_RESOURCE.corpus.cifCount} CIF structures`}>{CRYSTALS_RESOURCE.corpus.cifCount} CIF</span>
       {status && <span role="status" className="text-sm tabular-nums">{status}</span>}
+      {extensions.installed && <Button variant="outline" size="settings" aria-label="Browse crystals" aria-expanded={browsing}
+        disabled={Boolean(busy) || !extensions.initialized || Boolean(extensions.error)} onClick={() => setBrowsing(value => !value)}>Browse</Button>}
       {busy ? <Button ref={primary} variant="outline" size="settings" disabled={!busy.cancelable}
         aria-label={`Cancel Crystals ${busy.operation === "install" ? "installation" : "removal"}`} onClick={() => extensions.cancel(busy.id)}>Cancel</Button>
         : <Button ref={primary} variant="outline" size="settings" disabled={!extensions.initialized || Boolean(extensions.error)}
@@ -80,5 +88,14 @@ export function ExtensionsSection({ extensions }: ExtensionsSectionProps) {
     <Button variant="outline" size="settings" disabled={Boolean(busy)} onClick={event => { rememberFocus(event.currentTarget); retry(); }}>Retry</Button>
     {!extensions.error && <Button variant="ghost" size="settings" disabled={Boolean(busy)} onClick={event => { rememberFocus(event.currentTarget); setIssue(null); setDismissedJob(job?.id ?? null); }}>Dismiss</Button>}
   </> });
-  return <SettingsSection title="Resources" hideTitle rows={rows} />;
+  return <>
+    <SettingsSection title="Resources" hideTitle rows={rows} />
+    {browsing && extensions.installed && !busy && !extensions.error && <div ref={library} className="pt-3">
+      <CrystalsBrowser resource={extensions.installed} onOpen={async request => {
+        const path = await extensions.openCrystalsStructure(request);
+        setBrowsing(false);
+        return path;
+      }} />
+    </div>}
+  </>;
 }

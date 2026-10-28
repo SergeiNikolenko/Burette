@@ -31,7 +31,7 @@ function until(runner: Runner, ready: () => boolean) {
 }
 async function fixture(runner: Runner) {
   const host = browser.document.createElement("div"); browser.document.body.append(host); const root = createRoot(host);
-  function Probe() { const state = useSyncExternalStore(runner.subscribe, runner.getSnapshot); return <ExtensionsSection extensions={{ ...state, ...runner }} />; }
+  function Probe() { const state = useSyncExternalStore(runner.subscribe, runner.getSnapshot); return <ExtensionsSection extensions={{ ...state, ...runner, openCrystalsStructure: async () => { throw new Error("No document opener in this fixture"); } }} />; }
   await act(async () => root.render(<Probe />));
   return { host, button(label: string) { return host.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!; },
     async press(label: string) {

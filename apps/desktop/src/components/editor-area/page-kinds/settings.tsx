@@ -17,6 +17,7 @@ export const settingsKind = definePageKind<"settings", SettingsLocation>({
       <SettingsPanel location={location} state={state} actions={actions} extensions={{
         ...state.resourceExtensions, jobs: state.resourceJobs,
         installCrystals: actions.installCrystals, remove: actions.removeCrystals, refresh: actions.refreshResourceExtensions,
+        openCrystalsStructure: actions.openCrystalsStructure,
         cancel: actions.cancelResourceJob, clearFinished: actions.clearResourceJobs,
       }} />
     </Suspense>

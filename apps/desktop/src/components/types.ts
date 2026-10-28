@@ -1,3 +1,4 @@
+import type { CrystalOpenRequest } from "../lib/extensions/open-crystal";
 import type { ConformerJob, ConformerOperation, ConformerSettings, ConformerStatus, DerivedColumnJob, HoveredGridRow, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbSettings, XtbStatus, DatabaseJob } from "../types";
 import type { DatabaseQueryDraft } from "../hooks/use-app-database";
 import type { ResourceJob } from "../lib/extensions/resource-install-runner";
@@ -217,6 +218,7 @@ export type ShellActions = {
   clearConformerJobs: () => void;
   openDatabaseQuery: (provider: DatabaseProvider, seed?: Partial<DatabaseQueryDraft>) => void;
   clearDatabaseJobs: () => void;
+  openCrystalsStructure: (request: CrystalOpenRequest) => Promise<string>;
   installCrystals: () => Promise<ResourceJob>;
   removeCrystals: () => Promise<ResourceJob>;
   refreshResourceExtensions: () => Promise<void>;
