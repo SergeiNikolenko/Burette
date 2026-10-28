@@ -10,8 +10,8 @@ const require = createRequire(import.meta.url);
 const SOURCE_ROOT = path.join(REPO_ROOT, "PreviewExtension/Web");
 const OUTPUT_ROOT = path.join(APP_ROOT, "public/burette-viewer");
 
-const MOLSTAR_VERSION =
-  require(path.join(REPO_ROOT, "package.json")).dependencies?.molstar ?? "unknown";
+const source = require(path.join(REPO_ROOT, "config/molstar-source.json"));
+const MOLSTAR_VERSION = `${source.version} (${source.revision.slice(0, 12)})`;
 
 async function main() {
   const [javascriptSource, cssSource] = await Promise.all([

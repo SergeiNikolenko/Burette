@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { createRequire } from 'node:module';
 
-const require = createRequire(import.meta.url);
-const { InteractivityManager } = require('molstar/lib/commonjs/mol-plugin-state/manager/interactivity.js');
-const { MarkerAction } = require('molstar/lib/commonjs/mol-util/marker-action.js');
-const { EveryLoci } = require('molstar/lib/commonjs/mol-model/loci.js');
+const { InteractivityManager } = await import('@molstar/plugin/state/manager/interactivity');
+const { MarkerAction } = await import('@molstar/core/util/marker-action');
+const { EveryLoci } = await import('@molstar/model/model/loci');
 const source = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
 const extract = name => {
   const match = source.match(new RegExp(`\\n  (?:async )?function ${name}\\([\\s\\S]*?\\n  \\}`, 'u'));

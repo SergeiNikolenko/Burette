@@ -1,6 +1,6 @@
-import { StructureElement } from 'molstar/lib/mol-model/structure.js';
-import { PluginCommands } from 'molstar/lib/mol-plugin/commands.js';
-import { getCellBoundingSphere } from 'molstar/lib/mol-plugin-state/manager/focus-camera/focus-object.js';
+import { StructureElement } from '@molstar/model/model/structure';
+import { PluginCommands } from '@molstar/plugin/commands';
+import { getCellBoundingSphere } from '@molstar/plugin/state/manager/focus-camera/focus-object';
 import { installAutomaticStoryPresentation } from './molstar-story-presentation.mjs';
 
 export const BuretteStory = {

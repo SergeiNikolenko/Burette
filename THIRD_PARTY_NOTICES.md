@@ -2,7 +2,7 @@
 
 ## Mol*
 
-The preview engine vendors `molstar/build/viewer/molstar.js` and `molstar/build/viewer/molstar.css` from the `molstar` package at build time. Mol* is MIT-licensed by its contributors. See the `molstar` package and repository for the authoritative license text.
+The preview engines and MolViewSpec authoring schema are built from the immutable Mol* source revision recorded with its archive checksum in `config/molstar-source.json`. The same source provides desktop, Quick Look, mobile, Mesoscale and hosted viewer assets. Mol* is MIT-licensed by its contributors; its authoritative license is available in the [Mol* repository](https://github.com/molstar/molstar/blob/fe1ac1555001d1acb023077cd4dc6ca1d06870f8/LICENSE).
 
 ## QuickLookProtein
 

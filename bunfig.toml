@@ -1,0 +1,2 @@
+# Molecular contract tests and source bundles use the same immutable Mol* tree.
+preload = ["./scripts/molstar-source-preload.mjs"]

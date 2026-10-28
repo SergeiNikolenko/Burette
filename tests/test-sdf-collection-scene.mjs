@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { runInNewContext } from 'node:vm';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { DefaultPluginSpec } from 'molstar/lib/mol-plugin/spec.js';
-import { StateTransforms } from 'molstar/lib/mol-plugin-state/transforms.js';
-import { to_mmCIF } from 'molstar/lib/mol-model/structure/export/mmcif.js';
-import { CIF } from 'molstar/lib/mol-io/reader/cif.js';
+import { PluginContext } from '@molstar/plugin';
+import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
+import { StateTransforms } from '@molstar/viewer/state-transforms';
+import { to_mmCIF } from '@molstar/model/model/structure/export/mmcif';
+import { CIF } from '@molstar/io/reader/cif';
 
 const dom = new Window();
 globalThis.document = dom.document;

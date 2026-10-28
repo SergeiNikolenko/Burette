@@ -1,4 +1,4 @@
-import { OrderedSet } from 'molstar/lib/mol-data/int.js';
+import { OrderedSet } from '@molstar/core/data/int';
 
 // CPU fields only: no representations, WebGL resources, structures or units
 // are retained by the LRU. Eviction drops both arrays and their input snapshot.

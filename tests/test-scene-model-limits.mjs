@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { DefaultPluginSpec } from 'molstar/lib/mol-plugin/spec.js';
-import { StateTransforms } from 'molstar/lib/mol-plugin-state/transforms.js';
-import { parseSdf } from 'molstar/lib/mol-io/reader/sdf/parser.js';
+import { PluginContext } from '@molstar/plugin';
+import { DefaultPluginSpec } from '@molstar/plugin/default-spec';
+import { StateTransforms } from '@molstar/viewer/state-transforms';
+import { parseSdf } from '@molstar/io/reader/sdf/parser';
 
 const source = readFileSync('PreviewExtension/Web/viewer.js', 'utf8');
 const extract = name => source.match(new RegExp(`\n  (?:async )?function ${name}\\([\\s\\S]*?\n  \\}`, 'u'))[0];

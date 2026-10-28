@@ -1,5 +1,4 @@
-import { readFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { molstarPatchPlugin } from './molstar-source.mjs';
 import { fileURLToPath } from 'node:url';
 
 export function patchMolstarSurfaceFieldCache(source) {
@@ -15,13 +14,8 @@ export function patchMolstarSurfaceFieldCache(source) {
     + source.replace(call, 'return buretteSurfaceFields.getOrCreate(unit, { position, boundary, maxRadius, props: p }, () => MolecularSurface(ctx, position, boundary, maxRadius, boundary.box, p));');
 }
 
-export const molstarSurfaceFieldCachePlugin = {
-  name: 'molstar-surface-field-cache',
-  setup(build) {
-    build.onLoad({ filter: /molstar\/lib\/mol-repr\/structure\/visual\/util\/molecular-surface\.js$/u }, async ({ path }) => {
-      const { version } = JSON.parse(await readFile(resolve(dirname(path), '../../../../../package.json'), 'utf8'));
-      if (version !== '5.11.0') throw new Error('Review the surface field cache before upgrading Mol* from 5.11.0.');
-      return { contents: patchMolstarSurfaceFieldCache(await readFile(path, 'utf8')), loader: 'js' };
-    });
-  },
-};
+export const molstarSurfaceFieldCachePlugin = molstarPatchPlugin(
+  'molstar-surface-field-cache',
+  '@molstar/graphics/repr/structure/visual/util/molecular-surface',
+  patchMolstarSurfaceFieldCache,
+);

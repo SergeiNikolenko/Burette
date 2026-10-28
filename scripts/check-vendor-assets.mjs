@@ -18,7 +18,6 @@ const requestedProfiles = process.argv
   });
 
 const packageSpecs = [
-  { name: 'molstar' },
   { name: 'dompurify' },
   { name: '@rdkit/rdkit' },
   { name: 'rdkit-compute', packageName: '@rdkit/rdkit' },
@@ -28,6 +27,7 @@ const packageSpecs = [
 const assetSpecs = [
   { path: 'PreviewExtension/Web/svg-sanitizer.js', package: 'dompurify' },
   { path: 'PreviewExtension/Web/molstar.js', package: 'molstar' },
+  { path: 'scripts/mvs-schema-validator.mjs', package: 'molstar' },
   { path: 'PreviewExtension/Web/molstar.css', package: 'molstar' },
   { path: 'PreviewExtension/Web/mesoscale.js', package: 'molstar' },
   { path: 'PreviewExtension/Web/mesoscale.css', package: 'molstar' },
@@ -73,9 +73,10 @@ function currentSnapshot() {
       bunLock: 'bun.lock',
       profiles: 'config/web-runtime-profiles.json',
     },
-    packages: Object.fromEntries(
-      packageSpecs.map(spec => [spec.name, packageSnapshot(bunLock, spec)]),
-    ),
+    packages: {
+      molstar: { packageName: 'molstar', ...readJson(path.join(repoRoot, 'config/molstar-source.json')) },
+      ...Object.fromEntries(packageSpecs.map(spec => [spec.name, packageSnapshot(bunLock, spec)])),
+    },
     assets: assetSpecs.map(assetSnapshot),
     profiles: profiles.profiles,
     bundleTargets: profiles.bundleTargets,
@@ -151,6 +152,8 @@ function validateRuntimeProfiles(snapshot) {
 
   const allProfileFiles = new Set(Object.values(profiles).flat());
   for (const asset of snapshot.assets) {
+    // Node authoring artifacts are versioned with the renderer but are not web assets.
+    if (!asset.path.startsWith('PreviewExtension/Web/')) continue;
     const relativePath = asset.path.replace(/^PreviewExtension\/Web\//, '');
     if (!allProfileFiles.has(relativePath)) {
       throw new Error(`Vendored asset is not covered by a web runtime profile: ${asset.path}`);

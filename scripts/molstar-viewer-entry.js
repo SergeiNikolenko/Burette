@@ -1,7 +1,7 @@
-import * as ViewerLib from 'molstar/lib/apps/viewer/lib.js';
-import * as ViewerExtensions from 'molstar/lib/apps/viewer/extensions.js';
-import * as ViewerApp from 'molstar/lib/apps/viewer/app.js';
-import * as ViewerPresets from 'molstar/lib/apps/viewer/presets.js';
+import * as ViewerLib from '@molstar/viewer/lib';
+import * as ViewerExtensions from '@molstar/viewer/extensions';
+import * as ViewerApp from '@molstar/viewer';
+import * as ViewerPresets from '@molstar/viewer/presets';
 import { BuretteSuperposition } from './molstar-superposition-facade.js';
 import { BuretteStory } from './molstar-story-facade.js';
 import { BuretteSelection } from './molstar-selection-facade.js';
@@ -19,8 +19,8 @@ globalThis.molstar = Object.assign(
   { BuretteSuperposition, BuretteStory, BuretteSelection, BuretteTrajectoryPlayback, BuretteIndexedTrajectory, BuretteResizeInteraction },
 );
 
-export * from 'molstar/lib/apps/viewer/lib.js';
-export * from 'molstar/lib/apps/viewer/extensions.js';
-export * from 'molstar/lib/apps/viewer/app.js';
-export * from 'molstar/lib/apps/viewer/presets.js';
+export * from '@molstar/viewer/lib';
+export * from '@molstar/viewer/extensions';
+export * from '@molstar/viewer';
+export * from '@molstar/viewer/presets';
 export { BuretteSuperposition } from './molstar-superposition-facade.js';

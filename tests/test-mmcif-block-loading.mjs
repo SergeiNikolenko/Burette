@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { Window } from 'happy-dom';
-import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
-import { StateTransforms } from 'molstar/lib/mol-plugin-state/transforms.js';
-import { applyStructureInteractivity } from 'molstar/lib/extensions/plugin/interactivity.js';
-import { StructureElement } from 'molstar/lib/mol-model/structure.js';
+import { PluginContext } from '@molstar/plugin';
+import { DefaultRegistry } from '@molstar/plugin/default-registry';
+import { StateTransforms } from '@molstar/viewer/state-transforms';
+import { applyStructureInteractivity } from '@molstar/plugin-extension/interactivity';
+import { StructureElement } from '@molstar/model/model/structure';
 
 const window = new Window();
 const previous = { window: globalThis.window, document: globalThis.document };
@@ -24,7 +25,7 @@ const protein = block('protein', [1, 2].flatMap(model => [
 ]).join('\n'));
 const ligand = block('ligand', 'HETATM 1 C C1 . UNK . . 0 ? 4 5 6 1 0 0 . 1\nHETATM 2 N N1 . UNK . . 0 ? 5 5 6 1 0 0 . 1');
 const otherLigand = block('other_ligand', 'HETATM 1 C C1 . UNK . . 0 ? 40 5 6 1 0 0 . 1\nHETATM 2 N N1 . UNK . . 0 ? 41 5 6 1 0 0 . 1');
-const plugin = new PluginContext({ actions: [], behaviors: [] });
+const plugin = new PluginContext({ registry: DefaultRegistry, behaviors: [] });
 try {
   await plugin.init();
   const raw = await plugin.builders.data.rawData({ data: `data_metadata\n_entry.id metadata\n${protein}${ligand}${otherLigand}`, label: 'multi-block.cif' });

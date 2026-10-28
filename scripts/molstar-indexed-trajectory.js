@@ -1,11 +1,11 @@
-import { Task } from 'molstar/lib/mol-task/index.js';
-import { PluginStateObject, PluginStateTransform } from 'molstar/lib/mol-plugin-state/objects.js';
-import { ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition.js';
-import { Model } from 'molstar/lib/mol-model/structure/model/model.js';
-import { Coordinates, Time } from 'molstar/lib/mol-model/structure/coordinates.js';
-import { Cell } from 'molstar/lib/mol-math/geometry/spacegroup/cell.js';
-import { Vec3 } from 'molstar/lib/mol-math/linear-algebra.js';
-import { parseXtc } from 'molstar/lib/mol-io/reader/xtc/parser.js';
+import { Task } from '@molstar/core/task';
+import { PluginStateObject, PluginStateTransform } from '@molstar/plugin/state/objects';
+import { ParamDefinition as PD } from '@molstar/core/util/param-definition';
+import { Model } from '@molstar/model/model/structure/model/model';
+import { Coordinates, Time } from '@molstar/model/model/structure/coordinates';
+import { Cell } from '@molstar/core/math/geometry/spacegroup/cell';
+import { Vec3 } from '@molstar/core/math/linear-algebra';
+import { parseXtc } from '@molstar/io/reader/xtc/parser';
 
 const readers = new WeakMap();
 const FRAME_CACHE_BYTES = 32 * 1024 * 1024;

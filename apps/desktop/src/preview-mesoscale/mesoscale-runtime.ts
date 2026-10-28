@@ -1,21 +1,21 @@
-import { MesoscaleExplorer } from "molstar/lib/apps/mesoscale-explorer/app.js";
-import { MesoFocusLoci } from "molstar/lib/apps/mesoscale-explorer/behavior/camera.js";
-import { MesoscaleState, getAllEntities, getAllGroups, getEntities, getEntityDescription, getEntityLabel, getRoots, setGraphicsCanvas3DProps } from "molstar/lib/apps/mesoscale-explorer/data/state.js";
-import { LoadModel, openState } from "molstar/lib/apps/mesoscale-explorer/ui/states.js";
-import { PluginCommands } from "molstar/lib/mol-plugin/commands.js";
-import { Structure, StructureElement, StructureProperties } from "molstar/lib/mol-model/structure.js";
-import { OrderedSet } from "molstar/lib/mol-data/int.js";
-import type { UnitIndex } from "molstar/lib/mol-model/structure/structure/element/util.js";
-import { EveryLoci, Loci } from "molstar/lib/mol-model/loci.js";
-import { Sphere3D } from "molstar/lib/mol-math/geometry.js";
-import { Mat4, Vec2, Vec3 } from "molstar/lib/mol-math/linear-algebra.js";
-import { PluginStateSnapshotManager } from "molstar/lib/mol-plugin-state/manager/snapshots.js";
-import { StateSelection } from "molstar/lib/mol-state/index.js";
-import { Asset } from "molstar/lib/mol-util/assets.js";
-import { Unzip } from "molstar/lib/mol-util/zip/zip.js";
-import { Color } from "molstar/lib/mol-util/color/index.js";
-import { Binding } from "molstar/lib/mol-util/binding.js";
-import { MarkerAction } from "molstar/lib/mol-util/marker-action.js";
+import { MesoscaleExplorer } from "@molstar/mesoscale-explorer/app";
+import { MesoFocusLoci } from "@molstar/mesoscale-explorer/behavior/camera";
+import { MesoscaleState, getAllEntities, getAllGroups, getEntities, getEntityDescription, getEntityLabel, getRoots, setGraphicsCanvas3DProps } from "@molstar/mesoscale-explorer/data/state";
+import { LoadModel, openState } from "@molstar/mesoscale-explorer/ui/states";
+import { PluginCommands } from "@molstar/plugin/commands";
+import { Structure, StructureElement, StructureProperties } from "@molstar/model/model/structure";
+import { OrderedSet } from "@molstar/core/data/int";
+import type { UnitIndex } from "@molstar/model/model/structure/structure/element/util";
+import { EveryLoci, Loci } from "@molstar/model/model/loci";
+import { Sphere3D } from "@molstar/core/math/geometry";
+import { Mat4, Vec2, Vec3 } from "@molstar/core/math/linear-algebra";
+import { PluginStateSnapshotManager } from "@molstar/plugin/state/manager/snapshots";
+import { StateSelection } from "@molstar/core/state";
+import { Asset } from "@molstar/core/util/assets";
+import { Unzip } from "@molstar/core/util/zip/zip";
+import { Color } from "@molstar/core/util/color";
+import { Binding } from "@molstar/core/util/binding";
+import { MarkerAction } from "@molstar/core/util/marker-action";
 import { createMesoscaleCanvasInteractionController, shouldClearMesoscaleSelectionOnMiss, type MesoscaleCanvasPoint } from "./mesoscale-canvas-interaction";
 import { installMesoscalePanelResizeHandles } from "./mesoscale-panel-resize";
 import { mesoscaleZipEntries, validateGenericMesoscaleManifest, validateMesoscaleArchiveEntries } from "./mesoscale-package";
@@ -820,9 +820,9 @@ class MesoscaleRuntimeApi {
     const trackball = this.plugin.canvas3d?.props.trackball;
     if (!trackball) throw new Error("Mesoscale camera controls are unavailable");
     const animate = motion === "spin"
-      ? { name: "spin" as const, params: { speed: 0.1, axis: [0, -1, 0] as [number, number, number] } }
+      ? { name: "spin" as const, params: { speed: 0.1, axis: Vec3.create(0, -1, 0) } }
       : motion === "rock"
-        ? { name: "rock" as const, params: { speed: 0.3, angle: 10, axis: [0, -1, 0] as [number, number, number] } }
+        ? { name: "rock" as const, params: { speed: 0.3, angle: 10, axis: Vec3.create(0, -1, 0) } }
         : { name: "off" as const, params: {} };
     this.plugin.canvas3d?.setProps({ trackball: { ...trackball, animate } });
     this.motion = motion;
@@ -987,7 +987,7 @@ class MesoscaleRuntimeApi {
     const canvas = this.plugin.canvas3d;
     if (!canvas) return null;
     const pick = canvas.identify(Vec2.create(point.x, point.y));
-    if (!pick) return null;
+    if (!pick || pick === "pending") return null;
     const current = canvas.getLoci(pick.id);
     const pickedStructure = StructureElement.Loci.is(current.loci)
       ? current.loci.structure
@@ -1851,6 +1851,7 @@ async function start() {
   const diagnostic = uiMode === "diagnostic";
   applyHostedUi(hosted);
   const explorer = await MesoscaleExplorer.create("app", {
+    graphicsBackend: "webgl",
     extensions: [],
     graphicsMode: config.graphicsMode ?? "balanced",
     layoutIsExpanded: false,
