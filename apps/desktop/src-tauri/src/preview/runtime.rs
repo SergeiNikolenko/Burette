@@ -8,7 +8,7 @@ use std::time::SystemTime;
 use tauri::Runtime;
 
 use super::formats::{
-    format_for_extension, normalize_renderer_mode, preview_plan_for_extension, resolve_renderer,
+    format_for_data, normalize_renderer_mode, preview_plan_for_extension, resolve_renderer,
     structure_path_extension,
 };
 use super::grid_store::GridParseOptions;
@@ -1051,7 +1051,7 @@ fn open_document_with_grid_options_inner<R: Runtime>(
                 .map(|preview| preview.data.as_slice())
         })
         .unwrap_or(&data);
-    let format = format_for_extension(runtime_extension)?;
+    let format = format_for_data(runtime_extension, runtime_data)?;
     let requested_renderer_for_document = if pharmacophore_preview_data.is_some()
         || maestro_preview_data.is_some()
         || standalone_lammps_preview_data.is_some()
@@ -1678,7 +1678,7 @@ fn read_docking_source(path: &str) -> Result<DockingRuntimeSource, String> {
         return Err(format!("{} is empty", canonical.display()));
     }
     let extension = structure_path_extension(&canonical);
-    let format = format_for_extension(&extension)?;
+    let format = format_for_data(&extension, &data)?;
     let label = file_title(&canonical);
     if format.external_only {
         let converted = converted_data_from_text(&data, &extension, &label).ok_or_else(|| {
@@ -2688,27 +2688,35 @@ Atoms # charge
 
     #[test]
     fn opens_multiframe_xyz_in_molstar_with_trajectory_controls_on_auto() {
-        let app = mock_app_with_grid_registry();
-        let preferences = viewer_preferences();
-        let path = create_temp_file(
-            "xyz",
-            b"2\nfirst frame\nH 0 0 0\nO 0 0 1\n2\nsecond frame\nH 1 0 0\nO 1 0 1\n",
-        );
+        for extension in ["xyz", "trj"] {
+            let app = mock_app_with_grid_registry();
+            let preferences = viewer_preferences();
+            let path = create_temp_file(
+                extension,
+                b"2\nfirst frame\nH 0 0 0\nO 0 0 1\n2\nsecond frame\nH 1 0 0\nO 1 0 1\n",
+            );
 
-        let document = open_document(app.handle(), path.clone(), &preferences, None)
-            .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
-        assert_eq!(document.renderer, "molstar");
-        let runtime_dir = Path::new(&document.runtime_path)
-            .parent()
-            .expect("runtime html should have a parent");
-        let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
-            .expect("preview config should be written");
-        assert!(config.contains("\"trajectoryControls\":true"));
-        assert!(config.contains("\"trajectoryFrameCount\":2"));
+            let document = open_document(app.handle(), path.clone(), &preferences, None)
+                .unwrap_or_else(|error| panic!("{} should open: {error}", path.display()));
+            assert_eq!(document.renderer, "molstar");
+            let runtime_dir = Path::new(&document.runtime_path)
+                .parent()
+                .expect("runtime html should have a parent");
+            let config = fs::read_to_string(runtime_dir.join("preview-config.js"))
+                .expect("preview config should be written");
+            assert!(config.contains("\"trajectoryControls\":true"));
+            assert!(config.contains("\"trajectoryFrameCount\":2"));
+            assert!(config.contains("\"molstarFormat\":\"xyz\""));
+            assert_eq!(document.extension, extension);
+            let scene_source = super::read_docking_source(path.to_str().unwrap()).unwrap();
+            assert_eq!(scene_source.format, "xyz");
+            assert_eq!(scene_source.extension, extension);
+            assert_eq!(scene_source.data, fs::read(&path).unwrap());
 
-        remove_runtime_artifacts(&document.runtime_path);
-        if let Some(parent) = path.parent() {
-            let _ = fs::remove_dir_all(parent);
+            remove_runtime_artifacts(&document.runtime_path);
+            if let Some(parent) = path.parent() {
+                let _ = fs::remove_dir_all(parent);
+            }
         }
     }
 

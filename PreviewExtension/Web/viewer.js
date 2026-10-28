@@ -3204,9 +3204,9 @@
 
   function requestMolecularCompute(operation = 'generate3d', options = {}) {
     const config = activeConfig || window.BuretteConfig || {};
-    // MCP widgets have no native-compute transport. Do not advertise or send
-    // desktop compute actions just because the document happens to be an SDF.
-    if (config.hostedMcpWidgetBootstrap === true || config.visualizationOnly === true) return;
+    // Widgets, Finder Quick Look and the mobile preview have no compute host.
+    // An SDF document alone does not imply that this transport is available.
+    if (config.hostedMcpWidgetBootstrap === true || config.visualizationOnly === true || config.quickLookViewer === true) return;
     const format = normalizeFormat(config.sourceExtension || config.molstarFormat || config.format);
     if (!['sdf', 'sd', 'mol'].includes(format)) {
       setStatus('Native molecular compute supports SDF and MOL structures in Molstar.', 'error');
@@ -3238,7 +3238,7 @@
   }
 
   function canGenerate3DConformerFromConfig(config, renderer) {
-    if (config?.hostedMcpWidgetBootstrap === true || config?.visualizationOnly === true) return false;
+    if (config?.hostedMcpWidgetBootstrap === true || config?.visualizationOnly === true || config?.quickLookViewer === true) return false;
     const format = normalizeFormat(config?.sourceExtension || config?.molstarFormat || config?.format);
     return renderer === 'molstar' && ['sdf', 'sd', 'mol'].includes(format);
   }
@@ -6827,7 +6827,9 @@
       event.stopPropagation();
       if (ignoreNextGripClick) {
         ignoreNextGripClick = false;
-        return;
+        // Pointer capture can retarget the click to the toolbar, leaving this
+        // guard pending. A later keyboard activation must still work.
+        if (event.detail !== 0) return;
       }
       activateToolbarGrip(toolbar, resizeState.viewer);
     });

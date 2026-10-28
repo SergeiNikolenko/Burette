@@ -1,5 +1,4 @@
 import { type Dispatch, type MutableRefObject, type SetStateAction, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
 
 import type { StructureViewerAction } from "../components/types";
 import { readBrowserDevVirtualTextDocument, type openBrowserDevMolstarContextDocument } from "../lib/browser-dev-documents";
@@ -49,15 +48,6 @@ type UseAppConformerWorkflowsOptions = {
   setConformerStatus: Dispatch<SetStateAction<ConformerStatus | null>>;
 };
 
-// A document remembers the file it was opened from. When that file has since
-// been deleted, run on the document's own copy instead of failing on the
-// stale source path.
-async function liveSourcePath(document: ViewerDocument) {
-  if (!document.sourcePath || document.sourcePath === document.path || !isTauriRuntime()) return document.sourcePath ?? document.path;
-  const existing = await invoke<string[]>("existing_paths", { paths: [document.sourcePath] }).catch(() => [document.sourcePath!]);
-  return existing.length ? document.sourcePath : document.path;
-}
-
 function conformerOutputDirectory(document: ViewerDocument) {
   const sourcePath = document.sourcePath?.trim() || (!document.virtual ? document.path : "");
   if (!sourcePath || /^[a-z][a-z0-9+.-]*:/iu.test(sourcePath)) return null;
@@ -76,7 +66,7 @@ async function selectedPdbLigandConformerInput(
   const seq = selectorText(action.selector, "auth_seq_id") ?? selectorText(action.selector, "label_seq_id");
   const icode = selectorText(action.selector, "pdbx_PDB_ins_code");
   if (!comp || !chain || !seq) return null;
-  const sourceText = await readStructureText(document.sourcePath ?? document.path);
+  const sourceText = await readStructureText(document.path);
   const records = sourceText.split(/\r?\n/u).filter((line) => pdbAtomLineMatchesLigand(line, comp, chain, seq, icode));
   if (records.length === 0) return null;
   const ligandCode = comp.toUpperCase();
@@ -261,8 +251,13 @@ export function useAppConformerWorkflows({
       }
     }
     if (!selectedInput && operation === "crest-generate") {
-      const contextDocument = await requestMolstarXtbContextDocument(document);
-      selectedInput = conformerInputForMolstarContextDocument(contextDocument);
+      try {
+        const contextDocument = await requestMolstarXtbContextDocument(document);
+        selectedInput = conformerInputForMolstarContextDocument(contextDocument);
+      } catch (error) {
+        pushErrorStatus(error, "CREST input could not be read; calculation was not started");
+        return;
+      }
     }
     if (selection && operation === "crest-generate" && !selectedInput) {
       pushStatus("Selected object could not be extracted for CREST.", "error");
@@ -282,13 +277,14 @@ export function useAppConformerWorkflows({
       operation === "crest-generate" ? "CREST" : "PRISM",
       inputText,
       selectedInput?.extension ?? document.extension,
-      inputText ? null : document.sourcePath ?? document.path,
+      inputText ? null : document.path,
     );
     if (guardMessage) {
       pushStatus(guardMessage, "error");
       return;
     }
-    const path = await liveSourcePath(document);
+    // sourcePath records provenance; calculations must use the displayed data.
+    const path = document.path;
     await runConformerJob({
       operation,
       path,

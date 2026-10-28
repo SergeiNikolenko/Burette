@@ -114,3 +114,23 @@ try {
 }
 
 console.log("browser representation retry test passed");
+
+// Once representations are cached, cancelling during the native embedding
+// must abort the HTTP request as well as stop subsequent study frames.
+const cancellation = new AbortController();
+let receivedSignal;
+globalThis.fetch = async (url, init) => {
+  assert.equal(url, '/__burette/native-compute');
+  receivedSignal = init.signal;
+  assert.equal(receivedSignal, cancellation.signal);
+  return new Promise((_resolve, reject) => {
+    init.signal.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true });
+    cancellation.abort();
+  });
+};
+try {
+  await assert.rejects(runBrowserDevChemicalSpace(records, options, () => {}, cancellation.signal), { name: 'AbortError' });
+  assert.ok(receivedSignal.aborted);
+} finally {
+  globalThis.fetch = originalFetch;
+}

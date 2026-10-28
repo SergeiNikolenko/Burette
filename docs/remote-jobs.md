@@ -34,7 +34,13 @@ Job ids are validated on both sides and cannot leave the jobs root.
 ## Runner
 
 `commands/ssh/runner.py` runs as `python3 -c` through the shared SSH transport
-and receives one JSON command on stdin:
+and receives one JSON command on stdin. Each request uses a separate SSH
+connection with multiplexing explicitly disabled; this avoids macOS descriptor
+handoff failures between the native subprocess pipes and a ControlMaster socket.
+The shared transport still limits concurrent connections to three and does not
+change the user's SSH configuration or replay a failed submission.
+
+Worker operations:
 
 - `submit` writes the uploaded files (base64, 24 MB in total) into `work/`,
   resolves the tool, writes `job.json`, and starts a detached supervisor with
@@ -64,7 +70,7 @@ optimizer fails, as the conda-forge CREST 3.0.2 build does on some inputs.
   prepare the same local run folder as a local run, rewrite input paths relative
   to it (`stage_args`), upload it, and submit the same command line the local
   run would use.
-- **Polling.** The job is polled every 15 seconds over the shared ControlMaster
+- **Polling.** The job is polled every 15 seconds over a separate SSH
   connection. An SSH error records the job as `unreachable` and slows polling to
   60 seconds until the host answers again.
 - **Results.** When the job ends, `work/` is downloaded with the existing

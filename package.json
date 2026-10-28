@@ -1,6 +1,6 @@
 {
   "name": "burette",
-  "version": "2026.10.39",
+  "version": "2026.10.41",
   "private": true,
   "description": "macOS desktop app and Quick Look extension for molecular previews: Mol* 3D, xyzrender SVG, and RDKit grids.",
   "packageManager": "bun@1.4.2",
@@ -73,7 +73,8 @@
     "dev": "bun run dev:desktop",
     "test:ssh": "bun tests/test-browser-dev-ssh.mjs && python3 tests/test-ssh-reader.py && bun tests/test-ssh-projects.mjs && bun test tests/test-ssh-project-tree.test.tsx && bun test tests/test-ssh-connection-dialog.test.tsx && bun test tests/test-ssh-connections-list.test.tsx",
     "test:statistics": "bun test services/telemetry/telemetry.test.ts tests/test-usage-statistics.test.tsx",
-    "test:renderers": "bun tests/test-molstar-source.mjs && bun scripts/check-vendor-assets.mjs && bun tests/test-dcd-time.mjs && bun tests/test-molstar-surface-loop.mjs && bun tests/test-molstar-surface-field-cache.mjs && bun tests/test-molstar-resize-interaction.mjs && bun tests/test-molstar-trajectory-playback.mjs && bun tests/test-molstar-envelope.mjs && bun tests/test-volume-segmentation.mjs && bun test ./tests/test-molstar-scene-layers.mjs ./tests/test-molstar-exact-selection.mjs && bun tests/test-viewer-blob-export.mjs"
+    "test:renderers": "bun tests/test-molstar-source.mjs && bun scripts/check-vendor-assets.mjs && bun tests/test-dcd-time.mjs && bun tests/test-molstar-surface-loop.mjs && bun tests/test-molstar-surface-field-cache.mjs && bun tests/test-molstar-resize-interaction.mjs && bun tests/test-molstar-trajectory-playback.mjs && bun tests/test-molstar-envelope.mjs && bun tests/test-volume-segmentation.mjs && bun test ./tests/test-molstar-scene-layers.mjs ./tests/test-molstar-exact-selection.mjs && bun tests/test-viewer-blob-export.mjs",
+    "test:compute-reliability": "bun tests/test-browser-conformer-topology.mjs && bun tests/test-browser-native-compute-cancellation.mjs && bun tests/test-browser-dev-trj.mjs && bun tests/test-action-journal.mjs && python3 tests/test-collect-diagnostics.py"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

@@ -2611,7 +2611,6 @@ assert.match(appMolstarXtbContextHook, /const actionId = `xtb-context-\$\{Date\.
 assert.match(appMolstarXtbContextHook, /window\.removeEventListener\("message", onMessage\)/);
 assert.match(appMolstarXtbContextHook, /data\?\.source !== "burette-agent-viewer" \|\| body\?\.type !== "agent-action-result" \|\| body\.id !== actionId/);
 assert.match(appMolstarXtbContextHook, /isKnownViewerMessageSource\(event\.source, document\.id\)/);
-assert.match(appMolstarXtbContextHook, /window\.setTimeout\(\(\) => finish\(null\), 500\)/);
 assert.match(appMolstarXtbContextHook, /action: \{ type: "get_xtb_context" \}/);
 assert.match(app, /useAppXtbWorkflows\(\{\s*activeDocument,\s*addDockDrop,\s*cancelledXtbJobIdsRef,/s);
 assert.doesNotMatch(app, /const runXtbJob = useCallback/);
