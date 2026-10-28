@@ -4,6 +4,8 @@ import { copyFileSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { molstarV3000ChargesPlugin } from './molstar-v3000-charges.mjs';
+import { molstarMolV3000Plugin } from './molstar-mol-v3000.mjs';
 import { molstarStatePreconditionPlugin } from './molstar-state-precondition.mjs';
 import { molstarDcdTimePlugin } from './molstar-dcd-time.mjs';
 import { molstarResizeDrawPlugin } from './molstar-resize-draw.mjs';
@@ -48,7 +50,7 @@ const buildResult = await Bun.build({
   write: false,
   loader: { '.jpg': 'dataurl' },
   define: { 'process.env.NODE_ENV': JSON.stringify('production') },
-  plugins: [molstarStatePreconditionPlugin, molstarDcdTimePlugin, molstarResizeDrawPlugin, molstarSurfaceFieldCachePlugin, molstarSurfaceLoopPlugin],
+  plugins: [molstarV3000ChargesPlugin, molstarMolV3000Plugin, molstarStatePreconditionPlugin, molstarDcdTimePlugin, molstarResizeDrawPlugin, molstarSurfaceFieldCachePlugin, molstarSurfaceLoopPlugin],
 });
 if (!buildResult.success) {
   for (const log of buildResult.logs) console.error(log);

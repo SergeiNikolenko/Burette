@@ -41,8 +41,8 @@
     {
       "path": "PreviewExtension/Web/molstar.js",
       "package": "molstar",
-      "bytes": 5822645,
-      "sha256": "sha256-eMSfqlONm5wfI+eocjd1u+Ir7BMfRXdFY+U7GCz2GpU="
+      "bytes": 5826197,
+      "sha256": "sha256-g5eWvNnp2B1KvpZuhhA61tVrwqOxjNvti5D2aX2enOo="
     },
     {
       "path": "PreviewExtension/Web/molstar.css",
