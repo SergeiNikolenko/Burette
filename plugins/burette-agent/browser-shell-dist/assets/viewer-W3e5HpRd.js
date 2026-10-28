@@ -504,7 +504,11 @@
     const response = await fetch(href);
     if (!response.ok) throw new Error(`Could not read export blob: HTTP ${response.status}`);
     const blob = await response.blob();
-    const mimeType = blob.type || response.headers.get('content-type') || 'application/octet-stream';
+    return exportBlobToHost(blob, name);
+  }
+
+  async function exportBlobToHost(blob, name) {
+    const mimeType = blob.type || 'application/octet-stream';
     let posted = false;
     if (shouldExportBlobAsText(name, mimeType)) {
       posted = postHostMessage({
@@ -4092,6 +4096,7 @@
       setStatus(`[web] Rendered ${config.label || 'structure'}`);
       setTimeout(() => hideStatus(molstarReadyPayload(config, prepared, {
         molstarStructureCount: currentMolstarStructureCount(viewer),
+        molstarVolumeCount: currentMolstarVolumeCount(viewer),
         poseCount,
         trajectoryFrameCount: Math.max(Number(config?.trajectoryFrameCount || 0), poseCount)
       })), isQuickLookHost() ? 0 : 700);
@@ -11634,6 +11639,7 @@ SOFTWARE.
     return previewReadyPayload(config, {
       renderer: 'molstar',
       molstarStructureCount: Number(extra.molstarStructureCount || 0),
+      molstarVolumeCount: Number(extra.molstarVolumeCount || 0),
       poseCount: Number.isFinite(poseCount) ? poseCount : 0,
       trajectoryFrameCount: Math.max(Number(config?.trajectoryFrameCount || 0), Number.isFinite(poseCount) ? poseCount : 0),
       ...extra
@@ -11646,6 +11652,12 @@ SOFTWARE.
     } catch (_) {
       return 0;
     }
+  }
+
+  function currentMolstarVolumeCount(viewer = activeViewer) {
+    const volumes = viewer?.plugin?.managers?.volume?.hierarchy?.current?.volumes || [];
+    return Array.from(volumes).filter(volume => volume.cell?.status === 'ok'
+      && volume.representations?.some(representation => representation.cell?.status === 'ok' && representation.cell?.obj)).length;
   }
 
   function assertMolstarLoadReady(viewer, prepared) {
@@ -13783,6 +13795,13 @@ SOFTWARE.
   }
 
   function downloadBlob(blob, name) {
+    if (canUseDownloadExportBridge()) {
+      // WKWebView asset pages cannot fetch their opaque-origin blob URLs.
+      // We already own the bytes, so send them directly to the save bridge.
+      return exportBlobToHost(blob, safeDownloadFileName(name)).catch(error => {
+        setStatus(`[web] Export failed.\n\n${error?.message || String(error)}`, 'error');
+      });
+    }
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -30553,6 +30572,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       }
       const readyPayload = molstarReadyPayload(config, prepared, {
         molstarStructureCount: currentMolstarStructureCount(viewer),
+        molstarVolumeCount: currentMolstarVolumeCount(viewer),
         poseCount,
         trajectoryFrameCount: Math.max(Number(config?.trajectoryFrameCount || 0), poseCount)
       });

@@ -196,4 +196,4 @@ plugins/burette-agent/browser-shell-dist/assets/index-vroafz0D.css
 plugins/burette-agent/browser-shell-dist/assets/markdown-greenfield-content-Bele1KbW.js
 plugins/burette-agent/browser-shell-dist/assets/molecule-store-R_naihoh.js
 plugins/burette-agent/browser-shell-dist/assets/molstar-CiwXDnZr.js
-plugins/burette-agent/browser-shell-dist/assets/viewer-B8Tr79X9.js
+plugins/burette-agent/browser-shell-dist/assets/viewer-W3e5HpRd.js
