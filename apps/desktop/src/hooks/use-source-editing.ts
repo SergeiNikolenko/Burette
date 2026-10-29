@@ -7,6 +7,7 @@ import type { SourcePreviewCandidate, SourcePreviewIdentity } from "../lib/sourc
 import { openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
+import { logicalSourceFor } from "../lib/science-session/state";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
 import { activeViewerIframeForDocument, requestViewerAction } from "../lib/viewer-bridge";
 import { captureViewerView } from "../lib/viewer-view-capture";
@@ -158,7 +159,10 @@ export function useSourceEditingController({
       setDockActiveTab("right", "text");
       return;
     }
-    const extension = document.extension.toLowerCase().replace(/^\./u, "");
+    // Logical XYZ uses its separately owned in-place update lane. This stage admits SDF only.
+    const restored = logicalSourceFor(document.id);
+    const logical = restored?.extension === "sdf" ? restored : null;
+    const extension = logical?.extension ?? document.extension.toLowerCase().replace(/^\./u, "");
     if (document.virtual || document.dockingRequest || document.mergedCollection || !EDITABLE_EXTENSIONS.has(extension)) {
       pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source");
       return;
@@ -174,7 +178,12 @@ export function useSourceEditingController({
       let handleId: string | null = null;
       let expectedRevision: FileRevision | null = null;
       let previewMode: "live" | "manual";
-      if (isTauriRuntime()) {
+      if (logical) {
+        content = logical.text;
+        const byteCount = new TextEncoder().encode(content).byteLength;
+        if (byteCount > SOURCE_EDIT_LIMIT) throw new Error("Source is larger than the 3 MB editing limit.");
+        previewMode = byteCount <= LIVE_PREVIEW_LIMIT ? "live" : "manual";
+      } else if (isTauriRuntime()) {
         const opened = await invoke<NativeOpenResult>("open_source_edit_session", {
           request: { documentId: document.id, sessionId },
         });
@@ -233,7 +242,7 @@ export function useSourceEditingController({
         previewState: "current",
         revision: 0,
         lastValidRevision: 0,
-        saveDisabledReason: isTauriRuntime() ? null : "Available in desktop app",
+        saveDisabledReason: logical ? "Saved with the scene: Export → Scene" : isTauriRuntime() ? null : "Available in desktop app",
         sourcePreview: adapter.getSnapshot(),
       };
       commitSessions((current) => ({ ...current, [document.path]: session }));
@@ -292,13 +301,15 @@ export function useSourceEditingController({
         reloadOptions = { rendererViewState: state };
         if (!matchesTarget()) return;
       }
+      const previewTitle = logicalSourceFor(document.id)?.extension === "sdf"
+        ? `${session.title.replace(/\.[^.]+$/u, "")}.sdf` : session.title;
       const candidateDocument = isTauriRuntime()
         ? await invoke<ViewerDocument>("open_text_structure", {
-          request: { title: session.title, extension: session.extension, text: targetContent },
+          request: { title: previewTitle, extension: session.extension, text: targetContent },
           preferences,
           reloadOptions,
         })
-        : await openBrowserDevTextDocument(session.title, session.extension, targetContent, preferences, reloadOptions, document.id);
+        : await openBrowserDevTextDocument(previewTitle, session.extension, targetContent, preferences, reloadOptions, document.id);
       if (!matchesTarget()) return;
       const identity: SourcePreviewIdentity = {
         documentId: document.id,
@@ -402,7 +413,7 @@ export function useSourceEditingController({
   const save = useCallback(async (document: ViewerDocument) => {
     if (closingDocumentIdsRef.current.has(document.id)) return;
     const session = sessionsRef.current[document.path];
-    if (!session?.dirty || session.documentId !== document.id || !session.handleId || !session.expectedRevision || savingPathsRef.current.has(document.path)) return;
+    if (!session?.dirty || session.documentId !== document.id || session.saveDisabledReason || !session.handleId || !session.expectedRevision || savingPathsRef.current.has(document.path)) return;
     savingPathsRef.current.add(document.path);
     updateSession(document.path, (current) => ({ ...current, saving: true }));
     try {

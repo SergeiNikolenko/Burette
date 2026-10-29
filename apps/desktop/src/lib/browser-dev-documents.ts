@@ -1,3 +1,4 @@
+import { unzipSync } from "fflate";
 import { readBrowserImport } from "./browser-import-storage";
 import { isExplicitBrowserDevServerPath } from "./browser-dev-paths";
 import { isTauriRuntime } from "./tauri";
@@ -1232,6 +1233,13 @@ function isMesoscaleDocument(path: string, extension: string, bytes: Uint8Array)
       if (Array.isArray(session.entries)) return session.entries.some((entry: { snapshot?: { data?: { tree?: { transforms?: { transformer?: string }[] } } } }) =>
         entry.snapshot?.data?.tree?.transforms?.some(transform => transform.transformer === "ms-plugin.mesoscale-state"));
     } catch { /* Let the session viewer report invalid files. */ }
+  }
+  if (extension === "molx") {
+    // Ordinary Mol* scene archives use the structure viewer; unreadable states keep the session fallback.
+    try {
+      const state = unzipSync(bytes, { filter: file => file.name === "state.json" && file.originalSize <= 64 * 1024 * 1024 })["state.json"];
+      if (state) return isMesoscaleDocument(path, "molj", state);
+    } catch { /* The session viewer reports unreadable archives. */ }
   }
   if (MESOSCALE_EXTENSIONS.has(extension)) return true;
   const normalizedPath = path.toLowerCase();
