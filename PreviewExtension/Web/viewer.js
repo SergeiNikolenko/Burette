@@ -686,6 +686,8 @@
     }
   }
 
+  let geometryPreviewRequest = 0;
+  let geometryPreviewLoading = null;
   async function executeBuretteAgentAction(action) {
     const type = String(action?.type || '');
     if (type === 'workspace_scene_snapshot') {
@@ -823,6 +825,23 @@
     if (type === 'create_component') {
       return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.createComponent?.(action))
         || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.createComponent is unavailable.'));
+    }
+    if (type === 'preview_geometry') {
+      const request = ++geometryPreviewRequest;
+      const viewer = activeMolstarViewer();
+      const roots = viewer?.plugin?.managers.structure.hierarchy.current.structures || [];
+      const cell = roots.length === 1 ? roots[0].cell : null;
+      const structure = cell?.obj?.data;
+      if (!structure) return { ok: true };
+      if (!window.BuretteGeometryPreview) {
+        geometryPreviewLoading ||= loadScript(runtimeURL('BuretteGeometryPreviewURL', './geometry-preview.js'), 'geometry preview', 10000)
+          .finally(() => { geometryPreviewLoading = null; });
+        await geometryPreviewLoading;
+      }
+      const current = viewer.plugin.managers.structure.hierarchy.current.structures;
+      if (request !== geometryPreviewRequest || viewer !== activeMolstarViewer() || current.length !== 1
+        || current[0].cell !== cell || cell.obj?.data !== structure) return { ok: true };
+      return window.BuretteGeometryPreview.apply(viewer, action);
     }
     if (type === 'select_residues') {
       const previewTarget = molstarMoleculePreviewTargetForAction(action);

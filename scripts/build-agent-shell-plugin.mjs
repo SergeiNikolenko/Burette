@@ -39,6 +39,7 @@ const requiredPreviewAssets = [
   'sequence-panel.js',
   'native-viewer-menus.js',
   'scene-file-actions.js',
+  'geometry-preview.js',
   'measurement-coordinate.js',
   'sdf-collection-scene.js',
   'molstar.js',

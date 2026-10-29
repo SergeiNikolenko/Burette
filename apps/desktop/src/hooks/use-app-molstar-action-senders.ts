@@ -78,6 +78,7 @@ export function useAppMolstarActionSenders({
     }
     const iframe = activeViewerIframeForDocument(document.id);
     if (!iframe?.contentWindow) {
+      if (action.type === "preview_geometry") return;
       pushStatus(`Open ${document.title} in the main viewer first`, "error");
       return;
     }

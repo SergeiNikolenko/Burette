@@ -1534,6 +1534,7 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
         "sequence-panel.js",
         "native-viewer-menus.js",
         "scene-file-actions.js",
+        "geometry-preview.js",
         "svg-sanitizer.js",
         "viewer.js",
     ]

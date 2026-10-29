@@ -33,6 +33,7 @@ const VIEWER_FILES = [
   "sequence-panel.js",
   "native-viewer-menus.js",
   "scene-file-actions.js",
+  "geometry-preview.js",
   "measurement-coordinate.js",
   "renderer-view-state.js",
   "svg-sanitizer.js",

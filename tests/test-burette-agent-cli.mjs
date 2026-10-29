@@ -578,7 +578,7 @@ try {
 
     // Unknown action types fail up front, whatever document kind is active.
     const actionsBeforeUnsupported = await readFile(resolve(sessionDir, 'actions.json'), 'utf8');
-    for (const actionText of ['{"type":"grid_sort"}', '{"label":"missing type"}']) {
+    for (const actionText of ['{"type":"grid_sort"}', '{"label":"missing type"}', '{"type":"preview_geometry","atoms":[0],"notify":false}']) {
       const unsupported = runCli(['act', '--session-dir', sessionDir, actionText, '--wait-ms', '1000']);
       assert.equal(unsupported.status, 2, actionText);
       const unsupportedError = JSON.parse(unsupported.stderr).error;
@@ -610,14 +610,14 @@ try {
   ])].sort();
   const viewerSource = await readFile('PreviewExtension/Web/viewer.js', 'utf8');
   const shellSource = await readFile('apps/desktop/src/hooks/use-agent-session.ts', 'utf8');
-  for (const privateAction of ['workspace_scene_snapshot', 'scene_science_binding', 'scene_science_restore_ack', 'measurement_preview_capture']) {
-    assert.ok(!cliTypeList('SESSION_VIEWER_ACTION_TYPES').includes(privateAction), `${privateAction} must not expose large snapshots through the public CLI`);
+  for (const privateAction of ['workspace_scene_snapshot', 'scene_science_binding', 'scene_science_restore_ack', 'measurement_preview_capture', 'preview_geometry']) {
+    assert.ok(!cliTypeList('SESSION_VIEWER_ACTION_TYPES').includes(privateAction), `${privateAction} must stay outside the public CLI`);
   }
   assert.deepEqual(
     cliTypeList('SESSION_VIEWER_ACTION_TYPES'),
     // Native window handoff and the shell's scene file probe stay outside the public MCP/CLI action contract.
     quotedTypes(sourceBody(viewerSource, 'async function executeBuretteAgentAction(', 'async function captureAgentScene('))
-      .filter(type => !['workspace_scene_snapshot', 'scene_source_paths', 'scene_science_binding', 'scene_science_restore_ack', 'measurement_preview_capture'].includes(type)),
+      .filter(type => !['workspace_scene_snapshot', 'scene_source_paths', 'scene_science_binding', 'scene_science_restore_ack', 'measurement_preview_capture', 'preview_geometry'].includes(type)),
   );
   assert.deepEqual(
     cliTypeList('SESSION_SHELL_ACTION_TYPES'),

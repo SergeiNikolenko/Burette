@@ -3,6 +3,7 @@
   "sourceRoot": "PreviewExtension/Web",
   "profiles": {
     "desktop-molstar": [
+      "geometry-preview.js",
       "molstar.js",
       "molstar.css",
       "viewer-runtime.css",
@@ -47,6 +48,7 @@
       "rdkit-compute/RDKit_minimal.wasm"
     ],
     "quicklook-molstar": [
+      "geometry-preview.js",
       "molstar.js",
       "molstar.css",
       "viewer-runtime.css",
@@ -85,6 +87,7 @@
       "rdkit/RDKit_minimal.wasm"
     ],
     "external-artifact": [
+      "geometry-preview.js",
       "native-viewer-menus.js",
       "viewer-runtime.css",
       "viewer-shell.js",

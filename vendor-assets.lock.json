@@ -41,8 +41,8 @@
     {
       "path": "PreviewExtension/Web/molstar.js",
       "package": "molstar",
-      "bytes": 5826197,
-      "sha256": "sha256-g5eWvNnp2B1KvpZuhhA61tVrwqOxjNvti5D2aX2enOo="
+      "bytes": 5826690,
+      "sha256": "sha256-eui+7gp5Ajzf29ymOl3pTwSTVqZh24lUYeZl03C4mWw="
     },
     {
       "path": "PreviewExtension/Web/molstar.css",
@@ -113,6 +113,7 @@
   ],
   "profiles": {
     "desktop-molstar": [
+      "geometry-preview.js",
       "molstar.js",
       "molstar.css",
       "viewer-runtime.css",
@@ -157,6 +158,7 @@
       "rdkit-compute/RDKit_minimal.wasm"
     ],
     "quicklook-molstar": [
+      "geometry-preview.js",
       "molstar.js",
       "molstar.css",
       "viewer-runtime.css",
@@ -195,6 +197,7 @@
       "rdkit/RDKit_minimal.wasm"
     ],
     "external-artifact": [
+      "geometry-preview.js",
       "native-viewer-menus.js",
       "viewer-runtime.css",
       "viewer-shell.js",
