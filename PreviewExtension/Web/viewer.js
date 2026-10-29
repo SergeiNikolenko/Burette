@@ -15830,7 +15830,7 @@ SOFTWARE.
     const controlLabel = String(config.sdfPoseControlLabel || 'Pose').trim() || 'Pose';
     const records = splitSdfRecords(text);
     if (records.length >= 1 && config.sdfPosePager === true) {
-      const molecules = records.map(parseV2000SdfRecord);
+      const molecules = records.length > 1 ? records.map(parseV2000SdfRecord) : [null];
       const allMoleculesParsed = molecules.every(Boolean);
       const collection = records.length > 1 && allMoleculesParsed
         ? sdfMoleculesToPdbCollection(molecules, label)
@@ -15856,8 +15856,9 @@ SOFTWARE.
         };
       }
       const activeRecord = readTrajectoryControlIndex(config, { controlLabel }, records.length);
-      const recordText = `${records[activeRecord].replace(/\n?\$\$\$\$\s*$/u, '').trimEnd()}\n$$$$\n`;
-      const pdbText = molecules[activeRecord]
+      // A single graph keeps its exact parser input, including bond orders, charges and SD data.
+      const recordText = records.length === 1 ? text : `${records[activeRecord].replace(/\n?\$\$\$\$\s*$/u, '').trimEnd()}\n$$$$\n`;
+      const pdbText = records.length > 1 && molecules[activeRecord]
         ? sdfMoleculesToPdbStructure([molecules[activeRecord]], `${label} ${controlLabel} ${activeRecord + 1}`)
         : null;
       return {
