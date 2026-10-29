@@ -26,7 +26,7 @@ function optionalString(record: Record<string, unknown>, key: string, path: stri
 function checkAtoms(value: unknown, path: string, expected: readonly string[]): MolecularAtom[] {
   if (!Array.isArray(value) || !value.length || value.length > SCIENCE_SESSION_LIMITS.atoms) fail(`${path} must list 1–10,000 atoms.`);
   value.forEach((atom, index) => {
-    if (!isRecord(atom) || typeof atom.element !== "string" || normalizeElement(atom.element) === null
+    if (!isRecord(atom) || typeof atom.element !== "string" || normalizeElement(atom.element) !== atom.element
       || ![atom.x, atom.y, atom.z].every((item) => finite(item) && Math.abs(item) <= 1e6)) fail(`${path}[${index}] is not an atom.`);
   });
   const atoms = value as MolecularAtom[];

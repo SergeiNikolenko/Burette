@@ -68,3 +68,29 @@ test("original Gaussian angular and Hessian helpers keep their physical orders a
   expect(packedTriangleDimension(6)).toBe(3);
   expect(() => packedTriangleDimension(7)).toThrow("triangle length");
 });
+
+test("scientific atom and frame elements reject noncanonical aliases without mutation", () => {
+  const outcomes: string[] = [];
+  for (const alias of ["8", "o"]) for (const location of ["atoms", "frame"]) {
+    const data = waterScience();
+    data.frames[0].atoms = data.frames[0].atoms.map(atom => ({ ...atom }));
+    (location === "atoms" ? data.atoms : data.frames[0].atoms)[0].element = alias;
+    const original = structuredClone(data);
+    try { validateScientificDocument(data, frames); outcomes.push("accepted"); }
+    catch (error) { if (!(error instanceof ScienceSessionError)) throw error; outcomes.push(error.code); }
+    expect(data).toEqual(original);
+  }
+  expect(outcomes).toEqual(["science", "science", "science", "science"]);
+});
+
+test("XYZ label normalization retains canonical scientific objects and numerical arrays", () => {
+  for (const alias of ["8", "o"]) {
+    const data = waterScience(), atoms = data.atoms, frameAtoms = data.frames[0].atoms;
+    const grid = data.grid!.values, hessian = data.frames[0].hessian!.values;
+    const source = readXyzFrames(XYZ.replace("O 0.000000", `${alias} 0.000000`));
+    expect(source[0].elements[0]).toBe("O");
+    expect(validateScientificDocument(data, source)).toBe(data);
+    expect(data.atoms).toBe(atoms); expect(data.frames[0].atoms).toBe(frameAtoms);
+    expect(data.grid!.values).toBe(grid); expect(data.frames[0].hessian!.values).toBe(hessian);
+  }
+});

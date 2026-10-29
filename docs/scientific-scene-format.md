@@ -43,6 +43,7 @@ validate the scientific document against the source atoms and geometry. Values
 must be finite; atom coordinates are bounded by ±1,000,000 Å. Scientific geometry
 matches XYZ within 1e-5 Å per axis. Multi-frame histories match every source frame;
 a single-frame source must occur in its retained scientific history.
+Scientific atoms and frames require canonical symbols; source XYZ labels normalize separately.
 Modes have unique indices in `[0, 3N)`, at most `3N` entries, finite frequencies
 and optional per-atom displacement triples. Energy/vector fields, orbital/basis
 and grid dimensions, and Z-matrix geometry are also validated.

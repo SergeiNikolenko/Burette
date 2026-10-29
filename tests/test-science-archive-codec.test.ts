@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { zipSync, unzipSync, strToU8 } from "../apps/desktop/node_modules/fflate/esm/browser.js";
+import { zipSync, unzipSync, strToU8 } from "../apps/desktop/node_modules/fflate";
 import { readFileSync } from "node:fs";
 import { XYZ, waterScience } from "./scientific-data-fixture";
 import { encodeScienceSession, decodeScienceSession, SCIENCE_MANIFEST_ASSET_ID, type EncodedScienceSession } from "../apps/desktop/src/lib/science-session/codec";
@@ -12,8 +12,8 @@ function archive(encoded: EncodedScienceSession) {
   return zipSync({ "state.json": strToU8('{"entries":[]}'), "assets.json": strToU8(JSON.stringify(encoded.assets.map(asset => [asset.id, { id: asset.id, kind: "file", name: asset.name }]))),
     ...Object.fromEntries(encoded.assets.map(asset => [path(asset.id), asset.bytes])) });
 }
-async function encodedScience() {
-  return encodeScienceSession({ documentUuid: uuid, source: { extension: "xyz", text: XYZ }, atomIds: ["a", "b", "c"], binding, science: waterScience(), original: { name: "water.out.gz", file: new Blob([original]) } });
+async function encodedScience(text = XYZ) {
+  return encodeScienceSession({ documentUuid: uuid, source: { extension: "xyz", text }, atomIds: ["a", "b", "c"], binding, science: waterScience(), original: { name: "water.out.gz", file: new Blob([original]) } });
 }
 async function editScience(bytes: Uint8Array, edit: (data: any) => void) {
   const files = unzipSync(bytes), manifest = JSON.parse(new TextDecoder().decode(files[path(SCIENCE_MANIFEST_ASSET_ID)]));
@@ -76,4 +76,24 @@ test("codec browser dependency graph contains validation but no worker, readers 
     plugins: [{ name: "codec-dependency-proof", setup(build) { build.onLoad({ filter: /\.[cm]?[jt]sx?$/u }, ({ path }) => { loaded.push(path); }); } }] });
   expect(result.success).toBe(true); expect(loaded.some(path => path.endsWith("/scientific-document.ts"))).toBe(true);
   expect(loaded.filter(path => /\/(?:science-worker|science-task|quantum|gaussian|fchk|forcefield|optimization)\.[cm]?[jt]s$/u.test(path))).toEqual([]);
+});
+
+test("checksum-valid MOLX cannot substitute noncanonical atom or frame elements", async () => {
+  const bytes = archive(await encodedScience()), outcomes: string[] = [];
+  for (const alias of ["8", "o"]) for (const location of ["atoms", "frame"]) {
+    const changed = await editScience(bytes, data => {
+      (location === "atoms" ? data.atoms : data.frames[0].atoms)[0].element = alias;
+    });
+    outcomes.push(await decodeScienceSession(changed).then(() => "accepted", error => error.code));
+  }
+  expect(outcomes).toEqual(["science", "science", "science", "science"]);
+});
+
+test("MOLX keeps source XYZ aliases exact while scientific element symbols stay canonical", async () => {
+  for (const alias of ["8", "o"]) {
+    const source = XYZ.replace("O 0.000000", `${alias} 0.000000`);
+    const decoded = (await decodeScienceSession(archive(await encodedScience(source))))!;
+    expect(decoded.source.text).toBe(source);
+    expect([decoded.science!.atoms[0].element, decoded.science!.frames[0].atoms[0].element]).toEqual(["O", "O"]);
+  }
 });
