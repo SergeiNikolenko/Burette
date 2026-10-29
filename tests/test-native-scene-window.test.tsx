@@ -27,6 +27,12 @@ mock.module("@tauri-apps/api/core", () => ({ invoke: async (command: string, arg
   if (command === "open_new_workspace_window") return "workspace-peer";
   if (command === "relay_popout_handoff") latest = { ...args.message, target: args.target };
 } }));
+// These cases exercise window handoff/rollback. Separate real scientific-consumer tests
+// validate capture/restore bytes and acknowledgement before this boundary succeeds.
+mock.module("../apps/desktop/src/lib/science-session/restore", () => ({ waitForSceneScienceRestore: async () => () => {}, sameSceneSource: () => true }));
+mock.module("../apps/desktop/src/hooks/workspace-scene-snapshot", () => ({ captureWorkspaceSceneSnapshot: async (document: any) => ({
+  document, result: { kind: "molx", dataBase64: "UEsDBA==" }, confirm: async () => {}, omissionReason: null,
+}) }));
 const { useNativePopoutSession, popOutNativeScene, returnNativePopout, nativePopoutBusy } = await import("../apps/desktop/src/components/workspace-panes/native-scene-window");
 function Listener() { useNativePopoutSession({ openStructurePaths: async () => {} } as any); return null; }
 async function withListener(run: () => Promise<void>) {

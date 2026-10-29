@@ -7,6 +7,8 @@ import type { MoleculeTab } from "../../stores/molecule-store";
 import { useMoleculeStore } from "../../stores/molecule-store";
 import { requestViewerAction, activeViewerIframeForDocument } from "../../lib/viewer-bridge";
 import { focusSceneDocument } from "../../hooks/workspace-scene-import";
+import { captureWorkspaceSceneSnapshot } from "../../hooks/workspace-scene-snapshot";
+import { sameSceneSource, waitForSceneScienceRestore } from "../../lib/science-session/restore";
 import { isTauriRuntime, trackTauriListener } from "../../lib/tauri";
 import { toast } from "../ui/toast";
 import { useSourceEditing, type SourceEditingContextValue } from "../../lib/source-editing/context";
@@ -46,17 +48,23 @@ function currentDocument(tabId: string) {
 
 async function checkpoint(tabId: string) {
   const document = currentDocument(tabId);
-  await focusSceneDocument(document, useMoleculeStore.getState().setActiveDocument);
   const source = sourceEditing?.sessionForDocument(document);
   if (source?.dirty || source?.saving) throw new Error("Save source changes before moving this scene.");
-  if (document.renderer === "molstar") {
-    const story = await requestViewerAction(document.id, { type: "observe_story" });
+  const snapshot = await captureWorkspaceSceneSnapshot(document, { sourceEditing, sceneFileCount: new Set(document.sceneSourcePaths ?? [document.path]).size, scientificData: "require" });
+  if (snapshot.document.renderer === "molstar") {
+    const story = await requestViewerAction(snapshot.document.id, { type: "observe_story" });
     if (Number(story.count) > 1) throw new Error("Keep this Story in its workspace.");
   }
-  const archive = await requestViewerAction(document.id, { type: "workspace_scene_snapshot" });
-  if (archive.sheet) return invoke<string>("save_popout_sheet", { sourcePath: document.path, sheet: archive.sheet });
-  if (typeof archive.dataBase64 !== "string") throw new Error("The scene could not be captured.");
-  return invoke<string>("save_popout_scene", { dataBase64: archive.dataBase64 });
+  const confirm = async () => {
+    await snapshot.confirm();
+    const current = sourceEditing?.sessionForDocument(snapshot.document);
+    if (current?.dirty || current?.saving) throw new Error("Save source changes before moving this scene.");
+  };
+  await confirm();
+  const path = snapshot.result.kind === "sheet"
+    ? await invoke<string>("save_popout_sheet", { sourcePath: snapshot.document.path, sheet: snapshot.result.sheet })
+    : await invoke<string>("save_popout_scene", { dataBase64: snapshot.result.dataBase64 });
+  return { path, confirm };
 }
 
 function tell(peer: string, message: Offer) {
@@ -82,11 +90,13 @@ export async function popOutNativeScene(tabId: string) {
   try {
     surface = activeViewerIframeForDocument(currentDocument(tabId).id)?.closest<HTMLElement>(".page-surface");
     if (surface) surface.inert = true;
-    const path = await checkpoint(tabId);
+    const captured = await checkpoint(tabId);
+    const path = captured.path;
     const peer = await invoke<string>("open_new_workspace_window", { paths: [path] });
     await tell(peer, { kind: "offer", id: crypto.randomUUID(), from: getCurrentWindow().label,
       path, title: tab.title ?? currentDocument(tabId).title, index: store.tabs.indexOf(tab), pinned: tab.pinned === true });
     // Only an acknowledged, nonempty loaded destination can retire the original scene.
+    await captured.confirm();
     useMoleculeStore.getState().closeTab(tabId);
   } catch (error) {
     toast.add({ title: "Could not move scene", description: error instanceof Error ? error.message : "Try again with the scene open.", type: "error" });
@@ -108,13 +118,16 @@ export async function returnNativePopout(): Promise<boolean> {
   try {
     surface = activeViewerIframeForDocument(currentDocument(owner.tabId).id)?.closest<HTMLElement>(".page-surface");
     if (surface) surface.inert = true;
-    const path = await checkpoint(owner.tabId);
+    const captured = await checkpoint(owner.tabId);
+    const path = captured.path;
     if (!await Window.getByLabel(owner.parent)) {
+      await captured.confirm();
       retainCheckpoint(owner.tabId, path);
       usePopout.setState({ owner: null });
       return false;
     }
     await tell(owner.parent, { ...owner, kind: "return", id: crypto.randomUUID(), from: getCurrentWindow().label, path });
+    await captured.confirm();
     useMoleculeStore.getState().closeTab(owner.tabId);
     usePopout.setState({ owner: null });
     const remaining = useMoleculeStore.getState().tabs.some(tab => !["launcher", "settings"].includes(tab.location.kind));
@@ -141,7 +154,7 @@ export async function checkpointNativePopoutForExit() {
   if (!owner) return;
   if (!useMoleculeStore.getState().tabs.some(tab => tab.id === owner.tabId)) { usePopout.setState({ owner: null }); return; }
   usePopout.setState({ busy: true });
-  try { retainCheckpoint(owner.tabId, await checkpoint(owner.tabId)); }
+  try { const captured = await checkpoint(owner.tabId); await captured.confirm(); retainCheckpoint(owner.tabId, captured.path); }
   finally { usePopout.setState({ busy: false }); }
 }
 
@@ -176,6 +189,9 @@ export function useNativePopoutSession(actions: ShellActions) {
           await focusSceneDocument(document, store.setActiveDocument);
           const ready = await requestViewerAction(document.id, { type: "workspace_scene_state" });
           if (!ready.ready) return false;
+          const confirmRestore = await waitForSceneScienceRestore(document);
+          confirmRestore?.();
+          if (!useMoleculeStore.getState().documents.some(current => current.id === document.id && sameSceneSource(current, document))) return false;
           store.renameTab(tab.id, payload.title);
           if (Boolean(tab.pinned) !== payload.pinned) store.togglePinnedTab(tab.id);
           if (payload.kind === "offer") usePopout.setState({ owner: { parent: payload.from, tabId: tab.id, title: payload.title, index: payload.index, pinned: payload.pinned } });
