@@ -1,0 +1,18 @@
+[Molden Format]
+[Atoms] AU
+H 1 1 0 0 0
+[GTO]
+1 0
+s 1 1.00
+1.0D+00 1.0
+[MO]
+Sym= A
+Ene= -0.5
+Spin= Alpha
+Occup= 1
+1 1.0
+Sym= B
+Ene= 0.25
+Spin= Beta
+Occup= 0
+1 -1.0
