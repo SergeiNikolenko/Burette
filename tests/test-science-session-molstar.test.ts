@@ -418,3 +418,22 @@ test("a new load ACK waits for a cancelled old transfer instead of failing busy"
     expect(f.imported.managers.asset.assets.map(entry => String(entry.asset.id))).toEqual([f.provenance.id]);
   } finally { nextDigest = null; held.release.resolve(); f.close(); }
 });
+
+test("actual host viewer actions bind scientific sources and serialize their full scene assets", async () => {
+  const f = await fixture();
+  f.plugin.state.setSnapshotParams({ camera: false });
+  try {
+    const text = readFileSync(new URL("../PreviewExtension/Web/viewer.js", import.meta.url), "utf8");
+    const start = text.indexOf("async function executeBuretteAgentAction(");
+    const routes = text.slice(start, text.indexOf("    if (type === 'measurement_preview_capture')", start)) + "}";
+    const unavailable = () => { throw new Error("Unexpected script load"); };
+    const execute = new Function("window", "activeMolstarViewer", "activeConfig", "document", "bytesToBase64", "runtimeURL", "loadScript", `${routes}; return executeBuretteAgentAction;`)
+      (window, () => f.viewer, {}, dom.document, (bytes: Uint8Array) => Buffer.from(bytes).toString("base64"), unavailable, unavailable);
+    const report = await execute({ type: "scene_science_binding", sourceExtension: "sdf" });
+    expect(report).toEqual({ ok: true, result: f.report });
+    const captured = await execute({ type: "workspace_scene_snapshot", science: f.request });
+    const files = unzipSync(new Uint8Array(Buffer.from(captured.result.dataBase64, "base64")));
+    for (const asset of f.assets) expect(files[`assets/${asset.id}`]).toEqual(asset.bytes);
+    expect(f.plugin.managers.asset.assets.map(entry => String(entry.asset.id))).toEqual([f.provenance.id]);
+  } finally { f.close(); }
+});
