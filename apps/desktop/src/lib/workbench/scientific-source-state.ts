@@ -104,6 +104,14 @@ function revisionsWith(documentId: string, text: string) {
   return null;
 }
 
+/** Whether a claimed document has host-owned data an ordinary Mol* export cannot carry. */
+export function hasScientificSource(documentId: string) {
+  for (const entry of imported.values()) {
+    if (entry.documentIds.has(documentId) && (entry.revisions.length > 0 || entry.original)) return true;
+  }
+  return false;
+}
+
 export function importedOriginalFor(documentId: string) {
   for (const entry of imported.values()) if (entry.scoped && entry.original && entry.documentIds.has(documentId)) return entry.original;
   return importFor(documentId)?.original ?? null;

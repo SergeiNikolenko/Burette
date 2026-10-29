@@ -21,8 +21,10 @@ from scientific validation.
 `export_session` and `raw_burette_agent` with `exportSession` share the bounded
 Molstar-only export. They wait for scientific asset work and use the existing
 `warnings` field when the runtime knows that scientific attachments are omitted.
-That ownership flag is set by scientific scene save or validated MOLX adoption;
-fresh host-only registrations do not yet signal it. Preserve logical source,
+The Burette host also checks its current source registry, so newly opened scientific
+documents warn before their first scene save or restore. Standalone SDK callers
+have only runtime-known ownership. The host refuses a result if its document,
+source or viewer changes while the export is pending. Preserve logical source,
 Z-matrix, grids, Hessians and Original with Burette's Export → Scene. The agent
 export keeps its 2 MiB inline limit and does not accept scientific arrays.
 

@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import { sameSceneSource } from "./source-identity";
+export { sameSceneSource } from "./source-identity";
 import { toast } from "../../components/ui/toast";
 import type { ViewerDocument } from "../../types";
 import { isMesoscaleViewerDocument } from "../mesoscale-documents";
@@ -88,11 +90,6 @@ export async function restoreScienceSession(document: ViewerDocument, dependenci
     throw error;
   }
 }
-
-// Metadata updates (for example clearing sceneUnsaved after Save) keep the same
-// source lifetime. Native claims and viewer runtime changes identify a new load.
-const SOURCE_KEYS = ["path", "runtimePath", "openClaimId", "extension", "renderer", "viewerProfile", "byteCount"] as const;
-export const sameSceneSource = (left: ViewerDocument, right: ViewerDocument) => SOURCE_KEYS.every((key) => left[key] === right[key]);
 
 // Each runtime document is restored once; the entry goes when the document closes.
 type RestoreEntry = { document: ViewerDocument; promise: Promise<RestoreOutcome> | null };

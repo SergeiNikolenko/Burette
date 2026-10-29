@@ -61,6 +61,7 @@ type UseAppOpenDropControllerOptions = {
   openTextDocuments: OpenTextDocuments;
   pushErrorStatus: PushErrorStatus;
   pushStatus: PushStatus;
+  sourceDraftForDocument?: (document: ViewerDocument) => string | null;
   setDockDocument: (area: DockArea, documentId: string | null) => void;
 };
 
@@ -90,6 +91,7 @@ export function useAppOpenDropController({
   pushErrorStatus,
   pushStatus,
   setDockDocument,
+  sourceDraftForDocument,
 }: UseAppOpenDropControllerOptions) {
   useOpenEvents(openPaths, pushErrorStatus);
   const activateSession = useAgentSession({
@@ -105,6 +107,7 @@ export function useAppOpenDropController({
     openPaths,
     pushErrorStatus,
     setDockDocument,
+    sourceDraftForDocument,
   });
   useDeepLinks({ openPaths, fetchPdbStructure, activateSession, pushErrorStatus });
   const {

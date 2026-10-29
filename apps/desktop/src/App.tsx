@@ -1040,6 +1040,7 @@ export default function App() {
     pushErrorStatus,
     pushStatus,
     setDockDocument,
+    sourceDraftForDocument: document => sourceEditing.sessionForDocument(document)?.content ?? null,
   });
   const { reloadActive, reloadXyzrenderDocument } = useAppViewerReloadActions({
     activeDocument,
