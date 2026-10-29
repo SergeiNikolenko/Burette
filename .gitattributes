@@ -8,3 +8,5 @@ PreviewExtension/Web/mesoscale.js whitespace=-blank-at-eol,-blank-at-eof,-space-
 plugins/burette-agent/preview-web/mesoscale.js whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
 # Preserve the pinned upstream CRLF reference table byte-for-byte.
 compute/semiempirical/reference/parameters_PM6_MOPAC.csv -text whitespace=-blank-at-eol
+# Preserve fixed-width FCHK reference columns and pinned source bytes.
+tests/fixtures/quantum/gaussian16-water-raman.fchk -text whitespace=-blank-at-eol
