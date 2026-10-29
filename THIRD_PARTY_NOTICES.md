@@ -174,3 +174,12 @@ from OpenMOPAC correction behavior through the pinned
 Apache-2.0 and mlxmolkit's MIT attribution apply. The generated compact native
 table and production PM6-D3H4 SCF composition are parity-gated on CPU and Metal;
 the upstream NPZ files remain development-time source assets only.
+
+## Avogadro FIRE2 / ABC-FIRE integrator
+
+The browser optimizer in `apps/desktop/src/lib/molecular-workbench/minimizer.ts`
+adapts the FIRE2/ABC-FIRE integration from OpenChemistry/avogadrolibs,
+`avogadro/calc/energyoptimizer.cpp`, revision
+`f5aea255b15d24f658a18d258e56357fa2719646`.
+Copyright (c) 2011-2020, Kitware, Inc. BSD-3-Clause; the full notice and license
+are retained in `docs/third-party/avogadro-LICENSE`.

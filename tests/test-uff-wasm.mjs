@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import initialize from '../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js';
+import ts from 'typescript-compiler-api';
 
 const fixture = JSON.parse(readFileSync(new URL('../compute/rdkit-conformer/fixtures/uff-rdkit-2025.03.4.json', import.meta.url)));
 const wasmBinary = readFileSync(new URL('../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm', import.meta.url));
@@ -88,6 +89,40 @@ for (let repeat = 0; repeat < 1024; repeat++) {
 }
 assert.equal(memory.buffer.byteLength, warmedHeapBytes, 'disposed contexts reuse the warmed WASM heap');
 
+// Execute the authored adapter with the actual WASM module. Transport alone is
+// injected so Node can exercise the same synchronous preparation/disposal API.
+const adapterSource = readFileSync(new URL('../apps/desktop/src/lib/molecular-workbench/uff-wasm.ts', import.meta.url), 'utf8')
+  .replaceAll('import.meta.url', JSON.stringify(import.meta.url));
+const adapterCode = ts.transpile(adapterSource, { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 });
+const adapter = {};
+let fetchCount = 0, finishFetch;
+new Function('require', 'exports', 'fetch', adapterCode)(
+  () => ({ __esModule: true, default: async () => module }), adapter,
+  () => { fetchCount++; return new Promise(resolve => { finishFetch = resolve; }); },
+);
+assert.throws(() => adapter.createUffWasmEvaluator(water.molblock), /prepared/);
+const failed = adapter.prepareUffWasm();
+assert.equal(adapter.prepareUffWasm(), failed, 'pending preparation shares its first fetch');
+assert.equal(fetchCount, 1);
+assert.throws(() => adapter.createUffWasmEvaluator(water.molblock), /prepared/);
+finishFetch({ ok: false, status: 503 });
+await assert.rejects(failed, /Cannot load UFF \(503\)/);
+assert.throws(() => adapter.createUffWasmEvaluator(water.molblock), /prepared/);
+const retry = adapter.prepareUffWasm();
+assert.notEqual(retry, failed, 'failed preparation clears its cached promise');
+assert.equal(adapter.prepareUffWasm(), retry);
+assert.equal(fetchCount, 2);
+assert.throws(() => adapter.createUffWasmEvaluator(water.molblock), /prepared/);
+finishFetch({ ok: true, arrayBuffer: async () => wasmBinary });
+await retry;
+await adapter.prepareUffWasm();
+assert.equal(fetchCount, 2, 'successful preparation remains cached');
+const evaluator = adapter.createUffWasmEvaluator(water.molblock);
+assert.equal(evaluator.atomCount, water.atomCount);
+near(evaluator.evaluate(new Float64Array(water.coordinates)).energyKcalMol, water.expectedEnergyKcalMol, 1e-8, 'adapter energy');
+evaluator.dispose();
+evaluator.dispose();
+assert.throws(() => evaluator.evaluate(new Float64Array(water.coordinates)), /disposed/);
 // Existing parameter payloads must retain their exact ABI and frozen bytes.
 assert.equal(module.conformer_extractor_abi_version(), 1);
 assert.equal(module.mmff_extractor_abi_version(), 1);
