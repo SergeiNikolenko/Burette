@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "burette.rdkit-uff-evaluator.v1",
+  "abiVersion": 1,
+  "rdkitCommit": "276b5a662302c6a548ac4f1363c066f3258e3a20",
+  "input": "One sanitized V2000 or V3000 MOL block; preserve atom order and explicit/implicit hydrogens, add no atoms.",
+  "maximumInputBytes": 2097152,
+  "maximumAtoms": 1024,
+  "maximumLivingContextsPerModule": 8,
+  "maximumAbsoluteCoordinateAngstrom": 1000000,
+  "coordinates": "Exactly 3N finite float64 values in atom order, in angstrom.",
+  "energy": "kcal/mol",
+  "gasteiger": { "iterations": 12, "throwOnParamFailure": true, "units": "elementary charge", "hydrogens": "Preserve input representation; implicit hydrogen charge remains on RDKit's separate implicit-H reservoir." },
+  "gradient": "Analytic dE/dx in kcal/(mol angstrom); forces are its negative.",
+  "nonbondedPolicy": {
+    "vdwThreshold": 100,
+    "ignoreInterfragmentInteractions": true,
+    "constructionCoordinates": "MOL conformer at context creation; term membership remains fixed for that job."
+  },
+  "lifecycle": "One molecule and force field per context; repeated evaluations reuse both. Caller deletes the embind context in finally or terminates its owning worker on cancellation.",
+  "failure": "Reject incomplete UFF atom typing, invalid coordinates, non-finite energy/gradient, or bounds violations. No force-field substitution. Binding reports bounded error strings; JS adapter throws Error."
+}

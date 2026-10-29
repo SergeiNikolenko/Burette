@@ -2,6 +2,7 @@
 set -euo pipefail
 
 readonly expected_commit="276b5a662302c6a548ac4f1363c066f3258e3a20"
+readonly expected_emscripten="4.0.10"
 readonly adapter_root="$(cd "$(dirname "$0")" && pwd)"
 readonly boost_dir="${BURETTE_BOOST_DIR:-/opt/boost/lib/cmake/Boost-1.87.0}"
 readonly boost_cmake_root="$(dirname "$boost_dir")"
@@ -15,12 +16,17 @@ readonly source_root="$(cd "$1" && pwd)"
 mkdir -p "$2"
 readonly output_root="$(cd "$2" && pwd)"
 
-for command in git emcmake cmake; do
+for command in git em++ emcmake cmake; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo "Required build command is unavailable: $command" >&2
     exit 69
   fi
 done
+
+if ! em++ --version | head -n 1 | grep -q " $expected_emscripten "; then
+  echo "Emscripten $expected_emscripten is required" >&2
+  exit 69
+fi
 
 if [[ "$(git -C "$source_root" rev-parse HEAD)" != "$expected_commit" ]]; then
   echo "RDKit source must be exactly $expected_commit" >&2
@@ -70,7 +76,7 @@ emcmake cmake -S "$source_worktree" -B "$build_root" \
   -DCMAKE_C_FLAGS="-fwasm-exceptions -O3 -DNDEBUG -DCOMPILE_ANSI_ONLY" \
   -DCMAKE_EXE_LINKER_FLAGS="-fwasm-exceptions -sSTACK_OVERFLOW_CHECK=1 -sUSE_PTHREADS=0 -sALLOW_MEMORY_GROWTH=1 -sMAXIMUM_MEMORY=4GB -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=initBuretteRDKitConformer -sENVIRONMENT=worker -sFILESYSTEM=0"
 
-cmake --build "$build_root" --target Burette_rdkit_conformer --parallel 2
+cmake --build "$build_root" --target Burette_rdkit_conformer --parallel "${BURETTE_BUILD_PARALLEL:-2}"
 install -m 0644 "$build_root/Code/MinimalLib/Burette_rdkit_conformer.js" "$output_root/"
 install -m 0644 "$build_root/Code/MinimalLib/Burette_rdkit_conformer.wasm" "$output_root/"
 

@@ -32,6 +32,10 @@ Penzotti, and other contributors. The authoritative license text copied from
 that revision is stored at `compute/rdkit-conformer/RDKIT_LICENSE.txt` and must
 ship with the extractor binary.
 
+The browser also calls RDKit's UFF force field and Gasteiger-Marsili partial
+charges through that pinned extractor. The public APIs retain explicit atom
+order and refuse missing force-field or charge parameters.
+
 ## mlxmolkit and native GPU Compute Layer provenance
 
 The Burette project owner records that Guillaume, author of

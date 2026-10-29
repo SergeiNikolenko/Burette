@@ -7,12 +7,14 @@ add_executable(Burette_rdkit_conformer
     "${BURETTE_CONFORMER_SOURCE_DIR}/conformer_binary.cpp"
     "${BURETTE_CONFORMER_SOURCE_DIR}/conformer_extractor.cpp"
     "${BURETTE_CONFORMER_SOURCE_DIR}/mmff_binary.cpp"
-    "${BURETTE_CONFORMER_SOURCE_DIR}/mmff_extractor.cpp")
+    "${BURETTE_CONFORMER_SOURCE_DIR}/mmff_extractor.cpp"
+    "${BURETTE_CONFORMER_SOURCE_DIR}/uff_evaluator.cpp")
 target_include_directories(Burette_rdkit_conformer PRIVATE
     "${BURETTE_CONFORMER_SOURCE_DIR}")
 target_link_libraries(Burette_rdkit_conformer
     DistGeomHelpers
     ForceFieldHelpers
+    PartialCharges
     DistGeometry
     ForceField
     FileParsers
