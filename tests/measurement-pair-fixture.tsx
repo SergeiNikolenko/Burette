@@ -25,7 +25,8 @@ const source = ["Pair publication", "Burette", "", "  3  2  0  0  0  0          
   "    1.5000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0",
   "    2.0000    1.3000    0.0000 O   0  0  0  0  0  0  0  0  0  0  0  0",
   "  1  2  1  0  0  0  0", "  2  3  1  0  0  0  0", "M  END", "$$$$", ""].join("\n");
-const sourceFor = (path: string) => path.endsWith(".mol") ? source.replace("$$$$\n", "") : source;
+const sourceOverrides = new Map<string, string>();
+const sourceFor = (path: string) => sourceOverrides.get(path) ?? (path.endsWith(".mol") ? source.replace("$$$$\n", "") : source);
 export const holds: { read: boolean; graph: boolean; releaseRead: (() => void) | null; releaseWorker: (() => void) | null } = { read: false, graph: false, releaseRead: null, releaseWorker: null };
 mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => false }));
 mock.module("../apps/desktop/src/lib/structure-text", () => ({
@@ -53,9 +54,10 @@ const { SourceEditingProvider } = await import("../apps/desktop/src/lib/source-e
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");
 const { useGraphDraft: useFocusedGraphDraft } = await import("../apps/desktop/src/lib/workbench/use-graph-draft");
 let serial = 0;
-export async function fixture(format: "sdf" | "mol" = "sdf", useAdapter: typeof useFocusedGraphDraft = useFocusedGraphDraft) {
+export async function fixture(format: "sdf" | "mol" = "sdf", useAdapter: typeof useFocusedGraphDraft = useFocusedGraphDraft, sourceText?: string) {
   const doc = { id: `pair-publication-${++serial}`, path: `/pair-publication-${serial}.${format}`, title: `source.${format}`,
     extension: format, renderer: "molstar", runtimePath: "<html>scene</html>" } as ViewerDocument;
+  if (sourceText !== undefined) sourceOverrides.set(doc.path, sourceText);
   let controller!: ReturnType<typeof useSourceEditingController>, graph!: ReturnType<typeof useFocusedGraphDraft>, focused!: ReturnType<typeof useFocusedGraphDraft>;
   let writeMode: "normal" | "throw" | "noop" = "normal";
   let afterWrite: (() => void) | undefined;
@@ -87,6 +89,6 @@ export async function fixture(format: "sdf" | "mol" = "sdf", useAdapter: typeof 
     async apply(operation: Parameters<typeof graph.apply>[0], options?: Parameters<typeof graph.apply>[1]) {
       let result: Awaited<ReturnType<typeof graph.apply>> = null; await act(async () => { result = await graph.apply(operation, options); }); return result;
     },
-    close: async () => { await act(async () => root.unmount()); host.remove(); },
+    close: async () => { await act(async () => root.unmount()); host.remove(); sourceOverrides.delete(doc.path); },
   };
 }

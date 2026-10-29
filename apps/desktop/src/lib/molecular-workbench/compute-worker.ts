@@ -19,7 +19,7 @@ scope.onmessage = async ({ data }) => {
       case 'energy': result = getEnergy(data.molecule, data.forceField); break;
       case 'charges': result = await getPartialCharges(data.molecule); break;
       case 'properties': result = getProperties(data.molecule); break;
-      case 'add-hydrogens': result = addHydrogens(data.molecule); break;
+      case 'add-hydrogens': result = await addHydrogens(data.molecule); break;
       case 'remove-hydrogens': result = removeHydrogens(data.molecule); break;
       case 'conformers': result = searchConformers(data.molecule, data.options); break;
       case 'edit-graph': result = runGraphOperation(data); break;

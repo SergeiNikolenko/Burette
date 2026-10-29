@@ -16,14 +16,14 @@ describe('browser molecular chemistry', () => {
     expect(result.molecule.atoms.map(a => a.element)).toEqual(molecule.atoms.map(a => a.element));
     expect(getEnergy(molecule)).toBeCloseTo(result.initialEnergy, 8);
   });
-  test('explicit graph survives SDF roundtrip; adding and removing hydrogens preserves heavy coordinates', () => {
+  test('explicit graph survives SDF roundtrip; adding and removing hydrogens preserves heavy coordinates', async () => {
     const original = generateFromSmiles('CC=O');
     const parsed = parseMolecule(original.molfile + '\n$$$$\n', 'sdf');
     expect(parsed.bonds).toEqual(original.bonds);
     const heavy = removeHydrogens(original);
     expect(heavy.atoms).toEqual(original.atoms.filter(a => a.element !== 'H'));
     expect(() => getEnergy(heavy)).toThrow('explicit hydrogens');
-    const restored = addHydrogens(heavy);
+    const restored = await addHydrogens(heavy);
     expect(restored.atoms.filter(a => a.element !== 'H')).toEqual(heavy.atoms);
     expect(getProperties(restored).formula).toBe('C2H4O');
     expect(Number.isFinite(getEnergy(restored))).toBe(true);
@@ -58,9 +58,9 @@ describe('browser molecular chemistry', () => {
     expect(result.molecule.bonds).toEqual(water.bonds);
     expect(result.energy).toBeLessThan(result.initialEnergy);
   });
-  test('hydrogen addition and conformer search preserve interleaved source atom indices', () => {
+  test('hydrogen addition and conformer search preserve interleaved source atom indices', async () => {
     const water = parseMolecule('3\nwater\nH .95 0 0\nO 0 0 0\nH -.23 .93 0', 'xyz');
-    const saturated = addHydrogens(water);
+    const saturated = await addHydrogens(water);
     expect(saturated.atoms).toEqual(water.atoms);
     expect(saturated.bonds).toEqual(water.bonds);
     const conformer = searchConformers(water, { count: 1 })[0].molecule;
@@ -75,7 +75,7 @@ describe('browser molecular chemistry', () => {
       .replace(/^M  V30 3 H .*\n/m, '')
       .replace(/^M  V30 2 1 1 3\n/m, '');
     const partial = { ...parseMolecule(partialMolfile, 'mol'), atoms: water.atoms.slice(0, 2), atomMap: [1, 0] };
-    const expanded = addHydrogens(partial);
+    const expanded = await addHydrogens(partial);
     expect(expanded.atoms.slice(0, 2)).toEqual(partial.atoms);
     expect(expanded.atoms.map(a => a.element)).toEqual(['H', 'O', 'H']);
     expect(Number.isFinite(getEnergy(expanded))).toBe(true);

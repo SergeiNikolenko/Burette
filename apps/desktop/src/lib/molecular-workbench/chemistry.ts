@@ -2,6 +2,7 @@ import { ConformerGenerator, Molecule, MoleculeProperties, Resources } from 'ope
 import resources from '../../../../../node_modules/openchemlib/dist/resources.json';
 import { measureGeometry } from '../../../../../scripts/molecular-geometry.js';
 import type { MolecularAtom, Vec3 } from './types';
+import { appendHydrogens } from './hydrogen-geometry';
 import { serializePhysicalMolfile } from './molecule-serialization';
 import { optimizeWithMethod } from './optimization';
 import type { MinimizerMethod } from './minimizer';
@@ -26,7 +27,7 @@ function checkHydrogenExpansion(mol: Molecule) {
   checkSize(mol.getAllAtoms() + Array.from({ length: mol.getAllAtoms() }, (_, i) => mol.getImplicitHydrogens(i)).reduce((a, b) => a + b, 0));
 }
 function expandedAtomMap(structure: MolecularStructure, count: number): number[] {
-  // Both OCL hydrogen operations append new H after the existing, already
+  // Hydrogen expansion and conformer generation append new H after the existing,
   // normalized atom array. Retain external indices and append only new atoms.
   const existing = structure.atomMap ?? structure.atoms.map((_, i) => i);
   return [...existing, ...Array.from({ length: count - existing.length }, (_, i) => existing.length + i)];
@@ -105,11 +106,10 @@ export function removeHydrogens(structure: MolecularStructure): MolecularStructu
   mol.deleteAtoms(Array.from({ length: mol.getAllAtoms() }, (_, i) => i).filter(i => mol.getAtomLabel(i) === 'H'));
   return snapshot(mol, structure.title);
 }
-export function addHydrogens(structure: MolecularStructure): MolecularStructure {
+export async function addHydrogens(structure: MolecularStructure): Promise<MolecularStructure> {
   const mol = toOcl(structure);
   checkHydrogenExpansion(mol);
-  // Coordinate invention places only the added H; existing atoms stay fixed.
-  mol.addImplicitHydrogens();
+  await appendHydrogens(mol);
   return snapshot(mol, structure.title, structure.graphSource, structure.graphComplete, expandedAtomMap(structure, mol.getAllAtoms()));
 }
 

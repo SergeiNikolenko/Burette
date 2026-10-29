@@ -12,8 +12,9 @@ export type MolecularStructure = {
 };
 
 // Single-bond covalent radii, angstrom (Cordero et al., Dalton Trans. 2008,
-// DOI:10.1039/B801115J). They infer connectivity only, never bond order/charge.
-const radii: Record<string, number> = { H: .31, B: .84, C: .76, N: .71, O: .66, F: .57, Si: 1.11, P: 1.07, S: 1.05, Cl: 1.02, Br: 1.20, I: 1.39 };
+// DOI:10.1039/B801115J). Used for connectivity and underdetermined H bond
+// lengths; never infer bond order or charge.
+export const covalentRadii: Record<string, number> = { H: .31, B: .84, C: .76, N: .71, O: .66, F: .57, Si: 1.11, P: 1.07, S: 1.05, Cl: 1.02, Br: 1.20, I: 1.39 };
 const valences: Record<string, number> = { H: 1, B: 3, C: 4, N: 3, O: 2, F: 1, Si: 4, P: 3, S: 2, Cl: 1, Br: 1, I: 1 };
 const limit = 256;
 export function checkMoleculeSize(count: number) {
@@ -55,11 +56,11 @@ export function parseMolecule(source: string, format: 'xyz' | 'sdf' | 'mol'): Mo
   const degrees = atoms.map(() => 0);
   for (let a = 0; a < atoms.length; a++) for (let b = a + 1; b < atoms.length; b++) {
     const x = atoms[a], y = atoms[b];
-    if (!radii[x.element] || !radii[y.element]) continue;
+    if (!covalentRadii[x.element] || !covalentRadii[y.element]) continue;
     const d = Math.hypot(x.x - y.x, x.y - y.y, x.z - y.z);
     // Display-only single-bond perception. Accept it for calculation only when
     // every neutral, common-valence atom is saturated by the explicit atoms.
-    if (d > .2 && d <= radii[x.element] + radii[y.element] + .35) { mol.addBond(a, b); degrees[a]++; degrees[b]++; }
+    if (d > .2 && d <= covalentRadii[x.element] + covalentRadii[y.element] + .35) { mol.addBond(a, b); degrees[a]++; degrees[b]++; }
   }
   const complete = atoms.every((a, i) => degrees[i] === valences[a.element]);
   mol.ensureHelperArrays(Molecule.cHelperRings);
