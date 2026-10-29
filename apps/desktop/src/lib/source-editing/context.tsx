@@ -19,6 +19,7 @@ export type SourceEditingView = {
   diagnostic: string | null;
   previewMode: "live" | "manual";
   saveDisabledReason: string | null;
+  saveLabel?: "Save" | "Save copy";
   sourcePreview: SourcePreviewFrameSnapshot | null;
   previewState?: SourcePreviewState;
 };

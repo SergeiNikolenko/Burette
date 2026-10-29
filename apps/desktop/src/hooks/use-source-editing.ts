@@ -7,6 +7,7 @@ import { SourcePreviewAdapter } from "../lib/source-preview/adapter";
 import type { SourcePreviewCandidate, SourcePreviewIdentity } from "../lib/source-preview/types";
 import { openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
+import { downloadTextFile, safeExportFileName } from "../lib/file-export";
 import { isTauriRuntime } from "../lib/tauri";
 import { logicalSourceFor } from "../lib/science-session/state";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
@@ -243,7 +244,8 @@ export function useSourceEditingController({
         previewState: "current",
         revision: 0,
         lastValidRevision: 0,
-        saveDisabledReason: logical ? "Saved with the scene: Export → Scene" : isTauriRuntime() ? null : "Available in desktop app",
+        saveDisabledReason: logical ? "Saved with the scene: Export → Scene" : null,
+        saveLabel: isTauriRuntime() ? "Save" : "Save copy",
         sourcePreview: adapter.getSnapshot(),
       };
       commitSessions((current) => ({ ...current, [document.path]: session }));
@@ -414,7 +416,23 @@ export function useSourceEditingController({
   const save = useCallback(async (document: ViewerDocument) => {
     if (closingDocumentIdsRef.current.has(document.id)) return;
     const session = sessionsRef.current[document.path];
-    if (!session?.dirty || session.documentId !== document.id || session.saveDisabledReason || !session.handleId || !session.expectedRevision || savingPathsRef.current.has(document.path)) return;
+    if (!session?.dirty || session.documentId !== document.id || session.saveDisabledReason || savingPathsRef.current.has(document.path)) return;
+    if (!isTauriRuntime()) {
+      if (new TextEncoder().encode(session.content).byteLength > SOURCE_EDIT_LIMIT) {
+        updateSession(document.path, current => ({ ...current, diagnostic: "Draft exceeds the 3 MB editing limit." }));
+        return;
+      }
+      // A browser download is a copy, never a write to the opened source. Keep
+      // baseContent and dirty intact so closing still protects the local draft.
+      const stem = safeExportFileName(session.title).replace(/\.[^.]+$/u, "").slice(0, 100);
+      const downloadError = "Could not download the draft. Try Save copy again.";
+      try {
+        downloadTextFile(`${stem || "structure"}.${session.extension}`, session.content);
+        updateSession(document.path, current => current.diagnostic === downloadError ? { ...current, diagnostic: null } : current);
+      } catch { updateSession(document.path, current => ({ ...current, diagnostic: downloadError })); }
+      return;
+    }
+    if (!session.handleId || !session.expectedRevision) return;
     savingPathsRef.current.add(document.path);
     updateSession(document.path, (current) => ({ ...current, saving: true }));
     try {
