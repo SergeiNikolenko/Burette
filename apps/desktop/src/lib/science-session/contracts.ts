@@ -9,7 +9,7 @@ export const SCIENCE_SESSION_LIMITS = {
   assetIndexBytes: 4 * MIB,
   manifestBytes: 4 * MIB,
   attachments: 64,
-  /** All attachments together, the manifest included. */
+  /** All attachment payloads together, excluding the manifest. */
   attachmentBytes: 20 * MIB,
   sourceBytes: 16 * MIB,
   atoms: 10_000,
