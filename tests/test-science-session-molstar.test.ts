@@ -13,13 +13,13 @@ Object.defineProperty(globalThis, "document", { configurable: true, value: dom.d
 afterAll(async () => { if (previous) Object.defineProperty(globalThis, "document", previous); else Reflect.deleteProperty(globalThis, "document"); await dom.happyDOM.close(); });
 const window: Record<string, any> = {};
 let nextDigest: { entered: ReturnType<typeof deferred>; release: ReturnType<typeof deferred> } | null = null;
-const runtimeCrypto = { subtle: { async digest(algorithm: AlgorithmIdentifier, bytes: BufferSource) {
+const runtimeCrypto = { randomUUID: crypto.randomUUID.bind(crypto), subtle: { async digest(algorithm: AlgorithmIdentifier, bytes: BufferSource) {
   const held = nextDigest; nextDigest = null;
   const result = await crypto.subtle.digest(algorithm, bytes);
   if (held) { held.entered.resolve(); await held.release.promise; }
   return result;
 } } };
-vm.runInNewContext(readFileSync(new URL("../PreviewExtension/Web/scene-file-actions.js", import.meta.url), "utf8"), { window, crypto: runtimeCrypto, TextEncoder, File, Uint8Array, Float64Array });
+vm.runInNewContext(readFileSync(new URL("../PreviewExtension/Web/scene-file-actions.js", import.meta.url), "utf8"), { window, crypto: runtimeCrypto, TextEncoder, TextDecoder, File, Uint8Array, Float64Array });
 const science = window.BuretteSceneFiles.science;
 const source = ["Runtime graph", "Burette", "", "  2  1  0  0  0  0            999 V2000",
   "    0.0000    0.0000    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0",
@@ -199,17 +199,23 @@ test("cleanup never deletes a foreign replacement of a temporary science asset",
   } finally { held.release(); f.close(); }
 });
 
-test("real MOLX reopen adopts only imported science assets and preserves ordinary provenance", async () => {
+test("real MOLX reopen retains science until validated ownership and preserves ordinary provenance", async () => {
   const f = await fixture(), opened = new PluginContext(DefaultPluginSpec());
   try {
     const archive = await science.serialize(f.viewer, f.request, options); await opened.init();
+    const token = science.beginImport(opened);
     await opened.managers.snapshot.open(new File([archive], "roundtrip.molx"));
+    expect(science.completeImport(opened, token)).toBe(true);
     expect(opened.managers.structure.hierarchy.current.structures.length).toBe(1);
     expect(opened.managers.asset.assets.filter(entry => entry.asset.id.startsWith(science.prefix)).length).toBe(3);
     expect((await science.sdfBinding({ plugin: opened })).sourceSha256).toBe(f.report.sourceSha256);
     await expect(science.exclusive(opened, async () => "must not run")).rejects.toThrow("holds scientific attachments");
-    expect(science.adoptImported(opened)).toBe(true);
-    expect([science.present(opened), science.adoptImported(opened)]).toEqual([true, false]);
+    const receipt = { ...f.request, importToken: token, manifestSha256: await hash(f.assets[0].bytes) };
+    const unclaimed = unzipSync(new Uint8Array(await (await opened.managers.snapshot.serialize(options)).arrayBuffer()));
+    for (const asset of f.assets) expect(unclaimed[`assets/${asset.id}`]).toEqual(asset.bytes);
+    expect(await science.adoptValidated({ plugin: opened }, receipt)).toBe(true);
+    expect([science.present(opened), await science.adoptValidated({ plugin: opened }, receipt)]).toEqual([true, true]);
+    expect(science.adoptImported).toBeUndefined();
     expect(opened.managers.asset.assets.map(entry => String(entry.asset.id))).toEqual([f.provenance.id]);
     const file = opened.managers.asset.get(f.provenance)!.file;
     expect(new Uint8Array(await file.arrayBuffer())).toEqual(Uint8Array.of(9, 8, 255, 0));
@@ -231,4 +237,184 @@ test("invalid asset requests reject before changing the real asset inventory", a
     }
     expect(science.present(f.plugin)).toBe(false);
   } finally { f.close(); }
+});
+
+
+async function importedFixture(format: "sdf" | "xyz" = "sdf") {
+  const f = await fixture(format), plugin = new PluginContext(DefaultPluginSpec());
+  const archive = await science.serialize(f.viewer, f.request, options); await plugin.init();
+  const token = science.beginImport(plugin);
+  await plugin.managers.snapshot.open(new File([archive], "incoming.molx"));
+  science.completeImport(plugin, token);
+  return { ...f, imported: plugin, importedViewer: { plugin }, archive,
+    receipt: { ...f.request, importToken: token, manifestSha256: await hash(f.assets[0].bytes) },
+    close() { plugin.dispose(); f.close(); } };
+}
+const sameEntries = (plugin: PluginContext, entries: typeof plugin.managers.asset.assets) =>
+  entries.length === plugin.managers.asset.assets.length && entries.every(entry => plugin.managers.asset.get(entry.asset) === entry);
+
+test("invalid receipt or current source/frame never adopts imported assets", async () => {
+  for (const kind of ["receipt", "source", "frame", "missing-graph-sha"] as const) {
+    const f = await importedFixture(kind === "frame" ? "xyz" : "sdf");
+    try {
+      const entries = f.imported.managers.asset.assets;
+      if (kind === "source") await f.imported.state.data.build().to(f.raw.ref).update({ data: source + "\n" }).commit();
+      if (kind === "frame") await f.imported.state.data.build().to(f.report.modelRef).update({ modelIndex: 1 }).commit();
+      const receipt = kind === "receipt" ? { ...f.receipt, manifestSha256: "0".repeat(64) } : kind === "missing-graph-sha" ? { ...f.receipt, sourceSha256: undefined } : f.receipt;
+      await expect(science.adoptValidated(f.importedViewer, receipt)).rejects.toThrow(kind === "receipt" || kind === "missing-graph-sha" ? "matching validated" : "changed");
+      expect(sameEntries(f.imported, entries)).toBe(true);
+      expect(science.present(f.imported)).toBe(false);
+    } finally { f.close(); }
+  }
+});
+
+test("receipt-matched manifest does not authorize a payload replaced before adoption", async () => {
+  const f = await importedFixture();
+  try {
+    const asset = fileAsset(f.assets[1].id, "foreign-source.sdf");
+    const bytes = f.assets[1].bytes.slice(); bytes[0] ^= 1;
+    f.imported.managers.asset.set(asset, new File([bytes], asset.name), { tag: "foreign-owner", isStatic: true });
+    const entries = f.imported.managers.asset.assets;
+    await expect(science.adoptValidated(f.importedViewer, f.receipt)).rejects.toThrow("attachments changed");
+    expect(sameEntries(f.imported, entries)).toBe(true);
+    expect(f.imported.managers.asset.get(asset)!.tag).toBe("foreign-owner");
+    expect(science.present(f.imported)).toBe(false);
+  } finally { f.close(); }
+});
+
+test("adoption refuses inventory, file or descriptor changes across the actual digest await", async () => {
+  for (const kind of ["replace", "file", "descriptor", "added"] as const) {
+    const f = await importedFixture(), held = { entered: deferred(), release: deferred() };
+    try {
+      nextDigest = held;
+      const running = science.adoptValidated(f.importedViewer, f.receipt); await held.entered.promise;
+      const asset = fileAsset(f.assets[2].id, "foreign-original.bin"), file = new File([f.assets[2].bytes], asset.name);
+      const entry = f.imported.managers.asset.get(asset)!;
+      if (kind === "replace") f.imported.managers.asset.set(asset, file, { tag: "foreign-owner" });
+      if (kind === "file") entry.file = file;
+      if (kind === "descriptor") entry.asset = asset;
+      if (kind === "added") f.imported.managers.asset.set(fileAsset("burette-science-other", "added"), file);
+      const entries = f.imported.managers.asset.assets;
+      held.release.resolve(); await expect(running).rejects.toThrow("attachments");
+      expect(sameEntries(f.imported, entries)).toBe(true);
+      expect(science.present(f.imported)).toBe(false);
+    } finally { nextDigest = null; held.release.resolve(); f.close(); }
+  }
+});
+
+test("adoption rechecks displayed SDF after held digest and serializes ownership transfers", async () => {
+  const f = await importedFixture(), held = { entered: deferred(), release: deferred() };
+  try {
+    nextDigest = held;
+    const running = science.adoptValidated(f.importedViewer, f.receipt); await held.entered.promise;
+    const waiting = science.adoptValidated(f.importedViewer, f.receipt);
+    void waiting.catch(() => {});
+    await expect(science.serialize(f.importedViewer, f.request, options)).rejects.toThrow("already being saved");
+    const entries = f.imported.managers.asset.assets;
+    await f.imported.state.data.build().to(f.raw.ref).update({ data: source + "\n" }).commit();
+    held.release.resolve(); await expect(running).rejects.toThrow("changed");
+    await expect(waiting).rejects.toThrow("changed");
+    expect(sameEntries(f.imported, entries)).toBe(true);
+    expect(science.present(f.imported)).toBe(false);
+  } finally { nextDigest = null; held.release.resolve(); f.close(); }
+});
+
+test("same-archive reload rejects the old ACK before capture without touching the new load assets", async () => {
+  const f = await importedFixture();
+  try {
+    const prior = f.imported.managers.asset.assets.filter(entry => entry.asset.id.startsWith(science.prefix));
+    const token = science.beginImport(f.imported);
+    await expect(science.adoptValidated(f.importedViewer, f.receipt)).rejects.toThrow("import changed");
+    await f.imported.managers.snapshot.open(new File([f.archive], "same-again.molx"));
+    expect(science.completeImport(f.imported, token)).toBe(true);
+    expect(prior.every(entry => f.imported.managers.asset.get(entry.asset) !== entry)).toBe(true);
+    const entries = f.imported.managers.asset.assets;
+    const report = await science.sdfBinding(f.importedViewer);
+    expect(report.importToken === f.receipt.importToken).toBe(false);
+    await expect(science.adoptValidated(f.importedViewer, f.receipt)).rejects.toThrow("import changed");
+    expect(sameEntries(f.imported, entries)).toBe(true);
+    const receipt = { ...f.receipt, importToken: report.importToken };
+    expect(await science.adoptValidated(f.importedViewer, receipt)).toBe(true);
+    expect(await science.adoptValidated(f.importedViewer, receipt)).toBe(true);
+    expect(f.imported.managers.asset.assets.map(entry => String(entry.asset.id))).toEqual([f.provenance.id]);
+  } finally { f.close(); }
+});
+
+
+test("same-archive reload during an ACK digest preserves the new load and rejects the old transfer", async () => {
+  const f = await importedFixture(), held = { entered: deferred(), release: deferred() };
+  try {
+    nextDigest = held;
+    const running = science.adoptValidated(f.importedViewer, f.receipt); await held.entered.promise;
+    const token = science.beginImport(f.imported);
+    await f.imported.managers.snapshot.open(new File([f.archive], "same-during-ack.molx"));
+    science.completeImport(f.imported, token);
+    const entries = f.imported.managers.asset.assets;
+    held.release.resolve(); await expect(running).rejects.toThrow("changed");
+    expect(sameEntries(f.imported, entries)).toBe(true);
+    expect(science.present(f.imported)).toBe(false);
+    expect(await science.adoptValidated(f.importedViewer, { ...f.receipt, importToken: token })).toBe(true);
+  } finally { nextDigest = null; held.release.resolve(); f.close(); }
+});
+
+test("actual viewer MOLX load retains assets and routes only the validated host ACK to adoption", async () => {
+  const f = await fixture(), plugin = new PluginContext(DefaultPluginSpec());
+  try {
+    const archive = await science.serialize(f.viewer, f.request, options); await plugin.init();
+    const text = readFileSync(new URL("../PreviewExtension/Web/viewer.js", import.meta.url), "utf8");
+    const start = text.indexOf("if (prepared.format === 'molx') {", text.indexOf("async function loadPreparedStructure"));
+    const load = text.slice(start, text.indexOf("} else {", start)) + "}";
+    const viewer = { plugin }, unavailable = () => { throw new Error("Unexpected script load"); };
+    let loadingGuarded = false;
+    const open = plugin.managers.snapshot.open.bind(plugin.managers.snapshot);
+    plugin.managers.snapshot.open = async file => {
+      try { science.binding(viewer); } catch (error) { loadingGuarded = (error as Error).message.includes("finish opening"); }
+      return open(file);
+    };
+    await new Function("window", "viewer", "prepared", "runtimeURL", "loadScript", `return (async () => { let snapshot; ${load}; return snapshot; })();`)
+      (window, viewer, { format: "molx", data: archive }, unavailable, unavailable);
+    expect(loadingGuarded).toBe(true);
+    const report = await science.sdfBinding(viewer);
+    expect(typeof report.importToken).toBe("string");
+    expect(plugin.managers.asset.assets.filter(entry => entry.asset.id.startsWith(science.prefix)).length).toBe(3);
+    expect(science.present(plugin)).toBe(false);
+    const route = text.match(/    if \(type === 'scene_science_restore_ack'\) \{[\s\S]*?\n    \}/u)![0];
+    const response = await new Function("window", "action", "activeMolstarViewer", "runtimeURL", "loadScript", `return (async () => { const type = action.type; ${route} })();`)
+      (window, { type: "scene_science_restore_ack", ...f.request, importToken: report.importToken, manifestSha256: await hash(f.assets[0].bytes) }, () => viewer, unavailable, unavailable);
+    expect(response).toEqual({ ok: true, result: { adopted: true } });
+    expect(plugin.managers.asset.assets.map(entry => String(entry.asset.id))).toEqual([f.provenance.id]);
+  } finally { plugin.dispose(); f.close(); }
+});
+
+
+test("idempotent ACK still requires the validated graph source hash", async () => {
+  const f = await importedFixture();
+  try {
+    expect(await science.adoptValidated(f.importedViewer, f.receipt)).toBe(true);
+    await expect(science.adoptValidated(f.importedViewer, { ...f.receipt, sourceSha256: undefined })).rejects.toThrow("matching validated graph");
+    await f.imported.state.data.build().to(f.raw.ref).update({ data: source + "\n" }).commit();
+    await expect(science.adoptValidated(f.importedViewer, f.receipt)).rejects.toThrow("changed");
+    expect(f.imported.managers.asset.assets.map(entry => String(entry.asset.id))).toEqual([f.provenance.id]);
+  } finally { f.close(); }
+});
+
+
+test("a new load ACK waits for a cancelled old transfer instead of failing busy", async () => {
+  const f = await importedFixture(), held = { entered: deferred(), release: deferred() };
+  try {
+    nextDigest = held;
+    const old = science.adoptValidated(f.importedViewer, f.receipt); void old.catch(() => {}); await held.entered.promise;
+    const token = science.beginImport(f.imported);
+    await f.imported.managers.snapshot.open(new File([f.archive], "overlapping-same.molx"));
+    science.completeImport(f.imported, token);
+    await expect(science.adoptValidated(f.importedViewer, f.receipt)).rejects.toThrow("import changed");
+    let settled = false;
+    const current = science.adoptValidated(f.importedViewer, { ...f.receipt, importToken: token });
+    current.then(() => { settled = true; }, () => { settled = true; });
+    await Promise.resolve(); await Promise.resolve();
+    expect(settled).toBe(false);
+    held.release.resolve(); await expect(old).rejects.toThrow("changed");
+    expect(await current).toBe(true);
+    expect(f.imported.managers.asset.assets.map(entry => String(entry.asset.id))).toEqual([f.provenance.id]);
+  } finally { nextDigest = null; held.release.resolve(); f.close(); }
 });

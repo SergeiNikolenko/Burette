@@ -709,6 +709,10 @@
       if (archive.size > 24 * 1024 * 1024) throw new Error('The scene is too large to move.');
       return { ok: true, result: { dataBase64: bytesToBase64(new Uint8Array(await archive.arrayBuffer())) } };
     }
+    if (type === 'scene_science_restore_ack') {
+      if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+      return { ok: true, result: { adopted: await window.BuretteSceneFiles.science.adoptValidated(activeMolstarViewer(), action) } };
+    }
     if (type === 'measurement_preview_capture') {
       const runtime = await measurementCoordinateRuntime();
       return { ok: true, result: await runtime.capture(activeMolstarViewer(), window.BuretteSceneFiles.science) };
@@ -18977,8 +18981,19 @@ SOFTWARE.
       activeDockingPrepared = null;
       let snapshot;
       if (prepared.format === 'molx') {
+        if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+        const importToken = window.BuretteSceneFiles.science.beginImport(viewer.plugin);
         const manager = viewer.plugin.managers.snapshot;
-        await manager.open(new File([prepared.data], 'scene.molx'));
+        // Mol* reports a failed read only to its log; success is its `opened` event.
+        let opened = false;
+        const subscription = manager.events.opened.subscribe(() => { opened = true; });
+        try {
+          await manager.open(new File([prepared.data], 'scene.molx'));
+        } finally {
+          subscription.unsubscribe();
+        }
+        if (!opened) throw new Error('This scene file could not be read.');
+        if (!window.BuretteSceneFiles.science.completeImport(viewer.plugin, importToken)) throw new Error('The scene changed while it was opening.');
         snapshot = manager.getEntry(manager.state.current)?.snapshot;
       } else {
         const session = JSON.parse(prepared.data);

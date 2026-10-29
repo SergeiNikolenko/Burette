@@ -110,9 +110,9 @@
   }
 
   // Scientific session data rides in the scene's MOLX archive as Mol* file assets with
-  // Burette's reserved ids; the host owns their content. They exist in the AssetManager only
-  // while one Export → Scene serializes, never longer, and are removed again right after a
-  // scene that carried them is opened. Other assets are never touched.
+  // Burette's reserved ids; the host owns their content. Export assets exist only during
+  // serialization. Imported assets remain until the host acknowledges a validated import.
+  // Other assets are never touched.
   const SCIENCE_PREFIX = 'burette-science-';
   const SCIENCE_TAG = 'burette-science-session';
   const SCIENCE_ASSET_LIMIT = 65;
@@ -122,7 +122,7 @@
   function scienceSession(plugin) {
     let session = scienceSessions.get(plugin);
     if (!session) {
-      session = { present: false, exporting: null };
+      session = { present: false, exporting: null, lastManifestSha256: null, lastSourceSha256: null, importToken: null, importLoading: false };
       scienceSessions.set(plugin, session);
     }
     return session;
@@ -130,6 +130,8 @@
   // The one structure a scientific source describes: its refs, frame, atoms in source order.
   function scienceBinding(viewer) {
     const plugin = viewer?.plugin;
+    const session = scienceSessions.get(plugin);
+    if (session?.importLoading) throw new Error('Wait for the scene to finish opening.');
     const roots = plugin?.managers?.structure?.hierarchy?.current?.structures;
     if (!Array.isArray(roots) || roots.length !== 1) throw new Error('Scientific data is saved with scenes of exactly one structure.');
     const structureCell = roots[0].cell;
@@ -176,6 +178,7 @@
       atomCount,
       elements,
       positions,
+      ...(session?.importToken ? { importToken: session.importToken } : {}),
     };
   }
   // Explicit graph identity includes the exact parser input, not coincident positions.
@@ -257,18 +260,85 @@
       release();
     }
   }
-  // An opened scene's scientific assets were read by the host from the file itself.
-  function adoptImportedScience(plugin) {
+  function beginScienceImport(plugin) {
+    const session = scienceSession(plugin);
+    session.importToken = crypto.randomUUID();
+    session.importLoading = true;
+    session.lastManifestSha256 = null;
+    session.lastSourceSha256 = null;
+    session.present = false;
+    return session.importToken;
+  }
+  function completeScienceImport(plugin, token) {
+    const session = scienceSessions.get(plugin);
+    if (!session || session.importToken !== token) return false;
+    session.importLoading = false;
+    return true;
+  }
+  // Transfer imported assets only after the host validated the same archive manifest.
+  async function adoptValidatedScience(viewer, request) {
+    const plugin = viewer?.plugin;
     const manager = plugin?.managers?.asset;
-    if (!manager) return false;
-    let found = false;
-    for (const { asset } of manager.assets) {
-      if (typeof asset?.id !== 'string' || !asset.id.startsWith(SCIENCE_PREFIX)) continue;
-      manager.delete(asset);
-      found = true;
+    const receipt = request?.manifestSha256;
+    if (!manager || typeof receipt !== 'string' || !/^[0-9a-f]{64}$/.test(receipt)) throw new Error('The scene has no matching validated scientific data.');
+    const session = scienceSession(plugin);
+    const sameImport = () => !session.importLoading && typeof request.importToken === 'string' && request.importToken === session.importToken;
+    if (!sameImport()) throw new Error('The scene import changed before its scientific data was adopted.');
+    while (session.exporting) {
+      await session.exporting;
+      if (!sameImport()) throw new Error('The scene import changed before its scientific data was adopted.');
     }
-    if (found) scienceSession(plugin).present = true;
-    return found;
+    const inventory = () => manager.assets.filter(({ asset }) => String(asset?.id).startsWith(SCIENCE_PREFIX));
+    const entries = inventory().map(entry => ({ entry, asset: entry.asset, file: entry.file, id: entry.asset.id, name: entry.asset.name }));
+    const unchanged = () => inventory().length === entries.length && entries.every(({ entry, asset, file, id, name }) =>
+      manager.get({ id }) === entry && entry.asset === asset && entry.file === file && asset.id === id && asset.name === name);
+    const check = async () => {
+      if (!sameImport()) throw new Error('The scene import changed before its scientific data was adopted.');
+      const current = request.sourceSha256 ? await sdfSourceBinding(viewer) : scienceBinding(viewer);
+      if (!sameImport() || (request.sourceSha256 && current.sourceSha256 !== request.sourceSha256) || !sameScienceBinding(current, request)) throw new Error('The scene changed before its scientific data was adopted.');
+    };
+    let release;
+    session.exporting = new Promise(resolve => { release = resolve; });
+    try {
+      await check();
+      if (!entries.length && session.lastManifestSha256 === receipt && unchanged()) {
+        if (session.lastSourceSha256 && request.sourceSha256 !== session.lastSourceSha256) throw new Error('The scene has no matching validated graph source.');
+        return true;
+      }
+      const manifest = entries.find(({ id }) => id === `${SCIENCE_PREFIX}manifest`);
+      if (!manifest || entries.length > SCIENCE_ASSET_LIMIT || manifest.file.size > 4 * 1024 * 1024) throw new Error('The scene has no matching validated scientific data.');
+      const bytes = await manifest.file.arrayBuffer();
+      const digest = async data => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', data)), value => value.toString(16).padStart(2, '0')).join('');
+      if (await digest(bytes) !== receipt) throw new Error('The scene has no matching validated scientific data.');
+      const document = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+      if (document.source?.extension === 'sdf' && request.sourceSha256 !== document.source.sha256) throw new Error('The scene has no matching validated graph source.');
+      const attachments = document.attachments;
+      if (!Array.isArray(attachments) || attachments.length > 64 || entries.length !== attachments.length + 1) throw new Error('The scene has invalid scientific attachments.');
+      let total = 0;
+      const seen = new Set();
+      for (const attachment of attachments) {
+        if (!attachment || typeof attachment.id !== 'string' || !/^burette-science-attachment-\d{1,3}$/.test(attachment.id) || seen.has(attachment.id)
+          || !Number.isSafeInteger(attachment.byteLength) || attachment.byteLength < 0 || typeof attachment.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(attachment.sha256)) throw new Error('The scene has invalid scientific attachments.');
+        total += attachment.byteLength;
+        if (total > 20 * 1024 * 1024) throw new Error('The scene has invalid scientific attachments.');
+        seen.add(attachment.id);
+      }
+      for (const attachment of attachments) {
+        const found = entries.find(({ id }) => id === attachment.id);
+        if (!found || found.file.size !== attachment.byteLength || await digest(await found.file.arrayBuffer()) !== attachment.sha256) throw new Error('The scene scientific attachments changed before adoption.');
+      }
+      await check();
+      if (!unchanged()) throw new Error('The scene scientific attachments changed before adoption.');
+      // No await between the final guards and ownership transfer.
+      for (const { asset } of entries) manager.delete(asset);
+      session.lastManifestSha256 = receipt;
+      session.lastSourceSha256 = document.source?.extension === 'sdf' ? document.source.sha256 : null;
+      session.present = true;
+      return true;
+    } finally {
+      session.exporting = null;
+      release();
+    }
   }
 
   window.BuretteSceneFiles = {
@@ -281,7 +351,9 @@
       sdfBinding: sdfSourceBinding,
       graphBinding: graphSourceBinding,
       serialize: serializeScience,
-      adoptImported: adoptImportedScience,
+      beginImport: beginScienceImport,
+      completeImport: completeScienceImport,
+      adoptValidated: adoptValidatedScience,
       present: plugin => Boolean(scienceSessions.get(plugin)?.present),
       // Another serialization (an agent session export) runs alone and sees no attachments.
       async exclusive(plugin, run) {

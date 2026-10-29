@@ -65,8 +65,12 @@ claimed by their documents, and cleanup releases them after all owners close.
 Original survives unrelated edits; scientific data applies only to registered text.
 
 Serialization refuses any pre-existing reserved ID before mutation and checks
-again after its first binding await. Opened assets must be consumed by the host
-before `adoptImported` removes them. Temporary export assets exist only during
+again after its first binding await. Imported assets remain until the host has
+validated the archive and `adoptValidated` acknowledges the exact manifest SHA,
+payload hashes, scene binding and ephemeral import token. Each opening, including
+the same archive again, creates a new token before loading starts; an old or
+interrupted acknowledgement cannot consume the new opening's assets. The token
+is never persisted in the manifest. Temporary export assets exist only during
 serialization; cleanup removes only the exact entries that export created, even
 on failure. Other scene assets and raced-in replacement entries remain untouched.
 Bindings are checked before and after snapshot serialization. A style-only change
