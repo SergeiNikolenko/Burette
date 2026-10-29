@@ -5,7 +5,11 @@ This source-level MOLX attachment contract does not establish UI or packaged-pla
 ## Scope and archive layout
 
 Version 1 accepts single- or multi-frame XYZ with unchanged elements/order, or one
-SDF graph (one frame, ≤256 atoms, `science: null`). Bare MOL is outside this codec.
+SDF graph (one frame, ≤256 atoms, `science: null`). Version 2 additionally accepts
+one bare MOL connection table under its real `source.extension: "mol"`; SDF data
+items and record delimiters are forbidden in MOL. XYZ/SDF exports stay version 1
+for compatibility; MOL exports require version 2 and fail closed in version 1 readers.
+Both versions use the same exact-text/opaque-Original attachment representation.
 
 Mol* stores file assets at `assets/<id>` and indexes them in `assets.json`, beside
 `state.json`. Burette reserves every ID beginning `burette-science-`. The manifest
@@ -16,7 +20,7 @@ entries without their indexed manifest, or unused reserved assets, are rejected.
 
 ## Manifest and payloads
 
-The manifest has `kind: "burette.science-session"` and `version: 1`. Its fields are:
+The manifest has `kind: "burette.science-session"` and `version: 1` or `2`. Its fields are:
 
 - `document.uuid`: durable document identity.
 - `source`: `extension`, UTF-8 attachment ID and exact-source `sha256`.
@@ -57,9 +61,12 @@ at most 1,000 amu and one per atom. Source readers use the same Hessian validato
 The runtime binds exactly one atomic structure with each source atom occurring
 once, ordered through Mol* `atomSourceIndex`. Refs, frame and coordinates must
 remain current; the scene comparison allows 1e-3 Å per coordinate for float32.
-SDF additionally hashes the actual displayed parser-input text before and after
+SDF and MOL additionally hash the actual displayed parser-input text before and after
 the asynchronous read; matching positions alone do not establish graph identity.
-When SDF metadata supplies atom IDs, they must agree with the manifest's order.
+MOL has no embedded SDF metadata. Its baseline ordered IDs bind exact source
+text and survive restore/resave; changed text has unknown IDs (`null`) until
+explicit edit provenance exists. Durable IDs through graph edits and Undo need a
+separate source-provenance stage. When SDF metadata supplies atom IDs, they must agree with the manifest's order.
 Scientific registrations match exact revision text; repeated text selects the
 latest revision. Restored registrations are document-scoped, shared imports are
 claimed by their documents, and cleanup releases them after all owners close.
@@ -86,7 +93,8 @@ ZIP entries 4,096; asset index 4 MiB; manifest 4 MiB; attachments 64 plus manife
 Encoding permits 20 MiB of attachment payloads, excluding the manifest. Decoding
 caps each reserved entry at 20 MiB and selected index + manifest + payloads at 24 MiB.
 Source limit: 16 MiB; atoms: 10,000; frames: 2,000; grid values: 1,000,000.
-Both XYZ and SDF readers enforce the source limit in UTF-8 bytes, including BOM.
+XYZ, SDF and MOL readers enforce the source limit in UTF-8 bytes, including BOM.
+Graph parsing also retains the chemistry parser’s 2,000,000-character limit.
 The runtime separately caps injected assets at 65 and their bytes at 21 MiB.
 Schema bounds also include 2,000 basis functions, 1,024 primitives per shell,
 10,000 orbitals, 2,000,000 orbital coefficients and 2,000,000 mode displacement

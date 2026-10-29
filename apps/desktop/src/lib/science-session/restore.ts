@@ -61,19 +61,20 @@ export async function restoreScienceSession(document: ViewerDocument, dependenci
     if (!isCurrent()) return "cancelled";
     if (!content) return "foreign";
     if (!await sceneReady(document, { ...dependencies, isOpen: isCurrent })) return "cancelled";
-    const report = checkBindingReport(await dependencies.request(document.id, { type: "scene_science_binding", ...(content.source.extension === "sdf" ? { sourceExtension: "sdf" } : {}) }));
+    const graph = content.source.extension !== "xyz";
+    const report = checkBindingReport(await dependencies.request(document.id, { type: "scene_science_binding", ...(graph ? { sourceExtension: content.source.extension } : {}) }));
     if (!isCurrent()) return "cancelled";
     if (BINDING_KEYS.some((key) => report[key] !== content.binding[key])) {
       throw new ScienceSessionError("binding", "The scene structure does not match its scientific data.");
     }
     const frames = checkSceneShowsSource(report, content.source.text, content.source.extension);
-    if (content.source.extension === "sdf" && report.sourceSha256 !== await sha256Hex(content.source.text)) throw new ScienceSessionError("binding", "The scene graph does not match its saved source.");
+    if (graph && report.sourceSha256 !== await sha256Hex(content.source.text)) throw new ScienceSessionError("binding", "The scene graph does not match its saved source.");
     if (!isCurrent()) return "cancelled";
     if (!report.importToken) throw new ScienceSessionError("binding", "The scene did not report its import identity.");
     const acknowledgement = await dependencies.request(document.id, {
       type: "scene_science_restore_ack", manifestSha256: content.manifestSha256, importToken: report.importToken,
       binding: content.binding, positions: Float64Array.from(frames[report.frameIndex].positions),
-      ...(content.source.extension === "sdf" ? { sourceSha256: report.sourceSha256 } : {}),
+      ...(graph ? { sourceExtension: content.source.extension, sourceSha256: report.sourceSha256 } : {}),
     });
     if (!isCurrent()) return "cancelled";
     if (acknowledgement.adopted !== true) throw new ScienceSessionError("binding", "The scene could not acknowledge its scientific source.");

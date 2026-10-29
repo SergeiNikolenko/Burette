@@ -1,5 +1,7 @@
 import { normalizeElement, ScienceSessionError, SCIENCE_SESSION_LIMITS, type ScienceSessionErrorCode } from "./contracts";
-import { readSdfSource } from "./sdf-source";
+import { readGraphSource } from "./graph-source";
+
+export type SceneSourceExtension = "xyz" | "sdf" | "mol";
 
 function fail(code: ScienceSessionErrorCode, message: string): never {
   throw new ScienceSessionError(code, message);
@@ -40,8 +42,8 @@ export function readXyzFrames(text: string): XyzFrame[] {
 }
 
 /** Graph sources have one frame; XYZ retains its existing multi-frame contract. */
-export function readSceneSourceFrames(text: string, extension: "xyz" | "sdf" = "xyz"): XyzFrame[] {
-  if (extension === "sdf") return [readSdfSource(text)];
+export function readSceneSourceFrames(text: string, extension: SceneSourceExtension = "xyz"): XyzFrame[] {
+  if (extension === "sdf" || extension === "mol") return [readGraphSource(text, extension)];
   if (extension === "xyz") return readXyzFrames(text);
   return fail("source", "The scene source format is unsupported.");
 }

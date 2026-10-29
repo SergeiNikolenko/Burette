@@ -6,7 +6,7 @@ import type { ViewerDocument } from "../../types";
  * Text, Geometry and the source editor read and edit this text instead of the archive,
  * and their edits move the restored structure in place (see use-source-editing).
  */
-export type LogicalSource = { documentId: string; extension: "xyz" | "sdf"; text: string };
+export type LogicalSource = { documentId: string; extension: "xyz" | "sdf" | "mol"; text: string };
 
 const logical = new Map<string, LogicalSource>();
 const listeners = new Set<() => void>();
@@ -41,6 +41,7 @@ export function documentUuidFor(documentId: string) {
 // baseline per element sequence; an edit that changes the atoms has no mapping and no ids.
 const revisionAtomIds = new WeakMap<object, readonly string[] | null>();
 const plainIds = new Map<string, { elements: string; ids: readonly string[] }>();
+const graphIds = new Map<string, { text: string; ids: readonly string[] | null }>();
 
 export type AtomIdRevision = { topology?: number; sourceAtomIndices?: readonly number[] };
 
@@ -86,11 +87,21 @@ export function plainAtomIds(documentId: string, elements: readonly string[]): r
   return known.elements === key ? known.ids : null;
 }
 
+/** Graph ids require exact source identity. Changed text needs explicit edit provenance. */
+export function graphAtomIds(documentId: string, text: string, count: number): readonly string[] | null {
+  const known = graphIds.get(documentId);
+  if (known) return known.text === text ? known.ids : null;
+  const ids = freshIds(count);
+  graphIds.set(documentId, { text, ids });
+  return ids;
+}
+
 /** Installs a restored scene's source and identity for its new runtime document, all at once. */
 export function adoptLogicalSource(source: LogicalSource, documentUuid: string, atomIds: readonly string[] | null, elements: readonly string[]) {
   documentUuids.set(source.documentId, documentUuid);
   // A scene saved without ids stays without them; its atoms are not given new ones.
   plainIds.set(source.documentId, atomIds ? { elements: elements.join(" "), ids: atomIds } : { elements: "", ids: [] });
+  if (source.extension === "mol") graphIds.set(source.documentId, { text: source.text, ids: atomIds });
   logical.set(source.documentId, source);
   changed();
 }
@@ -110,5 +121,6 @@ export function releaseClosedScienceSessions(openDocumentIds: ReadonlySet<string
   for (const id of logical.keys()) if (!openDocumentIds.has(id)) released = logical.delete(id) || released;
   for (const id of documentUuids.keys()) if (!openDocumentIds.has(id)) documentUuids.delete(id);
   for (const id of plainIds.keys()) if (!openDocumentIds.has(id)) plainIds.delete(id);
+  for (const id of graphIds.keys()) if (!openDocumentIds.has(id)) graphIds.delete(id);
   if (released) changed();
 }

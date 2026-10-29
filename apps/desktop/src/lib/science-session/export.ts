@@ -13,7 +13,7 @@ import { checkBindingReport, checkSceneShowsSource, type ScienceSceneBinding, ty
 export { checkBindingReport, checkSceneShowsSource, type SceneScienceBindingReport } from "./scene-binding";
 import { readSdfSource } from "./sdf-source";
 import { readSceneDocumentBytes } from "./source-bytes";
-import { atomIdsAlong, documentUuidFor, logicalSourceFor, plainAtomIds, sourceExtension } from "./state";
+import { atomIdsAlong, documentUuidFor, graphAtomIds, logicalSourceFor, plainAtomIds, sourceExtension } from "./state";
 
 
 export type SceneScienceExport =
@@ -41,7 +41,8 @@ function sourceSession(options: ExportOptions, document: ViewerDocument) {
  */
 export async function prepareSceneScienceExport(document: ViewerDocument, options: ExportOptions): Promise<SceneScienceExport | null> {
   const extension = sourceExtension(document) === "sd" ? "sdf" : sourceExtension(document);
-  if (document.renderer !== "molstar" || document.dockingRequest || document.mergedCollection || (extension !== "xyz" && extension !== "sdf")) return null;
+  if (document.renderer !== "molstar" || document.dockingRequest || document.mergedCollection || (extension !== "xyz" && extension !== "sdf" && extension !== "mol")) return null;
+  const graph = extension !== "xyz";
   const request = options.request ?? requestViewerAction;
   const session: SourceEditingView | null = sourceSession(options, document);
   const logical = logicalSourceFor(document.id);
@@ -50,12 +51,12 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
   if (session) text = session.content;
   else if (logical) text = logical.text;
   else {
-    if (document.byteCount > SCIENCE_SESSION_LIMITS.sourceBytes) return extension === "sdf" ? { kind: "unsupported", reason: "The graph source exceeds the 16 MiB scene limit." } : null;
+    if (document.byteCount > SCIENCE_SESSION_LIMITS.sourceBytes) return graph ? { kind: "unsupported", reason: "The graph source exceeds the 16 MiB scene limit." } : null;
     virtualText = readBrowserDevVirtualTextDocument(document.path);
     text = virtualText ?? await readStructureText(document.path);
   }
   const state = scientificStateFor(document.id, text);
-  const carriesScience = Boolean(extension === "sdf" || logical || state.revision || state.original);
+  const carriesScience = Boolean(graph || logical || state.revision || state.original);
   if (options.sceneFileCount > 1) {
     return carriesScience ? { kind: "unsupported", reason: "Scientific data belongs to one structure, and this scene now has several." } : null;
   }
@@ -67,21 +68,21 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
   }
   let report: SceneScienceBindingReport;
   try {
-    report = checkBindingReport(await request(document.id, { type: "scene_science_binding", ...(extension === "sdf" ? { sourceExtension: "sdf" } : {}) }));
+    report = checkBindingReport(await request(document.id, { type: "scene_science_binding", ...(graph ? { sourceExtension: extension } : {}) }));
   } catch (error) {
     if (!carriesScience) return null;
-    if (extension === "sdf") throw error;
+    if (graph) throw error;
     return { kind: "unsupported", reason: error instanceof Error ? error.message : String(error) };
   }
   let frames: ReturnType<typeof checkSceneShowsSource>;
   try {
     frames = checkSceneShowsSource(report, text, extension);
-    if (extension === "sdf" && report.sourceSha256 !== await sha256Hex(text)) throw new ScienceSessionError("binding", "The scene does not show the current graph source yet. Wait for it to update, then save again.");
+    if (graph && report.sourceSha256 !== await sha256Hex(text)) throw new ScienceSessionError("binding", "The scene does not show the current graph source yet. Wait for it to update, then save again.");
   } catch (error) {
     if (!carriesScience) return null;
     throw error;
   }
-  const atomIds = extension === "sdf" ? readSdfSource(text).atomIds : state.revisions
+  const atomIds = extension === "sdf" ? readSdfSource(text).atomIds : extension === "mol" ? graphAtomIds(document.id, text, frames[0].elements.length) : state.revisions
     ? atomIdsAlong(state.revisions, state.position, (index) => state.revisions![index].document.atoms.length)
     : plainAtomIds(document.id, frames[0].elements);
   const binding: ScienceSceneBinding = {
@@ -89,7 +90,7 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
     frameIndex: report.frameIndex, frameCount: report.frameCount, atomCount: report.atomCount,
   };
   // A graph's Original is the exact opened file, independent of its edited logical source.
-  const originalBytes = extension === "sdf" && !logical && !state.original ? await readSceneDocumentBytes(document, SCIENCE_SESSION_LIMITS.sourceBytes) : null;
+  const originalBytes = graph && !logical && !state.original ? await readSceneDocumentBytes(document, SCIENCE_SESSION_LIMITS.sourceBytes) : null;
   if (originalBytes && originalBytes.byteLength > SCIENCE_SESSION_LIMITS.sourceBytes) throw new ScienceSessionError("limit", "The original graph source exceeds 16 MiB.");
   if (originalBytes) {
     const baseline = session ? session.baseContent : text;
@@ -112,7 +113,7 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
   });
   const action = {
     type: "workspace_scene_snapshot",
-    science: { binding, positions: Float64Array.from(frames[report.frameIndex].positions), ...(extension === "sdf" ? { sourceSha256: report.sourceSha256 } : {}), assets: encoded.assets },
+    science: { binding, positions: Float64Array.from(frames[report.frameIndex].positions), ...(graph ? { sourceExtension: extension, sourceSha256: report.sourceSha256 } : {}), assets: encoded.assets },
   };
   // The archive holds this revision only if nothing changed while it was serialized.
   const confirm = () => {

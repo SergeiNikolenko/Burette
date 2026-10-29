@@ -182,12 +182,13 @@
     };
   }
   // Explicit graph identity includes the exact parser input, not coincident positions.
-  async function graphSourceBinding(viewer) {
+  async function graphSourceBinding(viewer, expectedFormat) {
     const report = scienceBinding(viewer);
     const cells = viewer.plugin.state.data.cells;
     const trajectory = cells.get(report.trajectoryRef);
     const transformer = String(trajectory?.transform?.transformer?.id || '');
     const sourceFormat = transformer.endsWith('trajectory-from-sdf') ? 'sdf' : transformer.endsWith('trajectory-from-mol') ? 'mol' : null;
+    if (expectedFormat && sourceFormat !== expectedFormat) throw new Error('The scene graph source format changed.');
     if (!sourceFormat) throw new Error('This scene has no MOL or SDF graph source.');
     const raw = cells.get(trajectory.transform.parent);
     const text = raw?.obj?.data;
@@ -200,7 +201,7 @@
     return { ...report, sourceFormat, sourceSha256: Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('') };
   }
   async function sdfSourceBinding(viewer) {
-    const { sourceFormat, ...report } = await graphSourceBinding(viewer);
+    const { sourceFormat, ...report } = await graphSourceBinding(viewer, 'sdf');
     if (sourceFormat !== 'sdf') throw new Error('This scene has no SDF graph source.');
     return report;
   }
@@ -233,7 +234,7 @@
     };
     admit();
     const check = async () => {
-      const current = request.sourceSha256 ? await sdfSourceBinding(viewer) : scienceBinding(viewer);
+      const current = request.sourceSha256 ? await graphSourceBinding(viewer, request.sourceExtension || 'sdf') : scienceBinding(viewer);
       if ((request.sourceSha256 && current.sourceSha256 !== request.sourceSha256) || !sameScienceBinding(current, request)) throw new Error('The scene changed while it was being saved. Save the scene again.');
     };
     let release;
@@ -294,7 +295,7 @@
       manager.get({ id }) === entry && entry.asset === asset && entry.file === file && asset.id === id && asset.name === name);
     const check = async () => {
       if (!sameImport()) throw new Error('The scene import changed before its scientific data was adopted.');
-      const current = request.sourceSha256 ? await sdfSourceBinding(viewer) : scienceBinding(viewer);
+      const current = request.sourceSha256 ? await graphSourceBinding(viewer, request.sourceExtension || 'sdf') : scienceBinding(viewer);
       if (!sameImport() || (request.sourceSha256 && current.sourceSha256 !== request.sourceSha256) || !sameScienceBinding(current, request)) throw new Error('The scene changed before its scientific data was adopted.');
     };
     let release;
@@ -311,7 +312,7 @@
       const digest = async data => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', data)), value => value.toString(16).padStart(2, '0')).join('');
       if (await digest(bytes) !== receipt) throw new Error('The scene has no matching validated scientific data.');
       const document = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
-      if (document.source?.extension === 'sdf' && request.sourceSha256 !== document.source.sha256) throw new Error('The scene has no matching validated graph source.');
+      if (['sdf', 'mol'].includes(document.source?.extension) && (request.sourceSha256 !== document.source.sha256 || (request.sourceExtension || 'sdf') !== document.source.extension)) throw new Error('The scene has no matching validated graph source.');
       const attachments = document.attachments;
       if (!Array.isArray(attachments) || attachments.length > 64 || entries.length !== attachments.length + 1) throw new Error('The scene has invalid scientific attachments.');
       let total = 0;

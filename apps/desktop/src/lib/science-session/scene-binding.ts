@@ -1,5 +1,5 @@
 import { normalizeElement, ScienceSessionError } from "./contracts";
-import { readSceneSourceFrames } from "./source-frames";
+import { readSceneSourceFrames, type SceneSourceExtension } from "./source-frames";
 import { positionsMatch } from "../source-editing/source-identity";
 
 /** Mol* state refs of the one structure the source describes, and the frame it shows. */
@@ -36,7 +36,7 @@ export function checkBindingReport(value: Record<string, unknown>): SceneScience
 }
 
 /** The scene shows `text` at the reported frame: same atoms, same order, same positions. */
-export function checkSceneShowsSource(report: SceneScienceBindingReport, text: string, extension: "xyz" | "sdf" = "xyz") {
+export function checkSceneShowsSource(report: SceneScienceBindingReport, text: string, extension: SceneSourceExtension = "xyz") {
   const frames = readSceneSourceFrames(text, extension);
   const frame = frames[report.frameIndex];
   if (report.frameCount !== frames.length || !frame || frame.elements.length !== report.atomCount

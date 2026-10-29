@@ -4,7 +4,7 @@ import { ScienceSessionError, SCIENCE_SESSION_LIMITS, type ScienceSessionErrorCo
 import { validateScientificDocument } from "./scientific-document";
 import { readSdfSource } from "./sdf-source";
 import { sha256Hex } from "../source-editing/source-identity";
-import { readSceneSourceFrames } from "./source-frames";
+import { readSceneSourceFrames, type SceneSourceExtension } from "./source-frames";
 import type { ScienceSceneBinding } from "./scene-binding";
 export { sha256Hex, positionsMatch } from "../source-editing/source-identity";
 export { readXyzFrames, readSceneSourceFrames, type XyzFrame } from "./source-frames";
@@ -25,7 +25,7 @@ export const SCIENCE_ASSET_PREFIX = "burette-science-";
 export const SCIENCE_MANIFEST_ASSET_ID = "burette-science-manifest";
 export const SCIENCE_MANIFEST_ASSET_NAME = "burette-science.json";
 export const SCIENCE_SESSION_KIND = "burette.science-session";
-export const SCIENCE_SESSION_VERSION = 1;
+export const SCIENCE_SESSION_VERSION = 2;
 const ATTACHMENT_ID = /^burette-science-attachment-(\d{1,3})$/u;
 export type AttachmentType = "utf8" | "json" | "bytes" | "float32le" | "float64le";
 export type AttachmentDescriptor = { id: string; dtype: AttachmentType; count: number; byteLength: number; sha256: string };
@@ -33,10 +33,10 @@ export type AttachmentDescriptor = { id: string; dtype: AttachmentType; count: n
 
 export type ScienceManifest = {
   kind: typeof SCIENCE_SESSION_KIND;
-  version: typeof SCIENCE_SESSION_VERSION;
+  version: 1 | typeof SCIENCE_SESSION_VERSION;
   document: { uuid: string };
   /** The editable logical source; `sha256` identifies the revision the scene shows. */
-  source: { extension: "xyz" | "sdf"; attachment: string; sha256: string };
+  source: { extension: SceneSourceExtension; attachment: string; sha256: string };
   /** One durable id per real atom in source order; null when no mapping to earlier ids exists. */
   atoms: { count: number; ids: string[] | null };
   binding: ScienceSceneBinding;
@@ -47,7 +47,7 @@ export type ScienceManifest = {
 
 export type ScienceSessionContent = {
   documentUuid: string;
-  source: { extension: "xyz" | "sdf"; text: string };
+  source: { extension: SceneSourceExtension; text: string };
   atomIds: readonly string[] | null;
   binding: ScienceSceneBinding;
   science: ScientificDocument | null;
@@ -64,7 +64,7 @@ function fail(code: ScienceSessionErrorCode, message: string): never {
   throw new ScienceSessionError(code, message);
 }
 
-function checkGraphSourceIds(text: string, extension: "xyz" | "sdf", ids: readonly string[] | null) {
+function checkGraphSourceIds(text: string, extension: SceneSourceExtension, ids: readonly string[] | null) {
   if (extension !== "sdf") return;
   const expected = readSdfSource(text).atomIds;
   if (expected && (!ids || expected.some((id, index) => id !== ids[index]))) fail("source", "Graph atom ids do not match the source metadata.");
@@ -160,7 +160,7 @@ const attachmentId = (index: number) => `${SCIENCE_ASSET_PREFIX}attachment-${ind
 export async function encodeScienceSession(content: ScienceSessionContent): Promise<EncodedScienceSession> {
   const frames = readSceneSourceFrames(content.source.text, content.source.extension);
   checkGraphSourceIds(content.source.text, content.source.extension, content.atomIds);
-  if (content.source.extension === "sdf" && content.science) fail("science", "Graph scenes cannot carry XYZ scientific arrays.");
+  if (content.source.extension !== "xyz" && content.science) fail("science", "Graph scenes cannot carry XYZ scientific arrays.");
   const elements = frames[0].elements;
   const { binding } = content;
   if (binding.atomCount !== elements.length || binding.frameCount !== frames.length || binding.frameIndex < 0 || binding.frameIndex >= frames.length) {
@@ -200,7 +200,8 @@ export async function encodeScienceSession(content: ScienceSessionContent): Prom
   }
   const manifest: ScienceManifest = {
     kind: SCIENCE_SESSION_KIND,
-    version: SCIENCE_SESSION_VERSION,
+    // Keep existing XYZ/SDF archives readable by v1 readers. Only MOL needs v2.
+    version: content.source.extension === "mol" ? SCIENCE_SESSION_VERSION : 1,
     document: { uuid: content.documentUuid },
     source: { extension: content.source.extension, attachment: sourceAttachment, sha256: attachments[0].sha256 },
     atoms: { count: elements.length, ids: content.atomIds ? [...content.atomIds] : null },
@@ -260,10 +261,11 @@ function decodeJson(bytes: Uint8Array, what: string): unknown {
 function checkManifest(value: unknown): ScienceManifest {
   if (!isRecord(value) || value.kind !== SCIENCE_SESSION_KIND) fail("manifest", "The scientific manifest is not a Burette manifest.");
   const manifest = value as Record<string, unknown>;
-  if (manifest.version !== SCIENCE_SESSION_VERSION) fail("version", `Scientific data version ${String(manifest.version).slice(0, 16)} is not supported by this Burette.`);
+  if (manifest.version !== 1 && manifest.version !== SCIENCE_SESSION_VERSION) fail("version", `Scientific data version ${String(manifest.version).slice(0, 16)} is not supported by this Burette.`);
   const document = manifest.document, source = manifest.source, atoms = manifest.atoms, binding = manifest.binding;
   if (!isRecord(document) || typeof document.uuid !== "string" || !/^[0-9a-f-]{8,64}$/iu.test(document.uuid)) fail("manifest", "The scientific manifest lacks its document id.");
-  if (!isRecord(source) || !["xyz", "sdf"].includes(source.extension as string) || typeof source.attachment !== "string" || typeof source.sha256 !== "string") fail("manifest", "The scientific manifest lacks its source.");
+  if (!isRecord(source) || !["xyz", "sdf", "mol"].includes(source.extension as string) || typeof source.attachment !== "string" || typeof source.sha256 !== "string") fail("manifest", "The scientific manifest lacks its source.");
+  if (source.extension === "mol" && manifest.version !== 2) fail("version", "MOL scene sources require scientific data version 2.");
   if (!isRecord(atoms) || !Number.isInteger(atoms.count) || (atoms.count as number) < 1 || (atoms.count as number) > SCIENCE_SESSION_LIMITS.atoms) fail("manifest", "The scientific manifest has an invalid atom count.");
   const ids = (atoms as Record<string, unknown>).ids;
   if (ids !== null && (!Array.isArray(ids) || ids.length !== atoms.count || !ids.every((id) => typeof id === "string" && id.length <= 64)
@@ -334,7 +336,7 @@ export async function decodeScienceSession(archive: Uint8Array): Promise<Decoded
   }
   const frames = readSceneSourceFrames(text, manifest.source.extension);
   checkGraphSourceIds(text, manifest.source.extension, manifest.atoms.ids);
-  if (manifest.source.extension === "sdf" && manifest.science) fail("science", "Graph scenes cannot carry XYZ scientific arrays.");
+  if (manifest.source.extension !== "xyz" && manifest.science) fail("science", "Graph scenes cannot carry XYZ scientific arrays.");
   const elements = frames[0].elements;
   if (elements.length !== manifest.atoms.count || frames.length !== manifest.binding.frameCount) fail("binding", "The scene source does not match its structure binding.");
   let science: ScientificDocument | null = null;
