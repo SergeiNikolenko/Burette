@@ -7,7 +7,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { showNativeContextMenu } from "../components/native-context-menu";
 import type { FepNetworkLocation } from "../components/editor-area/page-kinds/fep-network";
 import type { FileOpenOptions, StatusKind } from "../components/types";
-import { openBrowserDevDocuments, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
+import { deleteBrowserDevVirtualTextDocument, openBrowserDevDocuments, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { openBrowserDevTextFiles } from "../lib/browser-dev-text-files";
 import type { DockArea, DockTabKind } from "../lib/dock";
 import {
@@ -92,6 +92,24 @@ async function fitsRetabTextViewer(path: string) {
     return true;
   }
 }
+
+/**
+ * Releases prepared text structures that were never added: their native source registration
+ * and virtual grid runtime on the desktop, their virtual text in the browser. A path or id
+ * that an open document already uses stays.
+ */
+async function releaseUnadoptedStructures(documents: ViewerDocument[]) {
+  const open = useMoleculeStore.getState().documents;
+  const unadopted = documents.filter((document) => !open.some(({ id, path }) => id === document.id || path === document.path));
+  if (unadopted.length === 0) return;
+  if (!isTauriRuntime()) {
+    for (const document of unadopted) deleteBrowserDevVirtualTextDocument(document.path);
+    return;
+  }
+  await abortOpenDocumentClaims(unadopted);
+  await invoke("close_opened_source_documents", { documentIds: unadopted.map((document) => document.id) });
+}
+
 
 export function useAppFileOpen({
   preferences,
@@ -583,12 +601,14 @@ export function useAppFileOpen({
     return { opened, errors };
   }, [preferences]);
 
-  const openStructureRecords = useCallback(async (records: StructureDragRecord[], directory?: string) => {
+  const openStructureRecords = useCallback(async (records: StructureDragRecord[], directory?: string, options: { shouldApply?: () => boolean } = {}) => {
+    const mayApply = () => options.shouldApply?.() !== false;
+    if (!mayApply()) return [];
     if (directory) {
       try {
         const { paths, errors } = await saveStructureRecordsInFolder(records, directory);
         window.dispatchEvent(new Event("burette-folder-contents-changed"));
-        if (paths.length) await openDocuments(paths);
+        if (paths.length && mayApply()) await openDocuments(paths);
         const message = `Saved ${paths.length} molecule file${paths.length === 1 ? "" : "s"} in ${directory}`;
         pushStatus(errors.length ? `${message}. ${summarizeErrors(errors)}` : message, errors.length ? "error" : "success", errors);
       } catch (error) { pushErrorStatus(error, "Could not save dropped molecules"); }
@@ -596,6 +616,10 @@ export function useAppFileOpen({
     }
     pushStatus("Opening pasted structures...");
     const { opened, errors } = await openStructureRecordDocuments(records);
+    if (!mayApply()) {
+      await releaseUnadoptedStructures(opened);
+      return [];
+    }
     if (opened.length === 0 && errors.length === 0) return opened;
     if (opened.length > 0) {
       addDocuments(opened);
