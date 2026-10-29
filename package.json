@@ -113,7 +113,7 @@
     "test:minimizer-core": "bun test tests/test-minimizer-core.test.ts",
     "test:workbench-physics": "bun test tests/test-workbench-forcefields.test.ts tests/test-workbench-minimizer.test.ts tests/test-workbench-energy-forces.test.ts",
     "test:science-import-receipt": "bun test tests/test-science-import-receipt.test.ts",
-    "test:science-host": "bun test tests/test-science-host-roundtrip.test.ts"
+    "test:science-host": "bun test tests/test-science-host-roundtrip.test.ts tests/test-science-host-regressions.test.ts tests/test-science-restore-ownership.test.ts"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
