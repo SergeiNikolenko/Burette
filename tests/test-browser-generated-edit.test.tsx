@@ -173,3 +173,26 @@ test("ownership must survive the source-read await before publishing a session",
  expect(observed.map(x=>x.session)).toEqual([false,false]);
  expect(observed).toEqual([{ticks:1,owned:false,session:false,targets:[]},{ticks:2,owned:false,session:false,targets:[]}]);
 });
+
+test("existing Text sessions cannot bypass expired graph ownership",async()=>{
+ const doc=await generated(),view=await fixture(doc);
+ try{await act(async()=>view.controller.beginEditing(doc,'text'));deleteBrowserDevVirtualTextDocument(doc.path);await act(async()=>view.controller.beginEditing(doc,'structure-edit'));expect(view.targets).toEqual(['text']);expect(view.errors).toHaveLength(1);}
+ finally{await view.close();deleteBrowserDevVirtualTextDocument(doc.path);}
+});
+test("XYZ Text reuse remains available but cannot reveal Edit",async()=>{
+ const opened=await openBrowserDevTextDocument(`reuse-${++serial}.xyz`,'xyz','1\nsource\nC 0 0 0\n',preferences);
+ const doc={...opened,virtual:false},view=await fixture(doc);
+ try{await act(async()=>view.controller.beginEditing(doc,'text'));await act(async()=>view.controller.beginEditing(doc,'text'));expect(view.controller.sessionForDocument(doc)?.content).toBe('1\nsource\nC 0 0 0\n');expect(view.targets).toEqual(['text','text']);await act(async()=>view.controller.beginEditing(doc,'structure-edit'));expect(view.targets).toEqual(['text','text']);expect(view.errors).toHaveLength(1);}
+ finally{await view.close();deleteBrowserDevVirtualTextDocument(doc.path);}
+});
+
+test("native physical and restored MOL/SDF retain graph eligibility through sourceExtension",async()=>{
+ const {adoptLogicalSource,releaseClosedScienceSessions}=await import("../apps/desktop/src/lib/science-session/state");
+ const owned=await generated();
+ try{native=true;for(const extension of ['mol','sdf'] as const){
+  expect(structureEditAvailable({...owned,virtual:false,extension,path:`/native/source.${extension}`})).toBe(true);
+  const scene={...owned,id:`logical-${extension}-${++serial}`,virtual:false,extension:'molx',path:'/native/scene.molx'};
+  adoptLogicalSource({documentId:scene.id,extension,text:source},crypto.randomUUID(),null,['C']);
+  expect(structureEditAvailable(scene)).toBe(true);
+ }}finally{native=false;releaseClosedScienceSessions(new Set());deleteBrowserDevVirtualTextDocument(owned.path);}
+});

@@ -156,6 +156,10 @@ export function useSourceEditingController({
 
   const beginEditing = useCallback(async (document: ViewerDocument, revealTab: DockTabKind = "text") => {
     if (closingDocumentIdsRef.current.has(document.id)) return;
+    if (revealTab === "structure-edit" && !structureEditAvailable(document)) {
+      pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source");
+      return;
+    }
     const existing = sessionsRef.current[document.path];
     if (existing) {
       setDockOpen("right", true);
