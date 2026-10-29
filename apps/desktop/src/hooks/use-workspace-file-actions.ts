@@ -10,12 +10,18 @@ import { requestGridView, requestViewerAction } from "../lib/viewer-bridge";
 import { writeClipboardText } from "../lib/clipboard";
 import { fileCapabilities } from "../components/workspace-menu-items";
 import { togetherDockingRequest } from "../lib/docking-documents";
+import { useSourceEditing } from "../lib/source-editing/context";
+import { captureWorkspaceSceneSnapshot } from "./workspace-scene-snapshot";
+import { useScienceSessionRestore } from "../lib/science-session/restore";
 import type { ShellActions, ShellViewState } from "../components/types";
 import type { ViewerDocument } from "../types";
 
 export function useWorkspaceFileActions(state: ShellViewState, actions: ShellActions) {
   // Files and records imported into each open scene, so a scene can later join another one whole.
   const added = useRef(new Map<string, StructureDragPayload>());
+  const sourceEditing = useSourceEditing();
+  // Opened MOLX scenes get back the scientific source they were saved with.
+  useScienceSessionRestore(state.documents);
   const sceneSources = (document: ViewerDocument) => {
     const extra = added.current.get(document.id);
     return {
@@ -68,9 +74,15 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
     await requestGridView(document.id, mode);
   };
   const saveScene = async (document: ViewerDocument) => {
-    await focusViewer(document);
-    const result = await requestViewerAction(document.id, { type: "workspace_scene_snapshot" });
-    if (typeof result.dataBase64 !== "string") throw new Error("The scene did not return a session file.");
+    const snapshot = await captureWorkspaceSceneSnapshot(document, { sourceEditing, sceneFileCount: scenePaths(document).length, scientificData: "allow-omission" });
+    document = snapshot.document;
+    if (snapshot.result.kind !== "molx") throw new Error("The scene did not return a session file.");
+    const result = snapshot.result;
+    const { useMoleculeStore } = await import("../stores/molecule-store");
+    await snapshot.confirm();
+    const warnUnsaved = () => {
+      if (snapshot.omissionReason) toast.add({ title: "Scene saved without scientific data", description: snapshot.omissionReason, type: "warning" });
+    };
     const tab = state.tabs.find(tab => tab.location.kind === "file" && tab.location.documentId === document.id);
     const name = (tab?.title ?? document.title).replace(/\.[^.]+$/, '') + '.molx';
     if (!isTauriRuntime()) {
@@ -78,12 +90,14 @@ export function useWorkspaceFileActions(state: ShellViewState, actions: ShellAct
       const url = URL.createObjectURL(new Blob([bytes], { type: "application/octet-stream" }));
       const link = window.document.createElement("a"); link.href = url; link.download = name; link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      warnUnsaved();
       return;
     }
     const outputPath = await save({ title: "Save Scene", defaultPath: name, filters: [{ name: "Molecular Scene", extensions: ["molx"] }] });
     if (!outputPath) return;
+    await snapshot.confirm();
     const path = await invoke<string>("write_base64_file", { request: { outputPath, contentsBase64: result.dataBase64 } });
-    const { useMoleculeStore } = await import("../stores/molecule-store");
+    warnUnsaved();
     useMoleculeStore.setState(current => ({ documents: current.documents.map(candidate => candidate.id === document.id && JSON.stringify(candidate.sceneSourcePaths) === JSON.stringify(document.sceneSourcePaths) ? { ...candidate, sceneUnsaved: false } : candidate) }));
     await actions.openPaths([path]);
     if (!state.pinnedStructurePaths.includes(path)) actions.togglePinnedStructure(path);
