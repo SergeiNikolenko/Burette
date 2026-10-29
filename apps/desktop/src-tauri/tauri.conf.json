@@ -54,6 +54,7 @@
     "targets": "app",
     "resources": {
       "../public/xyzrender-gallery": "xyzrender-gallery",
+      "../public/third-party-licenses": "third-party-licenses",
       "../../../PreviewExtension/Web": "ViewerWeb",
       "../../../compute/metal/runtime": "ComputeMetal",
       "../../../plugins/burette-native-bundle": "plugins/burette-agent",

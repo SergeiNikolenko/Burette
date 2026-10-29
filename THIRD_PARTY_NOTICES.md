@@ -182,4 +182,28 @@ adapts the FIRE2/ABC-FIRE integration from OpenChemistry/avogadrolibs,
 `avogadro/calc/energyoptimizer.cpp`, revision
 `f5aea255b15d24f658a18d258e56357fa2719646`.
 Copyright (c) 2011-2020, Kitware, Inc. BSD-3-Clause; the full notice and license
-are retained in `docs/third-party/avogadro-LICENSE`.
+are retained in `docs/third-party/avogadro-LICENSE` and shipped in
+`apps/desktop/public/third-party-licenses/avogadro-LICENSE`.
+
+## Compressed file codecs
+
+The browser reads and writes gzip, XZ and Zstandard files with npm packages, loaded
+only in the compression worker (`apps/desktop/src/lib/compressed-files/`):
+
+- `fflate` 0.8.3, MIT, Copyright (c) Arjun Barrett: gzip reading and writing.
+- `xz-decompress` 0.2.3, MIT, Copyright (c) Tim Perry and Steve Sanderson
+  (xzwasm), embedding XZ Embedded by Lasse Collin and Igor Pavlov (public
+  domain) and walloc (MIT, Igalia, S.L.).
+- `node-liblzma` 5.1.3, LGPL-3.0, Copyright (c) Olivier Orabona: XZ
+  writing through the explicit WebAssembly entry and liblzma. The unmodified
+  package source and its license are available at
+  <https://github.com/oorabona/node-liblzma/tree/v5.1.3>.
+- `@hpcc-js/wasm-zstd` 1.17.0, Apache-2.0, Copyright (c) HPCC Systems,
+  embedding the Zstandard reference library (BSD-3-Clause, Copyright (c) Meta
+  Platforms, Inc. and affiliates) and `fzstd` (MIT, Arjun Barrett) to unpack it.
+
+The license and notice texts are retained in
+`apps/desktop/public/third-party-licenses/`, including the embedded walloc,
+liblzma, Zstandard and fzstd components. Vite copies this directory into the
+desktop, agent-shell plugin and hosted shell outputs; the native bundle also
+copies it as the `third-party-licenses` resource.
