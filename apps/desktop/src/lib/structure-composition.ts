@@ -699,7 +699,10 @@ function parseSdfComposition(text: string): StructureCompositionSummary | null {
     const { atoms, bonds } = parseMolCounts(molecule);
     atomTotal += atoms;
     bondTotal += bonds;
-    for (const match of molecule.matchAll(/^>\s*<([^>]+)>/gm)) properties.add(match[1].trim());
+    for (const match of molecule.matchAll(/^>\s*<([^>]+)>/gm)) {
+      const name = match[1].trim();
+      if (name !== "BURETTE_METADATA_V1") properties.add(name);
+    }
     const label = sdfMoleculeLabel(titles[index], duplicateTitles, index);
     return {
       label,
