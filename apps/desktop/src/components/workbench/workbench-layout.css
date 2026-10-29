@@ -1,0 +1,154 @@
+/* Shared layout used by Structure Edit and Properties; extracted from existing styles. */
+.workbench-controls,
+.workbench-form {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+.workbench-row {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+.workbench-grid {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(auto-fill, minmax(min(150px, 100%), 1fr));
+  gap: 8px;
+}
+.workbench-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.workbench-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.workbench-value {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.workbench-value[data-status="success"] {
+  color: var(--color-text-success, var(--text-secondary));
+}
+.workbench-value[data-status="failure"] {
+  color: var(--color-text-danger);
+}
+.workbench-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.workbench-table th {
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+.workbench-table thead th {
+  position: sticky;
+  top: -8px;
+  z-index: 1;
+
+  white-space: normal;
+  vertical-align: bottom;
+  padding: 4px 6px 6px;
+  background: var(--color-surface);
+  color: var(--text-secondary);
+}
+.workbench-table tbody th,
+.workbench-table td {
+  padding: 3px 6px;
+}
+.workbench-table td {
+  text-align: right;
+}
+.workbench-table thead th:not(:first-child) {
+  text-align: right;
+}
+.workbench-table tbody tr[data-selectable] {
+  cursor: default;
+}
+.workbench-table tbody tr[data-selectable]:hover {
+  background: var(--surface-subtle);
+}
+.workbench-table tbody tr[aria-selected="true"] {
+  background: var(--surface-subtle-strong);
+}
+.workbench-table tbody tr:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: -2px;
+}
+.workbench-properties {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 6px 16px;
+  font-size: 13px;
+}
+.workbench-properties > div {
+  display: flex;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 8px;
+}
+.workbench-properties dt {
+  color: var(--text-secondary);
+}
+.workbench-properties dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.workbench-toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+}
+.workbench-point-group sub,
+.workbench-table sub,
+.workbench-table sup,
+.workbench-properties sub,
+.workbench-properties sup {
+  font-size: 0.75em;
+  line-height: 0;
+}
+.workbench-table td.workbench-atom-list,
+.workbench-table thead th.workbench-atom-list {
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.workbench-field {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  font-size: 12px;
+}
+.workbench-field > span {
+  color: var(--text-secondary);
+}
+.workbench-field [data-slot="scrub-number-scrubbable"],
+.workbench-field [data-slot="input"] {
+  height: 28px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.workbench-error {
+  margin: 0;
+  color: var(--color-text-danger);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.workbench-field > [data-slot="native-select-wrapper"] {
+  min-width: 0;
+  max-width: 100%;
+}
