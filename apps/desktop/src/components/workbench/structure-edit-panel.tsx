@@ -96,7 +96,11 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   useEffect(() => {
     if (!editor) return;
     const structure = editor.current.structure;
-    if (!viewerSelection) { setSelection((current) => (current.from === "viewer" && current.atoms.length ? { atoms: [], from: "viewer", structure } : current)); return; }
+    if (!viewerSelection) {
+      setSelection((current) => (current.from === "viewer" && current.structure === structure && current.atoms.length
+        ? { atoms: [], from: "viewer", structure } : current));
+      return;
+    }
     setSelection({ atoms: viewerSelection.truncated ? [] : [...viewerSelection.atoms], from: "viewer", structure });
   }, [viewerSelection, loaded]);
 
@@ -120,7 +124,10 @@ export function StructureEditPanel({ document, actions }: { document: ViewerDocu
   const apply = async (edits: GraphEdit[], select?: (result: GraphEditResult) => number[]) => {
     setInputError(null);
     const result = await draft.apply({ kind: "edits", edits });
-    if (result) setSelection({ atoms: select ? select(result) : mapSelection(atoms, result), from: "panel", structure: result });
+    if (result) setSelection((current) => ({
+      atoms: current === selection && select ? select(result) : mapSelection(selectedAtoms(current, structure), result),
+      from: "panel", structure: result,
+    }));
   };
   // Adding or removing hydrogens renumbers atoms, so the selection does not carry over.
   const hydrogens = async (kind: "add-hydrogens" | "remove-hydrogens") => {

@@ -158,8 +158,6 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
     if (!committed || committed === latest || committed.documentId !== document.id || !committed.editable || committed.content !== text) throw new Error("The source could not be updated. Try again.");
     if (!lifetime.isCurrent()) throw new DOMException("The source lifetime changed while editing.", "AbortError");
     publishPair?.();
-    // The draft replaces the scene; its 3D selection indexed the previous atoms.
-    forgetViewerAtomSelection(document.id);
   };
 
   /** Runs one operation as one Undo step. Resolves with the new structure, or null when it was rejected. */
@@ -199,6 +197,9 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
         });
       if (!lifetime.isCurrent()) throw new DOMException("The source lifetime changed while editing.", "AbortError");
       update(key, { history: { origin: history.origin, current: next, undo: [...history.undo, history.current].slice(-HISTORY_LIMIT), redo: [] }, busy: false, controller: null });
+      // Publish the new snapshot before clearing indices of the previous scene.
+      // Consumers can then distinguish a replaced scene from a user clearing it.
+      forgetViewerAtomSelection(document.id);
       return result.structure;
     } catch (error) {
       if (entries.get(key)?.owner === owner && logicalSourceFor(document.id) === owner) update(key, { busy: false, controller: null, error: controller.signal.aborted || isAbortError(error) ? null : message(error) });
@@ -227,6 +228,7 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
       update(key, { busy: false, history: direction === "undo"
         ? { origin: history.origin, current: target, undo: history.undo.slice(0, -1), redo: [history.current, ...history.redo] }
         : { origin: history.origin, current: target, undo: [...history.undo, history.current].slice(-HISTORY_LIMIT), redo: history.redo.slice(1) } });
+      forgetViewerAtomSelection(document.id);
     } catch (error) {
       if (entries.get(key)?.owner === owner && logicalSourceFor(document.id) === owner) update(key, { busy: false, error: isAbortError(error) ? null : message(error) });
     } finally {

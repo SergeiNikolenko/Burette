@@ -132,7 +132,7 @@
     "test:cif-crystal": "bun test tests/test-cif-crystal.test.ts tests/test-cif-crystal-regressions.test.ts tests/test-cif-lattice-admission.test.ts tests/test-cif-operation-precision.test.ts tests/test-cif-operation-canonical.test.ts",
     "test:geometry-preview-transient": "node tests/test-geometry-preview-transient.mjs && node tests/test-geometry-preview-snapshots.mjs",
     "test:browser-generated-edit": "bun test tests/test-browser-generated-edit.test.tsx",
-    "test:structure-edit-panel": "bun test tests/test-structure-edit-panel.test.tsx && bun test --preload ./tests/structure-edit-compiled-preload.ts tests/test-structure-edit-panel.test.tsx",
+    "test:structure-edit-panel": "bun test tests/test-structure-edit-panel.test.tsx tests/test-structure-edit-selection.test.tsx tests/test-structure-edit-viewer-selection.test.tsx && bun test --preload ./tests/structure-edit-compiled-preload.ts tests/test-structure-edit-panel.test.tsx tests/test-structure-edit-selection.test.tsx tests/test-structure-edit-viewer-selection.test.tsx",
     "test:single-sdf-source-pipeline": "bun test tests/test-single-sdf-source-pipeline.test.ts",
     "test:scientific-dispatch": "bun test tests/test-scientific-dispatch.test.ts",
     "test:scientific-consumers": "bun test tests/test-quantum-pure-consumers.test.ts tests/test-scientific-dispatch-readers.test.ts tests/test-orca-hessian-parser.test.ts tests/test-workbench-orca-frame-modes.test.ts tests/test-workbench-trajectory.test.ts tests/test-scientific-format-routing.test.ts"

@@ -4,6 +4,8 @@ import type { StructureOverlayMode, ViewerLigandSelection } from "../components/
 import type { ViewerDocument, ViewerPreferences } from "../types";
 import type { DockTabKind } from "../lib/dock";
 import { updateHostedMcpSelectionContext } from "../lib/hosted-mcp-widget";
+import { rememberViewerAtomSelection } from "../lib/workbench/selection";
+import { isViewerFrameVisible } from "../lib/viewer-frame-visibility";
 import { structureStoryFromViewerMessage, type StructureStory } from "../lib/structure-story";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
 import { dockCameraRestore } from "../lib/dock-camera-transfer";
@@ -211,6 +213,11 @@ export function useAppViewerStateMessages({
       const selection = body.selection && typeof body.selection === "object"
         ? body.selection as Record<string, unknown>
         : null;
+      const frame = documents.some(document => document.id === documentId) ? activeViewerIframeForDocument(documentId, "molstar") : null;
+      if (frame && isViewerFrameVisible(frame) && frame.contentWindow === eventSource
+        && !isReadOnlyViewerMessageSource(eventSource)) {
+        rememberViewerAtomSelection(documentId, selection);
+      }
       updateHostedMcpSelectionContext(selection, documentId);
       const atomCount = selection?.atoms == null ? null : Number(selection.atoms);
       setViewerLigandSelections((previous) => ({
