@@ -1,3 +1,4 @@
+import type { DockTabKind } from "../dock";
 import { createContext, useContext, type ReactNode } from "react";
 import type { ViewerDocument } from "../../types";
 import type { SourcePreviewFrameSnapshot, SourcePreviewIdentity } from "../source-preview/types";
@@ -37,7 +38,7 @@ export type SourceEditingOperation = { isCurrent: () => boolean; release: () => 
 export type SourceEditingContextValue = {
   sessionForDocument: (document: ViewerDocument | null) => SourceEditingView | null;
   captureOperation: (document: ViewerDocument) => SourceEditingOperation;
-  beginEditing: (document: ViewerDocument) => void | Promise<void>;
+  beginEditing: (document: ViewerDocument, revealTab?: DockTabKind) => void | Promise<void>;
   updateDraft: (document: ViewerDocument, content: string, options?: DraftUpdateOptions) => void;
   applyPreview: (document: ViewerDocument) => void | Promise<void>;
   save: (document: ViewerDocument) => void | Promise<void>;

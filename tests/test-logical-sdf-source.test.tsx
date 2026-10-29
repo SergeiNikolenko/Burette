@@ -1,4 +1,5 @@
 import { expect, mock, test } from "bun:test";
+import type { DockTabKind } from "../apps/desktop/src/lib/dock";
 import type { ViewerDocument } from "../apps/desktop/src/types";
 import { plugin } from "bun";
 import { readFileSync } from "node:fs";
@@ -42,10 +43,11 @@ async function adopt(documentId: string, text = source) {
 async function fixture() {
   const doc = { id: `logical-sdf-${++serial}`, path: `/Scenes/logical-${serial}.molx`, title: "Restored molecule.MOLX", extension: "molx", renderer: "molstar", runtimePath: "original scene" } as any;
   let controller!: ReturnType<typeof useSourceEditingController>;
+  const dockTargets: ["right" | "bottom", DockTabKind][] = [];
   const errors: unknown[] = [], host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  function Probe() { controller = useSourceEditingController({ activeDocument: doc, preferences: { ...defaultPreferences, rendererMode: "molstar" } as any, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab() {} }); return null; }
+  function Probe() { controller = useSourceEditingController({ activeDocument: doc, preferences: { ...defaultPreferences, rendererMode: "molstar" } as any, pushErrorStatus: error => errors.push(error), setDockOpen() {}, setDockActiveTab(area, tab) { dockTargets.push([area, tab]); } }); return null; }
   await act(async () => root.render(<Probe />));
-  return { doc, errors, get controller() { return controller; }, async close() { await act(async () => root.unmount()); host.remove(); releaseClosedScienceSessions(new Set()); native = false; } };
+  return { doc, errors, dockTargets, get controller() { return controller; }, async close() { await act(async () => root.unmount()); host.remove(); releaseClosedScienceSessions(new Set()); native = false; } };
 }
 test("validated logical SDF opens without archive text I/O and stages an actual SDF browser runtime", async () => {
   const view = await fixture();
@@ -87,5 +89,21 @@ test("a valid decoded multibyte SDF above the editing byte cap stays outside the
     await adopt(view.doc.id, text); await act(async () => view.controller.beginEditing(view.doc));
     expect(view.controller.sessionForDocument(view.doc) === null).toBe(true);
     expect((view.errors[0] as Error)?.message).toContain("3 MB");
+  } finally { await view.close(); }
+});
+
+for (const firstTarget of ["text", "structure-edit"] as const) test(`compiled source controller reveals ${firstTarget} for a new SDF session and honors a later target without resetting its draft`, async () => {
+  const view = await fixture();
+  try {
+    await adopt(view.doc.id);
+    await act(async () => firstTarget === "text" ? view.controller.beginEditing(view.doc) : view.controller.beginEditing(view.doc, firstTarget));
+    expect(view.dockTargets).toEqual([["right", firstTarget]]);
+    await act(async () => view.controller.updateDraft(view.doc, edited));
+    const nextTarget = firstTarget === "text" ? "structure-edit" : "text";
+    await act(async () => view.controller.beginEditing(view.doc, nextTarget));
+    expect(view.dockTargets).toEqual([["right", firstTarget], ["right", nextTarget]]);
+    expect(view.controller.sessionForDocument(view.doc)?.content).toBe(edited);
+    expect(view.controller.sessionForDocument(view.doc)?.dirty).toBe(true);
+    expect(view.errors).toEqual([]);
   } finally { await view.close(); }
 });

@@ -1,3 +1,4 @@
+import type { DockTabKind } from "../lib/dock";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
@@ -61,7 +62,7 @@ type UseSourceEditingOptions = {
   preferences: ViewerPreferences;
   pushErrorStatus: (error: unknown, prefix?: string, details?: string[]) => void;
   setDockOpen: (area: "right" | "bottom", open: boolean) => void;
-  setDockActiveTab: (area: "right" | "bottom", kind: "text") => void;
+  setDockActiveTab: (area: "right" | "bottom", kind: DockTabKind) => void;
 };
 
 function randomId() {
@@ -151,12 +152,12 @@ export function useSourceEditingController({
     });
   }, [commitSessions]);
 
-  const beginEditing = useCallback(async (document: ViewerDocument) => {
+  const beginEditing = useCallback(async (document: ViewerDocument, revealTab: DockTabKind = "text") => {
     if (closingDocumentIdsRef.current.has(document.id)) return;
     const existing = sessionsRef.current[document.path];
     if (existing) {
       setDockOpen("right", true);
-      setDockActiveTab("right", "text");
+      setDockActiveTab("right", revealTab);
       return;
     }
     // Logical XYZ uses its separately owned in-place update lane. This stage admits SDF only.
@@ -247,7 +248,7 @@ export function useSourceEditingController({
       };
       commitSessions((current) => ({ ...current, [document.path]: session }));
       setDockOpen("right", true);
-      setDockActiveTab("right", "text");
+      setDockActiveTab("right", revealTab);
     } catch (error) {
       const parsed = parseNativeSourceError(error);
       const message = parsed?.code === "source_not_editable" && parsed.details?.reason === "unsupported_shape"
