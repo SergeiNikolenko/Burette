@@ -1,4 +1,4 @@
-// Workspace file imports only; the scene's object context menus own their UI.
+// Workspace file imports and scene-file science attachments; the scene's object context menus own their UI.
 (function () {
   const sessions = new WeakMap();
   const modelLoads = new WeakSet();
@@ -108,7 +108,26 @@
     const live = paths.filter(path => labels.has(path.split('/').pop()));
     return live.length ? live : paths;
   }
+
+  // Scientific session data rides in the scene's MOLX archive as Mol* file assets with
+  // Burette's reserved ids; the host owns their content. They exist in the AssetManager only
+  // while one Export → Scene serializes, never longer, and are removed again right after a
+  // scene that carried them is opened. Other assets are never touched.
+  const SCIENCE_PREFIX = 'burette-science-';
+  const SCIENCE_TAG = 'burette-science-session';
+  const SCIENCE_ASSET_LIMIT = 65;
+  const SCIENCE_BYTE_LIMIT = 21 * 1024 * 1024;
   const SCIENCE_ATOM_LIMIT = 10000;
+  const scienceSessions = new WeakMap();
+  function scienceSession(plugin) {
+    let session = scienceSessions.get(plugin);
+    if (!session) {
+      session = { present: false, exporting: null };
+      scienceSessions.set(plugin, session);
+    }
+    return session;
+  }
+  // The one structure a scientific source describes: its refs, frame, atoms in source order.
   function scienceBinding(viewer) {
     const plugin = viewer?.plugin;
     const roots = plugin?.managers?.structure?.hierarchy?.current?.structures;
@@ -177,6 +196,11 @@
       || String(trajectory.transform.transformer?.id || '') !== transformer || cells.get(trajectory.transform.parent) !== raw || raw.obj.data !== text) throw new Error('The scene source changed while it was being read.');
     return { ...report, sourceFormat, sourceSha256: Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('') };
   }
+  async function sdfSourceBinding(viewer) {
+    const { sourceFormat, ...report } = await graphSourceBinding(viewer);
+    if (sourceFormat !== 'sdf') throw new Error('This scene has no SDF graph source.');
+    return report;
+  }
   function sameScienceBinding(current, expected) {
     const binding = expected?.binding;
     if (!binding || !['structureRef', 'modelRef', 'trajectoryRef', 'frameIndex', 'frameCount', 'atomCount'].every(key => current[key] === binding[key])) return false;
@@ -185,11 +209,95 @@
     for (let index = 0; index < positions.length; index++) if (!(Math.abs(positions[index] - current.positions[index]) <= 1e-3)) return false;
     return true;
   }
+  async function serializeScience(viewer, request, params) {
+    const plugin = viewer?.plugin;
+    const manager = plugin?.managers?.asset;
+    const assets = request?.assets;
+    if (!manager || !plugin.managers.snapshot || !Array.isArray(assets) || !assets.length || assets.length > SCIENCE_ASSET_LIMIT) throw new Error('The scene received invalid scientific data.');
+    const ids = new Set();
+    let bytes = 0;
+    for (const asset of assets) {
+      if (!asset || typeof asset.id !== 'string' || !asset.id.startsWith(SCIENCE_PREFIX) || asset.id.length > 64 || ids.has(asset.id)
+        || typeof asset.name !== 'string' || asset.name.length > 128 || !(asset.bytes instanceof Uint8Array)) throw new Error('The scene received invalid scientific data.');
+      ids.add(asset.id);
+      bytes += asset.bytes.byteLength;
+    }
+    if (bytes > SCIENCE_BYTE_LIMIT) throw new Error('Scientific data exceeds the 20 MiB a scene can carry.');
+    const session = scienceSession(plugin);
+    if (session.exporting) throw new Error('The scene is already being saved.');
+    const admit = () => {
+      if (manager.assets.some(({ asset }) => String(asset?.id).startsWith(SCIENCE_PREFIX))) throw new Error('The scene holds scientific attachments.');
+    };
+    admit();
+    const check = async () => {
+      const current = request.sourceSha256 ? await sdfSourceBinding(viewer) : scienceBinding(viewer);
+      if ((request.sourceSha256 && current.sourceSha256 !== request.sourceSha256) || !sameScienceBinding(current, request)) throw new Error('The scene changed while it was being saved. Save the scene again.');
+    };
+    let release;
+    session.exporting = new Promise(resolve => { release = resolve; });
+    const created = new Map();
+    try {
+      await check();
+      admit();
+      for (const asset of assets) {
+        const descriptor = { kind: 'file', id: asset.id, name: asset.name };
+        manager.set(descriptor, new File([asset.bytes], asset.name), { tag: SCIENCE_TAG });
+        created.set(asset.id, manager.get(descriptor));
+      }
+      const archive = await plugin.managers.snapshot.serialize(params);
+      await check();
+      for (const [id, entry] of created) {
+        if (manager.get({ id }) !== entry) throw new Error('The scene attachments changed while it was being saved. Save the scene again.');
+      }
+      session.present = true;
+      return archive;
+    } finally {
+      for (const [id, entry] of created) if (manager.get({ id }) === entry) manager.delete({ id });
+      session.exporting = null;
+      release();
+    }
+  }
+  // An opened scene's scientific assets were read by the host from the file itself.
+  function adoptImportedScience(plugin) {
+    const manager = plugin?.managers?.asset;
+    if (!manager) return false;
+    let found = false;
+    for (const { asset } of manager.assets) {
+      if (typeof asset?.id !== 'string' || !asset.id.startsWith(SCIENCE_PREFIX)) continue;
+      manager.delete(asset);
+      found = true;
+    }
+    if (found) scienceSession(plugin).present = true;
+    return found;
+  }
+
   window.BuretteSceneFiles = {
-    science: { binding: scienceBinding, graphBinding: graphSourceBinding },
     loadModels,
     checkTrajectoryCount,
     livePaths,
+    science: {
+      prefix: SCIENCE_PREFIX,
+      binding: scienceBinding,
+      sdfBinding: sdfSourceBinding,
+      graphBinding: graphSourceBinding,
+      serialize: serializeScience,
+      adoptImported: adoptImportedScience,
+      present: plugin => Boolean(scienceSessions.get(plugin)?.present),
+      // Another serialization (an agent session export) runs alone and sees no attachments.
+      async exclusive(plugin, run) {
+        const session = scienceSession(plugin);
+        while (session.exporting) await session.exporting;
+        if (plugin?.managers?.asset?.assets?.some(({ asset }) => String(asset?.id).startsWith(SCIENCE_PREFIX))) throw new Error('The scene holds scientific attachments.');
+        let release;
+        session.exporting = new Promise(resolve => { release = resolve; });
+        try {
+          return await run();
+        } finally {
+          session.exporting = null;
+          release();
+        }
+      },
+    },
     sequence(viewer) {
       const records = [];
       const seen = new Set();
