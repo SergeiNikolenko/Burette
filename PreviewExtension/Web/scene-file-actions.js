@@ -122,7 +122,7 @@
   function scienceSession(plugin) {
     let session = scienceSessions.get(plugin);
     if (!session) {
-      session = { present: false, exporting: null, lastManifestSha256: null, lastSourceSha256: null, importToken: null, importLoading: false };
+      session = { present: false, exporting: null, publicExporting: false, lastManifestSha256: null, lastSourceSha256: null, importToken: null, importLoading: false };
       scienceSessions.set(plugin, session);
     }
     return session;
@@ -263,6 +263,7 @@
   }
   function beginScienceImport(plugin) {
     const session = scienceSession(plugin);
+    if (session.publicExporting) throw new Error('The scene is already being saved.');
     session.importToken = crypto.randomUUID();
     session.importLoading = true;
     session.lastManifestSha256 = null;
@@ -360,12 +361,15 @@
       async exclusive(plugin, run) {
         const session = scienceSession(plugin);
         while (session.exporting) await session.exporting;
+        if (session.importLoading) throw new Error('Wait for the scene to finish opening.');
         if (plugin?.managers?.asset?.assets?.some(({ asset }) => String(asset?.id).startsWith(SCIENCE_PREFIX))) throw new Error('The scene holds scientific attachments.');
         let release;
         session.exporting = new Promise(resolve => { release = resolve; });
+        session.publicExporting = true;
         try {
           return await run();
         } finally {
+          session.publicExporting = false;
           session.exporting = null;
           release();
         }

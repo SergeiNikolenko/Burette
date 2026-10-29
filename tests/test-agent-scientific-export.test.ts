@@ -145,3 +145,46 @@ test("unacknowledged scientific imports remain untouched and refuse public seria
     expect(entries.every(entry => f.plugin.managers.asset.get(entry.asset) === entry)).toBe(true);
   } finally { f.close(); }
 });
+
+
+test("public export refuses importLoading before imported assets exist", async () => {
+  const f = await fixture(), incoming = await fixture("xyz");
+  const archive = await science.serialize(incoming.viewer,incoming.request,options);
+  const readEntered = deferred(), readRelease = deferred();
+  const file = new File([archive],"incoming.molx"), read = file.arrayBuffer.bind(file);
+  Object.defineProperty(file,"arrayBuffer",{value:async()=>{readEntered.resolve();await readRelease.promise;return read();}});
+  attach(f.viewer);
+  const token = science.beginImport(f.plugin);
+  const importing = f.plugin.managers.snapshot.open(file).then(()=>science.completeImport(f.plugin,token));
+  try {
+    await readEntered.promise;
+    expect(f.plugin.managers.asset.assets.filter(({asset})=>String(asset.id).startsWith(science.prefix))).toHaveLength(0);
+    expect(()=>science.binding(f.viewer)).toThrow("finish opening");
+    const result = await publicExport("export_session");
+    expect([result.ok,result.error?.code]).toEqual([false,"BUSY"]);
+  } finally {readRelease.resolve();await importing; incoming.close();f.close();}
+});
+
+test("an import cannot inject its unvalidated attachments into an already-running public export", async () => {
+  const f = await fixture(), incoming = await fixture("xyz");
+  const archive = await science.serialize(incoming.viewer,incoming.request,options);
+  const stateEntered = deferred(), stateRelease = deferred();
+  const manager = f.plugin.managers.snapshot, getState = manager.getStateSnapshot.bind(manager);
+  manager.getStateSnapshot = (async args=>{const state=await getState(args);stateEntered.resolve();await stateRelease.promise;return state;}) as typeof manager.getStateSnapshot;
+  attach(f.viewer);
+  const exporting = publicExport("raw_burette_agent");
+  try {
+    await stateEntered.promise;
+    const before = science.binding(f.viewer);
+    expect(() => science.beginImport(f.plugin)).toThrow("already being saved");
+    expect(science.binding(f.viewer)).toEqual(before);
+    expect(f.plugin.managers.asset.assets.filter(({asset})=>String(asset.id).startsWith(science.prefix))).toHaveLength(0);
+    stateRelease.resolve(); const result = await exporting;
+    expect([result.ok,scienceCount(filesOf(result)),warns(result)]).toEqual([true,0,false]);
+    const token = science.beginImport(f.plugin);
+    await manager.open(new File([archive],"incoming-after-export.molx"));
+    expect(science.completeImport(f.plugin,token)).toBe(true);
+    expect(await science.adoptValidated(f.viewer,{...incoming.request,importToken:token,manifestSha256:await hash(incoming.assets[0].bytes)})).toBe(true);
+    expect(science.present(f.plugin)).toBe(true);
+  } finally {stateRelease.resolve();await exporting;incoming.close();f.close();}
+});

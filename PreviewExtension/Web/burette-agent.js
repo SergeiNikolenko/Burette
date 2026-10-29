@@ -987,6 +987,7 @@
       blob = science ? await science.exclusive(state.plugin, serialize) : await serialize();
     } catch (error) {
       if (science && /scientific attachments/.test(error?.message || '')) throw coded('BUSY', 'The scene is being saved. Export the session again.');
+      if (science && error?.message === 'Wait for the scene to finish opening.') throw coded('BUSY', 'The scene is opening. Export the session again.');
       throw error;
     }
     const requestedMaxBytes = Number(args.maxBytes);
