@@ -54,6 +54,8 @@ export type ScienceSessionContent = {
   original: { name: string; file: Blob } | null;
 };
 
+export type DecodedScienceSession = ScienceSessionContent & { readonly manifestSha256: string };
+
 export type ScienceSessionAsset = { id: string; name: string; bytes: Uint8Array };
 export type EncodedScienceSession = { manifest: ScienceManifest; assets: ScienceSessionAsset[] };
 
@@ -202,7 +204,8 @@ export async function encodeScienceSession(content: ScienceSessionContent): Prom
     document: { uuid: content.documentUuid },
     source: { extension: content.source.extension, attachment: sourceAttachment, sha256: attachments[0].sha256 },
     atoms: { count: elements.length, ids: content.atomIds ? [...content.atomIds] : null },
-    binding: { ...binding },
+    binding: { structureRef: binding.structureRef, modelRef: binding.modelRef, trajectoryRef: binding.trajectoryRef,
+      frameIndex: binding.frameIndex, frameCount: binding.frameCount, atomCount: binding.atomCount },
     science,
     original,
     attachments,
@@ -295,7 +298,7 @@ function checkManifest(value: unknown): ScienceManifest {
  * foreign session (no Burette manifest). Throws ScienceSessionError when a manifest exists
  * but any part of it cannot be restored; nothing partial is returned.
  */
-export async function decodeScienceSession(archive: Uint8Array): Promise<ScienceSessionContent | null> {
+export async function decodeScienceSession(archive: Uint8Array): Promise<DecodedScienceSession | null> {
   const { files, hasState } = readScienceEntries(archive);
   const ours = Object.keys(files).filter((name) => name.startsWith(`assets/${SCIENCE_ASSET_PREFIX}`));
   if (!ours.length) return null;
@@ -360,6 +363,7 @@ export async function decodeScienceSession(archive: Uint8Array): Promise<Science
   }
   if (used.size !== manifest.attachments.length || ours.length !== manifest.attachments.length + 1) fail("attachment", "The scene file carries scientific attachments its manifest does not use.");
   return {
+    manifestSha256: await sha256Hex(manifestBytes),
     documentUuid: manifest.document.uuid,
     source: { extension: manifest.source.extension, text },
     atomIds: manifest.atoms.ids,

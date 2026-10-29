@@ -13,7 +13,7 @@ export type ScienceSceneBinding = {
 };
 
 /** What the viewer reports about the structure a scene's source describes. */
-export type SceneScienceBindingReport = ScienceSceneBinding & { elements: string[]; positions: ArrayLike<number>; sourceSha256?: string };
+export type SceneScienceBindingReport = ScienceSceneBinding & { elements: string[]; positions: ArrayLike<number>; sourceSha256?: string; importToken?: string };
 
 const BINDING_KEYS = ["structureRef", "modelRef", "trajectoryRef"] as const;
 
@@ -25,6 +25,7 @@ export function checkBindingReport(value: Record<string, unknown>): SceneScience
     throw new ScienceSessionError("binding", "The scene did not report its structure.");
   }
   if (value.sourceSha256 !== undefined && (typeof value.sourceSha256 !== "string" || !/^[0-9a-f]{64}$/u.test(value.sourceSha256))) throw new ScienceSessionError("binding", "The scene reported an invalid graph source identity.");
+  if (value.importToken !== undefined && (typeof value.importToken !== "string" || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/iu.test(value.importToken))) throw new ScienceSessionError("binding", "The scene reported an invalid import identity.");
   const report = value as unknown as SceneScienceBindingReport;
   const elements = report.elements.map((element) => typeof element === "string" ? normalizeElement(element) : null);
   if (elements.some((element) => element === null) || report.frameIndex < 0 || report.frameCount < 1
