@@ -6,17 +6,17 @@ import { tracePerf } from "../lib/perf-trace";
 import { useMoleculeStore } from "../stores/molecule-store";
 import type { OpenDocumentsResult, ViewerDocument, ViewerPreferences } from "../types";
 
-type Preparation = { users: number; promise: Promise<void> };
+type Preparation = { users: number; promise: Promise<ViewerDocument | null> };
 const preparations = new Map<ViewerDocument, Preparation>();
 let preparationQueue: Promise<void> = Promise.resolve();
 
 function retainPreparation(document: ViewerDocument, preferences: ViewerPreferences) {
   let preparation = preparations.get(document);
   if (!preparation) {
-    const entry: Preparation = { users: 0, promise: Promise.resolve() };
+    const entry: Preparation = { users: 0, promise: Promise.resolve(null) };
     const stillCurrent = () => entry.users > 0 && useMoleculeStore.getState().documents.includes(document);
     entry.promise = preparationQueue.then(async () => {
-      if (!stillCurrent()) return;
+      if (!stillCurrent()) return null;
       tracePerf("document:prepare-start", { detail: { documentId: document.id } });
       const result = await invoke<OpenDocumentsResult>("open_documents", {
         paths: [document.path], preferences: { ...preferences, ...document.runtimeDeferredPreferences },
@@ -24,7 +24,7 @@ function retainPreparation(document: ViewerDocument, preferences: ViewerPreferen
       });
       if (!stillCurrent()) {
         await abortOpenDocumentClaims(result.documents);
-        return;
+        return null;
       }
       const replacement = result.documents.find((candidate) => candidate.path === document.path);
       if (!replacement) throw new Error(result.errors[0] ?? "The structure could not be opened.");
@@ -35,10 +35,11 @@ function retainPreparation(document: ViewerDocument, preferences: ViewerPreferen
         throw error;
       }
       tracePerf("document:prepare-complete", { detail: { documentId: document.id } });
+      return replacement;
     }).finally(() => preparations.delete(document));
     // One active native preparation for mounted cold scenes. Closed/evicted
     // queued scenes are skipped, and obsolete in-flight claims are released.
-    preparationQueue = entry.promise.catch(() => {});
+    preparationQueue = entry.promise.then(() => {}, () => {});
     preparations.set(document, entry);
     preparation = entry;
   }
@@ -69,9 +70,8 @@ export async function prepareDeferredViewerRuntime(document: ViewerDocument, pre
   if (!document.runtimeDeferred) return document;
   const preparation = retainPreparation(document, preferences);
   try {
-    await preparation.promise;
-    const prepared = useMoleculeStore.getState().documents.find((candidate) => candidate.id === document.id);
-    if (!prepared || prepared.runtimeDeferred) throw new Error("The structure was closed while opening.");
+    const prepared = await preparation.promise;
+    if (!prepared || !useMoleculeStore.getState().documents.includes(prepared) || prepared.runtimeDeferred) throw new Error("The structure closed or changed while opening.");
     return prepared;
   } finally {
     preparation.release();
