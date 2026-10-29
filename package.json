@@ -115,7 +115,7 @@
     "test:science-import-receipt": "bun test tests/test-science-import-receipt.test.ts",
     "test:science-host": "bun test tests/test-science-host-roundtrip.test.ts tests/test-science-host-regressions.test.ts tests/test-science-restore-ownership.test.ts",
     "test:science-save": "bun test tests/test-restore-save-consumer.test.tsx",
-    "test:science-native-consumers": "bun test tests/test-native-tab-file-drag.test.ts && bun test tests/test-native-scene-window.test.tsx",
+    "test:science-native-consumers": "bun test tests/test-native-tab-file-drag.test.ts && bun test tests/test-native-scene-window.test.tsx && bun test tests/test-scientific-native-handoff.test.tsx",
     "test:logical-sdf-source": "bun test tests/test-logical-sdf-source.test.tsx && bun test tests/test-molx-browser-routing.test.ts"
   },
   "dependencies": {
