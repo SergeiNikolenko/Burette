@@ -9,7 +9,7 @@ export type XyzFrame = { elements: string[]; positions: Float64Array };
 
 /** Frames of an XYZ (single or multi-frame) source; extended columns after x y z are ignored. */
 export function readXyzFrames(text: string): XyzFrame[] {
-  if (text.length > SCIENCE_SESSION_LIMITS.sourceBytes) fail("source", "The scene source exceeds 16 MiB.");
+  if (text.length > SCIENCE_SESSION_LIMITS.sourceBytes || new TextEncoder().encode(text).byteLength > SCIENCE_SESSION_LIMITS.sourceBytes) fail("source", "The scene source exceeds 16 MiB.");
   const lines = text.replace(/\r\n?/gu, "\n").split("\n");
   const frames: XyzFrame[] = [];
   let line = 0;
