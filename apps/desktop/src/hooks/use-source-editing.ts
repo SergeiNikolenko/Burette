@@ -1,3 +1,4 @@
+import { structureEditAvailable } from "../lib/workbench/graph-draft";
 import type { DockTabKind } from "../lib/dock";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -165,7 +166,7 @@ export function useSourceEditingController({
     const restored = logicalSourceFor(document.id);
     const logical = restored?.extension === "sdf" || restored?.extension === "mol" ? restored : null;
     const extension = logical?.extension ?? document.extension.toLowerCase().replace(/^\./u, "");
-    if (document.virtual || document.dockingRequest || document.mergedCollection || !EDITABLE_EXTENSIONS.has(extension)) {
+    if ((document.virtual && !structureEditAvailable(document)) || document.dockingRequest || document.mergedCollection || !EDITABLE_EXTENSIONS.has(extension)) {
       pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source");
       return;
     }
@@ -174,7 +175,8 @@ export function useSourceEditingController({
     openingSourceTokensRef.current.set(document.id, token);
     try {
       document = await prepareDeferredViewerRuntime(document, preferences);
-      if (openingSourceTokensRef.current.get(document.id) !== token) return;
+      if (openingSourceTokensRef.current.get(document.id) !== token
+        || (document.virtual && !structureEditAvailable(document))) return;
       const sessionId = randomId();
       let content: string;
       let handleId: string | null = null;
@@ -212,7 +214,9 @@ export function useSourceEditingController({
         previewMode = new TextEncoder().encode(content).byteLength <= LIVE_PREVIEW_LIMIT ? "live" : "manual";
       }
 
-      if (openingSourceTokensRef.current.get(document.id) !== token) return;
+      // Reading the source also yields: ownership must survive until publication.
+      if (openingSourceTokensRef.current.get(document.id) !== token
+        || (document.virtual && !structureEditAvailable(document))) return;
       const adapter = new SourcePreviewAdapter({
         activeRuntime: { runtimeKey: `source:${document.id}:base`, runtimePath: document.runtimePath },
         onChange: (sourcePreview) => updateSession(document.path, (session) => ({ ...session, sourcePreview })),

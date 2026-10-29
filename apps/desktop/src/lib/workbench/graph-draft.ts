@@ -1,3 +1,5 @@
+import { isBrowserDraftSource, readBrowserDevVirtualTextDocument } from "../browser-dev-documents";
+import { classifySourceShape } from "../source-editing/policy";
 import type { ViewerDocument } from "../../types";
 import { sourceExtension } from "../science-session/state";
 import { graphMetadataData, hasGraphMetadata, readGraphMetadata, type GraphMetadata } from "./graph-metadata";
@@ -6,8 +8,11 @@ const GRAPH_EXTENSIONS = new Set(["sdf", "sd", "mol"]);
 
 /** Atom and bond editing needs an explicit graph: one SDF/MOL record in a single-structure scene. */
 export function structureEditAvailable(document: ViewerDocument | null): document is ViewerDocument {
-  return Boolean(document && document.renderer === "molstar" && GRAPH_EXTENSIONS.has(sourceExtension(document))
-    && !document.virtual && !document.dockingRequest && !document.mergedCollection);
+  if (!document || document.renderer !== "molstar" || !GRAPH_EXTENSIONS.has(sourceExtension(document))
+    || document.dockingRequest || document.mergedCollection) return false;
+  if (!document.virtual) return true;
+  const text = isBrowserDraftSource(document) ? readBrowserDevVirtualTextDocument(document.path) : null;
+  return text !== null && classifySourceShape(sourceExtension(document), text) === "single";
 }
 
 export { atomAnnotations, type AtomAnnotation } from "./graph-annotations";

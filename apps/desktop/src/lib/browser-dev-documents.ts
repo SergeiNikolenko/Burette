@@ -667,6 +667,11 @@ export function readBrowserDevVirtualTextDocument(path: string) {
   return browserDevVirtualTextDocuments.get(path) ?? null;
 }
 
+/** Text already owned by this browser runtime; a virtual path alone is not ownership. */
+export function isBrowserDraftSource(document: Pick<ViewerDocument, "path">) {
+  return !isTauriRuntime() && browserDevVirtualTextDocuments.has(document.path);
+}
+
 /** Restore immutable original text only when no current draft exists. */
 export async function readBrowserVirtualText(path: string) {
   if (!isTauriRuntime() && !isExplicitBrowserDevServerPath(path) && !browserDevVirtualTextDocuments.has(path)) {
