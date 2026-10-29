@@ -1,3 +1,5 @@
+import { StructureEditPanel } from "./workbench/structure-edit-panel";
+import { structureEditAvailable } from "../lib/workbench/graph-draft";
 import { dockScreenLocation, openDockScreen } from "./workspace-panes/dock-screen";
 import { chemicalSpaceDocument as resolveCollection, chemicalSpaceSourceMatches } from "../lib/chemical-space-documents";
 import { Spinner } from "@/components/ui/spinner";
@@ -94,6 +96,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
   const chemicalSpaceDockAvailable = Boolean(resolveChemicalSpaceDocument(state, dockDocument));
+  const structureEditDockAvailable = area === "right" && structureEditAvailable(activeStructureDocument);
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
   // File screens use the same editable page in every group. Legacy Files entry
   // points become placements instead of creating a second read-only renderer.
@@ -109,6 +112,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const catalog = dockTabCatalog(area).filter(kind => !pluginSurface || !["jobs", "chemical-space", "folding"].includes(kind));
   const tabs = rawTabs.filter((tab) => {
     if (!catalog.includes(tab.kind)) return false;
+    if (tab.kind === "structure-edit") return structureEditDockAvailable;
     if (tab.kind === "spectrum") return spectrumDockAvailable;
     if (tab.kind === "folding") return foldingDockAvailable || foldingDockRequested;
     if (tab.kind === "chemical-space") return chemicalSpaceDockAvailable;
@@ -179,6 +183,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     const rect = event.currentTarget.getBoundingClientRect();
     void showNativeContextMenu(
       catalog.filter((kind) => {
+        if (kind === "structure-edit") return structureEditDockAvailable;
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
         if (kind === "xyzrender") return Boolean(xyzrenderDockDocument);
@@ -431,6 +436,11 @@ export function DockPanelContent({
         actions={actions}
       />
     );
+  }
+  if (activeTabKind === "structure-edit") {
+    return structureEditAvailable(dockStructureDocument)
+      ? <StructureEditPanel key={dockStructureDocument.id} document={dockStructureDocument} actions={actions} />
+      : <DockEmptyState title="No molecule selected" />;
   }
   if (activeTabKind === "chemical-space") {
     return (
