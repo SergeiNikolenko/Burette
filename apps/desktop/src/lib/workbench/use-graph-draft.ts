@@ -11,7 +11,7 @@ import { forgetViewerAtomSelection } from "./selection";
 import { useStructureSourceText } from "../source-editing/use-structure-source-text";
 import type { ViewerDocument } from "../../types";
 import { patchGraphMetadata, remapGraphMetadata, type GraphMetadata, type GraphMetadataPatch } from "./graph-metadata";
-import { sourceExtension, useLogicalSource } from "../science-session/state";
+import { graphAtomIds, logicalSourceFor, rememberGraphAtomIds, sourceExtension, useLogicalSource, type LogicalSource } from "../science-session/state";
 import { prepareMeasurementSourcePair, publishMeasurementSourcePair } from "./measurement-preview";
 
 /** What an optimization did, kept with the snapshot it produced. Energies in kcal/mol. */
@@ -19,7 +19,7 @@ export type GraphOutcome = {
   forceField?: MolecularForceField; method: string; initialEnergy: number; energy: number; converged: boolean; iterations?: number;
   frames?: { atoms: MolecularAtom[]; energy: number }[];
 };
-export type GraphSnapshot = { structure: GraphEditResult; annotations: AtomAnnotation[]; text: string; outcome: GraphOutcome | null; metadata: GraphMetadata | null };
+export type GraphSnapshot = { structure: GraphEditResult; annotations: AtomAnnotation[]; text: string; outcome: GraphOutcome | null; metadata: GraphMetadata | null; atomIds: readonly string[] | null };
 // `origin` is the source the history started from; its title and SDF data items
 // carry into every draft. `current.text` is what the draft holds for this snapshot.
 export type GraphHistory = { origin: string; current: GraphSnapshot; undo: GraphSnapshot[]; redo: GraphSnapshot[] };
@@ -35,8 +35,9 @@ export type GraphAdvancedOperation = { kind: "add-hydrogens" } | { kind: "optimi
 export type GraphComputeResult = { structure: GraphEditResult; outcome: GraphOutcome | null };
 export type GraphAdvancedCompute = (operation: GraphAdvancedOperation, structure: GraphEditResult, signal: AbortSignal) => Promise<GraphComputeResult>;
 
-type Entry = { history: GraphHistory | null; error: string | null; busy: boolean; loading: string | null; controller: AbortController | null };
-const EMPTY: Entry = { history: null, error: null, busy: false, loading: null, controller: null };
+// The adopted logical object owns its history and pending work. Null denotes an ordinary file.
+type Entry = { owner: LogicalSource | null | undefined; history: GraphHistory | null; error: string | null; busy: boolean; loading: string | null; controller: AbortController | null };
+const EMPTY: Entry = { owner: undefined, history: null, error: null, busy: false, loading: null, controller: null };
 const HISTORY_LIMIT = 100;
 const MAX_DOCUMENTS = 16;
 
@@ -65,21 +66,29 @@ function normalized(structure: MolecularStructure, signal: AbortSignal) {
   return runGraphTask({ action: "edit-graph", molecule: structure, edits: [{ kind: "reorder-atoms", order: structure.atoms.map((_, index) => index) }] }, { signal });
 }
 
-function snapshot(structure: GraphEditResult, text: string, outcome: GraphOutcome | null, metadata: GraphMetadata | null): GraphSnapshot {
-  return { structure, annotations: atomAnnotations(structure.molfile), text, outcome, metadata };
+function snapshot(structure: GraphEditResult, text: string, outcome: GraphOutcome | null, metadata: GraphMetadata | null, atomIds: readonly string[] | null = null): GraphSnapshot {
+  return { structure, annotations: atomAnnotations(structure.molfile), text, outcome, metadata, atomIds: metadata?.atoms.map(atom => atom.id) ?? atomIds };
+}
+
+function remapAtomIds(ids: readonly string[] | null, mapping: readonly number[], sourceCount: number, targetCount: number) {
+  const sources = Array.from(mapping), survivors = sources.filter(index => index !== -1);
+  if (sources.length !== targetCount || (ids && ids.length !== sourceCount)
+    || survivors.some(index => !Number.isInteger(index) || index < 0 || index >= sourceCount) || new Set(survivors).size !== survivors.length) throw new Error("The graph edit has invalid atom provenance.");
+  if (!ids) return null;
+  return sources.map(index => index === -1 ? crypto.randomUUID() : ids[index]);
 }
 
 async function load(key: string, document: ViewerDocument, text: string) {
   entries.get(key)?.controller?.abort();
-  const controller = new AbortController();
-  update(key, { loading: text, controller });
+  const controller = new AbortController(), owner = logicalSourceFor(document.id);
+  update(key, { ...(entries.get(key)?.owner !== owner ? { history: null, busy: false, error: null } : {}), owner, loading: text, controller });
   try {
     const parsed = await runGraphTask({ action: "parse", source: text, format: sourceExtension(document) === "mol" ? "mol" : "sdf" }, { signal: controller.signal });
     const structure = await normalized(parsed, controller.signal);
-    if (controller.signal.aborted) return;
-    update(key, { history: { origin: text, current: snapshot(structure, text, null, graphSourceMetadata(text, sourceExtension(document), structure.atoms.length)), undo: [], redo: [] }, error: null, loading: null, controller: null });
+    if (controller.signal.aborted || logicalSourceFor(document.id) !== owner || entries.get(key)?.controller !== controller) return;
+    update(key, { history: { origin: text, current: snapshot(structure, text, null, graphSourceMetadata(text, sourceExtension(document), structure.atoms.length), sourceExtension(document) === "mol" ? graphAtomIds(document.id, text, structure.atoms.length) : null), undo: [], redo: [] }, error: null, loading: null, controller: null });
   } catch (error) {
-    if (!controller.signal.aborted && !isAbortError(error)) update(key, { history: null, error: message(error), loading: null, controller: null });
+    if (!controller.signal.aborted && entries.get(key)?.controller === controller && logicalSourceFor(document.id) === owner && !isAbortError(error)) update(key, { history: null, error: message(error), loading: null, controller: null });
   }
 }
 
@@ -107,7 +116,7 @@ async function compute(operation: Exclude<GraphOperation, { kind: "metadata" }>,
  * draft untouched. Changes to the source made elsewhere start a new history.
  */
 export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?: GraphAdvancedCompute, startEditing?: (document: ViewerDocument) => void | Promise<void>) {
-  useLogicalSource(document?.id);
+  const logical = useLogicalSource(document?.id);
   const sourceEditing = useSourceEditing();
   const session = sourceEditing?.sessionForDocument(document) ?? null;
   const enabled = structureEditAvailable(document);
@@ -116,12 +125,14 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
   const entry = useSyncExternalStore(subscribe, () => (key ? entries.get(key) ?? EMPTY : EMPTY));
 
   useEffect(() => {
-    if (!key || !document || sourceText === null || entry.busy || entry.loading === sourceText) return;
-    if (entry.history?.current.text === sourceText) return;
+    if (!key || !document || sourceText === null) return;
+    if (entry.owner !== logical) { void load(key, document, sourceText); return; }
+    if (entry.busy || entry.loading === sourceText) return;
+    if (entry.history?.current.text === sourceText && (sourceExtension(document) !== "mol" || entry.history.current.atomIds === graphAtomIds(document.id, sourceText, entry.history.current.structure.atoms.length))) return;
     void load(key, document, sourceText);
-  }, [key, sourceText, entry.history?.current.text, entry.busy]);
+  }, [key, sourceText, entry.history?.current.text, entry.busy, entry.owner, logical]);
 
-  const writeDraft = async (text: string, expectedText: string, lifetime: SourceEditingOperation, signal?: AbortSignal, validateBeforeWrite?: () => Promise<void>, publishPair?: () => void) => {
+  const writeDraft = async (text: string, previous: GraphSnapshot, lifetime: SourceEditingOperation, signal?: AbortSignal, validateBeforeWrite?: () => Promise<void>, publishPair?: () => void) => {
     signal?.throwIfAborted();
     if (!lifetime.isCurrent()) throw new DOMException("The document closed while editing.", "AbortError");
     if (!sourceEditing || !document) throw new Error("This file can’t be edited here.");
@@ -136,14 +147,16 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
     // sessionForDocument reads the controller's live ref, even after an awaited
     // worker or beginEditing. Never overwrite an external edit or a closed source.
     const latest = sourceEditing.sessionForDocument(document);
-    if (!latest || latest.documentId !== document.id || latest.content !== expectedText) throw new Error("The source changed while editing. Try again.");
+    if (!latest || latest.documentId !== document.id || latest.content !== previous.text) throw new Error("The source changed while editing. Try again.");
     if (!latest.editable) throw new Error("This source is read-only.");
+    if (sourceExtension(document) === "mol" && graphAtomIds(document.id, previous.text, previous.structure.atoms.length) !== previous.atomIds) throw new Error("The source identity changed while editing. Try again.");
     sourceEditing.updateDraft(document, text, { view: "keep" });
     // The controller commits synchronously by replacing its live session object.
     // A thrown or ignored write cannot authorize an uncommitted source, including
     // a byte-identical edit. Do not await between this acknowledgement and publish.
     const committed = sourceEditing.sessionForDocument(document);
     if (!committed || committed === latest || committed.documentId !== document.id || !committed.editable || committed.content !== text) throw new Error("The source could not be updated. Try again.");
+    if (!lifetime.isCurrent()) throw new DOMException("The source lifetime changed while editing.", "AbortError");
     publishPair?.();
     // The draft replaces the scene; its 3D selection indexed the previous atoms.
     forgetViewerAtomSelection(document.id);
@@ -154,7 +167,7 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
     const signal = options?.signal;
     const started = key ? entries.get(key) : undefined;
     if (!key || !started?.history || started.busy) return null;
-    if (!sourceEditing || !document || signal?.aborted) return null;
+    if (!sourceEditing || !document || signal?.aborted || started.owner !== logicalSourceFor(document.id)) return null;
     const history = started.history;
     if ((operation.kind === "positions" || operation.kind === "metadata") && operation.from !== history.current) {
       update(key, { error: "The structure changed after it was analyzed. Try again." });
@@ -163,8 +176,8 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
     const controller = new AbortController();
     const abort = () => controller.abort();
     signal?.addEventListener("abort", abort, { once: true });
-    const documentLifetime = sourceEditing.captureOperation(document);
-    const lifetime = { ...documentLifetime, isCurrent: () => documentLifetime.isCurrent() && options?.isCurrent?.() !== false };
+    const documentLifetime = sourceEditing.captureOperation(document), owner = started.owner;
+    const lifetime = { ...documentLifetime, isCurrent: () => documentLifetime.isCurrent() && options?.isCurrent?.() !== false && logicalSourceFor(document.id) === owner };
     update(key, { busy: true, error: null, controller });
     try {
       if (!lifetime.isCurrent()) throw new DOMException("The document closed while editing.", "AbortError");
@@ -174,15 +187,21 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
       controller.signal.throwIfAborted();
       const metadata = !previous.metadata ? null : operation.kind === "metadata" ? patchGraphMetadata(previous.metadata, operation.patch)
         : operation.kind === "positions" || operation.kind === "optimize" ? previous.metadata : remapGraphMetadata(previous.metadata, result.structure.sourceAtomIndices);
-      const next = snapshot(result.structure, graphDraftText(history.origin, sourceExtension(document!), result.structure.molfile, metadata), result.outcome, metadata);
+      const atomIds = previous.metadata ? null : operation.kind === "positions" || operation.kind === "optimize" ? previous.atomIds : remapAtomIds(previous.atomIds, result.structure.sourceAtomIndices, previous.structure.atoms.length, result.structure.atoms.length);
+      if (atomIds && atomIds.length !== result.structure.atoms.length) throw new Error("The graph edit has incomplete atom provenance.");
+      const next = snapshot(result.structure, graphDraftText(history.origin, sourceExtension(document!), result.structure.molfile, metadata), result.outcome, metadata, atomIds);
       const pair = (operation.kind === "positions" || operation.kind === "metadata") && ["sdf", "sd", "mol"].includes(sourceExtension(document))
         ? await prepareMeasurementSourcePair(previous.text, next.text, result.structure.atoms.length, sourceExtension(document) === "mol" ? "mol" : "sdf") : null;
-      await writeDraft(next.text, history.current.text, lifetime, controller.signal, options?.validateBeforeWrite,
-        pair ? () => publishMeasurementSourcePair(document.id, pair) : undefined);
+      await writeDraft(next.text, history.current, lifetime, controller.signal, options?.validateBeforeWrite,
+        () => {
+          if (pair) publishMeasurementSourcePair(document.id, pair);
+          if (sourceExtension(document) === "mol") rememberGraphAtomIds(document.id, next.text, next.atomIds);
+        });
+      if (!lifetime.isCurrent()) throw new DOMException("The source lifetime changed while editing.", "AbortError");
       update(key, { history: { origin: history.origin, current: next, undo: [...history.undo, history.current].slice(-HISTORY_LIMIT), redo: [] }, busy: false, controller: null });
       return result.structure;
     } catch (error) {
-      update(key, { busy: false, controller: null, error: controller.signal.aborted || isAbortError(error) ? null : message(error) });
+      if (entries.get(key)?.owner === owner && logicalSourceFor(document.id) === owner) update(key, { busy: false, controller: null, error: controller.signal.aborted || isAbortError(error) ? null : message(error) });
       return null;
     } finally {
       signal?.removeEventListener("abort", abort);
@@ -194,18 +213,22 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
     const started = key ? entries.get(key) : undefined;
     const history = started?.history;
     if (!key || !history || started.busy) return;
-    if (!sourceEditing || !document) return;
+    if (!sourceEditing || !document || started.owner !== logicalSourceFor(document.id)) return;
     const target = direction === "undo" ? history.undo.at(-1) : history.redo[0];
     if (!target) return;
-    const lifetime = sourceEditing.captureOperation(document);
+    const documentLifetime = sourceEditing.captureOperation(document), owner = started.owner;
+    const lifetime = { ...documentLifetime, isCurrent: () => documentLifetime.isCurrent() && logicalSourceFor(document.id) === owner };
     update(key, { busy: true, error: null });
     try {
-      await writeDraft(target.text, history.current.text, lifetime);
+      await writeDraft(target.text, history.current, lifetime, undefined, undefined, () => {
+        if (sourceExtension(document) === "mol") rememberGraphAtomIds(document.id, target.text, target.atomIds);
+      });
+      if (!lifetime.isCurrent()) throw new DOMException("The source lifetime changed while editing.", "AbortError");
       update(key, { busy: false, history: direction === "undo"
         ? { origin: history.origin, current: target, undo: history.undo.slice(0, -1), redo: [history.current, ...history.redo] }
         : { origin: history.origin, current: target, undo: [...history.undo, history.current].slice(-HISTORY_LIMIT), redo: history.redo.slice(1) } });
     } catch (error) {
-      update(key, { busy: false, error: isAbortError(error) ? null : message(error) });
+      if (entries.get(key)?.owner === owner && logicalSourceFor(document.id) === owner) update(key, { busy: false, error: isAbortError(error) ? null : message(error) });
     } finally {
       lifetime.release();
     }
@@ -213,11 +236,12 @@ export function useGraphDraft(document: ViewerDocument | null, computeAdvanced?:
 
   const cancel = () => entry.controller?.abort();
 
+  const current = entry.owner === logical;
   return {
-    history: entry.history,
-    error: readError ?? entry.error,
-    loading: !entry.history && !entry.error && !readError,
-    busy: entry.busy,
+    history: current ? entry.history : null,
+    error: readError ?? (current ? entry.error : null),
+    loading: (!current || !entry.history) && !(current && entry.error) && !readError,
+    busy: current && entry.busy,
     session,
     apply,
     undo: () => restore("undo"),

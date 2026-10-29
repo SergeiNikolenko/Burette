@@ -96,13 +96,19 @@ export function graphAtomIds(documentId: string, text: string, count: number): r
   return ids;
 }
 
+/** Publishes graph identities only after their source draft was acknowledged. */
+export function rememberGraphAtomIds(documentId: string, text: string, ids: readonly string[] | null) {
+  graphIds.set(documentId, { text, ids });
+}
+
 /** Installs a restored scene's source and identity for its new runtime document, all at once. */
 export function adoptLogicalSource(source: LogicalSource, documentUuid: string, atomIds: readonly string[] | null, elements: readonly string[]) {
   documentUuids.set(source.documentId, documentUuid);
   // A scene saved without ids stays without them; its atoms are not given new ones.
   plainIds.set(source.documentId, atomIds ? { elements: elements.join(" "), ids: atomIds } : { elements: "", ids: [] });
   if (source.extension === "mol") graphIds.set(source.documentId, { text: source.text, ids: atomIds });
-  logical.set(source.documentId, source);
+  // Each adoption starts a new lifetime, even for the same bytes, UUID or input object.
+  logical.set(source.documentId, { ...source });
   changed();
 }
 

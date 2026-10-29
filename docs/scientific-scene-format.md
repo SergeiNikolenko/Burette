@@ -64,9 +64,13 @@ remain current; the scene comparison allows 1e-3 Å per coordinate for float32.
 SDF and MOL additionally hash the actual displayed parser-input text before and after
 the asynchronous read; matching positions alone do not establish graph identity.
 MOL has no embedded SDF metadata. Its baseline ordered IDs bind exact source
-text and survive restore/resave; changed text has unknown IDs (`null`) until
-explicit edit provenance exists. Durable IDs through graph edits and Undo need a
-separate source-provenance stage. When SDF metadata supplies atom IDs, they must agree with the manifest's order.
+text and survive restore/resave. Graph snapshots map IDs through exact worker
+`sourceAtomIndices`; inserted atoms receive fresh IDs and Undo/Redo restores
+snapshot identities after an acknowledged source write. Every restored logical
+source adoption has a distinct owner identity, including repeated UUIDs, text and
+unknown (`null`) atom IDs; history and pending writes cannot cross that lifetime.
+Worker provenance is validated even when atom IDs are unknown. External changed text
+without provenance has unknown IDs (`null`); elements/coordinates never infer IDs. When SDF metadata supplies atom IDs, they must agree with the manifest's order.
 Scientific registrations match exact revision text; repeated text selects the
 latest revision. Restored registrations are document-scoped, shared imports are
 claimed by their documents, and cleanup releases them after all owners close.

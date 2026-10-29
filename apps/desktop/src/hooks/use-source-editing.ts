@@ -160,9 +160,9 @@ export function useSourceEditingController({
       setDockActiveTab("right", revealTab);
       return;
     }
-    // Logical XYZ uses its separately owned in-place update lane. This stage admits SDF only.
+    // Logical XYZ uses its separately owned in-place update lane. Graph sources stage as their real format.
     const restored = logicalSourceFor(document.id);
-    const logical = restored?.extension === "sdf" ? restored : null;
+    const logical = restored?.extension === "sdf" || restored?.extension === "mol" ? restored : null;
     const extension = logical?.extension ?? document.extension.toLowerCase().replace(/^\./u, "");
     if (document.virtual || document.dockingRequest || document.mergedCollection || !EDITABLE_EXTENSIONS.has(extension)) {
       pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source");
@@ -302,8 +302,8 @@ export function useSourceEditingController({
         reloadOptions = { rendererViewState: state };
         if (!matchesTarget()) return;
       }
-      const previewTitle = logicalSourceFor(document.id)?.extension === "sdf"
-        ? `${session.title.replace(/\.[^.]+$/u, "")}.sdf` : session.title;
+      const previewTitle = ["sdf", "mol"].includes(session.extension) && logicalSourceFor(document.id)
+        ? `${session.title.replace(/\.[^.]+$/u, "")}.${session.extension}` : session.title;
       const candidateDocument = isTauriRuntime()
         ? await invoke<ViewerDocument>("open_text_structure", {
           request: { title: previewTitle, extension: session.extension, text: targetContent },
