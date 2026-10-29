@@ -4,6 +4,7 @@ import references from './fixtures/forcefield/rdkit-reference.json';
 import { getEnergy, getPartialCharges, optimize, parseMolecule, removeHydrogens, type MolecularForceField } from '../apps/desktop/src/lib/molecular-workbench/chemistry';
 import { calculateGasteigerWasm, prepareUffWasm } from '../apps/desktop/src/lib/molecular-workbench/uff-wasm';
 import { evaluateEnergyForces } from '../apps/desktop/src/lib/molecular-workbench/energy-forces';
+import { runChemistryTask } from '../apps/desktop/src/lib/molecular-workbench/compute-client';
 
 let rdkit: RDKitModule;
 beforeAll(async () => { rdkit = await initRDKitModule(); await prepareUffWasm(); });
@@ -19,7 +20,7 @@ describe('browser force fields and partial charges', () => {
     expect(() => getEnergy(amide, 'unsupported' as MolecularForceField)).toThrow('Unsupported');
   });
 
-  test('selected field is used by optimization, finite-difference forces', async () => {
+  test('selected field is used by optimization, finite-difference forces, and worker transport', async () => {
     const molecule = parseMolecule(references.records[1].molfile, 'mol');
     for (const forceField of ['MMFF94s', 'UFF'] as const) {
       const initialEnergy = references.records[1].energies[forceField];
@@ -32,6 +33,7 @@ describe('browser force fields and partial charges', () => {
         expect(result.molecule.bonds).toEqual(molecule.bonds);
       }
       expect(evaluateEnergyForces(molecule, forceField).energy).toBeCloseTo(initialEnergy, 8);
+      expect(await runChemistryTask({ action: 'energy', molecule, forceField })).toBeCloseTo(initialEnergy, 8);
       const free = optimize(molecule, { forceField, maxIterations: 250 });
       expect(free.energy).toBeLessThan(free.initialEnergy);
       expect(free.energy).toBeCloseTo(getEnergy(free.molecule, forceField), 6);
