@@ -1,4 +1,5 @@
 import { test, expect, mock } from "bun:test";
+import type { ViewerDocument } from "../apps/desktop/src/types";
 import { plugin } from "bun";
 import { readFileSync } from "node:fs";
 import { transformSync } from "@babel/core";
@@ -18,14 +19,14 @@ Object.assign(globalThis, { window: browser, document: browser.document, Event: 
 const { createRoot } = await import("react-dom/client");
 let readBytes: () => Promise<Uint8Array> = async () => { throw new Error("No selected archive"); };
 let viewer = fakeViewer(XYZ), native = false;
-let documents: any[] = [], writes: Uint8Array[] = [];
+let documents: ViewerDocument[] = [], writes: Uint8Array[] = [];
 let dialog: () => Promise<string | null> = async () => "/saved.molx";
 let snapshotDelay: Promise<void> | null = null;
 let sourceText: string | null = null;
 let focusPlan: () => Promise<void> = async () => {};
 let openDocumentPlan: () => Promise<any> = async () => { throw new Error("Unexpected materialization"); };
 const urls = new Map<string, Blob>(); let nextUrl = 0;
-URL.createObjectURL = blob => { const url = `blob:test-${++nextUrl}`; urls.set(url, blob); return url; };
+URL.createObjectURL = blob => { if (!(blob instanceof Blob)) throw new Error("Expected a scene Blob"); const url = `blob:test-${++nextUrl}`; urls.set(url, blob); return url; };
 URL.revokeObjectURL = url => { urls.delete(url); };
 browser.HTMLAnchorElement.prototype.click = function () {
   const blob = urls.get(this.href); if (!blob) throw new Error("Missing download Blob");
@@ -33,7 +34,7 @@ browser.HTMLAnchorElement.prototype.click = function () {
   const index = writes.length - 1;
   void blob.arrayBuffer().then(buffer => { writes[index] = new Uint8Array(buffer); });
 };
-mock.module("@tauri-apps/api/core", () => ({ invoke: async (command, args) => {
+mock.module("@tauri-apps/api/core", () => ({ invoke: async (command: string, args: { request: { contentsBase64: string; outputPath: string } }) => {
   if (command === "open_documents") return openDocumentPlan();
   if (command === "abort_open_document_claim") return;
   if (command !== "write_base64_file") throw new Error(`Unexpected native ${command}`);
@@ -49,7 +50,7 @@ mock.module("../apps/desktop/src/components/workspace-menu-items", () => ({ file
 mock.module("../apps/desktop/src/lib/clipboard", () => ({ writeClipboardText() {} }));
 mock.module("../apps/desktop/src/lib/docking-documents", () => ({ togetherDockingRequest() {} }));
 mock.module("../apps/desktop/src/stores/molecule-store", () => ({ useMoleculeStore: {
-  getState: () => ({ documents, replaceDocument: (id, replacement) => { documents = documents.map(doc => doc.id === id ? replacement : doc); } }), setState: update => { documents = update({ documents }).documents; },
+  getState: () => ({ documents, replaceDocument: (id: string, replacement: ViewerDocument) => { documents = documents.map(doc => doc.id === id ? replacement : doc); } }), setState: (update: (state: { documents: ViewerDocument[] }) => { documents: ViewerDocument[] }) => { documents = update({ documents }).documents; },
 } }));
 const request = async (_id: string, action: Record<string, any>) => {
   if (action.type === "workspace_scene_state") return { ready: true };
@@ -67,7 +68,7 @@ mock.module("../apps/desktop/src/lib/viewer-bridge", () => ({ requestViewerActio
 mock.module("../apps/desktop/src/lib/browser-dev-documents", () => ({ readBrowserDevVirtualTextDocument: () => null }));
 mock.module("../apps/desktop/src/lib/structure-text", () => ({ readStructureText: async () => { if (sourceText !== null) return sourceText; throw new Error("Archive read as text"); } }));
 const errors: unknown[] = [];
-mock.module("../apps/desktop/src/components/ui/toast", () => ({ toast: { add: error => errors.push(error) } }));
+mock.module("../apps/desktop/src/components/ui/toast", () => ({ toast: { add: (error: unknown) => errors.push(error) } }));
 const { useScienceSessionRestore, waitForSceneScienceRestore } = await import("../apps/desktop/src/lib/science-session/restore");
 const { prepareSceneScienceExport } = await import("../apps/desktop/src/lib/science-session/export");
 const { encodeScienceSession, decodeScienceSession } = await import("../apps/desktop/src/lib/science-session/codec");
@@ -92,14 +93,14 @@ async function mountScene(cold = false, foreign = false) {
   const bytes = foreign ? new Uint8Array(await (await viewer.viewer.plugin.managers.snapshot.serialize({ type: "molx" })).arrayBuffer()) : await scientificArchive(), hold = deferred<Uint8Array>();
   readBytes = () => hold.promise;
   const plugin = viewer.viewer.plugin as any;
-  Object.assign(plugin, { runTask: task => task.run(), log: { error() {} } });
+  Object.assign(plugin, { runTask: (task: { run: () => Promise<unknown> }) => task.run(), log: { error() {} } });
   const importToken = science.beginImport(plugin);
   await (PluginStateSnapshotManager.prototype.open as any).call({ plugin, setStateSnapshot: async () => {}, events: { opened: { next() {} } } }, new File([bytes], "scene.molx"));
   expect(science.completeImport(plugin, importToken)).toBe(true);
   const doc = { id: `scene-${++sequence}`, path: "/Scenes/science.molx", title: "science.molx", extension: "molx", renderer: "molstar", viewerProfile: "structure", byteCount: bytes.length, ...(cold ? { runtimeDeferred: true, runtimePath: "" } : {}) } as any;
   documents = [doc];
-  const host = browser.document.createElement("div"), root = createRoot(host);
-  let actions: ReturnType<typeof useWorkspaceFileActions>;
+  const host = browser.document.createElement("div"), root = createRoot(host as unknown as HTMLElement);
+  let actions!: ReturnType<typeof useWorkspaceFileActions>;
   function Fixture() {
     actions = useWorkspaceFileActions({ documents, tabs: [], pinnedStructurePaths: [] } as any,
       { selectDocument() {}, openPaths: async () => {}, togglePinnedStructure() {} } as any);
@@ -204,8 +205,8 @@ test("a source runtime replacement during the original raw-byte read cannot reus
   const doc = { id: "raw-source-replacement", path: "/A/ethanol.sdf", runtimePath: "/runtime/old.sdf", title: "ethanol.sdf", extension: "sdf", renderer: "molstar", viewerProfile: "structure", byteCount: bytes.length } as any;
   const hold = deferred<Uint8Array>(), entered = deferred<void>(); let reads = 0;
   readBytes = () => { if (++reads === 1) { entered.resolve(); return hold.promise; } return Promise.resolve(bytes); };
-  documents = [doc]; const root = createRoot(browser.document.createElement("div"));
-  let actions: ReturnType<typeof useWorkspaceFileActions>;
+  documents = [doc]; const root = createRoot(browser.document.createElement("div") as unknown as HTMLElement);
+  let actions!: ReturnType<typeof useWorkspaceFileActions>;
   function Fixture() { actions = useWorkspaceFileActions({ documents, tabs: [], pinnedStructurePaths: [] } as any, { selectDocument() {} } as any); return null; }
   try {
     await act(async () => root.render(<Fixture />));

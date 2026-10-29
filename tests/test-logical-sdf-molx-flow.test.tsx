@@ -6,6 +6,14 @@ import vm from "node:vm";
 import { Window } from "happy-dom";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
+import { Color } from "molstar/lib/mol-util/color/index.js";
+import type { PluginContext as MolstarPluginContext } from "molstar/lib/mol-plugin/context.js";
+import type { ViewerDocument } from "../apps/desktop/src/types";
+import type { SourceEditingContextValue, SourceEditingView } from "../apps/desktop/src/lib/source-editing/context";
+type Viewer = { plugin: MolstarPluginContext };
+// The controller exposes this actual runtime field through its narrower public view.
+type LiveSourceSession = SourceEditingView & { readonly revision: number };
+type ViewerActionResult = { ok: boolean; result?: Record<string, unknown>; error?: { message: string } };
 plugin({ name: "logical-sdf-flow-compiler", setup(build) {
   build.onLoad({ filter: /(?:hooks\/use-source-editing|lib\/workbench\/use-graph-draft)\.ts$/u }, ({ path }) => ({ contents: transformSync(readFileSync(path, "utf8"), {
     filename: path, babelrc: false, configFile: false, parserOpts: { plugins: ["typescript"] }, plugins: [["babel-plugin-react-compiler", {}]],
@@ -15,21 +23,21 @@ const browser = new Window({ url: "http://localhost/" }); Object.assign(browser,
 for (const key of ["document", "navigator", "HTMLElement", "HTMLIFrameElement", "Element", "Node", "Event", "MessageEvent", "CustomEvent", "MutationObserver", "localStorage", "CSS"] as const) Object.defineProperty(globalThis, key, { configurable: true, value: browser[key] });
 Object.assign(globalThis, { window: browser, IS_REACT_ACT_ENVIRONMENT: true });
 const sourceFiles = new Map<string, string>(), binaryFiles = new Map<string, Uint8Array>();
-mock.module("../apps/desktop/src/lib/structure-text", () => ({ readStructureText: async path => {
+mock.module("../apps/desktop/src/lib/structure-text", () => ({ readStructureText: async (path: string) => {
   if (!sourceFiles.has(path)) throw new Error("An archive cannot be read as source text."); return sourceFiles.get(path);
 }, readStructureTextDocument: async () => { throw new Error("The restored scene must use its logical source."); } }));
-mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ prepareDeferredViewerRuntime: async doc => doc, useDeferredViewerRuntime: doc => doc }));
-globalThis.fetch = async input => {
+mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ prepareDeferredViewerRuntime: async (doc: ViewerDocument) => doc, useDeferredViewerRuntime: (doc: ViewerDocument) => doc }));
+globalThis.fetch = Object.assign(async (input: Parameters<typeof fetch>[0]) => {
   const url = new URL(String(input), "http://localhost");
   if (url.pathname === "/__burette/trajectory-pair") return new Response(null, { status: 404 });
   const path = url.searchParams.get("path") ?? decodeURIComponent(url.pathname.replace(/^\/@fs/u, ""));
   const bytes = binaryFiles.get(path); if (!bytes) throw new Error(`Unexpected source request: ${url.pathname}`);
-  return new Response(bytes, { headers: { "content-type": "application/octet-stream" } });
-};
+  return new Response(new Uint8Array(bytes).buffer, { headers: { "content-type": "application/octet-stream" } });
+}, { preconnect: fetch.preconnect });
 const { PluginContext } = await import("molstar/lib/mol-plugin/context.js"), { DefaultPluginSpec } = await import("molstar/lib/mol-plugin/spec.js");
 const { StructureElement } = await import("molstar/lib/mol-model/structure.js");
 const { setCanvasModule } = await import("molstar/lib/mol-geo/geometry/text/font-atlas.js");
-setCanvasModule({ createCanvas: () => ({ getContext: () => ({ measureText: () => ({ width: 12 }), clearRect() {}, fillText() {}, getImageData: (_x, _y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4) }) }) }) } as never);
+setCanvasModule({ createCanvas: () => ({ getContext: () => ({ measureText: () => ({ width: 12 }), clearRect() {}, fillText() {}, getImageData: (_x: number, _y: number, w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }) }) }) } as never);
 const { defaultPreferences } = await import("../apps/desktop/src/stores/settings-store");
 const { SourceEditingProvider } = await import("../apps/desktop/src/lib/source-editing/context");
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");
@@ -44,14 +52,14 @@ const { releaseScopedScientificSource } = await import("../apps/desktop/src/lib/
 const { openBrowserDevDocuments } = await import("../apps/desktop/src/lib/browser-dev-documents");
 const { requestViewerAction } = await import("../apps/desktop/src/lib/viewer-bridge");
 const code = readFileSync(new URL("../PreviewExtension/Web/viewer.js", import.meta.url), "utf8");
-const extract = name => code.match(new RegExp(`\n  (?:async )?function ${name}\\([\\s\\S]*?\n  \\}`, "u"))![0];
+const extract = (name: string) => code.match(new RegExp(`\n  (?:async )?function ${name}\\([\\s\\S]*?\n  \\}`, "u"))![0];
 const scope: Record<string, any> = { molstar: { lib: { structure: { StructureElement } } } };
 for (const name of ["scene-file-actions", "measurement-coordinate"]) vm.runInNewContext(readFileSync(new URL(`../PreviewExtension/Web/${name}.js`, import.meta.url), "utf8"), { window: scope, crypto, TextEncoder, TextDecoder, Uint8Array, Float64Array, File });
 const science = scope.BuretteSceneFiles.science, measurements = scope.BuretteMeasurementCoordinate;
 const camera = { position: [12, 3, 4], target: [0, 0, 0], up: [0, 1, 0], radius: 9, mode: "perspective" };
 const configOf = (runtime: string) => JSON.parse(/window\.BuretteConfig\s*=\s*(\{[^\n]*?\});/u.exec(runtime)![1]);
 const dataOf = (runtime: string) => Buffer.from(JSON.parse(/window\.BuretteDataBase64 = ("[^"\n]*");/u.exec(runtime)![1]), "base64").toString("utf8");
-const until = async ready => { for (let i = 0; i < 250 && !ready(); i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); expect(ready()).toBe(true); };
+const until = async (ready: () => boolean) => { for (let i = 0; i < 250 && !ready(); i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); }); expect(ready()).toBe(true); };
 
 test("real SDF archive restore, compiled edits, Undo/Redo and fresh MOLX reopen preserve measurements, UUIDs and Original bytes", async () => {
   const sample = readFileSync(new URL("../samples/collections/sdf/single.sdf", import.meta.url), "utf8");
@@ -60,44 +68,44 @@ test("real SDF archive restore, compiled edits, Undo/Redo and fresh MOLX reopen 
   const original = new TextEncoder().encode("\uFEFF" + source), initialPath = "/Structures/retained.sdf";
   sourceFiles.set(initialPath, source); binaryFiles.set(initialPath, original);
   const preferences = { ...defaultPreferences, rendererMode: "molstar" } as const;
-  const plugins: any[] = [], frames: HTMLIFrameElement[] = [], readyCounts: number[] = [];
+  const plugins: MolstarPluginContext[] = [], frames: HTMLIFrameElement[] = [], readyCounts: number[] = [];
   // The headless plugin has no GPU camera; disable only snapshot camera capture through its public API.
   // Preview transport below still carries and verifies the authored camera fixture.
   const newPlugin = async () => { const plugin = new PluginContext(DefaultPluginSpec()); await plugin.init(); plugin.state.setSnapshotParams({ camera: false }); plugins.push(plugin); return plugin; };
-  const textViewer = async text => {
+  const textViewer = async (text: string) => {
     const plugin = await newPlugin(), raw = await plugin.builders.data.rawData({ data: text });
     const trajectory = await plugin.builders.structure.parseTrajectory(raw, "sdf");
     await plugin.builders.structure.hierarchy.applyPreset(trajectory, "default", { representationPreset: "empty" }); return { plugin };
   };
-  const archiveViewer = async (bytes: Uint8Array) => { const plugin = await newPlugin(); const token = science.beginImport(plugin); await plugin.managers.snapshot.open(new File([bytes], "scene.molx")); expect(science.completeImport(plugin, token)).toBe(true); return { plugin }; };
+  const archiveViewer = async (bytes: Uint8Array) => { const plugin = await newPlugin(); const token = science.beginImport(plugin); await plugin.managers.snapshot.open(new File([new Uint8Array(bytes).buffer], "scene.molx")); expect(science.completeImport(plugin, token)).toBe(true); return { plugin }; };
   const runtimeGetter = new Function("window", `${extract("measurementCoordinateRuntime")};return measurementCoordinateRuntime;`)(scope);
-  function attach(viewer, docId: string) {
+  function attach(viewer: Viewer, docId: string) {
     const frame = document.createElement("iframe"); frame.className = "viewer-iframe"; frame.dataset.documentId = docId; frame.dataset.renderer = "molstar";
     document.body.append(frame); frames.push(frame); const source = frame.contentWindow!;
-    const execute = new Function("activeMolstarViewer", "measurementCoordinateRuntime", "window", "activeConfig", "bytesToBase64", "document", `${extract("executeBuretteAgentAction")};return executeBuretteAgentAction;`)(() => viewer, runtimeGetter, scope, {}, bytes => Buffer.from(bytes).toString("base64"), document);
+    const execute = new Function("activeMolstarViewer", "measurementCoordinateRuntime", "window", "activeConfig", "bytesToBase64", "document", `${extract("executeBuretteAgentAction")};return executeBuretteAgentAction;`)(() => viewer, runtimeGetter, scope, {}, (bytes: Uint8Array) => Buffer.from(bytes).toString("base64"), document) as (action: Record<string, unknown>) => Promise<ViewerActionResult>;
     const cameraBranch = code.slice(code.indexOf("    if (event.source === window.parent && body.type === 'captureRendererViewState')"), code.indexOf("    if (event.source === window.parent && body.type === 'hostLayoutGesture')"));
     source.postMessage = envelope => {
-      if (envelope.body.type === "captureRendererViewState") new Function("activeViewer", "captureMolstarCameraSnapshot", "postHostMessage", "window", "body", "event", cameraBranch)(viewer, () => camera, body => window.dispatchEvent(new MessageEvent("message", { source, data: { source: "burette-viewer", body: { ...body, documentId: docId } } })), { parent: window }, envelope.body, { source: window });
-      else if (envelope.body.type === "agent-action") void execute(envelope.body.action).catch(error => ({ ok: false, error: { message: error.message } })).then(result => window.dispatchEvent(new MessageEvent("message", { source, data: { source: "burette-agent-viewer", body: { type: "agent-action-result", id: envelope.body.id, result } } })));
+      if (envelope.body.type === "captureRendererViewState") new Function("activeViewer", "captureMolstarCameraSnapshot", "postHostMessage", "window", "body", "event", cameraBranch)(viewer, () => camera, (body: Record<string, unknown>) => window.dispatchEvent(new MessageEvent("message", { source, data: { source: "burette-viewer", body: { ...body, documentId: docId } } })), { parent: window }, envelope.body, { source: window });
+      else if (envelope.body.type === "agent-action") void execute(envelope.body.action).catch((error: Error) => ({ ok: false, error: { message: error.message } })).then(result => window.dispatchEvent(new MessageEvent("message", { source, data: { source: "burette-agent-viewer", body: { type: "agent-action-result", id: envelope.body.id, result } } })));
     };
     return frame;
   }
   async function browserOpen(path: string, bytes: Uint8Array) { binaryFiles.set(path, bytes); const result = await openBrowserDevDocuments([path], preferences); expect(result.errors).toEqual([]); expect(result.documents).toHaveLength(1); expect(result.documents[0].viewerProfile).toBe("structure"); return result.documents[0]; }
-  async function exportScene(document, sourceEditing) {
+  async function exportScene(document: ViewerDocument, sourceEditing: SourceEditingContextValue | null) {
     const prepared = await prepareSceneScienceExport(document, { sourceEditing, sceneFileCount: 1, isOpen: () => true });
     expect(prepared?.kind).toBe("science"); if (prepared?.kind !== "science") throw new Error("Missing scientific archive.");
     const result = await requestViewerAction(document.id, prepared.action); await prepared.confirm(); return Uint8Array.from(Buffer.from(result.dataBase64 as string, "base64"));
   }
-  let controller!: ReturnType<typeof useSourceEditingController>, graph!: ReturnType<typeof useGraphDraft>, scene: any;
+  let controller!: ReturnType<typeof useSourceEditingController>, graph!: ReturnType<typeof useGraphDraft>, scene!: ViewerDocument;
   const errors: unknown[] = [], host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   function Graph() { graph = useGraphDraft(scene); return null; }
   function Fixture() { controller = useSourceEditingController({ activeDocument: scene, preferences, pushErrorStatus: cause => errors.push(cause), setDockOpen() {}, setDockActiveTab() {} }); return <SourceEditingProvider value={controller}><Graph /></SourceEditingProvider>; }
-  const current = () => controller.sessionForDocument(scene)!;
+  const current = () => controller.sessionForDocument(scene)! as LiveSourceSession;
   try {
     const initial = await textViewer(source), initialDoc = await browserOpen(initialPath, original), initialFrame = attach(initial, initialDoc.id);
     const structure = initial.plugin.managers.structure.hierarchy.current.structures[0].cell.obj!.data, unit = structure.units[0];
-    const loci = index => StructureElement.Loci(structure, [{ unit, indices: Int32Array.of(index) as never }]);
-    await initial.plugin.managers.structure.measurement.addDistance(loci(0), loci(2), { visualParams: { visuals: ["lines"], customText: "Archive distance", linesColor: 0x123456 } });
+    const loci = (index: number) => StructureElement.Loci(structure, [{ unit, indices: Int32Array.of(index) as never }]);
+    await initial.plugin.managers.structure.measurement.addDistance(loci(0), loci(2), { visualParams: { visuals: ["lines"], customText: "Archive distance", linesColor: Color(0x123456) } });
     const expected = await measurements.capture(initial, science), firstBytes = await exportScene(initialDoc, null);
     const first = (await decodeScienceSession(firstBytes))!; expect(first.atomIds).toEqual(ids); expect(new Uint8Array(await first.original!.file.arrayBuffer())).toEqual(original);
     initialFrame.hidden = true; scene = await browserOpen("/Scenes/first.molx", firstBytes);
@@ -117,7 +125,7 @@ test("real SDF archive restore, compiled edits, Undo/Redo and fresh MOLX reopen 
       await act(async () => controller.stagingLoaded(scene, staged.identity!, frame));
       const startup = extract("startMolstar"), restore = /    await restoreMeasurementPreview\(viewer, config\);/u.exec(startup)!, ready = /    \{\n      const poseCount =[\s\S]*?\n    \}/u.exec(startup)!;
       const boundary = [restore, ready].sort((a, b) => a.index - b.index).map(match => match[0]).join("\n");
-      const run = new Function("window", "measurementCoordinateRuntime", "normalizeRenderer", "currentMolstarStructureCount", "setStatus", "setTimeout", "hideStatus", "isQuickLookHost", `${extract("restoreMeasurementPreview")};${extract("previewReadyPayload")};${extract("molstarReadyPayload")};return async (viewer,config,prepared)=>{${boundary}};`)(scope, runtimeGetter, value => value, v => v.plugin.managers.structure.hierarchy.current.structures.length, () => {}, callback => callback(), payload => {
+      const run = new Function("window", "measurementCoordinateRuntime", "normalizeRenderer", "currentMolstarStructureCount", "setStatus", "setTimeout", "hideStatus", "isQuickLookHost", `${extract("restoreMeasurementPreview")};${extract("previewReadyPayload")};${extract("molstarReadyPayload")};return async (viewer,config,prepared)=>{${boundary}};`)(scope, runtimeGetter, (value: string) => value, (v: Viewer) => v.plugin.managers.structure.hierarchy.current.structures.length, () => {}, (callback: () => void) => callback(), (payload: Record<string, unknown>) => {
         readyCounts.push(next.plugin.managers.structure.measurement.state.distances.length); window.dispatchEvent(new MessageEvent("message", { source: frame.contentWindow, data: { source: "burette-viewer", body: { type: "ready", ...payload } } }));
       }, () => false);
       await act(async () => run(next, config, {})); await until(() => current().previewState === "current");

@@ -6,13 +6,13 @@ const { PluginContext } = await import("molstar/lib/mol-plugin/context.js"), { D
 const { openBrowserDevDocuments } = await import("../apps/desktop/src/lib/browser-dev-documents");
 const { defaultPreferences } = await import("../apps/desktop/src/stores/settings-store");
 const files = new Map<string, Uint8Array>();
-globalThis.fetch = async request => {
+globalThis.fetch = Object.assign(async (request: Parameters<typeof fetch>[0]) => {
   const url = new URL(String(request), "http://localhost");
   if (url.pathname === "/__burette/trajectory-pair") return new Response(null, { status: 404 });
   const path = url.searchParams.get("path") ?? decodeURIComponent(url.pathname.replace(/^\/@fs/u, ""));
   const bytes = files.get(path); if (!bytes) throw new Error(`Unexpected request: ${url.pathname}`);
-  return new Response(bytes, { headers: { "content-type": "application/octet-stream" } });
-};
+  return new Response(Uint8Array.from(bytes).buffer, { headers: { "content-type": "application/octet-stream" } });
+}, { preconnect: globalThis.fetch.preconnect });
 async function open(path: string, bytes: Uint8Array) {
   files.set(path, bytes); const result = await openBrowserDevDocuments([path], { ...defaultPreferences, rendererMode: "molstar" } as any);
   expect(result.errors).toEqual([]); expect(result.documents).toHaveLength(1);

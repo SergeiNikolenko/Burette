@@ -1,4 +1,5 @@
 import { expect, mock, test } from "bun:test";
+import type { ViewerDocument } from "../apps/desktop/src/types";
 import { plugin } from "bun";
 import { readFileSync } from "node:fs";
 import { transformSync } from "@babel/core";
@@ -21,7 +22,7 @@ mock.module("@tauri-apps/api/core", () => ({ invoke: async (command: string, bod
   throw new Error(`Unexpected archive file I/O: ${command}`);
 } }));
 mock.module("../apps/desktop/src/lib/structure-text", () => ({ readStructureText: async () => { throw new Error("Archive read as text"); }, readStructureTextDocument: async () => { throw new Error("Archive read as text"); } }));
-mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ prepareDeferredViewerRuntime: async document => document, useDeferredViewerRuntime: document => document }));
+mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ prepareDeferredViewerRuntime: async (document: ViewerDocument) => document, useDeferredViewerRuntime: (document: ViewerDocument) => document }));
 const { defaultPreferences } = await import("../apps/desktop/src/stores/settings-store");
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");
 const { encodeScienceSession, decodeScienceSession } = await import("../apps/desktop/src/lib/science-session/codec");
