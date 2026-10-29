@@ -28,6 +28,9 @@ export type SourceEditingWindowDirtySnapshot = {
   closeTransitionActive: boolean;
 };
 
+/** Acknowledged geometry edits avoid staging; graph edits may retain the current camera. */
+export type DraftUpdateOptions = { previewApplied: true } | { view: "keep" };
+
 /** A pending edit belongs to its open document until release or successful close. */
 export type SourceEditingOperation = { isCurrent: () => boolean; release: () => void };
 
@@ -35,7 +38,7 @@ export type SourceEditingContextValue = {
   sessionForDocument: (document: ViewerDocument | null) => SourceEditingView | null;
   captureOperation: (document: ViewerDocument) => SourceEditingOperation;
   beginEditing: (document: ViewerDocument) => void | Promise<void>;
-  updateDraft: (document: ViewerDocument, content: string) => void;
+  updateDraft: (document: ViewerDocument, content: string, options?: DraftUpdateOptions) => void;
   applyPreview: (document: ViewerDocument) => void | Promise<void>;
   save: (document: ViewerDocument) => void | Promise<void>;
   stagingLoaded: (document: ViewerDocument, identity: SourcePreviewIdentity, frame: HTMLIFrameElement) => void;

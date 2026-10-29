@@ -49,6 +49,11 @@ const controller = useSourceEditingController({ activeDocument: document, prefer
 await controller.beginEditing(document);
 controller.updateDraft(document, "ATOM draft\n");
 const draft = sessions[document.path];
+const callsBeforeWrongOwnerSave = calls.length;
+const draftBeforeWrongOwnerSave = sessions[document.path];
+await controller.save({ ...document, id: "another-document-at-same-path" });
+assert.equal(calls.length, callsBeforeWrongOwnerSave, "another document cannot save this session through native IPC");
+assert.equal(sessions[document.path], draftBeforeWrongOwnerSave, "another document cannot alter the original dirty session");
 const operation = controller.captureOperation(document);
 
 function shellActions() {

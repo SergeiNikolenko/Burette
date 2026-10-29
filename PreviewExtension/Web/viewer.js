@@ -709,6 +709,10 @@
       if (archive.size > 24 * 1024 * 1024) throw new Error('The scene is too large to move.');
       return { ok: true, result: { dataBase64: bytesToBase64(new Uint8Array(await archive.arrayBuffer())) } };
     }
+    if (type === 'measurement_preview_capture') {
+      const runtime = await measurementCoordinateRuntime();
+      return { ok: true, result: await runtime.capture(activeMolstarViewer(), window.BuretteSceneFiles.science) };
+    }
     if (type === 'workspace_scene_state') {
       return { ok: true, result: { ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length || (document.querySelector('.buret-external-artifact-root .buret-xyzrender-sheet-item-body > svg') && !document.querySelector('[data-buret-popout-animation=loading], [data-buret-popout-animation=failed]'))) } };
     }
@@ -8955,6 +8959,26 @@ SOFTWARE.
     control.dataset.sceneTreeMeasurementParam = field;
     row.append(caption, control);
     menu.appendChild(row);
+  }
+
+  async function measurementCoordinateRuntime() {
+    if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+    if (!window.BuretteMeasurementCoordinate) {
+      const sceneScript = Array.from(document.scripts).find(script => script.src && new URL(script.src).pathname.endsWith('/scene-file-actions.js'));
+      const base = new URL(runtimeURL('BuretteSceneFilesURL', sceneScript?.src || './scene-file-actions.js'), document.baseURI);
+      const url = new URL('./measurement-coordinate.js', base); url.search = base.search;
+      await loadScript(String(url), 'measurement coordinates', 10000);
+    }
+    return window.BuretteMeasurementCoordinate;
+  }
+
+  async function restoreMeasurementPreview(viewer, config) {
+    if (typeof config.rendererViewState !== 'string' || config.rendererViewState.length > 8192 || new TextEncoder().encode(config.rendererViewState).length > 8192) return;
+    let state;
+    try { state = JSON.parse(config.rendererViewState); } catch { return; }
+    if (!state?.measurementTransfer) return;
+    const runtime = await measurementCoordinateRuntime();
+    await runtime.restore(viewer, state.measurementTransfer, window.BuretteSceneFiles.science);
   }
 
   function sceneTreeMeasurementMenu(menu, targets) {
@@ -30519,6 +30543,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       if (window.BuretteNativeFirstFrame) throw error;
     }
     if (window.BuretteViewerDisposed) return;
+    await restoreMeasurementPreview(viewer, config);
     const sourceViewport = await restoredView;
     const savedCamera = window.BuretteRendererViewState?.read(config.documentId, config.rendererViewState).camera;
     if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {

@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
-import type { SourceEditingContextValue, SourceEditingView, SourcePreviewState } from "../lib/source-editing/context";
+import type { DraftUpdateOptions, SourceEditingContextValue, SourceEditingView, SourcePreviewState } from "../lib/source-editing/context";
 import { SourcePreviewAdapter } from "../lib/source-preview/adapter";
 import type { SourcePreviewCandidate, SourcePreviewIdentity } from "../lib/source-preview/types";
 import { openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
 import { isTauriRuntime } from "../lib/tauri";
+import { rendererViewReloadOptions } from "../lib/renderer-view-state";
+import { activeViewerIframeForDocument, requestViewerAction } from "../lib/viewer-bridge";
+import { captureViewerView } from "../lib/viewer-view-capture";
+import { measurementPreviewTarget, measurementPreviewTransfer } from "../lib/workbench/measurement-preview";
 import { prepareDeferredViewerRuntime } from "./use-deferred-viewer-runtime";
 import type { ViewerDocument, ViewerPreferences } from "../types";
 import { classifySourceShape, sourceDraftValidationError, sourceNotEditableMessage } from "../lib/source-editing/policy";
@@ -246,12 +250,15 @@ export function useSourceEditingController({
     }
   }, [clearStagingWindows, commitSessions, preferences, pushErrorStatus, setDockActiveTab, setDockOpen, updateSession]);
 
-  const preparePreview = useCallback(async (document: ViewerDocument, content?: string, revision?: number) => {
+  const preparePreview = useCallback(async (document: ViewerDocument, content?: string, revision?: number, view?: "keep") => {
     const session = sessionsRef.current[document.path];
     const adapter = adaptersRef.current.get(document.path);
-    if (!session || !adapter) return;
+    if (!session || session.documentId !== document.id || !adapter) return;
     const targetContent = content ?? session.content;
     const targetRevision = revision ?? session.revision;
+    const matchesTarget = (current = sessionsRef.current[document.path]) => current?.documentId === document.id
+      && current.sessionId === session.sessionId && current.revision === targetRevision
+      && adaptersRef.current.get(document.path) === adapter;
     const byteCount = new TextEncoder().encode(targetContent).byteLength;
     if (byteCount > SOURCE_EDIT_LIMIT) {
       updateSession(document.path, (current) => ({ ...current, previewState: "unsupported", diagnostic: "Draft exceeds the 3 MB editing limit." }));
@@ -266,16 +273,33 @@ export function useSourceEditingController({
       updateSession(document.path, (current) => ({ ...current, previewState: "paused", diagnostic: validationError }));
       return;
     }
-    updateSession(document.path, (current) => targetRevision === current.revision ? { ...current, previewState: "staging", diagnostic: null } : current);
+    updateSession(document.path, (current) => matchesTarget(current) ? { ...current, previewState: "staging", diagnostic: null } : current);
     try {
+      let reloadOptions: { rendererViewState: string | null } | undefined;
+      if (view === "keep") {
+        const frame = activeViewerIframeForDocument(document.id, "molstar");
+        const captured = frame ? await captureViewerView(frame, document.id, 500) : null;
+        if (!matchesTarget()) return;
+        const viewState = captured?.viewState.camera ? JSON.stringify(captured.viewState) : null;
+        reloadOptions = viewState && new TextEncoder().encode(viewState).byteLength <= 8192 ? { rendererViewState: viewState } : rendererViewReloadOptions(document.path);
+      }
+      const target = ["sdf", "sd", "mol"].includes(session.extension) ? await measurementPreviewTarget(document.id, targetContent) : null;
+      if (target) {
+        const capture = await requestViewerAction(document.id, { type: "measurement_preview_capture" }, 5000);
+        const measurementTransfer = measurementPreviewTransfer(document.id, target, capture);
+        const state = JSON.stringify({ ...JSON.parse(reloadOptions?.rendererViewState || "{}"), measurementTransfer });
+        if (new TextEncoder().encode(state).byteLength > 8192) throw new Error("There are too many measurement settings to retain.");
+        reloadOptions = { rendererViewState: state };
+        if (!matchesTarget()) return;
+      }
       const candidateDocument = isTauriRuntime()
         ? await invoke<ViewerDocument>("open_text_structure", {
           request: { title: session.title, extension: session.extension, text: targetContent },
           preferences,
-          reloadOptions: undefined,
+          reloadOptions,
         })
-        : await openBrowserDevTextDocument(session.title, session.extension, targetContent, preferences, undefined, document.id);
-      if (sessionsRef.current[document.path]?.revision !== targetRevision) return;
+        : await openBrowserDevTextDocument(session.title, session.extension, targetContent, preferences, reloadOptions, document.id);
+      if (!matchesTarget()) return;
       const identity: SourcePreviewIdentity = {
         documentId: document.id,
         sessionId: session.sessionId,
@@ -289,14 +313,14 @@ export function useSourceEditingController({
       };
       adapter.stage(candidate);
     } catch (error) {
-      if (sessionsRef.current[document.path]?.revision !== targetRevision) return;
+      if (!matchesTarget()) return;
       updateSession(document.path, (current) => ({ ...current, previewState: "paused", diagnostic: error instanceof Error ? error.message : String(error) }));
     }
   }, [preferences, updateSession]);
 
-  const updateDraft = useCallback((document: ViewerDocument, content: string) => {
+  const updateDraft = useCallback((document: ViewerDocument, content: string, options?: DraftUpdateOptions) => {
     const session = sessionsRef.current[document.path];
-    if (!session || closingDocumentIdsRef.current.has(document.id)) return;
+    if (!session || session.documentId !== document.id || closingDocumentIdsRef.current.has(document.id)) return;
     const adapter = adaptersRef.current.get(document.path);
     const snapshot = adapter?.getSnapshot();
     const staged = snapshot?.slots[snapshot.activeSlot === "primary" ? "secondary" : "primary"];
@@ -305,7 +329,8 @@ export function useSourceEditingController({
     const revision = session.revision + 1;
     const byteCount = new TextEncoder().encode(content).byteLength;
     const previewMode = byteCount <= LIVE_PREVIEW_LIMIT ? "live" : "manual";
-    const previewState = byteCount > SOURCE_EDIT_LIMIT ? "unsupported" : previewMode === "manual" ? "manual" : "queued";
+    const previewApplied = Boolean(options && "previewApplied" in options);
+    const previewState = byteCount > SOURCE_EDIT_LIMIT ? "unsupported" : previewApplied ? "current" : previewMode === "manual" ? "manual" : "queued";
     updateSession(document.path, (current) => ({
       ...current,
       content,
@@ -313,6 +338,7 @@ export function useSourceEditingController({
       dirty: content !== current.baseContent,
       previewMode,
       previewState,
+      lastValidRevision: previewState === "current" ? revision : current.lastValidRevision,
       diagnostic: byteCount > SOURCE_EDIT_LIMIT ? "Draft exceeds the 3 MB editing limit." : null,
     }));
     const previousTimer = timersRef.current.get(document.path);
@@ -320,7 +346,7 @@ export function useSourceEditingController({
     if (previewState === "queued") {
       const timer = window.setTimeout(() => {
         timersRef.current.delete(document.path);
-        void preparePreview(document, content, revision);
+        void preparePreview(document, content, revision, options && "view" in options ? options.view : undefined);
       }, LIVE_PREVIEW_DELAY_MS);
       timersRef.current.set(document.path, timer);
     }
@@ -376,7 +402,7 @@ export function useSourceEditingController({
   const save = useCallback(async (document: ViewerDocument) => {
     if (closingDocumentIdsRef.current.has(document.id)) return;
     const session = sessionsRef.current[document.path];
-    if (!session?.dirty || !session.handleId || !session.expectedRevision || savingPathsRef.current.has(document.path)) return;
+    if (!session?.dirty || session.documentId !== document.id || !session.handleId || !session.expectedRevision || savingPathsRef.current.has(document.path)) return;
     savingPathsRef.current.add(document.path);
     updateSession(document.path, (current) => ({ ...current, saving: true }));
     try {
