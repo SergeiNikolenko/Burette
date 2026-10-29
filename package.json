@@ -119,7 +119,7 @@
     "test:logical-sdf-source": "bun test tests/test-logical-sdf-source.test.tsx && bun test tests/test-molx-browser-routing.test.ts",
     "test:science-sdf-molx-flow": "bun test tests/test-science-session-sdf.test.ts && bun test tests/test-logical-sdf-molx-flow.test.tsx",
     "test:zmatrix-geometry-core": "bun test tests/test-zmatrix-geometry-core.test.ts",
-    "test:structure-edit-controls": "bun test tests/test-graph-metadata-fields.test.tsx",
+    "test:structure-edit-controls": "bun test tests/test-graph-metadata-fields.test.tsx tests/test-optimize-button.test.tsx && bun test tests/test-graph-draft-adapter.test.tsx && bun test tests/test-graph-draft-hydrogens.test.tsx",
     "test:zmatrix-coupled-core": "bun test tests/test-zmatrix-coupled-core.test.ts",
     "test:physics-worker-core": "bun test tests/test-browser-workbench-chemistry.test.ts tests/test-physics-worker-core.test.ts"
   },
