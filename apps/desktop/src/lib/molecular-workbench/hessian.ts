@@ -61,7 +61,12 @@ function checkMasses(masses: readonly number[] | undefined, atomCount: number) {
   return [...masses];
 }
 
-function finish(values: Float64Array, dimension: number, atomCount: number, masses: readonly number[] | undefined, source: CartesianHessian["source"]): CartesianHessian {
+/** The same finite, nearly symmetric matrix is required by source readers and archives. */
+export function checkHessianValues(values: Float64Array, dimension: number) {
+  if (!Number.isSafeInteger(dimension) || dimension < 3 || dimension > MAX_HESSIAN_DIMENSION || dimension % 3 !== 0
+    || !(values instanceof Float64Array) || values.length !== dimension * dimension) {
+    throw new Error("Hessian dimensions do not match the Cartesian matrix.");
+  }
   let largest = 0;
   for (const value of values) {
     if (!Number.isFinite(value)) throw new Error("Hessian values must be finite.");
@@ -72,6 +77,10 @@ function finish(values: Float64Array, dimension: number, atomCount: number, mass
       throw new Error(`Hessian is not symmetric at row ${row}, column ${column}.`);
     }
   }
+}
+
+function finish(values: Float64Array, dimension: number, atomCount: number, masses: readonly number[] | undefined, source: CartesianHessian["source"]): CartesianHessian {
+  checkHessianValues(values, dimension);
   const massesAmu = checkMasses(masses, atomCount);
   return { units: HESSIAN_UNITS, dimension, values, ...(massesAmu ? { massesAmu } : {}), source };
 }
