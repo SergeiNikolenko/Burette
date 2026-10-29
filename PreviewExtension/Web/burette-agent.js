@@ -332,7 +332,7 @@
     if (command === 'loadMVS') return commandLoadMVS(args, warnings);
     if (command === 'observeStory') return commandObserveStory();
     if (command === 'controlStory') return commandControlStory(args);
-    if (command === 'exportSession') return commandExportSession(args);
+    if (command === 'exportSession') return commandExportSession(args, warnings);
     if (command === 'exportMVS') return commandExportMVS(args, warnings);
     const error = new Error(`Unsupported BuretteAgent command: ${command}`);
     error.code = 'NOT_IMPLEMENTED';
@@ -971,11 +971,24 @@
     return { action, ...storySummary() };
   }
 
-  async function commandExportSession(args = {}) {
+  async function commandExportSession(args = {}, warnings = []) {
     const manager = state.plugin?.managers?.snapshot;
     if (typeof manager?.serialize !== 'function') throw coded('NOT_IMPLEMENTED', 'Mol* session serialization is unavailable.');
     const type = ['molx', 'molj', 'json'].includes(args.type) ? args.type : 'molx';
-    const blob = await manager.serialize({ type, params: args.params });
+    // Host-owned science is saved through Export → Scene, not the bounded agent session.
+    const science = window.BuretteSceneFiles?.science;
+    const serialize = () => {
+      // Ownership can change while an earlier scientific operation finishes.
+      if (science?.present(state.plugin)) warnings.push('Scientific workbench data (source, Z-matrix, grids, Hessians, original file) is not included; save it with Export → Scene in Burette.');
+      return manager.serialize({ type, params: args.params });
+    };
+    let blob;
+    try {
+      blob = science ? await science.exclusive(state.plugin, serialize) : await serialize();
+    } catch (error) {
+      if (science && /scientific attachments/.test(error?.message || '')) throw coded('BUSY', 'The scene is being saved. Export the session again.');
+      throw error;
+    }
     const requestedMaxBytes = Number(args.maxBytes);
     const maxBytes = Number.isFinite(requestedMaxBytes) && requestedMaxBytes > 0
       ? Math.min(MAX_INLINE_SESSION_BYTES, Math.floor(requestedMaxBytes))

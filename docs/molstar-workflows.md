@@ -18,6 +18,14 @@ from scientific validation.
 | Density and reflection data | Open `.ccp4`, `.mrc`, `.map`, `.mtz`, or a structure-factor `.cif` | CCP4-family maps use the native volume provider. MTZ amplitude/phase pairs produce 2Fo-Fc and signed Fo-Fc maps. CIF is routed to the structure-factor provider when `_refln.pdbx_FWT` and `_refln.pdbx_PHWT` are present. | Preserve unit cell, axes/origin, symmetry, and coefficient-column provenance. Difference density is rendered as separate positive and negative contours. |
 | Ligand MCCS superposition | Molstar Controls → Superposition → Ligands | Molstar 5.11 uses atom-name matching for identical compounds and maximum common connected subgraph otherwise, then selects the lowest-RMSD pose among compatible mappings. | Record matched-heavy-atom coverage, RMSD, truncation/time budget, aromaticity, bond-order, formal-charge, stereochemistry, and hydrogen policy. This remains an interactive Molstar workflow, not a typed Burette agent action. |
 
+`export_session` and `raw_burette_agent` with `exportSession` share the bounded
+Molstar-only export. They wait for scientific asset work and use the existing
+`warnings` field when the runtime knows that scientific attachments are omitted.
+That ownership flag is set by scientific scene save or validated MOLX adoption;
+fresh host-only registrations do not yet signal it. Preserve logical source,
+Z-matrix, grids, Hessians and Original with Burette's Export → Scene. The agent
+export keeps its 2 MiB inline limit and does not accept scientific arrays.
+
 ## Product workflows on the Molstar runtime
 
 Beyond the typed actions above, these shipped product workflows are built on
