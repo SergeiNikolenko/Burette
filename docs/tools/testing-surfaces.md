@@ -14,6 +14,11 @@ app, and native Finder Quick Look are different runtimes.
   tab or an unknown server from another worktree.
 - Keep the server process visible or record its `processId` and `logPath`.
   Stop the server after the check.
+- Keep source files and package manifests unchanged during a browser acceptance
+  run; use a separate physical source snapshot when implementation continues
+  elsewhere. Manifest changes can reload the shell and invalidate transient UI
+  state. Versioned runtime scripts may remain cached: after changing them, start
+  a fresh server and verify its runtime before repeating the affected workflow.
 - Set `BURETTE_DEV_FS_ALLOW` when the browser-dev server must read files outside
   the repository root.
 - Browser success does not prove packaged desktop app or Finder Quick Look
@@ -36,12 +41,16 @@ debugging the renderer generically.
 ## Dev Server: Full Browser Shell
 
 For agent-owned Browser shell testing, prefer the CLI. It allocates a fresh
-port, starts `vp dev`, writes a session directory, and prints JSON with `url`,
-`sessionDir`, `logPath`, and `processId`.
+port, writes a session directory, and prints JSON with `url`, `sessionDir`,
+`logPath`, `processId`, and the selected `runtime`. An available prebuilt shell
+is preferred by default. Force Vite when verifying current source changes:
 
 ```bash
-bun scripts/burette-agent.mjs open --mode browser-agent-shell samples/mini.pdb
+BURETTE_AGENT_SHELL_FORCE_VP=1 bun scripts/burette-agent.mjs open --mode browser-agent-shell --no-launch samples/mini.pdb
 ```
+
+Confirm `runtime: vite-dev` for this source check. A `prebuilt-static` result
+checks the selected bundle, which may have been built from a different revision.
 
 `--mode browser-dev-shell` is accepted as a legacy alias and normalized to
 `browser-agent-shell`; use the canonical name in new material.
