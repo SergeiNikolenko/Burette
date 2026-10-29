@@ -42,6 +42,7 @@ export function TextFileViewer({
     saving: boolean;
     diagnostic?: string | null;
     saveDisabledReason?: string | null;
+    saveLabel?: "Save" | "Save copy";
     showApplyPreview?: boolean;
     onBeginEditing?: () => void;
     onChange?: (content: string) => void;
@@ -346,7 +347,7 @@ export function TextFileViewer({
           )}
           {sourceEditing?.editable && (
             <ShortcutTooltip
-              label={sourceEditing.saveDisabledReason ?? "Save source"}
+              label={sourceEditing.saveDisabledReason ?? sourceEditing.saveLabel ?? "Save source"}
               shortcut={sourceEditing.saveDisabledReason ? undefined : "⌘S"}
             >
               <span className="inline-flex">
@@ -357,7 +358,7 @@ export function TextFileViewer({
                   disabled={sourceEditing.saving || Boolean(sourceEditing.saveDisabledReason) || !sourceEditing.dirty}
                   onClick={() => void sourceEditing.onSave?.()}
                 >
-                  Save
+                  {sourceEditing.saveLabel ?? "Save"}
                 </Button>
               </span>
             </ShortcutTooltip>
