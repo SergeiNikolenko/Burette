@@ -1,3 +1,4 @@
+import { useBrowserSessionRestore } from "./use-browser-session-restore";
 import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { browserDevRuntimeNeedsRefresh } from "../lib/browser-dev-documents";
@@ -61,6 +62,7 @@ export function useAppStartupEffects({
   setWorkspacePath,
   tabs,
 }: UseAppStartupEffectsOptions) {
+  useBrowserSessionRestore(openPaths, pushErrorStatus);
   const openedBrowserDevFilesRef = useRef<string | null>(null);
   const openedBrowserDevDockingRef = useRef<string | null>(null);
   const refreshedPersistedSessionRef = useRef(false);

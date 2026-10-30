@@ -18,7 +18,7 @@ function startup(initialDocuments = []) {
     setActiveTab() {}, pushErrorStatus(error) { throw error; },
   };
   const hook = new Function("dependencies", `
-    const { useRef, useEffect, isTauriRuntime, isTemporaryDocumentPath, invoke, useMoleculeStore } = dependencies;
+    const { useBrowserSessionRestore, useRef, useEffect, isTauriRuntime, isTemporaryDocumentPath, invoke, useMoleculeStore } = dependencies;
     ${source}
     return useAppStartupEffects;
   `)({
@@ -28,6 +28,7 @@ function startup(initialDocuments = []) {
       if (!effects[index] || dependencies.some((value, i) => value !== effects[index][i])) pending.push(run);
       effects[index] = dependencies;
     },
+    useBrowserSessionRestore() {}, // Browser-only integration is covered by test-browser-session-restore.test.tsx.
     isTauriRuntime: () => true,
     isTemporaryDocumentPath: path => path.startsWith("burette-"),
     invoke: async (_command, { paths }) => paths,

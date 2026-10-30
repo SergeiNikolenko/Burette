@@ -257,3 +257,22 @@ atom counts. It does not build or open Burette, create windows, or alter saved
 sessions. Use this alongside `bun tests/test-inspector-molstar-runtime.mjs` and
 `bun tests/test-grid-preview-bootstrap.mjs` when changing the inspector's iframe
 transport; browser-only checks do not cover WebKit's message source identity.
+
+## Browser Agent Shell Reload
+
+Without explicit `devFiles`, `devFolder`, `quickLookFile`, or `devDocking`, the
+browser agent shell keeps its tab, pane, dock and renderer-view checkpoints in
+that browser tab's sessionStorage. Reload restores only paths already committed
+to the bounded browser-import IndexedDB store, after its file registry is ready.
+Scientific originals are reparsed through the normal open path, retaining Original
+bytes and creating fresh scientific ownership; renderer leases are never restored.
+A fresh browser tab has its own workspace. Native, embedded MCP, hosted widgets,
+web demo, explicit startup paths, global settings and recent files retain their
+existing storage policies. No saved path grants server filesystem access.
+
+`vp run test:browser-session-restore` exercises the real startup hook, file opener,
+scientific parser and IndexedDB with session rehydration, missing paths and a held
+open closed before publication. `vp run check:browser-session-restore` checks the
+imported source and test types. Actual browser reload remains a separate check.
+This restores committed imports, not unsaved source edits: the current source-draft
+recovery flow holds retired drafts in memory and does not persist them across reload.

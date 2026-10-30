@@ -15,7 +15,7 @@ import {
   type DockToolKind,
 } from "../lib/dock";
 import { isTemporaryDocumentPath } from "../lib/temporary-documents";
-import { workspaceStorageKey } from "../lib/window-scope";
+import { workspaceStorageKey, workspaceStorage } from "../lib/window-scope";
 import { useMoleculeStore } from "./molecule-store";
 
 export const WINDOW_TOOLS_ID = "window-tools";
@@ -317,7 +317,7 @@ export const useTabWorkspaceStore = create<TabWorkspaceState>()(
     }),
     {
       name: workspaceStorageKey("burette.tab-workspaces"),
-      storage: createJSONStorage(() => window.BuretteMcpWorkspace?.storage ?? localStorage),
+      storage: createJSONStorage(() => workspaceStorage()),
       version: 1,
       partialize: (state) => ({
         workspaces: Object.fromEntries(

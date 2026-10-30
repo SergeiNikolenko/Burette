@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { workspaceStorageKey } from "../lib/window-scope";
+import { workspaceStorageKey, workspaceStorage } from "../lib/window-scope";
 
 // Geometry of the floating window. Which screen it shows is a property of the
 // tab itself (`MoleculeTab.pane` in the molecule store), so this store only
@@ -74,7 +74,7 @@ export const useWorkspacePanesStore = create<WorkspacePanesState>()(
     }),
     {
       name: workspaceStorageKey("burette.workspace-panes"),
-      storage: createJSONStorage(() => window.BuretteMcpWorkspace?.storage ?? localStorage),
+      storage: createJSONStorage(() => workspaceStorage()),
       version: 1,
       partialize: (state) => ({
         selectedTabs: state.selectedTabs,

@@ -37,7 +37,7 @@ import {
 } from "../lib/global-recent-structures";
 import { isTauriRuntime } from "../lib/tauri";
 import { clearNativeRecentStructures } from "../lib/clear-recent-structures";
-import { workspaceStorageKey } from "../lib/window-scope";
+import { workspaceStorageKey, workspaceStorage, isBrowserSessionWorkspace } from "../lib/window-scope";
 import { useSettingsStore } from "./settings-store";
 
 // Placement belongs to the view; activeTabId names the focused view in any group.
@@ -349,7 +349,7 @@ function persistedTabs(tabs: MoleculeTab[]) {
 function moleculeSessionStorage(): PersistStorage<PersistedMoleculeState> | undefined {
   let storage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
   try {
-    storage = window.BuretteMcpWorkspace?.storage ?? localStorage;
+    storage = workspaceStorage();
   } catch {
     return undefined;
   }
@@ -555,7 +555,7 @@ function buildFileTabs(documents: ViewerDocument[]) {
 
 function shouldIgnorePersistedSession() {
   if (typeof window === "undefined") return false;
-  if (window.BuretteMcpWorkspace) return false;
+  if (window.BuretteMcpWorkspace || isBrowserSessionWorkspace()) return false;
   if (new URLSearchParams(window.location.search).has("devFiles")) return true;
   return window.location.protocol === "http:" && (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost");
 }

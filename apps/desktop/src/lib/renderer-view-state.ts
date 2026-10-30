@@ -1,4 +1,4 @@
-import { workspaceStorageKey } from "./window-scope";
+import { workspaceStorageKey, isBrowserSessionWorkspace } from "./window-scope";
 
 type ViewCheckpoint = { version: 1; revision: number; value: string };
 type CheckpointStorage = Pick<Storage, "getItem" | "setItem">;
@@ -51,7 +51,7 @@ export function createRendererViewCheckpointStore(storage: () => CheckpointStora
 }
 
 const views = createRendererViewCheckpointStore(() => {
-  try { return typeof localStorage === "undefined" ? null : localStorage; } catch { return null; }
+  try { return isBrowserSessionWorkspace() ? window.sessionStorage : typeof localStorage === "undefined" ? null : localStorage; } catch { return null; }
 });
 
 export function rememberRendererViewState(path: string, value: unknown) {
