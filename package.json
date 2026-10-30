@@ -200,7 +200,8 @@
     "test:scientific-spectra-plot": "bun test tests/test-scientific-spectra-data.test.ts tests/test-scientific-spectra-plot.test.ts",
     "test:vibrations-activation": "bun test tests/test-vibrations-activation.test.tsx && bun test tests/review-vibrations-focus-workspace.test.tsx",
     "test:orca-nmr-spectra": "bun test tests/test-orca-nmr-spectra.test.ts",
-    "test:scientific-spectra-inputs": "bun test tests/test-scientific-spectra-inputs.test.ts"
+    "test:scientific-spectra-inputs": "bun test tests/test-scientific-spectra-inputs.test.ts",
+    "test:scientific-spectra-row-ids": "bun test tests/test-scientific-spectra-row-ids.test.ts"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

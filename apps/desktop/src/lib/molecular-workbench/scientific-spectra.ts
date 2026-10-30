@@ -7,7 +7,9 @@ export type SpectralColumn = { name: string; unit: string | null; values: readon
 type Signal<K extends AdditionalSpectrumKind, U extends string> = {
   kind: K; xUnit: U; positions: readonly number[]; values: readonly number[];
   /** Null means that the source did not declare a physical signal unit. */
-  valueUnit: string | null; auxiliary?: readonly SpectralColumn[];
+  valueUnit: string | null;
+  /** Original transition labels, when the producer supplies identities beyond row order. */
+  sourceRowIds?: readonly string[]; auxiliary?: readonly SpectralColumn[];
 };
 export type NmrSpectrum = {
   kind: "nmr"; quantity: "isotropic-shielding" | "native-input";
@@ -71,16 +73,25 @@ export function checkScientificSpectra(value: unknown): ScientificSpectra {
       }
       size = spectrum.valuesPpm.length;
     } else {
-      keys(spectrum, ["kind", "xUnit", "positions", "values", "valueUnit", "auxiliary"]);
+      keys(spectrum, ["kind", "xUnit", "positions", "values", "valueUnit", "sourceRowIds", "auxiliary"]);
       const units = spectrum.kind === "vcd" || spectrum.kind === "mcd" ? ["cm^-1"] : spectrum.kind === "dos" ? ["eV"] : ["eV", "nm", "cm^-1"];
       if (!units.includes(spectrum.xUnit as string) || !vector(spectrum.positions) || !vector(spectrum.values, spectrum.positions.length) || !unit(spectrum.valueUnit)) fail("invalid source signal or unit.");
       if (spectrum.xUnit === "nm" && spectrum.positions.some(position => position <= 0)) fail("wavelengths must be positive.");
       size = spectrum.positions.length;
+      if (spectrum.sourceRowIds !== undefined) {
+        if (!Array.isArray(spectrum.sourceRowIds) || spectrum.sourceRowIds.length !== size) fail("source row identities do not match the signal.");
+        const ids = new Set<string>();
+        for (const id of spectrum.sourceRowIds) {
+          if (!label(id) || ids.has(id)) fail("invalid or duplicate source row identity.");
+          ids.add(id);
+        }
+        scalars += size;
+      }
     }
     if (size === 0) fail("empty datasets do not advertise a spectrum.");
     rows += size; scalars += size * 2;
     if (spectrum.auxiliary !== undefined) {
-      if (!Array.isArray(spectrum.auxiliary) || spectrum.auxiliary.length > 4) fail("too many auxiliary source columns.");
+      if (!Array.isArray(spectrum.auxiliary) || spectrum.auxiliary.length > 6) fail("too many auxiliary source columns.");
       const names = new Set<string>();
       for (const column of spectrum.auxiliary) {
         if (!record(column)) fail("invalid auxiliary column.");
@@ -115,14 +126,17 @@ export function scientificSpectrumCsv(data: ScientificSpectra, kind: AdditionalS
   if (!spectrum) fail("requested source spectrum is absent.");
   const headers = spectrum.kind === "nmr" ? ["atom_index_0_based", "atomic_number", `source_ppm (${spectrum.quantity})`] :
     [`position (${spectrum.xUnit})`, `signal (${spectrum.valueUnit ?? "source unit unspecified"})`];
+  const rowIds = spectrum.kind === "nmr" ? undefined : spectrum.sourceRowIds;
+  if (rowIds) headers.unshift("source_row_id");
   for (const column of spectrum.auxiliary ?? []) headers.push(`${column.name} (${column.unit ?? "source unit unspecified"})`);
   const count = spectrum.kind === "nmr" ? spectrum.valuesPpm.length : spectrum.positions.length;
   const lines = [`# source: ${oneLine(data.source.name)}`, `# format: ${data.source.format}`,
     `# scope: ${data.source.scope === "file" ? "file" : `frame ${data.source.frameIndex + 1} of ${data.source.frameCount}`}`,
     headers.map(csv).join(",")];
   for (let index = 0; index < count; index++) {
-    const values = spectrum.kind === "nmr" ? [spectrum.atomIndices[index], data.atomicNumbers[spectrum.atomIndices[index]], spectrum.valuesPpm[index]] :
+    const values: Array<string | number> = spectrum.kind === "nmr" ? [spectrum.atomIndices[index], data.atomicNumbers[spectrum.atomIndices[index]], spectrum.valuesPpm[index]] :
       [spectrum.positions[index], spectrum.values[index]];
+    if (rowIds) values.unshift(rowIds[index]);
     for (const column of spectrum.auxiliary ?? []) values.push(column.values[index]);
     lines.push(values.map(csv).join(","));
   }
