@@ -20,6 +20,8 @@ import type { StructureStory } from "../lib/structure-story";
 
 export type { AppSettingsSectionId } from "../lib/settings-sections";
 
+export type StructureViewerActionOptions = ViewerActionOptions & { signal?: AbortSignal };
+
 export type AppPage = "viewer" | "settings";
 export type StatusKind = "info" | "success" | "error";
 export type StructureViewerAction =
@@ -293,7 +295,7 @@ export type ShellActions = {
   showTextFileMetadata: (document: TextFileDocument) => void | Promise<void>;
   closeQuickLookPreview: () => void;
   generate3DConformer: (document: ViewerDocument) => void | Promise<void>;
-  runStructureViewerAction: (document: ViewerDocument, action: StructureViewerAction, options?: ViewerActionOptions) => void | Promise<unknown>;
+  runStructureViewerAction: (document: ViewerDocument, action: StructureViewerAction, options?: StructureViewerActionOptions) => void | Promise<unknown>;
   reloadXyzrenderDocument: (document: ViewerDocument, options: ViewerReloadOptions) => void | Promise<void>;
   selectTextStructure: (document: TextFileDocument, selection: TextStructureSelection | null) => void;
   exportActivePreviewAsPng: () => void | Promise<void>;

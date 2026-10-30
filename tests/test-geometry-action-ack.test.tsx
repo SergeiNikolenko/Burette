@@ -4,7 +4,7 @@ import { transformSync } from '@babel/core';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
 import React, { act } from 'react';
-import type { ShellActions } from '../apps/desktop/src/components/types';
+import type { ShellActions, StructureViewerAction } from '../apps/desktop/src/components/types';
 import type { ViewerDocument } from '../apps/desktop/src/types';
 plugin({ name: 'geometry-sender-compiler', setup(build) {
   build.onLoad({ filter: /use-app-molstar-action-senders\.ts$/u }, ({ path }) => ({
@@ -25,13 +25,13 @@ afterAll(async () => { for (const [key, descriptor] of previous) {
 const { createRoot } = await import('react-dom/client');
 const { useAppMolstarActionSenders } = await import('../apps/desktop/src/hooks/use-app-molstar-action-senders');
 const { requestViewerAction, activeViewerIframeForDocument, captureViewerActionTarget } = await import('../apps/desktop/src/lib/viewer-bridge');
-const action = { type: 'update_geometry', label: 'Geometry', text: '1\nH\nH 0 0 0\n', notify: false } as const;
+const action = { type: 'update_geometry', label: 'Geometry', text: '1\nH\nH 0 0 0\n', lease: 'ack-owner', notify: false } as const;
 let serial = 0;
 async function fixture() {
   const doc = { id: `ack-${++serial}`, path: '/h.xyz', title: 'h.xyz', extension: 'xyz', renderer: 'molstar' } as ViewerDocument;
   const host = document.createElement('div'); document.body.append(host); const frame = document.createElement('iframe');
   frame.className = 'viewer-iframe'; frame.dataset.documentId = doc.id; frame.dataset.renderer = 'molstar'; host.append(frame);
-  const sent: { source: string; body: { id: string; action: typeof action } }[] = [];
+  const sent: { source: string; body: { id: string; action: StructureViewerAction } }[] = [];
   frame.contentWindow!.postMessage = payload => sent.push(payload);
   const rootHost = document.createElement('div'); host.append(rootHost); const root = createRoot(rootHost);
   let api!: ReturnType<typeof useAppMolstarActionSenders>;
@@ -145,5 +145,32 @@ test('explicit absent capture is not reacquired and captured transport preserves
     const abort = new AbortController();
     const pending = requestViewerAction(f.doc.id, action, 1000, abort.signal, { target });
     abort.abort(); await expect(pending).rejects.toThrow('cancelled');
+  } finally { await f.close(); }
+});
+
+test('typed geometry binding read returns its paired owner and baseline through the captured target', async () => {
+  const f = await fixture();
+  try {
+    const target = captureViewerActionTarget(f.doc.id)!;
+    const dispatch: ShellActions['runStructureViewerAction'] = f.api.runStructureViewerAction;
+    const read = { type: 'geometry_binding', label: 'Geometry', notify: false } as const;
+    const pending = dispatch(f.doc, read, { target });
+    expect(f.sent[0].body.action).toEqual(read);
+    const binding = { lease: 'runtime-owner', text: action.text };
+    f.reply(f.sent[0].body.id, { ok: true, result: binding });
+    expect(await pending).toEqual(binding);
+    expect(f.sent).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+test('typed binding read forwards its abort signal without changing the fourth transport argument', async () => {
+  const f = await fixture();
+  try {
+    const dispatch: ShellActions['runStructureViewerAction'] = f.api.runStructureViewerAction;
+    const abort = new AbortController(), target = captureViewerActionTarget(f.doc.id)!;
+    const pending = Promise.resolve(dispatch(f.doc, { type: 'geometry_binding', label: 'Geometry', notify: false }, { target, signal: abort.signal }));
+    abort.abort(); await expect(pending).rejects.toThrow('cancelled');
+    f.reply(f.sent[0].body.id, { ok: true, result: { lease: 'late', text: action.text } });
+    expect(f.sent).toHaveLength(1);
   } finally { await f.close(); }
 });
