@@ -8,8 +8,9 @@ import type { ShellActions } from "./types";
 import type { MenuItemSpec } from "./menu-types";
 import "./workspace-file-header.css";
 
-export function WorkspaceFileHeader({ activeFile, rootPath, bandDocumentId = null, rightDockOpen, defaultApplicationIconUrl, items, actions, fileActionsAvailable = true, onOpen, openLabel = "Open with default app", navigation }: {
+export function WorkspaceFileHeader({ activeFile, rootPath, bandDocumentId = null, rightDockOpen, defaultApplicationIconUrl, items, actions, fileActionsAvailable = true, onOpen, openLabel = "Open with default app", navigation, fileAction }: {
   navigation?: ReactNode;
+  fileAction?: ReactNode;
   activeFile: { path: string; label: string };
   rootPath?: string | null;
   /** A viewer document whose own controls share this row. */
@@ -74,6 +75,7 @@ export function WorkspaceFileHeader({ activeFile, rootPath, bandDocumentId = nul
             </ShortcutTooltip>
           )} />
       </div> : null}
+      {fileAction}
       <ShortcutTooltip label={rightDockOpen ? "Hide right panel" : "Show right panel"}>
         <button type="button" className="workspace-file-icon-button workspace-file-pill" aria-label="Toggle right panel" aria-pressed={rightDockOpen}
           onClick={() => actions.toggleDock("right")}>

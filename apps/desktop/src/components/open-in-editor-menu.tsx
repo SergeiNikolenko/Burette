@@ -13,6 +13,9 @@ import { ChevronDown } from "./ui/app-icons";
 import { WorkspaceFileHeader } from "./workspace-file-header";
 import { useNativeApplicationIcons } from "../hooks/use-native-application-icons";
 import { visibleEditorTargets } from "../lib/chemical-editor-targets";
+import { useCompressedSource } from "../lib/compressed-files/sources";
+import { BrowserStructureDownload } from "./browser-structure-download";
+import { useImportedOriginal } from "../lib/workbench/scientific-source-state";
 import { isLocalFilePath } from "../lib/browser-file-actions";
 
 type ActiveFile = {
@@ -22,6 +25,9 @@ type ActiveFile = {
 
 export function OpenInEditorMenu({ state, actions, presentation = "chrome", navigation }: { state: ShellViewState; actions: ShellActions; presentation?: "chrome" | "file-header"; navigation?: (items: MenuItemSpec[]) => ReactNode }) {
   const activeFile = useMemo(() => activeFileFromState(state), [state]);
+  const compressed = useCompressedSource(activeFile?.path ?? null);
+  const original = useImportedOriginal(state.activeDocument?.path === activeFile?.path ? state.activeDocument?.id ?? null : null);
+  const download = !isTauriRuntime() && (original || compressed) && activeFile ? <BrowserStructureDownload file={activeFile} document={state.activeDocument} /> : undefined;
   const filePath = activeFile && isLocalFilePath(activeFile.path) ? activeFile.path : null;
   const localFinderIconUrl = useFinderIconUrl();
   const localDefaultIconUrl = useDefaultApplicationIconUrl(filePath);
@@ -94,6 +100,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
   }, [actions, activeFile, filePath, defaultApplicationIconUrl, finderIconUrl, loading, targets, nativeIcons, state.preferences.openInDefaultDestination]);
 
   if (!activeFile) return navigation ? <header className="workspace-file-header" aria-label="Workspace">{navigation([])}<span className="flex-1" /></header> : null;
+  if (download && presentation !== "file-header") return download;
   if (!filePath && presentation !== "file-header") return null;
 
   const visibleTargets = targets.length > 0 ? targets : browserDevPreviewTargets(activeFile.path);
@@ -110,7 +117,7 @@ export function OpenInEditorMenu({ state, actions, presentation = "chrome", navi
       .filter((path): path is string => Boolean(path && activeFile.path.startsWith(`${path}/`)))
       .sort((a, b) => b.length - a.length)[0];
     const renderer = state.activeDocument?.renderer;
-    return <WorkspaceFileHeader navigation={navigation?.(items)} activeFile={activeFile} rootPath={rootPath}
+    return <WorkspaceFileHeader navigation={navigation?.(items)} activeFile={activeFile} rootPath={rootPath} fileAction={download}
       bandDocumentId={renderer === "molstar" || renderer === "xyzrender-external" ? state.activeDocument?.id ?? null : null}
       fileActionsAvailable={Boolean(filePath)}
       rightDockOpen={state.rightDockOpen}
