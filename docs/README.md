@@ -18,6 +18,8 @@ contains only documents that describe the active project.
   document-owned graph history, scientific operations and focused acceptance scope.
 - [Internal coordinate editing](internal-coordinate-editing.md): Z-matrix definitions,
   scientific revision invariants, controls and focused validation.
+- [Quantum input templates](quantum-input-export.md): engine routes, coordinate
+  conventions, constraints, periodic cells and template validation.
 - [Scientific scene format](scientific-scene-format.md): MOLX attachment protocol,
   scientific validation, source identity and runtime asset ownership.
 - [Repository layout](repository-layout.md): top-level code map, app surfaces,
