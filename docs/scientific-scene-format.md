@@ -68,6 +68,19 @@ Encoding and checksum-valid decoding both enforce these constraints. Existing
 manifest versions and opaque Original byte ownership are unchanged; this storage
 contract alone does not activate format readers or a spectra UI.
 
+The normal ORCA reader binds NMR and electric-dipole absorption/CD tables to
+their preceding coordinate block in source order. VCD uses its exact source
+vibration set; a later set without VCD clears that frame's earlier VCD. QCSchema
+property extensions stay on the AtomicResult objects that supplied them, with
+frame indices assigned only after retained initial/final frames are inserted.
+Parsed spectral documents reuse this same durable validator and global budgets.
+Real pinned ORCA NMR and optical outputs exercise the route. QCSchema spectral
+extensions and ORCA VCD still have authored format cases rather than a retained
+real producer fixture. Explicit MCD companion/Original pairing, the TypeScript
+CJSON ScientificDocument route, native DOS file producers and the six-type UI
+remain separate work. This TypeScript scientific-reader gap does not describe
+the separate structural CJSON conversion and Quick Look paths.
+
 ## Binding, revisions and asset ownership
 
 The runtime binds exactly one atomic structure with each source atom occurring

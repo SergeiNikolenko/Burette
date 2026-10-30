@@ -1,3 +1,6 @@
+import { readQcschemaSpectra } from '../scientific-spectra-inputs';
+import { validateParsedSpectra } from '../parsed-spectral-document';
+import type { ScientificSpectra } from '../scientific-spectra';
 import { atomicNumber } from '../elements';
 import type { ScientificDocument, ScientificFrame } from '../scientific-types';
 import type { Vec3 } from '../types';
@@ -40,7 +43,7 @@ function molecule(value: unknown, embedded = true) {
   }
   return { atoms, identity: JSON.stringify(identity) };
 }
-function atomicResult(value: unknown): ScientificFrame & { identity: string } {
+function atomicResult(value: unknown, name: string): ScientificFrame & { identity: string; propertySpectra?: ScientificSpectra } {
   const data = object(value);
   if (data.schema_name !== 'qcschema_output' && data.schema_name !== 'qc_schema_output') throw new Error('Unsupported QCSchema atomic result schema.');
   schema(data, data.schema_name, 1);
@@ -62,7 +65,7 @@ function atomicResult(value: unknown): ScientificFrame & { identity: string } {
   } else if (data.driver === 'properties') {
     object(data.return_result);
   } else throw new Error('QCSchema reader supports energy, gradient and properties results; Hessian and wavefunction import are not supported.');
-  return frame;
+  return { ...frame, propertySpectra: readQcschemaSpectra(data.properties, { name, format: 'qcschema', scope: 'file' }, atoms.map(atom => atomicNumber(atom.element))) };
 }
 function sameGeometry(a: ScientificFrame, b: ScientificFrame) {
   return a.atoms.every((atom, i) => atom.x === b.atoms[i].x && atom.y === b.atoms[i].y && atom.z === b.atoms[i].z);
@@ -71,11 +74,11 @@ function sameGeometry(a: ScientificFrame, b: ScientificFrame) {
  * Geometry: bohr; energy: Hartree; gradient: Hartree/bohr (negative force).
  * https://github.com/MolSSI/QCSchema and https://github.com/MolSSI/QCElemental/blob/master/qcelemental/models/v1/procedures.py
  */
-export function parseQcschema(text: string): ScientificDocument {
+export function parseQcschema(text: string, name = "QCSchema input"): ScientificDocument {
   let parsed: unknown;
   try { parsed = JSON.parse(text); } catch { throw new Error('Invalid or truncated QCSchema JSON.'); }
   const data = object(parsed);
-  let frames: ScientificFrame[];
+  let frames: Array<ScientificFrame & { propertySpectra?: ScientificSpectra }>;
   let converged: boolean | undefined;
   if (data.schema_name === 'qcschema_molecule') {
     frames = [{ atoms: molecule(data, false).atoms }];
@@ -88,7 +91,7 @@ export function parseQcschema(text: string): ScientificDocument {
     const energies = array(data.energies, trajectory.length, 'optimization energies').map(finite);
     let retainedValues = 0;
     const steps = trajectory.map(value => {
-      const step = atomicResult(value);
+      const step = atomicResult(value, name);
       retainedValues += step.atoms.length * 3;
       if (retainedValues > MAX_VALUES) throw new Error('QCSchema trajectory exceeds browser limit.');
       return step;
@@ -108,9 +111,11 @@ export function parseQcschema(text: string): ScientificDocument {
     if (!sameGeometry({ atoms: final.atoms }, frames.at(-1)!)) frames.push({ atoms: final.atoms });
     converged = true;
   } else {
-    const { identity: _, ...frame } = atomicResult(data);
+    const { identity: _, ...frame } = atomicResult(data, name);
     frames = [frame];
   }
   if (frames.length > MAX_FRAMES || frames.reduce((sum, f) => sum + f.atoms.length * 3, 0) > MAX_VALUES) throw new Error('QCSchema trajectory exceeds browser limit.');
-  return { format: 'qcschema', atoms: frames.at(-1)!.atoms, frames, modes: [], orbitals: [], ...(converged === undefined ? {} : { converged }) };
+  const ownedFrames = frames.map(({ propertySpectra, ...frame }, frameIndex) => propertySpectra ? { ...frame, spectra: { ...propertySpectra,
+    source: { ...propertySpectra.source, scope: 'frame' as const, frameIndex, frameCount: frames.length } } } : frame);
+  return validateParsedSpectra({ format: 'qcschema', atoms: frames.at(-1)!.atoms, frames: ownedFrames, modes: [], orbitals: [], ...(converged === undefined ? {} : { converged }) });
 }

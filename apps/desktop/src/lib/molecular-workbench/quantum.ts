@@ -5,6 +5,9 @@ import { atomicNumber, elementSymbol } from "./elements";
 import { parseXyz, serializeXyz } from "./xyz";
 import { parseExtendedFrame, trajectoryMetadata } from "./trajectory-metadata";
 import { parseGaussianLog } from "./quantum/gaussian-log";
+import { readOrcaVcdTables } from "./orca-circular-spectra";
+import { withOrcaSourceSpectra, type OrcaSourceSpectrum } from "./orca-source-spectra";
+import { validateParsedSpectra } from "./parsed-spectral-document";
 import { parseQcschema } from "./quantum/qcschema";
 import { parseFchk } from "./fchk";
 import { parseMolden } from "./gaussian";
@@ -56,17 +59,17 @@ export function parseScientificFile(name: string, text: string): ScientificDocum
     const atoms = atomsFromZmatrixDocument(internalCoordinates).map(({ element, position: [x, y, z] }) => ({ element, x, y, z }));
     return { ...empty("zmat", atoms), internalCoordinates };
   }
-  if (/\.(?:qcschema|json)$/i.test(name)) return parseQcschema(text);
+  if (/\.(?:qcschema|json)$/i.test(name)) return parseQcschema(text, name);
   if (/\.(?:fchk|fch)$/i.test(name)) return parseFchk(text);
   if (/\.(?:cube|cub)$/i.test(name)) return parseCube(text);
   if (/\.xyz$/i.test(name)) return parseXyzTrajectory(text);
   if (/\.(?:molden|molf)$|(?:^|[._-])molden\.input$/i.test(name)) return parseMolden(text);
   if (/\.hess$/i.test(name)) return parseHessian(text);
-  if (/^\s*\{/.test(text)) return parseQcschema(text);
+  if (/^\s*\{/.test(text)) return parseQcschema(text, name);
   if (/Entering Gaussian System|Gaussian, Inc\.|Gaussian \d+:|^\s*(?:Standard|Input|Z-Matrix) orientation:/m.test(text)) return parseGaussianLog(text);
   if (/\[Molden Format\]/i.test(text)) return parseMolden(text);
   if (/\$vibrational_frequencies\b/.test(text)) return parseHessian(text);
-  if (/CARTESIAN COORDINATES \(ANGSTROEM\)/.test(text)) return parseOrca(text);
+  if (/CARTESIAN COORDINATES \(ANGSTROEM\)/.test(text)) return parseOrca(name, text);
   throw new Error("Supported scientific inputs are ORCA output/Hessian, Molden, Gaussian log/FCHK/cube, QCSchema and XYZ trajectories.");
 }
 
@@ -89,7 +92,7 @@ function parseXyzTrajectory(text: string): ScientificDocument {
   return { ...empty("xyz", frames[0].atoms), frames };
 }
 
-function parseOrca(text: string): ScientificDocument {
+function parseOrca(name: string, text: string): ScientificDocument {
   text = text.replace(/\r\n?/g, "\n");
   const lines = text.split("\n");
   const frames: ScientificFrame[] = [];
@@ -133,6 +136,7 @@ function parseOrca(text: string): ScientificDocument {
   // with whichever geometry happened to be printed last in the file.
   const geometries = [...text.matchAll(/CARTESIAN COORDINATES \(ANGSTROEM\)/g)];
   const frequencies = [...text.matchAll(/VIBRATIONAL FREQUENCIES/g)];
+  const vcdTables: Array<OrcaSourceSpectrum | undefined> = new Array(frames.length);
   let frameIndex = -1;
   let modeValues = 0;
   frequencies.forEach((frequency, i) => {
@@ -143,9 +147,13 @@ function parseOrca(text: string): ScientificDocument {
     modeValues += modes.reduce((sum, mode) => sum + (mode.displacements?.length ?? 0) * 3, 0);
     if (modeValues > MAX_MODE_VALUES) throw new Error("ORCA frame normal modes exceed browser limit.");
     frames[frameIndex].modes = modes;
+    // A later frequency set, including one without VCD, replaces this frame's set.
+    const vcd = readOrcaVcdTables(text.slice(frequency.index, end), modes).at(-1);
+    vcdTables[frameIndex] = vcd ? { start: frequency.index! + vcd.start, spectrum: vcd.spectrum } : undefined;
   });
   result.modes = frames.at(-1)!.modes ?? [];
-  return result;
+  result.frames = withOrcaSourceSpectra(name, text, frames, geometries.map(geometry => geometry.index!), vcdTables);
+  return validateParsedSpectra(result);
 }
 
 function parseOrcaModes(vibrationText: string, atomCount: number): VibrationalMode[] {
