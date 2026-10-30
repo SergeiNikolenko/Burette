@@ -8,6 +8,8 @@ import { showNativeContextMenu } from "../components/native-context-menu";
 import type { FepNetworkLocation } from "../components/editor-area/page-kinds/fep-network";
 import type { FileOpenOptions, StatusKind } from "../components/types";
 import { deleteBrowserDevVirtualTextDocument, openBrowserDevDocuments, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
+import { openStoredScientificFile } from "../lib/workbench/browser-import";
+import { importedOriginalFor } from "../lib/workbench/scientific-source-state";
 import { openBrowserDevTextFiles } from "../lib/browser-dev-text-files";
 import type { DockArea, DockTabKind } from "../lib/dock";
 import {
@@ -468,6 +470,35 @@ export function useAppFileOpen({
     const contentSpectrumPaths = await detectContentSpectrumPaths(cleanPaths);
 
     for (const path of cleanPaths) {
+      if (!isTauriRuntime()) {
+        const existing = useMoleculeStore.getState().documents.find((document) => document.path === path);
+        // Opening the same scientific tab preserves its current draft and import lifetime.
+        if (existing?.virtual && importedOriginalFor(existing.id)) {
+          openedAny = true;
+          preferredStructureDocumentId ??= existing.id;
+          continue;
+        }
+        // A later open/close owns this path even if it eventually returns to no document.
+        let sourceCurrent = true;
+        const stopWatching = useMoleculeStore.subscribe((state) => {
+          if (state.documents.find((document) => document.path === path) !== existing) sourceCurrent = false;
+        });
+        let scientific: ViewerDocument[] | null;
+        try {
+          scientific = await openStoredScientificFile(path, preferences, (document) => {
+            addDocuments([document], { preserveActiveTab: options.preserveActiveTab });
+            rememberRecentStructures([document]);
+          }, () => mayApply() && sourceCurrent);
+        } finally { stopWatching(); }
+        if (!mayApply()) return;
+        if (scientific !== null) {
+          const current = useMoleculeStore.getState().documents.find((document) => document.path === path);
+          const opened = scientific[0] ?? (current?.virtual && importedOriginalFor(current.id) ? current : null);
+          openedAny ||= Boolean(opened);
+          preferredStructureDocumentId ??= opened?.id ?? null;
+          continue;
+        }
+      }
       const extension = pathExtension(path);
       if (isSpectrumPath(path, extension) || contentSpectrumPaths.has(path)) {
         spectrumPaths.push(path);
@@ -563,7 +594,7 @@ export function useAppFileOpen({
       setActiveDocument(preferredStructureDocumentId);
     }
     if (options.requireSuccess && !openedAny) throw new Error("The file could not be opened. Check its format and contents.");
-  }, [addProjectRoot, closeDocument, detectContentSpectrumPaths, expandStructureBundles, openDocuments, openDocumentTab, openSpectrumDocuments, openTextDocuments, pushErrorStatus, pushStatus, setActiveDocument]);
+  }, [addProjectRoot, closeDocument, detectContentSpectrumPaths, expandStructureBundles, openDocuments, openDocumentTab, openSpectrumDocuments, openTextDocuments, pushErrorStatus, pushStatus, setActiveDocument, preferences, addDocuments, rememberRecentStructures]);
 
   const openPaths = useCallback(async (paths: string[], options: FileOpenOptions = {}) => {
     // Restore the selected file before classification/routing of the tail,
