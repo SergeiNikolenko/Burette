@@ -1,0 +1,14 @@
+.workbench-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.workbench-code {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 180px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  white-space: pre;
+}
