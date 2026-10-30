@@ -192,7 +192,8 @@
     "test:scientific-server-startup": "bun test tests/test-scientific-server-startup.test.tsx",
     "check:scientific-server-startup": "tsc --noEmit -p tests/tsconfig.scientific-server-startup.json",
     "test:vibrational-spectrum-ui": "bun test tests/test-vibrational-plot-compiled.test.tsx",
-    "test:vibrations-panel": "bun test tests/test-workbench-vibrations-export-compiled.test.tsx && bun test tests/test-vibrations-animation.test.tsx"
+    "test:vibrations-panel": "bun test tests/test-workbench-vibrations-export-compiled.test.tsx && bun test tests/test-vibrations-animation.test.tsx",
+    "test:scientific-spectra-data": "bun test tests/test-scientific-spectra-data.test.ts"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
