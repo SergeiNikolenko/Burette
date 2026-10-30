@@ -26,3 +26,6 @@ tests/fixtures/quantum/opan-LICENSE.txt -text whitespace=-blank-at-eof
 
 # Preserve the exact upstream ORCA shielding table, including row padding.
 tests/fixtures/quantum/spectra-orca-nmr.out -text whitespace=-blank-at-eol,-blank-at-eof
+
+# Preserve the exact upstream optical tables, including printed row padding.
+tests/fixtures/quantum/spectra-orca-camphor.out -text whitespace=-blank-at-eol,-blank-at-eof

@@ -201,7 +201,8 @@
     "test:vibrations-activation": "bun test tests/test-vibrations-activation.test.tsx && bun test tests/review-vibrations-focus-workspace.test.tsx",
     "test:orca-nmr-spectra": "bun test tests/test-orca-nmr-spectra.test.ts",
     "test:scientific-spectra-inputs": "bun test tests/test-scientific-spectra-inputs.test.ts",
-    "test:scientific-spectra-row-ids": "bun test tests/test-scientific-spectra-row-ids.test.ts"
+    "test:scientific-spectra-row-ids": "bun test tests/test-scientific-spectra-row-ids.test.ts",
+    "test:orca-optical-spectra": "bun test tests/test-orca-optical-spectra.test.ts tests/test-orca-optical-C3b-independent.test.ts"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
