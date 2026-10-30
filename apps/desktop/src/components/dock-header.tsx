@@ -1,13 +1,13 @@
 import { useLayoutEffect, useRef, type ComponentProps, type MouseEvent } from "react";
 import * as RovingFocusGroup from "@radix-ui/react-roving-focus";
 import { DOCK_TAB_LABELS, type DockArea, type DockTab, type DockTabKind } from "../lib/dock";
-import { Expand, Atom, Chart, Compare, Edit, Eye, FileCode, FileDocument, Folder, InfoCircle, Orbit, Plus, SettingsSlider, SettingsWrench, Stack, Stopwatch, X, type AppIconType } from "./ui/app-icons";
+import { MoveHorizontal, Expand, Atom, Chart, Compare, Edit, Eye, FileCode, FileDocument, Folder, InfoCircle, Orbit, Plus, SettingsSlider, SettingsWrench, Stack, Stopwatch, X, type AppIconType } from "./ui/app-icons";
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 
 const icons: Record<DockTabKind, AppIconType> = {
   scene: Stack, xyzrender: Atom, files: Folder, spectrum: Chart, text: FileDocument,
-  geometry: SettingsSlider, "structure-edit": Edit,
+  vibrations: MoveHorizontal, geometry: SettingsSlider, "structure-edit": Edit,
   story: FileDocument, inspector: InfoCircle, folding: Atom, "structure-basket": Stack,
   compare: Compare, jobs: Stopwatch, logs: FileCode, diagnostics: SettingsWrench,
   review: Eye, "chemical-space": Orbit,

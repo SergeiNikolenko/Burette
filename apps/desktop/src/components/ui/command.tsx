@@ -42,18 +42,21 @@ function CommandDialog({
   children,
   className,
   showCloseButton = false,
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof Dialog> & {
   title?: string
   description?: string
   className?: string
   showCloseButton?: boolean
+  onCloseAutoFocus?: React.ComponentProps<typeof DialogPrimitive.Content>["onCloseAutoFocus"]
 }) {
   return (
     <Dialog {...props}>
       <DialogPortal>
         <DialogOverlay />
         <DialogPrimitive.Content
+          onCloseAutoFocus={onCloseAutoFocus}
           data-slot="command-dialog"
           className={cn(
             "atlas-command-dialog atlas-command-dialog-global fixed left-1/2 z-50 -translate-x-1/2 outline-none",

@@ -1,3 +1,6 @@
+import { useScientificSourceLifetime } from "../lib/workbench/scientific-source-lifetime";
+import { VibrationsDockContent } from "./workbench/vibrations-dock-content";
+import { useVibrationsAvailable } from "../lib/workbench/vibrations-tool";
 import { GeometryPanel, geometryPanelAvailable } from "./geometry-panel";
 import { StructureEditPanel } from "./workbench/structure-edit-panel";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
@@ -75,6 +78,7 @@ function resolveChemicalSpaceDocument(
 }
 
 export function DockPanel({ area, state, actions, readOnly = false }: DockPanelProps) {
+  useScientificSourceLifetime(area, state.documents);
   const panelId = useId();
   const panel = useRef<HTMLElement>(null);
   const [dropActive, setDropActive] = useState(false);
@@ -97,6 +101,8 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
   const chemicalSpaceDockAvailable = Boolean(resolveChemicalSpaceDocument(state, dockDocument));
+  const hasVibrations = useVibrationsAvailable(activeStructureDocument);
+  const vibrationsDockAvailable = area === "right" && hasVibrations;
   const geometryDockAvailable = area === "right" && geometryPanelAvailable(activeStructureDocument);
   const structureEditDockAvailable = area === "right" && structureEditAvailable(activeStructureDocument);
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
@@ -114,6 +120,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const catalog = dockTabCatalog(area).filter(kind => !pluginSurface || !["jobs", "chemical-space", "folding"].includes(kind));
   const tabs = rawTabs.filter((tab) => {
     if (!catalog.includes(tab.kind)) return false;
+    if (tab.kind === "vibrations") return vibrationsDockAvailable;
     if (tab.kind === "geometry") return geometryDockAvailable;
     if (tab.kind === "structure-edit") return structureEditDockAvailable;
     if (tab.kind === "spectrum") return spectrumDockAvailable;
@@ -186,6 +193,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     const rect = event.currentTarget.getBoundingClientRect();
     void showNativeContextMenu(
       catalog.filter((kind) => {
+        if (kind === "vibrations") return vibrationsDockAvailable;
         if (kind === "geometry") return geometryDockAvailable;
         if (kind === "structure-edit") return structureEditDockAvailable;
         if (kind === "spectrum") return spectrumDockAvailable;
@@ -235,6 +243,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
       ref={panel}
       className="dock-panel"
       data-area={area}
+      data-document-id={activeStructureDocument?.id}
       data-workspace-id={contentState?.activeTab?.id}
       data-active-tab={activeTab.kind}
       data-open={open ? "true" : "false"}
@@ -441,6 +450,7 @@ export function DockPanelContent({
       />
     );
   }
+  if (activeTabKind === "vibrations") return <VibrationsDockContent document={dockStructureDocument} actions={actions} />;
   if (activeTabKind === "geometry") {
     return geometryPanelAvailable(dockStructureDocument)
       ? <GeometryPanel key={dockStructureDocument.id} document={dockStructureDocument} actions={actions} />
