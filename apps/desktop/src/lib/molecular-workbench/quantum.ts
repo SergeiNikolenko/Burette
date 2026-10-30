@@ -90,7 +90,8 @@ function parseXyzTrajectory(text: string): ScientificDocument {
 }
 
 function parseOrca(text: string): ScientificDocument {
-  const lines = text.replace(/\r/g, "").split("\n");
+  text = text.replace(/\r\n?/g, "\n");
+  const lines = text.split("\n");
   const frames: ScientificFrame[] = [];
   for (let i = 0; i < lines.length; i++) {
     if (/CARTESIAN COORDINATES \(ANGSTROEM\)/.test(lines[i])) {
