@@ -22,6 +22,8 @@ function documentFileName(document: ViewerDocument) {
   // A restored scene's source is parsed as the text it is, never as the archive.
   const logical = logicalSourceFor(document.id);
   if (logical) return `${base.replace(/\.[a-z0-9]+$/iu, "")}.${logical.extension}`;
+  // A normalized virtual XYZ keeps the durable upload path only as its Original identity.
+  if (document.virtual && documentExtension(document) === "xyz") return `${base.replace(/\.[a-z0-9]+$/iu, "")}.xyz`;
   return /\.[a-z0-9]+$/iu.test(base) ? base : `${base}.${documentExtension(document)}`;
 }
 
