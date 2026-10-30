@@ -1,3 +1,4 @@
+import { retainGeometryActionStatus } from "./geometry-action-status";
 import { isViewerFrameVisible } from "./viewer-frame-visibility";
 
 export type ActiveViewerIframeForDocument = (documentId: string, renderer?: string) => HTMLIFrameElement | null;
@@ -110,8 +111,9 @@ export async function requestViewerAction(documentId: string, action: Record<str
   const source = target.source;
   const id = `workspace-${crypto.randomUUID()}`;
   return new Promise<Record<string, unknown>>((resolve, reject) => {
-    const finish = () => { window.clearTimeout(timer); window.removeEventListener("message", receive); signal?.removeEventListener("abort", abort); };
-    const abort = () => { finish(); reject(new DOMException("Viewer request cancelled.", "AbortError")); };
+    const status = action.type === "geometry_binding" ? retainGeometryActionStatus(id, target, timeoutMs) : null;
+    const finish = (retired = false) => { if (retired) status?.retire(); else status?.settle(); window.clearTimeout(timer); window.removeEventListener("message", receive); signal?.removeEventListener("abort", abort); };
+    const abort = () => { finish(true); reject(new DOMException("Viewer request cancelled.", "AbortError")); };
     const receive = (event: MessageEvent) => {
       const body = event.data?.source === "burette-agent-viewer" ? event.data.body : null;
       if (event.source !== source || body?.type !== "agent-action-result" || body.id !== id) return;

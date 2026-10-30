@@ -116,8 +116,8 @@ assert.equal(viewerBridgeBodyDocumentId(null), undefined);
 
 {
   const { calls, handlers } = makeHandlers({
-    handleViewerHostMessage: (source, receivedBody) => {
-      calls.push(["host", source, receivedBody]);
+    handleViewerHostMessage: (source, receivedBody, receivedSource) => {
+      calls.push(["host", source, receivedBody, receivedSource]);
       return true;
     },
   });
@@ -125,7 +125,7 @@ assert.equal(viewerBridgeBodyDocumentId(null), undefined);
   assert.equal(handled, true);
   assert.deepEqual(calls, [
     ["known", eventSource, "doc-1"],
-    ["host", "burette-viewer", body],
+    ["host", "burette-viewer", body, eventSource],
   ]);
 }
 

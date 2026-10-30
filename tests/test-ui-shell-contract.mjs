@@ -2585,7 +2585,7 @@ for (const handlerName of [
 ]) {
   assert.match(appViewerBridgeControllerHook, new RegExp(`${handlerName},`));
 }
-assert.match(viewerBridgeMessagesLib, /handleViewerHostMessage\(source, body\)/);
+assert.match(viewerBridgeMessagesLib, /handleViewerHostMessage\(source, body, eventSource\)/);
 assert.match(appViewerHostMessagesHook, /body\?\.type === "molstarStructureReplaced"/);
 assert.match(appViewerHostMessagesHook, /pendingMolstarReplaceRef\.current\.get\(requestId\)/);
 assert.match(app, /generate3DConformer,/);

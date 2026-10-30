@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {"types":["bun"]},
+  "files":["test-retired-geometry-action-status.test.tsx"],
+  "include":["../apps/desktop/src/**/*.d.ts"]
+}
