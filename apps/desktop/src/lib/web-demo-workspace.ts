@@ -1,5 +1,6 @@
 import { BROWSER_IMPORT_MAX_FILE_BYTES, listBrowserImports, saveBrowserImport, type BrowserImport } from "./browser-import-storage";
 import { isDocumentMediaPath, documentViewerExtensions } from "./file-routing";
+import { compressedName } from "./compressed-files/formats";
 import { demoLibraryFiles } from "./web-demo-library";
 import { standaloneDemoScenes } from "./web-demo-scenes";
 import kras from "../../../../samples/structures/proteins/7rpz.pdb?raw";
@@ -45,7 +46,7 @@ let importsInitialized: Promise<void> | undefined;
 
 export function initializeBrowserImportedFiles() {
   importsInitialized ??= listBrowserImports().then(async (imports) => {
-    if (imports.some(record => record.kind !== "text" && record.kind !== "media")) throw new Error("Saved browser files require a newer file reader.");
+    if (imports.some(record => record.kind !== "text" && record.kind !== "media" && !(record.kind === "compressed" && record.scientific))) throw new Error("Saved browser files require a newer file reader.");
     for (const record of imports) await registerImportedFile(record);
     if (imports.length) emitChange();
   }).catch(error => { importsInitialized = undefined; throw error; });
@@ -169,12 +170,12 @@ export async function pickWebDemoFiles(options: { directory?: boolean } = {}) {
   return paths.length > 0 ? { root, paths } : null;
 }
 
-async function importFile(path: string, file: File, maxInputBytes: number) {
-  const kind = isDocumentMediaPath(path) ? "media" : "text";
+async function importFile(path: string, file: File, maxInputBytes: number, scientific = false) {
+  const kind = scientific && compressedName(file.name) ? "compressed" : isDocumentMediaPath(path) ? "media" : "text";
   if (file.size > maxInputBytes) throw new Error("File exceeds the browser import limit");
   if (kind === "media" && binaryFiles.size >= 32) throw new Error("Too many open documents");
   const text = kind === "text" ? await file.text() : undefined;
-  const record = await saveBrowserImport({ path, name: file.name, file, kind }, files.keys());
+  const record = await saveBrowserImport({ path, name: file.name, file, kind, ...(scientific ? { scientific: true } : {}) }, files.keys());
   await registerImportedFile(record, text);
   return record.path;
 }
@@ -182,6 +183,8 @@ async function importFile(path: string, file: File, maxInputBytes: number) {
 async function registerImportedFile(record: BrowserImport, text?: string) {
   const { path, file, kind } = record;
   if (files.has(path)) return;
+  // Scientific compressed originals are decoded by their import owner, not published as text.
+  if (kind === "compressed" && record.scientific) { registerFile(path, file.size); return; }
   if (kind === "media") binaryFiles.set(path, file);
   else {
     const restored = text ?? await file.text();
@@ -190,11 +193,11 @@ async function registerImportedFile(record: BrowserImport, text?: string) {
   registerFile(path, file.size);
 }
 
-export async function registerDroppedBrowserFiles(selected: File[], maxInputBytes: number) {
+export async function registerDroppedBrowserFiles(selected: File[], maxInputBytes: number, options: { scientific?: boolean } = {}) {
   const paths: string[] = [], errors: string[] = [];
   for (const file of selected) {
     try {
-      paths.push(await importFile(`/OpenedFiles/${cleanSegment(file.name)}`, file, Math.min(maxInputBytes, BROWSER_IMPORT_MAX_FILE_BYTES)));
+      paths.push(await importFile(`/OpenedFiles/${cleanSegment(file.name)}`, file, Math.min(maxInputBytes, BROWSER_IMPORT_MAX_FILE_BYTES), options.scientific));
     } catch (error) { errors.push(`${file.name}: ${error instanceof Error ? error.message : String(error)}`); }
   }
   if (paths.length) emitChange();
