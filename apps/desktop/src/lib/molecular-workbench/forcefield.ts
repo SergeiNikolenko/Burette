@@ -15,7 +15,7 @@ export function createForceField(molecule: Molecule, model: MolecularForceField 
   }
   if (model === 'UFF') return uffField(molecule);
   const field = new ForceFieldMMFF94(molecule, model);
-  if (!Number.isFinite(field.getTotalEnergy())) throw new Error(`${model} cannot evaluate this structure.`);
+  if (!Number.isFinite(field.getTotalEnergy())) throw new Error(`${model} energy is not finite for the current coordinates. Change the geometry or generate a 3D conformer.`);
   return field;
 }
 
