@@ -57,7 +57,7 @@ export function useAppMolstarActionSenders({
   }, [activeDocument, activeViewerIframeForDocument, documents]);
 
   const runStructureViewerAction = useCallback((document: ViewerDocument, action: StructureViewerAction, options?: StructureViewerActionOptions) => {
-    if (action.type === "geometry_binding" || action.type === "update_geometry") return requestViewerAction(document.id, action, 15000, options?.signal, { target: options?.target });
+    if (action.type === "show_scalar_field" || action.type === "geometry_binding" || action.type === "update_geometry") return requestViewerAction(document.id, action, 15000, options?.signal, { target: options?.target });
     // A collection shows its molecules as cards: a composition row selects and
     // reveals the card rather than asking for a structure viewer.
     if (document.renderer === "grid2d" && (action.type === "set_sdf_molecule" || action.type === "clear_selection")) {

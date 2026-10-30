@@ -174,3 +174,34 @@ test('typed binding read forwards its abort signal without changing the fourth t
     expect(f.sent).toHaveLength(1);
   } finally { await f.close(); }
 });
+
+test('scalar field sender preserves captured scene identity and forwards cancellation', async () => {
+  const f = await fixture();
+  const field = { type: 'show_scalar_field', label: 'Density', cube: '', isovalue: 0.02, signed: false, notify: false } as const;
+  try {
+    const target = captureViewerActionTarget(f.doc.id)!;
+    const abort = new AbortController();
+    const pending = Promise.resolve(f.api.runStructureViewerAction(f.doc, field, { target, signal: abort.signal }));
+    expect(f.sent[0].body.action).toEqual(field);
+    abort.abort(); await expect(pending).rejects.toThrow('cancelled');
+    f.reply(f.sent[0].body.id, { ok: true });
+    f.frame.dataset.sourcePreviewRevision = 'new-source';
+    await expect(Promise.resolve(f.api.runStructureViewerAction(f.doc, field, { target }))).rejects.toThrow('viewer changed');
+    expect(f.sent).toHaveLength(1);
+  } finally { await f.close(); }
+});
+
+test('scalar field ACK rejects a changed source and read-only transition', async () => {
+  for (const change of ['source', 'readOnly']) {
+    const f = await fixture();
+    try {
+      const field = { type: 'show_scalar_field', label: 'Orbital', cube: '', isovalue: 0.03, signed: true, notify: false } as const;
+      const target = captureViewerActionTarget(f.doc.id)!;
+      const pending = Promise.resolve(f.api.runStructureViewerAction(f.doc, field, { target }));
+      const result = pending.then(() => 'unexpected success', (error: Error) => error.message);
+      if (change === 'source') f.frame.dataset.sourcePreviewRevision = 'replacement'; else f.frame.dataset.readOnly = 'true';
+      f.reply(f.sent[0].body.id, { ok: true });
+      expect(await result).toMatch(/viewer changed|interactive/);
+    } finally { await f.close(); }
+  }
+});

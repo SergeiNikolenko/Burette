@@ -25,6 +25,7 @@ export type CompositionSceneEdit =
   | { operation: "color"; value: string };
 
 export type StructureViewerAction =
+  | { type: "show_scalar_field"; label: string; cube: string; isovalue: number; signed: boolean; alpha?: number; notify: false }
   | { type: "geometry_binding"; label: string; notify: false }
   | { type: "update_geometry"; label: string; text: string; lease: string; notify: false }
   // Model-local atom_index values, matching the viewer selection contract.

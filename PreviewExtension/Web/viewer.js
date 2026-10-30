@@ -687,6 +687,7 @@
   }
 
   let geometryPreviewRequest = 0;
+  let scalarFieldRequest = 0;
   let geometryPreviewLoading = null;
   async function executeBuretteAgentAction(action) {
     const type = String(action?.type || '');
@@ -842,6 +843,32 @@
         await geometryPreviewLoading;
       }
       return window.BuretteGeometryPreview.update(viewer, action, owner);
+    }
+    if (type === 'show_scalar_field') {
+      const request = ++scalarFieldRequest, viewer = activeMolstarViewer();
+      const sourceCell = () => {
+        const plugin = viewer?.plugin;
+        const volumes = plugin?.managers.volume.hierarchy.current.volumes.filter(volume => {
+          for (let cell = volume.cell; cell;) {
+            if (cell.transform.tags?.includes('burette-scalar-field')) return false;
+            const parent = cell.transform.parent;
+            if (parent === cell.transform.ref) break;
+            cell = plugin.state.data.cells.get(parent);
+          }
+          return true;
+        }) || [];
+        const roots = plugin?.managers.structure.hierarchy.current.structures;
+        return volumes.length === 1 ? volumes[0].cell : !volumes.length && roots?.length === 1 ? roots[0].cell : null;
+      };
+      const cell = sourceCell(), data = cell?.obj?.data, version = cell?.transform.version;
+      const current = () => Boolean(data && !viewer.plugin.disposed && request === scalarFieldRequest && viewer === activeMolstarViewer()
+        && sourceCell() === cell && cell.obj?.data === data && cell.transform.version === version);
+      if (!current()) throw new Error('Open a single structure before displaying a scalar field.');
+      if (!window.BuretteGeometryPreview) {
+        if (!geometryPreviewLoading) geometryPreviewLoading = loadScript(runtimeURL('BuretteGeometryPreviewURL', './geometry-preview.js'), 'geometry preview', 10000).finally(() => { geometryPreviewLoading = null; });
+        await geometryPreviewLoading;
+      }
+      return window.BuretteGeometryPreview.field(viewer, action, current);
     }
     if (type === 'preview_geometry') {
       const request = ++geometryPreviewRequest;

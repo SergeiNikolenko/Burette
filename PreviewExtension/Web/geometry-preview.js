@@ -88,5 +88,99 @@
     if (!geometry) throw new Error('Reload a runtime supporting live Geometry.');
     return geometry.update(viewer?.plugin, action.text, owner);
   }
-  window.BuretteGeometryPreview = { apply, update };
+  const fields = new WeakMap();
+
+  // This private route accepts one generated Gaussian cube, in bohr, not arbitrary multi-field files.
+  function validateField(action) {
+    if (typeof action.cube !== 'string' || action.cube.length > 32 * 1024 * 1024) throw new Error('Scalar field exceeds 32 MiB.');
+    if (!action.cube) return;
+    if (!Number.isFinite(action.isovalue) || action.isovalue <= 0) throw new Error('The isovalue must be positive.');
+    const lines = action.cube.split(/\r\n?|\n/u);
+    const number = value => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(value) ? Number(value) : NaN;
+    const row = index => (lines[index] || '').trim().split(/\s+/u).map(number);
+    const header = row(2), atoms = header[0], axes = [row(3), row(4), row(5)];
+    const size = axes.reduce((n, axis) => n * axis[0], 1);
+    if (!Number.isInteger(atoms) || atoms < 1 || atoms > 10000 || (header[4] !== undefined && header[4] !== 1)
+      || header.length < 4 || !header.every(Number.isFinite) || axes.some(axis => axis.length !== 4 || !axis.every(Number.isFinite)
+        || !Number.isInteger(axis[0]) || axis[0] < 1) || !Number.isSafeInteger(size) || size > 1000000) throw new Error('Invalid or oversized scalar field header.');
+    for (let i = 0; i < atoms; i++) {
+      const atom = row(6 + i);
+      if (atom.length !== 5 || !atom.every(Number.isFinite)) throw new Error('Invalid scalar field atom.');
+    }
+    const values = lines.slice(6 + atoms).join(' ').trim().split(/\s+/u);
+    if (values.length !== size || values.some(value => !Number.isFinite(Math.fround(number(value))))) throw new Error('Invalid scalar field values.');
+  }
+
+  function field(viewer, action, isCurrent) {
+    const plugin = viewer?.plugin;
+    const stale = () => Object.assign(new Error('The scalar field source or request changed.'), { name: 'AbortError' });
+    if (!plugin || typeof isCurrent !== 'function' || !isCurrent()) return Promise.reject(stale());
+    validateField(action);
+    if (plugin.state.data.burettePreconditionVersion !== 1) throw new Error('Reload a runtime supporting conditional scene updates.');
+    let state = fields.get(plugin);
+    if (!state) {
+      state = { revision: 0, ref: null, owner: null, expectedVersion: null, expectedCell: null, retiring: false, pending: Promise.resolve() }; fields.set(plugin, state);
+      // A single stable transient branch remains owned across source Undo/Redo; no per-grid history is retained.
+      plugin.state.data.events.changed.subscribe(() => {
+        const cell = state.ref && plugin.state.data.cells.get(state.ref);
+        if (state.retiring || !cell?.transform.tags?.includes('burette-scalar-field')
+          || (state.owner?.() && cell.transform.version === state.expectedVersion && (!state.expectedCell || state.expectedCell === cell))) return;
+        state.retiring = true;
+        const retire = async () => {
+          if (plugin.disposed || plugin.state.data.cells.get(state.ref) !== cell) return;
+          await plugin.runTask(plugin.state.data.updateTree(plugin.state.data.build().delete(state.ref), {
+            buretteKeepHistory: true, burettePrecondition: () => { if (plugin.state.data.cells.get(state.ref) !== cell) throw stale(); },
+          }));
+        };
+        state.pending = state.pending.catch(() => {}).then(retire).finally(() => { state.retiring = false; });
+        void state.pending.catch(() => {});
+      });
+    }
+    state.owner = isCurrent;
+    state.expectedVersion = null; state.expectedCell = null;
+    const revision = ++state.revision;
+    const assertCurrent = () => { if (plugin.disposed || revision !== state.revision || !isCurrent()) throw stale(); };
+    const commit = builder => plugin.runTask(plugin.state.data.updateTree(builder, { burettePrecondition: assertCurrent, buretteKeepHistory: true }));
+    const run = state.pending.catch(() => {}).then(async () => {
+      assertCurrent();
+      const previous = state.ref;
+      if (previous && plugin.state.data.cells.has(previous)) await commit(plugin.state.data.build().delete(previous));
+      assertCurrent();
+      if (!action.cube) return;
+      const transforms = window.molstar?.lib?.plugin?.StateTransforms;
+      if (!transforms?.Data?.RawData || !transforms.Data.ParseCube || !transforms.Volume?.VolumeFromCube || !transforms.Representation?.VolumeRepresentation3D) throw new Error('This viewer cannot render scalar fields.');
+      const builder = plugin.state.data.build();
+      const data = builder.toRoot().apply(transforms.Data.RawData, { data: action.cube, label: String(action.label || 'Scalar field').slice(0, 128) }, { ...(state.ref ? { ref: state.ref } : {}), tags: ['burette-scalar-field'] });
+      state.ref = data.ref;
+      state.expectedVersion = builder.currentTree.transforms.get(data.ref).version;
+      const volume = data.apply(transforms.Data.ParseCube).apply(transforms.Volume.VolumeFromCube);
+      const alpha = Number.isFinite(action.alpha) ? Math.min(1, Math.max(0.05, action.alpha)) : 0.6;
+      const surface = (value, color) => volume.apply(transforms.Representation.VolumeRepresentation3D, {
+        type: { name: 'isosurface', params: { isoValue: { kind: 'absolute', absoluteValue: value }, alpha } },
+        colorTheme: { name: 'uniform', params: { value: color } }, sizeTheme: { name: 'uniform', params: { value: 1 } },
+      });
+      surface(action.isovalue, 0x3b82f6);
+      if (action.signed !== false) surface(-action.isovalue, 0xef4444);
+      try {
+        await commit(builder);
+        assertCurrent();
+        const cell = plugin.state.data.cells.get(data.ref);
+        if (!cell || cell.transform.version !== state.expectedVersion) throw stale();
+        state.expectedCell = cell;
+        state.ref = data.ref;
+      } catch (error) {
+        // A source change during CPU representation work removes only this request's branch.
+        if (!plugin.disposed && plugin.state.data.cells.has(data.ref)) {
+          const cell = plugin.state.data.cells.get(data.ref);
+          await plugin.runTask(plugin.state.data.updateTree(plugin.state.data.build().delete(data.ref), {
+            buretteKeepHistory: true, burettePrecondition: () => { if (plugin.state.data.cells.get(data.ref) !== cell) throw stale(); },
+          }));
+        }
+        throw error;
+      }
+    });
+    state.pending = run;
+    return run.then(() => ({ ok: true }));
+  }
+  window.BuretteGeometryPreview = { apply, update, field };
 })();
