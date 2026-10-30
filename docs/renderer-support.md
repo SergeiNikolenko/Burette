@@ -124,6 +124,34 @@ reload/restoration acceptance remain pending. Packaged macOS, Finder Quick Look
 and iPhone acceptance remain separate; their file registration is unchanged by
 this browser import path.
 
+Vibrations is available through Compute and the command palette when the current
+scientific source has normal modes. IR and Raman use separate physical units;
+older ORCA output carrying only squared transition dipoles keeps its T² atomic
+units. Peak-height Gaussian curves and the supplemental sticks/area-normalized
+view remain distinct. Mode selection, live Mol* animation, frame-specific data,
+trajectory/displaced geometry and source CSV/JSON/Hessian exports share the
+current source owner. The external renderer retains its own animation path.
+
+Actual browser acceptance at `2ab996833985087d9e482097e510f3f16db45967`
+used an immutable build from that exact Git tree. The Gaussian water FCHK and
+ORCA 3.0.2 methane Hessian fixtures exercised Compute, command-palette focus,
+IR/Raman/T² selection, keyboard peak selection, axis editing and Animate/Stop.
+The water trajectory opened with 20 seekable frames; all exported trajectory
+and negative-displacement coordinates matched the original normal vectors to
+floating-point precision. CSV/JSON retained the source quantities, and all
+81 Hessian elements matched the packed source matrix. Original FCHK downloads
+remained byte-exact after animation and after another source was closed.
+Reduced motion prevented automatic animation while allowing explicit Animate.
+Light and dark themes at 760 pixels had no page-level horizontal overflow;
+closing a source with its panel hidden preserved the other open source.
+
+Focused checks are `test:vibrational-spectrum-ui`, `test:vibrations-panel`,
+`test:vibrations-owner`, `test:vibrations-activation` and
+`test:scientific-source-lifetime`. These browser observations do not establish
+packaged macOS, Quick Look, iPhone or external-renderer acceptance. The six
+additional spectral data/plot/reader foundations are separate from normal-file
+routing, scene persistence and their future user interfaces.
+
 Single native trajectories play through a registered Mol* animation using native
 `ModelFromTrajectory` transforms. Its relative stride uses a conservative 1/16-loop cap and coprime stride
 at saturation to avoid short-cycle absolute-time aliasing under slow rendering; target FPS describes source-frame
