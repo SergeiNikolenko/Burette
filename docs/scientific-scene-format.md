@@ -69,6 +69,13 @@ text and survive restore/resave. Graph snapshots map IDs through exact worker
 snapshot identities after an acknowledged source write. Every restored logical
 source adoption has a distinct owner identity, including repeated UUIDs, text and
 unknown (`null`) atom IDs; history and pending writes cannot cross that lifetime.
+Starting another host restore revokes the published source before its first await.
+The existing restore-generation record publishes a source only after validated adoption;
+pending, foreign, failed or cancelled restores never resurface an earlier identity.
+The earlier source object, unsaved editor history and Original remain retained under
+their existing close/replacement policies. Read owners capture both the generation and
+published source; repeated bytes, UUIDs and unknown IDs do not grant ownership.
+
 Worker provenance is validated even when atom IDs are unknown. External changed text
 without provenance has unknown IDs (`null`); elements/coordinates never infer IDs. When SDF metadata supplies atom IDs, they must agree with the manifest's order.
 Scientific registrations match exact revision text; repeated text selects the

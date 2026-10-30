@@ -9,12 +9,17 @@ import type { ViewerDocument } from "../../types";
 export type LogicalSource = { documentId: string; extension: "xyz" | "sdf" | "mol"; text: string };
 
 const logical = new Map<string, LogicalSource>();
+// A pending restore has no published source, even when an earlier source is retained.
+const restoreGenerations = new Map<string, { source: LogicalSource | null }>();
 const listeners = new Set<() => void>();
 const changed = () => listeners.forEach((listener) => listener());
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+export { subscribe as subscribeLogicalSources };
 
 export function logicalSourceFor(documentId: string | null | undefined) {
-  return documentId ? logical.get(documentId) ?? null : null;
+  if (!documentId) return null;
+  const source = logical.get(documentId);
+  return source && restoreGenerations.get(documentId)?.source === source ? source : null;
 }
 
 /** The logical source as a store snapshot, so a restore that completes after mount re-renders. */
@@ -24,7 +29,7 @@ export function useLogicalSource(documentId: string | null | undefined) {
 
 /** The extension of the text the document is edited as: its logical source, else its own. */
 export function sourceExtension(document: Pick<ViewerDocument, "id" | "extension">) {
-  return logical.get(document.id)?.extension ?? document.extension.replace(/^\./u, "").toLowerCase();
+  return logicalSourceFor(document.id)?.extension ?? document.extension.replace(/^\./u, "").toLowerCase();
 }
 
 // Durable identity: a document keeps one UUID for every scene saved from it, and a restored
@@ -108,16 +113,33 @@ export function adoptLogicalSource(source: LogicalSource, documentUuid: string, 
   plainIds.set(source.documentId, atomIds ? { elements: elements.join(" "), ids: atomIds } : { elements: "", ids: [] });
   if (source.extension === "mol") graphIds.set(source.documentId, { text: source.text, ids: atomIds });
   // Each adoption starts a new lifetime, even for the same bytes, UUID or input object.
-  logical.set(source.documentId, { ...source });
+  const owned = { ...source };
+  logical.set(source.documentId, owned);
+  const generation = restoreGenerations.get(source.documentId) ?? { source: null };
+  generation.source = owned;
+  restoreGenerations.set(source.documentId, generation);
   changed();
 }
 
 // A restore belongs to one open generation, even when a path reuses its runtime id.
-const restoreGenerations = new Map<string, object>();
 export function beginScienceSessionRestore(documentId: string) {
-  const generation = {};
+  const generation = { source: null };
   restoreGenerations.set(documentId, generation);
+  changed();
   return () => restoreGenerations.get(documentId) === generation;
+}
+
+/** Captures the published source lifetime; a pending restore can never grant a read owner. */
+export function captureLogicalSourceOwner(documentId: string) {
+  const generation = restoreGenerations.get(documentId), source = logicalSourceFor(documentId);
+  return () => restoreGenerations.get(documentId) === generation && logicalSourceFor(documentId) === source
+    && (!generation || source !== null);
+}
+
+/** A close may finish loading its own pending restore, but must never close a later one. */
+export function captureSourceCloseOwner(documentId: string) {
+  const generation = restoreGenerations.get(documentId), source = logicalSourceFor(documentId);
+  return () => restoreGenerations.get(documentId) === generation && (!source || logicalSourceFor(documentId) === source);
 }
 
 /** Drops what belongs to closed documents. Called with the open documents of the window. */
