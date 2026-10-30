@@ -36,6 +36,60 @@ Mol* interactive preview is used for:
   coordinate pairs (for example XTC/TRR next to a topology), and trajectories
   without a topology through synthetic topology generation
 
+### Scientific files in the browser
+
+Ordinary Open, project-folder selection and file drop classify scientific files
+through `lib/workbench/scientific-files.ts`. FCHK/FCH, Molden (`.molden`, `.molf`,
+`molden.input`), ORCA `.hess`, Cube/CUB, Z-matrix and `.qcschema` use their declared
+names. `.out`/`.log` require ORCA or Gaussian evidence in the first 64 KiB;
+`.json` requires a recognised QCSchema `schema_name` at the root. A nested schema
+field does not reroute unrelated JSON. Ordinary XYZ retains its normal structure
+route; the explicit scientific import function also accepts XYZ.
+
+The import uses the isolated `runReaderTask` parser. Scientific uploads and
+decoded text are bounded at 16 MiB; the explicit scientific batch accepts at
+most 16 files. Compressed classification inspects a bounded decoded prefix,
+then the actual bounded decoder and reader validate the full input. A stored
+scientific marker is a route hint, not permission to skip parsing. Recognised
+malformed input reports a named failure and never silently opens as bare text
+or geometry. Other readable files in the selection retain their own routes.
+
+The opened representation is editable XYZ with the supported parsed data
+attached to its document. The source owner reads the current XYZ even when its
+durable upload path ends in `.fchk`, `.molden`, `.json` or `.out`. Logical scene
+sources take priority. The uploaded Original is separate: its immutable name
+and bytes retain UTF-8 BOM, CRLF and, for compressed input, the outer compressed
+bytes. Browser originals persist in the bounded IndexedDB import store. Closing
+a document releases its live science/Original claim, not that stored upload;
+a fresh open reparses it. Geometry edits do not rewrite Original.
+
+Reopening an already live scientific document preserves its identity and draft.
+An in-flight preparation observes its exact source owner until publication: a
+newer same-path document publication or close invalidates the old result,
+including a transition back to no document. A later explicit reopen is a new
+request. Different paths can prepare independently. Cancellation and supersession release only the
+request's temporary normalized cache; successful publication transfers host
+text to the durable path and also releases that temporary entry.
+
+Focused source/consumer checks are:
+
+```bash
+vp run test:scientific-import
+vp run test:scientific-browser-open
+vp run test:scientific-source-representation
+vp run test:scientific-open-entrypoints
+vp run test:scientific-original
+```
+
+These cover real readers, source ownership, durable reopen, chooser/drop
+consumers and the Geometry/Original download component, including its compiled
+subscription. Header activation is a separate integration. End-to-end acceptance
+of this adopted workflow still requires an immutable Browser build with actual
+file selection/drop, editing, reload/reopen and byte-exact Original download.
+Earlier working-tree browser observations do not substitute for that check.
+Packaged macOS, Finder Quick Look and iPhone acceptance remain separate; their
+file registration is unchanged by this browser import path.
+
 Single native trajectories play through a registered Mol* animation using native
 `ModelFromTrajectory` transforms. Its relative stride uses a conservative 1/16-loop cap and coprime stride
 at saturation to avoid short-cycle absolute-time aliasing under slow rendering; target FPS describes source-frame
