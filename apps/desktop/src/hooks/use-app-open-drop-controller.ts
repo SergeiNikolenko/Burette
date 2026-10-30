@@ -1,3 +1,4 @@
+import type { ShellActions } from "../components/types";
 import { useDeepLinks } from "./use-deep-links";
 import { useAgentSession } from "./use-agent-session";
 import { useAppClipboard } from "./use-app-clipboard";
@@ -24,7 +25,7 @@ type OpenDockingStructureRecords = (
   ligandPaths: string[],
   records: StructureDragRecord[],
 ) => void | Promise<void>;
-type OpenStructureRecords = (records: StructureDragRecord[], directory?: string) => void | Promise<void | ViewerDocument[]>;
+type OpenStructureRecords = ShellActions["openStructureRecords"];
 type OpenKetcherWithStructures = (
   paths: string[],
   fragments?: Array<{ title: string; text: string }>,

@@ -1,3 +1,4 @@
+import type { ShellActions } from "../components/types";
 import { appendSceneDrop, expandSceneDropFolders } from "./workspace-scene-import";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
@@ -16,6 +17,8 @@ import { nativeFileDragPayload, nativeFileDragTabId } from "../lib/native-file-d
 import { parentDirectory } from "../lib/sidebar-projects";
 import { TAB_DRAG_MIME, hasStructureDrag, readStructureDragPayload, structureDragPayloadFromBrowserFiles, structureDragPayloadFromText, structureDragRecordsToFragments } from "../lib/structure-drag";
 import type { StructureDragPayload, StructureDragRecord } from "../lib/structure-drag";
+import { openScientificFiles } from "../lib/workbench/open";
+import { partitionScientificFiles } from "../lib/workbench/scientific-files";
 import { isTauriRuntime, trackTauriListener } from "../lib/tauri";
 
 type OpenDocuments = (
@@ -31,7 +34,7 @@ type OpenDockingDocument = (
   options?: { activePose?: number | null; sceneMode?: DockingSceneMode | null },
 ) => void | Promise<ViewerDocument | null>;
 type OpenDockingStructureRecords = (receptorPath: string, ligandPaths: string[], records: StructureDragRecord[]) => void | Promise<void>;
-type OpenStructureRecords = (records: StructureDragRecord[], directory?: string) => void | Promise<void | ViewerDocument[]>;
+type OpenStructureRecords = ShellActions["openStructureRecords"];
 type OpenKetcherWithStructures = (paths: string[], fragments?: Array<{ title: string; text: string }>) => void;
 type OpenFepSetupWorkspace = (request: FepSetupRequest) => void;
 type OpenDockPayload = (input: DockDropInput) => void | Promise<void>;
@@ -663,7 +666,12 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         }
       } else if (fileDrop && !isTauriRuntime() && event.dataTransfer.files.length > 0) {
         const files = Array.from(event.dataTransfer.files);
-        void structureDragPayloadFromBrowserFiles(files).then((result) => {
+        void (openStructureRecords ? partitionScientificFiles(files) : Promise.resolve({ scientific: [], other: files })).then(async ({ scientific, other }) => {
+          if (scientific.length > 0 && openStructureRecords) void openScientificFiles({ openStructureRecords, openPaths: openDocuments }, scientific).catch((error) => {
+            pushStatus("Browser file drop failed: " + (error instanceof Error ? error.message : String(error)), "error");
+          });
+          if (!other.length) return;
+          const result = await structureDragPayloadFromBrowserFiles(other);
           const nextPayload: StructureDragPayload = { ...result.payload, point };
           if (nextPayload.records.length > 0) {
             runDropAction(nextPayload, dropTarget, { kind: "finder" });
@@ -676,7 +684,7 @@ export function useOpenDrop(openDocuments: OpenDocuments, pushStatus: ReportStat
         pushStatus("Drop files into the installed app window to open them.");
       }
     },
-    [dropTargetForElement, hideDropFeedback, pushStatus, runDropAction, runFinderDropAction],
+    [dropTargetForElement, hideDropFeedback, openDocuments, openStructureRecords, pushStatus, runDropAction, runFinderDropAction],
   );
 
   const handleBrowserPaste = useCallback((event: React.ClipboardEvent<HTMLElement>) => {

@@ -1,6 +1,8 @@
 import { BROWSER_IMPORT_MAX_FILE_BYTES, listBrowserImports, saveBrowserImport, type BrowserImport } from "./browser-import-storage";
 import { isDocumentMediaPath, documentViewerExtensions } from "./file-routing";
-import { compressedName } from "./compressed-files/formats";
+import { COMPRESSED_FILE_ACCEPT, compressedName } from "./compressed-files/formats";
+import { pickBrowserFiles } from "./browser-file-picker";
+import { isScientificFile, SCIENTIFIC_FILE_ACCEPT, SCIENTIFIC_FILE_LIMIT } from "./workbench/scientific-files";
 import { demoLibraryFiles } from "./web-demo-library";
 import { standaloneDemoScenes } from "./web-demo-scenes";
 import kras from "../../../../samples/structures/proteins/7rpz.pdb?raw";
@@ -158,16 +160,20 @@ export async function pickWebDemoFiles(options: { directory?: boolean } = {}) {
     ? cleanSegment(selected[0]?.webkitRelativePath.split("/")[0] || "LocalProject")
     : "OpenedFiles";
   const root = `/${rootName}`;
-  const paths: string[] = [];
+  const paths: string[] = [], scientific: string[] = [], errors: string[] = [];
   for (const file of selected) {
-    if (file.size > MAX_FILE_BYTES) continue;
     const relativePath = options.directory ? file.webkitRelativePath : file.name;
-    const path = `${root}/${relativePath.split("/").slice(options.directory ? 1 : 0).map(cleanSegment).join("/")}`;
-    if (!path || path.endsWith("/")) continue;
-    paths.push(await importFile(path, file, MAX_FILE_BYTES));
+    try {
+      const isScientific = await isScientificFile(file);
+      const maxBytes = isScientific ? SCIENTIFIC_FILE_LIMIT : MAX_FILE_BYTES;
+      if (file.size > maxBytes) throw new Error(`larger than the ${isScientific ? "16 MiB" : "3 MB"} browser file limit`);
+      const path = `${root}/${relativePath.split("/").slice(options.directory ? 1 : 0).map(cleanSegment).join("/")}`;
+      if (!path || path.endsWith("/")) continue;
+      (isScientific && !options.directory ? scientific : paths).push(await importFile(path, file, maxBytes, isScientific));
+    } catch (error) { errors.push(`${relativePath || file.name}: ${error instanceof Error ? error.message : String(error)}`); }
   }
   emitChange();
-  return paths.length > 0 ? { root, paths } : null;
+  return { root, paths, scientific, errors };
 }
 
 async function importFile(path: string, file: File, maxInputBytes: number, scientific = false) {
@@ -224,15 +230,8 @@ function registerFile(path: string, byteCount: number) {
 }
 
 function selectFiles(directory: boolean) {
-  return new Promise<File[]>((resolve) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.multiple = true;
-    if (directory) input.setAttribute("webkitdirectory", "");
-    input.accept = [".pdb,.ent,.pdbqt,.pqr,.cif,.mmcif,.mcif,.sdf,.sd,.mol,.mol2,.xyz,.gro,.txt,.md,.log,.out,.json,.csv,.tsv", ...Array.from(documentViewerExtensions, extension => `.${extension}`)].join(",");
-    input.addEventListener("cancel", () => resolve([]), { once: true });
-    input.addEventListener("change", () => resolve(Array.from(input.files ?? [])), { once: true });
-    input.click();
+  return pickBrowserFiles({ multiple: true, directory,
+    accept: [".pdb,.ent,.pdbqt,.pqr,.cif,.mmcif,.mcif,.sdf,.sd,.mol,.mol2,.xyz,.gro,.txt,.md,.log,.out,.json,.csv,.tsv", SCIENTIFIC_FILE_ACCEPT, COMPRESSED_FILE_ACCEPT, ...Array.from(documentViewerExtensions, extension => `.${extension}`)].join(","),
   });
 }
 

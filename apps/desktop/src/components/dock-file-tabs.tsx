@@ -2,6 +2,8 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime } from "../lib/tauri";
 import { pickWebDemoFiles } from "../lib/web-demo-workspace";
+import { summarizeErrors } from "../lib/file-routing";
+import { toast } from "./ui/toast";
 import type { DockArea, DockFileEntry } from "../lib/dock";
 import { useSidebarStructureDrag } from "./sidebar/use-sidebar-structure-drag";
 import type { ShellActions, ShellViewState } from "./types";
@@ -26,8 +28,11 @@ export function DockFileTabs({ area, entries, activeKey, textViews, onTextView, 
   const choose = async () => {
     setOpening(true); setError(false);
     try {
-      const paths = isTauriRuntime() ? await invoke<string[]>("pick_open_targets") : (await pickWebDemoFiles())?.paths ?? [];
-      if (paths.length) await actions.openDockPayload({ area, tabKind: "files", payload: { paths, records: [] } });
+      const picked = isTauriRuntime() ? { paths: await invoke<string[]>("pick_open_targets"), scientific: [], errors: [] } : await pickWebDemoFiles();
+      if (picked?.errors.length) toast.add({ title: "Some files could not be opened", description: summarizeErrors(picked.errors), type: "error" });
+      if (picked?.paths.length) await actions.openDockPayload({ area, tabKind: "files", payload: { paths: picked.paths, records: [] } });
+      // Quantum outputs open as their own documents, as from the main Open.
+      if (picked?.scientific.length) await actions.openPaths(picked.scientific);
     } catch { setError(true); }
     finally { setOpening(false); }
   };

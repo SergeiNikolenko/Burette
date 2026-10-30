@@ -6,6 +6,7 @@ import { isTauriRuntime } from "../lib/tauri";
 import { fetchStructureText } from "../lib/structure-download";
 import type { RecentStructure } from "../types";
 import { pickWebDemoFiles } from "../lib/web-demo-workspace";
+import { summarizeErrors } from "../lib/file-routing";
 
 type PushStatus = (message: string, kind?: "info" | "success" | "error", details?: string[]) => void;
 type PushErrorStatus = (error: unknown, prefix?: string, details?: string[]) => void;
@@ -51,15 +52,19 @@ export function useAppOpenActions({
 
   const chooseFiles = useCallback(async () => {
     try {
-      const selection = isTauriRuntime()
-        ? await invoke<string[]>("pick_open_targets")
-        : (await pickWebDemoFiles())?.paths ?? [];
+      if (!isTauriRuntime()) {
+        const picked = await pickWebDemoFiles();
+        if (picked?.errors.length) pushStatus(summarizeErrors(picked.errors), "error", picked.errors);
+        await openPaths([...(picked?.paths ?? []), ...(picked?.scientific ?? [])]);
+        return;
+      }
+      const selection = await invoke<string[]>("pick_open_targets");
       const paths = Array.isArray(selection) ? selection : selection ? [selection] : [];
       await openPaths(paths);
     } catch (error) {
       pushErrorStatus(error, "Open failed");
     }
-  }, [openPaths, pushErrorStatus]);
+  }, [openPaths, pushErrorStatus, pushStatus]);
 
   const fetchPdbStructure = useCallback(async (input: string) => {
     const pdbId = normalizePdbId(input);
