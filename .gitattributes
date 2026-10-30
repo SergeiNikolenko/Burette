@@ -19,3 +19,7 @@ patches/react-resizable-panels@4.14.8.source.patch whitespace=-blank-at-eol
 
 # Preserve the pinned upstream libmsym license, including its final blank line.
 compute/symmetry-wasm/LIBMSYM_LICENSE.txt -text whitespace=-blank-at-eof
+
+# Keep reviewed upstream spectrum fixture and license bytes exact.
+tests/fixtures/quantum/orca-3.0.2-methane.hess -text whitespace=-blank-at-eol,-blank-at-eof
+tests/fixtures/quantum/opan-LICENSE.txt -text whitespace=-blank-at-eof
