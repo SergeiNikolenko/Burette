@@ -150,7 +150,7 @@
     "test:geometry-frame-retention": "bun test tests/test-geometry-source-session.test.tsx && bun test tests/test-geometry-frame-retention.test.tsx",
     "test:resizable-panels": "bun test ./tests/test-resizable-pixel-width.test.tsx && bun test ./tests/test-resizable-lifecycle.test.tsx && bun test ./tests/test-resizable-deferred-mount.test.tsx && bun test ./tests/test-resizable-keyboard.test.tsx && bun test ./tests/test-resizable-pointer.test.tsx && bun test ./tests/test-resizable-events.test.tsx",
     "typecheck:resizable-panels": "tsc --noEmit -p tests/tsconfig.resizable-panels.json",
-    "test:zmatrix-draft": "bun test tests/test-zmatrix-coupled-optimization.test.ts"
+    "test:zmatrix-draft": "bun test tests/test-zmatrix-coupled-optimization.test.ts tests/test-zmatrix-optimization.test.ts"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
