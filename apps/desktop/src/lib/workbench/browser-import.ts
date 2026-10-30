@@ -4,17 +4,25 @@ import { isExplicitBrowserDevServerPath } from "../browser-dev-paths";
 import { deleteBrowserDevVirtualTextDocument, openBrowserDevTextDocument, writeBrowserDevVirtualTextDocument } from "../browser-dev-documents";
 import { openScientificFiles } from "./open";
 import { isScientificFile } from "./scientific-files";
+import { readServerScientificFile } from "./server-scientific-file";
 
 /** Reparse a durable original on every fresh open; its generated geometry keeps the durable tab path. */
 export async function openStoredScientificFile(path: string, preferences: ViewerPreferences,
   adopt: (document: ViewerDocument) => void, shouldApply: () => boolean): Promise<ViewerDocument[] | null> {
   if (!shouldApply()) return [];
-  if (isExplicitBrowserDevServerPath(path)) return null;
-  const original = await readBrowserImport(path);
-  if (!shouldApply()) return [];
-  if (!original) return null;
-  const file = new File([original.file], original.name, { type: original.file.type });
-  if (!original.scientific && !await isScientificFile(file)) return null;
+  let file: File;
+  if (isExplicitBrowserDevServerPath(path)) {
+    const selected = await readServerScientificFile(path, shouldApply);
+    if (!shouldApply()) return [];
+    if (!selected) return null;
+    file = selected;
+  } else {
+    const original = await readBrowserImport(path);
+    if (!shouldApply()) return [];
+    if (!original) return null;
+    file = new File([original.file], original.name, { type: original.file.type });
+    if (!original.scientific && !await isScientificFile(file)) return null;
+  }
   const opened: ViewerDocument[] = [];
   if (!shouldApply()) return opened;
   await openScientificFiles({ openStructureRecords: async (records) => {

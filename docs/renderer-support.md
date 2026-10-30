@@ -54,6 +54,15 @@ scientific marker is a route hint, not permission to skip parsing. Recognised
 malformed input reports a named failure and never silently opens as bare text
 or geometry. Other readable files in the selection retain their own routes.
 
+Explicit local server selections (`devFiles`, authorized workspace paths, and
+selected folders) use the same scientific parser through the existing authenticated
+`/@fs/` route. The client reads at most 16 MiB, checks stream length even when
+headers are absent or inaccurate, and discards stale selections before publication.
+This does not authorize arbitrary URLs or filesystem paths and does not change
+server allow-roots. Non-scientific logs and JSON keep their ordinary routes.
+Server originals retain their selected filename, bytes and compressed wrapper;
+they are read again on a fresh open rather than copied into the browser import store.
+
 The opened representation is XYZ with the supported parsed data
 attached to its document. The source owner reads the current XYZ even when its
 durable upload path ends in `.fchk`, `.molden`, `.json` or `.out`. Logical scene
@@ -76,6 +85,7 @@ Focused source/consumer checks are:
 ```bash
 vp run test:scientific-import
 vp run test:scientific-browser-open
+vp run test:scientific-server-startup
 vp run test:scientific-source-representation
 vp run test:scientific-open-entrypoints
 vp run test:scientific-original

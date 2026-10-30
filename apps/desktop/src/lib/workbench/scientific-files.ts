@@ -33,6 +33,12 @@ export const SCIENTIFIC_FILE_ACCEPT = ".fchk,.fch,.molden,.molf,.input,.hess,.cu
 /** The scientific parser reads at most 16 MiB of text. */
 export const SCIENTIFIC_FILE_LIMIT = 16 * 1024 * 1024;
 
+/** A name that can contain a scientific input; output/log/json still require content recognition. */
+export function mayBeScientificFile(fileName: string) {
+  const name = compressedName(fileName)?.innerName ?? fileName;
+  return BY_NAME.test(name) || OUTPUT.test(name);
+}
+
 // A compressed output is recognised by the file inside it: water.fchk.gz, run.out.xz.
 export async function isScientificFile(file: Pick<File, "name" | "slice">) {
   const compressed = compressedName(file.name);
