@@ -79,5 +79,6 @@ emcmake cmake -S "$source_worktree" -B "$build_root" \
 cmake --build "$build_root" --target Burette_rdkit_conformer --parallel "${BURETTE_BUILD_PARALLEL:-2}"
 install -m 0644 "$build_root/Code/MinimalLib/Burette_rdkit_conformer.js" "$output_root/"
 install -m 0644 "$build_root/Code/MinimalLib/Burette_rdkit_conformer.wasm" "$output_root/"
+install -m 0644 "$adapter_root/Burette_rdkit_conformer.d.ts" "$output_root/"
 
 echo "Built pinned RDKit conformer extractor in $output_root"

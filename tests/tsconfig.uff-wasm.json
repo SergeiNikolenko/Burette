@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "checkJs": false
+  },
+  "files": [
+    "fixtures/uff-module-contract.ts",
+    "../apps/desktop/src/lib/molecular-workbench/uff-wasm.ts"
+  ],
+  "include": []
+}

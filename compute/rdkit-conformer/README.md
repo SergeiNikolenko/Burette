@@ -41,6 +41,11 @@ the native Metal ABI. Nonbonded terms cover all intrafragment graph pairs at
 particular input conformer's coordinates. `BMFX` is decoded and validated by
 Rust before any GPU dispatch; it is not folded into the conformer EnginePack.
 
+`Burette_rdkit_conformer.d.ts` is the authored TypeScript contract for the
+bindings in `jswrapper.cpp` and the pinned Emscripten factory. `build-wasm.sh`
+copies it beside the generated JavaScript; declaration changes do not require
+recompiling the unchanged JavaScript or WASM.
+
 `generate-mmff-parity-fixtures.py` uses only pinned RDKit `2025.03.4` as a
 reference-oracle dependency and freezes unoptimized coordinates plus initial
 and converged MMFF94/MMFF94s energies for twelve molecules.

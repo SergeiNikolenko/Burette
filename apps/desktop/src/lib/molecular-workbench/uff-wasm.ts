@@ -1,6 +1,5 @@
 // Explicit transport adapter for the pinned, worker-only RDKit UFF module.
-// @ts-expect-error generated pinned RDKit module has no authored declarations
-import initializeExtractor from "../../../../../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js";
+import initializeExtractor, { type RDKitConformerModule, type UffEvaluatorContext } from "../../../../../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js";
 
 const REVISION = "Release_2025_03_4@276b5a662302c6a548ac4f1363c066f3258e3a20";
 const MAXIMUM_INPUT_BYTES = 2 * 1024 * 1024;
@@ -9,26 +8,13 @@ const wasmUrl = new URL(
   import.meta.url,
 ).href;
 
-type NativeEvaluation = { energyKcalMol: number; gradient: Float64Array; error?: string };
-type NativeContext = {
-  atom_count(): number;
-  evaluate(coordinates: Float64Array): NativeEvaluation;
-  delete(): void;
-};
-type UffModule = {
-  rdkit_source_revision(): string;
-  uff_evaluator_abi_version(): number;
-  create_uff_evaluator(molblock: string): { context?: NativeContext; error?: string };
-  compute_gasteiger_charges(molblock: string): { charges?: Float64Array; error?: string };
-};
-
 export type UffWasmEvaluator = {
   readonly atomCount: number;
   evaluate(coordinates: Float64Array): { energyKcalMol: number; gradient: Float64Array };
   dispose(): void;
 };
 
-let module: UffModule | undefined;
+let module: RDKitConformerModule | undefined;
 let loading: Promise<void> | undefined;
 
 export function prepareUffWasm(): Promise<void> {
@@ -39,7 +25,7 @@ export function prepareUffWasm(): Promise<void> {
       const loaded = await initializeExtractor({
         locateFile: () => wasmUrl,
         wasmBinary: new Uint8Array(await response.arrayBuffer()),
-      }) as UffModule;
+      });
       if (loaded.rdkit_source_revision() !== REVISION
         || typeof loaded.uff_evaluator_abi_version !== "function"
         || loaded.uff_evaluator_abi_version() !== 1) {
@@ -62,7 +48,7 @@ export function createUffWasmEvaluator(molblock: string): UffWasmEvaluator {
   }
   const result = module.create_uff_evaluator(molblock);
   if (result.error || !result.context) throw new Error(result.error || "Cannot construct UFF.");
-  let context: NativeContext | undefined = result.context;
+  let context: UffEvaluatorContext | undefined = result.context;
   const atomCount = context.atom_count();
   return {
     atomCount,
@@ -84,7 +70,7 @@ export function createUffWasmEvaluator(molblock: string): UffWasmEvaluator {
         || evaluated.gradient.some((value) => !Number.isFinite(value))) {
         throw new Error("UFF returned a non-finite energy or gradient.");
       }
-      return { energyKcalMol: evaluated.energyKcalMol, gradient: evaluated.gradient };
+      return { energyKcalMol: evaluated.energyKcalMol!, gradient: evaluated.gradient };
     },
     dispose() {
       context?.delete();

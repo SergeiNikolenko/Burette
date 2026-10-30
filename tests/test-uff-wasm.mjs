@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import initialize from '../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.js';
 import ts from 'typescript-compiler-api';
 
+assert.equal(readFileSync(new URL('../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.d.ts', import.meta.url), 'utf8'),
+  readFileSync(new URL('../compute/rdkit-conformer/Burette_rdkit_conformer.d.ts', import.meta.url), 'utf8'), 'shipped declarations match their authored build source');
+
 const fixture = JSON.parse(readFileSync(new URL('../compute/rdkit-conformer/fixtures/uff-rdkit-2025.03.4.json', import.meta.url)));
 const wasmBinary = readFileSync(new URL('../PreviewExtension/Web/rdkit-conformer/Burette_rdkit_conformer.wasm', import.meta.url));
 const start = performance.now();
