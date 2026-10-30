@@ -80,6 +80,7 @@ const actions = {
   }),
 };
 let controller;
+let afterAdmission = null;
 const sourceErrors = [];
 // The right dock shows one tab at a time: Geometry, or the source Text wired as the dock wires it.
 function Fixture({ document, tab = "geometry" }) {
@@ -89,7 +90,10 @@ function Fixture({ document, tab = "geometry" }) {
   const content = session?.content ?? readBrowserDevVirtualTextDocument(document.path);
   const text = { id: document.id, path: document.path, title: document.title, extension: document.extension, language: "text", byteCount: content.length, content, truncated: false };
   return (
-    <SourceEditingProvider value={controller}>
+    <SourceEditingProvider value={afterAdmission ? { ...controller, beginEditing: async (...args) => {
+      const callback = afterAdmission; afterAdmission = null;
+      await controller.beginEditing(...args); await callback?.();
+    } } : controller}>
       {tab === "text" ? (
         <TextFileViewer document={text} sourceEditing={{ sessionId: session?.sessionId, editable: Boolean(session?.editable), content, status: "", dirty: Boolean(session?.dirty), saving: false,
           onChange: (next) => controller.updateDraft(document, next) }} />
@@ -418,4 +422,20 @@ test("independent review: an already mounted Text editor resets for a replacemen
     let didUndo; await act(async () => { didUndo = undo(reopened); });
     assert.deepEqual({depth:undoDepth(reopened.state),didUndo,text:current(document)}, {depth:0,didUndo:false,text:changed});
   } finally {window.confirm=confirm;await view.unmount();}
+});
+
+for (const kind of ["zmat", "xyz"]) test(`a ${kind} gesture cannot overwrite a source recovered during admission`, async () => {
+  const document = kind === "zmat" ? await openWater() : await openXyz();
+  const view = await mount(document), baseline = current(document);
+  const lines = baseline.trimEnd().split("\n"), atom = lines[3].trim().split(/\s+/u);
+  atom[1] = String(Number(atom[1]) + 0.2); lines[3] = atom.join(" ");
+  const recovered = lines.join("\n") + "\n";
+  try {
+    afterAdmission = async () => { controller.updateDraft(document, recovered, { previewApplied: true }); };
+    await view.render(document);
+    await press(view.host, kind === "zmat" ? "Variable R" : "Bond of H2, Å", "ArrowUp");
+    assert.equal(current(document), recovered, "the recovered revision owns the source after admission");
+    assert.equal(controller.sessionForDocument(document).dirty, true);
+    assert.equal(disabled(view.host, "Undo"), true, "the obsolete gesture creates no local Undo entry");
+  } finally { afterAdmission = null; await view.unmount(); }
 });

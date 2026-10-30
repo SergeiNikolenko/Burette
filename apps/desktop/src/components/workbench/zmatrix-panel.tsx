@@ -174,6 +174,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
       if (!unchanged()) return false;
       // Opening reports its own failure and resolves without a session.
       if (sourceEditing && !sourceEditing.sessionForDocument(document)) throw new Error("The source could not be opened for editing.");
+      if (sourceEditing && sourceEditing.sessionForDocument(document)?.content !== fromText) throw new Error("The source changed. Try the edit again.");
       if (reloads) return await reload(target, record, fromText, unchanged);
       await live.commit(runtimeText(nextText), binding.text);
       shown = true;

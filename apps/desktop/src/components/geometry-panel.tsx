@@ -237,6 +237,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
       // Opening reports its own failure and resolves without a session.
       const started = sourceEditing ? sourceEditing.sessionForDocument(document) : null;
       if (sourceEditing && !started) throw new Error("The source could not be opened for editing.");
+      if (started && (logical ? started.content : rendererXyzText(started.content)) !== shownText) throw new Error("The source changed. Try the edit again.");
       await live.commit(runtimeText, shownText);
       shown = true;
       if (currentLifetime !== lifetime.current) return false;
