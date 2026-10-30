@@ -266,6 +266,8 @@ that browser tab's sessionStorage. Reload restores only paths already committed
 to the bounded browser-import IndexedDB store, after its file registry is ready.
 Scientific originals are reparsed through the normal open path, retaining Original
 bytes and creating fresh scientific ownership; renderer leases are never restored.
+The `agentLayout=focus` layout is a first-start default. An existing ordinary
+browser session retains its chosen sidebar and dock visibility during reload.
 A fresh browser tab has its own workspace. Native, embedded MCP, hosted widgets,
 web demo, explicit startup paths, global settings and recent files retain their
 existing storage policies. No saved path grants server filesystem access.
@@ -276,3 +278,9 @@ open closed before publication. `vp run check:browser-session-restore` checks th
 imported source and test types. Actual browser reload remains a separate check.
 This restores committed imports, not unsaved source edits: the current source-draft
 recovery flow holds retired drafts in memory and does not persist them across reload.
+
+Browser acceptance at `25fc8c40` used a normal file chooser without `devFiles`:
+Gaussian FCHK reloaded with all three vibration modes, unchanged Original bytes,
+selected Vibrations dock, and the chosen camera. Both open and closed panel states
+survived same-tab reload. This is browser agent-shell evidence only; edited-draft
+recovery and packaged runtimes require their own checks.
