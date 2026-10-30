@@ -66,3 +66,18 @@ For an application change, also run the desktop TypeScript check and build, then
 verify the actual browser shell: resize wide/narrow/wide, reopen after Settings,
 collapse/expand, keyboard resize, and pointer drag. Component tests and build
 results do not replace that browser acceptance.
+
+## Browser acceptance
+
+The compiled browser shell at source revision
+`f6e4419fb600a03e7789a5b57267db6e60e8181c` was exercised with a molecular
+file in both light and dark themes. The right dock retained its 360-pixel width
+through 1280 → 760 → 1280 viewport changes, collapse/reopen, and a Settings
+round trip while the workspace was hidden. Keyboard resizing changed it to
+approximately 424 pixels; that width survived another viewport change. A pointer
+drag reduced it to approximately 364 pixels, which remained stable after returning
+to the wide viewport and switching themes. At 760 pixels the document had no
+horizontal overflow, and the browser console reported no errors.
+
+This verifies the browser pane lifecycle for that fixed build. Packaged macOS,
+Quick Look, iPhone, and unrelated workbench flows require their own acceptance.

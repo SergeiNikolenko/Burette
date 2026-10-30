@@ -66,7 +66,11 @@ from frame 1 to 2. Its 250-step run correctly reported **Not converged**.
 Escape closed Properties and returned focus to Calculate.
 
 Light/dark and 760/1280-pixel inspection exposed a pane-resize defect when
-constraints re-register. Initial numeric-field screenshots also caught incomplete
-painting, but matched settled repeats displayed all digits correctly; no renderer
-workaround was accepted on those transient images. Visual acceptance remains partial. Full Avogadro parity and packaged macOS, Quick Look and iPhone
-acceptance remain open; browser results cover their own runtime only.
+constraints re-register. The dependency fix subsequently passed the fixed-build
+[resizable panel browser acceptance](react-resizable-panels-patch.md#browser-acceptance),
+including hidden Settings transitions, collapse/reopen, keyboard resizing and
+pointer drag. Initial numeric-field screenshots also caught incomplete painting,
+but settled repeats displayed all digits correctly; no renderer workaround was
+accepted on those transient images. Full Avogadro parity and packaged macOS,
+Quick Look and iPhone acceptance remain open; browser results cover their own
+runtime only.
