@@ -1,0 +1,275 @@
+.geometry-panel {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  padding-top: 8px;
+  gap: 6px;
+}
+.dock-panel:has(.geometry-panel):focus-within > .dock-panel-inner,
+.dock-panel-body:has(> .geometry-panel):focus:not(:focus-visible) {
+  outline: none;
+}
+.geometry-panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.geometry-panel-error {
+  margin: 0;
+  color: var(--color-text-danger);
+  font-size: 12px;
+}
+.geometry-table {
+  width: 100%;
+  /* Keep numeric values readable; narrower docks scroll inside their content. */
+  min-width: 416px;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.geometry-table th {
+  font-weight: 500;
+  text-align: left;
+  white-space: nowrap;
+}
+.geometry-table thead th {
+  position: sticky;
+  top: -8px;
+  z-index: 1;
+  padding: 4px 4px 6px;
+  background: var(--color-surface);
+  color: var(--text-secondary);
+}
+.geometry-table thead th:first-child {
+  width: 44px;
+}
+.geometry-table tbody th {
+  padding: 0 4px;
+}
+.geometry-table td {
+  padding: 1px 2px;
+}
+.geometry-table tbody tr:hover {
+  background: var(--surface-subtle);
+}
+.geometry-table td[data-geometry-slot]:hover,
+.geometry-table td[data-geometry-slot]:focus-within {
+  background: var(--surface-card);
+}
+.geometry-value {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+}
+.geometry-ref {
+  flex: none;
+  min-width: 2.4em;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.geometry-value > div {
+  flex: 1;
+  min-width: 0;
+}
+.geometry-value [data-slot="scrub-number-scrubbable"],
+.geometry-value [data-slot="input"] {
+  width: 100%;
+  min-width: 0;
+  height: 24px;
+  padding: 0 4px;
+  font-size: 12px;
+  text-align: right;
+}
+/* The compact field removes Calligraph's fade padding. Its original mask would
+   fade the glyphs themselves, including digits at rest. Keep slot clipping. */
+.geometry-value .scrub-number-calligraph > span {
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
+}
+.geometry-value :is([data-slot="scrub-number-scrubbable"], [data-slot="input"]):focus:not(:focus-visible) {
+  border-color: var(--color-border-primary-outline);
+  outline: none;
+  box-shadow: none;
+}
+.geometry-atom {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.geometry-constraint {
+  flex: none;
+  color: var(--text-muted);
+  opacity: 0;
+}
+.geometry-constraint[data-active] {
+  color: var(--color-text);
+}
+.geometry-table tbody tr:hover .geometry-constraint,
+.geometry-constraint:focus-visible,
+.geometry-constraint[data-active] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .geometry-constraint {
+    opacity: 1;
+  }
+}
+/* A pin that cannot be held (measured from a reference point) reads as unavailable. */
+.geometry-constraint-reason {
+  display: inline-flex;
+  flex: none;
+}
+.geometry-table tbody tr:hover .geometry-constraint-reason .geometry-constraint {
+  opacity: 0.5;
+}
+.geometry-panel-result {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.workbench-toolbar {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+}
+/* Z-matrix: variables read as names, reference points never read as elements. */
+.zmatrix-variable {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--color-text);
+}
+.zmatrix-bound {
+  display: inline-flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 6px;
+  padding: 0 4px;
+}
+.zmatrix-uses {
+  color: var(--text-secondary);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+/* Variable names are wider than row labels: the name column holds the "Variable"
+   header and names up to about eight characters; longer names are truncated. */
+.geometry-table.zmatrix-variables thead th:first-child {
+  width: 76px;
+}
+.geometry-table.zmatrix-variables tbody th .zmatrix-trigger {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.zmatrix-reference {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+/* The toolbar stays in place; only the tables scroll, sideways in a narrow dock, with
+   their header row and row names in view. */
+.zmatrix-panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.zmatrix-scroll {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  align-content: start;
+  gap: 6px;
+  overflow: auto;
+  /* The value fields stack at z-index 1; keep their layers inside the scroller. */
+  isolation: isolate;
+}
+/* Sticky cells paint above the fields scrolling under them: row names above values,
+   the header row above both, its corner above everything. */
+.zmatrix-scroll .geometry-table thead th {
+  top: 0;
+  z-index: 3;
+}
+.zmatrix-scroll .geometry-table :is(thead th:first-child, tbody th) {
+  position: sticky;
+  left: 0;
+  background-color: var(--color-surface);
+}
+.zmatrix-scroll .geometry-table tbody th {
+  z-index: 2;
+}
+.zmatrix-scroll .geometry-table thead th:first-child {
+  z-index: 4;
+}
+.zmatrix-scroll .geometry-table tbody tr:hover th {
+  background-image: linear-gradient(var(--surface-subtle), var(--surface-subtle));
+}
+/* Variable names and reference labels open their definition menus; they read as text
+   until hovered or focused. */
+.zmatrix-trigger {
+  margin: 0 -3px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  text-align: left;
+  cursor: default;
+}
+.zmatrix-trigger:enabled:hover,
+.zmatrix-trigger[data-state="open"] {
+  background: var(--color-background-primary-ghost-hover);
+  color: var(--color-text);
+}
+.zmatrix-trigger:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: -2px;
+}
+.zmatrix-definition-menu {
+  max-height: min(60vh, 360px);
+  overflow-y: auto;
+}
+.zmatrix-add-form {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.zmatrix-add-name {
+  width: 96px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.zmatrix-add-value {
+  width: 72px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+/* A new row: one line per field, the field names in one column. */
+.zmatrix-row-form {
+  display: grid;
+  gap: 4px;
+}
+.zmatrix-row-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+.zmatrix-row-field > span {
+  flex: none;
+  width: 52px;
+}
+.zmatrix-row-field [data-slot="native-select-wrapper"] {
+  width: 72px;
+}
+.zmatrix-add-element {
+  width: 52px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+.zmatrix-row-submit {
+  justify-self: end;
+}
+.zmatrix-add .geometry-panel-error {
+  max-width: 240px;
+  padding: 4px 2px 0;
+}

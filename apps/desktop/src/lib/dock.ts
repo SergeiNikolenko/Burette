@@ -12,6 +12,7 @@ export type DockTabKind =
   | "files"
   | "spectrum"
   | "text"
+  | "geometry"
   | "structure-edit"
   | "inspector"
   | "story"
@@ -91,6 +92,7 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   files: "Files",
   spectrum: "Spectrum",
   text: "Text",
+  geometry: "Geometry",
   "structure-edit": "Edit",
   inspector: "Info",
   story: "Story",
