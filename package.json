@@ -195,7 +195,8 @@
     "test:vibrations-panel": "bun test tests/test-workbench-vibrations-export-compiled.test.tsx && bun test tests/test-vibrations-animation.test.tsx",
     "test:scientific-spectra-data": "bun test tests/test-scientific-spectra-data.test.ts",
     "test:zmatrix-provenance": "bun test tests/test-zmatrix-atom-provenance.test.ts",
-    "test:vibrations-owner": "bun test tests/test-vibrations-frame-controls.test.tsx && bun test tests/test-vibrations-dock-owner.test.tsx"
+    "test:vibrations-owner": "bun test tests/test-vibrations-frame-controls.test.tsx && bun test tests/test-vibrations-dock-owner.test.tsx",
+    "test:scientific-source-lifetime": "bun test tests/test-scientific-source-lifetime.test.tsx"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

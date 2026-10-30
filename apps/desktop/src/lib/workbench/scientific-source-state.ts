@@ -196,7 +196,12 @@ export function useImportedOriginal(documentId: string | null) {
 export function releaseClosedImports(openDocumentIds: ReadonlySet<string>) {
   let released = false;
   for (const [token, entry] of imported) {
-    if (entry.documentIds.size && ![...entry.documentIds].some((id) => openDocumentIds.has(id))) released = imported.delete(token);
+    // An unclaimed import may still be preparing its document; publication claims it only after open.
+    if (!entry.documentIds.size) continue;
+    for (const id of entry.documentIds) {
+      if (!openDocumentIds.has(id)) { entry.documentIds.delete(id); released = true; }
+    }
+    if (!entry.documentIds.size) imported.delete(token);
   }
   if (released) importsChanged();
 }
