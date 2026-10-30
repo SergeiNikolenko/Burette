@@ -23,3 +23,6 @@ compute/symmetry-wasm/LIBMSYM_LICENSE.txt -text whitespace=-blank-at-eof
 # Keep reviewed upstream spectrum fixture and license bytes exact.
 tests/fixtures/quantum/orca-3.0.2-methane.hess -text whitespace=-blank-at-eol,-blank-at-eof
 tests/fixtures/quantum/opan-LICENSE.txt -text whitespace=-blank-at-eof
+
+# Preserve the exact upstream ORCA shielding table, including row padding.
+tests/fixtures/quantum/spectra-orca-nmr.out -text whitespace=-blank-at-eol,-blank-at-eof
