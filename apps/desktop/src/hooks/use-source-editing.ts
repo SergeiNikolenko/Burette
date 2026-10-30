@@ -1,19 +1,21 @@
+import { rendererXyzText } from "../lib/geometry-source-text";
+import { readGeometryBinding, type GeometryBinding } from "../lib/geometry-binding";
 import { useSourceDraftRecovery } from "./use-source-draft-recovery";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
 import type { DockTabKind } from "../lib/dock";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm as confirmDialog, message as messageDialog } from "@tauri-apps/plugin-dialog";
-import type { DraftUpdateOptions, SourceEditingContextValue, SourceEditingView, SourcePreviewState } from "../lib/source-editing/context";
+import type { SourceEditingBeginOptions, DraftUpdateOptions, SourceEditingContextValue, SourceEditingView, SourcePreviewState } from "../lib/source-editing/context";
 import { SourcePreviewAdapter } from "../lib/source-preview/adapter";
 import type { SourcePreviewCandidate, SourcePreviewIdentity } from "../lib/source-preview/types";
-import { openBrowserDevTextDocument } from "../lib/browser-dev-documents";
+import { isBrowserDraftSource, openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
 import { downloadTextFile, safeExportFileName } from "../lib/file-export";
 import { isTauriRuntime } from "../lib/tauri";
 import { captureLogicalSourceOwner, captureSourceCloseOwner, logicalSourceFor, subscribeLogicalSources } from "../lib/science-session/state";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
-import { activeViewerIframeForDocument, requestViewerAction } from "../lib/viewer-bridge";
+import { activeViewerIframeForDocument, captureViewerActionTarget, requestViewerAction } from "../lib/viewer-bridge";
 import { captureViewerView } from "../lib/viewer-view-capture";
 import { measurementPreviewTarget, measurementPreviewTransfer } from "../lib/workbench/measurement-preview";
 import { prepareDeferredViewerRuntime } from "./use-deferred-viewer-runtime";
@@ -35,6 +37,7 @@ type FileRevision = {
 type InternalSourceSession = SourceEditingView & {
   sessionId: string;
   isSourceCurrent: () => boolean;
+  geometryBinding: GeometryBinding | null;
   title: string;
   extension: string;
   handleId: string | null;
@@ -46,7 +49,7 @@ type InternalSourceSession = SourceEditingView & {
 };
 
 function ownsSource(session: InternalSourceSession) {
-  return session.isSourceCurrent();
+  return session.isSourceCurrent() && (!session.geometryBinding || session.geometryBinding.target.isCurrent());
 }
 
 type NativeOpenResult = {
@@ -118,19 +121,21 @@ export function useSourceEditingController({
   const savingPathsRef = useRef(new Set<string>());
   const closingDocumentIdsRef = useRef(new Set<string>());
   const openingSourceTokensRef = useRef(new Map<string, symbol>());
+  const geometryRequestsRef = useRef(new Map<string, { controller: AbortController; isCurrent: () => boolean }>());
   const operationTokensRef = useRef(new Map<string, Set<symbol>>());
   const stagingWindowsRef = useRef(new Map<WindowProxy, { path: string; identity: SourcePreviewIdentity }>());
   const dirtySnapshotRef = useRef({ signature: "", revision: 0 });
 
   const captureOperation = useCallback((document: ViewerDocument) => {
     const isSourceCurrent = captureLogicalSourceOwner(document.id);
+    const geometryTarget = logicalSourceFor(document.id)?.extension === "xyz" ? captureViewerActionTarget(document.id, isSourceCurrent) : undefined;
     const tokens = operationTokensRef.current.get(document.id) ?? new Set<symbol>();
     const token = Symbol();
     tokens.add(token);
     operationTokensRef.current.set(document.id, tokens);
     return {
       isCurrent: () => operationTokensRef.current.get(document.id) === tokens && tokens.has(token)
-        && !closingDocumentIdsRef.current.has(document.id) && isSourceCurrent(),
+        && !closingDocumentIdsRef.current.has(document.id) && isSourceCurrent() && (geometryTarget === undefined || geometryTarget?.isCurrent() === true),
       release: () => {
         tokens.delete(token);
         if (!tokens.size && operationTokensRef.current.get(document.id) === tokens) operationTokensRef.current.delete(document.id);
@@ -180,8 +185,15 @@ export function useSourceEditingController({
     });
   }, [commitSessions, requestRecovery]);
 
+  const cancelGeometryPreview = useCallback((documentId: string) => {
+    const pending = geometryRequestsRef.current.get(documentId);
+    geometryRequestsRef.current.delete(documentId);
+    pending?.controller.abort();
+  }, []);
+
   const retireReplacedSession = useCallback((session: InternalSourceSession) => {
     if (sessionsRef.current[session.path]?.sessionId !== session.sessionId || ownsSource(session)) return;
+    cancelGeometryPreview(session.documentId);
     const timer = timersRef.current.get(session.path);
     if (timer !== undefined) window.clearTimeout(timer);
     timersRef.current.delete(session.path);
@@ -194,15 +206,16 @@ export function useSourceEditingController({
     }
     if (session.handleId) void invoke("close_source_edit_session", { request: { handleId: session.handleId } }).catch(() => {});
     commitSessions(current => Object.fromEntries(Object.entries(current).filter(([, entry]) => entry.sessionId !== session.sessionId)));
-  }, [clearStagingWindows, commitSessions, updateSession]);
+  }, [cancelGeometryPreview, clearStagingWindows, commitSessions, updateSession]);
 
   useEffect(() => subscribeLogicalSources(() => {
+    for (const [id, pending] of geometryRequestsRef.current) if (!pending.isCurrent()) cancelGeometryPreview(id);
     for (const session of Object.values(sessionsRef.current)) if (!ownsSource(session)) retireReplacedSession(session);
     invalidateRecovery();
-  }), [invalidateRecovery, retireReplacedSession]);
+  }), [cancelGeometryPreview, invalidateRecovery, retireReplacedSession]);
   useEffect(invalidateRecovery, [invalidateRecovery, sessions]);
 
-  const beginEditing = useCallback(async (document: ViewerDocument, revealTab: DockTabKind = "text") => {
+  const beginEditing = useCallback(async (document: ViewerDocument, revealTab: DockTabKind = "text", beginOptions?: SourceEditingBeginOptions) => {
     if (closingDocumentIdsRef.current.has(document.id)) return;
     if (revealTab === "structure-edit" && !structureEditAvailable(document)) {
       pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source");
@@ -215,6 +228,20 @@ export function useSourceEditingController({
       pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source");
       return;
     }
+    const restored = logicalSourceFor(document.id);
+    const logicalXyzGeometry = restored?.extension === "xyz" && revealTab === "geometry";
+    const suppliedBinding = beginOptions?.geometryBinding;
+    const geometryBaselineText = (text: string) => logicalXyzGeometry ? text : rendererXyzText(text);
+    const xyzGeometry = revealTab === "geometry" && (restored?.extension ?? document.extension.replace(/^\./u, "").toLowerCase()) === "xyz";
+    const browserXyzSource = !restored && document.extension.replace(/^\./u, "").toLowerCase() === "xyz"
+      && (revealTab === "text" || (xyzGeometry && Boolean(suppliedBinding))) && isBrowserDraftSource(document);
+    const geometryTarget = suppliedBinding?.target ?? (logicalXyzGeometry ? captureViewerActionTarget(document.id, isSourceCurrent) : null);
+    if ((logicalXyzGeometry || suppliedBinding) && (!xyzGeometry || !geometryTarget || geometryTarget.documentId !== document.id || !geometryTarget.isCurrent())) {
+      pushErrorStatus(new Error("Open the scene and wait for it to load."), "Edit source"); return;
+    }
+    if (restored?.extension === "xyz" && !logicalXyzGeometry) {
+      pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source"); return;
+    }
     const existing = sessionsRef.current[document.path];
     if (existing && !ownsSource(existing)) retireReplacedSession(existing);
     if (sessionsRef.current[document.path] && (!ownsSource(sessionsRef.current[document.path]) || existing?.documentId !== document.id)) {
@@ -222,26 +249,33 @@ export function useSourceEditingController({
       return;
     }
     if (sessionsRef.current[document.path]) {
+      if (suppliedBinding) {
+        if (suppliedBinding.text !== geometryBaselineText(sessionsRef.current[document.path].content)) {
+          pushErrorStatus(new Error("The scene no longer shows this source. Reopen Geometry for the current scene."), "Edit source"); return;
+        }
+        if (logicalXyzGeometry) { cancelGeometryPreview(document.id); updateSession(document.path, current => ({ ...current, geometryBinding: suppliedBinding })); }
+      }
       setDockOpen("right", true);
       setDockActiveTab("right", revealTab);
       return;
     }
-    // Logical XYZ uses its separately owned in-place update lane. Graph sources stage as their real format.
-    const restored = logicalSourceFor(document.id);
-    const logical = restored?.extension === "sdf" || restored?.extension === "mol" ? restored : null;
+    // Logical XYZ is admitted only by Geometry; graph sources keep their real-format preview lane.
+    const logical = restored?.extension === "sdf" || restored?.extension === "mol" || logicalXyzGeometry ? restored : null;
     const extension = logical?.extension ?? document.extension.toLowerCase().replace(/^\./u, "");
-    if ((document.virtual && !structureEditAvailable(document)) || document.dockingRequest || document.mergedCollection || !EDITABLE_EXTENSIONS.has(extension)) {
+    if ((document.virtual && !logicalXyzGeometry && !structureEditAvailable(document) && !(browserXyzSource && isBrowserDraftSource(document))) || document.dockingRequest || document.mergedCollection || !EDITABLE_EXTENSIONS.has(extension)) {
       pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source");
       return;
     }
     if (openingSourceTokensRef.current.has(document.id)) return;
     const token = Symbol();
     openingSourceTokensRef.current.set(document.id, token);
-    const isOpeningCurrent = () => openingSourceTokensRef.current.get(document.id) === token && isSourceCurrent();
+    const isOpeningCurrent = () => openingSourceTokensRef.current.get(document.id) === token && !closingDocumentIdsRef.current.has(document.id) && isSourceCurrent()
+      && (!geometryTarget || geometryTarget.isCurrent()) && (!browserXyzSource || isBrowserDraftSource(document));
+    let unusedHandleId: string | null = null;
     try {
       document = await prepareDeferredViewerRuntime(document, preferences);
       if (!isOpeningCurrent()
-        || (document.virtual && !structureEditAvailable(document))) return;
+        || (document.virtual && !logicalXyzGeometry && !structureEditAvailable(document) && !(browserXyzSource && isBrowserDraftSource(document)))) return;
       const sessionId = randomId();
       let content: string;
       let handleId: string | null = null;
@@ -262,6 +296,7 @@ export function useSourceEditingController({
         }
         content = opened.content;
         handleId = opened.handleId;
+        unusedHandleId = handleId;
         expectedRevision = opened.revision;
         previewMode = opened.previewMode;
       } else {
@@ -281,7 +316,22 @@ export function useSourceEditingController({
 
       // Reading the source also yields: ownership must survive until publication.
       if (!isOpeningCurrent()
-        || (document.virtual && !structureEditAvailable(document))) return;
+        || (document.virtual && !logicalXyzGeometry && !structureEditAvailable(document) && !(browserXyzSource && isBrowserDraftSource(document)))) return;
+      let geometryBinding: GeometryBinding | null = null;
+      if (suppliedBinding) {
+        if (suppliedBinding.text !== geometryBaselineText(content)) throw new Error("The scene no longer shows this source. Reopen Geometry for the current scene.");
+        if (logicalXyzGeometry) geometryBinding = suppliedBinding;
+      } else if (geometryTarget) {
+        const pending = { controller: new AbortController(), isCurrent: isOpeningCurrent };
+        geometryRequestsRef.current.set(document.id, pending);
+        try {
+          geometryBinding = await readGeometryBinding(document, (target, action, options) => requestViewerAction(target.id, action, 15_000, options?.signal, options), () => isSourceCurrent() && geometryTarget.isCurrent(), pending.controller.signal);
+          if (!isOpeningCurrent()) return;
+          if (geometryBinding.text !== content) throw new Error("The scene no longer shows this source. Reopen Geometry for the current scene.");
+        } finally {
+          if (geometryRequestsRef.current.get(document.id) === pending) geometryRequestsRef.current.delete(document.id);
+        }
+      }
       const adapter = new SourcePreviewAdapter({
         activeRuntime: { runtimeKey: `source:${document.id}:base`, runtimePath: document.runtimePath },
         onChange: (sourcePreview) => updateSession(document.path, (session) => session.sessionId === sessionId && ownsSource(session) ? { ...session, sourcePreview } : session),
@@ -301,6 +351,7 @@ export function useSourceEditingController({
         extension,
         sessionId,
         isSourceCurrent,
+        geometryBinding,
         handleId,
         expectedRevision,
         baseContent: content,
@@ -319,18 +370,21 @@ export function useSourceEditingController({
         sourcePreview: adapter.getSnapshot(),
       };
       commitSessions((current) => ({ ...current, [document.path]: session }));
+      unusedHandleId = null;
       setDockOpen("right", true);
       setDockActiveTab("right", revealTab);
     } catch (error) {
+      if (!isOpeningCurrent()) return;
       const parsed = parseNativeSourceError(error);
       const message = parsed?.code === "source_not_editable" && parsed.details?.reason === "unsupported_shape"
         ? sourceNotEditableMessage("unsupported_shape")
         : parsed?.message;
       pushErrorStatus(message ? new Error(message) : error, "Edit source");
     } finally {
+      if (unusedHandleId) void invoke("close_source_edit_session", { request: { handleId: unusedHandleId } }).catch(() => {});
       if (openingSourceTokensRef.current.get(document.id) === token) openingSourceTokensRef.current.delete(document.id);
     }
-  }, [clearStagingWindows, commitSessions, preferences, pushErrorStatus, recoverRetiredSessions, retireReplacedSession, setDockActiveTab, setDockOpen, updateSession]);
+  }, [cancelGeometryPreview, clearStagingWindows, commitSessions, preferences, pushErrorStatus, recoverRetiredSessions, retireReplacedSession, setDockActiveTab, setDockOpen, updateSession]);
 
   const preparePreview = useCallback(async (document: ViewerDocument, content?: string, revision?: number, view?: "keep") => {
     const session = sessionsRef.current[document.path];
@@ -356,6 +410,21 @@ export function useSourceEditingController({
       return;
     }
     updateSession(document.path, (current) => matchesTarget(current) ? { ...current, previewState: "staging", diagnostic: null } : current);
+    if (session.geometryBinding) {
+      cancelGeometryPreview(document.id);
+      const pending = { controller: new AbortController(), isCurrent: matchesTarget };
+      geometryRequestsRef.current.set(document.id, pending);
+      const currentRequest = () => matchesTarget() && geometryRequestsRef.current.get(document.id) === pending && !pending.controller.signal.aborted;
+      try {
+        await requestViewerAction(document.id, { type: "update_geometry", label: "Geometry", text: targetContent, lease: session.geometryBinding.lease, notify: false }, 15_000, pending.controller.signal, { target: session.geometryBinding.target });
+        if (currentRequest()) updateSession(document.path, current => ({ ...current, previewState: "current", lastValidRevision: targetRevision, diagnostic: null }));
+      } catch (error) {
+        if (currentRequest()) updateSession(document.path, current => ({ ...current, previewState: "paused", diagnostic: error instanceof Error ? error.message : String(error) }));
+      } finally {
+        if (geometryRequestsRef.current.get(document.id) === pending) geometryRequestsRef.current.delete(document.id);
+      }
+      return;
+    }
     try {
       let reloadOptions: { rendererViewState: string | null } | undefined;
       if (view === "keep") {
@@ -400,11 +469,12 @@ export function useSourceEditingController({
       if (!matchesTarget()) return;
       updateSession(document.path, (current) => ({ ...current, previewState: "paused", diagnostic: error instanceof Error ? error.message : String(error) }));
     }
-  }, [preferences, updateSession]);
+  }, [cancelGeometryPreview, preferences, updateSession]);
 
   const updateDraft = useCallback((document: ViewerDocument, content: string, options?: DraftUpdateOptions) => {
     const session = sessionsRef.current[document.path];
     if (!session || session.documentId !== document.id || !ownsSource(session) || closingDocumentIdsRef.current.has(document.id)) return;
+    cancelGeometryPreview(document.id);
     const adapter = adaptersRef.current.get(document.path);
     const snapshot = adapter?.getSnapshot();
     const staged = snapshot?.slots[snapshot.activeSlot === "primary" ? "secondary" : "primary"];
@@ -434,7 +504,7 @@ export function useSourceEditingController({
       }, LIVE_PREVIEW_DELAY_MS);
       timersRef.current.set(document.path, timer);
     }
-  }, [clearStagingWindows, preparePreview, updateSession]);
+  }, [cancelGeometryPreview, clearStagingWindows, preparePreview, updateSession]);
 
   const stagingLoaded = useCallback((document: ViewerDocument, identity: SourcePreviewIdentity, frame: HTMLIFrameElement) => {
     if (frame.contentWindow) stagingWindowsRef.current.set(frame.contentWindow, { path: document.path, identity });
@@ -671,6 +741,8 @@ export function useSourceEditingController({
   useEffect(() => () => {
     operationTokensRef.current.clear();
     openingSourceTokensRef.current.clear();
+    for (const pending of geometryRequestsRef.current.values()) pending.controller.abort();
+    geometryRequestsRef.current.clear();
     for (const timer of timersRef.current.values()) window.clearTimeout(timer);
     for (const adapter of adaptersRef.current.values()) adapter.dispose();
   }, []);
@@ -709,7 +781,7 @@ export function useSourceEditingController({
         if (!confirmed || !canClose()) return false;
       }
       if (!canClose()) return false;
-      for (const id of wanted) openingSourceTokensRef.current.delete(id);
+      for (const id of wanted) { openingSourceTokensRef.current.delete(id); cancelGeometryPreview(id); }
       if (isTauriRuntime()) {
         await invoke("close_opened_source_documents", { documentIds: [...wanted] });
       }
@@ -737,7 +809,7 @@ export function useSourceEditingController({
     } finally {
       for (const id of wanted) closingDocumentIdsRef.current.delete(id);
     }
-  }, [clearStagingWindows, commitSessions, pushErrorStatus, recoverRetiredSessions]);
+  }, [cancelGeometryPreview, clearStagingWindows, commitSessions, pushErrorStatus, recoverRetiredSessions]);
 
   return useMemo(() => ({
     recovery,

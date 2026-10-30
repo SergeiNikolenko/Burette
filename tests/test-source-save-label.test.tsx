@@ -9,7 +9,7 @@ import { TextFileViewer } from "../apps/desktop/src/components/text-file-viewer"
 
 const text: TextFileDocument = { id: "label", path: "/molecule.xyz", title: "molecule.xyz", extension: "xyz", language: "XYZ", byteCount: 24, content: "1\nmolecule\nC 0 0 0\n", truncated: false };
 const document: ViewerDocument = { ...text, renderer: "molstar", runtimePath: "scene" };
-const base: SourceEditingView = { documentId: document.id, path: document.path, content: text.content, status: "Modified", editable: true, dirty: true, saving: false, diagnostic: null, previewMode: "live", saveDisabledReason: null, sourcePreview: null };
+const base: SourceEditingView = { sessionId: crypto.randomUUID(), documentId: document.id, path: document.path, content: text.content, status: "Modified", editable: true, dirty: true, saving: false, diagnostic: null, previewMode: "live", saveDisabledReason: null, sourcePreview: null };
 type Props = NonNullable<ComponentProps<typeof TextFileViewer>["sourceEditing"]>;
 // Exercise the actual private dock adapter expression without importing all dock panels/workers.
 const dock = readFileSync(new URL("../apps/desktop/src/components/dock-panel.tsx", import.meta.url), "utf8");

@@ -37,7 +37,7 @@ function archive(encoded: EncodedScienceSession) { return zipSync({ "state.json"
 async function fixture(ids: readonly string[] | null = Array.from({ length: 4 }, () => crypto.randomUUID()), advanced?: GraphAdvancedCompute) {
   const doc: ViewerDocument = { id: `mol-identity-${++serial}`, path: `/Scenes/mol-${serial}.molx`, title: "Molecule.molx", extension: "molx", renderer: "molstar", runtimePath: "scene", byteCount: 1 };
   adoptLogicalSource({ documentId: doc.id, extension: "mol", text: source }, crypto.randomUUID(), ids, ["C", "H", "C", "O"]);
-  let session: SourceEditingView = { documentId: doc.id, path: doc.path, content: source, baseContent: source, editable: true, dirty: false, saving: false, status: "", diagnostic: null, previewMode: "manual", saveDisabledReason: null, sourcePreview: null };
+  let session: SourceEditingView = { sessionId: crypto.randomUUID(), documentId: doc.id, path: doc.path, content: source, baseContent: source, editable: true, dirty: false, saving: false, status: "", diagnostic: null, previewMode: "manual", saveDisabledReason: null, sourcePreview: null };
   let writes = 0, ignore = false, live!: ReturnType<typeof useGraphDraft>;
   const context: SourceEditingContextValue = { sessionForDocument: () => session, captureOperation: () => ({ isCurrent: () => true, release() {} }), beginEditing() {}, updateDraft(_doc, content) { if (!ignore) { writes++; session = { ...session, content, dirty: true }; } }, applyPreview() {}, save() {}, stagingLoaded() {}, closeDocuments: async () => true, confirmCloseWindow: async () => true, getWindowDirtySnapshot: () => ({ dirty: false, revision: 0, closeTransitionActive: false }), hasUnsavedOrSavingSessions: false };
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
@@ -181,8 +181,14 @@ test("independent actual controller: null-id MOL replacement revokes the held pr
     await until(() => entered);
     await act(async () => adoptLogicalSource({ documentId: doc.id, extension: "mol", text: source }, crypto.randomUUID(), null, ["C", "H", "C", "O"]));
     await act(async () => { release(); expect(await pending).toBeNull(); });
-    expect(controller.sessionForDocument(doc)).toBe(previousSession);
-    expect(controller.sessionForDocument(doc)?.content).toBe(source); expect(errors).toEqual([]);
+    expect(previousSession?.content).toBe(source);
+    expect(controller.sessionForDocument(doc)).toBeNull();
+    expect(controller.getWindowDirtySnapshot().dirty).toBe(false);
+    await act(async () => controller.beginEditing(doc));
+    const replacementSession = controller.sessionForDocument(doc);
+    expect(replacementSession?.content).toBe(source);
+    expect(replacementSession?.sessionId).not.toBe(previousSession?.sessionId);
+    expect(errors).toEqual([]);
   } finally { release(); await act(async () => root.unmount()); host.remove(); releaseClosedScienceSessions(new Set()); }
 });
 

@@ -74,7 +74,7 @@ mock.module("../apps/desktop/src/lib/structure-text", () => ({ readStructureText
 mock.module("../apps/desktop/src/lib/source-editing/context", () => ({ useSourceEditing: () => ({
   captureOperation: () => ({ isCurrent: () => true, release() {} }),
   sessionForDocument: () => session,
-  beginEditing: async (document: ViewerDocument) => { session = { documentId: document.id, content: source, path: document.path, editable: true, dirty: false, saving: false, status: "", previewMode: "live", sourcePreview: null, saveDisabledReason: null, diagnostic: null }; },
+  beginEditing: async (document: ViewerDocument) => { session = { sessionId: crypto.randomUUID(), documentId: document.id, content: source, path: document.path, editable: true, dirty: false, saving: false, status: "", previewMode: "live", sourcePreview: null, saveDisabledReason: null, diagnostic: null }; },
   updateDraft: (_document: ViewerDocument, content: string, options?: DraftUpdateOptions) => {
     writes.push({ content, options });
     assert.ok(session); session = { ...session, content, dirty: content !== source };

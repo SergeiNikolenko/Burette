@@ -1,3 +1,4 @@
+import type { GeometryBinding } from "../geometry-binding";
 import type { TextFileSaveOutcome } from "../file-export";
 import type { DockTabKind } from "../dock";
 import { createContext, useContext, type ReactNode } from "react";
@@ -9,6 +10,8 @@ import type { SourcePreviewFrameSnapshot, SourcePreviewIdentity } from "../sourc
 export type SourcePreviewState = "current" | "queued" | "staging" | "manual" | "paused" | "unsupported";
 
 export type SourceEditingView = {
+  /** The source session lifetime; retained across its own revisions, replaced after close or restore. */
+  readonly sessionId: string;
   documentId: string;
   path: string;
   content: string;
@@ -35,7 +38,10 @@ export type SourceEditingWindowDirtySnapshot = {
 /** Acknowledged geometry edits avoid staging; graph edits may retain the current camera. */
 export type DraftUpdateOptions = { previewApplied: true } | { view: "keep" };
 
-/** A pending edit belongs to its open document until release or successful close. */
+/** A pending edit retains its document/source lifetime until release or successful close. */
+/** Reuse the editor baseline captured before its transient Geometry preview. */
+export type SourceEditingBeginOptions = { geometryBinding?: GeometryBinding };
+
 export type SourceEditingOperation = { isCurrent: () => boolean; release: () => void };
 
 export type SourceDraftRecoveryDraft = Readonly<{
@@ -54,7 +60,7 @@ export type SourceEditingContextValue = {
   recovery?: SourceDraftRecoveryRequest | null;
   sessionForDocument: (document: ViewerDocument | null) => SourceEditingView | null;
   captureOperation: (document: ViewerDocument) => SourceEditingOperation;
-  beginEditing: (document: ViewerDocument, revealTab?: DockTabKind) => void | Promise<void>;
+  beginEditing: (document: ViewerDocument, revealTab?: DockTabKind, options?: SourceEditingBeginOptions) => void | Promise<void>;
   updateDraft: (document: ViewerDocument, content: string, options?: DraftUpdateOptions) => void;
   applyPreview: (document: ViewerDocument) => void | Promise<void>;
   save: (document: ViewerDocument) => void | Promise<void>;

@@ -175,7 +175,10 @@
     "test:geometry-preview-lifetime": "bun scripts/test-geometry-preview-lifetime.mjs",
     "check:geometry-preview-lifetime": "tsc --noEmit -p tests/tsconfig.geometry-foundation.json",
     "test:geometry-binding": "bun --preload ./tests/fixtures/molstar-state-preload.mjs --preload ./tests/fixtures/geometry-binding-compiler.mjs tests/test-geometry-binding.test.ts",
-    "check:geometry-binding": "tsc --noEmit -p tests/tsconfig.geometry-binding.json"
+    "check:geometry-binding": "tsc --noEmit -p tests/tsconfig.geometry-binding.json",
+    "test:logical-xyz-source": "bun test ./tests/test-logical-xyz-source.test.tsx",
+    "typecheck:logical-xyz-source": "tsc --noEmit -p tests/tsconfig.logical-xyz-source.json",
+    "check:text-history-contract": "tsc --noEmit -p tests/tsconfig.text-history-contract.json"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

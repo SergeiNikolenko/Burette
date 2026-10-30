@@ -76,3 +76,19 @@ later scene or recovery request.
 bun run test:source-draft-recovery
 bun run typecheck:source-draft-recovery
 ```
+
+
+## Logical XYZ Geometry Source
+
+A validated XYZ source inside MOLX is admitted only by Geometry. Its session keeps
+its original archive path, exact source text, Original asset and scientific source
+owner. Preview sends the retained runtime Geometry lease and viewer target and
+becomes current only after the matching applied ACK. Restore, replacement, close
+and unmount revoke pending reads and writes; retired dirty drafts use recovery.
+
+Geometry may pass `beginEditing` its pre-gesture `geometryBinding` to avoid waiting
+for its own transient preview. Admission checks the binding target and baseline;
+it never reads a new lease for an already computed edit. Raw XYZ keeps its Text
+preview lane and exact source history. Its baseline comparison projects only the
+one leading BOM consumed by the renderer's UTF-8 loader; ownership always uses
+source generation and viewer identity. Logical MOLX text is compared exactly.
