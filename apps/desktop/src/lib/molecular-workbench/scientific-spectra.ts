@@ -26,7 +26,8 @@ export type ScientificSpectra = {
 
 const KINDS = ["vcd", "mcd", "nmr", "electronic", "ecd", "dos"] as const;
 const FORMATS = ["avogadro-matrix", "orca-output", "orca-mcd", "cjson", "qcschema"];
-const MAX_ROWS = 10_000, MAX_SCALARS = 100_000, MAX_FILE_BYTES = 8 * 1024 * 1024;
+export const SCIENTIFIC_SPECTRA_LIMITS = Object.freeze({ rows: 10_000, scalars: 100_000, fileBytes: 8 * 1024 * 1024 });
+const { rows: MAX_ROWS, scalars: MAX_SCALARS, fileBytes: MAX_FILE_BYTES } = SCIENTIFIC_SPECTRA_LIMITS;
 function fail(message: string): never { throw new Error(`Invalid scientific spectra: ${message}`); }
 const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const label = (value: unknown, maximum = 128): value is string => typeof value === "string" && value.length > 0 && value.length <= maximum;

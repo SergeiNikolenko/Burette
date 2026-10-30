@@ -1,11 +1,14 @@
 import type { MolecularAtom, Vec3 } from "./types";
 import type { CartesianHessian } from "./hessian";
+import type { ScientificSpectra } from "./scientific-spectra";
 import type { ZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
 
 export interface ScientificFrame {
   atoms: MolecularAtom[]; energyHartree?: number; comment?: string;
   /** Modes belong only to this geometry; never reuse them for another frame. */
   modes?: VibrationalMode[];
+  /** Calculated source data for this exact indexed frame, never copied from another one. */
+  spectra?: ScientificSpectra;
   /** The Cartesian Hessian of this geometry, likewise never reused for another one. */
   hessian?: CartesianHessian;
   timePs?: number; temperatureKelvin?: number;
@@ -58,6 +61,8 @@ export interface ScientificDocument {
   frames: ScientificFrame[];
   modes: VibrationalMode[];
   orbitals: MolecularOrbital[];
+  /** File-scoped source data; this is not an alias for the current or final frame. */
+  spectra?: ScientificSpectra;
   basis?: GaussianShell[];
   grid?: ScalarGrid;
   converged?: boolean;

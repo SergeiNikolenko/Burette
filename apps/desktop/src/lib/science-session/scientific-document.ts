@@ -1,4 +1,6 @@
 import { atomsFromZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
+import { atomicNumber } from "../molecular-workbench/elements";
+import { checkScientificSpectra, SCIENTIFIC_SPECTRA_LIMITS, type ScientificSpectra } from "../molecular-workbench/scientific-spectra";
 import { shellSize } from "../molecular-workbench/gaussian-angular";
 import { checkHessianValues, HESSIAN_UNITS } from "../molecular-workbench/hessian";
 import type { GaussianShell, ScientificDocument } from "../molecular-workbench/scientific-types";
@@ -51,6 +53,27 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
   const geometry = frameOf(atoms);
   if (!matchesFrame(atoms, sourceFrames[0])) fail("Scientific atoms do not match the scene source geometry.");
   if (!Array.isArray(document.frames) || !document.frames.length || document.frames.length > SCIENCE_SESSION_LIMITS.frames) fail("Scientific data must have 1–2,000 frames.");
+  let spectralRows = 0, spectralScalars = 0;
+  const frameCount = document.frames.length;
+  const checkSpectra = (value: unknown, owner: readonly MolecularAtom[], path: string, frameIndex?: number) => {
+    if (value === undefined) return;
+    let data: ScientificSpectra;
+    try { data = checkScientificSpectra(value); }
+    catch (error) { return fail(`${path}: ${error instanceof Error ? error.message : String(error)}`); }
+    if (data.atomicNumbers.length !== owner.length || data.atomicNumbers.some((number, i) => number !== atomicNumber(owner[i].element))) fail(`${path} does not match its source atoms.`);
+    if (frameIndex === undefined) {
+      if (data.source.scope !== "file") fail(`${path} must be file-scoped, not a current-frame alias.`);
+    } else if (data.source.scope !== "frame" || data.source.frameIndex !== frameIndex || data.source.frameCount !== frameCount) fail(`${path} does not belong to this exact source frame.`);
+    spectralScalars += data.atomicNumbers.length;
+    for (const signal of data.spectra) {
+      const size = signal.kind === "nmr" ? signal.valuesPpm.length : signal.positions.length;
+      spectralRows += size;
+      spectralScalars += size * 2 + (signal.kind !== "nmr" && signal.sourceRowIds ? size : 0);
+      for (const column of signal.auxiliary ?? []) spectralScalars += column.values.length;
+    }
+    if (spectralRows > SCIENTIFIC_SPECTRA_LIMITS.rows || spectralScalars > SCIENTIFIC_SPECTRA_LIMITS.scalars) fail("Spectra across all source frames exceed the supported row/scalar budget.");
+  };
+  checkSpectra(document.spectra, atoms, "spectra");
   let modeValues = 0;
   const checkModes = (modes: unknown, path: string) => {
     if (modes === undefined) return;
@@ -81,6 +104,7 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
     optionalNumbers(frame, ["energyHartree", "timePs", "temperatureKelvin"], `frames[${index}]`);
     optionalString(frame, "comment", `frames[${index}]`);
     checkModes(frame.modes, `frames[${index}].modes`);
+    checkSpectra(frame.spectra, frameAtoms, `frames[${index}].spectra`, index);
     for (const key of ["velocitiesAngstromPerPs", "forcesKcalMolAngstrom"]) {
       const vectors = frame[key];
       if (vectors !== undefined && (!Array.isArray(vectors) || vectors.length !== elements.length || !vectors.every(isVec3))) fail(`frames[${index}].${key} do not match the atoms.`);

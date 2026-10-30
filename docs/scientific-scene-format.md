@@ -56,6 +56,18 @@ Their values remain unsymmetrized: every transposed pair may differ by at most
 1% of the matrix's largest absolute element. Optional masses are finite, positive,
 at most 1,000 amu and one per atom. Source readers use the same Hessian validator.
 
+Optional `ScientificDocument.spectra` is explicitly file-scoped, never a current
+or final-frame alias. `ScientificFrame.spectra` must declare that exact scientific
+history index and frame count, even when two frames have identical coordinates.
+Both carry the typed six-spectrum source contract, with the owner's canonical
+atomic numbers in source order. Raw units, sparse NMR atom indices, transition
+labels and auxiliary columns survive the ordinary scientific JSON payload. They
+are not float32 display curves or reference-adjusted copies. A shared budget caps
+all file/frame datasets together at 10,000 rows and 100,000 scalar/label entries.
+Encoding and checksum-valid decoding both enforce these constraints. Existing
+manifest versions and opaque Original byte ownership are unchanged; this storage
+contract alone does not activate format readers or a spectra UI.
+
 ## Binding, revisions and asset ownership
 
 The runtime binds exactly one atomic structure with each source atom occurring
