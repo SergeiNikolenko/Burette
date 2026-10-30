@@ -826,11 +826,17 @@
       return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.createComponent?.(action))
         || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.createComponent is unavailable.'));
     }
+    if (type === 'geometry_binding') {
+      const viewer = activeMolstarViewer();
+      if (!window.molstar?.BuretteGeometry) throw new Error('Reload a runtime supporting live Geometry.');
+      return { ok: true, result: window.molstar.BuretteGeometry.binding(viewer?.plugin, () => activeMolstarViewer() === viewer) };
+    }
     if (type === 'update_geometry') {
       const viewer = activeMolstarViewer();
       const geometry = window.molstar?.BuretteGeometry;
       if (!geometry) throw new Error('Reload a runtime supporting live Geometry.');
-      const owner = geometry.capture(viewer?.plugin, () => activeMolstarViewer() === viewer);
+      if (typeof action.lease !== 'string' || !action.lease) throw new Error('Read the current Geometry before changing it.');
+      const owner = geometry.capture(viewer?.plugin, () => activeMolstarViewer() === viewer, action.lease);
       if (!window.BuretteGeometryPreview) {
         if (!geometryPreviewLoading) geometryPreviewLoading = loadScript(runtimeURL('BuretteGeometryPreviewURL', './geometry-preview.js'), 'geometry preview', 10000).finally(() => { geometryPreviewLoading = null; });
         await geometryPreviewLoading;

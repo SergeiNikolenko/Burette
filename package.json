@@ -170,7 +170,7 @@
     "typecheck:source-draft-recovery": "tsc --noEmit -p tests/tsconfig.source-recovery.json",
     "test:source-generation-owner": "bun test tests/test-source-generation-owner.test.tsx",
     "typecheck:source-generation-owner": "tsc --noEmit -p tests/tsconfig.source-generation-owner.json",
-    "test:geometry-update-runtime": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-geometry-xyz-update.mjs && bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-geometry-update-runtime.mjs",
+    "test:geometry-update-runtime": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-geometry-xyz-update.mjs && bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-geometry-update-runtime.mjs && bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-geometry-runtime-lease.mjs && bun tests/test-geometry-private-actions.mjs",
     "check:uff-wasm": "tsc --noEmit -p tests/tsconfig.uff-wasm.json && tsc --noEmit -p tests/tsconfig.uff-wasm.json --allowJs true"
   },
   "dependencies": {

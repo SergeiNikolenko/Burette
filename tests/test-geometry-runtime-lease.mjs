@@ -1,0 +1,77 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import { Window } from 'happy-dom';
+import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
+import { StateTransforms } from 'molstar/lib/mol-plugin-state/transforms.js';
+import { BuretteGeometry } from '../scripts/molstar-geometry.js';
+
+const dom = new Window(), previous = globalThis.document; globalThis.document = dom.document;
+const plugin = new PluginContext({ actions: [], behaviors: [] });
+const xyz = '3\nsource baseline\nO 0 0 0\nH 1 0 0\nH 0 1 0\n';
+const text = value => xyz.replace('H 1 0 0', `H ${value} 0 0`);
+try {
+  await plugin.init();
+  const raw = await plugin.builders.data.rawData({ data: xyz });
+  const trajectory = await plugin.builders.structure.parseTrajectory(raw, 'xyz');
+  const model = await plugin.builders.structure.createModel(trajectory);
+  await plugin.builders.structure.createStructure(model);
+  const viewer = { plugin }, window = { molstar: { BuretteGeometry }, BuretteAgent: { run() { throw new Error('Wrong dispatcher'); } } };
+  vm.runInNewContext(readFileSync(new URL('../PreviewExtension/Web/geometry-preview.js', import.meta.url), 'utf8'), { window });
+  const helper = window.BuretteGeometryPreview; window.BuretteGeometryPreview = undefined;
+  const source = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
+  const declaration = source.match(/\n  async function executeBuretteAgentAction\(action\) \{[\s\S]*?\n  \}/u)[0];
+  const globals = source.slice(source.indexOf('  let geometryPreviewRequest ='), source.indexOf(declaration));
+  const start = source.indexOf("  window.addEventListener('message', event => {", source.indexOf(declaration));
+  const end = source.indexOf('  window.BuretteViewerActions =', start);
+  const failure = source.match(/\n  function agentActionFailure\(command, code, message\) \{[\s\S]*?\n  \}/u)[0];
+  let listener, loads = 0, next = 0;
+  window.addEventListener = (_name, callback) => { listener = callback; };
+  new Function('window', 'activeMolstarViewer', 'loadScript', 'runtimeURL', `${globals}\n${declaration}\n${failure}\n${source.slice(start, end)}`)(
+    window, () => viewer, async () => { loads++; window.BuretteGeometryPreview = helper; }, (_key, fallback) => fallback);
+  const send = action => new Promise(resolve => listener({ data: { source: 'burette-agent-host', body: { type: 'agent-action', id: `lease-${++next}`, action } }, source: { postMessage: value => resolve(value.body.result) } }));
+  const read = async () => { const result = await send({ type: 'geometry_binding', label: 'Geometry', notify: false }); assert.equal(result.ok, true); return result.result; };
+  const apply = (binding, value) => send({ type: 'update_geometry', label: 'Geometry', notify: false, text: value, lease: binding.lease });
+  const state = plugin.state.data, position = () => plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data.units[0].conformation.x(1);
+  const original = state.getSnapshot(), first = await read();
+  assert.equal(first.text, xyz); assert.equal(loads, 0, 'binding captures baseline before any helper/module await');
+  assert.deepEqual(state.getSnapshot(), original, 'the receipt read never edits the scene');
+  assert.equal((await send({ type: 'update_geometry', text: text(2), label: 'Geometry', notify: false })).ok, false);
+  assert.equal((await apply({ lease: 'foreign' }, text(2))).ok, false);
+  assert.deepEqual(state.getSnapshot(), original, 'missing/foreign leases never mutate or acquire authority');
+  assert.equal((await apply(first, text(1.2))).ok, true);
+  await state.build().toRoot().apply(StateTransforms.Data.RawData, { data: 'native user action' }).commit({ canUndo: 'User action' });
+  assert.equal((await apply(first, text(1.5))).ok, true);
+  assert.equal((await read()).lease, first.lease, 'verified own preview updates keep the same owner lease');
+
+  let release;
+  const delivery = new Promise(resolve => { release = resolve; });
+  const heldRead = send({ type: 'geometry_binding', label: 'Geometry', notify: false }).then(async result => { await delivery; return result.result; });
+  await Promise.resolve(); await plugin.runTask(state.undo()); release();
+  const late = await heldRead, afterUndo = state.getSnapshot();
+  assert.equal(late.text, text(1.5), 'the held ACK carries the exact old read baseline');
+  assert.equal(position(), Math.fround(1.2));
+  assert.equal((await apply(late, text(1.8))).ok, false, 'a delayed read cannot authorize edits after native Undo');
+  assert.deepEqual(state.getSnapshot(), afterUndo);
+  const current = await read(); assert.notEqual(current.lease, first.lease); assert.equal(current.text, text(1.2));
+  assert.equal((await apply(current, text(1.8))).ok, true);
+  assert.equal((await apply(current, text(1.6))).ok, true);
+  assert.equal((await apply(current, current.text)).ok, true, 'cancel restores the captured baseline with its original lease');
+  assert.equal(position(), Math.fround(1.2)); assert.equal((await read()).lease, current.lease);
+
+  const captured = await read();
+  await state.build().to(raw).update({ data: text(3) }).commit({ canUndo: 'Other source' });
+  await plugin.runTask(state.undo());
+  const sourceABA = state.getSnapshot();
+  assert.equal((await apply(captured, text(1.8))).ok, false, 'parser/source ABA invalidates a prequeue lease even with equal bytes');
+  assert.deepEqual(state.getSnapshot(), sourceABA);
+  const fresh = await read(); assert.notEqual(fresh.lease, captured.lease);
+  assert.equal((await apply(fresh, text(1.4))).ok, true);
+  const snapshot = state.getSnapshot(), oldModel = await read();
+  await plugin.clear(); await plugin.runTask(state.setSnapshot(snapshot));
+  assert.equal((await apply(oldModel, xyz)).ok, false, 'same-ref MOLX/snapshot restoration cannot inherit an old rollback lease');
+  assert.equal(position(), Math.fround(1.4));
+  assert.equal((await apply(await read(), xyz)).ok, true);
+  assert.equal(raw.cell.obj.data, xyz);
+  console.log('Geometry lease contracts passed: atomic baseline receipt, required lease, held-read/Undo, own sequence/cancel and source/snapshot ABA.');
+} finally { plugin.dispose(); globalThis.document = previous; await dom.happyDOM.close(); }

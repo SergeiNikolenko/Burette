@@ -404,3 +404,13 @@ worker, which keeps a four-process pool for GIF frames between requests. A
 default 384 px / 120-frame rotation takes about 1.5 s there instead of about
 4 s for a new process, with identical output. Without the bundled Python
 runtime, rendering falls back to a separate process.
+
+## Private Geometry runtime ownership
+
+The desktop's `geometry_binding` action reads an opaque runtime lease together with
+the effective XYZ baseline. The host pins its source generation and viewer frame
+before reading, and constructs the editing model from that same text. Every
+`update_geometry` preview, commit and rollback carries the retained lease; it may
+not acquire a new owner for an already computed edit. Verified own coordinate
+updates retain the lease; renderer StateTree Undo, source replacement and MOLX restoration
+invalidate it. Both actions remain private to the desktop and outside CLI/MCP.

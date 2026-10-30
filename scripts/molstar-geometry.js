@@ -1,5 +1,6 @@
 import { PluginStateObject as SO, PluginStateTransform } from 'molstar/lib/mol-plugin-state/objects.js';
 import { ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition.js';
+import { UUID } from 'molstar/lib/mol-util/uuid.js';
 import { Model } from 'molstar/lib/mol-model/structure/model/model.js';
 import { Coordinates, Time } from 'molstar/lib/mol-model/structure/coordinates.js';
 import { IndexPairBonds } from 'molstar/lib/mol-model-formats/structure/property/bonds/index-pair.js';
@@ -70,7 +71,7 @@ function sameGeometry(cell, identity) {
   return cell === identity.cell && cell?.transform.version === identity.version && cell?.obj === identity.object;
 }
 
-function capture(plugin, isCurrent = () => true) {
+function capture(plugin, isCurrent = () => true, lease) {
   const found = source(plugin);
   let queue = queues.get(plugin);
   if (!queue) { queue = { running: false, pending: null, owner: null }; queues.set(plugin, queue); }
@@ -82,8 +83,9 @@ function capture(plugin, isCurrent = () => true) {
     || (!sameGeometry(found.geometry, owner.geometryIdentity) && !(owner.inFlightGeometry
       && found.geometry?.transform.ref === owner.inFlightGeometry.ref && found.geometry?.transform.version === owner.inFlightGeometry.version
       && (!owner.geometry || found.geometry === owner.geometry)))) {
-    owner = { ...found, versions, objects, geometryIdentity: geometryIdentity(found.geometry) }; queue.owner = owner;
+    owner = { ...found, versions, objects, lease: UUID.create22(), geometryIdentity: geometryIdentity(found.geometry) }; queue.owner = owner;
   }
+  if (lease !== undefined && owner.lease !== lease) throw stale();
   return { owner, isCurrent };
 }
 
@@ -144,6 +146,13 @@ async function apply(plugin, text, token) {
 
 export const BuretteGeometry = {
   capture,
+  binding(plugin, isCurrent) {
+    const token = capture(plugin, isCurrent), found = check(plugin, token);
+    const text = found.geometry?.transform.params.text ?? found.raw.obj.data;
+    xyz(text);
+    check(plugin, token);
+    return { lease: token.owner.lease, text };
+  },
   update(plugin, text, token = capture(plugin)) {
     const queue = queues.get(plugin);
     return new Promise((resolve, reject) => {

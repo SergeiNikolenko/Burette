@@ -120,8 +120,11 @@ try {
   window.addEventListener = (_name, callback) => { listener = callback; };
   const receive = new Function('window', 'activeMolstarViewer', 'loadScript', 'runtimeURL',
     `${globals}\n${declaration}\n${actionFailure}\n${source.slice(start, end)}\nreturn executeBuretteAgentAction;`)(window, () => active, (...args) => loader(...args), (_key, fallback) => fallback);
+  let runtimeBinding;
+  const read = async () => { runtimeBinding = (await receive({ type: 'geometry_binding' })).result; };
   const message = (id, value) => new Promise(resolve => listener({ data: { source: 'burette-agent-host', body: { type: 'agent-action', id,
-    action: { type: 'update_geometry', text: value, label: 'fixture', notify: false } } }, source: { postMessage: resolve } }));
+    action: { type: 'update_geometry', text: value, lease: runtimeBinding.lease, label: 'fixture', notify: false } } }, source: { postMessage: resolve } }));
+  await read();
   window.BuretteGeometryPreview = undefined;
   let load = gate(); loader = async () => { load.start(); await load.waiting; window.BuretteGeometryPreview = runtime; };
   const replacedViewer = message('old-viewer', text(2)); await load.entered;
@@ -139,6 +142,7 @@ try {
   window.BuretteGeometryPreview = undefined; loader = async () => { throw new Error('module load failed'); };
   assert.equal((await message('load-fail', text(2))).body.result.ok, false);
   loader = async () => { window.BuretteGeometryPreview = runtime; };
+  await read();
   assert.equal((await message('retry', text(2))).body.result.ok, true);
   assert.equal(position(), 2);
 
@@ -172,6 +176,7 @@ try {
   const staleGeometry = BuretteGeometry.capture(plugin), savedGeometry = state.getSnapshot(), reusedRootVersion = root().transform.version;
   window.BuretteGeometryPreview = undefined; load = gate();
   loader = async () => { load.start(); await load.waiting; window.BuretteGeometryPreview = runtime; };
+  await read();
   const beforeUndo = message('before-native-undo', text(1.8)); await load.entered;
   await plugin.runTask(state.undo());
   assert.equal(root().transform.version, reusedRootVersion, 'native Undo can reuse the root version');
@@ -183,6 +188,7 @@ try {
   await plugin.runTask(state.setSnapshot(savedGeometry));
   await assert.rejects(update(text(1.8), staleGeometry), /changed/, 'restoring the same Geometry version cannot revive an old StateObject owner');
   assert.equal(position(), Math.fround(1.5));
+  await read();
   assert.equal((await message('after-native-undo', xyz)).body.result.ok, true, 'a fresh owner remains usable after native Undo/snapshot restore');
   await state.build().toRoot().apply(StateTransforms.Data.RawData, { data: 'ordinary undo' }).commit({ canUndo: 'Ordinary' });
   await state.build().toRoot().apply(StateTransforms.Data.RawData, { data: 'ordinary update' }).commit();
@@ -194,6 +200,7 @@ try {
   await plugin.clear(); await plugin.runTask(state.setSnapshot(sameSnapshot));
   assert.notEqual(root(), oldCell, 'restoring identical transform versions recreates a real source owner');
   load.release(); assert.equal((await beforeReopen).body.result.ok, false);
+  await read();
   assert.equal((await message('reopened-identical', text(1.1))).body.result.ok, true);
   const sourceXYZ = '3\nsource\nH 0 0 0\nC 1 0 0\nO 2 0 0\n', editedXYZ = '3\nsource\nH 11 0 0\nC 22 0 0\nO 33 0 0\n';
   for (const original of [sourceXYZ, sourceXYZ.replaceAll('\n', '\r\n'), sourceXYZ.replaceAll('\n', '\r'), '\uFEFF' + sourceXYZ]) {
@@ -210,6 +217,7 @@ try {
   }
   window.BuretteGeometryPreview = undefined; load = gate();
   loader = async () => { load.start(); await load.waiting; window.BuretteGeometryPreview = runtime; };
+  await read();
   const disposed = message('disposed', text(2)); await load.entered;
   plugin.dispose(); load.release();
   assert.equal((await disposed).body.result.ok, false, 'a disposed runtime cannot acknowledge an update');
