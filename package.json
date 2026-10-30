@@ -8,6 +8,9 @@
     "apps/*",
     "packages/*"
   ],
+  "patchedDependencies": {
+    "react-resizable-panels@4.14.8": "patches/react-resizable-panels@4.14.8.patch"
+  },
   "overrides": {
     "@codemirror/commands": "6.11.1",
     "@codemirror/language": "6.12.4",
@@ -180,7 +183,7 @@
     "rdkit-compute": "npm:@rdkit/rdkit@2025.3.4-1.0.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "react-resizable-panels": "^4.14.0",
+    "react-resizable-panels": "4.14.8",
     "react-router": "^8.4.0",
     "shiki": "^4.5.0",
     "sonner": "^2.0.8",

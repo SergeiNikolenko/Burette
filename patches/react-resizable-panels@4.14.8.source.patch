@@ -1,0 +1,294 @@
+--- a/lib/components/grid/Grid.tsx
++++ b/lib/components/grid/Grid.tsx
+@@ -58,8 +58,8 @@
+ type NormalizedTrack = GridTrackProps & { id: string };
+ 
+ type AxisValues = {
+-  expandedItemSizes: { [trackId: string]: number };
+-  layouts: { [trackIds: string]: Layout };
++  expandedItemSizes: RegisteredResizeAxis["mutableState"]["expandedItemSizes"];
++  layouts: RegisteredResizeAxis["mutableState"]["layouts"];
+ };
+ 
+ const AXES: GridAxis[] = ["column", "row"];
+@@ -518,7 +518,8 @@
+           derivedItemConstraints,
+           axis,
+           layout,
+-          prevLayout: event.prev?.layout,
++          prevState: event.prev,
++          requestedAxisSize: event.next.requestedAxisSize,
+           requestedLayout
+         });
+ 
+--- a/lib/components/group/Group.tsx
++++ b/lib/components/group/Group.tsx
+@@ -121,8 +121,8 @@
+   const domOrderRef = useRef<HTMLElement[]>([]);
+ 
+   const inMemoryValuesRef = useRef<{
+-    lastExpandedPanelSizes: { [panelIds: string]: number };
+-    layouts: { [panelIds: string]: Layout };
++    lastExpandedPanelSizes: RegisteredResizeAxis["mutableState"]["expandedItemSizes"];
++    layouts: RegisteredResizeAxis["mutableState"]["layouts"];
+     panels: RegisteredResizeItem[];
+     separators: RegisteredSeparator[];
+   }>({
+@@ -366,7 +366,8 @@
+         derivedItemConstraints: derivedPanelConstraints,
+         axis: group,
+         layout,
+-        prevLayout: event.prev?.layout,
++        prevState: event.prev,
++        requestedAxisSize: event.next.requestedAxisSize,
+         requestedLayout
+       });
+ 
+--- a/lib/global/event-handlers/onDocumentKeyDown.ts
++++ b/lib/global/event-handlers/onDocumentKeyDown.ts
+@@ -1,3 +1,5 @@
++import { getExpandedItemSize } from "../utils/getExpandedItemSize";
++import { syncAxisStateToCurrentSize } from "../utils/syncAxisStateToCurrentSize";
+ import { assert } from "../../utils/assert";
+ import { getMountedAxisState } from "../mutable-state/axes";
+ import { adjustLayoutForSeparator } from "../utils/adjustLayoutForSeparator";
+@@ -71,7 +73,10 @@
+       // If the primary pane is not collapsed, collapses the pane.
+       // If the pane is collapsed, restores the splitter to its previous position.
+ 
+-      const axisState = getMountedAxisState(axis.id, true);
++      const mountedState = getMountedAxisState(axis.id, true);
++      const axisState =
++        syncAxisStateToCurrentSize({ axis, axisState: mountedState })?.state ??
++        mountedState;
+       const { derivedItemConstraints, layout, separatorToItems } = axisState;
+ 
+       const separator = axis.separators.find(
+@@ -93,7 +98,7 @@
+ 
+         const nextSize =
+           constraints.collapsedSize === prevSize
+-            ? (axis.mutableState.expandedItemSizes[primaryItem.id] ??
++            ? (getExpandedItemSize(axis, primaryItem.id, axisState.axisSize) ??
+               constraints.minSize)
+             : constraints.collapsedSize;
+ 
+--- a/lib/global/mountAxis.ts
++++ b/lib/global/mountAxis.ts
+@@ -32,6 +32,7 @@
+ import { getDefaultLayout } from "./utils/getDefaultLayout";
+ import { normalizeLayout } from "./utils/normalizeLayout";
+ import { notifyItemOnResize } from "./utils/notifyItemOnResize";
++import { preserveFixedItemSizes } from "./utils/preserveFixedItemSizes";
+ import { syncAxisStateToCurrentSize } from "./utils/syncAxisStateToCurrentSize";
+ import { validateAxisLayout } from "./utils/validateAxisLayout";
+ 
+@@ -123,8 +124,17 @@
+     axis,
+     itemConstraints: derivedItemConstraints
+   });
++  // Cached percentages must retain their original pixel basis across re-registration.
++  const cached =
++    axis.mutableState.layouts[axis.items.map(({ id }) => id).join(",")];
++  const requestedAxisSize = cached?.axisSize ?? axisSize;
+   const defaultLayoutSafe = validateAxisLayout({
+-    layout: defaultLayoutUnsafe,
++    layout: preserveFixedItemSizes({
++      axis,
++      nextAxisSize: axisSize,
++      prevAxisSize: requestedAxisSize,
++      prevLayout: defaultLayoutUnsafe
++    }),
+     itemConstraints: derivedItemConstraints
+   });
+ 
+@@ -152,7 +162,7 @@
+     derivedItemConstraints,
+     axisSize,
+     layout: defaultLayoutSafe,
+-    requestedAxisSize: axisSize,
++    requestedAxisSize,
+     requestedLayout: normalizeLayout({
+       itemIds: axis.items.map(({ id }) => id),
+       layout: defaultLayoutUnsafe
+--- a/lib/global/types.ts
++++ b/lib/global/types.ts
+@@ -126,10 +126,10 @@
+     defaultLayout: Readonly<Layout> | undefined;
+     disableCursor: boolean;
+     expandedItemSizes: {
+-      [itemId: string]: number;
++      [itemId: string]: { size: number; axisSize: number };
+     };
+     layouts: {
+-      [itemIds: string]: Layout;
++      [itemIds: string]: { layout: Layout; axisSize: number };
+     };
+   };
+   orientation: Orientation;
+--- a/lib/global/utils/adjustLayoutForSeparator.ts
++++ b/lib/global/utils/adjustLayoutForSeparator.ts
+@@ -2,7 +2,7 @@
+ import { getMountedAxisState, updateMountedAxis } from "../mutable-state/axes";
+ import { adjustLayoutByDelta } from "./adjustLayoutByDelta";
+ import { findSeparatorAxis } from "./findSeparatorAxis";
+-import { getImperativeAxisMethods } from "./getImperativeAxisMethods";
++import { syncAxisStateToCurrentSize } from "./syncAxisStateToCurrentSize";
+ import { layoutsEqual } from "./layoutsEqual";
+ import { validateAxisLayout } from "./validateAxisLayout";
+ 
+@@ -11,7 +11,9 @@
+   delta: number
+ ) {
+   const axis = findSeparatorAxis(separatorElement);
+-  const axisState = getMountedAxisState(axis.id, true);
++  const mountedState = getMountedAxisState(axis.id, true);
++  const synced = syncAxisStateToCurrentSize({ axis, axisState: mountedState });
++  const axisState = synced?.state ?? mountedState;
+ 
+   const separator = axis.separators.find(
+     (current) => current.element === separatorElement
+@@ -23,8 +25,7 @@
+ 
+   const pivotIndices = items.map((item) => axis.items.indexOf(item));
+ 
+-  const axisAPI = getImperativeAxisMethods({ axisId: axis.id });
+-  const prevLayout = axisAPI.getLayout();
++  const prevLayout = axisState.layout;
+ 
+   const unsafeLayout = adjustLayoutByDelta({
+     delta,
+@@ -39,7 +40,7 @@
+     itemConstraints: axisState.derivedItemConstraints
+   });
+ 
+-  if (!layoutsEqual(prevLayout, nextLayout)) {
++  if (synced?.changed || !layoutsEqual(prevLayout, nextLayout)) {
+     updateMountedAxis(
+       axis,
+       {
+--- a/lib/global/utils/getDefaultLayout.ts
++++ b/lib/global/utils/getDefaultLayout.ts
+@@ -18,7 +18,7 @@
+ 
+   // Dynamic panel configurations can invalidate a supplied default layout.
+   return (
+-    axis.mutableState.layouts[itemIdsKey] ??
++    axis.mutableState.layouts[itemIdsKey]?.layout ??
+     (defaultLayout && validateLayoutKeys(axis.items, defaultLayout)
+       ? defaultLayout
+       : calculateDefaultLayout(itemConstraints))
+--- a/lib/global/utils/getImperativeItemMethods.ts
++++ b/lib/global/utils/getImperativeItemMethods.ts
+@@ -1,3 +1,4 @@
++import { getExpandedItemSize } from "./getExpandedItemSize";
+ import type { PanelImperativeHandle } from "../../components/panel/types";
+ import { getMountedAxes, updateMountedAxis } from "../mutable-state/axes";
+ import { sizeStyleToPixels } from "../styles/sizeStyleToPixels";
+@@ -150,7 +151,7 @@
+     nextSize: number,
+     { axis, changed, itemSize: prevSize, state }: ReturnType<typeof findSynced>
+   ) => {
+-    if (nextSize === prevSize) {
++    if (!changed && nextSize === prevSize) {
+       return;
+     }
+ 
+@@ -199,7 +200,10 @@
+ 
+       if (collapsible && size === collapsedSize) {
+         // Restore pre-collapse size, fallback to minSize
+-        let nextSize = mutableValues.expandToSize ?? minSize;
++        let nextSize =
++          getExpandedItemSize(synced.axis, itemId, synced.state.axisSize) ??
++          mutableValues.expandToSize ??
++          minSize;
+ 
+         // Edge case: if minSize is 0, pick something meaningful to expand the panel to
+         if (nextSize === 0) {
+--- a/lib/global/utils/recordAxisLayoutChange.ts
++++ b/lib/global/utils/recordAxisLayoutChange.ts
+@@ -1,3 +1,5 @@
++import type { MountedAxisState } from "../mutable-state/axes";
++import { syncAxisStateToCurrentSize } from "./syncAxisStateToCurrentSize";
+ import { layoutNumbersEqual } from "./layoutNumbersEqual";
+ import type {
+   Layout,
+@@ -16,17 +18,29 @@
+   derivedItemConstraints,
+   axis,
+   layout,
+-  prevLayout,
+-  requestedLayout
++  prevState,
++  requestedLayout,
++  requestedAxisSize
+ }: {
+   derivedItemConstraints: ResizeItemConstraints[];
+   axis: RegisteredResizeAxis;
+   layout: Layout;
+-  prevLayout: Layout | undefined;
++  prevState: MountedAxisState | undefined;
+   requestedLayout: Layout;
++  requestedAxisSize: number;
+ }) {
++  // A mutation may precede ResizeObserver; history needs the same previous
++  // pixel basis used by the mutation, without publishing an extra layout event.
++  const previous = prevState
++    ? (syncAxisStateToCurrentSize({ axis, axisState: prevState })?.state ??
++      prevState)
++    : undefined;
++  const prevLayout = previous?.layout;
+   const itemIdsKey = axis.items.map(({ id }) => id).join(",");
+-  axis.mutableState.layouts[itemIdsKey] = requestedLayout;
++  axis.mutableState.layouts[itemIdsKey] = {
++    layout: requestedLayout,
++    axisSize: requestedAxisSize
++  };
+ 
+   if (prevLayout) {
+     derivedItemConstraints.forEach((constraints) => {
+@@ -40,8 +54,10 @@
+           prevLayout[constraints.itemId]
+         );
+         if (isCollapsed && !wasCollapsed) {
+-          axis.mutableState.expandedItemSizes[constraints.itemId] =
+-            prevLayout[constraints.itemId];
++          axis.mutableState.expandedItemSizes[constraints.itemId] = {
++            size: prevLayout[constraints.itemId],
++            axisSize: previous!.axisSize
++          };
+         }
+       }
+     });
+--- a/lib/global/utils/syncAxisStateToCurrentSize.ts
++++ b/lib/global/utils/syncAxisStateToCurrentSize.ts
+@@ -41,7 +41,9 @@
+   let requestedAxisSize = axisState.requestedAxisSize;
+   let requestedLayout = axisState.requestedLayout;
+   if (axisState.defaultLayoutDeferred) {
+-    requestedAxisSize = axisSize;
++    const cached =
++      axis.mutableState.layouts[axis.items.map(({ id }) => id).join(",")];
++    requestedAxisSize = cached?.axisSize ?? axisSize;
+     requestedLayout = normalizeLayout({
+       itemIds: axis.items.map(({ id }) => id),
+       layout: getDefaultLayout({
+--- /dev/null
++++ b/lib/global/utils/getExpandedItemSize.ts
+@@ -0,0 +1,15 @@
++import type { RegisteredResizeAxis } from "../types";
++
++export function getExpandedItemSize(
++  axis: RegisteredResizeAxis,
++  itemId: string,
++  axisSize: number
++) {
++  const cached = axis.mutableState.expandedItemSizes[itemId];
++  if (!cached) return undefined;
++  const item = axis.items.find((item) => item.id === itemId);
++  return item?.constraintProps.groupResizeBehavior === "preserve-pixel-size" &&
++    axisSize > 0
++    ? (cached.size * cached.axisSize) / axisSize
++    : cached.size;
++}

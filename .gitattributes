@@ -12,3 +12,7 @@ compute/semiempirical/reference/parameters_PM6_MOPAC.csv -text whitespace=-blank
 tests/fixtures/quantum/gaussian16-water-raman.fchk -text whitespace=-blank-at-eol
 # Preserve printed Gaussian orientation columns in the pinned reference excerpt.
 tests/fixtures/quantum/gaussian-water-optimization.log -text whitespace=-blank-at-eol
+
+# Preserve literal context lines in the reviewed dependency patches.
+patches/react-resizable-panels@4.14.8.patch whitespace=-blank-at-eol
+patches/react-resizable-panels@4.14.8.source.patch whitespace=-blank-at-eol
