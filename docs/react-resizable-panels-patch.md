@@ -47,6 +47,13 @@ symlink to another checkout. The dependency is declared in root `package.json`;
 
 ## Validation
 
+Run the repository regression suite and its strict type check:
+
+```sh
+vp run test:resizable-panels
+vp run typecheck:resizable-panels
+```
+
 The source patch was independently checked against eleven lifecycle scenarios and
 two additional getter/event/relative-size scenarios: 13 scenarios, 91 assertions.
 Both generated ESM and CommonJS packages passed after a fresh frozen Bun install.
