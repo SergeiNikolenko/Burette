@@ -203,7 +203,8 @@
     "test:scientific-spectra-inputs": "bun test tests/test-scientific-spectra-inputs.test.ts",
     "test:scientific-spectra-row-ids": "bun test tests/test-scientific-spectra-row-ids.test.ts",
     "test:orca-optical-spectra": "bun test tests/test-orca-optical-spectra.test.ts tests/test-orca-optical-C3b-independent.test.ts",
-    "test:orca-circular-spectra": "bun test tests/test-orca-circular-spectra.test.ts tests/test-orca-circular-section-ownership.test.ts tests/test-orca-vcd-section-boundary.test.ts"
+    "test:orca-circular-spectra": "bun test tests/test-orca-circular-spectra.test.ts tests/test-orca-circular-section-ownership.test.ts tests/test-orca-vcd-section-boundary.test.ts",
+    "test:topology-provenance": "bun test tests/test-topology-transfer-provenance.test.ts tests/test-zmatrix-atom-provenance.test.ts"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

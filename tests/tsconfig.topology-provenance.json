@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.zmatrix-provenance.json",
+  "include": ["test-topology-transfer-provenance.test.ts", "test-zmatrix-atom-provenance.test.ts", "../apps/desktop/src/vite-env.d.ts", "../apps/desktop/src/types/plotly.d.ts", "../apps/desktop/src/lib/gifenc.d.ts", "../apps/desktop/src/components/ui/utif.d.ts"]
+}

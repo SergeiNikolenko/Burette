@@ -1,3 +1,4 @@
+import { validateAtomProvenance } from "./atom-provenance";
 import { useSyncExternalStore } from "react";
 import type { ViewerDocument } from "../../types";
 
@@ -66,16 +67,9 @@ export function atomIdsAlong(revisions: readonly AtomIdRevision[], position: num
     // Provenance is authoritative, even when ids are unknown. Never repair malformed
     // correspondence by assigning fresh ids to an alleged survivor.
     if (revision.sourceAtomIndices !== undefined) {
-      const mapping = revision.sourceAtomIndices, count = atomCount(index), previousCount = index > 0 ? atomCount(index - 1) : 0;
-      const used = new Set<number>();
-      if (index === 0 || !Array.isArray(mapping) || mapping.length !== count || !Number.isSafeInteger(count) || count < 1
-        || !Number.isSafeInteger(previousCount) || previousCount < 1) throw new Error("Invalid atom provenance.");
-      for (const source of mapping) {
-        if (!Number.isSafeInteger(source) || source < -1 || source >= previousCount || (source >= 0 && used.has(source))) throw new Error("Invalid atom provenance.");
-        if (source >= 0) used.add(source);
-      }
-      if ((revision.topology ?? 0) === (revisions[index - 1].topology ?? 0)
-        && (count !== previousCount || mapping.some((source, target) => source !== target))) throw new Error("Atom correspondence changed without a topology revision.");
+      if (index === 0) throw new Error("Invalid atom provenance.");
+      validateAtomProvenance(revision.sourceAtomIndices, atomCount(index - 1), atomCount(index),
+        (revision.topology ?? 0) === (revisions[index - 1].topology ?? 0));
     }
     if (revisionAtomIds.has(revision)) { ids = revisionAtomIds.get(revision) ?? null; continue; }
     const previous = index > 0 ? revisions[index - 1] : null;
