@@ -96,21 +96,33 @@ consumers and the Geometry/Original download component, including its compiled
 subscription. The browser file controls expose that component; their focused
 integration check is `vp run test:scientific-original-header`.
 
-A fixed compiled browser build exercised the actual file chooser with Molden,
-ORCA output and gzip-wrapped Molden containing BOM and CRLF. Downloaded Original
-bytes matched all three inputs exactly. Closing the ORCA document, reopening its
-actual downloaded Original and downloading again also preserved those bytes.
-The initial geometry download contained the final ORCA coordinates and energy.
-The menu was checked at 760 pixels in light and dark themes without horizontal
-overflow or console errors.
+Compiled browser acceptance covers the actual file chooser with Molden, ORCA
+output and gzip-wrapped Molden containing BOM and CRLF. Original downloads match
+the input bytes, including the gzip wrapper. Closing an ORCA document, reopening
+its downloaded Original and downloading again preserves those bytes. Explicit
+CLI startup paths also open ORCA and gzip Molden through the scientific route.
 
-That browser run also confirmed an outstanding integration failure: Text → Edit
-source rejects the generated scientific XYZ as read-only. The source-controller
-admission and editor-history integration must be completed before accepting the
-full edit/download workflow. Actual file-drop and normal reload/restoration
-acceptance remain pending. Earlier working-tree observations do not substitute
-for those checks. Packaged macOS, Finder Quick Look and iPhone acceptance remain
-separate; their file registration is unchanged by this browser import path.
+Imported XYZ supports Text editing and the Geometry dock. Browser checks cover
+coordinate changes, a changed geometry download, unchanged Original downloads,
+Geometry Undo and Text Undo after switching panels. A downloaded XYZ reopens
+with the changed coordinates and fresh editor history. The input-export dialog
+opens once and saves an ORCA input containing the current coordinates.
+
+Z-matrix browser checks cover shared variables, reference points, definition
+export, Undo/Redo and atom addition. Both O–H bonds follow their shared variable;
+reference points remain outside the exported atom list. After topology changes,
+the reader waits for the source session's confirmed active frame before creating
+a new model binding. Atom-add Undo/Redo and subsequent coordinate editing have
+been exercised against the compiled browser runtime. The dock retains its state
+through Settings and works at 760 pixels in explicit light and dark themes
+without page-level horizontal overflow.
+
+Focused checks are `test:geometry-ui`, `test:geometry-topology-binding` and
+`test:scientific-server-startup`. These do not establish complete parity.
+Restored logical XYZ/MOLX atom-count changes, actual file-drop and normal
+reload/restoration acceptance remain pending. Packaged macOS, Finder Quick Look
+and iPhone acceptance remain separate; their file registration is unchanged by
+this browser import path.
 
 Single native trajectories play through a registered Mol* animation using native
 `ModelFromTrajectory` transforms. Its relative stride uses a conservative 1/16-loop cap and coprime stride
