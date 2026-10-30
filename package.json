@@ -185,7 +185,8 @@
     "typecheck:symmetry-wasm-assets": "tsc --noEmit -p tests/tsconfig.symmetry-wasm-assets.json",
     "test:symmetry-wasm-loader": "bun test tests/test-symmetry-wasm-loader.test.ts tests/test-symmetry-wasm-diagnostics.test.ts",
     "typecheck:symmetry-wasm-loader": "tsc --noEmit -p tests/tsconfig.symmetry-wasm-loader.json",
-    "test:vibrational-spectrum": "bun test tests/test-vibrational-spectrum.test.ts"
+    "test:vibrational-spectrum": "bun test tests/test-vibrational-spectrum.test.ts",
+    "test:vibrational-spectrum-plot": "bun test tests/test-vibrational-spectrum.test.ts tests/test-vibrational-spectrum-plot.test.ts tests/test-vibrational-spectrum-overflow.test.ts"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
