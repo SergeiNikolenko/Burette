@@ -83,5 +83,10 @@
     return state.pending.then(() => ({ ok: true }));
   }
 
-  window.BuretteGeometryPreview = { apply };
+  function update(viewer, action, owner) {
+    const geometry = window.molstar?.BuretteGeometry;
+    if (!geometry) throw new Error('Reload a runtime supporting live Geometry.');
+    return geometry.update(viewer?.plugin, action.text, owner);
+  }
+  window.BuretteGeometryPreview = { apply, update };
 })();

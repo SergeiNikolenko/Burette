@@ -826,6 +826,17 @@
       return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.createComponent?.(action))
         || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.createComponent is unavailable.'));
     }
+    if (type === 'update_geometry') {
+      const viewer = activeMolstarViewer();
+      const geometry = window.molstar?.BuretteGeometry;
+      if (!geometry) throw new Error('Reload a runtime supporting live Geometry.');
+      const owner = geometry.capture(viewer?.plugin, () => activeMolstarViewer() === viewer);
+      if (!window.BuretteGeometryPreview) {
+        if (!geometryPreviewLoading) geometryPreviewLoading = loadScript(runtimeURL('BuretteGeometryPreviewURL', './geometry-preview.js'), 'geometry preview', 10000).finally(() => { geometryPreviewLoading = null; });
+        await geometryPreviewLoading;
+      }
+      return window.BuretteGeometryPreview.update(viewer, action, owner);
+    }
     if (type === 'preview_geometry') {
       const request = ++geometryPreviewRequest;
       const viewer = activeMolstarViewer();
