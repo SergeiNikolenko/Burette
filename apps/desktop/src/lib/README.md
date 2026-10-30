@@ -34,6 +34,16 @@ and side effects; `src/lib` should make those hooks smaller and easier to test.
 - If a helper is pure, test it directly instead of validating it only through a
   full app smoke.
 
+## Queued Viewer Requests
+
+Capture `captureViewerActionTarget(documentId, sourceIsCurrent)` before queuing work.
+Pass its result in `runStructureViewerAction`'s third options argument, or in
+`requestViewerAction`'s fifth options argument; the fourth argument remains AbortSignal.
+The target's read-only `isCurrent()` checks the original frame/window, source attributes,
+read-only status and optional source-owner predicate before dispatch and acknowledgement.
+Explicit `target: null` must fail rather than acquire a later frame. This target does not
+identify internal Mol* Undo/restore: geometry writes also require a runtime owner receipt.
+
 ## Validation
 
 Pick the narrow test that covers the helper boundary:

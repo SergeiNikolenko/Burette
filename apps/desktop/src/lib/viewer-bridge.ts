@@ -76,13 +76,38 @@ export function postToXyzrenderViewer(documentId: string | undefined, body: Reco
   for (const frame of frames) frame.contentWindow?.postMessage({ source: "burette-host", body }, "*");
 }
 
+/** A caller-owned target for work queued before dispatch; never retarget a new scene. */
+export type ViewerActionTarget = Readonly<{
+  documentId: string;
+  source: Window;
+  isCurrent: () => boolean;
+}>;
+export type ViewerActionOptions = { target?: ViewerActionTarget | null };
+
+export function captureViewerActionTarget(documentId: string, sourceIsCurrent: () => boolean = () => true): ViewerActionTarget | null {
+  const frame = activeViewerIframeForDocument(documentId);
+  if (!frame?.contentWindow || frame.dataset.readOnly === "true") return null;
+  const source = frame.contentWindow;
+  const sourceAttributes = ["src", "srcdoc", "data-source-preview-request-id", "data-source-preview-revision"] as const;
+  const values = sourceAttributes.map(name => frame.getAttribute(name));
+  return {
+    documentId,
+    source,
+    isCurrent: () => activeViewerIframeForDocument(documentId) === frame
+      && frame.contentWindow === source && frame.dataset.readOnly !== "true"
+      && sourceAttributes.every((name, index) => frame.getAttribute(name) === values[index])
+      && sourceIsCurrent(),
+  };
+}
+
 // Request/ack transport for workspace commands that must finish before the next
 // operation. Both the frame and request id are checked, including hidden tabs.
-export async function requestViewerAction(documentId: string, action: Record<string, unknown>, timeoutMs = 60000, signal?: AbortSignal) {
+export async function requestViewerAction(documentId: string, action: Record<string, unknown>, timeoutMs = 60000, signal?: AbortSignal, options: ViewerActionOptions = {}) {
   signal?.throwIfAborted();
-  const frame = activeViewerIframeForDocument(documentId);
-  if (!frame?.contentWindow || frame.dataset.readOnly === "true") throw new Error("Open the scene and wait for it to load.");
-  const source = frame.contentWindow;
+  const target = options.target === undefined ? captureViewerActionTarget(documentId) : options.target;
+  if (!target) throw new Error("Open the scene and wait for it to load.");
+  if (target.documentId !== documentId || !target.isCurrent()) throw new Error("The viewer changed before the action could run.");
+  const source = target.source;
   const id = `workspace-${crypto.randomUUID()}`;
   return new Promise<Record<string, unknown>>((resolve, reject) => {
     const finish = () => { window.clearTimeout(timer); window.removeEventListener("message", receive); signal?.removeEventListener("abort", abort); };
@@ -91,8 +116,7 @@ export async function requestViewerAction(documentId: string, action: Record<str
       const body = event.data?.source === "burette-agent-viewer" ? event.data.body : null;
       if (event.source !== source || body?.type !== "agent-action-result" || body.id !== id) return;
       finish();
-      const currentFrame = activeViewerIframeForDocument(documentId);
-      if (currentFrame?.contentWindow !== source || currentFrame.dataset.readOnly === "true") reject(new Error("The viewer changed before the response arrived."));
+      if (!target.isCurrent()) reject(new Error("The viewer changed before the response arrived."));
       else if (body.result?.ok) resolve(body.result.result ?? {});
       else reject(new Error(body.result?.error?.message ?? body.result?.message ?? "The viewer could not complete this action."));
     };

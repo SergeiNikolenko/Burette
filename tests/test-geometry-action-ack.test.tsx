@@ -4,6 +4,7 @@ import { transformSync } from '@babel/core';
 import { readFileSync } from 'node:fs';
 import { Window } from 'happy-dom';
 import React, { act } from 'react';
+import type { ShellActions } from '../apps/desktop/src/components/types';
 import type { ViewerDocument } from '../apps/desktop/src/types';
 plugin({ name: 'geometry-sender-compiler', setup(build) {
   build.onLoad({ filter: /use-app-molstar-action-senders\.ts$/u }, ({ path }) => ({
@@ -23,7 +24,7 @@ afterAll(async () => { for (const [key, descriptor] of previous) {
 } await browser.happyDOM.close(); });
 const { createRoot } = await import('react-dom/client');
 const { useAppMolstarActionSenders } = await import('../apps/desktop/src/hooks/use-app-molstar-action-senders');
-const { requestViewerAction, activeViewerIframeForDocument } = await import('../apps/desktop/src/lib/viewer-bridge');
+const { requestViewerAction, activeViewerIframeForDocument, captureViewerActionTarget } = await import('../apps/desktop/src/lib/viewer-bridge');
 const action = { type: 'update_geometry', label: 'Geometry', text: '1\nH\nH 0 0 0\n', notify: false } as const;
 let serial = 0;
 async function fixture() {
@@ -87,4 +88,62 @@ test('independent: an owning frame made read-only while ACK is pending cannot re
   f.frame.dataset.readOnly='true';f.reply(f.sent[0].body.id,{ok:true,result:{atomCount:1}});
   await expect(pending).rejects.toThrow();
  }finally{await f.close();}
+});
+
+test('captured target rejects same-id replacement before dispatch without retargeting', async () => {
+  const f = await fixture();
+  try {
+    const target = captureViewerActionTarget(f.doc.id)!;
+    f.frame.remove();
+    const replacement = document.createElement('iframe'); replacement.className = 'viewer-iframe';
+    replacement.dataset.documentId = f.doc.id; f.host.append(replacement);
+    let posts = 0; replacement.contentWindow!.postMessage = () => { posts++; };
+    await expect(Promise.resolve(f.api.runStructureViewerAction(f.doc, action, { target }))).rejects.toThrow('viewer changed');
+    expect([target.isCurrent(), f.sent.length, posts]).toEqual([false, 0, 0]);
+  } finally { await f.close(); }
+});
+test('captured target binds source attributes and checks them again at acknowledgement', async () => {
+  for (const name of ['srcdoc', 'data-source-preview-request-id', 'data-source-preview-revision']) {
+    const f = await fixture();
+    try {
+      const target = captureViewerActionTarget(f.doc.id)!;
+      f.frame.setAttribute(name, 'replacement');
+      await expect(requestViewerAction(f.doc.id, action, 1000, undefined, { target })).rejects.toThrow('viewer changed');
+      expect(f.sent).toHaveLength(0);
+      const current = captureViewerActionTarget(f.doc.id)!;
+      current.source.postMessage = payload => f.sent.push(payload);
+      const pending = requestViewerAction(f.doc.id, action, 1000, undefined, { target: current });
+      f.frame.setAttribute(name, 'another replacement'); f.reply(f.sent[0].body.id, { ok: true }, current.source);
+      await expect(pending).rejects.toThrow('viewer changed');
+    } finally { await f.close(); }
+  }
+});
+test('logical source lifetime guards an unchanged iframe while own acknowledgement stays current', async () => {
+  const { adoptLogicalSource, logicalSourceFor } = await import('../apps/desktop/src/lib/science-session/state');
+  const f = await fixture();
+  try {
+    const input = { documentId: f.doc.id, extension: 'xyz' as const, text: action.text };
+    adoptLogicalSource(input, 'geometry-target', null, ['H']);
+    const source = logicalSourceFor(f.doc.id);
+    const target = captureViewerActionTarget(f.doc.id, () => logicalSourceFor(f.doc.id) === source)!;
+    const dispatch: ShellActions['runStructureViewerAction'] = f.api.runStructureViewerAction;
+    const pending = dispatch(f.doc, action, { target });
+    f.reply(f.sent[0].body.id, { ok: true, result: { atomCount: 1 } });
+    expect(await pending).toEqual({ atomCount: 1 });
+    expect(target.isCurrent()).toBe(true);
+    adoptLogicalSource(input, 'geometry-target', null, ['H']);
+    await expect(Promise.resolve(f.api.runStructureViewerAction(f.doc, action, { target }))).rejects.toThrow('viewer changed');
+    expect(f.sent).toHaveLength(1);
+  } finally { await f.close(); }
+});
+test('explicit absent capture is not reacquired and captured transport preserves fourth AbortSignal', async () => {
+  const f = await fixture();
+  try {
+    await expect(requestViewerAction(f.doc.id, action, 1000, undefined, { target: null })).rejects.toThrow('wait for it to load');
+    expect(f.sent).toHaveLength(0);
+    const target = captureViewerActionTarget(f.doc.id)!;
+    const abort = new AbortController();
+    const pending = requestViewerAction(f.doc.id, action, 1000, abort.signal, { target });
+    abort.abort(); await expect(pending).rejects.toThrow('cancelled');
+  } finally { await f.close(); }
 });

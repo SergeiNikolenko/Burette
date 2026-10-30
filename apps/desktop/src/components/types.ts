@@ -1,3 +1,4 @@
+import type { ViewerActionOptions } from "../lib/viewer-bridge";
 import type { CrystalOpenRequest } from "../lib/extensions/open-crystal";
 import type { ConformerJob, ConformerOperation, ConformerSettings, ConformerStatus, DerivedColumnJob, HoveredGridRow, DockingSceneMode, FepSetupRequest, OpenDocumentsMode, RecentStructure, TextFileDocument, ViewerDocument, ViewerPreferences, ViewerReloadOptions, XtbJob, XtbOperation, XtbRunRequest, XtbSettings, XtbStatus, DatabaseJob } from "../types";
 import type { DatabaseQueryDraft } from "../hooks/use-app-database";
@@ -292,7 +293,7 @@ export type ShellActions = {
   showTextFileMetadata: (document: TextFileDocument) => void | Promise<void>;
   closeQuickLookPreview: () => void;
   generate3DConformer: (document: ViewerDocument) => void | Promise<void>;
-  runStructureViewerAction: (document: ViewerDocument, action: StructureViewerAction) => void;
+  runStructureViewerAction: (document: ViewerDocument, action: StructureViewerAction, options?: ViewerActionOptions) => void | Promise<unknown>;
   reloadXyzrenderDocument: (document: ViewerDocument, options: ViewerReloadOptions) => void | Promise<void>;
   selectTextStructure: (document: TextFileDocument, selection: TextStructureSelection | null) => void;
   exportActivePreviewAsPng: () => void | Promise<void>;
