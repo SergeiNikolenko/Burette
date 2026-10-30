@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { transformSync } from "@babel/core";
 
 plugin({ name: "browser-session-react-compiler", setup(build) {
-  build.onLoad({ filter: /apps\/desktop\/src\/hooks\/use-(?:app-file-open|app-startup-effects|browser-session-restore)\.ts$/u }, ({ path }) => {
+  build.onLoad({ filter: /apps\/desktop\/src\/hooks\/use-(?:app-file-open|app-startup-effects|browser-session-restore|agent-focus-layout)\.ts$/u }, ({ path }) => {
     const code = transformSync(readFileSync(path, "utf8"), { filename: path, babelrc: false, configFile: false,
       parserOpts: { plugins: ["typescript"] }, plugins: [["babel-plugin-react-compiler", {}]] })?.code;
     if (!code) throw new Error(`Compiler pass returned no source: ${path}`);

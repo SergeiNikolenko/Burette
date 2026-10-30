@@ -42,8 +42,10 @@ const { scientificStateFor, importedOriginalFor, releaseClosedImports } = await 
 function deferred<T = void>() {
   let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve };
 }
+const { useAgentFocusLayout, applyAgentFocusLayout } = await import("../apps/desktop/src/hooks/use-agent-focus-layout");
 const { useAppStartupEffects } = await import("../apps/desktop/src/hooks/use-app-startup-effects");
-const { useTabWorkspaceStore } = await import("../apps/desktop/src/stores/tab-workspace-store");
+const { useTabWorkspaceStore, WINDOW_TOOLS_ID } = await import("../apps/desktop/src/stores/tab-workspace-store");
+const { useShellStore } = await import("../apps/desktop/src/stores/shell-store");
 const { workspaceStorage, isBrowserSessionWorkspace } = await import("../apps/desktop/src/lib/window-scope");
 async function fixture(restore = false) {
   const original = useMoleculeStore.getState().documents, ordinary: string[] = [], errors: unknown[] = [];
@@ -55,7 +57,7 @@ async function fixture(restore = false) {
     pushErrorStatus: error => { errors.push(error); }, pushStatus: noop, rememberRecentStructures: noop,
     setDockActiveTab: noop, setDockDocument: noop, setDockOpen: noop,
   };
-  function Probe() { api = useAppFileOpen(options); if (restore) useAppStartupEffects({ ...store, activeDocument: null, browserDevExplicitFolders: [], addProjectRoot: noop, setExpandedProjectIds: noop, setWorkspacePath: noop, openPaths: api.openPaths, openDocuments: api.openDocuments, openDockingDocument: async () => null, pushErrorStatus: options.pushErrorStatus }); return null; }
+  function Probe() { useAgentFocusLayout(); api = useAppFileOpen(options); if (restore) useAppStartupEffects({ ...store, activeDocument: null, browserDevExplicitFolders: [], addProjectRoot: noop, setExpandedProjectIds: noop, setWorkspacePath: noop, openPaths: api.openPaths, openDocuments: api.openDocuments, openDockingDocument: async () => null, pushErrorStatus: options.pushErrorStatus }); return null; }
   const host = browser.document.createElement("div"); browser.document.body.append(host);
   const root = createRoot(host as unknown as HTMLElement); await act(async () => root.render(<Probe />));
   return { api, ordinary, errors, async close() {
@@ -145,4 +147,87 @@ test("closing a restored tab while real scientific preparation is pending reject
     expect(documents.readBrowserDevVirtualTextDocument(saved.paths[0])).toBe(bytes.toString());
     expect(view.errors).toEqual([]);
   } finally {await view.close();}
+});
+
+
+test("focus startup preserves restored open and closed dock visibility", async () => {
+  browser.happyDOM.setURL("http://localhost/?agentLayout=focus");
+  try {
+    for (const open of [true, false]) {
+      const saved = await registerDroppedBrowserFiles([new File([bytes], `focus-${open}.fchk`)], 16 * 1024 * 1024);
+      const initial = await fixture(); await act(async () => initial.api.openPaths(saved.paths));
+      const tabId = useMoleculeStore.getState().activeTabId!;
+      useTabWorkspaceStore.getState().openDockTab(tabId, "right", "vibrations");
+      useTabWorkspaceStore.getState().setDockOpen(tabId, "right", open);
+      useTabWorkspaceStore.getState().setDockOpen(tabId, "bottom", !open);
+      useShellStore.setState({sidebarOpen:open});
+      const shell = browser.localStorage.getItem("burette.shell.ui")!;
+      const session = browser.sessionStorage.getItem(storeKey)!;
+      const docks = browser.sessionStorage.getItem("burette.tab-workspaces")!;
+      await initial.close(); releasePage();
+      browser.sessionStorage.setItem(storeKey, session); await useMoleculeStore.persist.rehydrate();
+      browser.sessionStorage.setItem("burette.tab-workspaces", docks); await useTabWorkspaceStore.persist.rehydrate();
+      useShellStore.setState({sidebarOpen:!open});
+      browser.localStorage.setItem("burette.shell.ui",shell); await useShellStore.persist.rehydrate();
+      const restored = await fixture(true);
+      try {
+        expect([useTabWorkspaceStore.getState().workspaces[tabId].right.open, useTabWorkspaceStore.getState().workspaces[WINDOW_TOOLS_ID].bottom.open]).toEqual([open, !open]);
+        await settle(() => useMoleculeStore.getState().documents.length === 1);
+        expect([useTabWorkspaceStore.getState().workspaces[tabId].right.open, useTabWorkspaceStore.getState().workspaces[WINDOW_TOOLS_ID].bottom.open]).toEqual([open, !open]);
+        expect(useShellStore.getState().sidebarOpen).toBe(open);
+        expect(useTabWorkspaceStore.getState().workspaces[tabId].right.activeTab).toBe("vibrations");
+        const doc = useMoleculeStore.getState().documents[0];
+        expect(scientificStateFor(doc.id, documents.readBrowserDevVirtualTextDocument(doc.path)!).revision?.document.modes).toHaveLength(3);
+        expect(restored.errors).toEqual([]);
+      } finally { await restored.close(); releasePage(); }
+    }
+  } finally { browser.happyDOM.setURL("http://localhost/"); }
+});
+
+
+test("focus defaults still close fresh browser, explicit server, native and embedded workspaces", async () => {
+  releasePage(); useMoleculeStore.getState().closeAllDocuments(); const tabId=useMoleculeStore.getState().activeTabId!;
+  browser.happyDOM.setURL("http://localhost/?agentLayout=focus");
+  useTabWorkspaceStore.setState({workspaces:{}});
+  browser.sessionStorage.removeItem("burette.tab-workspaces");
+  expect(applyAgentFocusLayout()).toBe(true);
+  expect([useTabWorkspaceStore.getState().workspaces[tabId].right.open, useTabWorkspaceStore.getState().workspaces[WINDOW_TOOLS_ID].bottom.open]).toEqual([false,false]);
+  const cases = [
+    {query:"agentLayout=focus&devFiles=/private/server.fchk"},
+    {query:"agentLayout=focus&devFolder=/private/server"},
+    {query:"agentLayout=focus&quickLookFile=/private/server.fchk"},
+    {query:"agentLayout=focus&devDocking=/private/server.fchk"},
+    {query:"agentLayout=focus", native:true},
+    {query:"agentLayout=focus", embedded:true},
+    {query:"agentLayout=focus&mcpWidget=1"},
+  ];
+  try { for (const scenario of cases) {
+    browser.happyDOM.setURL(`http://localhost/?${scenario.query}`);
+    if (scenario.native) Object.assign(browser,{__TAURI_INTERNALS__:{}});
+    if (scenario.embedded) Object.assign(browser,{BuretteMcpWorkspace:{storage:browser.localStorage,sessionId:"focus-test"}});
+    try {
+      useTabWorkspaceStore.getState().openDockTab(tabId,"right","vibrations");
+      useTabWorkspaceStore.getState().setDockOpen(tabId,"bottom",true);
+      expect(applyAgentFocusLayout()).toBe(true);
+      expect([useTabWorkspaceStore.getState().workspaces[tabId].right.open, useTabWorkspaceStore.getState().workspaces[WINDOW_TOOLS_ID].bottom.open]).toEqual([false,false]);
+    } finally { Reflect.deleteProperty(browser,"__TAURI_INTERNALS__"); Reflect.deleteProperty(browser,"BuretteMcpWorkspace"); }
+  } } finally { browser.happyDOM.setURL("http://localhost/"); }
+});
+
+
+test("bottom-only restored workspace preserves global loaded sidebar and derived first-focus entries do not", () => {
+  releasePage(); useMoleculeStore.getState().closeAllDocuments(); const tabId=useMoleculeStore.getState().activeTabId!;
+  browser.happyDOM.setURL("http://localhost/?agentLayout=focus");
+  try {
+    useTabWorkspaceStore.setState({workspaces:{}});
+    useTabWorkspaceStore.getState().setDockOpen(tabId,"bottom",true);
+    useShellStore.setState({sidebarOpen:true});
+    expect(useTabWorkspaceStore.getState().workspaces[tabId]).toBeUndefined();
+    expect(applyAgentFocusLayout()).toBe(false);
+    expect([useTabWorkspaceStore.getState().workspaces[WINDOW_TOOLS_ID].bottom.open,useShellStore.getState().sidebarOpen]).toEqual([true,true]);
+    useTabWorkspaceStore.getState().openDockTab(tabId,"right","vibrations");
+    browser.sessionStorage.removeItem("burette.tab-workspaces");
+    expect(applyAgentFocusLayout()).toBe(true);
+    expect([useTabWorkspaceStore.getState().workspaces[tabId].right.open,useTabWorkspaceStore.getState().workspaces[WINDOW_TOOLS_ID].bottom.open,useShellStore.getState().sidebarOpen]).toEqual([false,false,false]);
+  } finally {browser.happyDOM.setURL("http://localhost/");}
 });
