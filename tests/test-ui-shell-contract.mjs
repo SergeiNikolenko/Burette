@@ -1592,13 +1592,14 @@ assert.match(fileKind, /sourcePreview=\{sourceSession\?\.sourcePreview \?\? unde
 assert.match(fileKind, /onStagingLoad=\{\(identity, frame\) => sourceEditing\?\.stagingLoaded\(document, identity, frame\)\}/);
 assert.match(viewerFrame, /export function ViewerFrame/);
 assert.match(viewerFrame, /className = "viewer-iframe"/);
-assert.match(viewerFrame, /<iframe key=\{document\.runtimePath\} \{\.\.\.commonProps\} src=\{convertFileSrc\(document\.runtimePath\)\} \/>/);
-assert.match(viewerFrame, /<iframe key=\{runtimePath\} \{\.\.\.commonProps\} srcDoc=\{runtimePath\} \/>/);
+// Frame retention and replacement belong to the actual compiled component tests in
+// test-geometry-frame-retention.test.tsx (registered by test:geometry-frame-retention).
+// Do not require a literal React key: source slot/owner identity must survive here.
 assert.match(viewerFrame, /"data-document-id": document\.id/);
 assert.match(viewerFrame, /isWebDemoHeroEmbed\(\)/);
 assert.match(viewerFrame, /burette-hero-interaction-lock/);
 assert.match(viewerFrame, /srcDoc=\{runtimePath\}/);
-assert.match(viewerFrame, /convertFileSrc\(document\.runtimePath\)/);
+assert.match(viewerFrame, /src=\{convertFileSrc\(/);
 assert.match(viewerFrame, /"allow-scripts allow-downloads allow-same-origin"/);
 assert.match(viewerFrame, /isHostedMcpWidget\(\)[\s\S]*?\? undefined/);
 assert.match(viewerFrame, /\.\.\.\(sandbox \? \{ sandbox \} : \{\}\)/);
@@ -4670,7 +4671,7 @@ assert.match(browserDevAgentSession, /changedFileName === "actions\.json"/);
 assert.match(app, /from "\.\/hooks\/use-app-agent-session-actions"/);
 assert.match(app, /const agentTabActions = useAppAgentSessionActions\(\{ closeTab, moveTab, openNewTab, setActiveTab \}\)/);
 assert.match(app, /tabActions: agentTabActions/);
-assert.match(appOpenDropControllerHook, /useAgentSession\(\{\s*activeDocument,\s*activeTabId,\s*activeTabKind,\s*openDockingDocument,\s*tabs,\s*tabActions,\s*openKetcherTab,\s*documents,\s*openTextDocuments,\s*openPaths,\s*pushErrorStatus,\s*setDockDocument,\s*\}\);/s);
+assert.match(appOpenDropControllerHook, /useAgentSession\(\{\s*activeDocument,\s*activeTabId,\s*activeTabKind,\s*openDockingDocument,\s*tabs,\s*tabActions,\s*openKetcherTab,\s*documents,\s*openTextDocuments,\s*openPaths,\s*pushErrorStatus,\s*setDockDocument,\s*sourceDraftForDocument,\s*\}\);/s);
 assert.match(agentSessionHook, /type UseAgentSessionArgs = \{/);
 assert.match(agentSessionHook, /setDockDocument: \(area: DockArea, documentId: string \| null\) => void/);
 assert.match(agentSessionHook, /tabActions: AgentTabActions/);
@@ -5931,7 +5932,8 @@ assert.match(browserDevDocuments, /\.replaceAll\("<", "\\\\u003c"\)/);
 assert.match(browserDevDocuments, /return records\.length >= 1 \? \{ format: "sdf", records \} : null;/);
 assert.match(previewViewer, /records\.length >= 1 && config\.sdfPosePager === true/);
 assert.match(previewViewer, /const controlLabel = String\(config\.sdfPoseControlLabel \|\| 'Pose'\)\.trim\(\) \|\| 'Pose'/);
-assert.match(previewViewer, /const molecules = records\.map\(parseV2000SdfRecord\)/);
+// Single-record graph fidelity and multi-record collection routing are exercised
+// against the real runtime by test-single-sdf-source-pipeline.test.ts.
 assert.match(previewViewer, /if \(\/\\bV3000\\b\/u\.test\(String\(record \|\| ''\)\)\) return parseV3000SdfRecord\(record\);/);
 assert.match(previewViewer, /function parseV3000SdfRecord\(record\)/);
 assert.match(previewViewer, /const collection = records\.length > 1 && allMoleculesParsed/);
@@ -5939,7 +5941,6 @@ assert.match(previewViewer, /kind: 'sdf-collection'/);
 assert.match(previewViewer, /sdfPoseMode: 'collection'/);
 assert.match(previewViewer, /collectionMolecules: collection\.molecules/);
 assert.match(previewViewer, /const activeRecord = readTrajectoryControlIndex\(config, \{ controlLabel \}, records\.length\)/);
-assert.match(previewViewer, /const pdbText = molecules\[activeRecord\]/);
 assert.match(previewViewer, /data: pdbText \|\| recordText,\s*format: pdbText \? 'pdb' : 'sdf'/);
 assert.doesNotMatch(previewViewer, /keepDefaultMolstarStyle: true/);
 assert.match(previewViewer, /nativeTrajectoryControls: false/);
