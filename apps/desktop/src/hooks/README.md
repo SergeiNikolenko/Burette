@@ -62,3 +62,17 @@ runs offline because its transport is local IPC/browser adaptation. It does not
 retry side effects or persist paths, and a late response cannot populate another
 file's menu. Existing shell/document stores and bridge commands remain owners
 of mutations and workspace state.
+
+
+## Source Draft Recovery
+
+The single `SourceEditingProvider` renders the controller's pending recovery
+request. Close or Edit source exposes a retired draft as read-only text; Save
+copy uses its original source format and leaves the restored scene open. The draft remains available after Cancel or Save copy; only explicit Discard
+removes it. Request and source-owner checks prevent late copies from changing a
+later scene or recovery request.
+
+```bash
+bun run test:source-draft-recovery
+bun run typecheck:source-draft-recovery
+```

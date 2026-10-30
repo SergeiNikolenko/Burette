@@ -1,5 +1,7 @@
+import type { TextFileSaveOutcome } from "../file-export";
 import type { DockTabKind } from "../dock";
 import { createContext, useContext, type ReactNode } from "react";
+import { SourceDraftRecoveryDialog } from "../../components/source-draft-recovery-dialog";
 import type { ViewerDocument } from "../../types";
 import type { SourcePreviewFrameSnapshot, SourcePreviewIdentity } from "../source-preview/types";
 
@@ -36,7 +38,20 @@ export type DraftUpdateOptions = { previewApplied: true } | { view: "keep" };
 /** A pending edit belongs to its open document until release or successful close. */
 export type SourceEditingOperation = { isCurrent: () => boolean; release: () => void };
 
+export type SourceDraftRecoveryDraft = Readonly<{
+  sessionId: string; documentId: string; path: string; title: string; extension: string; content: string;
+}>;
+export type SourceDraftRecoveryRequest = Readonly<{
+  requestId: string;
+  drafts: readonly SourceDraftRecoveryDraft[];
+  isCurrent: () => boolean;
+  cancel: () => void;
+  discard: () => void;
+  saveCopy: (sessionId: string) => Promise<TextFileSaveOutcome>;
+}>;
+
 export type SourceEditingContextValue = {
+  recovery?: SourceDraftRecoveryRequest | null;
   sessionForDocument: (document: ViewerDocument | null) => SourceEditingView | null;
   captureOperation: (document: ViewerDocument) => SourceEditingOperation;
   beginEditing: (document: ViewerDocument, revealTab?: DockTabKind) => void | Promise<void>;
@@ -53,7 +68,7 @@ export type SourceEditingContextValue = {
 const SourceEditingContext = createContext<SourceEditingContextValue | null>(null);
 
 export function SourceEditingProvider({ value, children }: { value: SourceEditingContextValue; children: ReactNode }) {
-  return <SourceEditingContext.Provider value={value}>{children}</SourceEditingContext.Provider>;
+  return <SourceEditingContext.Provider value={value}>{children}<SourceDraftRecoveryDialog request={value.recovery ?? null} /></SourceEditingContext.Provider>;
 }
 
 export function useSourceEditing() {

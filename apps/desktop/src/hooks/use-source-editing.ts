@@ -1,3 +1,4 @@
+import { useSourceDraftRecovery } from "./use-source-draft-recovery";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
 import type { DockTabKind } from "../lib/dock";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -10,7 +11,7 @@ import { openBrowserDevTextDocument } from "../lib/browser-dev-documents";
 import { readStructureTextDocument } from "../lib/structure-text";
 import { downloadTextFile, safeExportFileName } from "../lib/file-export";
 import { isTauriRuntime } from "../lib/tauri";
-import { logicalSourceFor } from "../lib/science-session/state";
+import { captureLogicalSourceOwner, captureSourceCloseOwner, logicalSourceFor, subscribeLogicalSources } from "../lib/science-session/state";
 import { rendererViewReloadOptions } from "../lib/renderer-view-state";
 import { activeViewerIframeForDocument, requestViewerAction } from "../lib/viewer-bridge";
 import { captureViewerView } from "../lib/viewer-view-capture";
@@ -22,6 +23,7 @@ import { classifySourceShape, sourceDraftValidationError, sourceNotEditableMessa
 const LIVE_PREVIEW_LIMIT = 1_000_000;
 const SOURCE_EDIT_LIMIT = 3_000_000;
 const LIVE_PREVIEW_DELAY_MS = 450;
+const SOURCE_REPLACED_MESSAGE = "Recover or discard the previous source draft before editing the restored scene.";
 const EDITABLE_EXTENSIONS = new Set(["pdb", "ent", "pdbqt", "pqr", "xpdb", "cif", "mmcif", "mcif", "mol", "mol2", "sdf", "sd", "xyz", "gro"]);
 
 type FileRevision = {
@@ -32,6 +34,7 @@ type FileRevision = {
 
 type InternalSourceSession = SourceEditingView & {
   sessionId: string;
+  isSourceCurrent: () => boolean;
   title: string;
   extension: string;
   handleId: string | null;
@@ -41,6 +44,10 @@ type InternalSourceSession = SourceEditingView & {
   baseContent: string;
   previewState: SourcePreviewState;
 };
+
+function ownsSource(session: InternalSourceSession) {
+  return session.isSourceCurrent();
+}
 
 type NativeOpenResult = {
   handleId: string;
@@ -103,6 +110,7 @@ export function useSourceEditingController({
 }: UseSourceEditingOptions): SourceEditingContextValue & {
   ownsCurrentSourceFrame: (document: ViewerDocument, frame: HTMLIFrameElement) => boolean;
 } {
+  const { recovery, requestRecovery, invalidateRecovery } = useSourceDraftRecovery();
   const [sessions, setSessions] = useState<Record<string, InternalSourceSession>>({});
   const sessionsRef = useRef(sessions);
   const adaptersRef = useRef(new Map<string, SourcePreviewAdapter>());
@@ -115,13 +123,14 @@ export function useSourceEditingController({
   const dirtySnapshotRef = useRef({ signature: "", revision: 0 });
 
   const captureOperation = useCallback((document: ViewerDocument) => {
+    const isSourceCurrent = captureLogicalSourceOwner(document.id);
     const tokens = operationTokensRef.current.get(document.id) ?? new Set<symbol>();
     const token = Symbol();
     tokens.add(token);
     operationTokensRef.current.set(document.id, tokens);
     return {
       isCurrent: () => operationTokensRef.current.get(document.id) === tokens && tokens.has(token)
-        && !closingDocumentIdsRef.current.has(document.id),
+        && !closingDocumentIdsRef.current.has(document.id) && isSourceCurrent(),
       release: () => {
         tokens.delete(token);
         if (!tokens.size && operationTokensRef.current.get(document.id) === tokens) operationTokensRef.current.delete(document.id);
@@ -156,14 +165,63 @@ export function useSourceEditingController({
     });
   }, [commitSessions]);
 
+  const recoverRetiredSessions = useCallback((retired: InternalSourceSession[]) => {
+    const owners = [...new Set(retired.map(session => session.documentId))].map(captureSourceCloseOwner);
+    const drafts = retired.map(({ sessionId, documentId, path, title, extension, content }) => ({ sessionId, documentId, path, title, extension, content }));
+    const matches = (session: InternalSourceSession) => drafts.some(draft => draft.sessionId === session.sessionId && draft.path === session.path && draft.content === session.content);
+    return requestRecovery(drafts, () => owners.every(current => current()) && retired.every(session => {
+      const current = sessionsRef.current[session.path];
+      return current && matches(current) && !ownsSource(current) && current.dirty && !current.saving;
+    }), () => {
+      for (const session of Object.values(sessionsRef.current)) if (matches(session) && !ownsSource(session) && session.handleId) {
+        void invoke("close_source_edit_session", { request: { handleId: session.handleId } }).catch(() => {});
+      }
+      commitSessions(current => Object.fromEntries(Object.entries(current).filter(([, session]) => !matches(session) || ownsSource(session))));
+    });
+  }, [commitSessions, requestRecovery]);
+
+  const retireReplacedSession = useCallback((session: InternalSourceSession) => {
+    if (sessionsRef.current[session.path]?.sessionId !== session.sessionId || ownsSource(session)) return;
+    const timer = timersRef.current.get(session.path);
+    if (timer !== undefined) window.clearTimeout(timer);
+    timersRef.current.delete(session.path);
+    clearStagingWindows(session.path);
+    adaptersRef.current.get(session.path)?.dispose();
+    adaptersRef.current.delete(session.path);
+    if (session.dirty || session.saving) {
+      if (session.saveDisabledReason !== SOURCE_REPLACED_MESSAGE) updateSession(session.path, current => ({ ...current, previewState: "paused", diagnostic: SOURCE_REPLACED_MESSAGE, saveDisabledReason: SOURCE_REPLACED_MESSAGE }));
+      return;
+    }
+    if (session.handleId) void invoke("close_source_edit_session", { request: { handleId: session.handleId } }).catch(() => {});
+    commitSessions(current => Object.fromEntries(Object.entries(current).filter(([, entry]) => entry.sessionId !== session.sessionId)));
+  }, [clearStagingWindows, commitSessions, updateSession]);
+
+  useEffect(() => subscribeLogicalSources(() => {
+    for (const session of Object.values(sessionsRef.current)) if (!ownsSource(session)) retireReplacedSession(session);
+    invalidateRecovery();
+  }), [invalidateRecovery, retireReplacedSession]);
+  useEffect(invalidateRecovery, [invalidateRecovery, sessions]);
+
   const beginEditing = useCallback(async (document: ViewerDocument, revealTab: DockTabKind = "text") => {
     if (closingDocumentIdsRef.current.has(document.id)) return;
     if (revealTab === "structure-edit" && !structureEditAvailable(document)) {
       pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source");
       return;
     }
+    const retired = Object.values(sessionsRef.current).filter(session => session.documentId === document.id && !ownsSource(session) && session.dirty && !session.saving);
+    if (retired.length) { await recoverRetiredSessions(retired); return; }
+    const isSourceCurrent = captureLogicalSourceOwner(document.id);
+    if (!isSourceCurrent()) {
+      pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source");
+      return;
+    }
     const existing = sessionsRef.current[document.path];
-    if (existing) {
+    if (existing && !ownsSource(existing)) retireReplacedSession(existing);
+    if (sessionsRef.current[document.path] && (!ownsSource(sessionsRef.current[document.path]) || existing?.documentId !== document.id)) {
+      pushErrorStatus(new Error(SOURCE_REPLACED_MESSAGE), "Edit source");
+      return;
+    }
+    if (sessionsRef.current[document.path]) {
       setDockOpen("right", true);
       setDockActiveTab("right", revealTab);
       return;
@@ -179,9 +237,10 @@ export function useSourceEditingController({
     if (openingSourceTokensRef.current.has(document.id)) return;
     const token = Symbol();
     openingSourceTokensRef.current.set(document.id, token);
+    const isOpeningCurrent = () => openingSourceTokensRef.current.get(document.id) === token && isSourceCurrent();
     try {
       document = await prepareDeferredViewerRuntime(document, preferences);
-      if (openingSourceTokensRef.current.get(document.id) !== token
+      if (!isOpeningCurrent()
         || (document.virtual && !structureEditAvailable(document))) return;
       const sessionId = randomId();
       let content: string;
@@ -197,7 +256,7 @@ export function useSourceEditingController({
         const opened = await invoke<NativeOpenResult>("open_source_edit_session", {
           request: { documentId: document.id, sessionId },
         });
-        if (openingSourceTokensRef.current.get(document.id) !== token) {
+        if (!isOpeningCurrent()) {
           await invoke("close_source_edit_session", { request: { handleId: opened.handleId } }).catch(() => {});
           return;
         }
@@ -221,15 +280,15 @@ export function useSourceEditingController({
       }
 
       // Reading the source also yields: ownership must survive until publication.
-      if (openingSourceTokensRef.current.get(document.id) !== token
+      if (!isOpeningCurrent()
         || (document.virtual && !structureEditAvailable(document))) return;
       const adapter = new SourcePreviewAdapter({
         activeRuntime: { runtimeKey: `source:${document.id}:base`, runtimePath: document.runtimePath },
-        onChange: (sourcePreview) => updateSession(document.path, (session) => ({ ...session, sourcePreview })),
+        onChange: (sourcePreview) => updateSession(document.path, (session) => session.sessionId === sessionId && ownsSource(session) ? { ...session, sourcePreview } : session),
         onStageFailure: (identity, reason) => {
           clearStagingWindows(document.path, identity);
           updateSession(document.path, (session) => {
-            if (identity.revision !== session.revision) return session;
+            if (identity.sessionId !== session.sessionId || !ownsSource(session) || identity.revision !== session.revision) return session;
             return { ...session, previewState: reason === "superseded" ? "queued" : "paused", diagnostic: reason === "timed-out" ? "Preview timed out. The last valid structure is still shown." : session.diagnostic };
           });
         },
@@ -241,6 +300,7 @@ export function useSourceEditingController({
         title: document.title,
         extension,
         sessionId,
+        isSourceCurrent,
         handleId,
         expectedRevision,
         baseContent: content,
@@ -270,17 +330,17 @@ export function useSourceEditingController({
     } finally {
       if (openingSourceTokensRef.current.get(document.id) === token) openingSourceTokensRef.current.delete(document.id);
     }
-  }, [clearStagingWindows, commitSessions, preferences, pushErrorStatus, setDockActiveTab, setDockOpen, updateSession]);
+  }, [clearStagingWindows, commitSessions, preferences, pushErrorStatus, recoverRetiredSessions, retireReplacedSession, setDockActiveTab, setDockOpen, updateSession]);
 
   const preparePreview = useCallback(async (document: ViewerDocument, content?: string, revision?: number, view?: "keep") => {
     const session = sessionsRef.current[document.path];
     const adapter = adaptersRef.current.get(document.path);
-    if (!session || session.documentId !== document.id || !adapter) return;
+    if (!session || session.documentId !== document.id || !ownsSource(session) || !adapter) return;
     const targetContent = content ?? session.content;
     const targetRevision = revision ?? session.revision;
     const matchesTarget = (current = sessionsRef.current[document.path]) => current?.documentId === document.id
       && current.sessionId === session.sessionId && current.revision === targetRevision
-      && adaptersRef.current.get(document.path) === adapter;
+      && ownsSource(current) && adaptersRef.current.get(document.path) === adapter;
     const byteCount = new TextEncoder().encode(targetContent).byteLength;
     if (byteCount > SOURCE_EDIT_LIMIT) {
       updateSession(document.path, (current) => ({ ...current, previewState: "unsupported", diagnostic: "Draft exceeds the 3 MB editing limit." }));
@@ -344,7 +404,7 @@ export function useSourceEditingController({
 
   const updateDraft = useCallback((document: ViewerDocument, content: string, options?: DraftUpdateOptions) => {
     const session = sessionsRef.current[document.path];
-    if (!session || session.documentId !== document.id || closingDocumentIdsRef.current.has(document.id)) return;
+    if (!session || session.documentId !== document.id || !ownsSource(session) || closingDocumentIdsRef.current.has(document.id)) return;
     const adapter = adaptersRef.current.get(document.path);
     const snapshot = adapter?.getSnapshot();
     const staged = snapshot?.slots[snapshot.activeSlot === "primary" ? "secondary" : "primary"];
@@ -370,7 +430,7 @@ export function useSourceEditingController({
     if (previewState === "queued") {
       const timer = window.setTimeout(() => {
         timersRef.current.delete(document.path);
-        void preparePreview(document, content, revision, options && "view" in options ? options.view : undefined);
+        if (sessionsRef.current[document.path]?.sessionId === session.sessionId) void preparePreview(document, content, revision, options && "view" in options ? options.view : undefined);
       }, LIVE_PREVIEW_DELAY_MS);
       timersRef.current.set(document.path, timer);
     }
@@ -392,7 +452,7 @@ export function useSourceEditingController({
       if (envelope.body.type === "error") {
         adapter.reject(staged.identity);
         stagingWindowsRef.current.delete(event.source as WindowProxy);
-        updateSession(staged.path, (session) => staged.identity.revision === session.revision
+        updateSession(staged.path, (session) => staged.identity.sessionId === session.sessionId && ownsSource(session) && staged.identity.revision === session.revision
           ? { ...session, previewState: "paused", diagnostic: typeof envelope.body?.message === "string" ? envelope.body.message : "Preview failed. The last valid structure is still shown." }
           : session);
         return;
@@ -406,7 +466,7 @@ export function useSourceEditingController({
       if (envelope.body.renderer === "molstar" && Number(envelope.body.molstarStructureCount ?? 0) < 1) {
         adapter.reject(staged.identity);
         stagingWindowsRef.current.delete(event.source as WindowProxy);
-        updateSession(staged.path, (session) => staged.identity.revision === session.revision
+        updateSession(staged.path, (session) => staged.identity.sessionId === session.sessionId && ownsSource(session) && staged.identity.revision === session.revision
           ? { ...session, previewState: "paused", diagnostic: "The draft did not produce a molecular structure. The last valid structure is still shown." }
           : session);
         return;
@@ -414,7 +474,7 @@ export function useSourceEditingController({
       stagingWindowsRef.current.delete(event.source as WindowProxy);
       void adapter.ready(staged.identity).then((result) => {
         if (result.status !== "promoted") return;
-        updateSession(staged.path, (session) => staged.identity.revision === session.revision
+        updateSession(staged.path, (session) => staged.identity.sessionId === session.sessionId && ownsSource(session) && staged.identity.revision === session.revision
           ? { ...session, previewState: "current", lastValidRevision: staged.identity.revision, diagnostic: null }
           : session);
       });
@@ -426,7 +486,7 @@ export function useSourceEditingController({
   const save = useCallback(async (document: ViewerDocument) => {
     if (closingDocumentIdsRef.current.has(document.id)) return;
     const session = sessionsRef.current[document.path];
-    if (!session?.dirty || session.documentId !== document.id || session.saveDisabledReason || savingPathsRef.current.has(document.path)) return;
+    if (!session?.dirty || session.documentId !== document.id || !ownsSource(session) || session.saveDisabledReason || savingPathsRef.current.has(document.path)) return;
     if (!isTauriRuntime()) {
       if (new TextEncoder().encode(session.content).byteLength > SOURCE_EDIT_LIMIT) {
         updateSession(document.path, current => ({ ...current, diagnostic: "Draft exceeds the 3 MB editing limit." }));
@@ -443,6 +503,8 @@ export function useSourceEditingController({
       return;
     }
     if (!session.handleId || !session.expectedRevision) return;
+    const isCurrentSource = () => sessionsRef.current[document.path]?.sessionId === session.sessionId
+      && ownsSource(sessionsRef.current[document.path]);
     savingPathsRef.current.add(document.path);
     updateSession(document.path, (current) => ({ ...current, saving: true }));
     try {
@@ -455,18 +517,22 @@ export function useSourceEditingController({
             cancelLabel: "Cancel",
           })
           : window.confirm("The current draft has not produced a valid preview. Save it anyway?");
-        if (!confirmed) return;
+        if (!confirmed || !isCurrentSource()) return;
       }
-      const persist = (overwriteConfirmedRevision: FileRevision | null) => invoke<NativeSaveResult>("save_source_document", {
-        request: {
-          handleId: session.handleId,
-          content: session.content,
-          expectedRevision: session.expectedRevision,
-          overwriteConfirmedRevision,
-        },
-      });
+      const persist = (overwriteConfirmedRevision: FileRevision | null) => {
+        if (!isCurrentSource()) throw new DOMException("The source changed while saving.", "AbortError");
+        if (sessionsRef.current[document.path]?.revision !== session.revision) throw new Error("The draft changed while saving. Save again.");
+        return invoke<NativeSaveResult>("save_source_document", {
+          request: {
+            handleId: session.handleId,
+            content: session.content,
+            expectedRevision: session.expectedRevision,
+            overwriteConfirmedRevision,
+          },
+        });
+      };
       const applySavedRevision = (revision: FileRevision) => {
-        updateSession(document.path, (current) => ({
+        updateSession(document.path, (current) => current.sessionId !== session.sessionId || !ownsSource(current) ? current : ({
           ...current,
           expectedRevision: revision,
           baseContent: session.content,
@@ -478,6 +544,7 @@ export function useSourceEditingController({
         const result = await persist(null);
         applySavedRevision(result.revision);
       } catch (error) {
+        if (!isCurrentSource()) return;
         const sourceError = parseNativeSourceError(error);
         const conflictRevision = sourceError?.code === "source_conflict" ? sourceError.details?.actualRevision : undefined;
         if (conflictRevision) {
@@ -489,6 +556,7 @@ export function useSourceEditingController({
             "The source changed on disk after editing began. Overwrite those external changes with this draft?",
             { title: "Source Changed on Disk", kind: "warning", okLabel: "Overwrite", cancelLabel: "Cancel" },
           );
+          if (!isCurrentSource()) return;
           if (overwrite) {
             try {
               const result = await persist(conflictRevision);
@@ -502,6 +570,7 @@ export function useSourceEditingController({
             return;
           }
         }
+        if (!isCurrentSource()) return;
         const finalSourceError = parseNativeSourceError(error);
         if (finalSourceError?.code === "source_commit_uncertain") {
           try {
@@ -512,11 +581,12 @@ export function useSourceEditingController({
             error = reconcileError;
           }
         }
-        updateSession(document.path, (current) => ({ ...current, diagnostic: parseNativeSourceError(error)?.message ?? (error instanceof Error ? error.message : String(error)) }));
+        if (!isCurrentSource()) return;
+        updateSession(document.path, (current) => current.sessionId !== session.sessionId || !ownsSource(current) ? current : ({ ...current, diagnostic: parseNativeSourceError(error)?.message ?? (error instanceof Error ? error.message : String(error)) }));
       }
     } finally {
       savingPathsRef.current.delete(document.path);
-      updateSession(document.path, (current) => ({ ...current, saving: false }));
+      updateSession(document.path, (current) => current.sessionId === session.sessionId ? { ...current, saving: false } : current);
     }
   }, [updateSession]);
 
@@ -557,6 +627,7 @@ export function useSourceEditingController({
   }, []);
 
   const confirmCloseWindow = useCallback(async () => {
+    const closeOwners = [...new Set(Object.values(sessionsRef.current).map(session => session.documentId))].map(captureSourceCloseOwner);
     const savingCount = Object.values(sessionsRef.current).filter(
       (session) => session.saving || savingPathsRef.current.has(session.path) || closingDocumentIdsRef.current.has(session.documentId),
     ).length;
@@ -571,19 +642,21 @@ export function useSourceEditingController({
       }
       return false;
     }
+    const retired = Object.values(sessionsRef.current).filter(session => session.dirty && !ownsSource(session));
+    if (retired.length) return recoverRetiredSessions(retired);
     const dirtyCount = Object.values(sessionsRef.current).filter((session) => session.dirty).length;
     if (dirtyCount === 0) return true;
     const text = dirtyCount === 1
       ? "Discard the unsaved source edit and close this window?"
       : `Discard unsaved source edits in ${dirtyCount} documents and close this window?`;
-    if (!isTauriRuntime()) return window.confirm(text);
-    return confirmDialog(text, {
+    const confirmed = isTauriRuntime() ? await confirmDialog(text, {
       title: "Unsaved Source Changes",
       kind: "warning",
       okLabel: "Discard",
       cancelLabel: "Cancel",
-    });
-  }, []);
+    }) : window.confirm(text);
+    return confirmed && closeOwners.every(current => current());
+  }, [recoverRetiredSessions]);
 
   useEffect(() => {
     if (!hasUnsavedOrSavingSessions || isTauriRuntime()) return undefined;
@@ -597,6 +670,7 @@ export function useSourceEditingController({
 
   useEffect(() => () => {
     operationTokensRef.current.clear();
+    openingSourceTokensRef.current.clear();
     for (const timer of timersRef.current.values()) window.clearTimeout(timer);
     for (const adapter of adaptersRef.current.values()) adapter.dispose();
   }, []);
@@ -606,6 +680,8 @@ export function useSourceEditingController({
     if (!wanted.size) return true;
     if (documentIds.some(id => closingDocumentIdsRef.current.has(id))) return false;
     const targets = Object.values(sessionsRef.current).filter((session) => wanted.has(session.documentId));
+    const closeOwners = [...wanted].map(captureSourceCloseOwner);
+    const canClose = () => closeOwners.every(current => current());
     if (targets.some((session) => session.saving || savingPathsRef.current.has(session.path))) {
       const text = "This source is still being saved. Wait for it to finish before closing the document.";
       try {
@@ -620,6 +696,8 @@ export function useSourceEditingController({
     // draft stable and reject overlapping saves/closes until Cancel or release.
     for (const id of wanted) closingDocumentIdsRef.current.add(id);
     try {
+      const retired = targets.filter(session => session.dirty && !ownsSource(session));
+      if (retired.length) return await recoverRetiredSessions(retired);
       const dirtyCount = targets.filter((session) => session.dirty).length;
       if (dirtyCount > 0) {
         const text = dirtyCount === 1
@@ -628,12 +706,14 @@ export function useSourceEditingController({
         const confirmed = isTauriRuntime()
           ? await confirmDialog(text, { title: "Unsaved Source Changes", kind: "warning", okLabel: "Discard", cancelLabel: "Cancel" })
           : window.confirm(text);
-        if (!confirmed) return false;
+        if (!confirmed || !canClose()) return false;
       }
+      if (!canClose()) return false;
       for (const id of wanted) openingSourceTokensRef.current.delete(id);
       if (isTauriRuntime()) {
         await invoke("close_opened_source_documents", { documentIds: [...wanted] });
       }
+      if (!canClose()) return false;
       for (const session of targets) {
         const timer = timersRef.current.get(session.path);
         if (timer !== undefined) window.clearTimeout(timer);
@@ -657,20 +737,21 @@ export function useSourceEditingController({
     } finally {
       for (const id of wanted) closingDocumentIdsRef.current.delete(id);
     }
-  }, [clearStagingWindows, commitSessions, pushErrorStatus]);
+  }, [clearStagingWindows, commitSessions, pushErrorStatus, recoverRetiredSessions]);
 
   return useMemo(() => ({
+    recovery,
     // Async callers must see updates made since their render.
     sessionForDocument: (document: ViewerDocument | null) => {
       if (!document) return null;
       const session = sessionsRef.current[document.path];
-      return session?.documentId === document.id ? session : null;
+      return session?.documentId === document.id && ownsSource(session) ? session : null;
     },
     ownsCurrentSourceFrame: (document: ViewerDocument, frame: HTMLIFrameElement) => {
       if (closingDocumentIdsRef.current.has(document.id)) return false;
       const session = sessionsRef.current[document.path];
       if (!session) return true;
-      if (session.documentId !== document.id || !session.editable || session.lastValidRevision !== session.revision) return false;
+      if (session.documentId !== document.id || !ownsSource(session) || !session.editable || session.lastValidRevision !== session.revision) return false;
       const snapshot = adaptersRef.current.get(document.path)?.getSnapshot();
       const active = snapshot?.slots[snapshot.activeSlot];
       if (!active) return false;
@@ -692,5 +773,5 @@ export function useSourceEditingController({
     confirmCloseWindow,
     getWindowDirtySnapshot,
     hasUnsavedOrSavingSessions,
-  }), [beginEditing, captureOperation, closeDocuments, confirmCloseWindow, getWindowDirtySnapshot, hasUnsavedOrSavingSessions, preparePreview, save, sessions, stagingLoaded, updateDraft]);
+  }), [beginEditing, captureOperation, closeDocuments, confirmCloseWindow, recovery, getWindowDirtySnapshot, hasUnsavedOrSavingSessions, preparePreview, save, sessions, stagingLoaded, updateDraft]);
 }

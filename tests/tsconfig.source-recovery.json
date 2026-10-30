@@ -1,0 +1,1 @@
+{ "extends": "../tsconfig.json", "compilerOptions": { "types": ["bun"] }, "files": ["test-source-draft-recovery.test.tsx"], "include": ["../apps/desktop/src/**/*.d.ts"] }

@@ -29,7 +29,9 @@ mock.module("@tauri-apps/api/core", () => ({ ...core, invoke: async (command, ar
   if (command === "close_opened_source_documents") return close();
   if (command === "save_source_document") return saveSource();
 } }));
+const dialogExports = await import("@tauri-apps/plugin-dialog");
 mock.module("@tauri-apps/plugin-dialog", () => ({
+  ...dialogExports,
   confirm: async (text, options) => { dialogs.push(["confirm", text, options]); return confirm(); },
   message: async (text, options) => { dialogs.push(["message", text, options]); return message(); },
 }));
