@@ -1,3 +1,4 @@
+import { InputExportDialogHost } from "./components/workbench/input-export-host";
 import { useMoleculeStore } from "./stores/molecule-store";
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { AppLayout } from "./components/app-layout";
@@ -1366,6 +1367,7 @@ export default function App() {
   return (
     <SourceEditingProvider value={sourceEditing}>
       <WindowTitle activeDocument={activeDocument} />
+      <InputExportDialogHost actions={actions} />
       <AppLayout
         state={state}
         actions={actions}

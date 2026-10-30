@@ -129,6 +129,7 @@ const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
   "inspector",
   "story",
   "text",
+  "geometry",
   "structure-edit",
   "files",
 ];

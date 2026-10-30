@@ -1,3 +1,4 @@
+import { GeometryPanel, geometryPanelAvailable } from "./geometry-panel";
 import { StructureEditPanel } from "./workbench/structure-edit-panel";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
 import { dockScreenLocation, openDockScreen } from "./workspace-panes/dock-screen";
@@ -96,6 +97,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
   const chemicalSpaceDockAvailable = Boolean(resolveChemicalSpaceDocument(state, dockDocument));
+  const geometryDockAvailable = area === "right" && geometryPanelAvailable(activeStructureDocument);
   const structureEditDockAvailable = area === "right" && structureEditAvailable(activeStructureDocument);
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
   // File screens use the same editable page in every group. Legacy Files entry
@@ -112,6 +114,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const catalog = dockTabCatalog(area).filter(kind => !pluginSurface || !["jobs", "chemical-space", "folding"].includes(kind));
   const tabs = rawTabs.filter((tab) => {
     if (!catalog.includes(tab.kind)) return false;
+    if (tab.kind === "geometry") return geometryDockAvailable;
     if (tab.kind === "structure-edit") return structureEditDockAvailable;
     if (tab.kind === "spectrum") return spectrumDockAvailable;
     if (tab.kind === "folding") return foldingDockAvailable || foldingDockRequested;
@@ -183,6 +186,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     const rect = event.currentTarget.getBoundingClientRect();
     void showNativeContextMenu(
       catalog.filter((kind) => {
+        if (kind === "geometry") return geometryDockAvailable;
         if (kind === "structure-edit") return structureEditDockAvailable;
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
@@ -436,6 +440,11 @@ export function DockPanelContent({
         actions={actions}
       />
     );
+  }
+  if (activeTabKind === "geometry") {
+    return geometryPanelAvailable(dockStructureDocument)
+      ? <GeometryPanel key={dockStructureDocument.id} document={dockStructureDocument} actions={actions} />
+      : <DockEmptyState title="No molecule selected" />;
   }
   if (activeTabKind === "structure-edit") {
     return structureEditAvailable(dockStructureDocument)
