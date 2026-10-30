@@ -25,7 +25,8 @@ let native = false, destination: () => Promise<string | null> = async () => "/re
 let write: () => Promise<string> = async () => "/recovered/source.sdf";
 const writes: { command: string; args: Record<string, unknown> }[] = [], choices: Record<string, unknown>[] = [];
 mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => native }));
-mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ prepareDeferredViewerRuntime: async (document: ViewerDocument) => document }));
+const deferredRuntime = await import("../apps/desktop/src/hooks/use-deferred-viewer-runtime");
+mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ ...deferredRuntime, prepareDeferredViewerRuntime: async (document: ViewerDocument) => document }));
 mock.module("@tauri-apps/plugin-dialog", () => ({ save: async (options: Record<string, unknown>) => { choices.push(options); return destination(); }, confirm: async () => false, message: async () => {} }));
 const core = await import("@tauri-apps/api/core");
 mock.module("@tauri-apps/api/core", () => ({ ...core, invoke: async (command: string, args: Record<string, unknown>) => { writes.push({ command, args }); if (command === "save_text_as") return write(); } }));

@@ -1,3 +1,7 @@
+import { openBrowserCheckpointSession, type BrowserCheckpointSession } from "../lib/browser-source-checkpoint-session";
+import { recoverBrowserSource, useBrowserSourceRecovery } from "./use-browser-source-recovery";
+import { adoptRestoredScientificSource, importedOriginalFor } from "../lib/workbench/scientific-source-state";
+import { useMoleculeStore } from "../stores/molecule-store";
 import { rendererXyzText } from "../lib/geometry-source-text";
 import { readGeometryBinding, type GeometryBinding } from "../lib/geometry-binding";
 import { useSourceDraftRecovery } from "./use-source-draft-recovery";
@@ -36,6 +40,7 @@ type FileRevision = {
 
 type InternalSourceSession = SourceEditingView & {
   sessionId: string;
+  checkpoint: BrowserCheckpointSession;
   isSourceCurrent: () => boolean;
   geometryBinding: GeometryBinding | null;
   title: string;
@@ -76,6 +81,12 @@ type UseSourceEditingOptions = {
   setDockOpen: (area: "right" | "bottom", open: boolean) => void;
   setDockActiveTab: (area: "right" | "bottom", kind: DockTabKind) => void;
 };
+
+function sourceOpeningTicket() {
+  let complete!: () => void;
+  const done = new Promise<void>(resolve => { complete = resolve; });
+  return { done, complete };
+}
 
 function randomId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -120,7 +131,7 @@ export function useSourceEditingController({
   const timersRef = useRef(new Map<string, number>());
   const savingPathsRef = useRef(new Set<string>());
   const closingDocumentIdsRef = useRef(new Set<string>());
-  const openingSourceTokensRef = useRef(new Map<string, symbol>());
+  const openingSourceTokensRef = useRef(new Map<string, ReturnType<typeof sourceOpeningTicket>>());
   const geometryRequestsRef = useRef(new Map<string, { controller: AbortController; isCurrent: () => boolean }>());
   const operationTokensRef = useRef(new Map<string, Set<symbol>>());
   const stagingWindowsRef = useRef(new Map<WindowProxy, { path: string; identity: SourcePreviewIdentity }>());
@@ -148,8 +159,19 @@ export function useSourceEditingController({
     const next = update(current);
     if (next === current) return;
     sessionsRef.current = next;
+    for (const session of Object.values(next)) {
+      const prior = current[session.path];
+      if (!session.checkpoint || !ownsSource(session) || (!session.dirty && !prior?.dirty)
+        || (prior?.sessionId === session.sessionId && prior.content === session.content && prior.dirty === session.dirty)) continue;
+      const currentCheckpoint = () => {
+        const latest = sessionsRef.current[session.path];
+        return latest?.sessionId === session.sessionId && latest.revision === session.revision && ownsSource(latest);
+      };
+      void session.checkpoint.write(session, currentCheckpoint)
+        .catch(error => { if (currentCheckpoint()) pushErrorStatus(error, "Save browser draft"); });
+    }
     setSessions(next);
-  }, []);
+  }, [pushErrorStatus]);
 
   const clearStagingWindows = useCallback((path: string, identity?: SourcePreviewIdentity) => {
     for (const [source, staged] of stagingWindowsRef.current) {
@@ -181,9 +203,14 @@ export function useSourceEditingController({
       for (const session of Object.values(sessionsRef.current)) if (matches(session) && !ownsSource(session) && session.handleId) {
         void invoke("close_source_edit_session", { request: { handleId: session.handleId } }).catch(() => {});
       }
-      commitSessions(current => Object.fromEntries(Object.entries(current).filter(([, session]) => !matches(session) || ownsSource(session))));
+      const discard = () => commitSessions(current => Object.fromEntries(Object.entries(current).filter(([, session]) => !matches(session) || ownsSource(session))));
+      const checkpoints = retired.flatMap(session => session.checkpoint ? [session.checkpoint] : []);
+      if (checkpoints.length) void Promise.all(checkpoints.map(checkpoint => checkpoint.discard(() => owners.every(current => current()))))
+        .then(() => { if (owners.every(current => current())) discard(); })
+        .catch(error => { if (owners.every(current => current())) pushErrorStatus(error, "Discard browser draft"); });
+      else discard();
     });
-  }, [commitSessions, requestRecovery]);
+  }, [commitSessions, pushErrorStatus, requestRecovery]);
 
   const cancelGeometryPreview = useCallback((documentId: string) => {
     const pending = geometryRequestsRef.current.get(documentId);
@@ -255,8 +282,7 @@ export function useSourceEditingController({
         }
         if (logicalXyzGeometry) { cancelGeometryPreview(document.id); updateSession(document.path, current => ({ ...current, geometryBinding: suppliedBinding })); }
       }
-      setDockOpen("right", true);
-      setDockActiveTab("right", revealTab);
+      if (beginOptions?.reveal !== false) { setDockOpen("right", true); setDockActiveTab("right", revealTab); }
       return;
     }
     // Logical XYZ is admitted only by Geometry; graph sources keep their real-format preview lane.
@@ -266,8 +292,9 @@ export function useSourceEditingController({
       pushErrorStatus(new Error("This structure source is read-only in the first live-editing release."), "Edit source");
       return;
     }
-    if (openingSourceTokensRef.current.has(document.id)) return;
-    const token = Symbol();
+    const pendingOpening = openingSourceTokensRef.current.get(document.id);
+    if (pendingOpening) { await pendingOpening.done; return; }
+    const token = sourceOpeningTicket();
     openingSourceTokensRef.current.set(document.id, token);
     const isOpeningCurrent = () => openingSourceTokensRef.current.get(document.id) === token && !closingDocumentIdsRef.current.has(document.id) && isSourceCurrent()
       && (!geometryTarget || geometryTarget.isCurrent()) && (!browserXyzSource || isBrowserDraftSource(document));
@@ -332,6 +359,14 @@ export function useSourceEditingController({
           if (geometryRequestsRef.current.get(document.id) === pending) geometryRequestsRef.current.delete(document.id);
         }
       }
+      const checkpoint = await openBrowserCheckpointSession(document, isOpeningCurrent);
+      if (!isOpeningCurrent()) return;
+      const baseContent = content;
+      const recovered = checkpoint?.checkpoint;
+      if (recovered) {
+        content = recovered.text;
+        adoptRestoredScientificSource(document.id, recovered.science ? { text: content, document: recovered.science } : null, importedOriginalFor(document.id));
+      }
       const adapter = new SourcePreviewAdapter({
         activeRuntime: { runtimeKey: `source:${document.id}:base`, runtimePath: document.runtimePath },
         onChange: (sourcePreview) => updateSession(document.path, (session) => session.sessionId === sessionId && ownsSource(session) ? { ...session, sourcePreview } : session),
@@ -350,39 +385,42 @@ export function useSourceEditingController({
         title: document.title,
         extension,
         sessionId,
+        checkpoint,
         isSourceCurrent,
         geometryBinding,
         handleId,
         expectedRevision,
-        baseContent: content,
+        baseContent,
         content,
         editable: true,
-        dirty: false,
+        dirty: Boolean(recovered),
         saving: false,
-        status: "Saved",
+        status: recovered ? "Edited" : "Saved",
         diagnostic: null,
         previewMode,
-        previewState: "current",
+        previewState: recovered ? "manual" : "current",
         revision: 0,
-        lastValidRevision: 0,
+        lastValidRevision: recovered ? -1 : 0,
         saveDisabledReason: logical ? "Saved with the scene: Export → Scene" : null,
         saveLabel: isTauriRuntime() ? "Save" : "Save copy",
         sourcePreview: adapter.getSnapshot(),
       };
       commitSessions((current) => ({ ...current, [document.path]: session }));
       unusedHandleId = null;
-      setDockOpen("right", true);
-      setDockActiveTab("right", revealTab);
+      if (beginOptions?.reveal !== false) { setDockOpen("right", true); setDockActiveTab("right", revealTab); }
     } catch (error) {
       if (!isOpeningCurrent()) return;
       const parsed = parseNativeSourceError(error);
       const message = parsed?.code === "source_not_editable" && parsed.details?.reason === "unsupported_shape"
         ? sourceNotEditableMessage("unsupported_shape")
         : parsed?.message;
-      pushErrorStatus(message ? new Error(message) : error, "Edit source");
+      const failure = message ? new Error(message) : error;
+      if (beginOptions?.failure === "throw") throw failure;
+      pushErrorStatus(failure, "Edit source");
     } finally {
       if (unusedHandleId) void invoke("close_source_edit_session", { request: { handleId: unusedHandleId } }).catch(() => {});
       if (openingSourceTokensRef.current.get(document.id) === token) openingSourceTokensRef.current.delete(document.id);
+      token.complete();
     }
   }, [cancelGeometryPreview, clearStagingWindows, commitSessions, preferences, pushErrorStatus, recoverRetiredSessions, retireReplacedSession, setDockActiveTab, setDockOpen, updateSession]);
 
@@ -725,8 +763,12 @@ export function useSourceEditingController({
       okLabel: "Discard",
       cancelLabel: "Cancel",
     }) : window.confirm(text);
-    return confirmed && closeOwners.every(current => current());
-  }, [recoverRetiredSessions]);
+    if (!confirmed || !closeOwners.every(current => current())) return false;
+    try {
+      for (const session of Object.values(sessionsRef.current)) await session.checkpoint?.discard(() => closeOwners.every(current => current()));
+      return closeOwners.every(current => current());
+    } catch (error) { if (closeOwners.every(current => current())) pushErrorStatus(error, "Discard browser draft"); return false; }
+  }, [pushErrorStatus, recoverRetiredSessions]);
 
   useEffect(() => {
     if (!hasUnsavedOrSavingSessions || isTauriRuntime()) return undefined;
@@ -751,6 +793,14 @@ export function useSourceEditingController({
     const wanted = new Set(documentIds);
     if (!wanted.size) return true;
     if (documentIds.some(id => closingDocumentIdsRef.current.has(id))) return false;
+    const recoveryActions = { beginEditing, sessionForDocument: (document: ViewerDocument | null) => document ? sessionsRef.current[document.path] ?? null : null, applyPreview: preparePreview };
+    const admissionOwners = [...wanted].map(captureSourceCloseOwner);
+    try {
+      for (const document of useMoleculeStore.getState().documents.filter(document => wanted.has(document.id))) {
+        await recoverBrowserSource(document, recoveryActions, () => admissionOwners.every(current => current()));
+      }
+    } catch (error) { pushErrorStatus(error, "Recover source draft"); return false; }
+    if (!admissionOwners.every(current => current()) || documentIds.some(id => closingDocumentIdsRef.current.has(id))) return false;
     const targets = Object.values(sessionsRef.current).filter((session) => wanted.has(session.documentId));
     const closeOwners = [...wanted].map(captureSourceCloseOwner);
     const canClose = () => closeOwners.every(current => current());
@@ -787,6 +837,8 @@ export function useSourceEditingController({
       }
       if (!canClose()) return false;
       for (const session of targets) {
+        await session.checkpoint?.discard(canClose);
+        if (!canClose()) return false;
         const timer = timersRef.current.get(session.path);
         if (timer !== undefined) window.clearTimeout(timer);
         timersRef.current.delete(session.path);
@@ -809,7 +861,12 @@ export function useSourceEditingController({
     } finally {
       for (const id of wanted) closingDocumentIdsRef.current.delete(id);
     }
-  }, [cancelGeometryPreview, clearStagingWindows, commitSessions, pushErrorStatus, recoverRetiredSessions]);
+  }, [preparePreview, beginEditing, cancelGeometryPreview, clearStagingWindows, commitSessions, pushErrorStatus, recoverRetiredSessions]);
+
+  const checkpointActions = useMemo(() => ({ beginEditing, applyPreview: preparePreview,
+    sessionForDocument: (document: ViewerDocument | null) => document ? sessionsRef.current[document.path] ?? null : null,
+  }), [beginEditing, preparePreview]);
+  useBrowserSourceRecovery(activeDocument, checkpointActions, pushErrorStatus);
 
   return useMemo(() => ({
     recovery,

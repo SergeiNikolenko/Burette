@@ -21,3 +21,22 @@ validation instead of adopting an unrelated draft.
 The storage prerequisite is tested with `test:browser-source-checkpoint` and
 `check:browser-source-checkpoint`. Source admission and startup recovery are a
 separate dependent integration stage.
+
+## Source Admission And Recovery
+
+After normal browser import reopening, the source controller admits a matching
+checkpoint as a new dirty session. The selected dock stays selected. The normal
+preview adapter stages the edited text; it is never described as the saved
+Original. Matching scientific data, including named Z-matrix coordinates and
+dummy references, belongs to the restored text. No older edit history is replayed.
+
+Close waits for pending source admission before checking dirty state. Cancel keeps
+the draft; confirmed Discard waits for its conditional checkpoint deletion. Source
+replacement invalidates old queued writes. Retired drafts keep the existing
+Save copy / Discard / Cancel recovery flow. Read or write failures preserve stored
+bytes and are reported; they do not authorize an unrelated filesystem path.
+
+`test:browser-source-recovery` runs the real compiled startup/source-controller,
+scientific import, IndexedDB, and preview-adapter handshake with reload, pending
+close, source replacement and Original checks. The renderer ready receipt in that
+fixture is explicit; actual browser/renderer acceptance remains separate.

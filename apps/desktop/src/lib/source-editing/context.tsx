@@ -40,7 +40,7 @@ export type DraftUpdateOptions = { previewApplied: true } | { view: "keep" };
 
 /** A pending edit retains its document/source lifetime until release or successful close. */
 /** Reuse the editor baseline captured before its transient Geometry preview. */
-export type SourceEditingBeginOptions = { geometryBinding?: GeometryBinding };
+export type SourceEditingBeginOptions = { geometryBinding?: GeometryBinding; /** Startup recovery keeps the selected tool. */ reveal?: boolean; /** Recovery reports admission failures once at its own boundary. */ failure?: "throw" };
 
 export type SourceEditingOperation = { isCurrent: () => boolean; release: () => void };
 
