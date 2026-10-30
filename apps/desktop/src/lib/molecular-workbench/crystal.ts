@@ -44,7 +44,7 @@ export function cartesianToFractional(point: Vec3, cell: UnitCell): Vec3 {
 
 // Reads cell metadata only. Coordinates and symmetry operations stay with the source reader.
 export function readUnitCell(text: string): UnitCell | null {
-  const lattice = text.match(/\bLattice\s*=\s*"([^"]+)"/i);
+  const lattice = text.match(/\bLattice\s*=\s*"([^"]*)"/i);
   if (lattice) {
     const values = lattice[1].trim().split(/\s+/).map(Number);
     if (values.length !== 9) throw new Error("Extended XYZ Lattice requires nine numbers.");
