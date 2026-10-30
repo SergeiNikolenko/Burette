@@ -142,7 +142,7 @@ export function ViewerFrame({
   };
 
   const renderSlot = (slot: SourcePreviewSlot, runtime: SourcePreviewRuntime) => {
-    const active = sourcePreview?.activeSlot === slot;
+    const active = (sourcePreview?.activeSlot ?? "primary") === slot;
     const identity = runtime.identity;
     const accessibleTitle = active ? document.title : `${document.title} preview candidate`;
     const commonProps = {
@@ -175,9 +175,9 @@ export function ViewerFrame({
     };
     const runtimePath = runtimePathForFrame(runtime.runtimePath);
     return tauriRuntime ? (
-      <iframe key={`${slot}:${runtime.runtimeKey}`} {...commonProps} src={convertFileSrc(runtime.runtimePath)} />
+      <iframe key={`${slot}:${runtime.runtimeKey}:${runtime.runtimePath}`} {...commonProps} src={convertFileSrc(runtime.runtimePath)} />
     ) : (
-      <iframe key={`${slot}:${runtime.runtimeKey}`} {...commonProps} srcDoc={runtimePath} />
+      <iframe key={`${slot}:${runtime.runtimeKey}:${runtime.runtimePath}`} {...commonProps} srcDoc={runtimePath} />
     );
   };
 
@@ -187,34 +187,13 @@ export function ViewerFrame({
       : <FileViewerLoadingState title="Opening structure…" />;
   }
 
-  if (!sourcePreview) {
-    const commonProps = {
-      ref: iframeRef,
-      title: document.renderer === "grid2d" ? "" : document.title,
-      "aria-label": document.renderer === "grid2d" ? document.title : undefined,
-      className,
-      ...(sandbox ? { sandbox } : {}),
-      referrerPolicy: "no-referrer" as const,
-      inert: closeTransitionActive,
-      "aria-busy": closeTransitionActive || undefined,
-      "data-document-id": document.id,
-      "data-renderer": document.renderer,
-      "data-read-only": readOnly ? "true" : undefined,
-      name: readOnly ? "burette-read-only" : "burette-editable",
-      onLoad: (event: SyntheticEvent<HTMLIFrameElement>) => handleFrameLoad(event, true),
-    };
-    const runtimePath = runtimePathForFrame(document.runtimePath);
-    return tauriRuntime ? (
-      <iframe key={document.runtimePath} {...commonProps} src={convertFileSrc(document.runtimePath)} />
-    ) : (
-      <iframe key={runtimePath} {...commonProps} srcDoc={runtimePath} />
-    );
-  }
-
+  // Source editing joins the existing keyed slot tree; a new owner or runtime still replaces it.
   return (
     <>
-      {sourcePreview.slots.primary ? renderSlot("primary", sourcePreview.slots.primary) : null}
-      {sourcePreview.slots.secondary ? renderSlot("secondary", sourcePreview.slots.secondary) : null}
+      {sourcePreview
+        ? sourcePreview.slots.primary && renderSlot("primary", sourcePreview.slots.primary)
+        : renderSlot("primary", { runtimeKey: `source:${document.id}:base`, runtimePath: document.runtimePath })}
+      {sourcePreview?.slots.secondary ? renderSlot("secondary", sourcePreview.slots.secondary) : null}
     </>
   );
 }
