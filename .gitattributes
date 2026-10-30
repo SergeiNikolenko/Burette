@@ -16,3 +16,6 @@ tests/fixtures/quantum/gaussian-water-optimization.log -text whitespace=-blank-a
 # Preserve literal context lines in the reviewed dependency patches.
 patches/react-resizable-panels@4.14.8.patch whitespace=-blank-at-eol
 patches/react-resizable-panels@4.14.8.source.patch whitespace=-blank-at-eol
+
+# Preserve the pinned upstream libmsym license, including its final blank line.
+compute/symmetry-wasm/LIBMSYM_LICENSE.txt -text whitespace=-blank-at-eof

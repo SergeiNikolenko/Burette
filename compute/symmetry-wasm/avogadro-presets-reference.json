@@ -1,0 +1,19 @@
+{
+  "repository": "https://github.com/OpenChemistry/avogadrolibs",
+  "referenceCommit": "d250eb3c62a61470b1e0cdf205dcfe26b06f991f",
+  "presetSource": {
+    "path": "avogadro/qtplugins/symmetry/symmetrywidget.cpp",
+    "blob": "cc5775b6cf9a01aaee64ddc44535979f97c418ef",
+    "bytes": 12278,
+    "referenceUrl": "https://github.com/OpenChemistry/avogadrolibs/blob/d250eb3c62a61470b1e0cdf205dcfe26b06f991f/avogadro/qtplugins/symmetry/symmetrywidget.cpp",
+    "contentCompared": false
+  },
+  "license": {
+    "name": "BSD-3-Clause",
+    "path": "AVOGADRO_LICENSE.txt",
+    "blob": "8d432a213a0a4294e37fb258b5f77d8574834920",
+    "sha256": "3e6a55dc0da9bb56a7f232b1766da524c9d9c1dad61dfeea8424f1df7fb6f2f4",
+    "bytes": 1509
+  },
+  "scope": "Cached source-tree attribution reference for the numerical tolerance presets in the local C adapter. The retained license bytes match the reference Git blob. The preset source payload was not retained, so equality of the numerical presets to this reference is not asserted. This is not an additional compiled upstream input; libmsym/spglib compiled inputs remain pinned separately by build-wasm.sh and sources.sha256."
+}
