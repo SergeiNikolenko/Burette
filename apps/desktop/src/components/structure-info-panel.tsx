@@ -31,6 +31,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrubNumberField } from "@/components/ui/scrub-number-input";
 import { Item, ItemContent, ItemDescription, ItemGroup } from "@/components/ui/item";
 import { InspectorToolRow } from "./inspector-tool-row";
+import { PropertiesToolRow } from "./workbench/properties-entrypoint";
 import { CollapsibleSection } from "./ui/collapsible-section";
 import { Field, FieldGroup, FieldTitle, FieldLabel, FieldDescription, FieldSet, FieldLegend } from "./ui/field";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
@@ -500,6 +501,7 @@ export function StructureInfoPanel({ gridFilterModel, document, textDocument, do
           )}
         >
           <ItemGroup className="gap-1">
+            <PropertiesToolRow document={document} actions={actions} />
             <InspectorToolRow
               name="Molecular calculations"
               detail={xtbMissing ? "Not installed" : oversizedForDirectJob ? oversizedNotice[0].hint : runningXtbJob ? `${operationTitle(runningXtbJob.operation)} · ${runningXtbJob.inputLabel}` : xtbSettingsShort(xtbSettings)}
