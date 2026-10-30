@@ -62,7 +62,7 @@ export type ScientificState = { document: ScientificDocument | null; text: strin
 export function useScientificDocument(document: ViewerDocument | null): ScientificState {
   // Subscribes before the extension is read: a restore completing later re-renders with it.
   useLogicalSource(document?.id ?? null);
-  const eligible = Boolean(document && document.renderer === "molstar" && !document.mergedCollection
+  const eligible = Boolean(document && (document.renderer === "molstar" || document.renderer === "xyzrender-external") && !document.mergedCollection
     && !document.dockingRequest && SCIENTIFIC_EXTENSIONS.has(sourceExtension(document)));
   const { text } = useSourceText(eligible ? document : null, acquireSharedRead);
   const [state, setState] = useState<ScientificState & { key: string | null }>({ document: null, text: null, key: null });
