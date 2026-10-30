@@ -25,6 +25,7 @@ export type CompositionSceneEdit =
   | { operation: "color"; value: string };
 
 export type StructureViewerAction =
+  | { type: "update_geometry"; label: string; text: string; notify: false }
   // Model-local atom_index values, matching the viewer selection contract.
   | { type: "preview_geometry"; label: string; atoms: number[]; kind?: "bond" | "angle" | "dihedral"; notify: false }
   | { type: "open_components_menu"; label: string; query: string; componentLabel: string; kind: "polymer" | "ligand" | "ion" | "water"; x: number; y: number; notify: false }

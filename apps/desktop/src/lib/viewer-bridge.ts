@@ -91,7 +91,8 @@ export async function requestViewerAction(documentId: string, action: Record<str
       const body = event.data?.source === "burette-agent-viewer" ? event.data.body : null;
       if (event.source !== source || body?.type !== "agent-action-result" || body.id !== id) return;
       finish();
-      if (activeViewerIframeForDocument(documentId)?.contentWindow !== source) reject(new Error("The viewer changed before the response arrived."));
+      const currentFrame = activeViewerIframeForDocument(documentId);
+      if (currentFrame?.contentWindow !== source || currentFrame.dataset.readOnly === "true") reject(new Error("The viewer changed before the response arrived."));
       else if (body.result?.ok) resolve(body.result.result ?? {});
       else reject(new Error(body.result?.error?.message ?? body.result?.message ?? "The viewer could not complete this action."));
     };
