@@ -41,9 +41,9 @@ export async function openScientificDocument(actions: Pick<ShellActions, "openSt
   const text = layout === "steps" ? stepsText(document, token) : finalGeometryText(document, token);
   // Steps are a trajectory of frames and energies; a frame's own modes travel with it.
   // The document's modes, orbitals and fields refer to the final geometry only, so
-  // they stay with the single-frame document.
+  // they stay with the single-frame document. File-scoped spectra travel with either layout.
   registerImportedScientificSource(token, text, layout === "steps"
-    ? { format: document.format, atoms: document.frames[0]?.atoms ?? document.atoms, frames: document.frames, modes: [], orbitals: [], converged: document.converged }
+    ? { format: document.format, atoms: document.frames[0]?.atoms ?? document.atoms, frames: document.frames, modes: [], orbitals: [], converged: document.converged, ...(document.spectra ? { spectra: document.spectra } : {}) }
     : document, original);
   // The import belongs to the one document this open created; without it, nothing is kept.
   // That document may already have closed (and close cleanup run) before the open returned.
