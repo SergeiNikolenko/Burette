@@ -179,7 +179,8 @@
     "test:logical-xyz-source": "bun test ./tests/test-logical-xyz-source.test.tsx",
     "typecheck:logical-xyz-source": "tsc --noEmit -p tests/tsconfig.logical-xyz-source.json",
     "check:text-history-contract": "tsc --noEmit -p tests/tsconfig.text-history-contract.json",
-    "test:logical-xyz-runtime": "bun test --preload ./tests/fixtures/molstar-state-preload.mjs ./tests/logical-xyz-source-runtime.test.mjs"
+    "test:logical-xyz-runtime": "bun test --preload ./tests/fixtures/molstar-state-preload.mjs ./tests/logical-xyz-source-runtime.test.mjs",
+    "test:geometry-ui": "bun scripts/test-geometry-ui.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
