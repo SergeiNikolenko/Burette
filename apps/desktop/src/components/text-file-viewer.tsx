@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
-import { defaultKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyField, historyKeymap } from "@codemirror/commands";
 import { json, jsonLanguage } from "@codemirror/lang-json";
 import { jsonDisplayContent } from "./text-file-viewer/json-display";
 import { tags } from "@lezer/highlight";
@@ -25,6 +25,11 @@ import { requestContextualGuide } from "./onboarding/request";
 
 const AGENT_SHELL_BUILD = import.meta.env.VITE_BURETTE_AGENT_SHELL === "1";
 
+// A draft keeps Undo across dock tabs only within its actual editing session.
+// Exact text also prevents an older keystroke from overwriting a newer source edit.
+const parkedHistories = new Map<string, unknown>();
+const PARKED_HISTORY_LIMIT = 16;
+
 export function TextFileViewer({
   document,
   openPaths,
@@ -35,6 +40,7 @@ export function TextFileViewer({
   openPaths?: MarkdownOpenPaths;
   onStructureSelection?: (document: TextFileDocument, selection: TextStructureSelection | null) => void;
   sourceEditing?: {
+    sessionId?: string;
     editable: boolean;
     content: string;
     status: string;
@@ -63,6 +69,8 @@ export function TextFileViewer({
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const editRequestedRef = useRef(false);
   const languageCompartment = useMemo(() => new Compartment(), [document.id]);
+  const historySessionId = sourceEditing?.sessionId;
+  const historyCompartment = useMemo(() => new Compartment(), [document.id]);
   const markdownDocument = isMarkdown(document);
   const maestroDocument = isMaestroText(document);
   const imageDocument = isImageDocument(document);
@@ -108,63 +116,67 @@ export function TextFileViewer({
       }, 120);
     };
 
+    const extensions = [
+      historyCompartment.of(editable ? history() : []),
+      lineNumbers(),
+      highlightActiveLineGutter(),
+      highlightSpecialChars(),
+      foldGutter(),
+      drawSelection(),
+      indentOnInput(),
+      bracketMatching(),
+      highlightActiveLine(),
+      highlightSelectionMatches(),
+      search({
+        top: true,
+        literal: true,
+        createPanel: createTextSearchPanel,
+        scrollToMatch: (range) => EditorView.scrollIntoView(range, { y: "center" }),
+      }),
+      EditorView.contentAttributes.of({ tabindex: "0", "aria-label": `${document.title} text` }),
+      syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+      syntaxHighlighting(jsonHighlightStyle),
+      ...(editable
+        ? [EditorState.readOnly.of(false), EditorView.editable.of(true)]
+        : [EditorState.readOnly.of(true), EditorView.editable.of(false)]),
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged && !syncingContentRef.current) {
+          onContentChangeRef.current?.(update.state.doc.toString());
+        }
+        if (!update.selectionSet) return;
+        const range = update.state.selection.main;
+        // A collapsed caret releases highlights that only mirror the text.
+        if (range.empty) {
+          emitStructureSelection(() => null);
+          return;
+        }
+        emitStructureSelection(() => textStructureSelectionFromRange(documentRef.current, range.from, range.to));
+      }),
+      keymap.of([
+        {
+          key: "Mod-s",
+          preventDefault: true,
+          run: () => {
+            if (!saveSourceRef.current) return false;
+            void saveSourceRef.current();
+            return true;
+          },
+        },
+        { key: "Mod-f", run: toggleTextSearch, preventDefault: true },
+        ...searchKeymap,
+        ...historyKeymap,
+        ...defaultKeymap,
+      ]),
+      textViewerTheme,
+      languageCompartment.of(baseLanguageSupport(document)),
+    ];
+    const parked = editable && historySessionId ? parkedHistories.get(historySessionId) as { doc?: unknown } | undefined : undefined;
+    if (historySessionId) parkedHistories.delete(historySessionId);
     const view = new EditorView({
       parent,
-      state: EditorState.create({
-        doc: editorContent,
-        extensions: [
-          lineNumbers(),
-          highlightActiveLineGutter(),
-          highlightSpecialChars(),
-          foldGutter(),
-          drawSelection(),
-          indentOnInput(),
-          bracketMatching(),
-          highlightActiveLine(),
-          highlightSelectionMatches(),
-          search({
-            top: true,
-            literal: true,
-            createPanel: createTextSearchPanel,
-            scrollToMatch: (range) => EditorView.scrollIntoView(range, { y: "center" }),
-          }),
-          EditorView.contentAttributes.of({ tabindex: "0", "aria-label": `${document.title} text` }),
-          syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-          syntaxHighlighting(jsonHighlightStyle),
-          ...(editable
-            ? [EditorState.readOnly.of(false), EditorView.editable.of(true)]
-            : [EditorState.readOnly.of(true), EditorView.editable.of(false)]),
-          EditorView.updateListener.of((update) => {
-            if (update.docChanged && !syncingContentRef.current) {
-              onContentChangeRef.current?.(update.state.doc.toString());
-            }
-            if (!update.selectionSet) return;
-            const range = update.state.selection.main;
-            // A collapsed caret releases highlights that only mirror the text.
-            if (range.empty) {
-              emitStructureSelection(() => null);
-              return;
-            }
-            emitStructureSelection(() => textStructureSelectionFromRange(documentRef.current, range.from, range.to));
-          }),
-          keymap.of([
-            {
-              key: "Mod-s",
-              preventDefault: true,
-              run: () => {
-                if (!saveSourceRef.current) return false;
-                void saveSourceRef.current();
-                return true;
-              },
-            },
-            { key: "Mod-f", run: toggleTextSearch, preventDefault: true },
-            ...searchKeymap,
-            ...defaultKeymap,
-          ]),
-          textViewerTheme,
-          languageCompartment.of(baseLanguageSupport(document)),
-        ],
-      }),
+      state: parked?.doc === editorContent
+        ? EditorState.fromJSON(parked, { extensions }, { history: historyField })
+        : EditorState.create({ doc: editorContent, extensions }),
     });
     viewRef.current = view;
     const unregisterFind = registerTextFind(view.dom, () => { toggleTextSearch(view); });
@@ -269,22 +281,30 @@ export function TextFileViewer({
       parent.removeEventListener("pointerup", onPointerUp);
       parent.removeEventListener("pointercancel", onPointerCancel);
       parent.removeEventListener("pointerleave", onPointerLeave);
+      if (editable && historySessionId) {
+        parkedHistories.set(historySessionId, view.state.toJSON({ history: historyField }));
+        for (const path of parkedHistories.keys()) if (parkedHistories.size > PARKED_HISTORY_LIMIT) parkedHistories.delete(path);
+      }
       view.destroy();
       unregisterFind();
       viewRef.current = null;
     };
-  }, [document.id, editable, languageCompartment, nonEditorDocument]);
+  }, [document.id, editable, historySessionId, historyCompartment, languageCompartment, nonEditorDocument]);
 
   useEffect(() => {
     if (nonEditorDocument) return;
     const view = viewRef.current;
     if (!view || view.state.doc.toString() === editorContent) return;
+    // Text changed elsewhere, such as a Geometry edit, ends this editor's undo history:
+    // undoing an earlier keystroke must never write over the newer source.
     syncingContentRef.current = true;
     view.dispatch({
       changes: { from: 0, to: view.state.doc.length, insert: editorContent },
+      effects: historyCompartment.reconfigure([]),
     });
+    if (editable) view.dispatch({ effects: historyCompartment.reconfigure(history()) });
     syncingContentRef.current = false;
-  }, [editorContent, nonEditorDocument]);
+  }, [editable, editorContent, historyCompartment, nonEditorDocument]);
 
   useEffect(() => {
     if (nonEditorDocument) return undefined;

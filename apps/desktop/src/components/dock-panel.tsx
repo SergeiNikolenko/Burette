@@ -1175,6 +1175,7 @@ function SingleDocumentTextPanel({
     const sourceEditingProps = activeDocument && activeDocument.path === document.path && sourceEditing
       ? sourceSession
         ? {
+          sessionId: sourceSession.sessionId,
           editable: sourceSession.editable,
           content: sourceSession.content,
           status: sourceSession.status,
