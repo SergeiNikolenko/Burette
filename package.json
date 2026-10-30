@@ -171,7 +171,11 @@
     "test:source-generation-owner": "bun test tests/test-source-generation-owner.test.tsx",
     "typecheck:source-generation-owner": "tsc --noEmit -p tests/tsconfig.source-generation-owner.json",
     "test:geometry-update-runtime": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-geometry-xyz-update.mjs && bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-geometry-update-runtime.mjs && bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-geometry-runtime-lease.mjs && bun tests/test-geometry-private-actions.mjs",
-    "check:uff-wasm": "tsc --noEmit -p tests/tsconfig.uff-wasm.json && tsc --noEmit -p tests/tsconfig.uff-wasm.json --allowJs true"
+    "check:uff-wasm": "tsc --noEmit -p tests/tsconfig.uff-wasm.json && tsc --noEmit -p tests/tsconfig.uff-wasm.json --allowJs true",
+    "test:geometry-preview-lifetime": "bun scripts/test-geometry-preview-lifetime.mjs",
+    "check:geometry-preview-lifetime": "tsc --noEmit -p tests/tsconfig.geometry-foundation.json",
+    "test:geometry-binding": "bun --preload ./tests/fixtures/molstar-state-preload.mjs --preload ./tests/fixtures/geometry-binding-compiler.mjs tests/test-geometry-binding.test.ts",
+    "check:geometry-binding": "tsc --noEmit -p tests/tsconfig.geometry-binding.json"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
