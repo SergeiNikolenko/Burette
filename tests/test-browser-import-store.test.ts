@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { IDBFactory, IDBObjectStore, forceCloseDatabase } from "fake-indexeddb";
+import { IDBFactory, IDBObjectStore, forceCloseDatabase as forceCloseDatabaseRuntime } from "fake-indexeddb";
+// fake-indexeddb 6.2.6 types declare a constructor; its runtime closes a live database instance.
+const forceCloseDatabase = forceCloseDatabaseRuntime as unknown as (database: IDBDatabase) => void;
 import type { BrowserImport } from "../apps/desktop/src/lib/browser-import-storage";
 
 type Store = typeof import("../apps/desktop/src/lib/browser-import-storage");
@@ -23,7 +25,7 @@ const record = (path = "/OpenedFiles/structure.cif", file = new Blob([new Uint8A
 });
 async function seed(values: BrowserImport[]) {
   await new Promise<void>((resolve, reject) => {
-    const request = factory.open("burette-browser-imports", 1);
+    const request = factory.open("burette-browser-imports");
     request.onsuccess = () => {
       const db = request.result, tx = db.transaction("files", "readwrite");
       for (const value of values) tx.objectStore("files").put(value);

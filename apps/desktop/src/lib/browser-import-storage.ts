@@ -18,19 +18,24 @@ function storageError() {
   return new Error("Browser file storage is unavailable. Check available site storage and try again.");
 }
 
-function openDatabase() {
+export function openBrowserImportDatabase() {
   if (database) return database;
   const pending = new Promise<IDBDatabase>((resolve, reject) => {
     if (typeof indexedDB === "undefined") {
       reject(storageError());
       return;
     }
-    const request = indexedDB.open("burette-browser-imports", 1);
+    const request = indexedDB.open("burette-browser-imports", 2);
     let failed = false;
     const fail = () => { failed = true; reject(storageError()); };
     request.onerror = fail;
     request.onblocked = fail;
-    request.onupgradeneeded = () => request.result.createObjectStore(STORE, { keyPath: "path" });
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(STORE)) request.result.createObjectStore(STORE, { keyPath: "path" });
+      if (!request.result.objectStoreNames.contains("source-checkpoints")) {
+        request.result.createObjectStore("source-checkpoints", { keyPath: ["scope", "path"] });
+      }
+    };
     request.onsuccess = () => {
       const db = request.result;
       if (failed) { db.close(); return; }
@@ -64,7 +69,7 @@ function checkedImports(values: unknown[]): BrowserImport[] {
 }
 
 export async function listBrowserImports(): Promise<BrowserImport[]> {
-  const db = await openDatabase();
+  const db = await openBrowserImportDatabase();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE, "readonly");
     const request = transaction.objectStore(STORE).getAll(undefined, MAX_FILES + 1);
@@ -79,7 +84,7 @@ export async function listBrowserImports(): Promise<BrowserImport[]> {
 export async function readBrowserImport(path: string): Promise<BrowserImport | null> {
   // Reads of server-backed and native files also use the document adapter.
   if (typeof indexedDB === "undefined") return null;
-  const db = await openDatabase();
+  const db = await openBrowserImportDatabase();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE, "readonly");
     const request = transaction.objectStore(STORE).get(path);
@@ -99,7 +104,7 @@ export async function saveBrowserImport(input: BrowserImport, occupiedPaths: Ite
   // Blob contents are immutable; capture the selected metadata before awaiting storage.
   input = { ...input };
   const occupied = new Set(occupiedPaths);
-  const db = await openDatabase();
+  const db = await openBrowserImportDatabase();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(STORE, "readwrite");
     const store = transaction.objectStore(STORE);
