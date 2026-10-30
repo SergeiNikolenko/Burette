@@ -12,6 +12,7 @@ test('the real selectionChanged receiver publishes atoms to the Edit panel', asy
   const noop = () => {};
   function Workspace() {
     ({ handleViewerStateMessage: handle } = useAppViewerStateMessages({
+      ownsCurrentSourceFrame: () => true, // This receiver fixture has no source-editing session.
       activeDocument: target, documents: [target], updateDirtyGridDocument: noop, addDocuments: noop,
       openCommandPalette: noop, openDockTab: noop, toggleDockTab: noop, setPreference: noop,
       setViewerLigandSelections: () => { messages++; }, setStructureOverlayModes: noop,

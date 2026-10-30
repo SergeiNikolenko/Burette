@@ -40,6 +40,7 @@ function dispatchXyzrenderSelection(body: Record<string, unknown>) {
 }
 
 type UseAppViewerStateMessagesOptions = {
+  ownsCurrentSourceFrame: (document: ViewerDocument, frame: HTMLIFrameElement) => boolean;
   updateDirtyGridDocument: (documentId: string, dirty: boolean) => void;
   activeDocument: ViewerDocument | null;
   addDocuments: (documents: ViewerDocument[]) => void;
@@ -65,6 +66,7 @@ function bodyString(value: unknown) {
 }
 
 export function useAppViewerStateMessages({
+  ownsCurrentSourceFrame,
   updateDirtyGridDocument,
   activeDocument,
   addDocuments,
@@ -213,9 +215,10 @@ export function useAppViewerStateMessages({
       const selection = body.selection && typeof body.selection === "object"
         ? body.selection as Record<string, unknown>
         : null;
-      const frame = documents.some(document => document.id === documentId) ? activeViewerIframeForDocument(documentId, "molstar") : null;
-      if (frame && isViewerFrameVisible(frame) && frame.contentWindow === eventSource
-        && !isReadOnlyViewerMessageSource(eventSource)) {
+      const document = documents.find(document => document.id === documentId);
+      const frame = document ? activeViewerIframeForDocument(documentId, "molstar") : null;
+      if (document && frame && isViewerFrameVisible(frame) && frame.contentWindow === eventSource
+        && !isReadOnlyViewerMessageSource(eventSource) && ownsCurrentSourceFrame(document, frame)) {
         rememberViewerAtomSelection(documentId, selection);
       }
       updateHostedMcpSelectionContext(selection, documentId);
@@ -271,7 +274,7 @@ export function useAppViewerStateMessages({
     }
 
     return false;
-  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, toggleDockTab, setPreference, setStructureOverlayModes, setStructureStories, setViewerLigandSelections, toggleSidebar, toggleDock, updateDirtyGridDocument]);
+  }, [activeDocument, addDocuments, documents, openCommandPalette, openDockTab, toggleDockTab, ownsCurrentSourceFrame, setPreference, setStructureOverlayModes, setStructureStories, setViewerLigandSelections, toggleSidebar, toggleDock, updateDirtyGridDocument]);
 
   return { handleViewerStateMessage };
 }

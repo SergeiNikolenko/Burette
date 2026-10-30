@@ -96,6 +96,7 @@ type RunMolecularCompute = (
 ) => Promise<void>;
 
 type UseAppViewerBridgeControllerOptions = {
+  ownsCurrentSourceFrame: (document: ViewerDocument, frame: HTMLIFrameElement) => boolean;
   activeDocument: ViewerDocument | null;
   addBackgroundDocuments: (documents: ViewerDocument[]) => void;
   addDocuments: (documents: ViewerDocument[]) => void;
@@ -146,6 +147,7 @@ type UseAppViewerBridgeControllerOptions = {
 };
 
 export function useAppViewerBridgeController({
+  ownsCurrentSourceFrame,
   activeDocument,
   updateGridFilterModel,
   addBackgroundDocuments,
@@ -304,6 +306,7 @@ export function useAppViewerBridgeController({
     postMessageToViewerSource,
   });
   const { handleViewerStateMessage } = useAppViewerStateMessages({
+    ownsCurrentSourceFrame,
     updateDirtyGridDocument,
     activeDocument,
     addDocuments,

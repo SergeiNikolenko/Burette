@@ -100,7 +100,9 @@ export function useSourceEditingController({
   pushErrorStatus,
   setDockActiveTab,
   setDockOpen,
-}: UseSourceEditingOptions): SourceEditingContextValue {
+}: UseSourceEditingOptions): SourceEditingContextValue & {
+  ownsCurrentSourceFrame: (document: ViewerDocument, frame: HTMLIFrameElement) => boolean;
+} {
   const [sessions, setSessions] = useState<Record<string, InternalSourceSession>>({});
   const sessionsRef = useRef(sessions);
   const adaptersRef = useRef(new Map<string, SourcePreviewAdapter>());
@@ -663,6 +665,22 @@ export function useSourceEditingController({
       if (!document) return null;
       const session = sessionsRef.current[document.path];
       return session?.documentId === document.id ? session : null;
+    },
+    ownsCurrentSourceFrame: (document: ViewerDocument, frame: HTMLIFrameElement) => {
+      if (closingDocumentIdsRef.current.has(document.id)) return false;
+      const session = sessionsRef.current[document.path];
+      if (!session) return true;
+      if (session.documentId !== document.id || !session.editable || session.lastValidRevision !== session.revision) return false;
+      const snapshot = adaptersRef.current.get(document.path)?.getSnapshot();
+      const active = snapshot?.slots[snapshot.activeSlot];
+      if (!active) return false;
+      const identity = active.identity;
+      // The initial scene has no request identity. An acknowledged in-place
+      // update keeps this runtime; staged replacements carry their own identity.
+      if (!identity) return !frame.dataset.sourcePreviewRequestId && !frame.dataset.sourcePreviewRevision;
+      return identity.documentId === document.id && identity.sessionId === session.sessionId
+        && frame.dataset.sourcePreviewRequestId === identity.requestId
+        && frame.dataset.sourcePreviewRevision === String(identity.revision);
     },
     captureOperation,
     beginEditing,

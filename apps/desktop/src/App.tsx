@@ -1054,6 +1054,7 @@ export default function App() {
     openDockTab("bottom", "jobs");
   }, [openDockTab]);
   useAppViewerBridgeController({
+    ownsCurrentSourceFrame: sourceEditing.ownsCurrentSourceFrame,
     activeDocument,
     addBackgroundDocuments,
     addDocuments,

@@ -28,7 +28,8 @@ test("Back/Forward retains visited iframe and camera state, pauses hidden pages,
   const file = (name: string): Location => ({ kind: "file", path: `/${name}.xyz`, documentId: name });
   const a=file("a"), b=file("b"), c=file("c"), d=file("d");
   let tab: MoleculeTab = { id: "one", location: a, back: [], forward: [] };
-  const state = { dirtyGridDocuments: new Set() } as unknown as ShellViewState;
+  const dirtyGridDocuments = new Set<string>();
+  const state = { dirtyGridDocuments } as unknown as ShellViewState;
   const render = async (active=true) => act(async () => root.render(<TabHistoryPages tab={tab} state={state} actions={{} as ShellActions} isActive={active} />));
   const frame = (name: string) => container.querySelector<HTMLIFrameElement>(`[data-path="/${name}.xyz"]`);
   try {
@@ -45,11 +46,11 @@ test("Back/Forward retains visited iframe and camera state, pauses hidden pages,
     tab={...tab,location:c,back:[a,b]}; await render();
     tab={...tab,location:d,back:[a,b,c]}; await render();
     expect(container.querySelectorAll("iframe").length).toBe(3); expect(frame("a")).toBeNull();
-    state.dirtyGridDocuments!.add("b");
+    dirtyGridDocuments.add("b");
     await render(false);
     expect(container.querySelectorAll("iframe").length).toBe(2); expect(frame("b")).not.toBeNull();
     expect([...container.querySelectorAll("iframe")].every(el=>el.dataset.playing==="false")).toBe(true);
-    state.dirtyGridDocuments!.clear(); await render(false);
+    dirtyGridDocuments.clear(); await render(false);
     expect(container.querySelectorAll("iframe").length).toBe(1);
   } finally { await act(async()=>root.unmount()); container.remove(); }
 });
@@ -60,7 +61,8 @@ test("a shared budget releases clean history but never the unsaved iframe", asyn
   const a: Location = { kind: "file", path: "/budget-a.pdb", documentId: "a" };
   const b: Location = { kind: "file", path: "/budget-b.pdb", documentId: "b" };
   let tab: MoleculeTab = { id: "budget", location: a, back: [], forward: [] };
-  const state = { dirtyGridDocuments: new Set<string>(), documents: [] } as unknown as ShellViewState;
+  const dirtyGridDocuments = new Set<string>();
+  const state = { dirtyGridDocuments, documents: [] } as unknown as ShellViewState;
   let budget: ReadonlySet<string> | undefined;
   const render = () => act(async () => root.render(<TabHistoryPages tab={tab} state={state} actions={{} as ShellActions} isActive retainedHistoryKeys={budget} />));
   try {
@@ -68,11 +70,11 @@ test("a shared budget releases clean history but never the unsaved iframe", asyn
     const frame = container.querySelector("iframe");
     tab = { ...tab, location: b, back: [a] };
     await render();
-    state.dirtyGridDocuments.add("a");
+    dirtyGridDocuments.add("a");
     budget = new Set();
     await render();
     expect(container.querySelector('[data-path="/budget-a.pdb"]')).toBe(frame);
-    state.dirtyGridDocuments.clear();
+    dirtyGridDocuments.clear();
     await render();
     expect(container.querySelectorAll("iframe").length).toBe(1);
     expect(container.querySelector('[data-path="/budget-a.pdb"]')).toBeNull();
@@ -125,6 +127,7 @@ test("clean duplicate startup cannot evict edited history and detached copies re
   function Workspace() {
     protectedIds = useSceneEditProtection(documents);
     ({ handleViewerStateMessage: handleMessage } = useAppViewerStateMessages({
+      ownsCurrentSourceFrame: () => true, // No source-editing session in this tab-history fixture.
       documents, activeDocument: null, addDocuments: noop, updateDirtyGridDocument: noop,
       openCommandPalette: noop, openDockTab: noop, toggleDockTab: noop, setPreference: noop,
       setViewerLigandSelections: noop, setStructureOverlayModes: noop, setStructureStories: noop,
