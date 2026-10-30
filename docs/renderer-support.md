@@ -54,7 +54,7 @@ scientific marker is a route hint, not permission to skip parsing. Recognised
 malformed input reports a named failure and never silently opens as bare text
 or geometry. Other readable files in the selection retain their own routes.
 
-The opened representation is editable XYZ with the supported parsed data
+The opened representation is XYZ with the supported parsed data
 attached to its document. The source owner reads the current XYZ even when its
 durable upload path ends in `.fchk`, `.molden`, `.json` or `.out`. Logical scene
 sources take priority. The uploaded Original is separate: its immutable name
@@ -83,12 +83,24 @@ vp run test:scientific-original
 
 These cover real readers, source ownership, durable reopen, chooser/drop
 consumers and the Geometry/Original download component, including its compiled
-subscription. Header activation is a separate integration. End-to-end acceptance
-of this adopted workflow still requires an immutable Browser build with actual
-file selection/drop, editing, reload/reopen and byte-exact Original download.
-Earlier working-tree browser observations do not substitute for that check.
-Packaged macOS, Finder Quick Look and iPhone acceptance remain separate; their
-file registration is unchanged by this browser import path.
+subscription. The browser file controls expose that component; their focused
+integration check is `vp run test:scientific-original-header`.
+
+A fixed compiled browser build exercised the actual file chooser with Molden,
+ORCA output and gzip-wrapped Molden containing BOM and CRLF. Downloaded Original
+bytes matched all three inputs exactly. Closing the ORCA document, reopening its
+actual downloaded Original and downloading again also preserved those bytes.
+The initial geometry download contained the final ORCA coordinates and energy.
+The menu was checked at 760 pixels in light and dark themes without horizontal
+overflow or console errors.
+
+That browser run also confirmed an outstanding integration failure: Text → Edit
+source rejects the generated scientific XYZ as read-only. The source-controller
+admission and editor-history integration must be completed before accepting the
+full edit/download workflow. Actual file-drop and normal reload/restoration
+acceptance remain pending. Earlier working-tree observations do not substitute
+for those checks. Packaged macOS, Finder Quick Look and iPhone acceptance remain
+separate; their file registration is unchanged by this browser import path.
 
 Single native trajectories play through a registered Mol* animation using native
 `ModelFromTrajectory` transforms. Its relative stride uses a conservative 1/16-loop cap and coprime stride
