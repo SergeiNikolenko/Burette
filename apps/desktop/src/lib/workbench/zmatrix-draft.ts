@@ -366,7 +366,8 @@ export function zmatrixRowsRevision(science: ScientificDocument, edit: ZmatrixRo
   });
   const sameAtoms = edit.atomMap.length === count && edit.atomMap.every((old, index) => old === index);
   const next = revisionText([sameAtoms ? lines[0] : String(atoms.length), lines[1] ?? "", ...atomLines, ...lines.slice(count + 2)], edit.document, revisions);
-  return { text: next, document: revisionDocument(science, atoms, edit.document), topology: sameAtoms ? topologyOf(revisions, text) : ++topologies };
+  return { text: next, document: revisionDocument(science, atoms, edit.document), topology: sameAtoms ? topologyOf(revisions, text) : ++topologies,
+    sourceAtomIndices: edit.atomMap.map(index => index ?? -1) };
 }
 
 /**
