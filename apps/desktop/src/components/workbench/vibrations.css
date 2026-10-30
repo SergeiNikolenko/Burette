@@ -1,0 +1,65 @@
+.workbench-panel {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  padding-top: 8px;
+  gap: 8px;
+}
+.workbench-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.workbench-spectrum {
+  margin: 0;
+  display: grid;
+  gap: 2px;
+}
+.workbench-spectrum svg {
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.workbench-axis {
+  stroke: var(--line-subtler);
+}
+.workbench-tick,
+.workbench-axis-label {
+  fill: var(--text-muted);
+  color: var(--text-muted);
+  font-size: 9px;
+  text-align: right;
+}
+.workbench-peak line {
+  stroke: var(--text-secondary);
+  stroke-width: 1.25;
+}
+.workbench-peak rect {
+  fill: transparent;
+  cursor: pointer;
+}
+.workbench-peak:hover line,
+.workbench-peak[data-selected] line {
+  stroke: var(--color-text);
+  stroke-width: 2;
+}
+.workbench-chart-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.workbench-chart-current {
+  margin-left: 6px;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+.workbench-chart {
+  min-width: 0;
+  border-radius: 6px;
+}
+.workbench-chart:focus-visible {
+  outline: 2px solid var(--color-ring);
+  outline-offset: 2px;
+}
