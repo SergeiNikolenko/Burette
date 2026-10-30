@@ -75,7 +75,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
   const logical = useLogicalSource(document.id);
   const runtimeText = (value: string) => logical ? value : rendererXyzText(value);
   const bindingIdentity = useMemo(() => ({ text, definition }), [text, definition]);
-  const { binding, error: bindingError, key: bindingKey } = useGeometryBinding(document, actions.runStructureViewerAction, bindingIdentity, (value) => value.text === runtimeText(text));
+  const { binding, error: bindingError, key: bindingKey } = useGeometryBinding(document, actions.runStructureViewerAction, bindingIdentity, (value) => value.text === runtimeText(text), !session?.previewState || session.previewState === "current");
   const live = useGeometryLivePreview(document, binding, actions.runStructureViewerAction, (caught) => setError(message(caught)));
   // An edit applies only to the panel, document and source text it started from.
   const lifetime = useRef(0);

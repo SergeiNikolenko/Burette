@@ -471,6 +471,7 @@ test("a row edit the source moved past or closed before its scene showed gives b
   const moved = await branch("water-superseded.zmat");
   try {
     await act(async () => controller.updateDraft(moved.document, moved.t1));
+    await reloadScene(moved.document);
     for (let attempt = 0; attempt < 30 && busy(); attempt++) await settle();
     assert.equal(busy(), false);
     assert.equal(current(moved.document), moved.t1, "the source keeps its own text");
@@ -487,6 +488,8 @@ test("a row edit the source moved past or closed before its scene showed gives b
   try {
     window.confirm = () => true;
     await act(async () => { await controller.closeDocuments([closed.document.id]); });
+    // The closed model can unmount before sceneReload settles its revision rollback.
+    for (let attempt = 0; attempt < 50 && seen.revisions?.[2] !== closed.t2; attempt++) await settle();
     for (let attempt = 0; attempt < 50 && busy(); attempt++) await settle();
     assert.equal(controller.sessionForDocument(closed.document), null);
     assert.equal(readBrowserDevVirtualTextDocument(closed.document.path), closed.imported, "nothing was written to the closed source");
