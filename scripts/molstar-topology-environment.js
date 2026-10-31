@@ -3,9 +3,13 @@ import { AnimateModelIndex } from 'molstar/lib/mol-plugin-state/animation/built-
 import { Canvas3DParams, Canvas3DContext } from 'molstar/lib/mol-canvas3d/canvas3d.js';
 import { ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition.js';
 import { deepEqual } from 'molstar/lib/mol-util/index.js';
+import { InteractivityManager } from 'molstar/lib/mol-plugin-state/manager/interactivity.js';
+import { StructureComponentManager } from 'molstar/lib/mol-plugin-state/manager/structure/component.js';
 import { PluginStateSnapshotManager } from 'molstar/lib/mol-plugin-state/manager/snapshots.js';
 
 const nativeAnimations = DefaultPluginSpec().animations, animationRevisions = new WeakMap();
+const managerRevisions = new WeakMap();
+const interactivityDefaults = PD.getDefaultValues(InteractivityManager.Params), componentDefaults = PD.getDefaultValues(StructureComponentManager.OptionsParams);
 const defaults = PD.getDefaultValues(Canvas3DParams), contextDefaults = PD.getDefaultValues(Canvas3DContext.Params);
 const fail = message => { throw Object.assign(new Error(message), { code: 'UNSUPPORTED_TOPOLOGY_ENVIRONMENT' }); };
 const plain = value => value && typeof value === 'object' && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
@@ -128,6 +132,24 @@ function sameAnimation(plugin, owner) {
   const next = animationOwner(plugin);
   if (Object.keys(owner).some(key => owner[key] !== next[key])) fail('Native animation changed while topology was prepared.');
 }
+function nativeOwners(plugin) {
+  const interactivity = plugin.managers.interactivity, component = plugin.managers.structure.component;
+  if (!(interactivity instanceof InteractivityManager) || !(component instanceof StructureComponentManager)) fail('The native settings managers are unavailable.');
+  const result = { interactivity, component };
+  for (const [key, manager, event] of [['interactivityRevision', interactivity, interactivity.events.propsUpdated], ['componentRevision', component, component.events.optionsUpdated]]) {
+    let record = managerRevisions.get(manager);
+    if (!record) {
+      record = { value: 0 }; managerRevisions.set(manager, record);
+      manager.subscribe(event, () => { record.value++; }); // native manager disposal owns the subscription
+    }
+    result[key] = record.value;
+  }
+  return result;
+}
+function sameNativeOwners(plugin, owner) {
+  const next = nativeOwners(plugin);
+  if (Object.keys(owner).some(key => owner[key] !== next[key])) fail('Native settings changed while topology was prepared.');
+}
 function data(plugin) {
   let canvasDelta = null, contextDelta = null;
   if (plugin.canvas3d) {
@@ -138,14 +160,16 @@ function data(plugin) {
     if (typeof plugin.canvas3dContext.setProps !== 'function') fail('The canvas context settings owner is unavailable.');
     contextDelta = props(Canvas3DContext.Params, plugin.canvas3dContext.props, contextDefaults);
   }
-  return { canvasDelta, contextDelta };
+  return { canvasDelta, contextDelta,
+    interactivityDelta: props(InteractivityManager.Params, plugin.managers.interactivity.props, interactivityDefaults),
+    componentDelta: props(StructureComponentManager.OptionsParams, plugin.managers.structure.component.state.options, componentDefaults) };
 }
 function capture(plugin) {
-  const snapshots = snapshotOwner(plugin), animation = animationOwner(plugin), values = data(plugin);
-  return { ...values, owner: { snapshots, animation, canvas: plugin.canvas3d ?? null, context: plugin.canvas3dContext ?? null, fingerprint: JSON.stringify(values) } };
+  const snapshots = snapshotOwner(plugin), animation = animationOwner(plugin), native = nativeOwners(plugin), values = data(plugin);
+  return { ...values, owner: { snapshots, animation, native, canvas: plugin.canvas3d ?? null, context: plugin.canvas3dContext ?? null, fingerprint: JSON.stringify(values) } };
 }
 function validate(plugin, owner) {
-  sameSnapshot(plugin, owner.snapshots); sameAnimation(plugin, owner.animation);
+  sameSnapshot(plugin, owner.snapshots); sameAnimation(plugin, owner.animation); sameNativeOwners(plugin, owner.native);
   if ((plugin.canvas3d ?? null) !== owner.canvas || (plugin.canvas3dContext ?? null) !== owner.context || JSON.stringify(data(plugin)) !== owner.fingerprint) fail('The viewer settings changed while topology was prepared.');
   return true;
 }
@@ -154,16 +178,22 @@ function validateData(value) {
   const canvas = value.canvasDelta === null ? null : full(Canvas3DParams, value.canvasDelta, defaults);
   const context = value.contextDelta === null ? null : full(Canvas3DContext.Params, value.contextDelta, contextDefaults);
   if (canvas) resourceGuard(canvas);
-  return { canvas, context };
+  json(value.interactivityDelta); json(value.componentDelta);
+  const interactivity = full(InteractivityManager.Params, value.interactivityDelta, interactivityDefaults);
+  const component = full(StructureComponentManager.OptionsParams, value.componentDelta, componentDefaults);
+  return { canvas, context, interactivity, component };
 }
 function prepare(plugin, value) {
-  const values = validateData(value), snapshots = snapshotOwner(plugin), animation = animationOwner(plugin);
+  const snapshots = snapshotOwner(plugin), animation = animationOwner(plugin), native = nativeOwners(plugin), values = validateData(value);
   if (values.canvas && typeof plugin.canvas3d?.setProps !== 'function' || values.context && typeof plugin.canvas3dContext?.setProps !== 'function') fail('The candidate has no matching settings owner.');
-  return { ...values, snapshots, animation, canvasOwner: plugin.canvas3d ?? null, contextOwner: plugin.canvas3dContext ?? null };
+  return { ...values, snapshots, animation, native, canvasOwner: plugin.canvas3d ?? null, contextOwner: plugin.canvas3dContext ?? null };
 }
 function apply(plugin, value) {
-  sameSnapshot(plugin, value.snapshots); sameAnimation(plugin, value.animation);
+  sameSnapshot(plugin, value.snapshots); sameAnimation(plugin, value.animation); sameNativeOwners(plugin, value.native);
   if ((plugin.canvas3d ?? null) !== value.canvasOwner || (plugin.canvas3dContext ?? null) !== value.contextOwner) fail('The candidate settings owner changed.');
+  // Match native PluginState.setSnapshot: setOptions would overwrite the restored per-representation overrides.
+  plugin.managers.structure.component._setSnapshotState(value.component);
+  plugin.managers.interactivity.setProps(value.interactivity);
   if (value.context) plugin.canvas3dContext.setProps(value.context);
   if (value.canvas) plugin.canvas3d.setProps(value.canvas);
 }

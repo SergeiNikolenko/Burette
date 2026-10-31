@@ -50,7 +50,7 @@ try {
   source.canvas3d.props.postprocessing.outline.params.scale = 2;
   source.canvas3d.props.camera.helper.axes = { name: 'on', params: PD.getDefaultValues(Canvas3DParams.camera.params.helper.params.axes.map('on').params) };
   source.canvas3dContext.props = { resolutionMode: 'scaled', pixelScale: 1.5, pickScale: 0.5, transparency: 'blended' };
-  const captured = Environment.capture(source), transfer = { canvasDelta: captured.canvasDelta, contextDelta: captured.contextDelta };
+  const captured = Environment.capture(source), transfer = { canvasDelta: captured.canvasDelta, contextDelta: captured.contextDelta, interactivityDelta: captured.interactivityDelta, componentDelta: captured.componentDelta };
   const target = await make(); target.canvas3d.props.renderer.backgroundColor = 0xabcdef; target.canvas3d.props.renderer.ambientIntensity = 0.9;
   calls.length = 0; Environment.apply(target, Environment.prepare(target, transfer));
   assert.deepEqual(target.canvas3d.props, source.canvas3d.props); assert.deepEqual(target.canvas3dContext.props, source.canvas3dContext.props);

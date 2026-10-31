@@ -270,7 +270,7 @@
     "test:measurement-group-source-pair": "bun test tests/test-measurement-group-source-pair.test.ts",
     "check:measurement-group-source-pair": "tsc --noEmit --pretty false -p tests/tsconfig.measurement-group-source-pair.json",
     "test:xyz-topology-scene": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-scene.mjs",
-    "test:xyz-topology-environment": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-environment.mjs && bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-environment-animation.mjs"
+    "test:xyz-topology-environment": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-environment.mjs && bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-environment-animation.mjs && bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-environment-native-owners.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
