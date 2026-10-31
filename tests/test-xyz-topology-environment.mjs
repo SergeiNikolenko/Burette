@@ -50,9 +50,9 @@ try {
   source.canvas3d.props.postprocessing.outline.params.scale = 2;
   source.canvas3d.props.camera.helper.axes = { name: 'on', params: PD.getDefaultValues(Canvas3DParams.camera.params.helper.params.axes.map('on').params) };
   source.canvas3dContext.props = { resolutionMode: 'scaled', pixelScale: 1.5, pickScale: 0.5, transparency: 'blended' };
-  const captured = Environment.capture(source), transfer = { canvasDelta: captured.canvasDelta, contextDelta: captured.contextDelta, interactivityDelta: captured.interactivityDelta, componentDelta: captured.componentDelta };
+  const captured = Environment.capture(source), transfer = { canvasDelta: captured.canvasDelta, contextDelta: captured.contextDelta, interactivityDelta: captured.interactivityDelta, componentDelta: captured.componentDelta, behaviorDelta: captured.behaviorDelta, behaviorCatalog: captured.behaviorCatalog };
   const target = await make(); target.canvas3d.props.renderer.backgroundColor = 0xabcdef; target.canvas3d.props.renderer.ambientIntensity = 0.9;
-  calls.length = 0; Environment.apply(target, Environment.prepare(target, transfer));
+  calls.length = 0; await Environment.apply(target, Environment.prepare(target, transfer));
   assert.deepEqual(target.canvas3d.props, source.canvas3d.props); assert.deepEqual(target.canvas3dContext.props, source.canvas3dContext.props);
   assert.deepEqual(calls, [['context', source.canvas3dContext.props], ['canvas', source.canvas3d.props]], 'full defaults plus delta, context first');
   const sameTree = source.state.data.tree;
@@ -92,7 +92,7 @@ try {
   assert.equal(reopened.canvas3d.props.postprocessing.outline.params.scale, 2);
   const afterOpen = Environment.capture(reopened); assert.equal(afterOpen.canvasDelta.renderer.backgroundColor, 0x123456);
   assert.deepEqual(afterOpen.contextDelta, captured.contextDelta);
-  Environment.apply(reopened, Environment.prepare(reopened, transfer)); // includes the camera helper group native open suppresses
+  await Environment.apply(reopened, Environment.prepare(reopened, transfer)); // includes the camera helper group native open suppresses
   assert.deepEqual(reopened.canvas3d.props, source.canvas3d.props);
   assert.equal(source.managers.snapshot.state.current, source.managers.snapshot.defaultSnapshotId);
   Environment.capture(source); // native syncCurrent replaceable single entry

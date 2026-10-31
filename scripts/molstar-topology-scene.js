@@ -1,4 +1,9 @@
 import { BuretteTopologyEnvironment as Environment } from './molstar-topology-environment.js';
+import { IsMVSModelProvider } from 'molstar/lib/extensions/mvs/components/is-mvs-model-prop.js';
+import { MVSAnnotationsProvider } from 'molstar/lib/extensions/mvs/components/annotation-prop.js';
+import { CustomTooltipsProvider } from 'molstar/lib/extensions/mvs/components/custom-tooltips-prop.js';
+import { MVSAnnotationTooltipsProvider } from 'molstar/lib/extensions/mvs/components/annotation-tooltips-prop.js';
+import { ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition.js';
 import { ElementSymbol } from 'molstar/lib/mol-model/structure/model/types.js';
 import { Structure, StructureElement } from 'molstar/lib/mol-model/structure.js';
 import { OrderedSet } from 'molstar/lib/mol-data/int.js';
@@ -15,6 +20,9 @@ import { listSceneLayers } from './molstar-scene-layers.js';
 // A retained receipt guards audited child settings and camera as well as the Geometry owner.
 // Transfers contain source atom indices; the host remaps them before restoring an unread candidate.
 const receipts = new WeakMap();
+const emptyModelProviders = [IsMVSModelProvider, MVSAnnotationsProvider], emptyStructureProviders = [CustomTooltipsProvider, MVSAnnotationTooltipsProvider];
+const emptyModelParams = Object.fromEntries(emptyModelProviders.map(p => [p.descriptor.name, PD.getDefaultValues(p.defaultParams)]));
+const emptyStructureParams = Object.fromEntries(emptyStructureProviders.map(p => [p.descriptor.name, PD.getDefaultValues(p.defaultParams)]));
 const modelProviders = ['asym_id_offset', 'index', 'max_index'];
 const structureProviders = ['index', 'max_index', 'molstar_accessible_surface_area', 'molstar_computed_interactions', 'molstar_computed_secondary_structure', 'molstar_computed_valence_model'];
 const staticKinds = ['all', 'polymer', 'protein', 'nucleic', 'branched', 'ligand', 'non-standard', 'water', 'ion', 'lipid', 'coarse'];
@@ -63,9 +71,20 @@ function measurementGroupTags(tags) {
   return values;
 }
 function descriptors(values, allowed = ['index', 'max_index']) { return values.every(p => allowed.includes(p.name)); }
-function canonical(model) {
+function emptyNativeCache(cache, props) {
+  return keys(cache, ['props', 'data']) && deepEqual(cache.props, props) && keys(cache.data, ['id', 'version', 'value', 'metadata'])
+    && Number.isInteger(cache.data.id) && cache.data.id >= 0 && cache.data.version === 0 && cache.data.value === undefined && cache.data.metadata === undefined;
+}
+function canonical(model, plugin) {
   if (model.sourceData.kind !== 'xyz' || !descriptors(model.customProperties.all, modelProviders)) fail('This model has unsupported atom properties.');
   const statics = ['index', 'asym_id_offset', 'max_index', '__CoarseGrained__', '__AtomicRadii__', '__srcIndexArray__', '__InvertedAtomSrcIndex__', '__IndexPairBonds__'];
+  // Native Viewer extension queries seed empty, unattached MVS caches even for ordinary XYZ.
+  for (const [name, props] of Object.entries(emptyModelParams)) {
+    const cache = model._staticPropertyData[name];
+    if (cache === undefined) continue;
+    if (plugin.customModelProperties.get(name) !== emptyModelProviders.find(p => p.descriptor.name === name) || !emptyNativeCache(cache, props)) fail('Authored MVS metadata cannot be retained by topology editing.');
+    statics.push(name);
+  }
   const dynamics = ['__TrajectoryInfo__', '__AsymIdCount__', 'ElementSetIntraBondCache', 'index_pair_bonds'];
   if (Object.keys(model._staticPropertyData).some(k => !statics.includes(k)) || Object.keys(model._dynamicPropertyData).some(k => !dynamics.includes(k))) fail('This model has unsupported atom properties.');
   const props = model.properties, entity = model.entities.data;
@@ -91,10 +110,11 @@ function canonical(model) {
     || h.residues.pdbx_PDB_ins_code.value(0) !== '' || h.chains.label_asym_id.value(0) !== 'A' || h.chains.auth_asym_id.value(0) !== 'A'
     || h.chains.label_entity_id.value(0) !== '1') fail('This XYZ model has noncanonical residue metadata.');
 }
-function providerParams(cell, names) {
+function providerParams(cell, kind) {
+  const names = kind === 'model' ? modelProviders : structureProviders, empty = kind === 'model' ? emptyModelParams : emptyStructureParams;
   const params = cell.params.values;
   if (!keys(params, ['autoAttach', 'properties']) || !Array.isArray(params.autoAttach) || !plain(params.properties)) fail('Invalid custom property parameters.');
-  if (params.autoAttach.length || Object.keys(params.properties).some(k => !names.includes(k))) fail('A custom property provider prevents topology editing.');
+  if (params.autoAttach.length || Object.keys(params.properties).some(k => !names.includes(k) && !(Object.hasOwn(empty, k) && deepEqual(params.properties[k], empty[k])))) fail('A custom property provider prevents topology editing.');
   const data = cell.obj?.data, store = data?._staticPropertyData ?? data?.inheritedPropertyData;
   const attached = data?.customProperties?.all ?? data?.customPropertyDescriptors?.all ?? [];
   for (const name of ['index', 'max_index', 'asym_id_offset']) if (attached.some(p => p.name === name)
@@ -111,9 +131,10 @@ function sourceIndices(root, structure) {
   if (!result.length || result.length > 256 || new Set(result).size !== result.length || result.some(i => !Number.isInteger(i) || i < 0 || i >= root.elementCount)) fail('A scene layer has invalid source atoms.');
   return result;
 }
-function structureProperties(structure, root = structure) {
+function structureProperties(structure, root, plugin) {
   if (!descriptors(structure.customPropertyDescriptors.all)) fail('A structure property prevents topology editing.');
   for (const store of [structure.currentPropertyData, structure.inheritedPropertyData]) for (const [key, value] of Object.entries(store)) {
+    if (Object.hasOwn(emptyStructureParams, key) && plugin.customStructureProperties.get(key) === emptyStructureProviders.find(p => p.descriptor.name === key) && emptyNativeCache(value, emptyStructureParams[key])) continue;
     if (!structureProviders.includes(key) || (!['index', 'max_index'].includes(key) && value?.data?.value !== undefined)
       || (['index', 'max_index'].includes(key) && !deepEqual(value, root.inheritedPropertyData[key]))) fail('Unsupported structure metadata prevents topology editing.');
   }
@@ -139,8 +160,8 @@ function rootFor(plugin) {
   const cell = roots[0].cell, root = cell.obj?.data;
   if (cell.status !== 'ok' || root?.models.length !== 1 || root.elementCount < 1 || root.elementCount > 256 || root.units.length !== 1
     || root.units[0].kind !== 0 || !root.units[0].conformation.operator.isIdentity) fail('Topology editing requires one atomic XYZ model of at most 256 atoms.');
-  canonical(root.models[0]);
-  structureProperties(root);
+  canonical(root.models[0], plugin);
+  structureProperties(root, root, plugin);
   return { cell, root };
 }
 function audit(plugin, environment = Environment.capture(plugin)) {
@@ -155,8 +176,8 @@ function audit(plugin, environment = Environment.capture(plugin)) {
   for (let cell = rootCell; cell && cell.transform.parent !== cell.transform.ref; cell = state.cells.get(cell.transform.parent)) {
     const type = cell.transform.transformer;
     if (type === StateTransforms.Data.RawData) raw = cell;
-    else if (type === StateTransforms.Model.ModelFromTrajectory) { base = cell; canonical(cell.obj.data); }
-    else if (type === StateTransforms.Model.CustomModelProperties) decorators.push({ kind: 'model', params: providerParams(cell, modelProviders), state: flags(cell) });
+    else if (type === StateTransforms.Model.ModelFromTrajectory) { base = cell; canonical(cell.obj.data, plugin); }
+    else if (type === StateTransforms.Model.CustomModelProperties) decorators.push({ kind: 'model', params: providerParams(cell, 'model'), state: flags(cell) });
     else if (type === geometryType) geometry = cell;
     else if (![StateTransforms.Model.TrajectoryFromXYZ, StateTransforms.Model.StructureFromModel].includes(type)) fail('A foreign coordinate decorator prevents topology editing.');
     if (type === geometryType && cell.transform.tags?.length) fail('Geometry decorator tags cannot be retained.');
@@ -185,12 +206,12 @@ function audit(plugin, environment = Environment.capture(plugin)) {
   if (props.length > 1) fail('Branched structure properties prevent topology editing.');
   if (props.length) {
     parent = props[0]; known.add(parent.transform.ref); sourceTags.structureProperties = sourceTagValues(parent.transform.tags);
-    decorators.push({ kind: 'structure', params: providerParams(parent, structureProviders), state: flags(parent) });
+    decorators.push({ kind: 'structure', params: providerParams(parent, 'structure'), state: flags(parent) });
   }
   for (const ref of state.tree.children.get(parent.transform.ref) || []) {
     const component = state.cells.get(ref);
     if (component.transform.transformer !== componentType || component.status !== 'ok') fail('A foreign structure child prevents topology editing.');
-    structureProperties(component.obj.data, root);
+    structureProperties(component.obj.data, root, plugin);
     const layer = layers.get(ref), params = component.params.values;
     if (layer ? params.type.name !== 'bundle' : params.type.name !== 'static' || !staticKinds.includes(params.type.params)) fail('Only static components and owned scene layers can be retained.');
     const representations = [];
@@ -245,7 +266,7 @@ function audit(plugin, environment = Environment.capture(plugin)) {
   }
   const selection = [...new Set([...plugin.managers.structure.selection.entries.values()].flatMap(e => lociIndices(root, e.selection)))].sort((a, b) => a - b);
   const focus = null; // Focus behavior owns derived cells/settings; refuse rather than drop them.
-  return { version: 1, atomCount: root.elementCount, rawLabel: raw.params.values.label, rootState: flags(rootCell), sourceTags, decorators, components, selection, focus, canvasDelta: environment.canvasDelta, contextDelta: environment.contextDelta, interactivityDelta: environment.interactivityDelta, componentDelta: environment.componentDelta, camera: plugin.canvas3d ? copy(plugin.canvas3d.camera.getSnapshot()) : null };
+  return { version: 1, atomCount: root.elementCount, rawLabel: raw.params.values.label, rootState: flags(rootCell), sourceTags, decorators, components, selection, focus, canvasDelta: environment.canvasDelta, contextDelta: environment.contextDelta, interactivityDelta: environment.interactivityDelta, componentDelta: environment.componentDelta, behaviorDelta: environment.behaviorDelta, behaviorCatalog: environment.behaviorCatalog, camera: plugin.canvas3d ? copy(plugin.canvas3d.camera.getSnapshot()) : null };
 }
 const keys = (value, names) => plain(value) && Object.keys(value).every(k => names.includes(k));
 function transferFlags(value) {
@@ -259,7 +280,7 @@ function indices(value, count) {
   if (!Array.isArray(value) || value.length > 256 || new Set(value).size !== value.length || value.some(i => !Number.isInteger(i) || i < 0 || i >= count)) fail('Invalid topology source indices.');
 }
 function validateTransfer(value) {
-  if (!keys(value, ['version', 'atomCount', 'rawLabel', 'rootState', 'sourceTags', 'decorators', 'components', 'selection', 'focus', 'camera', 'canvasDelta', 'contextDelta', 'interactivityDelta', 'componentDelta']) || value.version !== 1
+  if (!keys(value, ['version', 'atomCount', 'rawLabel', 'rootState', 'sourceTags', 'decorators', 'components', 'selection', 'focus', 'camera', 'canvasDelta', 'contextDelta', 'interactivityDelta', 'componentDelta', 'behaviorDelta', 'behaviorCatalog']) || value.version !== 1
     || !Number.isInteger(value.atomCount) || value.atomCount < 1 || value.atomCount > 256 || typeof value.rawLabel !== 'string' || value.rawLabel.length > 256
     || !Array.isArray(value.decorators) || value.decorators.length > 2 || !Array.isArray(value.components) || value.components.length > 32) fail('Invalid topology scene transfer.');
   Environment.validateData(value);
@@ -276,7 +297,7 @@ function validateTransfer(value) {
   for (const d of value.decorators) {
     if (!keys(d, ['kind', 'params', 'state']) || !['model', 'structure'].includes(d.kind) || seen.has(d.kind)) fail('Invalid topology property transfer.');
     seen.add(d.kind); transferFlags(d.state);
-    providerParams({ params: { values: d.params } }, d.kind === 'model' ? modelProviders : structureProviders);
+    providerParams({ params: { values: d.params } }, d.kind);
   }
   const tagRoles = ['raw', 'trajectory', 'baseModel', 'root', ...value.decorators.map(d => `${d.kind}Properties`)];
   if (!keys(value.sourceTags, Object.keys(sourceRoles)) || Object.keys(value.sourceTags).length !== tagRoles.length || tagRoles.some(role => !Object.hasOwn(value.sourceTags, role))) fail('Invalid source tag roles.');
@@ -378,7 +399,7 @@ async function restore(plugin, value) {
   plugin.managers.structure.selection.clear();
   if (transfer.selection.length) plugin.managers.structure.selection.fromLoci('set', newLoci(currentRoot, transfer.selection), false);
   plugin.managers.structure.focus.clear();
-  Environment.apply(plugin, environment);
+  await Environment.apply(plugin, environment);
   if (transfer.camera && plugin.canvas3d) plugin.managers.camera.setSnapshot(transfer.camera, 0);
   return true;
 }

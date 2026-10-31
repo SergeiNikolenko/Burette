@@ -78,7 +78,9 @@ try {
   readonlyRefusal(source, () => Environment.validate(source, replacedComponent)); source.managers.structure.component = originalComponent;
   const staged = Environment.prepare(target, transfer), targetBefore = read(target);
   target.managers.interactivity.setProps({ granularity: 'atom' }); target.managers.interactivity.setProps({ granularity: 'chain' });
-  readonlyRefusal(target, () => Environment.apply(target, staged)); assert.deepEqual(read(target), targetBefore);
+  const stagedTree = target.state.data.tree;
+  await assert.rejects(Environment.apply(target, staged), { code: 'UNSUPPORTED_TOPOLOGY_ENVIRONMENT' });
+  assert.equal(target.state.data.tree, stagedTree); assert.deepEqual(read(target), targetBefore);
   for (const delta of [{ granularity: 'made-up' }, { unknown: true }, { granularity: null }])
     readonlyRefusal(target, () => Environment.prepare(target, { ...transfer, interactivityDelta: delta }));
   for (const delta of [{ ignoreLight: 1 }, { materialStyle: { roughness: Infinity } }, { unknown: true }])

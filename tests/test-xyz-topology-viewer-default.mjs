@@ -1,0 +1,94 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import { Window } from 'happy-dom';
+import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
+import { PluginStateSnapshotManager as Snapshots } from 'molstar/lib/mol-plugin-state/manager/snapshots.js';
+import { Canvas3DParams, Canvas3DContext } from 'molstar/lib/mol-canvas3d/canvas3d.js';
+import { Camera } from 'molstar/lib/mol-canvas3d/camera.js';
+import { ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition.js';
+import { Asset } from 'molstar/lib/mol-util/assets.js';
+import { File_ } from 'molstar/lib/mol-util/nodejs-shims.js';
+import { unzip } from 'molstar/lib/mol-util/zip/zip.js';
+import { SyncRuntimeContext } from 'molstar/lib/mol-task/execution/synchronous.js';
+import { BuretteTopologyEnvironment as Environment } from '../scripts/molstar-topology-environment.js';
+const dom = new Window(), previous = Object.getOwnPropertyDescriptor(globalThis, 'document'), plugins = [], calls = [];
+Object.defineProperty(globalThis, 'document', { configurable: true, value: dom.document });
+Object.defineProperty(globalThis, 'window', { configurable: true, value: dom });
+const { createViewerSpec } = await import('molstar/lib/apps/viewer/plugin-spec.js');
+const defaults = PD.getDefaultValues(Canvas3DParams), contextDefaults = PD.getDefaultValues(Canvas3DContext.Params);
+function merge(target, changes) {
+  for (const [key, value] of Object.entries(changes)) {
+    if (value === undefined) continue;
+    if (value && typeof value === 'object' && !Array.isArray(value) && target[key] && typeof target[key] === 'object') merge(target[key], value);
+    else target[key] = structuredClone(value);
+  }
+}
+async function make() {
+  const plugin = new PluginContext(createViewerSpec({ layoutIsExpanded: true, layoutShowRemoteState: false, pdbProvider: 'rcsb', emdbProvider: 'rcsb', preferWebgl1: true, disableAntialiasing: true })); plugins.push(plugin); await plugin.init();
+  const raw = await plugin.builders.data.rawData({ data: '1\nOriginal exact\nH 0 0 0\n', label: 'Original exact' });
+  const trajectory = await plugin.builders.structure.parseTrajectory(raw, 'xyz');
+  await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', { representationPreset: 'empty' });
+  const camera = new Camera(); camera.setState({ radius: 3 }, 0);
+  // Public-shape adapters only: the native Plugin/state/archive/Camera below are real; no WebGL claim.
+  plugin.canvas3d = { camera, props: structuredClone(defaults), setProps(value) { calls.push(['canvas', structuredClone(value)]); merge(this.props, value); },
+    add() {}, remove() {}, syncVisibility() {}, mark() {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
+  plugin.canvas3dContext = { props: structuredClone(contextDefaults), setProps(value) { calls.push(['context', structuredClone(value)]); merge(this.props, value); } };
+  plugin.state.setSnapshotParams({ image: false, animation: false, cameraTransition: { name: 'instant', params: {} } });
+  return plugin;
+}
+function readonlyRefusal(plugin, action) {
+  const before = structuredClone(plugin.state.data.getSnapshot()), entries = plugin.managers.snapshot.state.entries;
+  assert.throws(action, { code: 'UNSUPPORTED_TOPOLOGY_ENVIRONMENT' });
+  assert.deepEqual(plugin.state.data.getSnapshot(), before); assert.equal(plugin.managers.snapshot.state.entries, entries);
+}
+const { BuretteTopologyScene } = await import('../scripts/molstar-topology-scene.js');
+const { BuretteGeometry } = await import('../scripts/molstar-geometry.js');
+try {
+  const source = await make(), target = await make();
+  assert.equal(source.spec.behaviors.length, 35); assert.equal(source.state.behaviors.cells.size, 41);
+  source.managers.interactivity.setProps({ granularity: 'chain' });
+  await source.managers.structure.component.setOptions({ ...source.managers.structure.component.state.options, ignoreLight: true });
+  const focus = source.spec.behaviors.find(b => b.transformer.id === 'ms-plugin.create-structure-focus-representation').transformer;
+  await source.state.updateBehavior(focus, p => { p.expandRadius = 8; });
+  const read = plugin => JSON.parse(JSON.stringify({
+    behavior: [...plugin.state.behaviors.cells.values()].map(c => [c.transform.transformer.id, c.params?.values]).sort((a,b) => a[0].localeCompare(b[0])),
+    picking: plugin.managers.interactivity.props, options: plugin.managers.structure.component.state.options,
+  }));
+  const expected = read(source), sourceTree = source.state.data.tree;
+  const { receipt, ...transfer } = BuretteTopologyScene.capture(source, BuretteGeometry.binding(source).lease);
+  assert.equal(source.state.data.tree, sourceTree); await BuretteTopologyScene.restore(target, transfer);
+  assert.deepEqual(read(target), expected);
+  const bytes = new Uint8Array(await (await target.managers.snapshot.serialize({ type: 'molx', params: { behavior: true } })).arrayBuffer());
+  const reopened = await make(); await reopened.managers.snapshot.open(new File_([bytes], 'viewer-native.molx'));
+  assert.deepEqual(read(reopened), expected);
+  const lease = BuretteGeometry.binding(reopened).lease, restored = BuretteTopologyScene.capture(reopened, lease);
+  assert.equal(BuretteTopologyScene.validate(reopened, restored.receipt, lease), true, 'native Viewer MOLX opens and remains editable');
+  const { IsMVSModelProvider } = await import('molstar/lib/extensions/mvs/components/is-mvs-model-prop.js');
+  const { MVSAnnotationsProvider } = await import('molstar/lib/extensions/mvs/components/annotation-prop.js');
+  const { CustomTooltipsProvider } = await import('molstar/lib/extensions/mvs/components/custom-tooltips-prop.js');
+  const { MVSAnnotationTooltipsProvider } = await import('molstar/lib/extensions/mvs/components/annotation-tooltips-prop.js');
+  const reopenedRoot = reopened.managers.structure.hierarchy.current.structures[0].cell.obj.data;
+  for (const [provider, owner] of [[IsMVSModelProvider, reopenedRoot.models[0]], [MVSAnnotationsProvider, reopenedRoot.models[0]], [CustomTooltipsProvider, reopenedRoot], [MVSAnnotationTooltipsProvider, reopenedRoot]]) {
+    const box = provider.get(owner); assert.equal(box.version, 0); assert.equal(box.value, undefined);
+    assert.deepEqual(provider.props(owner), PD.getDefaultValues(provider.defaultParams));
+  }
+  for (const [provider, kind] of [[IsMVSModelProvider, 'flag'], [MVSAnnotationsProvider, 'annotation'], [CustomTooltipsProvider, 'tooltip'], [MVSAnnotationTooltipsProvider, 'annotation-tooltip']]) {
+    const edited = await make(), root = edited.managers.structure.hierarchy.current.structures[0].cell.obj.data;
+    const owner = kind === 'flag' || kind === 'annotation' ? root.models[0] : root;
+    const prop = kind === 'flag' ? { isMvs: true } : kind === 'annotation' ? { annotations: [{ ...PD.getDefaultValues(provider.defaultParams.annotations.element), id: 'authored' }] }
+      : { tooltips: [{ ...PD.getDefaultValues(provider.defaultParams.tooltips.element), ...(kind === 'tooltip' ? { text: 'authored' } : { annotationId: 'authored' }) }] };
+    provider.set(owner, prop);
+    const authored = structuredClone(provider.props(owner)), before = edited.state.data.tree;
+    assert.throws(() => BuretteTopologyScene.capture(edited, BuretteGeometry.binding(edited).lease), { code: 'UNSUPPORTED_TOPOLOGY_SCENE' });
+    assert.equal(edited.state.data.tree, before); assert.deepEqual(provider.props(owner), authored);
+  }
+  const foreign = await make(); foreign.customModelProperties.unregister(IsMVSModelProvider.descriptor.name);
+  foreign.customModelProperties.register({ ...IsMVSModelProvider, descriptor: { ...IsMVSModelProvider.descriptor } });
+  assert.throws(() => BuretteTopologyScene.capture(foreign, BuretteGeometry.binding(foreign).lease), { code: 'UNSUPPORTED_TOPOLOGY_SCENE' });
+  console.log('Actual Viewer spec passed: all 35 native behaviors retained, real MOLX save/open stays editable, empty native MVS caches accepted, authored MVS and foreign provider identity refused read-only.');
+} finally {
+  for (const plugin of plugins) { plugin.canvas3d = undefined; plugin.canvas3dContext = undefined; plugin.dispose(); }
+  if (previous) Object.defineProperty(globalThis, 'document', previous); else Reflect.deleteProperty(globalThis, 'document');
+  await dom.happyDOM.close();
+}

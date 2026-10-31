@@ -1,3 +1,6 @@
+import { ExtensionMap } from 'molstar/lib/apps/viewer/extensions.js';
+import { PluginBehavior } from 'molstar/lib/mol-plugin/behavior.js';
+import { StateTransformer } from 'molstar/lib/mol-state/index.js';
 import { DefaultPluginSpec } from 'molstar/lib/mol-plugin/spec.js';
 import { AnimateModelIndex } from 'molstar/lib/mol-plugin-state/animation/built-in/model-index.js';
 import { Canvas3DParams, Canvas3DContext } from 'molstar/lib/mol-canvas3d/canvas3d.js';
@@ -8,7 +11,8 @@ import { StructureComponentManager } from 'molstar/lib/mol-plugin-state/manager/
 import { PluginStateSnapshotManager } from 'molstar/lib/mol-plugin-state/manager/snapshots.js';
 
 const nativeAnimations = DefaultPluginSpec().animations, animationRevisions = new WeakMap();
-const managerRevisions = new WeakMap();
+const managerRevisions = new WeakMap(), behaviorRevisions = new WeakMap();
+const nativeBehaviors = [...DefaultPluginSpec().behaviors, ...Object.values(ExtensionMap)];
 const interactivityDefaults = PD.getDefaultValues(InteractivityManager.Params), componentDefaults = PD.getDefaultValues(StructureComponentManager.OptionsParams);
 const defaults = PD.getDefaultValues(Canvas3DParams), contextDefaults = PD.getDefaultValues(Canvas3DContext.Params);
 const fail = message => { throw Object.assign(new Error(message), { code: 'UNSUPPORTED_TOPOLOGY_ENVIRONMENT' }); };
@@ -40,6 +44,10 @@ function parameter(param, value, partial, budget, depth) {
     case 'object-list':
       if (!Array.isArray(value) || value.length > 64) fail('Canvas setting lists exceed the limit.');
       return Array.from(value, entry => checked(param.element, entry, false, budget, depth + 1));
+    case 'multi-select':
+      if (!Array.isArray(value) || value.length > param.options.length || new Set(value).size !== value.length || value.some(entry => !param.options.some(([option]) => option === entry))) fail('Invalid native multiple selection.'); return value.slice();
+    case 'value':
+      if (!deepEqual(value, param.defaultValue)) fail('Custom native input bindings cannot be retained.'); return copy(value);
     case 'select':
       if (!param.options.some(([option]) => option === value)) fail('Invalid canvas selection.'); return value;
     case 'boolean': if (typeof value !== 'boolean') fail('Invalid canvas boolean.'); return value;
@@ -150,6 +158,54 @@ function sameNativeOwners(plugin, owner) {
   const next = nativeOwners(plugin);
   if (Object.keys(owner).some(key => owner[key] !== next[key])) fail('Native settings changed while topology was prepared.');
 }
+function nativeDefault(value, base) {
+  if (Object.is(value, base)) return true;
+  if (Array.isArray(base)) return Array.isArray(value) && value.length === base.length && Array.from(base).every((entry, index) => nativeDefault(value[index], entry));
+  if (!plain(base) || !plain(value)) return false;
+  object(value, Object.keys(base));
+  return Object.keys(base).every(key => nativeDefault(value[key], base[key]));
+}
+function behaviorState(plugin) {
+  const state = plugin.state.behaviors, root = state.tree.root, categories = PluginBehavior.Categories;
+  const catalog = nativeBehaviors.filter(b => state.cells.has(b.transformer.id));
+  if (state.inTransaction || state.inUpdate || state.behaviors.isUpdating.value || state.burettePreconditionVersion !== 1 || state.cells.size !== catalog.length + Object.keys(categories).length + 1) fail('Custom or pending native behaviors cannot be retained.');
+  function node(ref, transformer, parent, locked) {
+    const cell = state.cells.get(ref), t = cell?.transform;
+    if (!cell || cell.status !== 'ok' || t.transformer !== transformer || t.parent !== parent || t.tags?.length
+      || !deepEqual(t.state, locked ? { isLocked: true } : {})) fail('Native behavior metadata cannot be retained.');
+    return cell;
+  }
+  node(root.ref, StateTransformer.ROOT, root.ref, true);
+  for (const [ref, label] of Object.entries(categories)) {
+    if (!deepEqual(node(ref, PluginBehavior.CreateCategory, root.ref, true).params.values, { label })) fail('Native behavior category metadata cannot be retained.');
+  }
+  const values = {}, schemas = {};
+  for (const { transformer } of catalog) {
+    const cell = node(transformer.id, transformer, PluginBehavior.getCategoryId(transformer), false);
+    const schema = typeof transformer.definition.params === 'function' ? transformer.definition.params(undefined, plugin) : transformer.definition.params || {};
+    const base = PD.getDefaultValues(schema);
+    // These dynamic provider trees require their own provider-identity transfer contract.
+    for (const name of ['targetParams', 'surroundingsParams', 'nciParams']) if (name in base && !deepEqual(cell.params.values[name], base[name])) fail('Custom native focus representation providers cannot be retained.');
+    schemas[transformer.id] = { schema, base };
+    object(cell.params.values, Object.keys(schema));
+    if (Object.keys(schema).some(key => !Object.hasOwn(cell.params.values, key) && base[key] !== undefined)) fail('Native behavior parameters are incomplete.');
+    const changes = {};
+    for (const [key, value] of Object.entries(cell.params.values)) if (!deepEqual(value, base[key]) && !(schema[key].type === 'value' && nativeDefault(value, base[key]))) {
+      json(value); changes[key] = parameter(schema[key], value, false, { nodes: 0 }, 0);
+    }
+    if (Object.keys(changes).length) values[transformer.id] = changes;
+  }
+  let record = behaviorRevisions.get(state);
+  if (!record) {
+    record = { value: 0 }; behaviorRevisions.set(state, record);
+    state.events.changed.subscribe(() => { record.value++; }); // completed by native State.dispose
+  }
+  return { values, schemas, catalog: catalog.map(b => nativeBehaviors.indexOf(b)), owner: { state, tree: state.tree, revision: record.value, fingerprint: JSON.stringify(values) } };
+}
+function sameBehaviors(plugin, owner) {
+  const next = behaviorState(plugin).owner;
+  if (Object.keys(owner).some(key => owner[key] !== next[key])) fail('Native behaviors changed while topology was prepared.');
+}
 function data(plugin) {
   let canvasDelta = null, contextDelta = null;
   if (plugin.canvas3d) {
@@ -165,11 +221,11 @@ function data(plugin) {
     componentDelta: props(StructureComponentManager.OptionsParams, plugin.managers.structure.component.state.options, componentDefaults) };
 }
 function capture(plugin) {
-  const snapshots = snapshotOwner(plugin), animation = animationOwner(plugin), native = nativeOwners(plugin), values = data(plugin);
-  return { ...values, owner: { snapshots, animation, native, canvas: plugin.canvas3d ?? null, context: plugin.canvas3dContext ?? null, fingerprint: JSON.stringify(values) } };
+  const snapshots = snapshotOwner(plugin), animation = animationOwner(plugin), native = nativeOwners(plugin), behaviors = behaviorState(plugin), values = data(plugin);
+  return { ...values, behaviorDelta: behaviors.values, behaviorCatalog: behaviors.catalog, owner: { snapshots, animation, native, behaviors: behaviors.owner, canvas: plugin.canvas3d ?? null, context: plugin.canvas3dContext ?? null, fingerprint: JSON.stringify(values) } };
 }
 function validate(plugin, owner) {
-  sameSnapshot(plugin, owner.snapshots); sameAnimation(plugin, owner.animation); sameNativeOwners(plugin, owner.native);
+  sameSnapshot(plugin, owner.snapshots); sameAnimation(plugin, owner.animation); sameNativeOwners(plugin, owner.native); sameBehaviors(plugin, owner.behaviors);
   if ((plugin.canvas3d ?? null) !== owner.canvas || (plugin.canvas3dContext ?? null) !== owner.context || JSON.stringify(data(plugin)) !== owner.fingerprint) fail('The viewer settings changed while topology was prepared.');
   return true;
 }
@@ -178,17 +234,36 @@ function validateData(value) {
   const canvas = value.canvasDelta === null ? null : full(Canvas3DParams, value.canvasDelta, defaults);
   const context = value.contextDelta === null ? null : full(Canvas3DContext.Params, value.contextDelta, contextDefaults);
   if (canvas) resourceGuard(canvas);
-  json(value.interactivityDelta); json(value.componentDelta);
+  json(value.interactivityDelta); json(value.componentDelta); json(value.behaviorDelta);
+  object(value.behaviorDelta, nativeBehaviors.map(b => b.transformer.id));
+  if (!Array.isArray(value.behaviorCatalog) || value.behaviorCatalog.length > nativeBehaviors.length || new Set(value.behaviorCatalog).size !== value.behaviorCatalog.length || value.behaviorCatalog.some(index => !Number.isInteger(index) || index < 0 || index >= nativeBehaviors.length) || Object.keys(value.behaviorDelta).some(id => !value.behaviorCatalog.includes(nativeBehaviors.findIndex(b => b.transformer.id === id)))) fail('Invalid native behavior catalog.');
   const interactivity = full(InteractivityManager.Params, value.interactivityDelta, interactivityDefaults);
   const component = full(StructureComponentManager.OptionsParams, value.componentDelta, componentDefaults);
   return { canvas, context, interactivity, component };
 }
 function prepare(plugin, value) {
-  const snapshots = snapshotOwner(plugin), animation = animationOwner(plugin), native = nativeOwners(plugin), values = validateData(value);
+  const snapshots = snapshotOwner(plugin), animation = animationOwner(plugin), native = nativeOwners(plugin), behaviors = behaviorState(plugin), values = validateData(value);
+  if (!deepEqual(value.behaviorCatalog, behaviors.catalog)) fail('The candidate native behavior catalog differs.');
+  const behaviorParams = {};
+  for (const [id, { schema, base }] of Object.entries(behaviors.schemas)) {
+    const changes = value.behaviorDelta[id] || {}, params = PD.clone(base);
+    object(changes, Object.keys(schema));
+    for (const [key, entry] of Object.entries(changes)) params[key] = parameter(schema[key], entry, false, { nodes: 0 }, 0);
+    for (const name of ['targetParams', 'surroundingsParams', 'nciParams']) if (name in base && !deepEqual(params[name], base[name])) fail('Custom native focus representation providers cannot be retained.');
+    behaviorParams[id] = params;
+  }
   if (values.canvas && typeof plugin.canvas3d?.setProps !== 'function' || values.context && typeof plugin.canvas3dContext?.setProps !== 'function') fail('The candidate has no matching settings owner.');
-  return { ...values, snapshots, animation, native, canvasOwner: plugin.canvas3d ?? null, contextOwner: plugin.canvas3dContext ?? null };
+  return { ...values, snapshots, animation, native, behaviors: behaviors.owner, behaviorParams, canvasOwner: plugin.canvas3d ?? null, contextOwner: plugin.canvas3dContext ?? null };
 }
-function apply(plugin, value) {
+async function apply(plugin, value) {
+  sameSnapshot(plugin, value.snapshots); sameAnimation(plugin, value.animation); sameNativeOwners(plugin, value.native);
+  if ((plugin.canvas3d ?? null) !== value.canvasOwner || (plugin.canvas3dContext ?? null) !== value.contextOwner) fail('The candidate settings owner changed.');
+  sameBehaviors(plugin, value.behaviors);
+  const state = plugin.state.behaviors, tree = state.build();
+  for (const [ref, params] of Object.entries(value.behaviorParams)) if (!deepEqual(state.cells.get(ref).params.values, params)) tree.to(ref).update(params);
+  await plugin.runTask(state.updateTree(tree, { revertOnError: true, revertIfAborted: true, doNotUpdateCurrent: true,
+    burettePrecondition() { sameBehaviors(plugin, value.behaviors); },
+  }));
   sameSnapshot(plugin, value.snapshots); sameAnimation(plugin, value.animation); sameNativeOwners(plugin, value.native);
   if ((plugin.canvas3d ?? null) !== value.canvasOwner || (plugin.canvas3dContext ?? null) !== value.contextOwner) fail('The candidate settings owner changed.');
   // Match native PluginState.setSnapshot: setOptions would overwrite the restored per-representation overrides.
