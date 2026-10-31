@@ -102,7 +102,7 @@ export function plotScientificSpectrum(data: ScientificSpectra, selection: Spect
     parameters: { scale, offset, fwhm, axisStart, axisEnd },
     nmr: spectrum.kind === "nmr" ? { sourceQuantity: spectrum.quantity, referencePpm: offset, formula: "(referencePpm-sourcePpm)/scale" } : null,
   };
-  return { positions, smoothed, raw, xUnit, axisStart, axisEnd, sourceRowIndices: rowIndices, sourceAtomIndices, settings };
+  return { positions, smoothed, raw, xUnit, axisStart, axisEnd, sourceRowIndices: rowIndices, sourceAtomIndices, peaks, settings };
 }
 
 /** Small file export of the actual display settings, separate from raw source exports. */
