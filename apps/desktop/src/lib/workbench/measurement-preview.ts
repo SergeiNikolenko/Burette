@@ -38,7 +38,9 @@ export function measurementPreviewTransfer(documentId: string, targetSourceSha25
   }
   if (typeof capture.sourceSha256 !== "string" || !seen.has(capture.sourceSha256) || !edges.some(edge => edge.from === targetSourceSha256 || edge.to === targetSourceSha256)
     || !Array.isArray(capture.items) || capture.items.length > 32) throw new Error("The displayed structure changed. Open the measurement again.");
-  const transfer = { version: 1, sourceFormat: capture.sourceFormat, targetSourceSha256, atomCount, items: capture.items, group: capture.group };
+  const transfer = { version: 1, sourceFormat: capture.sourceFormat, targetSourceSha256, atomCount, items: capture.items, group: capture.group,
+    ...(capture.groupParams === undefined ? {} : { groupParams: capture.groupParams }),
+    ...(capture.groupTags === undefined ? {} : { groupTags: capture.groupTags }) };
   if (new TextEncoder().encode(JSON.stringify(transfer)).byteLength > 6144) throw new Error("There are too many measurement settings to retain. Remove some measurements before editing.");
   return transfer;
 }

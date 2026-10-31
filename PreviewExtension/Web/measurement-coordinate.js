@@ -92,6 +92,26 @@
       || Object.entries(state).some(([key, value]) => !STATE_FLAGS.includes(key) || typeof value !== 'boolean')) fail('The measurement state flags are invalid.');
     return Object.fromEntries(STATE_FLAGS.map(key => [key, state[key] === true]));
   }
+  function nativeGroup(plugin) {
+    const state = plugin.state.data, groups = Array.from(state.cells.values()).filter(cell => cell.transform.tags?.includes('measurement-group'));
+    if (groups.length > 1) fail('Measurements require one native group.');
+    const group = groups[0];
+    if (group && (group.transform.transformer.id !== 'ms-plugin.create-group' || group.transform.parent !== state.tree.root.ref || group.status !== 'ok')) fail('Measurements require one native group.');
+    return group;
+  }
+  function groupParams(value) {
+    if (!value || Object.prototype.toString.call(value) !== '[object Object]' || Object.keys(value).some(key => !['label', 'description'].includes(key))
+      || typeof value.label !== 'string' || value.label.length > 256
+      || Object.hasOwn(value, 'description') && (typeof value.description !== 'string' || value.description.length > 1024)
+      || new TextEncoder().encode(JSON.stringify(value)).length > 2048) fail('The measurement group parameters are invalid.');
+    return { label: value.label, ...(Object.hasOwn(value, 'description') ? { description: value.description } : {}) };
+  }
+  function groupTags(value) {
+    if (!Array.isArray(value) || !value.length || value.length > 16 || new Set(value).size !== value.length || !value.includes('measurement-group')
+      || value.some(tag => typeof tag !== 'string' || !tag.length || tag.length > 100 || tag === 'measurement-order-label'
+        || ['burette-scene-layer-v1', 'structure-component-static-', 'structure-focus-'].some(prefix => tag.startsWith(prefix)))) fail('The measurement group tags are invalid.');
+    return value.slice();
+  }
   function style(params) {
     const result = {};
     for (const [key, value] of Object.entries(params || {})) {
@@ -109,6 +129,8 @@
     if (!value || value.version !== 1 || !['sdf', 'mol', 'xyz'].includes(value.sourceFormat) || !/^[a-f0-9]{64}$/.test(value.targetSourceSha256) || !Number.isInteger(value.atomCount) || value.atomCount < 1 || value.atomCount > 256
       || !Array.isArray(value.items) || value.items.length > 32 || new TextEncoder().encode(JSON.stringify(value)).byteLength > 6144) fail('The measurements cannot be retained within this preview.');
     flags({ state: value.group });
+    if (Object.hasOwn(value, 'groupParams')) groupParams(value.groupParams);
+    if (Object.hasOwn(value, 'groupTags')) groupTags(value.groupTags);
     let indices = 0;
     for (const item of value.items) {
       flags({ state: item.selection }); flags({ state: item.representation });
@@ -159,13 +181,18 @@
       });
       items.push({ kind, points, params: style(cell.transform.params), selection: flags(selection), representation: flags(cell), orderLabel: cell.transform.tags?.includes('measurement-order-label') === true });
     }
-    const group = Array.from(cells.values()).find(cell => cell.transform.tags?.includes('measurement-group'));
-    const transfer = validateTransfer({ version: 1, sourceFormat: binding.sourceFormat, targetSourceSha256: binding.sourceSha256, atomCount: binding.atomCount, items, group: flags(group) });
-    return { ...binding, items: transfer.items, group: transfer.group };
+    const group = nativeGroup(viewer.plugin);
+    if (items.length && !group) fail('Measurements require one native group.');
+    const params = group ? { ...group.params.values } : undefined;
+    if (params && params.description === undefined) delete params.description;
+    const metadata = group ? { groupParams: groupParams(params), groupTags: groupTags(group.transform.tags) } : {};
+    const transfer = validateTransfer({ version: 1, sourceFormat: binding.sourceFormat, targetSourceSha256: binding.sourceSha256, atomCount: binding.atomCount, items, group: flags(group), ...metadata });
+    return { ...binding, items: transfer.items, group: transfer.group, ...metadata };
   }
   async function restore(viewer, value, science) {
-    const transfer = validateTransfer(value), binding = transfer.sourceFormat === 'xyz'
-      ? await xyzBinding(viewer, science) : await science.graphBinding(viewer);
+    const transfer = validateTransfer(value);
+    nativeGroup(viewer.plugin);
+    const binding = transfer.sourceFormat === 'xyz' ? await xyzBinding(viewer, science) : await science.graphBinding(viewer);
     if (binding.sourceFormat !== transfer.sourceFormat || binding.sourceSha256 !== transfer.targetSourceSha256 || binding.atomCount !== transfer.atomCount || binding.frameCount !== 1) fail('The measurement source changed before previewing.');
     const plugin = viewer.plugin, root = plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data;
     if (Array.from(plugin.state.data.cells.values()).some(cell => Object.hasOwn(KINDS, cell.obj?.label) && String(cell.transform.transformer?.id).includes('structure-selections-'))) fail('This preview already has measurements.');
@@ -182,6 +209,7 @@
       return Loci(root, Array.from(groups, ([unit, indices]) => ({ unit, indices: Int32Array.from(indices.sort((a, b) => a - b)) })));
     }) }));
     const manager = plugin.managers.structure.measurement;
+    const restored = [];
     for (const item of prepared) {
       const tags = item.orderLabel ? ['measurement-order-label'] : [];
       const result = item.kind === 'Orientation' || item.kind === 'Plane'
@@ -189,10 +217,25 @@
         : await manager[`add${item.kind}`](...item.loci, { visualParams: style(item.params), selectionTags: tags, reprTags: tags });
       if (!result?.representation?.cell?.obj) fail('A measurement could not be restored.');
       if (item.kind === 'Orientation' || item.kind === 'Plane') await plugin.state.data.build().to(result.representation).update(style(item.params)).commit();
+      restored.push({ result, item });
+    }
+    // Finish all tree builders/commits before native flags: getGroup snapshots the tree.
+    let group = prepared.length || transfer.groupParams || transfer.groupTags ? manager.getGroup() : null;
+    if (transfer.groupTags && !transfer.groupParams && !nativeGroup(plugin)) {
+      await group.commit(); group = manager.getGroup();
+    }
+    if (transfer.groupParams || transfer.groupTags) {
+      const params = transfer.groupParams ? groupParams(transfer.groupParams) : nativeGroup(plugin).params.values;
+      group.update(params);
+      // updateTagged short-circuits when params change: set them first, then replace tags.
+      if (transfer.groupTags) group.updateTagged(params, groupTags(transfer.groupTags));
+      await group.commit();
+    }
+    for (const { result, item } of restored) {
       plugin.state.data.updateCellState(result.selection.ref, flags({ state: item.selection }));
       plugin.state.data.updateCellState(result.representation.ref, flags({ state: item.representation }));
     }
-    if (prepared.length) plugin.state.data.updateCellState(manager.getGroup().ref, flags({ state: transfer.group }));
+    if (group) plugin.state.data.updateCellState(group.ref, flags({ state: transfer.group }));
   }
   window.BuretteMeasurementCoordinate = { describe, capture, restore };
 })();
