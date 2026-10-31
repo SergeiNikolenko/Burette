@@ -15,6 +15,7 @@ import { FoldingResultsPanel, useFoldingResult } from "./folding-results-panel";
 import type { MenuItemSpec } from "./menu-types";
 import type { ShellActions, ShellViewState, StructureOverlayMode, StructureViewerAction } from "./types";
 import { classifyCifStructure, type CifStructureClassification } from "../lib/cif-structure-classification";
+import { useLogicalSource } from "../lib/science-session/state";
 import { useSourceEditing } from "../lib/source-editing/context";
 import { structureBriefForDocument, type StructureBriefRow as BriefRow } from "../lib/structure-brief";
 import { parseStructureComposition, type StructureCompositionSummary, type StructureSummaryRow } from "../lib/structure-composition";
@@ -2138,8 +2139,9 @@ function XtbArtifactInfoCard({
 }
 
 function useStructureComposition(document: ViewerDocument | null) {
+  const logical = useLogicalSource(document?.id);
   const draft = useSourceEditing()?.sessionForDocument(document)?.content;
-  const sourceIdentity = useMemo(() => ({ document, draft }), [document, draft]);
+  const sourceIdentity = useMemo(() => ({ document, logical, draft }), [document, logical, draft]);
   const [state, setState] = useState<{
     documentId: string | null;
     sourceIdentity: object | null;
@@ -2150,13 +2152,17 @@ function useStructureComposition(document: ViewerDocument | null) {
   }>({ documentId: null, sourceIdentity: null, cifKind: null, loading: false, summary: null, error: null });
 
   useEffect(() => {
-    if (!document) {
-      setState({ documentId: null, sourceIdentity, cifKind: null, loading: false, summary: null, error: null });
+    // A MOLX is an archive, not coordinate text. Its validated logical source
+    // arrives asynchronously; foreign scenes have no text composition to parse.
+    if (!document || (document.extension.replace(/^\./u, "").toLowerCase() === "molx" && !logical)) {
+      setState({ documentId: document?.id ?? null, sourceIdentity, cifKind: null, loading: false, summary: null, error: null });
       return undefined;
     }
     let cancelled = false;
     setState({ documentId: document.id, sourceIdentity, cifKind: null, loading: true, summary: null, error: null });
-    const source = { ...structureCompositionSourceForDocument(document), text: document.dockingRequest ? undefined : draft };
+    const source = document.dockingRequest ? structureCompositionSourceForDocument(document)
+      : { ...structureCompositionSourceForDocument(document), extension: logical?.extension ?? document.extension,
+          text: draft ?? logical?.text };
     void readInspectorStructureText(source)
       .then(async (text) => {
         if (cancelled) return;
@@ -2185,7 +2191,7 @@ function useStructureComposition(document: ViewerDocument | null) {
     return () => {
       cancelled = true;
     };
-  }, [document, draft]);
+  }, [document, logical, draft]);
 
   return { ...state, cifKind: state.sourceIdentity === sourceIdentity ? state.cifKind : null };
 }

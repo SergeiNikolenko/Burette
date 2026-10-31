@@ -17,6 +17,7 @@ Object.assign(browser, { setImmediate, clearImmediate });
 for (const [key, value] of Object.entries({ window: browser, self: browser, document: browser.document, navigator: browser.navigator,
   HTMLElement: browser.HTMLElement, Element: browser.Element, Node: browser.Node, Event: browser.Event,
   HTMLInputElement: browser.HTMLInputElement, HTMLButtonElement: browser.HTMLButtonElement, DocumentFragment: browser.DocumentFragment,
+  HTMLIFrameElement: browser.HTMLIFrameElement, HTMLDivElement: browser.HTMLDivElement, HTMLFormElement: browser.HTMLFormElement,
   NodeFilter: browser.NodeFilter, SVGElement: browser.SVGElement, CustomEvent: browser.CustomEvent, KeyboardEvent: browser.KeyboardEvent,
   MouseEvent: browser.MouseEvent, PointerEvent: browser.PointerEvent, FocusEvent: browser.FocusEvent, DOMRect: browser.DOMRect,
   CSS: browser.CSS, ResizeObserver: browser.ResizeObserver,
@@ -197,5 +198,59 @@ test("restored MOL graph keeps source-only Compute while XYZ and foreign MOLX ke
       if (version === 4) expect(menu).toEqual(["Show spectra"]);
       else { expect(menu).toContain("Energy & charges"); expect(menu).toContain("Generate conformers"); }
     } finally { await act(async () => root.unmount()); host.remove(); native.dispose(); }
+  }
+});
+
+
+test("normal MOLX restore drives Info composition from its validated logical source instead of archive text", async () => {
+  const { DockPanel } = await import("../apps/desktop/src/components/dock-panel");
+  const { ExtensionMap } = await import("molstar/lib/apps/viewer/extensions.js");
+  const { DEFAULT_XTB_SETTINGS, DEFAULT_CONFORMER_SETTINGS } = await import("../apps/desktop/src/lib/chemistry-settings");
+  const cases = [
+    { version: 1 as const, title: "Molecule: 1 atoms in first frame" },
+    { version: 4 as const, title: "Small molecule: 4 atoms / 3 bonds" },
+    { version: "plain" as const, title: null },
+  ];
+  for (const fixture of cases) {
+    const bytes = await archive(fixture.version), document = await choose(bytes, `info-${fixture.version}.molx`);
+    const host = globalThis.document.createElement("div"); host.className = "app-shell"; globalThis.document.body.append(host);
+    const spec = DefaultPluginSpec();
+    const root = createRoot(host), native = new PluginContext({ ...spec, behaviors: [...spec.behaviors, ...Object.values(ExtensionMap)] }); await native.init();
+    const originalFetch = globalThis.fetch, archiveTextReads: string[] = [];
+    const transport = spyOn(globalThis, "fetch").mockImplementation(Object.assign(async (...[input, init]: Parameters<typeof globalThis.fetch>) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname === "/__burette/read-file" && url.searchParams.get("path") === document.path) {
+        archiveTextReads.push(document.path);
+        return new Response(JSON.stringify({error:"Missing, forbidden, or unsupported path"}), {status:404});
+      }
+      return originalFetch(input, init);
+    }, { preconnect: originalFetch.preconnect }));
+    const actions = { setStructureDragActive() {} } as unknown as import("../apps/desktop/src/components/types").ShellActions;
+    const state: Partial<import("../apps/desktop/src/components/types").ShellViewState> = { page:"viewer", documents:useMoleculeStore.getState().documents, textDocuments:[], activeDocument:document,
+      activeTab:{id:document.id,location:{kind:"file",path:document.path,documentId:document.id},back:[],forward:[]}, preferences:defaultPreferences,
+      rightDockTabs:[{id:"info",kind:"inspector"}],rightDockActiveTab:"inspector",rightDockOpen:true,rightDockDocumentId:document.id,rightDockTool:null,
+      dockDroppedStructures:[],hoveredGridRows:{},visibleDocuments:[document],sidebarProjects:[],xtbJobs:[],xtbSettings:DEFAULT_XTB_SETTINGS,conformerSettings:DEFAULT_CONFORMER_SETTINGS,
+      buildInfo:{name:"Burette",version:"test",identifier:"test",flavor:null,isDevBuild:true,isBrowserDev:true,isAgentShell:false,notes:[],limitations:[]},
+    };
+    try {
+      const token=scene.beginImport(native);await native.managers.snapshot.open(new File([runtimeBytes(document) as BlobPart],"info.molx"));expect(scene.completeImport(native,token)).toBe(true);
+      await act(async()=>root.render(<DockPanel area="right" state={state as import("../apps/desktop/src/components/types").ShellViewState} actions={actions}/>));
+      const request=async (_id:string,action:Record<string,unknown>)=>{
+        if(action.type==="workspace_scene_state")return {ready:true};
+        if(action.type==="scene_science_binding")return action.sourceExtension?scene.graphBinding({plugin:native},action.sourceExtension):scene.binding({plugin:native});
+        if(action.type==="scene_science_restore_ack")return {adopted:await scene.adoptValidated({plugin:native},action)};
+        throw new Error(`Unexpected ${action.type}`);
+      };
+      let outcome:unknown;
+      await act(async()=>{outcome=await restoreScienceSession(document,{readBytes:readSceneDocumentBytes,request,isOpen:()=>true});});
+      expect(outcome).toBe(fixture.version === "plain" ? "foreign" : "restored");
+      if (fixture.title) {
+        for(let i=0;i<100&&!host.querySelector(`[title="${fixture.title}"]`);i++)await act(async()=>{await new Promise(resolve=>setTimeout(resolve,5));});
+        expect(Boolean(host.querySelector(`[title="${fixture.title}"]`))).toBe(true);
+      } else expect(Boolean(host.querySelector(".structure-inspector-tree"))).toBe(false);
+      expect(host.textContent).not.toContain("could not be parsed for composition");
+      expect(archiveTextReads).toEqual([]);
+      expect(await readSceneDocumentBytes(document)).toEqual(bytes);
+    } finally {transport.mockRestore();await act(async()=>root.unmount());host.remove();native.dispose();}
   }
 });
