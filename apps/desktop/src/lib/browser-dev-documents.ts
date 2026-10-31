@@ -155,6 +155,7 @@ const TRAJECTORY_PAIR_EXTENSIONS = new Set([
   "top", "psf", "prmtop", "tpr",
 ]);
 const browserDevVirtualTextDocuments = new Map<string, string>();
+const browserDevPickedBinaries = new Map<string, Blob>();
 const MESOSCALE_EXTENSIONS = new Set(["molj", "molx", "mesozip"]);
 
 type ResolvedPreviewVisuals = {
@@ -667,6 +668,15 @@ export function readBrowserDevVirtualTextDocument(path: string) {
   return browserDevVirtualTextDocuments.get(path) ?? null;
 }
 
+export function writeBrowserDevPickedBinary(path: string, file: Blob) {
+  browserDevVirtualTextDocuments.delete(path);
+  browserDevPickedBinaries.set(path, file);
+}
+
+export function readBrowserDevPickedBinary(path: string) {
+  return browserDevPickedBinaries.get(path) ?? null;
+}
+
 /** Text already owned by this browser runtime; a virtual path alone is not ownership. */
 export function isBrowserDraftSource(document: Pick<ViewerDocument, "path">) {
   return !isTauriRuntime() && browserDevVirtualTextDocuments.has(document.path);
@@ -674,9 +684,12 @@ export function isBrowserDraftSource(document: Pick<ViewerDocument, "path">) {
 
 /** Restore immutable original text only when no current draft exists. */
 export async function readBrowserVirtualText(path: string) {
-  if (!isTauriRuntime() && !isExplicitBrowserDevServerPath(path) && !browserDevVirtualTextDocuments.has(path)) {
+  if (!isTauriRuntime() && !isExplicitBrowserDevServerPath(path) && !browserDevVirtualTextDocuments.has(path) && !browserDevPickedBinaries.has(path)) {
     const record = await readBrowserImport(path);
-    if (record?.kind === "text" && !browserDevVirtualTextDocuments.has(path)) {
+    if (record && !browserDevVirtualTextDocuments.has(path) && !browserDevPickedBinaries.has(path)
+      && (record.kind === "binary" || (record.kind === "text" && /\.molx$/iu.test(record.name)))) {
+      writeBrowserDevPickedBinary(path, record.file);
+    } else if (record?.kind === "text" && !browserDevVirtualTextDocuments.has(path)) {
       const restored = await record.file.text();
       if (!browserDevVirtualTextDocuments.has(path)) browserDevVirtualTextDocuments.set(path, restored);
     }
@@ -725,6 +738,12 @@ async function openBrowserDevDocument(
       reloadOptions,
       documentId,
     );
+  }
+  const picked = browserDevPickedBinaries.get(path);
+  if (picked) {
+    const bytes = new Uint8Array(await picked.arrayBuffer());
+    if (bytes.length === 0) throw new Error(`${path} is empty`);
+    return openBrowserDevDocumentFromBytes(path, extension, bytes, bytes.length, preferences, reloadOptions, documentId);
   }
   const amberNcPreview = await requestBrowserDevAmberNcPreview(path, extension);
   if (amberNcPreview) {

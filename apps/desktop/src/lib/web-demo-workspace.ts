@@ -9,7 +9,7 @@ import kras from "../../../../samples/structures/proteins/7rpz.pdb?raw";
 import imatinibPoses from "../../../../samples/structures/small-molecules/imatinib-poses.sdf?raw";
 import mosesProperties from "../../../../samples/collections/tables/moses-properties.csv?raw";
 import type { SidebarProjectStructure } from "./sidebar-projects";
-import { readBrowserDevVirtualTextDocument, writeBrowserDevVirtualTextDocument } from "./browser-dev-documents";
+import { readBrowserDevPickedBinary, readBrowserDevVirtualTextDocument, writeBrowserDevPickedBinary, writeBrowserDevVirtualTextDocument } from "./browser-dev-documents";
 import moses10k from "../../../../samples/collections/tables/moses-10k.csv?raw";
 import extxyzCell from "../../../../samples/extxyz-cell.xyz?raw";
 import ketcher2dBenzene from "../../../../samples/ketcher-2d-benzene.sdf?raw";
@@ -48,7 +48,7 @@ let importsInitialized: Promise<void> | undefined;
 
 export function initializeBrowserImportedFiles() {
   importsInitialized ??= listBrowserImports().then(async (imports) => {
-    if (imports.some(record => record.kind !== "text" && record.kind !== "media" && !(record.kind === "compressed" && record.scientific))) throw new Error("Saved browser files require a newer file reader.");
+    if (imports.some(record => record.kind !== "text" && record.kind !== "media" && record.kind !== "binary" && !(record.kind === "compressed" && record.scientific))) throw new Error("Saved browser files require a newer file reader.");
     for (const record of imports) await registerImportedFile(record);
     if (imports.length) emitChange();
   }).catch(error => { importsInitialized = undefined; throw error; });
@@ -165,8 +165,8 @@ export async function pickWebDemoFiles(options: { directory?: boolean } = {}) {
     const relativePath = options.directory ? file.webkitRelativePath : file.name;
     try {
       const isScientific = await isScientificFile(file);
-      const maxBytes = isScientific ? SCIENTIFIC_FILE_LIMIT : MAX_FILE_BYTES;
-      if (file.size > maxBytes) throw new Error(`larger than the ${isScientific ? "16 MiB" : "3 MB"} browser file limit`);
+      const maxBytes = isScientific ? SCIENTIFIC_FILE_LIMIT : /\.molx$/iu.test(file.name) ? BROWSER_IMPORT_MAX_FILE_BYTES : MAX_FILE_BYTES;
+      if (file.size > maxBytes) throw new Error(`larger than the ${maxBytes === SCIENTIFIC_FILE_LIMIT ? "16 MiB" : maxBytes === BROWSER_IMPORT_MAX_FILE_BYTES ? "24 MiB" : "3 MB"} browser file limit`);
       const path = `${root}/${relativePath.split("/").slice(options.directory ? 1 : 0).map(cleanSegment).join("/")}`;
       if (!path || path.endsWith("/")) continue;
       (isScientific && !options.directory ? scientific : paths).push(await importFile(path, file, maxBytes, isScientific));
@@ -177,7 +177,7 @@ export async function pickWebDemoFiles(options: { directory?: boolean } = {}) {
 }
 
 async function importFile(path: string, file: File, maxInputBytes: number, scientific = false) {
-  const kind = scientific && compressedName(file.name) ? "compressed" : isDocumentMediaPath(path) ? "media" : "text";
+  const kind = scientific && compressedName(file.name) ? "compressed" : /\.molx$/iu.test(file.name) ? "binary" : isDocumentMediaPath(path) ? "media" : "text";
   if (file.size > maxInputBytes) throw new Error("File exceeds the browser import limit");
   if (kind === "media" && binaryFiles.size >= 32) throw new Error("Too many open documents");
   const text = kind === "text" ? await file.text() : undefined;
@@ -191,7 +191,10 @@ async function registerImportedFile(record: BrowserImport, text?: string) {
   if (files.has(path)) return;
   // Scientific compressed originals are decoded by their import owner, not published as text.
   if (kind === "compressed" && record.scientific) { registerFile(path, file.size); return; }
-  if (kind === "media") binaryFiles.set(path, file);
+  // Older imports retained exact MOLX Blobs but labelled them as text.
+  if (kind === "binary" || (kind === "text" && /\.molx$/iu.test(record.name))) {
+    if (!readBrowserDevPickedBinary(path)) writeBrowserDevPickedBinary(path, file);
+  } else if (kind === "media") binaryFiles.set(path, file);
   else {
     const restored = text ?? await file.text();
     if (readBrowserDevVirtualTextDocument(path) === null) writeBrowserDevVirtualTextDocument(path, restored);

@@ -183,3 +183,17 @@ XYZ/SDF remain version 1, and explicit MCD companions retain version 3.
 Normal CJSON import and graph-science host export use this contract. A coordinate-set
 selector is not activated. Source limits, ordinary import and native-order/cell
 refusals are described in [Chemical JSON graph source](cjson-graph-source.md).
+
+### Ordinary browser MOLX opening
+
+The file chooser stores MOLX as exact binary bytes, within the existing 24 MiB
+browser-import limit. Browser startup and later opens restore the same Blob
+into the runtime payload; ZIP bytes never pass through text decoding. Older
+MOLX records labelled `text` still retain their exact Original Blob and use
+that binary path when restored. Other text imports retain their draft rules.
+
+The existing scene classifier remains authoritative: ordinary MolStar scenes
+use the structure viewer; native Mesoscale state uses Mesoscale. Scientific
+v1/v3/v4 archives reach the existing validated restore only after that routing.
+This import handling does not mark an arbitrary MOLX as scientific or bypass
+its manifest, checksum, graph or native binding checks.
