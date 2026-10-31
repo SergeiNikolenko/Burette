@@ -1,0 +1,16 @@
+.orbitals-panel {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  padding-top: 8px;
+  gap: 8px;
+}
+.orbitals-panel .workbench-tag {
+  margin-left: 6px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+}
+.orbitals-panel .workbench-muted {
+  color: var(--text-muted);
+  font-weight: 400;
+}
