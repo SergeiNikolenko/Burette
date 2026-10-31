@@ -1,0 +1,22 @@
+{
+  "repository": "OpenChemistry/avogadrodata",
+  "license": "BSD-3-Clause; molecules/LICENSE",
+  "files": [
+    {
+      "path": "L-alanine.cjson",
+      "upstream": "data/bondorders/molecules/amino_acids/L-alanine.cjson",
+      "commit": "67ab090bb4cc1ec9417d420f8df1f316c6a214f3",
+      "originalSha256": "74982f4bcdc17b60f848821ce4eed36cfed6466ba9850d24190fa238da881331",
+      "graphExtractSha256": "4e7c7c95d0cf8ed9a04b20f3fb9f3fba354fbe47f20b61fd50315ba4c327041d",
+      "extraction": "Exact elements,3d coordinates,formalCharges and complete bonds; unrelated vibrations/partial charges/properties omitted from the test graph extract only."
+    },
+    {
+      "path": "D-alanine.cjson",
+      "upstream": "data/bondorders/molecules/amino_acids/D-alanine.cjson",
+      "commit": "67ab090bb4cc1ec9417d420f8df1f316c6a214f3",
+      "originalSha256": "ec0d4e0b803ed5ee95ffd4e5855f2a8a5b30d238073be54b427964b87c570e05",
+      "graphExtractSha256": "77d29ca9b1fe18452243b35378172c03aaf9f4baa271639fc429603bf7bbd231",
+      "extraction": "Exact elements,3d coordinates,formalCharges and complete bonds; unrelated vibrations/partial charges/properties omitted from the test graph extract only."
+    }
+  ]
+}

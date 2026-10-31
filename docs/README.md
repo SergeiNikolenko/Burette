@@ -19,10 +19,12 @@ contains only documents that describe the active project.
 - [Internal coordinate editing](internal-coordinate-editing.md): Z-matrix definitions,
   scientific revision invariants, controls and focused validation.
 - [Peptide graph prerequisite](peptide-graph-builder.md): neutral residue graphs,
-- [Peptide geometry](peptide-geometry.md): named 3D backbone templates, charged termini, and mmCIF roundtrip.
   terminal chemistry, stereochemistry and the remaining 3D builder scope.
+- [Peptide geometry](peptide-geometry.md): named 3D backbone templates, charged termini, and mmCIF roundtrip.
 - [Quantum input templates](quantum-input-export.md): engine routes, coordinate
   conventions, constraints, periodic cells and template validation.
+- [Chemical JSON graph source prerequisite](cjson-graph-source.md): explicit bonds,
+  source atom order, Cartesian sets and graph-preserving import constraints.
 - [Scientific scene format](scientific-scene-format.md): MOLX attachment protocol,
   scientific validation, source identity and runtime asset ownership.
 - [Repository layout](repository-layout.md): top-level code map, app surfaces,

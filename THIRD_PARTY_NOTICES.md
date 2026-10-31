@@ -220,3 +220,11 @@ and full license are in `docs/third-party/fragments-LICENSE`. Both licenses are
 also included in `apps/desktop/public/third-party-licenses/`. Source identities and
 regeneration instructions are in `config/peptide-residue-sources.json` and
 `docs/peptide-geometry.md`.
+
+## Chemical JSON stereochemistry test graphs
+
+`tests/fixtures/cjson/L-alanine.cjson` and `D-alanine.cjson` retain the graph and
+Cartesian coordinates from OpenChemistry/avogadrodata commit
+`67ab090bb4cc1ec9417d420f8df1f316c6a214f3`, under its molecules-directory
+BSD-3-Clause license (Copyright 2016 Geoffrey Hutchison, University of Pittsburgh).
+The exact license and source hashes are retained beside these test-only extracts.
