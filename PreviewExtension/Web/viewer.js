@@ -726,8 +726,23 @@
       return { ok: true, result: { adopted: await window.BuretteSceneFiles.science.adoptValidated(activeMolstarViewer(), action) } };
     }
     if (type === 'measurement_preview_capture') {
+      const viewer = activeMolstarViewer();
       const runtime = await measurementCoordinateRuntime();
-      return { ok: true, result: await runtime.capture(activeMolstarViewer(), window.BuretteSceneFiles.science) };
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+      const result = await runtime.capture(viewer, window.BuretteSceneFiles.science,
+        action.sourceExtension === 'xyz' ? { sourceFormat: 'xyz', lease: action.lease } : undefined);
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+      return { ok: true, result };
+    }
+    if (type === 'geometry_topology_scene_capture' || type === 'geometry_topology_scene_validate') {
+      const viewer = activeMolstarViewer(), runtime = window.molstar?.BuretteTopologyScene;
+      if (!viewer?.plugin || !runtime) throw new Error('Reload a runtime supporting topology scene transfer.');
+      if (typeof action.lease !== 'string' || !action.lease || action.lease.length > 128) throw new Error('Read the current Geometry before changing topology.');
+      const result = type === 'geometry_topology_scene_capture'
+        ? runtime.capture(viewer.plugin, action.lease)
+        : { valid: runtime.validate(viewer.plugin, action.receipt, action.lease) };
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+      return { ok: true, result };
     }
     if (type === 'workspace_scene_state') {
       return { ok: true, result: { ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length || (document.querySelector('.buret-external-artifact-root .buret-xyzrender-sheet-item-body > svg') && !document.querySelector('[data-buret-popout-animation=loading], [data-buret-popout-animation=failed]'))) } };
@@ -9103,12 +9118,24 @@ SOFTWARE.
   }
 
   async function restoreMeasurementPreview(viewer, config) {
-    if (typeof config.rendererViewState !== 'string' || config.rendererViewState.length > 8192 || new TextEncoder().encode(config.rendererViewState).length > 8192) return;
+    if (typeof config.rendererViewState !== 'string' || config.rendererViewState.length > 8192 || new TextEncoder().encode(config.rendererViewState).length > 8192) return null;
     let state;
-    try { state = JSON.parse(config.rendererViewState); } catch { return; }
-    if (!state?.measurementTransfer) return;
-    const runtime = await measurementCoordinateRuntime();
-    await runtime.restore(viewer, state.measurementTransfer, window.BuretteSceneFiles.science);
+    try { state = JSON.parse(config.rendererViewState); } catch { return null; }
+    if (!state?.topologyScene && !state?.measurementTransfer) return null;
+    if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+    if (state.topologyScene) {
+      const runtime = window.molstar?.BuretteTopologyScene;
+      if (!runtime) throw new Error('Reload a runtime supporting topology scene transfer.');
+      await runtime.restore(viewer.plugin, state.topologyScene);
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+    }
+    if (state.measurementTransfer) {
+      const runtime = await measurementCoordinateRuntime();
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+      await runtime.restore(viewer, state.measurementTransfer, window.BuretteSceneFiles.science);
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+    }
+    return state.topologyScene?.camera || null;
   }
 
   function sceneTreeMeasurementMenu(menu, targets) {
@@ -30685,16 +30712,16 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       if (window.BuretteNativeFirstFrame) throw error;
     }
     if (window.BuretteViewerDisposed) return;
-    await restoreMeasurementPreview(viewer, config);
+    const topologyCamera = await restoreMeasurementPreview(viewer, config);
     const sourceViewport = await restoredView;
-    const savedCamera = window.BuretteRendererViewState?.read(config.documentId, config.rendererViewState).camera;
-    if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {
+    const savedCamera = topologyCamera || window.BuretteRendererViewState?.read(config.documentId, config.rendererViewState).camera;
+    if (topologyCamera || (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs')) {
       molstarStructureFocusSerial += 1;
-      const camera = sourceViewport
+      const camera = sourceViewport && !topologyCamera
         ? window.BuretteRendererViewState.transferCamera(savedCamera, sourceViewport, viewer.plugin.canvas3d?.camera?.viewport)
         : savedCamera;
       restoreMolstarCameraSnapshotNow(viewer, camera);
-      if (sourceViewport) saveRendererViewState();
+      if (sourceViewport && !topologyCamera) saveRendererViewState();
     } else if ((isQuickLookHost() || prepared.fitSessionCamera) && !hasMolstarContextFocus(config)) {
       // Quick Look keeps the file's orientation and never animates the camera; it
       // only trades Mol*'s bounding-sphere distance for the atom-fitted one. An MVS

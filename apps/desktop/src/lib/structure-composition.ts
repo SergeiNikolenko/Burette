@@ -31,6 +31,9 @@ export type StructureViewerAction =
   | { type: "scalar_field_validate"; lease: string; label: string; notify: false }
   | { type: "show_scalar_field"; lease: string; label: string; cube: string; isovalue: number; signed: boolean; alpha?: number; notify: false }
   | { type: "geometry_binding"; label: string; notify: false }
+  | { type: "geometry_topology_scene_capture"; label: string; notify: false; lease: string }
+  | { type: "geometry_topology_scene_validate"; label: string; notify: false; lease: string; receipt: string }
+  | { type: "measurement_preview_capture"; label: string; notify: false; sourceExtension: "xyz"; lease: string }
   | { type: "update_geometry"; label: string; text: string; lease: string; notify: false }
   // Model-local atom_index values, matching the viewer selection contract.
   | { type: "preview_geometry"; label: string; atoms: number[]; kind?: "bond" | "angle" | "dihedral"; notify: false }
