@@ -113,6 +113,15 @@ the real app binding setup, native scene/MOLX roundtrips and continued topology
 restoration, including read-only rejection of unknown bindings. Rebuild Mol* and
 the agent-shell mirror after changing this module; Browser acceptance is separate.
 
+Topology scene transfers retain at most 2 MiB of UTF-8 JSON, within the existing
+32-component/eight-representations-per-component limits. Their transient reload
+envelope permits another 8 KiB for measurement transfer and framing; measurement
+transfers keep their existing 6 KiB bound. Ordinary camera checkpoints and native
+non-topology reloads keep their 8 KiB limit. `vp run test:topology-transfer-budget`
+checks the actual Browser MOLX, complete field retention at maximum object counts,
+exact byte boundaries, and the compiled host-to-native receiver path. The paired
+native boundary test is `renderer_view_state_keeps_ordinary_views_small_and_bounds_topology_reload_bytes`.
+
 Scripts such as `dev-namespace.mjs`, `preview-content-type.mjs`,
 `patch-web-assets.sh`, vendor scripts, and release signing helpers are
 implementation details for the public commands above. Use them directly only

@@ -329,7 +329,7 @@ function validateTransfer(value) {
   }
   return value;
 }
-function size(transfer) { if (new TextEncoder().encode(JSON.stringify(transfer)).byteLength > 6144) fail('Scene settings exceed the topology transfer limit.'); return transfer; }
+function size(transfer) { if (new TextEncoder().encode(JSON.stringify(transfer)).byteLength > 2 * 1024 * 1024) fail('Scene settings exceed the topology transfer limit.'); return transfer; }
 function signature(plugin, data) {
   const cells = [...plugin.state.data.cells.values()].map(c => [c.transform.ref, flags(c), c.transform.tags || [],
     c.transform.transformer === StateTransforms.Misc.CreateGroup || c.transform.transformer === measurementSelectionType || measurementTypes.includes(c.transform.transformer) ? c.params?.values : null]);

@@ -9130,9 +9130,13 @@ SOFTWARE.
   }
 
   async function restoreMeasurementPreview(viewer, config) {
-    if (typeof config.rendererViewState !== 'string' || config.rendererViewState.length > 8192 || new TextEncoder().encode(config.rendererViewState).length > 8192) return null;
+    const topologyLimit = 2 * 1024 * 1024 + 8192;
+    if (typeof config.rendererViewState !== 'string' || config.rendererViewState.length > topologyLimit) return null;
+    const byteLength = new TextEncoder().encode(config.rendererViewState).byteLength;
+    if (byteLength > topologyLimit) return null;
     let state;
     try { state = JSON.parse(config.rendererViewState); } catch { return null; }
+    if (byteLength > 8192 && !(state?.version === 1 && state?.topologyScene?.version === 1)) return null;
     if (!state?.topologyScene && !state?.measurementTransfer) return null;
     if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
     if (state.topologyScene) {

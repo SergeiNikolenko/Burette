@@ -120,7 +120,7 @@ export function useTopologyTransfer() {
       next.scene.camera = baseline.scene.camera;
       const rendererViewState = JSON.stringify({ version: 1, topologyScene: next.scene,
         measurementTransfer: { ...next.measurements, version: 1, sourceFormat: "xyz", targetSourceSha256: targetHash } });
-      if (new TextEncoder().encode(rendererViewState).byteLength > 8192) throw new Error("There are too many scene settings to retain. Remove some layers or measurements before editing.");
+      if (new TextEncoder().encode(rendererViewState).byteLength > 2 * 1024 * 1024 + 8192) throw new Error("There are too many scene settings to retain. Remove some layers or measurements before editing.");
       const prepared: PreparedGeometryTopology = Object.freeze({ fromText: binding.text, text: target.text, rendererViewState,
         selection: next.scene.selection, canPublish: current, validate,
         accepted: () => { history.set(target, next); } });

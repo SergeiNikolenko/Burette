@@ -161,7 +161,7 @@ try {
     await assert.rejects(BuretteTopologyScene.restore(invalidTarget.plugin, badTags), /Invalid source role tags/);
   }
   assert.deepEqual(invalidTarget.plugin.state.data.getSnapshot(), invalidBefore);
-  const huge = payload(captured); huge.components[0].params.label = 'x'.repeat(7000);
+  const huge = payload(captured); huge.components[0].params.label = 'x'.repeat(2 * 1024 * 1024 + 1);
   await assert.rejects(BuretteTopologyScene.restore(invalidTarget.plugin, huge), /transfer limit/);
   unchanged(old, () => assert.throws(() => BuretteTopologyScene.capture(old.plugin, 'stale'), /changed/));
   await old.plugin.managers.structure.measurement.addDistance(old.loci([0]), old.loci([3]), { visualParams: { customText: 'Exact paired distance' } });
