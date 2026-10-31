@@ -149,3 +149,6 @@ test("durable ordinary browser open reparses CJSON as MOL with fresh ownership a
   expect(new Uint8Array(await state.original!.file.arrayBuffer())).toEqual(new Uint8Array(await file.arrayBuffer()));
   expect(await openStoredScientificFile(path, defaultPreferences, () => { throw new Error("Cancelled source published"); }, () => false)).toEqual([]);
 });
+
+// Shared ordinary import fixture; existing cases also run in the built-MOL selection lane.
+export { imported, browser };

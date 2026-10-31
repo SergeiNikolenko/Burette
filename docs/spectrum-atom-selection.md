@@ -2,7 +2,7 @@
 
 The private `select_source_atom` viewer action addresses one atom by the native
 `atomicHierarchy.atomSourceIndex` column. Its `sourceSha256` hashes the exact
-rendered XYZ text; `frameIndex` and `frameCount` name the native trajectory,
+rendered XYZ or MOL parser-input text; `frameIndex` and `frameCount` name the native trajectory,
 not the scientific file frame count. The caller supplies the NMR source atom
 ordinal directly. Matching elements, coordinates, or atom counts is insufficient.
 
@@ -19,8 +19,9 @@ receipts. Abort and timeout send a private `agent-action-cancel` message; its re
 receiver requires the exact request ID and sending Window. It cannot cancel a
 newer row or an action from another sender. Selection receipts retain a bounded
 60-second retirement window, including after the request deadline. Callers must capture the target before dispatch and preserve it through
-any pending work. This foundation currently accepts XYZ only; MOL graph source
-mapping, panel activation and actual Browser acceptance require separate stages.
+any pending work. The MOL path requires its exact native MOL transformer and frame 0/1; it hashes
+the direct parser input. SDF is not substituted. Actual Browser acceptance remains
+separate from native component tests.
 
 `test:spectrum-atom-selection` runs the real Mol* receiver, Geometry edits and
 native selection state, including source/frame mismatch, replacement, edit/Undo
@@ -40,10 +41,21 @@ is a subscribed owner; a request-local source-store listener revokes a pending
 request on intermediate revision replacement, including a rollback before React
 commits. Unrelated documents do not cancel the current selection.
 
-The current consumer binds registered, frame-scoped NMR data to materialized XYZ.
+The consumer binds registered, frame-scoped NMR data to materialized XYZ and the
+exact file-scoped NMR dataset of a validated CJSON graph to its materialized MOL.
 `useSceneSpectra` exposes `text` and a separate `nativeFrame`: a scientific final
 frame maps to native 0/1, while a steps document requires the exact reported
-trajectory. File-scoped graph NMR and MOL addressing require their paired graph
-mapping stage. Ordinary ORCA NMR is covered by the real compiled panel/worker,
+trajectory. A CJSON graph keeps its explicit scientific activeFrameIndex while
+its native MOL address is always 0/1. Source atom ordinals come from the declared
+CJSON atom table, never element or coordinate matching. Ordinary ORCA NMR is
+covered by the real compiled panel/worker,
 request/ack transport and native Mol* selection test; actual Browser remains a
 separate acceptance lane.
+
+
+The built-MOL selection lane reuses the ordinary CJSON import fixture, including
+its explicitly authored seven-set variants. It executes the full vendored MolStar
+IIFE with normal viewer behaviors, real request/ack and the compiled Spectra owner.
+Run the existing vendor:molstar build before test:cjson-nmr-selection; no new facade
+exports are introduced. The unchanged original CJSON import cases also run in
+that lane. Full pinned upstream producer validation is recorded separately.

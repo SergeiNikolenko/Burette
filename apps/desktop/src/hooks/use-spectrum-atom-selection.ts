@@ -33,9 +33,9 @@ export function useSpectrumAtomSelection(document: ViewerDocument | null, scene:
     pending.current?.abort();
     if (!document || !scene || current.current !== key) return;
     setError(null);
-    if (!scene.sources.some(source => source.data === data) || data.source.scope !== "frame"
-      || data.source.frameIndex !== scene.index || data.source.frameCount !== scene.science.frames.length
-      || !scene.nativeFrame) {
+    const frameSource = scene.science.format !== "cjson" && data.source.scope === "frame" && data.source.frameIndex === scene.index && data.source.frameCount === scene.science.frames.length;
+    const graphSource = scene.science.format === "cjson" && scene.science.graph && data.source.scope === "file" && data === scene.science.spectra;
+    if (!scene.sources.some(source => source.data === data) || !(frameSource || graphSource) || !scene.nativeFrame) {
       setError({ key, message: "This spectrum has no atom mapping to the current structure." }); return;
     }
     if (ready?.key !== key) { setError({ key, message: "Wait for the source to load, then select the atom again." }); return; }
