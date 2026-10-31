@@ -59,7 +59,8 @@ function SpectrumView({ data, selection, actions, onSelectAtom }: { data: Scient
   const [options, setOptions] = useState(() => spectralPlotDefaults(selection));
   const [showRaw, setShowRaw] = useState(true), [selected, setSelected] = useState<string | null>(null), [page, setPage] = useState(0), [retry, setRetry] = useState(0);
   const [run, setRun] = useState<Run | null>(null), [saveError, setSaveError] = useState<string | null>(null);
-  const pending = useRef<AbortController | null>(null);
+  const pending = useRef<AbortController | null>(null), saveRequest = useRef(0);
+  useEffect(() => () => { ++saveRequest.current; }, []);
   const request = useMemo(() => ({ data, selection, options }), [data, selection.kind, selection.kind === "nmr" ? selection.atomicNumber : null, options]);
   useEffect(() => {
     const abort = new AbortController(); pending.current = abort;
@@ -95,12 +96,13 @@ function SpectrumView({ data, selection, actions, onSelectAtom }: { data: Scient
     if (next === undefined) return; event.preventDefault(); choose(peaks[Math.max(0, Math.min(last, next))].row);
   };
   const save = (kind: "csv" | "json" | "settings") => {
-    setSaveError(null);
+    const requestId = ++saveRequest.current; setSaveError(null);
     try {
       const text = kind === "csv" ? scientificSpectrumCsv(data, selection.kind) : kind === "json" ? scientificSpectraJson(data) : spectralPlotSettingsJson(plot!);
       const extension = kind === "csv" ? "csv" : "json", scope = data.source.scope === "frame" ? `-frame-${data.source.frameIndex + 1}` : "";
       void actions.saveKetcherExportFile({ title: `${fileStem(data.source.name)}${scope}-${selection.kind}${kind === "settings" ? "-display" : ""}.${extension}`, extension, text })
-        .catch(() => setSaveError("Could not save the spectrum. Try again."));
+        .then(result => { if (requestId === saveRequest.current && result.status === "failed") setSaveError("Could not save the spectrum. Try again."); })
+        .catch(() => { if (requestId === saveRequest.current) setSaveError("Could not save the spectrum. Try again."); });
     } catch { setSaveError("Could not save the spectrum. Try again."); }
   };
   return <>

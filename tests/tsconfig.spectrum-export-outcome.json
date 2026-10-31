@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "types": ["bun"] },
+  "include": ["test-spectrum-export-outcome.test.tsx", "fixtures/scientific-spectra-compiler.ts", "../apps/desktop/src/**/*.d.ts"]
+}
