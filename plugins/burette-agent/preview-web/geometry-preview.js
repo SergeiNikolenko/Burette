@@ -254,16 +254,20 @@
       || action.frameIndex < 0 || action.frameIndex >= action.frameCount
       || !Number.isSafeInteger(action.atomIndex) || action.atomIndex < 0 || action.atomIndex >= 10000) throw new Error('Invalid spectrum atom address.');
     const transforms = window.molstar?.lib?.plugin?.StateTransforms;
-    const trajectory = owner.ancestors.find(item => item.cell.transform.transformer === transforms?.Model.TrajectoryFromXYZ);
+    const trajectory = owner.ancestors.find(item => item.cell.transform.transformer === transforms?.Model.TrajectoryFromXYZ)
+      ?? owner.ancestors.find(item => item.cell.transform.transformer === transforms?.Model.TrajectoryFromMOL);
+    const mol = Boolean(trajectory && trajectory.cell.transform.transformer === transforms?.Model.TrajectoryFromMOL);
     const model = owner.ancestors.find(item => item.cell.transform.transformer === transforms?.Model.ModelFromTrajectory);
-    const raw = owner.ancestors.find(item => item.cell.transform.transformer === transforms?.Data.RawData);
+    const raw = owner.ancestors.find(item => mol ? item.cell.transform.ref === trajectory.cell.transform.parent
+      : item.cell.transform.transformer === transforms?.Data.RawData);
     const structure = owner.cell.obj.data;
-    if (!trajectory || !model || !raw || trajectory.data.frameCount !== action.frameCount
+    if (!trajectory || !model || !raw || (mol && (action.frameIndex !== 0 || action.frameCount !== 1)) || trajectory.data.frameCount !== action.frameCount
       || model.cell.transform.params.modelIndex !== action.frameIndex || structure.models?.length !== 1
       || structure.units.some(unit => unit.kind !== 0)) throw new Error('The spectrum does not address this source frame.');
     // The existing Geometry binding knows its own coordinate decorator. It returns
     // the effective source text, never an inferred XYZ reconstructed from positions.
-    const text = action.frameCount === 1 ? window.molstar.BuretteGeometry.binding(viewer.plugin, owner.current).text : raw.data;
+    // MOL identity is its direct parser input, as in graphSourceBinding.
+    const text = mol ? raw.data : action.frameCount === 1 ? window.molstar.BuretteGeometry.binding(viewer.plugin, owner.current).text : raw.data;
     if (typeof text !== 'string' || text.length > 16 * 1024 * 1024
       || await digest(new TextEncoder().encode(text)) !== action.sourceSha256) throw new Error('The displayed source differs from the spectrum source.');
     if (!owner.current()) throw stale();
