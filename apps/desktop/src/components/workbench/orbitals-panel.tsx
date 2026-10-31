@@ -23,6 +23,7 @@ const FIELD_UNITS: Record<FieldKind, string> = { orbital: "a.u.", density: "e/bo
 const DEFAULT_ISOVALUE: Record<FieldKind, number> = { orbital: 0.03, density: 0.02, "spin-density": 0.005, file: 0.02 };
 const SPACINGS = [0.2, 0.3, 0.4, 0.5];
 
+// Worker selection uses array positions; source ids may be sparse or repeat across spin channels.
 function frontierOrbitals(orbitals: MolecularOrbital[]) {
   const result = new Map<number, "HOMO" | "LUMO">();
   for (const spin of ["alpha", "beta"] as const) {
@@ -31,8 +32,8 @@ function frontierOrbitals(orbitals: MolecularOrbital[]) {
     const virtual = channel.filter((orbital) => orbital.occupancy <= 1e-6);
     const homo = occupied.reduce<MolecularOrbital | null>((best, orbital) => !best || orbital.energyHartree > best.energyHartree ? orbital : best, null);
     const lumo = virtual.reduce<MolecularOrbital | null>((best, orbital) => !best || orbital.energyHartree < best.energyHartree ? orbital : best, null);
-    if (homo) result.set(homo.index, "HOMO");
-    if (lumo) result.set(lumo.index, "LUMO");
+    if (homo) result.set(orbitals.indexOf(homo), "HOMO");
+    if (lumo) result.set(orbitals.indexOf(lumo), "LUMO");
   }
   return result;
 }
@@ -45,19 +46,22 @@ export function OrbitalsPanel({ document, actions, science, sourceText, sourceKi
   sourceKind: string;
 }) {
   const hasBasis = Boolean(science.basis?.length && science.orbitals.some((orbital) => orbital.coefficients.length));
+  const hasAlpha = science.orbitals.some((orbital) => orbital.spin === "alpha");
   const hasBeta = science.orbitals.some((orbital) => orbital.spin === "beta");
   const fieldKinds: FieldKind[] = [
     ...(hasBasis ? ["orbital", "density"] as const : []),
     ...(hasBasis && (hasBeta || science.orbitals.every(orbital => Number.isInteger(orbital.occupancy))) ? ["spin-density"] as const : []),
     ...(science.grid ? ["file"] as const : []),
   ];
-  const [spin, setSpin] = useState<"alpha" | "beta">("alpha");
+  const [spin, setSpin] = useState<"alpha" | "beta">(hasAlpha || !hasBeta ? "alpha" : "beta");
   const frontier = useMemo(() => frontierOrbitals(science.orbitals), [science]);
-  const listed = science.orbitals.filter((orbital) => orbital.spin === spin);
-  const [selected, setSelected] = useState<number | null>(() => {
-    const homo = [...frontier].find(([index, label]) => label === "HOMO" && science.orbitals[index]?.spin === "alpha");
-    return homo?.[0] ?? listed[0]?.index ?? null;
-  });
+  const listed = science.orbitals.map((orbital, index) => ({ orbital, index })).filter(({ orbital }) => orbital.spin === spin);
+  const preferredOrbital = (channel: "alpha" | "beta") => {
+    const homo = science.orbitals.findIndex((orbital, index) => orbital.spin === channel && frontier.get(index) === "HOMO");
+    const first = science.orbitals.findIndex(orbital => orbital.spin === channel);
+    return homo >= 0 ? homo : first >= 0 ? first : null;
+  };
+  const [selected, setSelected] = useState<number | null>(() => preferredOrbital(spin));
   const [fieldKind, setFieldKind] = useState<FieldKind>(fieldKinds[0] ?? "orbital");
   const [isovalue, setIsovalue] = useState(DEFAULT_ISOVALUE[fieldKind]);
   const [spacing, setSpacing] = useState(0.3);
@@ -77,7 +81,9 @@ export function OrbitalsPanel({ document, actions, science, sourceText, sourceKi
   const [saving, setSaving] = useState(false);
 
   const fieldKey = fieldKind === "orbital" ? `orbital:${selected}:${spacing}` : `${fieldKind}:${spacing}`;
-  const label = fieldKind === "orbital" && selected !== null ? `Orbital ${selected + 1}` : FIELD_LABELS[fieldKind];
+  const selectedOrbital = selected === null ? null : science.orbitals[selected];
+  const label = fieldKind === "orbital" && selectedOrbital ? `Orbital ${selectedOrbital.index + 1}` : FIELD_LABELS[fieldKind];
+  const orbitalFileName = selectedOrbital ? `${science.orbitals.some((orbital, index) => index !== selected && orbital.index === selectedOrbital.index) ? `${selectedOrbital.spin}-` : ""}orbital-${selectedOrbital.index + 1}` : "orbital";
 
   // Isovalue last sent with a visible field; a debounced resend is skipped when it already matches.
   const sentIsovalue = useRef<number | null>(null);
@@ -182,14 +188,14 @@ export function OrbitalsPanel({ document, actions, science, sourceText, sourceKi
       // A later native edit while the ACK or save dialog is pending does not relabel the export.
       await sender.current(document, { type: "scalar_field_validate", lease: value.lease, label, notify: false }, { target: value.target });
       if (!sourceCurrent() || !value.target.isCurrent()) return;
-      const result = await actions.saveKetcherExportFile({ title: `${fileStem(document.title)}-${fieldKind === "orbital" ? `orbital-${(selected ?? 0) + 1}` : fieldKind}.cube`, extension: "cube", text: value.cube });
+      const result = await actions.saveKetcherExportFile({ title: `${fileStem(document.title)}-${fieldKind === "orbital" ? orbitalFileName : fieldKind}.cube`, extension: "cube", text: value.cube });
       if (sourceCurrent() && result.status === "failed") setError(result.message);
     } catch (caught) { if (sourceCurrent()) setError(caught instanceof Error ? caught.message : String(caught)); }
     finally { if (sourceCurrent()) setSaving(false); }
   };
 
-  const homo = science.orbitals.find((orbital) => orbital.spin === spin && frontier.get(orbital.index) === "HOMO");
-  const lumo = science.orbitals.find((orbital) => orbital.spin === spin && frontier.get(orbital.index) === "LUMO");
+  const homo = science.orbitals.find((orbital, index) => orbital.spin === spin && frontier.get(index) === "HOMO");
+  const lumo = science.orbitals.find((orbital, index) => orbital.spin === spin && frontier.get(index) === "LUMO");
 
   return (
     <div className="dock-content workbench-panel orbitals-panel">
@@ -240,8 +246,8 @@ export function OrbitalsPanel({ document, actions, science, sourceText, sourceKi
         <>
           <div className="workbench-row">
             {hasBeta ? (
-              <SegmentedControl aria-label="Spin" value={spin} onValueChange={(value) => setSpin(value as "alpha" | "beta")}>
-                <SegmentedControlItem value="alpha">α</SegmentedControlItem>
+              <SegmentedControl aria-label="Spin" value={spin} onValueChange={(value) => { const next = value as "alpha" | "beta"; setSpin(next); setSelected(preferredOrbital(next)); }}>
+                <SegmentedControlItem value="alpha" disabled={!hasAlpha}>α</SegmentedControlItem>
                 <SegmentedControlItem value="beta">β</SegmentedControlItem>
               </SegmentedControl>
             ) : null}
@@ -252,14 +258,14 @@ export function OrbitalsPanel({ document, actions, science, sourceText, sourceKi
               <tr><th scope="col">Orbital</th><th scope="col">Occupancy</th><th scope="col">Energy, Eh</th><th scope="col">Energy, eV</th></tr>
             </thead>
             <tbody>
-              {listed.map((orbital) => {
-                const isSelected = fieldKind === "orbital" && hasBasis && orbital.index === selected;
+              {listed.map(({ orbital, index }) => {
+                const isSelected = fieldKind === "orbital" && hasBasis && index === selected;
                 return (
-                  <tr key={orbital.index} aria-selected={isSelected} data-selectable={hasBasis || undefined}
+                  <tr key={index} aria-selected={isSelected} data-selectable={hasBasis || undefined}
                     tabIndex={hasBasis ? 0 : undefined}
-                    onClick={hasBasis ? () => { setSelected(orbital.index); setFieldKind("orbital"); } : undefined}
-                    onKeyDown={hasBasis ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelected(orbital.index); setFieldKind("orbital"); } } : undefined}>
-                    <th scope="row">{orbital.index + 1}{frontier.get(orbital.index) ? <span className="workbench-tag">{frontier.get(orbital.index)}</span> : null}{orbital.symmetry ? <span className="workbench-muted"> {orbital.symmetry}</span> : null}</th>
+                    onClick={hasBasis ? () => { setSelected(index); setFieldKind("orbital"); } : undefined}
+                    onKeyDown={hasBasis ? (event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelected(index); setFieldKind("orbital"); } } : undefined}>
+                    <th scope="row">{orbital.index + 1}{frontier.get(index) ? <span className="workbench-tag">{frontier.get(index)}</span> : null}{orbital.symmetry ? <span className="workbench-muted"> {orbital.symmetry}</span> : null}</th>
                     <td>{orbital.occupancy.toFixed(orbital.occupancy % 1 ? 3 : 0)}</td>
                     <td>{orbital.energyHartree.toFixed(5)}</td>
                     <td>{(orbital.energyHartree * HARTREE_EV).toFixed(3)}</td>

@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.orbitals-owner.json",
+  "include": ["../apps/desktop/src/**/*.d.ts", "./test-orbitals-spin.test.tsx"]
+}

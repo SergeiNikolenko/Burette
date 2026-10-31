@@ -35,6 +35,15 @@ on the same source validates and reuses the receipt, so cancelling replacement
 work can still clear the previous visible surface. A ready grid never obtains
 fresh permission from a different scene.
 
+Changing the displayed spin channel selects its HOMO, or its first orbital
+when no occupied orbital is present. A wanted orbital surface follows that
+selection; an old field cannot be exported while the replacement is computing.
+Total and spin-density fields remain independent of the displayed orbital
+channel. A beta-only file starts in beta and cannot select an absent alpha
+channel. Worker requests and field ownership use array positions, while displayed
+orbital numbers retain source IDs. Those IDs may be sparse or repeat across
+channels; colliding export names include the spin channel.
+
 Export is a snapshot at native acceptance: if the source changes after the
 retained receipt was validated but before its ACK or save dialog finishes, the
 already accepted Cube keeps its original captured bytes and filename. It never
