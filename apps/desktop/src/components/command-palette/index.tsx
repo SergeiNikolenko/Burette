@@ -1,4 +1,5 @@
-import { focusVibrationsDock, openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../../lib/workbench/vibrations-tool";
+import { focusToolDock, type WorkbenchToolDockKind } from "../../lib/workbench/focus-tool-dock";
+import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../../lib/workbench/vibrations-tool";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Command,
@@ -55,7 +56,7 @@ export function CommandPalette({
   onRunError,
 }: CommandPaletteProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
-  const vibrationsFocus = useRef<{ documentId: string; workspaceId: string } | null>(null);
+  const workbenchFocus = useRef<{ kind: WorkbenchToolDockKind; documentId: string; workspaceId: string } | null>(null);
   const hasVibrations = useVibrationsAvailable(state.activeDocument ?? null);
 
   const items = useMemo<PaletteItem[]>(() => {
@@ -135,7 +136,8 @@ export function CommandPalette({
   }, [firstValue, isOpen, query]);
 
   const runItem = (item: PaletteItem) => {
-    vibrationsFocus.current = item.id === "workbench-tool-vibrations" && state.activeDocument && state.activeTab ? { documentId: state.activeDocument.id, workspaceId: state.activeTab.id } : null;
+    const kind = item.id === "workbench-tool-vibrations" ? "vibrations" : item.id === "workbench-tool-orbitals" ? "orbitals" : item.id === "workbench-tool-scientific-spectra" ? "scientific-spectra" : null;
+    workbenchFocus.current = kind && state.activeDocument && state.activeTab ? { kind, documentId: state.activeDocument.id, workspaceId: state.activeTab.id } : null;
     onClose();
     void Promise.resolve(item.run()).catch((error) => {
       onRunError(error, `${item.label} failed`);
@@ -149,9 +151,9 @@ export function CommandPalette({
         if (!open) onClose();
       }}
       onCloseAutoFocus={event => {
-        const intent = vibrationsFocus.current;
-        vibrationsFocus.current = null;
-        if (intent && focusVibrationsDock(intent.documentId, intent.workspaceId)) event.preventDefault();
+        const intent = workbenchFocus.current;
+        workbenchFocus.current = null;
+        if (intent && focusToolDock(intent.kind, intent.documentId, intent.workspaceId)) event.preventDefault();
       }}
       title="Command Palette"
       description="Search commands and structures."
