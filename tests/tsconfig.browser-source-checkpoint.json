@@ -9,7 +9,8 @@
     "test-browser-source-checkpoint.test.ts",
     "../apps/desktop/src/lib/native-mcp-workspace.ts",
     "test-browser-source-checkpoint-independent.test.ts",
-    "test-browser-import-store.test.ts"
+    "test-browser-import-store.test.ts",
+    "test-browser-mcd-checkpoint.test.ts"
   ],
   "include": [
     "../apps/desktop/src/**/*.d.ts"

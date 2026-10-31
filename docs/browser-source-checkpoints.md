@@ -40,3 +40,36 @@ bytes and are reported; they do not authorize an unrelated filesystem path.
 scientific import, IndexedDB, and preview-adapter handshake with reload, pending
 close, source replacement and Original checks. The renderer ready receipt in that
 fixture is explicit; actual browser/renderer acceptance remains separate.
+
+## Paired Scientific Originals
+
+Checkpoint record version 2 additionally retains bounded MCD companion metadata
+and exact Blob bytes. Ordinary records remain version 1, and the IndexedDB
+schema stays at version 2. Both record types remain readable. Binary sizes count
+towards the existing 16 MiB record and 32 MiB aggregate limits before publication.
+Companion validation uses the scene archive's source, frame and checksum contract;
+missing, mismatched or corrupt paired Originals reject the record.
+
+A managed metadata-only edit first proves its existing retention witness through
+`mcdDataForExport`. The stored scientific receipt names the current text SHA, with
+the original revision SHA retained in companion provenance. Recovery needs no
+serialized witness chain or old history: it adopts a fresh revision with its
+paired Blobs. Primary Original bytes remain in the existing immutable import
+store. Source-owner, tab scope and compare-and-swap checks still guard publication.
+
+`test:browser-mcd-checkpoint` covers binary budgets and invalid/stale bindings.
+The compiled recovery scenario also appends a real reference point to an imported
+FCHK definition, reloads the edited paired source, acknowledges a fresh preview,
+and exports it through actual MolStar serialization and host MOLX decode. The
+MCD sidecar in this fixture is authored; real producer fixtures, companion picker
+activation and actual Browser acceptance remain separate requirements.
+
+This lane persists dirty source sessions. Attaching a sidecar to an otherwise
+unchanged import still requires explicit durable companion admission; a picker
+must not claim reload persistence from this edited-source checkpoint alone.
+
+Scientific snapshots reuse the scene codec's bounded JSON/typed-array boundary.
+Unsupported binary metadata is rejected. Grid and Hessian views retain only
+their visible values in dense buffers before structured cloning; quota accounting
+includes those binary bytes. Snapshot failures remain rejected write promises
+reported by the source controller, preserving the prior durable draft.

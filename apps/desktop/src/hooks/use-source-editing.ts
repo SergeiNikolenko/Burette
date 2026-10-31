@@ -365,7 +365,7 @@ export function useSourceEditingController({
       const recovered = checkpoint?.checkpoint;
       if (recovered) {
         content = recovered.text;
-        adoptRestoredScientificSource(document.id, recovered.science ? { text: content, document: recovered.science } : null, importedOriginalFor(document.id));
+        adoptRestoredScientificSource(document.id, recovered.science ? { text: content, document: recovered.science } : null, importedOriginalFor(document.id), recovered.companions);
       }
       const adapter = new SourcePreviewAdapter({
         activeRuntime: { runtimeKey: `source:${document.id}:base`, runtimePath: document.runtimePath },

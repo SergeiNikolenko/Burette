@@ -275,3 +275,103 @@ test("independent: closing a background draft refuses close when source admissio
       .toEqual({ closed: false, prompts: 0, session: null, checkpointId: checkpoint.id, errors: 1 });
   } finally { Blob.prototype.arrayBuffer = arrayBuffer; await act(async () => root.unmount()); host.remove(); await page.close(); }
 });
+
+test("paired MCD reference-only edit reloads through the real controller and exports exact paired Originals", async () => {
+  const { adoptRestoredScientificSource } = await import("../apps/desktop/src/lib/workbench/scientific-source-state");
+  const { sha256Hex } = await import("../apps/desktop/src/lib/source-editing/source-identity");
+  const { zmatrixDocumentFromAtoms } = await import("../scripts/zmatrix-export.mjs");
+  const { editZmatrixRows } = await import("../scripts/zmatrix-rows.mjs");
+  const { zmatrixRowsRevision } = await import("../apps/desktop/src/lib/workbench/zmatrix-draft");
+  const { atomicNumber } = await import("../apps/desktop/src/lib/molecular-workbench/elements");
+  // MolStar's Node scheduler detects global setImmediate; this DOM owns its window side.
+  Object.defineProperty(browser, "setImmediate", { configurable: true, value: globalThis.setImmediate });
+  Object.defineProperty(browser, "clearImmediate", { configurable: true, value: globalThis.clearImmediate });
+  const { PluginContext } = await import("molstar/lib/mol-plugin/context.js");
+  const { DefaultPluginSpec } = await import("molstar/lib/mol-plugin/spec.js");
+  const { science: nativeScience } = await import("./science-session-fixture");
+  const { prepareSceneScienceExport } = await import("../apps/desktop/src/lib/science-session/export");
+  const { decodeScienceSession } = await import("../apps/desktop/src/lib/science-session/codec");
+  const saved = await registerDroppedBrowserFiles([new File([bytes], "paired-reload.fchk")], 16 * 1024 * 1024);
+  const page = await fixture(); await act(async () => { await page.api.openPaths(saved.paths); });
+  const doc = useMoleculeStore.getState().documents.find(value => value.path === saved.paths[0])!, source = await sourceFixture(doc);
+  await act(async () => { await source.api.beginEditing(doc); });
+  const session = source.api.sessionForDocument(doc)!, imported = scientificStateFor(doc.id, session.content), original = imported.original!;
+  const data = imported.revision!.document, coordinates = data.atoms.map(({ element, x, y, z }) => ({ element, position: [x, y, z] }));
+  const definition = zmatrixDocumentFromAtoms(coordinates), file = new Blob(["10000 -2.25 .12\r\n"]);
+  const hashes = { primaryOriginalSha256: await sha256Hex(new Uint8Array(await original.file.arrayBuffer())),
+    companionOriginalSha256: await sha256Hex(new Uint8Array(await file.arrayBuffer())), sourceRevisionSha256: await sha256Hex(session.content) };
+  const science: typeof data = { ...data, internalCoordinates: definition, frames: data.frames.map((frame, index) => index ? frame : { ...frame,
+    mcdCompanion: { ...hashes, spectra: { kind: "scientific-spectra", version: 1,
+      source: { name: "explicit.mcd", format: "orca-mcd", scope: "frame", frameIndex: 0, frameCount: data.frames.length },
+      atomicNumbers: data.atoms.map(atom => atomicNumber(atom.element)),
+      spectra: [{ kind: "mcd", xUnit: "cm^-1", positions: [10000], values: [-2.25], valueUnit: null, auxiliary: [{ name: "absorption", unit: null, values: [.12] }] }] } } }) };
+  const companions = [{ role: "orca-mcd" as const, frameIndex: 0, frameCount: data.frames.length, name: "explicit.mcd", file, ...hashes }];
+  const origin = { text: session.content, document: science };
+  adoptRestoredScientificSource(doc.id, origin, original, companions);
+  const edited = zmatrixRowsRevision(science, editZmatrixRows(definition,
+    { type: "append", row: { element: "X", refs: [0, 1, 2], values: [2, 90, 90] } }, coordinates), origin.text, [origin]);
+  expect(edited.retainedScienceFrom).toBe(origin);
+  expect(recordImportedRevision(doc.id, origin.text, edited)).not.toBeNull();
+  await act(async () => source.api.updateDraft(doc, edited.text, { previewApplied: true }));
+  const checkpoint = await checkpointMatches(doc.path, edited.text).catch(error => { expect(source.errors).toEqual([]); throw error; });
+  expect(checkpoint.version).toBe(2);
+  expect(checkpoint.science!.frames[0].mcdCompanion!.sourceRevisionSha256).toBe(await sha256Hex(edited.text));
+  expect(checkpoint.companions![0].originRevisionSha256).toBe(hashes.sourceRevisionSha256);
+  const persisted = browser.sessionStorage.getItem(storeKey)!;
+  await source.close(); await page.close(); releasePage();
+  browser.sessionStorage.setItem(storeKey, persisted); await useMoleculeStore.persist.rehydrate();
+  const nextPage = await fixture(true); await settle(() => useMoleculeStore.getState().documents.length === 1);
+  const nextDoc = useMoleculeStore.getState().documents[0], recovered = await sourceFixture(nextDoc), plugin = new PluginContext(DefaultPluginSpec());
+  try {
+    await settle(() => recovered.api.sessionForDocument(nextDoc)?.dirty === true);
+    const nextSession = recovered.api.sessionForDocument(nextDoc)!;
+    expect([nextSession.content, nextSession.dirty]).toEqual([edited.text, true]);
+    expect(nextSession.sessionId).not.toBe(session.sessionId);
+    const recoveredState = scientificStateFor(nextDoc.id, edited.text);
+    expect(recoveredState.revision!.retainedScienceFrom).toBeUndefined();
+    expect(recoveredState.companions).toHaveLength(1);
+    expect(recoveredState.revision!.document.internalCoordinates).toEqual(edited.document.internalCoordinates);
+    expect(new Uint8Array(await recoveredState.companions![0].file.arrayBuffer())).toEqual(new Uint8Array(await file.arrayBuffer()));
+    await settle(() => recovered.api.sessionForDocument(nextDoc)?.sourcePreview?.slots.secondary?.identity !== undefined);
+    const identity = recovered.api.sessionForDocument(nextDoc)!.sourcePreview!.slots.secondary!.identity!;
+    const iframe = browser.document.createElement("iframe"); browser.document.body.append(iframe);
+    await act(async () => { recovered.api.stagingLoaded(nextDoc, identity, iframe as unknown as HTMLIFrameElement);
+      const ready = new browser.MessageEvent("message", { data: { source: "burette-viewer", body: { type: "ready", renderer: "molstar", molstarStructureCount: 1 } } });
+      Object.defineProperty(ready, "source", { value: iframe.contentWindow }); browser.dispatchEvent(ready); });
+    await settle(() => recovered.api.sessionForDocument(nextDoc)?.previewState === "current"); iframe.remove();
+    await plugin.init();
+    const raw = await plugin.builders.data.rawData({ data: edited.text, label: "recovered.xyz" });
+    const trajectory = await plugin.builders.structure.parseTrajectory(raw, "xyz");
+    await plugin.builders.structure.hierarchy.applyPreset(trajectory, "default", { representationPreset: "empty" });
+    const prepared = await prepareSceneScienceExport(nextDoc, { sourceEditing: recovered.api, sceneFileCount: 1, isOpen: () => true,
+      request: (async () => nativeScience.binding({ plugin })) as never });
+    expect(prepared?.kind).toBe("science"); if (prepared?.kind !== "science") throw new Error("Expected recovered science export");
+    const blob: Blob = await nativeScience.serialize({ plugin }, prepared.action.science, { type: "molx", params: { camera: false, image: false } });
+    await prepared.confirm();
+    const decoded = (await decodeScienceSession(new Uint8Array(await blob.arrayBuffer())))!;
+    expect(decoded.source.text).toBe(edited.text);
+    expect(decoded.science).toEqual(checkpoint.science);
+    expect(new Uint8Array(await decoded.original!.file.arrayBuffer())).toEqual(new Uint8Array(bytes));
+    expect(new Uint8Array(await decoded.companions![0].file.arrayBuffer())).toEqual(new Uint8Array(await file.arrayBuffer()));
+    expect(decoded.companions![0].originRevisionSha256).toBe(hashes.sourceRevisionSha256);
+    expect(recovered.errors).toEqual([]);
+  } finally { plugin.dispose(); await recovered.close(); await nextPage.close(); }
+});
+
+test("checkpoint snapshot failure reports through the controller while preserving dirty text and the prior durable draft", async () => {
+  const saved = await registerDroppedBrowserFiles([new File([bytes], "invalid-snapshot.fchk")], 16 * 1024 * 1024);
+  const page = await fixture(); await act(async () => { await page.api.openPaths(saved.paths); });
+  const doc = useMoleculeStore.getState().documents.find(value => value.path === saved.paths[0])!, source = await sourceFixture(doc);
+  try {
+    await act(async () => { await source.api.beginEditing(doc); });
+    const base = source.api.sessionForDocument(doc)!.content, science = scientificStateFor(doc.id, base).revision!.document;
+    const first = base + "\n";
+    await act(async () => source.api.updateDraft(doc, first, { previewApplied: true }));
+    const prior = await checkpointMatches(doc.path, first), next = base + "\n\n";
+    expect(recordImportedRevision(doc.id, base, { text: next, document: { ...science, extraBinary: new Blob(["unsupported metadata"]) } as typeof science })).not.toBeNull();
+    await act(async () => { expect(() => source.api.updateDraft(doc, next, { previewApplied: true })).not.toThrow(); });
+    await settle(() => source.errors.length === 1);
+    expect([source.api.sessionForDocument(doc)?.content, source.api.sessionForDocument(doc)?.dirty]).toEqual([next, true]);
+    expect(await readBrowserSourceCheckpoint(doc.path)).toEqual(prior);
+  } finally { await source.close(); await page.close(); }
+});

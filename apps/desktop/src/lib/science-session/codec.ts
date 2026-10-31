@@ -152,6 +152,19 @@ function fromJson(value: unknown, path: string, depth: number, resolve: (id: str
   return fail("science", `Scientific data has an unsupported value at ${path}.`);
 }
 
+
+/** The archive's bounded JSON/typed-array boundary, shared with browser draft snapshots. */
+export function scientificDocumentPayload(document: ScientificDocument) {
+  const arrays: ArrayAllocation[] = [];
+  const json = toJsonSafe(document, "science", 0, arrays, () => String(arrays.length - 1));
+  const jsonBytes = new TextEncoder().encode(JSON.stringify(json)).byteLength;
+  return {
+    byteLength: jsonBytes + arrays.reduce((sum, item) => sum + item.values.byteLength, 0),
+    retainedBytes: jsonBytes + arrays.reduce((sum, item) => sum + item.values.buffer.byteLength, 0),
+    clone: () => fromJson(json, "science", 0, id => arrays[Number(id)].values.slice()) as ScientificDocument,
+  };
+}
+
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
 // ---------------------------------------------------------------------------------------------

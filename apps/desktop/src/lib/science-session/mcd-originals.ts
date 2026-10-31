@@ -59,6 +59,8 @@ export async function encodeMcdOriginals(science: ScientificDocument | null, ori
   primarySha256: string | null, sourceSha256: string, put: (file: Blob) => Promise<Binary>): Promise<McdOriginalDescriptor[] | undefined> {
   if (originals !== undefined && !Array.isArray(originals)) fail("invalid Original list.");
   const entries = originals ?? [];
+  if (entries.some(entry => !entry || typeof entry !== "object" || Array.isArray(entry)
+    || Object.keys(entry).some(field => !["role", "frameIndex", "frameCount", "name", "originRevisionSha256", "file", ...HASHES].includes(field)))) fail("invalid raw Original metadata.");
   checkCollection(entries, primarySha256);
   checkCurrentData(science, entries, primarySha256, sourceSha256);
   const result: McdOriginalDescriptor[] = [];
