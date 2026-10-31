@@ -276,8 +276,13 @@ existing storage policies. No saved path grants server filesystem access.
 scientific parser and IndexedDB with session rehydration, missing paths and a held
 open closed before publication. `vp run check:browser-session-restore` checks the
 imported source and test types. Actual browser reload remains a separate check.
-This restores committed imports, not unsaved source edits: the current source-draft
-recovery flow holds retired drafts in memory and does not persist them across reload.
+Imported scientific source drafts also have bounded, tab-scoped IndexedDB
+checkpoints. A matching checkpoint creates a fresh dirty editing session after
+normal import reopening, with exact current text and matching internal-coordinate
+data. Original bytes remain unchanged; renderer leases and edit history are not
+restored. Logical MOLX sources and companion-file persistence are not covered.
+See [Browser Source Checkpoints](../browser-source-checkpoints.md) for limits and
+source-admission tests. Actual edited-draft browser reload remains a separate gate.
 
 Browser acceptance at `25fc8c40` used a normal file chooser without `devFiles`:
 Gaussian FCHK reloaded with all three vibration modes, unchanged Original bytes,
