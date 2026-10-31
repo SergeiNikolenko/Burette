@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { ScientificSpectra, AdditionalSpectrumKind } from "../../lib/molecular-workbench/scientific-spectra";
 import { scientificSpectraJson, scientificSpectrumCsv } from "../../lib/molecular-workbench/scientific-spectra";
 import { spectralPlotDefaults, spectralPlotSettingsJson, type SpectralPlotOptions, type SpectralPlotSelection } from "../../lib/molecular-workbench/scientific-spectra-plot";
 import { ELEMENT_SYMBOLS } from "../../lib/molecular-workbench/elements";
 import { computeScientificSpectrum, type ScientificSpectrumPlot, type ScientificSpectrumRequest } from "../../lib/workbench/scientific-spectrum-task";
 import { fileStem } from "../../lib/workbench/formats";
+import type { SpectraDisplayState, SourceDisplayState } from "../../lib/workbench/spectra-display-state";
 import type { ShellActions } from "../types";
 import { NativeSelect, NativeSelectOption } from "../ui/native-select";
 import { ScrubNumberField } from "../ui/scrub-number-input";
@@ -22,23 +23,27 @@ type Actions = Pick<ShellActions, "saveKetcherExportFile">;
 type AtomSelection = { onSelectAtom?: (data: ScientificSpectra, atomIndex: number) => void };
 
 /** Sources remain explicit: a file-wide dataset is never silently substituted for a frame. */
-export function ScientificSpectraPanel({ sources, actions, onSelectAtom }: { sources: Source[]; actions: Actions } & AtomSelection) {
-  const [chosen, setChosen] = useState(sources[0]?.key);
+export function ScientificSpectraPanel({ sources, actions, onSelectAtom, display }: { sources: Source[]; actions: Actions; display?: SpectraDisplayState } & AtomSelection) {
+  const [memory] = useState<SpectraDisplayState>(() => display ?? { sources: new Map() });
+  const [chosen, setChosen] = useState(memory.source ?? sources[0]?.key);
+  useLayoutEffect(() => { memory.source = chosen; }, [memory, chosen]);
   const source = sources.find(value => value.key === chosen) ?? sources[0];
   if (!source) return null;
   return <div className="dock-content workbench-panel">
     {sources.length > 1 ? <NativeSelect size="sm" aria-label="Spectrum source" value={source.key} onChange={event => setChosen(event.currentTarget.value)}>
       {sources.map(value => <NativeSelectOption key={value.key} value={value.key}>{value.label}</NativeSelectOption>)}
     </NativeSelect> : null}
-    <SourceSpectra key={source.key} data={source.data} actions={actions} onSelectAtom={onSelectAtom} />
+    <SourceSpectra key={source.key} sourceKey={source.key} display={memory} data={source.data} actions={actions} onSelectAtom={onSelectAtom} />
   </div>;
 }
 
-function SourceSpectra({ data, actions, onSelectAtom }: { data: ScientificSpectra; actions: Actions } & AtomSelection) {
-  const [chosen, setChosen] = useState<AdditionalSpectrumKind>(data.spectra[0].kind);
+function SourceSpectra({ data, actions, onSelectAtom, sourceKey, display }: { data: ScientificSpectra; actions: Actions; sourceKey: string; display: SpectraDisplayState } & AtomSelection) {
+  const [memory] = useState<SourceDisplayState>(() => display.sources.get(sourceKey) ?? { views: new Map() });
+  const [chosen, setChosen] = useState<AdditionalSpectrumKind>(memory.kind ?? data.spectra[0].kind);
   const spectrum = data.spectra.find(value => value.kind === chosen) ?? data.spectra[0];
   const elements = spectrum.kind === "nmr" ? [...new Set(spectrum.atomIndices.map(index => data.atomicNumbers[index]))].sort((a, b) => a - b) : [];
-  const [element, setElement] = useState(elements[0]);
+  const [element, setElement] = useState(memory.element ?? elements[0]);
+  useLayoutEffect(() => { memory.kind = chosen; memory.element = element; display.sources.set(sourceKey, memory); }, [display, sourceKey, memory, chosen, element]);
   const atomicNumber = elements.includes(element) ? element : elements[0];
   const selection: SpectralPlotSelection = spectrum.kind === "nmr" ? { kind: "nmr", atomicNumber } : { kind: spectrum.kind };
   return <>
@@ -50,14 +55,19 @@ function SourceSpectra({ data, actions, onSelectAtom }: { data: ScientificSpectr
         {elements.map(value => <NativeSelectOption key={value} value={value}>{ELEMENT_SYMBOLS[value - 1]}</NativeSelectOption>)}
       </NativeSelect> : null}
     </div>
-    <SpectrumView key={`${spectrum.kind}:${atomicNumber ?? ""}`} data={data} selection={selection} actions={actions} onSelectAtom={onSelectAtom} />
+    <SpectrumView key={`${spectrum.kind}:${atomicNumber ?? ""}`} data={data} selection={selection} actions={actions} onSelectAtom={onSelectAtom} memory={memory} />
   </>;
 }
 
 type Run = { request: ScientificSpectrumRequest; plot: ScientificSpectrumPlot | null; status: "running" | "ready" | "cancelled" | "error"; error: string | null };
-function SpectrumView({ data, selection, actions, onSelectAtom }: { data: ScientificSpectra; selection: SpectralPlotSelection; actions: Actions } & AtomSelection) {
-  const [options, setOptions] = useState(() => spectralPlotDefaults(selection));
-  const [showRaw, setShowRaw] = useState(true), [selected, setSelected] = useState<string | null>(null), [page, setPage] = useState(0), [retry, setRetry] = useState(0);
+function SpectrumView({ data, selection, actions, onSelectAtom, memory }: { data: ScientificSpectra; selection: SpectralPlotSelection; actions: Actions; memory: SourceDisplayState } & AtomSelection) {
+  const viewKey = `${selection.kind}:${selection.kind === "nmr" ? selection.atomicNumber : ""}`, remembered = memory.views.get(viewKey);
+  const [options, setOptions] = useState(() => remembered?.options ?? spectralPlotDefaults(selection));
+  const [showRaw, setShowRaw] = useState(remembered?.showRaw ?? true), [selected, setSelected] = useState<string | null>(remembered?.selected ?? null), [page, setPage] = useState(remembered?.page ?? 0), [retry, setRetry] = useState(0);
+  useLayoutEffect(() => {
+    memory.views.delete(viewKey); memory.views.set(viewKey, { options, showRaw, selected, page });
+    while (memory.views.size > 64) memory.views.delete(memory.views.keys().next().value!);
+  }, [memory, viewKey, options, showRaw, selected, page]);
   const [run, setRun] = useState<Run | null>(null), [saveError, setSaveError] = useState<string | null>(null);
   const pending = useRef<AbortController | null>(null), saveRequest = useRef(0);
   useEffect(() => () => { ++saveRequest.current; }, []);

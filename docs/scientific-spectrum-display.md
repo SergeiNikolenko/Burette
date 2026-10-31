@@ -60,3 +60,19 @@ Palette focus additionally retains the requested workspace and tool kind, so a
 late close cannot focus another workspace or another tool showing the same file.
 The ordinary imported NMR/optical reader path is exercised by
 `test:scientific-spectra-activation`; full actual Browser acceptance remains open.
+
+## Display choices across dock remounts
+
+Spectra keeps only display choices for the last 64 document/frame owners: source,
+spectrum kind, NMR element, plot settings, raw visibility, source row and page.
+Each source retains at most 64 kind/element views. An exact document lifetime,
+scientific revision and logical source own these values; source-store events
+invalidate an unmounted panel too, including a same-turn revision rollback.
+Ownership references are weak and the cache contains no scientific arrays, worker
+results, viewer targets or native leases. Restoring a selected row does not send a
+new molecular selection request. Reopening the same owner recalculates its plot.
+
+The compiled display test covers the observed Settings/dock remount failure using
+the actual camphor and NMR fixtures, source replacement/rollback and a bounded
+synthetic pagination dataset. Actual Appearance navigation is a separate Browser
+acceptance step after adoption.
