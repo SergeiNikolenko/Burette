@@ -88,6 +88,7 @@ function inferFormat(file) {
   if (ext === 'mol2') return 'mol2';
   if (ext === 'xyz') return 'xyz';
   if (ext === 'gro') return 'gro';
+  if (ext === 'cube' || ext === 'cub') return 'cube';
   // MolViewSpec: .mvsx is a zipped bundle, .mvsj the plain state. Without these
   // the viewer was handed format "auto" and refused to open a Story at all, so
   // Story work could not be checked on the QA preview.

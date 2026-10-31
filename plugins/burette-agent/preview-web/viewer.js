@@ -341,6 +341,7 @@
 
   let molstarControlTooltip = null;
   let molstarControlTooltipTarget = null;
+  const molstarControlTitleLabels = new WeakMap();
 
   function installMolstarControlTooltips() {
     if (window.__buretteMolstarControlTooltipsInstalled) return;
@@ -415,13 +416,24 @@
   // The top-layer hint replaces both the local bubble and the native title.
   function stashMolstarControlTitle(control) {
     if (!control.hasAttribute('title')) return;
-    control.dataset.buretHint = control.getAttribute('title');
+    const title = control.getAttribute('title');
+    // Native icon buttons use title as their only name. Track only our fallback
+    // so controller retitles update it without taking over authored labels/text.
+    const previous = molstarControlTitleLabels.get(control);
+    if (previous !== undefined && control.getAttribute('aria-label') === previous) control.removeAttribute('aria-label');
+    molstarControlTitleLabels.delete(control);
+    if (title.trim() && control.matches('button, [role="button"]')
+      && !control.hasAttribute('aria-label') && !control.hasAttribute('aria-labelledby') && !control.textContent.trim()) {
+      control.setAttribute('aria-label', title);
+      molstarControlTitleLabels.set(control, title);
+    }
+    control.dataset.buretHint = title;
     control.removeAttribute('title');
   }
 
   function showMolstarControlTooltip(control) {
-    const label = molstarTooltipLabel(control);
     stashMolstarControlTitle(control);
+    const label = molstarTooltipLabel(control);
     // An open menu already names what its button does and the hint would cover it.
     // The controls grip reports its expanded panel, not an open menu.
     if (!label || (control.getAttribute('aria-expanded') === 'true' && !control.matches('[data-drag-handle]'))) {
@@ -13635,10 +13647,10 @@ SOFTWARE.
         mvsKind: normalized === 'mvsj' ? molViewSpecJsonKind(data) : null
       };
     }
-    if (normalized === 'ccp4' || normalized === 'mtz') {
+    if (normalized === 'ccp4' || normalized === 'mtz' || normalized === 'cube') {
       return {
         kind: 'volume',
-        data: rawStructureData({ ...config, binary: true }),
+        data: rawStructureData({ ...config, binary: normalized !== 'cube' }),
         format: normalized,
         label: config.label || 'density map'
       };
