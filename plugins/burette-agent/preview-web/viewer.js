@@ -686,7 +686,10 @@
     }
   }
 
-  async function executeBuretteAgentAction(action) {
+  let geometryPreviewRequest = 0;
+  let scalarFieldRequest = 0, scalarBindingRequest = 0;
+  let geometryPreviewLoading = null;
+  async function executeBuretteAgentAction(action, requestOwner) {
     const type = String(action?.type || '');
     if (type === 'workspace_scene_snapshot') {
       if ((activeConfig || window.BuretteConfig || {}).renderer === 'xyzrender-external') {
@@ -705,9 +708,41 @@
       }
       const plugin = activeMolstarViewer()?.plugin;
       if (!plugin) throw new Error('Wait for the scene to load.');
-      const archive = await plugin.managers.snapshot.serialize({ type: 'molx', params: { structureSelection: true, cameraTransition: { name: 'instant', params: {} } } });
+      const params = { type: 'molx', params: { structureSelection: true, behavior: true, cameraTransition: { name: 'instant', params: {} } } };
+      // Host scientific data is written as Burette's own Mol* assets, only for this archive.
+      if (action.science && !window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+      const archive = action.science
+        ? await window.BuretteSceneFiles.science.serialize(activeMolstarViewer(), action.science, params)
+        : await plugin.managers.snapshot.serialize(params);
       if (archive.size > 24 * 1024 * 1024) throw new Error('The scene is too large to move.');
       return { ok: true, result: { dataBase64: bytesToBase64(new Uint8Array(await archive.arrayBuffer())) } };
+    }
+    if (type === 'scene_science_binding') {
+      if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+      return { ok: true, result: action.sourceExtension === 'sdf' ? await window.BuretteSceneFiles.science.sdfBinding(activeMolstarViewer()) : action.sourceExtension === 'mol' ? await window.BuretteSceneFiles.science.graphBinding(activeMolstarViewer(), 'mol') : window.BuretteSceneFiles.science.binding(activeMolstarViewer()) };
+    }
+    if (type === 'scene_science_restore_ack') {
+      if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+      return { ok: true, result: { adopted: await window.BuretteSceneFiles.science.adoptValidated(activeMolstarViewer(), action) } };
+    }
+    if (type === 'measurement_preview_capture') {
+      const viewer = activeMolstarViewer();
+      const runtime = await measurementCoordinateRuntime();
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+      const result = await runtime.capture(viewer, window.BuretteSceneFiles.science,
+        action.sourceExtension === 'xyz' ? { sourceFormat: 'xyz', lease: action.lease } : undefined);
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+      return { ok: true, result };
+    }
+    if (type === 'geometry_topology_scene_capture' || type === 'geometry_topology_scene_validate') {
+      const viewer = activeMolstarViewer(), runtime = window.molstar?.BuretteTopologyScene;
+      if (!viewer?.plugin || !runtime) throw new Error('Reload a runtime supporting topology scene transfer.');
+      if (typeof action.lease !== 'string' || !action.lease || action.lease.length > 128) throw new Error('Read the current Geometry before changing topology.');
+      const result = type === 'geometry_topology_scene_capture'
+        ? runtime.capture(viewer.plugin, action.lease)
+        : { valid: runtime.validate(viewer.plugin, action.receipt, action.lease) };
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+      return { ok: true, result };
     }
     if (type === 'workspace_scene_state') {
       return { ok: true, result: { ready: Boolean(activeMolstarViewer()?.plugin?.managers?.structure?.hierarchy?.current?.structures?.length || (document.querySelector('.buret-external-artifact-root .buret-xyzrender-sheet-item-body > svg') && !document.querySelector('[data-buret-popout-animation=loading], [data-buret-popout-animation=failed]'))) } };
@@ -806,6 +841,120 @@
     if (type === 'create_component') {
       return withMolstarDrawHold(activeViewer, async () => (await window.BuretteSceneActions?.createComponent?.(action))
         || agentActionFailure(type, 'NOT_IMPLEMENTED', 'BuretteSceneActions.createComponent is unavailable.'));
+    }
+    if (type === 'geometry_binding') {
+      const viewer = activeMolstarViewer();
+      if (!window.molstar?.BuretteGeometry) throw new Error('Reload a runtime supporting live Geometry.');
+      return { ok: true, result: window.molstar.BuretteGeometry.binding(viewer?.plugin, () => activeMolstarViewer() === viewer) };
+    }
+    if (type === 'update_geometry') {
+      const viewer = activeMolstarViewer();
+      const geometry = window.molstar?.BuretteGeometry;
+      if (!geometry) throw new Error('Reload a runtime supporting live Geometry.');
+      if (typeof action.lease !== 'string' || !action.lease) throw new Error('Read the current Geometry before changing it.');
+      const owner = geometry.capture(viewer?.plugin, () => activeMolstarViewer() === viewer, action.lease);
+      if (!window.BuretteGeometryPreview) {
+        if (!geometryPreviewLoading) geometryPreviewLoading = loadScript(runtimeURL('BuretteGeometryPreviewURL', './geometry-preview.js'), 'geometry preview', 10000).finally(() => { geometryPreviewLoading = null; });
+        await geometryPreviewLoading;
+      }
+      return window.BuretteGeometryPreview.update(viewer, action, owner);
+    }
+    if (type === 'show_scalar_field' || type === 'scalar_field_binding' || type === 'scalar_field_validate') {
+      const viewer = activeMolstarViewer();
+      const request = type === 'show_scalar_field' ? ++scalarFieldRequest : scalarFieldRequest;
+      const bindingRequest = type === 'scalar_field_binding' ? ++scalarBindingRequest : scalarBindingRequest;
+      const sourceCell = () => {
+        const plugin = viewer?.plugin;
+        const volumes = plugin?.managers.volume.hierarchy.current.volumes.filter(volume => {
+          for (let cell = volume.cell; cell;) {
+            if (cell.transform.tags?.includes('burette-scalar-field')) return false;
+            const parent = cell.transform.parent;
+            if (parent === cell.transform.ref) break;
+            cell = plugin.state.data.cells.get(parent);
+          }
+          return true;
+        }) || [];
+        const roots = plugin?.managers.structure.hierarchy.current.structures;
+        return volumes.length === 1 ? volumes[0].cell : !volumes.length && roots?.length === 1 ? roots[0].cell : null;
+      };
+      const cell = sourceCell(), data = cell?.obj?.data, version = cell?.transform.version;
+      const current = () => Boolean(data && !viewer.plugin.disposed && request === scalarFieldRequest && viewer === activeMolstarViewer()
+        && sourceCell() === cell && cell.obj?.data === data && cell.transform.version === version);
+      if (!current()) throw new Error('Open a single structure before displaying a scalar field.');
+      const ancestors = [];
+      for (let ancestor = cell; ancestor;) {
+        ancestors.push({ cell: ancestor, data: ancestor.obj?.data, version: ancestor.transform.version });
+        if (ancestor.transform.ref === ancestor.transform.parent) break;
+        ancestor = viewer.plugin.state.data.cells.get(ancestor.transform.parent);
+      }
+      let revoked = false;
+      const owned = () => !revoked && bindingRequest === scalarBindingRequest && viewer === activeMolstarViewer() && !viewer.plugin.disposed && sourceCell() === cell
+        && ancestors.every(entry => viewer.plugin.state.data.cells.get(entry.cell.transform.ref) === entry.cell
+          && entry.cell.obj?.data === entry.data && entry.cell.transform.version === entry.version);
+      const subscription = type === 'scalar_field_binding' ? viewer.plugin.state.data.events.changed.subscribe({
+        next: () => { if (!owned()) revoked = true; }, complete: () => { revoked = true; },
+      }) : null;
+      const dispose = () => { revoked = true; subscription?.unsubscribe(); };
+
+      try {
+      if (!window.BuretteGeometryPreview) {
+        if (!geometryPreviewLoading) geometryPreviewLoading = loadScript(runtimeURL('BuretteGeometryPreviewURL', './geometry-preview.js'), 'geometry preview', 10000).finally(() => { geometryPreviewLoading = null; });
+        await geometryPreviewLoading;
+      }
+      if (type === 'scalar_field_binding') return await window.BuretteGeometryPreview.bindField(viewer, action.expected, { cell, ancestors, current: owned, dispose });
+      const binding = window.BuretteGeometryPreview.fieldBinding(viewer, action.lease);
+      if (type === 'scalar_field_validate') return { ok: true };
+      return await window.BuretteGeometryPreview.field(viewer, action, () => current() && binding());
+      } catch (error) { dispose(); throw error; }
+    }
+    if (type === 'select_source_atom') {
+      const request = ++geometryPreviewRequest, viewer = activeMolstarViewer(), plugin = viewer?.plugin;
+      const roots = plugin?.managers.structure.hierarchy.current.structures || [];
+      const cell = roots.length === 1 ? roots[0].cell : null;
+      if (!cell?.obj?.data) throw new Error('Open a single atomic structure before selecting a spectrum atom.');
+      const ancestors = [];
+      for (let item = cell; item;) {
+        ancestors.push({ cell: item, object: item.obj, data: item.obj?.data, version: item.transform.version });
+        if (item.transform.parent === item.transform.ref) break;
+        item = plugin.state.data.cells.get(item.transform.parent);
+      }
+      let revoked = false;
+      const current = () => !revoked && request === geometryPreviewRequest && viewer === activeMolstarViewer() && !plugin.disposed
+        && plugin.managers.structure.hierarchy.current.structures.length === 1 && plugin.managers.structure.hierarchy.current.structures[0].cell === cell
+        && ancestors.every(item => plugin.state.data.cells.get(item.cell.transform.ref) === item.cell
+          && item.cell.obj === item.object && item.cell.obj?.data === item.data && item.cell.transform.version === item.version);
+      const changed = plugin.state.data.events.changed.subscribe({ next: () => { if (!current()) revoked = true; }, complete: () => { revoked = true; } });
+      const selected = plugin.managers.structure.selection.events.changed.subscribe(() => { revoked = true; });
+      const cancel = event => {
+        if (requestOwner && event.source === requestOwner.source && event.data?.source === 'burette-agent-host'
+          && event.data.body?.type === 'agent-action-cancel' && event.data.body.id === requestOwner.id) revoked = true;
+      };
+      window.addEventListener('message', cancel);
+      try {
+        if (!window.BuretteGeometryPreview) {
+          geometryPreviewLoading ||= loadScript(runtimeURL('BuretteGeometryPreviewURL', './geometry-preview.js'), 'geometry preview', 10000)
+            .finally(() => { geometryPreviewLoading = null; });
+          await geometryPreviewLoading;
+        }
+        return await window.BuretteGeometryPreview.selectSourceAtom(viewer, action, { cell, ancestors, current });
+      } finally { changed.unsubscribe(); selected.unsubscribe(); window.removeEventListener('message', cancel); }
+    }
+    if (type === 'preview_geometry') {
+      const request = ++geometryPreviewRequest;
+      const viewer = activeMolstarViewer();
+      const roots = viewer?.plugin?.managers.structure.hierarchy.current.structures || [];
+      const cell = roots.length === 1 ? roots[0].cell : null;
+      const structure = cell?.obj?.data;
+      if (!structure) return { ok: true };
+      if (!window.BuretteGeometryPreview) {
+        geometryPreviewLoading ||= loadScript(runtimeURL('BuretteGeometryPreviewURL', './geometry-preview.js'), 'geometry preview', 10000)
+          .finally(() => { geometryPreviewLoading = null; });
+        await geometryPreviewLoading;
+      }
+      const current = viewer.plugin.managers.structure.hierarchy.current.structures;
+      if (request !== geometryPreviewRequest || viewer !== activeMolstarViewer() || current.length !== 1
+        || current[0].cell !== cell || cell.obj?.data !== structure) return { ok: true };
+      return window.BuretteGeometryPreview.apply(viewer, action);
     }
     if (type === 'select_residues') {
       const previewTarget = molstarMoleculePreviewTargetForAction(action);
@@ -1630,7 +1779,7 @@
     void (async () => {
       let result;
       try {
-        result = await executeBuretteAgentAction(body.action);
+        result = await executeBuretteAgentAction(body.action, { id: body.id, source: event.source });
       } catch (error) {
         const actionType = String(body.action?.type || 'unknown');
         result = agentActionFailure(actionType, 'ACTION_ERROR', error && error.message || String(error));
@@ -8957,6 +9106,38 @@ SOFTWARE.
     menu.appendChild(row);
   }
 
+  async function measurementCoordinateRuntime() {
+    if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+    if (!window.BuretteMeasurementCoordinate) {
+      const sceneScript = Array.from(document.scripts).find(script => script.src && new URL(script.src).pathname.endsWith('/scene-file-actions.js'));
+      const base = new URL(runtimeURL('BuretteSceneFilesURL', sceneScript?.src || './scene-file-actions.js'), document.baseURI);
+      const url = new URL('./measurement-coordinate.js', base); url.search = base.search;
+      await loadScript(String(url), 'measurement coordinates', 10000);
+    }
+    return window.BuretteMeasurementCoordinate;
+  }
+
+  async function restoreMeasurementPreview(viewer, config) {
+    if (typeof config.rendererViewState !== 'string' || config.rendererViewState.length > 8192 || new TextEncoder().encode(config.rendererViewState).length > 8192) return null;
+    let state;
+    try { state = JSON.parse(config.rendererViewState); } catch { return null; }
+    if (!state?.topologyScene && !state?.measurementTransfer) return null;
+    if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+    if (state.topologyScene) {
+      const runtime = window.molstar?.BuretteTopologyScene;
+      if (!runtime) throw new Error('Reload a runtime supporting topology scene transfer.');
+      await runtime.restore(viewer.plugin, state.topologyScene);
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+    }
+    if (state.measurementTransfer) {
+      const runtime = await measurementCoordinateRuntime();
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+      await runtime.restore(viewer, state.measurementTransfer, window.BuretteSceneFiles.science);
+      if (activeMolstarViewer() !== viewer) throw new Error('The Geometry source or viewer changed.');
+    }
+    return state.topologyScene?.camera || null;
+  }
+
   function sceneTreeMeasurementMenu(menu, targets) {
     const geometryFields = ['geometry-color', 'line-size', 'dash-length', 'arc-scale', 'sector-opacity']
       .filter(field => targets.some(target => sceneTreeMeasurementParam(target, field)));
@@ -15774,7 +15955,7 @@ SOFTWARE.
     const controlLabel = String(config.sdfPoseControlLabel || 'Pose').trim() || 'Pose';
     const records = splitSdfRecords(text);
     if (records.length >= 1 && config.sdfPosePager === true) {
-      const molecules = records.map(parseV2000SdfRecord);
+      const molecules = records.length > 1 ? records.map(parseV2000SdfRecord) : [null];
       const allMoleculesParsed = molecules.every(Boolean);
       const collection = records.length > 1 && allMoleculesParsed
         ? sdfMoleculesToPdbCollection(molecules, label)
@@ -15800,8 +15981,9 @@ SOFTWARE.
         };
       }
       const activeRecord = readTrajectoryControlIndex(config, { controlLabel }, records.length);
-      const recordText = `${records[activeRecord].replace(/\n?\$\$\$\$\s*$/u, '').trimEnd()}\n$$$$\n`;
-      const pdbText = molecules[activeRecord]
+      // A single graph keeps its exact parser input, including bond orders, charges and SD data.
+      const recordText = records.length === 1 ? text : `${records[activeRecord].replace(/\n?\$\$\$\$\s*$/u, '').trimEnd()}\n$$$$\n`;
+      const pdbText = records.length > 1 && molecules[activeRecord]
         ? sdfMoleculesToPdbStructure([molecules[activeRecord]], `${label} ${controlLabel} ${activeRecord + 1}`)
         : null;
       return {
@@ -18953,8 +19135,19 @@ SOFTWARE.
       activeDockingPrepared = null;
       let snapshot;
       if (prepared.format === 'molx') {
+        if (!window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
+        const importToken = window.BuretteSceneFiles.science.beginImport(viewer.plugin);
         const manager = viewer.plugin.managers.snapshot;
-        await manager.open(new File([prepared.data], 'scene.molx'));
+        // Mol* reports a failed read only to its log; success is its `opened` event.
+        let opened = false;
+        const subscription = manager.events.opened.subscribe(() => { opened = true; });
+        try {
+          await manager.open(new File([prepared.data], 'scene.molx'));
+        } finally {
+          subscription.unsubscribe();
+        }
+        if (!opened) throw new Error('This scene file could not be read.');
+        if (!window.BuretteSceneFiles.science.completeImport(viewer.plugin, importToken)) throw new Error('The scene changed while it was opening.');
         snapshot = manager.getEntry(manager.state.current)?.snapshot;
       } else {
         const session = JSON.parse(prepared.data);
@@ -27355,7 +27548,8 @@ SOFTWARE.
           showMolstarContextMenu(point, pick);
         } else if (!this.actionChosen) {
           // A chosen action hides the menu state itself once it has run.
-          hideMolstarContextMenu();
+          if (this.keepMoleculePreview) hideMolstarContextMenu({ keepMoleculePreview: true });
+          else hideMolstarContextMenu();
         }
       }
     };
@@ -28492,6 +28686,25 @@ SOFTWARE.
     while (molstarPreviewSvgCache.size > 64) molstarPreviewSvgCache.delete(molstarPreviewSvgCache.keys().next().value);
   }
 
+  let molstarPreviewOclPromise = null;
+  async function molstarPreviewOclRuntime() {
+    if (window.BuretteOpenChemLib?.Molecule && window.BuretteMoleculePreviewOcl) return window.BuretteMoleculePreviewOcl;
+    if (!molstarPreviewOclPromise) molstarPreviewOclPromise = (async () => {
+      const asset = relative => {
+        if (window.BuretteResolveRuntimeAsset) return relative;
+        const sceneScript = Array.from(document.scripts).find(script => /(?:^|\/)scene-file-actions\.js(?:[?#]|$)/u.test(script.src));
+        const base = new URL(runtimeURL('BuretteSceneFilesURL', sceneScript?.src || './scene-file-actions.js'), document.baseURI);
+        const url = new URL(relative, base); url.search = base.search;
+        return String(url);
+      };
+      if (!window.BuretteOpenChemLib?.Molecule) await loadScript(asset('openchemlib/openchemlib.js'), 'molecule depiction', 15000);
+      if (!window.BuretteMoleculePreviewOcl) await loadScript(asset('molecule-preview-ocl.js'), 'molecule depiction', 10000);
+      if (!window.BuretteOpenChemLib?.Molecule || !window.BuretteMoleculePreviewOcl) throw new Error('Molecule depiction is unavailable.');
+      return window.BuretteMoleculePreviewOcl;
+    })().finally(() => { molstarPreviewOclPromise = null; });
+    return molstarPreviewOclPromise;
+  }
+
   async function molstarMoleculePreviewRDKitSVG(entry) {
     const showHydrogens = molstarShowHydrogens;
     if (normalizeFormat(entry?.format) !== 'sdf') return '';
@@ -28529,7 +28742,12 @@ SOFTWARE.
       }
     } catch (error) {
       debug(`RDKit molecule preview failed; using SVG fallback: ${error?.message || error}`);
-      const fallback = molstarMoleculePreviewFallbackSVG(entry, showHydrogens);
+      let fallback = '';
+      try {
+        const depiction = await molstarPreviewOclRuntime();
+        fallback = molstarPreviewCleanRDKitSVG(depiction.render(String(entry.data || ''), showHydrogens, MOLSTAR_PREVIEW_RDKIT_SVG_SIZE, window.BuretteOpenChemLib));
+      } catch (cause) { debug(`Molecule depiction fallback failed: ${cause?.message || cause}`); }
+      if (!fallback) fallback = molstarMoleculePreviewFallbackSVG(entry, showHydrogens);
       if (!fallback) throw error;
       molstarPreviewCacheSVG(key, fallback);
       return fallback;
@@ -28751,7 +28969,12 @@ SOFTWARE.
       previousFocus.focus({ preventScroll: true });
     }
     molstarContextMenuPick = null;
-    if (options.keepMoleculePreview) return;
+    if (options.keepMoleculePreview) {
+      // The host menu closes after its blur cleanup. Keep this press's intent
+      // until that asynchronous reply, so it cannot remove the card before click.
+      if (molstarNativeMenuPending) molstarNativeMenuPending.keepMoleculePreview = true;
+      return;
+    }
     scheduleMolstarSelectedMoleculePreview();
   }
 
@@ -30152,7 +30375,10 @@ SOFTWARE.
     }
     const plugin = viewer?.plugin;
     if (!plugin) return;
-    const update = () => {
+    const update = (event) => {
+      // Toolbar pointerup precedes click; refreshing empty selection here would
+      // remove a context-menu preview before its control can run.
+      if (event instanceof Event && event.target instanceof Element && event.target.closest('.buret-molstar-molecule-preview')) return;
       const target = molstarSelectedMoleculeTargetFromSelection();
       scheduleMolstarSelectedMoleculePreview(target);
       notifyMolstarSelectionChanged(target);
@@ -30486,15 +30712,16 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       if (window.BuretteNativeFirstFrame) throw error;
     }
     if (window.BuretteViewerDisposed) return;
+    const topologyCamera = await restoreMeasurementPreview(viewer, config);
     const sourceViewport = await restoredView;
-    const savedCamera = window.BuretteRendererViewState?.read(config.documentId, config.rendererViewState).camera;
-    if (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs') {
+    const savedCamera = topologyCamera || window.BuretteRendererViewState?.read(config.documentId, config.rendererViewState).camera;
+    if (topologyCamera || (savedCamera && !hasMolstarContextFocus(config) && prepared.kind !== 'mvs')) {
       molstarStructureFocusSerial += 1;
-      const camera = sourceViewport
+      const camera = sourceViewport && !topologyCamera
         ? window.BuretteRendererViewState.transferCamera(savedCamera, sourceViewport, viewer.plugin.canvas3d?.camera?.viewport)
         : savedCamera;
       restoreMolstarCameraSnapshotNow(viewer, camera);
-      if (sourceViewport) saveRendererViewState();
+      if (sourceViewport && !topologyCamera) saveRendererViewState();
     } else if ((isQuickLookHost() || prepared.fitSessionCamera) && !hasMolstarContextFocus(config)) {
       // Quick Look keeps the file's orientation and never animates the camera; it
       // only trades Mol*'s bounding-sphere distance for the atom-fitted one. An MVS
