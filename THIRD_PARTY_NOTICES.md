@@ -207,3 +207,16 @@ The license and notice texts are retained in
 liblzma, Zstandard and fzstd components. Vite copies this directory into the
 desktop, agent-shell plugin and hosted shell outputs; the native bundle also
 copies it as the `third-party-licenses` resource.
+
+## OpenChemistry peptide geometry and residue templates
+
+`peptide-geometry.ts` adapts peptide assembly from OpenChemistry/avogadrolibs
+`d250eb3c62a61470b1e0cdf205dcfe26b06f991f`; `peptide-residues.json` mechanically
+extracts its residue bond dictionary and the amino-acid internal coordinates from
+OpenChemistry/fragments `7d842f435aec4729a308b23ad7f9501bdd44aa02`. Both are
+BSD-3-Clause. The existing Avogadro notice is in
+`docs/third-party/avogadro-LICENSE`; the fragment copyright (2022 Open Chemistry)
+and full license are in `docs/third-party/fragments-LICENSE`. Both licenses are
+also included in `apps/desktop/public/third-party-licenses/`. Source identities and
+regeneration instructions are in `config/peptide-residue-sources.json` and
+`docs/peptide-geometry.md`.
