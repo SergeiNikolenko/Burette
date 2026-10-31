@@ -19,6 +19,7 @@ contains only documents that describe the active project.
 - [Internal coordinate editing](internal-coordinate-editing.md): Z-matrix definitions,
   scientific revision invariants, controls and focused validation.
 - [Peptide graph prerequisite](peptide-graph-builder.md): neutral residue graphs,
+- [Peptide geometry](peptide-geometry.md): named 3D backbone templates, charged termini, and mmCIF roundtrip.
   terminal chemistry, stereochemistry and the remaining 3D builder scope.
 - [Quantum input templates](quantum-input-export.md): engine routes, coordinate
   conventions, constraints, periodic cells and template validation.
