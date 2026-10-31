@@ -708,7 +708,7 @@
       }
       const plugin = activeMolstarViewer()?.plugin;
       if (!plugin) throw new Error('Wait for the scene to load.');
-      const params = { type: 'molx', params: { structureSelection: true, cameraTransition: { name: 'instant', params: {} } } };
+      const params = { type: 'molx', params: { structureSelection: true, behavior: true, cameraTransition: { name: 'instant', params: {} } } };
       // Host scientific data is written as Burette's own Mol* assets, only for this archive.
       if (action.science && !window.BuretteSceneFiles) await loadScript(runtimeURL('BuretteSceneFilesURL', './scene-file-actions.js'), 'scene file actions', 10000);
       const archive = action.science
