@@ -1,5 +1,6 @@
 import { atomsFromZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
 import { atomicNumber } from "../molecular-workbench/elements";
+import { checkMcdCompanion } from "../molecular-workbench/mcd-companion";
 import { checkScientificSpectra, SCIENTIFIC_SPECTRA_LIMITS, type ScientificSpectra } from "../molecular-workbench/scientific-spectra";
 import { shellSize } from "../molecular-workbench/gaussian-angular";
 import { checkHessianValues, HESSIAN_UNITS } from "../molecular-workbench/hessian";
@@ -105,6 +106,16 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
     optionalString(frame, "comment", `frames[${index}]`);
     checkModes(frame.modes, `frames[${index}].modes`);
     checkSpectra(frame.spectra, frameAtoms, `frames[${index}].spectra`, index);
+    if (frame.mcdCompanion !== undefined) {
+      const pair = frame.mcdCompanion;
+      if (!isRecord(pair) || typeof pair.primaryOriginalSha256 !== "string" || typeof pair.companionOriginalSha256 !== "string"
+        || typeof pair.sourceRevisionSha256 !== "string") fail(`frames[${index}].mcdCompanion is not a source pair.`);
+      try {
+        const checked = checkMcdCompanion(pair, { primaryOriginalSha256: pair.primaryOriginalSha256, companionOriginalSha256: pair.companionOriginalSha256,
+          sourceRevisionSha256: pair.sourceRevisionSha256, frameIndex: index, frameCount, atomicNumbers: frameAtoms.map(atom => atomicNumber(atom.element)) });
+        checkSpectra(checked.spectra, frameAtoms, `frames[${index}].mcdCompanion.spectra`, index);
+      } catch (error) { fail(error instanceof Error ? error.message : String(error)); }
+    }
     for (const key of ["velocitiesAngstromPerPs", "forcesKcalMolAngstrom"]) {
       const vectors = frame[key];
       if (vectors !== undefined && (!Array.isArray(vectors) || vectors.length !== elements.length || !vectors.every(isVec3))) fail(`frames[${index}].${key} do not match the atoms.`);

@@ -1,6 +1,7 @@
 import type { MolecularAtom, Vec3 } from "./types";
 import type { CartesianHessian } from "./hessian";
 import type { ScientificSpectra } from "./scientific-spectra";
+import type { ScientificMcdCompanion } from "./mcd-companion";
 import type { ZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
 
 export interface ScientificFrame {
@@ -9,6 +10,8 @@ export interface ScientificFrame {
   modes?: VibrationalMode[];
   /** Calculated source data for this exact indexed frame, never copied from another one. */
   spectra?: ScientificSpectra;
+  /** Explicit companion source, paired to this exact source frame and revision. */
+  mcdCompanion?: ScientificMcdCompanion;
   /** The Cartesian Hessian of this geometry, likewise never reused for another one. */
   hessian?: CartesianHessian;
   timePs?: number; temperatureKelvin?: number;

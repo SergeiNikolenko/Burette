@@ -147,3 +147,13 @@ vp run test:scientific-revisions
 Sources: [codec](../apps/desktop/src/lib/science-session/codec.ts), [limits](../apps/desktop/src/lib/science-session/contracts.ts),
 [binding](../apps/desktop/src/lib/science-session/scene-binding.ts), [schema](../apps/desktop/src/lib/science-session/scientific-document.ts),
 [runtime](../PreviewExtension/Web/scene-file-actions.js).
+
+### Explicit MCD companion Originals (version 3)
+
+A scientific frame may retain `mcdCompanion` separately from its ordinary spectra source. It binds the explicitly selected source to the primary Original bytes, companion Original bytes, acknowledged logical-source revision SHA-256, and exact scientific frame index/count. The viewer's current frame is not that scientific index. Native MCD and absorption values keep their source units without normalization.
+
+Companion Originals are separate byte attachments; the primary Original remains unchanged. Version 3 is emitted only when companion bytes are present. XYZ/SDF without companions keep version 1, and MOL without companions keeps version 2, including their existing serialization. All bytes share the existing 20 MiB/64-attachment limits. Names and media types are bounded; incomplete, checksum-invalid, cross-file, stale-revision or ambiguous pairs reject as a whole.
+
+After a geometry edit, historical companion bytes may remain provenance with their original revision/frame binding. They do not authorize calculated data for the edited geometry. Host restore, export and re-export retain those bytes with the same source family; current calculated pairs additionally require the exact current source SHA. A managed Z-matrix change that retains the exact scientific frame objects carries one direct origin witness. Export verifies that origin and projects a new receipt without mutating live data; the raw descriptor retains `originRevisionSha256`. Equal coordinates, raw comment edits or a borrowed frame array do not provide that witness. Registry companion metadata is copied and frozen without mutating callers.
+
+This archive contract does not discover sibling files or activate an MCD picker, path command, automatic pairing, or checkpoint persistence. Those consumers must capture the immutable source/revision/frame owner before async reads and publish only while that owner remains current. Actual producer-sidecar fixtures and six-type UI acceptance remain separate.

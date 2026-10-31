@@ -6,6 +6,7 @@ import type { SourceEditingContextValue, SourceEditingView } from "../source-edi
 import { readStructureText } from "../structure-text";
 import { requestViewerAction } from "../viewer-bridge";
 import { scientificStateFor } from "../workbench/scientific-source-state";
+import { mcdDataForExport } from "../workbench/mcd-export";
 import { encodeScienceSession } from "./codec";
 import { sha256Hex } from "../source-editing/source-identity";
 import { ScienceSessionError, SCIENCE_SESSION_LIMITS } from "./contracts";
@@ -103,12 +104,14 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
     if (baseline === undefined || originalText !== baseline.replace(/^\uFEFF/u, "")) throw new ScienceSessionError("source", "The original graph file changed. Reopen it before saving the scene.");
   }
   const originalDigest = originalBytes ? await sha256Hex(originalBytes) : null;
+  const data = await mcdDataForExport(extension === "xyz" ? state.revision : null, text, state.companions);
   const encoded = await encodeScienceSession({
     documentUuid: documentUuidFor(document.id),
     source: { extension, text },
     atomIds,
     binding,
-    science: extension === "xyz" ? state.revision?.document ?? null : null,
+    science: data.science,
+    companions: data.companions,
     original: state.original ?? (originalBytes ? { name: document.path.split("/").pop() || document.title, file: new Blob([originalBytes as BlobPart]) } : null),
   });
   const action = {
@@ -123,12 +126,12 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
     if (session ? now?.content !== text || (now.previewState !== undefined && now.previewState !== "current") : now && now.content !== text) changed();
     if (logicalSourceFor(document.id) !== logical) changed();
     const after = scientificStateFor(document.id, text);
-    if (after.revision !== state.revision || after.original !== state.original) changed();
+    if (after.revision !== state.revision || after.original !== state.original || after.companions !== state.companions) changed();
     if (originalDigest) return readSceneDocumentBytes(document, SCIENCE_SESSION_LIMITS.sourceBytes).then(async bytes => {
       if (await sha256Hex(bytes) !== originalDigest) changed();
       if (!options.isOpen(document.id) || sourceSession(options, document)?.content !== now?.content || logicalSourceFor(document.id) !== logical) changed();
       const latest = scientificStateFor(document.id, text);
-      if (latest.revision !== state.revision || latest.original !== state.original) changed();
+      if (latest.revision !== state.revision || latest.original !== state.original || latest.companions !== state.companions) changed();
     });
     if (!session && !logical) {
       const currentVirtual = readBrowserDevVirtualTextDocument(document.path);
@@ -142,7 +145,7 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
           if (!options.isOpen(document.id)) throw new ScienceSessionError("source", "The document closed while the scene was being saved.");
           if (sourceSession(options, document) !== now || logicalSourceFor(document.id) !== logical) changed();
           const latest = scientificStateFor(document.id, text);
-          if (latest.revision !== state.revision || latest.original !== state.original) changed();
+          if (latest.revision !== state.revision || latest.original !== state.original || latest.companions !== state.companions) changed();
         });
       }
     }

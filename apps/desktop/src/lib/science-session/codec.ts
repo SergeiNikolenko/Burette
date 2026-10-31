@@ -3,6 +3,7 @@ import type { ScientificDocument } from "../molecular-workbench/scientific-types
 import { ScienceSessionError, SCIENCE_SESSION_LIMITS, type ScienceSessionErrorCode } from "./contracts";
 import { validateScientificDocument } from "./scientific-document";
 import { readSdfSource } from "./sdf-source";
+import { checkMcdOriginalDescriptors, encodeMcdOriginals, decodeMcdOriginals, type McdCompanionOriginal, type McdOriginalDescriptor } from "./mcd-originals";
 import { sha256Hex } from "../source-editing/source-identity";
 import { readSceneSourceFrames, type SceneSourceExtension } from "./source-frames";
 import type { ScienceSceneBinding } from "./scene-binding";
@@ -25,7 +26,7 @@ export const SCIENCE_ASSET_PREFIX = "burette-science-";
 export const SCIENCE_MANIFEST_ASSET_ID = "burette-science-manifest";
 export const SCIENCE_MANIFEST_ASSET_NAME = "burette-science.json";
 export const SCIENCE_SESSION_KIND = "burette.science-session";
-export const SCIENCE_SESSION_VERSION = 2;
+export const SCIENCE_SESSION_VERSION = 3;
 const ATTACHMENT_ID = /^burette-science-attachment-(\d{1,3})$/u;
 export type AttachmentType = "utf8" | "json" | "bytes" | "float32le" | "float64le";
 export type AttachmentDescriptor = { id: string; dtype: AttachmentType; count: number; byteLength: number; sha256: string };
@@ -33,7 +34,7 @@ export type AttachmentDescriptor = { id: string; dtype: AttachmentType; count: n
 
 export type ScienceManifest = {
   kind: typeof SCIENCE_SESSION_KIND;
-  version: 1 | typeof SCIENCE_SESSION_VERSION;
+  version: 1 | 2 | typeof SCIENCE_SESSION_VERSION;
   document: { uuid: string };
   /** The editable logical source; `sha256` identifies the revision the scene shows. */
   source: { extension: SceneSourceExtension; attachment: string; sha256: string };
@@ -42,6 +43,7 @@ export type ScienceManifest = {
   binding: ScienceSceneBinding;
   science: { attachment: string } | null;
   original: { name: string; type: string; attachment: string } | null;
+  companions?: McdOriginalDescriptor[];
   attachments: AttachmentDescriptor[];
 };
 
@@ -52,6 +54,7 @@ export type ScienceSessionContent = {
   binding: ScienceSceneBinding;
   science: ScientificDocument | null;
   original: { name: string; file: Blob } | null;
+  companions?: readonly McdCompanionOriginal[];
 };
 
 export type DecodedScienceSession = ScienceSessionContent & { readonly manifestSha256: string };
@@ -198,10 +201,17 @@ export async function encodeScienceSession(content: ScienceSessionContent): Prom
     const bytes = new Uint8Array(await content.original.file.arrayBuffer());
     original = { name, type: content.original.file.type.slice(0, 128), attachment: await add("bytes", bytes, bytes.byteLength) };
   }
+  const companions = await encodeMcdOriginals(content.science, content.companions,
+    original ? attachments.find(item => item.id === original!.attachment)!.sha256 : null, attachments[0].sha256, async file => {
+      if (file.size > SCIENCE_SESSION_LIMITS.attachmentBytes - total) fail("limit", "Scientific data exceeds the 20 MiB a scene can carry.");
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const id = await add("bytes", bytes, bytes.byteLength);
+      return { id, sha256: attachments.find(item => item.id === id)!.sha256 };
+    });
   const manifest: ScienceManifest = {
     kind: SCIENCE_SESSION_KIND,
-    // Keep existing XYZ/SDF archives readable by v1 readers. Only MOL needs v2.
-    version: content.source.extension === "mol" ? SCIENCE_SESSION_VERSION : 1,
+    // Keep XYZ/SDF v1 and MOL v2 byte behavior; paired companion bytes require v3.
+    version: companions ? SCIENCE_SESSION_VERSION : content.source.extension === "mol" ? 2 : 1,
     document: { uuid: content.documentUuid },
     source: { extension: content.source.extension, attachment: sourceAttachment, sha256: attachments[0].sha256 },
     atoms: { count: elements.length, ids: content.atomIds ? [...content.atomIds] : null },
@@ -209,6 +219,7 @@ export async function encodeScienceSession(content: ScienceSessionContent): Prom
       frameIndex: binding.frameIndex, frameCount: binding.frameCount, atomCount: binding.atomCount },
     science,
     original,
+    ...(companions ? { companions } : {}),
     attachments,
   };
   const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest));
@@ -261,11 +272,16 @@ function decodeJson(bytes: Uint8Array, what: string): unknown {
 function checkManifest(value: unknown): ScienceManifest {
   if (!isRecord(value) || value.kind !== SCIENCE_SESSION_KIND) fail("manifest", "The scientific manifest is not a Burette manifest.");
   const manifest = value as Record<string, unknown>;
-  if (manifest.version !== 1 && manifest.version !== SCIENCE_SESSION_VERSION) fail("version", `Scientific data version ${String(manifest.version).slice(0, 16)} is not supported by this Burette.`);
+  if (manifest.version !== 1 && manifest.version !== 2 && manifest.version !== SCIENCE_SESSION_VERSION) fail("version", `Scientific data version ${String(manifest.version).slice(0, 16)} is not supported by this Burette.`);
   const document = manifest.document, source = manifest.source, atoms = manifest.atoms, binding = manifest.binding;
   if (!isRecord(document) || typeof document.uuid !== "string" || !/^[0-9a-f-]{8,64}$/iu.test(document.uuid)) fail("manifest", "The scientific manifest lacks its document id.");
   if (!isRecord(source) || !["xyz", "sdf", "mol"].includes(source.extension as string) || typeof source.attachment !== "string" || typeof source.sha256 !== "string") fail("manifest", "The scientific manifest lacks its source.");
-  if (source.extension === "mol" && manifest.version !== 2) fail("version", "MOL scene sources require scientific data version 2.");
+  if (source.extension === "mol" && manifest.version === 1) fail("version", "MOL scene sources require scientific data version 2 or later.");
+  if (manifest.version === 3) {
+    if (!Array.isArray(manifest.companions) || !manifest.companions.length) fail("version", "Scientific data version 3 requires paired companion Originals.");
+    checkMcdOriginalDescriptors(manifest.companions);
+  }
+  else if (manifest.companions !== undefined) fail("version", "Paired companion Originals require scientific data version 3.");
   if (!isRecord(atoms) || !Number.isInteger(atoms.count) || (atoms.count as number) < 1 || (atoms.count as number) > SCIENCE_SESSION_LIMITS.atoms) fail("manifest", "The scientific manifest has an invalid atom count.");
   const ids = (atoms as Record<string, unknown>).ids;
   if (ids !== null && (!Array.isArray(ids) || ids.length !== atoms.count || !ids.every((id) => typeof id === "string" && id.length <= 64)
@@ -363,6 +379,11 @@ export async function decodeScienceSession(archive: Uint8Array): Promise<Decoded
     const file = await attachment(manifest.original.attachment, ["bytes"]);
     original = { name: manifest.original.name, file: new Blob([file.bytes as BlobPart], { type: manifest.original.type }) };
   }
+  const companions = await decodeMcdOriginals(science, manifest.companions,
+    manifest.original ? descriptors.get(manifest.original.attachment)!.sha256 : null, source.descriptor.sha256, async id => {
+      const file = await attachment(id, ["bytes"]);
+      return { bytes: file.bytes, sha256: file.descriptor.sha256 };
+    });
   if (used.size !== manifest.attachments.length || ours.length !== manifest.attachments.length + 1) fail("attachment", "The scene file carries scientific attachments its manifest does not use.");
   return {
     manifestSha256: await sha256Hex(manifestBytes),
@@ -372,5 +393,6 @@ export async function decodeScienceSession(archive: Uint8Array): Promise<Decoded
     binding: manifest.binding,
     science,
     original,
+    ...(companions ? { companions } : {}),
   };
 }

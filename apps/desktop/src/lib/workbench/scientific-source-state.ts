@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { ScientificDocument } from "../molecular-workbench/scientific-types";
+import type { McdCompanionOriginal } from "../science-session/mcd-originals";
 
 // Outputs imported through the workbench open as generated XYZ text that carries
 // a unique import token, so two imports with the same geometry stay distinct.
@@ -17,8 +18,8 @@ export type ImportedOriginal = { name: string; file: Blob };
 // the scene is reloaded, because its bonds and selection index the atoms.
 // `sourceAtomIndices` maps each atom of a revision that changed topology to its index in the
 // previous revision (−1 for an inserted atom), so durable atom ids follow it (science-session/state).
-export type ImportedRevision = { text: string; document: ScientificDocument; topology?: number; sourceAtomIndices?: readonly number[] };
-type ImportedSource = { revisions: readonly ImportedRevision[]; original: ImportedOriginal | null; documentIds: Set<string>; scoped: boolean };
+export type ImportedRevision = { text: string; document: ScientificDocument; topology?: number; sourceAtomIndices?: readonly number[]; readonly retainedScienceFrom?: ImportedRevision };
+type ImportedSource = { revisions: readonly ImportedRevision[]; original: ImportedOriginal | null; companions?: readonly McdCompanionOriginal[]; documentIds: Set<string>; scoped: boolean };
 const REVISION_LIMIT = 100;
 const imported = new Map<string, ImportedSource>();
 const importListeners = new Set<() => void>();
@@ -34,9 +35,11 @@ export function newImportToken() {
   return `import-${crypto.randomUUID().slice(0, 8)}`;
 }
 
-export function registerImportedScientificSource(token: string, text: string, document: ScientificDocument, original: ImportedOriginal | null = null) {
+const retainCompanions = (values: readonly McdCompanionOriginal[] | undefined) => values?.length ? Object.freeze(values.map(value => Object.freeze({ ...value }))) : undefined;
+
+export function registerImportedScientificSource(token: string, text: string, document: ScientificDocument, original: ImportedOriginal | null = null, companions?: readonly McdCompanionOriginal[]) {
   if (!text.includes(token)) throw new Error("Imported text must carry its import token.");
-  imported.set(token, { revisions: [{ text, document }], original, documentIds: new Set(), scoped: false });
+  imported.set(token, { revisions: [{ text, document }], original, companions: retainCompanions(companions), documentIds: new Set(), scoped: false });
 }
 
 /**
@@ -47,12 +50,13 @@ export function registerImportedScientificSource(token: string, text: string, do
 export function addDocumentInternalCoordinates(documentId: string, text: string, document: ScientificDocument) {
   // A restored scene's original file stays with the document through a conversion.
   let original: ImportedOriginal | null = null;
+  let companions: readonly McdCompanionOriginal[] | undefined;
   for (const [key, entry] of imported) {
     if (!entry.scoped || !entry.documentIds.has(documentId)) continue;
-    original ??= entry.original;
+    if (!original && entry.original) { original = entry.original; companions = entry.companions; }
     imported.delete(key);
   }
-  imported.set(`document:${documentId}`, { revisions: [{ text, document }], original, documentIds: new Set([documentId]), scoped: true });
+  imported.set(`document:${documentId}`, { revisions: [{ text, document }], original, companions, documentIds: new Set([documentId]), scoped: true });
   importsChanged();
 }
 
@@ -112,18 +116,19 @@ export function hasScientificSource(documentId: string) {
   return false;
 }
 
-export function importedOriginalFor(documentId: string) {
-  for (const entry of imported.values()) if (entry.scoped && entry.original && entry.documentIds.has(documentId)) return entry.original;
-  return importFor(documentId)?.original ?? null;
+function sourceWithOriginal(documentId: string) {
+  for (const entry of imported.values()) if (entry.scoped && entry.original && entry.documentIds.has(documentId)) return entry;
+  return importFor(documentId);
 }
+export function importedOriginalFor(documentId: string) { return sourceWithOriginal(documentId)?.original ?? null; }
 
 /**
  * Gives a restored scene's new runtime document its saved revision and original file, as
  * its own (scoped) data: another document with the same text never shares it. The revision
  * is the current one only; earlier revisions were not saved.
  */
-export function adoptRestoredScientificSource(documentId: string, revision: ImportedRevision | null, original: ImportedOriginal | null) {
-  imported.set(`restored:${documentId}`, { revisions: revision ? [revision] : [], original, documentIds: new Set([documentId]), scoped: true });
+export function adoptRestoredScientificSource(documentId: string, revision: ImportedRevision | null, original: ImportedOriginal | null, companions?: readonly McdCompanionOriginal[]) {
+  imported.set(`restored:${documentId}`, { revisions: revision ? [revision] : [], original, companions: retainCompanions(companions), documentIds: new Set([documentId]), scoped: true });
   importsChanged();
 }
 
@@ -144,11 +149,13 @@ export function releaseScopedScientificSource(documentId: string) {
 export function scientificStateFor(documentId: string, text: string) {
   const entry = revisionsWith(documentId, text);
   const position = entry ? revisionIndex(entry.revisions, text) : -1;
+  const originals = sourceWithOriginal(documentId);
   return {
     revisions: entry ? entry.revisions : null,
     position,
     revision: entry && position >= 0 ? entry.revisions[position] : null,
-    original: importedOriginalFor(documentId),
+    original: originals?.original ?? null,
+    ...(originals?.companions ? { companions: originals.companions } : {}),
   };
 }
 

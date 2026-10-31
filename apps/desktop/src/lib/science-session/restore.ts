@@ -82,7 +82,7 @@ export async function restoreScienceSession(document: ViewerDocument, dependenci
     if (acknowledgement.adopted !== true) throw new ScienceSessionError("binding", "The scene could not acknowledge its scientific source.");
     const revision: ImportedRevision | null = content.science ? { text: content.source.text, document: content.science } : null;
     if (revision) rememberRevisionAtomIds(revision, content.atomIds);
-    adoptRestoredScientificSource(document.id, revision, content.original);
+    adoptRestoredScientificSource(document.id, revision, content.original, content.companions);
     adoptLogicalSource({ documentId: document.id, extension: content.source.extension, text: content.source.text }, content.documentUuid, content.atomIds, frames[0].elements);
     return "restored";
   } catch (error) {

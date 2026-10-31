@@ -319,6 +319,14 @@ export function zmatrixOptimizedRevision(science: ScientificDocument, definition
   return { revision: geometryRevision(science, written.document, kept, text, revisions), detachedBindings: written.detachedBindings };
 }
 
+// Managed geometry and reference-only row edits retain the exact calculated frames.
+// Keep one direct origin, rather than an unbounded chain of metadata-only revisions.
+function retainedScientificOrigin(science: ScientificDocument, document: ScientificDocument, text: string, revisions: readonly ImportedRevision[]) {
+  const previous = revisions[revisionIndex(revisions, text)];
+  return document.frames === science.frames && document.atoms === science.atoms && previous?.document === science
+    && science.frames.some(frame => frame.mcdCompanion) ? previous.retainedScienceFrom ?? previous : undefined;
+}
+
 // The revision after `text` with the real atoms exactly at `placed` (the same atoms in the
 // same order) and `definition` describing them. Positions are never re-anchored; an atom
 // keeps its source line only where it is exactly where it was.
@@ -332,7 +340,10 @@ function geometryRevision(science: ScientificDocument, definition: ZmatrixDocume
     if (x !== source.x || y !== source.y || z !== source.z) lines[index + 2] = formatXyz([{ element, position: [x, y, z] }], "").split("\n")[2];
     return { element, x, y, z };
   });
-  return { text: revisionText(lines, definition, revisions), document: revisionDocument(science, atoms, definition), topology: topologyOf(revisions, text) };
+  const document = revisionDocument(science, atoms, definition);
+  const retainedScienceFrom = retainedScientificOrigin(science, document, text, revisions);
+  return { text: revisionText(lines, definition, revisions), document, topology: topologyOf(revisions, text),
+    ...(retainedScienceFrom ? { retainedScienceFrom } : {}) };
 }
 
 /**
@@ -366,8 +377,10 @@ export function zmatrixRowsRevision(science: ScientificDocument, edit: ZmatrixRo
   });
   const sameAtoms = edit.atomMap.length === count && edit.atomMap.every((old, index) => old === index);
   const next = revisionText([sameAtoms ? lines[0] : String(atoms.length), lines[1] ?? "", ...atomLines, ...lines.slice(count + 2)], edit.document, revisions);
-  return { text: next, document: revisionDocument(science, atoms, edit.document), topology: sameAtoms ? topologyOf(revisions, text) : ++topologies,
-    sourceAtomIndices: edit.atomMap.map(index => index ?? -1) };
+  const document = revisionDocument(science, atoms, edit.document);
+  const retainedScienceFrom = sameAtoms ? retainedScientificOrigin(science, document, text, revisions) : undefined;
+  return { text: next, document, topology: sameAtoms ? topologyOf(revisions, text) : ++topologies,
+    sourceAtomIndices: edit.atomMap.map(index => index ?? -1), ...(retainedScienceFrom ? { retainedScienceFrom } : {}) };
 }
 
 /**
