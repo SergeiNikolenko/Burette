@@ -1,3 +1,4 @@
+import { sourceExtension } from "../../lib/science-session/state";
 import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTRA_COMMAND } from "../../lib/workbench/scientific-spectra-tool";
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
 import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../../lib/workbench/vibrations-tool";
@@ -37,7 +38,7 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
   const connections = useSshConnections().filter(connection => connection.enabled);
   if (window.BuretteMcpWorkspace || !["molstar", "xyzrender-external"].includes(document.renderer)) return null;
   const combined = document.renderer === "molstar" && new Set(recordedScenePaths(document)).size > 1;
-  const embeddedGraph = !combined && document.renderer === "molstar" && ["sdf", "sd", "mol"].includes(document.extension.toLowerCase().replace(/^\./, ""));
+  const embeddedGraph = !combined && document.renderer === "molstar" && ["sdf", "sd", "mol"].includes(sourceExtension(document));
   if (embeddedGraph && !hasScientificSpectra) return null;
 
   const fileItems = (path: string): MenuItemSpec[] => [

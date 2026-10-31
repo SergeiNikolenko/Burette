@@ -16,6 +16,11 @@ const browser = new Window({ url: "http://localhost/" }), previous = new Map<str
 Object.assign(browser, { setImmediate, clearImmediate });
 for (const [key, value] of Object.entries({ window: browser, self: browser, document: browser.document, navigator: browser.navigator,
   HTMLElement: browser.HTMLElement, Element: browser.Element, Node: browser.Node, Event: browser.Event,
+  HTMLInputElement: browser.HTMLInputElement, HTMLButtonElement: browser.HTMLButtonElement, DocumentFragment: browser.DocumentFragment,
+  NodeFilter: browser.NodeFilter, SVGElement: browser.SVGElement, CustomEvent: browser.CustomEvent, KeyboardEvent: browser.KeyboardEvent,
+  MouseEvent: browser.MouseEvent, PointerEvent: browser.PointerEvent, FocusEvent: browser.FocusEvent, DOMRect: browser.DOMRect,
+  CSS: browser.CSS, ResizeObserver: browser.ResizeObserver,
+  requestAnimationFrame: browser.requestAnimationFrame.bind(browser), cancelAnimationFrame: browser.cancelAnimationFrame.bind(browser),
   MutationObserver: browser.MutationObserver, getComputedStyle: browser.getComputedStyle.bind(browser),
   localStorage: browser.localStorage, indexedDB: new IDBFactory(), IS_REACT_ACT_ENVIRONMENT: true })) {
   previous.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
@@ -151,4 +156,46 @@ test("actual Mesoscale state and larger supported MOLX keep their own chooser ro
   const large = zipSync({ ...unzipSync(await archive("plain")), "padding.bin": new Uint8Array(3 * 1024 * 1024) }, { level: 0 });
   expect(large.byteLength).toBeGreaterThan(3 * 1024 * 1024);
   const opened = await choose(large, "large-scene.molx"); expect(opened.viewerProfile).toBe("structure"); expect(runtimeBytes(opened)).toEqual(large);
+});
+
+
+test("restored MOL graph keeps source-only Compute while XYZ and foreign MOLX keep their existing jobs", async () => {
+  const { fileKind } = await import("../apps/desktop/src/components/editor-area/page-kinds/file");
+  const FilePage = fileKind.Component;
+  const settle = async () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+  for (const version of [4, 1, "plain"] as const) {
+    const bytes = await archive(version), document = await choose(bytes, `compute-${version}.molx`);
+    const host = globalThis.document.createElement("div"); host.className = "app-shell"; globalThis.document.body.append(host);
+    const root = createRoot(host), native = new PluginContext(DefaultPluginSpec()); await native.init();
+    const actions = { setStructureDragActive() {} } as unknown as import("../apps/desktop/src/components/types").ShellActions;
+    const state = { documents: [document], preferences: defaultPreferences } as import("../apps/desktop/src/components/types").ShellViewState;
+    const labels = async () => {
+      const trigger = host.querySelector<HTMLButtonElement>('button[aria-label="Open molecular compute menu"]');
+      expect(Boolean(trigger)).toBe(true);
+      await act(async () => trigger!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+      const items = Array.from(globalThis.document.querySelectorAll('[role="menuitem"]'), item => item.textContent);
+      await act(async () => globalThis.document.querySelector('[role="menu"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+      await settle(); return items;
+    };
+    try {
+      const token = scene.beginImport(native); await native.managers.snapshot.open(new File([runtimeBytes(document) as BlobPart], "scene.molx"));
+      expect(scene.completeImport(native, token)).toBe(true);
+      await act(async () => root.render(<FilePage tabId={document.id} location={{ kind: "file", path: document.path, documentId: document.id }} state={state} actions={actions} isActive />));
+      // Mount before adoption to exercise the existing logical-source subscription.
+      const request = async (_id: string, action: Record<string, unknown>) => {
+        if (action.type === "workspace_scene_state") return { ready: true };
+        if (action.type === "scene_science_binding") return action.sourceExtension ? scene.graphBinding({ plugin: native }, action.sourceExtension) : scene.binding({ plugin: native });
+        if (action.type === "scene_science_restore_ack") return { adopted: await scene.adoptValidated({ plugin: native }, action) };
+        throw new Error(`Unexpected ${action.type}`);
+      };
+      let outcome: unknown;
+      await act(async () => { outcome = await restoreScienceSession(document, { readBytes: readSceneDocumentBytes, request, isOpen: () => true }); });
+      await settle();
+      expect(outcome).toBe(version === "plain" ? "foreign" : "restored");
+      expect(logicalSourceFor(document.id)?.extension).toBe(version === 4 ? "mol" : version === 1 ? "xyz" : undefined);
+      const menu = await labels();
+      if (version === 4) expect(menu).toEqual(["Show spectra"]);
+      else { expect(menu).toContain("Energy & charges"); expect(menu).toContain("Generate conformers"); }
+    } finally { await act(async () => root.unmount()); host.remove(); native.dispose(); }
+  }
 });

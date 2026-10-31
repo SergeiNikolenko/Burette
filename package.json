@@ -260,7 +260,7 @@
     "check:spectrum-export-outcome": "tsc --noEmit -p tests/tsconfig.spectrum-export-outcome.json",
     "test:spectra-display-state": "bun test --preload ./tests/fixtures/spectra-display-compiler.ts tests/test-spectra-display-state.test.tsx",
     "check:spectra-display-state": "tsc --noEmit -p tests/tsconfig.spectra-display-state.json",
-    "test:molx-ordinary-chooser": "bun test --preload ./tests/scientific-import-compiled-preload.ts tests/test-molx-ordinary-chooser.test.tsx",
+    "test:molx-ordinary-chooser": "bun test --preload ./tests/scientific-import-compiled-preload.ts --preload ./tests/fixtures/cjson-compute-compiler.ts tests/test-molx-ordinary-chooser.test.tsx",
     "check:molx-ordinary-chooser": "tsc --noEmit -p tests/tsconfig.molx-ordinary-chooser.json",
     "test:molstar-cube-units": "bun test tests/test-molstar-cube-units.test.ts",
     "check:molstar-cube-units": "tsc --noEmit -p tests/tsconfig.cube-units.json",
