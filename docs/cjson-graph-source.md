@@ -45,7 +45,11 @@ keeps every uploaded byte, including compression, BOM and line endings.
 The MOL source has one native frame. The Spectra consumer follows the explicit
 `graph.activeFrameIndex` into the retained CJSON sets; it does not infer the last
 frame from a single-model viewer. File-scoped NMR/electronic data remains
-file-scoped. Export → Scene and restore preserve the exact graph, selected set,
+file-scoped. A source-bound MOL spectrum is reachable through the owning scene
+Compute menu, command palette and Spectra dock. Its outer Compute menu exposes
+only Show spectra; the embedded graph toolbar retains geometry/ensemble actions.
+Bare MOL/SDF and imported graphs without spectra keep the existing toolbar route.
+Export → Scene and restore preserve the exact graph, selected set,
 all retained sets, spectra and Original through the version 4 MOLX contract.
 JSON scalar coordinates use ordinary JSON number semantics (signed zero becomes
 zero); the Original preserves its literal source spelling.
