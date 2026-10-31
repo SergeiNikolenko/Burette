@@ -18,6 +18,8 @@ contains only documents that describe the active project.
   document-owned graph history, scientific operations and focused acceptance scope.
 - [Internal coordinate editing](internal-coordinate-editing.md): Z-matrix definitions,
   scientific revision invariants, controls and focused validation.
+- [Peptide graph prerequisite](peptide-graph-builder.md): neutral residue graphs,
+  terminal chemistry, stereochemistry and the remaining 3D builder scope.
 - [Quantum input templates](quantum-input-export.md): engine routes, coordinate
   conventions, constraints, periodic cells and template validation.
 - [Scientific scene format](scientific-scene-format.md): MOLX attachment protocol,
