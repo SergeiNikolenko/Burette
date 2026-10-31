@@ -7,6 +7,8 @@ import { PluginContext } from 'molstar/lib/mol-plugin/context.js';
 import { DefaultPluginSpec } from 'molstar/lib/mol-plugin/spec.js';
 import { Model } from 'molstar/lib/mol-model/structure/model/model.js';
 import { setCanvasModule } from 'molstar/lib/mol-geo/geometry/text/font-atlas.js';
+import { PluginStateSnapshotManager } from 'molstar/lib/mol-plugin-state/manager/snapshots.js';
+import { Canvas3DParams } from 'molstar/lib/mol-canvas3d/canvas3d.js';
 import { Camera } from 'molstar/lib/mol-canvas3d/camera.js';
 import { StructureElement } from 'molstar/lib/mol-model/structure.js';
 import { OrderedSet } from 'molstar/lib/mol-data/int.js';
@@ -29,8 +31,9 @@ for (const name of ['scene-file-actions', 'measurement-coordinate']) vm.runInNew
   { window: scope, crypto, TextEncoder, TextDecoder, Uint8Array, Float64Array, File });
 const measurement = scope.BuretteMeasurementCoordinate, science = scope.BuretteSceneFiles.science;
 function cameraFor(plugin) {
+  if (plugin.canvas3d) return plugin.canvas3d.camera;
   const original = plugin.canvas3d, camera = new Camera(); canvases.push([plugin, original]);
-  plugin.canvas3d = { camera, add() {}, remove() {}, syncVisibility() {}, mark() {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
+  plugin.canvas3d = { camera, props: structuredClone(PD.getDefaultValues(Canvas3DParams)), setProps(props) { for (const [key, value] of Object.entries(props)) this.props[key] = value && typeof value === 'object' && !Array.isArray(value) ? { ...this.props[key], ...structuredClone(value) } : value; }, pause() {}, resume() {}, commit() {}, add() {}, remove() {}, syncVisibility() {}, mark() {}, requestCameraReset({ snapshot }) { camera.setState(snapshot, 0); } };
   return camera;
 }
 const xyz = '4\nfixture\nO 0 0 0\nH 1 0 0\nH 0 1 0\nC 0 0 1\n';
@@ -39,6 +42,7 @@ async function make(text = xyz, label = 'Original data') {
   const raw = await plugin.builders.data.rawData({ data: text, label });
   const trajectory = await plugin.builders.structure.parseTrajectory(raw, 'xyz');
   await plugin.builders.structure.hierarchy.applyPreset(trajectory, 'default', { representationPreset: 'empty' });
+  cameraFor(plugin);
   const root = plugin.managers.structure.hierarchy.current.structures[0].cell;
   const component = await plugin.builders.structure.tryCreateComponentStatic(root.transform.ref, 'all');
   await plugin.builders.structure.representation.addRepresentation(component, { type: 'ball-and-stick', color: 'element-symbol', typeParams: { alpha: 0.6 } });
@@ -64,15 +68,28 @@ try {
   }
   old.plugin.managers.structure.selection.fromLoci('set', old.loci([1, 3]), false);
   const sourceCamera = cameraFor(old.plugin); sourceCamera.setState({ position: [8, 9, 10], target: [1, 2, 3], radius: 4 }, 0);
+  old.plugin.canvas3d.props.renderer.backgroundColor = 0x123456;
   const before = structuredClone(old.plugin.state.data.getSnapshot()), lease = old.lease(), captured = BuretteTopologyScene.capture(old.plugin, lease);
   assert.deepEqual(old.plugin.state.data.getSnapshot(), before, 'capture is read-only');
   assert.equal(BuretteTopologyScene.validate(old.plugin, captured.receipt, lease), true);
+  const unchangedTree = old.plugin.state.data.tree, background = old.plugin.canvas3d.props.renderer.backgroundColor;
+  old.plugin.canvas3d.props.renderer.backgroundColor = 0x654321;
+  unchanged(old, () => assert.throws(() => BuretteTopologyScene.validate(old.plugin, captured.receipt, lease), /viewer settings changed/));
+  old.plugin.canvas3d.props.renderer.backgroundColor = background;
+  old.plugin.managers.snapshot.add(PluginStateSnapshotManager.Entry(old.plugin.state.getSnapshot()));
+  unchanged(old, () => assert.throws(() => BuretteTopologyScene.validate(old.plugin, captured.receipt, lease), /snapshot library changed/));
+  old.plugin.managers.snapshot.clear();
+  assert.equal(old.plugin.state.data.tree, unchangedTree);
+  const currentReceipt = BuretteTopologyScene.capture(old.plugin, lease);
+  assert.equal(BuretteTopologyScene.validate(old.plugin, currentReceipt.receipt, lease), true);
+
   const transfer = payload(captured), layer = transfer.components.find(c => c.layerId === 'oxygen-carbon');
   assert.deepEqual(layer.indices, [0, 3]); assert.equal(layer.params.label, 'Exact atoms 漢字'); assert.equal(layer.representations[0].state.isHidden, true);
   const target = await make('5\nreordered\nC 0 0 1\nH 1 0 0\nO 0 0 0\nH 0 1 0\nHe 0 0 2\n', 'New candidate');
   const targetCamera = cameraFor(target.plugin);
   transfer.atomCount = 5; layer.indices = [0, 2]; transfer.selection = [0, 1]; // exact new→old map [3,1,0,2,-1], inverted by host
   assert.equal(await BuretteTopologyScene.restore(target.plugin, transfer), true);
+  assert.deepEqual(target.plugin.canvas3d.props, old.plugin.canvas3d.props, 'C3 restores full canvas settings before final camera');
   const current = BuretteTopologyScene.capture(target.plugin, target.lease());
   assert.equal(target.root.obj.data.models[0].atomicHierarchy.atoms.label_atom_id.value(4), 'He');
   assert.equal(target.root.obj.data.models[0].atomicHierarchy.atoms.type_symbol.value(4), 'HE');

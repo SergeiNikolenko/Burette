@@ -1,3 +1,4 @@
+import { BuretteTopologyEnvironment as Environment } from './molstar-topology-environment.js';
 import { ElementSymbol } from 'molstar/lib/mol-model/structure/model/types.js';
 import { Structure, StructureElement } from 'molstar/lib/mol-model/structure.js';
 import { OrderedSet } from 'molstar/lib/mol-data/int.js';
@@ -142,7 +143,7 @@ function rootFor(plugin) {
   structureProperties(root);
   return { cell, root };
 }
-function audit(plugin) {
+function audit(plugin, environment = Environment.capture(plugin)) {
   if (plugin.managers.structure.focus.current) fail('Clear native focus before changing topology.');
   const state = plugin.state.data;
   if (state.tree.transforms.size > 10000) fail('The scene has too many objects.');
@@ -244,7 +245,7 @@ function audit(plugin) {
   }
   const selection = [...new Set([...plugin.managers.structure.selection.entries.values()].flatMap(e => lociIndices(root, e.selection)))].sort((a, b) => a - b);
   const focus = null; // Focus behavior owns derived cells/settings; refuse rather than drop them.
-  return { version: 1, atomCount: root.elementCount, rawLabel: raw.params.values.label, rootState: flags(rootCell), sourceTags, decorators, components, selection, focus, camera: plugin.canvas3d ? copy(plugin.canvas3d.camera.getSnapshot()) : null };
+  return { version: 1, atomCount: root.elementCount, rawLabel: raw.params.values.label, rootState: flags(rootCell), sourceTags, decorators, components, selection, focus, canvasDelta: environment.canvasDelta, contextDelta: environment.contextDelta, camera: plugin.canvas3d ? copy(plugin.canvas3d.camera.getSnapshot()) : null };
 }
 const keys = (value, names) => plain(value) && Object.keys(value).every(k => names.includes(k));
 function transferFlags(value) {
@@ -258,9 +259,10 @@ function indices(value, count) {
   if (!Array.isArray(value) || value.length > 256 || new Set(value).size !== value.length || value.some(i => !Number.isInteger(i) || i < 0 || i >= count)) fail('Invalid topology source indices.');
 }
 function validateTransfer(value) {
-  if (!keys(value, ['version', 'atomCount', 'rawLabel', 'rootState', 'sourceTags', 'decorators', 'components', 'selection', 'focus', 'camera']) || value.version !== 1
+  if (!keys(value, ['version', 'atomCount', 'rawLabel', 'rootState', 'sourceTags', 'decorators', 'components', 'selection', 'focus', 'camera', 'canvasDelta', 'contextDelta']) || value.version !== 1
     || !Number.isInteger(value.atomCount) || value.atomCount < 1 || value.atomCount > 256 || typeof value.rawLabel !== 'string' || value.rawLabel.length > 256
     || !Array.isArray(value.decorators) || value.decorators.length > 2 || !Array.isArray(value.components) || value.components.length > 32) fail('Invalid topology scene transfer.');
+  Environment.validateData(value);
   transferFlags(value.rootState); indices(value.selection, value.atomCount);
   if (value.focus !== null) fail('Native focus transfer is unsupported.');
   if (value.camera !== null) {
@@ -315,9 +317,10 @@ function signature(plugin, data) {
 function capture(plugin, lease) {
   if (typeof lease !== 'string' || !lease) fail('Read Geometry before changing topology.');
   BuretteGeometry.capture(plugin, () => true, lease);
-  const transfer = size(validateTransfer(audit(plugin))), receipt = UUID.create22();
+  const environment = Environment.capture(plugin);
+  const transfer = size(validateTransfer(audit(plugin, environment))), receipt = UUID.create22();
   let values = receipts.get(plugin); if (!values) { values = new Map(); receipts.set(plugin, values); }
-  values.set(receipt, { tree: plugin.state.data.tree, lease, signature: signature(plugin, transfer) });
+  values.set(receipt, { tree: plugin.state.data.tree, lease, environment: environment.owner, signature: signature(plugin, transfer) });
   while (values.size > 16) values.delete(values.keys().next().value);
   BuretteGeometry.capture(plugin, () => true, lease);
   return { ...transfer, receipt };
@@ -326,11 +329,13 @@ function validate(plugin, receipt, lease) {
   const own = receipts.get(plugin)?.get(receipt);
   if (!own || own.lease !== lease || own.tree !== plugin.state.data.tree) fail('The scene changed while topology was prepared.');
   BuretteGeometry.capture(plugin, () => true, lease);
+  Environment.validate(plugin, own.environment);
   if (own.signature !== signature(plugin, size(audit(plugin)))) fail('The scene changed while topology was prepared.');
   return true;
 }
 async function restore(plugin, value) {
   const transfer = size(validateTransfer(copy(value)));
+  const environment = Environment.prepare(plugin, transfer);
   const { root, cell } = rootFor(plugin), state = plugin.state.data, tree = state.tree;
   if (root.elementCount !== transfer.atomCount || state.inTransaction || state.burettePreconditionVersion !== 1) fail('The candidate structure does not match the scene transfer.');
   audit(plugin);
@@ -373,6 +378,7 @@ async function restore(plugin, value) {
   plugin.managers.structure.selection.clear();
   if (transfer.selection.length) plugin.managers.structure.selection.fromLoci('set', newLoci(currentRoot, transfer.selection), false);
   plugin.managers.structure.focus.clear();
+  Environment.apply(plugin, environment);
   if (transfer.camera && plugin.canvas3d) plugin.managers.camera.setSnapshot(transfer.camera, 0);
   return true;
 }
