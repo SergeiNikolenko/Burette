@@ -3,6 +3,7 @@ import { appendFile, copyFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { molstarCubeUnitsPlugin } from "./molstar-cube-units.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const source = resolve(root, "apps/desktop/src/preview-mesoscale/mesoscale-runtime.ts");
@@ -11,7 +12,13 @@ const mirror = resolve(root, "plugins/burette-agent/preview-web");
 const theme = resolve(root, "apps/desktop/src/preview-mesoscale/mesoscale-burette-theme.css");
 
 await mkdir(web, { recursive: true });
-await run("bun", ["build", source, "--outdir", web, "--entry-naming", "mesoscale.js", "--target", "browser", "--format", "iife", "--production", "--minify", "--loader", ".jpg:dataurl"]);
+const build = await Bun.build({
+  entrypoints: [source], outdir: web, naming: "mesoscale.js", target: "browser",
+  format: "iife", minify: true, loader: { ".jpg": "dataurl" },
+  define: { "process.env.NODE_ENV": JSON.stringify("production") },
+  plugins: [molstarCubeUnitsPlugin],
+});
+if (!build.success) throw new AggregateError(build.logs, "Mesoscale runtime build failed.");
 await run(resolve(root, "node_modules/.bin/sass"), ["--no-source-map", "--style=compressed", resolve(root, "node_modules/molstar/lib/apps/mesoscale-explorer/style.scss"), resolve(web, "mesoscale.css")]);
 await appendFile(resolve(web, "mesoscale.css"), `\n${(await readFile(theme, "utf8")).trimEnd()}\n`);
 await mkdir(mirror, { recursive: true });
