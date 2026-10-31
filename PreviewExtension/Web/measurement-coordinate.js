@@ -85,7 +85,13 @@
       return [key, copySetting(entry, schema[key], depth + 1, budget)];
     }));
   }
-  const flags = cell => ({ isHidden: cell?.state?.isHidden === true, isCollapsed: cell?.state?.isCollapsed === true });
+  const STATE_FLAGS = ['isHidden', 'isCollapsed', 'isLocked', 'isGhost'];
+  function flags(cell) {
+    const state = cell ? cell.state : {};
+    if (!state || Object.prototype.toString.call(state) !== '[object Object]'
+      || Object.entries(state).some(([key, value]) => !STATE_FLAGS.includes(key) || typeof value !== 'boolean')) fail('The measurement state flags are invalid.');
+    return Object.fromEntries(STATE_FLAGS.map(key => [key, state[key] === true]));
+  }
   function style(params) {
     const result = {};
     for (const [key, value] of Object.entries(params || {})) {
@@ -100,10 +106,12 @@
     return result;
   }
   function validateTransfer(value) {
-    if (!value || value.version !== 1 || !['sdf', 'mol'].includes(value.sourceFormat) || !/^[a-f0-9]{64}$/.test(value.targetSourceSha256) || !Number.isInteger(value.atomCount) || value.atomCount < 1 || value.atomCount > 256
+    if (!value || value.version !== 1 || !['sdf', 'mol', 'xyz'].includes(value.sourceFormat) || !/^[a-f0-9]{64}$/.test(value.targetSourceSha256) || !Number.isInteger(value.atomCount) || value.atomCount < 1 || value.atomCount > 256
       || !Array.isArray(value.items) || value.items.length > 32 || new TextEncoder().encode(JSON.stringify(value)).byteLength > 6144) fail('The measurements cannot be retained within this preview.');
+    flags({ state: value.group });
     let indices = 0;
     for (const item of value.items) {
+      flags({ state: item.selection }); flags({ state: item.representation });
       if (!Object.hasOwn(KINDS, item.kind) || !Array.isArray(item.points) || (KINDS[item.kind] ? item.points.length !== KINDS[item.kind] : item.points.length < 1 || item.points.length > 8)) fail('The measurement points are invalid.');
       for (const point of item.points) {
         if (!Array.isArray(point) || !point.length || point.length > value.atomCount || new Set(point).size !== point.length
@@ -114,8 +122,23 @@
     }
     return value;
   }
-  async function capture(viewer, science) {
-    const binding = await science.graphBinding(viewer);
+  // XYZ topology transfer is explicit and uses the model's retained receipt. A
+  // candidate being restored is a new unread model, so it owns its first read.
+  async function xyzBinding(viewer, science, lease) {
+    const plugin = viewer?.plugin, geometry = window.molstar?.BuretteGeometry;
+    if (!geometry) fail('Reload a runtime supporting live Geometry.');
+    if (lease !== undefined) geometry.capture(plugin, () => true, lease);
+    const baseline = geometry.binding(plugin), binding = science.binding(viewer);
+    if (binding.atomCount > 256 || binding.frameCount !== 1 || binding.frameIndex !== 0) fail('Measurement transfer needs one XYZ frame of up to 256 atoms.');
+    const bytes = new TextEncoder().encode(baseline.text);
+    const digest = await crypto.subtle.digest('SHA-256', bytes);
+    geometry.capture(plugin, () => true, lease ?? baseline.lease);
+    if (geometry.binding(plugin).text !== baseline.text) fail('The measurement source changed while it was read.');
+    return { ...binding, sourceFormat: 'xyz', sourceSha256: Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('') };
+  }
+  async function capture(viewer, science, options) {
+    if (options && (options.sourceFormat !== 'xyz' || typeof options.lease !== 'string' || !options.lease || options.lease.length > 128)) fail('XYZ measurement transfer requires its current Geometry receipt.');
+    const binding = options ? await xyzBinding(viewer, science, options.lease) : await science.graphBinding(viewer);
     if (binding.atomCount > 256 || binding.frameCount !== 1) fail('Coordinate editing needs one MOL or SDF record of up to 256 atoms.');
     const root = viewer.plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data;
     const Loci = window.molstar.lib.structure.StructureElement.Loci, cells = viewer.plugin.state.data.cells, items = [];
@@ -141,7 +164,8 @@
     return { ...binding, items: transfer.items, group: transfer.group };
   }
   async function restore(viewer, value, science) {
-    const transfer = validateTransfer(value), binding = await science.graphBinding(viewer);
+    const transfer = validateTransfer(value), binding = transfer.sourceFormat === 'xyz'
+      ? await xyzBinding(viewer, science) : await science.graphBinding(viewer);
     if (binding.sourceFormat !== transfer.sourceFormat || binding.sourceSha256 !== transfer.targetSourceSha256 || binding.atomCount !== transfer.atomCount || binding.frameCount !== 1) fail('The measurement source changed before previewing.');
     const plugin = viewer.plugin, root = plugin.managers.structure.hierarchy.current.structures[0].cell.obj.data;
     if (Array.from(plugin.state.data.cells.values()).some(cell => Object.hasOwn(KINDS, cell.obj?.label) && String(cell.transform.transformer?.id).includes('structure-selections-'))) fail('This preview already has measurements.');
