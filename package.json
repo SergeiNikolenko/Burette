@@ -275,8 +275,8 @@
     "test:native-behavior-scene-export": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-native-behavior-scene-export.mjs",
     "test:built-topology-cube": "bun tests/test-built-molstar-topology-cube.mjs",
     "test:xyz-topology-receiver": "bun test --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-viewer-routes.test.mjs",
-    "test:logical-xyz-topology": "bun test --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-logical-xyz-topology.test.tsx",
-    "check:logical-xyz-topology": "tsc --noEmit --pretty false -p tests/tsconfig.logical-topology.json"
+    "test:logical-xyz-topology": "bun test --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-logical-xyz-topology.test.tsx && bun test --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-logical-xyz-topology-metadata.test.tsx",
+    "check:logical-xyz-topology": "tsc --noEmit --pretty false -p tests/tsconfig.logical-topology.json && tsc --noEmit --pretty false -p tests/tsconfig.topology-metadata.json"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",
