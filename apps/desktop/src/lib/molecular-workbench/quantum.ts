@@ -8,6 +8,7 @@ import { parseGaussianLog } from "./quantum/gaussian-log";
 import { readOrcaVcdTables } from "./orca-circular-spectra";
 import { withOrcaSourceSpectra, type OrcaSourceSpectrum } from "./orca-source-spectra";
 import { validateParsedSpectra } from "./parsed-spectral-document";
+import { readCjsonGraph } from "./cjson-graph";
 import { parseQcschema } from "./quantum/qcschema";
 import { parseFchk } from "./fchk";
 import { parseMolden } from "./gaussian";
@@ -59,6 +60,11 @@ export function parseScientificFile(name: string, text: string): ScientificDocum
     const atoms = atomsFromZmatrixDocument(internalCoordinates).map(({ element, position: [x, y, z] }) => ({ element, x, y, z }));
     return { ...empty("zmat", atoms), internalCoordinates };
   }
+  if (/\.cjson$/i.test(name)) {
+    const parsed = readCjsonGraph(name, text);
+    return { format: "cjson", atoms: parsed.structure.atoms, frames: parsed.coordinateSets.map(atoms => ({ atoms })), modes: [], orbitals: [],
+      graph: { molfile: parsed.structure.molfile, activeFrameIndex: parsed.activeSet }, ...(parsed.spectra ? { spectra: parsed.spectra } : {}) };
+  }
   if (/\.(?:qcschema|json)$/i.test(name)) return parseQcschema(text, name);
   if (/\.(?:fchk|fch)$/i.test(name)) return parseFchk(text);
   if (/\.(?:cube|cub)$/i.test(name)) return parseCube(text);
@@ -70,7 +76,7 @@ export function parseScientificFile(name: string, text: string): ScientificDocum
   if (/\[Molden Format\]/i.test(text)) return parseMolden(text);
   if (/\$vibrational_frequencies\b/.test(text)) return parseHessian(text);
   if (/CARTESIAN COORDINATES \(ANGSTROEM\)/.test(text)) return parseOrca(name, text);
-  throw new Error("Supported scientific inputs are ORCA output/Hessian, Molden, Gaussian log/FCHK/cube, QCSchema and XYZ trajectories.");
+  throw new Error("Supported scientific inputs are ORCA output/Hessian, Molden, Gaussian log/FCHK/cube, QCSchema, Chemical JSON and XYZ trajectories.");
 }
 
 function parseXyzTrajectory(text: string): ScientificDocument {

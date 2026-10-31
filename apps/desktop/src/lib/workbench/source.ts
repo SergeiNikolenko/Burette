@@ -10,7 +10,7 @@ import { useSourceText } from "../source-editing/use-structure-source-text";
 export { sourceExtension };
 
 // Formats whose text may carry frames, energies, orbitals or normal modes.
-const SCIENTIFIC_EXTENSIONS = new Set(["out", "log", "xyz", "cube", "cub", "molden", "hess", "fchk", "fch"]);
+const SCIENTIFIC_EXTENSIONS = new Set(["out", "log", "xyz", "mol", "cube", "cub", "molden", "hess", "fchk", "fch"]);
 const CACHE_LIMIT = 6;
 
 export function documentExtension(document: Pick<ViewerDocument, "extension">) {
@@ -73,6 +73,8 @@ export function useScientificDocument(document: ViewerDocument | null): Scientif
   const registered = useSyncExternalStore(subscribeImports, () => (key && document && text !== null ? registeredRevision(document.id, text)?.revision.document ?? null : null));
   useEffect(() => {
     if (!key || !document || text === null || claimRegisteredRevision(document.id, text)) return undefined;
+    // MOL science comes from an exact registered graph revision, never inferred from bare MOL text.
+    if (sourceExtension(document) === "mol") return undefined;
     let current = true;
     void parseOnce(key, documentFileName(document), text).then((value) => { if (current) setState({ document: value, text, key }); });
     return () => { current = false; };

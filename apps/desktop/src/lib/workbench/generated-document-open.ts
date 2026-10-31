@@ -11,7 +11,7 @@ import { claimImportedSource, forgetImportedSource, newImportToken, registerImpo
  * Generated structures open as new documents; the source document stays untouched.
  * `shouldApply` lets a caller drop the document while it is still being prepared.
  */
-export function openGeneratedStructure(actions: Pick<ShellActions, "openStructureRecords">, name: string, extension: "xyz" | "sdf" | "cif", text: string, shouldApply?: () => boolean) {
+export function openGeneratedStructure(actions: Pick<ShellActions, "openStructureRecords">, name: string, extension: "xyz" | "sdf" | "mol" | "cif", text: string, shouldApply?: () => boolean) {
   const fileName = safeExportFileName(`${fileStem(name)}.${extension}`);
   const records = [{ path: fileName, inputExtension: extension, text }];
   return shouldApply ? actions.openStructureRecords(records, undefined, { shouldApply }) : actions.openStructureRecords(records);
@@ -33,23 +33,27 @@ function stepsText(document: ScientificDocument, token: string) {
 }
 
 /**
- * Opens parsed scientific data as a new XYZ document that keeps that data attached,
+ * Opens parsed scientific data as XYZ or an explicit CJSON-derived MOL graph,
  * and the uploaded file it came from when there is one.
  */
 export async function openScientificDocument(actions: Pick<ShellActions, "openStructureRecords">, name: string, document: ScientificDocument, layout: "final" | "steps", original: ImportedOriginal | null = null) {
   const token = newImportToken();
-  const text = layout === "steps" ? stepsText(document, token) : finalGeometryText(document, token);
+  const graph = document.format === "cjson" ? document.graph : undefined;
+  if (document.format === "cjson" && !graph) throw new Error("Chemical JSON requires its explicit molecular graph.");
+  const lines = graph?.molfile.split("\n");
+  if (lines) lines[2] = token;
+  const text = lines ? lines.join("\n") : layout === "steps" ? stepsText(document, token) : finalGeometryText(document, token);
   // Steps are a trajectory of frames and energies; a frame's own modes travel with it.
   // The document's modes, orbitals and fields refer to the final geometry only, so
   // they stay with the single-frame document. File-scoped spectra travel with either layout.
-  registerImportedScientificSource(token, text, layout === "steps"
+  registerImportedScientificSource(token, text, graph ? { ...document, graph: { ...graph, molfile: text } } : layout === "steps"
     ? { format: document.format, atoms: document.frames[0]?.atoms ?? document.atoms, frames: document.frames, modes: [], orbitals: [], converged: document.converged, ...(document.spectra ? { spectra: document.spectra } : {}) }
     : document, original);
   // The import belongs to the one document this open created; without it, nothing is kept.
   // That document may already have closed (and close cleanup run) before the open returned.
   let opened: ViewerDocument[] = [];
   try {
-    opened = await openGeneratedStructure(actions, name, "xyz", text);
+    opened = await openGeneratedStructure(actions, name, graph ? "mol" : "xyz", text);
   } finally {
     const own = opened.length === 1 ? opened[0].id : null;
     if (own && useMoleculeStore.getState().documents.some((item) => item.id === own)) claimImportedSource(token, own);

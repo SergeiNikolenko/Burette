@@ -180,6 +180,6 @@ ownership, wrong selected set, non-CJSON scientific data or absent Original.
 Version 4 does not carry MCD companion Originals. Plain MOL remains version 2,
 XYZ/SDF remain version 1, and explicit MCD companions retain version 3.
 
-This codec prerequisite does not activate ordinary CJSON import, graph-science
-export or a coordinate-set selector. Source limits and native-order/cell refusals
-are described in [Chemical JSON graph source](cjson-graph-source.md).
+Normal CJSON import and graph-science host export use this contract. A coordinate-set
+selector is not activated. Source limits, ordinary import and native-order/cell
+refusals are described in [Chemical JSON graph source](cjson-graph-source.md).

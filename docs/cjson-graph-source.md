@@ -35,13 +35,31 @@ BSD-licensed producer files; hashes, extraction scope and license are adjacent.
 The existing reduced NMR fixture is a numerical/structural extract, not a claim
 that all quantities of the original producer file are interpreted.
 
-This module does not activate ordinary CJSON import or change existing structural
-CJSON conversion/Quick Look paths on other branches. Admission and MOLX storage
-must be paired: retain the immutable CJSON Original, bind science to the actual
-MOL graph/revision, and preserve coordinate-set selection and source spectra.
+Ordinary browser Open/drop and the scientific file picker recognize `.cjson`,
+including supported compression suffixes. Generic `.json` keeps its existing
+QCSchema recognition. The reader worker materializes a MOL graph and the open
+path adds a unique import token in its comment line. Two imports of the same
+geometry therefore retain separate scientific ownership. The immutable Original
+keeps every uploaded byte, including compression, BOM and line endings.
+
+The MOL source has one native frame. The Spectra consumer follows the explicit
+`graph.activeFrameIndex` into the retained CJSON sets; it does not infer the last
+frame from a single-model viewer. File-scoped NMR/electronic data remains
+file-scoped. Export → Scene and restore preserve the exact graph, selected set,
+all retained sets, spectra and Original through the version 4 MOLX contract.
+JSON scalar coordinates use ordinary JSON number semantics (signed zero becomes
+zero); the Original preserves its literal source spelling.
+
 Energy, vibrational, orbital, periodic and display metadata outside this result
-remain in the input source and require their own consumers; full CJSON parity is open.
+remain in the input source and require their own consumers. Coordinate-set
+switching is not activated. Native content-type registration and Finder Quick
+Look routing are separate; no registration metadata changes in this stage.
 
 `test:cjson-graph` uses real OCL, RDKit and native MolStar data/model parsers.
 `check:cjson-graph` checks the module and tests with the app's actual Vite types.
 These do not prove browser, packaged desktop, Quick Look or iPhone acceptance.
+
+`test:cjson-import` exercises the real reader/compression workers, normal browser
+materialization, NMR panel, native MolStar save/open and host restore/re-export.
+The same producer files also run without reducing their input in the recorded
+external evidence; that replay is not a browser or packaged-app acceptance claim.

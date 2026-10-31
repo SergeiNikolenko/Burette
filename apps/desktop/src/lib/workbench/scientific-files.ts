@@ -7,7 +7,7 @@ import { decodeCompressedFile } from "../compressed-files/task";
  * start, so other logs and text files keep opening as before. XYZ stays an
  * ordinary structure: its frames and metadata already attach to the opened file.
  */
-const BY_NAME = /\.(?:fchk|fch|molden|molf|hess|cube|cub|zmat|zmatrix|qcschema)$|(?:^|[._-])molden\.input$/iu;
+const BY_NAME = /\.(?:fchk|fch|molden|molf|hess|cube|cub|zmat|zmatrix|qcschema|cjson)$|(?:^|[._-])molden\.input$/iu;
 const OUTPUT = /\.(?:out|log|json)$/iu;
 // ORCA's banner, or the coordinate block the ORCA parser reads.
 const ORCA = /O {3}R {3}C {3}A|CARTESIAN COORDINATES \(ANGSTROEM\)/u;
@@ -29,7 +29,7 @@ function recognized(name: string, text: string) {
 }
 const SNIFF_BYTES = 64 * 1024;
 
-export const SCIENTIFIC_FILE_ACCEPT = ".fchk,.fch,.molden,.molf,.input,.hess,.cube,.cub,.zmat,.zmatrix,.out,.log,.qcschema,.json";
+export const SCIENTIFIC_FILE_ACCEPT = ".fchk,.fch,.molden,.molf,.input,.hess,.cube,.cub,.zmat,.zmatrix,.out,.log,.qcschema,.cjson,.json";
 /** The scientific parser reads at most 16 MiB of text. */
 export const SCIENTIFIC_FILE_LIMIT = 16 * 1024 * 1024;
 

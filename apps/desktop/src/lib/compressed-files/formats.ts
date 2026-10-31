@@ -27,7 +27,7 @@ const INNER_EXTENSIONS = new Set([
   "fasta", "fch", "fchk", "fdf", "gro", "hess", "in", "inp", "lammpstrj", "lammps", "lmp", "log",
   "mae", "mcif", "mmcif", "mol", "mol2", "molden", "molf", "nw", "out", "pdb", "pdbqt", "ph4",
   "pqr", "psi4", "qcin", "rdf", "rxn", "sd", "sdf", "smi", "smiles", "tsv", "vasp", "xyz",
-  "zmat", "zmatrix", "json", "qcschema",
+  "zmat", "zmatrix", "json", "qcschema", "cjson",
 ]);
 const MOLDEN_INPUT = /(?:^|[._-])molden\.input$/iu;
 

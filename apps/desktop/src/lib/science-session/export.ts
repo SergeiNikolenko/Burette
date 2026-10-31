@@ -104,7 +104,7 @@ export async function prepareSceneScienceExport(document: ViewerDocument, option
     if (baseline === undefined || originalText !== baseline.replace(/^\uFEFF/u, "")) throw new ScienceSessionError("source", "The original graph file changed. Reopen it before saving the scene.");
   }
   const originalDigest = originalBytes ? await sha256Hex(originalBytes) : null;
-  const data = await mcdDataForExport(extension === "xyz" ? state.revision : null, text, state.companions);
+  const data = await mcdDataForExport(extension === "xyz" || (extension === "mol" && state.revision?.document.format === "cjson") ? state.revision : null, text, state.companions);
   const encoded = await encodeScienceSession({
     documentUuid: documentUuidFor(document.id),
     source: { extension, text },
