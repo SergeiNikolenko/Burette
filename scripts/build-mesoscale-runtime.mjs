@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import { molstarCubeUnitsPlugin } from "./molstar-cube-units.mjs";
+import { molstarCubeDatasetsPlugin } from "./molstar-cube-datasets.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const source = resolve(root, "apps/desktop/src/preview-mesoscale/mesoscale-runtime.ts");
@@ -16,7 +17,7 @@ const build = await Bun.build({
   entrypoints: [source], outdir: web, naming: "mesoscale.js", target: "browser",
   format: "iife", minify: true, loader: { ".jpg": "dataurl" },
   define: { "process.env.NODE_ENV": JSON.stringify("production") },
-  plugins: [molstarCubeUnitsPlugin],
+  plugins: [molstarCubeDatasetsPlugin, molstarCubeUnitsPlugin],
 });
 if (!build.success) throw new AggregateError(build.logs, "Mesoscale runtime build failed.");
 await run(resolve(root, "node_modules/.bin/sass"), ["--no-source-map", "--style=compressed", resolve(root, "node_modules/molstar/lib/apps/mesoscale-explorer/style.scss"), resolve(web, "mesoscale.css")]);
