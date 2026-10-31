@@ -246,5 +246,39 @@
     if (typeof lease !== 'string' || !binding || binding.lease !== lease || !binding.current()) throw sourceChanged();
     return binding.current;
   }
-  window.BuretteGeometryPreview = { apply, update, field, bindField, fieldBinding };
+  async function selectSourceAtom(viewer, action, owner) {
+    const stale = () => Object.assign(new Error('The spectrum source or selection changed.'), { name: 'AbortError' });
+    if (!owner.current()) throw stale();
+    if (typeof action.sourceSha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(action.sourceSha256)
+      || !Number.isSafeInteger(action.frameIndex) || !Number.isSafeInteger(action.frameCount) || action.frameCount < 1 || action.frameCount > 2000
+      || action.frameIndex < 0 || action.frameIndex >= action.frameCount
+      || !Number.isSafeInteger(action.atomIndex) || action.atomIndex < 0 || action.atomIndex >= 10000) throw new Error('Invalid spectrum atom address.');
+    const transforms = window.molstar?.lib?.plugin?.StateTransforms;
+    const trajectory = owner.ancestors.find(item => item.cell.transform.transformer === transforms?.Model.TrajectoryFromXYZ);
+    const model = owner.ancestors.find(item => item.cell.transform.transformer === transforms?.Model.ModelFromTrajectory);
+    const raw = owner.ancestors.find(item => item.cell.transform.transformer === transforms?.Data.RawData);
+    const structure = owner.cell.obj.data;
+    if (!trajectory || !model || !raw || trajectory.data.frameCount !== action.frameCount
+      || model.cell.transform.params.modelIndex !== action.frameIndex || structure.models?.length !== 1
+      || structure.units.some(unit => unit.kind !== 0)) throw new Error('The spectrum does not address this source frame.');
+    // The existing Geometry binding knows its own coordinate decorator. It returns
+    // the effective source text, never an inferred XYZ reconstructed from positions.
+    const text = action.frameCount === 1 ? window.molstar.BuretteGeometry.binding(viewer.plugin, owner.current).text : raw.data;
+    if (typeof text !== 'string' || text.length > 16 * 1024 * 1024
+      || await digest(new TextEncoder().encode(text)) !== action.sourceSha256) throw new Error('The displayed source differs from the spectrum source.');
+    if (!owner.current()) throw stale();
+    const matches = [];
+    for (const unit of structure.units) for (let index = 0; index < unit.elements.length; index++) {
+      const atom = unit.elements[index];
+      if (unit.model.atomicHierarchy.atomSourceIndex.value(atom) === action.atomIndex) matches.push({ unit, indices: Int32Array.of(index) });
+    }
+    if (matches.length !== 1) throw new Error('The source atom has no unique displayed instance.');
+    const loci = window.molstar.lib.structure.StructureElement.Loci(structure, matches);
+    if (!owner.current()) throw stale();
+    // One synchronous native selection; false preserves atomic granularity even
+    // when the viewer's normal picking level is residue or chain.
+    viewer.plugin.managers.interactivity.lociSelects.selectOnly({ loci }, false);
+    return { ok: true, result: { atomIndex: action.atomIndex, frameIndex: action.frameIndex } };
+  }
+  window.BuretteGeometryPreview = { apply, update, field, bindField, fieldBinding, selectSourceAtom };
 })();

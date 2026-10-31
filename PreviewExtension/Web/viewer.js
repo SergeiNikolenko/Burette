@@ -689,7 +689,7 @@
   let geometryPreviewRequest = 0;
   let scalarFieldRequest = 0, scalarBindingRequest = 0;
   let geometryPreviewLoading = null;
-  async function executeBuretteAgentAction(action) {
+  async function executeBuretteAgentAction(action, requestOwner) {
     const type = String(action?.type || '');
     if (type === 'workspace_scene_snapshot') {
       if ((activeConfig || window.BuretteConfig || {}).renderer === 'xyzrender-external') {
@@ -891,6 +891,38 @@
       if (type === 'scalar_field_validate') return { ok: true };
       return await window.BuretteGeometryPreview.field(viewer, action, () => current() && binding());
       } catch (error) { dispose(); throw error; }
+    }
+    if (type === 'select_source_atom') {
+      const request = ++geometryPreviewRequest, viewer = activeMolstarViewer(), plugin = viewer?.plugin;
+      const roots = plugin?.managers.structure.hierarchy.current.structures || [];
+      const cell = roots.length === 1 ? roots[0].cell : null;
+      if (!cell?.obj?.data) throw new Error('Open a single atomic structure before selecting a spectrum atom.');
+      const ancestors = [];
+      for (let item = cell; item;) {
+        ancestors.push({ cell: item, object: item.obj, data: item.obj?.data, version: item.transform.version });
+        if (item.transform.parent === item.transform.ref) break;
+        item = plugin.state.data.cells.get(item.transform.parent);
+      }
+      let revoked = false;
+      const current = () => !revoked && request === geometryPreviewRequest && viewer === activeMolstarViewer() && !plugin.disposed
+        && plugin.managers.structure.hierarchy.current.structures.length === 1 && plugin.managers.structure.hierarchy.current.structures[0].cell === cell
+        && ancestors.every(item => plugin.state.data.cells.get(item.cell.transform.ref) === item.cell
+          && item.cell.obj === item.object && item.cell.obj?.data === item.data && item.cell.transform.version === item.version);
+      const changed = plugin.state.data.events.changed.subscribe({ next: () => { if (!current()) revoked = true; }, complete: () => { revoked = true; } });
+      const selected = plugin.managers.structure.selection.events.changed.subscribe(() => { revoked = true; });
+      const cancel = event => {
+        if (requestOwner && event.source === requestOwner.source && event.data?.source === 'burette-agent-host'
+          && event.data.body?.type === 'agent-action-cancel' && event.data.body.id === requestOwner.id) revoked = true;
+      };
+      window.addEventListener('message', cancel);
+      try {
+        if (!window.BuretteGeometryPreview) {
+          geometryPreviewLoading ||= loadScript(runtimeURL('BuretteGeometryPreviewURL', './geometry-preview.js'), 'geometry preview', 10000)
+            .finally(() => { geometryPreviewLoading = null; });
+          await geometryPreviewLoading;
+        }
+        return await window.BuretteGeometryPreview.selectSourceAtom(viewer, action, { cell, ancestors, current });
+      } finally { changed.unsubscribe(); selected.unsubscribe(); window.removeEventListener('message', cancel); }
     }
     if (type === 'preview_geometry') {
       const request = ++geometryPreviewRequest;
@@ -1732,7 +1764,7 @@
     void (async () => {
       let result;
       try {
-        result = await executeBuretteAgentAction(body.action);
+        result = await executeBuretteAgentAction(body.action, { id: body.id, source: event.source });
       } catch (error) {
         const actionType = String(body.action?.type || 'unknown');
         result = agentActionFailure(actionType, 'ACTION_ERROR', error && error.message || String(error));

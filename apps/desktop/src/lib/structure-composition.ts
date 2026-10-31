@@ -26,6 +26,7 @@ export type CompositionSceneEdit =
   | { operation: "color"; value: string };
 
 export type StructureViewerAction =
+  | { type: "select_source_atom"; sourceSha256: string; frameIndex: number; frameCount: number; atomIndex: number; label: string; notify: false }
   | { type: "scalar_field_binding"; expected: ScalarSourceIdentity; label: string; notify: false }
   | { type: "scalar_field_validate"; lease: string; label: string; notify: false }
   | { type: "show_scalar_field"; lease: string; label: string; cube: string; isovalue: number; signed: boolean; alpha?: number; notify: false }
