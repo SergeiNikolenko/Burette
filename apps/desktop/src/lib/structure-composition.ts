@@ -1,3 +1,4 @@
+import type { ScalarSourceIdentity } from "./workbench/scalar-source";
 export type StructureSummaryRow = {
   label: string;
   value: string;
@@ -25,7 +26,9 @@ export type CompositionSceneEdit =
   | { operation: "color"; value: string };
 
 export type StructureViewerAction =
-  | { type: "show_scalar_field"; label: string; cube: string; isovalue: number; signed: boolean; alpha?: number; notify: false }
+  | { type: "scalar_field_binding"; expected: ScalarSourceIdentity; label: string; notify: false }
+  | { type: "scalar_field_validate"; lease: string; label: string; notify: false }
+  | { type: "show_scalar_field"; lease: string; label: string; cube: string; isovalue: number; signed: boolean; alpha?: number; notify: false }
   | { type: "geometry_binding"; label: string; notify: false }
   | { type: "update_geometry"; label: string; text: string; lease: string; notify: false }
   // Model-local atom_index values, matching the viewer selection contract.

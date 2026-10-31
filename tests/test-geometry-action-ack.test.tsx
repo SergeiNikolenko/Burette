@@ -177,7 +177,7 @@ test('typed binding read forwards its abort signal without changing the fourth t
 
 test('scalar field sender preserves captured scene identity and forwards cancellation', async () => {
   const f = await fixture();
-  const field = { type: 'show_scalar_field', label: 'Density', cube: '', isovalue: 0.02, signed: false, notify: false } as const;
+  const field = { type: 'show_scalar_field', lease: 'test-native-source-receipt', label: 'Density', cube: '', isovalue: 0.02, signed: false, notify: false } as const;
   try {
     const target = captureViewerActionTarget(f.doc.id)!;
     const abort = new AbortController();
@@ -195,7 +195,7 @@ test('scalar field ACK rejects a changed source and read-only transition', async
   for (const change of ['source', 'readOnly']) {
     const f = await fixture();
     try {
-      const field = { type: 'show_scalar_field', label: 'Orbital', cube: '', isovalue: 0.03, signed: true, notify: false } as const;
+      const field = { type: 'show_scalar_field', lease: 'test-native-source-receipt', label: 'Orbital', cube: '', isovalue: 0.03, signed: true, notify: false } as const;
       const target = captureViewerActionTarget(f.doc.id)!;
       const pending = Promise.resolve(f.api.runStructureViewerAction(f.doc, field, { target }));
       const result = pending.then(() => 'unexpected success', (error: Error) => error.message);

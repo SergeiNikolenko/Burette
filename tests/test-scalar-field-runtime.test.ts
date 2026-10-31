@@ -1,3 +1,5 @@
+import { scalarSourceIdentity } from "../apps/desktop/src/lib/workbench/scalar-source";
+import { parseScientificFile } from "../apps/desktop/src/lib/molecular-workbench/quantum";
 import { plugin as installPlugin } from 'bun';
 import { afterAll, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -25,13 +27,16 @@ async function setup() {
  const model = await plugin.builders.structure.createModel(trajectory); await plugin.builders.structure.createStructure(model);
  const viewer = { plugin }; let active = viewer, load: ReturnType<typeof gate> | undefined;
  const scope: any = { molstar: { lib: { plugin: { StateTransforms } } } };
- vm.runInNewContext(readFileSync(new URL('../PreviewExtension/Web/geometry-preview.js', import.meta.url), 'utf8'), { window: scope });
+ vm.runInNewContext(readFileSync(new URL('../PreviewExtension/Web/geometry-preview.js', import.meta.url), 'utf8'), { window: scope, crypto, TextEncoder, DataView, Uint8Array });
  const helper = scope.BuretteGeometryPreview;
  const source = readFileSync(new URL('../PreviewExtension/Web/viewer.js', import.meta.url), 'utf8');
- const start = source.indexOf("    if (type === 'show_scalar_field') {");
+ const start = source.indexOf("    if (type === 'show_scalar_field' || type === 'scalar_field_binding' || type === 'scalar_field_validate') {");
  const branch = source.slice(start, source.indexOf("    if (type === 'preview_geometry') {", start));
- const send = new Function('window', 'activeMolstarViewer', 'loadScript', 'runtimeURL', `let scalarFieldRequest = 0, geometryPreviewLoading = null; return async action => { const type = action.type; ${branch} };`)(scope, () => active, async () => { const hold = load; hold?.enter(); await hold?.held; scope.BuretteGeometryPreview = helper; }, () => 'geometry-preview.js');
- return { plugin, raw, scope, helper, send, active: (value: typeof viewer) => active = value, delay: () => { scope.BuretteGeometryPreview = undefined; load = gate(); return load; }, close: () => plugin.dispose() };
+ const execute = new Function('window', 'activeMolstarViewer', 'loadScript', 'runtimeURL', `let scalarFieldRequest = 0, scalarBindingRequest = 0, geometryPreviewLoading = null; return async action => { const type = action.type; ${branch} };`)(scope, () => active, async () => { const hold = load; hold?.enter(); await hold?.held; scope.BuretteGeometryPreview = helper; }, () => 'geometry-preview.js');
+ let lease = (await execute({ type: 'scalar_field_binding', expected: await scalarSourceIdentity(input, '1\nsource\nH 0 0 0\n', 'xyz') })).result.lease;
+ const send = (action: object) => execute({ ...action, lease });
+ const bindCube = async () => { lease = (await execute({ type: 'scalar_field_binding', expected: await scalarSourceIdentity(parseScientificFile('source.cube', cube), cube, 'cube') })).result.lease; };
+ return { plugin, raw, scope, helper, send, bindCube, active: (value: typeof viewer) => active = value, delay: () => { scope.BuretteGeometryPreview = undefined; load = gate(); return load; }, close: () => plugin.dispose() };
 }
 const action = (text = cube, signed = true) => ({ type: 'show_scalar_field', label: 'Orbital', cube: text, isovalue: 0.03, signed, notify: false });
 const fields = (plugin: InstanceType<typeof PluginContext>) => [...plugin.state.data.cells.values()].filter(cell => cell.transform.tags?.includes('burette-scalar-field'));
@@ -149,6 +154,7 @@ test('a Cube-only volume source owns its derived surface through isovalue, hide 
   await view.plugin.clear();const source = await view.plugin.builders.data.rawData({data:cube});
   await view.plugin.state.data.build().to(source).apply(StateTransforms.Data.ParseCube).apply(StateTransforms.Volume.VolumeFromCube).commit();
   expect(view.plugin.managers.structure.hierarchy.current.structures.length).toBe(0);
+  await view.bindCube();
   await view.send(action());expect(fields(view.plugin).length).toBe(1);
   await view.send({...action(),isovalue:0.05});expect(fields(view.plugin).length).toBe(1);
   await view.send(action(''));expect(fields(view.plugin).length).toBe(0);expect(view.plugin.managers.volume.hierarchy.current.volumes.length).toBe(1);

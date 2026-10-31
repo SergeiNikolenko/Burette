@@ -687,7 +687,7 @@
   }
 
   let geometryPreviewRequest = 0;
-  let scalarFieldRequest = 0;
+  let scalarFieldRequest = 0, scalarBindingRequest = 0;
   let geometryPreviewLoading = null;
   async function executeBuretteAgentAction(action) {
     const type = String(action?.type || '');
@@ -844,8 +844,10 @@
       }
       return window.BuretteGeometryPreview.update(viewer, action, owner);
     }
-    if (type === 'show_scalar_field') {
-      const request = ++scalarFieldRequest, viewer = activeMolstarViewer();
+    if (type === 'show_scalar_field' || type === 'scalar_field_binding' || type === 'scalar_field_validate') {
+      const viewer = activeMolstarViewer();
+      const request = type === 'show_scalar_field' ? ++scalarFieldRequest : scalarFieldRequest;
+      const bindingRequest = type === 'scalar_field_binding' ? ++scalarBindingRequest : scalarBindingRequest;
       const sourceCell = () => {
         const plugin = viewer?.plugin;
         const volumes = plugin?.managers.volume.hierarchy.current.volumes.filter(volume => {
@@ -864,11 +866,31 @@
       const current = () => Boolean(data && !viewer.plugin.disposed && request === scalarFieldRequest && viewer === activeMolstarViewer()
         && sourceCell() === cell && cell.obj?.data === data && cell.transform.version === version);
       if (!current()) throw new Error('Open a single structure before displaying a scalar field.');
+      const ancestors = [];
+      for (let ancestor = cell; ancestor;) {
+        ancestors.push({ cell: ancestor, data: ancestor.obj?.data, version: ancestor.transform.version });
+        if (ancestor.transform.ref === ancestor.transform.parent) break;
+        ancestor = viewer.plugin.state.data.cells.get(ancestor.transform.parent);
+      }
+      let revoked = false;
+      const owned = () => !revoked && bindingRequest === scalarBindingRequest && viewer === activeMolstarViewer() && !viewer.plugin.disposed && sourceCell() === cell
+        && ancestors.every(entry => viewer.plugin.state.data.cells.get(entry.cell.transform.ref) === entry.cell
+          && entry.cell.obj?.data === entry.data && entry.cell.transform.version === entry.version);
+      const subscription = type === 'scalar_field_binding' ? viewer.plugin.state.data.events.changed.subscribe({
+        next: () => { if (!owned()) revoked = true; }, complete: () => { revoked = true; },
+      }) : null;
+      const dispose = () => { revoked = true; subscription?.unsubscribe(); };
+
+      try {
       if (!window.BuretteGeometryPreview) {
         if (!geometryPreviewLoading) geometryPreviewLoading = loadScript(runtimeURL('BuretteGeometryPreviewURL', './geometry-preview.js'), 'geometry preview', 10000).finally(() => { geometryPreviewLoading = null; });
         await geometryPreviewLoading;
       }
-      return window.BuretteGeometryPreview.field(viewer, action, current);
+      if (type === 'scalar_field_binding') return await window.BuretteGeometryPreview.bindField(viewer, action.expected, { cell, ancestors, current: owned, dispose });
+      const binding = window.BuretteGeometryPreview.fieldBinding(viewer, action.lease);
+      if (type === 'scalar_field_validate') return { ok: true };
+      return await window.BuretteGeometryPreview.field(viewer, action, () => current() && binding());
+      } catch (error) { dispose(); throw error; }
     }
     if (type === 'preview_geometry') {
       const request = ++geometryPreviewRequest;

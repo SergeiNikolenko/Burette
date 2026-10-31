@@ -182,5 +182,69 @@
     state.pending = run;
     return run.then(() => ({ ok: true }));
   }
-  window.BuretteGeometryPreview = { apply, update, field };
+  const bindings = new WeakMap();
+  const sourceChanged = () => Object.assign(new Error('The scalar field source changed. Recalculate the field.'), { name: 'AbortError' });
+  const digest = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), value => value.toString(16).padStart(2, '0')).join('');
+  const floatBytes = values => {
+    const bytes = new Uint8Array(values.length * 4), view = new DataView(bytes.buffer);
+    for (let index = 0; index < values.length; index++) view.setFloat32(index * 4, values[index], true);
+    return bytes;
+  };
+
+  async function bindField(viewer, expected, owner) {
+    const plugin = viewer.plugin;
+    const previous = bindings.get(plugin); previous?.dispose(); bindings.delete(plugin);
+    const fail = message => { throw new Error(message); };
+    try {
+      const sha = value => typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value);
+      if (!expected || !['atoms', 'cube'].includes(expected.kind) || !sha(expected.geometrySha256)
+        || !sha(expected.decodedSourceSha256)) fail('Invalid scalar source identity.');
+      const cell = owner.cell, data = cell.obj.data;
+      const raw = owner.ancestors.find(entry => entry.cell.transform.transformer === window.molstar.lib.plugin.StateTransforms.Data.RawData);
+      {
+        if (typeof raw?.data !== 'string' || raw.data.length > 32 * 1024 * 1024
+          || await digest(new TextEncoder().encode(raw.data)) !== expected.decodedSourceSha256) fail('The displayed source differs from the scientific source.');
+      }
+      if (expected.kind === 'atoms') {
+        if (!Number.isInteger(expected.atomCount) || expected.atomCount < 1 || expected.atomCount > 10000
+          || data.elementCount !== expected.atomCount || data.models?.length !== 1) fail('The displayed atoms differ from the scientific source.');
+        const atoms = new Array(expected.atomCount), point = [0, 0, 0];
+        for (const unit of data.units) {
+          if (unit.kind !== 0) fail('The displayed source is not an atomic structure.');
+          for (const index of unit.elements) {
+            if (index < 0 || index >= atoms.length || atoms[index]) fail('The displayed atom order is ambiguous.');
+            unit.conformation.position(index, point);
+            atoms[index] = [unit.model.atomicHierarchy.atoms.type_symbol.value(index).toUpperCase(), ...point.map(Math.fround)];
+          }
+        }
+        if (Array.from(atoms).some(atom => !atom) || await digest(new TextEncoder().encode(JSON.stringify(atoms))) !== expected.geometrySha256) fail('The displayed geometry differs from the scientific source.');
+      } else {
+        const grid = data.grid, dimensions = grid?.cells?.space?.dimensions;
+        if (data.sourceData?.kind !== 'cube' || !expected.decodedSourceSha256 || !sha(expected.valuesSha256)
+          || !Array.isArray(expected.dimensions) || expected.dimensions.length !== 3
+          || !expected.dimensions.every(value => Number.isSafeInteger(value) && value > 0)
+          || expected.dimensions.reduce((a, b) => a * b, 1) > 1000000
+          || !Array.isArray(expected.matrix) || expected.matrix.length !== 16 || !expected.matrix.every(Number.isFinite)
+          || !dimensions || dimensions.some((value, index) => value !== expected.dimensions[index])
+          || grid.transform.kind !== 'matrix' || data.instances?.some(instance => instance.transform.some((value, index) => value !== (index % 5 === 0 ? 1 : 0)))) fail('The displayed Cube differs from the scientific source.');
+        // Mol* and the scientific reader use published bohr factors differing by 8.3e-11 relative.
+        if (grid.transform.matrix.some((value, index) => Math.abs(value - expected.matrix[index]) > 1e-9 * Math.max(1, Math.abs(value), Math.abs(expected.matrix[index])))
+          || await digest(floatBytes(grid.cells.data)) !== expected.valuesSha256) fail('The displayed Cube grid differs from the scientific source.');
+        const header = data.sourceData.data.header;
+        if (await digest(new TextEncoder().encode(JSON.stringify([expected.dimensions, expected.matrix]))) !== expected.geometrySha256
+          || header.dataSetIds.length !== 1) fail('The scalar source grid identity is invalid.');
+      }
+      if (!owner.current()) throw sourceChanged();
+      const binding = { lease: crypto.randomUUID(), current: owner.current, dispose: owner.dispose };
+      bindings.set(plugin, binding);
+      return { ok: true, result: { lease: binding.lease } };
+    } catch (error) { owner.dispose(); throw error; }
+  }
+
+  function fieldBinding(viewer, lease) {
+    const binding = bindings.get(viewer?.plugin);
+    if (typeof lease !== 'string' || !binding || binding.lease !== lease || !binding.current()) throw sourceChanged();
+    return binding.current;
+  }
+  window.BuretteGeometryPreview = { apply, update, field, bindField, fieldBinding };
 })();

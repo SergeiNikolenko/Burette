@@ -1,0 +1,18 @@
+{
+  "extends": "../apps/desktop/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": [
+    "../apps/desktop/src/**/*.d.ts",
+    "../apps/desktop/src/lib/workbench/scalar-source.ts",
+    "./test-scalar-source-binding.test.ts",
+    "./test-scalar-field-runtime.test.ts",
+    "./review-scalar-field-input.test.ts",
+    "./review-scalar-success-lifetime.test.ts",
+    "./test-geometry-action-ack.test.tsx"
+  ]
+}

@@ -134,3 +134,5 @@ contains only documents that describe the active project.
   active docs graph.
 - Verify doc claims against code, scripts, or runtime output before changing
   docs.
+
+- [Scalar field source ownership](scalar-field-binding.md): scientific/native source correspondence and retained calculation receipts.
