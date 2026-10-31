@@ -40,7 +40,10 @@ Each source/frame change remounts its owner; each settings change aborts the pri
 worker. A retired worker cannot publish after replacement or Cancel. Retry starts
 a new request. The plot has keyboard Home/End/arrow selection linked to exact
 source-row IDs, with source-atom labels for NMR. Selection here is within the
-spectrum and its source table; native molecular focus is not yet connected.
+spectrum and its source table. For a frame-scoped NMR dataset owned by the current
+XYZ source, these gestures also select the exact source atom in Mol*. The existing
+source/viewer target and native trajectory address must remain current; see
+[spectrum atom selection](spectrum-atom-selection.md).
 
 `test:scientific-spectra-panel` uses compiled React components, real workers, real
 ORCA NMR input, source/frame replacement, explicit companion data, exports and

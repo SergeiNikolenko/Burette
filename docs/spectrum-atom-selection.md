@@ -26,3 +26,24 @@ mapping, panel activation and actual Browser acceptance require separate stages.
 native selection state, including source/frame mismatch, replacement, edit/Undo
 and competing native/row gestures. The runtime test uses the real minimized
 660-byte ORCA NMR fixture; it does not substitute a fabricated producer table.
+
+## Spectra consumer
+
+The Spectra dock prepares the exact source digest before a row gesture. Table,
+plot and keyboard choices share the NMR `atomIndices` address. The source panel
+remains reusable without a molecular viewer through its optional selection
+callback. The dock activates that callback only through the current source owner,
+source-editing operation and captured viewer target. Unmount, source/frame change
+and a newer gesture cancel the prior request. Current errors remain actionable;
+retired responses cannot publish into the new panel. The exact registered revision
+is a subscribed owner; a request-local source-store listener revokes a pending
+request on intermediate revision replacement, including a rollback before React
+commits. Unrelated documents do not cancel the current selection.
+
+The current consumer binds registered, frame-scoped NMR data to materialized XYZ.
+`useSceneSpectra` exposes `text` and a separate `nativeFrame`: a scientific final
+frame maps to native 0/1, while a steps document requires the exact reported
+trajectory. File-scoped graph NMR and MOL addressing require their paired graph
+mapping stage. Ordinary ORCA NMR is covered by the real compiled panel/worker,
+request/ack transport and native Mol* selection test; actual Browser remains a
+separate acceptance lane.

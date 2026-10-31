@@ -18,5 +18,6 @@ export function useSceneSpectra(document: ViewerDocument | null) {
     ...(frame?.spectra?.spectra.length ? [{ key: `frame-${index}`, label: `Frame ${index + 1}`, data: frame.spectra }] : []),
     ...(frame?.mcdCompanion?.spectra.spectra.length ? [{ key: `companion-${index}`, label: frame.mcdCompanion.spectra.source.name, data: frame.mcdCompanion.spectra }] : []),
   ];
-  return { science, index, sources };
+  const nativeFrame = sourceExtension(document) !== "xyz" || index < 0 ? null : final ? { frameIndex: 0, frameCount: 1 } : trajectory?.frameCount === science.frames.length ? trajectory : null;
+  return { science, index, sources, text, nativeFrame };
 }

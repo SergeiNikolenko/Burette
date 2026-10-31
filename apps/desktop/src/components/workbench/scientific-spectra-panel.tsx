@@ -19,9 +19,10 @@ const LABELS: Record<AdditionalSpectrumKind, string> = { vcd: "VCD", mcd: "MCD",
 const ROWS_PER_PAGE = 50;
 type Source = { key: string; label: string; data: ScientificSpectra };
 type Actions = Pick<ShellActions, "saveKetcherExportFile">;
+type AtomSelection = { onSelectAtom?: (data: ScientificSpectra, atomIndex: number) => void };
 
 /** Sources remain explicit: a file-wide dataset is never silently substituted for a frame. */
-export function ScientificSpectraPanel({ sources, actions }: { sources: Source[]; actions: Actions }) {
+export function ScientificSpectraPanel({ sources, actions, onSelectAtom }: { sources: Source[]; actions: Actions } & AtomSelection) {
   const [chosen, setChosen] = useState(sources[0]?.key);
   const source = sources.find(value => value.key === chosen) ?? sources[0];
   if (!source) return null;
@@ -29,11 +30,11 @@ export function ScientificSpectraPanel({ sources, actions }: { sources: Source[]
     {sources.length > 1 ? <NativeSelect size="sm" aria-label="Spectrum source" value={source.key} onChange={event => setChosen(event.currentTarget.value)}>
       {sources.map(value => <NativeSelectOption key={value.key} value={value.key}>{value.label}</NativeSelectOption>)}
     </NativeSelect> : null}
-    <SourceSpectra key={source.key} data={source.data} actions={actions} />
+    <SourceSpectra key={source.key} data={source.data} actions={actions} onSelectAtom={onSelectAtom} />
   </div>;
 }
 
-function SourceSpectra({ data, actions }: { data: ScientificSpectra; actions: Actions }) {
+function SourceSpectra({ data, actions, onSelectAtom }: { data: ScientificSpectra; actions: Actions } & AtomSelection) {
   const [chosen, setChosen] = useState<AdditionalSpectrumKind>(data.spectra[0].kind);
   const spectrum = data.spectra.find(value => value.kind === chosen) ?? data.spectra[0];
   const elements = spectrum.kind === "nmr" ? [...new Set(spectrum.atomIndices.map(index => data.atomicNumbers[index]))].sort((a, b) => a - b) : [];
@@ -49,12 +50,12 @@ function SourceSpectra({ data, actions }: { data: ScientificSpectra; actions: Ac
         {elements.map(value => <NativeSelectOption key={value} value={value}>{ELEMENT_SYMBOLS[value - 1]}</NativeSelectOption>)}
       </NativeSelect> : null}
     </div>
-    <SpectrumView key={`${spectrum.kind}:${atomicNumber ?? ""}`} data={data} selection={selection} actions={actions} />
+    <SpectrumView key={`${spectrum.kind}:${atomicNumber ?? ""}`} data={data} selection={selection} actions={actions} onSelectAtom={onSelectAtom} />
   </>;
 }
 
 type Run = { request: ScientificSpectrumRequest; plot: ScientificSpectrumPlot | null; status: "running" | "ready" | "cancelled" | "error"; error: string | null };
-function SpectrumView({ data, selection, actions }: { data: ScientificSpectra; selection: SpectralPlotSelection; actions: Actions }) {
+function SpectrumView({ data, selection, actions, onSelectAtom }: { data: ScientificSpectra; selection: SpectralPlotSelection; actions: Actions } & AtomSelection) {
   const [options, setOptions] = useState(() => spectralPlotDefaults(selection));
   const [showRaw, setShowRaw] = useState(true), [selected, setSelected] = useState<string | null>(null), [page, setPage] = useState(0), [retry, setRetry] = useState(0);
   const [run, setRun] = useState<Run | null>(null), [saveError, setSaveError] = useState<string | null>(null);
@@ -82,7 +83,7 @@ function SpectrumView({ data, selection, actions }: { data: ScientificSpectra; s
   const rows = plot?.sourceRowIndices ?? [];
   const id = (row: number) => spectrum.kind === "nmr" ? `atom:${spectrum.atomIndices[row]}` : spectrum.sourceRowIds?.[row] ?? `row:${row}`;
   const label = (row: number) => spectrum.kind === "nmr" ? `${ELEMENT_SYMBOLS[data.atomicNumbers[spectrum.atomIndices[row]] - 1]}${spectrum.atomIndices[row] + 1}` : spectrum.sourceRowIds?.[row] ?? String(row + 1);
-  const choose = (row: number) => { setSelected(id(row)); setPage(Math.floor(rows.indexOf(row) / ROWS_PER_PAGE)); };
+  const choose = (row: number) => { setSelected(id(row)); setPage(Math.floor(rows.indexOf(row) / ROWS_PER_PAGE)); if (spectrum.kind === "nmr") onSelectAtom?.(data, spectrum.atomIndices[row]); };
   const low = Math.min(options.axisStart, options.axisEnd), high = Math.max(options.axisStart, options.axisEnd);
   const peaks = plot ? plot.peaks.map((peak, index) => ({ ...peak, row: rows[index] })).filter(peak => peak.center >= low && peak.center <= high)
     .sort((a, b) => Math.sign(options.axisEnd - options.axisStart) * (a.center - b.center)) : [];
