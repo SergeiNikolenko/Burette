@@ -1,3 +1,4 @@
+import type { ImportedRevision } from "../workbench/scientific-source-state";
 import type { GeometryBinding } from "../geometry-binding";
 import type { TextFileSaveOutcome } from "../file-export";
 import type { DockTabKind } from "../dock";
@@ -35,8 +36,16 @@ export type SourceEditingWindowDirtySnapshot = {
   closeTransitionActive: boolean;
 };
 
+/** A prepared edit retains its original renderer receipt; it never reads a replacement owner. */
+export type PreparedGeometryTopology = Readonly<{
+  fromText: string; text: string; rendererViewState: string; selection: readonly number[];
+  canPublish: () => boolean;
+  validate: (isCurrent: () => boolean, signal?: AbortSignal) => Promise<void>;
+  accepted: () => void;
+}>;
+
 /** Acknowledged geometry edits avoid staging; graph edits may retain the current camera. */
-export type DraftUpdateOptions = { previewApplied: true } | { view: "keep" };
+export type DraftUpdateOptions = { previewApplied: true; geometryBinding?: GeometryBinding } | { view: "keep"; geometryBinding?: GeometryBinding; topology?: PreparedGeometryTopology };
 
 /** A pending edit retains its document/source lifetime until release or successful close. */
 /** Reuse the editor baseline captured before its transient Geometry preview. */
@@ -61,6 +70,7 @@ export type SourceEditingContextValue = {
   sessionForDocument: (document: ViewerDocument | null) => SourceEditingView | null;
   captureOperation: (document: ViewerDocument) => SourceEditingOperation;
   beginEditing: (document: ViewerDocument, revealTab?: DockTabKind, options?: SourceEditingBeginOptions) => void | Promise<void>;
+  prepareGeometryTopology?: (document: ViewerDocument, target: ImportedRevision, binding: GeometryBinding) => Promise<PreparedGeometryTopology>;
   updateDraft: (document: ViewerDocument, content: string, options?: DraftUpdateOptions) => void;
   applyPreview: (document: ViewerDocument) => void | Promise<void>;
   save: (document: ViewerDocument) => void | Promise<void>;
