@@ -1,6 +1,15 @@
 {
   "extends": "../tsconfig.json",
-  "compilerOptions": {"types":["bun"]},
-  "files":["test-retired-geometry-action-status.test.tsx"],
-  "include":["../apps/desktop/src/**/*.d.ts"]
+  "compilerOptions": {
+    "types": [
+      "bun"
+    ]
+  },
+  "files": [
+    "test-retired-geometry-action-status.test.tsx",
+    "review-scalar-retired-status.test.tsx"
+  ],
+  "include": [
+    "../apps/desktop/src/**/*.d.ts"
+  ]
 }

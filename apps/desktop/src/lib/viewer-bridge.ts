@@ -111,7 +111,9 @@ export async function requestViewerAction(documentId: string, action: Record<str
   const source = target.source;
   const id = `workspace-${crypto.randomUUID()}`;
   return new Promise<Record<string, unknown>>((resolve, reject) => {
-    const status = action.type === "geometry_binding" ? retainGeometryActionStatus(id, target, timeoutMs) : null;
+    const status = action.type === "geometry_binding" || action.type === "scalar_field_binding"
+      || action.type === "scalar_field_validate" || action.type === "show_scalar_field"
+      ? retainGeometryActionStatus(id, target, timeoutMs) : null;
     const finish = (retired = false) => { if (retired) status?.retire(); else status?.settle(); window.clearTimeout(timer); window.removeEventListener("message", receive); signal?.removeEventListener("abort", abort); };
     const abort = () => { finish(true); reject(new DOMException("Viewer request cancelled.", "AbortError")); };
     const receive = (event: MessageEvent) => {
