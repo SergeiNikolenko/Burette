@@ -110,6 +110,12 @@ do not invent a second local session protocol.
 | `browser-preview` | The user needs tokenized typed observe/act against a preview surface. | Prints the session URL; the Browser plugin navigates it. |
 | `desktop-app` | The user explicitly asks for packaged/native app behavior. | Requires the installed app and a desktop agent session. `--no-launch` skips launching the app when it is already running. |
 
+Tokenized previews route `.cube` and `.cub` through Mol*'s native Cube volume
+provider, retaining its atom structure and dataset controls. Cube payloads remain
+text; CCP4/MRC and MTZ payloads remain binary. Run `vp run test:cube-preview-route`
+for the actual HTTP-to-viewer/native-provider startup check. This route is separate
+from the workbench scientific importer and does not add native dataset Undo UI.
+
 Browser means the in-app Browser plugin unless the user explicitly asks for an
 external browser. Computer/native UI control is a QA fallback, not the primary
 state channel.

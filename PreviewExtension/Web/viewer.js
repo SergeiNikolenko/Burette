@@ -13647,10 +13647,10 @@ SOFTWARE.
         mvsKind: normalized === 'mvsj' ? molViewSpecJsonKind(data) : null
       };
     }
-    if (normalized === 'ccp4' || normalized === 'mtz') {
+    if (normalized === 'ccp4' || normalized === 'mtz' || normalized === 'cube') {
       return {
         kind: 'volume',
-        data: rawStructureData({ ...config, binary: true }),
+        data: rawStructureData({ ...config, binary: normalized !== 'cube' }),
         format: normalized,
         label: config.label || 'density map'
       };
