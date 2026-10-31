@@ -1,4 +1,5 @@
 import { ExtensionMap } from 'molstar/lib/apps/viewer/extensions.js';
+import { FocusLoci, DefaultFocusLociBindings } from 'molstar/lib/mol-plugin/behavior/dynamic/camera.js';
 import { PluginBehavior } from 'molstar/lib/mol-plugin/behavior.js';
 import { StateTransformer } from 'molstar/lib/mol-state/index.js';
 import { DefaultPluginSpec } from 'molstar/lib/mol-plugin/spec.js';
@@ -165,6 +166,15 @@ function nativeDefault(value, base) {
   object(value, Object.keys(base));
   return Object.keys(base).every(key => nativeDefault(value[key], base[key]));
 }
+// Burette's context menu owns secondary clicks; retain only its exact native-default derivative.
+const contextFocusBindings = PD.clone(Object.fromEntries(Object.entries(DefaultFocusLociBindings).map(([name, binding]) => [name, {
+  ...binding, triggers: binding.triggers.filter(trigger => !(Number(trigger.buttons) & 2)),
+}])));
+function behaviorParameter(transformer, key, param, value) {
+  if (transformer === FocusLoci && key === 'bindings' && nativeDefault(value, contextFocusBindings)) return copy(value);
+  json(value);
+  return parameter(param, value, false, { nodes: 0 }, 0);
+}
 function behaviorState(plugin) {
   const state = plugin.state.behaviors, root = state.tree.root, categories = PluginBehavior.Categories;
   const catalog = nativeBehaviors.filter(b => state.cells.has(b.transformer.id));
@@ -186,12 +196,12 @@ function behaviorState(plugin) {
     const base = PD.getDefaultValues(schema);
     // These dynamic provider trees require their own provider-identity transfer contract.
     for (const name of ['targetParams', 'surroundingsParams', 'nciParams']) if (name in base && !deepEqual(cell.params.values[name], base[name])) fail('Custom native focus representation providers cannot be retained.');
-    schemas[transformer.id] = { schema, base };
+    schemas[transformer.id] = { transformer, schema, base };
     object(cell.params.values, Object.keys(schema));
     if (Object.keys(schema).some(key => !Object.hasOwn(cell.params.values, key) && base[key] !== undefined)) fail('Native behavior parameters are incomplete.');
     const changes = {};
     for (const [key, value] of Object.entries(cell.params.values)) if (!deepEqual(value, base[key]) && !(schema[key].type === 'value' && nativeDefault(value, base[key]))) {
-      json(value); changes[key] = parameter(schema[key], value, false, { nodes: 0 }, 0);
+      changes[key] = behaviorParameter(transformer, key, schema[key], value);
     }
     if (Object.keys(changes).length) values[transformer.id] = changes;
   }
@@ -245,10 +255,10 @@ function prepare(plugin, value) {
   const snapshots = snapshotOwner(plugin), animation = animationOwner(plugin), native = nativeOwners(plugin), behaviors = behaviorState(plugin), values = validateData(value);
   if (!deepEqual(value.behaviorCatalog, behaviors.catalog)) fail('The candidate native behavior catalog differs.');
   const behaviorParams = {};
-  for (const [id, { schema, base }] of Object.entries(behaviors.schemas)) {
+  for (const [id, { transformer, schema, base }] of Object.entries(behaviors.schemas)) {
     const changes = value.behaviorDelta[id] || {}, params = PD.clone(base);
     object(changes, Object.keys(schema));
-    for (const [key, entry] of Object.entries(changes)) params[key] = parameter(schema[key], entry, false, { nodes: 0 }, 0);
+    for (const [key, entry] of Object.entries(changes)) params[key] = behaviorParameter(transformer, key, schema[key], entry);
     for (const name of ['targetParams', 'surroundingsParams', 'nciParams']) if (name in base && !deepEqual(params[name], base[name])) fail('Custom native focus representation providers cannot be retained.');
     behaviorParams[id] = params;
   }

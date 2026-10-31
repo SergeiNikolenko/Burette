@@ -271,7 +271,7 @@
     "check:measurement-group-source-pair": "tsc --noEmit --pretty false -p tests/tsconfig.measurement-group-source-pair.json",
     "test:xyz-topology-scene": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-scene.mjs",
     "test:xyz-topology-environment": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-environment.mjs && bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-environment-animation.mjs && bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-environment-native-owners.mjs && bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-environment-behaviors.mjs",
-    "test:xyz-topology-viewer-default": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-viewer-default.mjs",
+    "test:xyz-topology-viewer-default": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-viewer-default.mjs && bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-app-bindings.mjs",
     "test:native-behavior-scene-export": "bun --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-native-behavior-scene-export.mjs",
     "test:built-topology-cube": "bun tests/test-built-molstar-topology-cube.mjs",
     "test:xyz-topology-receiver": "bun test --preload ./tests/fixtures/molstar-state-preload.mjs tests/test-xyz-topology-viewer-routes.test.mjs",

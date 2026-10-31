@@ -106,6 +106,13 @@ distance arithmetic. Probe/grid traversal, distances and group assignments stay
 unchanged. `bun tests/test-molstar-surface-loop.mjs` compares fields and meshes
 bit-for-bit with upstream, including sparse selections and cancellation.
 
+`molstar-topology-environment.js` retains the exact native-default camera bindings
+with secondary-button triggers removed by Burette's context menu. Other authored
+bindings remain unsupported. `vp run test:xyz-topology-viewer-default` executes
+the real app binding setup, native scene/MOLX roundtrips and continued topology
+restoration, including read-only rejection of unknown bindings. Rebuild Mol* and
+the agent-shell mirror after changing this module; Browser acceptance is separate.
+
 Scripts such as `dev-namespace.mjs`, `preview-content-type.mjs`,
 `patch-web-assets.sh`, vendor scripts, and release signing helpers are
 implementation details for the public commands above. Use them directly only
