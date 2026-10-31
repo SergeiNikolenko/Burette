@@ -36,6 +36,25 @@ Mol* interactive preview is used for:
   coordinate pairs (for example XTC/TRR next to a topology), and trajectories
   without a topology through synthetic topology generation
 
+### Cube coordinate units
+
+The [Cube format](https://paulbourke.net/dataformats/cube/) uses signed voxel
+counts. The pinned Mol* reader applies this consistently: three positive
+counts declare Bohr, three negative counts declare Angstrom. The same scale
+applies to the origin, oblique voxel axes and atom coordinates. Mixed signs,
+zero counts and nonintegral counts are rejected before a field is produced.
+The atom-count sign remains the orbital-dataset flag and does not choose units.
+The source-owned `molstar-cube-units.mjs` adapter is applied to both interactive
+Mol* and Mesoscale builds; it refuses an unexpected upstream version or shape.
+
+`test:molstar-cube-units` covers actual native atom/volume construction and the
+scientific reader. The native Cube dataset selector deinterleaves each voxel's values using the
+selected index as the offset and the number of datasets as the stride. Out-of-range
+and nonintegral indices fail before a volume is produced. `test:molstar-cube-datasets`
+covers all three fields, native state selection/Undo and unchanged single-field
+output. The scientific single-field import still rejects multi-field files. These checks and generated
+bundle builds do not establish packaged, Quick Look or browser UI acceptance.
+
 ### Scientific files in the browser
 
 Ordinary Open, project-folder selection and file drop classify scientific files
