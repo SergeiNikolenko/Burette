@@ -1,8 +1,11 @@
+import { DefaultPluginSpec } from 'molstar/lib/mol-plugin/spec.js';
+import { AnimateModelIndex } from 'molstar/lib/mol-plugin-state/animation/built-in/model-index.js';
 import { Canvas3DParams, Canvas3DContext } from 'molstar/lib/mol-canvas3d/canvas3d.js';
 import { ParamDefinition as PD } from 'molstar/lib/mol-util/param-definition.js';
 import { deepEqual } from 'molstar/lib/mol-util/index.js';
 import { PluginStateSnapshotManager } from 'molstar/lib/mol-plugin-state/manager/snapshots.js';
 
+const nativeAnimations = DefaultPluginSpec().animations, animationRevisions = new WeakMap();
 const defaults = PD.getDefaultValues(Canvas3DParams), contextDefaults = PD.getDefaultValues(Canvas3DContext.Params);
 const fail = message => { throw Object.assign(new Error(message), { code: 'UNSUPPORTED_TOPOLOGY_ENVIRONMENT' }); };
 const plain = value => value && typeof value === 'object' && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
@@ -102,6 +105,29 @@ function sameSnapshot(plugin, owner) {
   const next = snapshotOwner(plugin);
   if (Object.keys(owner).some(key => owner[key] !== next[key])) fail('The snapshot library changed while topology was prepared.');
 }
+function animationRevision(manager) {
+  let record = animationRevisions.get(manager);
+  if (!record) {
+    record = { value: 0 }; animationRevisions.set(manager, record);
+    manager.subscribe(manager.events.updated, () => { record.value++; }); // disposed by the native manager
+  }
+  return record.value;
+}
+function animationOwner(plugin) {
+  const manager = plugin.managers.animation, current = manager?.current;
+  if (!manager || manager.animations.length !== nativeAnimations.length || manager.animations.some((animation, index) => animation !== nativeAnimations[index])) fail('Custom native animation catalogs cannot be retained by a topology edit.');
+  // Only the native stopped trajectory-animation default is representable by the new candidate.
+  if (!current || current.anim !== AnimateModelIndex || manager.isAnimating || !manager.isStopped || manager.isApplying
+    || plugin.behaviors.state.isAnimating.value || current.startedTime !== -1 || current.lastTime !== 0) fail('Native animation must be reset to its stopped default before changing topology.');
+  const snapshot = manager.getSnapshot(), expected = { state: { params: { current: AnimateModelIndex.name }, animationState: 'stopped' },
+    current: { paramValues: PD.getDefaultValues(AnimateModelIndex.params(plugin)), state: {} } };
+  if (!deepEqual(snapshot, expected)) fail('Nondefault native animation settings cannot be retained by a topology edit.');
+  return { manager, catalog: manager.animations, revision: animationRevision(manager), state: manager.state, current, params: current.paramValues, runtime: current.state, snapshot: JSON.stringify(snapshot) };
+}
+function sameAnimation(plugin, owner) {
+  const next = animationOwner(plugin);
+  if (Object.keys(owner).some(key => owner[key] !== next[key])) fail('Native animation changed while topology was prepared.');
+}
 function data(plugin) {
   let canvasDelta = null, contextDelta = null;
   if (plugin.canvas3d) {
@@ -115,11 +141,11 @@ function data(plugin) {
   return { canvasDelta, contextDelta };
 }
 function capture(plugin) {
-  const snapshots = snapshotOwner(plugin), values = data(plugin);
-  return { ...values, owner: { snapshots, canvas: plugin.canvas3d ?? null, context: plugin.canvas3dContext ?? null, fingerprint: JSON.stringify(values) } };
+  const snapshots = snapshotOwner(plugin), animation = animationOwner(plugin), values = data(plugin);
+  return { ...values, owner: { snapshots, animation, canvas: plugin.canvas3d ?? null, context: plugin.canvas3dContext ?? null, fingerprint: JSON.stringify(values) } };
 }
 function validate(plugin, owner) {
-  sameSnapshot(plugin, owner.snapshots);
+  sameSnapshot(plugin, owner.snapshots); sameAnimation(plugin, owner.animation);
   if ((plugin.canvas3d ?? null) !== owner.canvas || (plugin.canvas3dContext ?? null) !== owner.context || JSON.stringify(data(plugin)) !== owner.fingerprint) fail('The viewer settings changed while topology was prepared.');
   return true;
 }
@@ -131,12 +157,12 @@ function validateData(value) {
   return { canvas, context };
 }
 function prepare(plugin, value) {
-  const values = validateData(value), snapshots = snapshotOwner(plugin);
+  const values = validateData(value), snapshots = snapshotOwner(plugin), animation = animationOwner(plugin);
   if (values.canvas && typeof plugin.canvas3d?.setProps !== 'function' || values.context && typeof plugin.canvas3dContext?.setProps !== 'function') fail('The candidate has no matching settings owner.');
-  return { ...values, snapshots, canvasOwner: plugin.canvas3d ?? null, contextOwner: plugin.canvas3dContext ?? null };
+  return { ...values, snapshots, animation, canvasOwner: plugin.canvas3d ?? null, contextOwner: plugin.canvas3dContext ?? null };
 }
 function apply(plugin, value) {
-  sameSnapshot(plugin, value.snapshots);
+  sameSnapshot(plugin, value.snapshots); sameAnimation(plugin, value.animation);
   if ((plugin.canvas3d ?? null) !== value.canvasOwner || (plugin.canvas3dContext ?? null) !== value.contextOwner) fail('The candidate settings owner changed.');
   if (value.context) plugin.canvas3dContext.setProps(value.context);
   if (value.canvas) plugin.canvas3d.setProps(value.canvas);
