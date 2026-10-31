@@ -9,7 +9,7 @@ const browser=new Window({url:'http://localhost/'}), previous=new Map<string,Pro
 for(const [name,value] of Object.entries({window:browser,self:browser,document:browser.document,navigator:browser.navigator,
  HTMLElement:browser.HTMLElement,Element:browser.Element,Node:browser.Node,HTMLInputElement:browser.HTMLInputElement,
  HTMLSelectElement:browser.HTMLSelectElement,HTMLButtonElement:browser.HTMLButtonElement,HTMLFormElement:browser.HTMLFormElement,
- DocumentFragment:browser.DocumentFragment,NodeFilter:browser.NodeFilter,SVGElement:browser.SVGElement,
+ DOMRect:browser.DOMRect,DocumentFragment:browser.DocumentFragment,NodeFilter:browser.NodeFilter,SVGElement:browser.SVGElement,
  CustomEvent:browser.CustomEvent,Event:browser.Event,FocusEvent:browser.FocusEvent,KeyboardEvent:browser.KeyboardEvent,
  MouseEvent:browser.MouseEvent,PointerEvent:browser.PointerEvent,MutationObserver:browser.MutationObserver,CSS:browser.CSS,
  indexedDB:new IDBFactory(),localStorage:browser.localStorage,getComputedStyle:browser.getComputedStyle.bind(browser),
@@ -142,5 +142,45 @@ test('owning scene page keeps plain MOL/SDF hidden and existing XYZ/CIF compute 
     expect([...document.querySelectorAll('[role="menuitem"]')].some(item=>item.textContent==='Energy & charges')).toBe(true);
    }
   }finally{await view.close();for(const doc of opened.splice(0))deleteBrowserDevVirtualTextDocument(doc.path);useMoleculeStore.setState({documents:before});releaseClosedImports(new Set(before.map(doc=>doc.id)));}
+ }
+});
+
+
+test('Spectra keeps legacy Files hidden while Add panel still places the same file in a split', async () => {
+ const view = await fixture();
+ try {
+  const tabs = [
+   {id:'previous-main',location:{kind:'file' as const,path:view.other.path,documentId:view.other.id},back:[],forward:[]},
+   {id:view.workspace,location:{kind:'file' as const,path:view.current.path,documentId:view.current.id},back:[],forward:[]},
+  ];
+  await act(async()=>useMoleculeStore.setState({tabs,activeTabId:view.workspace,activeDocumentId:view.current.id}));
+  const {openScientificSpectra}=await import('../apps/desktop/src/lib/workbench/scientific-spectra-tool');
+  await act(async()=>openScientificSpectra({setDockDocument:(area,id)=>useTabWorkspaceStore.getState().setDockDocument(view.workspace,area,id),openDockTab:(area,kind)=>useTabWorkspaceStore.getState().openDockTab(view.workspace,area,kind)},view.current.id));
+  await waitForPanel(view.host);
+  expect(view.host.querySelectorAll('table[aria-label="NMR source values"] tbody tr')).toHaveLength(2);
+  const text=readBrowserDevVirtualTextDocument(view.current.path)!;
+  const source=scientificStateFor(view.current.id,text);
+  expect(Boolean(view.host.querySelector('[role="tab"][aria-label="Files"]'))).toBe(false);
+  for (const label of ['Info','Text','Spectra']) {
+   const tab=view.host.querySelector<HTMLButtonElement>(`[role="tab"][aria-label="${label}"]`);
+   expect(tab).not.toBeNull();
+   await act(async()=>tab!.click());await settle();
+   expect(tab!.getAttribute('aria-selected')).toBe('true');
+   expect(useMoleculeStore.getState().tabs).toEqual(tabs);
+  }
+  await waitForPanel(view.host);
+  expect(view.host.querySelectorAll('table[aria-label="NMR source values"] tbody tr')).toHaveLength(2);
+  await act(async()=>view.host.querySelector<HTMLButtonElement>('button[aria-label="Add right dock tab"]')!.click());
+  await settle();
+  const files=[...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(item=>item.textContent==='Files');
+  expect(files).not.toBeUndefined();expect(files!.getAttribute('aria-disabled')).not.toBe('true');
+  await act(async()=>files!.click());await settle();
+  expect(useMoleculeStore.getState().tabs.map(tab=>({id:tab.id,pane:tab.pane??null}))).toEqual([{id:'previous-main',pane:null},{id:view.workspace,pane:'right'}]);
+  expect(getTabWorkspace(view.workspace).right.open).toBe(false);
+  expect(useMoleculeStore.getState().documents.find(doc=>doc.id===view.current.id)).toBe(view.current);
+  expect(scientificStateFor(view.current.id,text).revision).toBe(source.revision);
+  expect(scientificStateFor(view.current.id,text).original).toBe(source.original);
+ } finally {
+  await view.close();useMoleculeStore.setState({tabs:[],activeTabId:null,activeDocumentId:null});
  }
 });

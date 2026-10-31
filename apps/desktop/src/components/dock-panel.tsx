@@ -128,6 +128,9 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const catalog = dockTabCatalog(area).filter(kind => !pluginSurface || !["jobs", "chemical-space", "folding"].includes(kind));
   const tabs = rawTabs.filter((tab) => {
     if (!catalog.includes(tab.kind)) return false;
+    // Files is opened from +. Hide the former default in restored layouts,
+    // while allowing an explicitly active legacy Files view to finish migrating.
+    if (area === "right" && tab.kind === "files" && storedActiveTabKind !== "files") return false;
     if (tab.kind === "orbitals") return orbitalsDockAvailable;
     if (tab.kind === "scientific-spectra") return scientificSpectraDockAvailable;
     if (tab.kind === "vibrations") return vibrationsDockAvailable;
