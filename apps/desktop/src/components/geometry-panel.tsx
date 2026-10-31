@@ -265,7 +265,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
       const previousWritten = written.current;
       written.current = text;
       try {
-        sourceEditing?.updateDraft(document, text, { previewApplied: true });
+        sourceEditing?.updateDraft(document, text, { previewApplied: true, geometryBinding: editor.binding });
         if (sourceEditing && sourceEditing.sessionForDocument(document)?.content !== text) throw new Error("The source did not take this edit.");
       } catch (error) { written.current = previousWritten; throw error; }
       setEditError(null);

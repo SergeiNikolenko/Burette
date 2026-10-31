@@ -1,3 +1,4 @@
+import { captureViewerActionTarget } from "../apps/desktop/src/lib/viewer-bridge";
 import { ensureGeometryViewerFrame } from "./fixtures/geometry-viewer-frame";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -51,10 +52,11 @@ mock.module("../apps/desktop/src/lib/structure-text", () => ({
 mock.module("../apps/desktop/src/lib/tauri", () => ({ isTauriRuntime: () => false }));
 mock.module("../apps/desktop/src/hooks/use-deferred-viewer-runtime", () => ({ prepareDeferredViewerRuntime: async (document) => document, useDeferredViewerRuntime: () => ({}) }));
 // The panel/source fixture supplies the runtime read; actual frame/lease ownership is paired separately.
-mock.module("../apps/desktop/src/lib/geometry-binding", () => ({ readGeometryBinding: async (document, _send, isCurrent) => ({
-  lease: "zmatrix-fixture", text: current(document),
-  target: { documentId: document.id, source: window, isCurrent },
-}) }));
+mock.module("../apps/desktop/src/lib/geometry-binding", () => ({ readGeometryBinding: async (document, _send, isCurrent) => {
+  const target = captureViewerActionTarget(document.id, isCurrent);
+  assert.ok(target, "the runtime read uses the real mounted iframe owner");
+  return { lease: "zmatrix-fixture", text: current(document), target };
+} }));
 const { SourceEditingProvider } = await import("../apps/desktop/src/lib/source-editing/context");
 const { useSourceEditingController } = await import("../apps/desktop/src/hooks/use-source-editing");
 const { createRoot } = await import("react-dom/client");

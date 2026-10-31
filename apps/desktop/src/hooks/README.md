@@ -92,3 +92,16 @@ it never reads a new lease for an already computed edit. Raw XYZ keeps its Text
 preview lane and exact source history. Its baseline comparison projects only the
 one leading BOM consumed by the renderer's UTF-8 loader; ownership always uses
 source generation and viewer identity. Logical MOLX text is compared exactly.
+
+Topology edits in a logical XYZ source require the row editor's exact atom
+provenance and a source-owned scene/measurement capture before recording a draft.
+The same Geometry lease and scene receipt are checked before generation and
+promotion; a new renderer never grants authority to an old computed edit.
+Revision snapshots restore objects whose anchors did not exist in the previous
+scene; surviving objects keep the user's latest settings. Owned layers
+and selection retain surviving source atoms; measurements missing an anchor are
+absent for that revision. Unknown native metadata, focus/decorators, and unmapped
+Text edits fail closed while the previous scene and recoverable draft remain.
+The receiver, XYZ measurement transfer and Mol* topology-scene adapter must ship
+together. Older receivers refuse preflight before source publication. These are
+private preview actions, not additions to the public agent CLI protocol.

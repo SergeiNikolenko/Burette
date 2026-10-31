@@ -4,7 +4,7 @@ import { formatZmatrixDocument, resolveZmatrixDocument, type ZmatrixDocument } f
 import { addZmatrixVariable, bindZmatrixCoordinate, removeZmatrixVariable, renameZmatrixVariable, setZmatrixReferences } from "../../../../../scripts/zmatrix-editing.mjs";
 import { editZmatrixRows, type ZmatrixRowAction } from "../../../../../scripts/zmatrix-rows.mjs";
 import { rendererXyzText } from "../../lib/geometry-source-text";
-import { useLogicalSource } from "../../lib/science-session/state";
+import { logicalSourceFor, useLogicalSource } from "../../lib/science-session/state";
 import { useGeometryBinding } from "../../hooks/use-geometry-binding";
 import { useGeometryLivePreview } from "../../hooks/use-geometry-live-preview";
 import { downloadTextFile } from "../../lib/file-export";
@@ -122,18 +122,29 @@ export function ZmatrixPanel({ document, actions, science, text }: {
   // scene shows it. A reload that fails returns the draft and revisions to where they were,
   // even when the panel closed meanwhile. One the source moved past (or closed) never showed:
   // its revision goes, so the Redo branch it replaced comes back, and the source keeps its text.
-  const reload = (target: ImportedRevision, record: boolean, fromText: string, unchanged: () => boolean) => {
+  const reload = async (target: ImportedRevision, record: boolean, fromText: string, unchanged: () => boolean) => {
     if (!sourceEditing) throw new Error("This structure can only be edited from its source.");
+    // Refuse unsupported metadata before even inserting a baseline Geometry decorator.
+    // After the owned baseline ACK, capture again against the same retained lease.
+    if (logicalSourceFor(document.id)?.extension === "xyz") {
+      if (!binding || !sourceEditing.prepareGeometryTopology) throw new Error("This runtime cannot retain the current scene's topology settings.");
+      await sourceEditing.prepareGeometryTopology(document, target, binding);
+      if (!unchanged()) return false;
+    }
     return live.replace(async () => {
+      if (!unchanged()) return false;
+      const topology = logicalSourceFor(document.id)?.extension === "xyz"
+        ? await sourceEditing.prepareGeometryTopology?.(document, target, binding!) : undefined;
+      if (logicalSourceFor(document.id)?.extension === "xyz" && !topology) throw new Error("This runtime cannot retain the current scene's topology settings.");
       if (!unchanged()) return false;
       const rollback = record ? recordImportedRevision(document.id, fromText, target) : null;
       if (record && !rollback) throw new Error("The structure changed outside the Z-matrix.");
-      sourceEditing.updateDraft(document, target.text, { view: "keep" });
+      sourceEditing.updateDraft(document, target.text, { view: "keep", geometryBinding: binding ?? undefined, topology });
       if (sourceEditing.sessionForDocument(document)?.content !== target.text) {
         rollback?.();
         throw new Error("The source did not take this edit.");
       }
-      forgetViewerAtomSelection(document.id);
+      if (!topology) forgetViewerAtomSelection(document.id);
       const { outcome, diagnostic } = await sceneReload(sourceEditing, document, target.text);
       if (outcome === "moved") {
         // The rollback leaves revisions recorded since alone.
@@ -186,7 +197,7 @@ export function ZmatrixPanel({ document, actions, science, text }: {
       const rollback = record ? recordImportedRevision(document.id, fromText, target) : null;
       if (record && !rollback) throw new Error("The structure changed outside the Z-matrix.");
       try {
-        sourceEditing?.updateDraft(document, nextText, { previewApplied: true });
+        sourceEditing?.updateDraft(document, nextText, { previewApplied: true, geometryBinding: binding });
         // A session closing meanwhile ignores the draft.
         if (sourceEditing && sourceEditing.sessionForDocument(document)?.content !== nextText) throw new Error("The source did not take this edit.");
       } catch (caught) {
