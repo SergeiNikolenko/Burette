@@ -20,6 +20,7 @@ import { OptimizeButton } from "./workbench/optimize-button";
 import type { MinimizerMethod } from "../lib/molecular-workbench/minimizer";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { useSourceEditing } from "../lib/source-editing/context";
+import { captureLogicalSourceOwner } from "../lib/science-session/state";
 import { rendererXyzText } from "../lib/geometry-source-text";
 import type { GeometryBinding } from "../lib/geometry-binding";
 import { observeGeometryBinding } from "../lib/geometry-binding-readiness";
@@ -97,6 +98,13 @@ const NEEDS_REFERENCE_POINT = new Set(["DEGENERATE_REFERENCE_PLANE", "ILL_CONDIT
 type GeometryHistory = GeometryState & { text: string };
 // Raw source bytes and the loader-decoded runtime baseline differ when the file starts with a UTF8 BOM.
 type Editor = GeometryState & { binding: GeometryBinding; sourceText: string; base: GeometryBase; history: GeometryHistory[] };
+
+// Panel changes retain the bounded edit history, never a renderer binding. A fresh
+// source session or source replacement cannot borrow a previous document's history.
+const panelHistories = new WeakMap<ViewerDocument, {
+  sessionId: string; runtimePath: ViewerDocument["runtimePath"]; openClaimId: ViewerDocument["openClaimId"];
+  sourceOwner: () => boolean; state: Omit<Editor, "binding">;
+}>();
 
 export function GeometryPanel({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
   // An imported Z-matrix edits through its own variables and reference points while the
@@ -185,7 +193,12 @@ function CartesianGeometryPanel({ document, actions, convert }: {
         const base = geometryBase(binding.text);
         baseText.current = sourceText; written.current = null;
         setFrozen(new Set()); setLocked(new Set());
-        setEditor({ binding, sourceText, base, frame: base, rows: base.rows, history: [] });
+        const saved = panelHistories.get(document);
+        const currentSession = sourceEditing?.sessionForDocument(document);
+        const retained = saved && saved.sessionId === currentSession?.sessionId && saved.state.sourceText === sourceText
+          && saved.runtimePath === document.runtimePath && saved.openClaimId === document.openClaimId && saved.sourceOwner();
+        if (!retained) panelHistories.delete(document);
+        setEditor(retained ? { ...saved.state, binding } : { binding, sourceText, base, frame: base, rows: base.rows, history: [] });
         setSourceError(null); setEditError(null);
       }, (error) => {
         if (modelRead.current !== read) return;
@@ -225,6 +238,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
     applyingRef.current = true;
     setApplying(true);
     const currentLifetime = lifetime.current;
+    const sourceOwner = captureLogicalSourceOwner(document.id);
     const shownText = editor.binding.text;
     const runtimeText = logical ? text : rendererXyzText(text);
     let shown = false;
@@ -256,7 +270,13 @@ function CartesianGeometryPanel({ document, actions, convert }: {
       } catch (error) { written.current = previousWritten; throw error; }
       setEditError(null);
       written.current = text;
-      setEditor({ ...editor, binding: { ...editor.binding, text: runtimeText }, sourceText: text, rows, frame, history, optimization });
+      const state = { base: editor.base, sourceText: text, rows, frame, history, optimization };
+      setEditor({ ...state, binding: { ...editor.binding, text: runtimeText } });
+      const committedSession = sourceEditing?.sessionForDocument(document);
+      if (committedSession?.content === text && sourceOwner()) panelHistories.set(document, {
+        sessionId: committedSession.sessionId, runtimePath: document.runtimePath, openClaimId: document.openClaimId,
+        sourceOwner, state,
+      });
       return true;
     } catch (error) {
       if (currentLifetime !== lifetime.current) return false;

@@ -439,3 +439,39 @@ for (const kind of ["zmat", "xyz"]) test(`a ${kind} gesture cannot overwrite a s
     assert.equal(disabled(view.host, "Undo"), true, "the obsolete gesture creates no local Undo entry");
   } finally { afterAdmission = null; await view.unmount(); }
 });
+
+test("Cartesian Geometry Undo survives a dock tab change in the same source session", async () => {
+  const document = await openXyz(), view = await mount(document);
+  try {
+    await press(view.host, "Bond of H2, Å", "ArrowUp");
+    const edited = current(document), sessionId = controller.sessionForDocument(document).sessionId;
+    assert.notEqual(edited, xyz);
+    assert.equal(disabled(view.host, "Undo"), false);
+    await view.render(document, "text");
+    await view.render(document, "geometry");
+    assert.deepEqual({ text: current(document), sessionId: controller.sessionForDocument(document).sessionId, undo: disabled(view.host, "Undo") },
+      { text: edited, sessionId, undo: false });
+    await act(async () => view.host.querySelector('[aria-label="Undo"]').click()); await settle();
+    assert.deepEqual({ text: current(document), shown: shown(document), undo: disabled(view.host, "Undo") },
+      { text: xyz, shown: xyz, undo: true });
+    await view.render(document, "text"); await view.render(document, "geometry");
+    assert.equal(disabled(view.host, "Undo"), true, "returning again does not resurrect the consumed history");
+  } finally { await view.unmount(); }
+});
+
+test("a fresh source session cannot reuse Cartesian Geometry history for identical draft bytes", async () => {
+  const document = await openXyz(), view = await mount(document), confirm = window.confirm;
+  try {
+    await press(view.host, "Bond of H2, Å", "ArrowUp");
+    const edited = current(document), firstSession = controller.sessionForDocument(document).sessionId;
+    await view.render(document, "text"); window.confirm = () => true;
+    await act(async () => {
+      assert.equal(await controller.closeDocuments([document.id]), true);
+      writeBrowserDevVirtualTextDocument(document.path, edited);
+      await controller.beginEditing(document, "text");
+    });
+    assert.notEqual(controller.sessionForDocument(document).sessionId, firstSession);
+    await view.render(document, "geometry");
+    assert.deepEqual({ text: current(document), undo: disabled(view.host, "Undo") }, { text: edited, undo: true });
+  } finally { window.confirm = confirm; await view.unmount(); }
+});
