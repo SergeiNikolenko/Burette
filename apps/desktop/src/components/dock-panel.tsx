@@ -1,3 +1,5 @@
+import { OrbitalsDockContent } from "./workbench/orbitals-dock-content";
+import { useOrbitalsAvailable } from "../lib/workbench/orbitals-tool";
 import { useScientificSourceLifetime } from "../lib/workbench/scientific-source-lifetime";
 import { VibrationsDockContent } from "./workbench/vibrations-dock-content";
 import { useVibrationsAvailable } from "../lib/workbench/vibrations-tool";
@@ -101,6 +103,8 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const spectrumDocumentActive = activeStructureDocument?.renderer === "spectrum";
   const spectrumDockAvailable = area === "bottom" && (dockDocument?.renderer === "spectrum" || state.activeDocument?.renderer === "spectrum");
   const chemicalSpaceDockAvailable = Boolean(resolveChemicalSpaceDocument(state, dockDocument));
+  const hasOrbitals = useOrbitalsAvailable(activeStructureDocument);
+  const orbitalsDockAvailable = area === "right" && hasOrbitals;
   const hasVibrations = useVibrationsAvailable(activeStructureDocument);
   const vibrationsDockAvailable = area === "right" && hasVibrations;
   const geometryDockAvailable = area === "right" && geometryPanelAvailable(activeStructureDocument);
@@ -120,6 +124,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const catalog = dockTabCatalog(area).filter(kind => !pluginSurface || !["jobs", "chemical-space", "folding"].includes(kind));
   const tabs = rawTabs.filter((tab) => {
     if (!catalog.includes(tab.kind)) return false;
+    if (tab.kind === "orbitals") return orbitalsDockAvailable;
     if (tab.kind === "vibrations") return vibrationsDockAvailable;
     if (tab.kind === "geometry") return geometryDockAvailable;
     if (tab.kind === "structure-edit") return structureEditDockAvailable;
@@ -193,6 +198,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     const rect = event.currentTarget.getBoundingClientRect();
     void showNativeContextMenu(
       catalog.filter((kind) => {
+        if (kind === "orbitals") return orbitalsDockAvailable;
         if (kind === "vibrations") return vibrationsDockAvailable;
         if (kind === "geometry") return geometryDockAvailable;
         if (kind === "structure-edit") return structureEditDockAvailable;
@@ -450,6 +456,7 @@ export function DockPanelContent({
       />
     );
   }
+  if (activeTabKind === "orbitals") return <OrbitalsDockContent document={dockStructureDocument} actions={actions} />;
   if (activeTabKind === "vibrations") return <VibrationsDockContent document={dockStructureDocument} actions={actions} />;
   if (activeTabKind === "geometry") {
     return geometryPanelAvailable(dockStructureDocument)

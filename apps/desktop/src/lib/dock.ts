@@ -13,6 +13,7 @@ export type DockTabKind =
   | "spectrum"
   | "text"
   | "vibrations"
+  | "orbitals"
   | "geometry"
   | "structure-edit"
   | "inspector"
@@ -94,6 +95,7 @@ export const DOCK_TAB_LABELS: Record<DockTabKind, string> = {
   spectrum: "Spectrum",
   text: "Text",
   vibrations: "Vibrations",
+  orbitals: "Orbitals",
   geometry: "Geometry",
   "structure-edit": "Edit",
   inspector: "Info",
@@ -132,6 +134,7 @@ const RIGHT_DOCK_TAB_CATALOG: DockTabKind[] = [
   "story",
   "text",
   "vibrations",
+  "orbitals",
   "geometry",
   "structure-edit",
   "files",

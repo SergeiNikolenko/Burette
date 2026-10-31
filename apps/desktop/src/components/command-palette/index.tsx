@@ -1,3 +1,4 @@
+import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
 import { focusToolDock, type WorkbenchToolDockKind } from "../../lib/workbench/focus-tool-dock";
 import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../../lib/workbench/vibrations-tool";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -57,6 +58,7 @@ export function CommandPalette({
 }: CommandPaletteProps) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const workbenchFocus = useRef<{ kind: WorkbenchToolDockKind; documentId: string; workspaceId: string } | null>(null);
+  const hasOrbitals = useOrbitalsAvailable(state.activeDocument ?? null);
   const hasVibrations = useVibrationsAvailable(state.activeDocument ?? null);
 
   const items = useMemo<PaletteItem[]>(() => {
@@ -85,6 +87,7 @@ export function CommandPalette({
 
     const commands: PaletteItem[] = [
       ...projectItems,
+      ...(hasOrbitals && state.activeDocument ? [{ id: "workbench-tool-orbitals", group: "Suggested", ...ORBITALS_COMMAND, run: () => openOrbitals(actions, state.activeDocument!.id) }] : []),
       ...(hasVibrations && state.activeDocument ? [{ id: "workbench-tool-vibrations", group: "Suggested", ...VIBRATIONS_COMMAND, run: () => openVibrations(actions, state.activeDocument!.id) }] : []),
       ...buildShellCommands(state, actions, query).map((command) => ({
         ...command,
@@ -94,7 +97,7 @@ export function CommandPalette({
       })),
     ];
     return commands;
-  }, [actions, query, state, hasVibrations]);
+  }, [actions, query, state, hasVibrations, hasOrbitals]);
 
   const visibleItems = useMemo(() => {
     const queryUrl = query.trim();

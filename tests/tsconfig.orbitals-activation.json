@@ -1,0 +1,17 @@
+{
+  "extends": "../apps/desktop/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "allowJs": true,
+    "checkJs": false,
+    "types": [
+      "bun"
+    ]
+  },
+  "include": [
+    "../apps/desktop/src/**/*.d.ts",
+    "./test-orbitals-activation.test.tsx",
+    "./test-vibrations-activation.test.tsx"
+  ]
+}

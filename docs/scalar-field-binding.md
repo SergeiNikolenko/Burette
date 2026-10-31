@@ -53,5 +53,11 @@ quantum/Cube workers. It covers FCHK/Molden generated XYZ, the tracked base-pair
 Cube, source changes before/during a worker, native Undo, out-of-order binding,
 clear while replacing a surface and export after a native source edit. These
 CPU and component checks do not establish actual browser/WebGL, packaged macOS,
-Quick Look or iPhone acceptance. The owner prerequisite does not activate the
-Orbitals dock, menu or command palette.
+Quick Look or iPhone acceptance.
+
+The right Orbitals dock, Compute menu and command palette now expose the
+source-owned panel for files with orbital energies or a scalar grid. The menu
+uses its own document, and opening it retargets a closed dock that showed
+another file. Palette completion focuses the selected tab only while the
+requested document and workspace still own the pane. These source/component
+checks still require actual browser workflow acceptance.
