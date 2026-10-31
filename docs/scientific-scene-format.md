@@ -157,3 +157,8 @@ Companion Originals are separate byte attachments; the primary Original remains 
 After a geometry edit, historical companion bytes may remain provenance with their original revision/frame binding. They do not authorize calculated data for the edited geometry. Host restore, export and re-export retain those bytes with the same source family; current calculated pairs additionally require the exact current source SHA. A managed Z-matrix change that retains the exact scientific frame objects carries one direct origin witness. Export verifies that origin and projects a new receipt without mutating live data; the raw descriptor retains `originRevisionSha256`. Equal coordinates, raw comment edits or a borrowed frame array do not provide that witness. Registry companion metadata is copied and frozen without mutating callers.
 
 This archive contract does not discover sibling files or activate an MCD picker, path command, automatic pairing, or checkpoint persistence. Those consumers must capture the immutable source/revision/frame owner before async reads and publish only while that owner remains current. Actual producer-sidecar fixtures and six-type UI acceptance remain separate.
+
+Internal-coordinate definitions are checked after a proper rigid rotation and
+translation into the scientific atoms' pose; reflections and changed shape are
+rejected. The separate scientific-atoms-to-source check remains absolute, so
+this does not authorize data from another source or pose.

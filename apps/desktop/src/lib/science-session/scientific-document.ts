@@ -1,3 +1,4 @@
+import { bestRigidMotion } from "../workbench/zmatrix-optimization";
 import { atomsFromZmatrixDocument } from "../../../../../scripts/zmatrix-document.mjs";
 import { atomicNumber } from "../molecular-workbench/elements";
 import { checkMcdCompanion } from "../molecular-workbench/mcd-companion";
@@ -182,7 +183,13 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
   if (document.converged !== undefined && typeof document.converged !== "boolean") fail("Scientific convergence must be a boolean.");
   if (document.internalCoordinates !== undefined) {
     let real: MolecularAtom[];
-    try { real = atomsFromZmatrixDocument(document.internalCoordinates as never).map(({ element, position: [x, y, z] }) => ({ element, x, y, z })); }
+    try {
+      const rebuilt = atomsFromZmatrixDocument(document.internalCoordinates as never);
+      if (rebuilt.length !== atoms.length || rebuilt.some((atom, index) => atom.element !== atoms[index].element)) fail("The Z-matrix atoms do not match the scientific geometry.");
+      // Internal coordinates define shape and handedness, not the source's world pose.
+      const motion = bestRigidMotion(rebuilt.map(atom => atom.position), atoms.map(({ x, y, z }) => [x, y, z]));
+      real = rebuilt.map(({ element, position }) => { const [x, y, z] = motion.point(position); return { element, x, y, z }; });
+    }
     catch (error) { return fail(`The Z-matrix definition is invalid: ${error instanceof Error ? error.message : String(error)}`); }
     if (!matchesFrame(real, geometry)) fail("The Z-matrix definition does not match the scientific geometry.");
   }
