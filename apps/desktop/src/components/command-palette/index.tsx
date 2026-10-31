@@ -1,3 +1,4 @@
+import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTRA_COMMAND } from "../../lib/workbench/scientific-spectra-tool";
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
 import { focusToolDock, type WorkbenchToolDockKind } from "../../lib/workbench/focus-tool-dock";
 import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../../lib/workbench/vibrations-tool";
@@ -59,6 +60,7 @@ export function CommandPalette({
   const listRef = useRef<HTMLDivElement | null>(null);
   const workbenchFocus = useRef<{ kind: WorkbenchToolDockKind; documentId: string; workspaceId: string } | null>(null);
   const hasOrbitals = useOrbitalsAvailable(state.activeDocument ?? null);
+  const hasScientificSpectra = useScientificSpectraAvailable(state.activeDocument ?? null);
   const hasVibrations = useVibrationsAvailable(state.activeDocument ?? null);
 
   const items = useMemo<PaletteItem[]>(() => {
@@ -89,6 +91,7 @@ export function CommandPalette({
       ...projectItems,
       ...(hasOrbitals && state.activeDocument ? [{ id: "workbench-tool-orbitals", group: "Suggested", ...ORBITALS_COMMAND, run: () => openOrbitals(actions, state.activeDocument!.id) }] : []),
       ...(hasVibrations && state.activeDocument ? [{ id: "workbench-tool-vibrations", group: "Suggested", ...VIBRATIONS_COMMAND, run: () => openVibrations(actions, state.activeDocument!.id) }] : []),
+      ...(hasScientificSpectra && state.activeDocument ? [{ id: "workbench-tool-scientific-spectra", group: "Suggested", ...SCIENTIFIC_SPECTRA_COMMAND, run: () => openScientificSpectra(actions, state.activeDocument!.id) }] : []),
       ...buildShellCommands(state, actions, query).map((command) => ({
         ...command,
         group: command.group === "Suggested" ? "Quick actions" : command.group,
@@ -97,7 +100,7 @@ export function CommandPalette({
       })),
     ];
     return commands;
-  }, [actions, query, state, hasVibrations, hasOrbitals]);
+  }, [actions, query, state, hasVibrations, hasOrbitals, hasScientificSpectra]);
 
   const visibleItems = useMemo(() => {
     const queryUrl = query.trim();

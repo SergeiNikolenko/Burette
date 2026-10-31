@@ -47,3 +47,13 @@ ORCA NMR input, source/frame replacement, explicit companion data, exports and
 cancel/retry. `check:scientific-spectra-panel` checks that source/test closure.
 Compute, palette and dock activation, ordinary MCD companion admission, paired
 draft persistence and actual Browser acceptance remain separate stages.
+
+## Spectra entry points
+
+For a document with a file dataset or data for its exact displayed frame, Spectra
+appears in the right-dock picker, Compute menu and Command Palette (`Show spectra`).
+All three routes use the same lazy owner and bind the dock to the requested document.
+Palette focus additionally retains the requested workspace and tool kind, so a
+late close cannot focus another workspace or another tool showing the same file.
+The ordinary imported NMR/optical reader path is exercised by
+`test:scientific-spectra-activation`; full actual Browser acceptance remains open.

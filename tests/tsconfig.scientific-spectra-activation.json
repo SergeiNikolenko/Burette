@@ -1,0 +1,17 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": [
+      "bun"
+    ],
+    "noEmit": true
+  },
+  "include": [
+    "test-scientific-spectra-activation.test.tsx",
+    "../apps/desktop/src/vite-env.d.ts",
+    "../apps/desktop/src/types/plotly-basic-dist-min.d.ts",
+    "../apps/desktop/src/lib/gifenc.d.ts",
+    "../apps/desktop/src/components/ui/utif.d.ts",
+    "fixtures/scientific-spectra-compiler.ts"
+  ]
+}

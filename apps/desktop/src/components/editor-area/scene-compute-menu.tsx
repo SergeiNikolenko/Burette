@@ -1,3 +1,4 @@
+import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTRA_COMMAND } from "../../lib/workbench/scientific-spectra-tool";
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
 import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../../lib/workbench/vibrations-tool";
 import { useState } from "react";
@@ -29,6 +30,7 @@ const UNAVAILABLE: Record<Exclude<SceneFileState, "available">, string> = {
 export function SceneComputeMenu({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
   const [files, setFiles] = useState<Array<{ path: string; state: SceneFileState }> | null>(null);
   const hasOrbitals = useOrbitalsAvailable(document);
+  const hasScientificSpectra = useScientificSpectraAvailable(document);
   const hasVibrations = useVibrationsAvailable(document);
   const host = useComputeHost();
   const connections = useSshConnections().filter(connection => connection.enabled);
@@ -66,7 +68,8 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
       ...CONFORMER_JOBS.map(([operation, text]) => ({ kind: "item" as const, id: `scene-${operation === "crest-generate" ? "conformers" : "prune"}`, text, action: () => void actions.runConformerOperation(operation, document) })),
     ];
   if (!combined && hasOrbitals) items.push({ kind: "separator" }, { kind: "item", id: "workbench-tool-orbitals", text: ORBITALS_COMMAND.label, action: () => openOrbitals(actions, document.id) });
-  if (!combined && hasVibrations) items.push({ kind: "separator" }, { kind: "item", id: "workbench-tool-vibrations", text: VIBRATIONS_COMMAND.label, action: () => openVibrations(actions, document.id) });
+  if (!combined && hasVibrations) items.push(...(hasOrbitals ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-vibrations", text: VIBRATIONS_COMMAND.label, action: () => openVibrations(actions, document.id) });
+  if (!combined && hasScientificSpectra) items.push(...(hasOrbitals || hasVibrations ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-scientific-spectra", text: SCIENTIFIC_SPECTRA_COMMAND.label, action: () => openScientificSpectra(actions, document.id) });
   // Every calculation here, and xTB/CREST started elsewhere, runs where this points.
   if (connections.length > 0) items.push({ kind: "separator" }, {
     kind: "select", id: "scene-run-on", label: "Run on", value: host ?? THIS_MAC,
