@@ -10,6 +10,7 @@ import { molstarStatePreconditionPlugin } from './molstar-state-precondition.mjs
 import { molstarDcdTimePlugin } from './molstar-dcd-time.mjs';
 import { molstarCubeUnitsPlugin } from './molstar-cube-units.mjs';
 import { molstarCubeDatasetsPlugin } from './molstar-cube-datasets.mjs';
+import { molstarCubeUiHistoryPlugin } from './molstar-cube-ui-history.mjs';
 import { molstarResizeDrawPlugin } from './molstar-resize-draw.mjs';
 import { molstarSurfaceLoopPlugin } from './molstar-surface-loop.mjs';
 import { molstarSurfaceFieldCachePlugin } from './molstar-surface-field-cache.mjs';
@@ -52,7 +53,7 @@ const buildResult = await Bun.build({
   write: false,
   loader: { '.jpg': 'dataurl' },
   define: { 'process.env.NODE_ENV': JSON.stringify('production') },
-  plugins: [molstarCubeDatasetsPlugin, molstarCubeUnitsPlugin, molstarV3000ChargesPlugin, molstarMolV3000Plugin, molstarStatePreconditionPlugin, molstarDcdTimePlugin, molstarResizeDrawPlugin, molstarSurfaceFieldCachePlugin, molstarSurfaceLoopPlugin],
+  plugins: [molstarCubeUiHistoryPlugin, molstarCubeDatasetsPlugin, molstarCubeUnitsPlugin, molstarV3000ChargesPlugin, molstarMolV3000Plugin, molstarStatePreconditionPlugin, molstarDcdTimePlugin, molstarResizeDrawPlugin, molstarSurfaceFieldCachePlugin, molstarSurfaceLoopPlugin],
 });
 if (!buildResult.success) {
   for (const log of buildResult.logs) console.error(log);

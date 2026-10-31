@@ -55,6 +55,20 @@ covers all three fields, native state selection/Undo and unchanged single-field
 output. The scientific single-field import still rejects multi-field files. These checks and generated
 bundle builds do not establish packaged, Quick Look or browser UI acceptance.
 
+The interactive Mol* build adapts the native Cube editor's Update action through
+`molstar-cube-ui-history.mjs`. Only a changed dataset enters the viewer's existing
+scene Undo/Redo owner, which captures/restores native StateTree snapshots and keeps
+its 20-step bound. Original Cube bytes/assets, atoms and axes remain source-owned;
+no single-field rewrite or molecular-file export is involved. Existing Apply-menu
+Undo/Redo and host shortcuts consume that same owner. Custom updates, other
+transform editors and hosts without the callback retain their native behavior.
+A completion from a retired viewer or removed Cube node cannot append old state
+to the current scene history.
+The build adapter and viewer registration must ship together. `test:cube-ui-history`
+uses the real native React editor, original viewer history functions and existing
+Apply controls; independent omissions of either half fail the same UI assertions.
+Actual Browser/WebGL and packaged acceptance remain separate from these tests.
+
 ### Scientific files in the browser
 
 Ordinary Open, project-folder selection and file drop classify scientific files

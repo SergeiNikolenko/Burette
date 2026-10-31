@@ -26077,6 +26077,19 @@ SOFTWARE.
     notifyMolstarEditHistoryChanged();
   }
 
+  function installMolstarCubeDatasetHistory(viewer) {
+    const plugin = viewer.plugin;
+    plugin.customState.buretteCubeDatasetUpdate = (state, ref, params) => {
+      if (activeMolstarViewer()?.plugin !== plugin || state !== plugin.state.data || !state.cells.has(ref)) {
+        throw new Error('The Cube viewer is no longer current.');
+      }
+      return runMolstarSceneEdit('Cube dataset', async () => {
+        const result = await plugin.state.updateTransform(state, ref, params);
+        return activeMolstarViewer()?.plugin === plugin && state.cells.has(ref) ? result : false;
+      });
+    };
+  }
+
   async function runMolstarSceneEdit(label, operation) {
     const snapshot = captureMolstarSceneUndoSnapshot(label);
     try {
@@ -30641,6 +30654,7 @@ ${config.label || 'structure'} (${formatLabel}${size ? `, ${size}` : ''})`);
       debug('BuretteAgent attach failed: ' + (error && error.message || String(error)));
     }
     activeViewer = viewer;
+    installMolstarCubeDatasetHistory(viewer);
     await viewer.plugin.managers.structure.component.setOptions({
       ...viewer.plugin.managers.structure.component.state.options,
       hydrogens: molstarShowHydrogens ? 'all' : 'hide-all'
