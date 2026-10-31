@@ -59,8 +59,10 @@ export interface ScalarGrid {
   values: Float32Array;
 }
 export interface ScientificDocument {
-  format: "gaussian-log" | "qcschema" | "fchk" | "orca" | "orca-hessian" | "molden" | "cube" | "xyz" | "zmat";
+  format: "gaussian-log" | "qcschema" | "fchk" | "orca" | "orca-hessian" | "molden" | "cube" | "xyz" | "zmat" | "cjson";
   atoms: MolecularAtom[];
+  /** Exact materialized MOL source, including graph metadata, and the original CJSON set index. */
+  graph?: { molfile: string; activeFrameIndex: number };
   frames: ScientificFrame[];
   modes: VibrationalMode[];
   orbitals: MolecularOrbital[];

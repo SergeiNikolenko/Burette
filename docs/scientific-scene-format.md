@@ -20,7 +20,7 @@ entries without their indexed manifest, or unused reserved assets, are rejected.
 
 ## Manifest and payloads
 
-The manifest has `kind: "burette.science-session"` and `version: 1` or `2`. Its fields are:
+The manifest has `kind: "burette.science-session"` and `version: 1`, `2`, `3` or `4`. Its fields are:
 
 - `document.uuid`: durable document identity.
 - `source`: `extension`, UTF-8 attachment ID and exact-source `sha256`.
@@ -162,3 +162,24 @@ Internal-coordinate definitions are checked after a proper rigid rotation and
 translation into the scientific atoms' pose; reflections and changed shape are
 rejected. The separate scientific-atoms-to-source check remains absolute, so
 this does not authorize data from another source or pose.
+
+### Explicit CJSON graph science (version 4)
+
+Version 4 pairs a single materialized MOL graph with `format: "cjson"` science
+and its required opaque Original. `science.graph.molfile` equals the exact source
+text, including bonds, charges, isotopes, stereochemical coordinates and source
+atom order. Matching elements or geometry alone never establishes graph identity.
+`science.graph.activeFrameIndex` selects an original Cartesian coordinate set;
+its atoms must match the materialized MOL geometry. Every original coordinate
+set stays in `science.frames` in source order, while the native MOL binding has
+one frame. Consumers must use the explicit scientific index, not the last frame.
+
+The contract uses the existing bounded JSON/attachment representation. Both
+encoding and checksum-valid decoding reject a substituted graph, missing graph
+ownership, wrong selected set, non-CJSON scientific data or absent Original.
+Version 4 does not carry MCD companion Originals. Plain MOL remains version 2,
+XYZ/SDF remain version 1, and explicit MCD companions retain version 3.
+
+This codec prerequisite does not activate ordinary CJSON import, graph-science
+export or a coordinate-set selector. Source limits and native-order/cell refusals
+are described in [Chemical JSON graph source](cjson-graph-source.md).

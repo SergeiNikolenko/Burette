@@ -10,7 +10,7 @@ import type { MolecularAtom } from "../molecular-workbench/types";
 import type { XyzFrame } from "./source-frames";
 import { normalizeElement, ScienceSessionError, SCIENCE_SESSION_LIMITS } from "./contracts";
 
-const FORMATS = new Set<ScientificDocument["format"]>(["gaussian-log", "qcschema", "fchk", "orca", "orca-hessian", "molden", "cube", "xyz", "zmat"]);
+const FORMATS = new Set<ScientificDocument["format"]>(["gaussian-log", "qcschema", "fchk", "orca", "orca-hessian", "molden", "cube", "xyz", "zmat", "cjson"]);
 const SHELLS = new Set(["s", "p", "d", "f", "g", "h", "i"]);
 const MAX_COEFFICIENTS = 2_000_000;
 const MAX_MODE_VALUES = 2_000_000;
@@ -47,7 +47,7 @@ function matchesFrame(atoms: readonly MolecularAtom[], frame: XyzFrame) {
 const frameOf = (atoms: readonly MolecularAtom[]): XyzFrame => ({ elements: atoms.map((atom) => normalizeElement(atom.element)!), positions: Float64Array.from(atoms.flatMap((atom) => [atom.x, atom.y, atom.z])) });
 
 /** Fully validates the schema panels and field evaluators consume, plus its source geometry. */
-export function validateScientificDocument(value: unknown, sourceFrames: readonly XyzFrame[]): ScientificDocument {
+export function validateScientificDocument(value: unknown, sourceFrames: readonly XyzFrame[], graphSource?: string): ScientificDocument {
   if (!isRecord(value) || !FORMATS.has(value.format as ScientificDocument["format"])) fail("Scientific data has an unknown format.");
   const document = value;
   const elements = sourceFrames[0].elements;
@@ -133,6 +133,15 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
     }
     return frameAtoms;
   });
+  if (document.format === "cjson") {
+    const graph = document.graph;
+    if (!isRecord(graph) || typeof graph.molfile !== "string" || graph.molfile !== graphSource
+      || sourceFrames.length !== 1 || !Number.isInteger(graph.activeFrameIndex)
+      || (graph.activeFrameIndex as number) < 0 || (graph.activeFrameIndex as number) >= scientificFrames.length) {
+      fail("CJSON science must own the exact MOL source and a valid source coordinate-set index.");
+    }
+    if (!matchesFrame(scientificFrames[graph.activeFrameIndex as number], geometry)) fail("The selected CJSON coordinate set does not match its MOL source.");
+  } else if (document.graph !== undefined) fail("Only CJSON science can own an explicit graph source.");
   if (sourceFrames.length > 1) {
     if (sourceFrames.length !== scientificFrames.length || sourceFrames.some((frame, index) => !matchesFrame(scientificFrames[index], frame))) fail("Scientific trajectory frames do not match the scene source geometry.");
   } else if (!scientificFrames.some((frame) => matchesFrame(frame, geometry))) {

@@ -26,7 +26,7 @@ export const SCIENCE_ASSET_PREFIX = "burette-science-";
 export const SCIENCE_MANIFEST_ASSET_ID = "burette-science-manifest";
 export const SCIENCE_MANIFEST_ASSET_NAME = "burette-science.json";
 export const SCIENCE_SESSION_KIND = "burette.science-session";
-export const SCIENCE_SESSION_VERSION = 3;
+export const SCIENCE_SESSION_VERSION = 4;
 const ATTACHMENT_ID = /^burette-science-attachment-(\d{1,3})$/u;
 export type AttachmentType = "utf8" | "json" | "bytes" | "float32le" | "float64le";
 export type AttachmentDescriptor = { id: string; dtype: AttachmentType; count: number; byteLength: number; sha256: string };
@@ -34,7 +34,7 @@ export type AttachmentDescriptor = { id: string; dtype: AttachmentType; count: n
 
 export type ScienceManifest = {
   kind: typeof SCIENCE_SESSION_KIND;
-  version: 1 | 2 | typeof SCIENCE_SESSION_VERSION;
+  version: 1 | 2 | 3 | typeof SCIENCE_SESSION_VERSION;
   document: { uuid: string };
   /** The editable logical source; `sha256` identifies the revision the scene shows. */
   source: { extension: SceneSourceExtension; attachment: string; sha256: string };
@@ -176,7 +176,9 @@ const attachmentId = (index: number) => `${SCIENCE_ASSET_PREFIX}attachment-${ind
 export async function encodeScienceSession(content: ScienceSessionContent): Promise<EncodedScienceSession> {
   const frames = readSceneSourceFrames(content.source.text, content.source.extension);
   checkGraphSourceIds(content.source.text, content.source.extension, content.atomIds);
-  if (content.source.extension !== "xyz" && content.science) fail("science", "Graph scenes cannot carry XYZ scientific arrays.");
+  if (content.source.extension !== "xyz" && content.science && !(content.source.extension === "mol" && content.science.format === "cjson")) fail("science", "Graph scenes require explicit CJSON scientific ownership.");
+  const graphScience = content.source.extension === "mol" && content.science?.format === "cjson";
+  if (graphScience && (!content.original || content.companions?.length)) fail("science", "CJSON graph science requires its Original and cannot carry companion Originals.");
   const elements = frames[0].elements;
   const { binding } = content;
   if (binding.atomCount !== elements.length || binding.frameCount !== frames.length || binding.frameIndex < 0 || binding.frameIndex >= frames.length) {
@@ -199,7 +201,7 @@ export async function encodeScienceSession(content: ScienceSessionContent): Prom
   const sourceAttachment = await add("utf8", sourceBytes, sourceBytes.byteLength);
   let science: ScienceManifest["science"] = null;
   if (content.science) {
-    validateScientificDocument(content.science, frames);
+    validateScientificDocument(content.science, frames, content.source.extension === "mol" ? content.source.text : undefined);
     // Arrays follow the JSON's own attachment, numbered in the order the walk meets them.
     const jsonIndex = attachments.length;
     const pending: ArrayAllocation[] = [];
@@ -223,8 +225,8 @@ export async function encodeScienceSession(content: ScienceSessionContent): Prom
     });
   const manifest: ScienceManifest = {
     kind: SCIENCE_SESSION_KIND,
-    // Keep XYZ/SDF v1 and MOL v2 byte behavior; paired companion bytes require v3.
-    version: companions ? SCIENCE_SESSION_VERSION : content.source.extension === "mol" ? 2 : 1,
+    // Preserve legacy writers; explicit CJSON graph science uses v4.
+    version: graphScience ? 4 : companions ? 3 : content.source.extension === "mol" ? 2 : 1,
     document: { uuid: content.documentUuid },
     source: { extension: content.source.extension, attachment: sourceAttachment, sha256: attachments[0].sha256 },
     atoms: { count: elements.length, ids: content.atomIds ? [...content.atomIds] : null },
@@ -285,11 +287,14 @@ function decodeJson(bytes: Uint8Array, what: string): unknown {
 function checkManifest(value: unknown): ScienceManifest {
   if (!isRecord(value) || value.kind !== SCIENCE_SESSION_KIND) fail("manifest", "The scientific manifest is not a Burette manifest.");
   const manifest = value as Record<string, unknown>;
-  if (manifest.version !== 1 && manifest.version !== 2 && manifest.version !== SCIENCE_SESSION_VERSION) fail("version", `Scientific data version ${String(manifest.version).slice(0, 16)} is not supported by this Burette.`);
+  if (manifest.version !== 1 && manifest.version !== 2 && manifest.version !== 3 && manifest.version !== SCIENCE_SESSION_VERSION) fail("version", `Scientific data version ${String(manifest.version).slice(0, 16)} is not supported by this Burette.`);
   const document = manifest.document, source = manifest.source, atoms = manifest.atoms, binding = manifest.binding;
   if (!isRecord(document) || typeof document.uuid !== "string" || !/^[0-9a-f-]{8,64}$/iu.test(document.uuid)) fail("manifest", "The scientific manifest lacks its document id.");
   if (!isRecord(source) || !["xyz", "sdf", "mol"].includes(source.extension as string) || typeof source.attachment !== "string" || typeof source.sha256 !== "string") fail("manifest", "The scientific manifest lacks its source.");
   if (source.extension === "mol" && manifest.version === 1) fail("version", "MOL scene sources require scientific data version 2 or later.");
+  if (manifest.version === 4 && (source.extension !== "mol" || !manifest.science || !manifest.original)) {
+    fail("version", "Scientific data version 4 requires CJSON graph science and its Original.");
+  }
   if (manifest.version === 3) {
     if (!Array.isArray(manifest.companions) || !manifest.companions.length) fail("version", "Scientific data version 3 requires paired companion Originals.");
     checkMcdOriginalDescriptors(manifest.companions);
@@ -365,7 +370,7 @@ export async function decodeScienceSession(archive: Uint8Array): Promise<Decoded
   }
   const frames = readSceneSourceFrames(text, manifest.source.extension);
   checkGraphSourceIds(text, manifest.source.extension, manifest.atoms.ids);
-  if (manifest.source.extension !== "xyz" && manifest.science) fail("science", "Graph scenes cannot carry XYZ scientific arrays.");
+  if (manifest.source.extension !== "xyz" && manifest.science && manifest.version !== 4) fail("science", "Graph scientific data requires version 4.");
   const elements = frames[0].elements;
   if (elements.length !== manifest.atoms.count || frames.length !== manifest.binding.frameCount) fail("binding", "The scene source does not match its structure binding.");
   let science: ScientificDocument | null = null;
@@ -385,7 +390,8 @@ export async function decodeScienceSession(archive: Uint8Array): Promise<Decoded
       return values;
     });
     if (referenced.size !== arrays.size) fail("science", "The scene file carries scientific arrays nothing refers to.");
-    science = validateScientificDocument(decoded, frames);
+    science = validateScientificDocument(decoded, frames, manifest.source.extension === "mol" ? text : undefined);
+    if (manifest.version === 4 && science.format !== "cjson") fail("science", "Scientific data version 4 requires explicit CJSON graph ownership.");
   }
   let original: ScienceSessionContent["original"] = null;
   if (manifest.original) {
