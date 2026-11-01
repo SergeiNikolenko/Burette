@@ -71,6 +71,10 @@ uses the real native React editor, original viewer history functions and existin
 Apply controls; independent omissions of either half fail the same UI assertions.
 Actual Browser/WebGL and packaged acceptance remain separate from these tests.
 
+ORCA's Molden files (`created by orca_2mkl` in their title) give the coefficient of each
+unnormalized primitive and the m = ±3 (f, g) and ±4 (g) real harmonics with the opposite sign;
+the Molden reader undoes both for those files only, which makes their orbitals orthonormal.
+
 ### Scientific files in the browser
 
 Ordinary Open, project-folder selection and file drop classify scientific files

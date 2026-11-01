@@ -251,7 +251,9 @@ from MIT-licensed repositories: kmilozeta27/MAA-quantum-chemical-protocol (Copyr
 kmilozeta), Spin-Chemistry-Labs/radicalpy (Copyright (c) 2022 Lewis Antill),
 arpank-2380/PyEPFD (Copyright (c) 2023 Arpan Kundu) and
 shabab-kabir/Density_Functional_Theory_Research (Copyright (c) 2023 Shabab Kabir). Their
-licenses and source commits are retained beside the files. They are test inputs only.
+licenses and source commits are retained beside the files. They are test inputs only. The ORCA
+Molden files under `tests/fixtures/quantum/molden/` come from the last repository under the same
+license, retained there.
 
 ## JAMA eigenvalue routines
 

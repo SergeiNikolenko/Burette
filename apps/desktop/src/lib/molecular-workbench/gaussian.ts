@@ -52,6 +52,18 @@ export function parseMolden(text: string): ScientificDocument {
       if (/9g|15g/.test(key)) spherical.g = key.includes("9g");
     }
   }
+  // ORCA's orca_2mkl writes the coefficient of each unnormalized primitive, and the m = ±3 (f, g)
+  // and ±4 (g) real harmonics with the opposite sign; its orbitals are orthonormal only with both
+  // undone (tests/fixtures/quantum/molden/molden-reference.py).
+  const orca = /created by orca_2mkl/i.test(sections.get("title")?.lines.join(" ") ?? "");
+  const fromOrca = (kind: GaussianShell["kind"], exponents: number[], coefficients: number[]) => {
+    const l = "spdfg".indexOf(kind);
+    const normalized = coefficients.map((c, p) => c / primitiveNormalization(exponents[p], l, 0, 0));
+    let norm = 0;
+    exponents.forEach((a, p) => exponents.forEach((b, q) => { norm += normalized[p] * normalized[q] * (2 * Math.sqrt(a * b) / (a + b)) ** (l + 1.5); }));
+    if (!(norm > 0)) throw new Error("ORCA Molden shell has no normalizable contraction.");
+    return normalized.map(c => c / Math.sqrt(norm));
+  };
   const basis: GaussianShell[] = [];
   const gto = sections.get("gto");
   if (!gto) throw new Error("Molden [GTO] Gaussian basis is missing.");
@@ -76,8 +88,9 @@ export function parseMolden(text: string): ScientificDocument {
       exponents.push(exponent); coefficients.push(numeric(parts[1]));
       if (label === "sp") pCoefficients.push(numeric(parts[2]));
     }
-    basis.push({ atomIndex, kind: label === "sp" ? "s" : label as GaussianShell["kind"], spherical: spherical[label as keyof typeof spherical] ?? false, exponents, coefficients });
-    if (label === "sp") basis.push({ atomIndex, kind: "p", spherical: false, exponents: [...exponents], coefficients: pCoefficients });
+    const kind = label === "sp" ? "s" : label as GaussianShell["kind"];
+    basis.push({ atomIndex, kind, spherical: spherical[label as keyof typeof spherical] ?? false, exponents, coefficients: orca ? fromOrca(kind, exponents, coefficients) : coefficients });
+    if (label === "sp") basis.push({ atomIndex, kind: "p", spherical: false, exponents: [...exponents], coefficients: orca ? fromOrca("p", exponents, pCoefficients) : pCoefficients });
     if (basis.reduce((sum, shell) => sum + shellSize(shell), 0) > MAX_BASIS) throw new Error("Gaussian basis exceeds 2000 functions.");
   }
   const basisCount = basis.reduce((sum, shell) => sum + shellSize(shell), 0);
@@ -113,6 +126,16 @@ export function parseMolden(text: string): ScientificDocument {
   }
   finish();
   if (!orbitals.length) throw new Error("Molden contains no orbitals.");
+  if (orca) {
+    // Pure components run m = 0, +1, -1, +2, -2, +3, -3, +4, -4: positions 5–8 are |m| = 3 and 4.
+    const flipped: number[] = [];
+    let offset = 0;
+    for (const shell of basis) {
+      if (shell.spherical && (shell.kind === "f" || shell.kind === "g")) flipped.push(...(shell.kind === "f" ? [5, 6] : [5, 6, 7, 8]).map(k => offset + k));
+      offset += shellSize(shell);
+    }
+    for (const orbital of orbitals) for (const index of flipped) orbital.coefficients[index] = -orbital.coefficients[index];
+  }
   return { format: "molden", atoms, referenceFrameIndex: 0, frames: [{ atoms }], modes: [], orbitals, basis };
 }
 
