@@ -264,4 +264,37 @@ chemical classes require target-surface evidence. Native storage/opening and
 hosted deployment are separate from browser source or local packaging checks.
 The other four candidates remain operation-specific browser work; on the
 desktop they install and run through the package runner only once their own
-commands are verified. Shared camera requirements remain **11.12** in the adoption contract.
+commands are verified.
+
+Plugin commands are not registered as agent workbench jobs: they run downloaded
+third-party code, which the plugin/MCP surface excludes
+([security](security-and-permissions.md#browser-and-agent-surfaces)); setup
+and every run stay user gestures.
+
+## Shared interactions (11.12)
+
+- **Camera.** The Mol* Camera rail menu offers Reset zoom, Lay flat, Reset
+  axes, Perspective/Orthographic and View from ±X/±Y/±Z. Framing and axis views
+  keep the chosen projection. MOLX scene files and per-document view
+  checkpoints keep the camera and its projection, because Mol*'s state snapshot
+  includes the camera (with `mode`) and the canvas settings. Keys are listed in
+  [3D view camera](keyboard-shortcuts.md#3d-view-camera). The focused 3D view
+  takes Shift+arrow rotation and Q/E, W/S, A/D, R/F steps. Plain arrows keep pose
+  and ligand stepping, which no longer react to Shift.
+- **Active frame.** Info, Plots, Vibrations and the spectra panels read one
+  frame store (`useTrajectoryFrame` in `lib/workbench/source.ts`). It keeps the
+  segment index, global index, segment start and source path from the viewer's
+  `trajectoryFrameChanged` report, so a panel opened later starts at the frame
+  the player shows. Geometry, Edit and Properties edit one structure and do not
+  follow trajectory frames.
+- **Property editing.** Edit (MOL/SDF) and Geometry (XYZ) also open from the
+  command palette (**Edit atoms and bonds**, **Edit geometry**). Properties
+  opens from Info → Tools.
+
+Remaining:
+- The mesoscale viewer, Mol* preset previews, Ketcher's Miew view and the
+  three.js chemical-space view keep their own camera controls, without the
+  projection toggle, axis views or keyboard steps.
+- The 3D context menu has no Edit, Geometry or Properties entry.
+- Agents cannot set the projection or an axis view; `rotate_camera` rotates
+  about a world axis.
