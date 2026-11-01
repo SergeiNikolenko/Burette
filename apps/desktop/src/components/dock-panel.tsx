@@ -7,6 +7,8 @@ import { useOrbitalsAvailable } from "../lib/workbench/orbitals-tool";
 import { useScientificSourceLifetime } from "../lib/workbench/scientific-source-lifetime";
 import { VibrationsDockContent } from "./workbench/vibrations-dock-content";
 import { useVibrationsAvailable } from "../lib/workbench/vibrations-tool";
+import { useCrystalAvailable } from "../lib/workbench/use-crystal-draft";
+import { CrystalPanel } from "./workbench/crystal-panel";
 import { GeometryPanel, geometryPanelAvailable } from "./geometry-panel";
 import { StructureEditPanel } from "./workbench/structure-edit-panel";
 import { structureEditAvailable } from "../lib/workbench/graph-draft";
@@ -117,6 +119,8 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
   const vibrationsDockAvailable = area === "right" && hasVibrations;
   const geometryDockAvailable = area === "right" && geometryPanelAvailable(activeStructureDocument);
   const structureEditDockAvailable = area === "right" && structureEditAvailable(activeStructureDocument);
+  const hasCrystal = useCrystalAvailable(activeStructureDocument);
+  const crystalDockAvailable = area === "right" && hasCrystal;
   const storedActiveTabKind = area === "right" ? state.rightDockActiveTab : state.bottomDockActiveTab;
   // File screens use the same editable page in every group. Legacy Files entry
   // points become placements instead of creating a second read-only renderer.
@@ -140,6 +144,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
     if (tab.kind === "scientific-spectra") return scientificSpectraDockAvailable;
     if (tab.kind === "vibrations") return vibrationsDockAvailable;
     if (tab.kind === "geometry") return geometryDockAvailable;
+    if (tab.kind === "crystal") return crystalDockAvailable;
     if (tab.kind === "structure-edit") return structureEditDockAvailable;
     if (tab.kind === "spectrum") return spectrumDockAvailable;
     if (tab.kind === "folding") return foldingDockAvailable || foldingDockRequested;
@@ -216,6 +221,7 @@ export function DockPanel({ area, state, actions, readOnly = false }: DockPanelP
         if (kind === "scientific-spectra") return scientificSpectraDockAvailable;
         if (kind === "vibrations") return vibrationsDockAvailable;
         if (kind === "geometry") return geometryDockAvailable;
+        if (kind === "crystal") return crystalDockAvailable;
         if (kind === "structure-edit") return structureEditDockAvailable;
         if (kind === "spectrum") return spectrumDockAvailable;
         if (kind === "folding") return foldingDockAvailable;
@@ -480,6 +486,7 @@ export function DockPanelContent({
       ? <GeometryPanel key={dockStructureDocument.id} document={dockStructureDocument} actions={actions} />
       : <DockEmptyState title="No molecule selected" />;
   }
+  if (activeTabKind === "crystal") return <CrystalPanel key={dockStructureDocument?.id ?? ""} document={dockStructureDocument} actions={actions} />;
   if (activeTabKind === "structure-edit") {
     return structureEditAvailable(dockStructureDocument)
       ? <StructureEditPanel key={dockStructureDocument.id} document={dockStructureDocument} actions={actions} />
