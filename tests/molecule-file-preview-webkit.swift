@@ -30,6 +30,7 @@ config.setURLSchemeHandler(Scheme(),forURLScheme:"tauri")
 let view = WKWebView(frame:NSRect(x:0,y:0,width:800,height:650),configuration:config)
 view.load(URLRequest(url:URL(string:"tauri://localhost/build/molecule-blob-preview-test/index.html")!))
 let expected = [6502,11,6502,6502,6502,0]
+let expectedBonds = [6501,10,6501,6501,6501,0]
 var step = 0
 var inspecting = false
 let started = Date()
@@ -47,8 +48,8 @@ let timer = Timer.scheduledTimer(withTimeInterval:0.25,repeats:true) { _ in
     if(!f)return {count:0,live:p.live.size,retired:p.retired.length,errors:p.errors,csp:p.csp};
     const w=f.contentWindow,a=f.contentDocument?.querySelector('#app');if(!a||a.classList.contains('buret-inspector-updating'))return null;
     const structure=w.BuretteViewer?.plugin.managers.structure.hierarchy.current.structures[0]?.cell.obj.data;if(!structure)return null;
-    const step=Number(document.querySelector('output').textContent), text=new TextDecoder().decode(w.BuretteDataBytes);
-    return {count:structure.elementCount,bonds:structure.units.reduce((n,u)=>n+u.bonds.edgeCount,0),hydrogens:w.BuretteConfig.hydrogenDisplay,theme:w.BuretteConfig.theme,ignoreH:[...w.BuretteViewer.plugin.state.data.cells.values()].filter(c=>c.obj?.data?.repr).map(c=>c.obj.data.repr.props.ignoreHydrogens),bytes:text.length,exact:text===(step===1?p.small:p.large),bounded:f.srcdoc.length<8000,live:p.live.size,retired:p.retired.length,errors:p.errors,csp:p.csp};})()
+    const step=Number(document.querySelector('output').textContent), text=new TextDecoder().decode(w.BuretteDataBytes), canvas=f.contentDocument.querySelector('canvas');
+    return {count:structure.elementCount,bonds:structure.units.reduce((n,u)=>n+u.bonds.edgeCount,0)+structure.interUnitBonds.edgeCount,canvas:canvas?[canvas.width,canvas.height]:[],hydrogens:w.BuretteConfig.hydrogenDisplay,theme:w.BuretteConfig.theme,ignoreH:[...w.BuretteViewer.plugin.state.data.cells.values()].filter(c=>c.obj?.data?.repr).map(c=>c.obj.data.repr.props.ignoreHydrogens),bytes:text.length,exact:text===(step===1?p.small:p.large),bounded:f.srcdoc.length<8000,live:p.live.size,retired:p.retired.length,errors:p.errors,csp:p.csp};})()
     """) { value,error in
         inspecting = false
         if let error = error { log("ERROR: \(error)") }
@@ -58,7 +59,7 @@ let timer = Timer.scheduledTimer(withTimeInterval:0.25,repeats:true) { _ in
         let data = try! JSONSerialization.data(withJSONObject:result,options:[.sortedKeys]);log("STEP \(step) \(String(data:data,encoding:.utf8)!)")
         guard (result["errors"] as? [String])?.isEmpty == true, (result["csp"] as? [Any])?.isEmpty == true,
               result["live"] as? Int == (step == 5 ? 0 : 1), result["retired"] as? Int == (step == 5 ? 3 : min(step,2)),
-              step == 5 || result["exact"] as? Bool == true && result["bounded"] as? Bool == true && result["hydrogens"] as? String == (step >= 3 ? "none" : "all") && result["theme"] as? String == (step >= 4 ? "dark" : "light") && (result["ignoreH"] as? [Bool])?.allSatisfy({ $0 == (step >= 3) }) == true else { log("FAIL: ownership/CSP/source mismatch");exit(1) }
+              step == 5 || result["bonds"] as? Int == expectedBonds[step] && (result["canvas"] as? [Int])?.count == 2 && (result["canvas"] as? [Int])?.allSatisfy({ $0 > 0 }) == true && (result["ignoreH"] as? [Bool])?.isEmpty == false && result["exact"] as? Bool == true && result["bounded"] as? Bool == true && result["hydrogens"] as? String == (step >= 3 ? "none" : "all") && result["theme"] as? String == (step >= 4 ? "dark" : "light") && (result["ignoreH"] as? [Bool])?.allSatisfy({ $0 == (step >= 3) }) == true else { log("FAIL: ownership/CSP/source mismatch");exit(1) }
         step += 1
         if step == expected.count { exit(0) }
         view.evaluateJavaScript("document.querySelector('button').click()",completionHandler:nil)
