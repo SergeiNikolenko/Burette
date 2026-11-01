@@ -302,7 +302,8 @@
     "test:peptide-preview": "bun test tests/test-peptide-preview.test.tsx",
     "check:peptide-preview": "tsc --noEmit -p tests/tsconfig.peptide-preview.json",
     "test:peptide-builder": "bun test tests/test-peptide-builder.test.tsx",
-    "check:peptide-builder": "tsc --noEmit -p tests/tsconfig.peptide-builder.json"
+    "check:peptide-builder": "tsc --noEmit -p tests/tsconfig.peptide-builder.json",
+    "test:orbital-agent": "bun test tests/test-orbital-agent-contract.test.ts tests/test-orbital-agent-source.test.ts tests/test-orbital-agent.test.ts && bun test tests/test-orbital-cli-compiled.test.tsx && vp exec tsc -p tests/tsconfig.orbital-cli.json --pretty false"
   },
   "dependencies": {
     "@codemirror/commands": "6.11.1",

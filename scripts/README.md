@@ -168,3 +168,13 @@ Release builds should not use `BURETTE_DEV_FLAVOR`.
 and `controls.tsx` into `PreviewExtension/Web/sequence-panel.js`. Rebuild after
 changing these sources or their shared Select/Resizable components. The runtime
 uses the same primitives as the desktop docks with preview theme tokens.
+
+
+Typed orbital jobs use `burette-agent.mjs workbench` in a browser-agent-shell
+session. The shared request contract is `workbench-agent-contract.mjs`; the CLI
+and shell consume it at their transport boundaries. `workbench-artifact.mjs`
+publishes verified Cube exports and session JSON atomically. See
+[Orbital Cube jobs](../docs/agent-platform.md#orbital-cube-jobs-through-the-browser-shell)
+for requests, limits and the distinction between source tests and packaged/browser
+acceptance. Run `vp run test:orbital-agent` for the focused controller and compiled
+host/HTTP/CLI proof.

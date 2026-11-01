@@ -579,3 +579,59 @@ random directory below `BURETTE_BROWSER_DEV_GENERATED_FILES_ROOT` (by default
 permissions. This root is already included in browser workspace file grants, so
 subsequent results can open as tabs without authorizing arbitrary temporary files.
 The generated root must be owned by the current user and not writable by others.
+
+
+## Orbital Cube jobs through the browser shell
+
+The repository CLI exposes the first typed scientific job, `orbital_cube`, in
+`browser-agent-shell` sessions. Import an FCHK or Molden file into a single final
+geometry document through the scientific importer. Its generated XYZ document
+retains the original Gaussian basis and orbitals. The shell's raw-file allowlist
+is unchanged; this command does not open raw FCHK/Molden files itself.
+
+```bash
+node scripts/burette-agent.mjs workbench --session-dir "$SESSION" '{"operation":"capabilities"}'
+node scripts/burette-agent.mjs workbench --session-dir "$SESSION" '{"operation":"observe"}'
+node scripts/burette-agent.mjs workbench --session-dir "$SESSION" '{"operation":"orbitals","offset":0,"limit":20}'
+```
+
+Copy `sourceRevision` from `observe`, and use an application-owned `operationId`
+for idempotent submission. Orbital indices are zero-based array positions; the
+paged list also reports the source's orbital number and spin.
+
+```json
+{"operation":"submit","operationId":"orbital-1","expectedSourceRevision":"sha256-<64 hex from observe>","job":{"kind":"orbital_cube","params":{"field":"orbital","orbitalIndex":0,"spacingAngstrom":0.3,"paddingAngstrom":3}}}
+```
+
+Pass the request as the command's JSON argument, through `--stdin`, or with
+`--action-file`. Poll `{"operation":"status","operationId":"orbital-1"}` until
+terminal. `jobs` is paginated; `cancel` takes a `jobId`. Export a succeeded job:
+
+```bash
+node scripts/burette-agent.mjs workbench --session-dir "$SESSION" '{"operation":"export","jobId":"<jobId>","artifact":"cube"}' --output result.cube
+```
+
+`field` also accepts `density` and `spin-density`, without `orbitalIndex`.
+`sourceRevision` hashes the source text digest and an immutable ordered projection
+of actual atoms, Gaussian shells and orbitals. `sourceTextSha256` separately
+identifies the exact text. Unsaved drafts are visible when the host supplies its
+source editor accessor. Changing the text or attached calculation data makes old
+results stale; `allowStale:true` explicitly exports the earlier result. Closing or
+replacing the source releases results. Permanent page exit terminates workers.
+Jobs never modify an open document.
+
+The existing registry allows two running workers, eight queued jobs and 32 retained
+terminal jobs. Requests are limited to 256 KiB, ordinary responses to 64 KiB, source
+text to 12 MiB and each artifact to 16 MiB. Numerical inputs and grid work also have
+the accepted quantum-worker limits. The field worker has a 60-second deadline;
+Cube serialization uses the 120-second worker deadline. Artifact publication
+verifies bytes and SHA-256, uses an atomic file write, and refuses an existing file
+unless `--overwrite` is explicit. CLI output and the completed action log contain
+artifact paths, sizes and digests, without inline Cube contents.
+
+Validation: `vp run test:orbital-agent` exercises the actual compiled host hook,
+HTTP session server, CLI subprocess, reader/quantum/Cube workers, numerical values,
+byte integrity, cancellation and stale/closed/error outcomes. This proves the
+source implementation in the browser shell; it does not prove a rebuilt packaged
+plugin, a live Browser user session, native app or hosted deployment. Other typed
+scientific jobs, batch workflows and Python/Jupyter clients remain separate work.
