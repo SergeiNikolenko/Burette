@@ -18,7 +18,8 @@ export type ChemistryRequest =
   | { action: 'conformers'; molecule: MolecularStructure; options?: { count?: number; seed?: number; forceField?: MolecularForceField } }
   | { action: 'edit-graph'; molecule: MolecularStructure; edits: GraphEdit[] }
   | { action: 'energy-forces'; molecule: MolecularStructure; forceField?: MolecularForceField }
-  | { action: 'frame-forces'; molecule: MolecularStructure; frames: MolecularAtom[][]; forceField?: MolecularForceField };
+  | { action: 'frame-forces'; molecule: MolecularStructure; frames: MolecularAtom[][]; forceField?: MolecularForceField }
+  | { action: 'record-forces'; reference: string; records: string[]; firstIndex: number; forceField?: MolecularForceField };
 
 export type ChemistryResults = {
   generate: MolecularStructure;
@@ -35,6 +36,7 @@ export type ChemistryResults = {
   'edit-graph': GraphEditResult;
   'energy-forces': EnergyForces;
   'frame-forces': EnergyForces[];
+  'record-forces': (EnergyForces & { atoms: MolecularAtom[] })[];
 };
 
 /** Each job has an isolated worker. Termination cancels synchronous OCL work,

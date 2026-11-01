@@ -2,7 +2,7 @@ import { addHydrogens, generateFromSmiles, getEnergy, getPartialCharges, getProp
 import { prepareUffWasm } from './uff-wasm';
 import { optimizeZmatrix } from '../workbench/zmatrix-coupled-optimization';
 import type { ChemistryRequest } from './compute-client';
-import { evaluateEnergyForces, evaluateFrameBatch } from './energy-forces';
+import { evaluateEnergyForces, evaluateFrameBatch, evaluateRecordBatch } from './energy-forces';
 import { runGraphOperation } from './graph-operations';
 
 const scope = globalThis as unknown as { onmessage: (event: MessageEvent<ChemistryRequest>) => void; postMessage: (message: unknown) => void };
@@ -26,6 +26,7 @@ scope.onmessage = async ({ data }) => {
       case 'edit-graph': result = runGraphOperation(data); break;
       case 'energy-forces': result = evaluateEnergyForces(data.molecule, data.forceField); break;
       case 'frame-forces': result = evaluateFrameBatch(data.molecule, data.frames, data.forceField); break;
+      case 'record-forces': result = evaluateRecordBatch(data.reference, data.records, data.firstIndex, data.forceField); break;
       default: throw new Error('Unknown chemistry operation.');
     }
     scope.postMessage({ ok: true, result });
