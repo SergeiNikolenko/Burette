@@ -12,10 +12,13 @@ export type AvogadroPluginsSectionProps = {
   onRetry: () => void;
   openLink: (plugin: AvogadroPlugin, link: AvogadroPluginLink) => Promise<void>;
   /** Install controls for one plugin. Absent on surfaces that cannot run Python packages. */
-  renderActions?: (plugin: AvogadroPlugin) => ReactNode;
+  renderPlugin?: (plugin: AvogadroPlugin) => PluginRowParts;
+  installedError?: string | null;
+  onRetryInstalled?: () => void;
   /** Shown instead of actions when the surface cannot install a plugin. */
   unavailableLabel?: string;
 };
+export type PluginRowParts = { actions: ReactNode; alert?: ReactNode; details?: ReactNode };
 const PAGE_SIZE = 25;
 const LINK_LABELS: Record<AvogadroPluginLink, string> = { source: "Source", readme: "Readme", issues: "Report an issue", download: "Download" };
 
@@ -25,7 +28,7 @@ function matches(plugin: AvogadroPlugin, query: string) {
   return query.split(/\s+/u).every(word => haystack.includes(word));
 }
 
-export function AvogadroPluginsSection({ catalog, onRetry, openLink, renderActions, unavailableLabel = "Desktop app" }: AvogadroPluginsSectionProps) {
+export function AvogadroPluginsSection({ catalog, onRetry, openLink, renderPlugin, installedError, onRetryInstalled, unavailableLabel = "Desktop app" }: AvogadroPluginsSectionProps) {
   const [query, setQuery] = useState(""), [page, setPage] = useState(0), [expanded, setExpanded] = useState<string | null>(null);
   const [linkError, setLinkError] = useState<{ plugin: AvogadroPlugin; link: AvogadroPluginLink } | null>(null);
   function onOpenLink(plugin: AvogadroPlugin, link: AvogadroPluginLink) {
@@ -48,6 +51,10 @@ export function AvogadroPluginsSection({ catalog, onRetry, openLink, renderActio
         <span role="alert" className="min-w-0 flex-1 break-words text-sm">{catalog.error}</span>
         <Button variant="outline" size="settings" disabled={catalog.status === "loading"} onClick={onRetry}>Retry</Button>
       </div>}
+      {installedError && <div className="avogadro-plugins-row">
+        <span role="alert" className="min-w-0 flex-1 break-words text-sm">{installedError}</span>
+        <Button variant="outline" size="settings" onClick={onRetryInstalled}>Retry</Button>
+      </div>}
       {linkError && <div className="avogadro-plugins-row">
         <span role="alert" className="min-w-0 flex-1 break-words text-sm">{`Could not open ${LINK_LABELS[linkError.link]}. Try again.`}</span>
         <Button variant="outline" size="settings" onClick={() => onOpenLink(linkError.plugin, linkError.link)}>Retry</Button>
@@ -55,7 +62,7 @@ export function AvogadroPluginsSection({ catalog, onRetry, openLink, renderActio
       </div>}
       <ul aria-label="Avogadro plugins" className="avogadro-plugins-list">
         {visible.map(plugin => {
-          const open = expanded === plugin.name, detailsId = `${headingId}-${plugin.name}`;
+          const open = expanded === plugin.name, detailsId = `${headingId}-${plugin.name}`, parts = renderPlugin?.(plugin);
           return <li key={plugin.name} className="avogadro-plugins-item">
             <div className="avogadro-plugins-row">
               <Button variant="ghost" size="icon-toolbar" aria-expanded={open} aria-controls={detailsId} aria-label={`${plugin.name} details`}
@@ -65,14 +72,16 @@ export function AvogadroPluginsSection({ catalog, onRetry, openLink, renderActio
                 {plugin.description && <div className="text-sm break-words">{plugin.description}</div>}
               </div>
               <span className="text-sm tabular-nums">{plugin.version}</span>
-              {renderActions ? renderActions(plugin) : <span className="text-sm">{unavailableLabel}</span>}
+              {parts ? parts.actions : <span className="text-sm">{unavailableLabel}</span>}
             </div>
+            {parts?.alert && <div className="avogadro-plugins-row avogadro-plugins-alert">{parts.alert}</div>}
             {open && <dl id={detailsId} className="avogadro-plugins-details">
               <dt>Authors</dt><dd>{plugin.authors.join(", ")}</dd>
               <dt>License</dt><dd>{plugin.license}</dd>
               {plugin.features.length > 0 && <><dt>Provides</dt><dd>{plugin.features.map(feature => FEATURE_LABELS[feature]).join(", ")}</dd></>}
               {plugin.updatedAt && <><dt>Updated</dt><dd>{new Date(plugin.updatedAt).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })}</dd></>}
               <dt>Revision</dt><dd className="font-mono">{plugin.commit.slice(0, 12)}</dd>
+              {parts?.details}
               <dt className="sr-only">Links</dt>
               <dd className="avogadro-plugins-links">
                 {(["source", "readme", "issues", "download"] as const).filter(link => pluginLinkUrl(plugin, link)).map(link =>

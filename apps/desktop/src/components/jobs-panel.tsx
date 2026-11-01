@@ -80,7 +80,7 @@ export function JobsPanel({ state, actions, variant = "dock" }: Props) {
       ...job, id: `resource:${job.id}`, source: "Extensions", details: job.error,
       statusLabel: job.status !== "running" ? undefined : !job.cancelable ? "Cancelling" : job.phase === "reading"
         ? `${job.receivedBytes.toLocaleString("en-US")} / ${job.totalBytes.toLocaleString("en-US")} bytes`
-        : job.phase === "installing" ? "Installing" : "Removing",
+        : { installing: "Installing", removing: "Removing", preparing: "Preparing", running: "Running" }[job.phase],
       cancel: job.status === "running" && job.cancelable ? () => actions.cancelResourceJob(job.id) : undefined,
       open: job.status === "success" ? () => actions.openSettingsSection("extensions") : undefined,
     })),

@@ -15,3 +15,6 @@
   .avogadro-plugins-details { grid-template-columns: minmax(0, 1fr); padding-inline-start: 16px; }
   .avogadro-plugins-links { margin-inline-start: -12px; }
 }
+.avogadro-plugins-alert { padding-inline-start: 56px; }
+.avogadro-plugins-dialog-details { padding: 0; }
+.avogadro-plugins-license { max-height: 50vh; margin: 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--text-xs); line-height: 16px; color: var(--color-text); }
