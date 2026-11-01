@@ -20,7 +20,7 @@ export function PropertiesToolRow({ document, actions }: { document: ViewerDocum
         <span className="min-w-0 flex-1 truncate px-2 text-sm">Properties</span>
         <DialogTrigger asChild><Button type="button" variant="secondary" size="xs" aria-label="Calculate properties">Calculate</Button></DialogTrigger>
       </div>
-      <DialogContent variant="form" size="wide" className="flex max-h-[88vh] flex-col gap-4 overflow-y-auto">
+      <DialogContent variant="form" size="wide" className="flex max-h-[88vh] flex-col gap-4 overflow-y-auto" aria-describedby={undefined}>
         {open ? <PropertiesDialogBody document={document} actions={actions} onDone={() => setOpened(null)} /> : null}
       </DialogContent>
     </Dialog>

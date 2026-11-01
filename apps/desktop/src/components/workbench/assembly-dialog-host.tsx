@@ -15,7 +15,7 @@ export function AssemblyDialogHost({ actions }: { actions: Pick<ShellActions, "o
   const current = () => assembly !== null && isWorkbenchDialogRequestCurrent(assembly);
   const close = () => { if (current()) closeWorkbenchDialog(); };
   return <Dialog open={Boolean(assembly)} onOpenChange={open => { if (!open) close(); }}>
-    {assembly ? <DialogContent variant="form" size="wide" className="flex max-h-[88vh] flex-col gap-4 overflow-y-auto overscroll-contain">
+    {assembly ? <DialogContent variant="form" size="wide" className="flex max-h-[88vh] flex-col gap-4 overflow-y-auto overscroll-contain" aria-describedby={undefined}>
       <Suspense fallback={<Spinner aria-label="Opening biological assembly" />}>
         <Body key={lifetime.revision} document={assembly.document} actions={actions} isCurrent={current} onDone={close} />
       </Suspense>
