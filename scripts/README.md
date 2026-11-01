@@ -61,10 +61,20 @@ bun scripts/burette-agent.mjs open --mode browser-preview samples/mini.pdb
 bun scripts/burette-agent.mjs open --mode browser-agent-shell samples/mini.pdb
 bun scripts/burette-agent.mjs observe --session-dir /tmp/burette-agent-session
 bun scripts/burette-agent.mjs act --session-dir /tmp/burette-agent-session '{"type":"reset_camera"}'
+bun scripts/burette-agent.mjs convert --file molecule.xyz --format zmat --output molecule.zmat
+bun scripts/burette-agent.mjs convert --file molecule.zmat --format xyz --output molecule.xyz
 ```
 
 See `docs/agent-platform.md` and `plugins/burette-agent/AGENTS.md` before
 changing CLI, MCP, or skill behavior.
+
+`convert` preserves absolute Cartesian coordinates, atom order, human comments
+and the complete internal-coordinate definition through the bounded
+[interchange contract](../docs/coordinate-interchange.md). Input and output are
+each limited to 1 MiB, with 512 definition rows including dummy reference points.
+Existing outputs require `--overwrite`; source aliases and output symlinks are
+rejected. Run `vp run test:coordinate-cli` and
+`vp run test:coordinate-cli-packaged` for repository and isolated plugin checks.
 
 ## Validation And CI Helpers
 

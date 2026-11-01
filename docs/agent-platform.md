@@ -74,6 +74,7 @@ result back to the user.
 
 | Surface | Path | Use |
 | --- | --- | --- |
+| Coordinate converter | `bun scripts/burette-agent.mjs convert` | Converts bounded XYZ/ZMAT with absolute coordinates and full definitions. |
 | Workspace opener | `bun scripts/burette-agent.mjs open` | Opens browser preview, browser agent shell, or desktop app sessions. |
 | Workspace observer | `bun scripts/burette-agent.mjs observe` | Reads typed state from a session directory. |
 | Workspace action | `bun scripts/burette-agent.mjs act` | Sends typed shell or Mol* actions and waits for completion. |
@@ -100,6 +101,34 @@ The Ketcher facade is intentionally separate from Mol* scene actions because a
 chemical-editor mutation has different revision, payload, export, and
 user-persistence rules. Reuse the workspace session and action-file transport;
 do not invent a second local session protocol.
+
+## Coordinate Conversion
+
+```bash
+bun scripts/burette-agent.mjs convert --file molecule.xyz --format zmat --output molecule.zmat
+bun scripts/burette-agent.mjs convert --file molecule.zmat --format xyz --output molecule.xyz
+```
+
+Conversion accepts one plain XYZ frame or a headerless ZMAT. The shared
+[interchange contract](coordinate-interchange.md) preserves exact absolute
+Cartesian coordinates and the full definition, including signed/shared/unused
+variables and dummy references, through one versioned comment marker. XYZ body
+coordinates and ZMAT body definitions are authoritative; conflicting markers
+are rejected. Human comments and import tokens survive the roundtrip.
+
+Input and final output are each bounded to 1 MiB; UTF-8 decoding is fatal.
+The 512-row limit includes dummy rows. Validation finishes before the output
+is opened. Its parent must exist. Existing outputs require `--overwrite`;
+output symlinks and input/output identity, including hard links, are rejected
+before truncation. Success follows `burette-agent-cli/v1`, with `result` fields
+`inputPath`, `outputPath`, `inputFormat`, `format`, `atomCount` and `byteCount`.
+Structure content stays in the output file. Conversion does not open the app,
+infer bonds, optimize structures or add an MCP tool.
+
+Run `vp run test:coordinate-cli` and `vp run test:coordinate-cli-packaged`.
+The latter copies the generated plugin scripts outside the repository and runs
+both subprocess suites there without module-path fallbacks. Ordinary browser
+Copy/export/reopen remains a separate acceptance surface.
 
 ## Surfaces
 

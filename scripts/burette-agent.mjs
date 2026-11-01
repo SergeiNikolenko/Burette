@@ -13,6 +13,7 @@ import { delimiter, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { validateMvsDocumentFile, validateMvsStoryFile, writeMvsStoryFile } from './mvs-story.mjs';
 import { instantiateMvsStoryTemplate, listMvsStoryTemplates } from './mvs-story-templates.mjs';
 import { getOfficialMvsAuthoringReference } from './mvs-schema-validator.mjs';
+import { convertMolecularCoordinates } from './molecular-coordinates.mjs';
 import { WORKBENCH_LIMITS, validateWorkbenchRequest } from './workbench-agent-contract.mjs';
 import { writeWorkbenchArtifact } from './workbench-artifact.mjs';
 
@@ -40,6 +41,8 @@ function usage() {
   node scripts/burette-agent.mjs open --mode desktop-app <file> [--app Burette] [--session-dir /tmp/session] [--no-launch]
   node scripts/burette-agent.mjs link pdb <id> | link open <absolute-path> | link project <absolute-path>
   node scripts/burette-agent.mjs link --session-dir <desktop-agent-session>
+  node scripts/burette-agent.mjs convert --file molecule.xyz --format zmat --output molecule.zmat [--overwrite]
+  node scripts/burette-agent.mjs convert --file molecule.zmat --format xyz --output molecule.xyz [--overwrite]
   node scripts/burette-agent.mjs observe --url <tokenized-preview-url>
   node scripts/burette-agent.mjs observe --session-dir <desktop-agent-session>
   node scripts/burette-agent.mjs status --session-dir <session>
@@ -231,6 +234,16 @@ async function main() {
       ? await registerSessionLink(resolve(options.sessionDir))
       : navigationLink(options.rest[0], options.rest[1] || '');
     console.log(JSON.stringify({ ok: true, apiVersion, result: { deepLink } }, null, 2));
+    return;
+  }
+  if (command === 'convert') {
+    if (options.rest.length) fail('INVALID_ARGS', 'convert accepts named options only.', 2);
+    try {
+      const result = await convertMolecularCoordinates(options);
+      console.log(JSON.stringify({ ok: true, apiVersion, result }, null, 2));
+    } catch (error) {
+      fail(error?.code || 'CONVERSION_FAILED', error?.message || String(error), 1);
+    }
     return;
   }
   if (command === 'open') {

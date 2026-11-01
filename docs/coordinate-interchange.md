@@ -2,8 +2,8 @@
 
 `scripts/coordinate-interchange.mjs` carries the existing absolute atoms and
 internal-coordinate definition through one plain XYZ frame or headerless ZMAT.
-It is a pure codec, shared by future CLI and scientific-reader consumers; it does
-not activate either route or change unmarked trajectory readers.
+It is a pure codec shared by the coordinate CLI. Scientific-reader integration
+is separate; the codec does not change unmarked trajectory readers.
 
 `readCoordinateInterchange(text, format)` returns `{ atoms, internalCoordinates,
 comment }`. Atoms use `{ element, x, y, z }`; definition rows/variables use the
