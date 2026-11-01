@@ -1,8 +1,16 @@
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { molstarStatePreconditionPlugin } from './molstar-state-precondition.mjs';
 
 export async function buildMcpMolstar(root) {
+  // Checkouts that build Mol* from a pinned source tree ship a vendored bundle
+  // without dynamic code; the npm entry below no longer resolves there.
+  if (existsSync(resolve(root, 'scripts/molstar-build-plugins.mjs'))) {
+    const vendored = await readFile(resolve(root, 'PreviewExtension/Web/molstar.js'), 'utf8');
+    if (/(?:^|[^\w$.])(?:eval|Function)\(/u.test(vendored)) throw new Error('Vendored Mol* contains dynamic code; review the MCP App CSP build.');
+    return vendored;
+  }
   // The optional MP4 encoder initializes eval-based Emscripten glue on import.
   // Both native MCP surfaces omit it and share the same CSP-safe substitutions.
   const result = await Bun.build({

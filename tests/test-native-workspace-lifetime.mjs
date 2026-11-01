@@ -36,7 +36,7 @@ for (const unmount of ['host-teardown', 'pagehide']) {
       createWorkspaceCheckpoint: async () => ({ restored: false, storage: {}, update() {}, dispose() {}, async flush() {} }),
       createWorkspacePlacement: () => ({ set: async mode => ({ ok: true, mode }), update() {}, observe() {}, dispose() {}, mode: 'inline' }),
       document: {
-        getElementById: () => status, querySelectorAll: () => [{ contentWindow: previewWindow }], documentElement: { dataset: {} },
+        getElementById: () => status, querySelectorAll: () => [{ contentWindow: previewWindow }], documentElement: { dataset: {}, style: { setProperty() {} } },
         body: { replaceChildren: () => assert.fail('No terminal closed screen'), dataset: {} },
       },
       window, setTimeout, clearTimeout,

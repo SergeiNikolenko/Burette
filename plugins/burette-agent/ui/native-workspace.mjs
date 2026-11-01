@@ -13,10 +13,22 @@ export async function startNativeWorkspace(app, initialResult) {
   const root = document.getElementById('root');
   root.inert = true;
   const backgrounds = { light: '#ffffff', dark: '#101010' };
+  // Codex sends computed colors such as `rgb(24, 24, 24)`, while the shell's
+  // theme math takes #rrggbb: paint the color once and read the pixel back.
+  function opaqueHex(color) {
+    if (/^#[0-9a-f]{6}$/iu.test(color || '')) return color;
+    if (typeof color !== 'string' || !globalThis.CSS?.supports('color', color)) return null;
+    const canvas = document.createElement('canvas').getContext('2d');
+    if (!canvas) return null;
+    canvas.fillStyle = color;
+    canvas.fillRect(0, 0, 1, 1);
+    const [red, green, blue, alpha] = canvas.getImageData(0, 0, 1, 1).data;
+    return alpha === 255 ? `#${[red, green, blue].map(value => value.toString(16).padStart(2, '0')).join('')}` : null;
+  }
   function syncHostBackground(context = {}) {
     const theme = context.theme || document.documentElement.dataset.theme || 'light';
-    const color = context.styles?.variables?.['--color-background-primary'];
-    if ((theme === 'light' || theme === 'dark') && /^#[0-9a-f]{6}$/iu.test(color || '')) backgrounds[theme] = color;
+    const color = opaqueHex(context.styles?.variables?.['--color-background-primary']);
+    if ((theme === 'light' || theme === 'dark') && color) backgrounds[theme] = color;
     document.documentElement.style.setProperty('--burette-host-background', backgrounds[theme] || backgrounds.light);
   }
   document.documentElement.dataset.theme = app.getHostContext()?.theme || 'light';

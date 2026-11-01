@@ -11,9 +11,12 @@ export function createWorkspacePlacement(app, status) {
     #root .app-shell .workbench{border-left:0;border-radius:0;box-shadow:none}
     #root :is(.app-shell,.workbench){background:var(--burette-host-background,#fff)}
     body>[data-workspace-placement-host]{position:fixed;right:12px;bottom:12px;z-index:101;pointer-events:auto}
-    .workspace-placement-trigger[data-slot="button"]{background:#0a0a0a;color:#fafafa;border:1px solid #333;border-radius:6px;height:30px;min-height:30px;padding:4px 10px;gap:4px;font:14px/1.35 system-ui}
-    .workspace-placement-trigger:hover,.workspace-placement-trigger[data-state="open"]{background:#171717;color:#fff}
-    .workspace-placement-trigger[data-slot="button"]:focus-visible{outline:1px solid #666;outline-offset:2px;box-shadow:none}
+    /* A Codex viewer capsule, like the workspace header's controls. */
+    .workspace-placement-trigger[data-slot="button"]{background:#fff;color:#1a1c1f;border:0;border-radius:9999px;height:32px;min-height:32px;padding:0 12px;gap:6px;font:13px/20px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 0 0 1px rgb(13 13 13/5%),0 4px 16px #0000000d}
+    .workspace-placement-trigger:hover,.workspace-placement-trigger[data-state="open"]{background:color-mix(in srgb,#fff 94%,#000)}
+    html[data-theme="dark"] .workspace-placement-trigger[data-slot="button"]{background:color-mix(in srgb,var(--burette-host-background,#181818) 91%,#fff);color:#fff;box-shadow:0 0 0 .5px rgb(255 255 255/8.4%),0 8px 16px -4px #0000001f}
+    html[data-theme="dark"] .workspace-placement-trigger:hover{background:color-mix(in srgb,var(--burette-host-background,#181818) 84%,#fff)}
+    .workspace-placement-trigger[data-slot="button"]:focus-visible{outline:2px solid #339cff;outline-offset:1px}
     .workspace-placement-error{max-width:240px;margin-bottom:8px;padding:8px 10px;border-radius:8px;background:#b42318;color:#fff;font:12px/1.4 system-ui}
     #root .app-shell{--chrome-height:0px;--chrome-drag-height:0px}
     #root :is(.topbar,.chrome-leading-controls,.chrome-trailing-controls,.drag-region,.workspace-sidebar-handle){display:none}
