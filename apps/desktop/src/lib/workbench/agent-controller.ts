@@ -4,9 +4,11 @@ import {
   WORKBENCH_RUNTIMES,
   validateWorkbenchRequest,
   workbenchContractSummary,
+  type WorkbenchJobKind,
   type WorkbenchJobRequest,
   type WorkbenchRequest,
 } from "../../../../../scripts/workbench-agent-contract.mjs";
+import { runChemistryTask } from "../molecular-workbench/compute-client";
 import { computeQuantumGrid } from "../molecular-workbench/quantum-client";
 import { serializeCube } from "./cube-task";
 import { fileStem } from "./formats";
@@ -119,7 +121,11 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   const sourceOwner = createAgentSourceOwner(environment, lifetime.signal);
   const { snapshotOf, assertOpen } = sourceOwner;
 
-  function jobUnavailable(snapshot: Snapshot): string | null {
+  function jobUnavailable(snapshot: Snapshot, kind: WorkbenchJobKind): string | null {
+    if (kind === "properties") {
+      if (!snapshot.structure) return snapshot.structureError ?? snapshot.sourceError ?? "The chemical graph could not be read.";
+      return snapshot.structure.graphComplete ? null : "This source has no complete bond orders or charges. Open an SDF or MOL version of the structure.";
+    }
     if (!snapshot.scientific?.basis?.length) return "This source has no Gaussian basis set (open an FCHK or Molden file).";
     return snapshot.scientific.orbitals.length ? null : "This source has no molecular orbitals.";
   }
@@ -135,14 +141,17 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     const snapshot = await snapshotOf(request);
     const base = { documentId: snapshot.document.id, sourceRevision: snapshot.revision, sourceTextSha256: snapshot.sourceTextSha256 };
     if (request.operation === "observe") {
-      const reason = jobUnavailable(snapshot);
+      const jobs = Object.fromEntries((["properties", "orbital_cube"] as const).map(kind => {
+        const reason = jobUnavailable(snapshot, kind);
+        return [kind, reason ? { available: false, reason } : { available: true }];
+      }));
       return { ...base, document: { ...documentRef(snapshot.document), active: environment.activeDocument()?.id === snapshot.document.id },
         source: { origin: snapshot.origin, byteCount: snapshot.byteCount, draftsVisible: environment.draftsVisible },
         scientific: snapshot.scientific ? { origin: snapshot.scientificOrigin, format: snapshot.scientific.format,
           atomCount: snapshot.scientific.atoms.length, orbitalCount: snapshot.scientific.orbitals.length,
           basisShellCount: snapshot.scientific.basis?.length ?? 0 } : null,
         sourceError: snapshot.sourceError,
-        jobs: { orbital_cube: reason ? { available: false, reason } : { available: true } } };
+        jobs };
     }
     return { ...base, ...page(snapshot.scientific?.orbitals ?? [], request.offset, request.limit, (orbital, index) => ({
       index, orbitalNumber: orbital.index, energyHartree: orbital.energyHartree, occupancy: orbital.occupancy,
@@ -233,6 +242,15 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   async function runJob(job: Job, signal: AbortSignal): Promise<{ summary: Record<string, unknown>; artifacts: Artifact[] }> {
     const { input, request } = job;
     const options = { signal, timeoutMs: WORKBENCH_LIMITS.jobTimeoutMs };
+    if (request.kind === "properties") {
+      const deadline = performance.now() + options.timeoutMs;
+      const properties = await runChemistryTask({ action: "properties", molecule: input.structure! }, options);
+      const remainingMs = deadline - performance.now();
+      if (request.params.chargeModel && remainingMs <= 0) throw new Error("Calculation exceeded the browser time limit.");
+      const partialCharges = request.params.chargeModel === "Gasteiger"
+        ? await runChemistryTask({ action: "charges", molecule: input.structure! }, { ...options, timeoutMs: remainingMs }) : undefined;
+      return { summary: { method: "OpenChemLib", ...properties, ...(partialCharges ? { partialCharges } : {}) }, artifacts: [] };
+    }
     const stem = fileStem(input.document.title);
     const { field, orbitalIndex, spacingAngstrom, paddingAngstrom } = request.params;
     const scientific = input.scientific!;
@@ -305,7 +323,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     }
     const snapshot = await snapshotOf(request);
     assertOpen(snapshot.document, snapshot.lifetime);
-    const reason = jobUnavailable(snapshot) ?? paramsUnavailable(snapshot, request.job);
+    const reason = jobUnavailable(snapshot, request.job.kind) ?? paramsUnavailable(snapshot, request.job);
     if (reason) throw new WorkbenchError("JOB_UNAVAILABLE", `${request.job.kind} cannot run on ${snapshot.document.title}: ${reason}`, { kind: request.job.kind, documentId: snapshot.document.id });
     const pending = [...jobs.values()].filter((job) => job.state === "queued").length;
     if (pending >= WORKBENCH_LIMITS.queuedJobs) throw new WorkbenchError("JOB_QUEUE_FULL", `${pending} workbench jobs are already queued. Wait for one to finish or cancel one.`);

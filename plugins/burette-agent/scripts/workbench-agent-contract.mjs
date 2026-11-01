@@ -39,6 +39,12 @@ export const WORKBENCH_OPERATIONS = Object.freeze(Object.keys(OPERATION_FIELDS))
  * document must provide; `artifacts` names the files `export` can write.
  */
 export const WORKBENCH_JOB_KINDS = Object.freeze({
+  properties: {
+    engine: 'OpenChemLib properties; optional RDKit Gasteiger charges',
+    requires: 'A complete chemical graph, 1–256 atoms; Gasteiger requires explicit hydrogens.',
+    params: { chargeModel: ['Gasteiger'] },
+    artifacts: [],
+  },
   orbital_cube: {
     engine: 'Workbench Gaussian-basis evaluator',
     requires: 'A document parsed with a Gaussian basis and orbitals (FCHK or Molden source).',
@@ -121,9 +127,14 @@ function oneOf(value, field, allowed, fallback) {
   return value;
 }
 
-function jobParams(_kind, value) {
+function jobParams(kind, value) {
   const params = value ?? {};
   if (!plainObject(params)) invalid('job.params must be a JSON object.');
+  if (kind === 'properties') {
+    rejectUnknownFields(params, ['chargeModel'], 'properties job.params');
+    const chargeModel = oneOf(params.chargeModel, 'job.params.chargeModel', new Set(['Gasteiger']), undefined);
+    return chargeModel === undefined ? {} : { chargeModel };
+  }
   // orbital_cube
   rejectUnknownFields(params, ['field', 'orbitalIndex', 'spacingAngstrom', 'paddingAngstrom'], 'orbital_cube job.params');
   const field = oneOf(params.field, 'job.params.field', FIELDS, undefined);

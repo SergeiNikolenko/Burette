@@ -1,3 +1,4 @@
+import { builtPropertiesWorkers, mcpPropertiesClient, propertyCases } from "./fixtures/typed-properties-host";
 // Actual compiled host hook → HTTP session server → CLI subprocess → numerical workers.
 import { afterAll, beforeAll, expect, mock, test } from "bun:test";
 import { plugin } from "bun";
@@ -13,7 +14,7 @@ import { Window } from "happy-dom";
 import React, { act } from "react";
 import type { ViewerDocument } from "../apps/desktop/src/types";
 import { parseScientificFile } from "../apps/desktop/src/lib/molecular-workbench/quantum";
-import { addDocumentInternalCoordinates, releaseClosedImports } from "../apps/desktop/src/lib/workbench/scientific-source-state";
+import { addDocumentInternalCoordinates, importedOriginalFor, releaseClosedImports } from "../apps/desktop/src/lib/workbench/scientific-source-state";
 
 plugin({ name: "orbital-agent-production-compiler", setup(build) {
   build.onLoad({ filter: /use-agent-session\.ts$/u }, ({ path }) => {
@@ -60,6 +61,7 @@ const originalFetch = globalThis.fetch;
 let root = "", session = "", baseUrl = "", token = "", draft: string | null = null;
 let server: ReturnType<typeof spawn>, mounted: ReturnType<typeof createRoot>;
 let documents: ViewerDocument[] = [], source: ViewerDocument, sourceText = "";
+let propertyWorkers: Awaited<ReturnType<typeof builtPropertiesWorkers>>;
 const hookErrors: unknown[] = [];
 function Probe() {
   useAgentSession({ activeDocument: documents[0], documents, activeTabId: "tab", activeTabKind: "document", tabs: [],
@@ -86,6 +88,7 @@ async function finished(jobId: string) {
 const params = { field: "orbital", orbitalIndex: 1, spacingAngstrom: 0.5, paddingAngstrom: 1 };
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), "burette-orbital-host-")); session = join(root, "session");
+  propertyWorkers = await builtPropertiesWorkers(root, repo);
   await Promise.all([mkdir(session), mkdir(join(root, "dist"))]); await writeFile(join(root, "dist/index.html"), "<!doctype html><title>Agent fixture</title>");
   const listener = createServer(); await new Promise<void>(done => listener.listen(0, "127.0.0.1", done));
   const port = (listener.address() as { port: number }).port; await new Promise(done => listener.close(done));
@@ -108,14 +111,14 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   if (mounted) await act(async () => mounted.unmount()); await Bun.sleep(20);
-  server?.kill("SIGTERM"); releaseClosedImports(new Set()); globalThis.fetch = originalFetch;
+  propertyWorkers?.restore(); server?.kill("SIGTERM"); releaseClosedImports(new Set()); globalThis.fetch = originalFetch;
   for (const [key, descriptor] of prior) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }
   if (root) await rm(root, { recursive: true, force: true });
 });
 
 test("compiled host and CLI produce signed orbital, total density and spin density Cube files with exact hashes and analytic values", async () => {
   const capabilities = await ok({ operation: "capabilities" });
-  expect([capabilities.available, capabilities.draftsVisible, Object.keys(capabilities.jobs)]).toEqual([true, true, ["orbital_cube"]]);
+  expect([capabilities.available, capabilities.draftsVisible, Object.keys(capabilities.jobs)]).toEqual([true, true, ["properties", "orbital_cube"]]);
   const observed = await ok({ operation: "observe" });
   expect(observed.sourceTextSha256).toBe(`sha256-${createHash("sha256").update(sourceText).digest("hex")}`);
   const orbitals = await ok({ operation: "orbitals", limit: 1, offset: 1 });
@@ -170,6 +173,78 @@ test("same-text attached input changes invalidate old revision and retain the or
   expect((await cli({ operation: "export", jobId: submitted.jobId, artifact: "cube", allowStale: true })).body.error.code).toBe("SOURCE_CLOSED");
   documents = [source]; await render(); expect(hookErrors).toEqual([]);
 }, 20000);
+
+// These are already-open physical SDF documents, read by the production source
+// owner over HTTP. This fixture does not claim the ordinary chooser boundary.
+async function propertyDocument(fixture: typeof propertyCases[number]) {
+  const path = join(root, `${fixture.name}.sdf`); await writeFile(path, fixture.source);
+  const doc: ViewerDocument = { id: fixture.name, path, title: `${fixture.name}.sdf`, extension: "sdf", renderer: "molstar", byteCount: Buffer.byteLength(fixture.source), runtimePath: "viewer" };
+  documents = [doc]; useMoleculeStore.setState({ documents }); await render(); return doc;
+}
+
+test("properties CLI and actual stdio MCP share the compiled host, exact SDF sources and frozen source-ordered Gasteiger values", async () => {
+  const mcp = await mcpPropertiesClient(repo), original = importedOriginalFor(source.id), originalBytes = await original!.file.text();
+  const call = async (action: Record<string, unknown>) => { const response = await mcp.control(session, action); expect(response.structuredContent.ok).toBe(true); return response.structuredContent.result.action.result.result; };
+  try {
+    for (const fixture of propertyCases) {
+      const doc = await propertyDocument(fixture), observed = await call({ operation: "observe" });
+      expect([observed.document.id, observed.source.origin, observed.sourceTextSha256]).toEqual([doc.id, "file", `sha256-${createHash("sha256").update(fixture.source).digest("hex")}`]);
+      expect((await ok({ operation: "observe" })).sourceRevision).toBe(observed.sourceRevision);
+      const request = { operation: "submit", operationId: `properties-${fixture.name}`, expectedSourceRevision: observed.sourceRevision, job: { kind: "properties", params: {} } };
+      const submitted = await call(request), job = await finished(submitted.job.jobId);
+      expect([job.status, job.binding, job.artifacts]).toEqual(["succeeded", "current", []]);
+      expect(job.summary).toMatchObject({ formula: fixture.properties.formula, atomCount: fixture.properties.atomCount, bondCount: fixture.properties.bondCount, charge: 0 });
+      expect(Math.abs(job.summary.molecularWeight - fixture.properties.molecularWeight)).toBeLessThan(0.01);
+      expect(Math.abs(job.summary.exactMass - fixture.properties.exactMass)).toBeLessThan(1e-5);
+      expect(job.summary.partialCharges).toBeUndefined();
+      expect((await call({ operation: "status", jobId: job.jobId })).job.summary).toEqual(job.summary);
+      expect((await call(request)).job.jobId).toBe(job.jobId);
+      const conflict = await mcp.control(session, { ...request, job: { kind: "properties", params: { chargeModel: "Gasteiger" } } });
+      expect(conflict.structuredContent.error.code).toBe("OPERATION_ID_CONFLICT");
+      const count = JSON.parse(await readFile(join(session, "actions.json"), "utf8")).actions.length;
+      const invalid = await mcp.control(session, { ...request, job: { kind: "properties", params: { unsupported: true } } });
+      expect([invalid.isError, invalid.structuredContent.error.code]).toEqual([true, "INVALID_ARGS"]);
+      expect(JSON.parse(await readFile(join(session, "actions.json"), "utf8")).actions).toHaveLength(count);
+      const charged = await ok({ ...request, operationId: `charges-${fixture.name}`, job: { kind: "properties", params: { chargeModel: "Gasteiger" } } });
+      const answer = await finished(charged.job.jobId);
+      if ("charges" in fixture) {
+        expect([answer.status, answer.binding, answer.summary.partialCharges.model, answer.summary.partialCharges.unit]).toEqual(["succeeded", "current", "Gasteiger", "e"]);
+        const values = answer.summary.partialCharges.charges as number[]; expect(values).toHaveLength(fixture.elements.length);
+        values.forEach((charge, index) => expect(Math.abs(charge - fixture.charges[index])).toBeLessThan(1e-7));
+        expect(Math.abs(values.reduce((sum, value) => sum + value, 0))).toBeLessThan(1e-8);
+      } else expect([answer.status, answer.summary, answer.artifacts]).toEqual(["failed", null, []]);
+      expect((await cli({ ...request, operationId: `stale-${fixture.name}`, expectedSourceRevision: `sha256-${"a".repeat(64)}` })).body.error.code).toBe("REVISION_CONFLICT");
+      draft = fixture.source + "\n";
+      expect((await ok({ operation: "status", jobId: job.jobId })).job.status).toBe("stale"); draft = null;
+      expect(await readFile(doc.path, "utf8")).toBe(fixture.source); expect(importedOriginalFor(doc.id)).toBeNull();
+    }
+    expect(importedOriginalFor(source.id)).toBe(original); expect(await original!.file.text()).toBe(originalBytes);
+    for (const action of ["parse", "properties", "charges"]) expect(propertyWorkers.records.some(worker => worker.name === "compute-worker.ts" && worker.action === action)).toBe(true);
+    expect(hookErrors).toEqual([]);
+  } finally { mcp.close(); draft = null; documents = [source]; useMoleculeStore.setState({ documents }); await render(); }
+}, 60000);
+
+test("actual browser-bundled charge replies cannot publish after MCP cancel or same-id source close and reopen", async () => {
+  const doc = await propertyDocument(propertyCases[1]);
+  try {
+    for (const closing of [false, true]) {
+      const observed = await ok({ operation: "observe" }); propertyWorkers.hold("charges");
+      const { job } = await ok({ operation: "submit", operationId: `held-properties-${closing}`, expectedSourceRevision: observed.sourceRevision, job: { kind: "properties", params: { chargeModel: "Gasteiger" } } });
+      for (let attempt = 0; attempt < 300 && !propertyWorkers.pending.length; attempt++) await Bun.sleep(10);
+      expect(propertyWorkers.pending.length).toBe(1);
+      if (closing) { documents = []; useMoleculeStore.setState({ documents }); await render(); documents = [doc]; useMoleculeStore.setState({ documents }); await render(); }
+      else {
+        const mcp = await mcpPropertiesClient(repo);
+        try { expect((await mcp.control(session, { operation: "cancel", jobId: job.jobId })).structuredContent.result.action.result.result.job.status).toBe("cancelled"); } finally { mcp.close(); }
+      }
+      propertyWorkers.release(); await Bun.sleep(20);
+      const answer = (await ok({ operation: "status", jobId: job.jobId })).job;
+      expect([answer.status, answer.summary, answer.artifacts]).toEqual([closing ? "source_closed" : "cancelled", null, []]);
+      expect(propertyWorkers.records.filter(worker => worker.action === "charges").every(worker => worker.terminated)).toBe(true);
+      expect(await readFile(doc.path, "utf8")).toBe(propertyCases[1].source); expect(importedOriginalFor(doc.id)).toBeNull();
+    }
+  } finally { propertyWorkers.release(); documents = [source]; useMoleculeStore.setState({ documents }); await render(); }
+}, 30000);
 
 test("CLI errors, cancellation and permanent page close use the real compiled controller lifecycle", async () => {
   const actionCount = async () => JSON.parse(await readFile(join(session, "actions.json"), "utf8")).actions.length;

@@ -612,7 +612,7 @@ The generated root must be owned by the current user and not writable by others.
 
 ## Orbital Cube jobs through the browser shell
 
-The repository CLI exposes the first typed scientific job, `orbital_cube`, in
+The repository CLI exposes `orbital_cube` in
 `browser-agent-shell` sessions. Import an FCHK or Molden file into a single final
 geometry document through the scientific importer. Its generated XYZ document
 retains the original Gaussian basis and orbitals. The shell's raw-file allowlist
@@ -665,7 +665,7 @@ Validation: `vp run test:orbital-agent` exercises the actual compiled host hook,
 HTTP session server, CLI subprocess, reader/quantum/Cube workers, numerical values,
 byte integrity, cancellation and stale/closed/error outcomes. This proves the
 source implementation in the browser shell; it does not prove a rebuilt packaged
-plugin, a live Browser user session, native app or hosted deployment. Other typed
+plugin, a live Browser user session, native app or hosted deployment. Further typed
 scientific jobs, batch workflows and Python/Jupyter clients remain separate work.
 
 
@@ -713,3 +713,31 @@ Geometry/scalar lease commands or add computation to hosted widgets.
 Retained scientific coordinate-set indices are distinct from native poses. An exact registered CJSON MOL graph uses `graph.activeFrameIndex` and native pose 0/1; a final-only XYZ uses the declared `referenceFrameIndex` and native pose 0/1; legacy multi-frame history without a declared reference has no retained cursor. Neither makes the other retained sets seekable. Only a matching XYZ trajectory source enables direct indexed seeking. Full graph-preserving coordinate-set activation and trajectory-range calculations remain separate operations.
 
 The focused Plots route opens in the existing bottom dock from Compute or the command palette. It plots retained geometry and explicitly imported energy, temperature and force metadata; it does not infer energy or kinetic temperature. A retained CJSON coordinate-set cursor is displayed without making those sets native poses. Materializing another graph-preserving set, indexed range analysis and calculated force batches remain separate workflows.
+
+## Molecular properties through the browser shell
+
+`properties` uses the same revision-pinned job owner, queue, cancellation and
+terminal publication rules. Its source must provide a complete chemical graph
+with 1–256 atoms, following the existing Properties UI policy: explicit MOL/SDF
+connection tables or a neutral common-valence XYZ graph saturated by its explicit
+atoms. Incomplete XYZ graphs and multi-record SDF collections are refused.
+
+```json
+{"operation":"submit","operationId":"properties-1","expectedSourceRevision":"sha256-<64 hex from observe>","job":{"kind":"properties","params":{}}}
+```
+
+The default summary contains formula, masses, source atom/bond counts, formal
+charge and molecular descriptors. Optional `params.chargeModel:"Gasteiger"`
+adds `partialCharges` with model `Gasteiger`, unit `e`, 12 iterations and charges
+in the submitted source atom order. All hydrogens must already be explicit for
+that calculation; no atoms are added automatically. Both calculation phases share
+one 120-second deadline. Results contain no structure artifact and never modify
+the open source or its original file.
+
+The existing MCP `control_viewer` tool accepts the same request with
+`type:"workbench"`; its CLI bridge uses the shared validation and mounted job
+controller. No separate calculation service or tool is introduced. Validation:
+`vp run test:properties-agent` covers real CLI and stdio MCP requests against the
+HTTP/SSE host, browser-target chemistry worker, pinned WASM and fixed RDKit charge
+references. The fixture uses already-open physical SDF files; ordinary chooser,
+live Browser and native surfaces remain separate acceptance lanes.
