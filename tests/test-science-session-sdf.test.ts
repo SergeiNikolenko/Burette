@@ -29,7 +29,7 @@ async function retainOriginal(path: string, file: Blob) {
 // Model external storage replacement directly; the production import API never overwrites.
 async function replaceOriginal(path: string, file: Blob) {
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = factory.open("burette-browser-imports", 1);
+    const request = factory.open("burette-browser-imports");
     request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
   });
   try {
