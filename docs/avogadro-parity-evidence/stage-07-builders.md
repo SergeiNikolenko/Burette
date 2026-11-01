@@ -59,8 +59,9 @@ public domain; upstream `groups.smi`, BSD-3-Clause), see its README.
 ## Polymer end groups, relaxation and existing tacticity/picking (07.01)
 
 Implementation: `buildPolymer` reports `terminals`; `lib/workbench/polymer-worker.ts`
-caps ends through `placeFragment`/`applyFragmentEdit` and optionally runs
-OpenChemLib MMFF94 (`optimize`, 1,000 iterations) within 256 atoms;
+caps ends through `placeFragment`/`applyFragmentEdit` and optionally relaxes
+with the shared optimize engine (`optimize` in `chemistry.ts`, MMFF94 `bfgs`,
+1,000 iterations) within 256 atoms;
 `POLYMER_END_GROUPS` (hydrogen, methyl, hydroxyl, phenyl, tert-butyl) in
 `polymer-task.ts`; Head end / Tail end selects and Relax geometry in the dialog.
 Existing stereo/tacticity (`isotactic`, `syndiotactic`, `atactic` with one
@@ -86,21 +87,66 @@ way the app bundler does (the worker now reaches the chemistry module).
 
 ## Typed CLI/MCP counterparts (stage 10 row)
 
-`scripts/workbench-agent-contract.mjs` (+ `.d.mts`, plugin mirror) adds the
-`build` operation and job kinds `insert_fragment`, `hydrogens`, `polymer`
-(`submit`, on an explicit MOL/SDF source) and `peptide` (`build`, documentless).
-Each exports one `structure` artifact; results never edit the open document.
-Documented in [agent platform](../agent-platform.md#structure-editing-and-builder-jobs).
+`parity/optimization-automation` was merged (`d04572aca`, `3c206c5fb`); the
+builder kinds are registered through its typed-job registry. Each kind is one
+`JOB_DEFINITIONS` entry in `scripts/workbench-agent-contract.mjs` (+ `.d.mts`,
+plugin mirror). Submit runners live in `lib/workbench/agent-builder-jobs.ts`
+(`builderJobs`, spread into `AGENT_JOBS`); documentless kinds set `build: true`,
+are requested with operation `build` and run through `AGENT_BUILDS`
+(`AgentBuildRunner`). `capabilities` reports each kind's `operation`.
 
-`bun run test:builder-agent` (4 tests, real controller and workers): contract
-accept/refuse matrix; RDKit reads the exported artifacts as diethyl ether,
-ethanol + water, ethanol without/with hydrogens (provenance `[0,1,2,-1…]`) and
-the frozen isotactic polypropylene hexamer; Ala-Gly-Ser mmCIF has C8H15N3O5;
-XYZ sources, out-of-range atoms and failed placements are refused before or
-during the job; build jobs deduplicate, conflict on reused ids and survive
-document closure. `test:properties-agent`, `test:energy-agent`,
-`test:orbital-agent` and `test:agent-graph-source` still pass (the compiled CLI
-test now lists the eight job kinds).
+| Kind | Operation | Source | Artifact |
+| --- | --- | --- | --- |
+| `insert_fragment` | submit | explicit MOL/SDF | `structure` |
+| `hydrogens` (`add`, `remove`, `ph` + `pH`) | submit | explicit MOL/SDF | `structure` |
+| `polymer` | submit | repeat-unit MOL/SDF | `structure` |
+| `smiles` | build | none | `structure`, `xyz`, `trajectory` |
+| `peptide` | build | none | `structure` (mmCIF) |
+
+The `smiles` build reuses the shared engines: the OpenChemLib conformer of
+`generate` (as when a SMILES is opened) relaxed by the `optimize` action with
+the requested `forceField`/`method`/`maxIterations`, reported through the
+registry's `optimizationSummary`/`optimizationArtifacts`. `prepare_3d` was not
+reused here: it refuses every structure with an unspecified stereocentre or
+double bond (see Known limits). Polymer relaxation also calls the shared
+`optimize`. Results never edit the open document. Documented in
+[agent platform](../agent-platform.md#structure-editing-and-builder-jobs).
+
+`bun run test:builder-agent` (5 tests, real controller and workers): contract
+accept/refuse matrix (including misrouted build/submit kinds and pH bounds);
+RDKit reads the exported artifacts as diethyl ether, ethanol + water, ethanol
+without/with hydrogens (provenance `[0,1,2,-1…]`), the glycine zwitterion at
+pH 7.4 and the frozen isotactic polypropylene hexamer; Ala-Gly-Ser mmCIF has
+C8H15N3O5; `smiles` builds of acetic acid, cis-2-butene and both alanine
+enantiomers keep constitution and stereo (RDKit perceives them from the
+exported 3D coordinates) and converge; XYZ sources, out-of-range atoms and
+failed placements are refused; build jobs deduplicate, conflict on reused ids
+and survive document closure. `test:workbench-python-client` drives
+`Workbench.build("peptide", …)` through the packaged CLI (binding `none`,
+exported mmCIF, misrouted `energy` refused). `test:workbench-automation-jobs`,
+`test:properties-agent`, `test:energy-agent`, `test:orbital-agent` and
+`test:agent-graph-source` pass; the compiled CLI test lists all 15 kinds.
+
+## Adjust hydrogens for pH (07.06)
+
+Core (`protonation.ts`, `adjustHydrogensForPh`, worker action `protonate`) and
+its references are in [hydrogens and pH protonation](../hydrogen-protonation.md):
+a cited per-group pKa table (no Open Babel `phmodel.txt`, which is GPL-2),
+checked against Dimorphite-DL 2.1.0 (126/132 agreements) and Open Babel 3.1.1
+`-p` (105/132), every disagreement frozen with its reason in
+`tests/fixtures/protonation/disagreements.json`. Add/Remove Hydrogens is checked
+against RDKit `AddHs`/`RemoveHs` and Allen 1987 X–H lengths
+(`test-hydrogen-references`), which also caught and fixed the XH2 pair geometry
+in small rings.
+
+Edit tab: More actions → Adjust hydrogens for pH… (`adjust-ph-dialog.tsx`,
+graph-draft operation `{ kind: "protonate", pH }`, provenance from the worker
+because hydrogens are both added and removed). `bun run test:protonation`
+(13 tests) adds: the real worker through `useGraphDraft` turns RDKit-written
+glycine into a draft RDKit reads as `[NH3+]CC(=O)[O-]` at pH 7.4 and
+`[NH3+]CC(=O)O` at pH 1, with heavy atoms unmoved, two exact Undo steps, and
+pH 15 refused without history; the dialog refuses values outside 0–14 and
+applies 7.45.
 
 ## Browser acceptance scripts
 
@@ -174,6 +220,24 @@ tab with diethyl ether while the open ethanol tab is unchanged; the peptide
 build reports `documentId: null` and exports `Peptide AGS.cif`. Error case:
 resubmit `ether-1` with `"atomIndex":3` → `OPERATION_ID_CONFLICT`.
 
+### B5. Adjust hydrogens for pH
+
+Fixture `tests/fixtures/protonation/glycine.sdf` (RDKit-generated, see README).
+
+1. Edit tab → More actions → Adjust hydrogens for pH…. Expected: a small dialog
+   with pH 7.4, Cancel and Apply; focus is in the pH field.
+2. Apply. Expected: 10 atoms; N carries +1 and one carboxyl O −1 (atom table
+   charges); heavy atoms do not move.
+3. ⌘Z restores neutral glycine; ⇧⌘Z the zwitterion. Save, reopen the SDF: the
+   charges and explicit H are kept.
+4. Error case: enter 15. Expected: “Choose a pH from 0 to 14.” and Apply
+   disabled; Escape closes without changes. Enter 1 → Apply: the cation
+   (NH3+, neutral COOH).
+5. Typed counterpart with the same session:
+   `{"operation":"submit","operationId":"ph-1","expectedSourceRevision":"<rev>","job":{"kind":"hydrogens","params":{"mode":"ph","pH":7.4}}}`
+   → summary `changes` lists carboxylic-acid deprotonated and primary-amine
+   protonated; the exported `fixture-ph-7.4.sdf`-style artifact opens as the zwitterion.
+
 ## Known limits (fragment insertion, polymer, automation)
 
 - Insertion edits only explicit single-record MOL/SDF graphs within 256 atoms
@@ -185,3 +249,13 @@ resubmit `ether-1` with `"atomIndex":3` → `OPERATION_ID_CONFLICT`.
   PMMA are not offered. End caps are a fixed neutral set. Relaxation is limited
   to 256 atoms and does not search conformers; bulky caps on crowded unrelaxed
   chain ends are refused instead of being forced.
+- `prepare_3d` (stage 3 code) refuses any structure with an unspecified
+  stereocentre or double bond: its stereo identity check compares the source
+  ID code against an embedding normalized by `retainUnknownStereo`, which adds
+  explicit "unknown" flags, so `CC(N)C(=O)O`, `CC=CC` and `CC(O)CC(C)O` fail on
+  all eight seeds (both OpenChemLib- and RDKit-written 2D MOL input). Reported to
+  the stage 3 owner; the `smiles` build therefore uses `generate` + `optimize`.
+- pH adjustment treats each site independently with one pKa (no coupled
+  centres, microstates, tautomers or substituent corrections); piperazine at
+  pH 7.4 becomes a dication. Sulfonamides, imides, pyridones, aminopyridines
+  and purines are not modelled.
