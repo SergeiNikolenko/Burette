@@ -16,8 +16,6 @@ export function useAppShellNavigationActions({
   openSettingsSectionTab,
   openSettingsTab,
   setActiveDocument,
-  sidebarOpen,
-  toggleSidebar,
 }: UseAppShellNavigationActionsOptions) {
   const selectDocument = useCallback((id: string) => {
     setActiveDocument(id);
@@ -26,14 +24,12 @@ export function useAppShellNavigationActions({
   const focusSidebarSearch = useOpenCommandPalette();
 
   const openSettings = useCallback(() => {
-    if (!sidebarOpen) toggleSidebar();
     openSettingsTab();
-  }, [openSettingsTab, sidebarOpen, toggleSidebar]);
+  }, [openSettingsTab]);
 
   const openSettingsSection = useCallback((section: AppSettingsSectionId) => {
-    if (!sidebarOpen) toggleSidebar();
     openSettingsSectionTab(section);
-  }, [openSettingsSectionTab, sidebarOpen, toggleSidebar]);
+  }, [openSettingsSectionTab]);
 
   const backToApp = useCallback(() => {
     activateLastNonSettingsTab();

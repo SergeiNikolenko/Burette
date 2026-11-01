@@ -4342,7 +4342,6 @@ assert.match(appPreferenceEffectsHook, /isTemporaryDocumentPath\(activeTab\.loca
 assert.match(appPreferenceEffectsHook, /preserveActiveTab: true/);
 assert.match(app, /useAppShellNavigationActions\(\{/);
 assert.match(appShellNavigationActionsHook, /export function useAppShellNavigationActions\(\{/);
-assert.match(appShellNavigationActionsHook, /if \(!sidebarOpen\) toggleSidebar\(\);/);
 assert.match(appShellNavigationActionsHook, /openSettingsTab\(\)/);
 assert.match(appShellNavigationActionsHook, /openSettingsSectionTab\(section\)/);
 assert.match(appShellNavigationActionsHook, /activateLastNonSettingsTab\(\)/);
