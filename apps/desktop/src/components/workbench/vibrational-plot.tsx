@@ -44,17 +44,19 @@ export function VibrationalPlot({ modes, sourceModes = modes, kind, selected, on
   try { data = plotVibrationalSpectrum(sourceModes, kind, options); }
   catch (caught) { error = caught instanceof Error ? caught.message : String(caught); }
   const x = (frequency: number) => LEFT + (frequency - options.axisStartCm1) / (options.axisEndCm1 - options.axisStartCm1) * (WIDTH - LEFT - RIGHT);
-  let yMin = 0, yMax = kind === "ir" ? 102 : 1;
+  let yMin = 0, yMax = kind === "ir" ? 100 : 1;
   if (data) for (let i = 0; i < data.smoothed.length; i++) {
     yMin = Math.min(yMin, data.smoothed[i], showRaw ? data.raw[i] : 0);
     yMax = Math.max(yMax, data.smoothed[i], showRaw ? data.raw[i] : 0);
   }
-  const y = (value: number) => TOP + (yMax - value) / (yMax - yMin) * (HEIGHT - TOP - BOTTOM);
+  // Ticks label the data range; 2 % headroom keeps a 100 % baseline off the frame.
+  const pad = (yMax - yMin) * 0.02;
+  const y = (value: number) => TOP + (yMax + pad - value) / (yMax - yMin + 2 * pad) * (HEIGHT - TOP - BOTTOM);
   const path = data ? Array.from(data.smoothed, (value, i) => `${i ? "L" : "M"}${x(data.wavenumbers[i]).toFixed(2)} ${y(value).toFixed(2)}`).join(" ") : null;
   const baseline = kind === "ir" ? 100 : 0;
   const rawPath = data && showRaw ? Array.from(data.raw, (value, i) => value === baseline ? "" : `M${x(data.wavenumbers[i]).toFixed(2)} ${y(baseline).toFixed(2)} L${x(data.wavenumbers[i]).toFixed(2)} ${y(value).toFixed(2)}`).join(" ") : null;
   const sourceUnit = kind === "ir" ? "km/mol" : "Å⁴/amu";
-  const label = kind === "ir" ? "Relative transmission (%)" : "Raman activity (Å⁴/amu)";
+  const label = kind === "ir" ? "Transmission, %" : "Raman activity, Å⁴/amu";
   const fields: { key: keyof VibrationalPlotOptions; label: string; min: number; max: number; step: number; title?: string }[] = [
     { key: "fwhmCm1", label: "FWHM, cm⁻¹", min: .01, max: 500, step: 1 },
     { key: "scale", label: "Scale factor", min: .01, max: 100, step: .001, title: "Displayed frequency = (source frequency − offset) / scale factor" },
@@ -85,7 +87,9 @@ export function VibrationalPlot({ modes, sourceModes = modes, kind, selected, on
           <rect x={x(center(mode)) - 3} y={TOP} width={6} height={HEIGHT - TOP - BOTTOM}><title>{`${formatFrequency(mode)} cm⁻¹ · ${quantity(mode)} ${sourceUnit}`}</title></rect>
         </g>)}
       </svg> : null}
-      <figcaption className="workbench-axis-label" title={kind === "ir" ? "Display transform: 100 × (1 − summed Gaussian intensity / 125). This is not a physical transmittance calculation." : "Gaussian peak height equals the source Raman activity."}>{label} · cm⁻¹</figcaption>
+      <figcaption className="workbench-axis-label" title={kind === "ir" ? "Display transform: 100 × (1 − summed Gaussian intensity / 125). This is not a physical transmittance calculation." : "Gaussian peak height equals the source Raman activity."}>
+        <span>{label}</span><span>Wavenumber, cm⁻¹</span>
+      </figcaption>
     </figure>
   </>;
 }

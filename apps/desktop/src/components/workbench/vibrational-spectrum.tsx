@@ -164,8 +164,7 @@ function SpectrumChart({ modes, quantity, broadening, selected, onSelect }: { mo
         ))}
       </svg>
       <figcaption className="workbench-axis-label" aria-hidden>
-        {[broadened ? `${quantity.unit} per cm⁻¹ · cm⁻¹` : `cm⁻¹ · ${quantity.unit}`, broadened ? `${LINE_SHAPES[broadening.shape]} FWHM ${broadening.fwhmCm1.toFixed(1)} cm⁻¹` : null,
-          broadened && broadening.scale !== 1 ? `×${broadening.scale.toFixed(4)}` : null].filter(Boolean).join(" · ")}
+        <span>{broadened ? `${quantity.unit} per cm⁻¹` : quantity.unit}</span><span>Wavenumber, cm⁻¹</span>
       </figcaption>
     </figure>
   );

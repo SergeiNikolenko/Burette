@@ -25,7 +25,7 @@ test('compiled peak-height UI preserves relative-transmission negatives and one 
  const selections:number[]=[];const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
  try{
   await act(async()=>root.render(<VibrationalPlot modes={modes} kind="ir" selected={6} onSelect={index=>selections.push(index)}/>));
-  expect(host.querySelector('figcaption')?.textContent).toBe('Relative transmission (%) · cm⁻¹');
+  expect([...host.querySelectorAll('figcaption span')].map(node=>node.textContent)).toEqual(['Transmission, %','Wavenumber, cm⁻¹']);
   expect(host.querySelector('figcaption')?.title).toContain('not a physical transmittance');
   expect([...host.querySelectorAll('svg text')].map(node=>node.textContent)).toContain('-200');
   expect(host.querySelectorAll('svg path')).toHaveLength(2);
@@ -82,6 +82,7 @@ test('the default axis covers every band of a real Gaussian frequency job until 
    expect(frequencies.every(frequency=>frequency-low>=100&&high-frequency>=100)).toBe(true);
    expect(axis('Axis start, cm⁻¹')>axis('Axis end, cm⁻¹')).toBe(kind==='ir');
    expect(host.querySelectorAll('.workbench-peak')).toHaveLength(3);
+   if(kind==='ir')expect([...host.querySelectorAll('svg text')].map(node=>node.textContent)).toContain('100');
   }
   const end=host.querySelector('[aria-label="Axis end, cm⁻¹"]')!;
   await act(async()=>end.dispatchEvent(new KeyboardEvent('keydown',{key:'End',bubbles:true})));

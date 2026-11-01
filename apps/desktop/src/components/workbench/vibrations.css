@@ -30,6 +30,11 @@
   font-size: 9px;
   text-align: right;
 }
+figcaption.workbench-axis-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
 .workbench-peak line {
   stroke: var(--text-secondary);
   stroke-width: 1.25;

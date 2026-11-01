@@ -115,7 +115,7 @@ test("Export saves the shown frame's whole spectrum and Hessian, and the line sh
     await choose(view.host.querySelector('select[aria-label="Line shape"]'), "gaussian");
     assert.ok(view.host.querySelector('[aria-label="FWHM, cm⁻¹"]') && view.host.querySelector('[aria-label="Frequency scale"]'));
     assert.match(figure().querySelector("path").getAttribute("d"), /^M[\d.]+ [\d.]+(L[\d.]+ [\d.]+){399}$/u);
-    assert.equal(figure().querySelector("figcaption").textContent, "km/mol per cm⁻¹ · cm⁻¹ · Area-normalized Gaussian FWHM 20.0 cm⁻¹");
+    assert.deepEqual([...figure().querySelectorAll("figcaption span")].map((node) => node.textContent), ["km/mol per cm⁻¹", "Wavenumber, cm⁻¹"]);
     await showFrame(1);
     assert.equal(view.host.querySelector('select[aria-label="Line shape"]').value, "gaussian", "the line shape is kept for the next geometry");
     assert.ok(figure().querySelector("path"));
