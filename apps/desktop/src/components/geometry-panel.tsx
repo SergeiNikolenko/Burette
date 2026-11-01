@@ -14,8 +14,10 @@ import { openWorkbenchDialog } from "../lib/workbench/dialog-store";
 import { isAbortError } from "../lib/viewer-errors";
 import { PanelEmptyState } from "./ui/panel-empty-state";
 import { ConstraintToggle } from "./workbench/constraint-toggle";
-import { OptimizeButton } from "./workbench/optimize-button";
-import type { MinimizerMethod } from "../lib/molecular-workbench/minimizer";
+import { OptimizeButton, optimizerLabel } from "./workbench/optimize-button";
+import { RESIDUAL_TOLERANCE, resolveConstraints, type ConstraintResidual, type OptimizationMethod, type OptimizationResult } from "../lib/molecular-workbench/optimization";
+import { HARTREE_KCAL_MOL, fileStem } from "../lib/workbench/formats";
+import { openScientificDocument } from "../lib/workbench/generated-document-open";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { useSourceEditing } from "../lib/source-editing/context";
 import { captureLogicalSourceOwner } from "../lib/science-session/state";
@@ -75,7 +77,9 @@ function textAt(base: GeometryBase, positions: number[][]) {
   return lines.join("\n");
 }
 
-type OptimizationSummary = { forceField?: MolecularForceField; initialEnergy: number; energy: number; converged: boolean; residual: { distance: number; angle: number } | null };
+type OptimizationSummary = Pick<OptimizationResult, "forceField" | "method" | "initialEnergy" | "energy" | "converged" | "iterations"> & { residuals: ConstraintResidual[] };
+// Only the latest run keeps its step frames; Undo history keeps summaries, not trajectories.
+type OptimizationSteps = { summary: OptimizationSummary; frames: OptimizationResult["frames"] };
 const HISTORY_LIMIT = 100;
 
 export function geometryPanelAvailable(document: ViewerDocument | null): document is ViewerDocument {
@@ -143,6 +147,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
   const [frozen, setFrozen] = useState<ReadonlySet<number>>(() => new Set());
   const [locked, setLocked] = useState<ReadonlySet<string>>(() => new Set());
   const [optimizing, setOptimizing] = useState(false);
+  const [steps, setSteps] = useState<OptimizationSteps | null>(null);
   const optimizeJob = useRef<AbortController | null>(null);
   useEffect(() => () => optimizeJob.current?.abort(), [document.id, document.path]);
   const lifetime = useRef(0);
@@ -307,7 +312,13 @@ function CartesianGeometryPanel({ document, actions, convert }: {
   const constraints = geometryConstraints(editor.rows, frozen, locked);
   // MMFF94 minimization of the current draft. The result is one undoable edit;
   // it is dropped if the source or the coordinates change while it runs.
-  const optimize = async (method: MinimizerMethod | undefined, forceField: MolecularForceField) => {
+  // Constraints that are undefined on the current geometry are refused before any work starts.
+  let constraintError: string | null = null;
+  if (constraints.length) {
+    try { resolveConstraints(parseXyz(geometryText(editor.frame, editor.rows)).atoms, constraints); }
+    catch (error) { constraintError = error instanceof Error ? error.message : String(error); }
+  }
+  const optimize = async (method: OptimizationMethod, forceField: MolecularForceField) => {
     optimizeJob.current?.abort();
     const controller = new AbortController();
     optimizeJob.current = controller;
@@ -318,21 +329,18 @@ function CartesianGeometryPanel({ document, actions, convert }: {
     try {
       const text = geometryText(started.frame, started.rows);
       const molecule = await runChemistryTask({ action: "parse", source: text, format: "xyz" }, { signal: controller.signal });
-      const result = await runChemistryTask({ action: "optimize", molecule, options: { constraints, forceField, ...(method ? { method } : {}) } }, { signal: controller.signal, timeoutMs: 300_000 });
+      const result = await runChemistryTask({ action: "optimize", molecule, options: { constraints, forceField, method } }, { signal: controller.signal, timeoutMs: 300_000 });
       if (controller.signal.aborted || currentLifetime !== lifetime.current || editorRef.current !== started) return;
       const positions = result.molecule.atoms.map((atom) => [atom.x, atom.y, atom.z]);
       if (positions.length !== started.rows.length || result.molecule.atoms.some((atom, index) => atom.element !== started.rows[index].element)) {
         throw new Error("The optimized structure does not match the edited atoms.");
       }
-      const residuals = result.constraintResiduals;
-      const largest = (unit: "angstrom" | "degrees") => Math.max(0, ...residuals.filter((item) => item.unit === unit).map((item) => Math.abs(item.error)));
       // The optimized Cartesian geometry becomes the frame; the rows keep their reference atoms.
       const rows = rowsAt(started.rows, positions);
       const frame = { ...geometryBase(textAt(started.frame, positions)), rows };
-      await apply(rows, [...started.history, snapshot()].slice(-HISTORY_LIMIT), frame, {
-        forceField: result.forceField ?? forceField, initialEnergy: result.initialEnergy, energy: result.energy, converged: result.converged,
-        residual: residuals.length ? { distance: largest("angstrom"), angle: largest("degrees") } : null,
-      });
+      const summary: OptimizationSummary = { forceField: result.forceField, method: result.method, initialEnergy: result.initialEnergy, energy: result.energy,
+        converged: result.converged, iterations: result.iterations, residuals: result.constraintResiduals };
+      if (await apply(rows, [...started.history, snapshot()].slice(-HISTORY_LIMIT), frame, summary) && result.frameSampling === "steps") setSteps({ summary, frames: result.frames });
     } catch (error) {
       if (!isAbortError(error) && !controller.signal.aborted && currentLifetime === lifetime.current) setEditError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -409,7 +417,7 @@ function CartesianGeometryPanel({ document, actions, convert }: {
           </>
         ) : (
           <TooltipProvider><Tooltip><TooltipTrigger asChild>
-            <span><OptimizeButton atomCount={editor.rows.length} size="xs" variant="secondary" disabled={applying} onOptimize={(method, forceField) => void optimize(method, forceField)} /></span>
+            <span><OptimizeButton atomCount={editor.rows.length} constraintCount={constraints.length} unavailableReason={constraintError} size="xs" variant="secondary" disabled={applying} onOptimize={(method, forceField) => void optimize(method, forceField)} /></span>
           </TooltipTrigger><TooltipContent>{constraints.length ? `Optimize with ${constraints.length} constraint${constraints.length === 1 ? "" : "s"}` : "Optimize geometry"}</TooltipContent></Tooltip></TooltipProvider>
         )}
         {session?.dirty ? (
@@ -423,11 +431,34 @@ function CartesianGeometryPanel({ document, actions, convert }: {
       </div>
       {editError ? <p role="alert" className="geometry-panel-error">{editError}</p> : null}
       {optimization ? (
-        <p className="geometry-panel-result" role="status">
-          {optimization.forceField ?? "MMFF94"} {optimization.initialEnergy.toFixed(2)} → {optimization.energy.toFixed(2)} kcal/mol
-          {optimization.residual ? ` · residual ${optimization.residual.distance.toFixed(3)} Å, ${optimization.residual.angle.toFixed(2)}°` : ""}
-          {" · "}<span data-status={optimization.converged ? "success" : "failure"} className="workbench-value">{optimization.converged ? "Converged" : "Not converged"}</span>
-        </p>
+        <div className="geometry-panel-result" role="status">
+          <p>
+            {optimization.forceField}, {optimizerLabel(optimization.method)} {optimization.initialEnergy.toFixed(2)} → {optimization.energy.toFixed(2)} kcal/mol
+            {optimization.iterations === null ? "" : `, ${optimization.iterations} step${optimization.iterations === 1 ? "" : "s"}`}
+            {" · "}<span data-status={optimization.converged ? "success" : "failure"} className="workbench-value">{optimization.converged ? "Converged" : "Not converged"}</span>
+            {steps?.summary === optimization && steps.frames.length > 1
+              ? <Button type="button" variant="ghost" size="xs" onClick={() => void openScientificDocument(actions, `${fileStem(document.title)}-optimization`, {
+                format: "xyz", atoms: steps.frames[0].atoms, modes: [], orbitals: [],
+                frames: steps.frames.map((frame) => ({ atoms: frame.atoms, energyHartree: frame.energy / HARTREE_KCAL_MOL })),
+              }, "steps")}>Open steps</Button> : null}
+          </p>
+          {optimization.residuals.length ? (
+            <ul aria-label="Constraint residuals" className="geometry-panel-residuals">
+              {optimization.residuals.map((item) => {
+                const unit = item.unit === "angstrom" ? "Å" : "°", digits = item.unit === "angstrom" ? 3 : 1;
+                return (
+                  <li key={`${item.kind}:${item.atoms.join(",")}`}>
+                    <span>{item.atoms.map((atom) => atomLabel(editor.rows, atom)).join("–")}</span>
+                    <span>{item.value.toFixed(digits)} {unit}</span>
+                    <span data-status={Math.abs(item.error) <= RESIDUAL_TOLERANCE[item.unit] ? "success" : "failure"} className="workbench-value">
+                      {item.error >= 0 ? "+" : "−"}{Math.abs(item.error).toFixed(digits)} {unit}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+        </div>
       ) : null}
       <table className="geometry-table"
         onPointerDownCapture={clearSelection}

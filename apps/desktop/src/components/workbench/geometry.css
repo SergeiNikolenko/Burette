@@ -142,6 +142,20 @@
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
+.geometry-panel-result > p {
+  margin: 0;
+}
+.geometry-panel-residuals {
+  display: grid;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.geometry-panel-residuals li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+}
 .workbench-toolbar {
   display: flex;
   min-width: 0;

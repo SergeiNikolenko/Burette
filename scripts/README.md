@@ -180,14 +180,17 @@ changing these sources or their shared Select/Resizable components. The runtime
 uses the same primitives as the desktop docks with preview theme tokens.
 
 
-Typed orbital jobs use `burette-agent.mjs workbench` in a browser-agent-shell
-session. The shared request contract is `workbench-agent-contract.mjs`; the CLI
-and shell consume it at their transport boundaries. `workbench-artifact.mjs`
-publishes verified Cube exports and session JSON atomically. See
+Typed workbench jobs (properties, energies and forces, optimization, 3D
+preparation, conformers, frame batches, metadata, pair distribution and orbital
+Cubes) use `burette-agent.mjs workbench` in a browser-agent-shell session. The
+shared request contract is `workbench-agent-contract.mjs`, whose `JOB_DEFINITIONS`
+lists every kind; the CLI and shell consume it at their transport boundaries.
+`workbench-artifact.mjs` publishes verified exports and session JSON atomically. See
 [Orbital Cube jobs](../docs/agent-platform.md#orbital-cube-jobs-through-the-browser-shell)
-for requests, limits and the distinction between source tests and packaged/browser
-acceptance. Run `vp run test:orbital-agent` for the focused controller and compiled
-host/HTTP/CLI proof.
+and [Optimization, conformers and frame batches](../docs/agent-platform.md#optimization-conformers-and-frame-batches)
+for requests, limits, the Python client and how to add a job kind. Run
+`vp run test:orbital-agent` and `vp run test:workbench-automation-jobs` for the
+focused controller and compiled host/HTTP/CLI proofs.
 
 
 `test:indexed-trajectory-runtime` covers the source-owned indexed Mol* adapter
