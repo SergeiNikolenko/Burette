@@ -5,21 +5,31 @@ import type { ScalarGrid, ScientificDocument } from "./scientific-types";
 export type QuantumWorkerRequest = { type: "evaluate-field"; document: ScientificDocument; field: QuantumField; options: QuantumGridOptions };
 export type QuantumWorkerResponse = { type: "field-result"; grid: ScalarGrid } | { type: "field-error"; error: string };
 
-/** One bounded job per worker. Aborting terminates its numerical loop immediately. */
-export function computeQuantumGrid(document: ScientificDocument, field: QuantumField, options: QuantumGridOptions = {}, signal?: AbortSignal): Promise<ScalarGrid> {
-  if (signal?.aborted) return Promise.reject(new DOMException("Quantum field calculation cancelled.", "AbortError"));
+/** The bounded calculation input shared by workers and immutable agent revisions. */
+export function quantumCalculationInput(document: ScientificDocument): ScientificDocument {
   // Check clone cost before allocating a worker; the evaluator separately bounds grid work.
   const basis = document.basis;
   if (!basis?.length || basis.length > 2_000 || document.atoms.length > 10_000 || document.orbitals.length > 2_000_000
     || basis.reduce((sum, shell) => sum + shellSize(shell), 0) > 2_000
     || basis.reduce((sum, shell) => sum + shell.exponents.length + shell.coefficients.length, 0) > 500_000
     || document.orbitals.reduce((sum, orbital) => sum + orbital.coefficients.length, 0) > 2_000_000) {
-    return Promise.reject(new Error("Quantum input exceeds browser limits or has no Gaussian basis."));
+    throw new Error("Quantum input exceeds browser limits or has no Gaussian basis.");
   }
-  // Exclude trajectory, normal modes and prior grids from the worker's structured clone.
-  const input: ScientificDocument = { format: document.format, atoms: document.atoms, basis: document.basis,
-    orbitals: field.kind === "orbital" ? document.orbitals.filter((_, index) => index === field.orbitalIndex) : document.orbitals,
+  return { format: document.format,
+    atoms: document.atoms.map(({ element, x, y, z }) => ({ element, x, y, z })),
+    basis: basis.map(({ atomIndex, kind, spherical, cartesianOrder, exponents, coefficients }) =>
+      ({ atomIndex, kind, spherical, cartesianOrder, exponents: Array.from(exponents), coefficients: Array.from(coefficients) })),
+    orbitals: document.orbitals.map(({ index, energyHartree, occupancy, spin, symmetry, coefficients }) =>
+      ({ index, energyHartree, occupancy, spin, symmetry, coefficients: Array.from(coefficients) })),
     frames: [], modes: [] };
+}
+
+/** One bounded job per worker. Aborting terminates its numerical loop immediately. */
+export function computeQuantumGrid(document: ScientificDocument, field: QuantumField, options: QuantumGridOptions = {}, signal?: AbortSignal): Promise<ScalarGrid> {
+  if (signal?.aborted) return Promise.reject(new DOMException("Quantum field calculation cancelled.", "AbortError"));
+  let input: ScientificDocument;
+  try { input = quantumCalculationInput(document); } catch (error) { return Promise.reject(error); }
+  if (field.kind === "orbital") input.orbitals = input.orbitals.filter((_, index) => index === field.orbitalIndex);
   const request: QuantumWorkerRequest = { type: "evaluate-field", document: input,
     field: field.kind === "orbital" ? { kind: "orbital", orbitalIndex: 0 } : field, options };
   return new Promise((resolve, reject) => {
