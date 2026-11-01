@@ -114,3 +114,17 @@ export function placeFragment(target: { atoms: MolecularAtom[]; bonds: Molecular
   }
   return { edit: edit(chosen.positions, chosen.replace, [{ a: anchor, b: outputIndex.get(partner)!, order: 1 }]), anchor, replaced: chosen.replace ?? null, bondLength: length };
 }
+
+/** Applies a fragment edit to plain arrays, for graphs beyond the editable-document size. `source[i]` is the
+ * input index of output atom i, or -1 for a fragment atom. */
+export function applyFragmentEdit(atoms: readonly MolecularAtom[], bonds: readonly MolecularBond[], edit: FragmentGraphEdit) {
+  const n = atoms.length, merged = [...atoms, ...edit.atoms.map(atom => ({ element: atom.element, x: atom.position[0], y: atom.position[1], z: atom.position[2] }))];
+  const all = [...bonds, ...edit.bonds].filter(bond => bond.a !== edit.replace && bond.b !== edit.replace);
+  const source = merged.map((_, i) => i < n ? i : -1), keep = merged.map((_, i) => i !== edit.replace);
+  const renumber = new Map<number, number>(); let next = 0;
+  keep.forEach((kept, i) => { if (kept) renumber.set(i, next++); });
+  return {
+    atoms: merged.filter((_, i) => keep[i]), source: source.filter((_, i) => keep[i]),
+    bonds: all.map(bond => ({ a: renumber.get(bond.a)!, b: renumber.get(bond.b)!, order: bond.order })),
+  };
+}

@@ -3,7 +3,7 @@ import type { ViewerDocument } from "../types";
 import type { ShellActions } from "../components/types";
 import type { MolecularStructure } from "../lib/molecular-workbench/molecular-graph";
 import { usePolymerSource } from "../lib/workbench/polymer-source";
-import { runPolymerTask, type PolymerResult, type PolymerSettings } from "../lib/workbench/polymer-task";
+import { runPolymerTask, type PolymerEndGroup, type PolymerResult, type PolymerSettings } from "../lib/workbench/polymer-task";
 import { capturePolymerPickOwner } from "./polymer-pick-owner";
 import { isAbortError } from "../lib/viewer-errors";
 
@@ -23,7 +23,9 @@ export function usePolymerBuilder(document: ViewerDocument | null, actions: Pick
   const roles = ready && picked?.owner === ready.owner ? picked.roles : EMPTY_ROLES;
   const [count, setCount] = useState(4), [bondLength, setBondLength] = useState(1.54);
   const [tacticity, setTacticity] = useState<NonNullable<PolymerSettings["tacticity"]> | "picked">("picked");
-  const key = useMemo(() => ({ ready, roles, count, bondLength, tacticity }), [ready, roles, count, bondLength, tacticity]);
+  const [headEnd, setHeadEnd] = useState<PolymerEndGroup>("hydrogen"), [tailEnd, setTailEnd] = useState<PolymerEndGroup>("hydrogen");
+  const [relax, setRelax] = useState(false);
+  const key = useMemo(() => ({ ready, roles, count, bondLength, tacticity, headEnd, tailEnd, relax }), [ready, roles, count, bondLength, tacticity, headEnd, tailEnd, relax]);
   const latest = useRef(key); latest.current = key;
   const prepared = useRef<{ key: typeof key; operation: NonNullable<ReturnType<typeof source.prepare>> } | null>(null);
   const pickJob = useRef<AbortController | null>(null), submission = useRef<object | null>(null);
@@ -84,7 +86,7 @@ export function usePolymerBuilder(document: ViewerDocument | null, actions: Pick
       if (prepared.current?.key !== key) {
         prepared.current?.operation.release();
         const operation = source.prepare({ head: roles.head!, tail: roles.tail!, headLeaving: roles.headLeaving!, tailLeaving: roles.tailLeaving!, count, bondLength,
-          endGroups: "hydrogen", ...(tacticity === "picked" ? {} : { tacticity }) }, current);
+          endGroups: "hydrogen", ends: { head: headEnd, tail: tailEnd }, relax, ...(tacticity === "picked" ? {} : { tacticity }) }, current);
         if (!operation) return; prepared.current = { key, operation };
       }
       const validate = async () => {
@@ -103,7 +105,7 @@ export function usePolymerBuilder(document: ViewerDocument | null, actions: Pick
     } catch (error) { if (current() && !isAbortError(error)) setProblem(errorText(error)); }
     finally { if (submission.current === token) { submission.current = null; if (isCurrent()) setBusy(null); } }
   };
-  return { ready, roles, armed, pick, build, count, setCount, bondLength, setBondLength, tacticity, setTacticity, busy, preview,
+  return { ready, roles, armed, pick, build, count, setCount, bondLength, setBondLength, tacticity, setTacticity, headEnd, setHeadEnd, tailEnd, setTailEnd, relax, setRelax, busy, preview,
     complete: Boolean(complete), error: source.error ?? (read?.revision === revision ? read.error : null) ?? problem,
     unavailable: !source.format ? "Open a MOL or SDF repeat unit." : !source.revision.document ? "The source molecule is closed." : null,
     retry: () => setReload(value => value + 1) };

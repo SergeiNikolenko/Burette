@@ -145,5 +145,7 @@ export function buildPolymer(atoms: MolecularAtom[], bonds: MolecularBond[], opt
     entries.push({ atom, repeat });
     grid.set(bucket, entries);
   }
-  return { atoms: output, bonds: outputBonds, sourceAtomIndices, repeatIndices, repeatAlternatives, requiresRelaxation: true as const };
+  // The surviving first head and final tail leaving H are the chain ends that end groups replace.
+  const terminals = { head: maps[0].get(headLeaving)!, tail: maps[count - 1].get(tailLeavingByRepeat[count - 1])! };
+  return { atoms: output, bonds: outputBonds, sourceAtomIndices, repeatIndices, repeatAlternatives, terminals, requiresRelaxation: true as const };
 }

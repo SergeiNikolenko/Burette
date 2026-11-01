@@ -78,10 +78,16 @@ async function attachmentSite(structure: MolecularStructure, target: number): Pr
   return { anchor: target, leaving: added.map(i => ({ position: [mol.getAtomX(i), mol.getAtomY(i), mol.getAtomZ(i)] as Vec3 })) };
 }
 
+/** The rigid template of a fragment source; `attach` requires an attachment point. */
+export async function fragmentTemplate(fragment: FragmentSource, attach: boolean): Promise<FragmentTemplate & { name: string }> {
+  if (fragment.source === 'library') return libraryTemplate(fragment.id);
+  if (fragment.source === 'smiles') return smilesTemplate(fragment.smiles, attach);
+  throw new Error('Unknown fragment source.');
+}
+
 /** Inserts one rigid fragment into an explicit graph as a single edit; existing atoms keep their coordinates. */
 export async function insertFragment(structure: MolecularStructure, fragment: FragmentSource, target: number | null): Promise<FragmentInsertion> {
-  const template = fragment.source === 'library' ? await libraryTemplate(fragment.id) : fragment.source === 'smiles' ? smilesTemplate(fragment.smiles, target !== null) : null;
-  if (!template) throw new Error('Unknown fragment source.');
+  const template = await fragmentTemplate(fragment, target !== null);
   const placement = placeFragment(structure, template, target === null ? null : await attachmentSite(structure, target));
   const result = editGraph(structure, placement.edit);
   return { structure: result, name: template.name, anchor: placement.anchor, replaced: placement.replaced, bondLength: placement.bondLength, addedAtoms: placement.edit.atoms.length };

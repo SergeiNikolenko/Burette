@@ -86,3 +86,29 @@ cover z scales 0, 1e-6, 0.001 and 0.01 plus a genuinely assigned 0.1 control.
 
 The private [worker and source owner](polymer-worker.md) captures one immutable
 request for preview/create/retry; native role-picking UI remains a later stage.
+
+## End groups and relaxation
+
+The worker request may name a neutral cap for each chain end: hydrogen (the
+default), methyl, hydroxyl, phenyl or tert-butyl. `buildPolymer` reports the
+surviving first head and final tail leaving hydrogens as `terminals`; each chosen
+cap replaces that hydrogen through the same rigid placement as
+[fragment insertion](graph-editing-and-properties.md#fragment-insertion): the cap
+bonds along the hydrogen's direction at the summed Cordero covalent radii, rotated
+about that bond to minimize steric repulsion. Placement never moves chain atoms;
+a cap that would sit closer than half the summed Bondi radii to a chain atom (for
+example tert-butyl on the unrelaxed propylene head) is refused with a named error.
+Cap atoms carry `-1` in `sourceAtomIndices` and `repeatIndices`.
+
+Optional relaxation minimizes the complete capped chain with OpenChemLib MMFF94
+(up to 1,000 iterations) and returns the initial and final energies in kcal/mol
+and convergence. It runs only within the 256-atom browser chemistry budget;
+larger chains are refused rather than partially relaxed. Bonds and stereo
+configurations are retained; minimization does not search conformers.
+
+`test:polymer-ends` builds isotactic and syndiotactic hexamers through the
+compiled worker and compares RDKit canonical isomeric SMILES with the frozen
+hydrogen-capped references extended by the cap SMILES, so tacticity survives
+capping. Relaxation must lower the energy, converge, keep the graph and
+stereochemistry and bring every C–C and C–H bond within 0.025/0.02 Å of the
+Allen et al. (1987) mean C(sp3)–C(sp3) 1.530 Å and C–H 1.092 Å.
