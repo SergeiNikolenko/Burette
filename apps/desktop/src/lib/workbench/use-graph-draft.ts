@@ -16,8 +16,9 @@ import { prepareMeasurementSourcePair, publishMeasurementSourcePair } from "./me
 
 /** What an optimization did, kept with the snapshot it produced. Energies in kcal/mol. */
 export type GraphOutcome = {
-  forceField?: MolecularForceField; method: string; initialEnergy: number; energy: number; converged: boolean; iterations?: number;
-  frames?: { atoms: MolecularAtom[]; energy: number }[];
+  forceField?: MolecularForceField; method: string; initialEnergy: number; energy: number; converged: boolean; iterations?: number | null;
+  /** Step geometries with physical energies; absent or two endpoint frames when the minimizer exposes no steps. */
+  frames?: { atoms: MolecularAtom[]; energy: number }[]; frameSampling?: "steps" | "endpoints";
 };
 export type GraphSnapshot = { structure: GraphEditResult; annotations: AtomAnnotation[]; text: string; outcome: GraphOutcome | null; metadata: GraphMetadata | null; atomIds: readonly string[] | null };
 // `origin` is the source the history started from; its title and SDF data items

@@ -17,7 +17,7 @@ const computeAdvanced: GraphAdvancedCompute = async (operation, structure, signa
     const result = await runChemistryTask({ action: "optimize", molecule: structure, options: { method: operation.method, forceField: operation.forceField } }, { signal, timeoutMs: 300_000 });
     return {
       structure: await normalized(result.molecule, signal),
-      outcome: { forceField: result.forceField ?? operation.forceField ?? "MMFF94", method: optimizerLabel(operation.method), initialEnergy: result.initialEnergy, energy: result.energy, converged: result.converged, iterations: result.iterations, frames: result.frames },
+      outcome: { forceField: result.forceField ?? operation.forceField ?? "MMFF94", method: optimizerLabel(operation.method), initialEnergy: result.initialEnergy, energy: result.energy, converged: result.converged, iterations: result.iterations, frames: result.frames, frameSampling: result.frameSampling },
     };
   }
   const changed = await runChemistryTask({ action: "add-hydrogens", molecule: structure }, { signal });
