@@ -5,9 +5,13 @@ import { readFileSync } from "node:fs";
 import React, { act } from "react";
 import { Window } from "happy-dom";
 import type { ViewerDocument } from "../apps/desktop/src/types";
-plugin({ name: "source-generation-compiler", setup(build) { build.onLoad({ filter: /hooks\/use-source-(?:editing|draft-recovery)\.ts$/u }, ({ path }) => ({
-  contents: transformSync(readFileSync(path, "utf8"), { filename: path, babelrc: false, configFile: false, parserOpts: { plugins: ["typescript"] }, plugins: [["babel-plugin-react-compiler", {}]] })!.code!, loader: "ts",
-})); } });
+let ownedSourceCompiled = false;
+afterAll(() => { expect(ownedSourceCompiled).toBe(true); });
+plugin({ name: "source-generation-compiler", setup(build) { build.onLoad({ filter: /(?:hooks\/use-source-(?:editing|draft-recovery)|workbench\/owned-source-text)\.ts$/u }, ({ path }) => {
+  const contents = transformSync(readFileSync(path, "utf8"), { filename: path, babelrc: false, configFile: false, parserOpts: { plugins: ["typescript"] }, plugins: [["babel-plugin-react-compiler", {}]] })!.code!;
+  if (path.endsWith("owned-source-text.ts")) { expect(contents).toContain("react/compiler-runtime"); ownedSourceCompiled = true; }
+  return { contents, loader: "ts" };
+}); } });
 const browser = new Window({ url: "http://localhost/" }), previous = new Map<string, PropertyDescriptor | undefined>();
 for (const [key, value] of Object.entries({ window: browser, document: browser.document, navigator: browser.navigator,
   HTMLElement: browser.HTMLElement, HTMLIFrameElement: browser.HTMLIFrameElement, Element: browser.Element, Node: browser.Node,

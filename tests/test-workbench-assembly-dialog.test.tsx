@@ -9,15 +9,19 @@ import React, { act } from "react";
 // assembly worker replaced by a held transport: which source text and model each job
 // gets, and what cancel, failure, a changed or closed source and success do with it.
 // The dialog, its source hook and the dialog router compile with the React Compiler, as the app build does.
-const COMPILED = /apps\/desktop\/src\/(lib\/workbench\/assembly-source\.ts|components\/workbench\/(assembly-dialog|assembly-dialog-host)\.tsx)$/u;
+const compiledModules = new Set<string>();
+const COMPILED = /apps\/desktop\/src\/(lib\/workbench\/(?:assembly-source|owned-source-text)\.ts|components\/workbench\/(assembly-dialog|assembly-dialog-host)\.tsx)$/u;
 plugin({
   name: "react-compiler",
   setup(build) {
     build.onLoad({ filter: COMPILED }, ({ path }) => {
-      const tsx = path.endsWith(".tsx");
+      const tsx = path.endsWith(".tsx"), compiledFunctions: string[] = [];
       const compiled = transformSync(readFileSync(path, "utf8"), { filename: path, babelrc: false, configFile: false,
-        parserOpts: { plugins: tsx ? ["typescript", "jsx"] : ["typescript"] }, plugins: [["babel-plugin-react-compiler", {}]] });
-      assert.ok(/react\/compiler-runtime/u.test(compiled.code), `${path} was compiled`);
+        parserOpts: { plugins: tsx ? ["typescript", "jsx"] : ["typescript"] }, plugins: [["babel-plugin-react-compiler", { logger: { logEvent(_filename: string, event: { kind: string; fnName?: string }) { if (event.kind === "CompileSuccess" && event.fnName) compiledFunctions.push(event.fnName); } } }]] });
+      // The forwarding wrapper compiles successfully without allocating memo slots.
+      if (path.endsWith("/assembly-source.ts")) assert.ok(compiledFunctions.includes("useAssemblySourceText"), `${path} compiled successfully`);
+      else assert.ok(/react\/compiler-runtime/u.test(compiled.code), `${path} was compiled`);
+      compiledModules.add(path.split("/").pop()!);
       return { contents: compiled.code, loader: tsx ? "tsx" : "ts" };
     });
   },
@@ -38,7 +42,8 @@ for (const [name, value] of Object.entries({
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const { mock, test } = await import("bun:test");
+const { afterAll, mock, test } = await import("bun:test");
+afterAll(() => { assert.ok(compiledModules.has("owned-source-text.ts"), "Actual shared source owner was compiled"); });
 
 // Held worker transport: each job waits for the test to settle it, and records its abort.
 const jobs = [];

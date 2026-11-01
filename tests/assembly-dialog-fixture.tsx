@@ -9,8 +9,9 @@ import type { ShellActions } from "../apps/desktop/src/components/types";
 import type { ViewerDocument } from "../apps/desktop/src/types";
 export { React, act, test, expect };
 export const compiler: string[] = [];
+afterAll(() => { expect(compiler).toContain("owned-source-text.ts"); });
 plugin({ name: "assembly-ui-runtime", setup(build) {
-  build.onLoad({ filter: /(?:assembly-dialog(?:-host)?)\.tsx$/ }, ({ path }) => {
+  build.onLoad({ filter: /(?:assembly-dialog(?:-host)?\.tsx|owned-source-text\.ts)$/ }, ({ path }) => {
     let source = readFileSync(path, "utf8");
     if (path.endsWith("grid-molecule-3d.tsx")) source = source.replace(/^import bootstrapUrl[^\n]+/m, 'const bootstrapUrl = "/preview-bootstrap.js";').replace(/const assets = import\.meta\.glob[^\n]+/, "const assets: Record<string,string> = {};");
     const result = transformSync(source, { filename: path, babelrc: false, configFile: false, parserOpts: { plugins: ["typescript", "jsx"] }, plugins: [["babel-plugin-react-compiler", {}]] });

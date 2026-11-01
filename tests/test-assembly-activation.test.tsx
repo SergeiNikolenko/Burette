@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { act, React, test, expect, fixture, dialog, wait, closeWorkbenchDialog, buildShellCommands, filterShellCommands, browser } from "./assembly-dialog-fixture";
-import { SceneComputeMenu } from "../apps/desktop/src/components/editor-area/scene-compute-menu";
+const { SceneComputeMenu } = await import("../apps/desktop/src/components/editor-area/scene-compute-menu");
 import type { ShellViewState } from "../apps/desktop/src/components/types";
 
 test("palette opens the assembly chooser without an eligible source", async () => {

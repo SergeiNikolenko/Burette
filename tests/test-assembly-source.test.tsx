@@ -5,9 +5,14 @@ import { transformSync } from "@babel/core";
 import React, { act } from "react";
 import { Window } from "happy-dom";
 import type { ViewerDocument } from "../apps/desktop/src/types";
-plugin({ name: "assembly-source-compiler", setup(build) { build.onLoad({ filter: /workbench\/assembly-source\.ts$/u }, ({ path }) => ({
-  contents: transformSync(readFileSync(path, "utf8"), { filename: path, babelrc: false, configFile: false, parserOpts: { plugins: ["typescript"] }, plugins: [["babel-plugin-react-compiler", {}]] })!.code!, loader: "ts",
-})); } });
+const compiled: string[] = [];
+afterAll(() => { expect(compiled).toContain("owned-source-text.ts"); });
+plugin({ name: "assembly-source-compiler", setup(build) { build.onLoad({ filter: /workbench\/(?:assembly-source|owned-source-text)\.ts$/u }, ({ path }) => {
+  const contents = transformSync(readFileSync(path, "utf8"), { filename: path, babelrc: false, configFile: false, parserOpts: { plugins: ["typescript"] }, plugins: [["babel-plugin-react-compiler", {}]] })!.code!;
+  if (path.endsWith("owned-source-text.ts")) expect(contents).toContain("react/compiler-runtime");
+  compiled.push(path.split("/").pop()!);
+  return { contents, loader: "ts" };
+}); } });
 const browser = new Window({ url: "http://localhost" });
 const previous = new Map<string, PropertyDescriptor | undefined>();
 for (const [key, value] of Object.entries({ window: browser, document: browser.document, navigator: browser.navigator, localStorage: browser.localStorage, IS_REACT_ACT_ENVIRONMENT: true })) {

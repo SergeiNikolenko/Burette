@@ -83,3 +83,6 @@ reflection or relaxation substitutes for resolved stereo. A nonzero determinant
 alone does not prove that the actual SDF consumer assigns a configuration.
 The original normal fixture/reference tests remain unchanged, and regressions
 cover z scales 0, 1e-6, 0.001 and 0.01 plus a genuinely assigned 0.1 control.
+
+The private [worker and source owner](polymer-worker.md) captures one immutable
+request for preview/create/retry; native role-picking UI remains a later stage.
