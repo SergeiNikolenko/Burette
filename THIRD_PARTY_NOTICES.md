@@ -228,3 +228,15 @@ Cartesian coordinates from OpenChemistry/avogadrodata commit
 `67ab090bb4cc1ec9417d420f8df1f316c6a214f3`, under its molecules-directory
 BSD-3-Clause license (Copyright 2016 Geoffrey Hutchison, University of Pittsburgh).
 The exact license and source hashes are retained beside these test-only extracts.
+
+## cclib quantum-chemistry test outputs
+
+Files named `cclib-*` under `tests/fixtures/quantum/{nwchem,psi4,xtb}/` are
+byte-identical copies of program outputs from the `data/` directory of
+[cclib](https://github.com/cclib/cclib) commit
+`0c6e08e0a0d04b308201666793030ef3b77b2973`, under cclib's BSD-3-Clause license
+(Copyright the cclib development team), retained as
+`tests/fixtures/quantum/cclib-LICENSE.txt`. cclib itself is used only as an
+external test oracle (`tests/fixtures/quantum/cclib-reference.py`); no cclib code
+is bundled. The other outputs in those directories were generated for Burette with
+NWChem 7.3.0, Psi4 1.11 and xtb 6.7.1; the programs are not bundled.

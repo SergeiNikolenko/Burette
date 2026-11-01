@@ -4,13 +4,14 @@ import { atomicNumber } from "../molecular-workbench/elements";
 import { checkMcdCompanion } from "../molecular-workbench/mcd-companion";
 import { checkScientificSpectra, SCIENTIFIC_SPECTRA_LIMITS, type ScientificSpectra } from "../molecular-workbench/scientific-spectra";
 import { shellSize } from "../molecular-workbench/gaussian-angular";
-import { checkHessianValues, HESSIAN_UNITS } from "../molecular-workbench/hessian";
-import type { GaussianShell, ScientificDocument } from "../molecular-workbench/scientific-types";
+import { checkHessianValues, HESSIAN_SOURCES, HESSIAN_UNITS } from "../molecular-workbench/hessian";
+import { ATOMIC_CHARGE_MODELS, type GaussianShell, type ScientificDocument } from "../molecular-workbench/scientific-types";
 import type { MolecularAtom } from "../molecular-workbench/types";
 import type { XyzFrame } from "./source-frames";
 import { normalizeElement, ScienceSessionError, SCIENCE_SESSION_LIMITS } from "./contracts";
 
-const FORMATS = new Set<ScientificDocument["format"]>(["gaussian-log", "qcschema", "fchk", "orca", "orca-hessian", "molden", "cube", "xyz", "zmat", "cjson"]);
+const FORMATS = new Set<ScientificDocument["format"]>(["gaussian-log", "qcschema", "fchk", "orca", "orca-hessian", "orca-property", "molden", "cube", "xyz", "zmat", "cjson",
+  "nwchem-log", "gamess-log", "psi4-log", "molpro-log", "qchem-log", "xtb"]);
 const SHELLS = new Set(["s", "p", "d", "f", "g", "h", "i"]);
 const MAX_COEFFICIENTS = 2_000_000;
 const MAX_MODE_VALUES = 2_000_000;
@@ -121,10 +122,17 @@ export function validateScientificDocument(value: unknown, sourceFrames: readonl
       const vectors = frame[key];
       if (vectors !== undefined && (!Array.isArray(vectors) || vectors.length !== elements.length || !vectors.every(isVec3))) fail(`frames[${index}].${key} do not match the atoms.`);
     }
+    if (frame.charges !== undefined) {
+      const models = new Set<unknown>();
+      if (!Array.isArray(frame.charges) || frame.charges.some((set) => !isRecord(set) || !(ATOMIC_CHARGE_MODELS as readonly unknown[]).includes(set.model)
+        || models.has(set.model) || !models.add(set.model) || !numbers(set.values) || set.values.length !== elements.length
+        || set.values.some((charge) => Math.abs(charge) > 200))) fail(`frames[${index}].charges do not match the atoms.`);
+    }
+    if (frame.dipoleDebye !== undefined && (!isVec3(frame.dipoleDebye) || (frame.dipoleDebye as number[]).some((value) => Math.abs(value) > 1e6))) fail(`frames[${index}].dipoleDebye is not a vector.`);
     const hessian = frame.hessian;
     if (hessian !== undefined) {
       if (!isRecord(hessian) || hessian.units !== HESSIAN_UNITS || !(hessian.values instanceof Float64Array)
-        || (hessian.source !== "orca-hess" && hessian.source !== "gaussian-fchk")) fail(`frames[${index}].hessian is not a Cartesian Hessian.`);
+        || !(HESSIAN_SOURCES as readonly unknown[]).includes(hessian.source)) fail(`frames[${index}].hessian is not a Cartesian Hessian.`);
       if (hessian.dimension !== elements.length * 3) fail(`frames[${index}].hessian does not match the atoms.`);
       try { checkHessianValues(hessian.values, hessian.dimension); }
       catch (error) { fail('frames[' + index + '].hessian: ' + (error instanceof Error ? error.message : String(error))); }

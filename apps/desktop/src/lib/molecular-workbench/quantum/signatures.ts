@@ -1,0 +1,10 @@
+/**
+ * Program banners that identify a quantum-chemistry text output within its first 64 KiB.
+ * The browser file gate and the reader dispatch share them; each reader validates the rest.
+ */
+export const NWCHEM_SIGNATURE = /Northwest Computational Chemistry Package \(NWChem\)|NWChem Input Module/u;
+export const PSI4_SIGNATURE = /Psi4: An Open-Source Ab Initio Electronic Structure Package/u;
+export const XTB_SIGNATURE = /^\s*\|\s+x T B\s+\|\s*$|^\s*\* xtb version \d/mu;
+/** `xtbopt.log`: XYZ frames whose comment is `energy: <Eh> gnorm: <Eh/bohr> xtb: <version>`. */
+export const XTB_TRAJECTORY_SIGNATURE = /^\s*\d+\s*\n\s*energy:\s+\S+\s+gnorm:\s+\S+\s+xtb:\s/u;
+export const ORCA_BANNER = /O {3}R {3}C {3}A/u;

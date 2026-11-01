@@ -30,8 +30,12 @@ export interface CartesianHessian {
   values: Float64Array;
   /** Atomic masses in amu, in atom order, as the source states them. */
   massesAmu?: number[];
-  source: "orca-hess" | "gaussian-fchk";
+  source: HessianSource;
 }
+
+/** The producer record a Hessian was read from; every one stores Hartree/bohr². */
+export const HESSIAN_SOURCES = ["orca-hess", "gaussian-fchk", "qcschema", "xtb-hessian", "nwchem-log", "gamess-log", "psi4-log", "qchem-log", "molpro-log", "orca-property"] as const;
+export type HessianSource = typeof HESSIAN_SOURCES[number];
 
 export function packedTriangleLength(dimension: number) {
   return dimension * (dimension + 1) / 2;
@@ -97,6 +101,13 @@ export function hessianFromLowerTriangle(triangle: ArrayLike<number>, atomCount:
     values[column * dimension + row] = value;
   }
   return finish(values, dimension, atomCount, masses, "gaussian-fchk");
+}
+
+/** A complete row-major Cartesian matrix, already in Hartree/bohr². */
+export function hessianFromSquare(square: ArrayLike<number>, atomCount: number, source: HessianSource, masses?: readonly number[]): CartesianHessian {
+  const dimension = checkDimension(atomCount);
+  if (square.length !== dimension * dimension) throw new Error("Hessian matrix size does not match the atoms.");
+  return finish(Float64Array.from(square), dimension, atomCount, masses, source);
 }
 
 const NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:[EeDd][+-]?\d+)?$/;

@@ -55,10 +55,16 @@ Hessians are float64 row-major `3N × 3N`, in Hartree/bohr², with at most 400 a
 Their values remain unsymmetrized: every transposed pair may differ by at most
 1% of the matrix's largest absolute element. Optional masses are finite, positive,
 at most 1,000 amu and one per atom. Source readers use the same Hessian validator.
+A frame may carry atomic partial charges as named models (Mulliken, Löwdin,
+Hirshfeld, CM5, NPA, ESP, CHELPG, EEQ, Gasteiger), each model at most once with
+one value per atom and |q| ≤ 200 e, and a dipole moment in debye. Text-log readers
+attach these properties only to the geometry whose converged SCF produced them;
+line-search trial energies inside one optimization step do not own properties.
 
 Optional `ScientificDocument.referenceFrameIndex` identifies the history frame of
 `document.atoms`, independently of native playback. Producers declare it only when
-known: XYZ uses the first source frame, ORCA/Gaussian use their last parsed geometry,
+known: XYZ uses the first source frame, ORCA/Gaussian/NWChem/Psi4/xtb outputs use
+their last parsed geometry,
 QCSchema uses its retained final geometry, and single-geometry readers use zero.
 An explicit index must be an integer in range and describe the main geometry.
 CJSON's `graph.activeFrameIndex` remains authoritative; a declared reference cannot
