@@ -6,18 +6,19 @@ import { logFrontendError } from "../lib/frontend-error-log";
 const assets = import.meta.glob<string>("../../../../PreviewExtension/Web/{molstar.js,molstar.css,svg-sanitizer.js,viewer.js,viewer-shell.js,viewer-runtime.css,renderer-view-state.js,molstar-preset-preview-controller.js,color-picker.js,sequence-panel.js,native-viewer-menus.js,scene-file-actions.js}", { eager: true, query: "?url", import: "default" });
 const asset = (name: string) => new URL(assets[`../../../../PreviewExtension/Web/${name}`], window.location.href).href;
 
-export default function GridMolecule3D({ molblock, hydrogenDisplay, theme, height, onOpen }: { molblock: string; hydrogenDisplay: "none" | "all"; theme: string; height: number; onOpen: () => void }) {
+export default function GridMolecule3D({ molblock, hydrogenDisplay, theme, height, onOpen, format = "mol", label = "Molecule" }: { format?: "mol" | "mmcif"; label?: string; molblock: string; hydrogenDisplay: "none" | "all"; theme: string; height: number; onOpen: () => void }) {
   const frame = useRef<HTMLIFrameElement>(null);
-  const initial = useRef("");
-  if (!initial.current && molblock && molblock.length <= 350_000) initial.current = molblock;
-  const initialMolblock = initial.current;
+  const initial = useRef({ format, text: "" });
+  if (initial.current.format !== format) initial.current = { format, text: "" };
+  if (!initial.current.text && molblock && molblock.length <= 350_000) initial.current.text = molblock;
+  const initialMolblock = initial.current.text;
   const initialHydrogens = useRef(hydrogenDisplay).current;
   const open = useRef(onOpen);
   open.current = onOpen;
   const { html, channel } = useMemo(() => {
     if (!initialMolblock) return { html: "<!doctype html><html></html>", channel: "" };
     const channel = crypto.randomUUID();
-    const config = { format: "mol", molstarFormat: "mol", renderer: "molstar", label: "Molecule", appViewer: true,
+    const config = { format: format === "mmcif" ? "cif" : "mol", molstarFormat: format, renderer: "molstar", label, appViewer: true,
       hydrogenDisplay: initialHydrogens, inspectorPreview: true, inspectorChannel: channel, autoFocusStructure: true, theme, canvasBackground: theme === "dark" ? "#111111" : "#ffffff",
       molstarPreset: "automatic", molstarStyle: "illustrative", xyzrenderAvailable: false, sdfGrid: false,
       defaultLayoutState: { left: "hidden", right: "hidden", top: "hidden", bottom: "hidden" } };
@@ -38,7 +39,7 @@ export default function GridMolecule3D({ molblock, hydrogenDisplay, theme, heigh
       <script src="${new URL(bootstrapUrl, window.location.href).href}"></script>
       ${scripts.map(name => `<script src="${asset(name)}"></script>`).join("")}
       </body></html>` };
-  }, [theme, initialMolblock, initialHydrogens]);
+  }, [theme, initialMolblock, initialHydrogens, format, label]);
   useEffect(() => {
     const send = () => frame.current?.contentWindow?.postMessage({ source: "burette-inspector-host", channel, molblock, hydrogenDisplay }, "*");
     const ready = (event: MessageEvent) => {
