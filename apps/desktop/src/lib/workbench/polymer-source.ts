@@ -10,7 +10,7 @@ import { preparePolymerRequest, runPolymerTask, type PolymerSettings, type Polym
 export function usePolymerSource(document: ViewerDocument | null) {
   useLogicalSource(document?.id ?? null);
   const extension = document ? sourceExtension(document) : "";
-  const format = extension === "sdf" || extension === "sd" ? "sdf" : extension === "mol" ? "mol" : null;
+  const format: "mol" | "sdf" | null = extension === "sdf" || extension === "sd" ? "sdf" : extension === "mol" ? "mol" : null;
   const usable = document?.renderer === "molstar" && !document.mergedCollection && !document.dockingRequest && format ? document : null;
   const source = useOwnedSourceText(usable, 2_000_000, "Polymer source exceeds 2 MB.");
   const owners = useRef(new Set<() => void>());

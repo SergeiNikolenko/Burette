@@ -27,7 +27,10 @@ test("XYZ scene exposes Compute and dispatches the selected calculation for its 
     expect(item).toBeDefined(); await act(async()=>item.click());
     expect(runXtbActiveOperation.mock.calls).toEqual([["properties",target]]);
     await act(async()=>root.render(<SceneComputeMenu document={{...target,extension:"sdf"}} actions={actions}/>));
-    expect(container.querySelector("button")).toBeNull();
+    const polymerTrigger=container.querySelector<HTMLButtonElement>("button")!;
+    expect(polymerTrigger).not.toBeNull();
+    await act(async()=>{polymerTrigger.dispatchEvent(new MouseEvent("pointerdown",{bubbles:true,button:0}));polymerTrigger.click();});
+    expect([...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(item=>item.textContent)).toEqual(["Build polymer…"]);
   } finally {await act(async()=>root.unmount());container.remove();}
 });
 

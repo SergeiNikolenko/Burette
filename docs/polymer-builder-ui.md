@@ -1,0 +1,19 @@
+# Polymer repeat-unit builder
+
+A single MOL/SDF source exposes **Build polymer…** in Compute and the command palette. Logical MOLX sources use their registered source format and owner. Other existing Compute routes, including Plots, Spectra and assemblies, remain intact; a MOL/SDF source does not gain an unrelated generic xTB/CREST route.
+
+The modeless builder leaves the source canvas interactive. Four separate buttons arm Head, Tail, Head H and Tail H. Each click is taken from actual native MolStar atom loci through the retained model/source binding; displayed source row numbers and hydrogen identities retain their original order. A role can be picked first in any order, including either leaving hydrogen. Wrong element, duplicate role or incompatible heavy/H pair leaves the form recoverable. Sorted multi-selection order is never used to infer roles.
+
+A prepared request owns the exact document/lifetime, editing session/revision, native model lease, four roles, repeat count, link length and tacticity. Atactic choices are sampled once per prepared request. Preview, Create and a failed-open retry reuse its worker result and exact SDF bytes. Changing a role or setting retires the previous request and preview. A synchronous submission gate prevents duplicate pending Create clicks; a later builder session is independent.
+
+Preview renders the entire accepted result through `MoleculeFilePreview` and its owned Blob URL, with explicit SDF format. The 500-repeat fixture (6,502 atoms, 6,501 bonds, 444,651 characters) remains fully previewable and opens from the same cached bytes. The old inline preview size cap is not applied to generated polymer output.
+
+After building, native lease validation precedes publication of preview output. Create additionally validates after the actual generated-document preparation and before the existing final `shouldApply` guard and synchronous adoption. Native validation ACK is an explicit acceptance point; queued retirement delivery is not treated as synchronous knowledge of native edits. Cancel/source retirement terminates held work and releases unadopted resources. The source molecule, its native scene and original text are preserved; Create opens a new document.
+
+## Validation
+
+`bun run test:polymer-builder` uses the actual compiled worker, source/editor/file-open owners, native MolStar graph and queued pick/validation transport. It covers H-first role assignment, Compute/palette activation, wrong-role recovery, held duplicate Create, failed-open retry, withheld native retirement during preparation, cancellation, setting changes and full large-result byte ownership. `bun run typecheck:polymer-builder` is the focused check.
+
+The scene-Compute test changes its former SDF-hidden expectation to the newly supported polymer-only menu. The CJSON/Plots exact menu lists likewise gain the new polymer item; loss of scientific-source eligibility removes Spectra while leaving the ordinary MOL/SDF polymer route. All existing scientific/source/frame/Original/native/publication assertions are preserved. ROOT’s optional generic dialog host delegates only its polymer request to the dedicated modeless host; unrelated tools remain intact. Native rendering/CSP is independently covered by the Blob preview prerequisite; compiled DOM/owner tests do not constitute Browser gesture or visual acceptance.
+
+This stage supports the accepted neutral, explicit-hydrogen, resolved-3D repeat-unit boundary with hydrogen ends. It does not complete automatic 3D preparation (requirement 03.08), relaxation/optimization, alternate terminations, copolymers or insertion into an existing molecule with one Undo. These remain explicit stage7 requirements within the full twelve-part parity scope.

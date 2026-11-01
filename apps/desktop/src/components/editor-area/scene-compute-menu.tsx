@@ -1,7 +1,8 @@
+import { openWorkbenchDialog } from "../../lib/workbench/dialog-store";
+import { polymerSourceFormat } from "../../lib/workbench/polymer-tool";
 import { openPlots, usePlotsAvailable, PLOTS_COMMAND } from "../../lib/workbench/plots-tool";
 import { assemblySourceFormat } from "../../lib/workbench/assembly-source";
-import { openWorkbenchDialog } from "../../lib/workbench/dialog-store";
-import { sourceExtension } from "../../lib/science-session/state";
+import { sourceExtension, useLogicalSource } from "../../lib/science-session/state";
 import { openScientificSpectra, useScientificSpectraAvailable, SCIENTIFIC_SPECTRA_COMMAND } from "../../lib/workbench/scientific-spectra-tool";
 import { openOrbitals, useOrbitalsAvailable, ORBITALS_COMMAND } from "../../lib/workbench/orbitals-tool";
 import { openVibrations, useVibrationsAvailable, VIBRATIONS_COMMAND } from "../../lib/workbench/vibrations-tool";
@@ -35,6 +36,8 @@ const UNAVAILABLE: Record<Exclude<SceneFileState, "available">, string> = {
 export function SceneComputeMenu({ document, actions }: { document: ViewerDocument; actions: ShellActions }) {
   const [files, setFiles] = useState<Array<{ path: string; state: SceneFileState }> | null>(null);
   const hasOrbitals = useOrbitalsAvailable(document);
+  const logical = useLogicalSource(document.id);
+  const hasPolymer = polymerSourceFormat(document, logical?.extension ?? document.extension) !== null;
   const hasPlots = usePlotsAvailable(document);
   const hasScientificSpectra = useScientificSpectraAvailable(document);
   const hasVibrations = useVibrationsAvailable(document);
@@ -43,7 +46,7 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
   if (window.BuretteMcpWorkspace || !["molstar", "xyzrender-external"].includes(document.renderer)) return null;
   const combined = document.renderer === "molstar" && new Set(recordedScenePaths(document)).size > 1;
   const embeddedGraph = !combined && document.renderer === "molstar" && ["sdf", "sd", "mol"].includes(sourceExtension(document));
-  if (embeddedGraph && !hasScientificSpectra && !hasPlots) return null;
+  if (embeddedGraph && !hasScientificSpectra && !hasPlots && !hasPolymer) return null;
 
   const fileItems = (path: string): MenuItemSpec[] => [
     ...CALCULATIONS.map(([operation, text]) => ({
@@ -79,6 +82,7 @@ export function SceneComputeMenu({ document, actions }: { document: ViewerDocume
   if (!combined && hasScientificSpectra) items.push(...(embeddedGraph || hasOrbitals || hasVibrations ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-scientific-spectra", text: SCIENTIFIC_SPECTRA_COMMAND.label, action: () => openScientificSpectra(actions, document.id) });
   if (!combined && hasPlots) items.push(...(embeddedGraph || hasOrbitals || hasVibrations || hasScientificSpectra ? [] : [{ kind: "separator" as const }]), { kind: "item", id: "workbench-tool-plots", text: PLOTS_COMMAND.label, action: () => openPlots(actions, document.id) });
   if (!combined && assemblySourceFormat(document)) items.push({ kind: "separator" }, { kind: "item", id: "workbench-assembly", text: "Build biological assembly…", action: () => openWorkbenchDialog({ kind: "assembly", document }) });
+  if (!combined && hasPolymer) items.push({ kind: "item", id: "workbench-polymer", text: "Build polymer…", action: () => openWorkbenchDialog({ kind: "builder", builder: "polymer", document }) });
   // Every calculation here, and xTB/CREST started elsewhere, runs where this points.
   if (!embeddedGraph && connections.length > 0) items.push({ kind: "separator" }, {
     kind: "select", id: "scene-run-on", label: "Run on", value: host ?? THIS_MAC,

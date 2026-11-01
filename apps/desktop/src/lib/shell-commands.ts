@@ -1,3 +1,4 @@
+import { polymerSourceFormat } from "./workbench/polymer-tool";
 import { openWorkbenchDialog } from "./workbench/dialog-store";
 import type { ShellActions, ShellViewState } from "../components/types";
 import { parsePdbFetchCommand, parseSmilesCommand } from "./structure-fetch";
@@ -41,6 +42,10 @@ export function buildShellCommands(
       run: actions.chooseFiles,
     },
     ...shellCommandsForQuery(query, actions),
+    ...(polymerSourceFormat(state.activeDocument) ? [{
+      id: "workbench-polymer", group: "Suggested", label: "Build polymer…", description: "",
+      run: () => openWorkbenchDialog({ kind: "builder", builder: "polymer", document: state.activeDocument }),
+    }] : []),
     {
       id: "workbench-peptide", group: "Suggested", label: "Build peptide…", description: "",
       run: () => openWorkbenchDialog({ kind: "builder", builder: "peptide", document: null }),
