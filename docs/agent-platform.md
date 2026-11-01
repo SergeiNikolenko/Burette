@@ -741,3 +741,27 @@ controller. No separate calculation service or tool is introduced. Validation:
 HTTP/SSE host, browser-target chemistry worker, pinned WASM and fixed RDKit charge
 references. The fixture uses already-open physical SDF files; ordinary chooser,
 live Browser and native surfaces remain separate acceptance lanes.
+
+### Read-only energy and forces
+
+`energy` and `energy_forces` use the same immutable graph/source revision and
+job lifecycle as Properties. `params.forceField` accepts `MMFF94` (default),
+`MMFF94s`, or `UFF`; unknown options fail before queueing. Energy supports
+1–256 atoms and forces 1–64, with the same complete-graph policy. Explicit
+hydrogens are required; parameter failures never substitute another field.
+Neither job adds atoms, relaxes coordinates or changes the source document.
+
+Energy returns a summary in `kcal/mol` with its model and no artifact. Forces
+add a `forces` JSON artifact whose zero-based indices, elements and vectors
+follow source atom order. Vectors are `-dE/dr` in `kcal/(mol·Å)`. MMFF reports
+`central-difference` and `stepAngstrom: 0.0001`; UFF reports `analytic` without
+a numerical step. The summary includes maximum and RMS vector magnitudes.
+Existing export hashes, no-overwrite behavior and explicit stale-result opt-in
+apply. The shared timeout, queue, cancellation and source-close guards remain
+unchanged.
+
+`vp run test:energy-agent` exercises the contract/controller and actual
+CLI/MCP through emitted host code and a browser-target chemistry worker with
+the pinned WASM. It retains Properties and orbital checks. This is transport
+and numeric acceptance, not an ordinary chooser, live Browser, native app or
+Python/batch acceptance.

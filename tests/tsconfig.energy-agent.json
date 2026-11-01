@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "types": [
+      "bun"
+    ]
+  },
+  "include": [
+    "test-energy-agent.test.ts",
+    "../apps/desktop/src/**/*.d.ts"
+  ]
+}

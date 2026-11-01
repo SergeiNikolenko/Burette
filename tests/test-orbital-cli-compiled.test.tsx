@@ -1,3 +1,4 @@
+import { amideReference, waterReference, energyCases } from "./fixtures/typed-energy-host";
 import { builtPropertiesWorkers, mcpPropertiesClient, propertyCases } from "./fixtures/typed-properties-host";
 // Actual compiled host hook → HTTP session server → CLI subprocess → numerical workers.
 import { afterAll, beforeAll, expect, mock, test } from "bun:test";
@@ -118,7 +119,7 @@ afterAll(async () => {
 
 test("compiled host and CLI produce signed orbital, total density and spin density Cube files with exact hashes and analytic values", async () => {
   const capabilities = await ok({ operation: "capabilities" });
-  expect([capabilities.available, capabilities.draftsVisible, Object.keys(capabilities.jobs)]).toEqual([true, true, ["properties", "orbital_cube"]]);
+  expect([capabilities.available, capabilities.draftsVisible, Object.keys(capabilities.jobs)]).toEqual([true, true, ["properties", "energy", "energy_forces", "orbital_cube"]]);
   const observed = await ok({ operation: "observe" });
   expect(observed.sourceTextSha256).toBe(`sha256-${createHash("sha256").update(sourceText).digest("hex")}`);
   const orbitals = await ok({ operation: "orbitals", limit: 1, offset: 1 });
@@ -246,10 +247,104 @@ test("actual browser-bundled charge replies cannot publish after MCP cancel or s
   } finally { propertyWorkers.release(); documents = [source]; useMoleculeStore.setState({ documents }); await render(); }
 }, 30000);
 
+
+async function energyDocument(fixture: typeof energyCases[number]) {
+  const path = join(root, `${fixture.name}.${fixture.extension}`); await writeFile(path, fixture.source);
+  const doc: ViewerDocument = { id: fixture.name, path, title: `${fixture.name}.${fixture.extension}`, extension: fixture.extension, renderer: "molstar", byteCount: Buffer.byteLength(fixture.source), runtimePath: "viewer" };
+  documents = [doc]; useMoleculeStore.setState({ documents }); await render(); return doc;
+}
+
+test("energy and force CLI/MCP jobs retain independent model values, source order, artifact bytes and physical covariance", async () => {
+  const original = importedOriginalFor(source.id), originalBytes = await original!.file.text(), mcp = await mcpPropertiesClient(repo);
+  const submit = async (kind: string, forceField: string | undefined, id: string, viaMcp = false) => {
+    const observed = await ok({ operation: "observe" });
+    const request = { operation: "submit", operationId: id, expectedSourceRevision: observed.sourceRevision, job: { kind, params: forceField ? { forceField } : {} } };
+    const result = viaMcp ? (await mcp.control(session, request)).structuredContent.result.action.result.result : await ok(request);
+    const job = await finished(result.job.jobId); expect([job.status, job.binding]).toEqual(["succeeded", "current"]);
+    expect((await ok(request)).job.jobId).toBe(job.jobId);
+    expect((await cli({ ...request, job: { kind, params: { forceField: forceField === "UFF" ? "MMFF94" : "UFF" } } })).body.error.code).toBe("OPERATION_ID_CONFLICT");
+    return job;
+  };
+  const forces = async (job: any, name: string) => {
+    const path = join(root, `${name}.json`), exported = await ok({ operation: "export", jobId: job.jobId, artifact: "forces" }, ["--output", path]);
+    const bytes = await readFile(path); expect([bytes.length, `sha256-${createHash("sha256").update(bytes).digest("hex")}`]).toEqual([exported.artifact.byteCount, exported.artifact.sha256]);
+    expect(exported.artifact.content).toBeUndefined();
+    expect((await cli({ operation: "export", jobId: job.jobId, artifact: "forces" }, ["--output", path])).body.error.code).toBe("OUTPUT_EXISTS");
+    expect(await readFile(path)).toEqual(bytes);
+    const result = JSON.parse(bytes.toString("utf8"));
+    expect([result.forceField, result.unit, result.energyUnit, result.method]).toEqual([job.summary.forceField, "kcal/(mol·Å)", "kcal/mol", job.summary.forceField === "UFF" ? "analytic" : "central-difference"]);
+    if (result.forceField === "UFF") expect(result.stepAngstrom).toBeUndefined(); else expect(result.stepAngstrom).toBe(1e-4);
+    const norms = result.atoms.map((atom: any) => Math.hypot(...atom.force));
+    expect([job.summary.atomCount, job.summary.energy, job.summary.energyUnit, job.summary.forceUnit]).toEqual([norms.length, result.energy, result.energyUnit, result.unit]);
+    expect(job.summary.maxForce).toBeCloseTo(Math.max(...norms), 10); expect(job.summary.rmsForce).toBeCloseTo(Math.sqrt(norms.reduce((a: number, b: number) => a + b * b, 0) / norms.length), 10);
+    return { result, bytes };
+  };
+  try {
+    const amide = await energyDocument(energyCases[0]);
+    for (const field of [undefined, "MMFF94", "MMFF94s", "UFF"]) {
+      const job = await submit("energy", field, `amide-${field ?? "default"}`), model = field ?? "MMFF94";
+      expect(job.artifacts).toEqual([]); expect([job.summary.forceField, job.summary.unit, job.summary.method]).toEqual([model, "kcal/mol", model === "UFF" ? "UFF (RDKit)" : `${model} (OpenChemLib)`]);
+      expect(Math.abs(job.summary.energy - amideReference.energies[model])).toBeLessThan(1e-8);
+    }
+    expect(await readFile(amide.path, "utf8")).toBe(energyCases[0].source);
+    const water = await energyDocument(energyCases[1]), waterJob = await submit("energy_forces", "UFF", "water-independent", true), artifact = await forces(waterJob, "water-independent");
+    expect(Math.abs(artifact.result.energy - waterReference.expectedEnergyKcalMol)).toBeLessThan(1e-8);
+    expect(artifact.result.atoms.map((atom: any) => [atom.index, atom.element])).toEqual([[0, "O"], [1, "H"], [2, "H"]]);
+    artifact.result.atoms.flatMap((atom: any) => atom.force).forEach((value: number, i: number) => expect(Math.abs(value + waterReference.expectedGradientKcalMolAngstrom[i])).toBeLessThan(1e-7));
+    draft = energyCases[1].source + "\n";
+    expect((await cli({ operation: "export", jobId: waterJob.jobId, artifact: "forces" })).body.error.code).toBe("STALE_RESULT");
+    const stale = await ok({ operation: "export", jobId: waterJob.jobId, artifact: "forces", allowStale: true }, ["--output", join(root, "water-stale.json")]);
+    expect(await readFile(stale.artifact.path)).toEqual(artifact.bytes); draft = null;
+    expect(await readFile(water.path, "utf8")).toBe(energyCases[1].source);
+    for (const field of ["MMFF94", "MMFF94s", "UFF"]) {
+      const answers: any[] = [];
+      for (const fixture of energyCases.slice(2)) {
+        const doc = await energyDocument(fixture), job = await submit("energy_forces", field, `${fixture.name}-${field}`), answer = (await forces(job, `${fixture.name}-${field}`)).result;
+        expect(answer.atoms.map((atom: any) => atom.index)).toEqual([0, 1, 2]);
+        expect(answer.atoms.map((atom: any) => atom.element)).toEqual(fixture.name.endsWith("permuted") ? ["O", "H", "H"] : ["H", "O", "H"]);
+        expect(await readFile(doc.path, "utf8")).toBe(fixture.source); expect(importedOriginalFor(doc.id)).toBeNull(); answers.push(answer);
+      }
+      const [base, permuted, moved] = answers;
+      for (const answer of [permuted, moved]) expect(Math.abs(answer.energy - base.energy)).toBeLessThan(1e-8);
+      [1, 2, 0].forEach((sourceIndex, index) => base.atoms[sourceIndex].force.forEach((value: number, axis: number) => expect(Math.abs(value - permuted.atoms[index].force[axis])).toBeLessThan(1e-5)));
+      base.atoms.forEach((atom: any, index: number) => [-atom.force[1], atom.force[0], atom.force[2]].forEach((value, axis) => expect(Math.abs(value - moved.atoms[index].force[axis])).toBeLessThan(1e-5)));
+      for (let axis = 0; axis < 3; axis++) expect(Math.abs(base.atoms.reduce((sum: number, atom: any) => sum + atom.force[axis], 0))).toBeLessThan(0.002);
+    }
+    await propertyDocument(propertyCases[0]);
+    for (const kind of ["energy", "energy_forces"]) {
+      const observed = await ok({ operation: "observe" }), { job } = await ok({ operation: "submit", operationId: `implicit-energy-${kind}`, expectedSourceRevision: observed.sourceRevision, job: { kind, params: { forceField: "UFF" } } });
+      expect(await finished(job.jobId)).toMatchObject({ status: "failed", summary: null, artifacts: [], error: { code: "JOB_FAILED" } });
+      expect(await readFile(documents[0].path, "utf8")).toBe(propertyCases[0].source);
+    }
+    expect(importedOriginalFor(source.id)).toBe(original); expect(await original!.file.text()).toBe(originalBytes);
+    expect(propertyWorkers.records.some(worker => worker.action === "energy")).toBe(true); expect(propertyWorkers.records.some(worker => worker.action === "energy-forces")).toBe(true);
+    expect(hookErrors).toEqual([]);
+  } finally { mcp.close(); draft = null; documents = [source]; useMoleculeStore.setState({ documents }); await render(); }
+}, 90000);
+
+test("held actual energy worker replies cannot publish after explicit cancel or same-id source close and reopen", async () => {
+  const doc = await energyDocument(energyCases[2]);
+  try {
+    for (const kind of ["energy", "energy_forces"]) for (const closing of [false, true]) {
+      const observed = await ok({ operation: "observe" }), action = kind === "energy" ? "energy" : "energy-forces"; propertyWorkers.hold(action);
+      const { job } = await ok({ operation: "submit", operationId: `held-${kind}-${closing}`, expectedSourceRevision: observed.sourceRevision, job: { kind, params: { forceField: "UFF" } } });
+      for (let attempt = 0; attempt < 300 && !propertyWorkers.pending.length; attempt++) await Bun.sleep(10);
+      expect(propertyWorkers.pending.length).toBe(1);
+      if (closing) { documents = []; useMoleculeStore.setState({ documents }); await render(); documents = [doc]; useMoleculeStore.setState({ documents }); await render(); }
+      else expect((await ok({ operation: "cancel", jobId: job.jobId })).job.status).toBe("cancelled");
+      propertyWorkers.release(); await Bun.sleep(20);
+      const answer = (await ok({ operation: "status", jobId: job.jobId })).job;
+      expect([answer.status, answer.summary, answer.artifacts]).toEqual([closing ? "source_closed" : "cancelled", null, []]);
+      expect(propertyWorkers.records.filter(worker => worker.action === action).every(worker => worker.terminated)).toBe(true);
+      expect(await readFile(doc.path, "utf8")).toBe(energyCases[2].source); expect(importedOriginalFor(doc.id)).toBeNull();
+    }
+  } finally { propertyWorkers.release(); documents = [source]; useMoleculeStore.setState({ documents }); await render(); }
+}, 30000);
+
 test("CLI errors, cancellation and permanent page close use the real compiled controller lifecycle", async () => {
   const actionCount = async () => JSON.parse(await readFile(join(session, "actions.json"), "utf8")).actions.length;
   const before = await actionCount();
-  expect((await cli({ operation: "submit", operationId: "not-accepted", expectedSourceRevision: `sha256-${"a".repeat(64)}`, job: { kind: "energy" } })).body.error.code).toBe("UNSUPPORTED_WORKBENCH_JOB");
+  expect((await cli({ operation: "submit", operationId: "not-accepted", expectedSourceRevision: `sha256-${"a".repeat(64)}`, job: { kind: "optimize" } })).body.error.code).toBe("UNSUPPORTED_WORKBENCH_JOB");
   expect(await actionCount()).toBe(before);
   const observed = await ok({ operation: "observe" });
   const nativePost = Worker.prototype.postMessage, nativeTerminate = Worker.prototype.terminate;

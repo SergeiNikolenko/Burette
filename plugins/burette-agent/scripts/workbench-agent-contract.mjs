@@ -17,6 +17,8 @@ export const WORKBENCH_LIMITS = Object.freeze({
   stringLength: 256,
 });
 
+const FORCE_FIELDS = ['MMFF94', 'MMFF94s', 'UFF'];
+
 const DOCUMENT_FIELDS = ['documentId', 'expectedSourceRevision'];
 const PAGE_FIELDS = ['offset', 'limit'];
 
@@ -44,6 +46,18 @@ export const WORKBENCH_JOB_KINDS = Object.freeze({
     requires: 'A complete chemical graph, 1–256 atoms; Gasteiger requires explicit hydrogens.',
     params: { chargeModel: ['Gasteiger'] },
     artifacts: [],
+  },
+  energy: {
+    engine: 'OpenChemLib MMFF94/MMFF94s or RDKit UFF',
+    requires: 'A complete chemical graph, 1–256 atoms; calculations require explicit hydrogens.',
+    params: { forceField: FORCE_FIELDS },
+    artifacts: [],
+  },
+  energy_forces: {
+    engine: 'OpenChemLib MMFF94/MMFF94s central-difference forces or RDKit UFF analytic forces',
+    requires: 'A complete chemical graph, 1–64 atoms; calculations require explicit hydrogens.',
+    params: { forceField: FORCE_FIELDS },
+    artifacts: ['forces'],
   },
   orbital_cube: {
     engine: 'Workbench Gaussian-basis evaluator',
@@ -130,6 +144,10 @@ function oneOf(value, field, allowed, fallback) {
 function jobParams(kind, value) {
   const params = value ?? {};
   if (!plainObject(params)) invalid('job.params must be a JSON object.');
+  if (kind === 'energy' || kind === 'energy_forces') {
+    rejectUnknownFields(params, ['forceField'], `${kind} job.params`);
+    return { forceField: oneOf(params.forceField, 'job.params.forceField', new Set(FORCE_FIELDS), 'MMFF94') };
+  }
   if (kind === 'properties') {
     rejectUnknownFields(params, ['chargeModel'], 'properties job.params');
     const chargeModel = oneOf(params.chargeModel, 'job.params.chargeModel', new Set(['Gasteiger']), undefined);

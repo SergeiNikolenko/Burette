@@ -4,7 +4,7 @@ import { validateWorkbenchRequest, WORKBENCH_LIMITS } from "../scripts/workbench
 test("one shared bounded request schema rejects unsupported jobs, ambiguous IDs and invalid orbital parameters before dispatch", () => {
   const revision = `sha256-${"a".repeat(64)}`;
   for (const request of [
-    { operation: "submit", operationId: "a", expectedSourceRevision: revision, job: { kind: "energy" } },
+    { operation: "submit", operationId: "a", expectedSourceRevision: revision, job: { kind: "optimize" } },
     { operation: "atoms" }, { operation: "status", jobId: "one", operationId: "two" },
     { operation: "submit", operationId: "a", job: { kind: "orbital_cube", params: { field: "orbital", orbitalIndex: 0 } } },
     { operation: "orbitals", limit: 101 }, { operation: "observe", unknown: "x" },

@@ -122,9 +122,10 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
   const { snapshotOf, assertOpen } = sourceOwner;
 
   function jobUnavailable(snapshot: Snapshot, kind: WorkbenchJobKind): string | null {
-    if (kind === "properties") {
+    if (kind === "properties" || kind === "energy" || kind === "energy_forces") {
       if (!snapshot.structure) return snapshot.structureError ?? snapshot.sourceError ?? "The chemical graph could not be read.";
-      return snapshot.structure.graphComplete ? null : "This source has no complete bond orders or charges. Open an SDF or MOL version of the structure.";
+      if (!snapshot.structure.graphComplete) return "This source has no complete bond orders or charges. Open an SDF or MOL version of the structure.";
+      return kind === "energy_forces" && snapshot.structure.atoms.length > 64 ? "Forces support at most 64 atoms." : null;
     }
     if (!snapshot.scientific?.basis?.length) return "This source has no Gaussian basis set (open an FCHK or Molden file).";
     return snapshot.scientific.orbitals.length ? null : "This source has no molecular orbitals.";
@@ -141,7 +142,7 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
     const snapshot = await snapshotOf(request);
     const base = { documentId: snapshot.document.id, sourceRevision: snapshot.revision, sourceTextSha256: snapshot.sourceTextSha256 };
     if (request.operation === "observe") {
-      const jobs = Object.fromEntries((["properties", "orbital_cube"] as const).map(kind => {
+      const jobs = Object.fromEntries((["properties", "energy", "energy_forces", "orbital_cube"] as const).map(kind => {
         const reason = jobUnavailable(snapshot, kind);
         return [kind, reason ? { available: false, reason } : { available: true }];
       }));
@@ -252,6 +253,18 @@ export function createWorkbenchAgentController(environment: WorkbenchAgentEnviro
       return { summary: { method: "OpenChemLib", ...properties, ...(partialCharges ? { partialCharges } : {}) }, artifacts: [] };
     }
     const stem = fileStem(input.document.title);
+    if (request.kind === "energy") {
+      return { summary: { method: request.params.forceField === "UFF" ? "UFF (RDKit)" : `${request.params.forceField} (OpenChemLib)`, forceField: request.params.forceField, energy: await runChemistryTask({ action: "energy", molecule: input.structure!, forceField: request.params.forceField }, options), unit: "kcal/mol" }, artifacts: [] };
+    }
+    if (request.kind === "energy_forces") {
+      const result = await runChemistryTask({ action: "energy-forces", molecule: input.structure!, forceField: request.params.forceField }, options);
+      const magnitudes = result.forces.map((force) => Math.hypot(...force));
+      const forces = JSON.stringify({ forceField: request.params.forceField, unit: result.forceUnit, energy: result.energy, energyUnit: result.energyUnit, method: result.method, stepAngstrom: result.stepAngstrom, atoms: input.structure!.atoms.map((atom, index) => ({ index, element: atom.element, force: result.forces[index] })) }, null, 1);
+      return {
+        summary: { method: request.params.forceField === "UFF" ? "UFF (RDKit), analytic" : `${request.params.forceField} (OpenChemLib), central difference`, forceField: request.params.forceField, energy: result.energy, energyUnit: result.energyUnit, forceUnit: result.forceUnit, maxForce: Math.max(...magnitudes), rmsForce: Math.sqrt(magnitudes.reduce((sum, value) => sum + value * value, 0) / magnitudes.length), atomCount: magnitudes.length },
+        artifacts: [await artifact("forces", `${stem}-forces.json`, "application/json", `${forces}\n`)],
+      };
+    }
     const { field, orbitalIndex, spacingAngstrom, paddingAngstrom } = request.params;
     const scientific = input.scientific!;
     const grid = await computeQuantumGrid(scientific, field === "orbital" ? { kind: "orbital", orbitalIndex: orbitalIndex! } : { kind: field }, { spacingAngstrom, paddingAngstrom }, signal);

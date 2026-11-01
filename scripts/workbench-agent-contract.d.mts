@@ -15,12 +15,15 @@ export type WorkbenchOperation =
   | 'capabilities' | 'observe' | 'orbitals'
   | 'submit' | 'status' | 'jobs' | 'cancel' | 'export';
 export const WORKBENCH_OPERATIONS: readonly WorkbenchOperation[];
-export type WorkbenchJobKind = 'properties' | 'orbital_cube';
+export type WorkbenchForceField = 'MMFF94' | 'MMFF94s' | 'UFF';
+export type WorkbenchJobKind = 'properties' | 'energy' | 'energy_forces' | 'orbital_cube';
 export type WorkbenchJobKindDescription = { engine: string; requires: string; params: Record<string, unknown>; artifacts: string[] };
 export const WORKBENCH_JOB_KINDS: Readonly<Record<WorkbenchJobKind, WorkbenchJobKindDescription>>;
 export const WORKBENCH_RUNTIMES: readonly ['browser-agent-shell'];
 
 export type WorkbenchJobRequest =
+  | { kind: 'energy'; params: { forceField: WorkbenchForceField } }
+  | { kind: 'energy_forces'; params: { forceField: WorkbenchForceField } }
   | { kind: 'properties'; params: { chargeModel?: 'Gasteiger' } }
   | { kind: 'orbital_cube'; params: { field: 'orbital' | 'density' | 'spin-density'; orbitalIndex?: number; spacingAngstrom?: number; paddingAngstrom?: number } };
 
