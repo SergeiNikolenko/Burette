@@ -1,0 +1,1 @@
+var e={s:0,p:1,d:2,f:3,g:4,h:5,i:6};function t(t){let n=e[t.kind];return t.spherical&&n>=2?2*n+1:(n+1)*(n+2)/2}export{t};
