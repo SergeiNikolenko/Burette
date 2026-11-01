@@ -6,6 +6,8 @@ import { generateFromSmiles, getEnergy, optimize, parseMolecule, prepare3d, sear
 import { evaluateEnergyForces } from '../apps/desktop/src/lib/molecular-workbench/energy-forces';
 import { runChemistryTask } from '../apps/desktop/src/lib/molecular-workbench/compute-client';
 import { prepareUffWasm } from '../apps/desktop/src/lib/molecular-workbench/uff-wasm';
+import { atomsFromZmatrixDocument, parseZmatrixDocument } from '../scripts/zmatrix-document.mjs';
+import { optimizeZmatrix } from '../apps/desktop/src/lib/workbench/zmatrix-coupled-optimization';
 
 // Every expected number below comes from Python RDKit (generate-rdkit-optimization-reference.py).
 type Model = 'MMFF94' | 'MMFF94s' | 'UFF';
@@ -140,5 +142,23 @@ describe('optimization against independent RDKit references', () => {
     const bonds = Array.from({ length: 29 }, (_, i) => `${String(i + 1).padStart(3)}${String(i + 2).padStart(3)}  1  0`);
     const large = parseMolecule(`\n  flat\n\n 30 29  0  0  0  0  0  0  0  0999 V2000\n${[...chain, ...bonds].join('\n')}\nM  END\n`, 'mol');
     expect(() => prepare3d(large, { forceField: 'UFF' })).toThrow(/UFF optimization supports up to 64 atoms.*92/);
+  });
+
+  test('Z-matrix optimization with both O–H bonds and both angles on shared variables reaches the RDKit water minimum', () => {
+    // Water's minimum is symmetric, so two shared variables span it exactly.
+    const definition = parseZmatrixDocument('O\nX 1 1\nH 1 R 2 A\nH 1 R 2 A 3 180\n\nR = 1.15\nA = 50\n');
+    const atoms = atomsFromZmatrixDocument(definition).map(({ element, position: [x, y, z] }) => ({ element, x, y, z }));
+    const molecule = parseMolecule(`3\nwater\n${atoms.map(a => `${a.element} ${a.x} ${a.y} ${a.z}`).join('\n')}\n`, 'xyz');
+    const target = record('O').expected.models.MMFF94.minimum.coordinates as number[][];
+    const rdkitBond = Math.hypot(...target[1].map((v, i) => v - target[0][i]));
+    for (const method of ['lbfgs', 'fire', 'abc-fire', 'hybrid'] as const) {
+      const result = optimizeZmatrix(molecule, definition, { method, maxIterations: 1000 });
+      expect([result.converged, result.method]).toEqual([true, method]);
+      expect(Math.abs(result.energy - minimum('O', 'MMFF94'))).toBeLessThan(1e-5);
+      const [o, h1, h2] = result.molecule.atoms, bond = (h: typeof o) => Math.hypot(h.x - o.x, h.y - o.y, h.z - o.z);
+      expect(Math.abs(bond(h1) - rdkitBond)).toBeLessThan(1e-3);
+      expect(bond(h1)).toBeCloseTo(bond(h2), 9);
+    }
+    expect(() => optimizeZmatrix(molecule, definition, { method: 'bfgs' })).toThrow(/BFGS minimizes Cartesian MMFF94 coordinates/);
   });
 });
