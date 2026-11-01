@@ -187,17 +187,23 @@
     const cells = viewer.plugin.state.data.cells;
     const trajectory = cells.get(report.trajectoryRef);
     const transformer = String(trajectory?.transform?.transformer?.id || '');
-    const sourceFormat = transformer.endsWith('trajectory-from-sdf') ? 'sdf' : transformer.endsWith('trajectory-from-mol') ? 'mol' : null;
+    const sourceFormat = transformer.endsWith('trajectory-from-sdf') ? 'sdf' : transformer.endsWith('trajectory-from-mol') ? 'mol' : transformer.endsWith('trajectory-from-xyz') ? 'xyz' : null;
     if (expectedFormat && sourceFormat !== expectedFormat) throw new Error('The scene graph source format changed.');
-    if (!sourceFormat) throw new Error('This scene has no MOL or SDF graph source.');
-    const raw = cells.get(trajectory.transform.parent);
+    if (!sourceFormat) throw new Error('This scene has no MOL, SDF or XYZ source.');
+    let raw = cells.get(trajectory.transform.parent);
+    // XYZ has a parsed intermediate; its nearest string ancestor owns the parser input.
+    if (sourceFormat === 'xyz') while (raw && typeof raw.obj?.data !== 'string') {
+      if (raw.transform.parent === raw.transform.ref) break;
+      raw = cells.get(raw.transform.parent);
+    }
+    const rawRef = raw?.transform.ref;
     const text = raw?.obj?.data;
     if (typeof text !== 'string' || new TextEncoder().encode(text).byteLength > 16 * 1024 * 1024) throw new Error('This scene has no bounded graph source.');
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
     // Do not return an identity captured before another model/source was loaded.
     const current = scienceBinding(viewer);
     if (!sameScienceBinding(current, { binding: report, positions: report.positions }) || cells.get(report.trajectoryRef) !== trajectory
-      || String(trajectory.transform.transformer?.id || '') !== transformer || cells.get(trajectory.transform.parent) !== raw || raw.obj.data !== text) throw new Error('The scene source changed while it was being read.');
+      || String(trajectory.transform.transformer?.id || '') !== transformer || cells.get(rawRef) !== raw || raw.obj.data !== text) throw new Error('The scene source changed while it was being read.');
     return { ...report, sourceFormat, sourceSha256: Array.from(new Uint8Array(digest), value => value.toString(16).padStart(2, '0')).join('') };
   }
   async function sdfSourceBinding(viewer) {
