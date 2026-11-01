@@ -1,14 +1,16 @@
 import { beforeAll, describe, expect, test } from 'bun:test';
+import initRDKitModule, { type MainModule as RDKitModule } from '@rdkit/rdkit';
 import inputs from './fixtures/forcefield/rdkit-reference.json';
 import reference from './fixtures/optimization/rdkit-optimization-reference.json';
-import { getEnergy, optimize, parseMolecule, type GeometryConstraint, type OptimizationMethod } from '../apps/desktop/src/lib/molecular-workbench/chemistry';
+import { generateFromSmiles, getEnergy, optimize, parseMolecule, prepare3d, searchConformers, type GeometryConstraint, type OptimizationMethod } from '../apps/desktop/src/lib/molecular-workbench/chemistry';
 import { evaluateEnergyForces } from '../apps/desktop/src/lib/molecular-workbench/energy-forces';
 import { runChemistryTask } from '../apps/desktop/src/lib/molecular-workbench/compute-client';
 import { prepareUffWasm } from '../apps/desktop/src/lib/molecular-workbench/uff-wasm';
 
 // Every expected number below comes from Python RDKit (generate-rdkit-optimization-reference.py).
 type Model = 'MMFF94' | 'MMFF94s' | 'UFF';
-beforeAll(() => prepareUffWasm());
+let rdkit: RDKitModule;
+beforeAll(async () => { rdkit = await initRDKitModule(); await prepareUffWasm(); });
 const record = (smiles: string) => {
   const index = reference.records.findIndex(item => item.smiles === smiles);
   return { input: parseMolecule(inputs.records[index].molfile, 'mol'), expected: reference.records[index] };
@@ -100,4 +102,43 @@ describe('optimization against independent RDKit references', () => {
     expect(optimize(water, { constraints: [{ kind: 'freeze', atoms: [1] }] }).method).toBe('lbfgs');
   });
 
+  test('conformer search returns distinct converged minima that each match an RDKit minimum', () => {
+    for (const smiles of ['CCCC', 'CCCCC'] as const) for (const model of ['MMFF94', 'UFF'] as const) {
+      const minima = reference.conformerMinima[smiles][model], molecule = generateFromSmiles(smiles);
+      const search = searchConformers(molecule, { count: 32, seed: 5, forceField: model });
+      expect([search.forceField, search.seed, search.generated]).toEqual([model, 5, search.conformers.length + search.duplicates]);
+      expect(search.conformers.length).toBeLessThanOrEqual(minima.length);
+      expect(Math.abs(search.conformers[0].energy - minima[0])).toBeLessThan(2e-3);
+      for (const conformer of search.conformers) {
+        expect(conformer.converged).toBe(true);
+        expect(Math.min(...minima.map(value => Math.abs(value - conformer.energy)))).toBeLessThan(2e-3);
+        expect(conformer.relativeEnergy).toBeCloseTo(conformer.energy - search.conformers[0].energy, 10);
+        expect(conformer.molecule.atoms.map(atom => atom.element)).toEqual(molecule.atoms.map(atom => atom.element));
+        expect(conformer.molecule.bonds).toEqual(molecule.bonds);
+      }
+    }
+  });
+
+  test('automatic 3D preparation embeds flat depictions, keeps their stereochemistry and refuses 3D input', () => {
+    for (const flat of reference.flatInputs) {
+      // OpenChemLib inverts cis-2-butene from seeds 3 and 4; the identity check moves on to seed 5.
+      const input = parseMolecule(flat.molfile, 'mol'), result = prepare3d(input, { forceField: 'MMFF94', seed: 3 });
+      expect(result.preparation).toEqual(flat.smiles === 'C/C=C\\C' ? { addedHydrogens: flat.hydrogens, seed: 5, attempts: 3 } : { addedHydrogens: flat.hydrogens, seed: 3, attempts: 1 });
+      expect(result.molecule.atoms).toHaveLength(flat.heavyAtoms + flat.hydrogens);
+      expect(result.molecule.atoms.slice(0, flat.heavyAtoms).map(atom => atom.element)).toEqual(input.atoms.map(atom => atom.element));
+      expect(new Set(result.molecule.atoms.slice(flat.heavyAtoms).map(atom => atom.element))).toEqual(new Set(['H']));
+      expect(result.molecule.atoms.some(atom => Math.abs(atom.z) > 0.1)).toBe(true);
+      expect([result.method, result.converged]).toEqual(['bfgs', true]);
+      const reread = rdkit.get_mol(result.molecule.molfile, JSON.stringify({ removeHs: true }))!;
+      try { expect(reread.get_smiles()).toBe(flat.smiles); } finally { reread.delete(); }
+      expect(() => prepare3d(result.molecule)).toThrow(/already has 3D coordinates/);
+    }
+    const benzene = prepare3d(parseMolecule(reference.flatInputs[0].molfile, 'mol'));
+    expect(Math.abs(benzene.energy - minimum('c1ccccc1', 'MMFF94'))).toBeLessThan(1e-3);
+    // Flat triacontane: 30 carbons become 92 atoms once hydrogens are added.
+    const chain = Array.from({ length: 30 }, (_, i) => `${(i * 1.3).toFixed(4).padStart(10)}${(i % 2 * .75).toFixed(4).padStart(10)}    0.0000 C   0  0  0  0  0  0  0  0  0  0  0  0`);
+    const bonds = Array.from({ length: 29 }, (_, i) => `${String(i + 1).padStart(3)}${String(i + 2).padStart(3)}  1  0`);
+    const large = parseMolecule(`\n  flat\n\n 30 29  0  0  0  0  0  0  0  0999 V2000\n${[...chain, ...bonds].join('\n')}\nM  END\n`, 'mol');
+    expect(() => prepare3d(large, { forceField: 'UFF' })).toThrow(/UFF optimization supports up to 64 atoms.*92/);
+  });
 });

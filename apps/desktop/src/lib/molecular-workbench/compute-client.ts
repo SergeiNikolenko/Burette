@@ -12,6 +12,7 @@ export type ChemistryRequest =
   | { action: 'parse'; source: string; format: 'xyz' | 'mol' | 'sdf' | 'smiles' }
   | { action: 'optimize-zmatrix'; molecule: MolecularStructure; definition: ZmatrixDocument; options?: ZmatrixOptimizeOptions }
   | { action: 'optimize'; molecule: MolecularStructure; options?: OptimizeOptions }
+  | { action: 'prepare-3d'; molecule: MolecularStructure; options?: Parameters<typeof import('./chemistry').prepare3d>[1] }
   | { action: 'properties' | 'add-hydrogens' | 'remove-hydrogens' | 'charges'; molecule: MolecularStructure }
   | { action: 'energy'; molecule: MolecularStructure; forceField?: MolecularForceField }
   | { action: 'conformers'; molecule: MolecularStructure; options?: { count?: number; seed?: number; forceField?: MolecularForceField } }
@@ -23,6 +24,7 @@ export type ChemistryResults = {
   generate: MolecularStructure;
   parse: MolecularStructure;
   optimize: ReturnType<typeof import('./chemistry').optimize>;
+  'prepare-3d': ReturnType<typeof import('./chemistry').prepare3d>;
   'optimize-zmatrix': ReturnType<typeof import('../workbench/zmatrix-coupled-optimization').optimizeZmatrix>;
   energy: number;
   charges: Awaited<ReturnType<typeof import('./chemistry').getPartialCharges>>;

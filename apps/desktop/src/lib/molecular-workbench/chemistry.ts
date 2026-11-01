@@ -164,28 +164,88 @@ export function optimize(structure: MolecularStructure, options: OptimizeOptions
     frames: [{ atoms: structure.atoms.map(atom => ({ ...atom })), energy: initialEnergy }, { atoms: molecule.atoms, energy }], constraintResiduals: [], frozenAtoms: [] };
 }
 
-export function searchConformers(structure: MolecularStructure, options: { count?: number; seed?: number; forceField?: MolecularForceField } = {}) {
-  const count = options.count ?? 8;
-  if (!Number.isInteger(count) || count < 1 || count > 32) throw new Error('Request 1–32 conformers.');
-  const mol = toOcl(structure), generator = new ConformerGenerator(options.seed ?? 1);
+export const CONFORMER_LIMITS = Object.freeze({ count: 32, seeds: 2_147_483_647 });
+// RMS difference of sorted heavy-atom distances, Å, below which two relaxed conformers are the same minimum.
+const DUPLICATE_RMS = 0.05;
+const EMBEDDING_ATTEMPTS = 8;
+export type ConformerCandidate = { molecule: MolecularStructure; energy: number; relativeEnergy: number; unit: 'kcal/mol'; converged: boolean };
+export type ConformerSearch = { conformers: ConformerCandidate[]; generated: number; duplicates: number; forceField: MolecularForceField; seed: number };
+
+/** Sorted heavy-atom distances: invariant to rigid motion, reflection and atom permutation,
+ * so topologically equivalent minima (for example tg and gt pentane) compare equal. */
+function heavyDistances(mol: Molecule) {
+  const heavy = Array.from({ length: mol.getAllAtoms() }, (_, i) => i).filter(i => mol.getAtomicNo(i) !== 1);
+  return heavy.flatMap((a, i) => heavy.slice(i + 1).map(b => Math.hypot(mol.getAtomX(a) - mol.getAtomX(b), mol.getAtomY(a) - mol.getAtomY(b), mol.getAtomZ(a) - mol.getAtomZ(b)))).sort((a, b) => a - b);
+}
+
+/** OpenChemLib torsion sampling; every sample is relaxed to a minimum of the selected
+ * field (MMFF: toolkit BFGS, UFF: L-BFGS) and duplicate minima are dropped. */
+export function searchConformers(structure: MolecularStructure, options: { count?: number; seed?: number; forceField?: MolecularForceField } = {}): ConformerSearch {
+  const count = options.count ?? 8, seed = options.seed ?? 1, forceField = options.forceField ?? 'MMFF94';
+  if (!Number.isInteger(count) || count < 1 || count > CONFORMER_LIMITS.count) throw new Error(`Request 1–${CONFORMER_LIMITS.count} conformers.`);
+  if (!Number.isInteger(seed) || seed < 0 || seed > CONFORMER_LIMITS.seeds) throw new Error('The conformer seed must be an integer from 0 to 2147483647.');
+  const mol = toOcl(structure), generator = new ConformerGenerator(seed);
   const unknownAtoms = Array.from({ length: mol.getAllAtoms() }, (_, i) => i).filter(i => mol.isAtomConfigurationUnknown(i));
   const unknownBonds = Array.from({ length: mol.getAllBonds() }, (_, b) => b).filter(b => mol.getBondParity(b) === Molecule.cBondParityUnknown);
   checkHydrogenExpansion(mol);
+  const expanded = mol.getAllAtoms() + Array.from({ length: mol.getAllAtoms() }, (_, i) => mol.getImplicitHydrogens(i)).reduce((a, b) => a + b, 0);
+  if (forceField === 'UFF' && expanded > OPTIMIZATION_LIMITS.numericalAtoms) throw new Error(`UFF conformers support up to ${OPTIMIZATION_LIMITS.numericalAtoms} atoms including added hydrogens; this structure has ${expanded}.`);
   if (!generator.initializeConformers(mol, { maxTorsionSets: 256 })) throw new Error('Could not initialize conformer generation.');
-  const candidates: { molecule: MolecularStructure; energy: number; unit: 'kcal/mol' }[] = [];
+  const kept: (ConformerCandidate & { distances: number[] })[] = [];
+  let generated = 0, duplicates = 0;
   for (let i = 0; i < count; i++) {
     const conformer = generator.getNextConformerAsMolecule();
     if (!conformer) break;
+    generated++;
     checkSize(conformer.getAllAtoms());
-    const ff = createForceField(conformer, options.forceField); ff.minimise({ maxIts: 150 });
-    const energy = createForceField(conformer, options.forceField).getTotalEnergy();
+    const status = createForceField(conformer, forceField).minimise({ maxIts: forceField === 'UFF' ? OPTIMIZATION_LIMITS.iterations : 4000 });
+    const energy = createForceField(conformer, forceField).getTotalEnergy();
+    if (!Number.isFinite(energy)) continue;
+    const distances = heavyDistances(conformer);
+    if (kept.some(other => Math.abs(other.energy - energy) < 0.01 && Math.sqrt(distances.reduce((sum, d, k) => sum + (d - other.distances[k]) ** 2, 0) / Math.max(1, distances.length)) < DUPLICATE_RMS)) { duplicates++; continue; }
     if (unknownAtoms.length || unknownBonds.length) {
       // Keep the sampled pose and actual known parity, but retain unknown source constraints.
       conformer.ensureHelperArrays(Molecule.cHelperCIP);
       retainUnknownStereo(conformer, unknownAtoms, unknownBonds);
     }
-    if (Number.isFinite(energy)) candidates.push({ molecule: snapshot(conformer, structure.title, structure.graphSource, structure.graphComplete, expandedAtomMap(structure, conformer.getAllAtoms())), energy, unit: 'kcal/mol' });
+    kept.push({ molecule: snapshot(conformer, structure.title, structure.graphSource, structure.graphComplete, expandedAtomMap(structure, conformer.getAllAtoms())), energy, relativeEnergy: 0, unit: 'kcal/mol', converged: status === 0, distances });
   }
-  if (!candidates.length) throw new Error('No conformers could be generated.');
-  return candidates.sort((a, b) => a.energy - b.energy);
+  if (!kept.length) throw new Error('No conformers could be generated.');
+  kept.sort((a, b) => a.energy - b.energy);
+  return { conformers: kept.map(({ distances: _, ...item }) => ({ ...item, relativeEnergy: item.energy - kept[0].energy })), generated, duplicates, forceField, seed };
+}
+
+/**
+ * Automatic 3D preparation of a flat (2D or all-z-zero) chemical graph: add the
+ * implicit hydrogens, embed one OpenChemLib conformer with the source's known
+ * stereochemistry, then optimize it. OpenChemLib's embedding occasionally inverts a
+ * double bond, so each embedding is checked against the input's canonical stereo
+ * graph and up to EMBEDDING_ATTEMPTS consecutive seeds are tried. Inputs that already
+ * have depth are refused: they are optimized, not re-embedded.
+ */
+export function prepare3d(structure: MolecularStructure, options: { forceField?: MolecularForceField; method?: OptimizeOptions['method']; seed?: number; maxIterations?: number } = {}): OptimizationResult & { preparation: { addedHydrogens: number; seed: number; attempts: number } } {
+  const forceField = options.forceField ?? 'MMFF94', requestedSeed = options.seed ?? 1;
+  if (!Number.isInteger(requestedSeed) || requestedSeed < 0 || requestedSeed > CONFORMER_LIMITS.seeds - EMBEDDING_ATTEMPTS) throw new Error('The embedding seed must be an integer from 0 to 2147483639.');
+  if (structure.atoms.some(atom => Math.abs(atom.z) > 1e-6)) throw new Error('This structure already has 3D coordinates; optimize it instead.');
+  const source = toOcl(structure);
+  checkHydrogenExpansion(source);
+  const addedHydrogens = Array.from({ length: source.getAllAtoms() }, (_, i) => source.getImplicitHydrogens(i)).reduce((a, b) => a + b, 0);
+  const method = options.method ?? defaultOptimizationMethod(forceField, false);
+  const unavailable = optimizationUnavailable(source.getAllAtoms() + addedHydrogens, forceField, method, 0);
+  if (unavailable) throw new Error(unavailable);
+  const unknownAtoms = Array.from({ length: source.getAllAtoms() }, (_, i) => i).filter(i => source.isAtomConfigurationUnknown(i));
+  const unknownBonds = Array.from({ length: source.getAllBonds() }, (_, b) => b).filter(b => source.getBondParity(b) === Molecule.cBondParityUnknown);
+  const identity = source.getIDCode();
+  let embedded: Molecule | null = null, seed = requestedSeed, attempts = 0;
+  for (; attempts < EMBEDDING_ATTEMPTS && !embedded; attempts++) {
+    seed = requestedSeed + attempts;
+    const candidate = new ConformerGenerator(seed).getOneConformerAsMolecule(toOcl(structure));
+    if (!candidate) continue;
+    candidate.ensureHelperArrays(Molecule.cHelperCIP);
+    if (unknownAtoms.length || unknownBonds.length) retainUnknownStereo(candidate, unknownAtoms, unknownBonds);
+    if (candidate.getIDCode() === identity) embedded = candidate;
+  }
+  if (!embedded) throw new Error(`No embedding from seeds ${requestedSeed}–${requestedSeed + EMBEDDING_ATTEMPTS - 1} kept the source stereochemistry; nothing was changed.`);
+  const start = snapshot(embedded, structure.title, structure.graphSource, structure.graphComplete, expandedAtomMap(structure, embedded.getAllAtoms()));
+  return { ...optimize(start, { forceField, method, maxIterations: options.maxIterations }), preparation: { addedHydrogens, seed, attempts } };
 }

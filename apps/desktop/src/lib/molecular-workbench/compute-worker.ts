@@ -1,4 +1,4 @@
-import { addHydrogens, generateFromSmiles, getEnergy, getPartialCharges, getProperties, optimize, parseMolecule, removeHydrogens, searchConformers } from './chemistry';
+import { addHydrogens, generateFromSmiles, getEnergy, getPartialCharges, getProperties, optimize, parseMolecule, prepare3d, removeHydrogens, searchConformers } from './chemistry';
 import { prepareUffWasm } from './uff-wasm';
 import { optimizeZmatrix } from '../workbench/zmatrix-coupled-optimization';
 import type { ChemistryRequest } from './compute-client';
@@ -16,6 +16,7 @@ scope.onmessage = async ({ data }) => {
       case 'parse': result = data.format === 'smiles' ? parseMolecule(data.source, data.format) : runGraphOperation({ ...data, format: data.format }); break;
       case 'optimize-zmatrix': result = optimizeZmatrix(data.molecule, data.definition, data.options); break;
       case 'optimize': result = optimize(data.molecule, data.options); break;
+      case 'prepare-3d': result = prepare3d(data.molecule, data.options); break;
       case 'energy': result = getEnergy(data.molecule, data.forceField); break;
       case 'charges': result = await getPartialCharges(data.molecule); break;
       case 'properties': result = getProperties(data.molecule); break;
