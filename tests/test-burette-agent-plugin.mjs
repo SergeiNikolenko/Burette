@@ -315,6 +315,7 @@ for (const asset of [
   "scripts/mvs-story-templates.mjs",
   "scripts/install-local.mjs",
   "scripts/preserve-native-widget.mjs",
+  "python/burette_workbench.py",
   "skills/mvs-story/references/molviewspec-authoring.md",
   "assets/mvs-story-templates/aligned-structure-comparison.json",
   "assets/mvs-story-templates/binding-site-tour.json",
