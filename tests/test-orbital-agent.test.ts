@@ -76,7 +76,7 @@ test("queued jobs retain immutable input when attached science changes, and docu
 test("real evaluator limits become bounded failed jobs; closing and disposal revoke work", async () => {
   const f = fixture(), revision = (await f.ok({ operation: "observe" })).sourceRevision;
   const failed = await f.ok({ operation: "submit", operationId: "expensive-grid", expectedSourceRevision: revision,
-    job: { kind: "orbital_cube", params: { field: "density", spacingAngstrom: 0.05, paddingAngstrom: 10 } } });
+    job: { kind: "orbital_cube", params: { field: "density", spacingAngstrom: 0.1, paddingAngstrom: 10 } } });
   expect(await f.finish(failed.job.jobId)).toMatchObject({ status: "failed", error: { code: "JOB_FAILED" }, artifacts: [] });
   expect(await f.action({ operation: "submit", operationId: "invalid-index", expectedSourceRevision: revision,
     job: { kind: "orbital_cube", params: { field: "orbital", orbitalIndex: 99 } } })).toMatchObject({ ok: false, error: { code: "JOB_UNAVAILABLE" } });
@@ -92,4 +92,20 @@ test("retention evicts the oldest terminal operation and source size limits reje
   expect((await f.ok({ operation: "jobs" })).total).toBe(WORKBENCH_LIMITS.retainedJobs);
   f.text(" ".repeat(12 * 1024 * 1024 + 1));
   expect(await f.action({ operation: "observe" })).toMatchObject({ ok: false, error: { code: "SOURCE_TOO_LARGE" } });
+});
+
+test("an explicit oblique grid reaches the evaluator and its geometry is reported", async () => {
+  const f = fixture(), revision = (await f.ok({ operation: "observe" })).sourceRevision;
+  const grid = { origin: [-0.5, -0.4, -0.3], axes: [[0.25, 0.05, 0], [0, 0.2, 0.04], [0.03, 0, 0.3]], dimensions: [3, 4, 2] };
+  const { job } = await f.ok({ operation: "submit", operationId: "oblique", expectedSourceRevision: revision, job: { kind: "orbital_cube", params: { field: "orbital", orbitalIndex: 0, grid } } });
+  const done = await f.finish(job.jobId);
+  expect(done.summary).toMatchObject({ dimensions: grid.dimensions, origin: grid.origin, axes: grid.axes, pointCount: 24 });
+  // The single unit-exponent s function on the atom at the origin, at every point origin + i·a + j·b + k·c (bohr⁻³ᐟ²).
+  const values = [];
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 4; j++) for (let k = 0; k < 2; k++) {
+    const r2 = [0, 1, 2].reduce((sum, d) => sum + ((grid.origin[d] + i * grid.axes[0][d] + j * grid.axes[1][d] + k * grid.axes[2][d]) / 0.529177210903) ** 2, 0);
+    values.push((2 / Math.PI) ** 0.75 * Math.exp(-r2));
+  }
+  expect(done.summary.max).toBeCloseTo(Math.max(...values), 6);
+  expect(done.summary.min).toBeCloseTo(Math.min(...values), 6);
 });

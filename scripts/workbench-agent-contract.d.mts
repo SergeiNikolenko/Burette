@@ -44,7 +44,8 @@ export type WorkbenchJobRequest =
   | { kind: 'metadata_edit'; params: WorkbenchMetadataEdit }
   | { kind: 'pair_distribution'; params: { rMax: number; binWidth: number; centre: string | null; neighbour: string | null } }
   | { kind: 'properties'; params: { chargeModel?: 'Gasteiger' } }
-  | { kind: 'orbital_cube'; params: { field: 'orbital' | 'density' | 'spin-density'; orbitalIndex?: number; spacingAngstrom?: number; paddingAngstrom?: number } };
+  | { kind: 'orbital_cube'; params: { field: 'orbital' | 'density' | 'spin-density'; orbitalIndex?: number; spacingAngstrom?: number; paddingAngstrom?: number;
+    grid?: { origin: [number, number, number]; axes: [[number, number, number], [number, number, number], [number, number, number]]; dimensions: [number, number, number] } } };
 
 type DocumentTarget = { documentId?: string; expectedSourceRevision?: string };
 type Page = { offset: number; limit: number };

@@ -108,6 +108,17 @@ def reference(path):
         result["densityError"] = float(np.abs(density - reference_density).max())
     alpha, beta = spin_densities if len(spin_densities) == 2 else spin_densities * 2
     result["densityAtPoints"] = (alpha + beta).tolist()
+    # A rotated, sheared grid (angstrom; Cube order, the last axis fastest) and the HOMO and density on it.
+    origin, axes, dimensions = np.array([-1.3, -1.1, -0.9]), np.array([[0.31, 0.12, -0.05], [-0.08, 0.29, 0.11], [0.06, -0.1, 0.33]]), (5, 4, 6)
+    grid = np.array([origin + i * axes[0] + j * axes[1] + k * axes[2] for i in range(dimensions[0]) for j in range(dimensions[1]) for k in range(dimensions[2])])
+    grid_ao = mol.eval_gto(f"GTOval_{kind}", grid / ANGSTROM_PER_BOHR) * scale
+    coefficients = np.zeros((nbf, overlap.shape[0]))
+    coefficients[:, order] = np.array(wavefunction[wavefunction["orbitals_a"]]).reshape(nbf, -1).T
+    homo = int(data["properties"]["calcinfo_nalpha"]) - 1
+    densities = [numint.eval_rho(mol, grid_ao, coefficients[:int(data["properties"][f"calcinfo_n{spin}"])].T @ coefficients[:int(data["properties"][f"calcinfo_n{spin}"])]) for spin in ("alpha", "beta")] if wavefunction["restricted"] else None
+    if densities is not None:
+        result["obliqueGrid"] = {"origin": origin.tolist(), "axes": axes.tolist(), "dimensions": list(dimensions), "orbital": homo,
+                                "orbitalValues": (grid_ao @ coefficients[homo]).tolist(), "densityValues": (densities[0] + densities[1]).tolist()}
     if len(spin_densities) == 2:
         result["spinDensityAtPoints"] = (alpha - beta).tolist()
     return result

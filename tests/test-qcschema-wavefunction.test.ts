@@ -1,10 +1,12 @@
 import { expect, test } from 'bun:test';
 import { parseQcschema } from '../apps/desktop/src/lib/molecular-workbench/quantum/qcschema';
-import { evaluateDensity, evaluateSpinDensity, evaluateOrbital } from '../apps/desktop/src/lib/molecular-workbench/gaussian';
+import { evaluateDensity, evaluateQuantumGrid, evaluateSpinDensity, evaluateOrbital } from '../apps/desktop/src/lib/molecular-workbench/gaussian';
+import { gridToCube, parseScientificFile } from '../apps/desktop/src/lib/molecular-workbench/quantum';
 import type { Vec3 } from '../apps/desktop/src/lib/molecular-workbench/types';
 import { expectClose, expectSchema, fixtureText, harmonicFrequencies } from './quantum-output-fixture';
 
-type OrbitalReference = { pointsAngstrom: Vec3[]; densityError?: number; densityAtPoints: number[]; spinDensityAtPoints?: number[]; spins: { orthonormalityError: number; orbitals: Record<string, number[]> }[] };
+type ObliqueGrid = { origin: Vec3; axes: [Vec3, Vec3, Vec3]; dimensions: [number, number, number]; orbital: number; orbitalValues: number[]; densityValues: number[] };
+type OrbitalReference = { pointsAngstrom: Vec3[]; densityError?: number; densityAtPoints: number[]; spinDensityAtPoints?: number[]; obliqueGrid?: ObliqueGrid; spins: { orthonormalityError: number; orbitals: Record<string, number[]> }[] };
 const orbitalReference: Record<string, OrbitalReference> = JSON.parse(fixtureText('qcschema/orbital-reference.json'));
 const hessianReference: Record<string, { energyHartree: number; hessian: number[]; frequenciesCm1: number[] }> = JSON.parse(fixtureText('qcschema/hessian-reference.json'));
 const text = (name: string) => fixtureText(`qcschema/${name}`);
@@ -94,4 +96,26 @@ test('malformed wavefunctions, Hessians and trajectory protocols are refused rat
     [optimization, d => { d.energies[4] += 1e-3; }],
   ];
   for (const [base, edit] of broken) { const d = structuredClone(base); edit(d); expect(() => parseQcschema(JSON.stringify(d))).toThrow(); }
+});
+
+test('fields on a rotated, sheared grid match PySCF point by point and survive a Cube round trip', () => {
+  for (const name of ['water-hf-ccpvdz-wavefunction.json', 'water-hf-631gs-wavefunction.json']) {
+    const document = read(name), { origin, axes, dimensions, orbital, orbitalValues, densityValues } = orbitalReference[name].obliqueGrid!;
+    for (const [field, expected] of [[{ kind: 'orbital', orbitalIndex: orbital }, orbitalValues], [{ kind: 'density' }, densityValues]] as const) {
+      const grid = evaluateQuantumGrid(document, field, { grid: { origin, axes, dimensions } });
+      expect({ origin: grid.origin, axes: grid.axes, dimensions: grid.dimensions }).toEqual({ origin, axes, dimensions });
+      expect(grid.values).toHaveLength(expected.length);
+      expected.forEach((value, i) => expect(Math.abs(grid.values[i] - value)).toBeLessThanOrEqual(2e-7 * Math.max(1e-3, Math.abs(value))));
+      // Exported and reopened, the Cube keeps the oblique geometry and every value.
+      const reopened = parseScientificFile('field.cube', gridToCube(grid, document.atoms)).grid!;
+      expectClose([...reopened.origin, ...reopened.axes.flat()], [...origin, ...axes.flat()], 1e-9);
+      expect(reopened.dimensions).toEqual(dimensions);
+      grid.values.forEach((value, i) => expect(Math.abs(reopened.values[i] - value)).toBeLessThanOrEqual(1e-7 * Math.abs(value)));
+    }
+  }
+  const document = read('water-hf-ccpvdz-wavefunction.json');
+  for (const grid of [{ origin: [0, 0, 0], axes: [[0.01, 0, 0], [0, 0.01, 0], [0, 0, 0.01]], dimensions: [2, 2, 2] }, { origin: [0, 0, 0], axes: [[1, 0, 0], [2, 0, 0], [0, 0, 1]], dimensions: [2, 2, 2] },
+    { origin: [0, 0, Number.NaN], axes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], dimensions: [2, 2, 2] }, { origin: [0, 0, 0], axes: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], dimensions: [1001, 1001, 1] }] as const) {
+    expect(() => evaluateQuantumGrid(document, { kind: 'density' }, { grid: grid as never })).toThrow();
+  }
 });
