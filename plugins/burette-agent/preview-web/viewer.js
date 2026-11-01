@@ -18543,6 +18543,15 @@ SOFTWARE.
 
   const compositionQueryCache = new WeakMap();
 
+  // Inspector rows send Mol* mol-script, which carries any chain name such as
+  // Z_A1 (see apps/desktop/src/lib/molstar-selection-query.ts); agents may still
+  // send the documented PyMOL. Mol-script selections start with a namespaced
+  // `sel.` or `structure-query.` symbol, and PyMOL has no token of that form.
+  function molstarQueryComponentType(query) {
+    const language = /^\(\s*(?:sel|structure-query)\./.test(query) ? 'mol-script' : 'pymol';
+    return { name: 'script', params: { language, expression: query } };
+  }
+
   function compositionQueryLoci(structure, query) {
     const parent = structure.cell?.obj?.data;
     const transform = window.molstar?.lib?.plugin?.StateTransforms?.Model?.StructureComponent;
@@ -18556,7 +18565,7 @@ SOFTWARE.
     let loci = null;
     try {
       const component = transform.definition.apply({ a: structure.cell.obj, params: {
-        type: { name: 'script', params: { language: 'pymol', expression: query } }, nullIfEmpty: true, label: ''
+        type: molstarQueryComponentType(query), nullIfEmpty: true, label: ''
       }, cache: {} });
       if (component?.data?.elementCount) loci = Structure.toSubStructureElementLoci(parent, component.data);
     } catch (_) { /* Unsupported queries don't fall back to a wider component. */ }
@@ -18700,7 +18709,7 @@ SOFTWARE.
           if (!parent) continue;
           const components = [...(structure.components || [])];
           const probe = await plugin.builders.structure.tryCreateComponent(structure.cell, {
-            type: { name: 'script', params: { language: 'pymol', expression: query } },
+            type: molstarQueryComponentType(query),
             nullIfEmpty: true,
             label
           }, `burette-inspector-query-${query}`, ['burette-inspector-subset']);
@@ -18913,10 +18922,9 @@ SOFTWARE.
   // scene tree, and with it every control the tree already offers: colour theme,
   // tint, representation, isolate, remove.
   //
-  // The query arrives in PyMOL syntax. That is forced: this Mol* build does not
-  // expose MolScriptBuilder, and its mol-script reader silently returns an empty
-  // selection for the keyword-argument form `atom-groups` needs. See
-  // apps/desktop/src/lib/molstar-selection-query.ts, which writes the query.
+  // The query is Mol* mol-script or PyMOL; molstarQueryComponentType tells them
+  // apart. See apps/desktop/src/lib/molstar-selection-query.ts, which writes the
+  // inspector's queries.
   async function createMolstarComponentFromQuery(action = {}) {
     const query = String(action.query || '').trim();
     if (!query) {
@@ -18935,14 +18943,14 @@ SOFTWARE.
     const representation = representationForSceneComponentKind(normalizeSceneComponentKind(action.kind));
     // A component key that repeats for the same row means asking twice reuses the
     // component instead of stacking duplicates on top of each other.
-    const key = `burette-selection-${query.replace(/[^A-Za-z0-9]+/g, '-')}`;
+    const key = `burette-selection-${query}`;
     let created = 0;
     let atoms = 0;
     for (const structure of structures) {
       let component = null;
       try {
         component = await plugin.builders.structure.tryCreateComponent(structure.cell, {
-          type: { name: 'script', params: { language: 'pymol', expression: query } },
+          type: molstarQueryComponentType(query),
           nullIfEmpty: true,
           label
         }, key, 'burette-selection');
