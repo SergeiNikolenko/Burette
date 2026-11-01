@@ -6,6 +6,7 @@ test("capture precedes the real picker; multiple blocks require explicit Add and
   await f.choose(sidecar()); await settle(() => Boolean(f.host.querySelector("select")));
   expect(await readBrowserScientificAttachment(f.doc.path)).toBeNull(); expect(f.button("Add").disabled).toBe(true);
   const select = f.host.querySelector("select")!;
+  expect(Array.from(select.options, option => option.textContent)).toEqual(["Select block", "Block 1: 10000–12000 cm⁻¹ (2 rows)", "Block 2: 9000–9000 cm⁻¹ (1 row)"]);
   await act(async () => { select.value = "1"; select.dispatchEvent(new browser.Event("change", { bubbles: true }) as unknown as Event); });
   await act(async () => { f.button("Add").click(); f.button("Add").click(); }); await settle(() => f.attached.length === 1);
   const saved = (await readBrowserScientificAttachment(f.doc.path))!, signal = saved.science.frames[0].mcdCompanion!.spectra.spectra[0];

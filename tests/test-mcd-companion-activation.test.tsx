@@ -8,6 +8,16 @@ test("ordinary scientific import without built-in spectra exposes Add MCD throug
   await f.openSpectra(); expect(f.dockDocuments).toEqual([f.doc.id]);
   expect(f.host.querySelectorAll("table")).toHaveLength(0); expect(f.host.textContent).toContain("Add MCD…");
   await f.choose(oneBlock()); await settle(() => Boolean(f.host.querySelector('table[aria-label="MCD source values"]')));
+  const layout = document.createElement("style");
+  layout.textContent = ["../apps/desktop/src/styles.css", "../apps/desktop/src/components/workbench/workbench-layout.css", "../apps/desktop/src/components/workbench/vibrations.css"].map(path => readFileSync(new URL(path, import.meta.url), "utf8").replace(/@import[^;]+;/gu, "")).join("\n");
+  document.head.append(layout); f.host.classList.add("dock-panel-body");
+  try {
+    const picker = f.button("Add MCD…").closest(".workbench-panel")!;
+    const spectrum = f.host.querySelector('table[aria-label="MCD source values"]')!.closest(".workbench-panel")!;
+    expect(Number(getComputedStyle(picker).flexGrow || 0)).toBe(0);
+    expect(getComputedStyle(picker).display).toBe("grid");
+    expect(Number(getComputedStyle(spectrum).flexGrow)).toBe(1);
+  } finally { layout.remove(); }
   const saved = (await readBrowserScientificAttachment(f.doc.path))!;
   expect(saved.text).toBe(f.text); expect(await saved.companions[0].file.text()).toBe(await oneBlock().text());
   expect(await readBrowserSourceCheckpoint(f.doc.path)).toBeNull(); expect(f.source.sessionForDocument(f.doc)).toBeNull();

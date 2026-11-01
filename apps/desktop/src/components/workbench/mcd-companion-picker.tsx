@@ -75,13 +75,13 @@ export function McdCompanionPicker({ target, onAttached }: {
     finally { if (!choosingBlock) finish(operation); }
   };
   if (!target) return null;
-  return <div className="dock-content workbench-panel">
+  return <div className="workbench-controls workbench-panel flex-none px-3">
     {pending ? <>
       <label className="workbench-field"><span>{pending.name}</span>
         <NativeSelect size="sm" aria-label="MCD spectrum block" value={block} disabled={Boolean(busy)} onChange={event => setBlock(event.currentTarget.value)}>
           <NativeSelectOption value="" disabled>Select block</NativeSelectOption>
           {pending.prepared.blocks.map(value => <NativeSelectOption key={value.index} value={String(value.index)}>
-            {`Block ${value.index + 1}: ${value.fromCm1}–${value.toCm1} cm⁻¹ (${value.rows} rows)`}
+            {`Block ${value.index + 1}: ${value.fromCm1}–${value.toCm1} cm⁻¹ (${value.rows} ${value.rows === 1 ? "row" : "rows"})`}
           </NativeSelectOption>)}
         </NativeSelect>
       </label>
